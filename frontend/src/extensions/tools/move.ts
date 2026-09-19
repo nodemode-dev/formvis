@@ -39,10 +39,12 @@ function resizeCursor(t: Transform, handle: number): string {
 
 const fmt = (n: number): string => (Math.round(n * 10) / 10).toString();
 
+let pixelStart: { x: number; y: number } | null = null;
+
 export const moveTool: Tool = {
   id: 'move', label: 'Move', key: 'V', order: 10,
   icon: () => 'cursor',
-  hint: () => 'Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
+  hint: () => 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
   cursor(ctx, p) {
     if (!p) return 'default';
     const m = hit(ctx, p);
@@ -53,13 +55,29 @@ export const moveTool: Tool = {
   down(ctx, p) {
     if (p.button !== 0) return;
     const e = ctx.engine;
+    const sel = e.current?.selection;
+    if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && e.beginPixelMove(p.alt)) { pixelStart = p.doc; return; }
     if (p.mod || e.autoSelect) { const id = e.layerAt(p.doc); if (id) e.selectLayer(id); }
     const m = hit(ctx, p);
     if (m) e.beginTransform(m, p.doc);
   },
-  move(ctx, p) { ctx.engine.updateTransform(p.doc, p.shift, p.alt); },
-  up(ctx) { ctx.engine.endTransform(); },
-  cancel(ctx) { ctx.engine.cancelTransform(); },
+  move(ctx, p) {
+    if (pixelStart) {
+      let dx = p.doc.x - pixelStart.x, dy = p.doc.y - pixelStart.y;
+      if (p.shift) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }
+      ctx.engine.movePixelsBy(dx, dy);
+      return;
+    }
+    ctx.engine.updateTransform(p.doc, p.shift, p.alt);
+  },
+  up(ctx) {
+    if (pixelStart) { pixelStart = null; ctx.engine.endPixelMove(); return; }
+    ctx.engine.endTransform();
+  },
+  cancel(ctx) {
+    if (pixelStart) { pixelStart = null; ctx.engine.cancelPixelMove(); return; }
+    ctx.engine.cancelTransform();
+  },
   keydown(ctx, e) {
     const eng = ctx.engine;
     if (e.metaKey || e.ctrlKey) return false;
@@ -68,6 +86,7 @@ export const moveTool: Tool = {
     if (arrows[e.key]) { eng.nudge(arrows[e.key][0], arrows[e.key][1]); return true; }
     const digit = digitOf(e);
     if (digit !== null && !e.shiftKey && !e.altKey) { eng.setOpacity(digit === 0 ? 1 : digit / 10); return true; }
+    if (e.key === 'Escape' && pixelStart) { pixelStart = null; eng.cancelPixelMove(); return true; }
     if (e.key === 'Escape' && eng.transformEdit) { eng.cancelTransform(); return true; }
     return false;
   },

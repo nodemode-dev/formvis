@@ -296,6 +296,8 @@ export class Engine {
     if (gr && gr.project === p) m.set(gr.layerId, { ...(m.get(gr.layerId) ?? {}), ...(gr.target === 'pixels' ? { source: gr.surface } : { maskSource: gr.surface }) });
     const wp = this.warpState;
     if (wp && wp.project === p) m.set(wp.layerId, { ...(m.get(wp.layerId) ?? {}), source: wp.surface, transform: docTransform(p.doc.width, p.doc.height) });
+    const fl = this.floating;
+    if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.work });
     return m.size ? m : undefined;
   }
 
@@ -1806,6 +1808,105 @@ export class Engine {
     if (!l || l.isGroup || !l.raster || !(percent > 0)) return;
     const t = l.transform, w = (l.raster.width * percent) / 100, h = (l.raster.height * percent) / 100;
     this.setLayerTransform({ w, h, x: t.x + t.w / 2 - w / 2, y: t.y + t.h / 2 - h / 2 }, 'Scale Layer');
+  }
+
+  private floating: { project: Project; layerId: ID; raster: Raster; local: Mat; base: Surface; work: Surface; piece: Surface; region: Rect; dx: number; dy: number; selection: SelectionMask; duplicate: boolean } | null = null;
+
+  get movingPixels(): boolean { return this.floating !== null; }
+
+  outlineShift(p: Project): { dx: number; dy: number } | null {
+    if (this.selectionShift?.project === p) return this.selectionShift;
+    const f = this.floating;
+    return f && f.project === p ? { dx: f.dx, dy: f.dy } : null;
+  }
+
+  beginPixelMove(duplicate: boolean): boolean {
+    const p = this.current;
+    const sel = p?.selection;
+    if (!p || !sel || this.stroke || this.floating || this.warpState) return false;
+    this.settle();
+    const l0 = p.activeLayer;
+    if (!this.paintable(l0) || !l0.raster || (p.maskTarget && l0.mask)) { this.notice('Moving selected pixels works on a layer with pixels.'); return false; }
+    p.history.begin(duplicate ? 'Duplicate Pixels' : 'Move Pixels', p.snapshot());
+    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+    const r = pick.raster;
+    const region = intersectRect(integral(sel.rect), { x: 0, y: 0, w: p.doc.width, h: p.doc.height }) ?? sel.rect;
+    const piece = createSurface(region.w, region.h);
+    const pc = ctxOf(piece);
+    setMat(pc, mul(translation(-region.x, -region.y), pick.local));
+    pc.drawImage(r.canvas, 0, 0);
+    pc.setTransform(1, 0, 0, 1, 0, 0);
+    pc.globalCompositeOperation = 'destination-in';
+    pc.drawImage(sel.surface(), sel.x - region.x, sel.y - region.y);
+    const base = createSurface(r.width, r.height);
+    const bc = ctxOf(base);
+    bc.drawImage(r.canvas, 0, 0);
+    if (!duplicate) {
+      setMat(bc, mul(invert(pick.local), translation(sel.x, sel.y)));
+      bc.globalCompositeOperation = 'destination-out';
+      bc.drawImage(sel.surface(), 0, 0);
+    }
+    this.floating = { project: p, layerId: pick.layer.id, raster: r, local: pick.local, base, work: createSurface(r.width, r.height), piece, region, dx: 0, dy: 0, selection: sel, duplicate };
+    this.renderFloating();
+    return true;
+  }
+
+  private renderFloating(): void {
+    const f = this.floating;
+    if (!f) return;
+    const c = ctxOf(f.work);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = 'copy';
+    c.drawImage(f.base, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    setMat(c, mul(invert(f.local), translation(f.region.x + f.dx, f.region.y + f.dy)));
+    c.drawImage(f.piece, 0, 0);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    this.emit('render', null);
+    this.emit('overlay', null);
+  }
+
+  movePixelsBy(dx: number, dy: number): void {
+    const f = this.floating;
+    if (!f) return;
+    f.dx = Math.round(dx);
+    f.dy = Math.round(dy);
+    this.renderFloating();
+  }
+
+  endPixelMove(): void {
+    const f = this.floating;
+    if (!f) return;
+    this.floating = null;
+    const p = f.project;
+    if (!f.dx && !f.dy) {
+      const before = p.history.abort();
+      if (before) { p.doc = before.doc; p.selection = before.selection; }
+      this.refresh();
+      return;
+    }
+    const before = f.raster.read();
+    const c = f.raster.ctx;
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalCompositeOperation = 'copy';
+    c.drawImage(f.work, 0, 0);
+    c.restore();
+    f.raster.touch();
+    p.history.addPatch({ raster: f.raster, x: 0, y: 0, before, after: f.raster.read() });
+    p.selection = f.selection.translated(f.dx, f.dy, p.doc.width, p.doc.height);
+    if (p.layer(f.layerId)?.shape) p.updateLayer(f.layerId, { shape: null });
+    p.history.end(p.snapshot());
+    this.refresh();
+  }
+
+  cancelPixelMove(): void {
+    const f = this.floating;
+    if (!f) return;
+    this.floating = null;
+    const before = f.project.history.abort();
+    if (before) { f.project.doc = before.doc; f.project.selection = before.selection; }
+    this.refresh();
   }
 
   setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void {

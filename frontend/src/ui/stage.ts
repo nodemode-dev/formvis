@@ -174,7 +174,7 @@ export class Stage {
     const v = p.viewport;
     const sel = p.selection;
     if (sel) {
-      const shift = this.engine.selectionShift?.project === p ? this.engine.selectionShift : null;
+      const shift = this.engine.outlineShift(p);
       const d = this.dpr;
       const m = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + (shift?.dy ?? 0) * v.zoom) * d]);
       const path = new Path2D();
