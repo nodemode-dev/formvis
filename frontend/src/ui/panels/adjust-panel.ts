@@ -8,6 +8,48 @@ import { el, setHidden } from '../dom';
 import { toast } from '../toast';
 import { checkRow, colorRow, selectRow, sliderRow } from './controls';
 
+type LevelRangeData = { black: number; gamma: number; white: number; outputBlack: number; outputWhite: number };
+
+/** the reference app's LevelsAuto: each end clips 0.1% of a channel's histogram. Contrast shares one master interval
+ *  across R, G and B so channel relationships hold; Color sets each channel; Color + neutral midtones also sets
+ *  each channel's gamma so its mean maps to middle gray. `bins` is `histogram()`: composite, then R, G, B. */
+function autoLevels(bins: Float64Array, mode: 'contrast' | 'color' | 'neutral'): LevelRangeData[] {
+  const fresh = (black = 0, white = 255): LevelRangeData => ({ black, gamma: 1, white, outputBlack: 0, outputWhite: 255 });
+  const ranges = [fresh(), fresh(), fresh(), fresh()];
+  const endpoints = (c: number): [number, number] | null => {
+    const o = c * 256;
+    let total = 0;
+    for (let i = 0; i < 256; i++) total += bins[o + i];
+    if (!(total > 0)) return null;
+    let sum = 0, low = 0, high = 255;
+    for (let i = 0; i < 256; i++) { sum += bins[o + i]; if (sum > total * 0.001) { low = i; break; } }
+    sum = 0;
+    for (let i = 255; i >= 0; i--) { sum += bins[o + i]; if (sum > total * 0.001) { high = i; break; } }
+    return low < high ? [low, high] : null;
+  };
+  if (mode === 'contrast') {
+    const lims = [1, 2, 3].map(endpoints).filter((x): x is [number, number] => x !== null);
+    if (lims.length) {
+      const low = Math.min(...lims.map((x) => x[0])), high = Math.max(...lims.map((x) => x[1]));
+      if (low < high) ranges[0] = fresh(low, high);
+    }
+    return ranges;
+  }
+  for (let c = 1; c <= 3; c++) {
+    const e = endpoints(c);
+    if (!e) continue;
+    const r = fresh(e[0], e[1]);
+    if (mode === 'neutral') {
+      let total = 0, acc = 0;
+      for (let i = 0; i < 256; i++) { const w = bins[c * 256 + i]; total += w; acc += Math.min(1, Math.max(0, (i - r.black) / (r.white - r.black))) * w; }
+      const mean = acc / total;
+      if (mean > 0 && mean < 1) r.gamma = Math.min(9.99, Math.max(0.1, Math.log(mean) / Math.log(0.5)));
+    }
+    ranges[c] = r;
+  }
+  return ranges;
+}
+
 type Json = Record<string, unknown>;
 type Pt = { x: number; y: number };
 interface Section { node: HTMLElement; sync: () => void }
@@ -179,7 +221,15 @@ export class AdjustPanel extends Dialog {
     const white = sliderRow('Input white', 2, 255, 1, (v) => set('white', Math.max(v, r().black + 2)));
     const outB = sliderRow('Output black', 0, 255, 1, (v) => set('outputBlack', v));
     const outW = sliderRow('Output white', 0, 255, 1, (v) => set('outputWhite', v));
-    node.append(channel.el, canvas, black.el, gamma.el, white.el, outB.el, outW.el);
+    const auto = selectRow('Auto', [['', 'Choose'], ['contrast', 'Contrast'], ['color', 'Color'], ['neutral', 'Color + neutral midtones']], (v) => {
+      auto.set('');
+      if (!v || !this.bins) return;
+      lv().ranges = autoLevels(this.bins, v as 'contrast' | 'color' | 'neutral');
+      values();
+      this.drawHisto(ch);
+      this.changed();
+    });
+    node.append(channel.el, canvas, auto.el, black.el, gamma.el, white.el, outB.el, outW.el);
     this.histo = canvas;
     const values = (): void => { const x = r(); black.set(x.black); gamma.set(x.gamma); white.set(x.white); outB.set(x.outputBlack); outW.set(x.outputWhite); };
     return { node, sync: () => { ch = Math.max(0, CHANNELS.indexOf(lv().channel)); channel.set(CHANNELS[ch]); values(); this.drawHisto(ch); } };
