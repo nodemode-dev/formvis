@@ -13,13 +13,13 @@
 
 sonny is a layered image editor: stack photos and paintings as layers, group them in folders, mask and clip them, blend them with 13 modes, select, paint and export. It is a port of the macOS app the reference app to the web, keeping the reference app's document model and project format so `.ref` projects open unchanged, and it runs standalone in a browser, inside NodeMode as a portal app, or as a desktop app for macOS, Linux and Windows.
 
-**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 7,450 lines of TypeScript, 419 of CSS, 701 of Python and 112 of Rust.
+**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 8,191 lines of TypeScript, 419 of CSS, 701 of Python and 112 of Rust.
 
 ## Highlights
 
 - **the reference app document model.** Flat bottom-to-top layers w/ pass-through folders, 13 blend modes mapped 1:1 to Canvas 2D, raster masks, folder masks, clipping chains, and value-snapshot history (100 steps, 256 MB).
 - **Opens the reference app projects.** Reads `.ref` packages (zipped or as folders, format versions 1 to 7) and saves `.sonny` w/ the same manifest field layout.
-- **Eleven of the reference app's fourteen tools.** Move w/ transform handles, Marquee, Lasso, Magic Wand, Crop, Brush and Eraser, Gradient, Shape, Eyedropper, Hand, Zoom; each is a self-registering extension module.
+- **All fourteen of the reference app's tools.** Move w/ transform handles, Marquee, Lasso, Magic Wand, Crop, Brush and Eraser, Spot Healing (Content-Aware, Create Texture, Proximity Match), Clone Stamp, Smear (Liquify, Blur, Smudge), Gradient, Shape, Eyedropper, Hand, Zoom; each is a self-registering extension module. Content-Aware Fill works from the Edit menu.
 - **Adjustments and filters.** Levels w/ histogram, Curves, Hue/Saturation, Exposure, Gradient Map and Grain, as editable adjustment layers or direct edits; Gaussian Blur, Motion Blur, Add Noise and Lens Correction; all ported from the reference app's source, w/ live preview.
 - **Clipboard, selections, canvas.** Cut, Copy, Copy Merged and Paste in place; Expand, Contract and Mask's Black Areas; Canvas Size w/ anchors and Image Size w/ resampling.
 - **Two background removers.** rembg (ML, default when installed) and OpenCV GrabCut (lightweight, always available); both produce an editable layer mask, never destroyed pixels.
@@ -103,7 +103,7 @@ sonny/
 - **Desktop app.** The Tauri shell follows a proven sidecar template, but it has not been compiled yet: the build machine for this release had no Rust toolchain, and the desktop workflow has not run. Treat desktop bundles as untested until the first `desktop.yml` run passes.
 - **ML background removal.** Implemented, not yet exercised end to end; the lightweight GrabCut path is verified.
 - **Adjustments.** All six kinds render, edit and save. Hue/Saturation band handles, sample eyedroppers and targeted drag, and Levels Auto, are not built yet.
-- **Not built yet.** Spot Healing, Clone Stamp and the Blur tool (Liquify, Blur, Smudge); Content-Aware Fill; the Remove Background panel (Refine Edges, Matte Contrast, Shift Edge); the editable transform inspector, free distort and snapping; floating selections; the color picker and palette; the JPEG export sheet; `.ref` export. The measured parity scoreboard ships in the planning sidecar.
+- **Not built yet.** The Remove Background panel (Refine Edges, Matte Contrast, Shift Edge); the editable transform inspector, free distort and snapping; floating selections; the color picker and palette; the JPEG export sheet; Smear's Blur on masks; `.ref` export. The measured parity scoreboard ships in the planning sidecar.
 - **NodeMode embedding.** Follows the portal protocol; the host-side handling of `plugin:sonny:assign` is not confirmed yet.
 
 ## Development
@@ -112,7 +112,7 @@ Branch model: `main` plus short-lived work branches, see `.docs/BRANCHING.md`. D
 
 ## Status
 
-Version 0.2.0 closes most of the menu-level gap with the reference app: 55 of its 59 web-relevant menu commands and 11 of its 14 tools are in, each checked in a browser against predicted pixel values. What remains is mostly inside tools and panels, listed above. Current focus: the retouching tools, Content-Aware Fill and the Remove Background panel.
+Version 0.3.0 has all 14 of the reference app's tools (Smear's Blur mode does not yet work on masks) and all 59 of its web-relevant menu commands, 55 of them complete and 4 partial, each checked in a browser against predicted pixel values. What remains is mostly in panels and workflows outside the menus, listed above. Current focus: the transform inspector with free distort and snapping, floating selections, the color picker, and the Remove Background panel.
 
 ## Contributors
 

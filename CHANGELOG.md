@@ -2,6 +2,19 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.3.0 · 2026-09-19
+
+### Added
+
+- Spot Healing (J): paint over a spot and it heals on release, as Content-Aware, Create Texture or Proximity Match, ported from the reference app's healing kernel.
+- Clone Stamp (S): Alt-click sets the source; Aligned keeps the offset between strokes; Sample all layers copies what you see.
+- Smear (R): Liquify pushes pixels with the brush, Blur softens (a new stroke softens further), Smudge carries color along the stroke.
+- Content-Aware Fill (Shift+Backspace, Edit menu) fills the selection from its surroundings.
+
+### Known gaps
+
+The Remove Background panel, the editable transform inspector with free distort and snapping, floating selections, the color picker, Hue/Saturation bands and eyedroppers, Levels Auto, the JPEG export sheet, and Smear's Blur on masks; desktop shell still uncompiled.
+
 ## 0.2.0 · 2026-09-19
 
 ### Added

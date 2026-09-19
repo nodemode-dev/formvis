@@ -28,6 +28,7 @@ src/
         index.ts  · Engine API
         kernels.ts  · adjustment and wand kernels
         project.ts  · per-tab project record
+        retouch.ts  · Spot Healing, Content-Aware Fill, Smudge and Liquify
         selection.ts  · selection masks, outline tracer
         stroke.ts  · brush stroke engine
         surface.ts  · canvases and rasters
@@ -38,17 +39,21 @@ src/
     extensions/
         registry.ts  · tool contract and registry
         tools/
+            brush-common.ts  · shared brush cursor, keys and options
             brush.ts  · brush and eraser
+            clone.ts  · Clone Stamp
             crop.ts  · crop frame, ratios, snapping
             eyedropper.ts  · color sampling
             gradient.ts  · pending gradient with movable ends
             hand.ts  · panning
+            heal.ts  · Spot Healing
             index.ts  · built-in tool list
             lasso.ts  · freehand and polygonal lasso
             marquee.ts  · rectangle and ellipse marquee
             move.ts  · move and transform handles
             select-common.ts  · modifier to selection mode
             shape.ts  · rectangle and ellipse shape layers
+            smear.ts  · Smear: Liquify, Blur, Smudge
             wand.ts  · magic wand
             zoom.ts  · zoom tool
     host.ts  · NodeMode portal link
@@ -111,6 +116,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/index.ts](#srcengineindexts)
 - [src/engine/kernels.ts](#srcenginekernelsts)
 - [src/engine/project.ts](#srcengineprojectts)
+- [src/engine/retouch.ts](#srcengineretouchts)
 - [src/engine/selection.ts](#srcengineselectionts)
 - [src/engine/stroke.ts](#srcenginestrokets)
 - [src/engine/surface.ts](#srcenginesurfacets)
@@ -119,17 +125,21 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/types.ts](#srcenginetypests)
 - [src/engine/viewport.ts](#srcengineviewportts)
 - [src/extensions/registry.ts](#srcextensionsregistryts)
+- [src/extensions/tools/brush-common.ts](#srcextensionstoolsbrush-commonts)
 - [src/extensions/tools/brush.ts](#srcextensionstoolsbrushts)
+- [src/extensions/tools/clone.ts](#srcextensionstoolsclonets)
 - [src/extensions/tools/crop.ts](#srcextensionstoolscropts)
 - [src/extensions/tools/eyedropper.ts](#srcextensionstoolseyedropperts)
 - [src/extensions/tools/gradient.ts](#srcextensionstoolsgradientts)
 - [src/extensions/tools/hand.ts](#srcextensionstoolshandts)
+- [src/extensions/tools/heal.ts](#srcextensionstoolshealts)
 - [src/extensions/tools/index.ts](#srcextensionstoolsindexts)
 - [src/extensions/tools/lasso.ts](#srcextensionstoolslassots)
 - [src/extensions/tools/marquee.ts](#srcextensionstoolsmarqueets)
 - [src/extensions/tools/move.ts](#srcextensionstoolsmovets)
 - [src/extensions/tools/select-common.ts](#srcextensionstoolsselect-commonts)
 - [src/extensions/tools/shape.ts](#srcextensionstoolsshapets)
+- [src/extensions/tools/smear.ts](#srcextensionstoolssmearts)
 - [src/extensions/tools/wand.ts](#srcextensionstoolswandts)
 - [src/extensions/tools/zoom.ts](#srcextensionstoolszoomts)
 - [src/host.ts](#srchostts)
@@ -234,6 +244,14 @@ Every menu item, button and shortcut is a command in the `commands.add(...)` blo
 
 Adds the clipboard, selection-modify, Image adjustment, New Adjustment Layer, Canvas Size, Image Size and filter commands, and a Filter menu that now holds Remove Background, as in the reference app. Copy writes PNG plus a `sonny:` marker to the system clipboard; Mod+V is let through to the native paste event, which pastes in-app copies in place and external images centered above the active layer. Double-clicked adjustment rows open their editor through `cv:edit-adjustment`.
 
+### src/app.ts · startApp · Content-Aware Fill · _v0.3.0
+
+Adds the Content-Aware Fill command (Shift+Backspace) to the Edit menu; it runs after a frame so the busy indicator can show. Removed from the Edit menu definition:
+
+```ts
+'fill-fg', 'fill-bg', 'clear', '-', 'settings'] },
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -313,6 +331,14 @@ Adds `beginLive`, `updateLive`, `commitLive` and `cancelLive` (one undo step for
       p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
 ```
 
+### src/engine/index.ts · retouch strokes, warp, Content-Aware Fill · _v0.3.0
+
+Adds `beginRetouchStroke` (Spot Healing previews as a tint and heals on release; Clone Stamp and Blur paint a texture), Clone Stamp's source and offset rules from `CloneStamp.swift` (aligned offsets fixed by the first stroke, cleared by a new source), the Blur sample blurred by `diameter / 10` clamped 1.5 to 30 from `BlurTool.swift`, the Smudge and Liquify warp lifecycle shown through a document-size override and committed along the dab path as one undo step, and `contentAwareFill` through the selection's soft coverage. Retouch tools work on layer pixels; Blur on masks is not ported yet. Removed:
+
+```ts
+    const patch = st.s.commit();
+```
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -333,6 +359,12 @@ export type Kernel = (data: Uint8ClampedArray) => void;
 
 Created in _v0.1.0.
 
+## src/engine/retouch.ts
+
+### src/engine/retouch.ts · spotHeal, contentFill, WarpStroke · _v0.3.0
+
+Ported line for line from the reference app. `spotHeal` from `HealPixels.c`: ring matching over 5 distances and 24 angles (2 distances with a stronger nearness bias for Proximity Match), a plus or minus 3 px alignment refine, a multigrid smooth solve over the spot, and Create Texture's grain matched to the ring's detail. `contentFill` from `ContentFill.c`: a patch search growing inward from the selection edge. `WarpStroke` from `SmudgeLiquify.swift`: Liquify's forward warp and Smudge's carried color, dab by dab on a document-size premultiplied copy. C's `lround` rounds halves away from zero, so the port does too rather than using `Math.round`.
+
 ## src/engine/selection.ts
 
 ### src/engine/selection.ts · selection masks, outline tracer · _v0.1.0
@@ -344,6 +376,10 @@ Created in _v0.1.0.
 ### src/engine/stroke.ts · brush stroke engine · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/engine/stroke.ts · texture and coverageAlpha · _v0.3.0
+
+A stroke can paint a document-space texture at an offset instead of a color, which is how Clone Stamp and the Blur mode of Smear work: a canvas point takes the sample at itself plus the offset. `coverageAlpha` returns the accumulated coverage clipped by the selection, which Spot Healing heals. Nothing was removed.
 
 ## src/engine/surface.ts
 
@@ -381,11 +417,23 @@ Created in _v0.1.0.
 
 Created in _v0.1.0.
 
+## src/extensions/tools/brush-common.ts
+
+### src/extensions/tools/brush-common.ts · drawBrushCursor, brushKeys, brushOptions · _v0.3.0
+
+The brush cursor, the size, hardness and opacity keys, and the brush options shared by Brush, Spot Healing, Clone Stamp and Smear, which share one set of brush settings as in the reference app.
+
 ## src/extensions/tools/brush.ts
 
 ### src/extensions/tools/brush.ts · brush and eraser · _v0.1.0
 
 Created in _v0.1.0.
+
+## src/extensions/tools/clone.ts
+
+### src/extensions/tools/clone.ts · cloneTool · _v0.3.0
+
+Alt-click sets the source; the crosshair follows the sample point exactly as a click would stamp; Aligned and Sample all layers in the options bar.
 
 ## src/extensions/tools/crop.ts
 
@@ -411,6 +459,12 @@ Pending gradient with draggable ends and Shift for 45 degree steps; shape, color
 
 Created in _v0.1.0.
 
+## src/extensions/tools/heal.ts
+
+### src/extensions/tools/heal.ts · healTool · _v0.3.0
+
+Paint over a spot; it heals on release in the chosen type: Content-Aware, Create Texture or Proximity Match.
+
 ## src/extensions/tools/index.ts
 
 ### src/extensions/tools/index.ts · built-in tool list · _v0.1.0
@@ -423,6 +477,14 @@ Registers Crop, Gradient and Shape in the reference app's rail order. Removed:
 
 ```ts
   for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, brushTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+```
+
+### src/extensions/tools/index.ts · registerBuiltinTools · _v0.3.0
+
+Registers Spot Healing, Clone Stamp and Smear, completing the reference app's fourteen tools. Removed:
+
+```ts
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, gradientTool, shapeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 ```
 
 ## src/extensions/tools/lasso.ts
@@ -454,6 +516,12 @@ Created in _v0.1.0.
 ### src/extensions/tools/shape.ts · shapeTool · _v0.2.0
 
 Rectangle and ellipse shape layers in the foreground color with a corner radius, Shift after starting for square, Alt for centered, Shift+U to switch shape. The layer keeps the reference app's `LayerShapeStyle` fields (`kind`, `red`, `green`, `blue`, `cornerRadius`).
+
+## src/extensions/tools/smear.ts
+
+### src/extensions/tools/smear.ts · smearTool · _v0.3.0
+
+the reference app's Blur tool, labeled Smear as in the reference app: Liquify and Smudge run as warp strokes, Blur paints a softened sample; Strength is the brush opacity.
 
 ## src/extensions/tools/wand.ts
 

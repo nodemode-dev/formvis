@@ -24,4 +24,4 @@ A tool is a self-registering module. The rail, the options bar, the cursor and t
 
 ## Remaining parity tools
 
-`ToolId` already names `spotHealing`, `cloneStamp` and `smear` (the reference app's Blur tool with Liquify, Blur and Smudge). Each needs its engine operation first. Crop, Gradient and Shape landed in 0.2.0 and are the models to follow: Gradient shows how a pending edit lives in the engine and commits on `settle`.
+All fourteen of the reference app's tools exist as of 0.3.0. Models to follow: Gradient shows a pending edit that lives in the engine and commits on `settle`; Clone Stamp and Smear's Blur paint a texture through `PixelStroke`; Smudge and Liquify show a warp stroke with a document-size override; `brush-common.ts` shares the brush cursor, keys and options.
