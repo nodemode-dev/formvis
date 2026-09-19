@@ -171,6 +171,7 @@ export function startApp(): void {
   async function save(saveAs: boolean): Promise<boolean> {
     const p = engine.current;
     if (!p) return false;
+    engine.settle();
     let name = saveAs ? null : p.libraryName;
     if (!name) {
       name = await promptName(saveAs ? 'Save As' : 'Save to Library', p.libraryName ?? p.name, 'Save');
@@ -200,6 +201,7 @@ export function startApp(): void {
   async function downloadProject(): Promise<void> {
     const p = engine.current;
     if (!p) return;
+    engine.settle();
     await engine.task(async () => {
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId);
@@ -211,6 +213,7 @@ export function startApp(): void {
   async function exportImage(kind: 'png' | 'jpg'): Promise<void> {
     const p = engine.current;
     if (!p) return;
+    engine.settle();
     await engine.task(async () => {
       try {
         const blob = await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg');
