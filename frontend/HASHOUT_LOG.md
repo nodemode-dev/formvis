@@ -252,6 +252,18 @@ Adds the Content-Aware Fill command (Shift+Backspace) to the Edit menu; it runs 
 'fill-fg', 'fill-bg', 'clear', '-', 'settings'] },
 ```
 
+### src/app.ts · startApp · Transform command · _v0.5.0
+
+Adds the Transform command to the Edit menu, labeled Transform Selection or Transform Layer as the reference app labels it, on Alt+Mod+T (browsers keep Mod+T for a new tab, as with Alt+Mod+N and Alt+Mod+W) and Mod+T. Removed from the Edit menu definition:
+
+```ts
+'fill-fg', 'fill-bg', 'clear', 'content-fill', '-', 'settings'] },
+```
+
+### src/app.ts · save, downloadProject, exportImage · settle first · _v0.5.0
+
+Each calls `engine.settle()` before reading the document, so an unapplied gradient is saved and exported (it was left out since 0.2.0) and a floating selection merges first instead of being written twice, on its own layer and in the untouched source. Save settles before its name prompt. Nothing was removed.
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -345,6 +357,26 @@ Move drags snap through `snapMove`: the moving box's edges and center go to the 
 
 ```ts
   cancelTransform(): void { if (this.transformEdit) { this.transformEdit = null; this.emit('render', null); this.emit('options', null); } }
+```
+
+### src/engine/index.ts · Transform Selection, growLayer · _v0.5.0
+
+`transformCommand` (the reference app's Cmd-T) floats the selection when `canTransformSelection`, else switches to Move with transform controls on. `beginSelectionTransform` switches to Move first (switching settles), then opens one Transform Selection step: the selected pixels go onto a Floating Selection layer above their layer with its opacity and blend, the source shows its cleared pixels through the override map without being written, and the selection is handed to the float. Drags and inspector edits of the float update it without history (`settle(keepFloating)`, the floating branches in `endTransform` and `setLayerTransform`). `commitSelectionTransform` grows the source where the pixels now extend past it, writes cleared base plus transformed float, removes the float, and carries the selection through the same matrix; an unchanged float, a cancel, or a closed project restores the document exactly. `ensurePixels` now calls the general `growLayer(want)`. Removed:
+
+```ts
+  settle(): void {
+```
+
+```ts
+    this.settle();
+    this.transformEdit = { project: p, layerId: l.id, original: l.transform, draft: l.transform, mode, start };
+```
+
+```ts
+    const t = layer.transform, r = layer.raster;
+    if (!isAxisAligned(t, r.width, r.height)) return r;
+    if (t.x <= 0 && t.y <= 0 && t.x + t.w >= W && t.y + t.h >= H) return r;
+    const u = unionRect({ x: t.x, y: t.y, w: t.w, h: t.h }, { x: 0, y: 0, w: W, h: H });
 ```
 
 ## src/engine/kernels.ts
@@ -548,6 +580,14 @@ Removed, the hint:
 
 ```ts
   hint: () => 'Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
+```
+
+### src/extensions/tools/move.ts · moveTool · floating selection · _v0.5.0
+
+Enter applies a floating selection and Escape cancels it (a first Escape still cancels a handle drag in progress); the hint describes the float while it is open. Removed, the hint:
+
+```ts
+  hint: () => 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
 ```
 
 ## src/extensions/tools/select-common.ts
