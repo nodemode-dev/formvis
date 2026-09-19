@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-0.3.0-f97316" alt="version 0.3.0">
+<img src="https://img.shields.io/badge/version-0.4.0-f97316" alt="version 0.4.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -13,7 +13,7 @@
 
 sonny is a layered image editor: stack photos and paintings as layers, group them in folders, mask and clip them, blend them with 13 modes, select, paint and export. It is a port of the macOS app the reference app to the web, keeping the reference app's document model and project format so `.ref` projects open unchanged, and it runs standalone in a browser, inside NodeMode as a portal app, or as a desktop app for macOS, Linux and Windows.
 
-**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 8,191 lines of TypeScript, 419 of CSS, 701 of Python and 112 of Rust.
+**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 8,407 lines of TypeScript, 419 of CSS, 701 of Python and 112 of Rust.
 
 ## Highlights
 
@@ -103,7 +103,7 @@ sonny/
 - **Desktop app.** The Tauri shell follows a proven sidecar template, but it has not been compiled yet: the build machine for this release had no Rust toolchain, and the desktop workflow has not run. Treat desktop bundles as untested until the first `desktop.yml` run passes.
 - **ML background removal.** Implemented, not yet exercised end to end; the lightweight GrabCut path is verified.
 - **Adjustments.** All six kinds render, edit and save. Hue/Saturation band handles, sample eyedroppers and targeted drag, and Levels Auto, are not built yet.
-- **Not built yet.** The Remove Background panel (Refine Edges, Matte Contrast, Shift Edge); the editable transform inspector, free distort and snapping; floating selections; the color picker and palette; the JPEG export sheet; Smear's Blur on masks; `.ref` export. The measured parity scoreboard ships in the planning sidecar.
+- **Not built yet.** The Remove Background panel (Refine Edges, Matte Contrast, Shift Edge); Transform Selection and free distort; the color picker and palette; the JPEG export sheet; Smear's Blur on masks; `.ref` export. The measured parity scoreboard ships in the planning sidecar.
 - **NodeMode embedding.** Follows the portal protocol; the host-side handling of `plugin:sonny:assign` is not confirmed yet.
 
 ## Development
@@ -112,7 +112,7 @@ Branch model: `main` plus short-lived work branches, see `.docs/BRANCHING.md`. D
 
 ## Status
 
-Version 0.3.0 has all 14 of the reference app's tools (Smear's Blur mode does not yet work on masks) and all 59 of its web-relevant menu commands, 55 of them complete and 4 partial, each checked in a browser against predicted pixel values. What remains is mostly in panels and workflows outside the menus, listed above. Current focus: the transform inspector with free distort and snapping, floating selections, the color picker, and the Remove Background panel.
+Version 0.4.0 has all 14 of the reference app's tools (Smear's Blur mode does not yet work on masks) and all 59 of its web-relevant menu commands, 55 of them complete and 4 partial, each checked in a browser against predicted pixel values. The Move tool now snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels. What remains is mostly in panels outside the menus, listed above. Current focus: Transform Selection, the color picker, and the Remove Background panel.
 
 ## Contributors
 

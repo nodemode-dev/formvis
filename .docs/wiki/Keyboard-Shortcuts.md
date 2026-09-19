@@ -30,5 +30,5 @@ Mod is Command on macOS and Ctrl elsewhere. Help, Keyboard Shortcuts shows the s
 | Crop and Gradient | Enter applies, Escape cancels |
 | Colors | X swap, D default |
 | Brush | [ and ] size, Shift+[ and ] hardness, 1 to 0 opacity |
-| Move tool | arrows nudge 1 px, Shift+arrows 10 px, 1 to 0 layer opacity |
+| Move tool | arrows nudge 1 px, Shift+arrows 10 px, 1 to 0 layer opacity, drag inside a selection moves its pixels, Alt+drag duplicates them, Escape cancels |
 | Pan | hold Space |

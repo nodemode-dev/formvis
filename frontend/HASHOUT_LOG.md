@@ -339,6 +339,14 @@ Adds `beginRetouchStroke` (Spot Healing previews as a tint and heals on release;
     const patch = st.s.commit();
 ```
 
+### src/engine/index.ts · snapping, precise transforms, pixel moves · _v0.4.0
+
+Move drags snap through `snapMove`: the moving box's edges and center go to the nearest target within 6 screen pixels among the canvas edges and center and every other visible layer's upright bounds and center, as the reference app's `snappedMove`, with `snapGuides` for the overlay; `snapping` turns it off. `setLayerTransform`, `resizeLayerTo` and `scaleLayerTo` back the Move inspector fields: each is one undo step, resizes around the center, honors the ratio lock, redraws shape layers, and a no-op records nothing. `beginPixelMove`, `movePixelsBy`, `endPixelMove` and `cancelPixelMove` lift the selected pixels (the reference app's `PixelMove`), show them over the layer with the selection cleared (kept for a duplicate), and commit one patch with the selection translated; `outlineShift` lets the ants follow. Removed:
+
+```ts
+  cancelTransform(): void { if (this.transformEdit) { this.transformEdit = null; this.emit('render', null); this.emit('options', null); } }
+```
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -416,6 +424,10 @@ Created in _v0.1.0.
 ### src/extensions/registry.ts · tool contract and registry · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/extensions/registry.ts · OptionSpec number · _v0.4.0
+
+Adds the `number` option kind: an editable field with optional min, max, step and unit, whose `get` returns null when there is nothing to edit. Nothing was removed.
 
 ## src/extensions/tools/brush-common.ts
 
@@ -504,6 +516,39 @@ Created in _v0.1.0.
 ### src/extensions/tools/move.ts · move and transform handles · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/extensions/tools/move.ts · moveTool · inspector, guides, pixel moves · _v0.4.0
+
+The readouts become editable X, Y, W, H, Scale and Angle fields plus Sampling and a Snap toggle; the overlay draws dashed snap guides; a drag inside the selection moves its pixels (Alt duplicates, Shift keeps one axis) and Escape cancels it in `keydown`, since `stage.cancelTool` is not wired to any key. Removed, the readouts:
+
+```ts
+      { kind: 'readout', label: 'X', get: () => (t() ? fmt(t()!.x) : '') },
+      { kind: 'readout', label: 'Y', get: () => (t() ? fmt(t()!.y) : '') },
+      { kind: 'readout', label: 'W', get: () => (t() ? fmt(t()!.w) : '') },
+      { kind: 'readout', label: 'H', get: () => (t() ? fmt(t()!.h) : '') },
+      { kind: 'readout', label: 'Angle', get: () => (t() ? `${fmt(t()!.rotation)}°` : '') },
+```
+
+Removed, the pointer handlers:
+
+```ts
+  down(ctx, p) {
+    if (p.button !== 0) return;
+    const e = ctx.engine;
+    if (p.mod || e.autoSelect) { const id = e.layerAt(p.doc); if (id) e.selectLayer(id); }
+    const m = hit(ctx, p);
+    if (m) e.beginTransform(m, p.doc);
+  },
+  move(ctx, p) { ctx.engine.updateTransform(p.doc, p.shift, p.alt); },
+  up(ctx) { ctx.engine.endTransform(); },
+  cancel(ctx) { ctx.engine.cancelTransform(); },
+```
+
+Removed, the hint:
+
+```ts
+  hint: () => 'Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
+```
 
 ## src/extensions/tools/select-common.ts
 
@@ -705,6 +750,10 @@ Removed: `q(n, 'span')` returned the icon box, so the label replaced the icon an
         setText(q(n, 'span'), spec.label);
 ```
 
+### src/ui/options.ts · OptionsBar · number fields · _v0.4.0
+
+Builds `number` options as inputs that commit on Enter or blur exactly once (a relative field such as Scale would otherwise apply twice, since Enter blurs and blur fires `change`), restore the last committed value on Escape, and never overwrite a field while it has focus. Nothing was removed.
+
 ## src/ui/palette.ts
 
 ### src/ui/palette.ts · stage colors from tokens · _v0.1.0
@@ -746,6 +795,14 @@ Created in _v0.1.0.
 ### src/ui/stage.ts · Stage.resize · _v0.1.0
 
 Renders synchronously inside the ResizeObserver callback so a resize never shows a blank canvas. At 200 percent and above the visible document region is composited at 1:1 and scaled with smoothing off, for a true pixel view.
+
+### src/ui/stage.ts · Stage · renderOverlay · _v0.4.0
+
+The marching ants take their offset from `engine.outlineShift`, which covers both a selection being moved and pixels being moved. Removed:
+
+```ts
+      const shift = this.engine.selectionShift?.project === p ? this.engine.selectionShift : null;
+```
 
 ## src/ui/status.ts
 
