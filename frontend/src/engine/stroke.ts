@@ -45,8 +45,9 @@ export class PixelStroke {
   private carry = 0;
   private total: Rect | null = null;
   private frame: Rect | null = null;
+  private texSurface: Surface | null = null;
 
-  constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null) {
+  constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null) {
     this.toLocal = invert(localToDoc);
     this.working = createSurface(raster.width, raster.height);
     this.wctx = ctxOf(this.working);
@@ -108,6 +109,23 @@ export class PixelStroke {
       t.restore();
       src = this.temp;
     }
+    if (this.texture) {
+      this.texSurface ??= createSurface(this.raster.width, this.raster.height);
+      const t = ctxOf(this.texSurface);
+      t.save();
+      t.setTransform(1, 0, 0, 1, 0, 0);
+      t.beginPath();
+      t.rect(f.x, f.y, f.w, f.h);
+      t.clip();
+      t.clearRect(f.x, f.y, f.w, f.h);
+      setMat(t, mul(this.toLocal, translation(-this.texture.dx, -this.texture.dy)));
+      t.drawImage(this.texture.surface, 0, 0);
+      t.setTransform(1, 0, 0, 1, 0, 0);
+      t.globalCompositeOperation = 'destination-in';
+      t.drawImage(src, 0, 0);
+      t.restore();
+      src = this.texSurface;
+    }
     const w = this.wctx;
     w.save();
     w.setTransform(1, 0, 0, 1, 0, 0);
@@ -118,6 +136,22 @@ export class PixelStroke {
     w.drawImage(src, f.x, f.y, f.w, f.h, f.x, f.y, f.w, f.h);
     w.restore();
     return f;
+  }
+
+  coverageAlpha(): Uint8Array {
+    const w = this.raster.width, h = this.raster.height;
+    const s = createSurface(w, h);
+    const c = ctxOf(s);
+    c.drawImage(this.paint, 0, 0);
+    if (this.selection) {
+      c.globalCompositeOperation = 'destination-in';
+      setMat(c, mul(this.toLocal, translation(this.selection.x, this.selection.y)));
+      c.drawImage(this.selection.surface(), 0, 0);
+    }
+    const d = c.getImageData(0, 0, w, h).data;
+    const out = new Uint8Array(w * h);
+    for (let i = 0; i < out.length; i++) out[i] = d[i * 4 + 3];
+    return out;
   }
 
   commit(): PixelPatch | null {

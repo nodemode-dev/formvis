@@ -24,7 +24,9 @@ export type { DragMode } from './transform';
 export { hierarchy, byId } from './tree';
 export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
-import { fromGray, resizeMask, toGray } from './filters';
+import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
+import { WarpStroke, contentFill, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
+export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
@@ -85,7 +87,7 @@ export class Engine {
   private viewSize = { w: 800, h: 600 };
   private readonly display = new Renderer();
   private readonly work = new Renderer();
-  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke } | null = null;
+  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode } | null = null;
   private lastBrush: { layerId: ID; target: Target; p: Pt } | null = null;
   private opacityOpen: Project | null = null;
   private swipeOpen: Project | null = null;
@@ -292,6 +294,8 @@ export class Engine {
     if (pv && pv.project === p) m.set(pv.layerId, { ...(m.get(pv.layerId) ?? {}), ...(pv.target === 'pixels' ? { source: pv.surface } : { maskSource: pv.surface }), ...(pv.transform ? { transform: pv.transform } : {}) });
     const gr = this.gradient;
     if (gr && gr.project === p) m.set(gr.layerId, { ...(m.get(gr.layerId) ?? {}), ...(gr.target === 'pixels' ? { source: gr.surface } : { maskSource: gr.surface }) });
+    const wp = this.warpState;
+    if (wp && wp.project === p) m.set(wp.layerId, { ...(m.get(wp.layerId) ?? {}), source: wp.surface, transform: docTransform(p.doc.width, p.doc.height) });
     return m.size ? m : undefined;
   }
 
@@ -834,7 +838,7 @@ export class Engine {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
-    const patch = st.s.commit();
+    const patch = st.heal ? this.healPatch(st.s, st.heal) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
     st.project.history.end(st.project.snapshot());
@@ -1568,6 +1572,182 @@ export class Engine {
     const kind = st.kind === 'ellipse' ? 'Ellipse' : 'Rectangle';
     const style = { kind, red: this.fg.r / 255, green: this.fg.g / 255, blue: this.fg.b / 255, cornerRadius: st.kind === 'rectangle' ? st.cornerRadius : 0 };
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
+  }
+
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'smudge' | 'liquify' } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur' };
+  cloneSource: Pt | null = null;
+  cloneOffset: Pt | null = null;
+  private warpState: { project: Project; layerId: ID; stroke: WarpStroke; surface: Surface; image: ImageData } | null = null;
+
+  get warping(): boolean { return this.warpState !== null; }
+
+  setCloneSource(pt: Pt): void {
+    this.cloneSource = { x: pt.x, y: pt.y };
+    this.cloneOffset = null;
+    this.emit('overlay', null);
+    this.emit('options', null);
+  }
+
+  cloneStrokeOffset(pt: Pt): Pt | null {
+    const src = this.cloneSource;
+    if (!src) return null;
+    return (this.retouch.cloneAligned ? this.cloneOffset : null) ?? { x: Math.round(src.x - pt.x), y: Math.round(src.y - pt.y) };
+  }
+
+  clonePoint(pt: Pt): Pt | null {
+    const src = this.cloneSource;
+    if (!src) return null;
+    const off = this.cloneOffset;
+    if (!off || (!this.retouch.cloneAligned && !this.stroke)) return src;
+    return { x: pt.x + off.x, y: pt.y + off.y };
+  }
+
+  private layerSample(p: Project, layer: Layer, sigma = 0): Surface {
+    const W = p.doc.width, H = p.doc.height;
+    const s = createSurface(W, H);
+    const c = ctxOf(s);
+    if (layer.raster) { setMat(c, placement(layer.transform, layer.raster.width, layer.raster.height)); c.drawImage(layer.raster.canvas, 0, 0); c.setTransform(1, 0, 0, 1, 0, 0); }
+    if (sigma > 0) c.putImageData(gaussianBlur(c.getImageData(0, 0, W, H), sigma), 0, 0);
+    return s;
+  }
+
+  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur', pt: Pt, shift: boolean): boolean {
+    const p = this.current;
+    if (!p || this.stroke || this.warpState) return false;
+    this.settle();
+    const l0 = p.activeLayer;
+    if (!this.paintable(l0)) { this.notice('Select a pixel layer first.'); return false; }
+    if (p.maskTarget && l0.mask) { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
+    let texture: { surface: Surface; dx: number; dy: number } | null = null;
+    if (kind === 'clone') {
+      const off = this.cloneStrokeOffset(pt);
+      if (!off) { this.notice('Alt-click to set where Clone Stamp copies from.'); return false; }
+      this.cloneOffset = off;
+      texture = { surface: this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), dx: off.x, dy: off.y };
+    } else if (kind === 'blur') texture = { surface: this.layerSample(p, l0, clamp(this.brush.diameter / 10, 1.5, 30)), dx: 0, dy: 0 };
+    p.history.begin(kind === 'heal' ? 'Spot Healing' : kind === 'clone' ? 'Clone Stamp' : 'Blur', p.snapshot());
+    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+    const white = { r: 255, g: 255, b: 255 };
+    const style = kind === 'heal' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
+    const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture);
+    this.stroke = { project: p, layerId: pick.layer.id, target: 'pixels', s, heal: kind === 'heal' ? this.retouch.healMode : undefined };
+    const last = this.lastBrush;
+    if (shift && last && last.layerId === pick.layer.id && last.target === 'pixels') s.to(last.p);
+    s.to(pt);
+    s.compose();
+    this.emit('render', null);
+    return true;
+  }
+
+  private healPatch(s: PixelStroke, mode: HealMode): ReturnType<PixelStroke['commit']> {
+    const r = s.raster;
+    const before = r.read();
+    const pm = premultiply(before.data);
+    if (!spotHeal(pm, s.coverageAlpha(), r.width, r.height, this.brush.opacity, mode, (Math.random() * 0x100000000) >>> 0)) return null;
+    const out = new ImageData(r.width, r.height);
+    unpremultiply(pm, out.data);
+    r.write(out);
+    return { raster: r, x: 0, y: 0, before, after: r.read() };
+  }
+
+  beginWarp(mode: 'smudge' | 'liquify', pt: Pt): boolean {
+    const p = this.current;
+    if (!p || this.stroke || this.warpState) return false;
+    this.settle();
+    const l0 = p.activeLayer;
+    if (!this.paintable(l0) || !l0.raster) { this.notice('Select a layer with pixels first.'); return false; }
+    if (p.maskTarget && l0.mask) { this.notice('Smudge and Liquify work on layer pixels. Click the layer thumbnail to target them.'); return false; }
+    p.history.begin(mode === 'smudge' ? 'Smudge' : 'Liquify', p.snapshot());
+    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+    const W = p.doc.width, H = p.doc.height;
+    const surface = this.layerSample(p, pick.layer);
+    const image = ctxOf(surface).getImageData(0, 0, W, H);
+    const stroke = new WarpStroke(premultiply(image.data), W, H, mode, this.brush.diameter, this.brush.hardness, this.brush.opacity);
+    this.warpState = { project: p, layerId: pick.layer.id, stroke, surface, image };
+    stroke.append(pt);
+    this.emit('render', null);
+    return true;
+  }
+
+  warpTo(pt: Pt): void {
+    const w = this.warpState;
+    if (!w) return;
+    const r = w.stroke.append(pt);
+    if (!r) return;
+    const W = w.stroke.width;
+    for (let y = r.y; y < r.y + r.h; y++) unpremultiply(w.stroke.pixels, w.image.data, (y * W + r.x) * 4, (y * W + r.x + r.w) * 4);
+    ctxOf(w.surface).putImageData(w.image, 0, 0, r.x, r.y, r.w, r.h);
+    this.emit('render', null);
+  }
+
+  endWarp(): void {
+    const w = this.warpState;
+    if (!w) return;
+    this.warpState = null;
+    const p = w.project;
+    const l = p.layer(w.layerId);
+    if (!l?.raster || !w.stroke.points.length) {
+      const before = p.history.abort();
+      if (before) { p.doc = before.doc; p.selection = before.selection; }
+      this.refresh();
+      return;
+    }
+    const W = p.doc.width, H = p.doc.height;
+    const cov = createSurface(W, H);
+    const cc = ctxOf(cov);
+    cc.fillStyle = '#ffffff';
+    for (const q of w.stroke.points) { cc.beginPath(); cc.arc(q.x, q.y, w.stroke.radius, 0, Math.PI * 2); cc.fill(); }
+    if (p.selection) { cc.globalCompositeOperation = 'destination-in'; cc.drawImage(p.selection.surface(), p.selection.x, p.selection.y); }
+    const piece = createSurface(W, H);
+    const pc = ctxOf(piece);
+    pc.drawImage(w.surface, 0, 0);
+    pc.globalCompositeOperation = 'destination-in';
+    pc.drawImage(cov, 0, 0);
+    const r = l.raster;
+    const before = r.read();
+    const c = r.ctx;
+    c.save();
+    setMat(c, invert(placement(l.transform, r.width, r.height)));
+    c.globalCompositeOperation = 'destination-out';
+    c.drawImage(cov, 0, 0);
+    c.globalCompositeOperation = 'source-over';
+    c.drawImage(piece, 0, 0);
+    c.restore();
+    r.touch();
+    p.history.addPatch({ raster: r, x: 0, y: 0, before, after: r.read() });
+    if (l.shape) p.updateLayer(l.id, { shape: null });
+    p.history.end(p.snapshot());
+    this.refresh();
+  }
+
+  cancelWarp(): void {
+    const w = this.warpState;
+    if (!w) return;
+    this.warpState = null;
+    const before = w.project.history.abort();
+    if (before) { w.project.doc = before.doc; w.project.selection = before.selection; }
+    this.refresh();
+  }
+
+  contentAwareFill(): void {
+    const p0 = this.current;
+    if (!p0?.selection) { this.notice('Content-Aware Fill needs a selection.'); return; }
+    if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
+    this.regionEdit('Content-Aware Fill', ({ raster, target, rect }) => {
+      const p = this.current as Project, l = p.activeLayer as Layer;
+      const cov = this.coverageFor(p, l, target, raster.width, raster.height);
+      if (!cov) return;
+      const src = target === 'mask' ? toGray(raster.read()) : raster.read();
+      const pm = premultiply(src.data);
+      const mask = new Uint8Array(raster.width * raster.height);
+      for (let i = 0; i < mask.length; i++) mask[i] = cov[i * 4 + 3] ? 1 : 0;
+      if (!contentFill(pm, mask, raster.width, raster.height)) { this.notice('There is nothing opaque around the selection to fill from.'); return; }
+      const out = new ImageData(raster.width, raster.height);
+      unpremultiply(pm, out.data);
+      let result = this.blendThrough(src, out, cov);
+      if (target === 'mask') result = fromGray(result);
+      raster.ctx.putImageData(result, 0, 0, rect.x, rect.y, rect.w, rect.h);
+    });
   }
 
   setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void {

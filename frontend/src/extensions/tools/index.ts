@@ -10,7 +10,10 @@ import { zoomTool } from './zoom';
 import { cropTool } from './crop';
 import { gradientTool } from './gradient';
 import { shapeTool } from './shape';
+import { healTool } from './heal';
+import { cloneTool } from './clone';
+import { smearTool } from './smear';
 
 export function registerBuiltinTools(): void {
-  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, gradientTool, shapeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, cloneTool, smearTool, gradientTool, shapeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 }
