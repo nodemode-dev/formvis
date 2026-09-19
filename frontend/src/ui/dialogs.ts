@@ -37,7 +37,9 @@ export class Dialog {
     document.getElementById('overlay-root')?.appendChild(this.scrim);
     this.scrim.hidden = false;
     openCount += 1;
-    (focus ?? this.scrim.querySelector<HTMLElement>('input, select, .cv-btn-primary') ?? q<HTMLElement>(this.scrim, '.cv-dialog')).focus();
+    const preferred = focus ?? this.scrim.querySelector<HTMLElement>('input, select, .cv-btn-primary:not(:disabled)');
+    preferred?.focus();
+    if (!this.scrim.contains(document.activeElement)) q<HTMLElement>(this.scrim, '.cv-dialog').focus();
   }
 
   close(): void {

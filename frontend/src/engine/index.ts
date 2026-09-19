@@ -537,7 +537,10 @@ export class Engine {
         index = where === 'above' ? ti + 1 : ti;
       }
       layers.splice(index, 0, ...records);
-      p.setLayers(this.normalizeClips(layers));
+      const next = this.normalizeClips(layers);
+      const prev = p.doc.layers;
+      if (!duplicate && next.length === prev.length && next.every((l, i) => l.id === prev[i].id && l.parentId === prev[i].parentId && l.clipId === prev[i].clipId)) return false;
+      p.setLayers(next);
       if (duplicate) this.focus(p, records[records.length - 1].id);
     });
   }

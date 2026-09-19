@@ -224,7 +224,6 @@ export class LayersPanel {
       } else if (t.closest('.cv-layer-thumb')) this.engine.setMaskTarget(false);
       const ids = p.selectedIds.has(id) ? [...p.selectedIds] : [id];
       this.drag = { id, ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null };
-      rows.setPointerCapture(e.pointerId);
     });
     rows.addEventListener('pointermove', (e) => {
       if (this.swipe && this.swipe.pointerId === e.pointerId) {
@@ -235,6 +234,7 @@ export class LayersPanel {
       const d = this.drag;
       if (!d || d.pointerId !== e.pointerId) return;
       if (!d.started && Math.abs(e.clientY - d.startY) < 4) return;
+      if (!d.started) rows.setPointerCapture(e.pointerId);
       d.started = true;
       const row = this.rowAt(e.clientX, e.clientY);
       if (!row?.dataset.id || d.ids.includes(row.dataset.id)) { d.target = null; this.showDrop(null); return; }

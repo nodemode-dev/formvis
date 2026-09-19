@@ -24,8 +24,8 @@
 .cv-layer-kind { width: var(--cv-thumb); height: var(--cv-thumb); display: none; align-items: center; justify-content: center; color: var(--text-muted); }
 .cv-layer.is-group .cv-layer-thumb, .cv-layer.is-adjust .cv-layer-thumb { display: none; }
 .cv-layer.is-group .cv-layer-kind, .cv-layer.is-adjust .cv-layer-kind { display: inline-flex; }
-.cv-layer-mask { display: none; }
-.cv-layer.has-mask .cv-layer-mask { display: block; }
+.cv-layer-mask { visibility: hidden; }
+.cv-layer.has-mask .cv-layer-mask { visibility: visible; }
 .cv-layer.is-mask-target .cv-layer-mask, .cv-layer.is-pixel-target .cv-layer-thumb { border-color: var(--accent-color); }
 .cv-layer.mask-off .cv-layer-mask { opacity: 0.35; }
 .cv-layer-name { display: flex; align-items: center; gap: var(--space-1); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
