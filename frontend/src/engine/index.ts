@@ -159,6 +159,7 @@ export class Engine {
     const i = this.projects.findIndex((p) => p.id === id);
     if (i < 0 || this.stroke) return;
     if (this.transformEdit?.project.id === id) this.transformEdit = null;
+    if (this.floatSel?.project.id === id) this.floatSel = null;
     this.projects.splice(i, 1);
     if (this.currentId === id) this.currentId = this.projects[Math.min(i, this.projects.length - 1)]?.id ?? null;
     this.emit('projects', null);
@@ -196,12 +197,13 @@ export class Engine {
     return ok !== false;
   }
 
-  settle(): void {
+  settle(keepFloating = false): void {
     if (this.gradient) this.commitGradient();
     if (this.transformEdit) this.endTransform();
     if (this.selectionShift) this.endSelectionShift();
     if (this.opacityOpen) this.endOpacityEdit();
     if (this.swipeOpen) this.endVisibilitySwipe();
+    if (this.floatSel && !keepFloating) this.commitSelectionTransform();
   }
 
   private focus(p: Project, id: ID | null): void {
@@ -298,6 +300,8 @@ export class Engine {
     if (wp && wp.project === p) m.set(wp.layerId, { ...(m.get(wp.layerId) ?? {}), source: wp.surface, transform: docTransform(p.doc.width, p.doc.height) });
     const fl = this.floating;
     if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.work });
+    const fs = this.floatSel;
+    if (fs && fs.project === p) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.base });
     return m.size ? m : undefined;
   }
 
@@ -771,10 +775,14 @@ export class Engine {
       p.updateLayer(layer.id, { raster: r, transform: docTransform(W, H) });
       return r;
     }
-    const t = layer.transform, r = layer.raster;
+    return this.growLayer(p, layer, { x: 0, y: 0, w: W, h: H });
+  }
+
+  private growLayer(p: Project, layer: Layer, want: Rect): Raster {
+    const t = layer.transform, r = layer.raster as Raster;
     if (!isAxisAligned(t, r.width, r.height)) return r;
-    if (t.x <= 0 && t.y <= 0 && t.x + t.w >= W && t.y + t.h >= H) return r;
-    const u = unionRect({ x: t.x, y: t.y, w: t.w, h: t.h }, { x: 0, y: 0, w: W, h: H });
+    if (t.x <= want.x && t.y <= want.y && t.x + t.w >= want.x + want.w && t.y + t.h >= want.y + want.h) return r;
+    const u = unionRect({ x: t.x, y: t.y, w: t.w, h: t.h }, want);
     if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return r;
     let mask = layer.mask;
     if (mask?.raster) {
@@ -1026,7 +1034,7 @@ export class Engine {
     const p = this.current;
     const l = p?.activeLayer;
     if (!p || !l || l.isGroup || !l.raster || this.stroke) return false;
-    this.settle();
+    this.settle(this.floatSel?.floatingId === l.id);
     this.transformEdit = { project: p, layerId: l.id, original: l.transform, draft: l.transform, mode, start };
     return true;
   }
@@ -1048,6 +1056,7 @@ export class Engine {
     this.snapGuides = null;
     const next = rounded(te.draft);
     if (sameTransform(next, te.original) || this.current !== te.project) { this.emit('render', null); return; }
+    if (this.floatSel?.project === te.project && this.floatSel.floatingId === te.layerId) { te.project.updateLayer(te.layerId, { transform: next }); this.refresh(); return; }
     const name = te.mode.kind === 'move' ? 'Move Layer' : te.mode.kind === 'rotate' ? 'Rotate Layer' : 'Transform Layer';
     this.edit(name, (p) => {
       const l = p.layer(te.layerId);
@@ -1783,6 +1792,12 @@ export class Engine {
   }
 
   setLayerTransform(patch: Partial<Transform>, name = 'Transform Layer'): void {
+    const fs = this.floatSel, cur = this.current;
+    if (fs && cur === fs.project && cur.activeId === fs.floatingId) {
+      const l = cur.activeLayer, next: Transform | null = l ? { ...l.transform, ...patch } : null;
+      if (l && next && next.w >= 1 && next.h >= 1 && [next.x, next.y, next.w, next.h, next.rotation].every(Number.isFinite) && !sameTransform(next, l.transform)) { cur.updateLayer(l.id, { transform: next }); this.refresh(); }
+      return;
+    }
     this.edit(name, (p) => {
       const l = p.activeLayer;
       if (!l || l.isGroup || !l.raster) return false;
@@ -1906,6 +1921,110 @@ export class Engine {
     this.floating = null;
     const before = f.project.history.abort();
     if (before) { f.project.doc = before.doc; f.project.selection = before.selection; }
+    this.refresh();
+  }
+
+  private floatSel: { project: Project; sourceId: ID; floatingId: ID; base: Surface; region: Rect; selection: SelectionMask; original: Transform } | null = null;
+
+  get floatingSelection(): boolean { return this.floatSel !== null; }
+
+  get canTransformSelection(): boolean {
+    const p = this.current, l = p?.activeLayer;
+    return !!p && !!p.selection && !this.floatSel && !this.stroke && !this.floating && !this.warpState && !!l && this.paintable(l) && !!l.raster && !(p.maskTarget && l.mask);
+  }
+
+  transformCommand(): void {
+    if (this.canTransformSelection) { this.beginSelectionTransform(); return; }
+    this.settle();
+    if (!this.showTransformControls) this.update({ showTransformControls: true });
+    this.setTool('move');
+  }
+
+  beginSelectionTransform(): boolean {
+    const p = this.current;
+    if (!p || !this.canTransformSelection) return false;
+    this.settle();
+    this.setTool('move');
+    if (!p.selection) return false;
+    const sel = p.selection;
+    p.history.begin('Transform Selection', p.snapshot());
+    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+    const r = pick.raster, src = pick.layer;
+    const region = intersectRect(integral(sel.rect), { x: 0, y: 0, w: p.doc.width, h: p.doc.height }) ?? integral(sel.rect);
+    const piece = new Raster(region.w, region.h);
+    const pc = piece.ctx;
+    setMat(pc, mul(translation(-region.x, -region.y), pick.local));
+    pc.drawImage(r.canvas, 0, 0);
+    pc.setTransform(1, 0, 0, 1, 0, 0);
+    pc.globalCompositeOperation = 'destination-in';
+    pc.drawImage(sel.surface(), sel.x - region.x, sel.y - region.y);
+    pc.globalCompositeOperation = 'source-over';
+    piece.touch();
+    const base = createSurface(r.width, r.height);
+    const bc = ctxOf(base);
+    bc.drawImage(r.canvas, 0, 0);
+    setMat(bc, mul(invert(pick.local), translation(sel.x, sel.y)));
+    bc.globalCompositeOperation = 'destination-out';
+    bc.drawImage(sel.surface(), 0, 0);
+    bc.setTransform(1, 0, 0, 1, 0, 0);
+    bc.globalCompositeOperation = 'source-over';
+    const layer = newLayer('Floating Selection', p.doc, { raster: piece, parentId: src.parentId, opacity: src.opacity, blend: src.blend, transform: { ...docTransform(region.w, region.h), x: region.x, y: region.y } });
+    this.insertAboveActive(p, layer);
+    p.selection = null;
+    this.floatSel = { project: p, sourceId: src.id, floatingId: layer.id, base, region, selection: sel, original: layer.transform };
+    this.refresh();
+    return true;
+  }
+
+  commitSelectionTransform(): void {
+    const fs = this.floatSel;
+    if (!fs) return;
+    this.floatSel = null;
+    const p = fs.project;
+    const fl = p.layer(fs.floatingId), src0 = p.layer(fs.sourceId);
+    if (!fl?.raster || !src0?.raster || sameTransform(fl.transform, fs.original)) { this.restoreSelectionTransform(fs); return; }
+    const draft = fl.transform, M = placement(draft, fl.raster.width, fl.raster.height);
+    const oldLocal = placement(src0.transform, src0.raster.width, src0.raster.height), oldW = src0.raster.width, oldH = src0.raster.height;
+    const old = src0.raster;
+    const r = this.growLayer(p, src0, integral(transformBounds(draft)));
+    const src = p.layer(fs.sourceId) as Layer;
+    const local = placement(src.transform, r.width, r.height);
+    const before = r === old ? r.read() : null;
+    const c = r.ctx;
+    c.save();
+    setMat(c, mul(invert(local), oldLocal));
+    c.clearRect(0, 0, oldW, oldH);
+    c.drawImage(fs.base, 0, 0);
+    setMat(c, mul(invert(local), M));
+    c.imageSmoothingEnabled = draft.sampling !== 'nearest';
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(fl.raster.canvas, 0, 0);
+    c.restore();
+    r.touch();
+    if (before) p.history.addPatch({ raster: r, x: 0, y: 0, before, after: r.read() });
+    if (src.shape) p.updateLayer(src.id, { shape: null });
+    p.setLayers(p.doc.layers.filter((l) => l.id !== fs.floatingId));
+    this.focus(p, fs.sourceId);
+    const W = p.doc.width, H = p.doc.height, s = createSurface(W, H), sc = ctxOf(s);
+    setMat(sc, M);
+    sc.drawImage(fs.selection.surface(), fs.selection.x - fs.region.x, fs.selection.y - fs.region.y);
+    sc.setTransform(1, 0, 0, 1, 0, 0);
+    p.selection = SelectionMask.fromAlpha(0, 0, W, H, sc.getImageData(0, 0, W, H).data);
+    p.history.end(p.snapshot());
+    this.refresh();
+  }
+
+  cancelSelectionTransform(): void {
+    const fs = this.floatSel;
+    if (!fs) return;
+    this.floatSel = null;
+    this.restoreSelectionTransform(fs);
+  }
+
+  private restoreSelectionTransform(fs: NonNullable<Engine['floatSel']>): void {
+    const p = fs.project, before = p.history.abort();
+    if (before) { p.doc = before.doc; p.selection = before.selection; }
+    this.focus(p, fs.sourceId);
     this.refresh();
   }
 

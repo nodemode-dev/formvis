@@ -44,7 +44,7 @@ let pixelStart: { x: number; y: number } | null = null;
 export const moveTool: Tool = {
   id: 'move', label: 'Move', key: 'V', order: 10,
   icon: () => 'cursor',
-  hint: () => 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
+  hint: (eng) => (eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity'),
   cursor(ctx, p) {
     if (!p) return 'default';
     const m = hit(ctx, p);
@@ -88,6 +88,8 @@ export const moveTool: Tool = {
     if (digit !== null && !e.shiftKey && !e.altKey) { eng.setOpacity(digit === 0 ? 1 : digit / 10); return true; }
     if (e.key === 'Escape' && pixelStart) { pixelStart = null; eng.cancelPixelMove(); return true; }
     if (e.key === 'Escape' && eng.transformEdit) { eng.cancelTransform(); return true; }
+    if (e.key === 'Escape' && eng.floatingSelection) { eng.cancelSelectionTransform(); return true; }
+    if (e.key === 'Enter' && eng.floatingSelection) { eng.commitSelectionTransform(); return true; }
     return false;
   },
   overlay(ctx, g) {
