@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -e
+cd "$(dirname "$0")"
+[ -f venv/bin/activate ] || { echo "[sonny] backend venv missing, run ./sonny install" >&2; exit 1; }
+# shellcheck disable=SC1091
+source venv/bin/activate
+exec uvicorn app.main:app --reload --host "${SONNY_HOST:-127.0.0.1}" --port "${SONNY_PORT:-8190}"

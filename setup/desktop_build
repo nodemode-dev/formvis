@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+"$SONNY_ROOT/setup/build_frontend"
+"$SONNY_ROOT/setup/freeze_backend"
+cd "$SONNY_ROOT"
+[ -f src-tauri/icons/icon.icns ] || frontend/node_modules/.bin/tauri icon assets/sonny_icon.png
+frontend/node_modules/.bin/tauri build "$@"
+cv_say "bundles are in src-tauri/target/release/bundle"

@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+source "$(dirname "$0")/lib.sh"
+fail=0
+ok() { printf '  ok     %s\n' "$1"; }
+bad() { printf '  FAIL   %s · %s\n' "$1" "$2"; fail=1; }
+warn() { printf '  warn   %s · %s\n' "$1" "$2"; }
+cv_say "doctor · $(cv_os)"
+if command -v node >/dev/null 2>&1 && node -e 'const [m,n]=process.versions.node.split(".").map(Number);process.exit((m===20&&n>=19)||(m===22&&n>=12)||m>=23?0:1)'; then ok "node $(node -v)"; else bad "node" "Node 20.19+ or 22.12+ is required"; fi
+if command -v npm >/dev/null 2>&1; then ok "npm"; else bad "npm" "install npm"; fi
+if py="$(cv_python)"; then ok "python $("$py" -V 2>&1 | awk '{print $2}')"; else bad "python" "Python 3.12+ is required"; fi
+if [ -f "$SONNY_ROOT/backend/venv/bin/activate" ]; then ok "backend venv"; else warn "backend venv" "run ./sonny install"; fi
+if [ -d "$SONNY_ROOT/frontend/node_modules" ]; then ok "frontend node_modules"; else warn "frontend deps" "run ./sonny install"; fi
+vpy="$SONNY_ROOT/backend/venv/bin/python"
+if [ -x "$vpy" ]; then
+  if "$vpy" -c "import rembg, onnxruntime" >/dev/null 2>&1; then ok "ML background removal"; else warn "ML background removal" "run ./sonny install-ml (the lightweight engine still works)"; fi
+  if "$vpy" -c "import cv2; cv2.grabCut" >/dev/null 2>&1; then ok "lightweight background removal (OpenCV)"; else warn "OpenCV GrabCut" "rerun ./sonny install"; fi
+  if "$vpy" -c "import pillow_heif" >/dev/null 2>&1; then ok "HEIC decoding"; else warn "HEIC decoding" "pillow-heif missing"; fi
+fi
+if command -v cargo >/dev/null 2>&1; then ok "rust $(rustc --version | awk '{print $2}') for desktop builds"; else warn "rust" "desktop builds need https://rustup.rs"; fi
+for port in 5190 "${SONNY_PORT:-8190}"; do
+  if (exec 3<>"/dev/tcp/127.0.0.1/$port") 2>/dev/null; then warn "port $port" "already in use"; else ok "port $port free"; fi
+done
+if [ "$fail" = 0 ]; then cv_say "ready"; else cv_say "fix the FAIL lines above"; fi
+exit "$fail"

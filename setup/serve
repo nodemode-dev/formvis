@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+[ -f "$SONNY_ROOT/frontend/dist/index.html" ] || "$SONNY_ROOT/setup/build_frontend"
+cv_venv
+cd "$SONNY_ROOT/backend"
+export SONNY_DIST="$SONNY_ROOT/frontend/dist"
+cv_say "serving http://127.0.0.1:${SONNY_PORT:-8190}"
+exec uvicorn app.main:app --host "${SONNY_HOST:-127.0.0.1}" --port "${SONNY_PORT:-8190}"

@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+triple="$(cv_target_triple)" || cv_die "rustc not found; run ./sonny install-desktop"
+[ -x "$SONNY_ROOT/src-tauri/binaries/sonny-engine-${triple}$(cv_exe)" ] || "$SONNY_ROOT/setup/freeze_backend"
+cd "$SONNY_ROOT"
+exec frontend/node_modules/.bin/tauri dev "$@"

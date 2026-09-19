@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+cv_venv
+python -c "import PyInstaller" 2>/dev/null || cv_die "PyInstaller missing, run ./sonny install-desktop"
+triple="$(cv_target_triple)" || cv_die "rustc not found; install Rust or set SONNY_TARGET"
+[ -f "$SONNY_ROOT/frontend/dist/index.html" ] || "$SONNY_ROOT/setup/build_frontend"
+cd "$SONNY_ROOT/backend"
+sep=":"
+[ "$(cv_os)" = windows ] && sep=";"
+ext="$(cv_exe)"
+extra=()
+if [ "${SONNY_FREEZE_ML:-0}" = 1 ]; then extra+=(--collect-all rembg --collect-all onnxruntime --hidden-import rembg); fi
+rm -rf build/pyinstaller dist-engine
+pyinstaller --noconfirm --clean --onefile --name sonny-engine \
+  --distpath dist-engine --workpath build/pyinstaller --specpath build/pyinstaller \
+  --add-data "$SONNY_ROOT/frontend/dist${sep}frontend_dist" \
+  --collect-submodules app --collect-submodules uvicorn --hidden-import cv2 \
+  --exclude-module pillow_heif "${extra[@]}" \
+  "$SONNY_ROOT/backend/sonny_engine.py"
+mkdir -p "$SONNY_ROOT/src-tauri/binaries"
+out="$SONNY_ROOT/src-tauri/binaries/sonny-engine-${triple}${ext}"
+cp "dist-engine/sonny-engine${ext}" "$out"
+"$out" --selfcheck
+cv_say "sidecar ready: $out"

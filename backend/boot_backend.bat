@@ -1,0 +1,8 @@
+@echo off
+setlocal
+cd /d "%~dp0"
+if not exist venv\Scripts\activate.bat ( echo [sonny] backend venv missing, run sonny.bat install & exit /b 1 )
+call venv\Scripts\activate.bat
+if not defined SONNY_HOST set "SONNY_HOST=127.0.0.1"
+if not defined SONNY_PORT set "SONNY_PORT=8190"
+uvicorn app.main:app --reload --host %SONNY_HOST% --port %SONNY_PORT%

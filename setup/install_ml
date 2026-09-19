@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+set -e
+source "$(dirname "$0")/lib.sh"
+cv_venv
+cd "$SONNY_ROOT/backend"
+if [ "$(cv_os)" = macos ]; then pip install -r requirements_ml_macos.txt; else pip install -r requirements_ml.txt; fi
+if [ "${SONNY_SKIP_MODEL:-0}" != 1 ]; then
+  cv_say "fetching the u2net background model (about 176 MB, stored in ~/.u2net)"
+  python -c "from rembg import new_session; new_session('u2net')"
+fi
+cv_say "ML background removal ready"
