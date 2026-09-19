@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "Window chrome only. The app itself talks HTTP to its engine and uses no Tauri IPC.",
+  "windows": ["splash", "main"],
+  "permissions": ["core:default"]
+}
