@@ -1,0 +1,104 @@
+import {
+  Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid,
+  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform,
+} from '../engine';
+import type { FilePart } from './api';
+
+export const FORMAT = 'com.nodemode.sonny';
+export const FORMAT_VERSION = 1;
+
+type Json = Record<string, unknown>;
+const KINDS: Record<string, AdjustmentKind> = { 'Hue/Saturation': 'hsv', Levels: 'levels', Curves: 'curves', Exposure: 'exposure', 'Gradient Map': 'gradientMap', Grain: 'grain' };
+const KIND_LABELS = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [v, k])) as Record<AdjustmentKind, string>;
+const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
+const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+const pair = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' ? [v[0], v[1]] : null);
+const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+
+export function transformRecord(t: Transform): Json {
+  return { origin: [t.x, t.y], size: [t.w, t.h], rotation: t.rotation, flipX: t.flipX, flipY: t.flipY, sampling: SAMPLING_LABELS[t.sampling] };
+}
+
+export function transformFrom(raw: unknown, w: number, h: number): Transform {
+  const o = obj(raw);
+  const origin = pair(o.origin) ?? [0, 0];
+  const size = pair(o.size) ?? [w, h];
+  return { x: origin[0], y: origin[1], w: Math.max(1, size[0]), h: Math.max(1, size[1]), rotation: num(o.rotation, 0), flipX: o.flipX === true, flipY: o.flipY === true, sampling: samplingFromLabel(o.sampling) };
+}
+
+function maskToGray(r: Raster): ReturnType<typeof createSurface> {
+  const img = r.read();
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) { const a = d[i + 3]; d[i] = a; d[i + 1] = a; d[i + 2] = a; d[i + 3] = 255; }
+  const s = createSurface(r.width, r.height);
+  ctxOf(s).putImageData(img, 0, 0);
+  return s;
+}
+
+function grayToMask(src: ImageBitmap): Raster {
+  const r = Raster.from(src, src.width, src.height);
+  const img = r.read();
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = Math.round(((d[i] + d[i + 1] + d[i + 2]) / 3) * (d[i + 3] / 255));
+    d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; d[i + 3] = v;
+  }
+  r.write(img);
+  return r;
+}
+
+export async function serialize(doc: Doc, activeId: ID | null): Promise<{ manifest: Json; files: FilePart[] }> {
+  const files: FilePart[] = [];
+  const layers: Json[] = [];
+  for (const l of doc.layers) {
+    const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
+    if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
+    if (l.parentId) r.parentID = l.parentId;
+    if (l.isGroup) r.isGroup = true;
+    if (l.opacity !== 1) r.opacity = l.opacity;
+    if (l.blend !== 'normal') r.blendMode = blendLabel(l.blend);
+    if (l.mask) {
+      const w = l.mask.raster?.width ?? l.raster?.width ?? Math.max(1, Math.round(l.transform.w));
+      const h = l.mask.raster?.height ?? l.raster?.height ?? Math.max(1, Math.round(l.transform.h));
+      const name = `${l.id}.mask.png`;
+      files.push({ name, blob: await toBlob(maskToGray(l.mask.raster ?? Raster.filled(w, h, 'white'))) });
+      r.maskFile = name;
+      r.maskEnabled = l.mask.enabled;
+      if (l.mask.placement) r.maskPlacement = transformRecord(l.mask.placement);
+      if (!l.mask.linked) r.maskLinked = false;
+    }
+    if (l.clipId) r.maskSourceID = l.clipId;
+    if (l.adjustment) r.adjustment = { ...l.adjustment.data, kind: KIND_LABELS[l.adjustment.kind] };
+    if (l.shape) r.shape = l.shape;
+    layers.push(r);
+  }
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers };
+  if (activeId && doc.layers.some((l) => l.id === activeId)) manifest.activeLayerID = activeId;
+  return { manifest, files };
+}
+
+export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null }> {
+  const width = num(manifest.width, 0), height = num(manifest.height, 0);
+  const records = Array.isArray(manifest.layers) ? manifest.layers.map(obj) : [];
+  const names = new Set<string>();
+  for (const r of records) { const a = str(r.imageFile), b = str(r.maskFile); if (a) names.add(a); if (b) names.add(b); }
+  const bitmaps = new Map<string, ImageBitmap>();
+  await Promise.all([...names].map(async (n) => { bitmaps.set(n, await createImageBitmap(await fetchImage(n))); }));
+  const layers: Layer[] = records.map((r) => {
+    const image = bitmaps.get(str(r.imageFile) ?? '');
+    const raster = image ? Raster.from(image, image.width, image.height) : null;
+    const maskImage = bitmaps.get(str(r.maskFile) ?? '');
+    const mask: Mask | null = maskImage
+      ? { raster: grayToMask(maskImage), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskImage.width, maskImage.height) : null }
+      : null;
+    const adj = obj(r.adjustment);
+    const kind = KINDS[String(adj.kind)];
+    return {
+      id: str(r.id) ?? uid(), name: str(r.name) ?? 'Layer', raster, transform: transformFrom(r.transform, raster?.width ?? width, raster?.height ?? height),
+      visible: r.isVisible !== false, parentId: str(r.parentID), isGroup: r.isGroup === true, opacity: clamp(num(r.opacity, 1), 0, 1),
+      blend: blendFromLabel(r.blendMode), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+    };
+  });
+  for (const b of bitmaps.values()) b.close();
+  return { doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
+}

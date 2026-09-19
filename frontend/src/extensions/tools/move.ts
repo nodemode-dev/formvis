@@ -1,0 +1,113 @@
+import { HANDLES, contains, corners, unitPoint, type DragMode, type Transform } from '../../engine';
+import { digitOf, type Tool, type ToolContext, type ToolPointer } from '../registry';
+
+const HANDLE_PX = 7;
+const ROTATE_PX = 24;
+const CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'];
+
+function editable(ctx: ToolContext): Transform | null {
+  const l = ctx.engine.activeLayer;
+  if (!l || l.isGroup || !l.raster) return null;
+  return ctx.engine.transformEdit?.draft ?? l.transform;
+}
+
+function hit(ctx: ToolContext, p: ToolPointer): DragMode | null {
+  const t = editable(ctx);
+  if (!t) return null;
+  if (ctx.engine.showTransformControls) {
+    const v = ctx.view();
+    for (let i = 0; i < HANDLES.length; i++) {
+      const s = v.toScreen(unitPoint(t, HANDLES[i].x, HANDLES[i].y));
+      if (Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= HANDLE_PX) return { kind: 'resize', handle: i };
+    }
+    if (!contains(t, p.doc)) {
+      for (const c of corners(t)) {
+        const s = v.toScreen(c);
+        if (Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= ROTATE_PX) return { kind: 'rotate' };
+      }
+    }
+  }
+  return { kind: 'move' };
+}
+
+function resizeCursor(t: Transform, handle: number): string {
+  const h = HANDLES[handle];
+  const angle = Math.atan2((h.y - 0.5) * t.h, (h.x - 0.5) * t.w) * (180 / Math.PI) + t.rotation;
+  const step = ((Math.round(angle / 45) % 4) + 4) % 4;
+  return CURSORS[step];
+}
+
+const fmt = (n: number): string => (Math.round(n * 10) / 10).toString();
+
+export const moveTool: Tool = {
+  id: 'move', label: 'Move', key: 'V', order: 10,
+  icon: () => 'cursor',
+  hint: () => 'Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
+  cursor(ctx, p) {
+    if (!p) return 'default';
+    const m = hit(ctx, p);
+    const t = editable(ctx);
+    if (!m || !t) return 'default';
+    return m.kind === 'move' ? 'move' : m.kind === 'rotate' ? 'alias' : resizeCursor(t, m.handle);
+  },
+  down(ctx, p) {
+    if (p.button !== 0) return;
+    const e = ctx.engine;
+    if (p.mod || e.autoSelect) { const id = e.layerAt(p.doc); if (id) e.selectLayer(id); }
+    const m = hit(ctx, p);
+    if (m) e.beginTransform(m, p.doc);
+  },
+  move(ctx, p) { ctx.engine.updateTransform(p.doc, p.shift, p.alt); },
+  up(ctx) { ctx.engine.endTransform(); },
+  cancel(ctx) { ctx.engine.cancelTransform(); },
+  keydown(ctx, e) {
+    const eng = ctx.engine;
+    if (e.metaKey || e.ctrlKey) return false;
+    const step = e.shiftKey ? 10 : 1;
+    const arrows: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (arrows[e.key]) { eng.nudge(arrows[e.key][0], arrows[e.key][1]); return true; }
+    const digit = digitOf(e);
+    if (digit !== null && !e.shiftKey && !e.altKey) { eng.setOpacity(digit === 0 ? 1 : digit / 10); return true; }
+    if (e.key === 'Escape' && eng.transformEdit) { eng.cancelTransform(); return true; }
+    return false;
+  },
+  overlay(ctx, g) {
+    const e = ctx.engine;
+    const t = editable(ctx);
+    if (!t || !e.showTransformControls) return;
+    const v = ctx.view();
+    const pal = ctx.paint();
+    const cs = corners(t).map((c) => v.toScreen(c));
+    g.save();
+    g.lineWidth = 1;
+    g.strokeStyle = pal.accent;
+    g.beginPath();
+    g.moveTo(cs[0].x, cs[0].y);
+    for (let i = 1; i < 4; i++) g.lineTo(cs[i].x, cs[i].y);
+    g.closePath();
+    g.stroke();
+    for (const h of HANDLES) {
+      const s = v.toScreen(unitPoint(t, h.x, h.y));
+      g.fillStyle = pal.handle;
+      g.fillRect(Math.round(s.x) - 4, Math.round(s.y) - 4, 8, 8);
+      g.strokeRect(Math.round(s.x) - 3.5, Math.round(s.y) - 3.5, 7, 7);
+    }
+    g.restore();
+  },
+  options(e) {
+    const t = (): Transform | null => { const l = e.activeLayer; return l && !l.isGroup && l.raster ? e.transformEdit?.draft ?? l.transform : null; };
+    return [
+      { kind: 'title', text: 'Move' },
+      { kind: 'toggle', label: 'Auto-select', get: () => e.autoSelect, set: (v) => e.update({ autoSelect: v }) },
+      { kind: 'toggle', label: 'Transform controls', get: () => e.showTransformControls, set: (v) => e.update({ showTransformControls: v }) },
+      { kind: 'toggle', label: 'Keep proportions', get: () => e.lockRatio, set: (v) => e.update({ lockRatio: v }) },
+      { kind: 'readout', label: 'X', get: () => (t() ? fmt(t()!.x) : '') },
+      { kind: 'readout', label: 'Y', get: () => (t() ? fmt(t()!.y) : '') },
+      { kind: 'readout', label: 'W', get: () => (t() ? fmt(t()!.w) : '') },
+      { kind: 'readout', label: 'H', get: () => (t() ? fmt(t()!.h) : '') },
+      { kind: 'readout', label: 'Angle', get: () => (t() ? `${fmt(t()!.rotation)}°` : '') },
+      { kind: 'button', label: 'Flip horizontal', icon: 'flipH', run: () => e.flipLayers(true) },
+      { kind: 'button', label: 'Flip vertical', icon: 'flipV', run: () => e.flipLayers(false) },
+    ];
+  },
+};
