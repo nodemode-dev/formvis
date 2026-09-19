@@ -288,6 +288,10 @@ Export JPEG... settles, then opens `JpegDialog`, whose chosen quality `exportIma
 
 Hue/Saturation ported from `HueSaturation.swift` (HSL, per-range band weights, multiplicative saturation, lightness pull, colorize), baked into a 33-point cube lookup table like the reference app's color cube. Grain ported from `AdjustPixels.c` (lattice noise, smoothstep, roughness, midtone weighting) in document coordinates. The invert-range rule in `weightOf` is inferred from the settings doc comment, not read from source. `defaultAdjustmentData` writes every non-optional `LayerAdjustment` field because the reference app decodes with synthesized Codable; enum-keyed dictionaries are written as Swift's alternating arrays and read in either form.
 
+### src/engine/adjust.ts · band operations · _v0.8.0
+
+Ports the reference app's `HueBand` methods as pure functions: `bandForward`, `bandHandles`, `bandCentered` (the Sample eyedropper), `bandInclude` (Add), `bandExclude` (Remove), `bandSetHandle` (a handle drag, refused when it would break the order or exceed 350 degrees) and the private `normalizeBand`. Swift's `truncatingRemainder` matches JavaScript's `%`, so wraparound behaves identically. Nothing was removed.
+
 ## src/engine/renderer.ts
 
 ### src/engine/renderer.ts · rendering pipeline · _v0.1.0
@@ -846,6 +850,70 @@ A Sample choice (Off, Black point, Gray point, White point) under Auto turns an 
 
 ```ts
     node.append(channel.el, canvas, auto.el, black.el, gamma.el, white.el, outB.el, outW.el);
+```
+
+### src/ui/panels/adjust-panel.ts · Hue/Saturation bands, eyedroppers, targeted adjustment · _v0.8.0
+
+The Hue/Saturation section gains the reference app's spectrum editor (hues as they are on top, as the adjustment leaves them below through `hueResponse` and `hsvAdjust`, the selected range's four handles between, dragged by nearest circular distance with pointer capture, the degrees beneath), a Sample choice (Sample, Add, Remove) and a Targeted adjustment toggle. Sampling is generalized to named modes with per-row resets so the choices stay exclusive; `sampleHue` reads the hue from the composite (none for near-neutral pixels) and `beginTarget` picks the range that most claims it and drags saturation, or hue with Cmd or Ctrl, half a unit per screen pixel, its window listeners always removed by `stopSampling`. Removed, the Levels-only sampling:
+
+```ts
+  private sampleMode: 'black' | 'gray' | 'white' | null = null;
+  private sampleHandler: ((e: PointerEvent) => void) | null = null;
+  private sampleRow: { set: (v: string) => void } | null = null;
+```
+
+```ts
+  /** The Levels eyedroppers: while a mode is on, the scrim lets clicks through and a click on the canvas samples the
+   *  original pixel there, before any tool sees the click. */
+  private startSampling(mode: string): void {
+    this.stopSampling();
+    if (mode !== 'black' && mode !== 'gray' && mode !== 'white') return;
+    this.sampleMode = mode;
+    this.sampleRow?.set(mode);
+    this.scrim.classList.add('cv-scrim-through');
+    const handler = (e: PointerEvent): void => {
+      const stage = document.querySelector('.cv-overlay-canvas'), p = this.engine.current, m = this.sampleMode;
+      if (e.button !== 0 || !stage || e.target !== stage || !p || !m) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const b = stage.getBoundingClientRect(), v = p.viewport;
+      const rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, this.mode !== 'image');
+      if (rgb) this.applySample(rgb, m);
+    };
+    window.addEventListener('pointerdown', handler, true);
+    this.sampleHandler = handler;
+  }
+
+  private stopSampling(): void {
+    if (this.sampleHandler) window.removeEventListener('pointerdown', this.sampleHandler, true);
+    this.sampleHandler = null;
+    this.sampleMode = null;
+    this.scrim.classList.remove('cv-scrim-through');
+    this.sampleRow?.set('');
+  }
+```
+
+```ts
+    this.sampleRow = sample;
+```
+
+Removed, the Hue/Saturation rows:
+
+```ts
+    const hue = sliderRow('Hue', -180, 180, 1, (v) => { cur().hue = v; this.changed(); });
+    const hueC = sliderRow('Hue', 0, 360, 1, (v) => { cur().hue = v; this.changed(); });
+    const sat = sliderRow('Saturation', -100, 100, 1, (v) => { cur().saturation = v; this.changed(); });
+    const satC = sliderRow('Saturation', 0, 100, 1, (v) => { cur().saturation = v; this.changed(); });
+    const light = sliderRow('Lightness', -100, 100, 1, (v) => { cur().lightness = v; this.changed(); });
+```
+
+```ts
+    const invert = checkRow('Invert range', (v) => { this.hsv.invertRange = v; this.changed(); });
+    node.append(range.el, hue.el, hueC.el, sat.el, satC.el, light.el, colorize.el, invert.el);
+```
+
+```ts
+import { el, setHidden } from '../dom';
 ```
 
 ## src/ui/panels/controls.ts
