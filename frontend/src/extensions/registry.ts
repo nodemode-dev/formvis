@@ -11,6 +11,7 @@ export type OptionSpec =
   | { kind: 'range'; label: string; min: number; max: number; step?: number; unit?: string; get: () => number; set: (v: number) => void }
   | { kind: 'toggle'; label: string; get: () => boolean; set: (v: boolean) => void }
   | { kind: 'readout'; label: string; get: () => string }
+  | { kind: 'number'; label: string; min?: number; max?: number; step?: number; unit?: string; get: () => number | null; set: (v: number) => void }
   | { kind: 'button'; label: string; icon?: string; run: () => void };
 
 export interface Tool {

@@ -64,6 +64,27 @@ export class OptionsBar {
         box.addEventListener('change', () => spec.set(box.checked));
         sync.push(() => setChecked(box, spec.get()));
         node.appendChild(n);
+      } else if (spec.kind === 'number') {
+        const n = el(`<label class="cv-opt"><span></span><input class="cv-num" type="number" step="${spec.step ?? 1}"${spec.min !== undefined ? ` min="${spec.min}"` : ''}${spec.max !== undefined ? ` max="${spec.max}"` : ''}><span class="cv-opt-unit"></span></label>`);
+        setText(q(n, 'span'), spec.label);
+        setText(q(n, '.cv-opt-unit'), spec.unit ?? '');
+        const box = q<HTMLInputElement>(n, 'input');
+        let committed = '';
+        const commit = (): void => {
+          if (box.value === committed) return;
+          committed = box.value;
+          const v = Number(box.value);
+          if (box.value !== '' && Number.isFinite(v)) spec.set(v);
+        };
+        box.addEventListener('change', commit);
+        box.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { commit(); box.blur(); } else if (e.key === 'Escape') { box.value = committed; box.blur(); } });
+        sync.push(() => {
+          const v = spec.get(), text = v === null ? '' : String(Math.round(v * 100) / 100);
+          if (document.activeElement === box) return;
+          if (box.value !== text) box.value = text;
+          committed = text;
+        });
+        node.appendChild(n);
       } else if (spec.kind === 'readout') {
         const n = el('<span class="cv-opt"><span></span><span class="cv-readout"></span></span>');
         setText(q(n, 'span'), spec.label);

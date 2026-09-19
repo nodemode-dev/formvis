@@ -73,6 +73,19 @@ export const moveTool: Tool = {
   },
   overlay(ctx, g) {
     const e = ctx.engine;
+    const guides = e.snapGuides;
+    if (guides && e.transformEdit) {
+      const v = ctx.view(), pal = ctx.paint();
+      g.save();
+      g.strokeStyle = pal.accent;
+      g.lineWidth = 1;
+      g.setLineDash([4, 3]);
+      g.beginPath();
+      for (const x of guides.xs) { const s = Math.round(v.toScreen({ x, y: 0 }).x) + 0.5; g.moveTo(s, 0); g.lineTo(s, v.height); }
+      for (const y of guides.ys) { const s = Math.round(v.toScreen({ x: 0, y }).y) + 0.5; g.moveTo(0, s); g.lineTo(v.width, s); }
+      g.stroke();
+      g.restore();
+    }
     const t = editable(ctx);
     if (!t || !e.showTransformControls) return;
     const v = ctx.view();
@@ -101,11 +114,14 @@ export const moveTool: Tool = {
       { kind: 'toggle', label: 'Auto-select', get: () => e.autoSelect, set: (v) => e.update({ autoSelect: v }) },
       { kind: 'toggle', label: 'Transform controls', get: () => e.showTransformControls, set: (v) => e.update({ showTransformControls: v }) },
       { kind: 'toggle', label: 'Keep proportions', get: () => e.lockRatio, set: (v) => e.update({ lockRatio: v }) },
-      { kind: 'readout', label: 'X', get: () => (t() ? fmt(t()!.x) : '') },
-      { kind: 'readout', label: 'Y', get: () => (t() ? fmt(t()!.y) : '') },
-      { kind: 'readout', label: 'W', get: () => (t() ? fmt(t()!.w) : '') },
-      { kind: 'readout', label: 'H', get: () => (t() ? fmt(t()!.h) : '') },
-      { kind: 'readout', label: 'Angle', get: () => (t() ? `${fmt(t()!.rotation)}°` : '') },
+      { kind: 'number', label: 'X', get: () => t()?.x ?? null, set: (v) => e.setLayerTransform({ x: v }, 'Move Layer') },
+      { kind: 'number', label: 'Y', get: () => t()?.y ?? null, set: (v) => e.setLayerTransform({ y: v }, 'Move Layer') },
+      { kind: 'number', label: 'W', min: 1, get: () => t()?.w ?? null, set: (v) => e.resizeLayerTo(v, true) },
+      { kind: 'number', label: 'H', min: 1, get: () => t()?.h ?? null, set: (v) => e.resizeLayerTo(v, false) },
+      { kind: 'number', label: 'Scale', unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v) },
+      { kind: 'number', label: 'Angle', unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransform({ rotation: v }, 'Rotate Layer') },
+      { kind: 'segment', label: 'Sampling', choices: [{ id: 'nearest', label: 'Nearest' }, { id: 'smooth', label: 'Smooth' }, { id: 'high', label: 'High quality' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }, 'Layer Sampling') },
+      { kind: 'toggle', label: 'Snap', get: () => e.snapping, set: (v) => { e.snapping = v; e.emit('options', null); } },
       { kind: 'button', label: 'Flip horizontal', icon: 'flipH', run: () => e.flipLayers(true) },
       { kind: 'button', label: 'Flip vertical', icon: 'flipV', run: () => e.flipLayers(false) },
     ];

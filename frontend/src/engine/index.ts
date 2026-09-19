@@ -1033,6 +1033,8 @@ export class Engine {
     const te = this.transformEdit;
     if (!te) return;
     te.draft = dragged(te.original, te.start, pt, te.mode, this.lockRatio, shift, alt);
+    if (te.mode.kind === 'move' && this.snapping) te.draft = this.snapMove(te.project, te.layerId, te.draft);
+    else this.snapGuides = null;
     this.emit('render', null);
     this.emit('options', null);
   }
@@ -1041,6 +1043,7 @@ export class Engine {
     const te = this.transformEdit;
     if (!te) return;
     this.transformEdit = null;
+    this.snapGuides = null;
     const next = rounded(te.draft);
     if (sameTransform(next, te.original) || this.current !== te.project) { this.emit('render', null); return; }
     const name = te.mode.kind === 'move' ? 'Move Layer' : te.mode.kind === 'rotate' ? 'Rotate Layer' : 'Transform Layer';
@@ -1053,7 +1056,7 @@ export class Engine {
     });
   }
 
-  cancelTransform(): void { if (this.transformEdit) { this.transformEdit = null; this.emit('render', null); this.emit('options', null); } }
+  cancelTransform(): void { this.snapGuides = null; if (this.transformEdit) { this.transformEdit = null; this.emit('render', null); this.emit('options', null); } }
 
   nudge(dx: number, dy: number): void {
     this.edit('Nudge', (p) => {
@@ -1748,6 +1751,61 @@ export class Engine {
       if (target === 'mask') result = fromGray(result);
       raster.ctx.putImageData(result, 0, 0, rect.x, rect.y, rect.w, rect.h);
     });
+  }
+
+  snapping = true;
+  snapGuides: { xs: number[]; ys: number[] } | null = null;
+
+  private snapMove(p: Project, id: ID, t: Transform): Transform {
+    const tol = 6 / p.viewport.zoom;
+    const xs = [0, p.doc.width / 2, p.doc.width], ys = [0, p.doc.height / 2, p.doc.height];
+    for (const e of hierarchy(p.doc)) {
+      const l = e.layer;
+      if (!e.visible || l.isGroup || !l.raster || l.id === id) continue;
+      const b = transformBounds(l.transform);
+      xs.push(Math.round(b.x), Math.round(b.x + b.w / 2), Math.round(b.x + b.w));
+      ys.push(Math.round(b.y), Math.round(b.y + b.h / 2), Math.round(b.y + b.h));
+    }
+    const b = transformBounds(t);
+    const pick = (edges: number[], targets: number[]): { d: number; at: number } | null => {
+      let best: { d: number; at: number } | null = null;
+      for (const edge of edges) for (const g of targets) {
+        const d = g - edge;
+        if (Math.abs(d) <= tol && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, at: g };
+      }
+      return best;
+    };
+    const sx = pick([b.x, b.x + b.w / 2, b.x + b.w], xs), sy = pick([b.y, b.y + b.h / 2, b.y + b.h], ys);
+    this.snapGuides = sx || sy ? { xs: sx ? [sx.at] : [], ys: sy ? [sy.at] : [] } : null;
+    return sx || sy ? { ...t, x: t.x + (sx?.d ?? 0), y: t.y + (sy?.d ?? 0) } : t;
+  }
+
+  setLayerTransform(patch: Partial<Transform>, name = 'Transform Layer'): void {
+    this.edit(name, (p) => {
+      const l = p.activeLayer;
+      if (!l || l.isGroup || !l.raster) return false;
+      const next: Transform = { ...l.transform, ...patch };
+      if (!(next.w >= 1 && next.h >= 1) || ![next.x, next.y, next.w, next.h, next.rotation].every(Number.isFinite) || sameTransform(next, l.transform)) return false;
+      const redraw = !!l.shape && (Math.round(next.w) !== l.raster.width || Math.round(next.h) !== l.raster.height);
+      p.updateLayer(l.id, { transform: next, mask: followMask(l, next), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, next.w, next.h) } : {}) });
+      return true;
+    });
+  }
+
+  resizeLayerTo(value: number, width: boolean): void {
+    const l = this.activeLayer;
+    if (!l || l.isGroup || !l.raster || !(value >= 1)) return;
+    const t = l.transform, ratio = t.w / t.h;
+    const w = width ? value : this.lockRatio ? value * ratio : t.w;
+    const h = width ? (this.lockRatio ? value / ratio : t.h) : value;
+    this.setLayerTransform({ w, h, x: t.x + t.w / 2 - w / 2, y: t.y + t.h / 2 - h / 2 }, 'Resize Layer');
+  }
+
+  scaleLayerTo(percent: number): void {
+    const l = this.activeLayer;
+    if (!l || l.isGroup || !l.raster || !(percent > 0)) return;
+    const t = l.transform, w = (l.raster.width * percent) / 100, h = (l.raster.height * percent) / 100;
+    this.setLayerTransform({ w, h, x: t.x + t.w / 2 - w / 2, y: t.y + t.h / 2 - h / 2 }, 'Scale Layer');
   }
 
   setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void {
