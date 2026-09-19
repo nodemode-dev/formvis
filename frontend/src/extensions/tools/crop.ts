@@ -1,0 +1,166 @@
+import { HANDLES, type Engine, type Pt, type Rect } from '../../engine';
+import type { Tool, ToolContext, ToolPointer } from '../registry';
+
+const RATIOS: ReadonlyArray<{ id: string; label: string; value: number | 'original' | null }> = [
+  { id: 'free', label: 'Free', value: null }, { id: 'original', label: 'Original', value: 'original' }, { id: '1:1', label: '1:1', value: 1 },
+  { id: '4:3', label: '4:3', value: 4 / 3 }, { id: '3:2', label: '3:2', value: 3 / 2 }, { id: '16:9', label: '16:9', value: 16 / 9 },
+  { id: '3:4', label: '3:4', value: 3 / 4 }, { id: '2:3', label: '2:3', value: 2 / 3 }, { id: '9:16', label: '9:16', value: 9 / 16 },
+];
+let ratioId = 'free';
+let frame: Rect | null = null;
+let drag: { mode: 'create' | 'move' | 'resize'; handle: number; start: Pt; origin: Rect } | null = null;
+
+function ratioOf(e: Engine): number | null {
+  const v = RATIOS.find((r) => r.id === ratioId)?.value ?? null;
+  if (v !== 'original') return v;
+  const d = e.current?.doc;
+  return d ? d.width / d.height : null;
+}
+const norm = (r: Rect): Rect => ({ x: Math.min(r.x, r.x + r.w), y: Math.min(r.y, r.y + r.h), w: Math.abs(r.w), h: Math.abs(r.h) });
+function whole(r: Rect): Rect {
+  const n = norm(r), x = Math.round(n.x), y = Math.round(n.y);
+  return { x, y, w: Math.max(1, Math.round(n.x + n.w) - x), h: Math.max(1, Math.round(n.y + n.h) - y) };
+}
+
+function create(a: Pt, b: Pt, ratio: number | null, symmetric: boolean): Rect {
+  let w = b.x - a.x, h = b.y - a.y;
+  if (ratio) {
+    const sw = Math.sign(w) || 1, sh = Math.sign(h) || 1;
+    if (Math.abs(w) / Math.max(Math.abs(h), 1e-6) > ratio) h = (sh * Math.abs(w)) / ratio;
+    else w = sw * Math.abs(h) * ratio;
+  }
+  return symmetric ? { x: a.x - w, y: a.y - h, w: 2 * w, h: 2 * h } : { x: a.x, y: a.y, w, h };
+}
+
+function resize(o: Rect, handle: number, p: Pt, ratio: number | null, symmetric: boolean): Rect {
+  const hd = HANDLES[handle];
+  let x0 = o.x, y0 = o.y, x1 = o.x + o.w, y1 = o.y + o.h;
+  const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
+  if (hd.x === 0) x0 = p.x;
+  if (hd.x === 1) x1 = p.x;
+  if (hd.y === 0) y0 = p.y;
+  if (hd.y === 1) y1 = p.y;
+  if (symmetric) {
+    if (hd.x === 0) x1 = 2 * cx - x0;
+    if (hd.x === 1) x0 = 2 * cx - x1;
+    if (hd.y === 0) y1 = 2 * cy - y0;
+    if (hd.y === 1) y0 = 2 * cy - y1;
+  }
+  const n = norm({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
+  if (!ratio) return n;
+  if (hd.x !== 0.5 && hd.y !== 0.5) { const h = n.w / ratio; return { x: n.x, y: hd.y === 0 ? n.y + n.h - h : n.y, w: n.w, h }; }
+  if (hd.x === 0.5) { const w = n.h * ratio; return { x: n.x + n.w / 2 - w / 2, y: n.y, w, h: n.h }; }
+  const h = n.w / ratio;
+  return { x: n.x, y: n.y + n.h / 2 - h / 2, w: n.w, h };
+}
+
+function snap(ctx: ToolContext, r: Rect): Rect {
+  const d = ctx.engine.current?.doc;
+  if (!d) return r;
+  const tol = 8 / ctx.view().zoom, n = norm(r);
+  let x = n.x, y = n.y, w = n.w, h = n.h;
+  if (Math.abs(x) < tol) { w += x; x = 0; }
+  if (Math.abs(y) < tol) { h += y; y = 0; }
+  if (Math.abs(x + w - d.width) < tol) w = d.width - x;
+  if (Math.abs(y + h - d.height) < tol) h = d.height - y;
+  return { x, y, w, h };
+}
+
+function hitHandle(ctx: ToolContext, p: ToolPointer): number {
+  if (!frame) return -1;
+  const f = norm(frame), v = ctx.view();
+  return HANDLES.findIndex((hd) => { const s = v.toScreen({ x: f.x + f.w * hd.x, y: f.y + f.h * hd.y }); return Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= 8; });
+}
+const inside = (r: Rect, p: Pt): boolean => { const n = norm(r); return p.x >= n.x && p.y >= n.y && p.x <= n.x + n.w && p.y <= n.y + n.h; };
+
+function commit(e: Engine): void {
+  if (!frame) return;
+  const r = whole(frame);
+  frame = null;
+  drag = null;
+  e.cropTo(r);
+  e.emit('overlay', null);
+  e.emit('options', null);
+}
+
+export const cropTool: Tool = {
+  id: 'crop', label: 'Crop', key: 'C', order: 45,
+  icon: () => 'crop',
+  hint: () => 'Drag a frame · Drag inside to move it · Handles resize · Alt keeps the center · Edges snap to the canvas · Enter crops · Escape cancels',
+  cursor(ctx, p) {
+    if (!p || !frame) return 'crosshair';
+    const h = hitHandle(ctx, p);
+    if (h >= 0) { const hd = HANDLES[h]; return hd.x === 0.5 ? 'ns-resize' : hd.y === 0.5 ? 'ew-resize' : (hd.x === hd.y ? 'nwse-resize' : 'nesw-resize'); }
+    return inside(frame, p.doc) ? 'move' : 'crosshair';
+  },
+  down(ctx, p) {
+    if (p.button !== 0 || !ctx.engine.current) return;
+    const h = hitHandle(ctx, p);
+    if (frame && h >= 0) drag = { mode: 'resize', handle: h, start: p.doc, origin: norm(frame) };
+    else if (frame && inside(frame, p.doc)) drag = { mode: 'move', handle: -1, start: p.doc, origin: norm(frame) };
+    else { drag = { mode: 'create', handle: -1, start: p.doc, origin: { x: p.doc.x, y: p.doc.y, w: 0, h: 0 } }; frame = null; }
+    ctx.engine.emit('overlay', null);
+  },
+  move(ctx, p) {
+    if (!drag) return;
+    const ratio = ratioOf(ctx.engine);
+    if (drag.mode === 'create') frame = create(drag.start, p.doc, ratio, p.alt);
+    else if (drag.mode === 'move') frame = { ...drag.origin, x: drag.origin.x + p.doc.x - drag.start.x, y: drag.origin.y + p.doc.y - drag.start.y };
+    else frame = resize(drag.origin, drag.handle, p.doc, ratio, p.alt);
+    if (!ratio && drag.mode !== 'move') frame = snap(ctx, frame);
+    ctx.engine.emit('overlay', null);
+    ctx.engine.emit('options', null);
+  },
+  up(ctx) {
+    if (!drag) return;
+    drag = null;
+    if (frame) { const n = norm(frame); frame = n.w >= 1 && n.h >= 1 ? whole(frame) : null; }
+    ctx.engine.emit('overlay', null);
+    ctx.engine.emit('options', null);
+  },
+  keydown(ctx, e) {
+    if (e.key === 'Enter' && frame) { commit(ctx.engine); return true; }
+    if (e.key === 'Escape' && frame) { frame = null; drag = null; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return true; }
+    return false;
+  },
+  cancel(ctx) { drag = null; ctx.engine.emit('overlay', null); },
+  overlay(ctx, g) {
+    if (!frame) return;
+    const v = ctx.view(), pal = ctx.paint(), f = norm(frame);
+    const a = v.toScreen({ x: f.x, y: f.y }), b = v.toScreen({ x: f.x + f.w, y: f.y + f.h });
+    g.save();
+    g.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    g.beginPath();
+    g.rect(0, 0, v.width, v.height);
+    g.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+    g.fill('evenodd');
+    g.strokeStyle = pal.antsB;
+    g.globalAlpha = 0.5;
+    g.beginPath();
+    for (let i = 1; i < 3; i++) {
+      const x = a.x + ((b.x - a.x) * i) / 3, y = a.y + ((b.y - a.y) * i) / 3;
+      g.moveTo(x, a.y); g.lineTo(x, b.y); g.moveTo(a.x, y); g.lineTo(b.x, y);
+    }
+    g.stroke();
+    g.globalAlpha = 1;
+    g.strokeStyle = pal.accent;
+    g.lineWidth = 1;
+    g.strokeRect(Math.round(a.x) + 0.5, Math.round(a.y) + 0.5, Math.round(b.x - a.x), Math.round(b.y - a.y));
+    g.fillStyle = pal.handle;
+    for (const hd of HANDLES) { const x = a.x + (b.x - a.x) * hd.x, y = a.y + (b.y - a.y) * hd.y; g.fillRect(Math.round(x) - 4, Math.round(y) - 4, 8, 8); g.strokeRect(Math.round(x) - 3.5, Math.round(y) - 3.5, 7, 7); }
+    g.restore();
+  },
+  options: (e) => [
+    { kind: 'title', text: 'Crop' },
+    { kind: 'segment', label: 'Ratio', choices: RATIOS.map((r) => ({ id: r.id, label: r.label })), get: () => ratioId, set: (id) => {
+      ratioId = id;
+      const ratio = ratioOf(e);
+      if (frame && ratio) { const f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2; const w = Math.min(f.w, f.h * ratio), h = w / ratio; frame = whole({ x: cx - w / 2, y: cy - h / 2, w, h }); }
+      e.emit('options', null);
+      e.emit('overlay', null);
+    } },
+    { kind: 'readout', label: 'Size', get: () => (frame ? `${Math.round(norm(frame).w)} \u00d7 ${Math.round(norm(frame).h)}` : '') },
+    { kind: 'button', label: 'Crop', icon: 'check', run: () => commit(e) },
+    { kind: 'button', label: 'Cancel', icon: 'close', run: () => { frame = null; drag = null; e.emit('overlay', null); e.emit('options', null); } },
+  ],
+};

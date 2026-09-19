@@ -18,3 +18,16 @@
 .cv-list-empty[hidden] { display: none; }
 .nm-theme-grid { display: grid; grid-template-columns: repeat(7, 28px); gap: var(--space-2); }
 .nm-theme-swatch { width: 28px; height: 28px; padding: 0; border: 2px solid transparent; border-radius: var(--radius); cursor: pointer; }
+.cv-panel-section { display: grid; gap: var(--space-3); }
+.cv-panel-section[hidden] { display: none; }
+.cv-dialog [hidden] { display: none; }
+.cv-slider-ctl { display: grid; grid-template-columns: minmax(0, 1fr) 72px; align-items: center; gap: var(--space-2); }
+.cv-slider-ctl input[type="range"] { width: 100%; accent-color: var(--accent-color); margin: 0; }
+.cv-slider-ctl .cv-num { width: 100%; height: var(--ctl-md); }
+.cv-check input { justify-self: start; margin: 0; accent-color: var(--accent-color); }
+.cv-color { width: 72px; padding: 2px; }
+.cv-histo { display: block; width: 100%; height: 96px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); }
+.cv-curves { display: block; width: 256px; height: 256px; justify-self: center; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-primary); touch-action: none; cursor: crosshair; }
+.cv-anchor-grid { display: grid; grid-template-columns: repeat(3, 28px); gap: var(--space-1); }
+.cv-anchor-grid button { width: 28px; height: 28px; padding: 0; border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); cursor: pointer; }
+.cv-anchor-grid button.is-active { background: var(--accent-color); border-color: transparent; }

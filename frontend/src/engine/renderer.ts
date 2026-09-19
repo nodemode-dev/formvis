@@ -1,8 +1,20 @@
 import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform } from './types';
 import { createSurface, ctxOf, sizeSurface, type Ctx2D, type Surface } from './surface';
-import { IDENTITY, mul, placement, setMat, type Mat } from './geometry';
+import { IDENTITY, applyMat, invert, matScale, mul, placement, setMat, type Mat } from './geometry';
 import { ancestors, hierarchy } from './tree';
-import { adjustmentKernel } from './kernels';
+import { adjustmentKernel, type Kernel } from './kernels';
+import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
+import type { Adjustment } from './types';
+
+const kernelCache = new WeakMap<object, Kernel | null>();
+function kernelFor(adj: Adjustment | null): Kernel | null {
+  if (!adj) return null;
+  const hit = kernelCache.get(adj.data);
+  if (hit !== undefined) return hit;
+  const k = adj.kind === 'hsv' ? hsvKernel(hsvFromData(adj.data)) : adj.kind === 'grain' ? grainKernel(grainFromData(adj.data)) : adjustmentKernel(adj);
+  kernelCache.set(adj.data, k);
+  return k;
+}
 
 export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; hidden?: boolean; blend?: BlendMode; opacity?: number }
 export interface RenderJob {
@@ -64,7 +76,7 @@ export class Renderer {
       if (layer.adjustment) { this.adjust(job, ctx, layer, own, folders, base, map, clipCache, W, H, opacity); continue; }
       const src = ov?.source ?? layer.raster?.canvas;
       if (!src || !layer.raster) continue;
-      const m = mul(job.view, placement(t, layer.raster.width, layer.raster.height));
+      const m = mul(job.view, placement(t, src.width, src.height));
       const op = compositeOp(ov?.blend ?? layer.blend);
       if (!own && !folders.length && !base) { this.draw(ctx, src, m, t.sampling, opacity, op, job.quality); continue; }
       let cov: Surface | null = null;
@@ -107,7 +119,7 @@ export class Renderer {
     if (!m || !m.enabled) return null;
     const src = ov?.maskSource ?? m.raster?.canvas;
     if (!src || !m.raster) return null;
-    return { src, w: m.raster.width, h: m.raster.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
+    return { src, w: src.width, h: src.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
   }
 
   private folderMasks(map: ReadonlyMap<ID, Layer>, layer: Layer): MaskInfo[] {
@@ -169,12 +181,13 @@ export class Renderer {
   }
 
   private adjust(job: RenderJob, ctx: Ctx2D, layer: Layer, own: MaskInfo | null, folders: MaskInfo[], base: Layer | null, map: ReadonlyMap<ID, Layer>, clipCache: Map<ID, Surface | null>, W: number, H: number, opacity: number): void {
-    const kernel = adjustmentKernel(layer.adjustment);
+    const kernel = kernelFor(layer.adjustment);
     if (!kernel) return;
     const img = ctx.getImageData(0, 0, W, H);
     const src = img.data;
     const adj = new Uint8ClampedArray(src);
-    kernel(adj);
+    const origin = applyMat(invert(job.view), 0, 0);
+    kernel(adj, { width: W, height: H, originX: origin.x, originY: origin.y, unitsPerPixel: 1 / matScale(job.view) });
     let cov: Uint8ClampedArray | null = null;
     if (own || folders.length || base) {
       const b = this.slot(2, W, H);

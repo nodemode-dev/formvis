@@ -1,6 +1,7 @@
 import { clamp, type Adjustment } from './types';
 
-export type Kernel = (data: Uint8ClampedArray) => void;
+export interface KernelContext { width: number; height: number; originX: number; originY: number; unitsPerPixel: number }
+export type Kernel = (data: Uint8ClampedArray, ctx?: KernelContext) => void;
 
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});

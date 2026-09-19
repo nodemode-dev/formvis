@@ -23,6 +23,14 @@ export { HANDLES } from './transform';
 export type { DragMode } from './transform';
 export { hierarchy, byId } from './tree';
 export type { Entry as HierarchyEntry } from './tree';
+import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
+import { fromGray, resizeMask, toGray } from './filters';
+import type { AdjustmentKind } from './types';
+export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
+export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
+export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin } from './filters';
+export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
+export type { Kernel, KernelContext } from './kernels';
 
 export interface Notice { kind: 'info' | 'error'; text: string }
 export interface EngineEvents {
@@ -187,6 +195,7 @@ export class Engine {
   }
 
   settle(): void {
+    if (this.gradient) this.commitGradient();
     if (this.transformEdit) this.endTransform();
     if (this.selectionShift) this.endSelectionShift();
     if (this.opacityOpen) this.endOpacityEdit();
@@ -279,6 +288,10 @@ export class Engine {
     if (st && st.project === p) m.set(st.layerId, st.target === 'pixels' ? { source: st.s.working } : { maskSource: st.s.working });
     const te = this.transformEdit;
     if (te && te.project === p) m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), transform: te.draft });
+    const pv = this.preview;
+    if (pv && pv.project === p) m.set(pv.layerId, { ...(m.get(pv.layerId) ?? {}), ...(pv.target === 'pixels' ? { source: pv.surface } : { maskSource: pv.surface }), ...(pv.transform ? { transform: pv.transform } : {}) });
+    const gr = this.gradient;
+    if (gr && gr.project === p) m.set(gr.layerId, { ...(m.get(gr.layerId) ?? {}), ...(gr.target === 'pixels' ? { source: gr.surface } : { maskSource: gr.surface }) });
     return m.size ? m : undefined;
   }
 
@@ -823,6 +836,7 @@ export class Engine {
     this.stroke = null;
     const patch = st.s.commit();
     if (patch) st.project.history.addPatch(patch);
+    if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
     st.project.history.end(st.project.snapshot());
     const lp = st.s.lastPoint;
     if (lp) this.lastBrush = { layerId: st.layerId, target: st.target, p: lp };
@@ -860,6 +874,7 @@ export class Engine {
       }
       const before = raster.read(rect.x, rect.y, rect.w, rect.h);
       apply({ raster, target: pick.target, rect, cover });
+      if (pick.target === 'pixels' && p.layer(pick.layer.id)?.shape) p.updateLayer(pick.layer.id, { shape: null });
       raster.touch();
       p.history.addPatch({ raster, x: rect.x, y: rect.y, before, after: raster.read(rect.x, rect.y, rect.w, rect.h) });
     });
@@ -892,12 +907,15 @@ export class Engine {
   }
 
   clearPixels(): void {
-    this.regionEdit('Clear', ({ raster, rect, cover }) => {
+    this.regionEdit('Clear', ({ raster, target, rect, cover }) => {
       const c = raster.ctx;
+      const t = this.tint(rect, '#ffffff', cover);
       c.save();
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.globalCompositeOperation = 'destination-out';
-      c.drawImage(this.tint(rect, '#ffffff', cover), rect.x, rect.y);
+      c.drawImage(t, rect.x, rect.y);
+      const v = target === 'mask' ? luminance(this.bg) : 0;
+      if (v > 0) { c.globalCompositeOperation = 'lighter'; c.globalAlpha = v; c.drawImage(t, rect.x, rect.y); }
       c.restore();
     });
   }
@@ -1025,7 +1043,8 @@ export class Engine {
     this.edit(name, (p) => {
       const l = p.layer(te.layerId);
       if (!l) return false;
-      p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
+      const redraw = !!l.shape && (Math.round(next.w) !== l.raster?.width || Math.round(next.h) !== l.raster?.height);
+      p.updateLayer(l.id, { transform: next, mask: followMask(l, next), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, next.w, next.h) } : {}) });
       return true;
     });
   }
@@ -1102,6 +1121,453 @@ export class Engine {
       }
       return added;
     });
+  }
+
+  private liveOpen: Project | null = null;
+  preview: { project: Project; layerId: ID; target: Target; surface: Surface; transform?: Transform } | null = null;
+  gradient: { project: Project; layerId: ID; target: Target; start: Pt; end: Pt; raster: Raster; local: Mat; surface: Surface } | null = null;
+  gradientSettings: { shape: 'linear' | 'radial'; style: 'background' | 'transparent'; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
+  shapeSettings: { kind: 'rectangle' | 'ellipse'; cornerRadius: number } = { kind: 'rectangle', cornerRadius: 0 };
+  clipboard: { surface: Surface; x: number; y: number; w: number; h: number; stamp: string } | null = null;
+  selectionAmounts = { expand: 1, contract: 1 };
+
+  beginLive(name: string): boolean {
+    const p = this.current;
+    if (!p || this.stroke || this.liveOpen) return false;
+    this.settle();
+    p.history.begin(name, p.snapshot());
+    this.liveOpen = p;
+    return true;
+  }
+
+  updateLive(fn: (p: Project) => void): void {
+    const p = this.liveOpen;
+    if (!p) return;
+    fn(p);
+    this.emit('doc', null);
+    this.emit('render', null);
+  }
+
+  commitLive(): void {
+    const p = this.liveOpen;
+    if (!p) return;
+    this.liveOpen = null;
+    p.history.end(p.snapshot());
+    this.refresh();
+  }
+
+  cancelLive(): void {
+    const p = this.liveOpen;
+    if (!p) return;
+    this.liveOpen = null;
+    const before = p.history.abort();
+    if (before) { p.doc = before.doc; p.selection = before.selection; }
+    this.refresh();
+  }
+
+  setPreview(layerId: ID | null, target: Target = 'pixels', surface: Surface | null = null, transform?: Transform): void {
+    const p = this.current;
+    this.preview = p && layerId && surface ? { project: p, layerId, target, surface, transform } : null;
+    this.emit('render', null);
+  }
+
+  targetImage(): { layerId: ID; target: Target; image: ImageData; width: number; height: number; unitsPerPixel: number } | null {
+    const p = this.current;
+    const l = p?.activeLayer ?? null;
+    if (!p || !this.paintable(l)) return null;
+    const onMask = p.maskTarget && !!l.mask;
+    const r = onMask ? l.mask?.raster ?? null : l.raster;
+    if (!r) return null;
+    const t = onMask ? l.mask?.placement ?? l.transform : l.transform;
+    const img = r.read();
+    return { layerId: l.id, target: onMask ? 'mask' : 'pixels', image: onMask ? toGray(img) : img, width: r.width, height: r.height, unitsPerPixel: t.w / r.width };
+  }
+
+  private coverageFor(p: Project, layer: Layer, target: Target, w: number, h: number): Uint8ClampedArray | null {
+    const sel = p.selection;
+    if (!sel) return null;
+    const t = target === 'mask' ? layer.mask?.placement ?? layer.transform : layer.transform;
+    const s = createSurface(w, h);
+    const c = ctxOf(s);
+    setMat(c, mul(invert(placement(t, w, h)), translation(sel.x, sel.y)));
+    c.drawImage(sel.surface(), 0, 0);
+    return c.getImageData(0, 0, w, h).data;
+  }
+
+  private blendThrough(src: ImageData, out: ImageData, cov: Uint8ClampedArray): ImageData {
+    const res = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+    const d = res.data, o = out.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const k = cov[i + 3] / 255;
+      if (k <= 0) continue;
+      const sa = d[i + 3], oa = o[i + 3], a = sa + (oa - sa) * k;
+      for (let c = 0; c < 3; c++) {
+        const v = d[i + c] * sa + (o[i + c] * oa - d[i + c] * sa) * k;
+        d[i + c] = a > 0 ? v / a : 0;
+      }
+      d[i + 3] = a;
+    }
+    return res;
+  }
+
+  private canGrow(p: Project, l: Layer): boolean { return !p.selection && !l.mask && !!l.raster; }
+
+  private grown(l: Layer, grow: number, run: (src: ImageData, scale: number) => ImageData): { raster: Raster; transform: Transform } {
+    const r = l.raster as Raster, g = Math.ceil(grow);
+    const big = new Raster(r.width + 2 * g, r.height + 2 * g);
+    big.ctx.drawImage(r.canvas, g, g);
+    big.write(run(big.read(), 1));
+    const t = l.transform, sx = t.w / r.width, sy = t.h / r.height;
+    return { raster: big, transform: { ...t, x: t.x - g * sx, y: t.y - g * sy, w: t.w + 2 * g * sx, h: t.h + 2 * g * sy } };
+  }
+
+  previewImageEdit(run: (src: ImageData, scale: number) => ImageData, grow = 0, maxPixels = 2_000_000): void {
+    const p = this.current;
+    const l = p?.activeLayer ?? null;
+    if (!p || !this.paintable(l)) { this.setPreview(null); return; }
+    const onMask = p.maskTarget && !!l.mask;
+    const r = onMask ? l.mask?.raster ?? null : l.raster;
+    if (!r) { this.setPreview(null); return; }
+    const scale = Math.min(1, Math.sqrt(maxPixels / (r.width * r.height)));
+    const w = Math.max(1, Math.round(r.width * scale)), h = Math.max(1, Math.round(r.height * scale));
+    const g = grow > 0 && !onMask && this.canGrow(p, l) ? Math.ceil(grow * scale) : 0;
+    const s = createSurface(w + 2 * g, h + 2 * g);
+    const c = ctxOf(s);
+    c.drawImage(r.canvas, g, g, w, h);
+    let src = c.getImageData(0, 0, w + 2 * g, h + 2 * g);
+    if (onMask) src = toGray(src);
+    const out = run(src, scale);
+    const cov = g ? null : this.coverageFor(p, l, onMask ? 'mask' : 'pixels', w, h);
+    let result = cov ? this.blendThrough(src, out, cov) : out;
+    if (onMask) result = fromGray(result);
+    c.putImageData(result, 0, 0);
+    const t = l.transform, gx = (g / scale) * (t.w / r.width), gy = (g / scale) * (t.h / r.height);
+    this.setPreview(l.id, onMask ? 'mask' : 'pixels', s, g ? { ...t, x: t.x - gx, y: t.y - gy, w: t.w + 2 * gx, h: t.h + 2 * gy } : undefined);
+  }
+
+  applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0): void {
+    this.preview = null;
+    const p0 = this.current;
+    const l0 = p0?.activeLayer ?? null;
+    if (!p0 || !this.paintable(l0)) { this.notice('Select a pixel layer first.'); this.emit('render', null); return; }
+    if (grow > 0 && !(p0.maskTarget && l0.mask) && this.canGrow(p0, l0)) {
+      this.edit(name, (p) => {
+        const l = p.layer(l0.id);
+        if (!l?.raster) return false;
+        const g = this.grown(l, grow, run);
+        p.updateLayer(l.id, { raster: g.raster, transform: g.transform, shape: null });
+        return true;
+      });
+      return;
+    }
+    this.regionEdit(name, ({ raster, target, rect }) => {
+      const p = this.current as Project;
+      const l = p.activeLayer as Layer;
+      const src = target === 'mask' ? toGray(raster.read()) : raster.read();
+      const out = run(src, 1);
+      const cov = this.coverageFor(p, l, target, raster.width, raster.height);
+      let result = cov ? this.blendThrough(src, out, cov) : out;
+      if (target === 'mask') result = fromGray(result);
+      raster.ctx.putImageData(result, 0, 0, rect.x, rect.y, rect.w, rect.h);
+    });
+  }
+
+  private insertAboveActive(p: Project, layer: Layer): void {
+    const active = p.activeLayer;
+    const layers = [...p.doc.layers];
+    let index = active ? layers.indexOf(active) + 1 : layers.length;
+    if (active?.isGroup) layers.forEach((l, i) => { if (l.parentId === active.id) index = Math.max(index, i + 1); });
+    layers.splice(index, 0, layer);
+    p.setLayers(layers);
+    this.focus(p, layer.id);
+  }
+
+  private parentForNew(p: Project): ID | null {
+    const active = p.activeLayer;
+    return active?.isGroup ? active.id : active?.parentId ?? null;
+  }
+
+  addAdjustmentLayer(kind: AdjustmentKind): ID | null {
+    let created: ID | null = null;
+    this.edit(`New ${ADJUSTMENT_LABELS[kind]} Layer`, (p) => {
+      const layer = newLayer(ADJUSTMENT_LABELS[kind], p.doc, { adjustment: { kind, data: defaultAdjustmentData(kind) }, parentId: this.parentForNew(p) });
+      this.insertAboveActive(p, layer);
+      created = layer.id;
+    });
+    return created;
+  }
+
+  insertRasterLayer(raster: Raster, name: string, x: number | null, y: number | null, extra: Partial<Layer> = {}, undoName = 'Paste'): void {
+    this.edit(undoName, (p) => {
+      const px = x ?? Math.floor((p.doc.width - raster.width) / 2), py = y ?? Math.floor((p.doc.height - raster.height) / 2);
+      const layer = newLayer(name, p.doc, { raster, parentId: this.parentForNew(p), transform: { ...docTransform(raster.width, raster.height), x: px, y: py }, ...extra });
+      this.insertAboveActive(p, layer);
+    });
+  }
+
+  private sizeOk(width: number, height: number): boolean {
+    const ok = Number.isInteger(width) && Number.isInteger(height) && width >= 1 && height >= 1 && width <= LIMITS.side && height <= LIMITS.side && width * height <= LIMITS.pixels;
+    if (!ok) this.notice('Canvas sides must be 1 to 30,000 px, and the canvas at most 100 megapixels.', 'error');
+    return ok;
+  }
+
+  resizeCanvas(width: number, height: number, dx: number, dy: number, fill: RGB | null = null, name = 'Canvas Size'): boolean {
+    if (!this.current || !this.sizeOk(width, height)) return false;
+    const ok = this.edit(name, (p) => {
+      const { width: oldW, height: oldH } = p.doc;
+      if (width === oldW && height === oldH && !dx && !dy) return false;
+      const shift = (t: Transform): Transform => ({ ...t, x: t.x + dx, y: t.y + dy });
+      let layers: Layer[] = p.doc.layers.map((l) => ({ ...l, transform: shift(l.transform), mask: l.mask?.placement ? { ...l.mask, placement: shift(l.mask.placement) } : l.mask }));
+      if (fill && (width > oldW || height > oldH)) {
+        const r = Raster.filled(width, height, rgbCss(fill));
+        r.ctx.clearRect(dx, dy, oldW, oldH);
+        layers = [newLayer('Canvas Extension', { width, height }, { raster: r }), ...layers];
+      }
+      p.doc = { ...p.doc, width, height, layers };
+      if (p.selection) p.selection = p.selection.translated(dx, dy, width, height);
+      return true;
+    });
+    if (ok) this.fit();
+    return ok;
+  }
+
+  cropTo(rect: Rect): boolean {
+    const r = integral(rect);
+    if (r.w < 1 || r.h < 1) return false;
+    return this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
+  }
+
+  resampleImage(width: number, height: number, sampling: Transform['sampling'], resolution: number): boolean {
+    const p0 = this.current;
+    if (!p0 || !this.sizeOk(width, height)) return false;
+    const sx0 = width / p0.doc.width, sy0 = height / p0.doc.height;
+    const used = p0.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0);
+    if (used * sx0 * sy0 > LIMITS.pixels) { this.notice('The resized layers would exceed the 100-megapixel document limit.', 'error'); return false; }
+    const scaleRaster = (r: Raster, w: number, h: number): Raster => {
+      const out = new Raster(w, h);
+      out.ctx.imageSmoothingEnabled = sampling !== 'nearest';
+      if (sampling !== 'nearest') out.ctx.imageSmoothingQuality = sampling === 'smooth' ? 'medium' : 'high';
+      out.ctx.drawImage(r.canvas, 0, 0, w, h);
+      return out;
+    };
+    const ok = this.edit('Image Size', (p) => {
+      const sx = width / p.doc.width, sy = height / p.doc.height;
+      if (sx === 1 && sy === 1 && resolution === p.doc.resolution) return false;
+      const scaleT = (t: Transform): Transform => ({ ...t, x: t.x * sx, y: t.y * sy, w: t.w * sx, h: t.h * sy });
+      const layers = p.doc.layers.map((l) => {
+        const t = scaleT(l.transform);
+        const shape = l.shape ? { ...l.shape, cornerRadius: (Number(l.shape.cornerRadius) || 0) * Math.min(sx, sy) } : null;
+        const raster = shape ? this.shapeRaster(shape, t.w, t.h) : l.raster ? scaleRaster(l.raster, Math.max(1, Math.round(l.raster.width * sx)), Math.max(1, Math.round(l.raster.height * sy))) : null;
+        const mr = l.mask?.raster ?? null;
+        const mask = l.mask ? { ...l.mask, raster: mr ? scaleRaster(mr, Math.max(1, Math.round(mr.width * sx)), Math.max(1, Math.round(mr.height * sy))) : null, placement: l.mask.placement ? scaleT(l.mask.placement) : null } : null;
+        return { ...l, raster, mask, shape, transform: t };
+      });
+      p.doc = { ...p.doc, width, height, resolution, layers };
+      p.selection = null;
+      return true;
+    });
+    if (ok) this.fit();
+    return ok;
+  }
+
+  resizeSelection(delta: number): void {
+    const p = this.current;
+    const sel = p?.selection;
+    if (!p || !sel || !delta || Math.abs(delta) > 500) return;
+    const pad = delta > 0 ? Math.ceil(delta) + 2 : 1;
+    let region: Rect | null = { x: sel.x - pad, y: sel.y - pad, w: sel.w + 2 * pad, h: sel.h + 2 * pad };
+    if (delta > 0) region = intersectRect(region, { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
+    if (!region) return;
+    const src = new Uint8Array(region.w * region.h);
+    for (let j = 0; j < region.h; j++) for (let i = 0; i < region.w; i++) src[j * region.w + i] = sel.valueAt(region.x + i, region.y + j);
+    const out = resizeMask(src, region.w, region.h, delta);
+    this.applySelection(SelectionMask.cropped(region.x, region.y, region.w, region.h, out), 'replace', delta > 0 ? 'Expand Selection' : 'Contract Selection');
+  }
+
+  selectMaskBlack(): void {
+    const p = this.current;
+    const l = p?.activeLayer;
+    if (!p || !l?.mask) { this.notice('The active layer has no mask.'); return; }
+    const m = l.mask;
+    const t = m.placement ?? l.transform;
+    const b = m.raster ? intersectRect(integral(transformBounds(t)), { x: 0, y: 0, w: p.doc.width, h: p.doc.height }) : null;
+    if (!m.raster || !b) { this.applySelection(null, 'replace', "Mask's Black Areas"); return; }
+    const s = createSurface(b.w, b.h);
+    const c = ctxOf(s);
+    setMat(c, mul(translation(-b.x, -b.y), placement(t, m.raster.width, m.raster.height)));
+    c.fillStyle = '#ffffff';
+    c.fillRect(0, 0, m.raster.width, m.raster.height);
+    c.globalCompositeOperation = 'destination-out';
+    c.drawImage(m.raster.canvas, 0, 0);
+    this.applySelection(SelectionMask.fromAlpha(b.x, b.y, b.w, b.h, c.getImageData(0, 0, b.w, b.h).data), 'replace', "Mask's Black Areas");
+  }
+
+  copySelection(merged: boolean): boolean {
+    const p = this.current;
+    if (!p) return false;
+    const docRect = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+    const region = p.selection ? intersectRect(integral(p.selection.rect), docRect) : docRect;
+    if (!region) return false;
+    const s = createSurface(region.w, region.h);
+    const c = ctxOf(s);
+    if (merged) this.work.render({ doc: p.doc, target: s, view: translation(-region.x, -region.y), quality: 'high' });
+    else {
+      const l = p.activeLayer;
+      if (!l || l.isGroup || l.adjustment) { this.notice('Select a pixel layer to copy.'); return false; }
+      const onMask = p.maskTarget && !!l.mask;
+      const r = onMask ? l.mask?.raster ?? null : l.raster;
+      if (onMask && !r) { c.fillStyle = '#ffffff'; c.fillRect(0, 0, region.w, region.h); }
+      else if (r) {
+        const t = onMask ? l.mask?.placement ?? l.transform : l.transform;
+        setMat(c, mul(translation(-region.x, -region.y), placement(t, r.width, r.height)));
+        c.drawImage(r.canvas, 0, 0);
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        if (onMask) c.putImageData(toGray(c.getImageData(0, 0, region.w, region.h)), 0, 0);
+      }
+    }
+    if (p.selection) {
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.globalCompositeOperation = 'destination-in';
+      c.drawImage(p.selection.surface(), p.selection.x - region.x, p.selection.y - region.y);
+      c.globalCompositeOperation = 'source-over';
+    }
+    this.clipboard = { surface: s, x: region.x, y: region.y, w: region.w, h: region.h, stamp: uid() };
+    this.emit('options', null);
+    return true;
+  }
+
+  cutSelection(): void {
+    if (!this.current?.selection) { this.notice('Cut needs a selection.'); return; }
+    if (this.copySelection(false)) this.clearPixels();
+  }
+
+  pasteClipboard(): boolean {
+    const cb = this.clipboard;
+    if (!cb) return false;
+    if (!this.current) {
+      this.addProject({ id: uid(), width: cb.w, height: cb.h, resolution: 72, layers: [] }, 'Pasted');
+      this.insertRasterLayer(Raster.from(cb.surface, cb.w, cb.h), 'Pasted Layer', 0, 0);
+      return true;
+    }
+    this.insertRasterLayer(Raster.from(cb.surface, cb.w, cb.h), 'Pasted Layer', cb.x, cb.y);
+    return true;
+  }
+
+  beginGradient(pt: Pt): boolean {
+    const p = this.current;
+    if (!p || this.stroke) return false;
+    this.settle();
+    if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer for the gradient.'); return false; }
+    p.history.begin('Gradient', p.snapshot());
+    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+    this.gradient = { project: p, layerId: pick.layer.id, target: pick.target, start: pt, end: pt, raster: pick.raster, local: pick.local, surface: createSurface(pick.raster.width, pick.raster.height) };
+    this.renderGradient();
+    return true;
+  }
+
+  updateGradient(start?: Pt, end?: Pt): void {
+    const g = this.gradient;
+    if (!g) return;
+    if (start) g.start = start;
+    if (end) g.end = end;
+    this.renderGradient();
+  }
+
+  renderGradient(): void {
+    const g = this.gradient;
+    if (!g) return;
+    const { raster, local } = g;
+    const w = raster.width, h = raster.height;
+    const c = ctxOf(g.surface);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(0, 0, w, h);
+    const mask = g.target === 'mask';
+    if (mask) c.putImageData(toGray(raster.read()), 0, 0);
+    else c.drawImage(raster.canvas, 0, 0);
+    const layer = createSurface(w, h);
+    const lc = ctxOf(layer);
+    setMat(lc, invert(local));
+    const st = this.gradientSettings;
+    const tone = (col: RGB): RGB => { const v = Math.round(luminance(col) * 255); return { r: v, g: v, b: v }; };
+    const fg = mask ? tone(this.fg) : this.fg, bg = mask ? tone(this.bg) : this.bg;
+    let c0 = rgbCss(fg, 1), c1 = st.style === 'background' ? rgbCss(bg, 1) : rgbCss(fg, 0);
+    if (st.reversed) [c0, c1] = [c1, c0];
+    const a = g.start, b = g.end;
+    const len = Math.max(0.5, Math.hypot(b.x - a.x, b.y - a.y));
+    const grad = st.shape === 'radial' ? lc.createRadialGradient(a.x, a.y, 0, a.x, a.y, len) : lc.createLinearGradient(a.x, a.y, len > 0.5 ? b.x : a.x + 0.5, b.y);
+    grad.addColorStop(0, c0);
+    grad.addColorStop(1, c1);
+    lc.fillStyle = grad;
+    const bb = boundsOf([applyMat(local, 0, 0), applyMat(local, w, 0), applyMat(local, w, h), applyMat(local, 0, h)]);
+    lc.fillRect(bb.x - 1, bb.y - 1, bb.w + 2, bb.h + 2);
+    const sel = g.project.selection;
+    if (sel) {
+      setMat(lc, mul(invert(local), translation(sel.x, sel.y)));
+      lc.globalCompositeOperation = 'destination-in';
+      lc.drawImage(sel.surface(), 0, 0);
+    }
+    c.globalAlpha = st.opacity;
+    c.drawImage(layer, 0, 0);
+    c.globalAlpha = 1;
+    if (mask) c.putImageData(fromGray(c.getImageData(0, 0, w, h)), 0, 0);
+    this.emit('render', null);
+    this.emit('overlay', null);
+  }
+
+  commitGradient(): void {
+    const g = this.gradient;
+    if (!g) return;
+    this.gradient = null;
+    if (Math.hypot(g.end.x - g.start.x, g.end.y - g.start.y) < 1) {
+      const before = g.project.history.abort();
+      if (before) { g.project.doc = before.doc; g.project.selection = before.selection; }
+      this.refresh();
+      return;
+    }
+    const r = g.raster;
+    const before = r.read();
+    r.ctx.save();
+    r.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    r.ctx.globalCompositeOperation = 'copy';
+    r.ctx.drawImage(g.surface, 0, 0);
+    r.ctx.restore();
+    r.touch();
+    g.project.history.addPatch({ raster: r, x: 0, y: 0, before, after: r.read() });
+    if (g.target === 'pixels' && g.project.layer(g.layerId)?.shape) g.project.updateLayer(g.layerId, { shape: null });
+    g.project.history.end(g.project.snapshot());
+    this.refresh();
+  }
+
+  cancelGradient(): void {
+    const g = this.gradient;
+    if (!g) return;
+    this.gradient = null;
+    const before = g.project.history.abort();
+    if (before) { g.project.doc = before.doc; g.project.selection = before.selection; }
+    this.refresh();
+  }
+
+  private shapeRaster(style: Record<string, unknown>, w: number, h: number): Raster {
+    const r = new Raster(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
+    const c = r.ctx;
+    const ch = (v: unknown): number => Math.round(clamp(Number(v) || 0, 0, 1) * 255);
+    c.fillStyle = `rgb(${ch(style.red)},${ch(style.green)},${ch(style.blue)})`;
+    c.beginPath();
+    if (style.kind === 'Ellipse') c.ellipse(r.width / 2, r.height / 2, r.width / 2, r.height / 2, 0, 0, Math.PI * 2);
+    else c.roundRect(0, 0, r.width, r.height, Math.min(Number(style.cornerRadius) || 0, r.width / 2, r.height / 2));
+    c.fill();
+    return r;
+  }
+
+  createShape(rect: Rect): void {
+    const r = integral(rect);
+    if (r.w < 1 || r.h < 1 || !this.current) return;
+    const st = this.shapeSettings;
+    const kind = st.kind === 'ellipse' ? 'Ellipse' : 'Rectangle';
+    const style = { kind, red: this.fg.r / 255, green: this.fg.g / 255, blue: this.fg.b / 255, cornerRadius: st.kind === 'rectangle' ? st.cornerRadius : 0 };
+    this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
   setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void {

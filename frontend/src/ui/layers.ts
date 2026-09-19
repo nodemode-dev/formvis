@@ -270,7 +270,9 @@ export class LayersPanel {
     rows.addEventListener('dblclick', (e) => {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('.cv-layer');
-      if (row?.dataset.id && t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
+      if (!row?.dataset.id) return;
+      if (t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
+      else if (row.classList.contains('is-adjust')) row.dispatchEvent(new CustomEvent('cv:edit-adjustment', { bubbles: true, detail: row.dataset.id }));
     });
     this.list.addEventListener('contextmenu', (e) => {
       e.preventDefault();

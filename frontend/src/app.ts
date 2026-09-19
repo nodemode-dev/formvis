@@ -1,4 +1,4 @@
-import { Engine, toBlob, type ImportedImage, type Pt } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt } from './engine';
 import { toolForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -6,6 +6,9 @@ import { api, type Capabilities, type OpenedProject } from './io/api';
 import { IMAGE_ACCEPT, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { deserialize, serialize } from './io/project-io';
 import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
+import { AdjustPanel } from './ui/panels/adjust-panel';
+import { FILTER_LABELS, FilterPanel, type FilterKind } from './ui/panels/filter-panel';
+import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
 import { Commands } from './ui/commands';
 import { anyDialogOpen, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
@@ -266,6 +269,11 @@ export function startApp(): void {
     settings: new SettingsDialog(),
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
+    adjust: new AdjustPanel(engine),
+    filter: new FilterPanel(engine),
+    canvasSize: new CanvasSizeDialog(engine),
+    imageSize: new ImageSizeDialog(engine),
+    amount: new AmountDialog(engine),
   };
 
   const has = (): boolean => !!engine.current;
@@ -332,12 +340,73 @@ export function startApp(): void {
     { id: 'about', label: 'About sonny', run: () => dialogs.about.show(caps) },
   );
 
+  function writeClipboard(): void {
+    const cb = engine.clipboard;
+    if (!cb || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return;
+    try {
+      const item = new ClipboardItem({ 'image/png': toBlob(cb.surface), 'text/plain': new Blob([`sonny:${cb.stamp}`], { type: 'text/plain' }) });
+      void navigator.clipboard.write([item]).catch(() => undefined);
+    } catch { return; }
+  }
+
+  async function pasteExternal(file: File): Promise<void> {
+    await engine.task(async () => {
+      try {
+        const img = await decodeImage(file, file.name || 'Pasted.png');
+        if (!engine.current) engine.insertImages([img]);
+        else engine.insertRasterLayer(Raster.from(img.source, img.width, img.height), stripExt(img.name), null, null);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
+  async function pasteFromMenu(): Promise<void> {
+    try {
+      for (const item of await navigator.clipboard.read()) {
+        if (item.types.includes('text/plain') && engine.clipboard) {
+          const text = await (await item.getType('text/plain')).text();
+          if (text === `sonny:${engine.clipboard.stamp}`) { engine.pasteClipboard(); return; }
+        }
+        const type = item.types.find((t) => t.startsWith('image/'));
+        if (type) { await pasteExternal(new File([await item.getType(type)], 'Pasted.png', { type })); return; }
+      }
+    } catch {
+      if (!engine.pasteClipboard()) toast('Nothing to paste. Use the keyboard shortcut to paste from other apps.');
+      return;
+    }
+    if (!engine.pasteClipboard()) toast('Nothing to paste.');
+  }
+
+  const hasTargetPixels = (): boolean => {
+    const p = engine.current, l = p?.activeLayer;
+    if (!p || !l || l.isGroup || l.adjustment) return false;
+    return p.maskTarget && l.mask ? !!l.mask.raster : !!l.raster;
+  };
+  const ADJUST_KEYS: Partial<Record<string, string[]>> = { curves: ['Mod+M'], levels: ['Mod+L'], hsv: ['Mod+U'] };
+  const FILTERS: FilterKind[] = ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection'];
+
+  commands.add(
+    { id: 'cut', label: 'Cut', keys: ['Mod+X'], enabled: () => pixel() && selected(), run: () => { engine.cutSelection(); writeClipboard(); } },
+    { id: 'copy', label: 'Copy', keys: ['Mod+C'], enabled: pixel, run: () => { if (engine.copySelection(false)) writeClipboard(); } },
+    { id: 'copy-merged', label: 'Copy Merged', keys: ['Shift+Mod+C'], enabled: has, run: () => { if (engine.copySelection(true)) writeClipboard(); } },
+    { id: 'paste', label: 'Paste', keys: ['Mod+V'], run: () => void pasteFromMenu() },
+    { id: 'mask-black', label: "Mask's Black Areas", enabled: () => !!layer()?.mask, run: () => engine.selectMaskBlack() },
+    { id: 'expand', label: () => `Expand by ${engine.selectionAmounts.expand} px...`, enabled: selected, run: () => dialogs.amount.show(true) },
+    { id: 'contract', label: () => `Contract by ${engine.selectionAmounts.contract} px...`, enabled: selected, run: () => dialogs.amount.show(false) },
+    ...ADJUSTMENT_KINDS.map((kind) => ({ id: `adj-${kind}`, label: `${ADJUSTMENT_LABELS[kind]}...`, keys: ADJUST_KEYS[kind], enabled: hasTargetPixels, run: () => dialogs.adjust.openForImage(kind) })),
+    ...ADJUSTMENT_KINDS.map((kind) => ({ id: `new-adj-${kind}`, label: `New ${ADJUSTMENT_LABELS[kind]} Layer...`, enabled: has, run: () => { const id = engine.addAdjustmentLayer(kind); if (id) dialogs.adjust.openForLayer(id); } })),
+    { id: 'edit-adjustment', label: 'Edit Adjustment...', enabled: () => !!layer()?.adjustment, run: () => { const l = layer(); if (l?.adjustment) dialogs.adjust.openForLayer(l.id); } },
+    { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
+    { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
+    ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
+  );
+
   const menus: MenuDef[] = [
     { label: 'File', items: ['new', 'open', 'import', '-', 'save', 'save-as', 'download-project', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
-    { label: 'Edit', items: ['undo', 'redo', '-', 'fill-fg', 'fill-bg', 'clear', '-', 'settings'] },
-    { label: 'Image', items: ['invert', '-', 'remove-bg', 'remove-bg-lite', '-', 'flip-canvas-h', 'flip-canvas-v'] },
-    { label: 'Layer', items: ['new-layer', 'new-folder', 'duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
-    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels'] },
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', '-', 'settings'] },
+    { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'image-size', '-', 'flip-canvas-h', 'flip-canvas-v'] },
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract'] },
+    { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
     { label: 'Help', items: ['shortcuts', 'about'] },
   ];
@@ -370,6 +439,10 @@ export function startApp(): void {
   root.addEventListener('click', (e) => {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-cmd]');
     if (b && root.contains(b) && !b.disabled) commands.run(b.dataset.cmd ?? '');
+  });
+  root.addEventListener('cv:edit-adjustment', (e) => {
+    const id = (e as CustomEvent<string>).detail;
+    if (typeof id === 'string') dialogs.adjust.openForLayer(id);
   });
 
   const resizer = q(root, '.cv-resizer');
@@ -408,6 +481,7 @@ export function startApp(): void {
     if (e.code === 'Space' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); if (!e.repeat) stage.setSpace(true); return; }
     if (stage.toolKeydown(e)) { e.preventDefault(); return; }
     const cmd = commands.forEvent(e);
+    if (cmd?.id === 'paste') return;
     if (cmd) {
       e.preventDefault();
       if (!e.repeat || /^(undo|redo|zoom-in|zoom-out)$/.test(cmd.id)) commands.run(cmd.id);
@@ -433,8 +507,11 @@ export function startApp(): void {
     const target = e.target as HTMLElement | null;
     if (anyDialogOpen() || target?.closest('input, textarea, [contenteditable="true"]')) return;
     const files = Array.from(e.clipboardData?.files ?? []).filter(isImageFile);
+    const marker = e.clipboardData?.getData('text/plain') ?? '';
+    if (engine.clipboard && (marker === `sonny:${engine.clipboard.stamp}` || !files.length)) { e.preventDefault(); engine.pasteClipboard(); return; }
     if (!files.length) return;
     e.preventDefault();
+    if (files.length === 1) { void pasteExternal(files[0]); return; }
     void importFiles(files.map((f, i) => (f.name ? f : new File([f], `Pasted ${i + 1}.png`, { type: f.type }))));
   });
 
