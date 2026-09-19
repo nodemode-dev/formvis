@@ -33,8 +33,8 @@ export class Rail {
     this.bg = q<HTMLButtonElement>(colors, '.cv-swatch-bg');
     this.fgInput = q<HTMLInputElement>(colors, '.cv-fg-input');
     this.bgInput = q<HTMLInputElement>(colors, '.cv-bg-input');
-    this.fg.addEventListener('click', () => this.fgInput.click());
-    this.bg.addEventListener('click', () => this.bgInput.click());
+    this.fg.addEventListener('click', () => this.fg.dispatchEvent(new CustomEvent('cv-pick-color', { bubbles: true, detail: 'fg' })));
+    this.bg.addEventListener('click', () => this.bg.dispatchEvent(new CustomEvent('cv-pick-color', { bubbles: true, detail: 'bg' })));
     this.fgInput.addEventListener('input', () => engine.setColors(parseHex(this.fgInput.value)));
     this.bgInput.addEventListener('input', () => engine.setColors(undefined, parseHex(this.bgInput.value)));
     q(colors, '.cv-swap').addEventListener('click', () => engine.swapColors());

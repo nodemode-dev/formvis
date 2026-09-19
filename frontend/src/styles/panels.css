@@ -59,3 +59,8 @@
 
 .cv-toast { max-width: 380px; padding: var(--space-2) var(--space-3); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); color: var(--text-primary); font-size: var(--fs-12); pointer-events: auto; }
 .cv-toast.is-error { border-color: var(--danger-fill); color: var(--danger-text); }
+
+.cv-pick { display: flex; gap: var(--space-3); align-items: flex-start; }
+.cv-pick-field, .cv-pick-strip { border-radius: var(--radius-sm); cursor: crosshair; touch-action: none; }
+.cv-pick-side { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
+.cv-pick-swatch { border-radius: var(--radius-sm); border: 1px solid var(--border-light); }

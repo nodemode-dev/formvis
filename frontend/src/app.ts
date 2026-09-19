@@ -11,6 +11,7 @@ import { FILTER_LABELS, FilterPanel, type FilterKind } from './ui/panels/filter-
 import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
 import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel } from './ui/panels/background-panel';
+import { ColorPickerDialog } from './ui/panels/color-picker';
 import { Commands } from './ui/commands';
 import { anyDialogOpen, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
@@ -272,6 +273,7 @@ export function startApp(): void {
     newCanvas: new NewCanvasDialog(engine),
     jpeg: new JpegDialog(engine),
     background: new BackgroundPanel(engine),
+    color: new ColorPickerDialog(engine),
     open: new OpenDialog({ openLibrary, openFiles, openFolder }),
     settings: new SettingsDialog(),
     shortcuts: new ShortcutsDialog(commands),
