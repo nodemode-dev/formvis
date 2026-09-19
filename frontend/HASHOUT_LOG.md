@@ -397,6 +397,10 @@ Move drags snap through `snapMove`: the moving box's edges and center go to the 
     const u = unionRect({ x: t.x, y: t.y, w: t.w, h: t.h }, { x: 0, y: 0, w: W, h: H });
 ```
 
+### src/engine/index.ts · sampleOriginal · _v0.7.0
+
+Returns the unpremultiplied RGB of the original pixel under a document point from the source the Levels histogram reads: the target layer's pixels, or its mask's when the mask is targeted (mirroring `targetImage`), or the flattened document for an adjustment layer. Nothing was removed.
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -678,6 +682,10 @@ Created in _v0.1.0.
 
 Panel section, slider, histogram, curves and anchor-grid styles, with fixed canvas sizes so opening a panel never shifts layout. `.cv-dialog [hidden]` makes the hidden attribute win inside dialogs: a screenshot showed both Hue sliders at once because `.cv-field` sets `display: grid`.
 
+### src/styles/dialogs.css · click-through scrim · _v0.7.0
+
+`.cv-scrim-through` makes a dialog's scrim transparent and lets clicks reach the canvas while the dialog stays interactive, for eyedroppers. The rule is written as `#overlay-root > .cv-scrim.cv-scrim-through` because `#overlay-root > *` in `shell.css` sets `pointer-events: auto` and an ID selector outranks classes; without it a sampling click lands on the scrim, which closes the dialog. Nothing was removed.
+
 ## src/styles/fonts.css
 
 ### src/styles/fonts.css · vendored Inter and JetBrains Mono · _v0.1.0
@@ -830,6 +838,14 @@ Panel for all six adjustments. Layer mode edits live inside one undo step (`begi
 
 ```ts
     node.append(channel.el, canvas, black.el, gamma.el, white.el, outB.el, outW.el);
+```
+
+### src/ui/panels/adjust-panel.ts · Levels eyedroppers · _v0.7.0
+
+A Sample choice (Off, Black point, Gray point, White point) under Auto turns an eyedropper on: `startSampling` makes the scrim click-through and takes stage clicks in a capture-phase listener before any tool sees them, and `applySample` ports the reference app's `LevelsSettings.sampling` (all three channels calibrated together, the master range reset, the gray point setting each channel's gamma). A `close` override ends sampling whichever way the panel closes. Removed:
+
+```ts
+    node.append(channel.el, canvas, auto.el, black.el, gamma.el, white.el, outB.el, outW.el);
 ```
 
 ## src/ui/panels/controls.ts
