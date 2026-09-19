@@ -10,6 +10,7 @@ import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind } from './ui/panels/filter-panel';
 import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
 import { JpegDialog } from './ui/panels/jpeg-dialog';
+import { BackgroundPanel } from './ui/panels/background-panel';
 import { Commands } from './ui/commands';
 import { anyDialogOpen, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
@@ -231,9 +232,9 @@ export function startApp(): void {
       try {
         const { mask, method: used } = await api.removeBackground(await toBlob(raster.canvas), method);
         const bitmap = await createImageBitmap(mask);
-        engine.setMaskFromImage(l.id, bitmap, raster.width, raster.height, 'Remove Background');
-        bitmap.close();
-        toast(`Background removed with the ${used === 'ml' ? 'ML' : 'lightweight'} engine. The result is a layer mask you can refine.`);
+        if (engine.activeLayer?.id !== l.id) { bitmap.close(); return; }
+        dialogs.background.show(l.id, bitmap);
+        toast(`Subject found with the ${used === 'ml' ? 'ML' : 'lightweight'} engine.`);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -270,6 +271,7 @@ export function startApp(): void {
   const dialogs = {
     newCanvas: new NewCanvasDialog(engine),
     jpeg: new JpegDialog(engine),
+    background: new BackgroundPanel(engine),
     open: new OpenDialog({ openLibrary, openFiles, openFolder }),
     settings: new SettingsDialog(),
     shortcuts: new ShortcutsDialog(commands),

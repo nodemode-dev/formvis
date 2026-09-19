@@ -27,6 +27,7 @@ src/
         history.ts  · undo stack
         index.ts  · Engine API
         kernels.ts  · adjustment and wand kernels
+        matte.ts  · Remove Background matte refining: guided filter, shift edge, contrast
         project.ts  · per-tab project record
         retouch.ts  · Spot Healing, Content-Aware Fill, Smudge and Liquify
         selection.ts  · selection masks, outline tracer
@@ -82,6 +83,7 @@ src/
         palette.ts  · stage colors from tokens
         panels/
             adjust-panel.ts  · adjustment editing panel, layer and image modes
+            background-panel.ts  · Remove Background panel: Basic, Advanced refine, preview
             controls.ts  · slider, select, check, color and number rows
             filter-panel.ts  · filter dialog with scaled preview
             jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
@@ -116,6 +118,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/history.ts](#srcenginehistoryts)
 - [src/engine/index.ts](#srcengineindexts)
 - [src/engine/kernels.ts](#srcenginekernelsts)
+- [src/engine/matte.ts](#srcenginemattets)
 - [src/engine/project.ts](#srcengineprojectts)
 - [src/engine/retouch.ts](#srcengineretouchts)
 - [src/engine/selection.ts](#srcengineselectionts)
@@ -165,6 +168,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/options.ts](#srcuioptionsts)
 - [src/ui/palette.ts](#srcuipalettets)
 - [src/ui/panels/adjust-panel.ts](#srcuipanelsadjust-panelts)
+- [src/ui/panels/background-panel.ts](#srcuipanelsbackground-panelts)
 - [src/ui/panels/controls.ts](#srcuipanelscontrolsts)
 - [src/ui/panels/filter-panel.ts](#srcuipanelsfilter-panelts)
 - [src/ui/panels/jpeg-dialog.ts](#srcuipanelsjpeg-dialogts)
@@ -280,6 +284,16 @@ Export JPEG... settles, then opens `JpegDialog`, whose chosen quality `exportIma
 
 ```ts
         const blob = await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg');
+```
+
+### src/app.ts · startApp · removeBackground opens the panel · _v0.9.0
+
+The engine's mask now opens `BackgroundPanel` instead of being applied at once, and the toast names the engine that found the subject. Removed:
+
+```ts
+        engine.setMaskFromImage(l.id, bitmap, raster.width, raster.height, 'Remove Background');
+        bitmap.close();
+        toast(`Background removed with the ${used === 'ml' ? 'ML' : 'lightweight'} engine. The result is a layer mask you can refine.`);
 ```
 
 ## src/engine/adjust.ts
@@ -405,6 +419,10 @@ Move drags snap through `snapMove`: the moving box's edges and center go to the 
 
 Returns the unpremultiplied RGB of the original pixel under a document point from the source the Levels histogram reads: the target layer's pixels, or its mask's when the mask is targeted (mirroring `targetImage`), or the flattened document for an adjustment layer. Nothing was removed.
 
+### src/engine/index.ts · applySubjectMask · _v0.9.0
+
+Lays a refined subject mask on a layer as one Remove Background step, stored as sonny masks are (white with the level in alpha), multiplied into an existing same-size unplaced mask as the reference app's `subjectMask` does. Nothing was removed; `setMaskFromImage` stays for other callers.
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -418,6 +436,12 @@ Kernels take an optional context with the region's document origin and scale, wh
 ```ts
 export type Kernel = (data: Uint8ClampedArray) => void;
 ```
+
+## src/engine/matte.ts
+
+### src/engine/matte.ts · refineMatte, guidedFilter, boxMean, levelsOf · _v0.9.0
+
+Ported from the reference app's `SubjectRemoval.refined` and `GuidedMatte`. `boxMean` is the running-sum box mean with edge clamping; `guidedFilter` is He, Sun and Tang's filter with epsilon 1e-4; `refineMatte` applies the reference app's order (Refine, then Shift Edge as a clamped Gaussian of half the reach cut hard at 0.25 or 0.75, then Contrast as a stretch about middle gray) with radii in layer pixels scaled for previews, and returns the mask unchanged for Basic; `levelsOf` reads a mask's gray or a guide's luminance over black. Checked against an independent NumPy port to 6.3e-5.
 
 ## src/engine/project.ts
 
@@ -915,6 +939,12 @@ Removed, the Hue/Saturation rows:
 ```ts
 import { el, setHidden } from '../dom';
 ```
+
+## src/ui/panels/background-panel.ts
+
+### src/ui/panels/background-panel.ts · BackgroundPanel · _v0.9.0
+
+the reference app's Remove Background panel: Quality (Basic or Advanced) and, for Advanced, Refine (0 to 40 px, default 12), Contrast (0 to 100 percent, default 25) and Shift Edge (-10 to 10 px). It owns the model's raw mask bitmap while open, targets the layer's pixels, previews the layer with its background hidden through `previewImageEdit` (coalesced to one per frame), and on OK refines at full size and calls `applySubjectMask`. Cancel always clears the preview; settings carry over between uses.
 
 ## src/ui/panels/controls.ts
 

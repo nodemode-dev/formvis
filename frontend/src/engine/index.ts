@@ -2053,6 +2053,25 @@ export class Engine {
     return px[3] ? [px[0] / 255, px[1] / 255, px[2] / 255] : null;
   }
 
+  /** Lays a subject mask (0 to 1 per layer pixel, 1 over the subject) on a layer as one Remove Background step. An
+   *  existing mask of the same size is kept too, multiplied in: what either hides stays hidden (the reference app's
+   *  `subjectMask`). The pixels themselves stay, so the background can be painted back. */
+  applySubjectMask(id: ID, levels: Float32Array, width: number, height: number): void {
+    this.edit('Remove Background', (p) => {
+      const l = p.layer(id);
+      if (!l || l.isGroup || !l.raster || levels.length !== width * height) return false;
+      const m = l.mask?.raster, old = m && !l.mask?.placement && m.width === width && m.height === height ? m.read().data : null;
+      const r = new Raster(width, height), img = r.read(), d = img.data;
+      for (let i = 0, j = 0; i < levels.length; i++, j += 4) {
+        d[j] = 255; d[j + 1] = 255; d[j + 2] = 255;
+        d[j + 3] = Math.round(Math.min(1, Math.max(0, levels[i])) * (old ? old[j + 3] : 255));
+      }
+      r.write(img);
+      p.updateLayer(id, { mask: { raster: r, enabled: true, linked: true, placement: null } });
+      return true;
+    });
+  }
+
   setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void {
     this.edit(name, (p) => {
       const l = p.layer(id);
