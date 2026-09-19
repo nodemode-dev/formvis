@@ -191,6 +191,29 @@ export class Stage {
     }
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.tool()?.overlay?.(this.ctx, g);
+    const ring = this.engine.sampleRing;
+    if (ring) {
+      const cx = v.panX + ring.at.x * v.zoom, cy = v.panY + ring.at.y * v.zoom, r = 43;
+      g.save();
+      g.lineWidth = 24;
+      g.strokeStyle = 'rgb(115, 115, 115)';
+      g.beginPath();
+      g.arc(cx, cy, r, 0, Math.PI * 2);
+      g.stroke();
+      g.lineWidth = 16;
+      for (const [c, top] of [[ring.sampled, true], [ring.original, false]] as const) {
+        g.save();
+        g.beginPath();
+        g.rect(cx - 58, top ? cy - 58 : cy, 116, 58);
+        g.clip();
+        g.strokeStyle = `rgb(${c.r}, ${c.g}, ${c.b})`;
+        g.beginPath();
+        g.arc(cx, cy, r, 0, Math.PI * 2);
+        g.stroke();
+        g.restore();
+      }
+      g.restore();
+    }
   }
 
   private syncAnts(): void {

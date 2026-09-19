@@ -2072,6 +2072,17 @@ export class Engine {
     });
   }
 
+  /** the reference app's sample ring: while a drag samples the canvas, the new color shows on the ring's top half and the
+   *  color before the drag on its bottom half. `showsSampleRing` is the Eyedropper's Sample Ring option. */
+  showsSampleRing = true;
+  sampleRing: { at: Pt; sampled: RGB; original: RGB } | null = null;
+
+  setSampleRing(ring: { at: Pt; sampled: RGB; original: RGB } | null): void {
+    if (!ring && !this.sampleRing) return;
+    this.sampleRing = ring && this.showsSampleRing ? ring : null;
+    this.emit('overlay', null);
+  }
+
   setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void {
     this.edit(name, (p) => {
       const l = p.layer(id);

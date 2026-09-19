@@ -37,6 +37,7 @@ export class ColorPickerDialog extends Dialog {
   private hsv: HSV = { h: 0, s: 0, v: 0 };
   private current: RGB = { r: 0, g: 0, b: 0 };
   private sampler: ((e: PointerEvent) => void) | null = null;
+  private sampleDrag: { move: (e: PointerEvent) => void; up: (e: PointerEvent) => void } | null = null;
   private readonly sbField = el<HTMLCanvasElement>(`<canvas class="cv-pick-field" width="${FIELD}" height="${FIELD}" aria-label="Saturation and brightness"></canvas>`);
   private readonly strip = el<HTMLCanvasElement>(`<canvas class="cv-pick-strip" width="${STRIP}" height="${FIELD}" aria-label="Hue"></canvas>`);
   private readonly swatch = el<HTMLCanvasElement>('<canvas class="cv-pick-swatch" width="56" height="56" aria-label="New color above, current below"></canvas>');
@@ -76,9 +77,22 @@ export class ColorPickerDialog extends Dialog {
       if (e.button !== 0 || !stage || e.target !== stage || !p) return;
       e.preventDefault();
       e.stopPropagation();
-      const b = stage.getBoundingClientRect(), v = p.viewport;
-      const rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, true);
-      if (rgb) this.setRgb({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) });
+      this.endSampleDrag();
+      const original = this.rgb();
+      const at = (ev: PointerEvent): void => {
+        const b = stage.getBoundingClientRect(), v = p.viewport, pt = { x: (ev.clientX - b.left - v.panX) / v.zoom, y: (ev.clientY - b.top - v.panY) / v.zoom };
+        const rgb = this.engine.sampleOriginal(pt, true);
+        if (!rgb) return;
+        const c = { r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) };
+        this.setRgb(c);
+        this.engine.setSampleRing({ at: pt, sampled: c, original });
+      };
+      const move = (ev: PointerEvent): void => { ev.preventDefault(); ev.stopPropagation(); at(ev); };
+      const up = (ev: PointerEvent): void => { ev.stopPropagation(); this.endSampleDrag(); };
+      window.addEventListener('pointermove', move, true);
+      window.addEventListener('pointerup', up, true);
+      this.sampleDrag = { move, up };
+      at(e);
     };
     window.addEventListener('pointerdown', sampler, true);
     this.sampler = sampler;
@@ -87,8 +101,18 @@ export class ColorPickerDialog extends Dialog {
   close(): void {
     if (this.sampler) window.removeEventListener('pointerdown', this.sampler, true);
     this.sampler = null;
+    this.endSampleDrag();
     this.scrim.classList.remove('cv-scrim-through');
     super.close();
+  }
+
+  private endSampleDrag(): void {
+    const d = this.sampleDrag;
+    if (!d) return;
+    window.removeEventListener('pointermove', d.move, true);
+    window.removeEventListener('pointerup', d.up, true);
+    this.sampleDrag = null;
+    this.engine.setSampleRing(null);
   }
 
   private rgb(): RGB { return toRgb(this.hsv); }
