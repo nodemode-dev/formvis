@@ -71,8 +71,8 @@ export class OptionsBar {
         sync.push(() => setText(out, spec.get()));
         node.appendChild(n);
       } else {
-        const n = el<HTMLButtonElement>(`<button class="cv-btn cv-btn-ghost" type="button">${spec.icon ? icon(spec.icon, 14) : ''}<span></span></button>`);
-        setText(q(n, 'span'), spec.label);
+        const n = el<HTMLButtonElement>(`<button class="cv-btn cv-btn-ghost" type="button">${spec.icon ? icon(spec.icon, 14) : ''}<span class="cv-btn-label"></span></button>`);
+        setText(q(n, '.cv-btn-label'), spec.label);
         n.addEventListener('click', () => spec.run());
         node.appendChild(n);
       }
