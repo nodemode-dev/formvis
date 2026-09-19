@@ -2028,6 +2028,31 @@ export class Engine {
     this.refresh();
   }
 
+  /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, from the source the Levels histogram
+   *  reads: the target layer's own pixels (or its mask's, when the mask is targeted), or with `composite` the flattened
+   *  document. the reference app's Levels eyedroppers sample the edit's original image the same way. */
+  sampleOriginal(pt: Pt, composite: boolean): [number, number, number] | null {
+    const p = this.current;
+    if (!p) return null;
+    let px: Uint8ClampedArray;
+    if (composite) {
+      const flat = this.flattened(), x = Math.floor(pt.x), y = Math.floor(pt.y);
+      if (!flat || x < 0 || y < 0 || x >= flat.width || y >= flat.height) return null;
+      px = ctxOf(flat).getImageData(x, y, 1, 1).data;
+    } else {
+      const l = p.activeLayer;
+      if (!l || !this.paintable(l)) return null;
+      const onMask = p.maskTarget && !!l.mask;
+      const r = onMask ? l.mask?.raster ?? null : l.raster;
+      if (!r) return null;
+      const t = onMask ? l.mask?.placement ?? l.transform : l.transform;
+      const q = applyMat(invert(placement(t, r.width, r.height)), pt.x, pt.y), x = Math.floor(q.x), y = Math.floor(q.y);
+      if (x < 0 || y < 0 || x >= r.width || y >= r.height) return null;
+      px = r.ctx.getImageData(x, y, 1, 1).data;
+    }
+    return px[3] ? [px[0] / 255, px[1] / 255, px[2] / 255] : null;
+  }
+
   setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void {
     this.edit(name, (p) => {
       const l = p.layer(id);

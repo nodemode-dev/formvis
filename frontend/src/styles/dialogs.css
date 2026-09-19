@@ -1,5 +1,7 @@
 .cv-scrim { position: fixed; inset: 0; z-index: var(--z-modal); display: flex; align-items: center; justify-content: center; background: var(--bg-scrim); }
 .cv-scrim[hidden] { display: none; }
+#overlay-root > .cv-scrim.cv-scrim-through { pointer-events: none; background: transparent; }
+.cv-scrim.cv-scrim-through .cv-dialog { pointer-events: auto; }
 .cv-dialog { width: min(var(--cv-dialog-w, 440px), calc(100vw - 48px)); max-height: calc(100vh - 64px); display: grid; grid-template-rows: auto minmax(0, 1fr) auto; background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-lg); box-shadow: var(--shadow-window); }
 .cv-dialog-head { display: grid; grid-template-columns: 1fr auto; align-items: center; height: 44px; padding: 0 var(--space-2) 0 var(--space-4); border-bottom: 1px solid var(--border-color); }
 .cv-dialog-title { font-size: var(--fs-14); font-weight: 600; color: var(--text-primary); }

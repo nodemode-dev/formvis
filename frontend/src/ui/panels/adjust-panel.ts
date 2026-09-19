@@ -140,6 +140,66 @@ export class AdjustPanel extends Dialog {
     this.sections.get(this.kind)?.sync();
   }
 
+  private sampleMode: 'black' | 'gray' | 'white' | null = null;
+  private sampleHandler: ((e: PointerEvent) => void) | null = null;
+  private sampleRow: { set: (v: string) => void } | null = null;
+
+  close(): void {
+    this.stopSampling();
+    super.close();
+  }
+
+  /** The Levels eyedroppers: while a mode is on, the scrim lets clicks through and a click on the canvas samples the
+   *  original pixel there, before any tool sees the click. */
+  private startSampling(mode: string): void {
+    this.stopSampling();
+    if (mode !== 'black' && mode !== 'gray' && mode !== 'white') return;
+    this.sampleMode = mode;
+    this.sampleRow?.set(mode);
+    this.scrim.classList.add('cv-scrim-through');
+    const handler = (e: PointerEvent): void => {
+      const stage = document.querySelector('.cv-overlay-canvas'), p = this.engine.current, m = this.sampleMode;
+      if (e.button !== 0 || !stage || e.target !== stage || !p || !m) return;
+      e.preventDefault();
+      e.stopPropagation();
+      const b = stage.getBoundingClientRect(), v = p.viewport;
+      const rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, this.mode !== 'image');
+      if (rgb) this.applySample(rgb, m);
+    };
+    window.addEventListener('pointerdown', handler, true);
+    this.sampleHandler = handler;
+  }
+
+  private stopSampling(): void {
+    if (this.sampleHandler) window.removeEventListener('pointerdown', this.sampleHandler, true);
+    this.sampleHandler = null;
+    this.sampleMode = null;
+    this.scrim.classList.remove('cv-scrim-through');
+    this.sampleRow?.set('');
+  }
+
+  /** the reference app's `LevelsSettings.sampling`: all three channels are calibrated together from the sampled color and
+   *  the master range resets; the gray point sets each channel's gamma so the sample maps to middle gray. */
+  private applySample(rgb: [number, number, number], mode: 'black' | 'gray' | 'white'): void {
+    const lv = this.data.levels as { channel: string; ranges: Array<Record<string, number>> };
+    lv.ranges[0] = { black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 };
+    for (let c = 1; c <= 3; c++) {
+      const r = { ...lv.ranges[c] }, v = rgb[c - 1] * 255;
+      if (mode === 'black') r.black = Math.min(r.white - 1, Math.max(0, v));
+      else if (mode === 'white') r.white = Math.max(r.black + 1, Math.min(255, v));
+      else {
+        const f = (v - r.black) / (r.white - r.black);
+        if (!(f > 0 && f < 1)) continue;
+        r.gamma = Math.min(9.99, Math.max(0.1, Math.log(f) / Math.log(0.5)));
+      }
+      r.outputBlack = 0;
+      r.outputWhite = 255;
+      lv.ranges[c] = r;
+    }
+    this.sections.get('levels')?.sync();
+    this.changed();
+  }
+
   private computeHistogram(): Float64Array | null {
     const info = this.mode === 'image' ? this.engine.targetImage() : null;
     if (info) return histogram(info.image);
@@ -229,7 +289,9 @@ export class AdjustPanel extends Dialog {
       this.drawHisto(ch);
       this.changed();
     });
-    node.append(channel.el, canvas, auto.el, black.el, gamma.el, white.el, outB.el, outW.el);
+    const sample = selectRow('Sample', [['', 'Off'], ['black', 'Black point'], ['gray', 'Gray point'], ['white', 'White point']], (v) => { if (v) this.startSampling(v); else this.stopSampling(); });
+    this.sampleRow = sample;
+    node.append(channel.el, canvas, auto.el, sample.el, black.el, gamma.el, white.el, outB.el, outW.el);
     this.histo = canvas;
     const values = (): void => { const x = r(); black.set(x.black); gamma.set(x.gamma); white.set(x.white); outB.set(x.outputBlack); outW.set(x.outputWhite); };
     return { node, sync: () => { ch = Math.max(0, CHANNELS.indexOf(lv().channel)); channel.set(CHANNELS[ch]); values(); this.drawHisto(ch); } };
