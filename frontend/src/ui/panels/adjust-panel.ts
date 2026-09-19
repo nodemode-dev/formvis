@@ -3,8 +3,9 @@ import {
   gradientMapKernel, hexOf, histogram, hsvFromData, hsvKernel, hsvToData, levelsKernel, randomSeed,
   type AdjustmentKind, type ColorRange, type Engine, type HsvSettings, type ID, type Kernel,
 } from '../../engine';
+import { bandCentered, bandExclude, bandHandles, bandInclude, bandSetHandle, bandWeight, hsvAdjust, hueResponse } from '../../engine/adjust';
 import { Dialog } from '../dialogs';
-import { el, setHidden } from '../dom';
+import { el, setHidden, setText } from '../dom';
 import { toast } from '../toast';
 import { checkRow, colorRow, selectRow, sliderRow } from './controls';
 
@@ -140,22 +141,24 @@ export class AdjustPanel extends Dialog {
     this.sections.get(this.kind)?.sync();
   }
 
-  private sampleMode: 'black' | 'gray' | 'white' | null = null;
+  private sampleMode: string | null = null;
   private sampleHandler: ((e: PointerEvent) => void) | null = null;
-  private sampleRow: { set: (v: string) => void } | null = null;
+  private readonly sampleResets: Array<(mode: string | null) => void> = [];
+  private targetDrag: { move: (e: PointerEvent) => void; up: (e: PointerEvent) => void } | null = null;
 
   close(): void {
     this.stopSampling();
     super.close();
   }
 
-  /** The Levels eyedroppers: while a mode is on, the scrim lets clicks through and a click on the canvas samples the
-   *  original pixel there, before any tool sees the click. */
+  /** Canvas sampling for the eyedroppers and the targeted adjustment: while a mode is on, the scrim lets clicks
+   *  through and a capture-phase listener takes clicks on the stage before any tool sees them. Levels modes are black,
+   *  gray and white; Hue/Saturation's are hue-replace, hue-add, hue-remove and target. */
   private startSampling(mode: string): void {
-    this.stopSampling();
-    if (mode !== 'black' && mode !== 'gray' && mode !== 'white') return;
+    this.stopSampling(false);
+    if (!['black', 'gray', 'white', 'hue-replace', 'hue-add', 'hue-remove', 'target'].includes(mode)) { this.sampleResets.forEach((r) => r(null)); return; }
     this.sampleMode = mode;
-    this.sampleRow?.set(mode);
+    this.sampleResets.forEach((r) => r(mode));
     this.scrim.classList.add('cv-scrim-through');
     const handler = (e: PointerEvent): void => {
       const stage = document.querySelector('.cv-overlay-canvas'), p = this.engine.current, m = this.sampleMode;
@@ -163,19 +166,86 @@ export class AdjustPanel extends Dialog {
       e.preventDefault();
       e.stopPropagation();
       const b = stage.getBoundingClientRect(), v = p.viewport;
-      const rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, this.mode !== 'image');
-      if (rgb) this.applySample(rgb, m);
+      const pt = { x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom };
+      if (m === 'black' || m === 'gray' || m === 'white') {
+        const rgb = this.engine.sampleOriginal(pt, this.mode !== 'image');
+        if (rgb) this.applySample(rgb, m);
+      } else if (m === 'target') this.beginTarget(pt, e.clientX);
+      else this.sampleHue(pt, m);
     };
     window.addEventListener('pointerdown', handler, true);
     this.sampleHandler = handler;
   }
 
-  private stopSampling(): void {
+  private stopSampling(resetUi = true): void {
     if (this.sampleHandler) window.removeEventListener('pointerdown', this.sampleHandler, true);
+    this.endTarget();
     this.sampleHandler = null;
     this.sampleMode = null;
     this.scrim.classList.remove('cv-scrim-through');
-    this.sampleRow?.set('');
+    if (resetUi) this.sampleResets.forEach((r) => r(null));
+  }
+
+  /** The hue under a document point, from the composite; near-neutral pixels (HSB saturation up to 0.02) have none. */
+  private sampledHue(pt: { x: number; y: number }): number | null {
+    const rgb = this.engine.sampleOriginal(pt, true);
+    if (!rgb) return null;
+    const [r, g, b] = rgb, high = Math.max(r, g, b), d = high - Math.min(r, g, b);
+    if (!(high > 0) || d / high <= 0.02) return null;
+    const h = 60 * (high === r ? (g - b) / d : high === g ? (b - r) / d + 2 : (r - g) / d + 4);
+    return h < 0 ? h + 360 : h;
+  }
+
+  /** the reference app's eyedroppers: re-center, widen or narrow the selected range's band on the sampled hue. */
+  private sampleHue(pt: { x: number; y: number }, mode: string): void {
+    const s = this.hsv;
+    if (s.range === 'Master' || s.colorize) { toast('Choose a color range to sample into.'); return; }
+    const hue = this.sampledHue(pt);
+    if (hue === null) { toast('That color has no hue to sample.'); return; }
+    const b = s.bands[s.range];
+    s.bands[s.range] = mode === 'hue-replace' ? bandCentered(b, hue) : mode === 'hue-add' ? bandInclude(b, hue) : bandExclude(b, hue);
+    this.sections.get('hsv')?.sync();
+    this.changed();
+  }
+
+  /** the reference app's targeted adjustment: the range that most claims the hue under the pointer becomes the selected
+   *  range, and dragging right raises its saturation (its hue with Cmd or Ctrl held) by one unit per two screen pixels. */
+  private beginTarget(pt: { x: number; y: number }, x0: number): void {
+    const s = this.hsv;
+    if (s.colorize) return;
+    const hue = this.sampledHue(pt);
+    if (hue === null) { toast('That color has no hue to adjust.'); return; }
+    let range: ColorRange = 'Reds', best = -1;
+    for (const r of COLOR_RANGES) {
+      if (r === 'Master') continue;
+      const w = bandWeight(s.bands[r], hue);
+      if (w > best) { best = w; range = r; }
+    }
+    s.range = range;
+    const start = { ...(s.adjustments[range] ?? { hue: 0, saturation: 0, lightness: 0 }) };
+    const move = (e: PointerEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      const a = (s.adjustments[range] ??= { hue: 0, saturation: 0, lightness: 0 }), delta = e.clientX - x0;
+      if (e.metaKey || e.ctrlKey) a.hue = Math.min(180, Math.max(-180, start.hue + delta / 2));
+      else a.saturation = Math.min(100, Math.max(-100, start.saturation + delta / 2));
+      this.sections.get('hsv')?.sync();
+      this.changed();
+    };
+    const up = (e: PointerEvent): void => { e.preventDefault(); e.stopPropagation(); this.endTarget(); };
+    window.addEventListener('pointermove', move, true);
+    window.addEventListener('pointerup', up, true);
+    this.targetDrag = { move, up };
+    this.sections.get('hsv')?.sync();
+    this.changed();
+  }
+
+  private endTarget(): void {
+    const t = this.targetDrag;
+    if (!t) return;
+    window.removeEventListener('pointermove', t.move, true);
+    window.removeEventListener('pointerup', t.up, true);
+    this.targetDrag = null;
   }
 
   /** the reference app's `LevelsSettings.sampling`: all three channels are calibrated together from the sampled color and
@@ -290,7 +360,7 @@ export class AdjustPanel extends Dialog {
       this.changed();
     });
     const sample = selectRow('Sample', [['', 'Off'], ['black', 'Black point'], ['gray', 'Gray point'], ['white', 'White point']], (v) => { if (v) this.startSampling(v); else this.stopSampling(); });
-    this.sampleRow = sample;
+    this.sampleResets.push((m) => sample.set(m === 'black' || m === 'gray' || m === 'white' ? m : ''));
     node.append(channel.el, canvas, auto.el, sample.el, black.el, gamma.el, white.el, outB.el, outW.el);
     this.histo = canvas;
     const values = (): void => { const x = r(); black.set(x.black); gamma.set(x.gamma); white.set(x.white); outB.set(x.outputBlack); outW.set(x.outputWhite); };
@@ -369,20 +439,65 @@ export class AdjustPanel extends Dialog {
   private buildHsv(): Section {
     const node = el('<div class="cv-panel-section"></div>');
     const cur = (): { hue: number; saturation: number; lightness: number } => (this.hsv.adjustments[this.hsv.range] ??= { hue: 0, saturation: 0, lightness: 0 });
+    const spectrum = el<HTMLCanvasElement>('<canvas class="cv-hue-spectrum" width="360" height="48" aria-label="Hue band spectrum"></canvas>');
+    const degrees = el('<p class="cv-note"></p>');
+    const hueRgb = (h: number): [number, number, number] => {
+      const f = (n: number): number => { const k = (n + h / 60) % 6; return 1 - Math.max(0, Math.min(k, 4 - k, 1)); };
+      return [f(5), f(3), f(1)];
+    };
+    const drawSpectrum = (): void => {
+      const c = spectrum.getContext('2d');
+      if (!c) return;
+      const s = this.hsv, response = hueResponse(s);
+      c.clearRect(0, 0, 360, 48);
+      for (let h = 0; h < 360; h += 5) {
+        const [r, g, b] = hsvAdjust(...hueRgb(h), s, response), high = Math.max(r, g, b), d = high - Math.min(r, g, b);
+        const shown = d > 0 ? (60 * (high === r ? (g - b) / d : high === g ? (b - r) / d + 2 : (r - g) / d + 4) + 360) % 360 : h;
+        c.fillStyle = `hsl(${h} 100% 50%)`;
+        c.fillRect(h, 0, 5.5, 16);
+        c.fillStyle = `hsl(${shown} 100% 50%)`;
+        c.fillRect(h, 32, 5.5, 16);
+      }
+      const hs = this.hsv.range !== 'Master' && !s.colorize ? bandHandles(s.bands[s.range]) : [];
+      c.fillStyle = cssVar('--text-primary');
+      hs.forEach((d, i) => { if (i === 1 || i === 2) c.fillRect(d - 1, 18, 2, 12); else c.fillRect(d - 3.5, 21.5, 7, 5); });
+      setText(degrees, hs.map((d) => `${Math.round(d)}\u00b0`).join('   '));
+    };
+    const changed = (): void => { drawSpectrum(); this.changed(); };
+    let handle: number | null = null;
+    const degOf = (e: PointerEvent): number => { const r = spectrum.getBoundingClientRect(); return r.width > 0 ? (Math.min(Math.max(0, e.clientX - r.left), r.width) / r.width) * 360 : 0; };
+    const moveHandle = (e: PointerEvent): void => {
+      const s = this.hsv;
+      if (s.range === 'Master' || s.colorize) return;
+      const d = degOf(e);
+      if (handle === null) {
+        const gaps = bandHandles(s.bands[s.range]).map((h) => { const g = Math.abs(h - d) % 360; return Math.min(g, 360 - g); });
+        handle = gaps.indexOf(Math.min(...gaps));
+      }
+      s.bands[s.range] = bandSetHandle(s.bands[s.range], handle, d);
+      changed();
+    };
+    spectrum.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; handle = null; spectrum.setPointerCapture(e.pointerId); moveHandle(e); });
+    spectrum.addEventListener('pointermove', (e) => { if (handle !== null) moveHandle(e); });
+    spectrum.addEventListener('pointerup', () => { handle = null; });
+    spectrum.addEventListener('pointercancel', () => { handle = null; });
     const range = selectRow('Range', COLOR_RANGES.map((r) => [r, r] as const), (v) => { this.hsv.range = v as ColorRange; sync(); this.changed(); });
-    const hue = sliderRow('Hue', -180, 180, 1, (v) => { cur().hue = v; this.changed(); });
-    const hueC = sliderRow('Hue', 0, 360, 1, (v) => { cur().hue = v; this.changed(); });
-    const sat = sliderRow('Saturation', -100, 100, 1, (v) => { cur().saturation = v; this.changed(); });
-    const satC = sliderRow('Saturation', 0, 100, 1, (v) => { cur().saturation = v; this.changed(); });
-    const light = sliderRow('Lightness', -100, 100, 1, (v) => { cur().lightness = v; this.changed(); });
+    const sample = selectRow('Sample', [['', 'Off'], ['replace', 'Sample'], ['add', 'Add'], ['remove', 'Remove']], (v) => { if (v) this.startSampling(`hue-${v}`); else this.stopSampling(); });
+    const target = checkRow('Targeted adjustment', (v) => { if (v) this.startSampling('target'); else this.stopSampling(); });
+    this.sampleResets.push((m) => { sample.set(m?.startsWith('hue-') ? m.slice(4) : ''); target.set(m === 'target'); });
+    const hue = sliderRow('Hue', -180, 180, 1, (v) => { cur().hue = v; changed(); });
+    const hueC = sliderRow('Hue', 0, 360, 1, (v) => { cur().hue = v; changed(); });
+    const sat = sliderRow('Saturation', -100, 100, 1, (v) => { cur().saturation = v; changed(); });
+    const satC = sliderRow('Saturation', 0, 100, 1, (v) => { cur().saturation = v; changed(); });
+    const light = sliderRow('Lightness', -100, 100, 1, (v) => { cur().lightness = v; changed(); });
     const colorize = checkRow('Colorize', (v) => {
       this.hsv.colorize = v;
       if (v) { this.hsv.range = 'Master'; const a = cur(); if (!a.hue && !a.saturation && !a.lightness) a.saturation = 25; }
       sync();
       this.changed();
     });
-    const invert = checkRow('Invert range', (v) => { this.hsv.invertRange = v; this.changed(); });
-    node.append(range.el, hue.el, hueC.el, sat.el, satC.el, light.el, colorize.el, invert.el);
+    const invert = checkRow('Invert range', (v) => { this.hsv.invertRange = v; changed(); });
+    node.append(range.el, sample.el, target.el, hue.el, hueC.el, sat.el, satC.el, light.el, colorize.el, invert.el, spectrum, degrees);
     const sync = (): void => {
       const s = this.hsv, a = cur();
       range.set(s.range);
@@ -395,6 +510,9 @@ export class AdjustPanel extends Dialog {
       light.set(a.lightness);
       colorize.set(s.colorize);
       invert.set(s.invertRange);
+      setHidden(sample.el, s.colorize);
+      setHidden(target.el, s.colorize);
+      drawSpectrum();
     };
     return { node, sync };
   }

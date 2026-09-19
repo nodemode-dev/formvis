@@ -46,6 +46,62 @@ export function bandWeight(b: HueBand, hue: number): number {
   return rampOut > 0 ? (span - position) / rampOut : 1;
 }
 
+/** Degrees from `from` forward to `to`, always 0 to 360 (the reference app's `HueBand.forward`). */
+export function bandForward(from: number, to: number): number {
+  const d = (to - from) % 360;
+  return d < 0 ? d + 360 : d;
+}
+
+const wrap360 = (v: number): number => { const r = v % 360; return r < 0 ? r + 360 : r; };
+
+export const bandHandles = (b: HueBand): number[] => [b.falloffStart, b.rangeStart, b.rangeEnd, b.falloffEnd];
+
+/** Keeps all four handles in 0 to 360 and the band under a full circle. */
+function normalizeBand(b: HueBand): HueBand {
+  const n = { falloffStart: wrap360(b.falloffStart), rangeStart: wrap360(b.rangeStart), rangeEnd: wrap360(b.rangeEnd), falloffEnd: wrap360(b.falloffEnd) };
+  if (bandForward(n.falloffStart, n.falloffEnd) > 350) n.falloffEnd = wrap360(n.falloffStart + 350);
+  return n;
+}
+
+/** A band centered on one hue, keeping this band's core and shoulder widths (the Sample eyedropper). */
+export function bandCentered(b: HueBand, hue: number): HueBand {
+  const core = bandForward(b.rangeStart, b.rangeEnd), leading = bandForward(b.falloffStart, b.rangeStart), trailing = bandForward(b.rangeEnd, b.falloffEnd);
+  const start = wrap360(hue - core / 2);
+  return { falloffStart: wrap360(start - leading), rangeStart: start, rangeEnd: wrap360(start + core), falloffEnd: wrap360(start + core + trailing) };
+}
+
+/** Widens the band so this hue is fully inside it, moving whichever edge is nearer (the Add eyedropper). */
+export function bandInclude(b: HueBand, hue: number): HueBand {
+  if (bandWeight(b, hue) >= 1) return b;
+  const shoulderIn = bandForward(b.falloffStart, b.rangeStart), shoulderOut = bandForward(b.rangeEnd, b.falloffEnd);
+  const n = { ...b };
+  if (bandForward(hue, b.rangeStart) <= bandForward(b.rangeEnd, hue)) { n.rangeStart = hue; n.falloffStart = hue - shoulderIn; }
+  else { n.rangeEnd = hue; n.falloffEnd = hue + shoulderOut; }
+  return normalizeBand(n);
+}
+
+/** Narrows the band so this hue falls outside it entirely, shoulder included (the Remove eyedropper). */
+export function bandExclude(b: HueBand, hue: number): HueBand {
+  if (bandWeight(b, hue) <= 0) return b;
+  const shoulderIn = bandForward(b.falloffStart, b.rangeStart), shoulderOut = bandForward(b.rangeEnd, b.falloffEnd);
+  const n = { ...b };
+  if (bandForward(b.falloffStart, hue) <= bandForward(hue, b.falloffEnd)) { n.falloffStart = hue + 1; n.rangeStart = hue + 1 + shoulderIn; }
+  else { n.falloffEnd = hue - 1; n.rangeEnd = hue - 1 - shoulderOut; }
+  return normalizeBand(n);
+}
+
+/** Moves one handle (0 falloff start, 1 range start, 2 range end, 3 falloff end), keeping the four in order and the
+ *  band under a full circle; a move that would break either is refused. */
+export function bandSetHandle(b: HueBand, index: number, degrees: number): HueBand {
+  const value = ((degrees % 360) + 360) % 360, u = { ...b };
+  if (index === 0) u.falloffStart = value;
+  else if (index === 1) u.rangeStart = value;
+  else if (index === 2) u.rangeEnd = value;
+  else u.falloffEnd = value;
+  const span = bandForward(u.falloffStart, u.falloffEnd), toStart = bandForward(u.falloffStart, u.rangeStart), toEnd = bandForward(u.falloffStart, u.rangeEnd);
+  return span > 1 && span <= 350 && toStart <= toEnd && toEnd <= span ? u : b;
+}
+
 export function defaultHsv(): HsvSettings {
   return { range: 'Master', colorize: false, invertRange: false, adjustments: {}, bands: { ...DEFAULT_BANDS } };
 }
