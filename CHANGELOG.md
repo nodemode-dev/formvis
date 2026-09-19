@@ -2,6 +2,12 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.10.1 · 2026-09-19
+
+### Documentation
+
+- README and wiki audited against the code: the README's status no longer calls Levels Auto and the Hue/Saturation eyedroppers unbuilt, its highlights cover 0.4.0 to 0.10.0, and the Engine, Tools, UI Shell, Engine Service, Verification and Home pages describe the current modules and panels. No code changes.
+
 ## 0.10.0 · 2026-09-19
 
 ### Added

@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-0.10.0-f97316" alt="version 0.10.0">
+<img src="https://img.shields.io/badge/version-0.10.1-f97316" alt="version 0.10.1">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -20,9 +20,11 @@ sonny is a layered image editor: stack photos and paintings as layers, group the
 - **the reference app document model.** Flat bottom-to-top layers w/ pass-through folders, 13 blend modes mapped 1:1 to Canvas 2D, raster masks, folder masks, clipping chains, and value-snapshot history (100 steps, 256 MB).
 - **Opens the reference app projects.** Reads `.ref` packages (zipped or as folders, format versions 1 to 7) and saves `.sonny` w/ the same manifest field layout.
 - **All fourteen of the reference app's tools.** Move w/ transform handles, Marquee, Lasso, Magic Wand, Crop, Brush and Eraser, Spot Healing (Content-Aware, Create Texture, Proximity Match), Clone Stamp, Smear (Liquify, Blur, Smudge), Gradient, Shape, Eyedropper, Hand, Zoom; each is a self-registering extension module. Content-Aware Fill works from the Edit menu.
-- **Adjustments and filters.** Levels w/ histogram, Curves, Hue/Saturation, Exposure, Gradient Map and Grain, as editable adjustment layers or direct edits; Gaussian Blur, Motion Blur, Add Noise and Lens Correction; all ported from the reference app's source, w/ live preview.
+- **Adjustments and filters.** Levels w/ histogram, Auto and black, gray and white eyedroppers; Curves; Hue/Saturation w/ spectrum band handles, Sample, Add and Remove eyedroppers and targeted adjustment; Exposure, Gradient Map and Grain; as editable adjustment layers or direct edits; Gaussian Blur, Motion Blur, Add Noise and Lens Correction; all ported from the reference app's source, w/ live preview.
+- **Precise transforms.** Move snaps to the canvas and other layers w/ guides and takes exact X, Y, W, H, Scale and Angle values; drag inside a selection to move or duplicate its pixels; Transform Selection (Alt+Mod+T) floats them w/ handles and merges back, growing the layer past its edges.
 - **Clipboard, selections, canvas.** Cut, Copy, Copy Merged and Paste in place; Expand, Contract and Mask's Black Areas; Canvas Size w/ anchors and Image Size w/ resampling.
-- **Two background removers.** rembg (ML, default when installed) and OpenCV GrabCut (lightweight, always available); both produce an editable layer mask, never destroyed pixels.
+- **Two background removers, one refine panel.** rembg (ML, default when installed) and OpenCV GrabCut (lightweight, always available) feed the reference app's panel: Basic, or Advanced w/ Refine (guided filter, for hair and fur), Contrast and Shift Edge; the result is an editable layer mask, never destroyed pixels.
+- **Color picker and JPEG export.** A Photoshop-style picker (saturation and brightness field, hue strip, RGB, hex) that can sample the canvas; a JPEG sheet w/ quality and a live encoded preview.
 - **Zero-flash UI.** Keyed DOM patching, a two-canvas stage redrawn synchronously on resize, reveal gated on fonts; verified w/ a 6x CPU and slow-network browser run: layout shift 0, no rebuilt rows, no errors across 18 scripted paths.
 - **NodeMode native.** NodeMode tokens and 14 theme profiles, the host theme bridge, the portal ready and init protocol, and a send-to-canvas message.
 - **HEIC and TIFF import.** Decoded server-side w/ Pillow and pillow-heif, falling back to `sips` on macOS.
@@ -102,7 +104,7 @@ sonny/
 
 - **Desktop app.** The Tauri shell follows a proven sidecar template, but it has not been compiled yet: the build machine for this release had no Rust toolchain, and the desktop workflow has not run. Treat desktop bundles as untested until the first `desktop.yml` run passes.
 - **ML background removal.** Implemented, not yet exercised end to end; the lightweight GrabCut path is verified.
-- **Adjustments.** All six kinds render, edit and save. Hue/Saturation band handles, sample eyedroppers and targeted drag, and Levels Auto, are not built yet.
+- **Adjustments.** All six kinds render, edit and save, including Levels Auto and eyedroppers (0.6.0, 0.7.0) and Hue/Saturation band handles, eyedroppers and targeted adjustment (0.8.0).
 - **Not built yet.** Free distort; the reference app's sample ring cursor; Smear's Blur on masks; `.ref` export. The measured parity scoreboard ships in the planning sidecar.
 - **NodeMode embedding.** Follows the portal protocol; the host-side handling of `plugin:sonny:assign` is not confirmed yet.
 
@@ -112,7 +114,7 @@ Branch model: `main` plus short-lived work branches, see `.docs/BRANCHING.md`. D
 
 ## Status
 
-Version 0.10.0 has all 14 of the reference app's tools (Smear's Blur mode does not yet work on masks) and all 59 of its web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the reference app's Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the reference app's color picker, which can sample the canvas. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and the sample ring.
+Version 0.10.1 has all 14 of the reference app's tools (Smear's Blur mode does not yet work on masks) and all 59 of its web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the reference app's Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the reference app's color picker, which can sample the canvas. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and the sample ring.
 
 ## Contributors
 

@@ -9,7 +9,7 @@ The Python engine does what a browser cannot: decode HEIC and TIFF, keep the pro
 | `backend/app/routers/system.py` | `/api/health`, `/api/version`, `/api/capabilities` |
 | `backend/app/routers/io.py` | `/api/io/decode`, `/api/io/export` |
 | `backend/app/routers/projects.py` | Library list, save, package, open, delete, import, session assets |
-| `backend/app/routers/ops.py` | `/api/ops/remove-background` |
+| `backend/app/routers/ops.py` | `/api/ops/remove-background`: returns the engine's raw subject mask; since 0.9.0 the frontend's Remove Background panel refines it (`frontend/src/engine/matte.ts`) and lays it down as a layer mask |
 | `backend/app/services/project_format.py` | Manifest validation, zip and folder reading, zip writing |
 | `backend/app/services/background.py` | rembg (ML) and OpenCV GrabCut (lightweight) |
 | `backend/app/services/imaging.py`, `sessions.py` | Decoding w/ Pillow and pillow-heif, opened-project sessions |

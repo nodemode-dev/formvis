@@ -8,4 +8,7 @@ Every change that touches the DOM passes a throttled browser run before it lands
 4. Exercise every path the change touched, recording frames at the moment of change: new canvas, painting, selection and fill, visibility, rename, drag reorder, undo and redo, import, Remove Background, save, tabs, Open dialog, window resize, theme switch, export, folder collapse.
 5. Measure layout shift (must be 0), keyed nodes rebuilt within one mutation batch (must be 0), page and console errors (must be 0), and stage frames that go blank while a document is open (must be 0).
 
+6. Check behavior with real pointer and keyboard input against values predicted before the run (pixel values, band degrees, mask pixel counts), and give each new dialog or panel its own throttled check: no layout shift while it opens, updates and closes, and one stable size throughout.
+7. The full run takes close to five minutes of wall time; run it on its own rather than chained after other work, and update its steps when a flow changes (the Remove Background step now opens the refine panel and presses OK).
+
 Report the result as one of: verified under throttling, verified without throttling (and why), or not verified.

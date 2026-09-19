@@ -6,7 +6,7 @@ A tool is a self-registering module: it declares its key, icon, hint, cursor, po
 | --- | --- |
 | `frontend/src/extensions/registry.ts` | `Tool` and `OptionSpec` types, `registerTool`, key lookup, the dashed outline helper |
 | `frontend/src/extensions/tools/index.ts` | `registerBuiltinTools`, the one place tools are listed |
-| `frontend/src/extensions/tools/move.ts` | Move, eight resize handles, rotation outside the corners, nudge, digit opacity |
+| `frontend/src/extensions/tools/move.ts` | Move, eight resize handles, rotation outside the corners, nudge, digit opacity; snap guides, editable X, Y, W, H, Scale and Angle fields with Sampling and Snap; dragging inside a selection moves its pixels (Alt duplicates); Enter and Escape apply or cancel a floating selection |
 | `frontend/src/extensions/tools/marquee.ts`, `lasso.ts`, `wand.ts`, `select-common.ts` | Selection tools and the shared modifier-to-mode rule |
 | `frontend/src/extensions/tools/brush.ts` | Brush and Eraser, size and hardness keys, the brush cursor |
 | `frontend/src/extensions/tools/eyedropper.ts`, `hand.ts`, `zoom.ts` | Sampling and navigation |

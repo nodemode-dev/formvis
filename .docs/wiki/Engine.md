@@ -4,14 +4,15 @@ The engine is the document model and every operation on it, with no DOM access: 
 
 | Source path | What lives there |
 | --- | --- |
-| `frontend/src/engine/index.ts` | `Engine`: projects, edits, undo and redo, layer, mask, clip, merge, selection, paint, transform and export operations |
+| `frontend/src/engine/index.ts` | `Engine`: projects, edits, undo and redo, layer, mask, clip, merge, selection, paint, transform and export operations; move snapping with guides and exact transforms (`snapMove`, `setLayerTransform`), moving and duplicating selected pixels (`beginPixelMove`), Transform Selection (`beginSelectionTransform`, merging through `growLayer`), retouch strokes, canvas sampling for eyedroppers (`sampleOriginal`) and Remove Background's mask (`applySubjectMask`) |
 | `frontend/src/engine/types.ts` | Layer, document, transform and mask types, the 13 blend modes, limits |
 | `frontend/src/engine/renderer.ts` | Rendering: blend modes, opacity, pass-through folders, raster and folder masks, clipping chains, adjustments |
 | `frontend/src/engine/history.ts` | Structure snapshots plus region pixel patches, 100 entries and 256 MB |
 | `frontend/src/engine/selection.ts` | `SelectionMask` and the ported pixel-edge contour tracer for marching ants |
 | `frontend/src/engine/kernels.ts` | Levels, Curves, Exposure, Gradient Map kernels and the Magic Wand fill, ported from the C sources |
-| `frontend/src/engine/adjust.ts`, `filters.ts` | Hue/Saturation and Grain kernels and the reference app-complete adjustment data; blurs, noise, lens, histogram and the distance-transform selection resize |
+| `frontend/src/engine/adjust.ts`, `filters.ts` | Hue/Saturation and Grain kernels, the reference app's hue band operations (center, include, exclude, handle moves) and the reference app-complete adjustment data; blurs, noise, lens, histogram and the distance-transform selection resize |
 | `frontend/src/engine/retouch.ts` | Spot Healing, Content-Aware Fill, and the Smudge and Liquify warp, ported from `HealPixels.c`, `ContentFill.c` and `SmudgeLiquify.swift` |
+| `frontend/src/engine/matte.ts` | Remove Background's refining: the guided filter, Shift Edge and Contrast, ported from `GuidedMatte.swift` and `SubjectRemoval.swift` |
 | `frontend/src/engine/stroke.ts` | Brush stamping at the reference app's spacing (2.5 percent soft, 1.5 percent hard) |
 | `frontend/src/engine/transform.ts` | Handle hit geometry and move, resize and rotate drag math |
 | `frontend/src/engine/geometry.ts`, `surface.ts`, `tree.ts`, `viewport.ts`, `project.ts`, `events.ts` | Matrices, canvases, the layer hierarchy, zoom and pan, the project record, the event emitter |

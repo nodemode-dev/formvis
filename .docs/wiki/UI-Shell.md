@@ -7,9 +7,9 @@ The shell is mounted once from a string template and then patched in place: noth
 | `frontend/src/app.ts` | Mounting, commands, menus, keyboard, paste, drag and drop, file I/O flows, the reveal gate |
 | `frontend/src/ui/stage.ts` | Scene and overlay canvases, pointer input, pixel view at 200 percent and up, marching ants |
 | `frontend/src/ui/layers.ts` | Keyed layer rows, thumbnails, visibility swipe, drag reorder, rename, context menu |
-| `frontend/src/ui/rail.ts`, `options.ts`, `tabs.ts`, `status.ts` | Tool rail and colors, options bar, project tabs, status bar |
-| `frontend/src/ui/menu.ts`, `dialogs.ts`, `app-dialogs.ts`, `toast.ts`, `commands.ts` | Menus, dialogs, toasts, the command registry and key labels |
-| `frontend/src/ui/panels/` | Adjustment panel (layer and image modes), filter panel, Canvas Size, Image Size, the amount dialog, and their control rows |
+| `frontend/src/ui/rail.ts`, `options.ts`, `tabs.ts`, `status.ts` | Tool rail and colors (the swatches open the color picker), options bar with editable number fields, project tabs, status bar |
+| `frontend/src/ui/menu.ts`, `dialogs.ts`, `app-dialogs.ts`, `toast.ts`, `commands.ts` | Menus, dialogs (a click-through scrim lets eyedroppers reach the canvas), toasts, the command registry and key labels |
+| `frontend/src/ui/panels/` | Adjustment panel in layer and image modes (Levels Auto and black, gray and white eyedroppers; Hue/Saturation spectrum band handles, Sample, Add and Remove eyedroppers and targeted adjustment), filter panel, Remove Background panel (Basic and Advanced refine), JPEG export sheet, color picker, Canvas Size, Image Size, the amount dialog, and their control rows |
 | `frontend/src/ui/dom.ts` | NodeMode `dom-stable` helpers plus small in-place setters |
 | `frontend/src/ui/icons.ts`, `themes.ts` | The 80 icons copied verbatim from NodeMode, the 14 theme profiles |
 | `frontend/src/styles/` | NodeMode tokens and the component sheets; `scrollbars.css` loads last |
