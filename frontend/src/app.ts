@@ -9,6 +9,7 @@ import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDial
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind } from './ui/panels/filter-panel';
 import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
+import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { Commands } from './ui/commands';
 import { anyDialogOpen, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
@@ -210,13 +211,13 @@ export function startApp(): void {
     });
   }
 
-  async function exportImage(kind: 'png' | 'jpg'): Promise<void> {
+  async function exportImage(kind: 'png' | 'jpg', quality = 0.92): Promise<void> {
     const p = engine.current;
     if (!p) return;
     engine.settle();
     await engine.task(async () => {
       try {
-        const blob = await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg');
+        const blob = await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality);
         if (blob) await deliver(blob, `${p.name}.${kind}`);
       } catch (err) { toast(message(err), 'error'); }
     });
@@ -268,6 +269,7 @@ export function startApp(): void {
 
   const dialogs = {
     newCanvas: new NewCanvasDialog(engine),
+    jpeg: new JpegDialog(engine),
     open: new OpenDialog({ openLibrary, openFiles, openFolder }),
     settings: new SettingsDialog(),
     shortcuts: new ShortcutsDialog(commands),
@@ -293,7 +295,7 @@ export function startApp(): void {
     { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
-    { id: 'export-jpg', label: 'Export JPEG', enabled: has, run: () => void exportImage('jpg') },
+    { id: 'export-jpg', label: 'Export JPEG...', enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
     { id: 'close-tab', label: 'Close Tab', keys: ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
