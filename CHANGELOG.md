@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.6.0 · 2026-09-19
+
+### Added
+
+- Levels Auto: Contrast, Color, and Color + neutral midtones, as the reference app computes them, from an Auto choice in the Levels panel.
+- JPEG export sheet: Export JPEG... opens a sheet with a Quality slider that starts from your last export (85% the first time), the image size, and a live preview of the encoded JPEG with its file size.
+
+### Known gaps
+
+The Levels black, gray and white eyedroppers; Hue/Saturation bands and eyedroppers; free distort; the color picker and palette; the Remove Background panel; Smear's Blur on masks; Content-Aware Fill past the layer's edges; ants that follow a floating selection; desktop shell still uncompiled.
+
 ## 0.5.0 · 2026-09-19
 
 ### Added

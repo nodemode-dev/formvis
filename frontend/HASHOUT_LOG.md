@@ -84,6 +84,7 @@ src/
             adjust-panel.ts  · adjustment editing panel, layer and image modes
             controls.ts  · slider, select, check, color and number rows
             filter-panel.ts  · filter dialog with scaled preview
+            jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
             size-dialogs.ts  · canvas size, image size, expand and contract
         rail.ts  · tool rail and colors
         stage.ts  · scene and overlay canvases
@@ -166,6 +167,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/adjust-panel.ts](#srcuipanelsadjust-panelts)
 - [src/ui/panels/controls.ts](#srcuipanelscontrolsts)
 - [src/ui/panels/filter-panel.ts](#srcuipanelsfilter-panelts)
+- [src/ui/panels/jpeg-dialog.ts](#srcuipanelsjpeg-dialogts)
 - [src/ui/panels/size-dialogs.ts](#srcuipanelssize-dialogsts)
 - [src/ui/rail.ts](#srcuirailts)
 - [src/ui/stage.ts](#srcuistagets)
@@ -263,6 +265,22 @@ Adds the Transform command to the Edit menu, labeled Transform Selection or Tran
 ### src/app.ts · save, downloadProject, exportImage · settle first · _v0.5.0
 
 Each calls `engine.settle()` before reading the document, so an unapplied gradient is saved and exported (it was left out since 0.2.0) and a floating selection merges first instead of being written twice, on its own layer and in the untouched source. Save settles before its name prompt. Nothing was removed.
+
+### src/app.ts · startApp · Export JPEG sheet · _v0.6.0
+
+Export JPEG... settles, then opens `JpegDialog`, whose chosen quality `exportImage` passes to `exportBlob`. Removed:
+
+```ts
+    { id: 'export-jpg', label: 'Export JPEG', enabled: has, run: () => void exportImage('jpg') },
+```
+
+```ts
+  async function exportImage(kind: 'png' | 'jpg'): Promise<void> {
+```
+
+```ts
+        const blob = await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg');
+```
 
 ## src/engine/adjust.ts
 
@@ -806,6 +824,14 @@ Created in _v0.1.0.
 
 Panel for all six adjustments. Layer mode edits live inside one undo step (`beginLive`, `commitLive`, `cancelLive`); image mode previews, then applies through the selection. Working data is deep-cloned on open so live edits never touch the undo snapshot. The Curves editor draws its curve with `curvesKernel` itself, so the graph and the render cannot disagree. Hue/Saturation band handles, eyedroppers and targeted drag are not built yet.
 
+### src/ui/panels/adjust-panel.ts · autoLevels, buildLevels · _v0.6.0
+
+`autoLevels` ports the reference app's `LevelsAuto` as a pure function of `histogram()`: each end clips 0.1% of a channel; Contrast sets one master interval across R, G and B, Color sets each channel, and Color + neutral midtones also sets each channel's gamma so its stretched mean maps to middle gray, clamped 0.1 to 9.99. The Levels section gains an Auto choice under the histogram that applies a mode through the live preview and resets to Choose. Removed:
+
+```ts
+    node.append(channel.el, canvas, black.el, gamma.el, white.el, outB.el, outW.el);
+```
+
 ## src/ui/panels/controls.ts
 
 ### src/ui/panels/controls.ts · sliderRow, selectRow, checkRow, colorRow, numberRow · _v0.2.0
@@ -817,6 +843,12 @@ Row helpers built once, with setters that update in place.
 ### src/ui/panels/filter-panel.ts · FilterPanel · _v0.2.0
 
 Gaussian Blur, Motion Blur, Add Noise and Lens Correction with a 140 ms debounced preview and a fixed seed per open; apply runs after the dialog closes and paints.
+
+## src/ui/panels/jpeg-dialog.ts
+
+### src/ui/panels/jpeg-dialog.ts · JpegDialog · _v0.6.0
+
+Ported from the reference app's `JPEGExportSheet.swift`. Quality starts from the last export, remembered in localStorage under `sonny.jpegQuality`, and from 85% (the reference app's default) the first time; the sheet shows the image size and sRGB and previews the actually encoded JPEG, debounced 120 ms, with its encoded size. The preview canvas keeps one size (432 by 280) with the image fitted inside, so the sheet never changes height, and the preview is decoded with `createImageBitmap` rather than shown through a blob URL, which the desktop CSP may refuse. Export stores the quality and hands it back to the caller.
 
 ## src/ui/panels/size-dialogs.ts
 
