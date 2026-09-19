@@ -84,6 +84,7 @@ src/
         panels/
             adjust-panel.ts  · adjustment editing panel, layer and image modes
             background-panel.ts  · Remove Background panel: Basic, Advanced refine, preview
+            color-picker.ts  · Photoshop-style color picker with canvas sampling
             controls.ts  · slider, select, check, color and number rows
             filter-panel.ts  · filter dialog with scaled preview
             jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
@@ -169,6 +170,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/palette.ts](#srcuipalettets)
 - [src/ui/panels/adjust-panel.ts](#srcuipanelsadjust-panelts)
 - [src/ui/panels/background-panel.ts](#srcuipanelsbackground-panelts)
+- [src/ui/panels/color-picker.ts](#srcuipanelscolor-pickerts)
 - [src/ui/panels/controls.ts](#srcuipanelscontrolsts)
 - [src/ui/panels/filter-panel.ts](#srcuipanelsfilter-panelts)
 - [src/ui/panels/jpeg-dialog.ts](#srcuipanelsjpeg-dialogts)
@@ -295,6 +297,10 @@ The engine's mask now opens `BackgroundPanel` instead of being applied at once, 
         bitmap.close();
         toast(`Background removed with the ${used === 'ml' ? 'ML' : 'lightweight'} engine. The result is a layer mask you can refine.`);
 ```
+
+### src/app.ts · startApp · color picker · _v0.10.0
+
+Creates `ColorPickerDialog` with the other dialogs; it listens for the rail's `cv-pick-color` event itself, so nothing else in the app changes. Nothing was removed.
 
 ## src/engine/adjust.ts
 
@@ -743,6 +749,10 @@ Removed: showing the mask thumbnail on demand pushed the layer name right, a mea
 
 Created in _v0.1.0.
 
+### src/styles/panels.css · color picker layout · _v0.10.0
+
+`.cv-pick`, `.cv-pick-field`, `.cv-pick-strip`, `.cv-pick-side` and `.cv-pick-swatch` lay out the picker from existing spacing and radius tokens; `touch-action: none` keeps field and strip drags working with touch and pens. Nothing was removed.
+
 ## src/styles/shell.css
 
 ### src/styles/shell.css · .cv-opt-group · _v0.1.0
@@ -946,6 +956,12 @@ import { el, setHidden } from '../dom';
 
 the reference app's Remove Background panel: Quality (Basic or Advanced) and, for Advanced, Refine (0 to 40 px, default 12), Contrast (0 to 100 percent, default 25) and Shift Edge (-10 to 10 px). It owns the model's raw mask bitmap while open, targets the layer's pixels, previews the layer with its background hidden through `previewImageEdit` (coalesced to one per frame), and on OK refines at full size and calls `applySubjectMask`. Cancel always clears the preview; settings carry over between uses.
 
+## src/ui/panels/color-picker.ts
+
+### src/ui/panels/color-picker.ts · ColorPickerDialog · _v0.10.0
+
+Ported from the reference app's `ColorPickerSheet.swift`: a saturation and brightness field, a vertical hue strip, new and current swatches, and RGB and hex entry, with HSV as the source of truth so a gray keeps its hue. It opens on the `cv-pick-color` event the rail's swatches send, titled Foreground Color or Background Color. While open, its scrim is click-through and a capture-phase listener samples the composite color under a stage click before any tool sees it. Enter in the hex box commits by blurring it, so a later blur cannot re-apply a stale value over a hue drag. OK sets the color; Cancel and Escape leave it.
+
 ## src/ui/panels/controls.ts
 
 ### src/ui/panels/controls.ts · sliderRow, selectRow, checkRow, colorRow, numberRow · _v0.2.0
@@ -975,6 +991,15 @@ Canvas Size with the reference app's anchor offset formula and extension fill, I
 ### src/ui/rail.ts · tool rail and colors · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/ui/rail.ts · Rail · swatches open the picker · _v0.10.0
+
+The foreground and background swatches dispatch `cv-pick-color` instead of opening the native color input, which stays in the markup unused. Removed:
+
+```ts
+    this.fg.addEventListener('click', () => this.fgInput.click());
+    this.bg.addEventListener('click', () => this.bgInput.click());
+```
 
 ## src/ui/stage.ts
 

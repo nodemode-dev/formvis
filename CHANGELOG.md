@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.10.0 · 2026-09-19
+
+### Added
+
+- Color picker: clicking the foreground or background swatch opens a Photoshop-style picker with a saturation and brightness field, a hue strip, new and current swatches, and RGB and hex entry. Click the canvas while it is open to sample a color.
+
+### Known gaps
+
+Free distort; the sample ring cursor; Smear's Blur on masks; ants that follow a floating selection; desktop shell still uncompiled.
+
 ## 0.9.0 · 2026-09-19
 
 ### Added
