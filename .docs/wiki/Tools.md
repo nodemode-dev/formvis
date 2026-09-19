@@ -10,6 +10,7 @@ A tool is a self-registering module: it declares its key, icon, hint, cursor, po
 | `frontend/src/extensions/tools/marquee.ts`, `lasso.ts`, `wand.ts`, `select-common.ts` | Selection tools and the shared modifier-to-mode rule |
 | `frontend/src/extensions/tools/brush.ts` | Brush and Eraser, size and hardness keys, the brush cursor |
 | `frontend/src/extensions/tools/eyedropper.ts`, `hand.ts`, `zoom.ts` | Sampling and navigation |
+| `frontend/src/extensions/tools/crop.ts`, `gradient.ts`, `shape.ts` | Crop frame with ratios and snapping, pending gradient with movable ends, shape layers |
 
 ## Contract
 

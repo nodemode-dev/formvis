@@ -9,6 +9,7 @@ The shell is mounted once from a string template and then patched in place: noth
 | `frontend/src/ui/layers.ts` | Keyed layer rows, thumbnails, visibility swipe, drag reorder, rename, context menu |
 | `frontend/src/ui/rail.ts`, `options.ts`, `tabs.ts`, `status.ts` | Tool rail and colors, options bar, project tabs, status bar |
 | `frontend/src/ui/menu.ts`, `dialogs.ts`, `app-dialogs.ts`, `toast.ts`, `commands.ts` | Menus, dialogs, toasts, the command registry and key labels |
+| `frontend/src/ui/panels/` | Adjustment panel (layer and image modes), filter panel, Canvas Size, Image Size, the amount dialog, and their control rows |
 | `frontend/src/ui/dom.ts` | NodeMode `dom-stable` helpers plus small in-place setters |
 | `frontend/src/ui/icons.ts`, `themes.ts` | The 80 icons copied verbatim from NodeMode, the 14 theme profiles |
 | `frontend/src/styles/` | NodeMode tokens and the component sheets; `scrollbars.css` loads last |

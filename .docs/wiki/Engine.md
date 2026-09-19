@@ -10,6 +10,7 @@ The engine is the document model and every operation on it, with no DOM access: 
 | `frontend/src/engine/history.ts` | Structure snapshots plus region pixel patches, 100 entries and 256 MB |
 | `frontend/src/engine/selection.ts` | `SelectionMask` and the ported pixel-edge contour tracer for marching ants |
 | `frontend/src/engine/kernels.ts` | Levels, Curves, Exposure, Gradient Map kernels and the Magic Wand fill, ported from the C sources |
+| `frontend/src/engine/adjust.ts`, `filters.ts` | Hue/Saturation and Grain kernels and the reference app-complete adjustment data; blurs, noise, lens, histogram and the distance-transform selection resize |
 | `frontend/src/engine/stroke.ts` | Brush stamping at the reference app's spacing (2.5 percent soft, 1.5 percent hard) |
 | `frontend/src/engine/transform.ts` | Handle hit geometry and move, resize and rotate drag math |
 | `frontend/src/engine/geometry.ts`, `surface.ts`, `tree.ts`, `viewport.ts`, `project.ts`, `events.ts` | Matrices, canvases, the layer hierarchy, zoom and pan, the project record, the event emitter |

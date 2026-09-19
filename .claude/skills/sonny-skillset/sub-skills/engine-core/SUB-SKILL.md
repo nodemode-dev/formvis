@@ -34,4 +34,4 @@ The engine is the only code that changes a document. It has no DOM access and ca
 - A mask raster keeps its value in the alpha channel with white color; on disk it is a grayscale PNG. A mask whose raster is `null` reveals everything.
 - `ensurePixels` grows an axis-aligned layer to cover the canvas before painting; a transformed layer is painted in its own pixel space.
 - Limits: 30,000 px per side, 100 megapixels per document, 64 folder levels.
-- Still to port from the reference app C sources: Hue/Saturation and Grain adjustments, noise, lens distortion, spot heal, content fill. Until then those adjustments render without effect.
+- Ported in 0.2.0: Hue/Saturation and Grain (`adjust.ts`), noise, lens, blurs and the histogram (`filters.ts`). Still to port from the reference app sources: `HealPixels.c` (Spot Healing), `ContentFill.c` (Content-Aware Fill), the smudge and liquify brushes, and `GuidedMatte.swift` (Refine Edges). Destructive edits go through `applyImageEdit`, previews through `previewImageEdit`.

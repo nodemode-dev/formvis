@@ -19,8 +19,10 @@ public/
 src/
     app.ts  · mount, commands, menus, input, file flows, reveal gate
     engine/
+        adjust.ts  · Hue/Saturation and Grain kernels, adjustment data
         renderer.ts  · rendering pipeline
         events.ts  · typed emitter
+        filters.ts  · blurs, noise, lens, histogram, selection resize
         geometry.ts  · matrices and rectangles
         history.ts  · undo stack
         index.ts  · Engine API
@@ -37,13 +39,16 @@ src/
         registry.ts  · tool contract and registry
         tools/
             brush.ts  · brush and eraser
+            crop.ts  · crop frame, ratios, snapping
             eyedropper.ts  · color sampling
+            gradient.ts  · pending gradient with movable ends
             hand.ts  · panning
             index.ts  · built-in tool list
             lasso.ts  · freehand and polygonal lasso
             marquee.ts  · rectangle and ellipse marquee
             move.ts  · move and transform handles
             select-common.ts  · modifier to selection mode
+            shape.ts  · rectangle and ellipse shape layers
             wand.ts  · magic wand
             zoom.ts  · zoom tool
     host.ts  · NodeMode portal link
@@ -70,6 +75,11 @@ src/
         menu.ts  · popup menus and menubar
         options.ts  · options bar
         palette.ts  · stage colors from tokens
+        panels/
+            adjust-panel.ts  · adjustment editing panel, layer and image modes
+            controls.ts  · slider, select, check, color and number rows
+            filter-panel.ts  · filter dialog with scaled preview
+            size-dialogs.ts  · canvas size, image size, expand and contract
         rail.ts  · tool rail and colors
         stage.ts  · scene and overlay canvases
         status.ts  · status bar
@@ -92,8 +102,10 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [public/favicon.svg](#publicfaviconsvg)
 - [public/splash.html](#publicsplashhtml)
 - [src/app.ts](#srcappts)
+- [src/engine/adjust.ts](#srcengineadjustts)
 - [src/engine/renderer.ts](#srcenginerendererts)
 - [src/engine/events.ts](#srcengineeventsts)
+- [src/engine/filters.ts](#srcenginefiltersts)
 - [src/engine/geometry.ts](#srcenginegeometryts)
 - [src/engine/history.ts](#srcenginehistoryts)
 - [src/engine/index.ts](#srcengineindexts)
@@ -108,13 +120,16 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/viewport.ts](#srcengineviewportts)
 - [src/extensions/registry.ts](#srcextensionsregistryts)
 - [src/extensions/tools/brush.ts](#srcextensionstoolsbrushts)
+- [src/extensions/tools/crop.ts](#srcextensionstoolscropts)
 - [src/extensions/tools/eyedropper.ts](#srcextensionstoolseyedropperts)
+- [src/extensions/tools/gradient.ts](#srcextensionstoolsgradientts)
 - [src/extensions/tools/hand.ts](#srcextensionstoolshandts)
 - [src/extensions/tools/index.ts](#srcextensionstoolsindexts)
 - [src/extensions/tools/lasso.ts](#srcextensionstoolslassots)
 - [src/extensions/tools/marquee.ts](#srcextensionstoolsmarqueets)
 - [src/extensions/tools/move.ts](#srcextensionstoolsmovets)
 - [src/extensions/tools/select-common.ts](#srcextensionstoolsselect-commonts)
+- [src/extensions/tools/shape.ts](#srcextensionstoolsshapets)
 - [src/extensions/tools/wand.ts](#srcextensionstoolswandts)
 - [src/extensions/tools/zoom.ts](#srcextensionstoolszoomts)
 - [src/host.ts](#srchostts)
@@ -138,6 +153,10 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/menu.ts](#srcuimenuts)
 - [src/ui/options.ts](#srcuioptionsts)
 - [src/ui/palette.ts](#srcuipalettets)
+- [src/ui/panels/adjust-panel.ts](#srcuipanelsadjust-panelts)
+- [src/ui/panels/controls.ts](#srcuipanelscontrolsts)
+- [src/ui/panels/filter-panel.ts](#srcuipanelsfilter-panelts)
+- [src/ui/panels/size-dialogs.ts](#srcuipanelssize-dialogsts)
 - [src/ui/rail.ts](#srcuirailts)
 - [src/ui/stage.ts](#srcuistagets)
 - [src/ui/status.ts](#srcuistatusts)
@@ -211,17 +230,46 @@ Removed: the gate read `fonts.ready` before any font load had started, so it res
 
 Every menu item, button and shortcut is a command in the `commands.add(...)` block. New canvas uses Alt+Mod+N as well as Mod+N because browsers keep Mod+N.
 
+### src/app.ts · startApp · v0.2.0 commands and clipboard · _v0.2.0
+
+Adds the clipboard, selection-modify, Image adjustment, New Adjustment Layer, Canvas Size, Image Size and filter commands, and a Filter menu that now holds Remove Background, as in the reference app. Copy writes PNG plus a `sonny:` marker to the system clipboard; Mod+V is let through to the native paste event, which pastes in-app copies in place and external images centered above the active layer. Double-clicked adjustment rows open their editor through `cv:edit-adjustment`.
+
+## src/engine/adjust.ts
+
+### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
+
+Hue/Saturation ported from `HueSaturation.swift` (HSL, per-range band weights, multiplicative saturation, lightness pull, colorize), baked into a 33-point cube lookup table like the reference app's color cube. Grain ported from `AdjustPixels.c` (lattice noise, smoothstep, roughness, midtone weighting) in document coordinates. The invert-range rule in `weightOf` is inferred from the settings doc comment, not read from source. `defaultAdjustmentData` writes every non-optional `LayerAdjustment` field because the reference app decodes with synthesized Codable; enum-keyed dictionaries are written as Swift's alternating arrays and read in either form.
+
 ## src/engine/renderer.ts
 
 ### src/engine/renderer.ts · rendering pipeline · _v0.1.0
 
 Created in _v0.1.0.
 
+### src/engine/renderer.ts · kernelFor, adjust, maskOf · _v0.2.0
+
+Adds a kernel cache keyed on the adjustment data object, hands each kernel the region's document origin and scale, and places layer and mask overrides by their own size so scaled previews align. Removed:
+
+```ts
+import { IDENTITY, mul, placement, setMat, type Mat } from './geometry';
+import { adjustmentKernel } from './kernels';
+      const m = mul(job.view, placement(t, layer.raster.width, layer.raster.height));
+    const kernel = adjustmentKernel(layer.adjustment);
+    kernel(adj);
+    return { src, w: m.raster.width, h: m.raster.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
+```
+
 ## src/engine/events.ts
 
 ### src/engine/events.ts · typed emitter · _v0.1.0
 
 Created in _v0.1.0.
+
+## src/engine/filters.ts
+
+### src/engine/filters.ts · gaussianBlur, motionBlur, addNoise, lensDistort, histogram, resizeMask · _v0.2.0
+
+Gaussian Blur as three premultiplied box passes with zero padding, so it fades past the edge; Motion Blur as a sampled line of the given length (the reference app matches Core Image's radius to that length by variance); Add Noise and Lens Correction ported from `NoisePixels.c` and `LensPixels.c` with premultiplied sampling; the Levels histogram from `LevelsPixels.c`; Expand and Contract through a Felzenszwalb distance transform with one pixel of antialiasing.
 
 ## src/engine/geometry.ts
 
@@ -249,11 +297,35 @@ Removed: a drop onto the slot a layer already held recorded an undo entry that c
 
 Added for Remove Background: the engine result becomes a linked layer mask, never deleted pixels, matching the reference app.
 
+### src/engine/index.ts · live edits, previews, image edits, sizing, clipboard, gradient, shapes · _v0.2.0
+
+Adds `beginLive`, `updateLive`, `commitLive` and `cancelLive` (one undo step for panel editing); `setPreview` and `previewImageEdit` (scaled to about 2 megapixels, grown for blurs); `applyImageEdit` (through the selection, masks as gray, blurs grow the layer); adjustment layers; Canvas Size with the Canvas Extension layer; Crop; Image Size; Expand, Contract and Mask's Black Areas; the clipboard; the pending gradient, committed on `settle` so the first Undo discards it; shape layers, redrawn on resize and plain pixels once painted, filled or filtered. Clearing on a mask now fills with the background color, as in the reference app. Removed:
+
+```ts
+    this.regionEdit('Clear', ({ raster, rect, cover }) => {
+      const c = raster.ctx;
+      c.save();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.globalCompositeOperation = 'destination-out';
+      c.drawImage(this.tint(rect, '#ffffff', cover), rect.x, rect.y);
+      c.restore();
+    });
+      p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
+```
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/engine/kernels.ts · Kernel · _v0.2.0
+
+Kernels take an optional context with the region's document origin and scale, which Grain needs. Removed:
+
+```ts
+export type Kernel = (data: Uint8ClampedArray) => void;
+```
 
 ## src/engine/project.ts
 
@@ -315,11 +387,23 @@ Created in _v0.1.0.
 
 Created in _v0.1.0.
 
+## src/extensions/tools/crop.ts
+
+### src/extensions/tools/crop.ts · cropTool · _v0.2.0
+
+Crop frame with create, move and resize modes, Alt to keep the center, nine ratio presets and snapping to the canvas edges. Enter crops through `Engine.cropTo`, which is Canvas Size with an explicit offset, as the reference app's `CanvasSizeOptions.contentOffset`. Snapping to layer edges is not ported yet.
+
 ## src/extensions/tools/eyedropper.ts
 
 ### src/extensions/tools/eyedropper.ts · color sampling · _v0.1.0
 
 Created in _v0.1.0.
+
+## src/extensions/tools/gradient.ts
+
+### src/extensions/tools/gradient.ts · gradientTool · _v0.2.0
+
+Pending gradient with draggable ends and Shift for 45 degree steps; shape, colors, reverse and opacity re-render it live. Enter applies, Escape cancels, and a click without a line leaves nothing pending, as in the reference app.
 
 ## src/extensions/tools/hand.ts
 
@@ -332,6 +416,14 @@ Created in _v0.1.0.
 ### src/extensions/tools/index.ts · built-in tool list · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/extensions/tools/index.ts · registerBuiltinTools · _v0.2.0
+
+Registers Crop, Gradient and Shape in the reference app's rail order. Removed:
+
+```ts
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, brushTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+```
 
 ## src/extensions/tools/lasso.ts
 
@@ -356,6 +448,12 @@ Created in _v0.1.0.
 ### src/extensions/tools/select-common.ts · modifier to selection mode · _v0.1.0
 
 Created in _v0.1.0.
+
+## src/extensions/tools/shape.ts
+
+### src/extensions/tools/shape.ts · shapeTool · _v0.2.0
+
+Rectangle and ellipse shape layers in the foreground color with a corner radius, Shift after starting for square, Alt for centered, Shift+U to switch shape. The layer keeps the reference app's `LayerShapeStyle` fields (`kind`, `red`, `green`, `blue`, `cornerRadius`).
 
 ## src/extensions/tools/wand.ts
 
@@ -404,6 +502,10 @@ Created in _v0.1.0.
 ### src/styles/dialogs.css · dialogs and lists · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/styles/dialogs.css · panel styles · _v0.2.0
+
+Panel section, slider, histogram, curves and anchor-grid styles, with fixed canvas sizes so opening a panel never shifts layout. `.cv-dialog [hidden]` makes the hidden attribute win inside dialogs: a screenshot showed both Hue sliders at once because `.cv-field` sets `display: grid`.
 
 ## src/styles/fonts.css
 
@@ -510,6 +612,14 @@ Removed: capturing the pointer on press retargeted `click` and `dblclick` to the
       rows.setPointerCapture(e.pointerId);
 ```
 
+### src/ui/layers.ts · bindRows · dblclick · _v0.2.0
+
+Double-clicking an adjustment layer's row outside the name dispatches `cv:edit-adjustment` for the app to open its editor. Removed:
+
+```ts
+      if (row?.dataset.id && t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
+```
+
 ## src/ui/menu.ts
 
 ### src/ui/menu.ts · popup menus and menubar · _v0.1.0
@@ -532,6 +642,30 @@ Removed: `q(n, 'span')` returned the icon box, so the label replaced the icon an
 ### src/ui/palette.ts · stage colors from tokens · _v0.1.0
 
 Created in _v0.1.0.
+
+## src/ui/panels/adjust-panel.ts
+
+### src/ui/panels/adjust-panel.ts · AdjustPanel · _v0.2.0
+
+Panel for all six adjustments. Layer mode edits live inside one undo step (`beginLive`, `commitLive`, `cancelLive`); image mode previews, then applies through the selection. Working data is deep-cloned on open so live edits never touch the undo snapshot. The Curves editor draws its curve with `curvesKernel` itself, so the graph and the render cannot disagree. Hue/Saturation band handles, eyedroppers and targeted drag are not built yet.
+
+## src/ui/panels/controls.ts
+
+### src/ui/panels/controls.ts · sliderRow, selectRow, checkRow, colorRow, numberRow · _v0.2.0
+
+Row helpers built once, with setters that update in place.
+
+## src/ui/panels/filter-panel.ts
+
+### src/ui/panels/filter-panel.ts · FilterPanel · _v0.2.0
+
+Gaussian Blur, Motion Blur, Add Noise and Lens Correction with a 140 ms debounced preview and a fixed seed per open; apply runs after the dialog closes and paints.
+
+## src/ui/panels/size-dialogs.ts
+
+### src/ui/panels/size-dialogs.ts · CanvasSizeDialog, ImageSizeDialog, AmountDialog · _v0.2.0
+
+Canvas Size with the reference app's anchor offset formula and extension fill, Image Size with constrain, resolution and resampling, and the Expand and Contract amount dialog that remembers its amounts.
 
 ## src/ui/rail.ts
 

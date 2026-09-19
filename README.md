@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-0.1.0-f97316" alt="version 0.1.0">
+<img src="https://img.shields.io/badge/version-0.2.0-f97316" alt="version 0.2.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -13,13 +13,15 @@
 
 sonny is a layered image editor: stack photos and paintings as layers, group them in folders, mask and clip them, blend them with 13 modes, select, paint and export. It is a port of the macOS app the reference app to the web, keeping the reference app's document model and project format so `.ref` projects open unchanged, and it runs standalone in a browser, inside NodeMode as a portal app, or as a desktop app for macOS, Linux and Windows.
 
-**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 5,462 lines of TypeScript, 405 of CSS, 701 of Python and 109 of Rust.
+**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 7,450 lines of TypeScript, 419 of CSS, 701 of Python and 112 of Rust.
 
 ## Highlights
 
 - **the reference app document model.** Flat bottom-to-top layers w/ pass-through folders, 13 blend modes mapped 1:1 to Canvas 2D, raster masks, folder masks, clipping chains, and value-snapshot history (100 steps, 256 MB).
 - **Opens the reference app projects.** Reads `.ref` packages (zipped or as folders, format versions 1 to 7) and saves `.sonny` w/ the same manifest field layout.
-- **Eight tools today.** Move w/ transform handles, Marquee (rectangle, ellipse), Lasso (freehand, polygonal), Magic Wand, Brush and Eraser, Eyedropper, Hand, Zoom; each is a self-registering extension module.
+- **Eleven of the reference app's fourteen tools.** Move w/ transform handles, Marquee, Lasso, Magic Wand, Crop, Brush and Eraser, Gradient, Shape, Eyedropper, Hand, Zoom; each is a self-registering extension module.
+- **Adjustments and filters.** Levels w/ histogram, Curves, Hue/Saturation, Exposure, Gradient Map and Grain, as editable adjustment layers or direct edits; Gaussian Blur, Motion Blur, Add Noise and Lens Correction; all ported from the reference app's source, w/ live preview.
+- **Clipboard, selections, canvas.** Cut, Copy, Copy Merged and Paste in place; Expand, Contract and Mask's Black Areas; Canvas Size w/ anchors and Image Size w/ resampling.
 - **Two background removers.** rembg (ML, default when installed) and OpenCV GrabCut (lightweight, always available); both produce an editable layer mask, never destroyed pixels.
 - **Zero-flash UI.** Keyed DOM patching, a two-canvas stage redrawn synchronously on resize, reveal gated on fonts; verified w/ a 6x CPU and slow-network browser run: layout shift 0, no rebuilt rows, no errors across 18 scripted paths.
 - **NodeMode native.** NodeMode tokens and 14 theme profiles, the host theme bridge, the portal ready and init protocol, and a send-to-canvas message.
@@ -100,8 +102,8 @@ sonny/
 
 - **Desktop app.** The Tauri shell follows a proven sidecar template, but it has not been compiled yet: the build machine for this release had no Rust toolchain, and the desktop workflow has not run. Treat desktop bundles as untested until the first `desktop.yml` run passes.
 - **ML background removal.** Implemented, not yet exercised end to end; the lightweight GrabCut path is verified.
-- **Adjustment layers.** Levels, Curves, Exposure and Gradient Map render when opening the reference app projects. Hue/Saturation and Grain adjustments are not ported yet and currently render w/o effect. Creating and editing adjustments in the UI is not built yet.
-- **Not built yet.** Crop, Spot Healing, Clone Stamp, Smear, Gradient and Shape tools; filters; Image Size and Canvas Size; `.ref` export.
+- **Adjustments.** All six kinds render, edit and save. Hue/Saturation band handles, sample eyedroppers and targeted drag, and Levels Auto, are not built yet.
+- **Not built yet.** Spot Healing, Clone Stamp and the Blur tool (Liquify, Blur, Smudge); Content-Aware Fill; the Remove Background panel (Refine Edges, Matte Contrast, Shift Edge); the editable transform inspector, free distort and snapping; floating selections; the color picker and palette; the JPEG export sheet; `.ref` export. The measured parity scoreboard ships in the planning sidecar.
 - **NodeMode embedding.** Follows the portal protocol; the host-side handling of `plugin:sonny:assign` is not confirmed yet.
 
 ## Development
@@ -110,7 +112,7 @@ Branch model: `main` plus short-lived work branches, see `.docs/BRANCHING.md`. D
 
 ## Status
 
-Version 0.1.0 completes Phase 1 (foundation) and Phase 2 (engine core and first tool set) of an eleven-phase plan. Phase 2's exit was checked in a browser: imported images, blend, mask, clip and group, single-step undo, a save and reopen round trip, and a the reference app version 7 package opening intact. Current focus is Phase 3 (layers complete), then transforms, selections, and the painting and retouching tools.
+Version 0.2.0 closes most of the menu-level gap with the reference app: 55 of its 59 web-relevant menu commands and 11 of its 14 tools are in, each checked in a browser against predicted pixel values. What remains is mostly inside tools and panels, listed above. Current focus: the retouching tools, Content-Aware Fill and the Remove Background panel.
 
 ## Contributors
 

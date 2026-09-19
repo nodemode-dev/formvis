@@ -2,6 +2,26 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.2.0 · 2026-09-19
+
+### Added
+
+- Adjustments from the reference app: Hue/Saturation (Master and six color ranges, colorize, invert range) and Grain join Levels, Curves, Exposure and Gradient Map. Each works as an editable adjustment layer (Layer, New Adjustment Layer; double-click to edit) and as a direct edit (Image menu), with live preview. Levels shows a histogram; Curves has a point editor.
+- Filter menu: Gaussian Blur and Motion Blur (spreading past the layer edge), Add Noise, Lens Correction, and Remove Background moved here as in the reference app.
+- Edit: Cut, Copy, Copy Merged, Paste in place, using the system clipboard.
+- Select: Mask's Black Areas, Expand and Contract by an amount.
+- Image: Canvas Size (units, anchor, extension color) and Image Size (constrain, resolution, resampling).
+- Tools: Crop (ratios, snapping to the canvas), Gradient (linear or radial, editable ends until applied), Shape (rectangle or ellipse layers that redraw crisply when resized).
+
+### Fixed
+
+- Clearing a selection on a mask now fills with the background color, as in the reference app.
+- Hidden rows inside dialogs now actually hide.
+
+### Known gaps
+
+Spot Healing, Clone Stamp, the Blur tool, Content-Aware Fill, the Remove Background panel, the editable transform inspector, floating selections, the color picker, Hue/Saturation bands and eyedroppers, Levels Auto, the JPEG export sheet; desktop shell still uncompiled.
+
 ## 0.1.0 · 2026-09-19
 
 ### Added

@@ -24,4 +24,4 @@ A tool is a self-registering module. The rail, the options bar, the cursor and t
 
 ## Remaining parity tools
 
-`ToolId` already names `crop`, `spotHealing`, `cloneStamp`, `smear`, `gradient` and `shape`. Each needs its engine operation first.
+`ToolId` already names `spotHealing`, `cloneStamp` and `smear` (the reference app's Blur tool with Liquify, Blur and Smudge). Each needs its engine operation first. Crop, Gradient and Shape landed in 0.2.0 and are the models to follow: Gradient shows how a pending edit lives in the engine and commits on `settle`.
