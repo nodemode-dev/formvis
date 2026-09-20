@@ -21,7 +21,7 @@ function commit(ctx: ToolContext): void {
     for (let i = 1; i < poly.length; i++) c.lineTo(poly[i].x, poly[i].y);
     c.closePath();
     c.fill();
-  });
+  }, e.selectionAntialiased);
   e.applySelection(mask, mode, e.lassoKind === 'polygonal' ? 'Polygonal Lasso' : 'Lasso');
 }
 
@@ -72,6 +72,7 @@ export const lassoTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Lasso' },
     { kind: 'segment', label: 'Kind', choices: [{ id: 'freehand', label: 'Freehand' }, { id: 'polygonal', label: 'Polygonal' }], get: () => e.lassoKind, set: (v) => e.update({ lassoKind: v as 'freehand' | 'polygonal' }) },
+    { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     modeSegment(e),
   ],
 };

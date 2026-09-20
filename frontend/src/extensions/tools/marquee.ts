@@ -6,6 +6,48 @@ interface Draft { anchor: Pt; point: Pt; mode: SelectionMode; shiftAtPress: bool
 let draft: Draft | null = null;
 let moving: Pt | null = null;
 
+/** One drag step toward document point `doc`: the moved outline follows, or the box's corner with the reference app's
+ *  marqueeConstrainArmed rule (a modifier held from the press sets the mode, not a constraint, until it is released
+ *  during the drag; pressed again, it constrains). Pointer moves and autoscroll ticks both call it. */
+function follow(ctx: ToolContext, doc: Pt, shift: boolean, alt: boolean): void {
+  if (moving) { ctx.engine.updateSelectionShift(doc.x - moving.x, doc.y - moving.y); return; }
+  if (!draft) return;
+  draft.point = doc;
+  if (!shift) draft.shiftAtPress = false;
+  if (!alt) draft.altAtPress = false;
+  draft.square = shift && !draft.shiftAtPress;
+  draft.center = alt && !draft.altAtPress;
+  ctx.engine.emit('overlay', null);
+}
+
+/** the reference app's marquee autoscroll: past a 12 px margin inside the view, each 60 Hz tick pans toward the pointer at
+ *  min(40, 2 + 0.4 x the distance past), and the drag follows the document point that is now under the pointer. */
+let scroll: { at: Pt; shift: boolean; alt: boolean; timer: number } | null = null;
+
+function scrollDelta(ctx: ToolContext, at: Pt): Pt {
+  const v = ctx.view(), m = 12, speed = (past: number): number => (past <= 0 ? 0 : Math.min(40, 2 + past * 0.4));
+  return { x: speed(m - at.x) - speed(at.x - (v.width - m)), y: speed(m - at.y) - speed(at.y - (v.height - m)) };
+}
+
+function stopScroll(): void {
+  if (scroll) window.clearInterval(scroll.timer);
+  scroll = null;
+}
+
+function autoscroll(ctx: ToolContext, p: ToolPointer): void {
+  const d = scrollDelta(ctx, p.screen);
+  if (!d.x && !d.y) { stopScroll(); return; }
+  if (scroll) { scroll.at = p.screen; scroll.shift = p.shift; scroll.alt = p.alt; return; }
+  const state = { at: p.screen, shift: p.shift, alt: p.alt, timer: 0 };
+  state.timer = window.setInterval(() => {
+    const delta = scrollDelta(ctx, state.at);
+    if ((!delta.x && !delta.y) || (!draft && !moving)) { stopScroll(); return; }
+    ctx.engine.pan(delta.x, delta.y);
+    follow(ctx, ctx.view().toDoc(state.at), state.shift, state.alt);
+  }, 1000 / 60);
+  scroll = state;
+}
+
 export function dragRect(a: Pt, b: Pt, square: boolean, center: boolean): Rect {
   let dx = b.x - a.x, dy = b.y - a.y;
   if (square) { const s = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * s; dy = Math.sign(dy || 1) * s; }
@@ -29,19 +71,13 @@ export const marqueeTool: Tool = {
     draft = { anchor: p.doc, point: p.doc, mode, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
   },
   move(ctx, p) {
-    if (moving) { ctx.engine.updateSelectionShift(p.doc.x - moving.x, p.doc.y - moving.y); return; }
-    if (!draft) return;
-    draft.point = p.doc;
-    // the reference app's marqueeConstrainArmed: a modifier held from the press sets the mode, not a constraint, until it is
-    // released during the drag; pressed again, it constrains.
-    if (!p.shift) draft.shiftAtPress = false;
-    if (!p.alt) draft.altAtPress = false;
-    draft.square = p.shift && !draft.shiftAtPress;
-    draft.center = p.alt && !draft.altAtPress;
-    ctx.engine.emit('overlay', null);
+    if (!moving && !draft) return;
+    follow(ctx, p.doc, p.shift, p.alt);
+    autoscroll(ctx, p);
   },
   keydown(ctx, e) { return nudgeSelectionKey(ctx, e); },
   up(ctx) {
+    stopScroll();
     const e = ctx.engine;
     if (moving) { moving = null; e.endSelectionShift(); return; }
     const d = draft;
@@ -56,10 +92,11 @@ export const marqueeTool: Tool = {
       if (ellipse) c.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2, r.h / 2, 0, 0, Math.PI * 2);
       else c.rect(r.x, r.y, r.w, r.h);
       c.fill();
-    });
+    }, e.selectionAntialiased);
     e.applySelection(mask, d.mode, ellipse ? 'Elliptical Marquee' : 'Rectangular Marquee');
   },
   cancel(ctx) {
+    stopScroll();
     if (moving) { moving = null; ctx.engine.updateSelectionShift(0, 0); ctx.engine.endSelectionShift(); }
     draft = null;
     ctx.engine.emit('overlay', null);
@@ -78,6 +115,7 @@ export const marqueeTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Marquee' },
     { kind: 'segment', label: 'Shape', choices: [{ id: 'rectangle', label: 'Rectangle' }, { id: 'ellipse', label: 'Ellipse' }], get: () => e.marqueeKind, set: (v) => e.update({ marqueeKind: v as 'rectangle' | 'ellipse' }) },
+    { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     modeSegment(e),
   ],
 };

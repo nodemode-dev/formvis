@@ -77,6 +77,9 @@ export class Engine {
   marqueeKind: 'rectangle' | 'ellipse' = 'rectangle';
   lassoKind: 'freehand' | 'polygonal' = 'freehand';
   wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0 };
+  /** the reference app's selectionAntialiased: smooth Lasso and elliptical Marquee edges (rectangles snap to whole pixels and
+   *  the Magic Wand's edges follow pixels exactly, so neither changes). On by default. */
+  selectionAntialiased = true;
   showPixelGrid = true;
   showTransformControls = true;
   autoSelect = false;
