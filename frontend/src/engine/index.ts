@@ -6,7 +6,7 @@ import { SelectionMask, type SelectionMode } from './selection';
 import { Raster, createSurface, ctxOf, toBlob, type Surface } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
-import { dragged, rounded, type DragMode } from './transform';
+import { dragged, following, rounded, type DragMode } from './transform';
 import { wandMask } from './kernels';
 import { Project } from './project';
 import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform } from './types';
@@ -84,7 +84,7 @@ export class Engine {
   showTransformControls = true;
   autoSelect = false;
   lockRatio = true;
-  transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean } | null = null;
+  transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean; group: { box: Transform; originals: Map<ID, Transform> } | null } | null = null;
   selectionShift: { project: Project; dx: number; dy: number } | null = null;
   private currentId: string | null = null;
   private viewSize = { w: 800, h: 600 };
@@ -294,7 +294,10 @@ export class Engine {
     const st = this.stroke;
     if (st && st.project === p) m.set(st.layerId, st.target === 'pixels' ? { source: st.s.working } : { maskSource: st.s.working });
     const te = this.transformEdit;
-    if (te && te.project === p) m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), ...(te.mask ? { maskPlacement: te.draft } : { transform: te.draft }) });
+    if (te && te.project === p) {
+      if (te.group) for (const [id, orig] of te.group.originals) m.set(id, { ...(m.get(id) ?? {}), transform: following(orig, te.group.box, te.draft) });
+      else m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), ...(te.mask ? { maskPlacement: te.draft } : { transform: te.draft }) });
+    }
     const pv = this.preview;
     if (pv && pv.project === p) m.set(pv.layerId, { ...(m.get(pv.layerId) ?? {}), ...(pv.target === 'pixels' ? { source: pv.surface } : { maskSource: pv.surface }), ...(pv.transform ? { transform: pv.transform } : {}) });
     const gr = this.gradient;
@@ -1057,14 +1060,48 @@ export class Engine {
     return !!l && !!this.current?.maskTarget && !!l.mask?.raster && !l.mask.linked;
   }
 
+  /** the reference app's groupTransformMembers: with more than one layer selected, or a folder, the Move tool transforms the
+   *  visible pixel layers that are selected or inside a selected folder together. */
+  private groupMembers(p: Project): Layer[] {
+    const sel = p.selectedIds;
+    if (!(sel.size > 1 || (sel.size === 1 && p.activeLayer?.isGroup))) return [];
+    const parents = new Map(p.doc.layers.map((l) => [l.id, l.parentId]));
+    const visible = new Set(hierarchy(p.doc).filter((e) => e.visible).map((e) => e.layer.id));
+    return p.doc.layers.filter((l) => {
+      if (!l.raster || l.isGroup || !visible.has(l.id)) return false;
+      let cur: ID | null = l.id;
+      for (let i = 0; i < 64 && cur; i++) {
+        if (sel.has(cur)) return true;
+        cur = parents.get(cur) ?? null;
+      }
+      return false;
+    });
+  }
+
+  /** The group's handle box: the upright bounds of every member's corners (the reference app's groupTransformBox). */
+  groupBox(): Transform | null {
+    const p = this.current;
+    if (!p) return null;
+    let b: Rect | null = null;
+    for (const l of this.groupMembers(p)) b = unionRect(b, transformBounds(l.transform));
+    return b ? { x: b.x, y: b.y, w: Math.max(1, b.w), h: Math.max(1, b.h), rotation: 0, flipX: false, flipY: false, sampling: 'high' } : null;
+  }
+
   beginTransform(mode: DragMode, start: Pt): boolean {
     const p = this.current;
     const l = p?.activeLayer;
-    if (!p || !l || l.isGroup || !l.raster || this.stroke) return false;
+    if (!p || !l || this.stroke) return false;
+    const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
+    if (box) {
+      this.settle();
+      this.transformEdit = { project: p, layerId: l.id, original: box, draft: box, mode, start, mask: false, group: { box, originals: new Map(members.map((m) => [m.id, m.transform])) } };
+      return true;
+    }
+    if (l.isGroup || !l.raster) return false;
     this.settle(this.floatSel?.floatingId === l.id);
     const mask = this.transformsMask(l);
-    const box = mask ? l.mask?.placement ?? l.transform : l.transform;
-    this.transformEdit = { project: p, layerId: l.id, original: box, draft: box, mode, start, mask };
+    const tbox = mask ? l.mask?.placement ?? l.transform : l.transform;
+    this.transformEdit = { project: p, layerId: l.id, original: tbox, draft: tbox, mode, start, mask, group: null };
     return true;
   }
 
@@ -1072,7 +1109,7 @@ export class Engine {
     const te = this.transformEdit;
     if (!te) return;
     te.draft = dragged(te.original, te.start, pt, te.mode, this.lockRatio, shift, alt);
-    if (te.mode.kind === 'move' && this.snapping) te.draft = this.snapMove(te.project, te.layerId, te.draft);
+    if (te.mode.kind === 'move' && this.snapping && !te.group) te.draft = this.snapMove(te.project, te.layerId, te.draft);
     else this.snapGuides = null;
     this.emit('render', null);
     this.emit('options', null);
@@ -1086,6 +1123,23 @@ export class Engine {
     const next = rounded(te.draft);
     if (sameTransform(next, te.original) || this.current !== te.project) { this.emit('render', null); return; }
     if (this.floatSel?.project === te.project && this.floatSel.floatingId === te.layerId) { te.project.updateLayer(te.layerId, { transform: next }); this.refresh(); return; }
+    if (te.group) {
+      // the reference app's group commit: each member follows the box, its mask following it, as one Transform Layers step.
+      const g = te.group;
+      this.edit('Transform Layers', (p) => {
+        let moved = false;
+        for (const [id, orig] of g.originals) {
+          const l = p.layer(id);
+          const t = following(orig, g.box, next);
+          if (!l || !(t.w >= 1 && t.h >= 1) || ![t.x, t.y, t.w, t.h, t.rotation].every(Number.isFinite)) continue;
+          const redraw = !!l.shape && (Math.round(t.w) !== l.raster?.width || Math.round(t.h) !== l.raster?.height);
+          p.updateLayer(id, { transform: t, mask: followMask(l, t), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, t.w, t.h) } : {}) });
+          moved = true;
+        }
+        return moved;
+      });
+      return;
+    }
     if (te.mask) {
       // the reference app's commitMaskTransform: the mask takes the new placement, its pixels untouched; a placement equal to
       // the layer's own is stored as none.

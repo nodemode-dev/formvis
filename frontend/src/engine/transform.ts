@@ -1,4 +1,5 @@
-import { radians, unitPoint } from './geometry';
+import { applyMat, invert, mul, placement, radians, sameTransform, unitPoint } from './geometry';
+import type { Mat } from './geometry';
 import type { Pt, Transform } from './types';
 
 export const HANDLES: ReadonlyArray<Pt> = [
@@ -50,6 +51,29 @@ export function dragged(o: Transform, start: Pt, p: Pt, mode: DragMode, lockRati
     r.y = cy - h / 2;
   }
   return validTransform(r) ? r : o;
+}
+
+/** the reference app's LayerTransform.placing: the transform that places the unit square as `map` does, a rotated and maybe
+ *  flipped rectangle (shear, which only uneven scaling of something rotated adds, is dropped). Keeps `base`'s
+ *  horizontal flip, its sampling, and the rotation nearest its own, so the numbers stay familiar. */
+export function placing(base: Transform, map: Mat): Transform {
+  const [a, b, c, d] = map;
+  const sign = base.flipX ? -1 : 1;
+  const angle = Math.atan2(b * sign, a * sign);
+  const along = -c * Math.sin(angle) + d * Math.cos(angle);
+  const middle = applyMat(map, 0.5, 0.5);
+  const w = Math.hypot(a, b), h = Math.abs(along), degrees = (angle * 180) / Math.PI;
+  return { ...base, w, h, rotation: degrees + Math.round((base.rotation - degrees) / 360) * 360, flipY: along < 0, x: middle.x - w / 2, y: middle.y - h / 2 };
+}
+
+/** the reference app's LayerTransform.following: `t` carried along as a box moves from `from` to `to`. A plain move carries
+ *  exactly; anything else composes `t` with the box's change and decomposes the result. */
+export function following(t: Transform, from: Transform, to: Transform): Transform {
+  if (sameTransform(from, to)) return t;
+  if (from.w === to.w && from.h === to.h && from.rotation === to.rotation && from.flipX === to.flipX && from.flipY === to.flipY) {
+    return { ...t, x: t.x + to.x - from.x, y: t.y + to.y - from.y };
+  }
+  return placing(t, mul(placement(to, 1, 1), mul(invert(placement(from, 1, 1)), placement(t, 1, 1))));
 }
 
 export function rounded(t: Transform): Transform {

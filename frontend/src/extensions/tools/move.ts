@@ -6,9 +6,13 @@ const ROTATE_PX = 24;
 const CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'];
 
 function editable(ctx: ToolContext): Transform | null {
-  const l = ctx.engine.activeLayer;
+  const e = ctx.engine, te = e.transformEdit;
+  if (te) return te.draft;
+  const box = e.groupBox();
+  if (box) return box;
+  const l = e.activeLayer;
   if (!l || l.isGroup || !l.raster) return null;
-  return ctx.engine.transformEdit?.draft ?? (ctx.engine.transformsMask(l) ? l.mask?.placement ?? l.transform : l.transform);
+  return e.transformsMask(l) ? l.mask?.placement ?? l.transform : l.transform;
 }
 
 function hit(ctx: ToolContext, p: ToolPointer): DragMode | null {
