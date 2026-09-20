@@ -637,6 +637,10 @@ import { dragged, following, rounded, type DragMode } from './transform';
 
 the reference app's brushTipDrag: right-drag resizes the brush from its size at the press (2 dx over the zoom, 1 to 2000) or with Shift changes its hardness (dx over 200), the circle pinned at the press. Nothing was removed.
 
+### src/engine/index.ts · floatingOutline · _v0.24.0
+
+the reference app's mapPath for Transform Selection: the floating pixels' source selection and the matrix placement(now) times placement(original) inverse, now being the live draft while dragging; null when a distortion leaves no affine map. Nothing was removed.
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -1490,6 +1494,25 @@ After the tool overlay, draws `engine.sampleRing` with the reference app's `Samp
 ### src/ui/stage.ts · Stage · right-drag brush tip · _v0.22.0
 
 Right presses with Brush, Spot Healing, Clone Stamp or Smear (`brushTools`, the reference app's isBrushTool) start a tip drag before tool dispatch, captured like panning. Nothing was removed.
+
+### src/ui/stage.ts · Stage · floating ants · _v0.24.0
+
+With no live selection, the ants draw `floatingOutline`'s selection through the view times its carry matrix, and keep marching while a selection floats. Removed:
+
+```ts
+    const sel = p.selection;
+    if (sel) {
+```
+
+```ts
+      const m = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + (shift?.dy ?? 0) * v.zoom) * d]);
+      const path = new Path2D();
+      path.addPath(sel.outline(), m);
+```
+
+```ts
+    const need = !!this.engine.current?.selection && !REDUCED;
+```
 
 ## src/ui/status.ts
 

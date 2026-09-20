@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.24.0 · 2026-09-20
+
+### Added
+
+- During Transform Selection the selection outline now follows the pixels as they move, scale or rotate, and keeps marching, as in the reference app; before, it hid until the transform was applied.
+
+### Known gaps
+
+The desktop shell has not been compiled (first CI run pending), and the desktop-only items wait on it.
+
 ## 0.23.0 · 2026-09-20
 
 ### Added
