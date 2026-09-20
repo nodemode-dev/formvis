@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.30.0 · 2026-09-20
+
+### Added
+
+- Crop edges snap to visible layers' edges as well as the canvas, as in the reference app: creating or resizing snaps the edge you drag, moving snaps the frame while keeping its size, and a fixed ratio only snaps moves.
+- Export JPEG has the reference app's shortcut, Alt+Shift+Cmd/Ctrl+S.
+
+### Verified
+
+- Every one of the reference app's 33 menu shortcuts was compared with sonny's; all match, apart from Close (Cmd/Ctrl-W in the desktop app, Alt+Cmd/Ctrl+W on the web where browsers reserve it) and the macOS-only Hide Others.
+
+### Known gaps
+
+The desktop shell has not been compiled (first CI run pending), and the desktop-only items wait on it.
+
 ## 0.29.0 · 2026-09-20
 
 ### Changed

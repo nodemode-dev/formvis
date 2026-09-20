@@ -348,6 +348,14 @@ Close Tab takes Mod+W where the Tauri shell is present, as the reference app's F
 
 File > Export for the reference app (.ref)... writes `Name.ref.zip` through `serializeReference` and the package route's root folder, and toasts the changes made for the reference app. Nothing was removed.
 
+### src/app.ts · export-jpg shortcut · _v0.30.0
+
+Export JPEG takes the reference app's Alt+Shift+Mod+S, the one gap the shortcut audit found. Removed:
+
+```ts
+    { id: 'export-jpg', label: 'Export JPEG...', enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -932,6 +940,28 @@ import { hexOf } from '../../engine';
 
 ```ts
   down(ctx, p) { if (p.button === 0) sample(ctx, p); },
+```
+
+### src/extensions/tools/crop.ts · snapTargets, nearest, snap · _v0.30.0
+
+the reference app's CropSnap and cropSnapTargets: canvas edges and visible pixel layers' rounded bounds, applied per drag mode (create and resize on the pointer's side, moves keep their size, fixed ratios only snap moves). Removed:
+
+```ts
+function snap(ctx: ToolContext, r: Rect): Rect {
+  const d = ctx.engine.current?.doc;
+  if (!d) return r;
+  const tol = 8 / ctx.view().zoom, n = norm(r);
+  let x = n.x, y = n.y, w = n.w, h = n.h;
+  if (Math.abs(x) < tol) { w += x; x = 0; }
+  if (Math.abs(y) < tol) { h += y; y = 0; }
+  if (Math.abs(x + w - d.width) < tol) w = d.width - x;
+  if (Math.abs(y + h - d.height) < tol) h = d.height - y;
+  return { x, y, w, h };
+}
+```
+
+```ts
+    if (!ratio && drag.mode !== 'move') frame = snap(ctx, frame);
 ```
 
 ## src/extensions/tools/gradient.ts
