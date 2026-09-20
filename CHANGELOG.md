@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.16.0 · 2026-09-19
+
+### Added
+
+- Smear's Blur on masks: with a layer mask targeted, the Smear tool's Blur mode softens the mask under the brush, the way the reference app blurs masks. All fourteen of the reference app's tools are now complete.
+
+### Known gaps
+
+Transforming several selected layers together; dragging layers between projects; the live-mask deletion choice; free distort; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.15.0 · 2026-09-19
 
 ### Added

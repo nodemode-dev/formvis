@@ -477,6 +477,27 @@ the reference app's commitMaskTransform: with a painted mask targeted and unlink
     if (te && te.project === p) m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), transform: te.draft });
 ```
 
+### src/engine/index.ts · maskBlurSample, beginRetouchStroke on masks · _v0.16.0
+
+`maskBlurSample` ports the reference app's blurSample for a mask (the mask at document size, its area from none, the rest at its binary edge tone, blurred at the Blur sigma); `beginRetouchStroke` lets Blur paint a targeted mask as a lerp stroke with the stroke's real target, while Clone Stamp and Spot Healing still refuse masks. Removed:
+
+```ts
+    if (p.maskTarget && l0.mask) { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
+```
+
+```ts
+    } else if (kind === 'blur') texture = { surface: this.layerSample(p, l0, clamp(this.brush.diameter / 10, 1.5, 30)), dx: 0, dy: 0 };
+```
+
+```ts
+    const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture);
+    this.stroke = { project: p, layerId: pick.layer.id, target: 'pixels', s, heal: kind === 'heal' ? this.retouch.healMode : undefined };
+```
+
+```ts
+    if (shift && last && last.layerId === pick.layer.id && last.target === 'pixels') s.to(last.p);
+```
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -537,6 +558,18 @@ Created in _v0.1.0.
 ### src/engine/stroke.ts · texture and coverageAlpha · _v0.3.0
 
 A stroke can paint a document-space texture at an offset instead of a color, which is how Clone Stamp and the Blur mode of Smear work: a canvas point takes the sample at itself plus the offset. `coverageAlpha` returns the accumulated coverage clipped by the selection, which Spot Healing heals. Nothing was removed.
+
+### src/engine/stroke.ts · PixelStroke · lerp mode · _v0.16.0
+
+A `lerp` flag for alpha-coded masks: compose erases by the coverage, then adds the coverage-masked sample with `lighter`, so out = old x (1 - c) + sample x c. Removed:
+
+```ts
+  constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null) {
+```
+
+```ts
+    w.globalCompositeOperation = this.op;
+```
 
 ## src/engine/surface.ts
 
