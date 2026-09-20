@@ -14,6 +14,7 @@ sonny is a layered image editor for the web and the desktop, built in the NodeMo
 | [NodeMode Embedding](NodeMode-Embedding) | Portal protocol, theme bridge, send to canvas |
 | [Keyboard Shortcuts](Keyboard-Shortcuts) | Every shortcut |
 | [Verification](Verification) | The throttled browser procedure every UI change passes |
+| [Releasing](Releasing) | Signing, notarization and updater secrets, and cutting a desktop release |
 
 Status at 0.11.0: all 14 of the reference app's tools (Smear's Blur on masks aside) and all 59 web-relevant menu commands are complete; the README's Status section and `CHANGELOG.md` list what each release added and what is not built yet.
 

@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.12.0 · 2026-09-19
+
+### Added
+
+- Layer via Copy (Cmd-J with a selection): the selected pixels become a new layer in place; without a selection Cmd-J still duplicates the layer, and the menu names whichever it will do.
+- Desktop releases: macOS signing and notarization from repository secrets, the hardened runtime, `.sonny` and `.ref` file associations, and in-app updates from GitHub Releases once the updater key exists. See the wiki's Releasing page.
+
+### Fixed
+
+- The desktop release job would have published no files: it attached only top-level paths while the bundles sit in subfolders.
+
+### Known gaps
+
+Free distort; Smear's Blur on masks; ants that follow a floating selection; opening a clicked file in the running desktop app; the desktop shell has not yet been compiled (first CI run pending).
+
 ## 0.11.0 · 2026-09-19
 
 ### Added
