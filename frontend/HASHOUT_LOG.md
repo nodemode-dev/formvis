@@ -621,6 +621,10 @@ the reference app's free distort: a pending four-corner edit of the active layer
 import { dragged, following, rounded, type DragMode } from './transform';
 ```
 
+### src/engine/index.ts · tipDrag, beginTipDrag, updateTipDrag, endTipDrag · _v0.22.0
+
+the reference app's brushTipDrag: right-drag resizes the brush from its size at the press (2 dx over the zoom, 1 to 2000) or with Shift changes its hardness (dx over 200), the circle pinned at the press. Nothing was removed.
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -759,11 +763,32 @@ Adds the `number` option kind: an editable field with optional min, max, step an
 
 The brush cursor, the size, hardness and opacity keys, and the brush options shared by Brush, Spot Healing, Clone Stamp and Smear, which share one set of brush settings as in the reference app.
 
+### src/extensions/tools/brush-common.ts · drawBrushCursor · pinned circle · _v0.22.0
+
+During a right-drag the circle draws at the press point (`engine.tipDrag.at`), as in the reference app. Removed:
+
+```ts
+export function drawBrushCursor(ctx: ToolContext, g: CanvasRenderingContext2D, pt: Pt | null): void {
+  if (!pt) return;
+```
+
 ## src/extensions/tools/brush.ts
 
 ### src/extensions/tools/brush.ts · brush and eraser · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/extensions/tools/brush.ts · brushTool · overlay pinned during a tip drag · _v0.22.0
+
+Brush's own circle also draws at the press point during a right-drag. Removed:
+
+```ts
+    if (!hoverPt) return;
+```
+
+```ts
+    const c = v.toScreen(hoverPt);
+```
 
 ## src/extensions/tools/clone.ts
 
@@ -1429,6 +1454,10 @@ After the tool overlay, draws `engine.sampleRing` with the reference app's `Samp
 ### src/ui/stage.ts · Stage · WebKit pinch · _v0.20.0
 
 `gesturestart`, `gesturechange` and `gestureend` listeners zoom about the pointer by the gesture's scale since it began, as the reference app's magnify; Chrome's pinch still arrives as Ctrl+wheel. Nothing was removed.
+
+### src/ui/stage.ts · Stage · right-drag brush tip · _v0.22.0
+
+Right presses with Brush, Spot Healing, Clone Stamp or Smear (`brushTools`, the reference app's isBrushTool) start a tip drag before tool dispatch, captured like panning. Nothing was removed.
 
 ## src/ui/status.ts
 

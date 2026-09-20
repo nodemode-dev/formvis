@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.22.0 · 2026-09-20
+
+### Added
+
+- Right-drag brush sizing, as in the reference app: with Brush, Spot Healing, Clone Stamp or Smear, right-drag left or right to resize the brush (its circle stays where you pressed), or hold Shift to change its hardness instead.
+
+### Corrected
+
+- Pen pressure was listed as a missing brush control; the reference app has no pressure support, so it was never a parity gap and is dropped.
+
+### Known gaps
+
+Selection ants during Transform Selection; recent projects and autosave; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.21.0 · 2026-09-20
 
 ### Added
