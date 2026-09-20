@@ -2196,6 +2196,18 @@ export class Engine {
 
   get movingPixels(): boolean { return this.floating !== null; }
 
+  /** the reference app's mapPath for Transform Selection: while selected pixels float, the selection they came from and the
+   *  matrix carrying it with the floating pixels' transform (the live draft while dragging), so the ants keep matching
+   *  them. Null when no affine map fits: a pending or applied distortion of the floating pixels. */
+  floatingOutline(p: Project): { selection: SelectionMask; m: Mat } | null {
+    const f = this.floatSel, l = f && f.project === p ? p.layer(f.floatingId) : null, dz = this.distortEdit;
+    if (!f || !l?.raster || l.raster.width !== f.region.w || l.raster.height !== f.region.h) return null;
+    if (dz && dz.project === p && (dz.layerId === f.floatingId || dz.members?.includes(f.floatingId))) return null;
+    const te = this.transformEdit;
+    const now = te && te.project === p && te.layerId === f.floatingId && !te.mask && !te.group ? te.draft : l.transform;
+    return { selection: f.selection, m: mul(placement(now, f.region.w, f.region.h), invert(placement(f.original, f.region.w, f.region.h))) };
+  }
+
   outlineShift(p: Project): { dx: number; dy: number } | null {
     if (this.selectionShift?.project === p) return this.selectionShift;
     const f = this.floating;

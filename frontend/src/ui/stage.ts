@@ -175,13 +175,14 @@ export class Stage {
     if (!p) return;
     const pal = paint();
     const v = p.viewport;
-    const sel = p.selection;
-    if (sel) {
+    const sel = p.selection, fl = sel ? null : this.engine.floatingOutline(p);
+    if (sel || fl) {
       const shift = this.engine.outlineShift(p);
       const d = this.dpr;
-      const m = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + (shift?.dy ?? 0) * v.zoom) * d]);
+      const view = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + (shift?.dy ?? 0) * v.zoom) * d]);
       const path = new Path2D();
-      path.addPath(sel.outline(), m);
+      if (fl) path.addPath(fl.selection.outline(), view.multiply(new DOMMatrix([...fl.m])));
+      else if (sel) path.addPath(sel.outline(), view);
       g.lineWidth = 1;
       g.setLineDash([4 * d, 4 * d]);
       g.strokeStyle = pal.antsB;
@@ -220,7 +221,7 @@ export class Stage {
   }
 
   private syncAnts(): void {
-    const need = !!this.engine.current?.selection && !REDUCED;
+    const need = (!!this.engine.current?.selection || this.engine.floatingSelection) && !REDUCED;
     if (need && !this.antsTimer) this.antsTimer = window.setInterval(() => { this.phase = (this.phase + 1) % 8; this.queue(false, true); }, 140);
     else if (!need && this.antsTimer) { window.clearInterval(this.antsTimer); this.antsTimer = 0; }
   }
