@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.21.0 · 2026-09-20
+
+### Added
+
+- Free distort, as in the reference app: with the Move tool, Cmd-drag a corner handle to move that corner on its own. The distortion stays pending so any corner can be adjusted; Enter applies, Escape cancels. Works on several selected layers or a folder together. Linked masks warp along, masks placed apart take the same perspective, unlinked masks stay put; shape layers become pixels.
+
+### Fixed
+
+- A layer that other layers clip to now previews at the right scale while it is being transformed with a different-size preview.
+
+### Known gaps
+
+The desktop shell has not been compiled (first CI run pending).
+
 ## 0.20.0 · 2026-09-19
 
 ### Added

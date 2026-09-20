@@ -21,6 +21,7 @@ src/
     engine/
         adjust.ts  · Hue/Saturation and Grain kernels, adjustment data
         renderer.ts  · rendering pipeline
+        distort.ts  · free distort: homography, warp, carried corners
         events.ts  · typed emitter
         filters.ts  · blurs, noise, lens, histogram, selection resize
         geometry.ts  · matrices and rectangles
@@ -114,6 +115,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/app.ts](#srcappts)
 - [src/engine/adjust.ts](#srcengineadjustts)
 - [src/engine/renderer.ts](#srcenginerendererts)
+- [src/engine/distort.ts](#srcenginedistortts)
 - [src/engine/events.ts](#srcengineeventsts)
 - [src/engine/filters.ts](#srcenginefiltersts)
 - [src/engine/geometry.ts](#srcenginegeometryts)
@@ -379,6 +381,20 @@ import { IDENTITY, applyMat, invert, matScale, mul, placement, setMat, type Mat 
     c.drawImage(src, 0, 0);
 ```
 
+### src/engine/renderer.ts · clipCoverage · override source size · _v0.21.0
+
+A clip base's override source is placed by the source's own size, as layers and masks already were, so a distorted clip base previews at the right scale. Removed:
+
+```ts
+    this.draw(slot.c, src, mul(job.view, placement(t, base.raster.width, base.raster.height)), t.sampling, ov?.opacity ?? base.opacity, 'source-over', job.quality);
+```
+
+## src/engine/distort.ts
+
+### src/engine/distort.ts · DistortWarp port · _v0.21.0
+
+the reference app's free distort math: `cornersOf` (handle order), `distortUsable` (convex and non-degenerate), `homography` and `project`, `carried` (a box's perspective applied to inner corners, for group members and masks placed apart), `warpRaster` (premultiplied, edge-clamped bilinear inverse mapping, preview scale, mask mode with an edge tone outside), `visibleBounds` and `cropWarp` (warpTrimmed), and `maskEdgeTone` (LayerMask.background).
+
 ## src/engine/events.ts
 
 ### src/engine/events.ts · typed emitter · _v0.1.0
@@ -590,6 +606,19 @@ A live mask in the reference app is a clipping mask. `liveMaskDependents` names 
 
 ```ts
       const kept = p.doc.layers.filter((l) => !doomed.has(l.id)).map((l) => (l.clipId && doomed.has(l.clipId) ? { ...l, clipId: null } : l));
+```
+
+### src/engine/index.ts · distortEdit, beginDistort, moveDistortCorner, applyDistort · _v0.21.0
+
+the reference app's free distort: a pending four-corner edit of the active layer or the group box, previewed per layer at up to 640 px through the overrides, applied at full resolution as Distort or Distort Layers; `distortQuad` carries group members, `distortMask` handles linked, placed and unlinked masks; `settle` applies a pending distortion. Removed (0.21.0 replaced its own first, single-layer version before release, so only earlier code is quoted):
+
+```ts
+  settle(keepFloating = false): void {
+    if (this.gradient) this.commitGradient();
+```
+
+```ts
+import { dragged, following, rounded, type DragMode } from './transform';
 ```
 
 ## src/engine/kernels.ts
@@ -922,6 +951,21 @@ The handles sit on the group box when several layers or a folder are selected, b
   const l = ctx.engine.activeLayer;
   if (!l || l.isGroup || !l.raster) return null;
   return ctx.engine.transformEdit?.draft ?? (ctx.engine.transformsMask(l) ? l.mask?.placement ?? l.transform : l.transform);
+```
+
+### src/extensions/tools/move.ts · distortCorner, corner drags, Enter and Escape · _v0.21.0
+
+Cmd on a corner handle begins a distortion; any corner of a pending one drags alone; Enter applies, Escape cancels; the overlay draws the distorted outline and its four handles. Removed:
+
+```ts
+    if (p.button !== 0) return;
+    const e = ctx.engine;
+    const sel = e.current?.selection;
+```
+
+```ts
+  move(ctx, p) {
+    if (pixelStart) {
 ```
 
 ## src/extensions/tools/select-common.ts
