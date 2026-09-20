@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.13.0 · 2026-09-19
+
+### Added
+
+- Selection nudging: in the Marquee, Lasso and Magic Wand, arrow keys move the outline 1 px, or 10 with Shift.
+- Magic Wand Sample Size: Point, 3 by 3 or 5 by 5.
+- Marquee autoscroll: drag a marquee or a selection outline to the edge of the view and the view pans with it.
+- Anti-alias option for the Lasso and elliptical Marquee.
+- Marquee modifiers follow the reference app: a key held from the press sets the mode; released and pressed again during the drag, Shift makes a square and Alt draws from the center.
+
+### Known gaps
+
+Free distort; Smear's Blur on masks; ants that follow a floating selection; opening a clicked file in the running desktop app; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.12.0 · 2026-09-19
 
 ### Added

@@ -433,6 +433,18 @@ Lays a refined subject mask on a layer as one Remove Background step, stored as 
 
 the reference app's sample ring state: the document point, the sampled color and the color before the drag, set by whatever is sampling and drawn by the stage; `showsSampleRing` is the Eyedropper's Sample Ring option and suppresses it. Nothing was removed.
 
+### src/engine/index.ts · wand Sample Size, selectionAntialiased, nudgeSelection · _v0.13.0
+
+`wand.sampleSize` (0 Point, 1 three by three, 2 five by five) passes to `wandMask`; `selectionAntialiased` is the reference app's session-wide Anti-alias for the Lasso and elliptical Marquee; `nudgeSelection` moves the outline as one Move Selection step. Removed:
+
+```ts
+  wand = { tolerance: 32, contiguous: true, sampleAll: false };
+```
+
+```ts
+    const mask = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous);
+```
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -445,6 +457,19 @@ Kernels take an optional context with the region's document origin and scale, wh
 
 ```ts
 export type Kernel = (data: Uint8ClampedArray) => void;
+```
+
+### src/engine/kernels.ts · wandMask sample radius · _v0.13.0
+
+The color to match averages the pixels within `sampleRadius` of the click, clipped to the image, as the reference app's Sample Size does. Removed:
+
+```ts
+export function wandMask(rgba: Uint8ClampedArray, width: number, height: number, seedX: number, seedY: number, tolerance: number, contiguous: boolean): Uint8Array {
+```
+
+```ts
+  const s = (seedY * width + seedX) * 4;
+  const ref = [rgba[s], rgba[s + 1], rgba[s + 2], rgba[s + 3]];
 ```
 
 ## src/engine/matte.ts
@@ -609,11 +634,52 @@ Registers Spot Healing, Clone Stamp and Smear, completing the reference app's fo
 
 Created in _v0.1.0.
 
+### src/extensions/tools/lasso.ts · lassoTool · Anti-alias, nudging · _v0.13.0
+
+Honors `selectionAntialiased` and gains the Anti-alias option; arrow keys nudge the outline when no polygon is open. Removed:
+
+```ts
+import { modeFor, modeSegment } from './select-common';
+```
+
+```ts
+    if (!active || ctx.engine.lassoKind !== 'polygonal') return false;
+```
+
+```ts
+  });
+  e.applySelection(mask, mode, e.lassoKind === 'polygonal' ? 'Polygonal Lasso' : 'Lasso');
+```
+
 ## src/extensions/tools/marquee.ts
 
 ### src/extensions/tools/marquee.ts · rectangle and ellipse marquee · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/extensions/tools/marquee.ts · marqueeTool · autoscroll, re-arm, Anti-alias, nudging · _v0.13.0
+
+Drags go through `follow`, which pointer moves and the reference app's autoscroll ticks (`scrollDelta`, `autoscroll`, `stopScroll`) share; the box keeps the reference app's marqueeConstrainArmed rule; masks honor `selectionAntialiased`, with the Anti-alias option; arrow keys nudge the outline. Removed:
+
+```ts
+import { modeFor, modeSegment } from './select-common';
+```
+
+```ts
+  move(ctx, p) {
+    if (moving) { ctx.engine.updateSelectionShift(p.doc.x - moving.x, p.doc.y - moving.y); return; }
+    if (!draft) return;
+    draft.point = p.doc;
+    draft.square = p.shift && !draft.shiftAtPress;
+    draft.center = p.alt && !draft.altAtPress;
+    ctx.engine.emit('overlay', null);
+  },
+```
+
+```ts
+    });
+    e.applySelection(mask, d.mode, ellipse ? 'Elliptical Marquee' : 'Rectangular Marquee');
+```
 
 ## src/extensions/tools/move.ts
 
@@ -668,6 +734,14 @@ Enter applies a floating selection and Escape cancels it (a first Escape still c
 
 Created in _v0.1.0.
 
+### src/extensions/tools/select-common.ts · nudgeSelectionKey · _v0.13.0
+
+Arrow keys nudge the selection outline in the selection tools, 1 px or 10 with Shift, leaving Cmd, Ctrl and Alt arrows to other commands. Removed:
+
+```ts
+import type { OptionSpec, ToolPointer } from '../registry';
+```
+
 ## src/extensions/tools/shape.ts
 
 ### src/extensions/tools/shape.ts · shapeTool · _v0.2.0
@@ -685,6 +759,18 @@ the reference app's Blur tool, labeled Smear as in the reference app: Liquify an
 ### src/extensions/tools/wand.ts · magic wand · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/extensions/tools/wand.ts · wandTool · Sample Size, nudging · _v0.13.0
+
+Adds the reference app's Sample Size choice (Point, 3 by 3, 5 by 5) and arrow-key nudging. Removed:
+
+```ts
+import { modeFor, modeSegment } from './select-common';
+```
+
+```ts
+  hint: () => 'Click to select similar colors · Shift adds · Alt subtracts · Tolerance sets how similar',
+```
 
 ## src/extensions/tools/zoom.ts
 
