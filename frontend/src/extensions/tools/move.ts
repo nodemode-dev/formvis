@@ -15,6 +15,24 @@ function editable(ctx: ToolContext): Transform | null {
   return e.transformsMask(l) ? l.mask?.placement ?? l.transform : l.transform;
 }
 
+/** the reference app's free distort: the corner under the pointer in handle order (top-left, top-right, bottom-right,
+ *  bottom-left): any corner of a pending distortion, or with Cmd held a corner handle of the transform box. */
+let cornerDrag: number | null = null;
+function distortCorner(ctx: ToolContext, p: ToolPointer): number | null {
+  const e = ctx.engine, v = ctx.view(), d = e.distortEdit;
+  let pts = d ? [...d.corners] : null;
+  if (!pts) {
+    const t = editable(ctx);
+    if (!t || !e.showTransformControls || !p.mod) return null;
+    pts = [0, 2, 4, 6].map((k) => unitPoint(t, HANDLES[k].x, HANDLES[k].y));
+  }
+  for (let i = 0; i < 4; i++) {
+    const s = v.toScreen(pts[i]);
+    if (Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= HANDLE_PX) return i;
+  }
+  return null;
+}
+
 function hit(ctx: ToolContext, p: ToolPointer): DragMode | null {
   const t = editable(ctx);
   if (!t) return null;
@@ -59,6 +77,9 @@ export const moveTool: Tool = {
   down(ctx, p) {
     if (p.button !== 0) return;
     const e = ctx.engine;
+    const corner = distortCorner(ctx, p);
+    if (corner !== null && (e.distortEdit || e.beginDistort())) { cornerDrag = corner; return; }
+    if (e.distortEdit) return;
     const sel = e.current?.selection;
     if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && e.beginPixelMove(p.alt)) { pixelStart = p.doc; return; }
     if (p.mod || e.autoSelect) { const id = e.layerAt(p.doc); if (id) e.selectLayer(id); }
@@ -66,6 +87,7 @@ export const moveTool: Tool = {
     if (m) e.beginTransform(m, p.doc);
   },
   move(ctx, p) {
+    if (cornerDrag !== null) { ctx.engine.moveDistortCorner(cornerDrag, p.doc); return; }
     if (pixelStart) {
       let dx = p.doc.x - pixelStart.x, dy = p.doc.y - pixelStart.y;
       if (p.shift) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }
@@ -75,10 +97,12 @@ export const moveTool: Tool = {
     ctx.engine.updateTransform(p.doc, p.shift, p.alt);
   },
   up(ctx) {
+    if (cornerDrag !== null) { cornerDrag = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.endPixelMove(); return; }
     ctx.engine.endTransform();
   },
   cancel(ctx) {
+    if (cornerDrag !== null) { cornerDrag = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.cancelPixelMove(); return; }
     ctx.engine.cancelTransform();
   },
@@ -90,6 +114,8 @@ export const moveTool: Tool = {
     if (arrows[e.key]) { eng.nudge(arrows[e.key][0], arrows[e.key][1]); return true; }
     const digit = digitOf(e);
     if (digit !== null && !e.shiftKey && !e.altKey) { eng.setOpacity(digit === 0 ? 1 : digit / 10); return true; }
+    if (e.key === 'Enter' && eng.distortEdit) { eng.applyDistort(); return true; }
+    if (e.key === 'Escape' && eng.distortEdit) { eng.cancelDistort(); return true; }
     if (e.key === 'Escape' && pixelStart) { pixelStart = null; eng.cancelPixelMove(); return true; }
     if (e.key === 'Escape' && eng.transformEdit) { eng.cancelTransform(); return true; }
     if (e.key === 'Escape' && eng.floatingSelection) { eng.cancelSelectionTransform(); return true; }
@@ -110,6 +136,25 @@ export const moveTool: Tool = {
       for (const y of guides.ys) { const s = Math.round(v.toScreen({ x: 0, y }).y) + 0.5; g.moveTo(0, s); g.lineTo(v.width, s); }
       g.stroke();
       g.restore();
+    }
+    const dz = e.distortEdit;
+    if (dz) {
+      const v = ctx.view(), pal = ctx.paint(), cs = dz.corners.map((c) => v.toScreen(c));
+      g.save();
+      g.lineWidth = 1;
+      g.strokeStyle = pal.accent;
+      g.beginPath();
+      g.moveTo(cs[0].x, cs[0].y);
+      for (let i = 1; i < 4; i++) g.lineTo(cs[i].x, cs[i].y);
+      g.closePath();
+      g.stroke();
+      for (const s of cs) {
+        g.fillStyle = pal.handle;
+        g.fillRect(Math.round(s.x) - 4, Math.round(s.y) - 4, 8, 8);
+        g.strokeRect(Math.round(s.x) - 3.5, Math.round(s.y) - 3.5, 7, 7);
+      }
+      g.restore();
+      return;
     }
     const t = editable(ctx);
     if (!t || !e.showTransformControls) return;
