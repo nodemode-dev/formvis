@@ -24,6 +24,8 @@ export type { Surface, Ctx2D } from './surface';
 export { HANDLES } from './transform';
 export type { DragMode } from './transform';
 export { hierarchy, byId } from './tree';
+export { runFilterOffThread } from './filter-jobs';
+export type { FilterSettings } from './filter-jobs';
 export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
@@ -1448,6 +1450,9 @@ export class Engine {
 
   private liveOpen: Project | null = null;
   preview: { project: Project; layerId: ID; target: Target; surface: Surface; transform?: Transform } | null = null;
+  /** Bumped for every preview request and every clear, so a filter result that arrives from the worker after a newer
+   *  request, or after the preview is switched off, is dropped instead of painted. */
+  private previewToken = 0;
   gradient: { project: Project; layerId: ID; target: Target; start: Pt; end: Pt; raster: Raster; local: Mat; surface: Surface } | null = null;
   gradientSettings: { shape: 'linear' | 'radial'; style: 'background' | 'transparent'; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
   shapeSettings: { kind: 'rectangle' | 'ellipse'; cornerRadius: number } = { kind: 'rectangle', cornerRadius: 0 };
@@ -1489,6 +1494,7 @@ export class Engine {
   }
 
   setPreview(layerId: ID | null, target: Target = 'pixels', surface: Surface | null = null, transform?: Transform): void {
+    if (!layerId) this.previewToken += 1;
     const p = this.current;
     this.preview = p && layerId && surface ? { project: p, layerId, target, surface, transform } : null;
     this.emit('render', null);
@@ -1544,7 +1550,8 @@ export class Engine {
     return { raster: big, transform: { ...t, x: t.x - g * sx, y: t.y - g * sy, w: t.w + 2 * g * sx, h: t.h + 2 * g * sy } };
   }
 
-  previewImageEdit(run: (src: ImageData, scale: number) => ImageData, grow = 0, maxPixels = 2_000_000): void {
+  previewImageEdit(run: (src: ImageData, scale: number) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void {
+    const token = ++this.previewToken;
     const p = this.current;
     const l = p?.activeLayer ?? null;
     if (!p || !this.paintable(l)) { this.setPreview(null); return; }
@@ -1559,13 +1566,17 @@ export class Engine {
     c.drawImage(r.canvas, g, g, w, h);
     let src = c.getImageData(0, 0, w + 2 * g, h + 2 * g);
     if (onMask) src = toGray(src);
+    const finish = (out: ImageData): void => {
+      const cov = g ? null : this.coverageFor(p, l, onMask ? 'mask' : 'pixels', w, h);
+      let result = cov ? this.blendThrough(src, out, cov) : out;
+      if (onMask) result = fromGray(result);
+      c.putImageData(result, 0, 0);
+      const t = l.transform, gx = (g / scale) * (t.w / r.width), gy = (g / scale) * (t.h / r.height);
+      this.setPreview(l.id, onMask ? 'mask' : 'pixels', s, g ? { ...t, x: t.x - gx, y: t.y - gy, w: t.w + 2 * gx, h: t.h + 2 * gy } : undefined);
+    };
     const out = run(src, scale);
-    const cov = g ? null : this.coverageFor(p, l, onMask ? 'mask' : 'pixels', w, h);
-    let result = cov ? this.blendThrough(src, out, cov) : out;
-    if (onMask) result = fromGray(result);
-    c.putImageData(result, 0, 0);
-    const t = l.transform, gx = (g / scale) * (t.w / r.width), gy = (g / scale) * (t.h / r.height);
-    this.setPreview(l.id, onMask ? 'mask' : 'pixels', s, g ? { ...t, x: t.x - gx, y: t.y - gy, w: t.w + 2 * gx, h: t.h + 2 * gy } : undefined);
+    if (out instanceof Promise) { void out.then((done) => { if (token === this.previewToken) finish(done); }).catch(() => undefined); return; }
+    finish(out);
   }
 
   applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0): void {

@@ -1,4 +1,4 @@
-import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, type Engine } from '../../engine';
+import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, type Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { toast } from '../toast';
@@ -78,7 +78,7 @@ export class FilterPanel extends Dialog {
     window.clearTimeout(this.timer);
     this.timer = window.setTimeout(() => {
       if (!this.isOpen) return;
-      if (this.preview) this.engine.previewImageEdit((src, scale) => this.run(src, scale), this.grow());
+      if (this.preview) this.engine.previewImageEdit((src, scale) => runFilterOffThread(this.kind, this.s, scale, this.seed, src) ?? this.run(src, scale), this.grow());
       else this.engine.setPreview(null);
     }, delay);
   }
