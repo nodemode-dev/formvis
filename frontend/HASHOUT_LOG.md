@@ -445,6 +445,10 @@ the reference app's sample ring state: the document point, the sampled color and
     const mask = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous);
 ```
 
+### src/engine/index.ts · copyMask · _v0.14.0
+
+the reference app's Option-drag mask copy: the source's mask onto the target as one Copy Layer Mask or Replace Layer Mask step, pinned where it sits on the document (`placement` from the source's mask or layer transform), with its own raster, or kept solid when the source was never painted; the target becomes active with its mask targeted. Nothing was removed.
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -855,6 +859,10 @@ Created in _v0.1.0.
 
 `.cv-pick`, `.cv-pick-field`, `.cv-pick-strip`, `.cv-pick-side` and `.cv-pick-swatch` lay out the picker from existing spacing and radius tokens; `touch-action: none` keeps field and strip drags working with touch and pens. Nothing was removed.
 
+### src/styles/panels.css · clipping cursor · _v0.14.0
+
+`.cv-layer-rows.is-clip-zone` shows the `alias` cursor over a row's clipping zone while Option is held, the nearest standard cursor to the reference app's clipping cursor. Nothing was removed.
+
 ## src/styles/shell.css
 
 ### src/styles/shell.css · .cv-opt-group · _v0.1.0
@@ -937,6 +945,22 @@ Double-clicking an adjustment layer's row outside the name dispatches `cv:edit-a
 
 ```ts
       if (row?.dataset.id && t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
+```
+
+### src/ui/layers.ts · LayersPanel · Option-click clipping, Option-drag mask copy · _v0.14.0
+
+With Option held, the bottom quarter of a row (`inClipZone`) shows the clipping cursor and a click there toggles that layer's clipping mask; an Option-drag from a mask thumbnail carries `maskFrom`, targets a whole non-folder row, and calls `copyMask` on release. Removed:
+
+```ts
+  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null } | null = null;
+```
+
+```ts
+      this.drag = { id, ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null };
+```
+
+```ts
+      if (d.started && d.target) this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
 ```
 
 ## src/ui/menu.ts

@@ -28,6 +28,7 @@ Mod is Command on macOS and Ctrl elsewhere. Help, Keyboard Shortcuts shows the s
 | Tool variants | Shift+M marquee shape, Shift+L lasso mode, Shift+U shape kind, Alt-click sets the Clone Stamp source |
 | Content-Aware Fill | Shift+Backspace |
 | Selection tools (Marquee, Lasso, Magic Wand) | arrows nudge the selection outline 1 px, Shift+arrows 10 px |
+| Layers panel | Option-click a row's lower edge clips it to the layer below (again releases); Option-drag a row duplicates it; Option-drag a mask thumbnail onto a layer copies the mask |
 | Transform Selection or Layer | Alt+Mod+T (browsers keep Mod+T for a new tab), Mod+T on the desktop; Enter applies a floating selection, Escape cancels |
 | Crop and Gradient | Enter applies, Escape cancels |
 | Colors | X swap, D default |
