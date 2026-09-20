@@ -698,6 +698,14 @@ A preview result may arrive later: `previewImageEdit` takes `ImageData | Promise
     c.putImageData(result, 0, 0);
 ```
 
+### src/engine/index.ts · clonePreview · _v0.27.0
+
+the reference app's clonePreview: the source around `clonePoint(at)` rendered for just the brush circle at screen resolution, from the document or the active layer as the stroke samples, faded by the brush tip through a radial `destination-in` gradient, cached by sample point, brush, side, sampling mode, layer and revision; null during a stroke. Removed:
+
+```ts
+import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
+```
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -868,6 +876,23 @@ Brush's own circle also draws at the press point during a right-drag. Removed:
 ### src/extensions/tools/clone.ts · cloneTool · _v0.3.0
 
 Alt-click sets the source; the crosshair follows the sample point exactly as a click would stamp; Aligned and Sample all layers in the options bar.
+
+### src/extensions/tools/clone.ts · cloneTool · preview in the circle · _v0.27.0
+
+Between strokes, with Option not held (`picking`), the overlay draws `clonePreview` under the brush circle at the brush opacity. Removed:
+
+```ts
+let hover: Pt | null = null;
+```
+
+```ts
+  hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },
+```
+
+```ts
+  overlay(ctx, g) {
+    drawBrushCursor(ctx, g, hover);
+```
 
 ## src/extensions/tools/crop.ts
 

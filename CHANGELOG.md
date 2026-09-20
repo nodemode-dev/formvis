@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.27.0 · 2026-09-20
+
+### Added
+
+- Clone Stamp previews inside the brush circle what a click would stamp, as in the reference app: the source pixels, faded by the brush's hardness and shown at its opacity. Holding Alt to pick a new source hides it. With this, every one of the reference app's fourteen tools is complete.
+
+### Verified
+
+- The layers panel width persists between sessions (it already did; the plan had recorded otherwise).
+- The interface was checked for layout shift and flicker under a slowed CPU in the Light theme, completing both light themes and the default.
+
+### Known gaps
+
+`.ref` export; painting speed on very large canvases; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.26.0 · 2026-09-20
 
 ### Changed
