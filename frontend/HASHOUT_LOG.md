@@ -523,6 +523,22 @@ the reference app's group transform: with more than one layer selected or a fold
     if (te.mode.kind === 'move' && this.snapping) te.draft = this.snapMove(te.project, te.layerId, te.draft);
 ```
 
+### src/engine/index.ts · copyLayerToProject, group snapping · _v0.18.0
+
+the reference app's copyLayer(into:): a layer with a folder's contents copied into another open project as one Copy Layers from Project step (new ids, cloned rasters and masks, remapped parent and clip links, centered on the target canvas, on top), the target made current, within the reference app's 100-megapixel budget. `snapMove` skips a set of moving layers, so group moves now snap their box. Removed:
+
+```ts
+  private snapMove(p: Project, id: ID, t: Transform): Transform {
+```
+
+```ts
+      if (!e.visible || l.isGroup || !l.raster || l.id === id) continue;
+```
+
+```ts
+    if (te.mode.kind === 'move' && this.snapping && !te.group) te.draft = this.snapMove(te.project, te.layerId, te.draft);
+```
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -993,6 +1009,10 @@ Removed: content-sized tabs moved their neighbors when a save renamed a project.
 .cv-tab { display: grid; grid-template-columns: 6px minmax(0, 1fr) 20px; align-items: center; column-gap: var(--space-2); flex: none; height: var(--ctl-md); max-width: 220px; padding: 0 var(--space-1) 0 var(--space-2); border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text-secondary); font-size: var(--fs-12); cursor: default; }
 ```
 
+### src/styles/shell.css · tab drop target · _v0.18.0
+
+`.cv-tab.is-drop-target` tints a project tab with the accent while a layer drag would copy into it. Nothing was removed.
+
 ## src/styles/tokens.css
 
 ### src/styles/tokens.css · NodeMode tokens plus the sonny block · _v0.1.0
@@ -1073,6 +1093,22 @@ With Option held, the bottom quarter of a row (`inClipZone`) shows the clipping 
 
 ```ts
       if (d.started && d.target) this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
+```
+
+### src/ui/layers.ts · LayersPanel · drag onto a project tab · _v0.18.0
+
+A row dragged over another project's tab highlights it (`showTabDrop`) and, released there, calls `copyLayerToProject`; mask drags never target tabs. Removed:
+
+```ts
+target: { id: ID; where: Where } | null; maskFrom: ID | null } | null = null;
+```
+
+```ts
+wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom };
+```
+
+```ts
+      if (d.started && d.target) {
 ```
 
 ## src/ui/menu.ts

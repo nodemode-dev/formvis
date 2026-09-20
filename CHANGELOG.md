@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.18.0 · 2026-09-19
+
+### Added
+
+- Drag layers between projects: drag a layer row onto another project's tab to copy the layer (a folder with its contents) into that project, centered on its canvas, as in the reference app.
+- Group moves snap: several layers moved together snap their outline to the canvas and other layers, with guides.
+
+### Known gaps
+
+Live masks (a layer masked by another layer's content) and their deletion choice; free distort; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.17.0 · 2026-09-19
 
 ### Added
