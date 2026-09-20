@@ -31,6 +31,10 @@ export function toBlob(s: Surface, type = 'image/png', quality?: number): Promis
   });
 }
 
+/** The raster that owns a canvas, so a renderer given only the canvas can read its version. */
+const owners = new WeakMap<Surface, Raster>();
+export const rasterOf = (canvas: CanvasImageSource): Raster | undefined => owners.get(canvas as Surface);
+
 export class Raster {
   readonly id = uid();
   version = 0;
@@ -40,6 +44,7 @@ export class Raster {
   constructor(readonly width: number, readonly height: number) {
     this.canvas = createSurface(width, height);
     this.ctx = ctxOf(this.canvas);
+    owners.set(this.canvas, this);
   }
 
   static from(src: CanvasImageSource, width: number, height: number): Raster {

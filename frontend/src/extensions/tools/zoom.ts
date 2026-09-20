@@ -12,8 +12,9 @@ export const zoomTool: Tool = {
   move(ctx, p) {
     if (!drag) return;
     const dx = p.screen.x - drag.start.x;
-    if (Math.abs(dx) > 3) drag.moved = true;
-    if (drag.moved) ctx.engine.zoomTo(drag.z0 * Math.pow(2, dx / 160), drag.start);
+    // the reference app: right zooms in, left out, doubling for every 100 points dragged.
+    if (Math.abs(dx) >= 3) drag.moved = true;
+    if (drag.moved) ctx.engine.zoomTo(drag.z0 * Math.pow(2, dx / 100), drag.start);
   },
   up(ctx, p) {
     if (drag && !drag.moved) ctx.engine.zoomTo(drag.z0 * (drag.alt ? 0.5 : 2), p.screen);

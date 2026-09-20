@@ -331,6 +331,19 @@ export class Stage {
       const horizontal = e.shiftKey && !e.deltaX;
       this.engine.pan(-(horizontal ? e.deltaY : e.deltaX) * unit, -(horizontal ? 0 : e.deltaY) * unit);
     }, { passive: false });
+    // WebKit (Safari and the macOS desktop WebView) reports a trackpad pinch as gesture events, not Ctrl+wheel. Like
+    // the reference app's magnify, it zooms about the pointer, here by the gesture's scale since it began.
+    let pinch: { z0: number } | null = null;
+    const gesture = (e: Event): { scale: number; clientX: number; clientY: number } => e as unknown as { scale: number; clientX: number; clientY: number };
+    o.addEventListener('gesturestart', (e) => { e.preventDefault(); pinch = { z0: this.engine.current?.viewport.zoom ?? 1 }; });
+    o.addEventListener('gesturechange', (e) => {
+      e.preventDefault();
+      const g = gesture(e);
+      if (!pinch || !this.engine.current || !(g.scale > 0)) return;
+      const r = o.getBoundingClientRect();
+      this.engine.zoomTo(pinch.z0 * g.scale, { x: g.clientX - r.left, y: g.clientY - r.top });
+    });
+    o.addEventListener('gestureend', (e) => { e.preventDefault(); pinch = null; });
     o.addEventListener('contextmenu', (e) => e.preventDefault());
   }
 }

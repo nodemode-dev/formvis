@@ -1,6 +1,6 @@
 import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform } from './types';
-import { createSurface, ctxOf, sizeSurface, type Ctx2D, type Surface } from './surface';
-import { IDENTITY, applyMat, invert, matScale, mul, placement, setMat, type Mat } from './geometry';
+import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
+import { IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, type Mat } from './geometry';
 import { ancestors, hierarchy } from './tree';
 import { adjustmentKernel, type Kernel } from './kernels';
 import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
@@ -14,6 +14,33 @@ function kernelFor(adj: Adjustment | null): Kernel | null {
   const k = adj.kind === 'hsv' ? hsvKernel(hsvFromData(adj.data)) : adj.kind === 'grain' ? grainKernel(grainFromData(adj.data)) : adjustmentKernel(adj);
   kernelCache.set(adj.data, k);
   return k;
+}
+
+/** the reference app's DownsampleCache: an image drawn at under half size is drawn from a copy halved exactly 2x at a time,
+ *  so the last reduction left to the canvas is at most 2x; a one-step reduction comes out soft or grainy (in WebKit
+ *  especially). Halvings for `factor` output pixels per image pixel: the most that still leave the copy at least
+ *  that large, up to 6. Copies are kept per raster and dropped when its version changes, since painting is in place. */
+const MAX_HALVINGS = 6;
+const halvings = (factor: number): number => (factor > 0 && factor < 0.5 ? Math.min(MAX_HALVINGS, Math.floor(Math.log2(1 / factor))) : 0);
+const halvedCache = new WeakMap<Raster, { version: number; levels: Surface[] }>();
+
+function halved(r: Raster, level: number): { surface: Surface; scale: number } {
+  let e = halvedCache.get(r);
+  if (!e || e.version !== r.version) { e = { version: r.version, levels: [] }; halvedCache.set(r, e); }
+  let prev: Surface = r.canvas;
+  for (let k = 1; k <= level; k++) {
+    let s = e.levels[k - 1];
+    if (!s) {
+      s = createSurface(Math.max(1, Math.ceil(prev.width / 2)), Math.max(1, Math.ceil(prev.height / 2)));
+      const c = ctxOf(s);
+      c.imageSmoothingEnabled = true;
+      c.imageSmoothingQuality = 'high';
+      c.drawImage(prev, 0, 0, prev.width, prev.height, 0, 0, prev.width / 2, prev.height / 2);
+      e.levels[k - 1] = s;
+    }
+    prev = s;
+  }
+  return { surface: prev, scale: 2 ** level };
 }
 
 export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number }
@@ -104,13 +131,16 @@ export class Renderer {
   }
 
   private draw(c: Ctx2D, src: CanvasImageSource, m: Mat, sampling: Sampling, alpha: number, op: GlobalCompositeOperation, quality?: ImageSmoothingQuality): void {
+    let img = src, mm = m;
+    const level = sampling === 'nearest' ? 0 : halvings(matScale(m)), r = level ? rasterOf(src) : undefined;
+    if (r) { const h = halved(r, level); img = h.surface; mm = mul(m, scaling(h.scale, h.scale)); }
     c.save();
-    setMat(c, m);
+    setMat(c, mm);
     c.globalAlpha = alpha;
     c.globalCompositeOperation = op;
     c.imageSmoothingEnabled = sampling !== 'nearest';
     if (c.imageSmoothingEnabled) c.imageSmoothingQuality = sampling === 'smooth' ? 'low' : quality ?? 'high';
-    c.drawImage(src, 0, 0);
+    c.drawImage(img, 0, 0);
     c.restore();
   }
 
