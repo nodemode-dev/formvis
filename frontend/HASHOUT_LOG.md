@@ -318,6 +318,18 @@ The Delete Layer command and the Delete and Backspace keys ask through `LiveMask
 clearPixels() : engine.deleteLayers()
 ```
 
+### src/app.ts · recent projects, Open Recent commands · _v0.23.0
+
+the reference app's recent documents: `noteRecent` on every library save and open (ten, newest first, in local storage), `recent-heading`, `recent-0` to `recent-9` and `clear-recent` commands, and a File menu computed on open; a project the library no longer has drops out. Removed:
+
+```ts
+      try { await openOpened(await api.openLibrary(name), name); return true; } catch (err) { toast(message(err), 'error'); return false; }
+```
+
+```ts
+    { label: 'File', items: ['new', 'open', 'import', '-', 'save', 'save-as', 'download-project', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1258,6 +1270,26 @@ wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom };
 ### src/ui/menu.ts · popup menus and menubar · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/ui/menu.ts · MenuDef, MenuBar · items resolved on open · _v0.23.0
+
+A menu's `items` may be a function (`itemsOf`), resolved at construction and on every open, so File's Open Recent section tracks the list; `setItems` still skips unchanged lists. Removed:
+
+```ts
+export interface MenuDef { label: string; items: MenuItem[] }
+```
+
+```ts
+  private readonly menus: Array<{ btn: HTMLButtonElement; menu: PopupMenu }> = [];
+```
+
+```ts
+      menu.setItems(def.items);
+```
+
+```ts
+      this.menus.push({ btn, menu });
+```
 
 ## src/ui/options.ts
 

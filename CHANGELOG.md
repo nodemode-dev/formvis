@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.23.0 · 2026-09-20
+
+### Added
+
+- Open Recent in the File menu, as in the reference app: the ten projects most recently saved or opened, newest first, with Clear Recent. A project no longer in the library says so and drops out of the list.
+
+### Corrected
+
+- Autosave was listed as missing; the reference app has no autosave, so it was never a parity gap and is dropped.
+
+### Known gaps
+
+Selection ants during Transform Selection; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.22.0 · 2026-09-20
 
 ### Added
