@@ -84,7 +84,7 @@ export class Engine {
   showTransformControls = true;
   autoSelect = false;
   lockRatio = true;
-  transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt } | null = null;
+  transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean } | null = null;
   selectionShift: { project: Project; dx: number; dy: number } | null = null;
   private currentId: string | null = null;
   private viewSize = { w: 800, h: 600 };
@@ -294,7 +294,7 @@ export class Engine {
     const st = this.stroke;
     if (st && st.project === p) m.set(st.layerId, st.target === 'pixels' ? { source: st.s.working } : { maskSource: st.s.working });
     const te = this.transformEdit;
-    if (te && te.project === p) m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), transform: te.draft });
+    if (te && te.project === p) m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), ...(te.mask ? { maskPlacement: te.draft } : { transform: te.draft }) });
     const pv = this.preview;
     if (pv && pv.project === p) m.set(pv.layerId, { ...(m.get(pv.layerId) ?? {}), ...(pv.target === 'pixels' ? { source: pv.surface } : { maskSource: pv.surface }), ...(pv.transform ? { transform: pv.transform } : {}) });
     const gr = this.gradient;
@@ -1050,12 +1050,21 @@ export class Engine {
     this.edit('Move Selection', (p) => { if (!p.selection) return false; p.selection = p.selection.translated(s.dx, s.dy, p.doc.width, p.doc.height); return true; });
   }
 
+  /** the reference app's rule for moving a mask on its own: with the mask targeted and unlinked, the Move tool transforms the
+   *  mask's placement instead of the layer. A linked mask moves with its layer, and a solid (never painted) mask covers
+   *  everything wherever it sits, so neither qualifies. */
+  transformsMask(l: Layer | null | undefined): boolean {
+    return !!l && !!this.current?.maskTarget && !!l.mask?.raster && !l.mask.linked;
+  }
+
   beginTransform(mode: DragMode, start: Pt): boolean {
     const p = this.current;
     const l = p?.activeLayer;
     if (!p || !l || l.isGroup || !l.raster || this.stroke) return false;
     this.settle(this.floatSel?.floatingId === l.id);
-    this.transformEdit = { project: p, layerId: l.id, original: l.transform, draft: l.transform, mode, start };
+    const mask = this.transformsMask(l);
+    const box = mask ? l.mask?.placement ?? l.transform : l.transform;
+    this.transformEdit = { project: p, layerId: l.id, original: box, draft: box, mode, start, mask };
     return true;
   }
 
@@ -1077,6 +1086,17 @@ export class Engine {
     const next = rounded(te.draft);
     if (sameTransform(next, te.original) || this.current !== te.project) { this.emit('render', null); return; }
     if (this.floatSel?.project === te.project && this.floatSel.floatingId === te.layerId) { te.project.updateLayer(te.layerId, { transform: next }); this.refresh(); return; }
+    if (te.mask) {
+      // the reference app's commitMaskTransform: the mask takes the new placement, its pixels untouched; a placement equal to
+      // the layer's own is stored as none.
+      this.edit('Transform Layer Mask', (p) => {
+        const l = p.layer(te.layerId);
+        if (!l?.mask) return false;
+        p.updateLayer(l.id, { mask: { ...l.mask, placement: sameTransform(next, l.transform) ? null : next } });
+        return true;
+      });
+      return;
+    }
     const name = te.mode.kind === 'move' ? 'Move Layer' : te.mode.kind === 'rotate' ? 'Rotate Layer' : 'Transform Layer';
     this.edit(name, (p) => {
       const l = p.layer(te.layerId);

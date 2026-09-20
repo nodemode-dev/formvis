@@ -8,7 +8,7 @@ const CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'];
 function editable(ctx: ToolContext): Transform | null {
   const l = ctx.engine.activeLayer;
   if (!l || l.isGroup || !l.raster) return null;
-  return ctx.engine.transformEdit?.draft ?? l.transform;
+  return ctx.engine.transformEdit?.draft ?? (ctx.engine.transformsMask(l) ? l.mask?.placement ?? l.transform : l.transform);
 }
 
 function hit(ctx: ToolContext, p: ToolPointer): DragMode | null {

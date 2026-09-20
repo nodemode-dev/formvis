@@ -16,7 +16,7 @@ function kernelFor(adj: Adjustment | null): Kernel | null {
   return k;
 }
 
-export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; hidden?: boolean; blend?: BlendMode; opacity?: number }
+export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number }
 export interface RenderJob {
   doc: Doc;
   target: Surface;
@@ -119,7 +119,8 @@ export class Renderer {
     if (!m || !m.enabled) return null;
     const src = ov?.maskSource ?? m.raster?.canvas;
     if (!src || !m.raster) return null;
-    return { src, w: src.width, h: src.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
+    const placed = ov?.maskPlacement ?? m.placement;
+    return { src, w: src.width, h: src.height, t: placed ?? t, covers: !placed && !layer.adjustment };
   }
 
   private folderMasks(map: ReadonlyMap<ID, Layer>, layer: Layer): MaskInfo[] {
