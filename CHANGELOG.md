@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.19.0 · 2026-09-19
+
+### Added
+
+- Deleting a layer that other layers are clipped to now asks, as the reference app does: Bake and Delete keeps their clipped look in their own pixels; Remove Links and Delete unclips them and shows all their pixels. Either can be undone. Before, sonny unlinked them without asking.
+
+### Corrected
+
+- 0.18.0 listed "live masks" as not built. In the reference app a live mask is a clipping mask, which sonny has had all along; only this deletion choice was missing.
+
+### Known gaps
+
+Free distort; the Zoom tool's drag rectangle and pinch; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.18.0 · 2026-09-19
 
 ### Added

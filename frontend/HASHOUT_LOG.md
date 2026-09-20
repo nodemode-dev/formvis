@@ -88,6 +88,7 @@ src/
             controls.ts  · slider, select, check, color and number rows
             filter-panel.ts  · filter dialog with scaled preview
             jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
+            live-mask-dialog.ts  · bake-or-unlink choice when deleting a clip base
             size-dialogs.ts  · canvas size, image size, expand and contract
         rail.ts  · tool rail and colors
         stage.ts  · scene and overlay canvases
@@ -174,6 +175,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/controls.ts](#srcuipanelscontrolsts)
 - [src/ui/panels/filter-panel.ts](#srcuipanelsfilter-panelts)
 - [src/ui/panels/jpeg-dialog.ts](#srcuipanelsjpeg-dialogts)
+- [src/ui/panels/live-mask-dialog.ts](#srcuipanelslive-mask-dialogts)
 - [src/ui/panels/size-dialogs.ts](#srcuipanelssize-dialogsts)
 - [src/ui/rail.ts](#srcuirailts)
 - [src/ui/stage.ts](#srcuistagets)
@@ -341,6 +343,22 @@ export interface LayerOverride { source?: Surface; transform?: Transform; maskSo
 
 ```ts
     return { src, w: src.width, h: src.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
+```
+
+### src/engine/renderer.ts · clipCoverageOf · _v0.19.0
+
+A public, pool-free copy of a clip base's coverage at document size, the exact coverage clipped layers show through, for baking. Nothing was removed.
+
+### src/app.ts · deleteLayersWithChoice · _v0.19.0
+
+The Delete Layer command and the Delete and Backspace keys ask through `LiveMaskDialog` when layers are clipped to what is being deleted. Removed:
+
+```ts
+    { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => engine.deleteLayers() },
+```
+
+```ts
+clearPixels() : engine.deleteLayers()
 ```
 
 ## src/engine/events.ts
@@ -537,6 +555,23 @@ the reference app's copyLayer(into:): a layer with a folder's contents copied in
 
 ```ts
     if (te.mode.kind === 'move' && this.snapping && !te.group) te.draft = this.snapMove(te.project, te.layerId, te.draft);
+```
+
+### src/engine/index.ts · liveMaskDependents, doomedBy, deleteLayers(bake) · _v0.19.0
+
+A live mask in the reference app is a clipping mask. `liveMaskDependents` names the layers clipped to ones being deleted; `deleteLayers(true)` bakes each (its cloned raster masked by `clipCoverageOf` mapped into its pixel grid) before unlinking, as one Delete Layer step. Removed:
+
+```ts
+  deleteLayers(): void {
+```
+
+```ts
+      const doomed = new Set<ID>();
+      for (const id of roots) { doomed.add(id); for (const d of descendantIds(p.doc.layers, id)) doomed.add(d); }
+```
+
+```ts
+      const kept = p.doc.layers.filter((l) => !doomed.has(l.id)).map((l) => (l.clipId && doomed.has(l.clipId) ? { ...l, clipId: null } : l));
 ```
 
 ## src/engine/kernels.ts
@@ -1263,6 +1298,12 @@ Gaussian Blur, Motion Blur, Add Noise and Lens Correction with a 140 ms debounce
 ### src/ui/panels/jpeg-dialog.ts · JpegDialog · _v0.6.0
 
 Ported from the reference app's `JPEGExportSheet.swift`. Quality starts from the last export, remembered in localStorage under `sonny.jpegQuality`, and from 85% (the reference app's default) the first time; the sheet shows the image size and sRGB and previews the actually encoded JPEG, debounced 120 ms, with its encoded size. The preview canvas keeps one size (432 by 280) with the image fitted inside, so the sheet never changes height, and the preview is decoded with `createImageBitmap` rather than shown through a blob URL, which the desktop CSP may refuse. Export stores the quality and hands it back to the caller.
+
+## src/ui/panels/live-mask-dialog.ts
+
+### src/ui/panels/live-mask-dialog.ts · LiveMaskDialog · _v0.19.0
+
+the reference app's alert for deleting a layer that other layers are clipped to (their live mask), with its wording and buttons: Bake and Delete, Cancel, Remove Links and Delete; `choose` resolves `bake`, `unlink` or null (Cancel and Escape).
 
 ## src/ui/panels/size-dialogs.ts
 
