@@ -47,8 +47,8 @@ export const api = {
   async save(name: string, manifest: object, files: FilePart[]): Promise<{ name: string; path: string }> {
     return (await (await request('/projects/save', { method: 'POST', body: form({ name, manifest: JSON.stringify(manifest) }, files) })).json()) as { name: string; path: string };
   },
-  async package(manifest: object, files: FilePart[]): Promise<Blob> {
-    return (await request('/projects/package', { method: 'POST', body: form({ manifest: JSON.stringify(manifest) }, files) })).blob();
+  async package(manifest: object, files: FilePart[], root = ''): Promise<Blob> {
+    return (await request('/projects/package', { method: 'POST', body: form({ manifest: JSON.stringify(manifest), ...(root ? { root } : {}) }, files) })).blob();
   },
   async openLibrary(name: string): Promise<OpenedProject> {
     return (await (await request(`/projects/library/${encodeURIComponent(name)}`)).json()) as OpenedProject;

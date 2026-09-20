@@ -77,6 +77,48 @@ export async function serialize(doc: Doc, activeId: ID | null): Promise<{ manife
   return { manifest, files };
 }
 
+const UUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/;
+const asUuid = (v: unknown, map: Map<string, string>): string | null => {
+  const s = str(v);
+  if (!s) return null;
+  let u = map.get(s);
+  if (!u) { u = UUID.test(s) ? s : uid().toUpperCase(); map.set(s, u); }
+  return u;
+};
+
+/** The document as a reference project (format `com.reference.project`, version 7), for `Name.ref/`: the same
+ *  manifest and files as `serialize`, reshaped to what `ProjectStore.validate` accepts: UUID ids (regenerated where
+ *  sonny fell back to counters), image files named after them, folders without opacity or blend (the reference app's
+ *  folders carry neither), adjustment layers without pixels, non-empty names and a resolution of 1 to 9600. Anything
+ *  changed is listed in `notes` so the person knows what the reference app will see differently. */
+export async function serializeReference(doc: Doc, activeId: ID | null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
+  const { manifest, files } = await serialize(doc, activeId);
+  const ids = new Map<string, string>(), rename = new Map<string, string>(), drop = new Set<string>(), notes: string[] = [];
+  const layers = (Array.isArray(manifest.layers) ? manifest.layers.map(obj) : []).map((r) => {
+    const id = asUuid(r.id, ids) as string, out: Json = { ...r, id };
+    const name = (str(r.name) ?? '').trim();
+    if (!name) { out.name = 'Layer'; notes.push('An unnamed layer was named "Layer".'); }
+    if (r.parentID) out.parentID = asUuid(r.parentID, ids);
+    if (r.maskSourceID) out.maskSourceID = asUuid(r.maskSourceID, ids);
+    if (str(r.imageFile)) {
+      if (r.adjustment) { drop.add(str(r.imageFile) as string); delete out.imageFile; }
+      else { rename.set(str(r.imageFile) as string, `${id}.png`); out.imageFile = `${id}.png`; }
+    }
+    if (str(r.maskFile)) { rename.set(str(r.maskFile) as string, `${id}.mask.png`); out.maskFile = `${id}.mask.png`; }
+    if (r.isGroup === true && ((typeof r.opacity === 'number' && r.opacity !== 1) || (r.blendMode && r.blendMode !== 'Normal'))) {
+      delete out.opacity; delete out.blendMode;
+      notes.push(`Folder "${name || 'Layer'}" loses its opacity or blend mode; the reference app folders have neither.`);
+    }
+    return out;
+  });
+  const res = num(manifest.resolution, 72);
+  const out: Json = { ...manifest, format: 'com.reference.project', version: 7, documentID: asUuid(manifest.documentID, ids) ?? uid().toUpperCase(), resolution: Math.min(9600, Math.max(1, res)), layers };
+  if (manifest.activeLayerID) out.activeLayerID = asUuid(manifest.activeLayerID, ids);
+  if (res < 1 || res > 9600) notes.push(`Resolution ${res} was clamped to the reference app's 1 to 9600.`);
+  const parts = files.filter((f) => !drop.has(f.name)).map((f) => ({ ...f, name: rename.get(f.name) ?? f.name }));
+  return { manifest: out, files: parts, notes };
+}
+
 export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null }> {
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
   const records = Array.isArray(manifest.layers) ? manifest.layers.map(obj) : [];

@@ -87,10 +87,12 @@ def save(name: str = Form(...), manifest: str = Form(...), files: list[UploadFil
 
 
 @router.post("/package")
-def package(manifest: str = Form(...), files: list[UploadFile] = File(default=[])) -> Response:
+def package(manifest: str = Form(...), files: list[UploadFile] = File(default=[]), root: str = Form("")) -> Response:
     data, assets = _manifest(manifest), _assets(files)
     _validated(data, assets)
-    return Response(pf.write_zip(data, assets), media_type="application/zip")
+    if root and (not pf.safe_name(root) or root.startswith(".")):
+        raise HTTPException(status_code=400, detail="Invalid package folder name.")
+    return Response(pf.write_zip(data, assets, root), media_type="application/zip")
 
 
 @router.get("/library/{name}")

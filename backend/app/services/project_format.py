@@ -122,10 +122,13 @@ def read_folder(files: list[tuple[str, bytes]]) -> tuple[dict, dict[str, bytes],
     return _collect(entries)
 
 
-def write_zip(manifest: dict, assets: dict[str, bytes]) -> bytes:
+def write_zip(manifest: dict, assets: dict[str, bytes], root: str = "") -> bytes:
+    """The project as a zip: manifest.json and images/. With `root`, everything sits inside that one folder, so
+    unzipping a the reference app export yields the `Name.ref` package the reference app opens."""
+    prefix = f"{root}/" if root else ""
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_STORED) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, indent=2), compress_type=zipfile.ZIP_DEFLATED)
+        archive.writestr(f"{prefix}manifest.json", json.dumps(manifest, indent=2), compress_type=zipfile.ZIP_DEFLATED)
         for name, data in assets.items():
-            archive.writestr(f"images/{name}", data)
+            archive.writestr(f"{prefix}images/{name}", data)
     return out.getvalue()
