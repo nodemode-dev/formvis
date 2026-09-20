@@ -1,4 +1,4 @@
-import { createSurface, integral, intersectRect, sizeSurface, translation, type Engine, type Pt, type Surface } from '../engine';
+import { createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type Engine, type Pt, type Rect, type Surface } from '../engine';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
 import { isMac, q, setHidden } from './dom';
 import { paint, type StagePaint } from './palette';
@@ -44,7 +44,8 @@ export class Stage {
     this.ctx = { engine, view: () => this.viewInfo(), paint: () => paint(), antsPhase: () => this.phase };
     new ResizeObserver(() => this.resize()).observe(host);
     window.addEventListener('resize', () => this.resize());
-    for (const k of ['render', 'viewport', 'active'] as const) engine.on(k, () => this.queue(true, true));
+    engine.on('render', (region) => this.queue(true, true, region));
+    for (const k of ['viewport', 'active'] as const) engine.on(k, () => this.queue(true, true));
     for (const k of ['overlay', 'options'] as const) engine.on(k, () => this.queue(false, true));
     engine.on('projects', () => { this.queue(true, true); this.syncAnts(); this.syncWelcome(); this.updateCursor(); });
     engine.on('selection', () => { this.queue(false, true); this.syncAnts(); });
@@ -84,13 +85,20 @@ export class Stage {
 
   restyle(): void { this.checker = null; this.queue(true, true); }
 
-  private queue(scene: boolean, overlay: boolean): void {
+  /** The document region the next scene frame must repaint: undefined nothing pending, null everything, else the
+   *  union of the stroke regions reported since the last frame. Any full request wins until the frame runs. */
+  private pending: Rect | null | undefined = undefined;
+
+  private queue(scene: boolean, overlay: boolean, region: Rect | null = null): void {
     this.wantScene ||= scene;
     this.wantOverlay ||= overlay;
+    if (scene) this.pending = region && this.pending !== null ? (this.pending ? unionRect(this.pending, region) : region) : null;
     if (this.frame) return;
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
-      if (this.wantScene) this.renderScene();
+      const region = this.pending ?? null;
+      this.pending = undefined;
+      if (this.wantScene) this.renderScene(region);
       if (this.wantOverlay) this.renderOverlay();
     });
   }
@@ -114,22 +122,29 @@ export class Stage {
     return pattern;
   }
 
-  private renderScene(): void {
+  private renderScene(region: Rect | null = null): void {
     this.wantScene = false;
     const g = this.sctx;
     const W = this.scene.width, H = this.scene.height;
     g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, W, H);
     const p = this.engine.current;
-    if (!p) return;
+    if (!p) { g.clearRect(0, 0, W, H); return; }
     const pal = paint();
     const v = p.viewport;
     const z = v.zoom * this.dpr, ox = v.panX * this.dpr, oy = v.panY * this.dpr;
     const docRect = { x: ox, y: oy, w: p.doc.width * z, h: p.doc.height * z };
-    g.lineWidth = 1;
-    g.strokeStyle = pal.edge;
-    g.strokeRect(Math.round(docRect.x) - 0.5, Math.round(docRect.y) - 0.5, Math.round(docRect.w) + 1, Math.round(docRect.h) + 1);
-    const vis = intersectRect(integral(docRect), { x: 0, y: 0, w: W, h: H });
+    let vis = intersectRect(integral(docRect), { x: 0, y: 0, w: W, h: H });
+    if (region) {
+      // A stroke frame: the region it changed, a pixel wider each way for the resampling, over the scene as it stands.
+      vis = vis && intersectRect(vis, integral({ x: ox + region.x * z - 1, y: oy + region.y * z - 1, w: region.w * z + 2, h: region.h * z + 2 }));
+      if (!vis) return;
+      g.clearRect(vis.x, vis.y, vis.w, vis.h);
+    } else {
+      g.clearRect(0, 0, W, H);
+      g.lineWidth = 1;
+      g.strokeStyle = pal.edge;
+      g.strokeRect(Math.round(docRect.x) - 0.5, Math.round(docRect.y) - 0.5, Math.round(docRect.w) + 1, Math.round(docRect.h) + 1);
+    }
     if (!vis) return;
     g.save();
     g.beginPath();

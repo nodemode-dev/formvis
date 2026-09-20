@@ -41,7 +41,7 @@ export type { Kernel, KernelContext } from './kernels';
 export interface Notice { kind: 'info' | 'error'; text: string }
 export interface EngineEvents {
   projects: null; doc: null; selection: null; active: null; viewport: null; tool: null; options: null;
-  history: null; colors: null; render: null; overlay: null; busy: boolean; notice: Notice;
+  history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice;
 }
 export interface BrushSettings { diameter: number; hardness: number; opacity: number }
 export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string }
@@ -973,11 +973,21 @@ export class Engine {
     return true;
   }
 
+  /** Redraws of the whole scene are the default; a stroke reports just the region it changed, so the stage repaints
+   *  that alone (the reference app's tile-dirty rendering, by rectangle). Off, every stroke frame redraws everything. */
+  dirtyRendering = true;
+
   strokeTo(pt: Pt): void {
     const st = this.stroke;
     if (!st) return;
     st.s.to(pt);
-    if (st.s.compose()) this.emit('render', null);
+    const f = st.s.compose();
+    if (!f) return;
+    const l = st.project.layer(st.layerId), r = st.target === 'mask' ? l?.mask?.raster : l?.raster;
+    const t = st.target === 'mask' ? l?.mask?.placement ?? l?.transform : l?.transform;
+    if (!this.dirtyRendering || !l || !r || !t) { this.emit('render', null); return; }
+    const m = placement(t, r.width, r.height);
+    this.emit('render', boundsOf([applyMat(m, f.x, f.y), applyMat(m, f.x + f.w, f.y), applyMat(m, f.x + f.w, f.y + f.h), applyMat(m, f.x, f.y + f.h)]));
   }
 
   endStroke(): void {
