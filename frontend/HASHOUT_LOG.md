@@ -498,6 +498,31 @@ the reference app's commitMaskTransform: with a painted mask targeted and unlink
     if (shift && last && last.layerId === pick.layer.id && last.target === 'pixels') s.to(last.p);
 ```
 
+### src/engine/index.ts · groupMembers, groupBox, group transform edits · _v0.17.0
+
+the reference app's group transform: with more than one layer selected or a folder, `groupMembers` (visible pixel layers selected or inside a selected folder) move with `groupBox`, each member previewed and committed through `following`, as one Transform Layers step; group moves skip snapping for now. Removed:
+
+```ts
+  transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean } | null = null;
+```
+
+```ts
+    if (!p || !l || l.isGroup || !l.raster || this.stroke) return false;
+```
+
+```ts
+    const box = mask ? l.mask?.placement ?? l.transform : l.transform;
+    this.transformEdit = { project: p, layerId: l.id, original: box, draft: box, mode, start, mask };
+```
+
+```ts
+    if (te && te.project === p) m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), ...(te.mask ? { maskPlacement: te.draft } : { transform: te.draft }) });
+```
+
+```ts
+    if (te.mode.kind === 'move' && this.snapping) te.draft = this.snapMove(te.project, te.layerId, te.draft);
+```
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -582,6 +607,14 @@ Created in _v0.1.0.
 ### src/engine/transform.ts · handles and drag math · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/engine/transform.ts · placing, following · _v0.17.0
+
+the reference app's `LayerTransform.placing` (a unit-square map back to a rotated, maybe flipped rectangle, keeping the flip, sampling and nearest rotation) and `following(from:to:)` (a placement carried along as a box moves), as pure functions; placing round-trips rotated and flipped transforms to 2.8e-14. Removed:
+
+```ts
+import { radians, unitPoint } from './geometry';
+```
 
 ## src/engine/tree.ts
 
@@ -799,6 +832,16 @@ The handles sit on the mask's box when the Move tool transforms an unlinked mask
 
 ```ts
   return ctx.engine.transformEdit?.draft ?? l.transform;
+```
+
+### src/extensions/tools/move.ts · editable · group box · _v0.17.0
+
+The handles sit on the group box when several layers or a folder are selected, before the single-layer and mask cases. Removed:
+
+```ts
+  const l = ctx.engine.activeLayer;
+  if (!l || l.isGroup || !l.raster) return null;
+  return ctx.engine.transformEdit?.draft ?? (ctx.engine.transformsMask(l) ? l.mask?.placement ?? l.transform : l.transform);
 ```
 
 ## src/extensions/tools/select-common.ts

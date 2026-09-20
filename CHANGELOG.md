@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.17.0 · 2026-09-19
+
+### Added
+
+- Transform several layers together: with more than one layer selected, or a folder, the Move tool's handles surround all of them, and moving, resizing or rotating carries every layer along, as in the reference app, as one undo step.
+
+### Known gaps
+
+Snapping for group moves; dragging layers between projects; the live-mask deletion choice; free distort; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.16.0 · 2026-09-19
 
 ### Added
