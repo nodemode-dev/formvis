@@ -4,7 +4,7 @@ import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { PixelStroke } from './stroke';
 import { SelectionMask, type SelectionMode } from './selection';
 import { Raster, createSurface, ctxOf, toBlob, type Surface } from './surface';
-import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
+import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
 import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped } from './distort';
@@ -1950,6 +1950,33 @@ export class Engine {
     const src = this.cloneSource;
     if (!src) return null;
     return (this.retouch.cloneAligned ? this.cloneOffset : null) ?? { x: Math.round(src.x - pt.x), y: Math.round(src.y - pt.y) };
+  }
+
+  /** the reference app's clonePreview: what a Clone Stamp click at `at` would stamp, the source around `clonePoint(at)`
+   *  rendered for just the brush circle at `scale` screen pixels per document pixel (from the whole document or the
+   *  active layer alone, as the stroke samples), faded by the brush tip as hardness sets it. Reused until the sample
+   *  point, brush, zoom, layer, sampling mode or document changes. Null with no source, or during a stroke. */
+  private clonePreviewCache: { key: string; surface: Surface } | null = null;
+
+  clonePreview(at: Pt, scale: number): Surface | null {
+    const p = this.current, l = p?.activeLayer, sp = this.clonePoint(at);
+    if (!p || !l || !sp || this.stroke) return null;
+    const d = this.brush.diameter, side = Math.min(1024, Math.max(1, Math.ceil(d * scale)));
+    const key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, this.retouch.cloneSampleAll, l.id, p.history.revision].join('|');
+    if (this.clonePreviewCache?.key === key) return this.clonePreviewCache.surface;
+    const s = createSurface(side, side), c = ctxOf(s), per = side / d;
+    const view = mul(scaling(per, per), translation(d / 2 - sp.x, d / 2 - sp.y));
+    if (this.retouch.cloneSampleAll) this.work.render({ doc: p.doc, target: s, view, quality: 'medium' });
+    else if (l.raster) { setMat(c, mul(view, placement(l.transform, l.raster.width, l.raster.height))); c.drawImage(l.raster.canvas, 0, 0); c.setTransform(1, 0, 0, 1, 0, 0); }
+    const r = side / 2, tip = c.createRadialGradient(r, r, r * Math.min(0.999, Math.max(0, this.brush.hardness)), r, r, r);
+    tip.addColorStop(0, 'rgba(0,0,0,1)');
+    tip.addColorStop(1, 'rgba(0,0,0,0)');
+    c.globalCompositeOperation = 'destination-in';
+    c.fillStyle = tip;
+    c.fillRect(0, 0, side, side);
+    c.globalCompositeOperation = 'source-over';
+    this.clonePreviewCache = { key, surface: s };
+    return s;
   }
 
   clonePoint(pt: Pt): Pt | null {

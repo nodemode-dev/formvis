@@ -3,6 +3,7 @@ import type { Tool } from '../registry';
 import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
 let hover: Pt | null = null;
+let picking = false;
 
 export const cloneTool: Tool = {
   id: 'cloneStamp', label: 'Clone Stamp', key: 'S', order: 60,
@@ -17,10 +18,22 @@ export const cloneTool: Tool = {
   },
   move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc); ctx.engine.emit('overlay', null); },
   up(ctx) { ctx.engine.endStroke(); },
-  hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },
+  hover(ctx, p) { hover = p ? p.doc : null; picking = !!p?.alt; ctx.engine.emit('overlay', null); },
   cancel(ctx) { ctx.engine.cancelStroke(); },
   keydown: (ctx, e) => brushKeys(ctx, e),
   overlay(ctx, g) {
+    const e = ctx.engine, v = ctx.view();
+    // the reference app: between strokes, the circle previews what a click would stamp; Option (picking a source) hides it.
+    if (hover && !picking) {
+      const pv = e.clonePreview(hover, v.zoom * (window.devicePixelRatio || 1));
+      if (pv) {
+        const c = v.toScreen(hover), size = e.brush.diameter * v.zoom;
+        g.save();
+        g.globalAlpha = e.brush.opacity;
+        g.drawImage(pv, c.x - size / 2, c.y - size / 2, size, size);
+        g.restore();
+      }
+    }
     drawBrushCursor(ctx, g, hover);
     const sp = hover ? ctx.engine.clonePoint(hover) : ctx.engine.cloneSource;
     if (!sp) return;
