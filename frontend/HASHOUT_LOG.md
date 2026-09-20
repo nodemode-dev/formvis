@@ -344,6 +344,10 @@ Close Tab takes Mod+W where the Tauri shell is present, as the reference app's F
     { id: 'close-tab', label: 'Close Tab', keys: ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
 ```
 
+### src/app.ts · exportReference, export-ref · _v0.28.0
+
+File > Export for the reference app (.ref)... writes `Name.ref.zip` through `serializeReference` and the package route's root folder, and toasts the changes made for the reference app. Nothing was removed.
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1162,6 +1166,15 @@ Follows the portal protocol from the NodeMode extension-portal docs: listener fi
 
 Created in _v0.1.0.
 
+### src/io/api.ts · package · root folder · _v0.28.0
+
+`package` takes an optional root folder name for the zip. Removed:
+
+```ts
+  async package(manifest: object, files: FilePart[]): Promise<Blob> {
+    return (await request('/projects/package', { method: 'POST', body: form({ manifest: JSON.stringify(manifest) }, files) })).blob();
+```
+
 ## src/io/images.ts
 
 ### src/io/images.ts · image decoding with engine fallback · _v0.1.0
@@ -1173,6 +1186,10 @@ Created in _v0.1.0.
 ### src/io/project-io.ts · serialize and deserialize · _v0.1.0
 
 Field names and labels come from the reference app `ProjectStore.swift`, `LayerTransform.swift`, `LayerAppearance.swift` and `LayerAdjustment.swift`, checked against the source. Masks are written as grayscale PNGs; `adjustment` and `shape` round-trip verbatim.
+
+### src/io/project-io.ts · serializeReference · _v0.28.0
+
+The document as a version 7 the reference app project, reshaped from `serialize` to pass the reference app's ProjectStore.validate (UUID ids, files named after them, plain folders, adjustment layers without pixels, non-empty names, clamped resolution), with notes for every change. Nothing was removed.
 
 ## src/main.ts
 

@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.28.0 · 2026-09-20
+
+### Added
+
+- Export for the reference app: File > Export for the reference app (.ref) writes `Name.ref.zip`, which unzips to a `.ref` package the reference app opens. Projects can now travel both ways. Where the reference app's format is stricter (folders carry no opacity or blend mode, adjustment layers carry no pixels, names cannot be empty), the export adjusts and tells you what changed.
+
+### Note
+
+- The export was checked against the reference app's own validation rules and reopened in sonny; it has not yet been opened in the reference app itself, which runs only on macOS.
+
+### Known gaps
+
+Painting speed on very large canvases; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.27.0 · 2026-09-20
 
 ### Added
