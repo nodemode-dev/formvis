@@ -9,7 +9,7 @@ A tool is a self-registering module: it declares its key, icon, hint, cursor, po
 | `frontend/src/extensions/tools/move.ts` | Move, eight resize handles, rotation outside the corners, nudge, digit opacity; snap guides, editable X, Y, W, H, Scale and Angle fields with Sampling and Snap; dragging inside a selection moves its pixels (Alt duplicates); Enter and Escape apply or cancel a floating selection |
 | `frontend/src/extensions/tools/marquee.ts`, `lasso.ts`, `wand.ts`, `select-common.ts` | Selection tools and the shared modifier-to-mode rule |
 | `frontend/src/extensions/tools/brush.ts` | Brush and Eraser, size and hardness keys, the brush cursor |
-| `frontend/src/extensions/tools/eyedropper.ts`, `hand.ts`, `zoom.ts` | Sampling and navigation |
+| `frontend/src/extensions/tools/eyedropper.ts`, `hand.ts`, `zoom.ts` | Sampling (with the reference app's sample ring during drags and its Sample Ring option) and navigation |
 | `frontend/src/extensions/tools/crop.ts`, `gradient.ts`, `shape.ts` | Crop frame with ratios and snapping, pending gradient with movable ends, shape layers |
 | `frontend/src/extensions/tools/heal.ts`, `clone.ts`, `smear.ts`, `brush-common.ts` | Spot Healing, Clone Stamp, Smear (Liquify, Blur, Smudge), and the brush cursor, keys and options they share |
 

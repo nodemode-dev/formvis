@@ -429,6 +429,10 @@ Returns the unpremultiplied RGB of the original pixel under a document point fro
 
 Lays a refined subject mask on a layer as one Remove Background step, stored as sonny masks are (white with the level in alpha), multiplied into an existing same-size unplaced mask as the reference app's `subjectMask` does. Nothing was removed; `setMaskFromImage` stays for other callers.
 
+### src/engine/index.ts · sampleRing, setSampleRing · _v0.11.0
+
+the reference app's sample ring state: the document point, the sampled color and the color before the drag, set by whatever is sampling and drawn by the stage; `showsSampleRing` is the Eyedropper's Sample Ring option and suppresses it. Nothing was removed.
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -546,6 +550,18 @@ Crop frame with create, move and resize modes, Alt to keep the center, nine rati
 ### src/extensions/tools/eyedropper.ts · color sampling · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/extensions/tools/eyedropper.ts · eyedropperTool · sample ring · _v0.11.0
+
+Remembers the color a drag starts from, shows the sample ring while it samples, clears it on release or cancel, and adds the Sample Ring option. Removed:
+
+```ts
+import { hexOf } from '../../engine';
+```
+
+```ts
+  down(ctx, p) { if (p.button === 0) sample(ctx, p); },
+```
 
 ## src/extensions/tools/gradient.ts
 
@@ -962,6 +978,16 @@ the reference app's Remove Background panel: Quality (Basic or Advanced) and, fo
 
 Ported from the reference app's `ColorPickerSheet.swift`: a saturation and brightness field, a vertical hue strip, new and current swatches, and RGB and hex entry, with HSV as the source of truth so a gray keeps its hue. It opens on the `cv-pick-color` event the rail's swatches send, titled Foreground Color or Background Color. While open, its scrim is click-through and a capture-phase listener samples the composite color under a stage click before any tool sees it. Enter in the hex box commits by blurring it, so a later blur cannot re-apply a stale value over a hue drag. OK sets the color; Cancel and Escape leave it.
 
+### src/ui/panels/color-picker.ts · ColorPickerDialog · drag sampling and ring · _v0.11.0
+
+Canvas sampling follows a drag through capture-phase window listeners, as in the reference app, showing the sample ring against the picker's color from the drag's start; `endSampleDrag` removes the listeners and the ring, and `close` always calls it. Removed from the sampler:
+
+```ts
+      const b = stage.getBoundingClientRect(), v = p.viewport;
+      const rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, true);
+      if (rgb) this.setRgb({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) });
+```
+
 ## src/ui/panels/controls.ts
 
 ### src/ui/panels/controls.ts · sliderRow, selectRow, checkRow, colorRow, numberRow · _v0.2.0
@@ -1014,6 +1040,10 @@ The marching ants take their offset from `engine.outlineShift`, which covers bot
 ```ts
       const shift = this.engine.selectionShift?.project === p ? this.engine.selectionShift : null;
 ```
+
+### src/ui/stage.ts · Stage · renderOverlay · sample ring · _v0.11.0
+
+After the tool overlay, draws `engine.sampleRing` with the reference app's `SampleRingOverlay` geometry in screen pixels (radius 43, a 24 px gray ring at 0.45 white, 16 px halves clipped top and bottom: the new color above, the color before the drag below), so it keeps its size at any zoom. Nothing was removed.
 
 ## src/ui/status.ts
 

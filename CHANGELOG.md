@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.11.0 · 2026-09-19
+
+### Added
+
+- Sample ring: while the Eyedropper samples with a drag, a ring around the pointer shows the new color on its top half and the previous one below, as in the reference app. The color picker's canvas sampling now follows a drag and shows it too. The Eyedropper's Sample Ring option turns it off.
+
+### Known gaps
+
+Free distort; Smear's Blur on masks; ants that follow a floating selection; Layer via Copy; desktop shell still uncompiled.
+
 ## 0.10.1 · 2026-09-19
 
 ### Documentation

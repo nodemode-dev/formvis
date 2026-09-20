@@ -5,7 +5,7 @@ The shell is mounted once from a string template and then patched in place: noth
 | Source path | What lives there |
 | --- | --- |
 | `frontend/src/app.ts` | Mounting, commands, menus, keyboard, paste, drag and drop, file I/O flows, the reveal gate |
-| `frontend/src/ui/stage.ts` | Scene and overlay canvases, pointer input, pixel view at 200 percent and up, marching ants |
+| `frontend/src/ui/stage.ts` | Scene and overlay canvases, pointer input, pixel view at 200 percent and up, marching ants, the sample ring |
 | `frontend/src/ui/layers.ts` | Keyed layer rows, thumbnails, visibility swipe, drag reorder, rename, context menu |
 | `frontend/src/ui/rail.ts`, `options.ts`, `tabs.ts`, `status.ts` | Tool rail and colors (the swatches open the color picker), options bar with editable number fields, project tabs, status bar |
 | `frontend/src/ui/menu.ts`, `dialogs.ts`, `app-dialogs.ts`, `toast.ts`, `commands.ts` | Menus, dialogs (a click-through scrim lets eyedroppers reach the canvas), toasts, the command registry and key labels |
