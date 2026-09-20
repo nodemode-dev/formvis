@@ -1,7 +1,7 @@
 {
   "name": "sonny",
   "private": true,
-  "version": "0.24.0",
+  "version": "0.25.0",
   "description": "sonny · layered image editor in the NodeMode style",
   "license": "MIT",
   "type": "module",

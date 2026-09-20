@@ -22,6 +22,7 @@ src/
         adjust.ts  · Hue/Saturation and Grain kernels, adjustment data
         renderer.ts  · rendering pipeline
         distort.ts  · free distort: homography, warp, carried corners
+        dpi.ts  · export resolution stamp (PNG pHYs, JPEG JFIF density)
         events.ts  · typed emitter
         filters.ts  · blurs, noise, lens, histogram, selection resize
         geometry.ts  · matrices and rectangles
@@ -116,6 +117,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/adjust.ts](#srcengineadjustts)
 - [src/engine/renderer.ts](#srcenginerendererts)
 - [src/engine/distort.ts](#srcenginedistortts)
+- [src/engine/dpi.ts](#srcenginedpits)
 - [src/engine/events.ts](#srcengineeventsts)
 - [src/engine/filters.ts](#srcenginefiltersts)
 - [src/engine/geometry.ts](#srcenginegeometryts)
@@ -330,6 +332,14 @@ the reference app's recent documents: `noteRecent` on every library save and ope
     { label: 'File', items: ['new', 'open', 'import', '-', 'save', 'save-as', 'download-project', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
 ```
 
+### src/app.ts · close-tab · Mod+W in the desktop shell · _v0.25.0
+
+Close Tab takes Mod+W where the Tauri shell is present, as the reference app's File > Close; the web keeps Alt+Mod+W since browsers reserve Ctrl/Cmd-W. Removed:
+
+```ts
+    { id: 'close-tab', label: 'Close Tab', keys: ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -406,6 +416,12 @@ A clip base's override source is placed by the source's own size, as layers and 
 ### src/engine/distort.ts · DistortWarp port · _v0.21.0
 
 the reference app's free distort math: `cornersOf` (handle order), `distortUsable` (convex and non-degenerate), `homography` and `project`, `carried` (a box's perspective applied to inner corners, for group members and masks placed apart), `warpRaster` (premultiplied, edge-clamped bilinear inverse mapping, preview scale, mask mode with an edge tone outside), `visibleBounds` and `cropWarp` (warpTrimmed), and `maskEdgeTone` (LayerMask.background).
+
+## src/engine/dpi.ts
+
+### src/engine/dpi.ts · withResolution · _v0.25.0
+
+the reference app's ImageExporter DPI: a PNG `pHYs` chunk (pixels per meter, with its CRC32) placed after IHDR unless one exists, and a JPEG's JFIF density in dots per inch (an APP0 segment inserted when absent); other types and out-of-range resolutions pass through.
 
 ## src/engine/events.ts
 
@@ -640,6 +656,14 @@ the reference app's brushTipDrag: right-drag resizes the brush from its size at 
 ### src/engine/index.ts · floatingOutline · _v0.24.0
 
 the reference app's mapPath for Transform Selection: the floating pixels' source selection and the matrix placement(now) times placement(original) inverse, now being the live draft while dragging; null when a distortion leaves no affine map. Nothing was removed.
+
+### src/engine/index.ts · exportBlob · resolution stamp · _v0.25.0
+
+Every PNG and JPEG export passes through `withResolution` with the document's resolution. Removed:
+
+```ts
+    return toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality);
+```
 
 ## src/engine/kernels.ts
 

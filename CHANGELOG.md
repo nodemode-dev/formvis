@@ -2,6 +2,23 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.25.0 · 2026-09-20
+
+### Added
+
+- Exported PNG and JPEG files now carry the document's resolution (dots per inch), as the reference app's exports do, so print and layout apps size them correctly.
+- In the desktop app, Cmd/Ctrl-W closes the current project tab (asking first if it has unsaved changes), as in the reference app. The web version keeps Alt+Cmd/Ctrl+W, because browsers reserve Cmd/Ctrl-W for their own tab.
+
+### Verified
+
+- Every way of closing a project asks before discarding unsaved changes: the tab's close button, middle-click, Close Tab, and closing or reloading the page.
+- Filter previews already apply only inside the selection, as the final result does.
+- The interface was checked for layout shift and flicker under a slowed CPU in the Sand light theme as well as the default.
+
+### Known gaps
+
+The desktop shell has not been compiled (first CI run pending), and the desktop-only items wait on it.
+
 ## 0.24.0 · 2026-09-20
 
 ### Added
