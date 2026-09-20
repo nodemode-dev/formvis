@@ -433,18 +433,50 @@ export class Engine {
     });
   }
 
-  deleteLayers(): void {
+  /** the reference app's live masks: layers that stay but are clipped to a layer being deleted. Deleting their base asks
+   *  whether to bake their masked look into their pixels or remove the links; `deleteLayers(true)` bakes. */
+  liveMaskDependents(): ID[] {
+    const p = this.current;
+    if (!p || (p.maskTarget && p.activeLayer?.mask && p.selectedIds.size <= 1)) return [];
+    const doomed = this.doomedBy(p);
+    return p.doc.layers.filter((l) => !doomed.has(l.id) && !!l.clipId && doomed.has(l.clipId)).map((l) => l.id);
+  }
+
+  private doomedBy(p: Project): Set<ID> {
+    const doomed = new Set<ID>();
+    for (const id of this.selectedRoots(p)) { doomed.add(id); for (const d of descendantIds(p.doc.layers, id)) doomed.add(d); }
+    return doomed;
+  }
+
+  deleteLayers(bake = false): void {
     const p0 = this.current;
     if (!p0) return;
     if (p0.maskTarget && p0.activeLayer?.mask && p0.selectedIds.size <= 1) { this.deleteMask(false); return; }
     this.edit('Delete Layer', (p) => {
       const roots = this.selectedRoots(p);
       if (!roots.length) return false;
-      const doomed = new Set<ID>();
-      for (const id of roots) { doomed.add(id); for (const d of descendantIds(p.doc.layers, id)) doomed.add(d); }
+      const doomed = this.doomedBy(p);
       const order = hierarchy(p.doc, true).map((e) => e.layer.id);
       const first = Math.min(...roots.map((id) => order.indexOf(id)));
-      const kept = p.doc.layers.filter((l) => !doomed.has(l.id)).map((l) => (l.clipId && doomed.has(l.clipId) ? { ...l, clipId: null } : l));
+      // the reference app's Bake and Delete: a layer clipped to a deleted base keeps its current masked look in its own
+      // pixels, through the same coverage the renderer clips it with; adjustments and folders just unlink.
+      const baked = new Map<ID, Raster>();
+      if (bake) {
+        for (const l of p.doc.layers) {
+          if (doomed.has(l.id) || !l.clipId || !doomed.has(l.clipId) || !l.raster || l.adjustment || l.isGroup) continue;
+          const cov = this.work.clipCoverageOf(p.doc, l.clipId), r = l.raster.clone(), c = r.ctx;
+          c.save();
+          if (cov) {
+            setMat(c, invert(placement(l.transform, r.width, r.height)));
+            c.globalCompositeOperation = 'destination-in';
+            c.drawImage(cov, 0, 0);
+          } else c.clearRect(0, 0, r.width, r.height);
+          c.restore();
+          r.touch();
+          baked.set(l.id, r);
+        }
+      }
+      const kept = p.doc.layers.filter((l) => !doomed.has(l.id)).map((l) => (l.clipId && doomed.has(l.clipId) ? { ...l, clipId: null, ...(baked.has(l.id) ? { raster: baked.get(l.id) as Raster } : {}) } : l));
       p.setLayers(this.normalizeClips(kept));
       const remaining = order.filter((id) => !doomed.has(id));
       this.focus(p, remaining[Math.min(Math.max(0, first), remaining.length - 1)] ?? null);

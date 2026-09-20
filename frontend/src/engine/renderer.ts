@@ -159,6 +159,19 @@ export class Renderer {
     c.restore();
   }
 
+  /** The coverage a clip base lends the layers clipped to it, at document size and in document space, copied out of
+   *  the pool: what each of those live masks shows through. Deleting the base can bake it into their pixels. */
+  clipCoverageOf(doc: Doc, baseId: ID): Surface | null {
+    const base = doc.layers.find((l) => l.id === baseId);
+    if (!base) return null;
+    const map = new Map(doc.layers.map((l) => [l.id, l]));
+    const cov = this.clipCoverage({ doc, target: createSurface(1, 1), view: IDENTITY, quality: 'high' }, base, map, doc.width, doc.height, 0);
+    if (!cov) return null;
+    const out = createSurface(doc.width, doc.height);
+    ctxOf(out).drawImage(cov, 0, 0);
+    return out;
+  }
+
   private clipCoverage(job: RenderJob, base: Layer, map: ReadonlyMap<ID, Layer>, W: number, H: number, depth: number): Surface | null {
     if (depth > 256 || base.isGroup || !base.raster) return null;
     const ov = job.overrides?.get(base.id);

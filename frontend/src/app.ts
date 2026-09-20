@@ -12,6 +12,7 @@ import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/siz
 import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel } from './ui/panels/background-panel';
 import { ColorPickerDialog } from './ui/panels/color-picker';
+import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
 import { Commands } from './ui/commands';
 import { anyDialogOpen, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
@@ -213,6 +214,16 @@ export function startApp(): void {
     });
   }
 
+  /** the reference app's deleteWithLiveMaskChoice: deleting a layer that other layers are clipped to asks whether to bake
+   *  their masked look or remove the links; with no such layers it deletes at once. */
+  async function deleteLayersWithChoice(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    if (!engine.liveMaskDependents().length) { engine.deleteLayers(); return; }
+    const choice = await dialogs.liveMask.choose(p.selectedIds.size > 1);
+    if (choice) engine.deleteLayers(choice === 'bake');
+  }
+
   async function exportImage(kind: 'png' | 'jpg', quality = 0.92): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -274,6 +285,7 @@ export function startApp(): void {
     jpeg: new JpegDialog(engine),
     background: new BackgroundPanel(engine),
     color: new ColorPickerDialog(engine),
+    liveMask: new LiveMaskDialog(),
     open: new OpenDialog({ openLibrary, openFiles, openFolder }),
     settings: new SettingsDialog(),
     shortcuts: new ShortcutsDialog(commands),
@@ -307,7 +319,7 @@ export function startApp(): void {
     { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
     { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
-    { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : engine.deleteLayers()) },
+    { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
     { id: 'settings', label: 'Settings...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
     { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
@@ -317,7 +329,7 @@ export function startApp(): void {
     { id: 'new-layer', label: 'New Layer', keys: ['Shift+Mod+N'], enabled: has, run: () => engine.addLayer() },
     { id: 'new-folder', label: 'New Folder', enabled: has, run: () => engine.addFolder() },
     { id: 'duplicate', label: () => (engine.current?.selection ? 'Layer via Copy' : 'Duplicate Layer'), keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
-    { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => engine.deleteLayers() },
+    { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => void deleteLayersWithChoice() },
     { id: 'rename', label: 'Rename Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) layers.startRename(l.id); } },
     { id: 'group', label: 'Group Layers', keys: ['Mod+G'], enabled: () => !!layer(), run: () => engine.groupLayers() },
     { id: 'move-out', label: 'Move Out of Folder', keys: ['Shift+Mod+G'], enabled: () => !!layer()?.parentId, run: () => engine.moveOutOfFolder() },
