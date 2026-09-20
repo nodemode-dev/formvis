@@ -710,6 +710,18 @@ the reference app's clonePreview: the source around `clonePoint(at)` rendered fo
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 ```
 
+### src/engine/index.ts · strokeTo · changed region · _v0.29.0
+
+The render event carries `Rect | null`; a stroke frame reports the document bounds of its composed rectangle (mapped through the layer or mask placement) unless `dirtyRendering` is off. Removed:
+
+```ts
+  history: null; colors: null; render: null; overlay: null; busy: boolean; notice: Notice;
+```
+
+```ts
+    if (st.s.compose()) this.emit('render', null);
+```
+
 ## src/engine/kernels.ts
 
 ### src/engine/kernels.ts · adjustment and wand kernels · _v0.1.0
@@ -1619,6 +1631,46 @@ With no live selection, the ants draw `floatingOutline`'s selection through the 
 
 ```ts
     const need = !!this.engine.current?.selection && !REDUCED;
+```
+
+### src/ui/stage.ts · Stage · region repaints · _v0.29.0
+
+Reported regions accumulate in `pending` between frames; `renderScene(region)` clears and recomposes only that region, a pixel wider each way, leaving the rest of the scene; a full request wins until the frame runs. Removed:
+
+```ts
+    for (const k of ['render', 'viewport', 'active'] as const) engine.on(k, () => this.queue(true, true));
+```
+
+```ts
+  private queue(scene: boolean, overlay: boolean): void {
+    this.wantScene ||= scene;
+    this.wantOverlay ||= overlay;
+    if (this.frame) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0;
+      if (this.wantScene) this.renderScene();
+      if (this.wantOverlay) this.renderOverlay();
+    });
+  }
+```
+
+```ts
+  private renderScene(): void {
+    this.wantScene = false;
+    const g = this.sctx;
+    const W = this.scene.width, H = this.scene.height;
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.clearRect(0, 0, W, H);
+    const p = this.engine.current;
+    if (!p) return;
+```
+
+```ts
+    g.lineWidth = 1;
+    g.strokeStyle = pal.edge;
+    g.strokeRect(Math.round(docRect.x) - 0.5, Math.round(docRect.y) - 0.5, Math.round(docRect.w) + 1, Math.round(docRect.h) + 1);
+    const vis = intersectRect(integral(docRect), { x: 0, y: 0, w: W, h: H });
+    if (!vis) return;
 ```
 
 ## src/ui/status.ts

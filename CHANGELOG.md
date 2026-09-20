@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.29.0 · 2026-09-20
+
+### Changed
+
+- Painting on large canvases repaints only the area the brush changed each frame instead of the whole visible canvas, as the reference app's tiled renderer does. On a 4000 by 3000 document at 100 percent, a stroke frame composes 5,180 pixels instead of 853,776, with an identical result.
+
+### Known gaps
+
+The desktop shell has not been compiled (first CI run pending), and the desktop-only items wait on it.
+
 ## 0.28.0 · 2026-09-20
 
 ### Added
