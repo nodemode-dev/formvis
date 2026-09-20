@@ -117,11 +117,23 @@ export function adjustmentKernel(adj: Adjustment | null): Kernel | null {
   }
 }
 
-export function wandMask(rgba: Uint8ClampedArray, width: number, height: number, seedX: number, seedY: number, tolerance: number, contiguous: boolean): Uint8Array {
+export function wandMask(rgba: Uint8ClampedArray, width: number, height: number, seedX: number, seedY: number, tolerance: number, contiguous: boolean, sampleRadius = 0): Uint8Array {
   const mask = new Uint8Array(width * height);
   if (seedX < 0 || seedY < 0 || seedX >= width || seedY >= height) return mask;
-  const s = (seedY * width + seedX) * 4;
-  const ref = [rgba[s], rgba[s + 1], rgba[s + 2], rgba[s + 3]];
+  // the reference app's Sample Size: the color to match averages the pixels within `sampleRadius` of the click (0 is Point,
+  // 1 is 3 by 3, 2 is 5 by 5), clipped to the image.
+  const ref = [0, 0, 0, 0];
+  let count = 0;
+  for (let dy = -sampleRadius; dy <= sampleRadius; dy++) {
+    for (let dx = -sampleRadius; dx <= sampleRadius; dx++) {
+      const x = seedX + dx, y = seedY + dy;
+      if (x < 0 || y < 0 || x >= width || y >= height) continue;
+      const o = (y * width + x) * 4;
+      for (let k = 0; k < 4; k++) ref[k] += rgba[o + k];
+      count++;
+    }
+  }
+  for (let k = 0; k < 4; k++) ref[k] = Math.round(ref[k] / count);
   const tol = clamp(Math.round(tolerance), 0, 255);
   const match = (p: number): boolean => {
     const o = p * 4;

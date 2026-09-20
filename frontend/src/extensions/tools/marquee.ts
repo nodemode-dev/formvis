@@ -1,6 +1,6 @@
 import { SelectionMask, type Pt, type Rect, type SelectionMode } from '../../engine';
 import { dashed, type Tool, type ToolContext, type ToolPointer } from '../registry';
-import { modeFor, modeSegment } from './select-common';
+import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 interface Draft { anchor: Pt; point: Pt; mode: SelectionMode; shiftAtPress: boolean; altAtPress: boolean; square: boolean; center: boolean }
 let draft: Draft | null = null;
@@ -32,10 +32,15 @@ export const marqueeTool: Tool = {
     if (moving) { ctx.engine.updateSelectionShift(p.doc.x - moving.x, p.doc.y - moving.y); return; }
     if (!draft) return;
     draft.point = p.doc;
+    // the reference app's marqueeConstrainArmed: a modifier held from the press sets the mode, not a constraint, until it is
+    // released during the drag; pressed again, it constrains.
+    if (!p.shift) draft.shiftAtPress = false;
+    if (!p.alt) draft.altAtPress = false;
     draft.square = p.shift && !draft.shiftAtPress;
     draft.center = p.alt && !draft.altAtPress;
     ctx.engine.emit('overlay', null);
   },
+  keydown(ctx, e) { return nudgeSelectionKey(ctx, e); },
   up(ctx) {
     const e = ctx.engine;
     if (moving) { moving = null; e.endSelectionShift(); return; }

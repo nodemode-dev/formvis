@@ -76,7 +76,7 @@ export class Engine {
   selectionMode: SelectionMode = 'replace';
   marqueeKind: 'rectangle' | 'ellipse' = 'rectangle';
   lassoKind: 'freehand' | 'polygonal' = 'freehand';
-  wand = { tolerance: 32, contiguous: true, sampleAll: false };
+  wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0 };
   showPixelGrid = true;
   showTransformControls = true;
   autoSelect = false;
@@ -1004,7 +1004,7 @@ export class Engine {
       c.drawImage(l.raster.canvas, 0, 0);
     }
     const data = ctxOf(surface).getImageData(0, 0, W, H).data;
-    const mask = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous);
+    const mask = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous, this.wand.sampleSize);
     this.applySelection(SelectionMask.cropped(0, 0, W, H, mask), mode, 'Magic Wand');
   }
 
@@ -2109,6 +2109,16 @@ export class Engine {
     if (!ring && !this.sampleRing) return;
     this.sampleRing = ring && this.showsSampleRing ? ring : null;
     this.emit('overlay', null);
+  }
+
+  /** the reference app's arrow-key nudge for selection tools: the outline moves 1 px (10 with Shift at the caller), each
+   *  press one Move Selection step; the pixels stay. Returns false when there is no selection to move. */
+  nudgeSelection(dx: number, dy: number): boolean {
+    const p = this.current, s = p?.selection;
+    if (!p || !s || (!dx && !dy)) return false;
+    this.settle();
+    this.applySelection(s.translated(dx, dy, p.doc.width, p.doc.height), 'replace', 'Move Selection');
+    return true;
   }
 
   setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void {

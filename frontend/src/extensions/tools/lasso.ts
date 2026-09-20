@@ -1,6 +1,6 @@
 import { SelectionMask, boundsOf, type Pt, type SelectionMode } from '../../engine';
 import { dashed, type Tool, type ToolContext } from '../registry';
-import { modeFor, modeSegment } from './select-common';
+import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 let pts: Pt[] = [];
 let mode: SelectionMode = 'replace';
@@ -52,7 +52,7 @@ export const lassoTool: Tool = {
   up(ctx) { if (ctx.engine.lassoKind === 'freehand' && active) commit(ctx); },
   hover(ctx, p) { hover = p?.doc ?? null; if (active) ctx.engine.emit('overlay', null); },
   keydown(ctx, e) {
-    if (!active || ctx.engine.lassoKind !== 'polygonal') return false;
+    if (!active || ctx.engine.lassoKind !== 'polygonal') return nudgeSelectionKey(ctx, e);
     if (e.key === 'Enter') { commit(ctx); return true; }
     if (e.key === 'Escape') { reset(ctx); return true; }
     if (e.key === 'Backspace' || e.key === 'Delete') { pts.pop(); if (!pts.length) active = false; ctx.engine.emit('overlay', null); return true; }
