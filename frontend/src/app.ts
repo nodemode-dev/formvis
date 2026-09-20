@@ -316,7 +316,7 @@ export function startApp(): void {
     { id: 'flip-canvas-v', label: 'Flip Canvas Vertical', enabled: has, run: () => engine.flipCanvas(false) },
     { id: 'new-layer', label: 'New Layer', keys: ['Shift+Mod+N'], enabled: has, run: () => engine.addLayer() },
     { id: 'new-folder', label: 'New Folder', enabled: has, run: () => engine.addFolder() },
-    { id: 'duplicate', label: 'Duplicate Layer', keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.duplicateLayers() },
+    { id: 'duplicate', label: () => (engine.current?.selection ? 'Layer via Copy' : 'Duplicate Layer'), keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
     { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => engine.deleteLayers() },
     { id: 'rename', label: 'Rename Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) layers.startRename(l.id); } },
     { id: 'group', label: 'Group Layers', keys: ['Mod+G'], enabled: () => !!layer(), run: () => engine.groupLayers() },

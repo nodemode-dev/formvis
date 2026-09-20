@@ -1420,18 +1420,20 @@ export class Engine {
     this.applySelection(SelectionMask.fromAlpha(b.x, b.y, b.w, b.h, c.getImageData(0, 0, b.w, b.h).data), 'replace', "Mask's Black Areas");
   }
 
-  copySelection(merged: boolean): boolean {
+  /** The active layer's pixels (or its mask as gray, or with `merged` the visible image) inside the selection, or the
+   *  whole canvas without one, rendered over the selection's region. Copy and Layer via Copy share it. */
+  private selectedPixels(merged: boolean): { surface: Surface; region: Rect } | null {
     const p = this.current;
-    if (!p) return false;
+    if (!p) return null;
     const docRect = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
     const region = p.selection ? intersectRect(integral(p.selection.rect), docRect) : docRect;
-    if (!region) return false;
+    if (!region) return null;
     const s = createSurface(region.w, region.h);
     const c = ctxOf(s);
     if (merged) this.work.render({ doc: p.doc, target: s, view: translation(-region.x, -region.y), quality: 'high' });
     else {
       const l = p.activeLayer;
-      if (!l || l.isGroup || l.adjustment) { this.notice('Select a pixel layer to copy.'); return false; }
+      if (!l || l.isGroup || l.adjustment) { this.notice('Select a pixel layer to copy.'); return null; }
       const onMask = p.maskTarget && !!l.mask;
       const r = onMask ? l.mask?.raster ?? null : l.raster;
       if (onMask && !r) { c.fillStyle = '#ffffff'; c.fillRect(0, 0, region.w, region.h); }
@@ -1449,9 +1451,35 @@ export class Engine {
       c.drawImage(p.selection.surface(), p.selection.x - region.x, p.selection.y - region.y);
       c.globalCompositeOperation = 'source-over';
     }
+    return { surface: s, region };
+  }
+
+  copySelection(merged: boolean): boolean {
+    const got = this.selectedPixels(merged);
+    if (!got) return false;
+    const { surface: s, region } = got;
     this.clipboard = { surface: s, x: region.x, y: region.y, w: region.w, h: region.h, stamp: uid() };
     this.emit('options', null);
     return true;
+  }
+
+  private nextLayerName(p: Project): string {
+    const names = new Set(p.doc.layers.map((l) => l.name));
+    let n = 1;
+    while (names.has(`Layer ${n}`)) n += 1;
+    return `Layer ${n}`;
+  }
+
+  /** the reference app's Cmd-J: with a selection, its pixels on the active layer (or its mask, as gray) become a new layer in
+   *  place as one Layer via Copy step, leaving the clipboard alone; without a selection the layer is duplicated. */
+  layerViaCopy(): void {
+    const p = this.current;
+    if (!p) return;
+    if (!p.selection) { this.duplicateLayers(); return; }
+    this.settle();
+    const got = this.selectedPixels(false);
+    if (!got) return;
+    this.insertRasterLayer(Raster.from(got.surface, got.region.w, got.region.h), this.nextLayerName(p), got.region.x, got.region.y, {}, 'Layer via Copy');
   }
 
   cutSelection(): void {
