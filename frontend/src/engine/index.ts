@@ -622,6 +622,23 @@ export class Engine {
     });
   }
 
+  /** the reference app's Option-drag from a mask thumbnail: a copy of the source's mask on the target, sitting where it sits
+   *  on the document and replacing any mask the target had, as one step; the target becomes active with its mask
+   *  targeted. The raster is copied, so painting one mask never changes the other. */
+  copyMask(source: ID, target: ID): void {
+    const p = this.current, to = p?.layer(target);
+    if (!p || !to || to.isGroup || source === target) return;
+    this.edit(to.mask ? 'Replace Layer Mask' : 'Copy Layer Mask', (q) => {
+      const from = q.layer(source), dest = q.layer(target);
+      const m = from?.mask;
+      if (!from || !m || !dest || dest.isGroup) return false;
+      q.updateLayer(target, { mask: { ...m, raster: m.raster ? Raster.from(m.raster.canvas, m.raster.width, m.raster.height) : null, placement: m.placement ?? from.transform } });
+      this.focus(q, target);
+      q.maskTarget = true;
+      return true;
+    });
+  }
+
   toggleClip(id?: ID): void {
     this.edit('Clipping Mask', (p) => {
       const l = p.layer(id ?? p.activeId ?? '');

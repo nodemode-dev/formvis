@@ -19,7 +19,7 @@ export class LayersPanel {
   private frame = 0;
   private opacityDrag = false;
   private renaming: ID | null = null;
-  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null } | null = null;
+  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null } | null = null;
   private swipe: { visible: boolean; pointerId: number } | null = null;
 
   constructor(root: HTMLElement, private readonly engine: Engine, private readonly menu: PopupMenu) {
@@ -152,6 +152,12 @@ export class LayersPanel {
     return null;
   }
 
+  /** the reference app's clipping zone: the bottom quarter of a row, the boundary with the layer below. */
+  private inClipZone(row: HTMLElement, clientY: number): boolean {
+    const r = row.getBoundingClientRect();
+    return r.height > 0 && (clientY - r.top) / r.height >= 0.75;
+  }
+
   private rowAt(clientX: number, clientY: number): HTMLElement | null {
     const hit = document.elementFromPoint(clientX, clientY);
     const row = hit instanceof Element ? hit.closest<HTMLElement>('.cv-layer') : null;
@@ -213,6 +219,13 @@ export class LayersPanel {
       const p = this.engine.current;
       if (!p) return;
       const mod = isMac ? e.metaKey : e.ctrlKey;
+      // the reference app: Option-click on the bottom quarter of a row makes or releases that layer's clipping mask; elsewhere
+      // on the row the click selects as usual, so an Option-drag can still drop a duplicate.
+      if (e.altKey && !mod && !t.closest('.cv-layer-mask') && this.inClipZone(row, e.clientY)) {
+        e.preventDefault();
+        this.engine.toggleClip(id);
+        return;
+      }
       const wasSelected = p.selectedIds.has(id);
       if (mod) this.engine.selectLayer(id, 'toggle');
       else if (e.shiftKey && !t.closest('.cv-layer-mask')) this.engine.selectLayer(id, 'range');
@@ -223,7 +236,8 @@ export class LayersPanel {
         else this.engine.setMaskTarget(true);
       } else if (t.closest('.cv-layer-thumb')) this.engine.setMaskTarget(false);
       const ids = p.selectedIds.has(id) ? [...p.selectedIds] : [id];
-      this.drag = { id, ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null };
+      const maskFrom = e.altKey && t.closest('.cv-layer-mask') && p.layer(id)?.mask ? id : null;
+      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom };
     });
     rows.addEventListener('pointermove', (e) => {
       if (this.swipe && this.swipe.pointerId === e.pointerId) {
@@ -232,6 +246,10 @@ export class LayersPanel {
         return;
       }
       const d = this.drag;
+      if (!d) {
+        const hover = this.rowAt(e.clientX, e.clientY);
+        setClass(rows, 'is-clip-zone', e.altKey && !!hover && !(e.target as HTMLElement).closest('.cv-layer-mask') && this.inClipZone(hover, e.clientY));
+      }
       if (!d || d.pointerId !== e.pointerId) return;
       if (!d.started && Math.abs(e.clientY - d.startY) < 4) return;
       if (!d.started) rows.setPointerCapture(e.pointerId);
@@ -241,6 +259,7 @@ export class LayersPanel {
       const r = row.getBoundingClientRect();
       const f = (e.clientY - r.top) / r.height;
       const group = row.classList.contains('is-group');
+      if (d.maskFrom) { d.target = group ? null : { id: row.dataset.id, where: 'inside' }; this.showDrop(d.target); return; }
       const where: Where = group && f > 0.25 && f < 0.75 ? 'inside' : f < 0.5 ? 'above' : 'below';
       d.target = { id: row.dataset.id, where };
       this.showDrop(d.target);
@@ -257,7 +276,10 @@ export class LayersPanel {
       this.showDrop(null);
       if (rows.hasPointerCapture(e.pointerId)) rows.releasePointerCapture(e.pointerId);
       if (cancel) return;
-      if (d.started && d.target) this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
+      if (d.started && d.target) {
+        if (d.maskFrom) this.engine.copyMask(d.maskFrom, d.target.id);
+        else this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
+      }
       else if (!d.started && d.wasSelected) this.engine.selectLayer(d.id);
     };
     rows.addEventListener('pointerup', (e) => finish(e, false));
