@@ -642,6 +642,43 @@ export class Engine {
     });
   }
 
+  /** the reference app's copyLayer(into:): a layer, with a folder's contents, copied into another open project as one Copy
+   *  Layers from Project step there: new ids, cloned pixels, parent and clip links kept inside the copy and dropped
+   *  outside it, centered on the target canvas, on top of its stack; the target becomes current. Refused past
+   *  the reference app's 100-megapixel budget for the target. */
+  copyLayerToProject(id: ID, targetKey: string): boolean {
+    const src = this.projects.find((q) => !!q.layer(id)), dst = this.projects.find((q) => q.id === targetKey);
+    const head = src?.layer(id);
+    if (!src || !dst || !head || src === dst || this.stroke) return false;
+    this.settle();
+    const included = new Set<ID>([id]);
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const l of src.doc.layers) if (l.parentId && included.has(l.parentId) && !included.has(l.id)) { included.add(l.id); grew = true; }
+    }
+    const copied = src.doc.layers.filter((l) => included.has(l.id));
+    const pixels = (ls: readonly Layer[]): number => ls.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0);
+    if (pixels(dst.doc.layers) + pixels(copied) > 100_000_000) { this.notice("The copied layers exceed this project's 100-megapixel limit."); return false; }
+    const dx = dst.doc.width / 2 - (head.transform.x + head.transform.w / 2), dy = dst.doc.height / 2 - (head.transform.y + head.transform.h / 2);
+    const ids = new Map(copied.map((l) => [l.id, uid()]));
+    const layers: Layer[] = copied.map((l) => ({
+      ...l,
+      id: ids.get(l.id) as ID,
+      parentId: l.parentId ? ids.get(l.parentId) ?? null : null,
+      clipId: l.clipId ? ids.get(l.clipId) ?? null : null,
+      transform: { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy },
+      raster: l.raster ? l.raster.clone() : null,
+      mask: l.mask ? { ...l.mask, raster: l.mask.raster ? l.mask.raster.clone() : null, placement: l.mask.placement ? { ...l.mask.placement, x: l.mask.placement.x + dx, y: l.mask.placement.y + dy } : null } : null,
+    }));
+    this.switchTo(dst.id);
+    this.edit('Copy Layers from Project', (p) => {
+      p.setLayers([...p.doc.layers, ...layers]);
+      this.focus(p, ids.get(id) as ID);
+      return true;
+    });
+    return true;
+  }
+
   toggleClip(id?: ID): void {
     this.edit('Clipping Mask', (p) => {
       const l = p.layer(id ?? p.activeId ?? '');
@@ -1109,7 +1146,7 @@ export class Engine {
     const te = this.transformEdit;
     if (!te) return;
     te.draft = dragged(te.original, te.start, pt, te.mode, this.lockRatio, shift, alt);
-    if (te.mode.kind === 'move' && this.snapping && !te.group) te.draft = this.snapMove(te.project, te.layerId, te.draft);
+    if (te.mode.kind === 'move' && this.snapping) te.draft = this.snapMove(te.project, te.layerId, te.draft, te.group ? new Set(te.group.originals.keys()) : undefined);
     else this.snapGuides = null;
     this.emit('render', null);
     this.emit('options', null);
@@ -1924,12 +1961,12 @@ export class Engine {
   snapping = true;
   snapGuides: { xs: number[]; ys: number[] } | null = null;
 
-  private snapMove(p: Project, id: ID, t: Transform): Transform {
+  private snapMove(p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform {
     const tol = 6 / p.viewport.zoom;
     const xs = [0, p.doc.width / 2, p.doc.width], ys = [0, p.doc.height / 2, p.doc.height];
     for (const e of hierarchy(p.doc)) {
       const l = e.layer;
-      if (!e.visible || l.isGroup || !l.raster || l.id === id) continue;
+      if (!e.visible || l.isGroup || !l.raster || l.id === id || moving?.has(l.id)) continue;
       const b = transformBounds(l.transform);
       xs.push(Math.round(b.x), Math.round(b.x + b.w / 2), Math.round(b.x + b.w));
       ys.push(Math.round(b.y), Math.round(b.y + b.h / 2), Math.round(b.y + b.h));

@@ -20,6 +20,7 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-tab { display: grid; grid-template-columns: 6px minmax(0, 1fr) 20px; align-items: center; column-gap: var(--space-2); flex: none; width: 168px; height: var(--ctl-md); padding: 0 var(--space-1) 0 var(--space-2); border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text-secondary); font-size: var(--fs-12); cursor: default; }
 .cv-tab:hover { background: var(--bg-hover); }
 .cv-tab.is-active { background: var(--bg-tertiary); border-color: var(--border-light); color: var(--text-primary); }
+.cv-tab.is-drop-target { background: var(--accent-tint-strong); border-color: var(--accent-color); color: var(--text-primary); }
 .cv-tab-dot { width: 6px; height: 6px; border-radius: var(--radius-pill); background: transparent; }
 .cv-tab.is-dirty .cv-tab-dot { background: var(--accent-color); }
 .cv-tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

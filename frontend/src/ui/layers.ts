@@ -19,7 +19,7 @@ export class LayersPanel {
   private frame = 0;
   private opacityDrag = false;
   private renaming: ID | null = null;
-  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null } | null = null;
+  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null } | null = null;
   private swipe: { visible: boolean; pointerId: number } | null = null;
 
   constructor(root: HTMLElement, private readonly engine: Engine, private readonly menu: PopupMenu) {
@@ -152,6 +152,11 @@ export class LayersPanel {
     return null;
   }
 
+  /** Marks the project tab a layer drag would copy into, clearing the rest. */
+  private showTabDrop(key: string | null): void {
+    for (const t of document.querySelectorAll<HTMLElement>('.cv-tab')) setClass(t, 'is-drop-target', !!key && t.dataset.key === key);
+  }
+
   /** the reference app's clipping zone: the bottom quarter of a row, the boundary with the layer below. */
   private inClipZone(row: HTMLElement, clientY: number): boolean {
     const r = row.getBoundingClientRect();
@@ -237,7 +242,7 @@ export class LayersPanel {
       } else if (t.closest('.cv-layer-thumb')) this.engine.setMaskTarget(false);
       const ids = p.selectedIds.has(id) ? [...p.selectedIds] : [id];
       const maskFrom = e.altKey && t.closest('.cv-layer-mask') && p.layer(id)?.mask ? id : null;
-      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom };
+      this.drag = { id, ids: maskFrom ? [id] : ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom, tabTarget: null };
     });
     rows.addEventListener('pointermove', (e) => {
       if (this.swipe && this.swipe.pointerId === e.pointerId) {
@@ -254,6 +259,12 @@ export class LayersPanel {
       if (!d.started && Math.abs(e.clientY - d.startY) < 4) return;
       if (!d.started) rows.setPointerCapture(e.pointerId);
       d.started = true;
+      // the reference app: a row dragged onto another project's tab copies the layer there.
+      const tab = (document.elementFromPoint(e.clientX, e.clientY) as HTMLElement | null)?.closest<HTMLElement>('.cv-tab') ?? null;
+      const key = !d.maskFrom && tab?.dataset.key && tab.dataset.key !== this.engine.current?.id ? tab.dataset.key : null;
+      d.tabTarget = key;
+      this.showTabDrop(key);
+      if (key) { d.target = null; this.showDrop(null); return; }
       const row = this.rowAt(e.clientX, e.clientY);
       if (!row?.dataset.id || d.ids.includes(row.dataset.id)) { d.target = null; this.showDrop(null); return; }
       const r = row.getBoundingClientRect();
@@ -276,7 +287,9 @@ export class LayersPanel {
       this.showDrop(null);
       if (rows.hasPointerCapture(e.pointerId)) rows.releasePointerCapture(e.pointerId);
       if (cancel) return;
-      if (d.started && d.target) {
+      this.showTabDrop(null);
+      if (d.started && d.tabTarget) this.engine.copyLayerToProject(d.id, d.tabTarget);
+      else if (d.started && d.target) {
         if (d.maskFrom) this.engine.copyMask(d.maskFrom, d.target.id);
         else this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
       }
