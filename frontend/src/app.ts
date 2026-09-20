@@ -133,11 +133,25 @@ export function startApp(): void {
     engine.markSaved(p, p.name, libraryName);
   }
 
+  /** the reference app's Open Recent (the system's recent documents, noted on every save and open): the ten library projects
+   *  most recently saved or opened in this app, newest first, kept in this browser or desktop app's storage. */
+  const RECENT_KEY = 'sonny.recent';
+  let recent: string[] = [];
+  try {
+    const stored: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    if (Array.isArray(stored)) recent = stored.filter((n): n is string => typeof n === 'string' && !!n).slice(0, 10);
+  } catch { recent = []; }
+  function keepRecent(next: string[]): void {
+    recent = next.slice(0, 10);
+    try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch { /* storage unavailable: the list lasts this session */ }
+  }
+  const noteRecent = (name: string): void => keepRecent([name, ...recent.filter((n) => n !== name)]);
+
   async function openLibrary(name: string): Promise<boolean> {
     const existing = engine.projects.find((p) => p.libraryName === name && !p.modified);
     if (existing) { engine.switchTo(existing.id); return true; }
     return engine.task(async () => {
-      try { await openOpened(await api.openLibrary(name), name); return true; } catch (err) { toast(message(err), 'error'); return false; }
+      try { await openOpened(await api.openLibrary(name), name); noteRecent(name); return true; } catch (err) { if (/not found/i.test(message(err))) keepRecent(recent.filter((n) => n !== name)); toast(message(err), 'error'); return false; }
     });
   }
 
@@ -194,6 +208,7 @@ export function startApp(): void {
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
         else { p.name = res.name; p.libraryName = res.name; engine.emit('projects', null); }
         toast(`Saved ${res.name}.`);
+        noteRecent(res.name);
         return true;
       } catch (err) {
         toast(message(err), 'error');
@@ -306,6 +321,9 @@ export function startApp(): void {
   commands.add(
     { id: 'new', label: 'New Canvas...', keys: ['Alt+Mod+N', 'Mod+N'], run: () => dialogs.newCanvas.show() },
     { id: 'open', label: 'Open Project...', keys: ['Mod+O'], run: () => void dialogs.open.show() },
+    { id: 'recent-heading', label: 'Open Recent', enabled: () => false, run: () => undefined },
+    ...Array.from({ length: 10 }, (_, i) => ({ id: `recent-${i}`, label: () => recent[i] ?? '', enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
+    { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
     { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
     { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
     { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
@@ -424,7 +442,7 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: ['new', 'open', 'import', '-', 'save', 'save-as', 'download-project', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'image-size', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },

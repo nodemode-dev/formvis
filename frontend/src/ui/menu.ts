@@ -62,10 +62,13 @@ export class PopupMenu {
   }
 }
 
-export interface MenuDef { label: string; items: MenuItem[] }
+/** A menubar menu; `items` may be a function, resolved each time the menu opens (File's Open Recent section). */
+export interface MenuDef { label: string; items: MenuItem[] | (() => MenuItem[]) }
+
+const itemsOf = (def: MenuDef): MenuItem[] => (typeof def.items === 'function' ? def.items() : def.items);
 
 export class MenuBar {
-  private readonly menus: Array<{ btn: HTMLButtonElement; menu: PopupMenu }> = [];
+  private readonly menus: Array<{ btn: HTMLButtonElement; menu: PopupMenu; def: MenuDef }> = [];
   private openIndex = -1;
 
   constructor(host: HTMLElement, commands: Commands, defs: MenuDef[]) {
@@ -74,11 +77,11 @@ export class MenuBar {
       btn.textContent = def.label;
       host.appendChild(btn);
       const menu = new PopupMenu(commands);
-      menu.setItems(def.items);
+      menu.setItems(itemsOf(def));
       menu.onClose = () => { if (this.openIndex === i) { this.openIndex = -1; setClass(btn, 'is-open', false); } };
       btn.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; e.preventDefault(); if (this.openIndex === i) this.close(); else this.open(i); });
       btn.addEventListener('pointerenter', () => { if (this.openIndex >= 0 && this.openIndex !== i) this.open(i); });
-      this.menus.push({ btn, menu });
+      this.menus.push({ btn, menu, def });
     });
     document.addEventListener('pointerdown', (e) => {
       if (this.openIndex < 0) return;
@@ -95,6 +98,7 @@ export class MenuBar {
   open(i: number): void {
     this.close();
     const m = this.menus[i];
+    m.menu.setItems(itemsOf(m.def));
     const b = m.btn.getBoundingClientRect();
     this.openIndex = i;
     setClass(m.btn, 'is-open', true);
