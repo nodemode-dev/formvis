@@ -262,6 +262,32 @@ export class Engine {
     this.emit('overlay', null);
   }
 
+  /** the reference app's right-drag with a brush tool: left and right resize the brush from its size at the press, the
+   *  circle's edge following the pointer (each screen point widens the radius by a screen point), or with Shift change
+   *  its hardness (the full range across 200 points). The brush circle stays where the press was. */
+  tipDrag: { at: Pt; startX: number; diameter: number; hardness: number } | null = null;
+
+  beginTipDrag(at: Pt, screenX: number): boolean {
+    if (this.stroke) return false;
+    this.tipDrag = { at, startX: screenX, diameter: this.brush.diameter, hardness: this.brush.hardness };
+    this.emit('overlay', null);
+    return true;
+  }
+
+  updateTipDrag(screenX: number, shift: boolean): void {
+    const d = this.tipDrag;
+    if (!d) return;
+    const dx = screenX - d.startX, zoom = Math.max(0.0001, this.current?.viewport.zoom ?? 1);
+    if (shift) this.setBrush({ hardness: Math.min(1, Math.max(0, d.hardness + dx / 200)), diameter: d.diameter });
+    else this.setBrush({ diameter: Math.min(2000, Math.max(1, Math.round(d.diameter + (2 * dx) / zoom))), hardness: d.hardness });
+  }
+
+  endTipDrag(): void {
+    if (!this.tipDrag) return;
+    this.tipDrag = null;
+    this.emit('overlay', null);
+  }
+
   setBrush(patch: Partial<BrushSettings>): void {
     this.brush = {
       diameter: Math.round(clamp(patch.diameter ?? this.brush.diameter, 1, 5000)),

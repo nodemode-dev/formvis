@@ -3,6 +3,7 @@ import type { OptionSpec, ToolContext } from '../registry';
 import { brushTool } from './brush';
 
 export function drawBrushCursor(ctx: ToolContext, g: CanvasRenderingContext2D, pt: Pt | null): void {
+  pt = ctx.engine.tipDrag?.at ?? pt;
   if (!pt) return;
   const v = ctx.view(), pal = ctx.paint(), c = v.toScreen(pt);
   const r = Math.max(0.5, (ctx.engine.brush.diameter * v.zoom) / 2);

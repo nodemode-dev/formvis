@@ -32,10 +32,11 @@ export const brushTool: Tool = {
     return false;
   },
   overlay(ctx, g) {
-    if (!hoverPt) return;
+    const at = ctx.engine.tipDrag?.at ?? hoverPt;
+    if (!at) return;
     const v = ctx.view();
     const pal = ctx.paint();
-    const c = v.toScreen(hoverPt);
+    const c = v.toScreen(at);
     const r = Math.max(0.5, (ctx.engine.brush.diameter * v.zoom) / 2);
     g.save();
     g.lineWidth = 1;

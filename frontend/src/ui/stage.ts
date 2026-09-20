@@ -25,6 +25,9 @@ export class Stage {
   private dragId: number | null = null;
   private panLast: Pt | null = null;
   private space = false;
+  /** the reference app's isBrushTool: right-drag with these resizes the brush tip. */
+  private static readonly brushTools = new Set(['brush', 'spotHealing', 'cloneStamp', 'smear']);
+  private tipDragging = false;
   private cursor = '';
   private hover: ToolPointer | null = null;
   private checker: { key: string; pattern: CanvasPattern } | null = null;
@@ -274,6 +277,12 @@ export class Stage {
         this.updateCursor(p);
         return;
       }
+      if (e.button === 2 && Stage.brushTools.has(this.tool()?.id ?? '') && !this.space && this.engine.beginTipDrag(p.doc, p.screen.x)) {
+        o.setPointerCapture(e.pointerId);
+        this.dragId = e.pointerId;
+        this.tipDragging = true;
+        return;
+      }
       if (e.button !== 0) return;
       o.setPointerCapture(e.pointerId);
       this.dragId = e.pointerId;
@@ -288,6 +297,7 @@ export class Stage {
           this.panLast = p.screen;
           return;
         }
+        if (this.tipDragging) { this.engine.updateTipDrag(this.pointer(e).screen.x, e.shiftKey); return; }
         const t = this.tool();
         if (!t?.move) return;
         const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
@@ -306,6 +316,7 @@ export class Stage {
       if (o.hasPointerCapture(e.pointerId)) o.releasePointerCapture(e.pointerId);
       const p = this.pointer(e);
       if (this.panLast) { this.panLast = null; this.updateCursor(p); return; }
+      if (this.tipDragging) { this.tipDragging = false; this.engine.endTipDrag(); this.updateCursor(p); return; }
       const t = this.tool();
       if (cancel) t?.cancel?.(this.ctx);
       else t?.up?.(this.ctx, p);
