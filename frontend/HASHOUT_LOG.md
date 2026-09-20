@@ -304,6 +304,18 @@ The engine's mask now opens `BackgroundPanel` instead of being applied at once, 
 
 Creates `ColorPickerDialog` with the other dialogs; it listens for the rail's `cv-pick-color` event itself, so nothing else in the app changes. Nothing was removed.
 
+### src/app.ts · deleteLayersWithChoice · _v0.19.0
+
+The Delete Layer command and the Delete and Backspace keys ask through `LiveMaskDialog` when layers are clipped to what is being deleted. (Filed under renderer.ts in 0.19.0 by mistake; moved here in 0.20.0.) Removed:
+
+```ts
+    { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => engine.deleteLayers() },
+```
+
+```ts
+clearPixels() : engine.deleteLayers()
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -349,16 +361,22 @@ export interface LayerOverride { source?: Surface; transform?: Transform; maskSo
 
 A public, pool-free copy of a clip base's coverage at document size, the exact coverage clipped layers show through, for baking. Nothing was removed.
 
-### src/app.ts · deleteLayersWithChoice · _v0.19.0
+### src/engine/renderer.ts · halving chain (DownsampleCache) · _v0.20.0
 
-The Delete Layer command and the Delete and Backspace keys ask through `LiveMaskDialog` when layers are clipped to what is being deleted. Removed:
+the reference app's DownsampleCache: `draw` renders a layer landing under half size from a chain of exact 2x halvings (`halvings`, `halved`, at most six), cached per raster and dropped when its version changes, found through `rasterOf`; Nearest sampling bypasses it. Removed:
 
 ```ts
-    { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => engine.deleteLayers() },
+import { createSurface, ctxOf, sizeSurface, type Ctx2D, type Surface } from './surface';
+import { IDENTITY, applyMat, invert, matScale, mul, placement, setMat, type Mat } from './geometry';
 ```
 
 ```ts
-clearPixels() : engine.deleteLayers()
+    c.save();
+    setMat(c, m);
+```
+
+```ts
+    c.drawImage(src, 0, 0);
 ```
 
 ## src/engine/events.ts
@@ -653,6 +671,17 @@ A `lerp` flag for alpha-coded masks: compose erases by the coverage, then adds t
 
 Created in _v0.1.0.
 
+### src/engine/surface.ts · rasterOf · _v0.20.0
+
+A canvas-to-raster registry, filled by the `Raster` constructor, so the renderer, given only a canvas, can read its raster's version for the halving cache. Removed:
+
+```ts
+  constructor(readonly width: number, readonly height: number) {
+    this.canvas = createSurface(width, height);
+    this.ctx = ctxOf(this.canvas);
+  }
+```
+
 ## src/engine/transform.ts
 
 ### src/engine/transform.ts · handles and drag math · _v0.1.0
@@ -944,6 +973,15 @@ import { modeFor, modeSegment } from './select-common';
 ### src/extensions/tools/zoom.ts · zoom tool · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/extensions/tools/zoom.ts · zoomTool · the reference app's scrub rate · _v0.20.0
+
+Scrubbing doubles the zoom per 100 px dragged from a 3 px threshold, as the reference app. Removed:
+
+```ts
+    if (Math.abs(dx) > 3) drag.moved = true;
+    if (drag.moved) ctx.engine.zoomTo(drag.z0 * Math.pow(2, dx / 160), drag.start);
+```
 
 ## src/host.ts
 
@@ -1343,6 +1381,10 @@ The marching ants take their offset from `engine.outlineShift`, which covers bot
 ### src/ui/stage.ts · Stage · renderOverlay · sample ring · _v0.11.0
 
 After the tool overlay, draws `engine.sampleRing` with the reference app's `SampleRingOverlay` geometry in screen pixels (radius 43, a 24 px gray ring at 0.45 white, 16 px halves clipped top and bottom: the new color above, the color before the drag below), so it keeps its size at any zoom. Nothing was removed.
+
+### src/ui/stage.ts · Stage · WebKit pinch · _v0.20.0
+
+`gesturestart`, `gesturechange` and `gestureend` listeners zoom about the pointer by the gesture's scale since it began, as the reference app's magnify; Chrome's pinch still arrives as Ctrl+wheel. Nothing was removed.
 
 ## src/ui/status.ts
 

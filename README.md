@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-0.19.0-f97316" alt="version 0.19.0">
+<img src="https://img.shields.io/badge/version-0.20.0-f97316" alt="version 0.20.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -105,7 +105,7 @@ sonny/
 - **Desktop app.** The Tauri shell follows a proven sidecar template, and 0.12.0 wires macOS signing and notarization, the hardened runtime, file associations and in-app updates from GitHub Releases (setup on the wiki's Releasing page). It has not been compiled yet: the build machine for these releases had no Rust toolchain, and the desktop workflow has not run. Treat desktop bundles as untested until the first `desktop.yml` run passes.
 - **ML background removal.** Implemented, not yet exercised end to end; the lightweight GrabCut path is verified.
 - **Adjustments.** All six kinds render, edit and save, including Levels Auto and eyedroppers (0.6.0, 0.7.0) and Hue/Saturation band handles, eyedroppers and targeted adjustment (0.8.0).
-- **Not built yet.** Free distort; the Zoom tool's drag rectangle and pinch; opening a clicked file in the running desktop app; `.ref` export. The measured parity scoreboard ships in the planning sidecar.
+- **Not built yet.** Free distort; opening a clicked file in the running desktop app; `.ref` export. The measured parity scoreboard ships in the planning sidecar.
 - **NodeMode embedding.** Follows the portal protocol; the host-side handling of `plugin:sonny:assign` is not confirmed yet.
 
 ## Development
@@ -114,7 +114,7 @@ Branch model: `main` plus short-lived work branches, see `.docs/BRANCHING.md`. D
 
 ## Status
 
-Version 0.19.0 has all 14 of the reference app's tools complete (Smear's Blur now works on masks too) and all 59 of its web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the reference app's Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the reference app's color picker, which can sample the canvas, and sampling drags show the reference app's sample ring. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and Smear's Blur on masks.
+Version 0.20.0 has all 14 of the reference app's tools complete (Smear's Blur now works on masks too) and all 59 of its web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the reference app's Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the reference app's color picker, which can sample the canvas, and sampling drags show the reference app's sample ring. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and Smear's Blur on masks.
 
 ## Contributors
 

@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.20.0 · 2026-09-19
+
+### Added
+
+- Pinch to zoom in Safari and the macOS desktop app: trackpad pinches zoom about the pointer (Chrome already did).
+- Sharper zoomed-out views: layers shown at under half size are drawn from a chain of exact halvings, as the reference app does, instead of one soft or grainy reduction.
+
+### Changed
+
+- Zoom tool scrubbing now doubles per 100 px dragged, as in the reference app (it was 160).
+
+### Known gaps
+
+Free distort; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.19.0 · 2026-09-19
 
 ### Added
