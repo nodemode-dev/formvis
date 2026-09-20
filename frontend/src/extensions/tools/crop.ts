@@ -1,4 +1,4 @@
-import { HANDLES, type Engine, type Pt, type Rect } from '../../engine';
+import { HANDLES, hierarchy, transformBounds, type Engine, type Pt, type Rect } from '../../engine';
 import type { Tool, ToolContext, ToolPointer } from '../registry';
 
 const RATIOS: ReadonlyArray<{ id: string; label: string; value: number | 'original' | null }> = [
@@ -54,15 +54,49 @@ function resize(o: Rect, handle: number, p: Pt, ratio: number | null, symmetric:
   return { x: n.x, y: n.y + n.h / 2 - h / 2, w: n.w, h };
 }
 
-function snap(ctx: ToolContext, r: Rect): Rect {
+/** the reference app's cropSnapTargets: the canvas edges and the rounded bounds of every visible pixel layer. */
+function snapTargets(ctx: ToolContext): { xs: number[]; ys: number[] } {
   const d = ctx.engine.current?.doc;
-  if (!d) return r;
-  const tol = 8 / ctx.view().zoom, n = norm(r);
-  let x = n.x, y = n.y, w = n.w, h = n.h;
-  if (Math.abs(x) < tol) { w += x; x = 0; }
-  if (Math.abs(y) < tol) { h += y; y = 0; }
-  if (Math.abs(x + w - d.width) < tol) w = d.width - x;
-  if (Math.abs(y + h - d.height) < tol) h = d.height - y;
+  if (!d) return { xs: [], ys: [] };
+  const xs = [0, d.width], ys = [0, d.height];
+  for (const e of hierarchy(d)) {
+    const l = e.layer;
+    if (!e.visible || l.isGroup || !l.raster) continue;
+    const b = transformBounds(l.transform);
+    xs.push(Math.round(b.x), Math.round(b.x + b.w));
+    ys.push(Math.round(b.y), Math.round(b.y + b.h));
+  }
+  return { xs, ys };
+}
+
+const nearest = (v: number, targets: number[], tol: number): number | null => {
+  let best: number | null = null;
+  for (const t of targets) if (Math.abs(t - v) <= tol && (best === null || Math.abs(t - v) < Math.abs(best - v))) best = t;
+  return best;
+};
+
+/** the reference app's CropSnap.apply (8 screen points): moving snaps the closest edges and keeps the size; creating or
+ *  resizing snaps only the edge on the pointer's side; with a fixed ratio only moves snap. */
+function snap(ctx: ToolContext, r: Rect, mode: 'create' | 'move' | 'resize', handle: number, point: Pt, ratio: number | null): Rect {
+  const { xs, ys } = snapTargets(ctx), tol = 8 / ctx.view().zoom, n = norm(r);
+  if (mode === 'move') {
+    const shift = (edges: number[], targets: number[]): number => {
+      const deltas = edges.map((e) => { const t = nearest(e, targets, tol); return t === null ? null : t - e; }).filter((v): v is number => v !== null);
+      return deltas.length ? deltas.reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a)) : 0;
+    };
+    return { ...n, x: n.x + shift([n.x, n.x + n.w], xs), y: n.y + shift([n.y, n.y + n.h], ys) };
+  }
+  if (ratio) return n;
+  const horizontal = mode === 'create' || HANDLES[handle].x !== 0.5, vertical = mode === 'create' || HANDLES[handle].y !== 0.5;
+  let { x, y, w, h } = n;
+  if (horizontal) {
+    if (Math.abs(point.x - x) <= Math.abs(point.x - (x + w))) { const t = nearest(x, xs, tol); if (t !== null && t < x + w) { w = x + w - t; x = t; } }
+    else { const t = nearest(x + w, xs, tol); if (t !== null && t > x) w = t - x; }
+  }
+  if (vertical) {
+    if (Math.abs(point.y - y) <= Math.abs(point.y - (y + h))) { const t = nearest(y, ys, tol); if (t !== null && t < y + h) { h = y + h - t; y = t; } }
+    else { const t = nearest(y + h, ys, tol); if (t !== null && t > y) h = t - y; }
+  }
   return { x, y, w, h };
 }
 
@@ -86,7 +120,7 @@ function commit(e: Engine): void {
 export const cropTool: Tool = {
   id: 'crop', label: 'Crop', key: 'C', order: 45,
   icon: () => 'crop',
-  hint: () => 'Drag a frame · Drag inside to move it · Handles resize · Alt keeps the center · Edges snap to the canvas · Enter crops · Escape cancels',
+  hint: () => 'Drag a frame · Drag inside to move it · Handles resize · Alt keeps the center · Edges snap to the canvas and layer edges · Enter crops · Escape cancels',
   cursor(ctx, p) {
     if (!p || !frame) return 'crosshair';
     const h = hitHandle(ctx, p);
@@ -107,7 +141,7 @@ export const cropTool: Tool = {
     if (drag.mode === 'create') frame = create(drag.start, p.doc, ratio, p.alt);
     else if (drag.mode === 'move') frame = { ...drag.origin, x: drag.origin.x + p.doc.x - drag.start.x, y: drag.origin.y + p.doc.y - drag.start.y };
     else frame = resize(drag.origin, drag.handle, p.doc, ratio, p.alt);
-    if (!ratio && drag.mode !== 'move') frame = snap(ctx, frame);
+    frame = snap(ctx, frame, drag.mode, drag.handle, p.doc, ratio);
     ctx.engine.emit('overlay', null);
     ctx.engine.emit('options', null);
   },

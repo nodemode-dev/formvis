@@ -344,7 +344,7 @@ export function startApp(): void {
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
     { id: 'export-ref', label: 'Export for the reference app (.ref)...', enabled: has, run: () => void exportReference() },
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
-    { id: 'export-jpg', label: 'Export JPEG...', enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
+    { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
     // the reference app's File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
     // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W too.
