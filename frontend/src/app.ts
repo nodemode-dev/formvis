@@ -331,7 +331,9 @@ export function startApp(): void {
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
-    { id: 'close-tab', label: 'Close Tab', keys: ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
+    // the reference app's File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
+    // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W too.
+    { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W', 'Alt+Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
     { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },

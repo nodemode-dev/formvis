@@ -8,6 +8,7 @@ import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAl
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
 import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped } from './distort';
+import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
 import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform } from './types';
@@ -2494,7 +2495,7 @@ export class Engine {
   async exportBlob(type: 'image/png' | 'image/jpeg', quality = 0.92): Promise<Blob | null> {
     const p = this.current;
     if (!p) return null;
-    return toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality);
+    return withResolution(await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality), p.doc.resolution);
   }
 
   flattened(): Surface | null { const p = this.current; return p ? renderDoc(this.work, p.doc) : null; }
