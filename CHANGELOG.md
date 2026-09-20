@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.26.0 · 2026-09-20
+
+### Changed
+
+- Filter previews now run in a background worker, so dragging a slider no longer freezes the window. On a 2400 by 1800 document the longest interface stall during a Gaussian Blur preview fell from 554 ms to 48 ms, with identical results. Applying a filter still runs on the main thread.
+
+### Corrected
+
+- Clone Stamp was recorded as missing a "brush-sized sample ring". the reference app marks its source with a crosshair, which sonny already draws. The real difference is that the reference app previews inside the brush circle what a click would stamp, which sonny does not do yet.
+
+### Known gaps
+
+The Clone Stamp preview above; `.ref` export; painting speed on very large canvases; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.25.0 · 2026-09-20
 
 ### Added

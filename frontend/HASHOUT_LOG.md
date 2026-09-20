@@ -23,6 +23,8 @@ src/
         renderer.ts  · rendering pipeline
         distort.ts  · free distort: homography, warp, carried corners
         dpi.ts  · export resolution stamp (PNG pHYs, JPEG JFIF density)
+        filter-jobs.ts  · worker client for filter previews
+        filter-worker.ts  · module worker running filter kernels
         events.ts  · typed emitter
         filters.ts  · blurs, noise, lens, histogram, selection resize
         geometry.ts  · matrices and rectangles
@@ -118,6 +120,8 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/renderer.ts](#srcenginerendererts)
 - [src/engine/distort.ts](#srcenginedistortts)
 - [src/engine/dpi.ts](#srcenginedpits)
+- [src/engine/filter-jobs.ts](#srcenginefilter-jobsts)
+- [src/engine/filter-worker.ts](#srcenginefilter-workerts)
 - [src/engine/events.ts](#srcengineeventsts)
 - [src/engine/filters.ts](#srcenginefiltersts)
 - [src/engine/geometry.ts](#srcenginegeometryts)
@@ -423,6 +427,18 @@ the reference app's free distort math: `cornersOf` (handle order), `distortUsabl
 
 the reference app's ImageExporter DPI: a PNG `pHYs` chunk (pixels per meter, with its CRC32) placed after IHDR unless one exists, and a JPEG's JFIF density in dots per inch (an APP0 segment inserted when absent); other types and out-of-range resolutions pass through.
 
+## src/engine/filter-jobs.ts
+
+### src/engine/filter-jobs.ts · runFilterOffThread · _v0.26.0
+
+One long-lived module worker with numbered jobs, pixels transferred in and out, resolving to the filtered ImageData; null where module workers are unavailable or after a failure, so callers run the kernel themselves.
+
+## src/engine/filter-worker.ts
+
+### src/engine/filter-worker.ts · filter worker · _v0.26.0
+
+Runs Gaussian Blur, Motion Blur, Add Noise and Lens Correction off the main thread from the same kernels the main thread uses, transferring the result back.
+
 ## src/engine/events.ts
 
 ### src/engine/events.ts · typed emitter · _v0.1.0
@@ -663,6 +679,23 @@ Every PNG and JPEG export passes through `withResolution` with the document's re
 
 ```ts
     return toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality);
+```
+
+### src/engine/index.ts · previewImageEdit, setPreview, previewToken · _v0.26.0
+
+A preview result may arrive later: `previewImageEdit` takes `ImageData | Promise<ImageData>` and paints through `finish` only while its token is current, and `setPreview(null)` bumps that token, so a worker result for a superseded or switched-off preview is dropped. Removed:
+
+```ts
+  previewImageEdit(run: (src: ImageData, scale: number) => ImageData, grow = 0, maxPixels = 2_000_000): void {
+    const p = this.current;
+```
+
+```ts
+    const out = run(src, scale);
+    const cov = g ? null : this.coverageFor(p, l, onMask ? 'mask' : 'pixels', w, h);
+    let result = cov ? this.blendThrough(src, out, cov) : out;
+    if (onMask) result = fromGray(result);
+    c.putImageData(result, 0, 0);
 ```
 
 ## src/engine/kernels.ts
@@ -1459,6 +1492,14 @@ Row helpers built once, with setters that update in place.
 ### src/ui/panels/filter-panel.ts · FilterPanel · _v0.2.0
 
 Gaussian Blur, Motion Blur, Add Noise and Lens Correction with a 140 ms debounced preview and a fixed seed per open; apply runs after the dialog closes and paints.
+
+### src/ui/panels/filter-panel.ts · FilterPanel · worker previews · _v0.26.0
+
+Previews run through `runFilterOffThread`, falling back to the local kernel when there is no worker; the commit still runs on the main thread inside the undo transaction. Removed:
+
+```ts
+      if (this.preview) this.engine.previewImageEdit((src, scale) => this.run(src, scale), this.grow());
+```
 
 ## src/ui/panels/jpeg-dialog.ts
 
