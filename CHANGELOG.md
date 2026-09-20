@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.15.0 · 2026-09-19
+
+### Added
+
+- Move an unlinked mask on its own: with a layer's mask unlinked and selected, the Move tool's handles sit on the mask and move, resize or rotate it without the layer, as in the reference app. Linked masks still move with their layer.
+
+### Changed
+
+- The planning scoreboard no longer lists "mask feather and blur shortcuts": the reference app has no feather command and blurs masks with the Blur tool, which is the Smear tool's Blur-on-masks gap.
+
+### Known gaps
+
+Smear's Blur on masks; transforming several selected layers together; dragging layers between projects; free distort; the desktop shell has not been compiled (first CI run pending).
+
 ## 0.14.0 · 2026-09-19
 
 ### Added

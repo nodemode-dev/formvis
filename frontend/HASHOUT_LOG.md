@@ -331,6 +331,18 @@ import { adjustmentKernel } from './kernels';
     return { src, w: m.raster.width, h: m.raster.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
 ```
 
+### src/engine/renderer.ts · LayerOverride.maskPlacement, maskOf · _v0.15.0
+
+A mask being transformed on its own is positioned by the `maskPlacement` override, and while placed it no longer counts as covering the layer's box. Removed:
+
+```ts
+export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; hidden?: boolean; blend?: BlendMode; opacity?: number }
+```
+
+```ts
+    return { src, w: src.width, h: src.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
+```
+
 ## src/engine/events.ts
 
 ### src/engine/events.ts · typed emitter · _v0.1.0
@@ -448,6 +460,22 @@ the reference app's sample ring state: the document point, the sampled color and
 ### src/engine/index.ts · copyMask · _v0.14.0
 
 the reference app's Option-drag mask copy: the source's mask onto the target as one Copy Layer Mask or Replace Layer Mask step, pinned where it sits on the document (`placement` from the source's mask or layer transform), with its own raster, or kept solid when the source was never painted; the target becomes active with its mask targeted. Nothing was removed.
+
+### src/engine/index.ts · transformsMask, transform edit mask mode · _v0.15.0
+
+the reference app's commitMaskTransform: with a painted mask targeted and unlinked (`transformsMask`), a transform edit starts from the mask's box, previews through `maskPlacement`, and commits the mask's placement as one Transform Layer Mask step. Removed:
+
+```ts
+  transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt } | null = null;
+```
+
+```ts
+    this.transformEdit = { project: p, layerId: l.id, original: l.transform, draft: l.transform, mode, start };
+```
+
+```ts
+    if (te && te.project === p) m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), transform: te.draft });
+```
 
 ## src/engine/kernels.ts
 
@@ -730,6 +758,14 @@ Enter applies a floating selection and Escape cancels it (a first Escape still c
 
 ```ts
   hint: () => 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
+```
+
+### src/extensions/tools/move.ts · editable · unlinked mask box · _v0.15.0
+
+The handles sit on the mask's box when the Move tool transforms an unlinked mask. Removed:
+
+```ts
+  return ctx.engine.transformEdit?.draft ?? l.transform;
 ```
 
 ## src/extensions/tools/select-common.ts
