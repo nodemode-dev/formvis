@@ -1693,28 +1693,63 @@ export class Engine {
     return s;
   }
 
+  /** the reference app's blurSample for a mask: the mask as the canvas shows it at document size (white, the level in alpha),
+   *  softened by `sigma`. Past its pixels a mask keeps its edge tone, white or black by whether its border averages
+   *  half or more (`LayerMask.background`), so blurring near its edge does not pull in the wrong value. */
+  private maskBlurSample(p: Project, layer: Layer, sigma: number): Surface {
+    const W = p.doc.width, H = p.doc.height, m = layer.mask, r = m?.raster;
+    const s = createSurface(W, H), c = ctxOf(s);
+    let edge = 1;
+    if (r) {
+      const d = r.read().data, w = r.width, h = r.height;
+      let total = 0, count = 0;
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          if (y !== 0 && y !== h - 1 && x !== 0 && x !== w - 1) continue;
+          total += d[(y * w + x) * 4 + 3];
+          count++;
+        }
+      }
+      edge = total * 2 >= count * 255 ? 1 : 0;
+    }
+    c.fillStyle = `rgba(255, 255, 255, ${edge})`;
+    c.fillRect(0, 0, W, H);
+    if (m && r) {
+      setMat(c, placement(m.placement ?? layer.transform, r.width, r.height));
+      c.clearRect(0, 0, r.width, r.height);
+      c.drawImage(r.canvas, 0, 0);
+      c.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    if (sigma > 0) c.putImageData(gaussianBlur(c.getImageData(0, 0, W, H), sigma), 0, 0);
+    return s;
+  }
+
   beginRetouchStroke(kind: 'heal' | 'clone' | 'blur', pt: Pt, shift: boolean): boolean {
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
     const l0 = p.activeLayer;
     if (!this.paintable(l0)) { this.notice('Select a pixel layer first.'); return false; }
-    if (p.maskTarget && l0.mask) { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
+    const onMask = p.maskTarget && !!l0.mask;
+    if (onMask && kind !== 'blur') { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
     let texture: { surface: Surface; dx: number; dy: number } | null = null;
     if (kind === 'clone') {
       const off = this.cloneStrokeOffset(pt);
       if (!off) { this.notice('Alt-click to set where Clone Stamp copies from.'); return false; }
       this.cloneOffset = off;
       texture = { surface: this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), dx: off.x, dy: off.y };
-    } else if (kind === 'blur') texture = { surface: this.layerSample(p, l0, clamp(this.brush.diameter / 10, 1.5, 30)), dx: 0, dy: 0 };
+    } else if (kind === 'blur') {
+      const sigma = clamp(this.brush.diameter / 10, 1.5, 30);
+      texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };
+    }
     p.history.begin(kind === 'heal' ? 'Spot Healing' : kind === 'clone' ? 'Clone Stamp' : 'Blur', p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     const style = kind === 'heal' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
-    const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture);
-    this.stroke = { project: p, layerId: pick.layer.id, target: 'pixels', s, heal: kind === 'heal' ? this.retouch.healMode : undefined };
+    const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture, pick.target === 'mask');
+    this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : undefined };
     const last = this.lastBrush;
-    if (shift && last && last.layerId === pick.layer.id && last.target === 'pixels') s.to(last.p);
+    if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p);
     s.to(pt);
     s.compose();
     this.emit('render', null);

@@ -47,7 +47,7 @@ export class PixelStroke {
   private frame: Rect | null = null;
   private texSurface: Surface | null = null;
 
-  constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null) {
+  constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null, private readonly lerp = false) {
     this.toLocal = invert(localToDoc);
     this.working = createSurface(raster.width, raster.height);
     this.wctx = ctxOf(this.working);
@@ -109,6 +109,7 @@ export class PixelStroke {
       t.restore();
       src = this.temp;
     }
+    const coverage = src;
     if (this.texture) {
       this.texSurface ??= createSurface(this.raster.width, this.raster.height);
       const t = ctxOf(this.texSurface);
@@ -132,7 +133,14 @@ export class PixelStroke {
     w.clearRect(f.x, f.y, f.w, f.h);
     w.drawImage(this.raster.canvas, f.x, f.y, f.w, f.h, f.x, f.y, f.w, f.h);
     w.globalAlpha = this.style.opacity;
-    w.globalCompositeOperation = this.op;
+    if (this.lerp) {
+      // Alpha-coded masks (white, the level in alpha): out = old x (1 - c) + sample x c, so the value under the brush
+      // moves toward the sample instead of only gaining coverage. Erasing by the coverage, then adding the sample
+      // already masked by it, does exactly that: 'lighter' adds premultiplied white, which is adding alpha.
+      w.globalCompositeOperation = 'destination-out';
+      w.drawImage(coverage, f.x, f.y, f.w, f.h, f.x, f.y, f.w, f.h);
+      w.globalCompositeOperation = 'lighter';
+    } else w.globalCompositeOperation = this.op;
     w.drawImage(src, f.x, f.y, f.w, f.h, f.x, f.y, f.w, f.h);
     w.restore();
     return f;
