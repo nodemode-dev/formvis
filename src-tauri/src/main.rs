@@ -3,9 +3,10 @@
 use std::sync::Mutex;
 
 use tauri::{Manager, RunEvent, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_dialog::DialogExt;
+use tauri_plugin_dialog::{DialogExt, MessageDialogButtons};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
+use tauri_plugin_updater::UpdaterExt;
 
 struct Backend(Mutex<Option<CommandChild>>);
 
@@ -25,10 +26,42 @@ fn close_splash(handle: &tauri::AppHandle) {
     }
 }
 
+/// Checks the GitHub Releases feed once the main window is up, the way the reference app's Sparkle appcast did, and asks
+/// before installing. Skipped until a public key is configured in `plugins.updater.pubkey`, so builds made before the
+/// signing key exists never try to verify against an empty key.
+fn check_for_updates(handle: tauri::AppHandle) {
+    let configured = handle
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .and_then(|updater| updater.get("pubkey"))
+        .and_then(|key| key.as_str())
+        .map_or(false, |key| !key.is_empty());
+    if !configured {
+        return;
+    }
+    tauri::async_runtime::spawn(async move {
+        let Ok(updater) = handle.updater() else { return };
+        let Ok(Some(update)) = updater.check().await else { return };
+        let install = handle
+            .dialog()
+            .message(format!("sonny {} is available. Install it and restart?", update.version))
+            .title("Update available")
+            .buttons(MessageDialogButtons::OkCancel)
+            .blocking_show();
+        if install && update.download_and_install(|_, _| {}, || {}).await.is_ok() {
+            kill_backend(&handle);
+            handle.restart();
+        }
+    });
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Backend(Mutex::new(None)))
         .setup(|app| {
             let handle = app.handle().clone();
@@ -84,6 +117,7 @@ fn main() {
                             .center()
                             .build();
                         close_splash(&handle);
+                        check_for_updates(handle.clone());
                     }
                     None => {
                         close_splash(&handle);
