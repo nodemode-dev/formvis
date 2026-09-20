@@ -210,7 +210,7 @@ export class Renderer {
     let slot = this.clipPool.get(base.id);
     if (!slot) { const s = createSurface(W, H); slot = { s, c: ctxOf(s) }; this.clipPool.set(base.id, slot); }
     this.prepare(slot, W, H);
-    this.draw(slot.c, src, mul(job.view, placement(t, base.raster.width, base.raster.height)), t.sampling, ov?.opacity ?? base.opacity, 'source-over', job.quality);
+    this.draw(slot.c, src, mul(job.view, placement(t, src.width, src.height)), t.sampling, ov?.opacity ?? base.opacity, 'source-over', job.quality);
     const own = this.maskOf(base, ov, t);
     if (own) this.cover(slot.c, own, job.view, W, H);
     if (base.clipId) {

@@ -40,6 +40,20 @@ export function project(m: readonly number[], x: number, y: number): Pt {
   return { x: (m[0] * x + m[1] * y + m[2]) / w, y: (m[3] * x + m[4] * y + m[5]) / w };
 }
 
+/** A document point in a box's own unit frame (0 to 1 across its unflipped width and height). */
+function boxUnit(box: Transform, p: Pt): Pt {
+  const o = unitPoint(box, 0, 0), a = unitPoint(box, 1, 0), b = unitPoint(box, 0, 1);
+  const ex = a.x - o.x, ey = a.y - o.y, fx = b.x - o.x, fy = b.y - o.y, dx = p.x - o.x, dy = p.y - o.y, det = ex * fy - ey * fx;
+  return { x: (dx * fy - dy * fx) / det, y: (ex * dy - ey * dx) / det };
+}
+
+/** the reference app's DistortWarp.carried: where `inner`'s corners (handle order) land when the perspective taking `box`'s
+ *  corners to `quad` is applied around it too; how group members and masks placed apart distort with the box. */
+export function carried(inner: Transform, box: Transform, quad: readonly Pt[]): Pt[] {
+  const H = homography(quad);
+  return cornersOf(inner).map((c) => { const u = boxUnit(box, c); return project(H, u.x, u.y); });
+}
+
 function invert3(m: readonly number[]): number[] | null {
   const [a, b, c, d, e, f, g, h, i] = m;
   const A = e * i - f * h, B = -(d * i - f * g), C = d * h - e * g;
@@ -58,8 +72,8 @@ export interface Warped { raster: Raster; t: Transform }
 
 /** the reference app's DistortWarp.warp: `src`, shown through `t`, resampled so its corners land on `quad`, over the quad's
  *  whole-pixel bounds with an upright transform. Premultiplied bilinear, edges clamped; `scale` below 1 renders a
- *  smaller preview of the same bounds. A mask is opaque gray with black (hidden) outside the shape. */
-export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale = 1, mask = false): Warped | null {
+ *  smaller preview of the same bounds. A mask is opaque gray with `background` (0 black, hidden) outside the shape. */
+export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale = 1, mask = false, background = 0): Warped | null {
   const xs = quad.map((p) => p.x), ys = quad.map((p) => p.y);
   const x0 = Math.floor(Math.min(...xs)), y0 = Math.floor(Math.min(...ys));
   const W = Math.ceil(Math.max(...xs)) - x0, H = Math.ceil(Math.max(...ys)) - y0;
@@ -68,7 +82,7 @@ export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale
   const ow = Math.max(1, Math.round(W * scale)), oh = Math.max(1, Math.round(H * scale));
   const sw = src.width, sh = src.height, sd = src.ctx.getImageData(0, 0, sw, sh).data;
   const out = new ImageData(ow, oh), od = out.data;
-  if (mask) for (let k = 3; k < od.length; k += 4) od[k] = 255;
+  if (mask) for (let k = 0; k < od.length; k += 4) { od[k] = od[k + 1] = od[k + 2] = background; od[k + 3] = 255; }
   for (let j = 0; j < oh; j++) {
     const Y = y0 + ((j + 0.5) * H) / oh;
     for (let i = 0; i < ow; i++) {
@@ -115,4 +129,14 @@ export function cropWarp(wp: Warped, crop: Rect): Warped {
   raster.ctx.drawImage(wp.raster.canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
   raster.touch();
   return { raster, t: { ...wp.t, x: wp.t.x + crop.x, y: wp.t.y + crop.y, w: crop.w, h: crop.h } };
+}
+
+/** the reference app's LayerMask.background: a mask's tone past its own pixels, white (255) when its border averages light,
+ *  else black (0). A mask placed apart from its layer shows it beyond its bounds. */
+export function maskEdgeTone(r: Raster): number {
+  const d = r.ctx.getImageData(0, 0, r.width, r.height).data;
+  let sum = 0, n = 0;
+  for (let x = 0; x < r.width; x++) { sum += d[x * 4] + d[((r.height - 1) * r.width + x) * 4]; n += 2; }
+  for (let y = 1; y < r.height - 1; y++) { sum += d[y * r.width * 4] + d[(y * r.width + r.width - 1) * 4]; n += 2; }
+  return n && sum / n >= 127.5 ? 255 : 0;
 }

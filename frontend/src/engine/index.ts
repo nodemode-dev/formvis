@@ -7,7 +7,7 @@ import { Raster, createSurface, ctxOf, toBlob, type Surface } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
-import { cornersOf, cropWarp, distortUsable, visibleBounds, warpRaster, type Warped } from './distort';
+import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped } from './distort';
 import { wandMask } from './kernels';
 import { Project } from './project';
 import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform } from './types';
@@ -65,6 +65,10 @@ function mirrored(t: Transform, horizontal: boolean, W: number, H: number): Tran
     ? { ...t, x: W - t.x - t.w, flipX: !t.flipX, rotation: -t.rotation }
     : { ...t, y: H - t.y - t.h, flipY: !t.flipY, rotation: -t.rotation };
 }
+
+/** A layer mask through a distortion: warped pixels (for a linked mask), and where it is placed (for a mask placed
+ *  apart, its warped bounds; for an unlinked mask, where it stays). */
+interface DistortedMask { warped: Warped | null; placement: Transform | null }
 
 export class Engine {
   readonly events = new Emitter<EngineEvents>();
@@ -300,10 +304,14 @@ export class Engine {
       if (te.group) for (const [id, orig] of te.group.originals) m.set(id, { ...(m.get(id) ?? {}), transform: following(orig, te.group.box, te.draft) });
       else m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), ...(te.mask ? { maskPlacement: te.draft } : { transform: te.draft }) });
     }
-    const dz = this.distortEdit, dl = dz && dz.project === p && dz.preview ? p.layer(dz.layerId) : null;
-    if (dz?.preview && dl) {
-      m.set(dz.layerId, { ...(m.get(dz.layerId) ?? {}), source: dz.preview.raster.canvas, transform: dz.preview.t,
-        ...(dz.maskPreview ? { maskSource: dz.maskPreview.raster.canvas } : dl.mask && !dl.mask.placement ? { maskPlacement: dl.transform } : {}) });
+    const dz = this.distortEdit;
+    if (dz && dz.project === p) {
+      for (const [id, pv] of dz.previews) {
+        if (!pv.pixels) continue;
+        const mk = pv.mask;
+        m.set(id, { ...(m.get(id) ?? {}), source: pv.pixels.raster.canvas, transform: pv.pixels.t,
+          ...(mk?.warped ? { maskSource: mk.warped.raster.canvas } : {}), ...(mk?.placement ? { maskPlacement: mk.placement } : {}) });
+      }
     }
     const pv = this.preview;
     if (pv && pv.project === p) m.set(pv.layerId, { ...(m.get(pv.layerId) ?? {}), ...(pv.target === 'pixels' ? { source: pv.surface } : { maskSource: pv.surface }), ...(pv.transform ? { transform: pv.transform } : {}) });
@@ -1237,19 +1245,43 @@ export class Engine {
     });
   }
 
-  /** the reference app's free distort (Cmd-drag a corner handle): the active layer's four corners move on their own, the
-   *  layer previewed warped into their shape at reduced size, pending until applied (Enter) or cancelled (Escape). */
-  distortEdit: { project: Project; layerId: ID; corners: Pt[]; preview: Warped | null; maskPreview: Warped | null } | null = null;
+  /** the reference app's free distort (Cmd-drag a corner handle): the four corners of the Move tool's box move on their own,
+   *  pending until applied (Enter) or cancelled (Escape). The box is the active layer's, or with several layers or a
+   *  folder selected the group box, each member carried by the same perspective (the reference app's distortTarget). */
+  distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
   private distortFrame = 0;
 
   beginDistort(): boolean {
     const p = this.current, l = p?.activeLayer;
-    if (!p || !l || l.isGroup || !l.raster || l.adjustment || this.stroke || this.transformEdit || this.groupMembers(p).length || this.transformsMask(l)) return false;
+    if (!p || !l || this.stroke || this.transformEdit) return false;
+    const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
+    if (!box && (l.isGroup || !l.raster || l.adjustment || this.transformsMask(l))) return false;
     this.settle();
-    this.distortEdit = { project: p, layerId: l.id, corners: cornersOf(l.transform), preview: null, maskPreview: null };
+    const t = box ?? l.transform;
+    this.distortEdit = { project: p, layerId: l.id, box: t, members: box ? members.map((m) => m.id) : null, corners: cornersOf(t), previews: new Map() };
     this.emit('render', null);
     this.emit('options', null);
     return true;
+  }
+
+  /** Where the distortion takes one layer: the corners themselves for a single layer, a member's own corners carried
+   *  through the box's perspective; null when that shape is unusable (the member is then left alone). */
+  private distortQuad(d: NonNullable<Engine['distortEdit']>, l: Layer): Pt[] | null {
+    const q = d.members ? carried(l.transform, d.box, d.corners) : d.corners;
+    return distortUsable(q) ? q : null;
+  }
+
+  /** A layer's mask through a distortion to `quad`, as in the reference app: linked on the layer, it warps with the pixels;
+   *  linked but placed apart, it takes the same perspective over its own bounds with its edge tone outside;
+   *  unlinked, it stays where it is on the document. */
+  private distortMask(l: Layer, quad: Pt[], scale: number): DistortedMask | null {
+    const m = l.mask;
+    if (!m?.raster) return null;
+    if (!m.linked) return { warped: null, placement: m.placement ?? l.transform };
+    if (!m.placement) return { warped: warpRaster(m.raster, l.transform, quad, scale, true), placement: null };
+    const mq = carried(m.placement, l.transform, quad);
+    const w = distortUsable(mq) ? warpRaster(m.raster, m.placement, mq, scale, true, maskEdgeTone(m.raster)) : null;
+    return w ? { warped: w, placement: w.t } : null;
   }
 
   /** Moves one corner (handle order: top-left, top-right, bottom-right, bottom-left); a twisted or collapsed shape
@@ -1265,33 +1297,40 @@ export class Engine {
   }
 
   private previewDistort(): void {
-    const d = this.distortEdit, l = d?.project.layer(d.layerId);
-    if (!d || !l?.raster) return;
+    const d = this.distortEdit;
+    if (!d) return;
     const xs = d.corners.map((c) => c.x), ys = d.corners.map((c) => c.y);
     const scale = Math.min(1, 640 / Math.max(1, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)));
-    d.preview = warpRaster(l.raster, l.transform, d.corners, scale);
-    d.maskPreview = l.mask?.raster && l.mask.linked && !l.mask.placement ? warpRaster(l.mask.raster, l.transform, d.corners, scale, true) : null;
+    d.previews.clear();
+    for (const id of d.members ?? [d.layerId]) {
+      const l = d.project.layer(id), q = l?.raster ? this.distortQuad(d, l) : null;
+      if (l?.raster && q) d.previews.set(id, { pixels: warpRaster(l.raster, l.transform, q, scale), mask: this.distortMask(l, q, scale) });
+    }
     this.emit('render', null);
   }
 
-  /** the reference app's Apply: the pixels, with a linked mask, resampled into the shape at full resolution and trimmed to
-   *  what is visible, leaving an upright layer, as one Distort step; a mask left behind keeps its document place. */
+  /** the reference app's Apply: each distorted layer's pixels resampled into its shape at full resolution and trimmed to what
+   *  is visible, leaving upright layers, its mask handled by `distortMask` (a linked mask cropped with the pixels), as
+   *  one Distort step, or Distort Layers for a group. */
   applyDistort(): void {
     const d = this.distortEdit;
     if (!d) return;
     this.dropDistort();
-    const p = d.project, l = p.layer(d.layerId);
-    if (!l?.raster || p !== this.current) return;
-    const full = warpRaster(l.raster, l.transform, d.corners);
-    if (!full) return;
-    const crop = visibleBounds(full.raster);
-    const pixels = crop ? cropWarp(full, crop) : full;
-    let mask = l.mask;
-    if (mask?.raster && mask.linked && !mask.placement) {
-      const mw = warpRaster(mask.raster, l.transform, d.corners, 1, true);
-      if (mw) mask = { ...mask, raster: crop ? cropWarp(mw, crop).raster : mw.raster };
-    } else if (mask && !mask.placement) mask = { ...mask, placement: l.transform };
-    this.edit('Distort', (q) => { q.updateLayer(l.id, { raster: pixels.raster, transform: pixels.t, mask, shape: null }); });
+    const p = d.project;
+    if (p !== this.current) return;
+    const updates: Array<[ID, Partial<Layer>]> = [];
+    for (const id of d.members ?? [d.layerId]) {
+      const l = p.layer(id), q = l?.raster ? this.distortQuad(d, l) : null;
+      const full = l?.raster && q ? warpRaster(l.raster, l.transform, q) : null;
+      if (!l || !q || !full) continue;
+      const crop = visibleBounds(full.raster), pixels = crop ? cropWarp(full, crop) : full, dm = this.distortMask(l, q, 1);
+      let mask = l.mask;
+      if (mask && dm?.warped && !dm.placement) mask = { ...mask, raster: crop ? cropWarp(dm.warped, crop).raster : dm.warped.raster };
+      else if (mask && dm?.warped) mask = { ...mask, raster: dm.warped.raster, placement: dm.placement };
+      else if (mask && dm) mask = { ...mask, placement: dm.placement };
+      updates.push([id, { raster: pixels.raster, transform: pixels.t, mask, shape: null }]);
+    }
+    if (updates.length) this.edit(d.members ? 'Distort Layers' : 'Distort', (q) => { for (const [id, patch] of updates) q.updateLayer(id, patch); });
   }
 
   cancelDistort(): void {
