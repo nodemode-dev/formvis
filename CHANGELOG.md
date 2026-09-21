@@ -2,6 +2,12 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.39.0 · 2026-09-21
+
+### Added
+
+- Layer > Layer Style (also on the Layers panel's right-click menu): Drop Shadow, Outer Glow and an outside Stroke, shown live as you adjust them, kept in `.sonny` projects.
+
 ## 0.38.0 · 2026-09-21
 
 ### Added

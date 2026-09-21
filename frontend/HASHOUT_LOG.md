@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/ui/panels/layer-style-dialog.ts
+
+### src/ui/panels/layer-style-dialog.ts · new · _v0.39.0
+
+The three sections with live preview; OK applies once, Cancel reverts. Nothing was removed.
+
 ## src/ui/panels/generative-dialog.ts
 
 ### src/ui/panels/generative-dialog.ts · new · _v0.37.0
@@ -486,6 +492,15 @@ Image menu entries for Generative Expand and Upscale 2x and 4x. Removed:
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'image-size', '-', 'flip-canvas-h', 'flip-canvas-v'] },
 ```
 
+### src/app.ts · Layer Style · _v0.39.0
+
+Layer > Layer Style and the same entry on the Layers panel's context menu. Removed:
+
+```ts
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -559,6 +574,17 @@ A clip base's override source is placed by the source's own size, as layers and 
 
 ```ts
     this.draw(slot.c, src, mul(job.view, placement(t, base.raster.width, base.raster.height)), t.sampling, ov?.opacity ?? base.opacity, 'source-over', job.quality);
+```
+
+### src/engine/renderer.ts · layer styles · _v0.39.0
+
+Styled layers take the slot path; `effects` draws shadow, glow and stroke beneath them inside the layer's bounds plus reach, large blurs at half resolution, the stroke by distance transform. Removed:
+
+```ts
+import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform } from './types';
+import { IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, type Mat } from './geometry';
+export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number }
+      if (!own && !folders.length && !base) { this.draw(ctx, src, m, t.sampling, opacity, op, job.quality); continue; }
 ```
 
 ## src/engine/distort.ts
@@ -952,6 +978,15 @@ Sends the visible composite around the selection (25% context, 16 to 256 px) and
   }
 ```
 
+### src/engine/index.ts · setLayerEffects, previewLayerEffects · _v0.39.0
+
+One undo step per change, none when unchanged; the preview joins the render overrides; strokes repaint whole in documents with styled layers. Removed:
+
+```ts
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform } from './types';
+    if (!this.dirtyRendering || !l || !r || !t) { this.emit('render', null); return; }
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1112,6 +1147,10 @@ export const BLEND_MODES: ReadonlyArray<{ id: BlendMode; label: string }> = [
 
 export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return mode === 'normal' ? 'source-over' : mode; }
 ```
+
+### src/engine/types.ts · LayerEffects · _v0.39.0
+
+`Layer.effects`, the three effect types, `defaultEffects`, `effectsActive` and `effectsFromData`, which checks and clamps saved data. Nothing was removed.
 
 ## src/engine/viewport.ts
 
@@ -1515,6 +1554,15 @@ The document as a version 7 project, reshaped from `serialize` to pass the Proje
 ### src/io/project-io.ts · .ref blend rule · _v0.33.0
 
 Blend modes outside `REF_BLEND_MODES` export to `.ref` as Normal, with a note. Nothing was removed.
+
+### src/io/project-io.ts · effects · _v0.39.0
+
+Effects save in `.sonny` and read back through `effectsFromData`; `.ref` export drops them with a note. Removed:
+
+```ts
+  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform,
+      blend: blendFromLabel(r.blendMode), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+```
 
 ## src/main.ts
 
