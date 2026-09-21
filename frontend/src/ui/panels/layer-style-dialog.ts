@@ -6,7 +6,7 @@ import { checkRow, sliderRow } from './controls';
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
 
-/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Color Overlay, Gradient Overlay and Bevel & Emboss for the
+/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay and Bevel & Emboss for the
  *  active pixel layer, shown live while the dialog is open. OK applies them as one undo step; Cancel leaves the layer as it was. */
 export class LayerStyleDialog extends Dialog {
   private fx: LayerEffects = defaultEffects();
@@ -74,6 +74,13 @@ export class LayerStyleDialog extends Dialog {
     slider('Scale (%)', 10, 150, () => Math.round(fx().gradientOverlay.scale * 100), (v) => { fx().gradientOverlay.scale = v / 100; });
     check('Radial', () => fx().gradientOverlay.style === 'radial', (v) => { fx().gradientOverlay.style = v ? 'radial' : 'linear'; });
     check('Reverse', () => fx().gradientOverlay.reverse, (v) => { fx().gradientOverlay.reverse = v; });
+    check('Satin', () => fx().satin.enabled, (v) => { fx().satin.enabled = v; });
+    colour('Colour', () => fx().satin.color, (c) => { fx().satin.color = c; });
+    slider('Opacity (%)', 0, 100, () => Math.round(fx().satin.opacity * 100), (v) => { fx().satin.opacity = v / 100; });
+    slider('Angle (\u00b0)', -180, 180, () => fx().satin.angle, (v) => { fx().satin.angle = v; });
+    slider('Distance (px)', 0, 250, () => fx().satin.distance, (v) => { fx().satin.distance = v; });
+    slider('Size (px)', 0, 250, () => fx().satin.size, (v) => { fx().satin.size = v; });
+    check('Invert', () => fx().satin.invert, (v) => { fx().satin.invert = v; });
     check('Bevel & Emboss', () => fx().bevel.enabled, (v) => { fx().bevel.enabled = v; });
     choice('Style', [['inner', 'Inner Bevel'], ['outer', 'Outer Bevel'], ['emboss', 'Emboss'], ['pillow', 'Pillow Emboss']], () => fx().bevel.style, (v) => { fx().bevel.style = v === 'outer' || v === 'emboss' || v === 'pillow' ? v : 'inner'; });
     slider('Depth (%)', 1, 1000, () => fx().bevel.depth, (v) => { fx().bevel.depth = v; });

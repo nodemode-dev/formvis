@@ -56,12 +56,40 @@ export interface RenderJob {
   ignoreFolderMasks?: boolean;
 }
 interface Slot { s: Surface; c: Ctx2D }
-interface FxPart { s: Surface; x: number; y: number; alpha: number; op: GlobalCompositeOperation; above: boolean }
+/** `k`: the resolution the part was computed at, 1 for full; a smaller part is drawn scaled back up to its place. */
+interface FxPart { s: Surface; x: number; y: number; k: number; alpha: number; op: GlobalCompositeOperation; above: boolean }
 interface MaskInfo { src: Surface; w: number; h: number; t: Transform; covers: boolean }
+
+/** Three box blurs of radius `r` over one channel, `w` by `h`, approximating a Gaussian; edges clamp. */
+function blur1(src: Float32Array, w: number, h: number, r: number): Float32Array {
+  const n = w * h;
+  if (r < 1) return src;
+  let x: Float32Array = src, y: Float32Array = new Float32Array(n);
+  const k = 1 / (2 * r + 1);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let row = 0; row < h; row++) {
+      const o = row * w;
+      let s = 0;
+      for (let i = -r; i <= r; i++) s += x[o + Math.min(w - 1, Math.max(0, i))];
+      for (let i = 0; i < w; i++) { y[o + i] = s * k; s += x[o + Math.min(w - 1, i + r + 1)] - x[o + Math.max(0, i - r)]; }
+    }
+    [x, y] = [y, x === src ? new Float32Array(n) : x];
+    for (let col = 0; col < w; col++) {
+      let s = 0;
+      for (let j = -r; j <= r; j++) s += x[Math.min(h - 1, Math.max(0, j)) * w + col];
+      for (let j = 0; j < h; j++) { y[j * w + col] = s * k; s += x[Math.min(h - 1, j + r + 1) * w + col] - x[Math.max(0, j - r) * w + col]; }
+    }
+    [x, y] = [y, x];
+  }
+  return x;
+}
 
 export class Renderer {
   private slots: Slot[] = [];
   private readonly fxCache = new Map<ID, { key: string; parts: FxPart[] }>();
+  /** While a style is being previewed, effects over large regions are computed at reduced resolution (about 1.5
+   *  megapixels) and drawn scaled up, so dragging a slider stays quick; the style applied is computed in full. */
+  fastEffects = false;
   private clipPool = new Map<ID, Slot>();
 
   private prepare(slot: Slot, w: number, h: number): Slot {
@@ -163,30 +191,32 @@ export class Renderer {
    *  layer until its pixels, transform, mask or effects change. */
   private effectParts(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, maskPlacement: Transform | null, docW: number, docH: number): FxPart[] {
     const r = layer.raster, mk = layer.mask;
-    const key = JSON.stringify([r?.id ?? null, r?.version ?? 0, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement] : null, fx, docW, docH]);
+    const key = JSON.stringify([r?.id ?? null, r?.version ?? 0, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement] : null, fx, docW, docH, this.fastEffects]);
     const hit = this.fxCache.get(layer.id);
     if (hit && hit.key === key) return hit.parts;
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow;
-    const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) + 4;
+    const reach = Math.max(fx.bevel.enabled ? (fx.bevel.size + fx.bevel.soften) * 2 : 0, d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) + 4;
     const lm = placement(t, src.width, src.height);
     const placed = boundsOf([applyMat(lm, 0, 0), applyMat(lm, src.width, 0), applyMat(lm, src.width, src.height), applyMat(lm, 0, src.height)]);
     const region = intersectRect(integral({ x: placed.x - reach, y: placed.y - reach, w: placed.w + 2 * reach, h: placed.h + 2 * reach }), { x: 0, y: 0, w: docW, h: docH });
     const parts: FxPart[] = [];
     if (region) {
-      const view = translation(-region.x, -region.y), sil = this.slot(8, region.w, region.h);
+      const k = this.fastEffects && region.w * region.h > 1_500_000 ? Math.sqrt(1_500_000 / (region.w * region.h)) : 1;
+      const rw = Math.max(1, Math.ceil(region.w * k)), rh = Math.max(1, Math.ceil(region.h * k));
+      const view = mul([k, 0, 0, k, 0, 0], translation(-region.x, -region.y)), sil = this.slot(8, rw, rh);
       sil.c.save();
       sil.c.setTransform(1, 0, 0, 1, 0, 0);
-      sil.c.clearRect(0, 0, region.w, region.h);
+      sil.c.clearRect(0, 0, rw, rh);
       sil.c.restore();
       this.draw(sil.c, src, mul(view, lm), t.sampling, 1, 'source-over', 'high');
-      if (own) this.cover(sil.c, own, view, region.w, region.h);
-      const local = { x: placed.x - region.x, y: placed.y - region.y, w: placed.w, h: placed.h };
+      if (own) this.cover(sil.c, own, view, rw, rh);
+      const local = { x: (placed.x - region.x) * k, y: (placed.y - region.y) * k, w: placed.w * k, h: placed.h * k };
       for (const phase of ['below', 'above'] as const) {
         this.effects((s, box, alpha, op) => {
           const copy = createSurface(box.w, box.h);
           ctxOf(copy).drawImage(s, 0, 0, box.w, box.h, 0, 0, box.w, box.h);
-          parts.push({ s: copy, x: region.x + box.x, y: region.y + box.y, alpha, op, above: phase === 'above' });
-        }, sil, fx, 1, 1, region.w, region.h, local, phase);
+          parts.push({ s: copy, x: region.x + box.x / k, y: region.y + box.y / k, k, alpha, op, above: phase === 'above' });
+        }, sil, fx, k, 1, rw, rh, local, phase);
       }
     }
     if (this.fxCache.size > 64) this.fxCache.clear();
@@ -203,7 +233,7 @@ export class Renderer {
       ctx.globalAlpha = p.alpha * opacity;
       ctx.globalCompositeOperation = p.op;
       ctx.imageSmoothingEnabled = true;
-      ctx.drawImage(p.s, 0, 0);
+      ctx.drawImage(p.s, 0, 0, p.s.width / p.k, p.s.height / p.k);
       ctx.restore();
     }
   }
@@ -221,27 +251,7 @@ export class Renderer {
   private bevelMaps(a: Uint8ClampedArray, w: number, h: number, bv: LayerEffects['bevel'], scale: number): [ImageData, ImageData] {
     const n = w * h, A = new Float32Array(n);
     for (let i = 0; i < n; i++) A[i] = a[i * 4 + 3] / 255;
-    const blur = (src: Float32Array, r: number): Float32Array => {
-      if (r < 1) return src;
-      let x: Float32Array = src, y: Float32Array = new Float32Array(n);
-      const k = 1 / (2 * r + 1);
-      for (let pass = 0; pass < 3; pass++) {
-        for (let row = 0; row < h; row++) {
-          const o = row * w;
-          let s = 0;
-          for (let i = -r; i <= r; i++) s += x[o + Math.min(w - 1, Math.max(0, i))];
-          for (let i = 0; i < w; i++) { y[o + i] = s * k; s += x[o + Math.min(w - 1, i + r + 1)] - x[o + Math.max(0, i - r)]; }
-        }
-        [x, y] = [y, x === src ? new Float32Array(n) : x];
-        for (let col = 0; col < w; col++) {
-          let s = 0;
-          for (let j = -r; j <= r; j++) s += x[Math.min(h - 1, Math.max(0, j)) * w + col];
-          for (let j = 0; j < h; j++) { y[j * w + col] = s * k; s += x[Math.min(h - 1, j + r + 1) * w + col] - x[Math.max(0, j - r) * w + col]; }
-        }
-        [x, y] = [y, x];
-      }
-      return x;
-    };
+    const blur = (src: Float32Array, r: number): Float32Array => blur1(src, w, h, r);
     const size = Math.max(0.5, bv.size * scale), H = blur(A, Math.max(1, Math.round(size / 2)));
     const th = (bv.angle * Math.PI) / 180, ph = (Math.max(0, Math.min(90, bv.altitude)) * Math.PI) / 180;
     const lx = Math.cos(ph) * Math.cos(th), ly = -Math.cos(ph) * Math.sin(th), lz = Math.sin(ph), steep = (bv.depth / 100) * size * 2;
@@ -358,6 +368,27 @@ export class Renderer {
         }), go.opacity * opacity, compositeOp(go.blend));
       }
       if (co.enabled && co.opacity > 0) lay(kept((c) => { c.fillStyle = css(co.color); c.fillRect(0, 0, bw, bh); }), co.opacity * opacity, compositeOp(co.blend));
+      const sa = fx.satin;
+      if (sa.enabled && sa.opacity > 0) {
+        // Satin, between Color Overlay and Inner Glow as Photoshop stacks it.
+        const a = sil.c.getImageData(bx, by, bw, bh).data, n = bw * bh, A = new Float32Array(n);
+        for (let i = 0; i < n; i++) A[i] = a[i * 4 + 3] / 255;
+        const rad = (sa.angle * Math.PI) / 180, ox = Math.round(Math.cos(rad) * sa.distance * scale), oy = Math.round(-Math.sin(rad) * sa.distance * scale);
+        const shifted = (dx: number, dy: number): Float32Array => {
+          const out = new Float32Array(n);
+          for (let j = 0; j < bh; j++) { const sj = j - dy; if (sj < 0 || sj >= bh) continue; for (let i = 0; i < bw; i++) { const si = i - dx; if (si >= 0 && si < bw) out[j * bw + i] = A[sj * bw + si]; } }
+          return out;
+        };
+        const r = Math.max(0, Math.round((sa.size * scale) / 2)), p1 = blur1(shifted(ox, oy), bw, bh, r), p2 = blur1(shifted(-ox, -oy), bw, bh, r);
+        const img = new ImageData(bw, bh), px = img.data;
+        for (let i = 0; i < n; i++) {
+          const v = Math.min(1, Math.abs(p1[i] - p2[i])), level = (sa.invert ? 1 - v : v) * A[i], o = i * 4;
+          px[o] = sa.color.r; px[o + 1] = sa.color.g; px[o + 2] = sa.color.b; px[o + 3] = Math.round(level * 255);
+        }
+        const s = this.slot(11, bw, bh);
+        s.c.putImageData(img, 0, 0);
+        lay(s.s, sa.opacity * opacity, compositeOp(sa.blend));
+      }
       if (ig.enabled && ig.opacity > 0 && ig.size > 0) lay(castByInverse(ig.color, ig.size * scale, 0, 0), ig.opacity * opacity, compositeOp(ig.blend));
       if (is.enabled && is.opacity > 0) {
         const rad = (is.angle * Math.PI) / 180;

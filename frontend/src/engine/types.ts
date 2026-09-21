@@ -103,7 +103,10 @@ export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; o
  *  at `altitude` degrees; slopes facing the light take the highlight, those facing away the shadow. Inner shades inside
  *  the edge, outer outside it, emboss both, pillow both with the outside pressed in; `down` swaps light and dark. */
 export interface BevelEffect { enabled: boolean; style: 'inner' | 'outer' | 'emboss' | 'pillow'; depth: number; down: boolean; size: number; soften: number; angle: number; altitude: number; highlight: RGB; highlightOpacity: number; highlightBlend: BlendMode; shadow: RGB; shadowOpacity: number; shadowBlend: BlendMode }
-export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect }
+/** Satin: the silhouette offset both ways along `angle` by `distance`, each copy softened over `size`, their difference
+ *  kept inside the silhouette as a silky shading; `invert` shades where they agree instead. */
+export interface SatinEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; invert: boolean }
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect }
 
 /** Photoshop's starting values: a 75% multiplied black shadow at 120 degrees, 5 px away and 5 px soft; a 75% screened
  *  pale yellow glow of 5 px; a 3 px black outside stroke. All off. */
@@ -116,12 +119,13 @@ export function defaultEffects(): LayerEffects {
     innerGlow: { enabled: false, color: { r: 255, g: 255, b: 190 }, opacity: 0.75, blend: 'screen', size: 5 },
     colorOverlay: { enabled: false, color: { r: 255, g: 0, b: 0 }, opacity: 1, blend: 'normal' },
     gradientOverlay: { enabled: false, from: { r: 0, g: 0, b: 0 }, to: { r: 255, g: 255, b: 255 }, opacity: 1, blend: 'normal', angle: 90, style: 'linear', scale: 1, reverse: false },
+    satin: { enabled: false, color: { r: 0, g: 0, b: 0 }, opacity: 0.5, blend: 'multiply', angle: 19, distance: 11, size: 14, invert: true },
     bevel: { enabled: false, style: 'inner', depth: 100, down: false, size: 5, soften: 0, angle: 120, altitude: 30, highlight: { r: 255, g: 255, b: 255 }, highlightOpacity: 0.75, highlightBlend: 'screen', shadow: { r: 0, g: 0, b: 0 }, shadowOpacity: 0.75, shadowBlend: 'multiply' },
   };
 }
 
 export function effectsActive(fx: LayerEffects | null | undefined): fx is LayerEffects {
-  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled || fx.bevel.enabled);
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled || fx.bevel.enabled || fx.satin.enabled);
 }
 
 /** Effects read back from saved data, every field checked and clamped; null when none is enabled. */
@@ -135,7 +139,7 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
     return { r: Math.round(num(c.r, fallback.r, 0, 255)), g: Math.round(num(c.g, fallback.g, 0, 255)), b: Math.round(num(c.b, fallback.b, 0, 255)) };
   };
   const blend = (v: unknown, fallback: BlendMode): BlendMode => (BLEND_MODES.some((m) => m.id === v) ? (v as BlendMode) : fallback);
-  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay'), go = part('gradientOverlay'), bv = part('bevel');
+  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay'), go = part('gradientOverlay'), bv = part('bevel'), sa = part('satin');
   const fx: LayerEffects = {
     dropShadow: { enabled: s.enabled === true, color: rgb(s.color, d.dropShadow.color), opacity: num(s.opacity, 0.75, 0, 1), blend: blend(s.blend, 'multiply'), angle: num(s.angle, 120, -360, 360), distance: num(s.distance, 5, 0, 1000), size: num(s.size, 5, 0, 250) },
     outerGlow: { enabled: g.enabled === true, color: rgb(g.color, d.outerGlow.color), opacity: num(g.opacity, 0.75, 0, 1), blend: blend(g.blend, 'screen'), size: num(g.size, 5, 0, 250) },
@@ -144,6 +148,7 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
     innerGlow: { enabled: ig.enabled === true, color: rgb(ig.color, d.innerGlow.color), opacity: num(ig.opacity, 0.75, 0, 1), blend: blend(ig.blend, 'screen'), size: num(ig.size, 5, 0, 250) },
     colorOverlay: { enabled: co.enabled === true, color: rgb(co.color, d.colorOverlay.color), opacity: num(co.opacity, 1, 0, 1), blend: blend(co.blend, 'normal') },
     gradientOverlay: { enabled: go.enabled === true, from: rgb(go.from, d.gradientOverlay.from), to: rgb(go.to, d.gradientOverlay.to), opacity: num(go.opacity, 1, 0, 1), blend: blend(go.blend, 'normal'), angle: num(go.angle, 90, -360, 360), style: go.style === 'radial' ? 'radial' : 'linear', scale: num(go.scale, 1, 0.1, 1.5), reverse: go.reverse === true },
+    satin: { enabled: sa.enabled === true, color: rgb(sa.color, d.satin.color), opacity: num(sa.opacity, 0.5, 0, 1), blend: blend(sa.blend, 'multiply'), angle: num(sa.angle, 19, -360, 360), distance: num(sa.distance, 11, 0, 250), size: num(sa.size, 14, 0, 250), invert: sa.invert !== false },
     bevel: { enabled: bv.enabled === true, style: bv.style === 'outer' || bv.style === 'emboss' || bv.style === 'pillow' ? bv.style : 'inner', depth: num(bv.depth, 100, 1, 1000), down: bv.down === true, size: num(bv.size, 5, 0, 250), soften: num(bv.soften, 0, 0, 16), angle: num(bv.angle, 120, -360, 360), altitude: num(bv.altitude, 30, 0, 90), highlight: rgb(bv.highlight, d.bevel.highlight), highlightOpacity: num(bv.highlightOpacity, 0.75, 0, 1), highlightBlend: blend(bv.highlightBlend, 'screen'), shadow: rgb(bv.shadow, d.bevel.shadow), shadowOpacity: num(bv.shadowOpacity, 0.75, 0, 1), shadowBlend: blend(bv.shadowBlend, 'multiply') },
   };
   return effectsActive(fx) ? fx : null;

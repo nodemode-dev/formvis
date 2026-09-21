@@ -436,6 +436,7 @@ export class Engine {
    *  effects are unchanged. */
   setLayerEffects(id: ID, effects: LayerEffects | null): void {
     this.effectPreview = null;
+    this.display.fastEffects = false;
     // Normalised, so a partial style gets every effect's defaults rather than failing later in the renderer.
     const whole = effects ? effectsFromData(JSON.parse(JSON.stringify(effects))) : null;
     const next = effectsActive(whole) ? whole : null;
@@ -1146,6 +1147,7 @@ export class Engine {
 
   private restyle(name: string, fx: LayerEffects | null): void {
     this.effectPreview = null;
+    this.display.fastEffects = false;
     this.edit(name, (p) => {
       let changed = false;
       for (const id of p.selectedIds.size ? [...p.selectedIds] : p.activeId ? [p.activeId] : []) {
@@ -1162,6 +1164,8 @@ export class Engine {
   previewLayerEffects(id: ID | null, effects: LayerEffects | null = null): void {
     const p = this.current;
     this.effectPreview = p && id ? { project: p, layerId: id, effects: effects ? structuredClone(effects) : null } : null;
+    // The screen computes a previewed style's effects at reduced resolution on large layers; exports never do.
+    this.display.fastEffects = !!this.effectPreview;
     this.emit('render', null);
   }
 
