@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/engine/patterns.ts
+
+### src/engine/patterns.ts · new · _v0.61.0
+
+The pattern registry with its built-in patterns. Nothing was removed.
+
 ## src/ui/panels/trim-dialog.ts
 
 ### src/ui/panels/trim-dialog.ts · new · _v0.58.0
@@ -439,6 +445,15 @@ The Satin section. Removed:
 
 ```ts
 /** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Color Overlay, Gradient Overlay and Bevel & Emboss for the
+```
+
+### src/ui/panels/layer-style-dialog.ts · Pattern Overlay · _v0.61.0
+
+The Pattern Overlay section with a pattern list refreshed on opening. Removed:
+
+```ts
+import { defaultEffects, effectsActive, type Engine, type LayerEffects, type RGB } from '../../engine';
+/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay and Bevel & Emboss for the
 ```
 
 ## src/ui/panels/generative-dialog.ts
@@ -1102,6 +1117,15 @@ The Trim dialog and both commands on the Image menu. Removed:
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
 ```
 
+### src/app.ts · Define Pattern, library · _v0.61.0
+
+Define Pattern on the Edit menu; the browser pattern library loaded and saved. Removed:
+
+```ts
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread } from './engine';
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1270,6 +1294,10 @@ interface FxPart { s: Surface; x: number; y: number; alpha: number; op: GlobalCo
       return x;
     };
 ```
+
+### src/engine/renderer.ts · Pattern Overlay · _v0.61.0
+
+The pattern tiled from the layer corner, the lowest overlay. Nothing was removed.
 
 ## src/engine/distort.ts
 
@@ -1933,6 +1961,10 @@ Selecting a frame applies styles; tweens carry the first frame's. Removed:
 
 The screen renderer previews styles at reduced resolution on large layers. Nothing was removed.
 
+### src/engine/index.ts · patterns · _v0.61.0
+
+Pattern functions exported. Nothing was removed.
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -2202,6 +2234,16 @@ The effect type, its defaults and checked reading. Removed:
 export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect }
   return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled || fx.bevel.enabled);
   const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay'), go = part('gradientOverlay'), bv = part('bevel');
+```
+
+### src/engine/types.ts · Pattern Overlay · _v0.61.0
+
+The effect type, its defaults and checked reading. Removed:
+
+```ts
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect }
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled || fx.bevel.enabled || fx.satin.enabled);
+  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay'), go = part('gradientOverlay'), bv = part('bevel'), sa = part('satin');
 ```
 
 ## src/engine/viewport.ts
@@ -2736,6 +2778,14 @@ The warp saved and read back checked. Removed:
 ```ts
       r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })) };
     const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart) } : null;
+```
+
+### src/io/project-io.ts · carried patterns · _v0.61.0
+
+Projects save the patterns their styles use and register them on open. Removed:
+
+```ts
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline,
 ```
 
 ## src/main.ts

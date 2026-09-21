@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.61.0 · 2026-09-21
+
+### Added
+
+- The Pattern Overlay layer style, with four built-in patterns.
+- Edit > Define Pattern, from the selection or the whole canvas; defined patterns are kept in this browser.
+- Projects carry the patterns their styles use, so they open the same anywhere.
+
 ## 0.60.0 · 2026-09-21
 
 ### Added
