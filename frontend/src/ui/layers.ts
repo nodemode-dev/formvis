@@ -100,6 +100,7 @@ export class LayersPanel {
     setClass(row, 'is-pixel-target', active && !p.maskTarget && !!l.mask);
     setClass(row, 'is-clipped', !!l.clipId);
     setHidden(q(row, '.cv-layer-fx'), !effectsActive(l.effects));
+    setClass(row, 'is-text', this.engine.liveText(l));
     setStyleVar(row, '--depth', String(e.depth));
     if (this.renaming !== l.id) setText(q(row, '.cv-layer-label'), l.name);
     setTitle(row, l.name);
@@ -309,6 +310,7 @@ export class LayersPanel {
       if (!row?.dataset.id) return;
       if (t.closest('.cv-layer-fx')) row.dispatchEvent(new CustomEvent('cv:edit-layer-style', { bubbles: true, detail: row.dataset.id }));
       else if (t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
+      else if (row.classList.contains('is-text')) document.dispatchEvent(new CustomEvent('cv:type', { detail: { layerId: row.dataset.id } }));
       else if (row.classList.contains('is-adjust')) row.dispatchEvent(new CustomEvent('cv:edit-adjustment', { bubbles: true, detail: row.dataset.id }));
     });
     this.list.addEventListener('contextmenu', (e) => {

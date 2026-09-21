@@ -40,6 +40,8 @@ export interface Layer {
   readonly id: ID;
   /** Layer styles drawn beneath the layer; absent or null for none. */
   effects?: LayerEffects | null;
+  /** A type layer's text, while its pixels are still the rendering of it; see `liveText`. */
+  text?: TextSpec | null;
   name: string;
   raster: Raster | null;
   transform: Transform;
@@ -55,7 +57,7 @@ export interface Layer {
 }
 export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[] }
 
-export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
 
 export const LIMITS = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 } as const;
 
@@ -130,3 +132,8 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
   };
   return effectsActive(fx) ? fx : null;
 }
+
+/** A type layer's text and how it is set. `size` is in document pixels; `lineHeight` multiplies it from one baseline
+ *  to the next. `rendered` pairs the spec with the raster it was drawn into (id and version): once the pixels are
+ *  edited the pair breaks and the layer is plain pixels, as painting on type rasterizes it. */
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; rendered?: string }

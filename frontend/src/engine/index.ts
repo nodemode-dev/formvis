@@ -1,3 +1,4 @@
+import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
 import { Emitter } from './events';
 import type { Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
@@ -11,7 +12,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects } from './types';
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec } from './types';
 
 export * from './types';
 export * from './geometry';
@@ -36,6 +37,7 @@ export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentDat
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
+export { TEXT_FONTS, defaultText, liveText, textFromData, textKey } from './text';
 export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
 export type { Kernel, KernelContext } from './kernels';
 
@@ -339,6 +341,48 @@ export class Engine {
       p.updateLayer(id, { effects: next });
     });
     if (!ok) this.emit('render', null);
+  }
+
+  /** The Type dialog's last settings, which new text starts from. */
+  textSettings: TextSpec = defaultText();
+
+  liveText(l: Layer | null | undefined): boolean { return liveText(l); }
+
+  /** The topmost visible type layer whose box contains `pt`, for the Type tool to edit. */
+  textLayerAt(pt: Pt): ID | null {
+    const p = this.current;
+    if (!p) return null;
+    for (const l of [...p.doc.layers].reverse()) if (l.visible && liveText(l) && contains(l.transform, pt)) return l.id;
+    return null;
+  }
+
+  /** A new type layer: the click point `at` is where the first line's baseline starts (its centre or end when the text
+   *  is centred or right-aligned), as with Photoshop's point type. */
+  async createTextLayer(at: Pt, spec: TextSpec): Promise<void> {
+    if (!this.current || !spec.content.trim()) return;
+    await loadTextFont(spec);
+    const r = renderText(spec), w = r.raster.width;
+    const x = at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad);
+    this.textSettings = { ...spec, content: '', rendered: undefined };
+    const name = spec.content.split('\n')[0].trim().slice(0, 40) || 'Type';
+    this.insertRasterLayer(r.raster, name, Math.round(x), Math.round(at.y - r.baseline), { text: { ...spec, rendered: textKey(r.raster) } }, 'Type');
+  }
+
+  /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
+   *  and so is its left edge, centre or right edge, by its alignment. */
+  async updateTextLayer(id: ID, spec: TextSpec): Promise<void> {
+    const p = this.current, l = p?.layer(id);
+    if (!p || !l || !liveText(l) || !l.raster || !l.text) return;
+    if (!spec.content.trim()) { this.notice('Type some text, or delete the layer.'); return; }
+    await loadTextFont(spec);
+    if (this.current !== p || !liveText(p.layer(id))) return;
+    const r = renderText(spec), old = l.raster, t = l.transform, before = l.text;
+    const nw = r.raster.width * (t.w / old.width), nh = r.raster.height * (t.h / old.height);
+    const x = spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
+    const autoName = before.content.split('\n')[0].trim().slice(0, 40) || 'Type';
+    const name = l.name === autoName ? spec.content.split('\n')[0].trim().slice(0, 40) || 'Type' : l.name;
+    this.textSettings = { ...spec, content: '', rendered: undefined };
+    this.edit('Edit Type', (pp) => { pp.updateLayer(id, { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, name, text: { ...spec, rendered: textKey(r.raster) } }); });
   }
 
   private styleClipboard: LayerEffects | null = null;
