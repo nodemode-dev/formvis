@@ -286,6 +286,23 @@ export class Renderer {
           c.drawImage(inv.s, -far, 0);
         });
       };
+      const go = fx.gradientOverlay;
+      if (go.enabled && go.opacity > 0) {
+        // Beneath Color Overlay, as in Photoshop: the gradient spans the layer's bounds, kept to its silhouette.
+        const cx = bounds.x + bounds.w / 2 - bx, cy = bounds.y + bounds.h / 2 - by, a = (go.angle * Math.PI) / 180, [c0, c1] = go.reverse ? [go.to, go.from] : [go.from, go.to];
+        lay(kept((c) => {
+          let grad: CanvasGradient;
+          if (go.style === 'radial') grad = c.createRadialGradient(cx, cy, 0, cx, cy, Math.max(1, (Math.max(bounds.w, bounds.h) / 2) * go.scale));
+          else {
+            const ux = Math.cos(a), uy = -Math.sin(a), half = Math.max(0.5, ((Math.abs(bounds.w * ux) + Math.abs(bounds.h * uy)) / 2) * go.scale);
+            grad = c.createLinearGradient(cx - ux * half, cy - uy * half, cx + ux * half, cy + uy * half);
+          }
+          grad.addColorStop(0, css(c0));
+          grad.addColorStop(1, css(c1));
+          c.fillStyle = grad;
+          c.fillRect(0, 0, bw, bh);
+        }), go.opacity * opacity, compositeOp(go.blend));
+      }
       if (co.enabled && co.opacity > 0) lay(kept((c) => { c.fillStyle = css(co.color); c.fillRect(0, 0, bw, bh); }), co.opacity * opacity, compositeOp(co.blend));
       if (ig.enabled && ig.opacity > 0 && ig.size > 0) lay(castByInverse(ig.color, ig.size * scale, 0, 0), ig.opacity * opacity, compositeOp(ig.blend));
       if (is.enabled && is.opacity > 0) {

@@ -6,7 +6,7 @@ import { checkRow, sliderRow } from './controls';
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
 
-/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow and Color Overlay for the
+/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Color Overlay and Gradient Overlay for the
  *  active pixel layer, shown live while the dialog is open. OK applies them as one undo step; Cancel leaves the layer as it was. */
 export class LayerStyleDialog extends Dialog {
   private fx: LayerEffects = defaultEffects();
@@ -60,6 +60,14 @@ export class LayerStyleDialog extends Dialog {
     check('Color Overlay', () => fx().colorOverlay.enabled, (v) => { fx().colorOverlay.enabled = v; });
     colour('Colour', () => fx().colorOverlay.color, (c) => { fx().colorOverlay.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().colorOverlay.opacity * 100), (v) => { fx().colorOverlay.opacity = v / 100; });
+    check('Gradient Overlay', () => fx().gradientOverlay.enabled, (v) => { fx().gradientOverlay.enabled = v; });
+    colour('From', () => fx().gradientOverlay.from, (c) => { fx().gradientOverlay.from = c; });
+    colour('To', () => fx().gradientOverlay.to, (c) => { fx().gradientOverlay.to = c; });
+    slider('Opacity (%)', 0, 100, () => Math.round(fx().gradientOverlay.opacity * 100), (v) => { fx().gradientOverlay.opacity = v / 100; });
+    slider('Angle (\u00b0)', -180, 180, () => fx().gradientOverlay.angle, (v) => { fx().gradientOverlay.angle = v; });
+    slider('Scale (%)', 10, 150, () => Math.round(fx().gradientOverlay.scale * 100), (v) => { fx().gradientOverlay.scale = v / 100; });
+    check('Radial', () => fx().gradientOverlay.style === 'radial', (v) => { fx().gradientOverlay.style = v ? 'radial' : 'linear'; });
+    check('Reverse', () => fx().gradientOverlay.reverse, (v) => { fx().gradientOverlay.reverse = v; });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { if (!this.applied) this.engine.previewLayerEffects(null); };
