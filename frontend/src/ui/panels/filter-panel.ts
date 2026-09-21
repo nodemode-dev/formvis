@@ -143,9 +143,17 @@ export class FilterPanel extends Dialog {
   onApplied: ((kind: FilterKind, settings: Record<string, unknown>) => void) | null = null;
 
   /** Applies `kind` with `settings` straight away, without the dialog, as Actions replay a recorded filter. */
-  applySettings(kind: FilterKind, settings: Record<string, unknown>): boolean {
+  /** Applies `kind` with `settings` (the noise seed among them) off the main thread, the interface staying live. */
+  private applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
+    const s = { ...defaultFilterSettings(), ...(structuredClone(settings) as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed;
+    const sync = (src: ImageData, scale: number): ImageData => runFilter(kind, s, seed, src, scale);
+    return this.engine.applyImageEditAsync(FILTER_LABELS[kind], (src, scale) => runFilterOffThread(kind, s, scale, seed, src) ?? Promise.resolve(sync(src, scale)), filterMargin(kind, s), sync);
+  }
+
+  applySettings(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> | boolean {
     if (!(kind in FILTER_LABELS)) return false;
     if (this.smartTarget()) { this.engine.addSmartFilter(kind, structuredClone(settings)); return true; }
+    if (!this.isOpen) return this.applyInBackground(kind, settings);
     this.kind = kind;
     Object.assign(this.s, structuredClone(settings));
     const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
@@ -193,10 +201,9 @@ export class FilterPanel extends Dialog {
     if (editing) { this.close(); editing(settings); return; }
     this.onApplied?.(this.kind, structuredClone(this.s));
     if (this.smartTarget()) { this.engine.setPreview(null); this.close(); this.engine.addSmartFilter(kind, settings); return; }
-    const label = FILTER_LABELS[this.kind], grow = this.grow();
-    const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
+    // The preview stays on the canvas until the result replaces it, computed off the main thread.
     this.close();
-    requestAnimationFrame(() => window.setTimeout(() => this.engine.applyImageEdit(label, run, grow), 0));
+    void this.applyInBackground(kind, settings);
   }
 
   private abandon(): void {

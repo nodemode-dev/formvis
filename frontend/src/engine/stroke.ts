@@ -46,6 +46,44 @@ function openFrame(c: Ctx2D, rect: Rect): void {
   c.clearRect(rect.x, rect.y, rect.w, rect.h);
 }
 
+/** Full-size surfaces kept between strokes: creating a large canvas costs far more than clearing one (about 35 ms
+ *  against 5 ms at 4000 by 3000), so a stroke takes its working copy and paint layer from here and gives them back. */
+const spares: Surface[] = [];
+const MAX_SPARES = 4;
+
+function takeSurface(w: number, h: number): Surface {
+  const i = spares.findIndex((x) => x.width === w && x.height === h);
+  if (i < 0) return createSurface(w, h);
+  const surface = spares.splice(i, 1)[0], c = ctxOf(surface);
+  c.setTransform(1, 0, 0, 1, 0, 0);
+  c.globalAlpha = 1;
+  c.globalCompositeOperation = 'source-over';
+  c.clearRect(0, 0, w, h);
+  return surface;
+}
+
+function giveSurface(surface: Surface | null): void {
+  if (!surface) return;
+  if (spares.length >= MAX_SPARES) spares.shift();
+  spares.push(surface);
+}
+
+/** How many spare stroke surfaces are kept, for checks. */
+export const spareSurfaces = (): number => spares.length;
+
+/** Readies spare surfaces of `w` by `h` for the next stroke, so even the first stroke skips creating them. */
+export function warmStrokeSurfaces(w: number, h: number, count = 2): void {
+  let have = spares.filter((x) => x.width === w && x.height === h).length;
+  while (have < count) {
+    // Drawn on once, since a canvas gets its pixel memory at the first drawing rather than when it is made.
+    const fresh = createSurface(w, h), c = ctxOf(fresh);
+    c.fillRect(0, 0, 1, 1);
+    c.clearRect(0, 0, 1, 1);
+    giveSurface(fresh);
+    have += 1;
+  }
+}
+
 export class PixelStroke {
   /** The layer's pixels with the stroke so far composed in. */
   readonly working: Surface;
@@ -66,12 +104,12 @@ export class PixelStroke {
 
   constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null, private readonly lerp = false) {
     this.toLocal = invert(localToDoc);
-    this.working = createSurface(raster.width, raster.height);
+    this.working = takeSurface(raster.width, raster.height);
     this.workingCtx = ctxOf(this.working);
     this.workingCtx.drawImage(raster.canvas, 0, 0);
-    this.paint = createSurface(raster.width, raster.height);
+    this.paint = takeSurface(raster.width, raster.height);
     this.paintCtx = ctxOf(this.paint);
-    this.masked = selection ? createSurface(raster.width, raster.height) : null;
+    this.masked = selection ? takeSurface(raster.width, raster.height) : null;
     this.radius = Math.max(0.5, style.diameter / 2);
     // Dabs every 1.5% of the diameter for a hard tip and 2.5% for a soft one.
     this.spacing = Math.max(0.5, style.diameter * (style.hardness >= 0.99 ? 0.015 : 0.025));
@@ -125,7 +163,7 @@ export class PixelStroke {
     // What gets laid down: the coverage itself, or the texture showing through it.
     let laid = coverage;
     if (this.texture) {
-      this.textured ??= createSurface(this.raster.width, this.raster.height);
+      this.textured ??= takeSurface(this.raster.width, this.raster.height);
       const c = ctxOf(this.textured);
       openFrame(c, area);
       setMat(c, mul(this.toLocal, translation(-this.texture.dx, -this.texture.dy)));
@@ -170,6 +208,15 @@ export class PixelStroke {
   }
 
   /** Writes the stroke into the layer; returns the before and after pixels of the touched area for undo. */
+  /** Gives the stroke's surfaces back for the next stroke; the stroke is not used after this. */
+  release(): void {
+    giveSurface(this.working);
+    giveSurface(this.paint);
+    giveSurface(this.masked);
+    giveSurface(this.textured);
+    this.textured = null;
+  }
+
   commit(): PixelPatch | null {
     this.compose();
     const area = this.touched;

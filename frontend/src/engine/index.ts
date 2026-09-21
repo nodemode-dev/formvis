@@ -4,7 +4,7 @@ import { defaultText, liveText, loadTextFont, renderText, textKey } from './text
 import { Emitter } from './events';
 import type { Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
-import { PixelStroke } from './stroke';
+import { PixelStroke, warmStrokeSurfaces } from './stroke';
 import { SelectionMask, type SelectionMode } from './selection';
 import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
@@ -83,6 +83,9 @@ interface DistortedMask { warped: Warped | null; placement: Transform | null }
 /** Why a smart object's pixels cannot be changed directly, and what to do instead. */
 const SHAPE_NOTICE = 'This is a shape layer. Reshape it with Direct Selection on its Shape Path, or rasterize it (Layer > Rasterize Layer) to change its pixels.';
 const SMART_NOTICE = 'This layer is a smart object. Rasterize it (Layer > Rasterize Layer) to change its pixels; its filters stay editable in Layer > Smart Filters.';
+
+/** Tools that paint with a PixelStroke, whose surfaces are warmed when the tool is chosen. */
+const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'cloneStamp', 'healingBrush', 'spotHealing']);
 
 export class Engine {
   readonly events = new Emitter<EngineEvents>();
@@ -272,6 +275,16 @@ export class Engine {
   }
 
   setTool(id: ToolId): void {
+    if (PAINT_TOOLS.has(id)) {
+      // Painting tools ready their stroke surfaces in idle time, so the first stroke starts at once on large images.
+      const warm = (): void => {
+        const p = this.current, r = p?.activeLayer?.raster, w = r?.width ?? p?.doc.width ?? 0, h = r?.height ?? p?.doc.height ?? 0;
+        if (w > 0 && h > 0 && w * h <= 25_000_000) warmStrokeSurfaces(w, h);
+      };
+      // Idle time, but within half a second even on a page that is never idle.
+      const idle = (window as unknown as { requestIdleCallback?: (f: () => void, o: { timeout: number }) => void }).requestIdleCallback;
+      if (idle) idle(warm, { timeout: 500 }); else window.setTimeout(warm, 200);
+    }
     if (this.stroke) return;
     this.settle();
     if (this.tool !== id) { this.tool = id; this.emit('tool', null); }
@@ -1705,6 +1718,7 @@ export class Engine {
     const lp = st.s.lastPoint;
     if (lp) this.lastBrush = { layerId: st.layerId, target: st.target, p: lp };
     this.refresh();
+    st.s.release();
   }
 
   cancelStroke(): void {
@@ -1714,6 +1728,7 @@ export class Engine {
     const before = st.project.history.abort();
     if (before) { st.project.doc = before.doc; st.project.selection = before.selection; }
     this.refresh();
+    st.s.release();
   }
 
   private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void): void {
@@ -2366,6 +2381,49 @@ export class Engine {
       if (target === 'mask') result = fromGray(result);
       raster.ctx.putImageData(result, 0, 0, rect.x, rect.y, rect.w, rect.h);
     });
+  }
+
+  /** applyImageEdit with the work done off the main thread: the source is prepared as the synchronous path prepares
+   *  it (padded for a filter that reaches past the layer, grown to the canvas as painting grows a layer, grey for a
+   *  mask), `run` computes on it in the background while the interface stays live, and the result goes through
+   *  applyImageEdit as one undo step. If the layer changed meanwhile nothing is applied; if the pixels applyImageEdit
+   *  sees ever differ in size from those computed on, `fallback` recomputes on them there. */
+  async applyImageEditAsync(name: string, run: (src: ImageData, scale: number) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number) => ImageData): Promise<boolean> {
+    const al = this.current?.activeLayer;
+    if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
+    const p0 = this.current, l0 = p0?.activeLayer ?? null;
+    if (!p0 || !this.paintable(l0)) { this.notice('Select a pixel layer first.'); return false; }
+    this.settle();
+    const onMask = p0.maskTarget && !!l0.mask, raster = onMask ? l0.mask?.raster ?? null : l0.raster;
+    if (!raster) { this.applyImageEdit(name, fallback, grow); return true; }
+    const growing = grow > 0 && !onMask && this.canGrow(p0, l0);
+    const src = growing ? this.grownSource(l0, grow) : onMask ? toGray(raster.read()) : this.sourceForEdit(p0, l0);
+    const doc0 = p0.doc, version = raster.version;
+    const out = await this.task(() => run(src, 1));
+    if (this.current !== p0 || p0.doc !== doc0 || raster.version !== version) { this.setPreview(null); this.notice(`The layer changed while ${name} ran, so it was not applied.`); return false; }
+    this.applyImageEdit(name, (s, k) => (s.width === out.width && s.height === out.height ? out : fallback(s, k)), grow);
+    return true;
+  }
+
+  /** The pixels a filter that reaches past the layer works on: the layer padded by its reach, as grown() pads it. */
+  private grownSource(l: Layer, grow: number): ImageData {
+    const r = l.raster as Raster, g = Math.ceil(grow), big = new Raster(r.width + 2 * g, r.height + 2 * g);
+    big.ctx.drawImage(r.canvas, g, g);
+    return big.read();
+  }
+
+  /** The pixels an edit of the whole layer works on: the layer grown to cover the canvas where growLayer would grow
+   *  it, else as it is. */
+  private sourceForEdit(p: Project, l: Layer): ImageData {
+    const r = l.raster as Raster, t = l.transform, W = p.doc.width, H = p.doc.height;
+    if (!isAxisAligned(t, r.width, r.height) || (t.x <= 0 && t.y <= 0 && t.x + t.w >= W && t.y + t.h >= H)) return r.read();
+    const u = unionRect({ x: t.x, y: t.y, w: t.w, h: t.h }, { x: 0, y: 0, w: W, h: H });
+    if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return r.read();
+    const m = l.mask;
+    if (m?.raster && (m.placement || m.raster.width !== r.width || m.raster.height !== r.height)) return r.read();
+    const nr = new Raster(u.w, u.h);
+    nr.ctx.drawImage(r.canvas, t.x - u.x, t.y - u.y);
+    return nr.read();
   }
 
   private insertAboveActive(p: Project, layer: Layer): void {
