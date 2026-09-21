@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.33.0 · 2026-09-21
+
+### Added
+
+- Four more blend modes, Soft Light, Hard Light, Exclusion and Linear Dodge (Add), with the list now in Photoshop's order. Layers using them export to `.ref` as Normal, and the export says so.
+- Filter > Unsharp Mask, with Amount, Radius and Threshold, previewed without freezing the window.
+
+### Fixed
+
+- The File menu item read "Export.ref Project..."; it reads "Export .ref Project..." again, and two export messages lost a space the same way.
+- Code formatting and the change logs' quoted code, damaged by the 0.31.0 wording change, are restored exactly.
+
 ## 0.32.0 · 2026-09-21
 
 ### Changed

@@ -378,6 +378,14 @@ The welcome title shows the app mark at 28 px. Removed:
 <div class="cv-welcome-title">${icon('paintbrush', 20)}sonny</div>
 ```
 
+### src/app.ts · Unsharp Mask; repair of the 0.31.0 sweep · _v0.33.0
+
+Filter > Unsharp Mask joins the menu. The 0.31.0 attribution sweep had collapsed indentation and spaces before colons across ten TypeScript files and the change logs' quoted code; 0.33.0 restored every line that matched its pre-sweep text apart from whitespace, and corrected the menu label that read Export.ref Project. Removed:
+
+```ts
+const FILTERS: FilterKind[] = ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection'];
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -467,11 +475,27 @@ the ImageExporter DPI: a PNG `pHYs` chunk (pixels per meter, with its CRC32) pla
 
 One long-lived module worker with numbered jobs, pixels transferred in and out, resolving to the filtered ImageData; null where module workers are unavailable or after a failure, so callers run the kernel themselves.
 
+### src/engine/filter-jobs.ts · unsharpMask settings · _v0.33.0
+
+`FilterKind` gains `unsharpMask` and `FilterSettings` its Amount, Radius and Threshold. Removed:
+
+```ts
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection';
+```
+
 ## src/engine/filter-worker.ts
 
 ### src/engine/filter-worker.ts · filter worker · _v0.26.0
 
 Runs Gaussian Blur, Motion Blur, Add Noise and Lens Correction off the main thread from the same kernels the main thread uses, transferring the result back.
+
+### src/engine/filter-worker.ts · Unsharp Mask · _v0.33.0
+
+The worker runs Unsharp Mask too. Removed:
+
+```ts
+import { addNoise, gaussianBlur, lensDistort, motionBlur } from './filters';
+```
 
 ## src/engine/events.ts
 
@@ -484,6 +508,10 @@ Created in _v0.1.0.
 ### src/engine/filters.ts · gaussianBlur, motionBlur, addNoise, lensDistort, histogram, resizeMask · _v0.2.0
 
 Gaussian Blur as three premultiplied box passes with zero padding, so it fades past the edge; Motion Blur as a sampled line of the given length (matches Core Image's radius to that length by variance); Add Noise and Lens Correction ported from `NoisePixels.c` and `LensPixels.c` with premultiplied sampling; the Levels histogram from `LevelsPixels.c`; Expand and Contract through a Felzenszwalb distance transform with one pixel of antialiasing.
+
+### src/engine/filters.ts · unsharpMask · _v0.33.0
+
+Unsharp Mask: each channel pushed from its Gaussian blur by Amount where the difference reaches Threshold; alpha untouched. Nothing was removed.
 
 ## src/engine/geometry.ts
 
@@ -867,6 +895,21 @@ Created in _v0.1.0.
 ### src/engine/types.ts · document types, blend modes, limits · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/engine/types.ts · BLEND_MODES, REF_BLEND_MODES, compositeOp · _v0.33.0
+
+Soft Light, Hard Light, Exclusion and Linear Dodge (Add, the canvas's `lighter`) join the modes, listed in Photoshop's menu order; `REF_BLEND_MODES` names the 13 a `.ref` project can hold. Removed:
+
+```ts
+export const BLEND_MODES: ReadonlyArray<{ id: BlendMode; label: string }> = [
+  { id: 'normal', label: 'Normal' }, { id: 'multiply', label: 'Multiply' }, { id: 'screen', label: 'Screen' },
+  { id: 'overlay', label: 'Overlay' }, { id: 'darken', label: 'Darken' }, { id: 'lighten', label: 'Lighten' },
+  { id: 'difference', label: 'Difference' }, { id: 'color-dodge', label: 'Color Dodge' }, { id: 'color-burn', label: 'Color Burn' },
+  { id: 'hue', label: 'Hue' }, { id: 'saturation', label: 'Saturation' }, { id: 'color', label: 'Color' }, { id: 'luminosity', label: 'Luminosity' },
+];
+
+export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return mode === 'normal' ? 'source-over' : mode; }
+```
 
 ## src/engine/viewport.ts
 
@@ -1255,6 +1298,10 @@ Field names and labels come from the original `ProjectStore.swift`, `LayerTransf
 
 The document as a version 7 project, reshaped from `serialize` to pass the ProjectStore.validate (UUID ids, files named after them, plain folders, adjustment layers without pixels, non-empty names, clamped resolution), with notes for every change. Nothing was removed.
 
+### src/io/project-io.ts · .ref blend rule · _v0.33.0
+
+Blend modes outside `REF_BLEND_MODES` export to `.ref` as Normal, with a note. Nothing was removed.
+
 ## src/main.ts
 
 ### src/main.ts · entry, calls startApp · _v0.1.0
@@ -1623,6 +1670,14 @@ Previews run through `runFilterOffThread`, falling back to the local kernel when
 
 ```ts
       if (this.preview) this.engine.previewImageEdit((src, scale) => this.run(src, scale), this.grow());
+```
+
+### src/ui/panels/filter-panel.ts · Unsharp Mask section · _v0.33.0
+
+Amount, Radius and Threshold sliders and the `run` branch. Removed:
+
+```ts
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection';
 ```
 
 ## src/ui/panels/jpeg-dialog.ts

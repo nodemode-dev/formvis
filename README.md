@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-0.32.0-f97316" alt="version 0.32.0">
+<img src="https://img.shields.io/badge/version-0.33.0-f97316" alt="version 0.33.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -17,7 +17,7 @@ sonny is a layered image editor: stack photos and paintings as layers, group the
 
 ## Highlights
 
-- **Layered document model.** Flat bottom-to-top layers w/ pass-through folders, 13 blend modes mapped 1:1 to Canvas 2D, raster masks, folder masks, clipping chains (Option-click a row's lower edge to clip or release), Option-drag mask copy, and value-snapshot history (100 steps, 256 MB).
+- **Layered document model.** Flat bottom-to-top layers w/ pass-through folders, 17 blend modes in Photoshop's order, each native to Canvas 2D, raster masks, folder masks, clipping chains (Option-click a row's lower edge to clip or release), Option-drag mask copy, and value-snapshot history (100 steps, 256 MB).
 - **Opens and writes `.ref` projects.** Reads `.ref` packages (zipped or as folders, format versions 1 to 7), saves `.sonny` w/ the same manifest field layout, and exports a `.ref` package that apps reading that format can open.
 - **Fourteen tools.** Move w/ transform handles, Marquee, Lasso, Magic Wand, Crop, Brush and Eraser, Spot Healing (Content-Aware, Create Texture, Proximity Match), Clone Stamp, Smear (Liquify, Blur, Smudge), Gradient, Shape, Eyedropper, Hand, Zoom; each is a self-registering extension module. Content-Aware Fill works from the Edit menu.
 - **Adjustments and filters.** Levels w/ histogram, Auto and black, gray and white eyedroppers; Curves; Hue/Saturation w/ spectrum band handles, Sample, Add and Remove eyedroppers and targeted adjustment; Exposure, Gradient Map and Grain; as editable adjustment layers or direct edits; Gaussian Blur, Motion Blur, Add Noise and Lens Correction; all ported from the source, w/ live preview.
@@ -114,7 +114,7 @@ Branch model: `main` plus short-lived work branches, see `.docs/BRANCHING.md`. D
 
 ## Status
 
-Version 0.32.0 has all 14 tools complete (Smear's Blur now works on masks too) and all 59 web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the color picker, which can sample the canvas, and sampling drags show the sample ring. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and Smear's Blur on masks.
+Version 0.33.0 has all 14 tools complete (Smear's Blur now works on masks too) and all 59 web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the color picker, which can sample the canvas, and sampling drags show the sample ring. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and Smear's Blur on masks.
 
 ## Contributors
 
