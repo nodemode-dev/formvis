@@ -8,6 +8,20 @@ Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entri
 
 The History panel. Nothing was removed.
 
+### src/ui/history.ts · snapshots · _v0.57.0
+
+Snapshot rows above the steps and the New and Delete Snapshot footer. Removed:
+
+```ts
+type Row = { key: string; name: string; index: number };
+      `<div class="cv-history-body" hidden><div class="cv-history-list" role="listbox" aria-label="History"></div></div></section>`);
+      if (row) this.engine.jumpHistory(Number(row.dataset.index));
+    const list: Row[] = p ? [{ key: 'start', name: p.name, index: 0 }, ...names.map((name, i) => ({ key: `${i}:${name}`, name, index: i + 1 }))] : [];
+        const row = el(`<div class="cv-history-row" role="option"><span class="cv-history-icon">${icon(r.index === 0 ? 'image' : 'history', 12)}</span><span class="cv-history-name"></span></div>`);
+    row.classList.toggle('is-current', r.index === current);
+    row.classList.toggle('is-undone', r.index > current);
+```
+
 ## src/ui/panels/stop-dialog.ts
 
 ### src/ui/panels/stop-dialog.ts · new · _v0.53.0
@@ -19,6 +33,14 @@ The dialog a stop step shows. Nothing was removed.
 ### src/ui/panels/tween-dialog.ts · new · _v0.50.0
 
 The Tween dialog. Nothing was removed.
+
+### src/ui/panels/tween-dialog.ts · easing · _v0.57.0
+
+The Easing choice. Removed:
+
+```ts
+    if (t.current) this.engine.tween(t.current, n, { position: this.position.checked, opacity: this.opacity.checked });
+```
 
 ## src/ui/panels/gif-dialog.ts
 
@@ -1008,6 +1030,10 @@ The History panel mounted; the smart filters get an off-thread runner. Removed:
 import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData } from './engine';
 ```
 
+### src/app.ts · New Snapshot · _v0.57.0
+
+The New Snapshot command. Nothing was removed.
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1755,6 +1781,15 @@ Large smart objects re-render in the background, latest change winning; historyS
   private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string): boolean {
       const stack = structuredClone(filters ?? l.smart.filters), raster = this.renderSmart(src, stack), old = l.raster as Raster, t = l.transform;
     const ok = this.restack(target.parent, target.layer.id, Raster.from(flat, flat.width, flat.height), null, 'Update Smart Object');
+```
+
+### src/engine/index.ts · snapshots, easing · _v0.57.0
+
+copyDoc, takeSnapshot, revertToSnapshot and deleteSnapshot; tween easing. Removed:
+
+```ts
+  tween(id: ID, count: number, opts: { position: boolean; opacity: boolean }): boolean {
+      const u = k / (n + 1), state: Record<ID, FrameLayer> = {};
 ```
 
 ## src/engine/develop.ts
@@ -2620,6 +2655,10 @@ The History section and rows; the layers grid gains a row. Removed:
 .cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; min-height: 0; background: var(--bg-secondary); }
 ```
 
+### src/styles/panels.css · snapshot rows · _v0.57.0
+
+Snapshot rows and their separation from the steps. Nothing was removed.
+
 ## src/styles/scrollbars.css
 
 ### src/styles/scrollbars.css · scrollbars, loaded last · _v0.1.0
@@ -2767,6 +2806,10 @@ One inline currentColor icon. Nothing was removed.
 One inline currentColor icon. Nothing was removed.
 
 ### src/ui/icons.ts · history · _v0.56.0
+
+One inline currentColor icon. Nothing was removed.
+
+### src/ui/icons.ts · camera · _v0.57.0
 
 One inline currentColor icon. Nothing was removed.
 

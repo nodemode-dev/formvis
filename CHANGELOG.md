@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.57.0 · 2026-09-21
+
+### Added
+
+- History snapshots: keep the document as it is and return to it at any time, however far the steps have moved on.
+- Tween easing: Linear, Ease In, Ease Out, and Ease In and Out.
+
 ## 0.56.0 · 2026-09-21
 
 ### Added
