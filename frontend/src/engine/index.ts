@@ -2404,6 +2404,13 @@ export class Engine {
     return this.fillArea(p, new SelectionMask(0, 0, W, H, border), prompt, generate, 'Generative Expand', 'extend');
   }
 
+  /** A new document holding `img` as its one layer, as Batch opens each file. */
+  openImage(img: ImportedImage): Project {
+    const base: Doc = { id: uid(), width: img.width, height: img.height, resolution: 72, layers: [] };
+    const layer = { ...newLayer('Background', base), raster: Raster.from(img.source, img.width, img.height) };
+    return this.addProject({ ...base, layers: [layer] }, img.name.replace(/\.[^.]+$/, '') || 'Image', layer.id);
+  }
+
   /** Upscale: what the document shows, enlarged `scale` times by `run`, opened as a new document. */
   async upscaleToDocument(scale: number, run: (image: Blob) => Promise<Blob>): Promise<boolean> {
     const p = this.current, view = this.flattened();

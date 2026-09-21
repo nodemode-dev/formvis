@@ -122,9 +122,23 @@ export class FilterPanel extends Dialog {
     }, delay);
   }
 
+  /** Called when the dialog applies a filter, with its kind and settings, for Actions to record it. */
+  onApplied: ((kind: FilterKind, settings: Record<string, unknown>) => void) | null = null;
+
+  /** Applies `kind` with `settings` straight away, without the dialog, as Actions replay a recorded filter. */
+  applySettings(kind: FilterKind, settings: Record<string, unknown>): boolean {
+    if (!(kind in FILTER_LABELS)) return false;
+    this.kind = kind;
+    Object.assign(this.s, structuredClone(settings));
+    const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
+    this.engine.applyImageEdit(FILTER_LABELS[kind], run, this.grow());
+    return true;
+  }
+
   private commit(): void {
     window.clearTimeout(this.timer);
     this.done = true;
+    this.onApplied?.(this.kind, structuredClone(this.s));
     const label = FILTER_LABELS[this.kind], grow = this.grow();
     const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
     this.close();

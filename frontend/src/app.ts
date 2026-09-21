@@ -1,3 +1,6 @@
+import { Actions, RECORDABLE, type Action, type ActionStep } from './ui/actions';
+import { ActionsDialog, BatchDialog } from './ui/panels/actions-dialogs';
+import { zipFiles } from './io/zip';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
 import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
@@ -278,6 +281,48 @@ export function startApp(): void {
     });
   }
 
+  /** One recorded step on the current document: a command through the registry, a filter with its settings, or a
+   *  size change through the engine. False when it cannot run here. */
+  async function runStep(s: ActionStep): Promise<boolean> {
+    if (s.kind === 'command') return commands.run(s.id);
+    if (s.kind === 'filter') return dialogs.filter.applySettings(s.filter as FilterKind, s.settings);
+    if (s.kind === 'imageSize') return engine.resampleImage(s.w, s.h, s.sampling as Parameters<typeof engine.resampleImage>[2], s.res);
+    return engine.resizeCanvas(s.w, s.h, s.dx, s.dy, s.fill);
+  }
+
+  async function playAction(x: Action): Promise<void> {
+    if (!engine.current) { toast('Open a document to play an action on.'); return; }
+    engine.settle();
+    const r = await actions.play(x, runStep);
+    if (r.failed) toast(`"${x.name}" stopped at step ${r.done + 1}, ${r.failed}, which could not run here.`, 'error');
+    else toast(`Played "${x.name}", ${r.done} step${r.done === 1 ? '' : 's'}.`);
+  }
+
+  /** Batch: each file opens as a document, plays the action, is exported and closed; the results download as one zip. */
+  async function runBatch(x: Action, files: File[], format: 'png' | 'jpg', quality: number): Promise<void> {
+    await engine.task(async () => {
+      const out: Array<{ name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
+      for (const f of files) {
+        try {
+          const p = engine.openImage(await decodeImage(f, f.name));
+          const r = await actions.play(x, runStep);
+          if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
+          engine.settle();
+          const blob = await engine.exportBlob(format === 'png' ? 'image/png' : 'image/jpeg', quality);
+          const base = f.name.replace(/\.[^.]+$/, '') || 'image';
+          let name = `${base}.${format}`;
+          for (let k = 2; used.has(name); k++) name = `${base} ${k}.${format}`;
+          used.add(name);
+          if (blob) out.push({ name, blob });
+          engine.closeProject(p.id);
+        } catch (err) { problems.push(`${f.name}: ${message(err)}`); }
+      }
+      if (out.length) await deliver(await zipFiles(out), `${x.name} batch.zip`);
+      if (problems.length) toast(`Batch finished ${out.length} of ${files.length}. ${problems.join('. ')}.`, 'error');
+      else toast(`Batch finished all ${files.length} image${files.length === 1 ? '' : 's'}.`);
+    });
+  }
+
   async function exportPsd(): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -329,7 +374,7 @@ export function startApp(): void {
     engine.closeProject(id);
   }
 
-  const imageInput = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" hidden>`);
+  const imageInput = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" data-role="import-images" hidden>`);
   document.body.appendChild(imageInput);
   imageInput.addEventListener('change', () => {
     const files = Array.from(imageInput.files ?? []);
@@ -337,7 +382,10 @@ export function startApp(): void {
     if (files.length) void importFiles(files);
   });
 
+  const actions = new Actions();
   const dialogs = {
+    actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
+    batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
     generative: new GenerativeDialog(engine),
     layerStyle: new LayerStyleDialog(engine),
     text: new TextDialog(engine),
@@ -377,6 +425,9 @@ export function startApp(): void {
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
+    { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
+    { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
+    { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
     // the File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
     // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W too.
@@ -504,7 +555,7 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
@@ -543,6 +594,11 @@ export function startApp(): void {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-cmd]');
     if (b && root.contains(b) && !b.disabled) commands.run(b.dataset.cmd ?? '');
   });
+  // Recording: commands that change the document, filters with their settings, and size changes.
+  commands.onRun = (cmd) => { if (RECORDABLE.has(cmd.id)) actions.record({ kind: 'command', id: cmd.id, label: typeof cmd.label === 'function' ? cmd.label() : cmd.label }); };
+  dialogs.filter.onApplied = (kind, settings) => actions.record({ kind: 'filter', filter: kind, label: FILTER_LABELS[kind], settings });
+  dialogs.imageSize.onApplied = (v) => actions.record({ kind: 'imageSize', label: `Image Size ${v.w} x ${v.h}`, ...v });
+  dialogs.canvasSize.onApplied = (v) => actions.record({ kind: 'canvasSize', label: `Canvas Size ${v.w} x ${v.h}`, ...v });
   root.addEventListener('cv:edit-layer-style', () => dialogs.layerStyle.show());
   document.addEventListener('cv:type', (e) => {
     const d = (e as CustomEvent<{ layerId?: string; x?: number; y?: number }>).detail;
@@ -693,7 +749,7 @@ export function startApp(): void {
     if (!c) toast('The sonny engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./sonny boot).');
   });
 
-  if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands };
+  if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions };
 
   const faces = Promise.all(['400', '500', '600'].map((w) => document.fonts.load(`${w} 12px Inter`))).catch(() => undefined);
   void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => revealApp()));
