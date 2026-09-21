@@ -1,4 +1,4 @@
-import type { Pt, Rect } from './types';
+import { uid, type ID, type Pt, type Rect } from './types';
 
 /** Vector paths drawn with the Pen tool, in document pixels: sub-paths of anchors, each holding the control handles of
  *  the cubic Bezier segments arriving at it (`in`) and leaving it (`out`). A corner's handles sit on the anchor. */
@@ -116,4 +116,32 @@ export function splitSegment(sp: SubPath, index: number, t: number): Anchor {
   const added: Anchor = { x: s.x, y: s.y, inX: r0.x, inY: r0.y, outX: r1.x, outY: r1.y };
   sp.anchors.splice(index + 1, 0, added);
   return added;
+}
+
+/** A document's paths: at most one temporary Work Path and any number of named ones, and which is selected. */
+export interface NamedPath { id: ID; name: string; path: VectorPath; work: boolean }
+export interface PathSet { list: NamedPath[]; active: ID | null }
+
+/** A document's paths as project-file data; null when there are none. A named path saves even when empty. */
+export function pathSetData(set: PathSet | null): { list: Array<{ id: ID; name: string; work: boolean; subpaths: unknown[] }>; active: ID | null } | null {
+  const list = (set?.list ?? []).map((n) => ({ id: n.id, name: n.name, work: n.work, subpaths: pathData(n.path)?.subpaths ?? [] })).filter((n) => !n.work || n.subpaths.length);
+  return list.length ? { list, active: set?.active && list.some((n) => n.id === set.active) ? set.active : null } : null;
+}
+
+/** Paths read back from a project file, checked; `legacy` is the single Work Path that 0.46.0 files carry. */
+export function pathSetFrom(raw: unknown, active: unknown, legacy: unknown): PathSet | null {
+  const list: NamedPath[] = [];
+  if (Array.isArray(raw)) {
+    for (const r of raw.slice(0, 200)) {
+      if (!r || typeof r !== 'object') continue;
+      const o = r as Record<string, unknown>, path = pathFrom(o) ?? { subpaths: [] }, work = o.work === true;
+      if (work && (!path.subpaths.length || list.some((n) => n.work))) continue;
+      const id = typeof o.id === 'string' && o.id && !list.some((n) => n.id === o.id) ? o.id.slice(0, 64) : uid();
+      list.push({ id, name: typeof o.name === 'string' && o.name.trim() ? o.name.trim().slice(0, 80) : 'Path', path, work });
+    }
+  } else {
+    const path = pathFrom(legacy);
+    if (path) list.push({ id: uid(), name: 'Work Path', path, work: true });
+  }
+  return list.length ? { list, active: typeof active === 'string' && list.some((n) => n.id === active) ? active : null } : null;
 }

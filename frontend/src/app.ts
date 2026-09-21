@@ -1,3 +1,4 @@
+import { PathsPanel } from './ui/paths';
 import { SmartFiltersDialog } from './ui/panels/smart-filters-dialog';
 import { Actions, RECORDABLE, type Action, type ActionStep } from './ui/actions';
 import { ActionsDialog, BatchDialog } from './ui/panels/actions-dialogs';
@@ -116,6 +117,7 @@ export function startApp(): void {
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
+  new PathsPanel(q(root, '.cv-layers'), engine);
   new Rail(q(root, '.cv-rail'), engine);
   new OptionsBar(q(root, '.cv-options'), engine);
   const status = new StatusBar(q(root, '.cv-status'), engine);
@@ -136,12 +138,12 @@ export function startApp(): void {
   }
 
   async function openOpened(o: OpenedProject, libraryName: string | null): Promise<void> {
-    const { doc, activeId, workPath } = await deserialize(o.manifest, (name) => {
+    const { doc, activeId, paths } = await deserialize(o.manifest, (name) => {
       const url = o.images[name];
       return url ? api.fetchAsset(url) : Promise.reject(new Error(`${name} is missing from the project.`));
     });
     const p = engine.addProject(doc, o.name, activeId);
-    if (workPath) engine.setPathOf(p, workPath);
+    if (paths) engine.setPathsOf(p, paths);
     engine.markSaved(p, p.name, libraryName);
   }
 
@@ -228,7 +230,7 @@ export function startApp(): void {
     return engine.task(async () => {
       const revision = p.history.revision;
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathOf(p));
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p));
         const res = await api.save(target, manifest, files);
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
         else { p.name = res.name; p.libraryName = res.name; engine.emit('projects', null); }
@@ -248,7 +250,7 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathOf(p));
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p));
         await deliver(await api.package(manifest, files), `${p.name}.sonny`);
       } catch (err) { toast(message(err), 'error'); }
     });
@@ -261,7 +263,7 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathOf(p));
+        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathsOf(p));
         await deliver(await api.package(manifest, files, `${p.name}.ref`), `${p.name}.ref.zip`);
         if (notes.length) toast(`Exported as .ref with changes: ${notes.join(' ')}`);
       } catch (err) { toast(message(err), 'error'); }
@@ -545,6 +547,7 @@ export function startApp(): void {
     { id: 'fill-path', label: 'Fill Path', enabled: () => !!engine.workPath && pixel(), run: () => engine.fillPath() },
     { id: 'stroke-path', label: 'Stroke Path', enabled: () => !!engine.workPath && pixel(), run: () => engine.strokePath() },
     { id: 'delete-path', label: 'Delete Path', enabled: () => !!engine.workPath, run: () => engine.deletePath() },
+    { id: 'new-path', label: 'New Path', enabled: () => !!engine.current, run: () => engine.newPath() },
     { id: 'layer-style', label: 'Layer Style...', enabled: () => pixel(), run: () => dialogs.layerStyle.show() },
     { id: 'edit-text', label: 'Edit Type...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { const id = engine.current?.activeId; if (id) dialogs.text.showEdit(id); } },
     { id: 'convert-smart', label: 'Convert to Smart Object', enabled: () => { const l = engine.current?.activeLayer; return !!l?.raster && !l.isGroup && !l.adjustment && !l.smart; }, run: () => engine.convertToSmartObject() },

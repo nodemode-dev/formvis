@@ -1,4 +1,4 @@
-import { pathBounds, tracePath, type VectorPath } from './paths';
+import { pathBounds, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
 import { Emitter } from './events';
 import type { Snapshot } from './history';
@@ -39,14 +39,14 @@ export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
 export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics } from './text';
-export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, splitSegment, tracePath, type Anchor, type SubPath, type VectorPath } from './paths';
+export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, pathSetData, pathSetFrom, splitSegment, tracePath, type Anchor, type NamedPath, type PathSet, type SubPath, type VectorPath } from './paths';
 export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
 export type { Kernel, KernelContext } from './kernels';
 
 export interface Notice { kind: 'info' | 'error'; text: string }
 export interface EngineEvents {
   projects: null; doc: null; selection: null; active: null; viewport: null; tool: null; options: null;
-  history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice;
+  history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null;
 }
 export interface BrushSettings { diameter: number; hardness: number; opacity: number }
 export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string }
@@ -527,23 +527,94 @@ export class Engine {
     return ok;
   }
 
-  private readonly workPaths = new WeakMap<Project, VectorPath>();
+  private readonly pathSets = new WeakMap<Project, PathSet>();
 
-  /** The current document's Work Path, drawn with the Pen tool. It lives with the open document and is not saved yet. */
-  get workPath(): VectorPath | null { const p = this.current; return p ? this.workPaths.get(p) ?? null : null; }
-
-  setWorkPath(vp: VectorPath | null): void { const p = this.current; if (p) this.setPathOf(p, vp); }
-
-  /** Any open document's Work Path, as saving reads it. */
-  pathOf(p: Project): VectorPath | null { return this.workPaths.get(p) ?? null; }
-
-  /** Sets any open document's Work Path, as opening a project restores it. */
-  setPathOf(p: Project, vp: VectorPath | null): void {
-    if (vp && vp.subpaths.some((sp) => sp.anchors.length)) this.workPaths.set(p, vp); else this.workPaths.delete(p);
-    if (p === this.current) { this.emit('overlay', null); this.emit('options', null); }
+  private pathSet(p: Project): PathSet {
+    let set = this.pathSets.get(p);
+    if (!set) { set = { list: [], active: null }; this.pathSets.set(p, set); }
+    return set;
   }
 
-  deletePath(): void { this.setWorkPath(null); }
+  private selectedPath(p: Project): NamedPath | null { const set = this.pathSet(p); return set.list.find((n) => n.id === set.active) ?? null; }
+
+  private pathsChanged(p: Project): void {
+    if (p === this.current) { this.emit('overlay', null); this.emit('options', null); }
+    this.emit('paths', null);
+  }
+
+  /** The current document's paths, the Work Path among them, and which one is selected. Paths live with the document
+   *  and save with the project, outside undo, as in Photoshop. */
+  get paths(): PathSet { const p = this.current; return p ? this.pathSet(p) : { list: [], active: null }; }
+
+  /** The selected path, which the Pen, Direct Selection and the path commands work on; null when none is selected. */
+  get workPath(): VectorPath | null { const p = this.current; return p ? this.selectedPath(p)?.path ?? null : null; }
+
+  /** Sets the selected path's points. With none selected, a new Work Path takes them, replacing the old one; a Work
+   *  Path left with no points goes away, while a named path stays, empty. */
+  setWorkPath(vp: VectorPath | null): void {
+    const p = this.current;
+    if (!p) return;
+    const set = this.pathSet(p), entry = this.selectedPath(p), has = !!vp && vp.subpaths.some((sp) => sp.anchors.length);
+    if (entry) {
+      if (entry.work && !has) { set.list = set.list.filter((n) => n !== entry); set.active = null; }
+      else entry.path = vp ?? { subpaths: [] };
+    } else if (vp && has) {
+      const work: NamedPath = { id: uid(), name: 'Work Path', path: vp, work: true };
+      set.list = [work, ...set.list.filter((n) => !n.work)];
+      set.active = work.id;
+    }
+    this.pathsChanged(p);
+  }
+
+  /** Selects a path by id, or none, so the next Pen drawing starts a new Work Path. */
+  selectPath(id: ID | null): void {
+    const p = this.current;
+    if (!p) return;
+    const set = this.pathSet(p);
+    set.active = id && set.list.some((n) => n.id === id) ? id : null;
+    this.pathsChanged(p);
+  }
+
+  private nextPathName(set: PathSet): string { let i = 1; while (set.list.some((n) => n.name === `Path ${i}`)) i++; return `Path ${i}`; }
+
+  /** Paths > New Path: an empty named path, selected, for the Pen to draw into. */
+  newPath(): void {
+    const p = this.current;
+    if (!p) return;
+    const set = this.pathSet(p), n: NamedPath = { id: uid(), name: this.nextPathName(set), path: { subpaths: [] }, work: false };
+    set.list.push(n);
+    set.active = n.id;
+    this.pathsChanged(p);
+  }
+
+  /** Renames a path; naming the Work Path saves it, so it stays when a new one is drawn. */
+  renamePath(id: ID, name: string): void {
+    const p = this.current, n = p ? this.pathSet(p).list.find((x) => x.id === id) : null;
+    if (!p || !n) return;
+    n.name = name.trim().slice(0, 80) || this.nextPathName(this.pathSet(p));
+    n.work = false;
+    this.pathsChanged(p);
+  }
+
+  /** Paths > Delete Path: removes the selected path, or the one given. */
+  deletePath(id?: ID): void {
+    const p = this.current;
+    if (!p) return;
+    const set = this.pathSet(p), target = id ?? set.active;
+    if (!target) return;
+    set.list = set.list.filter((n) => n.id !== target);
+    if (set.active === target) set.active = null;
+    this.pathsChanged(p);
+  }
+
+  /** Any open document's paths, as saving reads them. */
+  pathsOf(p: Project): PathSet { return this.pathSet(p); }
+
+  /** Replaces an open document's paths, as opening a project restores them. */
+  setPathsOf(p: Project, set: PathSet): void {
+    this.pathSets.set(p, { list: set.list, active: set.list.some((n) => n.id === set.active) ? set.active : null });
+    this.pathsChanged(p);
+  }
 
   /** Select > Make Selection from Path: the path's inside, by the non-zero winding rule, becomes the selection. */
   pathToSelection(): void {

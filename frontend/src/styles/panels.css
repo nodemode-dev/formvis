@@ -1,4 +1,4 @@
-.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; min-height: 0; background: var(--bg-secondary); }
+.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; min-height: 0; background: var(--bg-secondary); }
 .cv-panel-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-2); height: 36px; padding: 0 var(--space-2) 0 var(--space-3); border-bottom: 1px solid var(--border-color); }
 .cv-panel-title { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-11); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .cv-layer-props { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); }
@@ -69,3 +69,17 @@
 .cv-layer-smart { flex: none; color: var(--text-muted); line-height: 0; }
 .cv-sf-list { max-height: 220px; overflow-y: auto; }
 .cv-sf-row { grid-template-columns: 18px minmax(0, 1fr) auto auto; }
+.cv-paths { border-top: 1px solid var(--border-color); }
+.cv-paths-toggle { display: inline-flex; align-items: center; gap: var(--space-2); padding: 0; border: 0; background: none; color: var(--text-primary); font: inherit; cursor: pointer; }
+.cv-paths-toggle[aria-expanded="false"] .cv-paths-chevron { transform: rotate(-90deg); }
+.cv-paths-chevron { display: inline-flex; color: var(--text-muted); }
+.cv-path-list { position: relative; height: 96px; overflow-y: auto; padding: var(--space-1) 0; }
+.cv-path-row { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: var(--space-2); height: 28px; padding: 0 var(--space-3); color: var(--text-secondary); cursor: pointer; }
+.cv-path-row:hover { background: var(--bg-hover); }
+.cv-path-row.is-active { background: var(--bg-tertiary); color: var(--text-primary); box-shadow: inset 2px 0 0 var(--accent-color); }
+.cv-path-row.is-work .cv-path-name { font-style: italic; }
+.cv-path-icon { display: inline-flex; color: var(--text-muted); }
+.cv-path-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cv-path-rename { height: 22px; padding: 0 var(--space-1); }
+.cv-paths-empty { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; padding: 0 var(--space-3); color: var(--text-muted); font-size: var(--fs-11); text-align: center; }
+.cv-paths-empty[hidden] { display: none; }
