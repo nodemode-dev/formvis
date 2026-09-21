@@ -97,15 +97,16 @@ function lzw(indices: Uint8Array, minCode: number): number[] {
   return out;
 }
 
-/** The GIF file for `frames`, each `width` by `height`; `loops` 0 repeats forever. */
-export function encodeGif(frames: GifFrame[], width: number, height: number, loops = 0): Uint8Array {
+/** The GIF file for `frames`, each `width` by `height`, played `plays` times in all, 0 meaning forever. The looping
+ *  extension counts repeats after the first play, so one play leaves it out and three plays write two. */
+export function encodeGif(frames: GifFrame[], width: number, height: number, plays = 0): Uint8Array<ArrayBuffer> {
   const bytes: number[] = [];
   const u16 = (v: number): void => { bytes.push(v & 255, (v >> 8) & 255); };
   const text = (s: string): void => { for (let i = 0; i < s.length; i++) bytes.push(s.charCodeAt(i)); };
   text('GIF89a');
   u16(width); u16(height);
   bytes.push(0, 0, 0);
-  bytes.push(0x21, 0xff, 11); text('NETSCAPE2.0'); bytes.push(3, 1); u16(loops); bytes.push(0);
+  if (plays !== 1) { bytes.push(0x21, 0xff, 11); text('NETSCAPE2.0'); bytes.push(3, 1); u16(plays === 0 ? 0 : Math.min(65535, plays - 1)); bytes.push(0); }
   for (const f of frames) {
     const px = f.data.data, n = width * height;
     let clear = false;

@@ -1,3 +1,4 @@
+import { captureFrame, frameLayers, type Frame, type Timeline } from './timeline';
 import { pathBounds, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
 import { Emitter } from './events';
@@ -39,6 +40,7 @@ export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
 export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics } from './text';
+export { FRAME_DELAYS, captureFrame, frameLayers, timelineData, timelineFrom, type Frame, type FrameLayer, type Timeline } from './timeline';
 export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, pathSetData, pathSetFrom, splitSegment, tracePath, type Anchor, type NamedPath, type PathSet, type SubPath, type VectorPath } from './paths';
 export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
 export type { Kernel, KernelContext } from './kernels';
@@ -46,7 +48,7 @@ export type { Kernel, KernelContext } from './kernels';
 export interface Notice { kind: 'info' | 'error'; text: string }
 export interface EngineEvents {
   projects: null; doc: null; selection: null; active: null; viewport: null; tool: null; options: null;
-  history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null;
+  history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null; timeline: null;
 }
 export interface BrushSettings { diameter: number; hardness: number; opacity: number }
 export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string }
@@ -241,6 +243,7 @@ export class Engine {
     if (!e) return;
     for (let i = e.patches.length - 1; i >= 0; i--) { const q = e.patches[i]; q.raster.write(q.before, q.x, q.y); }
     this.restore(p, e.before);
+    this.reconcileFrame(p, e.name === 'Select Frame');
   }
 
   redo(): void {
@@ -251,6 +254,7 @@ export class Engine {
     if (!e) return;
     for (const q of e.patches) q.raster.write(q.after, q.x, q.y);
     this.restore(p, e.after);
+    this.reconcileFrame(p, e.name === 'Select Frame');
   }
 
   private restore(p: Project, s: Snapshot): void {
@@ -527,6 +531,110 @@ export class Engine {
     if (ok) { child.history.markSaved(); this.emit('projects', null); this.emit('history', null); }
     return ok;
   }
+
+  private readonly timelines = new WeakMap<Project, Timeline>();
+
+  private timelineOf(p: Project): Timeline {
+    let t = this.timelines.get(p);
+    if (!t) { t = { frames: [], current: null, loops: 0 }; this.timelines.set(p, t); }
+    return t;
+  }
+
+  /** The current frame keeps what the layers show now, as Photoshop's does while it is selected. */
+  private syncFrame(p: Project): void {
+    const t = this.timelineOf(p), f = t.frames.find((x) => x.id === t.current);
+    if (f) f.state = captureFrame(p.doc);
+  }
+
+  /** After undo or redo. Undoing or redoing a frame change selects the frame the layers now show, overwriting none;
+   *  undoing or redoing any other change belongs to the selected frame, which takes the result. */
+  private reconcileFrame(p: Project, frameStep: boolean): void {
+    const t = this.timelineOf(p);
+    if (!t.frames.length) return;
+    if (frameStep) {
+      const now = JSON.stringify(captureFrame(p.doc)), match = t.frames.find((f) => JSON.stringify(f.state) === now);
+      if (match) t.current = match.id;
+    } else this.syncFrame(p);
+    this.emit('timeline', null);
+  }
+
+  /** The current document's animation frames, the selected one brought up to date with the layers. */
+  get timeline(): Timeline {
+    const p = this.current;
+    if (!p) return { frames: [], current: null, loops: 0 };
+    this.syncFrame(p);
+    return this.timelineOf(p);
+  }
+
+  /** Timeline > New Frame: a copy of the selected frame after it, selected. With no frames yet, frame 1 is the layers
+   *  as they are, and the copy is frame 2. */
+  newFrame(): void {
+    const p = this.current;
+    if (!p) return;
+    const t = this.timelineOf(p);
+    this.syncFrame(p);
+    if (!t.frames.length) { const first: Frame = { id: uid(), delay: 100, state: captureFrame(p.doc) }; t.frames.push(first); t.current = first.id; }
+    const i = Math.max(0, t.frames.findIndex((f) => f.id === t.current)), src = t.frames[i];
+    const copy: Frame = { id: uid(), delay: src.delay, state: structuredClone(src.state) };
+    t.frames.splice(i + 1, 0, copy);
+    t.current = copy.id;
+    this.emit('timeline', null);
+  }
+
+  /** Selects a frame, applying its layer states as one undo step, after the frame being left keeps its own. */
+  selectFrame(id: ID): void {
+    const p = this.current;
+    if (!p) return;
+    const t = this.timelineOf(p), f = t.frames.find((x) => x.id === id);
+    if (!f) return;
+    this.syncFrame(p);
+    t.current = id;
+    const target = frameLayers(p.doc.layers, f.state);
+    this.edit('Select Frame', (q) => {
+      target.forEach((l, i) => { const now = q.doc.layers[i]; if (l !== now && now?.id === l.id) q.updateLayer(l.id, { visible: l.visible, opacity: l.opacity, transform: l.transform }); });
+    });
+    this.emit('timeline', null);
+  }
+
+  /** Timeline > Delete Frame: removes the selected frame, or the one given, and selects its neighbour. */
+  deleteFrame(id?: ID): void {
+    const p = this.current;
+    if (!p) return;
+    const t = this.timelineOf(p), target = id ?? t.current, i = t.frames.findIndex((f) => f.id === target);
+    if (i < 0) return;
+    const wasCurrent = t.current === target;
+    t.frames.splice(i, 1);
+    if (!t.frames.length) t.current = null;
+    else if (wasCurrent) { t.current = null; this.selectFrame(t.frames[Math.min(i, t.frames.length - 1)].id); }
+    this.emit('timeline', null);
+  }
+
+  setFrameDelay(id: ID, ms: number): void {
+    const p = this.current, f = p ? this.timelineOf(p).frames.find((x) => x.id === id) : null;
+    if (!f) return;
+    f.delay = Math.min(60000, Math.max(0, Math.round(ms)));
+    this.emit('timeline', null);
+  }
+
+  /** How often the animation plays: 0 repeats forever. */
+  setLoops(n: number): void {
+    const p = this.current;
+    if (!p) return;
+    this.timelineOf(p).loops = Math.min(65535, Math.max(0, Math.round(n)));
+    this.emit('timeline', null);
+  }
+
+  /** Frame `f` of the current document at full size, rendered without touching the layers; the document as it stands
+   *  when `f` is null. */
+  renderFrame(f: Frame | null): Surface | null {
+    const p = this.current;
+    if (!p) return null;
+    return renderDoc(this.work, f ? { ...p.doc, layers: frameLayers(p.doc.layers, f.state) } : p.doc);
+  }
+
+  /** Any open document's timeline, as saving reads it, and replacing it, as opening restores it. */
+  timelineFor(p: Project): Timeline { if (p === this.current) this.syncFrame(p); return this.timelineOf(p); }
+  setTimelineFor(p: Project, t: Timeline): void { this.timelines.set(p, t); if (p === this.current) this.emit('timeline', null); }
 
   private readonly pathSets = new WeakMap<Project, PathSet>();
 

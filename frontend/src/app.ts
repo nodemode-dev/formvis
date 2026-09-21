@@ -1,3 +1,6 @@
+import { TimelinePanel } from './ui/timeline';
+import { AnimationDialog } from './ui/panels/animation-dialog';
+import { encodeGif, type GifFrame } from './io/gif';
 import { ShapeStyleDialog } from './ui/panels/shape-style-dialog';
 import { PathsPanel } from './ui/paths';
 import { SmartFiltersDialog } from './ui/panels/smart-filters-dialog';
@@ -9,7 +12,7 @@ import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -119,6 +122,7 @@ export function startApp(): void {
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   new PathsPanel(q(root, '.cv-layers'), engine);
+  new TimelinePanel(q(root, '.cv-layers'), engine);
   new Rail(q(root, '.cv-rail'), engine);
   new OptionsBar(q(root, '.cv-options'), engine);
   const status = new StatusBar(q(root, '.cv-status'), engine);
@@ -139,12 +143,13 @@ export function startApp(): void {
   }
 
   async function openOpened(o: OpenedProject, libraryName: string | null): Promise<void> {
-    const { doc, activeId, paths } = await deserialize(o.manifest, (name) => {
+    const { doc, activeId, paths, timeline } = await deserialize(o.manifest, (name) => {
       const url = o.images[name];
       return url ? api.fetchAsset(url) : Promise.reject(new Error(`${name} is missing from the project.`));
     });
     const p = engine.addProject(doc, o.name, activeId);
     if (paths) engine.setPathsOf(p, paths);
+    if (timeline) engine.setTimelineFor(p, timeline);
     engine.markSaved(p, p.name, libraryName);
   }
 
@@ -231,7 +236,7 @@ export function startApp(): void {
     return engine.task(async () => {
       const revision = p.history.revision;
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p));
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
         const res = await api.save(target, manifest, files);
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
         else { p.name = res.name; p.libraryName = res.name; engine.emit('projects', null); }
@@ -251,7 +256,7 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p));
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
         await deliver(await api.package(manifest, files), `${p.name}.sonny`);
       } catch (err) { toast(message(err), 'error'); }
     });
@@ -264,7 +269,7 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathsOf(p));
+        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
         await deliver(await api.package(manifest, files, `${p.name}.ref`), `${p.name}.ref.zip`);
         if (notes.length) toast(`Exported as .ref with changes: ${notes.join(' ')}`);
       } catch (err) { toast(message(err), 'error'); }
@@ -344,6 +349,27 @@ export function startApp(): void {
     });
   }
 
+  /** File > Export GIF: every frame of the timeline at full size, or the image as it stands when there are no frames. */
+  async function exportGif(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const t = engine.timeline, frames = t.frames.length ? t.frames : [null], out: GifFrame[] = [];
+        for (const f of frames) {
+          const s = engine.renderFrame(f);
+          if (!s) return;
+          out.push({ data: ctxOf(s).getImageData(0, 0, s.width, s.height), delayMs: f?.delay ?? 0 });
+          await new Promise((r) => window.setTimeout(r, 0));
+        }
+        const bytes = encodeGif(out, p.doc.width, p.doc.height, t.loops);
+        await deliver(new Blob([bytes], { type: 'image/gif' }), `${p.name}.gif`);
+        toast(out.length > 1 ? `Exported ${out.length} frames as a GIF.` : 'Exported as a GIF.');
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function exportPsd(): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -408,6 +434,7 @@ export function startApp(): void {
   const dialogs = {
     smartFilters: new SmartFiltersDialog(engine, (): FilterPanel => dialogs.filter),
     shapeStyle: new ShapeStyleDialog(engine),
+    animation: new AnimationDialog(engine),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
     generative: new GenerativeDialog(engine),
@@ -449,6 +476,10 @@ export function startApp(): void {
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
+    { id: 'export-gif', label: 'Export GIF', enabled: () => !!engine.current, run: () => void exportGif() },
+    { id: 'new-frame', label: 'New Frame', enabled: () => !!engine.current, run: () => engine.newFrame() },
+    { id: 'delete-frame', label: 'Delete Frame', enabled: () => !!engine.current && engine.timeline.frames.length > 0, run: () => engine.deleteFrame() },
+    { id: 'play-animation', label: 'Play Animation', enabled: () => !!engine.current && engine.timeline.frames.length > 1, run: () => dialogs.animation.show() },
     { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
@@ -587,7 +618,7 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
@@ -785,7 +816,7 @@ export function startApp(): void {
     if (!c) toast('The sonny engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./sonny boot).');
   });
 
-  if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions };
+  if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions, animation: dialogs.animation };
 
   const faces = Promise.all(['400', '500', '600'].map((w) => document.fonts.load(`${w} 12px Inter`))).catch(() => undefined);
   void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => revealApp()));
