@@ -1,3 +1,4 @@
+import { StopDialog } from './ui/panels/stop-dialog';
 import { TweenDialog } from './ui/panels/tween-dialog';
 import { GifDialog } from './ui/panels/gif-dialog';
 import { TimelinePanel } from './ui/timeline';
@@ -302,9 +303,19 @@ export function startApp(): void {
 
   /** One recorded step on the current document: a command through the registry, a filter with its settings, or a
    *  size change through the engine. False when it cannot run here. */
-  async function runStep(s: ActionStep, relative = false): Promise<boolean> {
+  async function runStep(s: ActionStep, relative = false): Promise<boolean | 'stopped'> {
+    if (s.kind === 'stop') return (await dialogs.stop.ask(s.message, s.allowContinue)) ? true : 'stopped';
     if (s.kind === 'command') return commands.run(s.id);
-    if (s.kind === 'filter') return dialogs.filter.applySettings(s.filter as FilterKind, s.settings);
+    if (s.kind === 'filter') {
+      if (!s.ask) return dialogs.filter.applySettings(s.filter as FilterKind, s.settings);
+      // Paused for input: the dialog opens with the recorded settings; Cancel stops the action.
+      const chosen = await dialogs.filter.ask(s.filter as FilterKind, s.settings);
+      return chosen ? dialogs.filter.applySettings(s.filter as FilterKind, chosen) : 'stopped';
+    }
+    if (s.kind === 'adjustment' && s.ask && !s.layer) {
+      const chosen = await dialogs.adjust.askImage(s.adj as AdjustmentKind, s.data as Parameters<typeof dialogs.adjust.applySettings>[1]);
+      return chosen ? dialogs.adjust.applySettings(s.adj as AdjustmentKind, chosen, false) : 'stopped';
+    }
     if (s.kind === 'layerStyle') return engine.applyLayerStyle(s.effects ? effectsFromData(s.effects) : null);
     if (s.kind === 'adjustment') return dialogs.adjust.applySettings(s.adj as AdjustmentKind, s.data as Parameters<typeof dialogs.adjust.applySettings>[1], s.layer);
     const doc = engine.current?.doc, follow = relative && !!doc && !!s.fromW && !!s.fromH;
@@ -324,7 +335,8 @@ export function startApp(): void {
     if (!engine.current) { toast('Open a document to play an action on.'); return; }
     engine.settle();
     const r = await actions.play(x, (s) => runStep(s, !!x.relative));
-    if (r.failed) toast(`"${x.name}" stopped at step ${r.done + 1}, ${r.failed}, which could not run here.`, 'error');
+    if (r.stopped) toast(`"${x.name}" stopped at step ${r.done + 1}.`);
+    else if (r.failed) toast(`"${x.name}" stopped at step ${r.done + 1}, ${r.failed}, which could not run here.`, 'error');
     else toast(`Played "${x.name}", ${r.done} step${r.done === 1 ? '' : 's'}.`);
   }
 
@@ -336,6 +348,7 @@ export function startApp(): void {
         try {
           const p = engine.openImage(await decodeImage(f, f.name));
           const r = await actions.play(x, (s) => runStep(s, !!x.relative));
+          if (r.stopped) { engine.closeProject(p.id); problems.push(`stopped at ${f.name}`); break; }
           if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
           engine.settle();
           const blob = await engine.exportBlob(format === 'png' ? 'image/png' : 'image/jpeg', quality);
@@ -448,6 +461,7 @@ export function startApp(): void {
     animation: new AnimationDialog(engine),
     gif: new GifDialog(engine, (k) => exportGif(k)),
     tween: new TweenDialog(engine),
+    stop: new StopDialog(),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
     generative: new GenerativeDialog(engine),

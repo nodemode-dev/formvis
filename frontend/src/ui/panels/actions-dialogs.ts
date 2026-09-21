@@ -2,7 +2,8 @@ import { IMAGE_ACCEPT } from '../../io/images';
 import type { Action, Actions } from '../actions';
 import { actionsFrom } from '../actions';
 import { Dialog } from '../dialogs';
-import { el, setChecked, setDisabled, setText } from '../dom';
+import { el, patchList, q, setChecked, setDisabled, setHidden, setText } from '../dom';
+import type { ActionStep } from '../actions';
 import { toast } from '../toast';
 
 /** Keeps a select's options in step with `labels`, changing only what differs. */
@@ -22,7 +23,12 @@ const titled = (a: Action): string => `${a.name} (${a.steps.length} step${a.step
 export class ActionsDialog extends Dialog {
   private readonly pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Name a new action" spellcheck="false">');
-  private readonly steps = el('<pre class="cv-notice"></pre>');
+  private readonly steps = el('<div class="cv-list cv-steps" role="listbox" aria-label="Steps"></div>');
+  private readonly stepsEmpty = el('<p class="cv-note cv-steps-empty"></p>');
+  private readonly stopText = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Message for a stop" spellcheck="false">');
+  private readonly stopGo = el<HTMLInputElement>('<input type="checkbox" checked>');
+  private readonly deleteStepBtn: HTMLButtonElement;
+  private picked = -1;
   private readonly follow = el<HTMLInputElement>('<input type="checkbox">');
   private readonly note = el('<p class="cv-note"></p>');
   private readonly file = el<HTMLInputElement>('<input type="file" accept=".json,application/json" hidden>');
@@ -33,7 +39,27 @@ export class ActionsDialog extends Dialog {
   constructor(private readonly store: Actions, private readonly hooks: { play(a: Action): Promise<void>; save(blob: Blob, name: string): Promise<void> }) {
     super('Actions', 460);
     this.field('Action', this.pick);
-    this.body.appendChild(this.steps);
+    this.body.append(this.steps, this.stepsEmpty);
+    const stops = el('<div class="cv-welcome-actions cv-step-tools"></div>'), insert = el<HTMLButtonElement>('<button class="cv-btn" type="button">Insert Stop</button>');
+    this.deleteStepBtn = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Delete Step</button>');
+    const go = el('<label class="cv-step-go"></label>');
+    go.append(this.stopGo, document.createTextNode(' Allow Continue'));
+    stops.append(this.stopText, insert, go, this.deleteStepBtn);
+    this.body.appendChild(stops);
+    insert.addEventListener('click', () => this.insertStop());
+    this.deleteStepBtn.addEventListener('click', () => this.deleteStep());
+    this.steps.addEventListener('click', (e) => {
+      const t = e.target as HTMLElement, row = t.closest<HTMLElement>('.cv-step-row'), a = this.selected();
+      if (!row || !a) return;
+      const i = Number(row.dataset.key);
+      if (t.closest('.cv-step-ask')) {
+        // Pausing for input: the step's dialog opens during playback, with its recorded settings to adjust.
+        const s = a.steps[i];
+        if (s && (s.kind === 'filter' || (s.kind === 'adjustment' && !s.layer))) { if (s.ask) delete s.ask; else s.ask = true; this.store.save(); }
+      }
+      this.picked = i;
+      this.sync();
+    });
     this.field('Sizes follow each image', this.follow);
     this.field('New action', this.name);
     const row = el('<div class="cv-welcome-actions"></div>');
@@ -51,7 +77,7 @@ export class ActionsDialog extends Dialog {
     button('Import...', () => this.file.click());
     this.body.append(row, this.note, this.file);
     this.button('Close', 'primary', () => this.close());
-    this.pick.addEventListener('change', () => this.sync());
+    this.pick.addEventListener('change', () => { this.picked = -1; this.sync(); });
     this.follow.addEventListener('change', () => {
       const a = this.selected();
       if (!a) return;
@@ -68,7 +94,21 @@ export class ActionsDialog extends Dialog {
   private sync(): void {
     syncOptions(this.pick, this.store.list.map(titled));
     const a = this.selected();
-    setText(this.steps, !a ? 'No actions yet. Name one and press Record.' : a.steps.length ? a.steps.map((s, i) => `${i + 1}. ${s.label}`).join('\n') : 'No steps yet. Press Record to add some.');
+    const list = a?.steps ?? [];
+    if (this.picked >= list.length) this.picked = -1;
+    patchList<ActionStep>(this.steps, list, {
+      key: (s) => String(list.indexOf(s)),
+      create: (s) => {
+        const row = el('<div class="cv-list-row cv-step-row" role="option"><span class="cv-step-n"></span><span class="cv-step-label"></span><button class="cv-btn cv-btn-ghost cv-step-ask" type="button" title="Open this step\'s dialog during playback">Dialog</button></div>');
+        row.dataset.key = String(list.indexOf(s));
+        this.fillStep(row, s, list.indexOf(s));
+        return row;
+      },
+      update: (row, s) => this.fillStep(row, s, list.indexOf(s)),
+    });
+    setText(this.stepsEmpty, !a ? 'No actions yet. Name one and press Record.' : 'No steps yet. Press Record to add some.');
+    setHidden(this.stepsEmpty, list.length > 0);
+    setDisabled(this.deleteStepBtn, this.picked < 0);
     setChecked(this.follow, !!a?.relative);
     setDisabled(this.follow, !a);
     setDisabled(this.playBtn, !a?.steps.length);
@@ -76,6 +116,37 @@ export class ActionsDialog extends Dialog {
     setDisabled(this.exportBtn, !a);
     setText(this.note, this.store.recording ? `Recording "${this.store.recording.name}". File > Stop Recording ends it.`
       : 'Recording captures commands that change the document, filters with their settings, and Image and Canvas Size. Naming a new action starts it; otherwise Record adds to the one chosen.');
+  }
+
+  private fillStep(row: HTMLElement, s: ActionStep, i: number): void {
+    setText(q(row, '.cv-step-n'), `${i + 1}.`);
+    setText(q(row, '.cv-step-label'), s.kind === 'stop' ? `Stop: ${s.message || 'pause'}${s.allowContinue ? '' : ' (ends here)'}` : s.label);
+    const can = s.kind === 'filter' || (s.kind === 'adjustment' && !s.layer), ask = q<HTMLButtonElement>(row, '.cv-step-ask');
+    setHidden(ask, !can);
+    ask.setAttribute('aria-pressed', String(can && 'ask' in s && !!s.ask));
+    row.classList.toggle('is-picked', i === this.picked);
+    row.setAttribute('aria-selected', String(i === this.picked));
+  }
+
+  /** Insert Stop: a stop after the selected step, or at the end, showing its message during playback. */
+  private insertStop(): void {
+    const a = this.selected();
+    if (!a) return;
+    const message = this.stopText.value.trim(), at = this.picked >= 0 ? this.picked + 1 : a.steps.length;
+    a.steps.splice(at, 0, { kind: 'stop', label: 'Stop', message, allowContinue: this.stopGo.checked });
+    this.store.save();
+    this.stopText.value = '';
+    this.picked = at;
+    this.sync();
+  }
+
+  private deleteStep(): void {
+    const a = this.selected();
+    if (!a || this.picked < 0) return;
+    a.steps.splice(this.picked, 1);
+    this.store.save();
+    this.picked = -1;
+    this.sync();
   }
 
   private record(): void {

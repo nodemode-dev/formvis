@@ -6,8 +6,9 @@ import { ADJUSTMENT_KINDS, type RGB } from '../engine';
 
 export type ActionStep =
   | { kind: 'command'; id: string; label: string }
-  | { kind: 'filter'; filter: string; label: string; settings: Record<string, unknown> }
-  | { kind: 'adjustment'; adj: string; label: string; data: Record<string, unknown>; layer: boolean }
+  | { kind: 'filter'; filter: string; label: string; settings: Record<string, unknown>; ask?: boolean }
+  | { kind: 'stop'; label: string; message: string; allowContinue: boolean }
+  | { kind: 'adjustment'; adj: string; label: string; data: Record<string, unknown>; layer: boolean; ask?: boolean }
   | { kind: 'layerStyle'; label: string; effects: Record<string, unknown> | null }
   | { kind: 'imageSize'; label: string; w: number; h: number; sampling: string; res: number; fromW?: number; fromH?: number }
   | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number };
@@ -31,9 +32,11 @@ function stepFrom(v: unknown): ActionStep | null {
   if (!v || typeof v !== 'object') return null;
   const s = v as Record<string, unknown>, label = typeof s.label === 'string' ? s.label.slice(0, 200) : '';
   if (s.kind === 'command' && typeof s.id === 'string' && RECORDABLE.has(s.id)) return { kind: 'command', id: s.id, label: label || s.id };
+  const ask = s.ask === true ? { ask: true } : {};
+  if (s.kind === 'stop' && typeof s.message === 'string') return { kind: 'stop', label: label || 'Stop', message: s.message.slice(0, 500), allowContinue: s.allowContinue !== false };
   if (s.kind === 'layerStyle' && (s.effects === null || (s.effects && typeof s.effects === 'object'))) return { kind: 'layerStyle', label: label || 'Layer Style', effects: (s.effects as Record<string, unknown> | null) ?? null };
-  if (s.kind === 'adjustment' && typeof s.adj === 'string' && (ADJUSTMENT_KINDS as readonly string[]).includes(s.adj) && s.data && typeof s.data === 'object') return { kind: 'adjustment', adj: s.adj, label: label || s.adj, data: s.data as Record<string, unknown>, layer: s.layer === true };
-  if (s.kind === 'filter' && typeof s.filter === 'string' && s.settings && typeof s.settings === 'object') return { kind: 'filter', filter: s.filter, label: label || s.filter, settings: s.settings as Record<string, unknown> };
+  if (s.kind === 'adjustment' && typeof s.adj === 'string' && (ADJUSTMENT_KINDS as readonly string[]).includes(s.adj) && s.data && typeof s.data === 'object') return { kind: 'adjustment', adj: s.adj, label: label || s.adj, data: s.data as Record<string, unknown>, layer: s.layer === true, ...(s.layer === true ? {} : ask) };
+  if (s.kind === 'filter' && typeof s.filter === 'string' && s.settings && typeof s.settings === 'object') return { kind: 'filter', filter: s.filter, label: label || s.filter, settings: s.settings as Record<string, unknown>, ...ask };
   const from = isNum(s.fromW) && isNum(s.fromH) && s.fromW > 0 && s.fromH > 0 ? { fromW: s.fromW, fromH: s.fromH } : {};
   if (s.kind === 'imageSize' && isNum(s.w) && isNum(s.h) && typeof s.sampling === 'string' && isNum(s.res)) return { kind: 'imageSize', label: label || 'Image Size', w: s.w, h: s.h, sampling: s.sampling, res: s.res, ...from };
   if (s.kind === 'canvasSize' && isNum(s.w) && isNum(s.h) && isNum(s.dx) && isNum(s.dy)) {
@@ -82,12 +85,16 @@ export class Actions {
   /** Adds `step` to the action being recorded, unless an action is playing. */
   record(step: ActionStep): void { if (!this.active || this.playing) return; this.active.steps.push(step); this.save(); }
 
-  /** Runs each step through `run`, stopping at the first that cannot run; returns how many ran and which failed. */
-  async play(a: Action, run: (step: ActionStep) => boolean | Promise<boolean>): Promise<{ done: number; failed: string | null }> {
+  /** Runs each step through `run`, stopping at the first that cannot run, or that the person stopped (a stop step, or a
+   *  dialog cancelled while paused for input); returns how many ran, which step ended it, and whether it was stopped. */
+  async play(a: Action, run: (step: ActionStep) => boolean | 'stopped' | Promise<boolean | 'stopped'>): Promise<{ done: number; failed: string | null; stopped: boolean }> {
     this.playing = true;
     try {
-      for (let i = 0; i < a.steps.length; i++) if (!(await run(a.steps[i]))) return { done: i, failed: a.steps[i].label };
-      return { done: a.steps.length, failed: null };
+      for (let i = 0; i < a.steps.length; i++) {
+        const r = await run(a.steps[i]);
+        if (r !== true) return { done: i, failed: a.steps[i].label, stopped: r === 'stopped' };
+      }
+      return { done: a.steps.length, failed: null, stopped: false };
     } finally { this.playing = false; }
   }
 }

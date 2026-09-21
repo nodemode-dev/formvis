@@ -35,6 +35,7 @@ export class FilterPanel extends Dialog {
   private kind: FilterKind = 'gaussianBlur';
   private readonly s = defaultFilterSettings();
   private editing: ((settings: Record<string, unknown>) => void) | null = null;
+  private asking: ((settings: Record<string, unknown> | null) => void) | null = null;
   private savedPreview: boolean | null = null;
   private seed = 0;
   private preview = true;
@@ -169,10 +170,26 @@ export class FilterPanel extends Dialog {
     this.editing = done;
   }
 
+  /** Opens `kind` with recorded `settings` for an action paused for input; resolves with the settings chosen on OK,
+   *  or null on Cancel. The filter itself is applied by the action, as any recorded filter is. */
+  ask(kind: FilterKind, settings: Record<string, unknown>): Promise<Record<string, unknown> | null> {
+    return new Promise((resolve) => {
+      if (this.isOpen) { resolve(null); return; }
+      this.show(kind);
+      if (!this.isOpen) { resolve(null); return; }
+      Object.assign(this.s, structuredClone(settings));
+      if (typeof settings.seed === 'number') this.seed = settings.seed;
+      this.sections.get(kind)?.sync();
+      this.schedule(0);
+      this.asking = resolve;
+    });
+  }
+
   private commit(): void {
     window.clearTimeout(this.timer);
     this.done = true;
     const kind = this.kind, settings: Record<string, unknown> = { ...structuredClone(this.s), seed: this.seed }, editing = this.editing;
+    if (this.asking) { const done = this.asking; this.asking = null; this.engine.setPreview(null); this.close(); done(settings); return; }
     if (editing) { this.close(); editing(settings); return; }
     this.onApplied?.(this.kind, structuredClone(this.s));
     if (this.smartTarget()) { this.engine.setPreview(null); this.close(); this.engine.addSmartFilter(kind, settings); return; }
@@ -185,6 +202,7 @@ export class FilterPanel extends Dialog {
   private abandon(): void {
     window.clearTimeout(this.timer);
     this.editing = null;
+    if (this.asking) { const a = this.asking; this.asking = null; if (!this.done) this.engine.setPreview(null); a(null); }
     if (this.savedPreview !== null) { this.preview = this.savedPreview; this.savedPreview = null; }
     if (!this.done) this.engine.setPreview(null);
   }

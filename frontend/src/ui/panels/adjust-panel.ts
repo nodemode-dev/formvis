@@ -77,6 +77,7 @@ export class AdjustPanel extends Dialog {
   private layerId: ID | null = null;
   private data: Json = {};
   private madeLayer = false;
+  private asking: ((data: Json | null) => void) | null = null;
   /** Called when the dialog applies an adjustment, for Actions: to the image, or as a layer it just made. */
   onApplied: ((v: { kind: AdjustmentKind; data: Json; layer: boolean; made: boolean }) => void) | null = null;
   private hsv: HsvSettings = hsvFromData({});
@@ -315,7 +316,24 @@ export class AdjustPanel extends Dialog {
     return out;
   }
 
+  /** Opens `kind` for the image with recorded `data`, for an action paused for input; resolves with the settings
+   *  chosen on OK, or null on Cancel. The action applies them, as any recorded adjustment. */
+  askImage(kind: AdjustmentKind, data: Json): Promise<Json | null> {
+    return new Promise((resolve) => {
+      if (this.isOpen || !this.engine.targetImage()) { resolve(null); return; }
+      this.mode = 'image';
+      this.layerId = null;
+      this.kind = kind;
+      this.data = structuredClone(data);
+      this.prepare();
+      this.open(this.okBtn);
+      this.schedule();
+      this.asking = resolve;
+    });
+  }
+
   private commit(): void {
+    if (this.asking) { const done = this.asking; this.asking = null; this.done = true; this.engine.setPreview(null); const data = structuredClone(this.data); this.close(); done(data); return; }
     this.done = true;
     const kind = this.kind, data = structuredClone(this.data), layer = this.mode === 'layer';
     if (layer) this.engine.commitLive();
@@ -348,6 +366,7 @@ export class AdjustPanel extends Dialog {
 
   private abandon(): void {
     if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
+    if (this.asking) { const a = this.asking; this.asking = null; this.engine.setPreview(null); a(null); return; }
     if (this.done) return;
     if (this.mode === 'layer') this.engine.cancelLive();
     else this.engine.setPreview(null);

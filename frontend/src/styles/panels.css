@@ -102,3 +102,15 @@
 .cv-frame.is-dragging { opacity: 0.5; }
 .cv-frame.drop-before { box-shadow: inset 3px 0 0 var(--accent-color); }
 .cv-frame.drop-after { box-shadow: inset -3px 0 0 var(--accent-color); }
+.cv-steps { max-height: 180px; overflow-y: auto; }
+.cv-step-row { grid-template-columns: 24px minmax(0, 1fr) auto; }
+.cv-step-row.is-picked { background: var(--bg-tertiary); }
+.cv-step-n { color: var(--text-muted); font-size: var(--fs-11); }
+.cv-step-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cv-step-ask { height: 22px; padding: 0 var(--space-2); font-size: var(--fs-11); }
+.cv-step-ask[aria-pressed="true"] { color: var(--accent-color); }
+.cv-step-tools { align-items: center; }
+.cv-step-tools .cv-input { flex: 1 1 140px; min-width: 0; }
+.cv-step-go { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-size: var(--fs-11); }
+.cv-steps-empty[hidden] { display: none; }
+.cv-stop-message { margin: 0; color: var(--text-primary); line-height: 1.5; }
