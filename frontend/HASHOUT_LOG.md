@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/ui/paths.ts
+
+### src/ui/paths.ts · new · _v0.47.0
+
+The Paths panel. Nothing was removed.
+
 ## backend/app/services/project_format.py
 
 ### backend/app/services/project_format.py · smartSourceFile · _v0.45.0
@@ -30,6 +36,14 @@ A dependency-free ZIP writer, stored, UTF-8 names. Nothing was removed.
 
 The Actions and Batch dialogs. Nothing was removed.
 
+### src/ui/panels/actions-dialogs.ts · Sizes follow each image · _v0.47.0
+
+The per-action option in the Actions dialog. Removed:
+
+```ts
+import { el, setDisabled, setText } from '../dom';
+```
+
 ## src/ui/actions.ts
 
 ### src/ui/actions.ts · new · _v0.44.0
@@ -44,11 +58,33 @@ Convert and Rasterize become recordable. Removed:
   'paste-layer-style', 'clear-layer-style', 'duplicate', 'merge-down', 'merge-visible', 'flatten',
 ```
 
+### src/ui/actions.ts · relative sizes · _v0.47.0
+
+Starting sizes on size steps and the per-action option; new recordable commands. Removed:
+
+```ts
+  | { kind: 'imageSize'; label: string; w: number; h: number; sampling: string; res: number }
+  | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null };
+export interface Action { name: string; steps: ActionStep[] }
+  'paste-layer-style', 'clear-layer-style', 'convert-smart', 'rasterize', 'duplicate', 'merge-down', 'merge-visible', 'flatten',
+  if (s.kind === 'imageSize' && isNum(s.w) && isNum(s.h) && typeof s.sampling === 'string' && isNum(s.res)) return { kind: 'imageSize', label: label || 'Image Size', w: s.w, h: s.h, sampling: s.sampling, res: s.res };
+    return { kind: 'canvasSize', label: label || 'Canvas Size', w: s.w, h: s.h, dx: s.dx, dy: s.dy, fill };
+    return [{ name: (a as Action).name.slice(0, 80) || 'Action', steps }];
+```
+
 ## src/extensions/tools/direct-select.ts
 
 ### src/extensions/tools/direct-select.ts · new · _v0.43.0
 
 The Direct Selection tool. Nothing was removed.
+
+### src/extensions/tools/direct-select.ts · gestures · _v0.47.0
+
+Direct Selection brackets its drags for Shape Path undo. Removed:
+
+```ts
+  up() { grab = null; },
+```
 
 ## src/extensions/tools/pen.ts
 
@@ -66,6 +102,14 @@ import { cornerAt, tracePath, type Anchor, type Pt, type SubPath, type VectorPat
     if (!active) { active = { anchors: [], closed: false }; vp.subpaths.push(active); }
 ```
 
+### src/extensions/tools/pen.ts · gestures · _v0.47.0
+
+The Pen brackets its gestures for Shape Path undo. Removed:
+
+```ts
+  cancel() { pulling = null; },
+```
+
 ## src/engine/paths.ts
 
 ### src/engine/paths.ts · new · _v0.43.0
@@ -76,6 +120,14 @@ Anchors, sub-paths and Work Paths; tracing to Path2D; bounds. Nothing was remove
 
 pathData and pathFrom for project files; anchorNear, nearestSegment and splitSegment for adding and deleting points. Nothing was removed.
 
+### src/engine/paths.ts · named paths, shiftPath · _v0.47.0
+
+NamedPath and PathSet with their file data and checked reader; shiftPath. Removed:
+
+```ts
+import type { Pt, Rect } from './types';
+```
+
 ## src/io/psd.ts
 
 ### src/io/psd.ts · new · _v0.42.0
@@ -85,6 +137,10 @@ Layered PSD reading and writing with ag-psd, loaded on first use. Nothing was re
 ### src/io/psd.ts · note · _v0.45.0
 
 Smart objects export as pixels, with a note. Nothing was removed.
+
+### src/io/psd.ts · note · _v0.47.0
+
+Shape layers export as pixels, with a note. Nothing was removed.
 
 ## src/extensions/tools/patch.ts
 
@@ -717,6 +773,26 @@ Saving and opening carry the path; Save writes contents back; Edit Contents in t
   contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
 ```
 
+### src/app.ts · paths, shapes, relative sizes · _v0.47.0
+
+The Paths panel mounted; path sets saved and restored; shape and New Path commands; relative size replay. Removed:
+
+```ts
+    const { doc, activeId, workPath } = await deserialize(o.manifest, (name) => {
+    if (workPath) engine.setPathOf(p, workPath);
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathOf(p));
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathOf(p));
+        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathOf(p));
+  async function runStep(s: ActionStep): Promise<boolean> {
+    if (s.kind === 'imageSize') return engine.resampleImage(s.w, s.h, s.sampling as Parameters<typeof engine.resampleImage>[2], s.res);
+    return engine.resizeCanvas(s.w, s.h, s.dx, s.dy, s.fill);
+    const r = await actions.play(x, runStep);
+          const r = await actions.play(x, runStep);
+    { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || liveText(l)); }, run: () => engine.rasterizeLayer() },
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1305,6 +1381,32 @@ export { cornerAt, pathBounds, tracePath, type Anchor, type SubPath, type Vector
     this.emit('options', null);
 ```
 
+### src/engine/index.ts · paths per document, shape layers · _v0.47.0
+
+Path lists and selection; the Shape Path entry, rendering, gesture undo, protection and recolouring. Removed:
+
+```ts
+import { pathBounds, tracePath, type VectorPath } from './paths';
+export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, splitSegment, tracePath, type Anchor, type SubPath, type VectorPath } from './paths';
+  history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice;
+    if (!l?.smart || (p.maskTarget && l.mask)) return false;
+    this.notice(SMART_NOTICE);
+      if (!l || (!l.smart && !l.text)) return false;
+      p.updateLayer(l.id, { smart: null, text: null });
+  private readonly workPaths = new WeakMap<Project, VectorPath>();
+  /** The current document's Work Path, drawn with the Pen tool. It lives with the open document and is not saved yet. */
+  get workPath(): VectorPath | null { const p = this.current; return p ? this.workPaths.get(p) ?? null : null; }
+  setWorkPath(vp: VectorPath | null): void { const p = this.current; if (p) this.setPathOf(p, vp); }
+  /** Any open document's Work Path, as saving reads it. */
+  pathOf(p: Project): VectorPath | null { return this.workPaths.get(p) ?? null; }
+  /** Sets any open document's Work Path, as opening a project restores it. */
+  setPathOf(p: Project, vp: VectorPath | null): void {
+    if (vp && vp.subpaths.some((sp) => sp.anchors.length)) this.workPaths.set(p, vp); else this.workPaths.delete(p);
+  deletePath(): void { this.setWorkPath(null); }
+    if (this.current?.activeLayer?.smart) { this.notice(SMART_NOTICE); return false; }
+    if (al?.smart && !(this.current?.maskTarget && al.mask)) { this.notice(SMART_NOTICE); return; }
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1512,6 +1614,10 @@ export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 
 ### src/engine/types.ts · SmartObject, SmartFilter · _v0.45.0
 
 Smart object types and a checked reader for saved filters. Nothing was removed.
+
+### src/engine/types.ts · VectorLayer · _v0.47.0
+
+The shape-layer type. Nothing was removed.
 
 ## src/engine/viewport.ts
 
@@ -1998,6 +2104,22 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   return { doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
 ```
 
+### src/io/project-io.ts · paths and shape layers · _v0.47.0
+
+Every path and shape layers saved and read back; .ref notes for both. Removed:
+
+```ts
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathData, pathFrom, type VectorPath,
+export async function serialize(doc: Doc, activeId: ID | null, workPath: VectorPath | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
+  const pathRecord = pathData(workPath);
+  if (pathRecord) manifest.workPath = pathRecord;
+export async function serializeRefProject(doc: Doc, activeId: ID | null, workPath: VectorPath | null = null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
+  if (pathData(workPath)) notes.push('The Work Path is left out; .ref projects have no paths.');
+export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null; workPath: VectorPath | null }> {
+      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+  return { workPath: pathFrom(manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
+```
+
 ## src/main.ts
 
 ### src/main.ts · entry, calls startApp · _v0.1.0
@@ -2048,6 +2170,15 @@ The fx mark in muted italic. Nothing was removed.
 ### src/styles/panels.css · smart badge and dialog rows · _v0.45.0
 
 Styles for the badge and the filter list. Nothing was removed.
+
+### src/styles/panels.css · Paths panel · _v0.47.0
+
+The Paths panel, its rows and the shape badge; the layers grid gains a row. Removed:
+
+```css
+.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; min-height: 0; background: var(--bg-secondary); }
+.cv-layer-smart { flex: none; color: var(--text-muted); line-height: 0; }
+```
 
 ## src/styles/scrollbars.css
 
@@ -2245,6 +2376,14 @@ The smart-object badge and its double-click. Removed:
 
 ```ts
     const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-fx" hidden title="Layer style">fx</span></span></div>`);
+```
+
+### src/ui/layers.ts · shape badge · _v0.47.0
+
+The shape-layer badge. Removed:
+
+```ts
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-fx" hidden title="Layer style">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span></span></div>`);
 ```
 
 ## src/ui/menu.ts
@@ -2468,6 +2607,10 @@ Filter code made shareable; smart-object routing and editing a stored filter. Re
   }
 ```
 
+### src/ui/panels/filter-panel.ts · shape layers · _v0.47.0
+
+Filters refuse shape layers before opening. Nothing was removed.
+
 ## src/ui/panels/jpeg-dialog.ts
 
 ### src/ui/panels/jpeg-dialog.ts · JpegDialog · _v0.6.0
@@ -2493,6 +2636,17 @@ Records Image and Canvas Size changes. Removed:
 ```ts
     if (this.engine.resizeCanvas(W, H, dx, dy, colors[choice] ?? null)) this.close();
     if (this.engine.resampleImage(this.w, this.h, this.sampling, this.res)) this.close();
+```
+
+### src/ui/panels/size-dialogs.ts · starting sizes · _v0.47.0
+
+Image and Canvas Size report the size they started from. Removed:
+
+```ts
+  onApplied: ((v: { w: number; h: number; dx: number; dy: number; fill: RGB | null }) => void) | null = null;
+    if (this.engine.resizeCanvas(W, H, dx, dy, colors[choice] ?? null)) { this.onApplied?.({ w: W, h: H, dx, dy, fill: colors[choice] ?? null }); this.close(); }
+  onApplied: ((v: { w: number; h: number; sampling: string; res: number }) => void) | null = null;
+    if (this.engine.resampleImage(this.w, this.h, this.sampling, this.res)) { this.onApplied?.({ w: this.w, h: this.h, sampling: this.sampling, res: this.res }); this.close(); }
 ```
 
 ## src/ui/rail.ts

@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.47.0 · 2026-09-21
+
+### Added
+
+- A Paths panel below the layers: the Work Path and named paths, selected, created, renamed and deleted there, all saved with the project.
+- Shape layers: Layer > New Shape Layer from Path fills a path as a layer whose outline stays editable with Direct Selection; Layer > Shape Color from Foreground refills it.
+- Actions can size each image in proportion: Image and Canvas Size steps follow each image when the action's option is on.
+
 ## 0.46.0 · 2026-09-21
 
 ### Added
