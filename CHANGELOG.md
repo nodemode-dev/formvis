@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.50.0 · 2026-09-21
+
+### Added
+
+- Timeline > Tween fills frames between the selected frame and the next, stepping layer position and opacity, fading layers shown in only one of them.
+- Frames can be dragged to a new place in the Timeline.
+
 ## 0.49.0 · 2026-09-21
 
 ### Added

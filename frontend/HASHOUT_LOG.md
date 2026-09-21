@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/ui/panels/tween-dialog.ts
+
+### src/ui/panels/tween-dialog.ts · new · _v0.50.0
+
+The Tween dialog. Nothing was removed.
+
 ## src/ui/panels/gif-dialog.ts
 
 ### src/ui/panels/gif-dialog.ts · new · _v0.49.0
@@ -19,6 +25,14 @@ The animation preview. Nothing was removed.
 ### src/ui/timeline.ts · new · _v0.49.0
 
 The Timeline panel. Nothing was removed.
+
+### src/ui/timeline.ts · drag and tween · _v0.50.0
+
+Frames drag to a new place; the Tween button. Removed:
+
+```ts
+        const row = el(`<div class="cv-frame" role="option"><canvas class="cv-frame-thumb" width="${TW}" height="${TH}"></canvas><div class="cv-frame-meta"><span class="cv-frame-num"></span>` +
+```
 
 ## src/engine/timeline.ts
 
@@ -870,6 +884,10 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, 
   if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions };
 ```
 
+### src/app.ts · tween · _v0.50.0
+
+The Tween dialog and command. Nothing was removed.
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1515,6 +1533,14 @@ Timelines per document, frame selection as undo steps, reconciling after undo an
 
 ```ts
   history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null;
+```
+
+### src/engine/index.ts · moveFrame, tween · _v0.50.0
+
+Reordering frames and filling in tweened frames. Removed:
+
+```ts
+import { captureFrame, frameLayers, type Frame, type Timeline } from './timeline';
 ```
 
 ## src/engine/develop.ts
@@ -2336,6 +2362,10 @@ The Timeline section, frames and preview; the layers grid gains a row. Removed:
 .cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; min-height: 0; background: var(--bg-secondary); }
 ```
 
+### src/styles/panels.css · drag marks · _v0.50.0
+
+Drag and drop marks for frames. Nothing was removed.
+
 ## src/styles/scrollbars.css
 
 ### src/styles/scrollbars.css · scrollbars, loaded last · _v0.1.0
@@ -2475,6 +2505,10 @@ The Hand tool icon replaced with the owner-supplied Remix Icon cursor-hand. Remo
 ```
 
 ### src/ui/icons.ts · play · _v0.49.0
+
+One inline currentColor icon. Nothing was removed.
+
+### src/ui/icons.ts · tween · _v0.50.0
 
 One inline currentColor icon. Nothing was removed.
 
