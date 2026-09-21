@@ -286,7 +286,7 @@ export function startApp(): void {
       try {
         const flat = engine.flattened();
         if (!flat) return;
-        const { bytes, notes } = writePsdFile(p.doc, flat);
+        const { bytes, notes } = await writePsdFile(p.doc, flat);
         await deliver(new Blob([bytes], { type: 'image/vnd.adobe.photoshop' }), `${p.name}.psd`);
         if (notes.length) toast(notes.join(' '), 'info');
       } catch (err) { toast(message(err), 'error'); }

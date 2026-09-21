@@ -1,4 +1,4 @@
-import { readPsd, writePsd, type BlendMode as PsdBlend, type Layer as PsdLayer, type Psd } from 'ag-psd';
+import type { BlendMode as PsdBlend, Layer as PsdLayer, Psd } from 'ag-psd';
 import {
   Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid,
   type BlendMode, type Doc, type ID, type Layer, type Surface,
@@ -8,7 +8,8 @@ import { maskEdgeTone } from '../engine/distort';
 /** Layered PSD files, read and written with ag-psd (MIT). Pixel layers keep their position, opacity, blend mode and
  *  visibility, folders become groups and back, layer masks and clipping carry across, and the flattened image goes in
  *  as the composite for readers that ignore layers. What PSD stores in forms sonny does not write yet, layer styles,
- *  adjustment layers and editable type, is reported in the notes. */
+ *  adjustment layers and editable type, is reported in the notes. The library loads on first use, keeping it out of
+ *  the start-up bundle. */
 
 const TO_PSD: Record<BlendMode, PsdBlend> = {
   normal: 'normal', darken: 'darken', multiply: 'multiply', 'color-burn': 'color burn', lighten: 'lighten', screen: 'screen',
@@ -23,6 +24,7 @@ const canvas = (w: number, h: number): HTMLCanvasElement => { const c = document
 
 /** A PSD's layers as a sonny document, bottom to top as in the file, with notes on anything left out. */
 export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null }> {
+  const { readPsd } = await import('ag-psd');
   const psd = readPsd(await file.arrayBuffer(), { skipThumbnail: true });
   const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: 72, layers: [] };
   const layers: Layer[] = [], notes: string[] = [];
@@ -72,7 +74,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
 }
 
 /** The document as a layered PSD, with notes on what it could not carry. */
-export function writePsdFile(doc: Doc, composite: Surface): { bytes: ArrayBuffer; notes: string[] } {
+export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
+  const { writePsd } = await import('ag-psd');
   const notes: string[] = [];
   /** A raster drawn through `t` into a box aligned to the canvas; null when it covers nothing. */
   const placed = (r: Raster, t: Layer['transform']): { c: HTMLCanvasElement; x: number; y: number } | null => {
