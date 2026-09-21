@@ -27,6 +27,7 @@ export class TimelinePanel {
       `<div class="cv-frames-empty">No frames. New Frame starts an animation from the layers as they are.</div></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="play-animation" title="Play" aria-label="Play">${icon('play', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="export-gif" title="Export GIF" aria-label="Export GIF">${icon('download', 16)}</button>` +
+      `<button class="cv-icon-btn" type="button" data-cmd="tween-frames" title="Tween" aria-label="Tween">${icon('tween', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="new-frame" title="New frame" aria-label="New frame">${icon('add', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="delete-frame" title="Delete frame" aria-label="Delete frame">${icon('delete', 16)}</button></div></div></section>`);
     const section = q(root, '.cv-timeline');
@@ -52,6 +53,42 @@ export class TimelinePanel {
       if (id && t.classList.contains('cv-frame-delay')) this.engine.setFrameDelay(id, Number(t.value));
     });
     this.loops.addEventListener('change', () => this.engine.setLoops(Number(this.loops.value)));
+    // Dragging a frame to a new place: an accent edge marks where it will land.
+    let dragId: string | null = null;
+    const clearMarks = (): void => { for (const r of this.frames.querySelectorAll('.drop-before, .drop-after, .is-dragging')) r.classList.remove('drop-before', 'drop-after', 'is-dragging'); };
+    const landing = (e: DragEvent): { row: HTMLElement; before: boolean } | null => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>('.cv-frame');
+      if (!row) return null;
+      const r = row.getBoundingClientRect();
+      return { row, before: e.clientX < r.left + r.width / 2 };
+    };
+    this.frames.addEventListener('dragstart', (e) => {
+      const row = (e.target as HTMLElement).closest<HTMLElement>('.cv-frame');
+      if (!row || (e.target as HTMLElement).closest('select')) { e.preventDefault(); return; }
+      dragId = row.dataset.key ?? null;
+      e.dataTransfer?.setData('text/plain', dragId ?? '');
+      if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      row.classList.add('is-dragging');
+    });
+    this.frames.addEventListener('dragover', (e) => {
+      if (!dragId) return;
+      e.preventDefault();
+      const at = landing(e);
+      for (const r of this.frames.querySelectorAll('.drop-before, .drop-after')) if (r !== at?.row) r.classList.remove('drop-before', 'drop-after');
+      if (at) { at.row.classList.toggle('drop-before', at.before); at.row.classList.toggle('drop-after', !at.before); }
+    });
+    this.frames.addEventListener('drop', (e) => {
+      e.preventDefault();
+      const at = landing(e), id = dragId, rows = [...this.frames.children] as HTMLElement[];
+      clearMarks();
+      dragId = null;
+      if (!id || !at) return;
+      const from = rows.findIndex((r) => r.dataset.key === id);
+      let to = rows.indexOf(at.row) + (at.before ? 0 : 1);
+      if (from < to) to -= 1;
+      if (from >= 0 && to !== from) this.engine.moveFrame(id, to);
+    });
+    this.frames.addEventListener('dragend', () => { clearMarks(); dragId = null; });
     for (const ev of ['timeline', 'doc', 'projects'] as const) engine.on(ev, () => this.sync());
   }
 
@@ -61,7 +98,7 @@ export class TimelinePanel {
     patchList<Frame>(this.frames, t.frames, {
       key: (f) => f.id,
       create: (f) => {
-        const row = el(`<div class="cv-frame" role="option"><canvas class="cv-frame-thumb" width="${TW}" height="${TH}"></canvas><div class="cv-frame-meta"><span class="cv-frame-num"></span>` +
+        const row = el(`<div class="cv-frame" role="option" draggable="true"><canvas class="cv-frame-thumb" width="${TW}" height="${TH}"></canvas><div class="cv-frame-meta"><span class="cv-frame-num"></span>` +
           `<select class="cv-frame-delay" aria-label="Frame delay">${FRAME_DELAYS.map((d) => `<option value="${d}">${delayLabel(d)}</option>`).join('')}</select></div></div>`);
         row.dataset.key = f.id;
         this.fill(row, f, t.frames.indexOf(f) + 1, t.current);

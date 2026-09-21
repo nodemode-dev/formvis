@@ -99,3 +99,6 @@
 .cv-frames-empty[hidden] { display: none; }
 .cv-anim-wrap { display: flex; justify-content: center; padding: var(--space-2); border-radius: var(--radius-sm); background: var(--bg-primary); }
 .cv-anim-view { max-width: 100%; }
+.cv-frame.is-dragging { opacity: 0.5; }
+.cv-frame.drop-before { box-shadow: inset 3px 0 0 var(--accent-color); }
+.cv-frame.drop-after { box-shadow: inset -3px 0 0 var(--accent-color); }

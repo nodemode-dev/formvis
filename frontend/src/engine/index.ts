@@ -1,4 +1,4 @@
-import { captureFrame, frameLayers, type Frame, type Timeline } from './timeline';
+import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { pathBounds, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
 import { Emitter } from './events';
@@ -607,6 +607,47 @@ export class Engine {
     if (!t.frames.length) t.current = null;
     else if (wasCurrent) { t.current = null; this.selectFrame(t.frames[Math.min(i, t.frames.length - 1)].id); }
     this.emit('timeline', null);
+  }
+
+  /** Moves frame `id` to position `to`, counted from 0, as dragging it in the Timeline does. */
+  moveFrame(id: ID, to: number): void {
+    const p = this.current;
+    if (!p) return;
+    const t = this.timelineOf(p), i = t.frames.findIndex((f) => f.id === id);
+    if (i < 0) return;
+    const [f] = t.frames.splice(i, 1);
+    t.frames.splice(Math.max(0, Math.min(t.frames.length, Math.round(to))), 0, f);
+    this.emit('timeline', null);
+  }
+
+  /** Timeline > Tween: `count` frames between frame `id` and the one after it, stepping each layer's position and
+   *  opacity evenly. A layer shown in only one of the two fades, shown in the new frames with its opacity stepping from
+   *  or to nothing; without opacity it keeps the first frame's visibility. New frames take the first frame's delay. */
+  tween(id: ID, count: number, opts: { position: boolean; opacity: boolean }): boolean {
+    const p = this.current;
+    if (!p) return false;
+    this.syncFrame(p);
+    const t = this.timelineOf(p), i = t.frames.findIndex((f) => f.id === id);
+    if (i < 0 || i + 1 >= t.frames.length) { this.notice('Select a frame with another after it to tween towards.'); return false; }
+    const a = t.frames[i], b = t.frames[i + 1], n = Math.min(50, Math.max(1, Math.round(count))), made: Frame[] = [];
+    for (let k = 1; k <= n; k++) {
+      const u = k / (n + 1), state: Record<ID, FrameLayer> = {};
+      for (const lid of new Set([...Object.keys(a.state), ...Object.keys(b.state)])) {
+        const sa = a.state[lid], sb = b.state[lid];
+        if (!sa || !sb) { state[lid] = { ...(sa ?? sb) }; continue; }
+        const fades = opts.opacity && sa.visible !== sb.visible, oa = sa.visible ? sa.opacity : 0, ob = sb.visible ? sb.opacity : 0;
+        state[lid] = {
+          visible: fades ? true : sa.visible,
+          opacity: !opts.opacity ? sa.opacity : fades ? oa + (ob - oa) * u : sa.opacity + (sb.opacity - sa.opacity) * u,
+          x: opts.position ? sa.x + (sb.x - sa.x) * u : sa.x,
+          y: opts.position ? sa.y + (sb.y - sa.y) * u : sa.y,
+        };
+      }
+      made.push({ id: uid(), delay: a.delay, state });
+    }
+    t.frames.splice(i + 1, 0, ...made);
+    this.emit('timeline', null);
+    return true;
   }
 
   setFrameDelay(id: ID, ms: number): void {

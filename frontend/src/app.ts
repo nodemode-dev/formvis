@@ -1,3 +1,4 @@
+import { TweenDialog } from './ui/panels/tween-dialog';
 import { GifDialog } from './ui/panels/gif-dialog';
 import { TimelinePanel } from './ui/timeline';
 import { AnimationDialog } from './ui/panels/animation-dialog';
@@ -444,6 +445,7 @@ export function startApp(): void {
     shapeStyle: new ShapeStyleDialog(engine),
     animation: new AnimationDialog(engine),
     gif: new GifDialog(engine, (k) => exportGif(k)),
+    tween: new TweenDialog(engine),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
     generative: new GenerativeDialog(engine),
@@ -489,6 +491,7 @@ export function startApp(): void {
     { id: 'new-frame', label: 'New Frame', enabled: () => !!engine.current, run: () => engine.newFrame() },
     { id: 'delete-frame', label: 'Delete Frame', enabled: () => !!engine.current && engine.timeline.frames.length > 0, run: () => engine.deleteFrame() },
     { id: 'play-animation', label: 'Play Animation', enabled: () => !!engine.current && engine.timeline.frames.length > 1, run: () => dialogs.animation.show() },
+    { id: 'tween-frames', label: 'Tween...', enabled: () => { const t = engine.timeline, i = t.frames.findIndex((f) => f.id === t.current); return i >= 0 && i + 1 < t.frames.length; }, run: () => dialogs.tween.show() },
     { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
