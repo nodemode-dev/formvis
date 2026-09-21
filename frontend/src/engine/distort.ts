@@ -65,7 +65,7 @@ export function carried(inner: Transform, box: Transform, quad: readonly Pt[]): 
 }
 
 /** The inverse of a 3 by 3 row-major matrix from the cross products of its rows, or null when it is singular. */
-function inverse3(m: readonly number[]): number[] | null {
+export function inverse3(m: readonly number[]): number[] | null {
   const r0 = [m[0], m[1], m[2]], r1 = [m[3], m[4], m[5]], r2 = [m[6], m[7], m[8]];
   const cross = (a: number[], b: number[]): number[] => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
   const c0 = cross(r1, r2), c1 = cross(r2, r0), c2 = cross(r0, r1);
@@ -95,7 +95,8 @@ export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale
   const ow = Math.max(1, Math.round(W * scale)), oh = Math.max(1, Math.round(H * scale));
   const sw = src.width, sh = src.height, sd = src.ctx.getImageData(0, 0, sw, sh).data;
   const out = new ImageData(ow, oh), od = out.data;
-  if (mask) for (let k = 0; k < od.length; k += 4) { od[k] = od[k + 1] = od[k + 2] = background; od[k + 3] = 255; }
+  // Masks keep their level in alpha over white: outside the shape they take the edge's level.
+  if (mask) for (let k = 0; k < od.length; k += 4) { od[k] = od[k + 1] = od[k + 2] = 255; od[k + 3] = background; }
   const texel = (x: number, y: number): number => (Math.min(sh - 1, Math.max(0, y)) * sw + Math.min(sw - 1, Math.max(0, x))) * 4;
   for (let j = 0; j < oh; j++) {
     const Y = y0 + ((j + 0.5) * H) / oh;
@@ -111,13 +112,17 @@ export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale
         for (let dx = 0; dx < 2; dx++) {
           const weight = wy * (dx ? tx : 1 - tx);
           if (!weight) continue;
-          const o = texel(ix + dx, iy + dy), k = weight * (mask ? 255 : sd[o + 3]);
+          const o = texel(ix + dx, iy + dy);
+          if (mask) { a += weight * sd[o + 3]; continue; }
+          const k = weight * sd[o + 3];
           r += sd[o] * k; g += sd[o + 1] * k; b += sd[o + 2] * k; a += k;
         }
       }
       const o = (j * ow + i) * 4;
+      // A mask's level is its alpha, read straight (the four weights sum to one); pixels are premultiplied.
+      if (mask) { od[o] = od[o + 1] = od[o + 2] = 255; od[o + 3] = Math.round(a); continue; }
       if (a > 0) { od[o] = Math.round(r / a); od[o + 1] = Math.round(g / a); od[o + 2] = Math.round(b / a); }
-      od[o + 3] = mask ? 255 : Math.round(a);
+      od[o + 3] = Math.round(a);
     }
   }
   const raster = new Raster(ow, oh);
@@ -152,7 +157,7 @@ export function cropWarp(wp: Warped, crop: Rect): Warped {
 export function maskEdgeTone(r: Raster): number {
   const d = r.ctx.getImageData(0, 0, r.width, r.height).data, w = r.width, h = r.height;
   let sum = 0, count = 0;
-  const add = (x: number, y: number): void => { sum += d[(y * w + x) * 4]; count++; };
+  const add = (x: number, y: number): void => { sum += d[(y * w + x) * 4 + 3]; count++; };
   for (let x = 0; x < w; x++) { add(x, 0); add(x, h - 1); }
   for (let y = 1; y < h - 1; y++) { add(0, y); add(w - 1, y); }
   return count && sum / count >= 127.5 ? 255 : 0;
