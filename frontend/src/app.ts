@@ -15,7 +15,7 @@ import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -698,6 +698,10 @@ export function startApp(): void {
   root.addEventListener('cv:smart-filters', () => dialogs.smartFilters.show());
   root.addEventListener('cv:shape-style', () => dialogs.shapeStyle.show());
   engine.smartFilterMargin = (kind, settings) => filterMargin(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) });
+  engine.smartFilterRunnerAsync = (kind, settings, src) => {
+    const s = { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : 0;
+    return runFilterOffThread(kind as FilterKind, s, 1, seed, src) ?? Promise.resolve(runFilter(kind as FilterKind, s, seed, src, 1));
+  };
   engine.smartFilterRunner = (kind, settings, src) => runFilter(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, typeof settings.seed === 'number' ? settings.seed : 0, src, 1);
   document.addEventListener('cv:type', (e) => {
     const d = (e as CustomEvent<{ layerId?: string; x?: number; y?: number }>).detail;

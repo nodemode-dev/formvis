@@ -493,11 +493,11 @@ export class Engine {
   /** Adds a filter to the active smart object's stack and re-renders it, as one undo step. */
   addSmartFilter(kind: string, settings: Record<string, unknown>): void {
     const l = this.current?.activeLayer;
-    if (l?.smart) this.setSmartFilters(l.id, [...l.smart.filters, { id: uid(), kind, settings: structuredClone(settings), enabled: true }], 'Smart Filter');
+    if (l?.smart) this.setSmartFilters(l.id, [...(this.smartFiltersShown(l.id) ?? l.smart.filters), { id: uid(), kind, settings: structuredClone(settings), enabled: true }], 'Smart Filter');
   }
 
   /** Replaces a smart object's filter stack and re-renders its pixels from the source, as one undo step. */
-  setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void { const p = this.current; if (p) this.restack(p, id, null, filters, name); }
+  setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void { const p = this.current; if (p) this.restackSoon(p, id, null, filters, name); }
 
   /** A change made as one undo step in `p`, which need not be the document in view. */
   private editOn(p: Project, name: string, fn: () => boolean | void): boolean {
@@ -511,12 +511,60 @@ export class Engine {
   }
 
   /** Re-renders smart object `id` in `p` from a new source, a new filter stack, or both, as one undo step. */
-  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string): boolean {
+  /** Runs one smart filter off the main thread, supplied by the app with the filter worker. */
+  smartFilterRunnerAsync: ((kind: string, settings: Record<string, unknown>, src: ImageData) => Promise<ImageData>) | null = null;
+  private readonly smartPending = new Map<ID, { token: number; filters: SmartFilter[] }>();
+  private smartToken = 0;
+
+  /** The filters a smart object's dialog shows: those last asked for while their render is still running, else its own. */
+  smartFiltersShown(id: ID): SmartFilter[] | null {
+    const pending = this.smartPending.get(id);
+    return pending ? pending.filters : this.current?.layer(id)?.smart?.filters ?? null;
+  }
+
+  /** renderSmart with each filter run in the worker in turn, the interface staying live. */
+  private async renderSmartAsync(source: Raster, filters: SmartFilter[]): Promise<Raster> {
+    const m = this.smartMargin(filters), pad = createSurface(source.width + 2 * m, source.height + 2 * m);
+    ctxOf(pad).drawImage(source.canvas, m, m);
+    let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
+    for (const f of filters.filter((x) => x.enabled)) {
+      img = this.smartFilterRunnerAsync ? await this.smartFilterRunnerAsync(f.kind, f.settings, img) : this.smartFilterRunner ? this.smartFilterRunner(f.kind, f.settings, img) : img;
+    }
+    const out = new Raster(img.width, img.height);
+    out.write(img);
+    return out;
+  }
+
+  /** Re-renders a smart object: at once when it is small (up to 2 megapixels) or shows no filter, else in the
+   *  background, the result applied as one undo step when it is ready. A later change to the same object supersedes a
+   *  render still running, and a render whose source changed meanwhile is dropped. */
+  private restackSoon(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string): boolean {
+    const l = p.layer(id);
+    if (!l?.smart) return false;
+    const src = source ?? l.smart.source, stack = structuredClone(filters ?? this.smartFiltersShown(id) ?? l.smart.filters);
+    if (!this.smartFilterRunnerAsync || src.width * src.height <= 2_000_000 || !stack.some((f) => f.enabled)) {
+      this.smartPending.delete(id);
+      return this.restack(p, id, source, stack, name);
+    }
+    const token = ++this.smartToken;
+    this.smartPending.set(id, { token, filters: stack });
+    void this.task(async () => {
+      const rendered = await this.renderSmartAsync(src, stack);
+      if (this.smartPending.get(id)?.token !== token) return;
+      this.smartPending.delete(id);
+      const now = p.layer(id);
+      if (!this.projects.includes(p) || !now?.smart || (source === null && now.smart.source !== src)) { this.emit('doc', null); return; }
+      this.restack(p, id, source, stack, name, rendered);
+    });
+    return true;
+  }
+
+  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, rendered: Raster | null = null): boolean {
     return this.editOn(p, name, () => {
       const l = p.layer(id);
       if (!l?.smart) return false;
       const src = source ?? l.smart.source;
-      const stack = structuredClone(filters ?? l.smart.filters), raster = this.renderSmart(src, stack), old = l.raster as Raster, t = l.transform;
+      const stack = structuredClone(filters ?? l.smart.filters), raster = rendered ?? this.renderSmart(src, stack), old = l.raster as Raster, t = l.transform;
       const warp = this.smartWarpNow(l);
       if (warp) {
         // A distorted smart object warps its fresh render through its kept warp; a mask tied to its pixels is pinned
@@ -577,7 +625,7 @@ export class Engine {
     this.settle();
     const flat = this.flattened();
     if (!flat) { this.notice('These contents have nothing visible to put back.'); return false; }
-    const ok = this.restack(target.parent, target.layer.id, Raster.from(flat, flat.width, flat.height), null, 'Update Smart Object');
+    const ok = this.restackSoon(target.parent, target.layer.id, Raster.from(flat, flat.width, flat.height), null, 'Update Smart Object');
     if (ok) { child.history.markSaved(); this.emit('projects', null); this.emit('history', null); }
     return ok;
   }

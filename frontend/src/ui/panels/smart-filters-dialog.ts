@@ -38,7 +38,8 @@ export class SmartFiltersDialog extends Dialog {
 
   private sync(): void {
     const smart = this.smart();
-    patchList<SmartFilter>(this.list, smart?.filters ?? [], {
+    const shown = this.layerId ? this.engine.smartFiltersShown(this.layerId) ?? [] : [];
+    patchList<SmartFilter>(this.list, shown, {
       key: (f) => f.id,
       create: (f) => {
         const row = el(`<div class="cv-list-row cv-sf-row"><input type="checkbox" aria-label="Show this filter"><span class="cv-sf-name"></span><button class="cv-btn cv-btn-ghost" type="button" data-act="edit">Edit</button><button class="cv-btn cv-btn-ghost" type="button" data-act="remove">Remove</button></div>`);
@@ -48,7 +49,7 @@ export class SmartFiltersDialog extends Dialog {
       },
       update: (row, f) => this.fill(row, f),
     });
-    setText(this.note, smart?.filters.length ? "Filters run top first, each on the one before's result, always from the smart object's original pixels."
+    setText(this.note, smart && shown.length ? "Filters run top first, each on the one before's result, always from the smart object's original pixels."
       : 'No smart filters yet. Choose a filter from the Filter menu while this smart object is selected.');
   }
 
@@ -60,19 +61,19 @@ export class SmartFiltersDialog extends Dialog {
   private change(edit: (fs: SmartFilter[]) => SmartFilter[], name: string): void {
     const smart = this.smart();
     if (!smart || !this.layerId) return;
-    this.engine.setSmartFilters(this.layerId, edit(smart.filters), name);
+    this.engine.setSmartFilters(this.layerId, edit(this.engine.smartFiltersShown(this.layerId) ?? smart.filters), name);
     this.sync();
     // Removing a row can take the focused button with it; keep focus in the dialog so Escape still closes it.
     if (!this.list.closest('dialog, .cv-dialog')?.contains(document.activeElement)) this.list.focus({ preventScroll: true });
   }
 
   private edit(id: string): void {
-    const f = this.smart()?.filters.find((x) => x.id === id), layerId = this.layerId;
+    const f = (this.layerId ? this.engine.smartFiltersShown(this.layerId) : null)?.find((x) => x.id === id), layerId = this.layerId;
     if (!f || !layerId) return;
     this.close();
     this.filters().showFor(f.kind as FilterKind, f.settings, (settings) => {
-      const now = this.engine.current?.layer(layerId)?.smart;
-      if (now) this.engine.setSmartFilters(layerId, now.filters.map((x) => (x.id === id ? { ...x, settings } : x)), 'Edit Smart Filter');
+      const now = this.engine.smartFiltersShown(layerId);
+      if (now) this.engine.setSmartFilters(layerId, now.map((x) => (x.id === id ? { ...x, settings } : x)), 'Edit Smart Filter');
     });
   }
 }
