@@ -1706,6 +1706,14 @@ import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode
       if (w) this.edit('Distort', (q) => q.updateLayer(sl.id, { raster: w.raster, transform: w.t, smart: { ...smart, warp, warpAt: w.t } }));
 ```
 
+### src/engine/index.ts · background filters, stroke warm-up · _v0.55.0
+
+applyImageEditAsync with its source preparation; painting tools warm stroke surfaces; strokes give their surfaces back. Removed:
+
+```ts
+import { PixelStroke } from './stroke';
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1818,6 +1826,17 @@ _Quoted code redacted in 0.35.0: it came from an implementation since replaced w
 ### src/engine/stroke.ts · rewritten independently · _v0.35.0
 
 The brush tip computed per pixel (exact raised cosine; soft fringes about 15% lighter than the old eight-segment approximation), spacing, paint layer and composing rewritten. The removed code is not quoted here, deliberately: it is the implementation this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.34.0.
+
+### src/engine/stroke.ts · surface pool · _v0.55.0
+
+Stroke surfaces taken from and given back to a small pool, warmed on request. Removed:
+
+```ts
+    this.working = createSurface(raster.width, raster.height);
+    this.paint = createSurface(raster.width, raster.height);
+    this.masked = selection ? createSurface(raster.width, raster.height) : null;
+      this.textured ??= createSurface(this.raster.width, this.raster.height);
+```
 
 ## src/engine/surface.ts
 
@@ -3021,6 +3040,17 @@ Filters refuse shape layers before opening. Nothing was removed.
 ### src/ui/panels/filter-panel.ts · ask · _v0.53.0
 
 Opens with recorded settings for an action paused for input. Nothing was removed.
+
+### src/ui/panels/filter-panel.ts · background apply · _v0.55.0
+
+OK and Actions replay apply filters through the worker. Removed:
+
+```ts
+  applySettings(kind: FilterKind, settings: Record<string, unknown>): boolean {
+    const label = FILTER_LABELS[this.kind], grow = this.grow();
+    const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
+    requestAnimationFrame(() => window.setTimeout(() => this.engine.applyImageEdit(label, run, grow), 0));
+```
 
 ## src/ui/panels/jpeg-dialog.ts
 

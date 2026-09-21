@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.55.0 · 2026-09-21
+
+### Changed
+
+- Filters apply in the background: the interface stays responsive while a large filter runs, and a filter whose layer changes meanwhile is not applied.
+- Brush strokes start about four times faster on large images.
+
 ## 0.54.0 · 2026-09-21
 
 ### Added
