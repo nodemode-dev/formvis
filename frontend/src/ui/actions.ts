@@ -7,9 +7,11 @@ import type { RGB } from '../engine';
 export type ActionStep =
   | { kind: 'command'; id: string; label: string }
   | { kind: 'filter'; filter: string; label: string; settings: Record<string, unknown> }
-  | { kind: 'imageSize'; label: string; w: number; h: number; sampling: string; res: number }
-  | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null };
-export interface Action { name: string; steps: ActionStep[] }
+  | { kind: 'imageSize'; label: string; w: number; h: number; sampling: string; res: number; fromW?: number; fromH?: number }
+  | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number };
+/** `relative`: size steps follow each document, Image Size as the same proportion and Canvas Size as the same pixels
+ *  added, using the size each step was recorded from. */
+export interface Action { name: string; steps: ActionStep[]; relative?: boolean }
 
 /** Commands that change the document straight away, without a dialog or a background task, so they replay exactly. */
 export const RECORDABLE: ReadonlySet<string> = new Set([
@@ -28,11 +30,12 @@ function stepFrom(v: unknown): ActionStep | null {
   const s = v as Record<string, unknown>, label = typeof s.label === 'string' ? s.label.slice(0, 200) : '';
   if (s.kind === 'command' && typeof s.id === 'string' && RECORDABLE.has(s.id)) return { kind: 'command', id: s.id, label: label || s.id };
   if (s.kind === 'filter' && typeof s.filter === 'string' && s.settings && typeof s.settings === 'object') return { kind: 'filter', filter: s.filter, label: label || s.filter, settings: s.settings as Record<string, unknown> };
-  if (s.kind === 'imageSize' && isNum(s.w) && isNum(s.h) && typeof s.sampling === 'string' && isNum(s.res)) return { kind: 'imageSize', label: label || 'Image Size', w: s.w, h: s.h, sampling: s.sampling, res: s.res };
+  const from = isNum(s.fromW) && isNum(s.fromH) && s.fromW > 0 && s.fromH > 0 ? { fromW: s.fromW, fromH: s.fromH } : {};
+  if (s.kind === 'imageSize' && isNum(s.w) && isNum(s.h) && typeof s.sampling === 'string' && isNum(s.res)) return { kind: 'imageSize', label: label || 'Image Size', w: s.w, h: s.h, sampling: s.sampling, res: s.res, ...from };
   if (s.kind === 'canvasSize' && isNum(s.w) && isNum(s.h) && isNum(s.dx) && isNum(s.dy)) {
     const f = s.fill as Record<string, unknown> | null;
     const fill = f && isNum(f.r) && isNum(f.g) && isNum(f.b) ? { r: f.r, g: f.g, b: f.b } : null;
-    return { kind: 'canvasSize', label: label || 'Canvas Size', w: s.w, h: s.h, dx: s.dx, dy: s.dy, fill };
+    return { kind: 'canvasSize', label: label || 'Canvas Size', w: s.w, h: s.h, dx: s.dx, dy: s.dy, fill, ...from };
   }
   return null;
 }
@@ -43,7 +46,7 @@ export function actionsFrom(value: unknown): Action[] {
   return list.flatMap((a) => {
     if (!a || typeof a !== 'object' || typeof (a as Action).name !== 'string' || !Array.isArray((a as Action).steps)) return [];
     const steps = (a as Action).steps.map(stepFrom).filter((x): x is ActionStep => x !== null);
-    return [{ name: (a as Action).name.slice(0, 80) || 'Action', steps }];
+    return [{ name: (a as Action).name.slice(0, 80) || 'Action', steps, ...((a as Action).relative === true ? { relative: true } : {}) }];
   });
 }
 

@@ -294,17 +294,26 @@ export function startApp(): void {
 
   /** One recorded step on the current document: a command through the registry, a filter with its settings, or a
    *  size change through the engine. False when it cannot run here. */
-  async function runStep(s: ActionStep): Promise<boolean> {
+  async function runStep(s: ActionStep, relative = false): Promise<boolean> {
     if (s.kind === 'command') return commands.run(s.id);
     if (s.kind === 'filter') return dialogs.filter.applySettings(s.filter as FilterKind, s.settings);
-    if (s.kind === 'imageSize') return engine.resampleImage(s.w, s.h, s.sampling as Parameters<typeof engine.resampleImage>[2], s.res);
-    return engine.resizeCanvas(s.w, s.h, s.dx, s.dy, s.fill);
+    const doc = engine.current?.doc, follow = relative && !!doc && !!s.fromW && !!s.fromH;
+    if (s.kind === 'imageSize') {
+      // Following each image: the same proportion of this document as of the one the step was recorded on.
+      const w = follow ? Math.max(1, Math.round(((doc as NonNullable<typeof doc>).width * s.w) / (s.fromW as number))) : s.w;
+      const h = follow ? Math.max(1, Math.round(((doc as NonNullable<typeof doc>).height * s.h) / (s.fromH as number))) : s.h;
+      return engine.resampleImage(w, h, s.sampling as Parameters<typeof engine.resampleImage>[2], s.res);
+    }
+    // Following each image: the same pixels added (or taken) on each side, placed the same way.
+    const w = follow ? Math.max(1, (doc as NonNullable<typeof doc>).width + s.w - (s.fromW as number)) : s.w;
+    const h = follow ? Math.max(1, (doc as NonNullable<typeof doc>).height + s.h - (s.fromH as number)) : s.h;
+    return engine.resizeCanvas(w, h, s.dx, s.dy, s.fill);
   }
 
   async function playAction(x: Action): Promise<void> {
     if (!engine.current) { toast('Open a document to play an action on.'); return; }
     engine.settle();
-    const r = await actions.play(x, runStep);
+    const r = await actions.play(x, (s) => runStep(s, !!x.relative));
     if (r.failed) toast(`"${x.name}" stopped at step ${r.done + 1}, ${r.failed}, which could not run here.`, 'error');
     else toast(`Played "${x.name}", ${r.done} step${r.done === 1 ? '' : 's'}.`);
   }
@@ -316,7 +325,7 @@ export function startApp(): void {
       for (const f of files) {
         try {
           const p = engine.openImage(await decodeImage(f, f.name));
-          const r = await actions.play(x, runStep);
+          const r = await actions.play(x, (s) => runStep(s, !!x.relative));
           if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
           engine.settle();
           const blob = await engine.exportBlob(format === 'png' ? 'image/png' : 'image/jpeg', quality);

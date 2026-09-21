@@ -13,7 +13,7 @@ const enterTo = (input: HTMLInputElement, run: () => void): void => input.addEve
 
 export class CanvasSizeDialog extends Dialog {
   /** Called when the canvas is resized, for Actions to record it. */
-  onApplied: ((v: { w: number; h: number; dx: number; dy: number; fill: RGB | null }) => void) | null = null;
+  onApplied: ((v: { w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW: number; fromH: number }) => void) | null = null;
   private unit: Unit = 'px';
   private anchor = 4;
   private w = 1;
@@ -82,13 +82,14 @@ export class CanvasSizeDialog extends Dialog {
     const dx = Math.floor(((W - w0) * (this.anchor % 3)) / 2), dy = Math.floor(((H - h0) * Math.floor(this.anchor / 3)) / 2);
     const choice = this.fill.el.querySelector('select')?.value ?? 'none';
     const colors: Record<string, RGB | null> = { none: null, fg: this.engine.fg, bg: this.engine.bg, white: { r: 255, g: 255, b: 255 }, black: { r: 0, g: 0, b: 0 } };
-    if (this.engine.resizeCanvas(W, H, dx, dy, colors[choice] ?? null)) { this.onApplied?.({ w: W, h: H, dx, dy, fill: colors[choice] ?? null }); this.close(); }
+    const fromW = this.engine.current?.doc.width ?? W, fromH = this.engine.current?.doc.height ?? H;
+    if (this.engine.resizeCanvas(W, H, dx, dy, colors[choice] ?? null)) { this.onApplied?.({ w: W, h: H, dx, dy, fill: colors[choice] ?? null, fromW, fromH }); this.close(); }
   }
 }
 
 export class ImageSizeDialog extends Dialog {
   /** Called when the image is resampled, for Actions to record it. */
-  onApplied: ((v: { w: number; h: number; sampling: string; res: number }) => void) | null = null;
+  onApplied: ((v: { w: number; h: number; sampling: string; res: number; fromW: number; fromH: number }) => void) | null = null;
   private unit: Unit = 'px';
   private w = 1;
   private h = 1;
@@ -146,7 +147,8 @@ export class ImageSizeDialog extends Dialog {
   }
 
   private apply(): void {
-    if (this.engine.resampleImage(this.w, this.h, this.sampling, this.res)) { this.onApplied?.({ w: this.w, h: this.h, sampling: this.sampling, res: this.res }); this.close(); }
+    const fromW = this.engine.current?.doc.width ?? this.w, fromH = this.engine.current?.doc.height ?? this.h;
+    if (this.engine.resampleImage(this.w, this.h, this.sampling, this.res)) { this.onApplied?.({ w: this.w, h: this.h, sampling: this.sampling, res: this.res, fromW, fromH }); this.close(); }
   }
 }
 

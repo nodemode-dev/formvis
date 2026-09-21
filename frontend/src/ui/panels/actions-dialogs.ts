@@ -2,7 +2,7 @@ import { IMAGE_ACCEPT } from '../../io/images';
 import type { Action, Actions } from '../actions';
 import { actionsFrom } from '../actions';
 import { Dialog } from '../dialogs';
-import { el, setDisabled, setText } from '../dom';
+import { el, setChecked, setDisabled, setText } from '../dom';
 import { toast } from '../toast';
 
 /** Keeps a select's options in step with `labels`, changing only what differs. */
@@ -23,6 +23,7 @@ export class ActionsDialog extends Dialog {
   private readonly pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" placeholder="Name a new action" spellcheck="false">');
   private readonly steps = el('<pre class="cv-notice"></pre>');
+  private readonly follow = el<HTMLInputElement>('<input type="checkbox">');
   private readonly note = el('<p class="cv-note"></p>');
   private readonly file = el<HTMLInputElement>('<input type="file" accept=".json,application/json" hidden>');
   private readonly playBtn: HTMLButtonElement;
@@ -33,6 +34,7 @@ export class ActionsDialog extends Dialog {
     super('Actions', 460);
     this.field('Action', this.pick);
     this.body.appendChild(this.steps);
+    this.field('Sizes follow each image', this.follow);
     this.field('New action', this.name);
     const row = el('<div class="cv-welcome-actions"></div>');
     const button = (label: string, run: () => void): HTMLButtonElement => {
@@ -50,6 +52,12 @@ export class ActionsDialog extends Dialog {
     this.body.append(row, this.note, this.file);
     this.button('Close', 'primary', () => this.close());
     this.pick.addEventListener('change', () => this.sync());
+    this.follow.addEventListener('change', () => {
+      const a = this.selected();
+      if (!a) return;
+      if (this.follow.checked) a.relative = true; else delete a.relative;
+      this.store.save();
+    });
     this.file.addEventListener('change', () => void this.importJson());
   }
 
@@ -61,6 +69,8 @@ export class ActionsDialog extends Dialog {
     syncOptions(this.pick, this.store.list.map(titled));
     const a = this.selected();
     setText(this.steps, !a ? 'No actions yet. Name one and press Record.' : a.steps.length ? a.steps.map((s, i) => `${i + 1}. ${s.label}`).join('\n') : 'No steps yet. Press Record to add some.');
+    setChecked(this.follow, !!a?.relative);
+    setDisabled(this.follow, !a);
     setDisabled(this.playBtn, !a?.steps.length);
     setDisabled(this.deleteBtn, !a);
     setDisabled(this.exportBtn, !a);
