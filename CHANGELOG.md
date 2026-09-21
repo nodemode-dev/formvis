@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.53.0 · 2026-09-21
+
+### Added
+
+- Actions pause for input: Insert Stop shows a message with Continue or Stop, and a filter or image adjustment step can open its dialog during playback with the recorded settings to adjust.
+- Smart objects travel to and from PSD as Photoshop smart objects, their originals embedded.
+
 ## 0.52.0 · 2026-09-21
 
 ### Added

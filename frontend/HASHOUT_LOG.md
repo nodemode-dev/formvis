@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/ui/panels/stop-dialog.ts
+
+### src/ui/panels/stop-dialog.ts · new · _v0.53.0
+
+The dialog a stop step shows. Nothing was removed.
+
 ## src/ui/panels/tween-dialog.ts
 
 ### src/ui/panels/tween-dialog.ts · new · _v0.50.0
@@ -104,6 +110,18 @@ The per-action option in the Actions dialog. Removed:
 import { el, setDisabled, setText } from '../dom';
 ```
 
+### src/ui/panels/actions-dialogs.ts · step list · _v0.53.0
+
+Steps as selectable rows with Dialog toggles, Insert Stop and Delete Step. Removed:
+
+```ts
+import { el, setChecked, setDisabled, setText } from '../dom';
+  private readonly steps = el('<pre class="cv-notice"></pre>');
+    this.body.appendChild(this.steps);
+    this.pick.addEventListener('change', () => this.sync());
+    setText(this.steps, !a ? 'No actions yet. Name one and press Record.' : a.steps.length ? a.steps.map((s, i) => `${i + 1}. ${s.label}`).join('\n') : 'No steps yet. Press Record to add some.');
+```
+
 ## src/ui/actions.ts
 
 ### src/ui/actions.ts · new · _v0.44.0
@@ -143,6 +161,21 @@ import type { RGB } from '../engine';
 ### src/ui/actions.ts · layer style steps · _v0.52.0
 
 The Layer Style step and its check on import. Nothing was removed.
+
+### src/ui/actions.ts · stops and pauses · _v0.53.0
+
+Stop steps, the dialog toggle, and playback that tells a stop from a failure. Removed:
+
+```ts
+  | { kind: 'filter'; filter: string; label: string; settings: Record<string, unknown> }
+  | { kind: 'adjustment'; adj: string; label: string; data: Record<string, unknown>; layer: boolean }
+  if (s.kind === 'adjustment' && typeof s.adj === 'string' && (ADJUSTMENT_KINDS as readonly string[]).includes(s.adj) && s.data && typeof s.data === 'object') return { kind: 'adjustment', adj: s.adj, label: label || s.adj, data: s.data as Record<string, unknown>, layer: s.layer === true };
+  if (s.kind === 'filter' && typeof s.filter === 'string' && s.settings && typeof s.settings === 'object') return { kind: 'filter', filter: s.filter, label: label || s.filter, settings: s.settings as Record<string, unknown> };
+  /** Runs each step through `run`, stopping at the first that cannot run; returns how many ran and which failed. */
+  async play(a: Action, run: (step: ActionStep) => boolean | Promise<boolean>): Promise<{ done: number; failed: string | null }> {
+      for (let i = 0; i < a.steps.length; i++) if (!(await run(a.steps[i]))) return { done: i, failed: a.steps[i].label };
+      return { done: a.steps.length, failed: null };
+```
 
 ## src/extensions/tools/direct-select.ts
 
@@ -220,6 +253,18 @@ Shape layers written as Photoshop shapes and read back as shape layers. Removed:
 
 ```ts
     if (l.vector) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as a shape layer.`);
+```
+
+### src/io/psd.ts · smart objects · _v0.53.0
+
+Placed layers with embedded sources written and read. Removed:
+
+```ts
+import type { BlendMode as PsdBlend, Layer as PsdLayer, Psd } from 'ag-psd';
+  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid,
+  type BlendMode, type Doc, type ID, type Layer, type Surface,
+  const notes: string[] = [];
+    if (l.smart) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as a smart object.`);
 ```
 
 ## src/extensions/tools/patch.ts
@@ -924,6 +969,16 @@ Recording and replaying Layer Style steps. Removed:
 
 ```ts
 import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind } from './engine';
+```
+
+### src/app.ts · pauses · _v0.53.0
+
+Playback honours stops and dialog pauses; a stop ends a batch. Removed:
+
+```ts
+  async function runStep(s: ActionStep, relative = false): Promise<boolean> {
+    if (s.kind === 'filter') return dialogs.filter.applySettings(s.filter as FilterKind, s.settings);
+    if (r.failed) toast(`"${x.name}" stopped at step ${r.done + 1}, ${r.failed}, which could not run here.`, 'error');
 ```
 
 ## src/engine/adjust.ts
@@ -2441,6 +2496,10 @@ The Timeline section, frames and preview; the layers grid gains a row. Removed:
 
 Drag and drop marks for frames. Nothing was removed.
 
+### src/styles/panels.css · step list · _v0.53.0
+
+Step rows, tools and the stop message. Nothing was removed.
+
 ## src/styles/scrollbars.css
 
 ### src/styles/scrollbars.css · scrollbars, loaded last · _v0.1.0
@@ -2817,6 +2876,10 @@ Reports applied adjustments for recording and replays them without the dialog. R
     if (this.mode === 'layer') this.engine.commitLive();
 ```
 
+### src/ui/panels/adjust-panel.ts · askImage · _v0.53.0
+
+Opens an image adjustment with recorded settings for an action paused for input. Nothing was removed.
+
 ## src/ui/panels/background-panel.ts
 
 ### src/ui/panels/background-panel.ts · BackgroundPanel · _v0.9.0
@@ -2904,6 +2967,10 @@ Filter code made shareable; smart-object routing and editing a stored filter. Re
 ### src/ui/panels/filter-panel.ts · shape layers · _v0.47.0
 
 Filters refuse shape layers before opening. Nothing was removed.
+
+### src/ui/panels/filter-panel.ts · ask · _v0.53.0
+
+Opens with recorded settings for an action paused for input. Nothing was removed.
 
 ## src/ui/panels/jpeg-dialog.ts
 
