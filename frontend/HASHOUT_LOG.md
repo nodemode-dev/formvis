@@ -2,11 +2,38 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/extensions/tools/type.ts
+
+### src/extensions/tools/type.ts · new · _v0.40.0
+
+The Type tool announces where to type; the app opens the dialog. Nothing was removed.
+
+## src/ui/panels/text-dialog.ts
+
+### src/ui/panels/text-dialog.ts · new · _v0.40.0
+
+New Type and Edit Type. Nothing was removed.
+
+## src/engine/text.ts
+
+### src/engine/text.ts · new · _v0.40.0
+
+Fonts, rendering, the raster pairing that keeps type editable, and checked loading. Nothing was removed.
+
 ## src/ui/panels/layer-style-dialog.ts
 
 ### src/ui/panels/layer-style-dialog.ts · new · _v0.39.0
 
 The three sections with live preview; OK applies once, Cancel reverts. Nothing was removed.
+
+### src/ui/panels/layer-style-dialog.ts · inner effects · _v0.40.0
+
+Sections for Inner Shadow, Inner Glow and Color Overlay. Removed:
+
+```ts
+/** Layer > Layer Style: Drop Shadow, Outer Glow and an outside Stroke for the active pixel layer, shown live while the
+ *  dialog is open. OK applies them as one undo step; Cancel leaves the layer as it was. */
+```
 
 ## src/ui/panels/generative-dialog.ts
 
@@ -501,6 +528,16 @@ Layer > Layer Style and the same entry on the Layers panel's context menu. Remov
   contextMenu.setItems(['duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
 ```
 
+### src/app.ts · layer style and type commands · _v0.40.0
+
+Copy, Paste and Clear Layer Style and Edit Type in the Layer and context menus; the Type and fx events. Removed:
+
+```ts
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt } from './engine';
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -585,6 +622,17 @@ import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampli
 import { IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, type Mat } from './geometry';
 export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number }
       if (!own && !folders.length && !base) { this.draw(ctx, src, m, t.sampling, opacity, op, job.quality); continue; }
+```
+
+### src/engine/renderer.ts · effects above the content · _v0.40.0
+
+Effects draw in two passes, below and above the content; the above pass keeps Color Overlay, Inner Glow and Inner Shadow to the silhouette, the inner ones cast by its inverse. Removed:
+
+```ts
+      if (styled) this.effects(ctx, a, fx, matScale(job.view), opacity, W, H, boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]));
+  private effects(ctx: Ctx2D, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect): void {
+    const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke;
+    const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0) * scale + 2;
 ```
 
 ## src/engine/distort.ts
@@ -987,6 +1035,14 @@ import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode
     if (!this.dirtyRendering || !l || !r || !t) { this.emit('render', null); return; }
 ```
 
+### src/engine/index.ts · style clipboard, type layers · _v0.40.0
+
+Copy, Paste and Clear Layer Style (paste and clear over every selected layer in one step); `textSettings`, `textLayerAt`, `createTextLayer` and `updateTextLayer`. Removed:
+
+```ts
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects } from './types';
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1152,6 +1208,17 @@ export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return 
 
 `Layer.effects`, the three effect types, `defaultEffects`, `effectsActive` and `effectsFromData`, which checks and clamps saved data. Nothing was removed.
 
+### src/engine/types.ts · inner effects, TextSpec, the Type tool id · _v0.40.0
+
+Inner Shadow, Inner Glow and Color Overlay join `LayerEffects` with defaults and checked loading; `Layer.text` and `TextSpec`; `type` joins the tool ids. Removed:
+
+```ts
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect }
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled);
+  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke');
+```
+
 ## src/engine/viewport.ts
 
 ### src/engine/viewport.ts · zoom and pan · _v0.1.0
@@ -1308,6 +1375,14 @@ Registers Spot Healing, Clone Stamp and Smear, completing the fourteen tools. Re
 
 ```ts
   for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, gradientTool, shapeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+```
+
+### src/extensions/tools/index.ts · Type tool · _v0.40.0
+
+Registers the Type tool. Removed:
+
+```ts
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, cloneTool, smearTool, gradientTool, shapeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 ```
 
 ## src/extensions/tools/lasso.ts
@@ -1564,6 +1639,15 @@ Effects save in `.sonny` and read back through `effectsFromData`; `.ref` export 
       blend: blendFromLabel(r.blendMode), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
 ```
 
+### src/io/project-io.ts · type in files · _v0.40.0
+
+Live type saves in `.sonny` and reopens editable; `.ref` export notes it becomes pixels. Removed:
+
+```ts
+  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData,
+      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+```
+
 ## src/main.ts
 
 ### src/main.ts · entry, calls startApp · _v0.1.0
@@ -1606,6 +1690,10 @@ Removed: showing the mask thumbnail on demand pushed the layer name right, a mea
 .cv-layer-mask { display: none; }
 .cv-layer.has-mask .cv-layer-mask { display: block; }
 ```
+
+### src/styles/panels.css · fx mark · _v0.40.0
+
+The fx mark in muted italic. Nothing was removed.
 
 ## src/styles/scrollbars.css
 
@@ -1713,6 +1801,10 @@ Removed: wrote markup straight into a live node. It now builds in a fresh templa
 
 Created in _v0.1.0.
 
+### src/ui/icons.ts · typeTool · _v0.40.0
+
+An inline currentColor T. Nothing was removed.
+
 ## src/ui/layers.ts
 
 ### src/ui/layers.ts · LayersPanel.bindRows · pointerdown · _v0.1.0
@@ -1761,6 +1853,16 @@ wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom };
 
 ```ts
       if (d.started && d.target) {
+```
+
+### src/ui/layers.ts · fx mark, type rows · _v0.40.0
+
+The fx mark updated in place; double-clicking it opens Layer Style, and double-clicking a type row edits its text. Removed:
+
+```ts
+import { BLEND_MODES, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Raster } from '../engine';
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span></span></div>`);
+      if (t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
 ```
 
 ## src/ui/menu.ts
