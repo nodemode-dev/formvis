@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/extensions/tools/tone.ts
+
+### src/extensions/tools/tone.ts · new · _v0.64.0
+
+The Dodge, Burn and Sponge tools. Nothing was removed.
+
+## src/extensions/tools/bucket.ts
+
+### src/extensions/tools/bucket.ts · new · _v0.64.0
+
+The Paint Bucket tool. Nothing was removed.
+
 ## io/psd.ts
 
 ### io/psd.ts · layer styles · _v0.62.0
@@ -1997,6 +2009,18 @@ renderText exported for the PSD writer. Removed:
 export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics } from './text';
 ```
 
+### src/engine/index.ts · bucket and toning · _v0.64.0
+
+Bucket and tone settings, paintBucket, toned retouch strokes, a region for region edits. Removed:
+
+```ts
+  private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void): void {
+      const sel = p.selection;
+  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur' | 'healBrush', pt: Pt, shift: boolean): boolean {
+    }
+    p.history.begin(kind === 'heal' ? 'Spot Healing' : kind === 'clone' ? 'Clone Stamp' : kind === 'healBrush' ? 'Healing Brush' : 'Blur', p.snapshot());
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -2278,6 +2302,14 @@ export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGl
   const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay'), go = part('gradientOverlay'), bv = part('bevel'), sa = part('satin');
 ```
 
+### src/engine/types.ts · tool ids · _v0.64.0
+
+Four tool ids. Removed:
+
+```ts
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'directSelect' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
+```
+
 ## src/engine/viewport.ts
 
 ### src/engine/viewport.ts · zoom and pan · _v0.1.0
@@ -2466,6 +2498,14 @@ Registers the Pen and Direct Selection. Removed:
 
 ```ts
   for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, gradientTool, shapeTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+```
+
+### src/extensions/tools/index.ts · tools registered · _v0.64.0
+
+The four tools registered. Removed:
+
+```ts
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, gradientTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 ```
 
 ## src/extensions/tools/lasso.ts
@@ -3065,6 +3105,10 @@ One inline currentColor icon. Nothing was removed.
 ### src/ui/icons.ts · camera · _v0.57.0
 
 One inline currentColor icon. Nothing was removed.
+
+### src/ui/icons.ts · tool icons · _v0.64.0
+
+Four Phosphor icons. Nothing was removed.
 
 ## src/ui/layers.ts
 

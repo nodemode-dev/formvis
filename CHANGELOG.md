@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.64.0 · 2026-09-21
+
+### Added
+
+- The Paint Bucket tool (G, sharing the key with Gradient).
+- The Dodge, Burn and Sponge tools (O).
+
 ## 0.63.0 · 2026-09-21
 
 ### Added
