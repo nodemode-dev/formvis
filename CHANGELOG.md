@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.56.0 · 2026-09-21
+
+### Added
+
+- A History panel below the Timeline: every step kept, and a click goes back or forward to any of them.
+
+### Changed
+
+- Large smart objects re-render their filters in the background; the latest change wins when changes come quickly.
+
 ## 0.55.0 · 2026-09-21
 
 ### Changed

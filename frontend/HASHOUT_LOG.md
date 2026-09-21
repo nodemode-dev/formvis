@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/ui/history.ts
+
+### src/ui/history.ts · new · _v0.56.0
+
+The History panel. Nothing was removed.
+
 ## src/ui/panels/stop-dialog.ts
 
 ### src/ui/panels/stop-dialog.ts · new · _v0.53.0
@@ -89,6 +95,19 @@ The source image is validated like layer images and masks. Removed:
 ### src/ui/panels/smart-filters-dialog.ts · new · _v0.45.0
 
 The Smart Filters dialog. Nothing was removed.
+
+### src/ui/panels/smart-filters-dialog.ts · requested filters · _v0.56.0
+
+The dialog works from the filters last asked for. Removed:
+
+```ts
+    patchList<SmartFilter>(this.list, smart?.filters ?? [], {
+    setText(this.note, smart?.filters.length ? "Filters run top first, each on the one before's result, always from the smart object's original pixels."
+    this.engine.setSmartFilters(this.layerId, edit(smart.filters), name);
+    const f = this.smart()?.filters.find((x) => x.id === id), layerId = this.layerId;
+      const now = this.engine.current?.layer(layerId)?.smart;
+      if (now) this.engine.setSmartFilters(layerId, now.filters.map((x) => (x.id === id ? { ...x, settings } : x)), 'Edit Smart Filter');
+```
 
 ## src/io/zip.ts
 
@@ -981,6 +1000,14 @@ Playback honours stops and dialog pauses; a stop ends a batch. Removed:
     if (r.failed) toast(`"${x.name}" stopped at step ${r.done + 1}, ${r.failed}, which could not run here.`, 'error');
 ```
 
+### src/app.ts · History panel, async runner · _v0.56.0
+
+The History panel mounted; the smart filters get an off-thread runner. Removed:
+
+```ts
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData } from './engine';
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1227,6 +1254,10 @@ Created in _v0.1.0.
 ### src/engine/history.ts · undo stack · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/engine/history.ts · steps · _v0.56.0
+
+The steps kept, in order, and how many are done. Nothing was removed.
 
 ## src/engine/index.ts
 
@@ -1712,6 +1743,18 @@ applyImageEditAsync with its source preparation; painting tools warm stroke surf
 
 ```ts
 import { PixelStroke } from './stroke';
+```
+
+### src/engine/index.ts · smart re-render, history jumps · _v0.56.0
+
+Large smart objects re-render in the background, latest change winning; historySteps and jumpHistory. Removed:
+
+```ts
+    if (l?.smart) this.setSmartFilters(l.id, [...l.smart.filters, { id: uid(), kind, settings: structuredClone(settings), enabled: true }], 'Smart Filter');
+  setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void { const p = this.current; if (p) this.restack(p, id, null, filters, name); }
+  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string): boolean {
+      const stack = structuredClone(filters ?? l.smart.filters), raster = this.renderSmart(src, stack), old = l.raster as Raster, t = l.transform;
+    const ok = this.restack(target.parent, target.layer.id, Raster.from(flat, flat.width, flat.height), null, 'Update Smart Object');
 ```
 
 ## src/engine/develop.ts
@@ -2569,6 +2612,14 @@ Drag and drop marks for frames. Nothing was removed.
 
 Step rows, tools and the stop message. Nothing was removed.
 
+### src/styles/panels.css · History panel · _v0.56.0
+
+The History section and rows; the layers grid gains a row. Removed:
+
+```css
+.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; min-height: 0; background: var(--bg-secondary); }
+```
+
 ## src/styles/scrollbars.css
 
 ### src/styles/scrollbars.css · scrollbars, loaded last · _v0.1.0
@@ -2712,6 +2763,10 @@ The Hand tool icon replaced with the owner-supplied Remix Icon cursor-hand. Remo
 One inline currentColor icon. Nothing was removed.
 
 ### src/ui/icons.ts · tween · _v0.50.0
+
+One inline currentColor icon. Nothing was removed.
+
+### src/ui/icons.ts · history · _v0.56.0
 
 One inline currentColor icon. Nothing was removed.
 

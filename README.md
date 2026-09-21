@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-0.55.0-f97316" alt="version 0.55.0">
+<img src="https://img.shields.io/badge/version-0.56.0-f97316" alt="version 0.56.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -26,6 +26,7 @@ sonny is a layered image editor: stack photos and paintings as layers, group the
 - **Actions and Batch.** Record commands, filters, adjustments, layer styles and size changes into actions, replay them, share them as JSON, and batch-process a set of images into one zip. Size steps can follow each image. Stops and dialog pauses let an action wait for input.
 - **Smart objects.** Keep a layer's original pixels, with filters on it that stay editable, can be hidden or removed, and re-render from the original. Edit Contents opens the original as its own document; saving it updates the object. Distort and Perspective stay editable on them. They travel to and from Photoshop as smart objects.
 - **Animation.** A Timeline of frames, each keeping layer visibility, opacity and position with a delay, tweened, reordered by dragging, played in a preview and exported as an animated GIF.
+- **History.** A History panel lists every step kept; clicking one goes back or forward to it.
 - **Photoshop files.** Open layered `.psd` files and export to them, keeping layers, folders, masks, clipping, opacity, blend modes and visibility.
 - **Layer styles.** Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow and Color Overlay for any pixel layer, drawn from its visible pixels and previewed live; copy, paste and clear them across layers. They save in `.sonny` projects.
 - **Type.** The Type tool adds editable text layers, typed straight onto the canvas, with font, size, line height, alignment, bold, italic and colour; painting on type turns it into pixels.
@@ -123,7 +124,7 @@ Branch model: `main` plus short-lived work branches, see `.docs/BRANCHING.md`. D
 
 ## Status
 
-Version 0.55.0 has all 19 tools complete (Smear's Blur now works on masks too) and all 59 web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the color picker, which can sample the canvas, and sampling drags show the sample ring. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and Smear's Blur on masks.
+Version 0.56.0 has all 19 tools complete (Smear's Blur now works on masks too) and all 59 web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the color picker, which can sample the canvas, and sampling drags show the sample ring. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and Smear's Blur on masks.
 
 ## Contributors
 
