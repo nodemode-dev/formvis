@@ -8,11 +8,11 @@ The engine is the document model and every operation on it, with no DOM access: 
 | `frontend/src/engine/types.ts` | Layer, document, transform and mask types, the 13 blend modes, limits |
 | `frontend/src/engine/renderer.ts` | Rendering: blend modes, opacity, pass-through folders, raster and folder masks, clipping chains, adjustments |
 | `frontend/src/engine/history.ts` | Structure snapshots plus region pixel patches, 100 entries and 256 MB |
-| `frontend/src/engine/selection.ts` | `SelectionMask` and the ported pixel-edge contour tracer for marching ants |
+| `frontend/src/engine/selection.ts` | `SelectionMask` and the run-linking outline tracer for marching ants |
 | `frontend/src/engine/kernels.ts` | Levels, Curves (monotone cubic), Exposure (linear light) and Gradient Map kernels, and the Magic Wand's segment seed fill |
 | `frontend/src/engine/adjust.ts`, `filters.ts` | Hue/Saturation with its hue bands and colour cube, Grain, the `.ref` adjustment data; three-box Gaussian, motion blur, noise, lens correction, histograms, Unsharp Mask, and the distance transform behind expand and contract |
-| `frontend/src/engine/retouch.ts` | Spot Healing, Content-Aware Fill, and the Smudge and Liquify warp, ported from `HealPixels.c`, `ContentFill.c` and `SmudgeLiquify.swift` |
-| `frontend/src/engine/matte.ts` | Remove Background's refining: the guided filter, Shift Edge and Contrast, ported from `GuidedMatte.swift` and `SubjectRemoval.swift` |
+| `frontend/src/engine/retouch.ts` | Spot Healing (ring-matched source, harmonic correction), Content-Aware Fill (exemplar inpainting), Smudge and Liquify |
+| `frontend/src/engine/matte.ts` | Remove Background's refine: the guided filter, Shift Edge and Contrast |
 | `frontend/src/engine/stroke.ts` | Brush stamping at the spacing (2.5 percent soft, 1.5 percent hard) |
 | `frontend/src/engine/transform.ts` | Handle hit geometry and move, resize and rotate drag math |
 | `frontend/src/engine/geometry.ts`, `surface.ts`, `tree.ts`, `viewport.ts`, `project.ts`, `events.ts` | Matrices, canvases, the layer hierarchy, zoom and pan, the project record, the event emitter |

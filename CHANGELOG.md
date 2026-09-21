@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.35.0 · 2026-09-21
+
+### Changed
+
+- Spot Healing, Content-Aware Fill, Smudge, Liquify, Remove Background's refine, the selection outline, Free Transform, perspective distort and the brush were rewritten from standard published methods. Healing and Content-Aware Fill are more accurate (fill error measured at half the old), Content-Aware Fill takes longer on large holes, and the outline draws slightly faster.
+- Smudge's Strength now sets how far the paint travels.
+- Soft brushes have a slightly lighter outer edge: the tip now follows its falloff curve exactly.
+
 ## 0.34.0 · 2026-09-21
 
 ### Changed

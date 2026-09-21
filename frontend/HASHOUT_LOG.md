@@ -467,6 +467,10 @@ A clip base's override source is placed by the source's own size, as layers and 
 
 the free distort math: `cornersOf` (handle order), `distortUsable` (convex and non-degenerate), `homography` and `project`, `carried` (a box's perspective applied to inner corners, for group members and masks placed apart), `warpRaster` (premultiplied, edge-clamped bilinear inverse mapping, preview scale, mask mode with an edge tone outside), `visibleBounds` and `cropWarp` (warpTrimmed), and `maskEdgeTone` (LayerMask.background).
 
+### src/engine/distort.ts · rewritten independently · _v0.35.0
+
+The perspective map solved from its eight corner equations by Gauss-Jordan elimination, inverted through cross products, resampled with premultiplied bilinear filtering; identical outputs. The removed code is not quoted here, deliberately: it is the implementation this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.34.0.
+
 ## src/engine/dpi.ts
 
 ### src/engine/dpi.ts · withResolution · _v0.25.0
@@ -798,22 +802,15 @@ Created in _v0.1.0.
 
 Kernels take an optional context with the region's document origin and scale, which Grain needs. Removed:
 
-```ts
-export type Kernel = (data: Uint8ClampedArray) => void;
-```
+_Quoted code redacted in 0.35.0: it came from an implementation since replaced with independent code. Git history keeps it._
 
 ### src/engine/kernels.ts · wandMask sample radius · _v0.13.0
 
 The color to match averages the pixels within `sampleRadius` of the click, clipped to the image, as the Sample Size does. Removed:
 
-```ts
-export function wandMask(rgba: Uint8ClampedArray, width: number, height: number, seedX: number, seedY: number, tolerance: number, contiguous: boolean): Uint8Array {
-```
+_Quoted code redacted in 0.35.0: it came from an implementation since replaced with independent code. Git history keeps it._
 
-```ts
-  const s = (seedY * width + seedX) * 4;
-  const ref = [rgba[s], rgba[s + 1], rgba[s + 2], rgba[s + 3]];
-```
+_Quoted code redacted in 0.35.0: it came from an implementation since replaced with independent code. Git history keeps it._
 
 ### src/engine/kernels.ts · rewritten independently · _v0.34.0
 
@@ -824,6 +821,10 @@ Every kernel replaced with a new implementation of the standard method: Levels a
 ### src/engine/matte.ts · refineMatte, guidedFilter, boxMean, levelsOf · _v0.9.0
 
 Ported from the `SubjectRemoval.refined` and `GuidedMatte`. `boxMean` is the running-sum box mean with edge clamping; `guidedFilter` is He, Sun and Tang's filter with epsilon 1e-4; `refineMatte` applies the order (Refine, then Shift Edge as a clamped Gaussian of half the reach cut hard at 0.25 or 0.75, then Contrast as a stretch about middle gray) with radii in layer pixels scaled for previews, and returns the mask unchanged for Basic; `levelsOf` reads a mask's gray or a guide's luminance over black. Checked against an independent NumPy port to 6.3e-5.
+
+### src/engine/matte.ts · rewritten independently · _v0.35.0
+
+The guided filter, prefix-sum box means and a clamped Gaussian, matching the replaced output within 0.00016. The removed code is not quoted here, deliberately: it is the implementation this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.34.0.
 
 ## src/engine/project.ts
 
@@ -837,11 +838,19 @@ Created in _v0.1.0.
 
 Ported line for line from the original C and Swift sources. `spotHeal` from `HealPixels.c`: ring matching over 5 distances and 24 angles (2 distances with a stronger nearness bias for Proximity Match), a plus or minus 3 px alignment refine, a multigrid smooth solve over the spot, and Create Texture's grain matched to the ring's detail. `contentFill` from `ContentFill.c`: a patch search growing inward from the selection edge. `WarpStroke` from `SmudgeLiquify.swift`: Liquify's forward warp and Smudge's carried color, dab by dab on a document-size premultiplied copy. C's `lround` rounds halves away from zero, so the port does too rather than using `Math.round`.
 
+### src/engine/retouch.ts · rewritten independently · _v0.35.0
+
+Spot Healing by ring-matched source search and a Poisson-style harmonic correction solved coarse to fine; Create Texture from the edge's harmonic interpolation plus matched grain; Content-Aware Fill as Criminisi-style exemplar inpainting; Smudge and Liquify on a raised-cosine brush with evenly carried spacing, Smudge laying paint by strength and picking up canvas by its complement. The removed code is not quoted here, deliberately: it is the implementation this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.34.0.
+
 ## src/engine/selection.ts
 
 ### src/engine/selection.ts · selection masks, outline tracer · _v0.1.0
 
 Created in _v0.1.0.
+
+### src/engine/selection.ts · rewritten independently · _v0.35.0
+
+`traceOutline` merges boundary edges into runs in one row-major sweep over differing row spans and links them into loops, right turns first; exact against the mask in every test, 12 ms for a 2000 by 1500 mask. The removed code is not quoted here, deliberately: it is the implementation this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.34.0.
 
 ## src/engine/stroke.ts
 
@@ -857,13 +866,13 @@ A stroke can paint a document-space texture at an offset instead of a color, whi
 
 A `lerp` flag for alpha-coded masks: compose erases by the coverage, then adds the coverage-masked sample with `lighter`, so out = old x (1 - c) + sample x c. Removed:
 
-```ts
-  constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null) {
-```
+_Quoted code redacted in 0.35.0: it came from an implementation since replaced with independent code. Git history keeps it._
 
-```ts
-    w.globalCompositeOperation = this.op;
-```
+_Quoted code redacted in 0.35.0: it came from an implementation since replaced with independent code. Git history keeps it._
+
+### src/engine/stroke.ts · rewritten independently · _v0.35.0
+
+The brush tip computed per pixel (exact raised cosine; soft fringes about 15% lighter than the old eight-segment approximation), spacing, paint layer and composing rewritten. The removed code is not quoted here, deliberately: it is the implementation this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.34.0.
 
 ## src/engine/surface.ts
 
@@ -892,9 +901,11 @@ Created in _v0.1.0.
 
 the `LayerTransform.placing` (a unit-square map back to a rotated, maybe flipped rectangle, keeping the flip, sampling and nearest rotation) and `following(from:to:)` (a placement carried along as a box moves), as pure functions; placing round-trips rotated and flipped transforms to 2.8e-14. Removed:
 
-```ts
-import { radians, unitPoint } from './geometry';
-```
+_Quoted code redacted in 0.35.0: it came from an implementation since replaced with independent code. Git history keeps it._
+
+### src/engine/transform.ts · rewritten independently · _v0.35.0
+
+Free Transform drags and the affine decomposition in unit-vector form; identical to 1e-13. The removed code is not quoted here, deliberately: it is the implementation this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.34.0.
 
 ## src/engine/tree.ts
 
