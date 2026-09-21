@@ -8,7 +8,7 @@ const BOX_W = 432, BOX_H = 280;
 
 const size = (bytes: number): string => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);
 
-/** the reference app's JPEG export sheet: Quality starts from the last export (85% the first time), with the image's
+/** the JPEG export sheet: Quality starts from the last export (85% the first time), with the image's
  *  size and an encoded preview fitted to the sheet; Export hands the chosen quality back. The preview canvas keeps
  *  one size so the sheet never shifts, and the preview is decoded from the encoded JPEG itself. */
 export class JpegDialog extends Dialog {

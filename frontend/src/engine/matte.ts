@@ -1,9 +1,9 @@
-/** Remove Background's refining, ported from the reference app's `SubjectRemoval.refined` and `GuidedMatte`. Masks and
- *  guides are 0 to 1 per pixel, row by row. Radii are in layer pixels; `scale` shrinks them for a scaled preview. */
+/** Remove Background's refining, ported from the `SubjectRemoval.refined` and `GuidedMatte`. Masks and
+ * guides are 0 to 1 per pixel, row by row. Radii are in layer pixels; `scale` shrinks them for a scaled preview. */
 
 export interface MatteSettings { quality: 'basic' | 'advanced'; refineEdges: number; matteContrast: number; shiftEdge: number }
 
-/** the reference app's defaults: Basic, Refine 12 px (0 to 40), Contrast 25% (0 to 100), Shift Edge 0 px (-10 to 10). */
+/** Basic, Refine 12 px (0 to 40), Contrast 25% (0 to 100), Shift Edge 0 px (-10 to 10). */
 export const DEFAULT_MATTE: MatteSettings = { quality: 'basic', refineEdges: 12, matteContrast: 25, shiftEdge: 0 };
 
 /** Mean over a (2r+1) square as two running-sum passes with edge clamping, so the cost does not grow with the radius. */
@@ -32,7 +32,7 @@ export function boxMean(src: Float32Array, w: number, h: number, r: number): Flo
 }
 
 /** Guided filtering (He, Sun and Tang): `mask` pulled onto the edges of `guide`, which recovers hair and fur a
- *  segmentation model cuts straight through. `eps` decides how much of an edge in the guide counts. */
+ * segmentation model cuts straight through. `eps` decides how much of an edge in the guide counts. */
 export function guidedFilter(mask: Float32Array, guide: Float32Array, w: number, h: number, r: number, eps: number): Float32Array {
   const n = w * h, squares = new Float32Array(n), products = new Float32Array(n);
   for (let i = 0; i < n; i++) { squares[i] = guide[i] * guide[i]; products[i] = guide[i] * mask[i]; }
@@ -73,11 +73,11 @@ function gaussian(src: Float32Array, w: number, h: number, sigma: number): Float
   return out;
 }
 
-/** The refined subject mask, in the reference app's order: Refine pulls the mask onto the image's own edges, Shift Edge blurs
- *  by half its reach and cuts hard at 0.25 (grow) or 0.75 (shrink), and Contrast pushes the grays apart (100 is a hard
- *  cut at the middle). Basic returns the model's mask unchanged. */
+/** The refined subject mask, in Refine pulls the mask onto the image's own edges, Shift Edge blurs
+ * by half its reach and cuts hard at 0.25 (grow) or 0.75 (shrink), and Contrast pushes the grays apart (100 is a hard
+ * cut at the middle). Basic returns the model's mask unchanged. */
 export function refineMatte(mask: Float32Array, guide: Float32Array, w: number, h: number, s: MatteSettings, scale = 1): Float32Array {
-  if (s.quality !== 'advanced') return mask;
+ if (s.quality !== 'advanced') return mask;
   let m = mask;
   if (s.refineEdges > 0) m = guidedFilter(m, guide, w, h, Math.max(1, Math.round(s.refineEdges * scale)), 1e-4);
   if (s.shiftEdge !== 0) {
@@ -94,7 +94,7 @@ export function refineMatte(mask: Float32Array, guide: Float32Array, w: number, 
 }
 
 /** 0 to 1 levels of an image: a mask's gray (its alpha counting as coverage), or a guide's luminance over black, as
- *  the reference app draws both into a gray context. */
+ * draws both into a gray context. */
 export function levelsOf(img: ImageData, luminance: boolean): Float32Array {
   const d = img.data, out = new Float32Array(img.width * img.height);
   for (let i = 0, j = 0; i < out.length; i++, j += 4) {

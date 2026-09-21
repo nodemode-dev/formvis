@@ -6,7 +6,7 @@ interface Draft { anchor: Pt; point: Pt; mode: SelectionMode; shiftAtPress: bool
 let draft: Draft | null = null;
 let moving: Pt | null = null;
 
-/** One drag step toward document point `doc`: the moved outline follows, or the box's corner with the reference app's
+/** One drag step toward document point `doc`: the moved outline follows, or the box's corner with the
  *  marqueeConstrainArmed rule (a modifier held from the press sets the mode, not a constraint, until it is released
  *  during the drag; pressed again, it constrains). Pointer moves and autoscroll ticks both call it. */
 function follow(ctx: ToolContext, doc: Pt, shift: boolean, alt: boolean): void {
@@ -20,7 +20,7 @@ function follow(ctx: ToolContext, doc: Pt, shift: boolean, alt: boolean): void {
   ctx.engine.emit('overlay', null);
 }
 
-/** the reference app's marquee autoscroll: past a 12 px margin inside the view, each 60 Hz tick pans toward the pointer at
+/** the marquee autoscroll: past a 12 px margin inside the view, each 60 Hz tick pans toward the pointer at
  *  min(40, 2 + 0.4 x the distance past), and the drag follows the document point that is now under the pointer. */
 let scroll: { at: Pt; shift: boolean; alt: boolean; timer: number } | null = null;
 

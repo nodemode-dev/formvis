@@ -25,7 +25,7 @@ export class Stage {
   private dragId: number | null = null;
   private panLast: Pt | null = null;
   private space = false;
-  /** the reference app's isBrushTool: right-drag with these resizes the brush tip. */
+  /** right-drag with these resizes the brush tip. */
   private static readonly brushTools = new Set(['brush', 'spotHealing', 'cloneStamp', 'smear']);
   private tipDragging = false;
   private cursor = '';
@@ -359,7 +359,7 @@ export class Stage {
       this.engine.pan(-(horizontal ? e.deltaY : e.deltaX) * unit, -(horizontal ? 0 : e.deltaY) * unit);
     }, { passive: false });
     // WebKit (Safari and the macOS desktop WebView) reports a trackpad pinch as gesture events, not Ctrl+wheel. Like
-    // the reference app's magnify, it zooms about the pointer, here by the gesture's scale since it began.
+    // the magnify, it zooms about the pointer, here by the gesture's scale since it began.
     let pinch: { z0: number } | null = null;
     const gesture = (e: Event): { scale: number; clientX: number; clientY: number } => e as unknown as { scale: number; clientX: number; clientY: number };
     o.addEventListener('gesturestart', (e) => { e.preventDefault(); pinch = { z0: this.engine.current?.viewport.zoom ?? 1 }; });

@@ -1,6 +1,6 @@
 # Engine Service
 
-The Python engine does what a browser cannot: decode HEIC and TIFF, keep the project library on disk, import the reference app packages, remove backgrounds, and write exports for the desktop app. It binds to loopback only.
+The Python engine does what a browser cannot: decode HEIC and TIFF, keep the project library on disk, import packages, remove backgrounds, and write exports for the desktop app. It binds to loopback only.
 
 | Source path | What lives there |
 | --- | --- |

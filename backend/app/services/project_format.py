@@ -24,7 +24,7 @@ def validate(manifest: dict, files: set[str]) -> None:
         raise ProjectError("The manifest is not a JSON object.")
     fmt, version = manifest.get("format"), manifest.get("version")
     if fmt not in SUPPORTED:
-        raise ProjectError("This is not a sonny or the reference app project.")
+        raise ProjectError("This is not a sonny or .ref project.")
     if not isinstance(version, int) or version not in SUPPORTED[fmt]:
         raise ProjectError(f"This project uses format version {version}, which this build cannot read.")
     width, height = manifest.get("width"), manifest.get("height")
@@ -109,7 +109,7 @@ def read_zip(data: bytes) -> tuple[dict, dict[str, bytes]]:
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
-        raise ProjectError("The file is not a sonny or the reference app package.") from exc
+        raise ProjectError("The file is not a sonny or .ref package.") from exc
     with archive:
         infos = [info for info in archive.infolist() if not info.is_dir()]
         entries = [(info.filename, info.file_size, (lambda info=info: archive.read(info))) for info in infos]
@@ -124,7 +124,7 @@ def read_folder(files: list[tuple[str, bytes]]) -> tuple[dict, dict[str, bytes],
 
 def write_zip(manifest: dict, assets: dict[str, bytes], root: str = "") -> bytes:
     """The project as a zip: manifest.json and images/. With `root`, everything sits inside that one folder, so
-    unzipping a the reference app export yields the `Name.ref` package the reference app opens."""
+    unzipping a .ref export yields a `Name.ref` package."""
     prefix = f"{root}/" if root else ""
     out = io.BytesIO()
     with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_STORED) as archive:

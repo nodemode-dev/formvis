@@ -5,37 +5,37 @@ Living log for the engine service side, _v0.1.0. Read the map and the TOC first;
 ## Org-navi-map
 
 ```text
-.env.example  · template for backend/.env
-HASHOUT_LOG.md  · this log
+.env.example · template for backend/.env
+HASHOUT_LOG.md · this log
 app/
-    __init__.py  · version string
-    core/
-        __init__.py  · package marker
-        config.py  · ports, limits, folders, .env loading
-    main.py  · app assembly, CORS, static mount
-    routers/
-        __init__.py  · package marker
-        io.py  · decode and export
-        ops.py  · remove background
-        projects.py  · library, import, sessions
-        system.py  · health, version, capabilities
-    services/
-        __init__.py  · package marker
-        background.py  · rembg and GrabCut
-        imaging.py  · Pillow and pillow-heif decoding, sips fallback
-        project_format.py  · manifest validation, zip and folder IO
-        sessions.py  · opened-project sessions
-boot_backend  · start the engine (unix)
-boot_backend.bat  · start the engine (windows)
-sonny_engine.py  · PyInstaller sidecar entry
-oc_install  · install this side (unix)
-oc_install.bat  · install this side (windows)
-requirements.txt  · pinned base
-requirements_desktop.txt  · pinned PyInstaller
-requirements_desktop_macos.txt  · unpinned PyInstaller
-requirements_macos.txt  · unpinned base for macOS
-requirements_ml.txt  · pinned ML extra
-requirements_ml_macos.txt  · unpinned ML extra
+ __init__.py · version string
+ core/
+ __init__.py · package marker
+ config.py · ports, limits, folders,.env loading
+ main.py · app assembly, CORS, static mount
+ routers/
+ __init__.py · package marker
+ io.py · decode and export
+ ops.py · remove background
+ projects.py · library, import, sessions
+ system.py · health, version, capabilities
+ services/
+ __init__.py · package marker
+ background.py · rembg and GrabCut
+ imaging.py · Pillow and pillow-heif decoding, sips fallback
+ project_format.py · manifest validation, zip and folder IO
+ sessions.py · opened-project sessions
+boot_backend · start the engine (unix)
+boot_backend.bat · start the engine (windows)
+sonny_engine.py · PyInstaller sidecar entry
+oc_install · install this side (unix)
+oc_install.bat · install this side (windows)
+requirements.txt · pinned base
+requirements_desktop.txt · pinned PyInstaller
+requirements_desktop_macos.txt · unpinned PyInstaller
+requirements_macos.txt · unpinned base for macOS
+requirements_ml.txt · pinned ML extra
+requirements_ml_macos.txt · unpinned ML extra
 ```
 
 ## Table of contents
@@ -67,9 +67,9 @@ requirements_ml_macos.txt  · unpinned ML extra
 - [requirements_ml.txt](#requirements_mltxt)
 - [requirements_ml_macos.txt](#requirements_ml_macostxt)
 
-## .env.example
+##.env.example
 
-### .env.example · template for backend/.env · _v0.1.0
+###.env.example · template for backend/.env · _v0.1.0
 
 Created in _v0.1.0.
 
@@ -87,7 +87,7 @@ Created in _v0.1.0.
 
 ## app/core/config.py
 
-### app/core/config.py · ports, limits, folders, .env loading · _v0.1.0
+### app/core/config.py · ports, limits, folders,.env loading · _v0.1.0
 
 Created in _v0.1.0.
 
@@ -123,7 +123,7 @@ Writes through a temporary file and `os.replace`, so a crash never leaves a half
 
 ### app/routers/projects.py · package · root folder · _v0.28.0
 
-The package route takes an optional `root` form field, checked as a safe name, so a the reference app export unzips to `Name.ref/`. Removed:
+The package route takes an optional `root` form field, checked as a safe name, so a export unzips to `Name.ref/`. Removed:
 
 ```py
 def package(manifest: str = Form(...), files: list[UploadFile] = File(default=[])) -> Response:
@@ -165,11 +165,11 @@ Accepts `com.reference.project` 1 to 7 and `com.nodemode.sonny` 1; checks sizes,
 
 ```py
 def write_zip(manifest: dict, assets: dict[str, bytes]) -> bytes:
-    out = io.BytesIO()
-    with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_STORED) as archive:
-        archive.writestr("manifest.json", json.dumps(manifest, indent=2), compress_type=zipfile.ZIP_DEFLATED)
-        for name, data in assets.items():
-            archive.writestr(f"images/{name}", data)
+ out = io.BytesIO()
+ with zipfile.ZipFile(out, "w", compression=zipfile.ZIP_STORED) as archive:
+ archive.writestr("manifest.json", json.dumps(manifest, indent=2), compress_type=zipfile.ZIP_DEFLATED)
+ for name, data in assets.items():
+ archive.writestr(f"images/{name}", data)
 ```
 
 ## app/services/sessions.py

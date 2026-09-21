@@ -46,7 +46,7 @@ export function bandWeight(b: HueBand, hue: number): number {
   return rampOut > 0 ? (span - position) / rampOut : 1;
 }
 
-/** Degrees from `from` forward to `to`, always 0 to 360 (the reference app's `HueBand.forward`). */
+/** Degrees from `from` forward to `to`, always 0 to 360. */
 export function bandForward(from: number, to: number): number {
   const d = (to - from) % 360;
   return d < 0 ? d + 360 : d;

@@ -1,4 +1,4 @@
-/** the reference app's ImageExporter writes the document's resolution into every PNG and JPEG it exports
+/** the ImageExporter writes the document's resolution into every PNG and JPEG it exports
  *  (kCGImagePropertyDPIWidth and DPIHeight). The browser's encoders write none, so the encoded bytes get it here: a
  *  PNG `pHYs` chunk (pixels per meter) placed after IHDR, and a JPEG's JFIF density in dots per inch. */
 

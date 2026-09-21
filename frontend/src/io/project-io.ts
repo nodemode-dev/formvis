@@ -10,10 +10,10 @@ export const FORMAT_VERSION = 1;
 type Json = Record<string, unknown>;
 const KINDS: Record<string, AdjustmentKind> = { 'Hue/Saturation': 'hsv', Levels: 'levels', Curves: 'curves', Exposure: 'exposure', 'Gradient Map': 'gradientMap', Grain: 'grain' };
 const KIND_LABELS = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [v, k])) as Record<AdjustmentKind, string>;
-const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
-const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-const pair = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' ? [v[0], v[1]] : null);
-const str = (v: unknown): string | null => (typeof v === 'string' && v ? v : null);
+const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json): {});
+const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v: d);
+const pair = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' ? [v[0], v[1]]: null);
+const str = (v: unknown): string | null => (typeof v === 'string' && v ? v: null);
 
 export function transformRecord(t: Transform): Json {
   return { origin: [t.x, t.y], size: [t.w, t.h], rotation: t.rotation, flipX: t.flipX, flipY: t.flipY, sampling: SAMPLING_LABELS[t.sampling] };
@@ -52,16 +52,16 @@ export async function serialize(doc: Doc, activeId: ID | null): Promise<{ manife
   const layers: Json[] = [];
   for (const l of doc.layers) {
     const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
-    if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
+ if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
     if (l.parentId) r.parentID = l.parentId;
     if (l.isGroup) r.isGroup = true;
     if (l.opacity !== 1) r.opacity = l.opacity;
-    if (l.blend !== 'normal') r.blendMode = blendLabel(l.blend);
+ if (l.blend !== 'normal') r.blendMode = blendLabel(l.blend);
     if (l.mask) {
       const w = l.mask.raster?.width ?? l.raster?.width ?? Math.max(1, Math.round(l.transform.w));
       const h = l.mask.raster?.height ?? l.raster?.height ?? Math.max(1, Math.round(l.transform.h));
-      const name = `${l.id}.mask.png`;
-      files.push({ name, blob: await toBlob(maskToGray(l.mask.raster ?? Raster.filled(w, h, 'white'))) });
+ const name = `${l.id}.mask.png`;
+ files.push({ name, blob: await toBlob(maskToGray(l.mask.raster ?? Raster.filled(w, h, 'white'))) });
       r.maskFile = name;
       r.maskEnabled = l.mask.enabled;
       if (l.mask.placement) r.maskPlacement = transformRecord(l.mask.placement);
@@ -72,7 +72,7 @@ export async function serialize(doc: Doc, activeId: ID | null): Promise<{ manife
     if (l.shape) r.shape = l.shape;
     layers.push(r);
   }
-  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers };
+ const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers };
   if (activeId && doc.layers.some((l) => l.id === activeId)) manifest.activeLayerID = activeId;
   return { manifest, files };
 }
@@ -86,35 +86,35 @@ const asUuid = (v: unknown, map: Map<string, string>): string | null => {
   return u;
 };
 
-/** The document as a reference project (format `com.reference.project`, version 7), for `Name.ref/`: the same
- *  manifest and files as `serialize`, reshaped to what `ProjectStore.validate` accepts: UUID ids (regenerated where
- *  sonny fell back to counters), image files named after them, folders without opacity or blend (the reference app's
- *  folders carry neither), adjustment layers without pixels, non-empty names and a resolution of 1 to 9600. Anything
- *  changed is listed in `notes` so the person knows what the reference app will see differently. */
-export async function serializeReference(doc: Doc, activeId: ID | null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
+/** The document as a project (format `com.reference.project`, version 7), for `Name.ref/`: the same
+ * manifest and files as `serialize`, reshaped to what `ProjectStore.validate` accepts: UUID ids (regenerated where
+ * sonny fell back to counters), image files named after them, folders without opacity or blend (the
+ * folders carry neither), adjustment layers without pixels, non-empty names and a resolution of 1 to 9600. Anything
+ * changed is listed in `notes` so the person knows what will see differently. */
+export async function serializeRefProject(doc: Doc, activeId: ID | null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
   const { manifest, files } = await serialize(doc, activeId);
   const ids = new Map<string, string>(), rename = new Map<string, string>(), drop = new Set<string>(), notes: string[] = [];
   const layers = (Array.isArray(manifest.layers) ? manifest.layers.map(obj) : []).map((r) => {
     const id = asUuid(r.id, ids) as string, out: Json = { ...r, id };
-    const name = (str(r.name) ?? '').trim();
-    if (!name) { out.name = 'Layer'; notes.push('An unnamed layer was named "Layer".'); }
+ const name = (str(r.name) ?? '').trim();
+ if (!name) { out.name = 'Layer'; notes.push('An unnamed layer was named "Layer".'); }
     if (r.parentID) out.parentID = asUuid(r.parentID, ids);
     if (r.maskSourceID) out.maskSourceID = asUuid(r.maskSourceID, ids);
     if (str(r.imageFile)) {
       if (r.adjustment) { drop.add(str(r.imageFile) as string); delete out.imageFile; }
-      else { rename.set(str(r.imageFile) as string, `${id}.png`); out.imageFile = `${id}.png`; }
+ else { rename.set(str(r.imageFile) as string, `${id}.png`); out.imageFile = `${id}.png`; }
     }
-    if (str(r.maskFile)) { rename.set(str(r.maskFile) as string, `${id}.mask.png`); out.maskFile = `${id}.mask.png`; }
-    if (r.isGroup === true && ((typeof r.opacity === 'number' && r.opacity !== 1) || (r.blendMode && r.blendMode !== 'Normal'))) {
+ if (str(r.maskFile)) { rename.set(str(r.maskFile) as string, `${id}.mask.png`); out.maskFile = `${id}.mask.png`; }
+ if (r.isGroup === true && ((typeof r.opacity === 'number' && r.opacity !== 1) || (r.blendMode && r.blendMode !== 'Normal'))) {
       delete out.opacity; delete out.blendMode;
-      notes.push(`Folder "${name || 'Layer'}" loses its opacity or blend mode; the reference app folders have neither.`);
+ notes.push(`Folder "${name || 'Layer'}" loses its opacity or blend mode;.ref folders carry neither.`);
     }
     return out;
   });
   const res = num(manifest.resolution, 72);
-  const out: Json = { ...manifest, format: 'com.reference.project', version: 7, documentID: asUuid(manifest.documentID, ids) ?? uid().toUpperCase(), resolution: Math.min(9600, Math.max(1, res)), layers };
+ const out: Json = {...manifest, format: 'com.reference.project', version: 7, documentID: asUuid(manifest.documentID, ids) ?? uid().toUpperCase(), resolution: Math.min(9600, Math.max(1, res)), layers };
   if (manifest.activeLayerID) out.activeLayerID = asUuid(manifest.activeLayerID, ids);
-  if (res < 1 || res > 9600) notes.push(`Resolution ${res} was clamped to the reference app's 1 to 9600.`);
+ if (res < 1 || res > 9600) notes.push(`Resolution ${res} was clamped to the.ref range, 1 to 9600.`);
   const parts = files.filter((f) => !drop.has(f.name)).map((f) => ({ ...f, name: rename.get(f.name) ?? f.name }));
   return { manifest: out, files: parts, notes };
 }
@@ -127,16 +127,16 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const bitmaps = new Map<string, ImageBitmap>();
   await Promise.all([...names].map(async (n) => { bitmaps.set(n, await createImageBitmap(await fetchImage(n))); }));
   const layers: Layer[] = records.map((r) => {
-    const image = bitmaps.get(str(r.imageFile) ?? '');
+ const image = bitmaps.get(str(r.imageFile) ?? '');
     const raster = image ? Raster.from(image, image.width, image.height) : null;
-    const maskImage = bitmaps.get(str(r.maskFile) ?? '');
+ const maskImage = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskImage
       ? { raster: grayToMask(maskImage), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskImage.width, maskImage.height) : null }
       : null;
     const adj = obj(r.adjustment);
     const kind = KINDS[String(adj.kind)];
     return {
-      id: str(r.id) ?? uid(), name: str(r.name) ?? 'Layer', raster, transform: transformFrom(r.transform, raster?.width ?? width, raster?.height ?? height),
+ id: str(r.id) ?? uid(), name: str(r.name) ?? 'Layer', raster, transform: transformFrom(r.transform, raster?.width ?? width, raster?.height ?? height),
       visible: r.isVisible !== false, parentId: str(r.parentID), isGroup: r.isGroup === true, opacity: clamp(num(r.opacity, 1), 0, 1),
       blend: blendFromLabel(r.blendMode), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
     };

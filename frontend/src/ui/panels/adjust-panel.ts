@@ -11,7 +11,7 @@ import { checkRow, colorRow, selectRow, sliderRow } from './controls';
 
 type LevelRangeData = { black: number; gamma: number; white: number; outputBlack: number; outputWhite: number };
 
-/** the reference app's LevelsAuto: each end clips 0.1% of a channel's histogram. Contrast shares one master interval
+/** each end clips 0.1% of a channel's histogram. Contrast shares one master interval
  *  across R, G and B so channel relationships hold; Color sets each channel; Color + neutral midtones also sets
  *  each channel's gamma so its mean maps to middle gray. `bins` is `histogram()`: composite, then R, G, B. */
 function autoLevels(bins: Float64Array, mode: 'contrast' | 'color' | 'neutral'): LevelRangeData[] {
@@ -196,7 +196,7 @@ export class AdjustPanel extends Dialog {
     return h < 0 ? h + 360 : h;
   }
 
-  /** the reference app's eyedroppers: re-center, widen or narrow the selected range's band on the sampled hue. */
+  /** re-center, widen or narrow the selected range's band on the sampled hue. */
   private sampleHue(pt: { x: number; y: number }, mode: string): void {
     const s = this.hsv;
     if (s.range === 'Master' || s.colorize) { toast('Choose a color range to sample into.'); return; }
@@ -208,7 +208,7 @@ export class AdjustPanel extends Dialog {
     this.changed();
   }
 
-  /** the reference app's targeted adjustment: the range that most claims the hue under the pointer becomes the selected
+  /** the targeted adjustment: the range that most claims the hue under the pointer becomes the selected
    *  range, and dragging right raises its saturation (its hue with Cmd or Ctrl held) by one unit per two screen pixels. */
   private beginTarget(pt: { x: number; y: number }, x0: number): void {
     const s = this.hsv;
@@ -248,7 +248,7 @@ export class AdjustPanel extends Dialog {
     this.targetDrag = null;
   }
 
-  /** the reference app's `LevelsSettings.sampling`: all three channels are calibrated together from the sampled color and
+  /** the `LevelsSettings.sampling`: all three channels are calibrated together from the sampled color and
    *  the master range resets; the gray point sets each channel's gamma so the sample maps to middle gray. */
   private applySample(rgb: [number, number, number], mode: 'black' | 'gray' | 'white'): void {
     const lv = this.data.levels as { channel: string; ranges: Array<Record<string, number>> };

@@ -15,7 +15,7 @@ function editable(ctx: ToolContext): Transform | null {
   return e.transformsMask(l) ? l.mask?.placement ?? l.transform : l.transform;
 }
 
-/** the reference app's free distort: the corner under the pointer in handle order (top-left, top-right, bottom-right,
+/** the free distort: the corner under the pointer in handle order (top-left, top-right, bottom-right,
  *  bottom-left): any corner of a pending distortion, or with Cmd held a corner handle of the transform box. */
 let cornerDrag: number | null = null;
 function distortCorner(ctx: ToolContext, p: ToolPointer): number | null {

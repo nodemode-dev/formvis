@@ -1,6 +1,6 @@
 # sonny
 
-sonny is a layered image editor for the web and the desktop, built in the NodeMode design system. It ports the macOS app the reference app: same document model, same project manifest, `.ref` projects open unchanged. It runs in a browser, inside NodeMode as a full-screen portal app, and as a Tauri desktop app.
+sonny is a layered image editor for the web and the desktop, built in the NodeMode design system. It opens and writes `.ref` projects unchanged, alongside its own `.sonny` format. It runs in a browser, inside NodeMode as a full-screen portal app, and as a Tauri desktop app.
 
 | Page | What it covers |
 | --- | --- |
@@ -16,6 +16,6 @@ sonny is a layered image editor for the web and the desktop, built in the NodeMo
 | [Verification](Verification) | The throttled browser procedure every UI change passes |
 | [Releasing](Releasing) | Signing, notarization and updater secrets, and cutting a desktop release |
 
-Status at 0.30.0: all 14 of the reference app's tools and all 59 web-relevant menu commands are complete, the plan's Phase 5 (selections) is closed, and Phase 3 (layers) is in progress; the README's Status section and `CHANGELOG.md` list what each release added and what is not built yet.
+Status at 0.30.0: all 14 of the tools and all 59 web-relevant menu commands are complete, the plan's Phase 5 (selections) is closed, and Phase 3 (layers) is in progress; the README's Status section and `CHANGELOG.md` list what each release added and what is not built yet.
 
 These pages are the source of truth in the repository under `.docs/wiki/`. Edit them there; the wiki workflow publishes them.

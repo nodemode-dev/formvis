@@ -1,7 +1,7 @@
 import { hexOf, type RGB } from '../../engine';
 import type { Tool, ToolContext, ToolPointer } from '../registry';
 
-/** The color a drag started from, shown on the sample ring's lower half (the reference app's `samplingOriginal`). */
+/** The color a drag started from, shown on the sample ring's lower half. */
 let original: RGB | null = null;
 
 function sample(ctx: ToolContext, p: ToolPointer): void {

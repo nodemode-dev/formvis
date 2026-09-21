@@ -4,7 +4,7 @@ import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { selectRow, sliderRow } from './controls';
 
-/** the reference app's Remove Background panel: the model's subject mask, as it comes (Basic) or refined against the layer's
+/** the Remove Background panel: the model's subject mask, as it comes (Basic) or refined against the layer's
  *  own detail (Advanced: Refine, Contrast, Shift Edge), previewed on the layer and laid down as a layer mask on OK.
  *  The settings carry over from one use to the next. */
 export class BackgroundPanel extends Dialog {

@@ -5,104 +5,104 @@ Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entri
 ## Org-navi-map
 
 ```text
-HASHOUT_LOG.md  · this log
-boot_frontend  · start the Vite dev server (unix)
-boot_frontend.bat  · start the Vite dev server (windows)
-index.html  · entry page: critical style, pre-paint theme boot, font preloads, stylesheet order
-oc_install  · install this side (unix)
-oc_install.bat  · install this side (windows)
-package-lock.json  · npm lockfile
-package.json  · pinned dependencies and scripts
+HASHOUT_LOG.md · this log
+boot_frontend · start the Vite dev server (unix)
+boot_frontend.bat · start the Vite dev server (windows)
+index.html · entry page: critical style, pre-paint theme boot, font preloads, stylesheet order
+oc_install · install this side (unix)
+oc_install.bat · install this side (windows)
+package-lock.json · npm lockfile
+package.json · pinned dependencies and scripts
 public/
-    favicon.svg  · tab icon
-    splash.html  · desktop splash page
+ favicon.svg · tab icon
+ splash.html · desktop splash page
 src/
-    app.ts  · mount, commands, menus, input, file flows, reveal gate
-    engine/
-        adjust.ts  · Hue/Saturation and Grain kernels, adjustment data
-        renderer.ts  · rendering pipeline
-        distort.ts  · free distort: homography, warp, carried corners
-        dpi.ts  · export resolution stamp (PNG pHYs, JPEG JFIF density)
-        filter-jobs.ts  · worker client for filter previews
-        filter-worker.ts  · module worker running filter kernels
-        events.ts  · typed emitter
-        filters.ts  · blurs, noise, lens, histogram, selection resize
-        geometry.ts  · matrices and rectangles
-        history.ts  · undo stack
-        index.ts  · Engine API
-        kernels.ts  · adjustment and wand kernels
-        matte.ts  · Remove Background matte refining: guided filter, shift edge, contrast
-        project.ts  · per-tab project record
-        retouch.ts  · Spot Healing, Content-Aware Fill, Smudge and Liquify
-        selection.ts  · selection masks, outline tracer
-        stroke.ts  · brush stroke engine
-        surface.ts  · canvases and rasters
-        transform.ts  · handles and drag math
-        tree.ts  · layer hierarchy walks
-        types.ts  · document types, blend modes, limits
-        viewport.ts  · zoom and pan
-    extensions/
-        registry.ts  · tool contract and registry
-        tools/
-            brush-common.ts  · shared brush cursor, keys and options
-            brush.ts  · brush and eraser
-            clone.ts  · Clone Stamp
-            crop.ts  · crop frame, ratios, snapping
-            eyedropper.ts  · color sampling
-            gradient.ts  · pending gradient with movable ends
-            hand.ts  · panning
-            heal.ts  · Spot Healing
-            index.ts  · built-in tool list
-            lasso.ts  · freehand and polygonal lasso
-            marquee.ts  · rectangle and ellipse marquee
-            move.ts  · move and transform handles
-            select-common.ts  · modifier to selection mode
-            shape.ts  · rectangle and ellipse shape layers
-            smear.ts  · Smear: Liquify, Blur, Smudge
-            wand.ts  · magic wand
-            zoom.ts  · zoom tool
-    host.ts  · NodeMode portal link
-    io/
-        api.ts  · engine HTTP client
-        images.ts  · image decoding with engine fallback
-        project-io.ts  · project serialize and deserialize
-    main.ts  · entry, calls startApp
-    styles/
-        dialogs.css  · dialogs and lists
-        fonts.css  · vendored Inter and JetBrains Mono
-        light-mode.css  · light theme adjustments
-        panels.css  · layers panel, menus, toasts
-        scrollbars.css  · scrollbars, loaded last
-        shell.css  · app grid, titlebar, rail, stage, status
-        tokens.css  · NodeMode tokens plus the sonny block
-    ui/
-        app-dialogs.ts  · new canvas, open, settings, shortcuts, about
-        commands.ts  · command registry and key labels
-        dialogs.ts  · dialog base, confirm, prompt
-        dom.ts  · NodeMode dom-stable plus setters
-        icons.ts  · 80 NodeMode icons, verbatim
-        layers.ts  · layers panel
-        menu.ts  · popup menus and menubar
-        options.ts  · options bar
-        palette.ts  · stage colors from tokens
-        panels/
-            adjust-panel.ts  · adjustment editing panel, layer and image modes
-            background-panel.ts  · Remove Background panel: Basic, Advanced refine, preview
-            color-picker.ts  · Photoshop-style color picker with canvas sampling
-            controls.ts  · slider, select, check, color and number rows
-            filter-panel.ts  · filter dialog with scaled preview
-            jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
-            live-mask-dialog.ts  · bake-or-unlink choice when deleting a clip base
-            size-dialogs.ts  · canvas size, image size, expand and contract
-        rail.ts  · tool rail and colors
-        stage.ts  · scene and overlay canvases
-        status.ts  · status bar
-        tabs.ts  · project tabs
-        themes.ts  · 14 NodeMode theme profiles, verbatim
-        toast.ts  · toasts
-    version.ts  · version string
-tsconfig.json  · strict compiler settings
-vite.config.ts  · ports 5190 and 5191, host false, /api proxy
+ app.ts · mount, commands, menus, input, file flows, reveal gate
+ engine/
+ adjust.ts · Hue/Saturation and Grain kernels, adjustment data
+ renderer.ts · rendering pipeline
+ distort.ts · free distort: homography, warp, carried corners
+ dpi.ts · export resolution stamp (PNG pHYs, JPEG JFIF density)
+ filter-jobs.ts · worker client for filter previews
+ filter-worker.ts · module worker running filter kernels
+ events.ts · typed emitter
+ filters.ts · blurs, noise, lens, histogram, selection resize
+ geometry.ts · matrices and rectangles
+ history.ts · undo stack
+ index.ts · Engine API
+ kernels.ts · adjustment and wand kernels
+ matte.ts · Remove Background matte refining: guided filter, shift edge, contrast
+ project.ts · per-tab project record
+ retouch.ts · Spot Healing, Content-Aware Fill, Smudge and Liquify
+ selection.ts · selection masks, outline tracer
+ stroke.ts · brush stroke engine
+ surface.ts · canvases and rasters
+ transform.ts · handles and drag math
+ tree.ts · layer hierarchy walks
+ types.ts · document types, blend modes, limits
+ viewport.ts · zoom and pan
+ extensions/
+ registry.ts · tool contract and registry
+ tools/
+ brush-common.ts · shared brush cursor, keys and options
+ brush.ts · brush and eraser
+ clone.ts · Clone Stamp
+ crop.ts · crop frame, ratios, snapping
+ eyedropper.ts · color sampling
+ gradient.ts · pending gradient with movable ends
+ hand.ts · panning
+ heal.ts · Spot Healing
+ index.ts · built-in tool list
+ lasso.ts · freehand and polygonal lasso
+ marquee.ts · rectangle and ellipse marquee
+ move.ts · move and transform handles
+ select-common.ts · modifier to selection mode
+ shape.ts · rectangle and ellipse shape layers
+ smear.ts · Smear: Liquify, Blur, Smudge
+ wand.ts · magic wand
+ zoom.ts · zoom tool
+ host.ts · NodeMode portal link
+ io/
+ api.ts · engine HTTP client
+ images.ts · image decoding with engine fallback
+ project-io.ts · project serialize and deserialize
+ main.ts · entry, calls startApp
+ styles/
+ dialogs.css · dialogs and lists
+ fonts.css · vendored Inter and JetBrains Mono
+ light-mode.css · light theme adjustments
+ panels.css · layers panel, menus, toasts
+ scrollbars.css · scrollbars, loaded last
+ shell.css · app grid, titlebar, rail, stage, status
+ tokens.css · NodeMode tokens plus the sonny block
+ ui/
+ app-dialogs.ts · new canvas, open, settings, shortcuts, about
+ commands.ts · command registry and key labels
+ dialogs.ts · dialog base, confirm, prompt
+ dom.ts · NodeMode dom-stable plus setters
+ icons.ts · 80 NodeMode icons, verbatim
+ layers.ts · layers panel
+ menu.ts · popup menus and menubar
+ options.ts · options bar
+ palette.ts · stage colors from tokens
+ panels/
+ adjust-panel.ts · adjustment editing panel, layer and image modes
+ background-panel.ts · Remove Background panel: Basic, Advanced refine, preview
+ color-picker.ts · Photoshop-style color picker with canvas sampling
+ controls.ts · slider, select, check, color and number rows
+ filter-panel.ts · filter dialog with scaled preview
+ jpeg-dialog.ts · JPEG export sheet with quality and encoded preview
+ live-mask-dialog.ts · bake-or-unlink choice when deleting a clip base
+ size-dialogs.ts · canvas size, image size, expand and contract
+ rail.ts · tool rail and colors
+ stage.ts · scene and overlay canvases
+ status.ts · status bar
+ tabs.ts · project tabs
+ themes.ts · 14 NodeMode theme profiles, verbatim
+ toast.ts · toasts
+ version.ts · version string
+tsconfig.json · strict compiler settings
+vite.config.ts · ports 5190 and 5191, host false, /api proxy
 ```
 
 ## Table of contents
@@ -250,8 +250,8 @@ Created in _v0.1.0.
 Removed: the gate read `fonts.ready` before any font load had started, so it resolved at once and Inter swapped in after reveal (measured in the throttled run). It now awaits explicit Inter 400, 500 and 600 loads, capped at 2.5 s.
 
 ```ts
-  const fonts = (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts?.ready ?? Promise.resolve();
-  void Promise.race([fonts, new Promise((r) => window.setTimeout(r, 400))]).then(() => requestAnimationFrame(() => revealApp()));
+ const fonts = (document as Document & { fonts?: { ready: Promise<unknown> } }).fonts?.ready ?? Promise.resolve();
+ void Promise.race([fonts, new Promise((r) => window.setTimeout(r, 400))]).then(() => requestAnimationFrame(() => revealApp()));
 ```
 
 ### src/app.ts · startApp · commands · _v0.1.0
@@ -260,7 +260,7 @@ Every menu item, button and shortcut is a command in the `commands.add(...)` blo
 
 ### src/app.ts · startApp · v0.2.0 commands and clipboard · _v0.2.0
 
-Adds the clipboard, selection-modify, Image adjustment, New Adjustment Layer, Canvas Size, Image Size and filter commands, and a Filter menu that now holds Remove Background, as in the reference app. Copy writes PNG plus a `sonny:` marker to the system clipboard; Mod+V is let through to the native paste event, which pastes in-app copies in place and external images centered above the active layer. Double-clicked adjustment rows open their editor through `cv:edit-adjustment`.
+Adds the clipboard, selection-modify, Image adjustment, New Adjustment Layer, Canvas Size, Image Size and filter commands, and a Filter menu that now holds Remove Background. Copy writes PNG plus a `sonny:` marker to the system clipboard; Mod+V is let through to the native paste event, which pastes in-app copies in place and external images centered above the active layer. Double-clicked adjustment rows open their editor through `cv:edit-adjustment`.
 
 ### src/app.ts · startApp · Content-Aware Fill · _v0.3.0
 
@@ -272,7 +272,7 @@ Adds the Content-Aware Fill command (Shift+Backspace) to the Edit menu; it runs 
 
 ### src/app.ts · startApp · Transform command · _v0.5.0
 
-Adds the Transform command to the Edit menu, labeled Transform Selection or Transform Layer as the reference app labels it, on Alt+Mod+T (browsers keep Mod+T for a new tab, as with Alt+Mod+N and Alt+Mod+W) and Mod+T. Removed from the Edit menu definition:
+Adds the Transform command to the Edit menu, labeled Transform Selection or Transform Layer as labels it, on Alt+Mod+T (browsers keep Mod+T for a new tab, as with Alt+Mod+N and Alt+Mod+W) and Mod+T. Removed from the Edit menu definition:
 
 ```ts
 'fill-fg', 'fill-bg', 'clear', 'content-fill', '-', 'settings'] },
@@ -287,15 +287,15 @@ Each calls `engine.settle()` before reading the document, so an unapplied gradie
 Export JPEG... settles, then opens `JpegDialog`, whose chosen quality `exportImage` passes to `exportBlob`. Removed:
 
 ```ts
-    { id: 'export-jpg', label: 'Export JPEG', enabled: has, run: () => void exportImage('jpg') },
+ { id: 'export-jpg', label: 'Export JPEG', enabled: has, run: () => void exportImage('jpg') },
 ```
 
 ```ts
-  async function exportImage(kind: 'png' | 'jpg'): Promise<void> {
+ async function exportImage(kind: 'png' | 'jpg'): Promise<void> {
 ```
 
 ```ts
-        const blob = await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg');
+ const blob = await engine.exportBlob(kind === 'png' ? 'image/png': 'image/jpeg');
 ```
 
 ### src/app.ts · startApp · removeBackground opens the panel · _v0.9.0
@@ -303,9 +303,9 @@ Export JPEG... settles, then opens `JpegDialog`, whose chosen quality `exportIma
 The engine's mask now opens `BackgroundPanel` instead of being applied at once, and the toast names the engine that found the subject. Removed:
 
 ```ts
-        engine.setMaskFromImage(l.id, bitmap, raster.width, raster.height, 'Remove Background');
-        bitmap.close();
-        toast(`Background removed with the ${used === 'ml' ? 'ML' : 'lightweight'} engine. The result is a layer mask you can refine.`);
+ engine.setMaskFromImage(l.id, bitmap, raster.width, raster.height, 'Remove Background');
+ bitmap.close();
+ toast(`Background removed with the ${used === 'ml' ? 'ML': 'lightweight'} engine. The result is a layer mask you can refine.`);
 ```
 
 ### src/app.ts · startApp · color picker · _v0.10.0
@@ -317,54 +317,62 @@ Creates `ColorPickerDialog` with the other dialogs; it listens for the rail's `c
 The Delete Layer command and the Delete and Backspace keys ask through `LiveMaskDialog` when layers are clipped to what is being deleted. (Filed under renderer.ts in 0.19.0 by mistake; moved here in 0.20.0.) Removed:
 
 ```ts
-    { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => engine.deleteLayers() },
+ { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => engine.deleteLayers() },
 ```
 
 ```ts
-clearPixels() : engine.deleteLayers()
+clearPixels(): engine.deleteLayers()
 ```
 
 ### src/app.ts · recent projects, Open Recent commands · _v0.23.0
 
-the reference app's recent documents: `noteRecent` on every library save and open (ten, newest first, in local storage), `recent-heading`, `recent-0` to `recent-9` and `clear-recent` commands, and a File menu computed on open; a project the library no longer has drops out. Removed:
+the recent documents: `noteRecent` on every library save and open (ten, newest first, in local storage), `recent-heading`, `recent-0` to `recent-9` and `clear-recent` commands, and a File menu computed on open; a project the library no longer has drops out. Removed:
 
 ```ts
-      try { await openOpened(await api.openLibrary(name), name); return true; } catch (err) { toast(message(err), 'error'); return false; }
+ try { await openOpened(await api.openLibrary(name), name); return true; } catch (err) { toast(message(err), 'error'); return false; }
 ```
 
 ```ts
-    { label: 'File', items: ['new', 'open', 'import', '-', 'save', 'save-as', 'download-project', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+ { label: 'File', items: ['new', 'open', 'import', '-', 'save', 'save-as', 'download-project', '-', 'export-png', 'export-jpg',...(hostLink.embedded ? ['send-host']: []), '-', 'close-tab'] },
 ```
 
 ### src/app.ts · close-tab · Mod+W in the desktop shell · _v0.25.0
 
-Close Tab takes Mod+W where the Tauri shell is present, as the reference app's File > Close; the web keeps Alt+Mod+W since browsers reserve Ctrl/Cmd-W. Removed:
+Close Tab takes Mod+W where the Tauri shell is present, as the File > Close; the web keeps Alt+Mod+W since browsers reserve Ctrl/Cmd-W. Removed:
 
 ```ts
-    { id: 'close-tab', label: 'Close Tab', keys: ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
+ { id: 'close-tab', label: 'Close Tab', keys: ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
 ```
 
-### src/app.ts · exportReference, export-ref · _v0.28.0
+### src/app.ts · exportRefProject, export-ref · _v0.28.0
 
-File > Export for the reference app (.ref)... writes `Name.ref.zip` through `serializeReference` and the package route's root folder, and toasts the changes made for the reference app. Nothing was removed.
+File > Export.ref Project... writes `Name.ref.zip` through `serializeRefProject` and the package route's root folder, and toasts the changes made for the.ref format. Nothing was removed.
 
 ### src/app.ts · export-jpg shortcut · _v0.30.0
 
-Export JPEG takes the reference app's Alt+Shift+Mod+S, the one gap the shortcut audit found. Removed:
+Export JPEG takes the Alt+Shift+Mod+S, the one gap the shortcut audit found. Removed:
 
 ```ts
-    { id: 'export-jpg', label: 'Export JPEG...', enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
+ { id: 'export-jpg', label: 'Export JPEG...', enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
+```
+
+### src/app.ts · exportRefProject, .ref wording · _v0.31.0
+
+`exportReference` and `serializeReference` became `exportRefProject` and `serializeRefProject`; the menu item reads Export .ref Project... and its toast names the format. Removed:
+
+```ts
+    { id: 'export-ref', label: 'Export for the reference app (.ref)...', enabled: has, run: () => void exportReference() },
 ```
 
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
 
-Hue/Saturation ported from `HueSaturation.swift` (HSL, per-range band weights, multiplicative saturation, lightness pull, colorize), baked into a 33-point cube lookup table like the reference app's color cube. Grain ported from `AdjustPixels.c` (lattice noise, smoothstep, roughness, midtone weighting) in document coordinates. The invert-range rule in `weightOf` is inferred from the settings doc comment, not read from source. `defaultAdjustmentData` writes every non-optional `LayerAdjustment` field because the reference app decodes with synthesized Codable; enum-keyed dictionaries are written as Swift's alternating arrays and read in either form.
+Hue/Saturation ported from `HueSaturation.swift` (HSL, per-range band weights, multiplicative saturation, lightness pull, colorize), baked into a 33-point cube lookup table like the color cube. Grain ported from `AdjustPixels.c` (lattice noise, smoothstep, roughness, midtone weighting) in document coordinates. The invert-range rule in `weightOf` is inferred from the settings doc comment, not read from source. `defaultAdjustmentData` writes every non-optional `LayerAdjustment` field because decodes with synthesized Codable; enum-keyed dictionaries are written as Swift's alternating arrays and read in either form.
 
 ### src/engine/adjust.ts · band operations · _v0.8.0
 
-Ports the reference app's `HueBand` methods as pure functions: `bandForward`, `bandHandles`, `bandCentered` (the Sample eyedropper), `bandInclude` (Add), `bandExclude` (Remove), `bandSetHandle` (a handle drag, refused when it would break the order or exceed 350 degrees) and the private `normalizeBand`. Swift's `truncatingRemainder` matches JavaScript's `%`, so wraparound behaves identically. Nothing was removed.
+Implements `HueBand` methods as pure functions: `bandForward`, `bandHandles`, `bandCentered` (the Sample eyedropper), `bandInclude` (Add), `bandExclude` (Remove), `bandSetHandle` (a handle drag, refused when it would break the order or exceed 350 degrees) and the private `normalizeBand`. Swift's `truncatingRemainder` matches JavaScript's `%`, so wraparound behaves identically. Nothing was removed.
 
 ## src/engine/renderer.ts
 
@@ -379,10 +387,10 @@ Adds a kernel cache keyed on the adjustment data object, hands each kernel the r
 ```ts
 import { IDENTITY, mul, placement, setMat, type Mat } from './geometry';
 import { adjustmentKernel } from './kernels';
-      const m = mul(job.view, placement(t, layer.raster.width, layer.raster.height));
-    const kernel = adjustmentKernel(layer.adjustment);
-    kernel(adj);
-    return { src, w: m.raster.width, h: m.raster.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
+ const m = mul(job.view, placement(t, layer.raster.width, layer.raster.height));
+ const kernel = adjustmentKernel(layer.adjustment);
+ kernel(adj);
+ return { src, w: m.raster.width, h: m.raster.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
 ```
 
 ### src/engine/renderer.ts · LayerOverride.maskPlacement, maskOf · _v0.15.0
@@ -394,7 +402,7 @@ export interface LayerOverride { source?: Surface; transform?: Transform; maskSo
 ```
 
 ```ts
-    return { src, w: src.width, h: src.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
+ return { src, w: src.width, h: src.height, t: m.placement ?? t, covers: !m.placement && !layer.adjustment };
 ```
 
 ### src/engine/renderer.ts · clipCoverageOf · _v0.19.0
@@ -403,7 +411,7 @@ A public, pool-free copy of a clip base's coverage at document size, the exact c
 
 ### src/engine/renderer.ts · halving chain (DownsampleCache) · _v0.20.0
 
-the reference app's DownsampleCache: `draw` renders a layer landing under half size from a chain of exact 2x halvings (`halvings`, `halved`, at most six), cached per raster and dropped when its version changes, found through `rasterOf`; Nearest sampling bypasses it. Removed:
+`draw` renders a layer landing under half size from a chain of exact 2x halvings (`halvings`, `halved`, at most six), cached per raster and dropped when its version changes, found through `rasterOf`; Nearest sampling bypasses it. Removed:
 
 ```ts
 import { createSurface, ctxOf, sizeSurface, type Ctx2D, type Surface } from './surface';
@@ -411,12 +419,12 @@ import { IDENTITY, applyMat, invert, matScale, mul, placement, setMat, type Mat 
 ```
 
 ```ts
-    c.save();
-    setMat(c, m);
+ c.save();
+ setMat(c, m);
 ```
 
 ```ts
-    c.drawImage(src, 0, 0);
+ c.drawImage(src, 0, 0);
 ```
 
 ### src/engine/renderer.ts · clipCoverage · override source size · _v0.21.0
@@ -424,20 +432,20 @@ import { IDENTITY, applyMat, invert, matScale, mul, placement, setMat, type Mat 
 A clip base's override source is placed by the source's own size, as layers and masks already were, so a distorted clip base previews at the right scale. Removed:
 
 ```ts
-    this.draw(slot.c, src, mul(job.view, placement(t, base.raster.width, base.raster.height)), t.sampling, ov?.opacity ?? base.opacity, 'source-over', job.quality);
+ this.draw(slot.c, src, mul(job.view, placement(t, base.raster.width, base.raster.height)), t.sampling, ov?.opacity ?? base.opacity, 'source-over', job.quality);
 ```
 
 ## src/engine/distort.ts
 
 ### src/engine/distort.ts · DistortWarp port · _v0.21.0
 
-the reference app's free distort math: `cornersOf` (handle order), `distortUsable` (convex and non-degenerate), `homography` and `project`, `carried` (a box's perspective applied to inner corners, for group members and masks placed apart), `warpRaster` (premultiplied, edge-clamped bilinear inverse mapping, preview scale, mask mode with an edge tone outside), `visibleBounds` and `cropWarp` (warpTrimmed), and `maskEdgeTone` (LayerMask.background).
+the free distort math: `cornersOf` (handle order), `distortUsable` (convex and non-degenerate), `homography` and `project`, `carried` (a box's perspective applied to inner corners, for group members and masks placed apart), `warpRaster` (premultiplied, edge-clamped bilinear inverse mapping, preview scale, mask mode with an edge tone outside), `visibleBounds` and `cropWarp` (warpTrimmed), and `maskEdgeTone` (LayerMask.background).
 
 ## src/engine/dpi.ts
 
 ### src/engine/dpi.ts · withResolution · _v0.25.0
 
-the reference app's ImageExporter DPI: a PNG `pHYs` chunk (pixels per meter, with its CRC32) placed after IHDR unless one exists, and a JPEG's JFIF density in dots per inch (an APP0 segment inserted when absent); other types and out-of-range resolutions pass through.
+the ImageExporter DPI: a PNG `pHYs` chunk (pixels per meter, with its CRC32) placed after IHDR unless one exists, and a JPEG's JFIF density in dots per inch (an APP0 segment inserted when absent); other types and out-of-range resolutions pass through.
 
 ## src/engine/filter-jobs.ts
 
@@ -461,7 +469,7 @@ Created in _v0.1.0.
 
 ### src/engine/filters.ts · gaussianBlur, motionBlur, addNoise, lensDistort, histogram, resizeMask · _v0.2.0
 
-Gaussian Blur as three premultiplied box passes with zero padding, so it fades past the edge; Motion Blur as a sampled line of the given length (the reference app matches Core Image's radius to that length by variance); Add Noise and Lens Correction ported from `NoisePixels.c` and `LensPixels.c` with premultiplied sampling; the Levels histogram from `LevelsPixels.c`; Expand and Contract through a Felzenszwalb distance transform with one pixel of antialiasing.
+Gaussian Blur as three premultiplied box passes with zero padding, so it fades past the edge; Motion Blur as a sampled line of the given length (matches Core Image's radius to that length by variance); Add Noise and Lens Correction ported from `NoisePixels.c` and `LensPixels.c` with premultiplied sampling; the Levels histogram from `LevelsPixels.c`; Expand and Contract through a Felzenszwalb distance transform with one pixel of antialiasing.
 
 ## src/engine/geometry.ts
 
@@ -482,27 +490,27 @@ Created in _v0.1.0.
 Removed: a drop onto the slot a layer already held recorded an undo entry that changed nothing. The new code compares id, parent and clip order and returns false on a no-op.
 
 ```ts
-      p.setLayers(this.normalizeClips(layers));
+ p.setLayers(this.normalizeClips(layers));
 ```
 
 ### src/engine/index.ts · Engine.setMaskFromImage · _v0.1.0
 
-Added for Remove Background: the engine result becomes a linked layer mask, never deleted pixels, matching the reference app.
+Added for Remove Background: the engine result becomes a linked layer mask, never deleted pixels, matching the.ref format.
 
 ### src/engine/index.ts · live edits, previews, image edits, sizing, clipboard, gradient, shapes · _v0.2.0
 
-Adds `beginLive`, `updateLive`, `commitLive` and `cancelLive` (one undo step for panel editing); `setPreview` and `previewImageEdit` (scaled to about 2 megapixels, grown for blurs); `applyImageEdit` (through the selection, masks as gray, blurs grow the layer); adjustment layers; Canvas Size with the Canvas Extension layer; Crop; Image Size; Expand, Contract and Mask's Black Areas; the clipboard; the pending gradient, committed on `settle` so the first Undo discards it; shape layers, redrawn on resize and plain pixels once painted, filled or filtered. Clearing on a mask now fills with the background color, as in the reference app. Removed:
+Adds `beginLive`, `updateLive`, `commitLive` and `cancelLive` (one undo step for panel editing); `setPreview` and `previewImageEdit` (scaled to about 2 megapixels, grown for blurs); `applyImageEdit` (through the selection, masks as gray, blurs grow the layer); adjustment layers; Canvas Size with the Canvas Extension layer; Crop; Image Size; Expand, Contract and Mask's Black Areas; the clipboard; the pending gradient, committed on `settle` so the first Undo discards it; shape layers, redrawn on resize and plain pixels once painted, filled or filtered. Clearing on a mask now fills with the background color. Removed:
 
 ```ts
-    this.regionEdit('Clear', ({ raster, rect, cover }) => {
-      const c = raster.ctx;
-      c.save();
-      c.setTransform(1, 0, 0, 1, 0, 0);
-      c.globalCompositeOperation = 'destination-out';
-      c.drawImage(this.tint(rect, '#ffffff', cover), rect.x, rect.y);
-      c.restore();
-    });
-      p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
+ this.regionEdit('Clear', ({ raster, rect, cover }) => {
+ const c = raster.ctx;
+ c.save();
+ c.setTransform(1, 0, 0, 1, 0, 0);
+ c.globalCompositeOperation = 'destination-out';
+ c.drawImage(this.tint(rect, '#ffffff', cover), rect.x, rect.y);
+ c.restore();
+ });
+ p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
 ```
 
 ### src/engine/index.ts · retouch strokes, warp, Content-Aware Fill · _v0.3.0
@@ -510,35 +518,35 @@ Adds `beginLive`, `updateLive`, `commitLive` and `cancelLive` (one undo step for
 Adds `beginRetouchStroke` (Spot Healing previews as a tint and heals on release; Clone Stamp and Blur paint a texture), Clone Stamp's source and offset rules from `CloneStamp.swift` (aligned offsets fixed by the first stroke, cleared by a new source), the Blur sample blurred by `diameter / 10` clamped 1.5 to 30 from `BlurTool.swift`, the Smudge and Liquify warp lifecycle shown through a document-size override and committed along the dab path as one undo step, and `contentAwareFill` through the selection's soft coverage. Retouch tools work on layer pixels; Blur on masks is not ported yet. Removed:
 
 ```ts
-    const patch = st.s.commit();
+ const patch = st.s.commit();
 ```
 
 ### src/engine/index.ts · snapping, precise transforms, pixel moves · _v0.4.0
 
-Move drags snap through `snapMove`: the moving box's edges and center go to the nearest target within 6 screen pixels among the canvas edges and center and every other visible layer's upright bounds and center, as the reference app's `snappedMove`, with `snapGuides` for the overlay; `snapping` turns it off. `setLayerTransform`, `resizeLayerTo` and `scaleLayerTo` back the Move inspector fields: each is one undo step, resizes around the center, honors the ratio lock, redraws shape layers, and a no-op records nothing. `beginPixelMove`, `movePixelsBy`, `endPixelMove` and `cancelPixelMove` lift the selected pixels (the reference app's `PixelMove`), show them over the layer with the selection cleared (kept for a duplicate), and commit one patch with the selection translated; `outlineShift` lets the ants follow. Removed:
+Move drags snap through `snapMove`: the moving box's edges and center go to the nearest target within 6 screen pixels among the canvas edges and center and every other visible layer's upright bounds and center, as the `snappedMove`, with `snapGuides` for the overlay; `snapping` turns it off. `setLayerTransform`, `resizeLayerTo` and `scaleLayerTo` back the Move inspector fields: each is one undo step, resizes around the center, honors the ratio lock, redraws shape layers, and a no-op records nothing. `beginPixelMove`, `movePixelsBy`, `endPixelMove` and `cancelPixelMove` lift the selected pixels, show them over the layer with the selection cleared (kept for a duplicate), and commit one patch with the selection translated; `outlineShift` lets the ants follow. Removed:
 
 ```ts
-  cancelTransform(): void { if (this.transformEdit) { this.transformEdit = null; this.emit('render', null); this.emit('options', null); } }
+ cancelTransform(): void { if (this.transformEdit) { this.transformEdit = null; this.emit('render', null); this.emit('options', null); } }
 ```
 
 ### src/engine/index.ts · Transform Selection, growLayer · _v0.5.0
 
-`transformCommand` (the reference app's Cmd-T) floats the selection when `canTransformSelection`, else switches to Move with transform controls on. `beginSelectionTransform` switches to Move first (switching settles), then opens one Transform Selection step: the selected pixels go onto a Floating Selection layer above their layer with its opacity and blend, the source shows its cleared pixels through the override map without being written, and the selection is handed to the float. Drags and inspector edits of the float update it without history (`settle(keepFloating)`, the floating branches in `endTransform` and `setLayerTransform`). `commitSelectionTransform` grows the source where the pixels now extend past it, writes cleared base plus transformed float, removes the float, and carries the selection through the same matrix; an unchanged float, a cancel, or a closed project restores the document exactly. `ensurePixels` now calls the general `growLayer(want)`. Removed:
+`transformCommand` floats the selection when `canTransformSelection`, else switches to Move with transform controls on. `beginSelectionTransform` switches to Move first (switching settles), then opens one Transform Selection step: the selected pixels go onto a Floating Selection layer above their layer with its opacity and blend, the source shows its cleared pixels through the override map without being written, and the selection is handed to the float. Drags and inspector edits of the float update it without history (`settle(keepFloating)`, the floating branches in `endTransform` and `setLayerTransform`). `commitSelectionTransform` grows the source where the pixels now extend past it, writes cleared base plus transformed float, removes the float, and carries the selection through the same matrix; an unchanged float, a cancel, or a closed project restores the document exactly. `ensurePixels` now calls the general `growLayer(want)`. Removed:
 
 ```ts
-  settle(): void {
+ settle(): void {
 ```
 
 ```ts
-    this.settle();
-    this.transformEdit = { project: p, layerId: l.id, original: l.transform, draft: l.transform, mode, start };
+ this.settle();
+ this.transformEdit = { project: p, layerId: l.id, original: l.transform, draft: l.transform, mode, start };
 ```
 
 ```ts
-    const t = layer.transform, r = layer.raster;
-    if (!isAxisAligned(t, r.width, r.height)) return r;
-    if (t.x <= 0 && t.y <= 0 && t.x + t.w >= W && t.y + t.h >= H) return r;
-    const u = unionRect({ x: t.x, y: t.y, w: t.w, h: t.h }, { x: 0, y: 0, w: W, h: H });
+ const t = layer.transform, r = layer.raster;
+ if (!isAxisAligned(t, r.width, r.height)) return r;
+ if (t.x <= 0 && t.y <= 0 && t.x + t.w >= W && t.y + t.h >= H) return r;
+ const u = unionRect({ x: t.x, y: t.y, w: t.w, h: t.h }, { x: 0, y: 0, w: W, h: H });
 ```
 
 ### src/engine/index.ts · sampleOriginal · _v0.7.0
@@ -547,130 +555,130 @@ Returns the unpremultiplied RGB of the original pixel under a document point fro
 
 ### src/engine/index.ts · applySubjectMask · _v0.9.0
 
-Lays a refined subject mask on a layer as one Remove Background step, stored as sonny masks are (white with the level in alpha), multiplied into an existing same-size unplaced mask as the reference app's `subjectMask` does. Nothing was removed; `setMaskFromImage` stays for other callers.
+Lays a refined subject mask on a layer as one Remove Background step, stored as sonny masks are (white with the level in alpha), multiplied into an existing same-size unplaced mask as the `subjectMask` does. Nothing was removed; `setMaskFromImage` stays for other callers.
 
 ### src/engine/index.ts · sampleRing, setSampleRing · _v0.11.0
 
-the reference app's sample ring state: the document point, the sampled color and the color before the drag, set by whatever is sampling and drawn by the stage; `showsSampleRing` is the Eyedropper's Sample Ring option and suppresses it. Nothing was removed.
+the sample ring state: the document point, the sampled color and the color before the drag, set by whatever is sampling and drawn by the stage; `showsSampleRing` is the Eyedropper's Sample Ring option and suppresses it. Nothing was removed.
 
 ### src/engine/index.ts · wand Sample Size, selectionAntialiased, nudgeSelection · _v0.13.0
 
-`wand.sampleSize` (0 Point, 1 three by three, 2 five by five) passes to `wandMask`; `selectionAntialiased` is the reference app's session-wide Anti-alias for the Lasso and elliptical Marquee; `nudgeSelection` moves the outline as one Move Selection step. Removed:
+`wand.sampleSize` (0 Point, 1 three by three, 2 five by five) passes to `wandMask`; `selectionAntialiased` is the session-wide Anti-alias for the Lasso and elliptical Marquee; `nudgeSelection` moves the outline as one Move Selection step. Removed:
 
 ```ts
-  wand = { tolerance: 32, contiguous: true, sampleAll: false };
+ wand = { tolerance: 32, contiguous: true, sampleAll: false };
 ```
 
 ```ts
-    const mask = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous);
+ const mask = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous);
 ```
 
 ### src/engine/index.ts · copyMask · _v0.14.0
 
-the reference app's Option-drag mask copy: the source's mask onto the target as one Copy Layer Mask or Replace Layer Mask step, pinned where it sits on the document (`placement` from the source's mask or layer transform), with its own raster, or kept solid when the source was never painted; the target becomes active with its mask targeted. Nothing was removed.
+the Option-drag mask copy: the source's mask onto the target as one Copy Layer Mask or Replace Layer Mask step, pinned where it sits on the document (`placement` from the source's mask or layer transform), with its own raster, or kept solid when the source was never painted; the target becomes active with its mask targeted. Nothing was removed.
 
 ### src/engine/index.ts · transformsMask, transform edit mask mode · _v0.15.0
 
-the reference app's commitMaskTransform: with a painted mask targeted and unlinked (`transformsMask`), a transform edit starts from the mask's box, previews through `maskPlacement`, and commits the mask's placement as one Transform Layer Mask step. Removed:
+with a painted mask targeted and unlinked (`transformsMask`), a transform edit starts from the mask's box, previews through `maskPlacement`, and commits the mask's placement as one Transform Layer Mask step. Removed:
 
 ```ts
-  transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt } | null = null;
+ transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt } | null = null;
 ```
 
 ```ts
-    this.transformEdit = { project: p, layerId: l.id, original: l.transform, draft: l.transform, mode, start };
+ this.transformEdit = { project: p, layerId: l.id, original: l.transform, draft: l.transform, mode, start };
 ```
 
 ```ts
-    if (te && te.project === p) m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), transform: te.draft });
+ if (te && te.project === p) m.set(te.layerId, {...(m.get(te.layerId) ?? {}), transform: te.draft });
 ```
 
 ### src/engine/index.ts · maskBlurSample, beginRetouchStroke on masks · _v0.16.0
 
-`maskBlurSample` ports the reference app's blurSample for a mask (the mask at document size, its area from none, the rest at its binary edge tone, blurred at the Blur sigma); `beginRetouchStroke` lets Blur paint a targeted mask as a lerp stroke with the stroke's real target, while Clone Stamp and Spot Healing still refuse masks. Removed:
+`maskBlurSample` ports the blurSample for a mask (the mask at document size, its area from none, the rest at its binary edge tone, blurred at the Blur sigma); `beginRetouchStroke` lets Blur paint a targeted mask as a lerp stroke with the stroke's real target, while Clone Stamp and Spot Healing still refuse masks. Removed:
 
 ```ts
-    if (p.maskTarget && l0.mask) { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
+ if (p.maskTarget && l0.mask) { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
 ```
 
 ```ts
-    } else if (kind === 'blur') texture = { surface: this.layerSample(p, l0, clamp(this.brush.diameter / 10, 1.5, 30)), dx: 0, dy: 0 };
+ } else if (kind === 'blur') texture = { surface: this.layerSample(p, l0, clamp(this.brush.diameter / 10, 1.5, 30)), dx: 0, dy: 0 };
 ```
 
 ```ts
-    const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture);
-    this.stroke = { project: p, layerId: pick.layer.id, target: 'pixels', s, heal: kind === 'heal' ? this.retouch.healMode : undefined };
+ const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture);
+ this.stroke = { project: p, layerId: pick.layer.id, target: 'pixels', s, heal: kind === 'heal' ? this.retouch.healMode: undefined };
 ```
 
 ```ts
-    if (shift && last && last.layerId === pick.layer.id && last.target === 'pixels') s.to(last.p);
+ if (shift && last && last.layerId === pick.layer.id && last.target === 'pixels') s.to(last.p);
 ```
 
 ### src/engine/index.ts · groupMembers, groupBox, group transform edits · _v0.17.0
 
-the reference app's group transform: with more than one layer selected or a folder, `groupMembers` (visible pixel layers selected or inside a selected folder) move with `groupBox`, each member previewed and committed through `following`, as one Transform Layers step; group moves skip snapping for now. Removed:
+the group transform: with more than one layer selected or a folder, `groupMembers` (visible pixel layers selected or inside a selected folder) move with `groupBox`, each member previewed and committed through `following`, as one Transform Layers step; group moves skip snapping for now. Removed:
 
 ```ts
-  transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean } | null = null;
+ transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean } | null = null;
 ```
 
 ```ts
-    if (!p || !l || l.isGroup || !l.raster || this.stroke) return false;
+ if (!p || !l || l.isGroup || !l.raster || this.stroke) return false;
 ```
 
 ```ts
-    const box = mask ? l.mask?.placement ?? l.transform : l.transform;
-    this.transformEdit = { project: p, layerId: l.id, original: box, draft: box, mode, start, mask };
+ const box = mask ? l.mask?.placement ?? l.transform: l.transform;
+ this.transformEdit = { project: p, layerId: l.id, original: box, draft: box, mode, start, mask };
 ```
 
 ```ts
-    if (te && te.project === p) m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), ...(te.mask ? { maskPlacement: te.draft } : { transform: te.draft }) });
+ if (te && te.project === p) m.set(te.layerId, {...(m.get(te.layerId) ?? {}),...(te.mask ? { maskPlacement: te.draft }: { transform: te.draft }) });
 ```
 
 ```ts
-    if (te.mode.kind === 'move' && this.snapping) te.draft = this.snapMove(te.project, te.layerId, te.draft);
+ if (te.mode.kind === 'move' && this.snapping) te.draft = this.snapMove(te.project, te.layerId, te.draft);
 ```
 
 ### src/engine/index.ts · copyLayerToProject, group snapping · _v0.18.0
 
-the reference app's copyLayer(into:): a layer with a folder's contents copied into another open project as one Copy Layers from Project step (new ids, cloned rasters and masks, remapped parent and clip links, centered on the target canvas, on top), the target made current, within the reference app's 100-megapixel budget. `snapMove` skips a set of moving layers, so group moves now snap their box. Removed:
+the copyLayer(into:): a layer with a folder's contents copied into another open project as one Copy Layers from Project step (new ids, cloned rasters and masks, remapped parent and clip links, centered on the target canvas, on top), the target made current, within the 100-megapixel budget. `snapMove` skips a set of moving layers, so group moves now snap their box. Removed:
 
 ```ts
-  private snapMove(p: Project, id: ID, t: Transform): Transform {
+ private snapMove(p: Project, id: ID, t: Transform): Transform {
 ```
 
 ```ts
-      if (!e.visible || l.isGroup || !l.raster || l.id === id) continue;
+ if (!e.visible || l.isGroup || !l.raster || l.id === id) continue;
 ```
 
 ```ts
-    if (te.mode.kind === 'move' && this.snapping && !te.group) te.draft = this.snapMove(te.project, te.layerId, te.draft);
+ if (te.mode.kind === 'move' && this.snapping && !te.group) te.draft = this.snapMove(te.project, te.layerId, te.draft);
 ```
 
 ### src/engine/index.ts · liveMaskDependents, doomedBy, deleteLayers(bake) · _v0.19.0
 
-A live mask in the reference app is a clipping mask. `liveMaskDependents` names the layers clipped to ones being deleted; `deleteLayers(true)` bakes each (its cloned raster masked by `clipCoverageOf` mapped into its pixel grid) before unlinking, as one Delete Layer step. Removed:
+A live mask is a clipping mask. `liveMaskDependents` names the layers clipped to ones being deleted; `deleteLayers(true)` bakes each (its cloned raster masked by `clipCoverageOf` mapped into its pixel grid) before unlinking, as one Delete Layer step. Removed:
 
 ```ts
-  deleteLayers(): void {
+ deleteLayers(): void {
 ```
 
 ```ts
-      const doomed = new Set<ID>();
-      for (const id of roots) { doomed.add(id); for (const d of descendantIds(p.doc.layers, id)) doomed.add(d); }
+ const doomed = new Set<ID>();
+ for (const id of roots) { doomed.add(id); for (const d of descendantIds(p.doc.layers, id)) doomed.add(d); }
 ```
 
 ```ts
-      const kept = p.doc.layers.filter((l) => !doomed.has(l.id)).map((l) => (l.clipId && doomed.has(l.clipId) ? { ...l, clipId: null } : l));
+ const kept = p.doc.layers.filter((l) => !doomed.has(l.id)).map((l) => (l.clipId && doomed.has(l.clipId) ? {...l, clipId: null }: l));
 ```
 
 ### src/engine/index.ts · distortEdit, beginDistort, moveDistortCorner, applyDistort · _v0.21.0
 
-the reference app's free distort: a pending four-corner edit of the active layer or the group box, previewed per layer at up to 640 px through the overrides, applied at full resolution as Distort or Distort Layers; `distortQuad` carries group members, `distortMask` handles linked, placed and unlinked masks; `settle` applies a pending distortion. Removed (0.21.0 replaced its own first, single-layer version before release, so only earlier code is quoted):
+the free distort: a pending four-corner edit of the active layer or the group box, previewed per layer at up to 640 px through the overrides, applied at full resolution as Distort or Distort Layers; `distortQuad` carries group members, `distortMask` handles linked, placed and unlinked masks; `settle` applies a pending distortion. Removed (0.21.0 replaced its own first, single-layer version before release, so only earlier code is quoted):
 
 ```ts
-  settle(keepFloating = false): void {
-    if (this.gradient) this.commitGradient();
+ settle(keepFloating = false): void {
+ if (this.gradient) this.commitGradient();
 ```
 
 ```ts
@@ -679,18 +687,18 @@ import { dragged, following, rounded, type DragMode } from './transform';
 
 ### src/engine/index.ts · tipDrag, beginTipDrag, updateTipDrag, endTipDrag · _v0.22.0
 
-the reference app's brushTipDrag: right-drag resizes the brush from its size at the press (2 dx over the zoom, 1 to 2000) or with Shift changes its hardness (dx over 200), the circle pinned at the press. Nothing was removed.
+right-drag resizes the brush from its size at the press (2 dx over the zoom, 1 to 2000) or with Shift changes its hardness (dx over 200), the circle pinned at the press. Nothing was removed.
 
 ### src/engine/index.ts · floatingOutline · _v0.24.0
 
-the reference app's mapPath for Transform Selection: the floating pixels' source selection and the matrix placement(now) times placement(original) inverse, now being the live draft while dragging; null when a distortion leaves no affine map. Nothing was removed.
+the mapPath for Transform Selection: the floating pixels' source selection and the matrix placement(now) times placement(original) inverse, now being the live draft while dragging; null when a distortion leaves no affine map. Nothing was removed.
 
 ### src/engine/index.ts · exportBlob · resolution stamp · _v0.25.0
 
 Every PNG and JPEG export passes through `withResolution` with the document's resolution. Removed:
 
 ```ts
-    return toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality);
+ return toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff': null), type, quality);
 ```
 
 ### src/engine/index.ts · previewImageEdit, setPreview, previewToken · _v0.26.0
@@ -698,21 +706,21 @@ Every PNG and JPEG export passes through `withResolution` with the document's re
 A preview result may arrive later: `previewImageEdit` takes `ImageData | Promise<ImageData>` and paints through `finish` only while its token is current, and `setPreview(null)` bumps that token, so a worker result for a superseded or switched-off preview is dropped. Removed:
 
 ```ts
-  previewImageEdit(run: (src: ImageData, scale: number) => ImageData, grow = 0, maxPixels = 2_000_000): void {
-    const p = this.current;
+ previewImageEdit(run: (src: ImageData, scale: number) => ImageData, grow = 0, maxPixels = 2_000_000): void {
+ const p = this.current;
 ```
 
 ```ts
-    const out = run(src, scale);
-    const cov = g ? null : this.coverageFor(p, l, onMask ? 'mask' : 'pixels', w, h);
-    let result = cov ? this.blendThrough(src, out, cov) : out;
-    if (onMask) result = fromGray(result);
-    c.putImageData(result, 0, 0);
+ const out = run(src, scale);
+ const cov = g ? null: this.coverageFor(p, l, onMask ? 'mask': 'pixels', w, h);
+ let result = cov ? this.blendThrough(src, out, cov): out;
+ if (onMask) result = fromGray(result);
+ c.putImageData(result, 0, 0);
 ```
 
 ### src/engine/index.ts · clonePreview · _v0.27.0
 
-the reference app's clonePreview: the source around `clonePoint(at)` rendered for just the brush circle at screen resolution, from the document or the active layer as the stroke samples, faded by the brush tip through a radial `destination-in` gradient, cached by sample point, brush, side, sampling mode, layer and revision; null during a stroke. Removed:
+the source around `clonePoint(at)` rendered for just the brush circle at screen resolution, from the document or the active layer as the stroke samples, faded by the brush tip through a radial `destination-in` gradient, cached by sample point, brush, side, sampling mode, layer and revision; null during a stroke. Removed:
 
 ```ts
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
@@ -723,11 +731,11 @@ import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAl
 The render event carries `Rect | null`; a stroke frame reports the document bounds of its composed rectangle (mapped through the layer or mask placement) unless `dirtyRendering` is off. Removed:
 
 ```ts
-  history: null; colors: null; render: null; overlay: null; busy: boolean; notice: Notice;
+ history: null; colors: null; render: null; overlay: null; busy: boolean; notice: Notice;
 ```
 
 ```ts
-    if (st.s.compose()) this.emit('render', null);
+ if (st.s.compose()) this.emit('render', null);
 ```
 
 ## src/engine/kernels.ts
@@ -746,22 +754,22 @@ export type Kernel = (data: Uint8ClampedArray) => void;
 
 ### src/engine/kernels.ts · wandMask sample radius · _v0.13.0
 
-The color to match averages the pixels within `sampleRadius` of the click, clipped to the image, as the reference app's Sample Size does. Removed:
+The color to match averages the pixels within `sampleRadius` of the click, clipped to the image, as the Sample Size does. Removed:
 
 ```ts
 export function wandMask(rgba: Uint8ClampedArray, width: number, height: number, seedX: number, seedY: number, tolerance: number, contiguous: boolean): Uint8Array {
 ```
 
 ```ts
-  const s = (seedY * width + seedX) * 4;
-  const ref = [rgba[s], rgba[s + 1], rgba[s + 2], rgba[s + 3]];
+ const s = (seedY * width + seedX) * 4;
+ const ref = [rgba[s], rgba[s + 1], rgba[s + 2], rgba[s + 3]];
 ```
 
 ## src/engine/matte.ts
 
 ### src/engine/matte.ts · refineMatte, guidedFilter, boxMean, levelsOf · _v0.9.0
 
-Ported from the reference app's `SubjectRemoval.refined` and `GuidedMatte`. `boxMean` is the running-sum box mean with edge clamping; `guidedFilter` is He, Sun and Tang's filter with epsilon 1e-4; `refineMatte` applies the reference app's order (Refine, then Shift Edge as a clamped Gaussian of half the reach cut hard at 0.25 or 0.75, then Contrast as a stretch about middle gray) with radii in layer pixels scaled for previews, and returns the mask unchanged for Basic; `levelsOf` reads a mask's gray or a guide's luminance over black. Checked against an independent NumPy port to 6.3e-5.
+Ported from the `SubjectRemoval.refined` and `GuidedMatte`. `boxMean` is the running-sum box mean with edge clamping; `guidedFilter` is He, Sun and Tang's filter with epsilon 1e-4; `refineMatte` applies the order (Refine, then Shift Edge as a clamped Gaussian of half the reach cut hard at 0.25 or 0.75, then Contrast as a stretch about middle gray) with radii in layer pixels scaled for previews, and returns the mask unchanged for Basic; `levelsOf` reads a mask's gray or a guide's luminance over black. Checked against an independent NumPy port to 6.3e-5.
 
 ## src/engine/project.ts
 
@@ -773,7 +781,7 @@ Created in _v0.1.0.
 
 ### src/engine/retouch.ts · spotHeal, contentFill, WarpStroke · _v0.3.0
 
-Ported line for line from the reference app. `spotHeal` from `HealPixels.c`: ring matching over 5 distances and 24 angles (2 distances with a stronger nearness bias for Proximity Match), a plus or minus 3 px alignment refine, a multigrid smooth solve over the spot, and Create Texture's grain matched to the ring's detail. `contentFill` from `ContentFill.c`: a patch search growing inward from the selection edge. `WarpStroke` from `SmudgeLiquify.swift`: Liquify's forward warp and Smudge's carried color, dab by dab on a document-size premultiplied copy. C's `lround` rounds halves away from zero, so the port does too rather than using `Math.round`.
+Ported line for line from the.ref format. `spotHeal` from `HealPixels.c`: ring matching over 5 distances and 24 angles (2 distances with a stronger nearness bias for Proximity Match), a plus or minus 3 px alignment refine, a multigrid smooth solve over the spot, and Create Texture's grain matched to the ring's detail. `contentFill` from `ContentFill.c`: a patch search growing inward from the selection edge. `WarpStroke` from `SmudgeLiquify.swift`: Liquify's forward warp and Smudge's carried color, dab by dab on a document-size premultiplied copy. C's `lround` rounds halves away from zero, so the port does too rather than using `Math.round`.
 
 ## src/engine/selection.ts
 
@@ -796,11 +804,11 @@ A stroke can paint a document-space texture at an offset instead of a color, whi
 A `lerp` flag for alpha-coded masks: compose erases by the coverage, then adds the coverage-masked sample with `lighter`, so out = old x (1 - c) + sample x c. Removed:
 
 ```ts
-  constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null) {
+ constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null) {
 ```
 
 ```ts
-    w.globalCompositeOperation = this.op;
+ w.globalCompositeOperation = this.op;
 ```
 
 ## src/engine/surface.ts
@@ -814,10 +822,10 @@ Created in _v0.1.0.
 A canvas-to-raster registry, filled by the `Raster` constructor, so the renderer, given only a canvas, can read its raster's version for the halving cache. Removed:
 
 ```ts
-  constructor(readonly width: number, readonly height: number) {
-    this.canvas = createSurface(width, height);
-    this.ctx = ctxOf(this.canvas);
-  }
+ constructor(readonly width: number, readonly height: number) {
+ this.canvas = createSurface(width, height);
+ this.ctx = ctxOf(this.canvas);
+ }
 ```
 
 ## src/engine/transform.ts
@@ -828,7 +836,7 @@ Created in _v0.1.0.
 
 ### src/engine/transform.ts · placing, following · _v0.17.0
 
-the reference app's `LayerTransform.placing` (a unit-square map back to a rotated, maybe flipped rectangle, keeping the flip, sampling and nearest rotation) and `following(from:to:)` (a placement carried along as a box moves), as pure functions; placing round-trips rotated and flipped transforms to 2.8e-14. Removed:
+the `LayerTransform.placing` (a unit-square map back to a rotated, maybe flipped rectangle, keeping the flip, sampling and nearest rotation) and `following(from:to:)` (a placement carried along as a box moves), as pure functions; placing round-trips rotated and flipped transforms to 2.8e-14. Removed:
 
 ```ts
 import { radians, unitPoint } from './geometry';
@@ -866,15 +874,15 @@ Adds the `number` option kind: an editable field with optional min, max, step an
 
 ### src/extensions/tools/brush-common.ts · drawBrushCursor, brushKeys, brushOptions · _v0.3.0
 
-The brush cursor, the size, hardness and opacity keys, and the brush options shared by Brush, Spot Healing, Clone Stamp and Smear, which share one set of brush settings as in the reference app.
+The brush cursor, the size, hardness and opacity keys, and the brush options shared by Brush, Spot Healing, Clone Stamp and Smear, which share one set of brush settings.
 
 ### src/extensions/tools/brush-common.ts · drawBrushCursor · pinned circle · _v0.22.0
 
-During a right-drag the circle draws at the press point (`engine.tipDrag.at`), as in the reference app. Removed:
+During a right-drag the circle draws at the press point (`engine.tipDrag.at`). Removed:
 
 ```ts
 export function drawBrushCursor(ctx: ToolContext, g: CanvasRenderingContext2D, pt: Pt | null): void {
-  if (!pt) return;
+ if (!pt) return;
 ```
 
 ## src/extensions/tools/brush.ts
@@ -888,11 +896,11 @@ Created in _v0.1.0.
 Brush's own circle also draws at the press point during a right-drag. Removed:
 
 ```ts
-    if (!hoverPt) return;
+ if (!hoverPt) return;
 ```
 
 ```ts
-    const c = v.toScreen(hoverPt);
+ const c = v.toScreen(hoverPt);
 ```
 
 ## src/extensions/tools/clone.ts
@@ -910,19 +918,19 @@ let hover: Pt | null = null;
 ```
 
 ```ts
-  hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },
+ hover(ctx, p) { hover = p ? p.doc: null; ctx.engine.emit('overlay', null); },
 ```
 
 ```ts
-  overlay(ctx, g) {
-    drawBrushCursor(ctx, g, hover);
+ overlay(ctx, g) {
+ drawBrushCursor(ctx, g, hover);
 ```
 
 ## src/extensions/tools/crop.ts
 
 ### src/extensions/tools/crop.ts · cropTool · _v0.2.0
 
-Crop frame with create, move and resize modes, Alt to keep the center, nine ratio presets and snapping to the canvas edges. Enter crops through `Engine.cropTo`, which is Canvas Size with an explicit offset, as the reference app's `CanvasSizeOptions.contentOffset`. Snapping to layer edges is not ported yet.
+Crop frame with create, move and resize modes, Alt to keep the center, nine ratio presets and snapping to the canvas edges. Enter crops through `Engine.cropTo`, which is Canvas Size with an explicit offset, as the `CanvasSizeOptions.contentOffset`. Snapping to layer edges is not ported yet.
 
 ## src/extensions/tools/eyedropper.ts
 
@@ -939,36 +947,36 @@ import { hexOf } from '../../engine';
 ```
 
 ```ts
-  down(ctx, p) { if (p.button === 0) sample(ctx, p); },
+ down(ctx, p) { if (p.button === 0) sample(ctx, p); },
 ```
 
 ### src/extensions/tools/crop.ts · snapTargets, nearest, snap · _v0.30.0
 
-the reference app's CropSnap and cropSnapTargets: canvas edges and visible pixel layers' rounded bounds, applied per drag mode (create and resize on the pointer's side, moves keep their size, fixed ratios only snap moves). Removed:
+the CropSnap and cropSnapTargets: canvas edges and visible pixel layers' rounded bounds, applied per drag mode (create and resize on the pointer's side, moves keep their size, fixed ratios only snap moves). Removed:
 
 ```ts
 function snap(ctx: ToolContext, r: Rect): Rect {
-  const d = ctx.engine.current?.doc;
-  if (!d) return r;
-  const tol = 8 / ctx.view().zoom, n = norm(r);
-  let x = n.x, y = n.y, w = n.w, h = n.h;
-  if (Math.abs(x) < tol) { w += x; x = 0; }
-  if (Math.abs(y) < tol) { h += y; y = 0; }
-  if (Math.abs(x + w - d.width) < tol) w = d.width - x;
-  if (Math.abs(y + h - d.height) < tol) h = d.height - y;
-  return { x, y, w, h };
+ const d = ctx.engine.current?.doc;
+ if (!d) return r;
+ const tol = 8 / ctx.view().zoom, n = norm(r);
+ let x = n.x, y = n.y, w = n.w, h = n.h;
+ if (Math.abs(x) < tol) { w += x; x = 0; }
+ if (Math.abs(y) < tol) { h += y; y = 0; }
+ if (Math.abs(x + w - d.width) < tol) w = d.width - x;
+ if (Math.abs(y + h - d.height) < tol) h = d.height - y;
+ return { x, y, w, h };
 }
 ```
 
 ```ts
-    if (!ratio && drag.mode !== 'move') frame = snap(ctx, frame);
+ if (!ratio && drag.mode !== 'move') frame = snap(ctx, frame);
 ```
 
 ## src/extensions/tools/gradient.ts
 
 ### src/extensions/tools/gradient.ts · gradientTool · _v0.2.0
 
-Pending gradient with draggable ends and Shift for 45 degree steps; shape, colors, reverse and opacity re-render it live. Enter applies, Escape cancels, and a click without a line leaves nothing pending, as in the reference app.
+Pending gradient with draggable ends and Shift for 45 degree steps; shape, colors, reverse and opacity re-render it live. Enter applies, Escape cancels, and a click without a line leaves nothing pending.
 
 ## src/extensions/tools/hand.ts
 
@@ -990,18 +998,18 @@ Created in _v0.1.0.
 
 ### src/extensions/tools/index.ts · registerBuiltinTools · _v0.2.0
 
-Registers Crop, Gradient and Shape in the reference app's rail order. Removed:
+Registers Crop, Gradient and Shape in the rail order. Removed:
 
 ```ts
-  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, brushTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+ for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, brushTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 ```
 
 ### src/extensions/tools/index.ts · registerBuiltinTools · _v0.3.0
 
-Registers Spot Healing, Clone Stamp and Smear, completing the reference app's fourteen tools. Removed:
+Registers Spot Healing, Clone Stamp and Smear, completing the fourteen tools. Removed:
 
 ```ts
-  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, gradientTool, shapeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+ for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, gradientTool, shapeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 ```
 
 ## src/extensions/tools/lasso.ts
@@ -1019,12 +1027,12 @@ import { modeFor, modeSegment } from './select-common';
 ```
 
 ```ts
-    if (!active || ctx.engine.lassoKind !== 'polygonal') return false;
+ if (!active || ctx.engine.lassoKind !== 'polygonal') return false;
 ```
 
 ```ts
-  });
-  e.applySelection(mask, mode, e.lassoKind === 'polygonal' ? 'Polygonal Lasso' : 'Lasso');
+ });
+ e.applySelection(mask, mode, e.lassoKind === 'polygonal' ? 'Polygonal Lasso': 'Lasso');
 ```
 
 ## src/extensions/tools/marquee.ts
@@ -1035,26 +1043,26 @@ Created in _v0.1.0.
 
 ### src/extensions/tools/marquee.ts · marqueeTool · autoscroll, re-arm, Anti-alias, nudging · _v0.13.0
 
-Drags go through `follow`, which pointer moves and the reference app's autoscroll ticks (`scrollDelta`, `autoscroll`, `stopScroll`) share; the box keeps the reference app's marqueeConstrainArmed rule; masks honor `selectionAntialiased`, with the Anti-alias option; arrow keys nudge the outline. Removed:
+Drags go through `follow`, which pointer moves and the autoscroll ticks (`scrollDelta`, `autoscroll`, `stopScroll`) share; the box keeps the marqueeConstrainArmed rule; masks honor `selectionAntialiased`, with the Anti-alias option; arrow keys nudge the outline. Removed:
 
 ```ts
 import { modeFor, modeSegment } from './select-common';
 ```
 
 ```ts
-  move(ctx, p) {
-    if (moving) { ctx.engine.updateSelectionShift(p.doc.x - moving.x, p.doc.y - moving.y); return; }
-    if (!draft) return;
-    draft.point = p.doc;
-    draft.square = p.shift && !draft.shiftAtPress;
-    draft.center = p.alt && !draft.altAtPress;
-    ctx.engine.emit('overlay', null);
-  },
+ move(ctx, p) {
+ if (moving) { ctx.engine.updateSelectionShift(p.doc.x - moving.x, p.doc.y - moving.y); return; }
+ if (!draft) return;
+ draft.point = p.doc;
+ draft.square = p.shift && !draft.shiftAtPress;
+ draft.center = p.alt && !draft.altAtPress;
+ ctx.engine.emit('overlay', null);
+ },
 ```
 
 ```ts
-    });
-    e.applySelection(mask, d.mode, ellipse ? 'Elliptical Marquee' : 'Rectangular Marquee');
+ });
+ e.applySelection(mask, d.mode, ellipse ? 'Elliptical Marquee': 'Rectangular Marquee');
 ```
 
 ## src/extensions/tools/move.ts
@@ -1068,32 +1076,32 @@ Created in _v0.1.0.
 The readouts become editable X, Y, W, H, Scale and Angle fields plus Sampling and a Snap toggle; the overlay draws dashed snap guides; a drag inside the selection moves its pixels (Alt duplicates, Shift keeps one axis) and Escape cancels it in `keydown`, since `stage.cancelTool` is not wired to any key. Removed, the readouts:
 
 ```ts
-      { kind: 'readout', label: 'X', get: () => (t() ? fmt(t()!.x) : '') },
-      { kind: 'readout', label: 'Y', get: () => (t() ? fmt(t()!.y) : '') },
-      { kind: 'readout', label: 'W', get: () => (t() ? fmt(t()!.w) : '') },
-      { kind: 'readout', label: 'H', get: () => (t() ? fmt(t()!.h) : '') },
-      { kind: 'readout', label: 'Angle', get: () => (t() ? `${fmt(t()!.rotation)}°` : '') },
+ { kind: 'readout', label: 'X', get: () => (t() ? fmt(t()!.x): '') },
+ { kind: 'readout', label: 'Y', get: () => (t() ? fmt(t()!.y): '') },
+ { kind: 'readout', label: 'W', get: () => (t() ? fmt(t()!.w): '') },
+ { kind: 'readout', label: 'H', get: () => (t() ? fmt(t()!.h): '') },
+ { kind: 'readout', label: 'Angle', get: () => (t() ? `${fmt(t()!.rotation)}°`: '') },
 ```
 
 Removed, the pointer handlers:
 
 ```ts
-  down(ctx, p) {
-    if (p.button !== 0) return;
-    const e = ctx.engine;
-    if (p.mod || e.autoSelect) { const id = e.layerAt(p.doc); if (id) e.selectLayer(id); }
-    const m = hit(ctx, p);
-    if (m) e.beginTransform(m, p.doc);
-  },
-  move(ctx, p) { ctx.engine.updateTransform(p.doc, p.shift, p.alt); },
-  up(ctx) { ctx.engine.endTransform(); },
-  cancel(ctx) { ctx.engine.cancelTransform(); },
+ down(ctx, p) {
+ if (p.button !== 0) return;
+ const e = ctx.engine;
+ if (p.mod || e.autoSelect) { const id = e.layerAt(p.doc); if (id) e.selectLayer(id); }
+ const m = hit(ctx, p);
+ if (m) e.beginTransform(m, p.doc);
+ },
+ move(ctx, p) { ctx.engine.updateTransform(p.doc, p.shift, p.alt); },
+ up(ctx) { ctx.engine.endTransform(); },
+ cancel(ctx) { ctx.engine.cancelTransform(); },
 ```
 
 Removed, the hint:
 
 ```ts
-  hint: () => 'Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
+ hint: () => 'Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
 ```
 
 ### src/extensions/tools/move.ts · moveTool · floating selection · _v0.5.0
@@ -1101,7 +1109,7 @@ Removed, the hint:
 Enter applies a floating selection and Escape cancels it (a first Escape still cancels a handle drag in progress); the hint describes the float while it is open. Removed, the hint:
 
 ```ts
-  hint: () => 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
+ hint: () => 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity',
 ```
 
 ### src/extensions/tools/move.ts · editable · unlinked mask box · _v0.15.0
@@ -1109,7 +1117,7 @@ Enter applies a floating selection and Escape cancels it (a first Escape still c
 The handles sit on the mask's box when the Move tool transforms an unlinked mask. Removed:
 
 ```ts
-  return ctx.engine.transformEdit?.draft ?? l.transform;
+ return ctx.engine.transformEdit?.draft ?? l.transform;
 ```
 
 ### src/extensions/tools/move.ts · editable · group box · _v0.17.0
@@ -1117,9 +1125,9 @@ The handles sit on the mask's box when the Move tool transforms an unlinked mask
 The handles sit on the group box when several layers or a folder are selected, before the single-layer and mask cases. Removed:
 
 ```ts
-  const l = ctx.engine.activeLayer;
-  if (!l || l.isGroup || !l.raster) return null;
-  return ctx.engine.transformEdit?.draft ?? (ctx.engine.transformsMask(l) ? l.mask?.placement ?? l.transform : l.transform);
+ const l = ctx.engine.activeLayer;
+ if (!l || l.isGroup || !l.raster) return null;
+ return ctx.engine.transformEdit?.draft ?? (ctx.engine.transformsMask(l) ? l.mask?.placement ?? l.transform: l.transform);
 ```
 
 ### src/extensions/tools/move.ts · distortCorner, corner drags, Enter and Escape · _v0.21.0
@@ -1127,14 +1135,14 @@ The handles sit on the group box when several layers or a folder are selected, b
 Cmd on a corner handle begins a distortion; any corner of a pending one drags alone; Enter applies, Escape cancels; the overlay draws the distorted outline and its four handles. Removed:
 
 ```ts
-    if (p.button !== 0) return;
-    const e = ctx.engine;
-    const sel = e.current?.selection;
+ if (p.button !== 0) return;
+ const e = ctx.engine;
+ const sel = e.current?.selection;
 ```
 
 ```ts
-  move(ctx, p) {
-    if (pixelStart) {
+ move(ctx, p) {
+ if (pixelStart) {
 ```
 
 ## src/extensions/tools/select-common.ts
@@ -1155,13 +1163,13 @@ import type { OptionSpec, ToolPointer } from '../registry';
 
 ### src/extensions/tools/shape.ts · shapeTool · _v0.2.0
 
-Rectangle and ellipse shape layers in the foreground color with a corner radius, Shift after starting for square, Alt for centered, Shift+U to switch shape. The layer keeps the reference app's `LayerShapeStyle` fields (`kind`, `red`, `green`, `blue`, `cornerRadius`).
+Rectangle and ellipse shape layers in the foreground color with a corner radius, Shift after starting for square, Alt for centered, Shift+U to switch shape. The layer keeps the `LayerShapeStyle` fields (`kind`, `red`, `green`, `blue`, `cornerRadius`).
 
 ## src/extensions/tools/smear.ts
 
 ### src/extensions/tools/smear.ts · smearTool · _v0.3.0
 
-the reference app's Blur tool, labeled Smear as in the reference app: Liquify and Smudge run as warp strokes, Blur paints a softened sample; Strength is the brush opacity.
+the Blur tool, labeled Smear: Liquify and Smudge run as warp strokes, Blur paints a softened sample; Strength is the brush opacity.
 
 ## src/extensions/tools/wand.ts
 
@@ -1171,14 +1179,14 @@ Created in _v0.1.0.
 
 ### src/extensions/tools/wand.ts · wandTool · Sample Size, nudging · _v0.13.0
 
-Adds the reference app's Sample Size choice (Point, 3 by 3, 5 by 5) and arrow-key nudging. Removed:
+Adds the Sample Size choice (Point, 3 by 3, 5 by 5) and arrow-key nudging. Removed:
 
 ```ts
 import { modeFor, modeSegment } from './select-common';
 ```
 
 ```ts
-  hint: () => 'Click to select similar colors · Shift adds · Alt subtracts · Tolerance sets how similar',
+ hint: () => 'Click to select similar colors · Shift adds · Alt subtracts · Tolerance sets how similar',
 ```
 
 ## src/extensions/tools/zoom.ts
@@ -1187,13 +1195,13 @@ import { modeFor, modeSegment } from './select-common';
 
 Created in _v0.1.0.
 
-### src/extensions/tools/zoom.ts · zoomTool · the reference app's scrub rate · _v0.20.0
+### src/extensions/tools/zoom.ts · zoomTool · the scrub rate · _v0.20.0
 
-Scrubbing doubles the zoom per 100 px dragged from a 3 px threshold, as the reference app. Removed:
+Scrubbing doubles the zoom per 100 px dragged from a 3 px threshold, as the.ref format. Removed:
 
 ```ts
-    if (Math.abs(dx) > 3) drag.moved = true;
-    if (drag.moved) ctx.engine.zoomTo(drag.z0 * Math.pow(2, dx / 160), drag.start);
+ if (Math.abs(dx) > 3) drag.moved = true;
+ if (drag.moved) ctx.engine.zoomTo(drag.z0 * Math.pow(2, dx / 160), drag.start);
 ```
 
 ## src/host.ts
@@ -1213,8 +1221,8 @@ Created in _v0.1.0.
 `package` takes an optional root folder name for the zip. Removed:
 
 ```ts
-  async package(manifest: object, files: FilePart[]): Promise<Blob> {
-    return (await request('/projects/package', { method: 'POST', body: form({ manifest: JSON.stringify(manifest) }, files) })).blob();
+ async package(manifest: object, files: FilePart[]): Promise<Blob> {
+ return (await request('/projects/package', { method: 'POST', body: form({ manifest: JSON.stringify(manifest) }, files) })).blob();
 ```
 
 ## src/io/images.ts
@@ -1227,11 +1235,11 @@ Created in _v0.1.0.
 
 ### src/io/project-io.ts · serialize and deserialize · _v0.1.0
 
-Field names and labels come from the reference app `ProjectStore.swift`, `LayerTransform.swift`, `LayerAppearance.swift` and `LayerAdjustment.swift`, checked against the source. Masks are written as grayscale PNGs; `adjustment` and `shape` round-trip verbatim.
+Field names and labels come from the.ref format `ProjectStore.swift`, `LayerTransform.swift`, `LayerAppearance.swift` and `LayerAdjustment.swift`, checked against the source. Masks are written as grayscale PNGs; `adjustment` and `shape` round-trip verbatim.
 
-### src/io/project-io.ts · serializeReference · _v0.28.0
+### src/io/project-io.ts · serializeRefProject · _v0.28.0
 
-The document as a version 7 the reference app project, reshaped from `serialize` to pass the reference app's ProjectStore.validate (UUID ids, files named after them, plain folders, adjustment layers without pixels, non-empty names, clamped resolution), with notes for every change. Nothing was removed.
+The document as a version 7 project, reshaped from `serialize` to pass the ProjectStore.validate (UUID ids, files named after them, plain folders, adjustment layers without pixels, non-empty names, clamped resolution), with notes for every change. Nothing was removed.
 
 ## src/main.ts
 
@@ -1251,7 +1259,7 @@ Panel section, slider, histogram, curves and anchor-grid styles, with fixed canv
 
 ### src/styles/dialogs.css · click-through scrim · _v0.7.0
 
-`.cv-scrim-through` makes a dialog's scrim transparent and lets clicks reach the canvas while the dialog stays interactive, for eyedroppers. The rule is written as `#overlay-root > .cv-scrim.cv-scrim-through` because `#overlay-root > *` in `shell.css` sets `pointer-events: auto` and an ID selector outranks classes; without it a sampling click lands on the scrim, which closes the dialog. Nothing was removed.
+`.cv-scrim-through` makes a dialog's scrim transparent and lets clicks reach the canvas while the dialog stays interactive, for eyedroppers. The rule is written as `#overlay-root >.cv-scrim.cv-scrim-through` because `#overlay-root > *` in `shell.css` sets `pointer-events: auto` and an ID selector outranks classes; without it a sampling click lands on the scrim, which closes the dialog. Nothing was removed.
 
 ## src/styles/fonts.css
 
@@ -1267,13 +1275,13 @@ Created in _v0.1.0.
 
 ## src/styles/panels.css
 
-### src/styles/panels.css · .cv-layer-mask · _v0.1.0
+### src/styles/panels.css ·.cv-layer-mask · _v0.1.0
 
 Removed: showing the mask thumbnail on demand pushed the layer name right, a measured layout shift. The slot is now always reserved and toggled with visibility; row cells sit in explicit grid columns.
 
 ```css
 .cv-layer-mask { display: none; }
-.cv-layer.has-mask .cv-layer-mask { display: block; }
+.cv-layer.has-mask.cv-layer-mask { display: block; }
 ```
 
 ## src/styles/scrollbars.css
@@ -1288,11 +1296,11 @@ Created in _v0.1.0.
 
 ### src/styles/panels.css · clipping cursor · _v0.14.0
 
-`.cv-layer-rows.is-clip-zone` shows the `alias` cursor over a row's clipping zone while Option is held, the nearest standard cursor to the reference app's clipping cursor. Nothing was removed.
+`.cv-layer-rows.is-clip-zone` shows the `alias` cursor over a row's clipping zone while Option is held, the nearest standard cursor to the clipping cursor. Nothing was removed.
 
 ## src/styles/shell.css
 
-### src/styles/shell.css · .cv-opt-group · _v0.1.0
+### src/styles/shell.css ·.cv-opt-group · _v0.1.0
 
 Removed: option items could shrink below their content when the bar overflowed. Items are now `flex: none` and the bar scrolls.
 
@@ -1300,7 +1308,7 @@ Removed: option items could shrink below their content when the bar overflowed. 
 .cv-opt-group { display: flex; align-items: center; gap: var(--space-4); }
 ```
 
-### src/styles/shell.css · .cv-tab · _v0.1.0
+### src/styles/shell.css ·.cv-tab · _v0.1.0
 
 Removed: content-sized tabs moved their neighbors when a save renamed a project. Tabs are now a fixed 168 px. `.cv-scene` hands pointer input to the overlay canvas; `.cv-st-engine` reserves the engine readout width.
 
@@ -1325,7 +1333,7 @@ Created in _v0.1.0.
 Removed: a copyright line that did not match `LICENSE`.
 
 ```ts
-    this.body.appendChild(el('<p class="cv-note">MIT licensed. Copyright 2026 its authors and 2026 NodeMode.</p>'));
+ this.body.appendChild(el('<p class="cv-note">MIT licensed. Copyright 2026 its authors and 2026 NodeMode.</p>'));
 ```
 
 ## src/ui/commands.ts
@@ -1341,7 +1349,7 @@ Created in _v0.1.0.
 Removed: preferred a disabled button, so focus stayed outside the dialog and Escape never closed it. Focus now falls back to the dialog container, and `open()` re-appends the scrim so a later dialog stacks above an earlier one.
 
 ```ts
-    (focus ?? this.scrim.querySelector<HTMLElement>('input, select, .cv-btn-primary') ?? q<HTMLElement>(this.scrim, '.cv-dialog')).focus();
+ (focus ?? this.scrim.querySelector<HTMLElement>('input, select,.cv-btn-primary') ?? q<HTMLElement>(this.scrim, '.cv-dialog')).focus();
 ```
 
 ## src/ui/dom.ts
@@ -1351,7 +1359,7 @@ Removed: preferred a disabled button, so focus stayed outside the dialog and Esc
 Removed: wrote markup straight into a live node. It now builds in a fresh template and calls `replaceChildren`, so no live container is ever rewritten.
 
 ```ts
-  n.innerHTML = html;
+ n.innerHTML = html;
 ```
 
 ## src/ui/icons.ts
@@ -1367,7 +1375,7 @@ Created in _v0.1.0.
 Removed: capturing the pointer on press retargeted `click` and `dblclick` to the list, which broke rename and folder disclosure. Capture now starts when a drag passes 4 px.
 
 ```ts
-      rows.setPointerCapture(e.pointerId);
+ rows.setPointerCapture(e.pointerId);
 ```
 
 ### src/ui/layers.ts · bindRows · dblclick · _v0.2.0
@@ -1375,7 +1383,7 @@ Removed: capturing the pointer on press retargeted `click` and `dblclick` to the
 Double-clicking an adjustment layer's row outside the name dispatches `cv:edit-adjustment` for the app to open its editor. Removed:
 
 ```ts
-      if (row?.dataset.id && t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
+ if (row?.dataset.id && t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
 ```
 
 ### src/ui/layers.ts · LayersPanel · Option-click clipping, Option-drag mask copy · _v0.14.0
@@ -1383,15 +1391,15 @@ Double-clicking an adjustment layer's row outside the name dispatches `cv:edit-a
 With Option held, the bottom quarter of a row (`inClipZone`) shows the clipping cursor and a click there toggles that layer's clipping mask; an Option-drag from a mask thumbnail carries `maskFrom`, targets a whole non-folder row, and calls `copyMask` on release. Removed:
 
 ```ts
-  private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null } | null = null;
+ private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null } | null = null;
 ```
 
 ```ts
-      this.drag = { id, ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null };
+ this.drag = { id, ids, startY: e.clientY, pointerId: e.pointerId, started: false, wasSelected: wasSelected && !mod && !e.shiftKey, target: null };
 ```
 
 ```ts
-      if (d.started && d.target) this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
+ if (d.started && d.target) this.engine.moveLayers(d.ids, d.target.id, d.target.where, e.altKey);
 ```
 
 ### src/ui/layers.ts · LayersPanel · drag onto a project tab · _v0.18.0
@@ -1407,7 +1415,7 @@ wasSelected: wasSelected && !mod && !e.shiftKey, target: null, maskFrom };
 ```
 
 ```ts
-      if (d.started && d.target) {
+ if (d.started && d.target) {
 ```
 
 ## src/ui/menu.ts
@@ -1425,15 +1433,15 @@ export interface MenuDef { label: string; items: MenuItem[] }
 ```
 
 ```ts
-  private readonly menus: Array<{ btn: HTMLButtonElement; menu: PopupMenu }> = [];
+ private readonly menus: Array<{ btn: HTMLButtonElement; menu: PopupMenu }> = [];
 ```
 
 ```ts
-      menu.setItems(def.items);
+ menu.setItems(def.items);
 ```
 
 ```ts
-      this.menus.push({ btn, menu });
+ this.menus.push({ btn, menu });
 ```
 
 ## src/ui/options.ts
@@ -1443,8 +1451,8 @@ export interface MenuDef { label: string; items: MenuItem[] }
 Removed: `q(n, 'span')` returned the icon box, so the label replaced the icon and overflowed its 14 px width. The label now has its own `.cv-btn-label` span.
 
 ```ts
-        const n = el<HTMLButtonElement>(`<button class="cv-btn cv-btn-ghost" type="button">${spec.icon ? icon(spec.icon, 14) : ''}<span></span></button>`);
-        setText(q(n, 'span'), spec.label);
+ const n = el<HTMLButtonElement>(`<button class="cv-btn cv-btn-ghost" type="button">${spec.icon ? icon(spec.icon, 14): ''}<span></span></button>`);
+ setText(q(n, 'span'), spec.label);
 ```
 
 ### src/ui/options.ts · OptionsBar · number fields · _v0.4.0
@@ -1465,78 +1473,78 @@ Panel for all six adjustments. Layer mode edits live inside one undo step (`begi
 
 ### src/ui/panels/adjust-panel.ts · autoLevels, buildLevels · _v0.6.0
 
-`autoLevels` ports the reference app's `LevelsAuto` as a pure function of `histogram()`: each end clips 0.1% of a channel; Contrast sets one master interval across R, G and B, Color sets each channel, and Color + neutral midtones also sets each channel's gamma so its stretched mean maps to middle gray, clamped 0.1 to 9.99. The Levels section gains an Auto choice under the histogram that applies a mode through the live preview and resets to Choose. Removed:
+`autoLevels` ports the `LevelsAuto` as a pure function of `histogram()`: each end clips 0.1% of a channel; Contrast sets one master interval across R, G and B, Color sets each channel, and Color + neutral midtones also sets each channel's gamma so its stretched mean maps to middle gray, clamped 0.1 to 9.99. The Levels section gains an Auto choice under the histogram that applies a mode through the live preview and resets to Choose. Removed:
 
 ```ts
-    node.append(channel.el, canvas, black.el, gamma.el, white.el, outB.el, outW.el);
+ node.append(channel.el, canvas, black.el, gamma.el, white.el, outB.el, outW.el);
 ```
 
 ### src/ui/panels/adjust-panel.ts · Levels eyedroppers · _v0.7.0
 
-A Sample choice (Off, Black point, Gray point, White point) under Auto turns an eyedropper on: `startSampling` makes the scrim click-through and takes stage clicks in a capture-phase listener before any tool sees them, and `applySample` ports the reference app's `LevelsSettings.sampling` (all three channels calibrated together, the master range reset, the gray point setting each channel's gamma). A `close` override ends sampling whichever way the panel closes. Removed:
+A Sample choice (Off, Black point, Gray point, White point) under Auto turns an eyedropper on: `startSampling` makes the scrim click-through and takes stage clicks in a capture-phase listener before any tool sees them, and `applySample` ports the `LevelsSettings.sampling` (all three channels calibrated together, the master range reset, the gray point setting each channel's gamma). A `close` override ends sampling whichever way the panel closes. Removed:
 
 ```ts
-    node.append(channel.el, canvas, auto.el, black.el, gamma.el, white.el, outB.el, outW.el);
+ node.append(channel.el, canvas, auto.el, black.el, gamma.el, white.el, outB.el, outW.el);
 ```
 
 ### src/ui/panels/adjust-panel.ts · Hue/Saturation bands, eyedroppers, targeted adjustment · _v0.8.0
 
-The Hue/Saturation section gains the reference app's spectrum editor (hues as they are on top, as the adjustment leaves them below through `hueResponse` and `hsvAdjust`, the selected range's four handles between, dragged by nearest circular distance with pointer capture, the degrees beneath), a Sample choice (Sample, Add, Remove) and a Targeted adjustment toggle. Sampling is generalized to named modes with per-row resets so the choices stay exclusive; `sampleHue` reads the hue from the composite (none for near-neutral pixels) and `beginTarget` picks the range that most claims it and drags saturation, or hue with Cmd or Ctrl, half a unit per screen pixel, its window listeners always removed by `stopSampling`. Removed, the Levels-only sampling:
+The Hue/Saturation section gains the spectrum editor (hues as they are on top, as the adjustment leaves them below through `hueResponse` and `hsvAdjust`, the selected range's four handles between, dragged by nearest circular distance with pointer capture, the degrees beneath), a Sample choice (Sample, Add, Remove) and a Targeted adjustment toggle. Sampling is generalized to named modes with per-row resets so the choices stay exclusive; `sampleHue` reads the hue from the composite (none for near-neutral pixels) and `beginTarget` picks the range that most claims it and drags saturation, or hue with Cmd or Ctrl, half a unit per screen pixel, its window listeners always removed by `stopSampling`. Removed, the Levels-only sampling:
 
 ```ts
-  private sampleMode: 'black' | 'gray' | 'white' | null = null;
-  private sampleHandler: ((e: PointerEvent) => void) | null = null;
-  private sampleRow: { set: (v: string) => void } | null = null;
+ private sampleMode: 'black' | 'gray' | 'white' | null = null;
+ private sampleHandler: ((e: PointerEvent) => void) | null = null;
+ private sampleRow: { set: (v: string) => void } | null = null;
 ```
 
 ```ts
-  /** The Levels eyedroppers: while a mode is on, the scrim lets clicks through and a click on the canvas samples the
-   *  original pixel there, before any tool sees the click. */
-  private startSampling(mode: string): void {
-    this.stopSampling();
-    if (mode !== 'black' && mode !== 'gray' && mode !== 'white') return;
-    this.sampleMode = mode;
-    this.sampleRow?.set(mode);
-    this.scrim.classList.add('cv-scrim-through');
-    const handler = (e: PointerEvent): void => {
-      const stage = document.querySelector('.cv-overlay-canvas'), p = this.engine.current, m = this.sampleMode;
-      if (e.button !== 0 || !stage || e.target !== stage || !p || !m) return;
-      e.preventDefault();
-      e.stopPropagation();
-      const b = stage.getBoundingClientRect(), v = p.viewport;
-      const rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, this.mode !== 'image');
-      if (rgb) this.applySample(rgb, m);
-    };
-    window.addEventListener('pointerdown', handler, true);
-    this.sampleHandler = handler;
-  }
+ /** The Levels eyedroppers: while a mode is on, the scrim lets clicks through and a click on the canvas samples the
+ * original pixel there, before any tool sees the click. */
+ private startSampling(mode: string): void {
+ this.stopSampling();
+ if (mode !== 'black' && mode !== 'gray' && mode !== 'white') return;
+ this.sampleMode = mode;
+ this.sampleRow?.set(mode);
+ this.scrim.classList.add('cv-scrim-through');
+ const handler = (e: PointerEvent): void => {
+ const stage = document.querySelector('.cv-overlay-canvas'), p = this.engine.current, m = this.sampleMode;
+ if (e.button !== 0 || !stage || e.target !== stage || !p || !m) return;
+ e.preventDefault();
+ e.stopPropagation();
+ const b = stage.getBoundingClientRect(), v = p.viewport;
+ const rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, this.mode !== 'image');
+ if (rgb) this.applySample(rgb, m);
+ };
+ window.addEventListener('pointerdown', handler, true);
+ this.sampleHandler = handler;
+ }
 
-  private stopSampling(): void {
-    if (this.sampleHandler) window.removeEventListener('pointerdown', this.sampleHandler, true);
-    this.sampleHandler = null;
-    this.sampleMode = null;
-    this.scrim.classList.remove('cv-scrim-through');
-    this.sampleRow?.set('');
-  }
+ private stopSampling(): void {
+ if (this.sampleHandler) window.removeEventListener('pointerdown', this.sampleHandler, true);
+ this.sampleHandler = null;
+ this.sampleMode = null;
+ this.scrim.classList.remove('cv-scrim-through');
+ this.sampleRow?.set('');
+ }
 ```
 
 ```ts
-    this.sampleRow = sample;
+ this.sampleRow = sample;
 ```
 
 Removed, the Hue/Saturation rows:
 
 ```ts
-    const hue = sliderRow('Hue', -180, 180, 1, (v) => { cur().hue = v; this.changed(); });
-    const hueC = sliderRow('Hue', 0, 360, 1, (v) => { cur().hue = v; this.changed(); });
-    const sat = sliderRow('Saturation', -100, 100, 1, (v) => { cur().saturation = v; this.changed(); });
-    const satC = sliderRow('Saturation', 0, 100, 1, (v) => { cur().saturation = v; this.changed(); });
-    const light = sliderRow('Lightness', -100, 100, 1, (v) => { cur().lightness = v; this.changed(); });
+ const hue = sliderRow('Hue', -180, 180, 1, (v) => { cur().hue = v; this.changed(); });
+ const hueC = sliderRow('Hue', 0, 360, 1, (v) => { cur().hue = v; this.changed(); });
+ const sat = sliderRow('Saturation', -100, 100, 1, (v) => { cur().saturation = v; this.changed(); });
+ const satC = sliderRow('Saturation', 0, 100, 1, (v) => { cur().saturation = v; this.changed(); });
+ const light = sliderRow('Lightness', -100, 100, 1, (v) => { cur().lightness = v; this.changed(); });
 ```
 
 ```ts
-    const invert = checkRow('Invert range', (v) => { this.hsv.invertRange = v; this.changed(); });
-    node.append(range.el, hue.el, hueC.el, sat.el, satC.el, light.el, colorize.el, invert.el);
+ const invert = checkRow('Invert range', (v) => { this.hsv.invertRange = v; this.changed(); });
+ node.append(range.el, hue.el, hueC.el, sat.el, satC.el, light.el, colorize.el, invert.el);
 ```
 
 ```ts
@@ -1547,22 +1555,22 @@ import { el, setHidden } from '../dom';
 
 ### src/ui/panels/background-panel.ts · BackgroundPanel · _v0.9.0
 
-the reference app's Remove Background panel: Quality (Basic or Advanced) and, for Advanced, Refine (0 to 40 px, default 12), Contrast (0 to 100 percent, default 25) and Shift Edge (-10 to 10 px). It owns the model's raw mask bitmap while open, targets the layer's pixels, previews the layer with its background hidden through `previewImageEdit` (coalesced to one per frame), and on OK refines at full size and calls `applySubjectMask`. Cancel always clears the preview; settings carry over between uses.
+the Remove Background panel: Quality (Basic or Advanced) and, for Advanced, Refine (0 to 40 px, default 12), Contrast (0 to 100 percent, default 25) and Shift Edge (-10 to 10 px). It owns the model's raw mask bitmap while open, targets the layer's pixels, previews the layer with its background hidden through `previewImageEdit` (coalesced to one per frame), and on OK refines at full size and calls `applySubjectMask`. Cancel always clears the preview; settings carry over between uses.
 
 ## src/ui/panels/color-picker.ts
 
 ### src/ui/panels/color-picker.ts · ColorPickerDialog · _v0.10.0
 
-Ported from the reference app's `ColorPickerSheet.swift`: a saturation and brightness field, a vertical hue strip, new and current swatches, and RGB and hex entry, with HSV as the source of truth so a gray keeps its hue. It opens on the `cv-pick-color` event the rail's swatches send, titled Foreground Color or Background Color. While open, its scrim is click-through and a capture-phase listener samples the composite color under a stage click before any tool sees it. Enter in the hex box commits by blurring it, so a later blur cannot re-apply a stale value over a hue drag. OK sets the color; Cancel and Escape leave it.
+Ported from the `ColorPickerSheet.swift`: a saturation and brightness field, a vertical hue strip, new and current swatches, and RGB and hex entry, with HSV as the source of truth so a gray keeps its hue. It opens on the `cv-pick-color` event the rail's swatches send, titled Foreground Color or Background Color. While open, its scrim is click-through and a capture-phase listener samples the composite color under a stage click before any tool sees it. Enter in the hex box commits by blurring it, so a later blur cannot re-apply a stale value over a hue drag. OK sets the color; Cancel and Escape leave it.
 
 ### src/ui/panels/color-picker.ts · ColorPickerDialog · drag sampling and ring · _v0.11.0
 
-Canvas sampling follows a drag through capture-phase window listeners, as in the reference app, showing the sample ring against the picker's color from the drag's start; `endSampleDrag` removes the listeners and the ring, and `close` always calls it. Removed from the sampler:
+Canvas sampling follows a drag through capture-phase window listeners, showing the sample ring against the picker's color from the drag's start; `endSampleDrag` removes the listeners and the ring, and `close` always calls it. Removed from the sampler:
 
 ```ts
-      const b = stage.getBoundingClientRect(), v = p.viewport;
-      const rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, true);
-      if (rgb) this.setRgb({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) });
+ const b = stage.getBoundingClientRect(), v = p.viewport;
+ const rgb = this.engine.sampleOriginal({ x: (e.clientX - b.left - v.panX) / v.zoom, y: (e.clientY - b.top - v.panY) / v.zoom }, true);
+ if (rgb) this.setRgb({ r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) });
 ```
 
 ## src/ui/panels/controls.ts
@@ -1582,26 +1590,26 @@ Gaussian Blur, Motion Blur, Add Noise and Lens Correction with a 140 ms debounce
 Previews run through `runFilterOffThread`, falling back to the local kernel when there is no worker; the commit still runs on the main thread inside the undo transaction. Removed:
 
 ```ts
-      if (this.preview) this.engine.previewImageEdit((src, scale) => this.run(src, scale), this.grow());
+ if (this.preview) this.engine.previewImageEdit((src, scale) => this.run(src, scale), this.grow());
 ```
 
 ## src/ui/panels/jpeg-dialog.ts
 
 ### src/ui/panels/jpeg-dialog.ts · JpegDialog · _v0.6.0
 
-Ported from the reference app's `JPEGExportSheet.swift`. Quality starts from the last export, remembered in localStorage under `sonny.jpegQuality`, and from 85% (the reference app's default) the first time; the sheet shows the image size and sRGB and previews the actually encoded JPEG, debounced 120 ms, with its encoded size. The preview canvas keeps one size (432 by 280) with the image fitted inside, so the sheet never changes height, and the preview is decoded with `createImageBitmap` rather than shown through a blob URL, which the desktop CSP may refuse. Export stores the quality and hands it back to the caller.
+Ported from the `JPEGExportSheet.swift`. Quality starts from the last export, remembered in localStorage under `sonny.jpegQuality`, and from 85% the first time; the sheet shows the image size and sRGB and previews the actually encoded JPEG, debounced 120 ms, with its encoded size. The preview canvas keeps one size (432 by 280) with the image fitted inside, so the sheet never changes height, and the preview is decoded with `createImageBitmap` rather than shown through a blob URL, which the desktop CSP may refuse. Export stores the quality and hands it back to the caller.
 
 ## src/ui/panels/live-mask-dialog.ts
 
 ### src/ui/panels/live-mask-dialog.ts · LiveMaskDialog · _v0.19.0
 
-the reference app's alert for deleting a layer that other layers are clipped to (their live mask), with its wording and buttons: Bake and Delete, Cancel, Remove Links and Delete; `choose` resolves `bake`, `unlink` or null (Cancel and Escape).
+the alert for deleting a layer that other layers are clipped to (their live mask), with its wording and buttons: Bake and Delete, Cancel, Remove Links and Delete; `choose` resolves `bake`, `unlink` or null (Cancel and Escape).
 
 ## src/ui/panels/size-dialogs.ts
 
 ### src/ui/panels/size-dialogs.ts · CanvasSizeDialog, ImageSizeDialog, AmountDialog · _v0.2.0
 
-Canvas Size with the reference app's anchor offset formula and extension fill, Image Size with constrain, resolution and resampling, and the Expand and Contract amount dialog that remembers its amounts.
+Canvas Size with the anchor offset formula and extension fill, Image Size with constrain, resolution and resampling, and the Expand and Contract amount dialog that remembers its amounts.
 
 ## src/ui/rail.ts
 
@@ -1614,8 +1622,8 @@ Created in _v0.1.0.
 The foreground and background swatches dispatch `cv-pick-color` instead of opening the native color input, which stays in the markup unused. Removed:
 
 ```ts
-    this.fg.addEventListener('click', () => this.fgInput.click());
-    this.bg.addEventListener('click', () => this.bgInput.click());
+ this.fg.addEventListener('click', () => this.fgInput.click());
+ this.bg.addEventListener('click', () => this.bgInput.click());
 ```
 
 ## src/ui/stage.ts
@@ -1629,38 +1637,38 @@ Renders synchronously inside the ResizeObserver callback so a resize never shows
 The marching ants take their offset from `engine.outlineShift`, which covers both a selection being moved and pixels being moved. Removed:
 
 ```ts
-      const shift = this.engine.selectionShift?.project === p ? this.engine.selectionShift : null;
+ const shift = this.engine.selectionShift?.project === p ? this.engine.selectionShift: null;
 ```
 
 ### src/ui/stage.ts · Stage · renderOverlay · sample ring · _v0.11.0
 
-After the tool overlay, draws `engine.sampleRing` with the reference app's `SampleRingOverlay` geometry in screen pixels (radius 43, a 24 px gray ring at 0.45 white, 16 px halves clipped top and bottom: the new color above, the color before the drag below), so it keeps its size at any zoom. Nothing was removed.
+After the tool overlay, draws `engine.sampleRing` with the `SampleRingOverlay` geometry in screen pixels (radius 43, a 24 px gray ring at 0.45 white, 16 px halves clipped top and bottom: the new color above, the color before the drag below), so it keeps its size at any zoom. Nothing was removed.
 
 ### src/ui/stage.ts · Stage · WebKit pinch · _v0.20.0
 
-`gesturestart`, `gesturechange` and `gestureend` listeners zoom about the pointer by the gesture's scale since it began, as the reference app's magnify; Chrome's pinch still arrives as Ctrl+wheel. Nothing was removed.
+`gesturestart`, `gesturechange` and `gestureend` listeners zoom about the pointer by the gesture's scale since it began, as the magnify; Chrome's pinch still arrives as Ctrl+wheel. Nothing was removed.
 
 ### src/ui/stage.ts · Stage · right-drag brush tip · _v0.22.0
 
-Right presses with Brush, Spot Healing, Clone Stamp or Smear (`brushTools`, the reference app's isBrushTool) start a tip drag before tool dispatch, captured like panning. Nothing was removed.
+Right presses with Brush, Spot Healing, Clone Stamp or Smear (`brushTools`, the isBrushTool) start a tip drag before tool dispatch, captured like panning. Nothing was removed.
 
 ### src/ui/stage.ts · Stage · floating ants · _v0.24.0
 
 With no live selection, the ants draw `floatingOutline`'s selection through the view times its carry matrix, and keep marching while a selection floats. Removed:
 
 ```ts
-    const sel = p.selection;
-    if (sel) {
+ const sel = p.selection;
+ if (sel) {
 ```
 
 ```ts
-      const m = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + (shift?.dy ?? 0) * v.zoom) * d]);
-      const path = new Path2D();
-      path.addPath(sel.outline(), m);
+ const m = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + (shift?.dy ?? 0) * v.zoom) * d]);
+ const path = new Path2D();
+ path.addPath(sel.outline(), m);
 ```
 
 ```ts
-    const need = !!this.engine.current?.selection && !REDUCED;
+ const need = !!this.engine.current?.selection && !REDUCED;
 ```
 
 ### src/ui/stage.ts · Stage · region repaints · _v0.29.0
@@ -1668,39 +1676,39 @@ With no live selection, the ants draw `floatingOutline`'s selection through the 
 Reported regions accumulate in `pending` between frames; `renderScene(region)` clears and recomposes only that region, a pixel wider each way, leaving the rest of the scene; a full request wins until the frame runs. Removed:
 
 ```ts
-    for (const k of ['render', 'viewport', 'active'] as const) engine.on(k, () => this.queue(true, true));
+ for (const k of ['render', 'viewport', 'active'] as const) engine.on(k, () => this.queue(true, true));
 ```
 
 ```ts
-  private queue(scene: boolean, overlay: boolean): void {
-    this.wantScene ||= scene;
-    this.wantOverlay ||= overlay;
-    if (this.frame) return;
-    this.frame = requestAnimationFrame(() => {
-      this.frame = 0;
-      if (this.wantScene) this.renderScene();
-      if (this.wantOverlay) this.renderOverlay();
-    });
-  }
+ private queue(scene: boolean, overlay: boolean): void {
+ this.wantScene ||= scene;
+ this.wantOverlay ||= overlay;
+ if (this.frame) return;
+ this.frame = requestAnimationFrame(() => {
+ this.frame = 0;
+ if (this.wantScene) this.renderScene();
+ if (this.wantOverlay) this.renderOverlay();
+ });
+ }
 ```
 
 ```ts
-  private renderScene(): void {
-    this.wantScene = false;
-    const g = this.sctx;
-    const W = this.scene.width, H = this.scene.height;
-    g.setTransform(1, 0, 0, 1, 0, 0);
-    g.clearRect(0, 0, W, H);
-    const p = this.engine.current;
-    if (!p) return;
+ private renderScene(): void {
+ this.wantScene = false;
+ const g = this.sctx;
+ const W = this.scene.width, H = this.scene.height;
+ g.setTransform(1, 0, 0, 1, 0, 0);
+ g.clearRect(0, 0, W, H);
+ const p = this.engine.current;
+ if (!p) return;
 ```
 
 ```ts
-    g.lineWidth = 1;
-    g.strokeStyle = pal.edge;
-    g.strokeRect(Math.round(docRect.x) - 0.5, Math.round(docRect.y) - 0.5, Math.round(docRect.w) + 1, Math.round(docRect.h) + 1);
-    const vis = intersectRect(integral(docRect), { x: 0, y: 0, w: W, h: H });
-    if (!vis) return;
+ g.lineWidth = 1;
+ g.strokeStyle = pal.edge;
+ g.strokeRect(Math.round(docRect.x) - 0.5, Math.round(docRect.y) - 0.5, Math.round(docRect.w) + 1, Math.round(docRect.h) + 1);
+ const vis = intersectRect(integral(docRect), { x: 0, y: 0, w: W, h: H });
+ if (!vis) return;
 ```
 
 ## src/ui/status.ts

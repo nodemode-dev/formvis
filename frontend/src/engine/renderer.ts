@@ -16,7 +16,7 @@ function kernelFor(adj: Adjustment | null): Kernel | null {
   return k;
 }
 
-/** the reference app's DownsampleCache: an image drawn at under half size is drawn from a copy halved exactly 2x at a time,
+/** an image drawn at under half size is drawn from a copy halved exactly 2x at a time,
  *  so the last reduction left to the canvas is at most 2x; a one-step reduction comes out soft or grainy (in WebKit
  *  especially). Halvings for `factor` output pixels per image pixel: the most that still leave the copy at least
  *  that large, up to 6. Copies are kept per raster and dropped when its version changes, since painting is in place. */

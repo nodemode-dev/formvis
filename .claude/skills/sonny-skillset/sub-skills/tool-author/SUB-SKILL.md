@@ -1,6 +1,6 @@
 ---
 name: tool-author
-description: Adding or changing sonny tools in frontend/src/extensions. Use for a new tool, tool options in the options bar, tool shortcuts, cursors, overlays such as marching ants or transform handles, or pointer and keyboard behavior on the stage, including the remaining the reference app tools crop, spot healing, clone stamp, smear, gradient and shape.
+description: Adding or changing sonny tools in frontend/src/extensions. Use for a new tool, tool options in the options bar, tool shortcuts, cursors, overlays such as marching ants or transform handles, or pointer and keyboard behavior on the stage, including the remaining tools crop, spot healing, clone stamp, smear, gradient and shape.
 ---
 
 # tool-author
@@ -24,4 +24,4 @@ A tool is a self-registering module. The rail, the options bar, the cursor and t
 
 ## Remaining parity tools
 
-All fourteen of the reference app's tools exist as of 0.3.0. Models to follow: Gradient shows a pending edit that lives in the engine and commits on `settle`; Clone Stamp and Smear's Blur paint a texture through `PixelStroke`; Smudge and Liquify show a warp stroke with a document-size override; `brush-common.ts` shares the brush cursor, keys and options.
+All fourteen of the tools exist as of 0.3.0. Models to follow: Gradient shows a pending edit that lives in the engine and commits on `settle`; Clone Stamp and Smear's Blur paint a texture through `PixelStroke`; Smudge and Liquify show a warp stroke with a document-size override; `brush-common.ts` shares the brush cursor, keys and options.

@@ -85,7 +85,7 @@ export class Engine {
   marqueeKind: 'rectangle' | 'ellipse' = 'rectangle';
   lassoKind: 'freehand' | 'polygonal' = 'freehand';
   wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0 };
-  /** the reference app's selectionAntialiased: smooth Lasso and elliptical Marquee edges (rectangles snap to whole pixels and
+  /** smooth Lasso and elliptical Marquee edges (rectangles snap to whole pixels and
    *  the Magic Wand's edges follow pixels exactly, so neither changes). On by default. */
   selectionAntialiased = true;
   showPixelGrid = true;
@@ -193,7 +193,7 @@ export class Engine {
     }
     const base: Doc = { id: uid(), width, height, resolution: 72, layers: [] };
     let layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', base);
-    if (fill !== 'transparent') layer = { ...layer, raster: Raster.filled(width, height, fill === 'white' ? '#ffffff' : rgbCss(this.bg)) };
+    if (fill !== 'transparent') layer = { ...layer, raster: Raster.filled(width, height, fill === 'white' ? '#ffffff': rgbCss(this.bg)) };
     return this.addProject({ ...base, layers: [layer] }, name, layer.id);
   }
 
@@ -265,7 +265,7 @@ export class Engine {
     this.emit('overlay', null);
   }
 
-  /** the reference app's right-drag with a brush tool: left and right resize the brush from its size at the press, the
+  /** the right-drag with a brush tool: left and right resize the brush from its size at the press, the
    *  circle's edge following the pointer (each screen point widens the radius by a screen point), or with Shift change
    *  its hardness (the full range across 200 points). The brush circle stays where the press was. */
   tipDrag: { at: Pt; startX: number; diameter: number; hardness: number } | null = null;
@@ -477,7 +477,7 @@ export class Engine {
     });
   }
 
-  /** the reference app's live masks: layers that stay but are clipped to a layer being deleted. Deleting their base asks
+  /** the live masks: layers that stay but are clipped to a layer being deleted. Deleting their base asks
    *  whether to bake their masked look into their pixels or remove the links; `deleteLayers(true)` bakes. */
   liveMaskDependents(): ID[] {
     const p = this.current;
@@ -502,7 +502,7 @@ export class Engine {
       const doomed = this.doomedBy(p);
       const order = hierarchy(p.doc, true).map((e) => e.layer.id);
       const first = Math.min(...roots.map((id) => order.indexOf(id)));
-      // the reference app's Bake and Delete: a layer clipped to a deleted base keeps its current masked look in its own
+      // the Bake and Delete: a layer clipped to a deleted base keeps its current masked look in its own
       // pixels, through the same coverage the renderer clips it with; adjustments and folders just unlink.
       const baked = new Map<ID, Raster>();
       if (bake) {
@@ -701,7 +701,7 @@ export class Engine {
     });
   }
 
-  /** the reference app's Option-drag from a mask thumbnail: a copy of the source's mask on the target, sitting where it sits
+  /** the Option-drag from a mask thumbnail: a copy of the source's mask on the target, sitting where it sits
    *  on the document and replacing any mask the target had, as one step; the target becomes active with its mask
    *  targeted. The raster is copied, so painting one mask never changes the other. */
   copyMask(source: ID, target: ID): void {
@@ -718,10 +718,10 @@ export class Engine {
     });
   }
 
-  /** the reference app's copyLayer(into:): a layer, with a folder's contents, copied into another open project as one Copy
+  /** the copyLayer(into:): a layer, with a folder's contents, copied into another open project as one Copy
    *  Layers from Project step there: new ids, cloned pixels, parent and clip links kept inside the copy and dropped
    *  outside it, centered on the target canvas, on top of its stack; the target becomes current. Refused past
-   *  the reference app's 100-megapixel budget for the target. */
+   *  the 100-megapixel budget for the target. */
   copyLayerToProject(id: ID, targetKey: string): boolean {
     const src = this.projects.find((q) => !!q.layer(id)), dst = this.projects.find((q) => q.id === targetKey);
     const head = src?.layer(id);
@@ -974,7 +974,7 @@ export class Engine {
   }
 
   /** Redraws of the whole scene are the default; a stroke reports just the region it changed, so the stage repaints
-   *  that alone (the reference app's tile-dirty rendering, by rectangle). Off, every stroke frame redraws everything. */
+   *  that alone. Off, every stroke frame redraws everything. */
   dirtyRendering = true;
 
   strokeTo(pt: Pt): void {
@@ -1176,14 +1176,14 @@ export class Engine {
     this.edit('Move Selection', (p) => { if (!p.selection) return false; p.selection = p.selection.translated(s.dx, s.dy, p.doc.width, p.doc.height); return true; });
   }
 
-  /** the reference app's rule for moving a mask on its own: with the mask targeted and unlinked, the Move tool transforms the
+  /** the rule for moving a mask on its own: with the mask targeted and unlinked, the Move tool transforms the
    *  mask's placement instead of the layer. A linked mask moves with its layer, and a solid (never painted) mask covers
    *  everything wherever it sits, so neither qualifies. */
   transformsMask(l: Layer | null | undefined): boolean {
     return !!l && !!this.current?.maskTarget && !!l.mask?.raster && !l.mask.linked;
   }
 
-  /** the reference app's groupTransformMembers: with more than one layer selected, or a folder, the Move tool transforms the
+  /** with more than one layer selected, or a folder, the Move tool transforms the
    *  visible pixel layers that are selected or inside a selected folder together. */
   private groupMembers(p: Project): Layer[] {
     const sel = p.selectedIds;
@@ -1201,7 +1201,7 @@ export class Engine {
     });
   }
 
-  /** The group's handle box: the upright bounds of every member's corners (the reference app's groupTransformBox). */
+  /** The group's handle box: the upright bounds of every member's corners (). */
   groupBox(): Transform | null {
     const p = this.current;
     if (!p) return null;
@@ -1247,7 +1247,7 @@ export class Engine {
     if (sameTransform(next, te.original) || this.current !== te.project) { this.emit('render', null); return; }
     if (this.floatSel?.project === te.project && this.floatSel.floatingId === te.layerId) { te.project.updateLayer(te.layerId, { transform: next }); this.refresh(); return; }
     if (te.group) {
-      // the reference app's group commit: each member follows the box, its mask following it, as one Transform Layers step.
+      // the group commit: each member follows the box, its mask following it, as one Transform Layers step.
       const g = te.group;
       this.edit('Transform Layers', (p) => {
         let moved = false;
@@ -1264,7 +1264,7 @@ export class Engine {
       return;
     }
     if (te.mask) {
-      // the reference app's commitMaskTransform: the mask takes the new placement, its pixels untouched; a placement equal to
+      // the mask takes the new placement, its pixels untouched; a placement equal to
       // the layer's own is stored as none.
       this.edit('Transform Layer Mask', (p) => {
         const l = p.layer(te.layerId);
@@ -1284,9 +1284,9 @@ export class Engine {
     });
   }
 
-  /** the reference app's free distort (Cmd-drag a corner handle): the four corners of the Move tool's box move on their own,
+  /** the free distort (Cmd-drag a corner handle): the four corners of the Move tool's box move on their own,
    *  pending until applied (Enter) or cancelled (Escape). The box is the active layer's, or with several layers or a
-   *  folder selected the group box, each member carried by the same perspective (the reference app's distortTarget). */
+   *  folder selected the group box, each member carried by the same perspective. */
   distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
   private distortFrame = 0;
 
@@ -1310,7 +1310,7 @@ export class Engine {
     return distortUsable(q) ? q : null;
   }
 
-  /** A layer's mask through a distortion to `quad`, as in the reference app: linked on the layer, it warps with the pixels;
+  /** A layer's mask through a distortion to `quad`: linked on the layer, it warps with the pixels;
    *  linked but placed apart, it takes the same perspective over its own bounds with its edge tone outside;
    *  unlinked, it stays where it is on the document. */
   private distortMask(l: Layer, quad: Pt[], scale: number): DistortedMask | null {
@@ -1324,7 +1324,7 @@ export class Engine {
   }
 
   /** Moves one corner (handle order: top-left, top-right, bottom-right, bottom-left); a twisted or collapsed shape
-   *  is ignored, as in the reference app. The preview is re-warped once per frame. */
+   *  is ignored. The preview is re-warped once per frame. */
   moveDistortCorner(i: number, pt: Pt): void {
     const d = this.distortEdit;
     if (!d) return;
@@ -1348,7 +1348,7 @@ export class Engine {
     this.emit('render', null);
   }
 
-  /** the reference app's Apply: each distorted layer's pixels resampled into its shape at full resolution and trimmed to what
+  /** each distorted layer's pixels resampled into its shape at full resolution and trimmed to what
    *  is visible, leaving upright layers, its mask handled by `distortMask` (a linked mask cropped with the pixels), as
    *  one Distort step, or Distort Layers for a group. */
   applyDistort(): void {
@@ -1796,7 +1796,7 @@ export class Engine {
     return `Layer ${n}`;
   }
 
-  /** the reference app's Cmd-J: with a selection, its pixels on the active layer (or its mask, as gray) become a new layer in
+  /** the Cmd-J: with a selection, its pixels on the active layer (or its mask, as gray) become a new layer in
    *  place as one Layer via Copy step, leaving the clipboard alone; without a selection the layer is duplicated. */
   layerViaCopy(): void {
     const p = this.current;
@@ -1962,7 +1962,7 @@ export class Engine {
     return (this.retouch.cloneAligned ? this.cloneOffset : null) ?? { x: Math.round(src.x - pt.x), y: Math.round(src.y - pt.y) };
   }
 
-  /** the reference app's clonePreview: what a Clone Stamp click at `at` would stamp, the source around `clonePoint(at)`
+  /** what a Clone Stamp click at `at` would stamp, the source around `clonePoint(at)`
    *  rendered for just the brush circle at `scale` screen pixels per document pixel (from the whole document or the
    *  active layer alone, as the stroke samples), faded by the brush tip as hardness sets it. Reused until the sample
    *  point, brush, zoom, layer, sampling mode or document changes. Null with no source, or during a stroke. */
@@ -2006,7 +2006,7 @@ export class Engine {
     return s;
   }
 
-  /** the reference app's blurSample for a mask: the mask as the canvas shows it at document size (white, the level in alpha),
+  /** the blurSample for a mask: the mask as the canvas shows it at document size (white, the level in alpha),
    *  softened by `sigma`. Past its pixels a mask keeps its edge tone, white or black by whether its border averages
    *  half or more (`LayerMask.background`), so blurring near its edge does not pull in the wrong value. */
   private maskBlurSample(p: Project, layer: Layer, sigma: number): Surface {
@@ -2245,7 +2245,7 @@ export class Engine {
 
   get movingPixels(): boolean { return this.floating !== null; }
 
-  /** the reference app's mapPath for Transform Selection: while selected pixels float, the selection they came from and the
+  /** the mapPath for Transform Selection: while selected pixels float, the selection they came from and the
    *  matrix carrying it with the floating pixels' transform (the live draft while dragging), so the ants keep matching
    *  them. Null when no affine map fits: a pending or applied distortion of the floating pixels. */
   floatingOutline(p: Project): { selection: SelectionMask; m: Mat } | null {
@@ -2458,7 +2458,7 @@ export class Engine {
 
   /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, from the source the Levels histogram
    *  reads: the target layer's own pixels (or its mask's, when the mask is targeted), or with `composite` the flattened
-   *  document. the reference app's Levels eyedroppers sample the edit's original image the same way. */
+   *  document. the Levels eyedroppers sample the edit's original image the same way. */
   sampleOriginal(pt: Pt, composite: boolean): [number, number, number] | null {
     const p = this.current;
     if (!p) return null;
@@ -2482,7 +2482,7 @@ export class Engine {
   }
 
   /** Lays a subject mask (0 to 1 per layer pixel, 1 over the subject) on a layer as one Remove Background step. An
-   *  existing mask of the same size is kept too, multiplied in: what either hides stays hidden (the reference app's
+   *  existing mask of the same size is kept too, multiplied in: what either hides stays hidden (the
    *  `subjectMask`). The pixels themselves stay, so the background can be painted back. */
   applySubjectMask(id: ID, levels: Float32Array, width: number, height: number): void {
     this.edit('Remove Background', (p) => {
@@ -2500,7 +2500,7 @@ export class Engine {
     });
   }
 
-  /** the reference app's sample ring: while a drag samples the canvas, the new color shows on the ring's top half and the
+  /** the sample ring: while a drag samples the canvas, the new color shows on the ring's top half and the
    *  color before the drag on its bottom half. `showsSampleRing` is the Eyedropper's Sample Ring option. */
   showsSampleRing = true;
   sampleRing: { at: Pt; sampled: RGB; original: RGB } | null = null;
@@ -2511,7 +2511,7 @@ export class Engine {
     this.emit('overlay', null);
   }
 
-  /** the reference app's arrow-key nudge for selection tools: the outline moves 1 px (10 with Shift at the caller), each
+  /** the arrow-key nudge for selection tools: the outline moves 1 px (10 with Shift at the caller), each
    *  press one Move Selection step; the pixels stay. Returns false when there is no selection to move. */
   nudgeSelection(dx: number, dy: number): boolean {
     const p = this.current, s = p?.selection;
@@ -2543,7 +2543,7 @@ export class Engine {
   async exportBlob(type: 'image/png' | 'image/jpeg', quality = 0.92): Promise<Blob | null> {
     const p = this.current;
     if (!p) return null;
-    return withResolution(await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality), p.doc.resolution);
+    return withResolution(await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff': null), type, quality), p.doc.resolution);
   }
 
   flattened(): Surface | null { const p = this.current; return p ? renderDoc(this.work, p.doc) : null; }

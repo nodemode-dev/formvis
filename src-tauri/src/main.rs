@@ -26,7 +26,7 @@ fn close_splash(handle: &tauri::AppHandle) {
     }
 }
 
-/// Checks the GitHub Releases feed once the main window is up, the way the reference app's Sparkle appcast did, and asks
+/// Checks the GitHub Releases feed once the main window is up, the way the Sparkle appcast did, and asks
 /// before installing. Skipped until a public key is configured in `plugins.updater.pubkey`, so builds made before the
 /// signing key exists never try to verify against an empty key.
 fn check_for_updates(handle: tauri::AppHandle) {

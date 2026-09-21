@@ -120,7 +120,7 @@ export function adjustmentKernel(adj: Adjustment | null): Kernel | null {
 export function wandMask(rgba: Uint8ClampedArray, width: number, height: number, seedX: number, seedY: number, tolerance: number, contiguous: boolean, sampleRadius = 0): Uint8Array {
   const mask = new Uint8Array(width * height);
   if (seedX < 0 || seedY < 0 || seedX >= width || seedY >= height) return mask;
-  // the reference app's Sample Size: the color to match averages the pixels within `sampleRadius` of the click (0 is Point,
+  // the Sample Size: the color to match averages the pixels within `sampleRadius` of the click (0 is Point,
   // 1 is 3 by 3, 2 is 5 by 5), clipped to the image.
   const ref = [0, 0, 0, 0];
   let count = 0;

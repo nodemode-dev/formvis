@@ -3,7 +3,7 @@ import { el, setText } from '../dom';
 
 export type LiveMaskChoice = 'bake' | 'unlink' | null;
 
-/** the reference app's alert for deleting a layer that other layers are clipped to (their live mask): Bake and Delete keeps
+/** the alert for deleting a layer that other layers are clipped to (their live mask): Bake and Delete keeps
  *  their masked look in their own pixels, Remove Links and Delete reveals their pixels; either can be undone. */
 export class LiveMaskDialog extends Dialog {
   private resolve: ((choice: LiveMaskChoice) => void) | null = null;

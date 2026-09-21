@@ -2,11 +2,11 @@ import { unitPoint } from './geometry';
 import { Raster } from './surface';
 import type { Pt, Rect, Transform } from './types';
 
-/** the reference app's DistortWarp.corners: a transform's corners in handle order: top-left, top-right, bottom-right,
+/** a transform's corners in handle order: top-left, top-right, bottom-right,
  *  bottom-left. */
 export const cornersOf = (t: Transform): Pt[] => [unitPoint(t, 0, 0), unitPoint(t, 1, 0), unitPoint(t, 1, 1), unitPoint(t, 0, 1)];
 
-/** the reference app's DistortWarp.isUsable: four finite corners making a convex, non-degenerate shape. A twisted (bow-tie)
+/** four finite corners making a convex, non-degenerate shape. A twisted (bow-tie)
  *  or collapsed shape has no sensible warp and is refused. */
 export function distortUsable(c: readonly Pt[]): boolean {
   if (c.length !== 4 || !c.every((p) => Number.isFinite(p.x) && Number.isFinite(p.y) && Math.abs(p.x) <= 1e6 && Math.abs(p.y) <= 1e6)) return false;
@@ -21,7 +21,7 @@ export function distortUsable(c: readonly Pt[]): boolean {
   return true;
 }
 
-/** the reference app's DistortWarp.homography: the perspective mapping of the unit square (corners in handle order) onto
+/** the perspective mapping of the unit square (corners in handle order) onto
  *  `c`, as the row-major 3x3 matrix [a b x0; d e y0; g h 1]. */
 export function homography(c: readonly Pt[]): number[] {
   const sx = c[0].x - c[1].x + c[2].x - c[3].x, sy = c[0].y - c[1].y + c[2].y - c[3].y;
@@ -47,7 +47,7 @@ function boxUnit(box: Transform, p: Pt): Pt {
   return { x: (dx * fy - dy * fx) / det, y: (ex * dy - ey * dx) / det };
 }
 
-/** the reference app's DistortWarp.carried: where `inner`'s corners (handle order) land when the perspective taking `box`'s
+/** where `inner`'s corners (handle order) land when the perspective taking `box`'s
  *  corners to `quad` is applied around it too; how group members and masks placed apart distort with the box. */
 export function carried(inner: Transform, box: Transform, quad: readonly Pt[]): Pt[] {
   const H = homography(quad);
@@ -62,7 +62,7 @@ function invert3(m: readonly number[]): number[] | null {
   return [A / det, -(b * i - c * h) / det, (b * f - c * e) / det, B / det, (a * i - c * g) / det, -(a * f - c * d) / det, C / det, -(a * h - b * g) / det, (a * e - b * d) / det];
 }
 
-/** the reference app's imageCorners: a flipped layer shows its pixels mirrored, so they go to the opposite corners. */
+/** a flipped layer shows its pixels mirrored, so they go to the opposite corners. */
 function imageQuad(c: readonly Pt[], flipX: boolean, flipY: boolean): Pt[] {
   const at = (x: number, y: number): Pt => c[[0, 1, 3, 2][(flipY ? 1 - y : y) * 2 + (flipX ? 1 - x : x)]];
   return [at(0, 0), at(1, 0), at(1, 1), at(0, 1)];
@@ -70,7 +70,7 @@ function imageQuad(c: readonly Pt[], flipX: boolean, flipY: boolean): Pt[] {
 
 export interface Warped { raster: Raster; t: Transform }
 
-/** the reference app's DistortWarp.warp: `src`, shown through `t`, resampled so its corners land on `quad`, over the quad's
+/** `src`, shown through `t`, resampled so its corners land on `quad`, over the quad's
  *  whole-pixel bounds with an upright transform. Premultiplied bilinear, edges clamped; `scale` below 1 renders a
  *  smaller preview of the same bounds. A mask is opaque gray with `background` (0 black, hidden) outside the shape. */
 export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale = 1, mask = false, background = 0): Warped | null {
@@ -109,7 +109,7 @@ export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale
   return { raster, t: { x: x0, y: y0, w: W, h: H, rotation: 0, flipX: false, flipY: false, sampling: t.sampling } };
 }
 
-/** The whole-pixel bounds of a full-resolution warp's visible pixels, in its own pixels (the reference app's warpTrimmed). */
+/** The whole-pixel bounds of a full-resolution warp's visible pixels, in its own pixels (). */
 export function visibleBounds(r: Raster): Rect | null {
   const d = r.ctx.getImageData(0, 0, r.width, r.height).data;
   let x0 = r.width, y0 = r.height, x1 = -1, y1 = -1;
@@ -131,7 +131,7 @@ export function cropWarp(wp: Warped, crop: Rect): Warped {
   return { raster, t: { ...wp.t, x: wp.t.x + crop.x, y: wp.t.y + crop.y, w: crop.w, h: crop.h } };
 }
 
-/** the reference app's LayerMask.background: a mask's tone past its own pixels, white (255) when its border averages light,
+/** a mask's tone past its own pixels, white (255) when its border averages light,
  *  else black (0). A mask placed apart from its layer shows it beyond its bounds. */
 export function maskEdgeTone(r: Raster): number {
   const d = r.ctx.getImageData(0, 0, r.width, r.height).data;

@@ -2,16 +2,23 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.31.0 · 2026-09-20
+
+### Changed
+
+- Licensed under the Apache License 2.0, Copyright 2026 nodemode-ai.
+- Documentation, comments and interface text now describe sonny's own behaviour and the `.ref` file format it reads and writes, with no reference to any other application. File > Export .ref Project replaces the previous menu wording.
+
 ## 0.30.0 · 2026-09-20
 
 ### Added
 
-- Crop edges snap to visible layers' edges as well as the canvas, as in the reference app: creating or resizing snaps the edge you drag, moving snaps the frame while keeping its size, and a fixed ratio only snaps moves.
-- Export JPEG has the reference app's shortcut, Alt+Shift+Cmd/Ctrl+S.
+- Crop edges snap to visible layers' edges as well as the canvas: creating or resizing snaps the edge you drag, moving snaps the frame while keeping its size, and a fixed ratio only snaps moves.
+- Export JPEG has the shortcut, Alt+Shift+Cmd/Ctrl+S.
 
 ### Verified
 
-- Every one of the reference app's 33 menu shortcuts was compared with sonny's; all match, apart from Close (Cmd/Ctrl-W in the desktop app, Alt+Cmd/Ctrl+W on the web where browsers reserve it) and the macOS-only Hide Others.
+- Every one of the 33 menu shortcuts was compared with sonny's; all match, apart from Close (Cmd/Ctrl-W in the desktop app, Alt+Cmd/Ctrl+W on the web where browsers reserve it) and the macOS-only Hide Others.
 
 ### Known gaps
 
@@ -21,7 +28,7 @@ The desktop shell has not been compiled (first CI run pending), and the desktop-
 
 ### Changed
 
-- Painting on large canvases repaints only the area the brush changed each frame instead of the whole visible canvas, as the reference app's tiled renderer does. On a 4000 by 3000 document at 100 percent, a stroke frame composes 5,180 pixels instead of 853,776, with an identical result.
+- Painting on large canvases repaints only the area the brush changed each frame instead of the whole visible canvas, as the tiled renderer does. On a 4000 by 3000 document at 100 percent, a stroke frame composes 5,180 pixels instead of 853,776, with an identical result.
 
 ### Known gaps
 
@@ -31,11 +38,11 @@ The desktop shell has not been compiled (first CI run pending), and the desktop-
 
 ### Added
 
-- Export for the reference app: File > Export for the reference app (.ref) writes `Name.ref.zip`, which unzips to a `.ref` package the reference app opens. Projects can now travel both ways. Where the reference app's format is stricter (folders carry no opacity or blend mode, adjustment layers carry no pixels, names cannot be empty), the export adjusts and tells you what changed.
+- Export `.ref` projects: File > Export.ref Project writes `Name.ref.zip`, which unzips to a `.ref` package other apps reading that format can open. Projects can now travel both ways. Where the format is stricter (folders carry no opacity or blend mode, adjustment layers carry no pixels, names cannot be empty), the export adjusts and tells you what changed.
 
 ### Note
 
-- The export was checked against the reference app's own validation rules and reopened in sonny; it has not yet been opened in the reference app itself, which runs only on macOS.
+- The export was checked against the own validation rules and reopened in sonny; it has not yet been opened itself, which runs only on macOS.
 
 ### Known gaps
 
@@ -45,7 +52,7 @@ Painting speed on very large canvases; the desktop shell has not been compiled (
 
 ### Added
 
-- Clone Stamp previews inside the brush circle what a click would stamp, as in the reference app: the source pixels, faded by the brush's hardness and shown at its opacity. Holding Alt to pick a new source hides it. With this, every one of the reference app's fourteen tools is complete.
+- Clone Stamp previews inside the brush circle what a click would stamp: the source pixels, faded by the brush's hardness and shown at its opacity. Holding Alt to pick a new source hides it. With this, every one of the fourteen tools is complete.
 
 ### Verified
 
@@ -64,7 +71,7 @@ Painting speed on very large canvases; the desktop shell has not been compiled (
 
 ### Corrected
 
-- Clone Stamp was recorded as missing a "brush-sized sample ring". the reference app marks its source with a crosshair, which sonny already draws. The real difference is that the reference app previews inside the brush circle what a click would stamp, which sonny does not do yet.
+- Clone Stamp was recorded as missing a "brush-sized sample ring". marks its source with a crosshair, which sonny already draws. The real difference is that previews inside the brush circle what a click would stamp, which sonny does not do yet.
 
 ### Known gaps
 
@@ -74,8 +81,8 @@ The Clone Stamp preview above; `.ref` export; painting speed on very large canva
 
 ### Added
 
-- Exported PNG and JPEG files now carry the document's resolution (dots per inch), as the reference app's exports do, so print and layout apps size them correctly.
-- In the desktop app, Cmd/Ctrl-W closes the current project tab (asking first if it has unsaved changes), as in the reference app. The web version keeps Alt+Cmd/Ctrl+W, because browsers reserve Cmd/Ctrl-W for their own tab.
+- Exported PNG and JPEG files now carry the document's resolution (dots per inch), as the exports do, so print and layout apps size them correctly.
+- In the desktop app, Cmd/Ctrl-W closes the current project tab (asking first if it has unsaved changes). The web version keeps Alt+Cmd/Ctrl+W, because browsers reserve Cmd/Ctrl-W for their own tab.
 
 ### Verified
 
@@ -91,7 +98,7 @@ The desktop shell has not been compiled (first CI run pending), and the desktop-
 
 ### Added
 
-- During Transform Selection the selection outline now follows the pixels as they move, scale or rotate, and keeps marching, as in the reference app; before, it hid until the transform was applied.
+- During Transform Selection the selection outline now follows the pixels as they move, scale or rotate, and keeps marching; before, it hid until the transform was applied.
 
 ### Known gaps
 
@@ -101,11 +108,11 @@ The desktop shell has not been compiled (first CI run pending), and the desktop-
 
 ### Added
 
-- Open Recent in the File menu, as in the reference app: the ten projects most recently saved or opened, newest first, with Clear Recent. A project no longer in the library says so and drops out of the list.
+- Open Recent in the File menu: the ten projects most recently saved or opened, newest first, with Clear Recent. A project no longer in the library says so and drops out of the list.
 
 ### Corrected
 
-- Autosave was listed as missing; the reference app has no autosave, so it was never a parity gap and is dropped.
+- Autosave was listed as missing; has no autosave, so it was never a parity gap and is dropped.
 
 ### Known gaps
 
@@ -115,11 +122,11 @@ Selection ants during Transform Selection; the desktop shell has not been compil
 
 ### Added
 
-- Right-drag brush sizing, as in the reference app: with Brush, Spot Healing, Clone Stamp or Smear, right-drag left or right to resize the brush (its circle stays where you pressed), or hold Shift to change its hardness instead.
+- Right-drag brush sizing: with Brush, Spot Healing, Clone Stamp or Smear, right-drag left or right to resize the brush (its circle stays where you pressed), or hold Shift to change its hardness instead.
 
 ### Corrected
 
-- Pen pressure was listed as a missing brush control; the reference app has no pressure support, so it was never a parity gap and is dropped.
+- Pen pressure was listed as a missing brush control; has no pressure support, so it was never a parity gap and is dropped.
 
 ### Known gaps
 
@@ -129,7 +136,7 @@ Selection ants during Transform Selection; recent projects and autosave; the des
 
 ### Added
 
-- Free distort, as in the reference app: with the Move tool, Cmd-drag a corner handle to move that corner on its own. The distortion stays pending so any corner can be adjusted; Enter applies, Escape cancels. Works on several selected layers or a folder together. Linked masks warp along, masks placed apart take the same perspective, unlinked masks stay put; shape layers become pixels.
+- Free distort: with the Move tool, Cmd-drag a corner handle to move that corner on its own. The distortion stays pending so any corner can be adjusted; Enter applies, Escape cancels. Works on several selected layers or a folder together. Linked masks warp along, masks placed apart take the same perspective, unlinked masks stay put; shape layers become pixels.
 
 ### Fixed
 
@@ -144,11 +151,11 @@ The desktop shell has not been compiled (first CI run pending).
 ### Added
 
 - Pinch to zoom in Safari and the macOS desktop app: trackpad pinches zoom about the pointer (Chrome already did).
-- Sharper zoomed-out views: layers shown at under half size are drawn from a chain of exact halvings, as the reference app does, instead of one soft or grainy reduction.
+- Sharper zoomed-out views: layers shown at under half size are drawn from a chain of exact halvings, instead of one soft or grainy reduction.
 
 ### Changed
 
-- Zoom tool scrubbing now doubles per 100 px dragged, as in the reference app (it was 160).
+- Zoom tool scrubbing now doubles per 100 px dragged (it was 160).
 
 ### Known gaps
 
@@ -158,11 +165,11 @@ Free distort; the desktop shell has not been compiled (first CI run pending).
 
 ### Added
 
-- Deleting a layer that other layers are clipped to now asks, as the reference app does: Bake and Delete keeps their clipped look in their own pixels; Remove Links and Delete unclips them and shows all their pixels. Either can be undone. Before, sonny unlinked them without asking.
+- Deleting a layer that other layers are clipped to now asks: Bake and Delete keeps their clipped look in their own pixels; Remove Links and Delete unclips them and shows all their pixels. Either can be undone. Before, sonny unlinked them without asking.
 
 ### Corrected
 
-- 0.18.0 listed "live masks" as not built. In the reference app a live mask is a clipping mask, which sonny has had all along; only this deletion choice was missing.
+- 0.18.0 listed "live masks" as not built. In a live mask is a clipping mask, which sonny has had all along; only this deletion choice was missing.
 
 ### Known gaps
 
@@ -172,7 +179,7 @@ Free distort; the Zoom tool's drag rectangle and pinch; the desktop shell has no
 
 ### Added
 
-- Drag layers between projects: drag a layer row onto another project's tab to copy the layer (a folder with its contents) into that project, centered on its canvas, as in the reference app.
+- Drag layers between projects: drag a layer row onto another project's tab to copy the layer (a folder with its contents) into that project, centered on its canvas.
 - Group moves snap: several layers moved together snap their outline to the canvas and other layers, with guides.
 
 ### Known gaps
@@ -183,7 +190,7 @@ Live masks (a layer masked by another layer's content) and their deletion choice
 
 ### Added
 
-- Transform several layers together: with more than one layer selected, or a folder, the Move tool's handles surround all of them, and moving, resizing or rotating carries every layer along, as in the reference app, as one undo step.
+- Transform several layers together: with more than one layer selected, or a folder, the Move tool's handles surround all of them, and moving, resizing or rotating carries every layer along, as one undo step.
 
 ### Known gaps
 
@@ -193,7 +200,7 @@ Snapping for group moves; dragging layers between projects; the live-mask deleti
 
 ### Added
 
-- Smear's Blur on masks: with a layer mask targeted, the Smear tool's Blur mode softens the mask under the brush, the way the reference app blurs masks. All fourteen of the reference app's tools are now complete.
+- Smear's Blur on masks: with a layer mask targeted, the Smear tool's Blur mode softens the mask under the brush, the way blurs masks. All fourteen of the tools are now complete.
 
 ### Known gaps
 
@@ -203,11 +210,11 @@ Transforming several selected layers together; dragging layers between projects;
 
 ### Added
 
-- Move an unlinked mask on its own: with a layer's mask unlinked and selected, the Move tool's handles sit on the mask and move, resize or rotate it without the layer, as in the reference app. Linked masks still move with their layer.
+- Move an unlinked mask on its own: with a layer's mask unlinked and selected, the Move tool's handles sit on the mask and move, resize or rotate it without the layer. Linked masks still move with their layer.
 
 ### Changed
 
-- The planning scoreboard no longer lists "mask feather and blur shortcuts": the reference app has no feather command and blurs masks with the Blur tool, which is the Smear tool's Blur-on-masks gap.
+- The planning scoreboard no longer lists "mask feather and blur shortcuts": has no feather command and blurs masks with the Blur tool, which is the Smear tool's Blur-on-masks gap.
 
 ### Known gaps
 
@@ -232,7 +239,7 @@ Mask feather and blur shortcuts; moving an unlinked mask on its own; transformin
 - Magic Wand Sample Size: Point, 3 by 3 or 5 by 5.
 - Marquee autoscroll: drag a marquee or a selection outline to the edge of the view and the view pans with it.
 - Anti-alias option for the Lasso and elliptical Marquee.
-- Marquee modifiers follow the reference app: a key held from the press sets the mode; released and pressed again during the drag, Shift makes a square and Alt draws from the center.
+- Marquee modifiers work like this: a key held from the press sets the mode; released and pressed again during the drag, Shift makes a square and Alt draws from the center.
 
 ### Known gaps
 
@@ -257,7 +264,7 @@ Free distort; Smear's Blur on masks; ants that follow a floating selection; open
 
 ### Added
 
-- Sample ring: while the Eyedropper samples with a drag, a ring around the pointer shows the new color on its top half and the previous one below, as in the reference app. The color picker's canvas sampling now follows a drag and shows it too. The Eyedropper's Sample Ring option turns it off.
+- Sample ring: while the Eyedropper samples with a drag, a ring around the pointer shows the new color on its top half and the previous one below. The color picker's canvas sampling now follows a drag and shows it too. The Eyedropper's Sample Ring option turns it off.
 
 ### Known gaps
 
@@ -319,7 +326,7 @@ Hue/Saturation bands and eyedroppers; free distort; the color picker and palette
 
 ### Added
 
-- Levels Auto: Contrast, Color, and Color + neutral midtones, as the reference app computes them, from an Auto choice in the Levels panel.
+- Levels Auto: Contrast, Color, and Color + neutral midtones, as computes them, from an Auto choice in the Levels panel.
 - JPEG export sheet: Export JPEG... opens a sheet with a Quality slider that starts from your last export (85% the first time), the image size, and a live preview of the encoded JPEG with its file size.
 
 ### Known gaps
@@ -360,7 +367,7 @@ Transform Selection (Cmd-T on floating pixels) and free distort; the color picke
 
 ### Added
 
-- Spot Healing (J): paint over a spot and it heals on release, as Content-Aware, Create Texture or Proximity Match, ported from the reference app's healing kernel.
+- Spot Healing (J): paint over a spot and it heals on release, as Content-Aware, Create Texture or Proximity Match, ported from the healing kernel.
 - Clone Stamp (S): Alt-click sets the source; Aligned keeps the offset between strokes; Sample all layers copies what you see.
 - Smear (R): Liquify pushes pixels with the brush, Blur softens (a new stroke softens further), Smudge carries color along the stroke.
 - Content-Aware Fill (Shift+Backspace, Edit menu) fills the selection from its surroundings.
@@ -373,8 +380,8 @@ The Remove Background panel, the editable transform inspector with free distort 
 
 ### Added
 
-- Adjustments from the reference app: Hue/Saturation (Master and six color ranges, colorize, invert range) and Grain join Levels, Curves, Exposure and Gradient Map. Each works as an editable adjustment layer (Layer, New Adjustment Layer; double-click to edit) and as a direct edit (Image menu), with live preview. Levels shows a histogram; Curves has a point editor.
-- Filter menu: Gaussian Blur and Motion Blur (spreading past the layer edge), Add Noise, Lens Correction, and Remove Background moved here as in the reference app.
+- Adjustments from the.ref format: Hue/Saturation (Master and six color ranges, colorize, invert range) and Grain join Levels, Curves, Exposure and Gradient Map. Each works as an editable adjustment layer (Layer, New Adjustment Layer; double-click to edit) and as a direct edit (Image menu), with live preview. Levels shows a histogram; Curves has a point editor.
+- Filter menu: Gaussian Blur and Motion Blur (spreading past the layer edge), Add Noise, Lens Correction, and Remove Background moved here.
 - Edit: Cut, Copy, Copy Merged, Paste in place, using the system clipboard.
 - Select: Mask's Black Areas, Expand and Contract by an amount.
 - Image: Canvas Size (units, anchor, extension color) and Image Size (constrain, resolution, resampling).
@@ -382,7 +389,7 @@ The Remove Background panel, the editable transform inspector with free distort 
 
 ### Fixed
 
-- Clearing a selection on a mask now fills with the background color, as in the reference app.
+- Clearing a selection on a mask now fills with the background color.
 - Hidden rows inside dialogs now actually hide.
 
 ### Known gaps

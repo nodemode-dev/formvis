@@ -1,6 +1,6 @@
 ---
 name: engine-core
-description: The sonny document engine in frontend/src/engine. Use when adding or changing a layer, folder, mask, clipping, merge, selection, painting, fill, transform, history or export operation, when porting a the reference app C kernel, or when an undo entry is missing, duplicated or empty.
+description: The sonny document engine in frontend/src/engine. Use when adding or changing a layer, folder, mask, clipping, merge, selection, painting, fill, transform, history or export operation, when porting a C kernel, or when an undo entry is missing, duplicated or empty.
 ---
 
 # engine-core
@@ -22,7 +22,7 @@ The engine is the only code that changes a document. It has no DOM access and ca
 
 ## Building an operation
 
-1. Add a method on `Engine` that wraps the change in `this.edit(name, (p) => { ... })`. The name is the undo label.
+1. Add a method on `Engine` that wraps the change in `this.edit(name, (p) => {... })`. The name is the undo label.
 2. Replace, never mutate: `p.setLayers(next)` or `p.updateLayer(id, patch)`. Rasters are the exception; pixel changes read the region before and after and record a `PixelPatch` (see `regionEdit`).
 3. Return `false` for a no-op and do not call `setLayers`: history compares document identity, so a fresh array with the same content still records an empty entry.
 4. After any reorder or parent change, pass the array through `normalizeClips`.

@@ -53,7 +53,7 @@ export function dragged(o: Transform, start: Pt, p: Pt, mode: DragMode, lockRati
   return validTransform(r) ? r : o;
 }
 
-/** the reference app's LayerTransform.placing: the transform that places the unit square as `map` does, a rotated and maybe
+/** the transform that places the unit square as `map` does, a rotated and maybe
  *  flipped rectangle (shear, which only uneven scaling of something rotated adds, is dropped). Keeps `base`'s
  *  horizontal flip, its sampling, and the rotation nearest its own, so the numbers stay familiar. */
 export function placing(base: Transform, map: Mat): Transform {
@@ -66,7 +66,7 @@ export function placing(base: Transform, map: Mat): Transform {
   return { ...base, w, h, rotation: degrees + Math.round((base.rotation - degrees) / 360) * 360, flipY: along < 0, x: middle.x - w / 2, y: middle.y - h / 2 };
 }
 
-/** the reference app's LayerTransform.following: `t` carried along as a box moves from `from` to `to`. A plain move carries
+/** `t` carried along as a box moves from `from` to `to`. A plain move carries
  *  exactly; anything else composes `t` with the box's change and decomposes the result. */
 export function following(t: Transform, from: Transform, to: Transform): Transform {
   if (sameTransform(from, to)) return t;

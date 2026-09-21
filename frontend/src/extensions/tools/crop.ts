@@ -54,7 +54,7 @@ function resize(o: Rect, handle: number, p: Pt, ratio: number | null, symmetric:
   return { x: n.x, y: n.y + n.h / 2 - h / 2, w: n.w, h };
 }
 
-/** the reference app's cropSnapTargets: the canvas edges and the rounded bounds of every visible pixel layer. */
+/** the canvas edges and the rounded bounds of every visible pixel layer. */
 function snapTargets(ctx: ToolContext): { xs: number[]; ys: number[] } {
   const d = ctx.engine.current?.doc;
   if (!d) return { xs: [], ys: [] };
@@ -75,7 +75,7 @@ const nearest = (v: number, targets: number[], tol: number): number | null => {
   return best;
 };
 
-/** the reference app's CropSnap.apply (8 screen points): moving snaps the closest edges and keeps the size; creating or
+/** the CropSnap.apply (8 screen points): moving snaps the closest edges and keeps the size; creating or
  *  resizing snaps only the edge on the pointer's side; with a fixed ratio only moves snap. */
 function snap(ctx: ToolContext, r: Rect, mode: 'create' | 'move' | 'resize', handle: number, point: Pt, ratio: number | null): Rect {
   const { xs, ys } = snapTargets(ctx), tol = 8 / ctx.view().zoom, n = norm(r);

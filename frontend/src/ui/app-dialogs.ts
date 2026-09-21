@@ -74,7 +74,7 @@ export class OpenDialog extends Dialog {
     super('Open Project', 500);
     this.folderInput.webkitdirectory = true;
     this.body.append(this.status, this.list, this.empty);
-    const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file">${icon('upload', 14)}From disk</button><button class="cv-btn" type="button" data-from="folder">${icon('folderOpen', 14)}the reference app folder</button></div>`);
+    const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file">${icon('upload', 14)}From disk</button><button class="cv-btn" type="button" data-from="folder">${icon('folderOpen', 14)}.ref folder</button></div>`);
     this.body.append(row, this.fileInput, this.folderInput);
     q(row, '[data-from="file"]').addEventListener('click', () => this.fileInput.click());
     q(row, '[data-from="folder"]').addEventListener('click', () => this.folderInput.click());
@@ -249,7 +249,7 @@ export class AboutDialog extends Dialog {
   constructor() {
     super('About sonny', 420);
     this.body.appendChild(el(`<div class="cv-welcome-title">${icon('paintbrush', 20)}sonny ${VERSION}</div>`));
-    this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system. A port of the reference app by its authors.</p>'));
+    this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system.</p>'));
     this.body.appendChild(this.engineLine);
     this.body.appendChild(el('<p class="cv-note">MIT licensed. Copyright 2026 nodemode-ai. Portions copyright 2026 its authors.</p>'));
     this.button('Close', 'primary', () => this.close());
