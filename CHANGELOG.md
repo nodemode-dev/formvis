@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.38.0 · 2026-09-21
+
+### Added
+
+- Image > Generative Expand: grow the canvas by margins on any side and fill the new border from a prompt, or extend the scene with none.
+- Image > Upscale 2x and 4x: Real-ESRGAN on fal enlarges what the document shows and opens it as a new document.
+
+### Changed
+
+- Generative requests now see colours extended into transparent areas instead of empty space, which helps on transparent layers and new canvas.
+
 ## 0.37.0 · 2026-09-21
 
 ### Added

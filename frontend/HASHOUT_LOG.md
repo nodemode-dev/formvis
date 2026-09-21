@@ -8,6 +8,76 @@ Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entri
 
 The prompt, the key field shown only until a key is saved, and Forget key. Nothing was removed.
 
+### src/ui/panels/generative-dialog.ts · three modes · _v0.38.0
+
+Rewritten for Fill, Expand (margin fields) and Upscale (no prompt). Removed, the whole 0.37.0 file:
+
+```ts
+import type { Engine } from '../../engine';
+import { api, type GenerativeStatus } from '../../io/api';
+import { Dialog } from '../dialogs';
+import { el, setHidden, setText } from '../dom';
+
+/** Edit > Generative Fill: a prompt for what to paint into the selection, sent by the sonny engine to fal (FLUX.1
+ *  Fill [pro]); an empty prompt removes what the selection covers (FLUX.1 Erase [pro]). Until a key is saved the dialog
+ *  asks for one; the engine keeps it in its data folder and never hands it back to the page. */
+export class GenerativeDialog extends Dialog {
+  private readonly prompt = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="true" placeholder="Describe what to add, or leave empty to remove">');
+  private readonly keyRow = el('<div class="cv-panel-section"></div>');
+  private readonly key = el<HTMLInputElement>('<input class="cv-input" type="password" autocomplete="off" spellcheck="false" placeholder="fal API key">');
+  private readonly state = el('<p class="cv-note"></p>');
+  private readonly forget: HTMLButtonElement;
+  private status: GenerativeStatus | null = null;
+
+  constructor(private readonly engine: Engine) {
+    super('Generative Fill', 440);
+    this.body.appendChild(this.prompt);
+    this.body.appendChild(el('<p class="cv-note">The result arrives as a new layer masked to the selection. fal charges about $0.05 per megapixel of the area sent.</p>'));
+    this.keyRow.append(this.key, el('<p class="cv-note">Get a key at fal.ai. The sonny engine keeps it in its data folder on this computer.</p>'));
+    this.body.appendChild(this.keyRow);
+    this.body.appendChild(this.state);
+    this.forget = this.button('Forget key', 'ghost', () => void this.forgetKey());
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('Generate', 'primary', () => void this.generate());
+  }
+
+  async show(): Promise<void> {
+    this.status = await api.generativeStatus();
+    this.sync();
+    this.open();
+    this.prompt.focus();
+    this.prompt.select();
+  }
+
+  private sync(): void {
+    const s = this.status;
+    setHidden(this.keyRow, !s || s.configured);
+    setHidden(this.forget, s?.source !== 'settings');
+    setText(this.state, !s ? 'The sonny engine is offline. Start it with ./sonny boot.'
+      : s.configured ? `fal key set ${s.source === 'environment' ? 'by FAL_KEY in the environment' : 'in sonny'}.` : 'Add a fal API key to generate.');
+  }
+
+  private async forgetKey(): Promise<void> {
+    try { this.status = await api.forgetGenerativeKey(); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'The key could not be removed.'); return; }
+    this.sync();
+  }
+
+  private async generate(): Promise<void> {
+    if (!this.status) return;
+    if (!this.status.configured) {
+      const key = this.key.value.trim();
+      if (!key) { setText(this.state, 'Paste a fal API key first.'); this.key.focus(); return; }
+      try { this.status = await api.saveGenerativeKey(key); } catch (err) { setText(this.state, err instanceof Error ? err.message : 'The key could not be saved.'); return; }
+      this.key.value = '';
+      this.sync();
+    }
+    const prompt = this.prompt.value;
+    this.close();
+    await this.engine.task(() => this.engine.generativeFill(prompt, (image, mask) => api.generativeFill(image, mask, prompt)));
+  }
+}
+```
+
 ## Org-navi-map
 
 ```text
@@ -406,6 +476,14 @@ The Generative Fill dialog joins the registry and Edit > Generative Fill sits af
 
 ```ts
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', '-', 'transform', '-', 'settings'] },
+```
+
+### src/app.ts · Generative Expand, Upscale · _v0.38.0
+
+Image menu entries for Generative Expand and Upscale 2x and 4x. Removed:
+
+```ts
+    { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'image-size', '-', 'flip-canvas-h', 'flip-canvas-v'] },
 ```
 
 ## src/engine/adjust.ts
@@ -830,11 +908,64 @@ The render event carries `Rect | null`; a stroke frame reports the document boun
 
 Sends the visible composite around the selection (25% context, 16 to 256 px) and the selection grown by three pixels as the mask, then inserts the result as one masked layer; refuses to place it if the document changed. Nothing was removed.
 
+### src/engine/index.ts · fillArea, generativeExpand, upscaleToDocument · _v0.38.0
+
+`generativeFill` became a wrapper over `fillArea`, which also pre-fills see-through context; Expand and Upscale added. Removed:
+
+```ts
+  /** Generative Fill: sends what the document shows around the selection, with the selection grown by three pixels as
+   *  the mask, to `generate`, then places the result as a new layer masked to the selection, in one undo step. An empty
+   *  prompt asks for removal. Returns false when nothing was placed. */
+  async generativeFill(prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>): Promise<boolean> {
+    const p = this.current, sel = p?.selection;
+    if (!p || !sel) { this.notice('Generative Fill needs a selection.'); return false; }
+    const view = this.flattened();
+    if (!view) return false;
+    const reach = Math.min(256, Math.max(16, Math.round(Math.max(sel.w, sel.h) * 0.25)));
+    const x0 = Math.max(0, sel.x - reach), y0 = Math.max(0, sel.y - reach);
+    const w = Math.min(p.doc.width, sel.x + sel.w + reach) - x0, h = Math.min(p.doc.height, sel.y + sel.h + reach) - y0;
+    if (w < 1 || h < 1) { this.notice('The selection is outside the canvas.'); return false; }
+    const context = new Raster(w, h);
+    context.ctx.drawImage(view, -x0, -y0);
+    const cover = new Raster(w, h);
+    cover.ctx.drawImage(sel.surface(), sel.x - x0, sel.y - y0);
+    const mask = Raster.filled(w, h, '#000000');
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (dx * dx + dy * dy <= 9) mask.ctx.drawImage(cover.canvas, dx, dy);
+    let result: Blob;
+    try {
+      result = await generate(await toBlob(context.canvas), await toBlob(mask.canvas));
+    } catch (err) {
+      this.notice(err instanceof Error ? err.message : 'Generative Fill failed.', 'error');
+      return false;
+    }
+    if (this.current !== p) { this.notice('The document changed while generating, so the fill was not placed.', 'error'); return false; }
+    const bitmap = await createImageBitmap(result);
+    const layer = new Raster(w, h);
+    layer.ctx.imageSmoothingQuality = 'high';
+    layer.ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    layer.touch();
+    cover.touch();
+    const name = `Generative Fill: ${prompt.trim() || 'remove'}`;
+    this.insertRasterLayer(layer, name.length > 60 ? `${name.slice(0, 57)}...` : name, x0, y0, { mask: { raster: cover, enabled: true, linked: true, placement: null } }, 'Generative Fill');
+    return true;
+  }
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
 
 formnodal's develop core from the owner's sonny extension for NodeMode: the per-pixel pass as written, en and em dashes in comments normalised; `detailPass`, `clarityPass` and `developImage` keep formnodal's detail formulas with sonny's Gaussian in place of a canvas blur filter. Nothing was removed.
+
+### src/engine/develop.ts · header · _v0.38.0
+
+The owner confirmed formnodal is their own build. Removed:
+
+```ts
+ *  Gaussian, so the whole filter runs in the preview worker. formnodal's LICENSES.md names the MIT-licensed reference
+ *  its adjustment algorithms derive from; that project's notice belongs in sonny's NOTICE. */
+```
 
 ## src/engine/kernels.ts
 
@@ -885,6 +1016,10 @@ Ported line for line from the original C and Swift sources. `spotHeal` from `Hea
 ### src/engine/retouch.ts · rewritten independently · _v0.35.0
 
 Spot Healing by ring-matched source search and a Poisson-style harmonic correction solved coarse to fine; Create Texture from the edge's harmonic interpolation plus matched grain; Content-Aware Fill as Criminisi-style exemplar inpainting; Smudge and Liquify on a raised-cosine brush with evenly carried spacing, Smudge laying paint by strength and picking up canvas by its complement. The removed code is not quoted here, deliberately: it is the implementation this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.34.0.
+
+### src/engine/retouch.ts · fillTransparent · _v0.38.0
+
+The harmonic membrane pre-fills see-through pixels for generative requests. Nothing was removed.
 
 ## src/engine/selection.ts
 
@@ -1352,6 +1487,14 @@ Created in _v0.1.0.
 ### src/io/api.ts · generative calls · _v0.37.0
 
 `generativeStatus`, `saveGenerativeKey`, `forgetGenerativeKey` and `generativeFill`. Nothing was removed.
+
+### src/io/api.ts · upscale · _v0.38.0
+
+`upscale` added; the status carries the upscale model. Removed:
+
+```ts
+export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; fillModel: string; eraseModel: string }
+```
 
 ## src/io/images.ts
 

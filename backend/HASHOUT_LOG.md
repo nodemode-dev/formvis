@@ -8,11 +8,35 @@ Living log for the engine service side, _v0.1.0. Read the map and the TOC first;
 
 `GET /status`, `PUT /key`, `DELETE /key`, `POST /fill` (the call runs in a thread so it never blocks the server). Nothing was removed.
 
+### app/routers/generative.py · /upscale · _v0.38.0
+
+`POST /upscale` (image, scale 2 or 4). Nothing was removed.
+
 ## app/services/generative.py
 
 ### app/services/generative.py · new · _v0.37.0
 
 fal client for FLUX.1 Fill [pro] and Erase [pro]: key from FAL_KEY, FAL_API_KEY or `generative.json` (mode 600) in the data folder, never returned; inline PNG data URIs; fal's errors mapped to clear messages; `SONNY_FAL_BASE` points it elsewhere for testing. Nothing was removed.
+
+### app/services/generative.py · upscale, _result_png · _v0.38.0
+
+Real-ESRGAN upscaling; result parsing shared by Fill, Erase and Upscale. Removed:
+
+```py
+    images = result.get("images") or ([result["image"]] if isinstance(result.get("image"), dict) else [])
+    if not images or not isinstance(images[0], dict) or not images[0].get("url"):
+        raise GenerativeError("fal returned no image.", 502)
+    if any(result.get("has_nsfw_concepts") or []):
+        raise GenerativeError("fal withheld the result under its safety filter. Try another prompt.", 422)
+    raw = _download(str(images[0]["url"]))
+    try:
+        with Image.open(io.BytesIO(raw)) as im:
+            out = io.BytesIO()
+            im.convert("RGBA").save(out, "PNG")
+            return out.getvalue()
+    except Exception as exc:  # noqa: BLE001 - any decode failure is a bad result
+        raise GenerativeError("fal returned an image sonny could not read.", 502) from exc
+```
 
 ## Org-navi-map
 
