@@ -75,7 +75,7 @@ function inverse3(m: readonly number[]): number[] | null {
 }
 
 /** The corners the image's own corners go to: a flipped layer shows its pixels mirrored. */
-function imageCorners(c: readonly Pt[], flipX: boolean, flipY: boolean): Pt[] {
+export function imageCorners(c: readonly Pt[], flipX: boolean, flipY: boolean): Pt[] {
   const at = (u: number, v: number): Pt => c[v ? (u ? 2 : 3) : (u ? 1 : 0)];
   return UNIT_CORNERS.map(([u, v]) => at(flipX ? 1 - u : u, flipY ? 1 - v : v));
 }

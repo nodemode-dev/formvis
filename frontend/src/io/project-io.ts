@@ -57,7 +57,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
       const name = `${l.id}.source.png`;
       files.push({ name, blob: await toBlob(l.smart.source.canvas) });
       r.smartSourceFile = name;
-      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })) };
+      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null };
     }
     if (l.parentId) r.parentID = l.parentId;
     if (l.isGroup) r.isGroup = true;
@@ -180,7 +180,8 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const raster = image ? Raster.from(image, image.width, image.height) : null;
     const sourceImage = bitmaps.get(str(r.smartSourceFile) ?? '');
     const vector = raster ? vectorFrom(r.vector) : null;
-    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart) } : null;
+    const sw = obj(r.smart), warpPts = Array.isArray(sw.warp) && sw.warp.length === 4 && sw.warp.every((q) => finite(obj(q).x) && finite(obj(q).y)) ? (sw.warp as Array<{ x: number; y: number }>).map((q) => ({ x: q.x, y: q.y })) : null;
+    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null } : null;
     const maskImage = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskImage
       ? { raster: grayToMask(maskImage), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskImage.width, maskImage.height) : null }

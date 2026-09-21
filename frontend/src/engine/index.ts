@@ -10,7 +10,7 @@ import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from '
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
-import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped } from './distort';
+import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped, imageCorners, homography, project } from './distort';
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
@@ -420,9 +420,34 @@ export class Engine {
   smartFilterMargin: ((kind: string, settings: Record<string, unknown>) => number) | null = null;
 
   /** A smart object's pixels: its source padded by the shown filters' total reach, with each applied in order. */
+  private smartMargin(filters: SmartFilter[]): number {
+    return Math.min(512, Math.ceil(filters.filter((f) => f.enabled).reduce((n, f) => n + (this.smartFilterMargin?.(f.kind, f.settings) ?? 0), 0)));
+  }
+
+  /** A distorted smart object's warp as the layer now sits: a move or transform since its last render carried in. */
+  private smartWarpNow(l: Layer): Pt[] | null {
+    const sm = l.smart, w = sm?.warp;
+    if (!sm || !w || !l.raster) return null;
+    const at = sm.warpAt;
+    if (!at || JSON.stringify(at) === JSON.stringify(l.transform)) return w;
+    const move = mul(placement(l.transform, l.raster.width, l.raster.height), invert(placement(at, l.raster.width, l.raster.height)));
+    return w.map((p) => applyMat(move, p.x, p.y));
+  }
+
+  /** The render `r` (the source padded by `margin`) warped so the source's corners land on `warp`, the padding
+   *  following the same perspective, cropped to what shows. */
+  private warpedSmart(r: Raster, margin: number, source: Raster, warp: Pt[]): Warped | null {
+    const H = homography(warp), ex = margin / source.width, ey = margin / source.height;
+    const quad = [[-ex, -ey], [1 + ex, -ey], [1 + ex, 1 + ey], [-ex, 1 + ey]].map(([u, v]) => project(H, u, v));
+    const full = warpRaster(r, docTransform(r.width, r.height), quad);
+    if (!full) return null;
+    const crop = visibleBounds(full.raster);
+    return crop ? cropWarp(full, crop) : full;
+  }
+
   private renderSmart(source: Raster, filters: SmartFilter[]): Raster {
     const shown = filters.filter((f) => f.enabled);
-    const m = Math.min(512, Math.ceil(shown.reduce((n, f) => n + (this.smartFilterMargin?.(f.kind, f.settings) ?? 0), 0)));
+    const m = this.smartMargin(filters);
     const pad = createSurface(source.width + 2 * m, source.height + 2 * m);
     ctxOf(pad).drawImage(source.canvas, m, m);
     let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
@@ -477,6 +502,16 @@ export class Engine {
       if (!l?.smart) return false;
       const src = source ?? l.smart.source;
       const stack = structuredClone(filters ?? l.smart.filters), raster = this.renderSmart(src, stack), old = l.raster as Raster, t = l.transform;
+      const warp = this.smartWarpNow(l);
+      if (warp) {
+        // A distorted smart object warps its fresh render through its kept warp; a mask tied to its pixels is pinned
+        // where it is first, since the pixels' bounds change.
+        const w = this.warpedSmart(raster, this.smartMargin(stack), src, warp);
+        if (!w) return false;
+        const mask = l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask;
+        p.updateLayer(id, { smart: { source: src, filters: stack, warp, warpAt: w.t }, raster: w.raster, transform: w.t, mask });
+        return;
+      }
       // The padding grows or shrinks about the layer's centre, so the source pixels stay exactly where they were.
       const w = (t.w / old.width) * raster.width, h = (t.h / old.height) * raster.height, cx = t.x + t.w / 2, cy = t.y + t.h / 2;
       let mask = l.mask;
@@ -953,6 +988,14 @@ export class Engine {
 
   /** Clear Layer Style: removes the effects from every selected layer, as one undo step. */
   clearLayerStyle(): void { this.restyle('Clear Layer Style', null); }
+
+  /** Applies `fx`, or no style, to the active or selected layers as one undo step, as Actions replay a Layer Style. */
+  applyLayerStyle(fx: LayerEffects | null): boolean {
+    const l = this.current?.activeLayer;
+    if (!l || l.isGroup || l.adjustment) return false;
+    this.restyle(fx ? 'Layer Style' : 'Clear Layer Style', fx ? structuredClone(fx) : null);
+    return true;
+  }
 
   private restyle(name: string, fx: LayerEffects | null): void {
     this.effectPreview = null;
@@ -1947,14 +1990,32 @@ export class Engine {
   /** the free distort (Cmd-drag a corner handle): the four corners of the Move tool's box move on their own,
    *  pending until applied (Enter) or cancelled (Escape). The box is the active layer's, or with several layers or a
    *  folder selected the group box, each member carried by the same perspective. */
-  distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
+  distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; smart?: { R: Raster; t: Transform; margin: number }; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
   private distortFrame = 0;
 
   beginDistort(): boolean {
-    if (this.current?.activeLayer?.smart || this.current?.activeLayer?.vector) { this.notice(this.current.activeLayer.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
+    if (this.current?.activeLayer?.vector) { this.notice(SHAPE_NOTICE); return false; }
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit) return false;
     const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
+    if (members.some((m) => m.smart || m.vector)) { this.notice('Smart objects and shape layers are distorted one at a time, not with other layers.'); return false; }
+    if (l.smart && !box) {
+      if (l.mask) { this.notice('A smart object with a layer mask cannot be distorted yet; apply or delete the mask first.'); return false; }
+      if (!l.raster) return false;
+      // A smart object distorts from its undistorted render, starting from its current warp, which the new one replaces.
+      this.settle();
+      const warp = this.smartWarpNow(l), margin = this.smartMargin(l.smart.filters);
+      const R = warp ? this.renderSmart(l.smart.source, l.smart.filters) : l.raster, rt = warp ? docTransform(R.width, R.height) : l.transform;
+      let corners = cornersOf(rt);
+      if (warp) {
+        const H = homography(warp), ex = margin / l.smart.source.width, ey = margin / l.smart.source.height;
+        corners = [[-ex, -ey], [1 + ex, -ey], [1 + ex, 1 + ey], [-ex, 1 + ey]].map(([u, v]) => project(H, u, v));
+      }
+      this.distortEdit = { project: p, layerId: l.id, box: rt, members: null, corners, previews: new Map(), smart: { R, t: rt, margin } };
+      this.emit('render', null);
+      this.emit('options', null);
+      return true;
+    }
     if (!box && (l.isGroup || !l.raster || l.adjustment || this.transformsMask(l))) return false;
     this.settle();
     const t = box ?? l.transform;
@@ -2004,7 +2065,8 @@ export class Engine {
     d.previews.clear();
     for (const id of d.members ?? [d.layerId]) {
       const l = d.project.layer(id), q = l?.raster ? this.distortQuad(d, l) : null;
-      if (l?.raster && q) d.previews.set(id, { pixels: warpRaster(l.raster, l.transform, q, scale), mask: this.distortMask(l, q, scale) });
+      const sm = d.smart && id === d.layerId ? d.smart : null;
+      if (l?.raster && q) d.previews.set(id, sm ? { pixels: warpRaster(sm.R, sm.t, q, scale), mask: null } : { pixels: warpRaster(l.raster, l.transform, q, scale), mask: this.distortMask(l, q, scale) });
     }
     this.emit('render', null);
   }
@@ -2018,6 +2080,17 @@ export class Engine {
     this.dropDistort();
     const p = d.project;
     if (p !== this.current) return;
+    const sm = d.smart, sl = sm ? p.layer(d.layerId) : null;
+    if (sm && sl?.smart) {
+      // The new corners of the undistorted render give the perspective; the source's own corners, inside its padding,
+      // are carried through it and kept as the warp.
+      const H = homography(imageCorners(d.corners, sm.t.flipX, sm.t.flipY)), src = sl.smart.source, m = sm.margin, Rw = sm.R.width, Rh = sm.R.height;
+      const warp = [[m, m], [m + src.width, m], [m + src.width, m + src.height], [m, m + src.height]].map(([x, y]) => project(H, x / Rw, y / Rh));
+      const w = this.warpedSmart(sm.R, m, src, warp);
+      const smart = sl.smart;
+      if (w) this.edit('Distort', (q) => q.updateLayer(sl.id, { raster: w.raster, transform: w.t, smart: { ...smart, warp, warpAt: w.t } }));
+      return;
+    }
     const updates: Array<[ID, Partial<Layer>]> = [];
     for (const id of d.members ?? [d.layerId]) {
       const l = p.layer(id), q = l?.raster ? this.distortQuad(d, l) : null;

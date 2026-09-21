@@ -146,7 +146,10 @@ export interface TextSpec { content: string; family: string; size: number; color
  *  whenever the stack changes. */
 export interface SmartFilter { id: ID; kind: string; settings: Record<string, unknown>; enabled: boolean }
 /** A smart object: the pixels it was made from, kept untouched, and the filters shown on them. */
-export interface SmartObject { source: Raster; filters: SmartFilter[] }
+/** `warp`: where the source's corners land (top left, top right, bottom right, bottom left) after Distort or
+ *  Perspective, kept so every re-render warps afresh from the source; `warpAt` is the layer transform its last render
+ *  set, so a later move or transform of the layer can be carried into the warp. */
+export interface SmartObject { source: Raster; filters: SmartFilter[]; warp?: Pt[] | null; warpAt?: Transform | null }
 
 /** Smart filters read back from saved data, checked. */
 export function smartFiltersFrom(raw: unknown): SmartFilter[] {

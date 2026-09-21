@@ -80,10 +80,13 @@ export class LayerStyleDialog extends Dialog {
     if (this.layerId) this.engine.previewLayerEffects(this.layerId, this.fx);
   }
 
+  /** Called when the dialog applies a style, or none, for Actions to record it. */
+  onApplied: ((fx: LayerEffects | null) => void) | null = null;
+
   private apply(): void {
     this.applied = true;
-    const id = this.layerId;
+    const id = this.layerId, fx = effectsActive(this.fx) ? structuredClone(this.fx) : null;
     this.close();
-    if (id) this.engine.setLayerEffects(id, effectsActive(this.fx) ? this.fx : null);
+    if (id) { this.engine.setLayerEffects(id, fx); this.onApplied?.(fx ? structuredClone(fx) : null); }
   }
 }
