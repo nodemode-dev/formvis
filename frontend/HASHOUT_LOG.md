@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/io/psd.ts
+
+### src/io/psd.ts · new · _v0.42.0
+
+Layered PSD reading and writing with ag-psd, loaded on first use. Nothing was removed.
+
+## src/extensions/tools/patch.ts
+
+### src/extensions/tools/patch.ts · new · _v0.42.0
+
+The Patch tool: lasso to select, drag the selection to heal from there. Nothing was removed.
+
+## src/extensions/tools/healing-brush.ts
+
+### src/extensions/tools/healing-brush.ts · new · _v0.42.0
+
+The Healing Brush tool. Nothing was removed.
+
 ## src/ui/text-editor.ts
 
 ### src/ui/text-editor.ts · new · _v0.41.0
@@ -566,6 +584,17 @@ The canvas text editor takes Type clicks and type-layer double-clicks. Removed:
     else if (typeof d?.x === 'number' && typeof d?.y === 'number') dialogs.text.showCreate(d.x, d.y);
 ```
 
+### src/app.ts · Shift+J cycling, PSD open and export · _v0.42.0
+
+Tool keys cycle their group with Shift; PSDs open as documents; File > Export PSD. Removed:
+
+```ts
+import { toolForKey } from './extensions/registry';
+        try { await openOpened(await api.importProject([f]), null); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    else if (!e.shiftKey && toolForKey(k)) engine.setTool(toolForKey(k)?.id ?? engine.tool);
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1102,6 +1131,21 @@ export { TEXT_FONTS, defaultText, liveText, textFromData, textKey } from './text
     const styled = st.project.doc.layers.some((x) => effectsActive(x.effects));
 ```
 
+### src/engine/index.ts · Healing Brush stroke, patchSelection · _v0.42.0
+
+The `healBrush` stroke kind heals at release from its offset in the layer's pixels; `patchSelection` heals the selection from a dragged offset as one undo step. Removed:
+
+```ts
+import { WarpStroke, contentFill, fillTransparent, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
+  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode } | null = null;
+    const patch = st.heal ? this.healPatch(st.s, st.heal) : st.s.commit();
+  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur', pt: Pt, shift: boolean): boolean {
+    if (kind === 'clone') {
+      if (!off) { this.notice('Alt-click to set where Clone Stamp copies from.'); return false; }
+    p.history.begin(kind === 'heal' ? 'Spot Healing' : kind === 'clone' ? 'Clone Stamp' : 'Blur', p.snapshot());
+    this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : undefined };
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1170,6 +1214,18 @@ Spot Healing by ring-matched source search and a Poisson-style harmonic correcti
 ### src/engine/retouch.ts · fillTransparent · _v0.38.0
 
 The harmonic membrane pre-fills see-through pixels for generative requests. Nothing was removed.
+
+### src/engine/retouch.ts · healWindow, healFromSource · _v0.42.0
+
+Spot Healing's window setup shared as `healWindow`; `healFromSource` heals from a chosen offset through the harmonic membrane, reading the source from the original pixels. Removed:
+
+```ts
+/** Spot Healing: heals the pixels under `coverage` (0 to 255 per pixel) in premultiplied `rgba`, blended by coverage
+ *  times `opacity`. Returns false when there is no spot or nothing around it to heal from. */
+export function spotHeal(rgba: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, opacity: number, mode: HealMode, seed: number): boolean {
+  if (x1 < 0) return false;
+  if (!win.ring.length) return false;
+```
 
 ## src/engine/selection.ts
 
@@ -1278,6 +1334,14 @@ export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGl
   const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke');
 ```
 
+### src/engine/types.ts · tool ids · _v0.42.0
+
+`healingBrush` and `patch` join the tool ids. Removed:
+
+```ts
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
+```
+
 ## src/engine/viewport.ts
 
 ### src/engine/viewport.ts · zoom and pan · _v0.1.0
@@ -1297,6 +1361,10 @@ Adds the `number` option kind: an editable field with optional min, max, step an
 ### src/extensions/registry.ts · select option · _v0.41.0
 
 A `select` option kind. Nothing was removed.
+
+### src/extensions/registry.ts · toolsForKey · _v0.42.0
+
+Every tool on a key, for Shift cycling. Nothing was removed.
 
 ## src/extensions/tools/brush-common.ts
 
@@ -1446,6 +1514,14 @@ Registers the Type tool. Removed:
 
 ```ts
   for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, cloneTool, smearTool, gradientTool, shapeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+```
+
+### src/extensions/tools/index.ts · register · _v0.42.0
+
+Registers the Healing Brush and Patch. Removed:
+
+```ts
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, cloneTool, smearTool, gradientTool, shapeTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 ```
 
 ## src/extensions/tools/lasso.ts
@@ -1679,6 +1755,15 @@ export interface GenerativeStatus { configured: boolean; source: 'environment' |
 
 Created in _v0.1.0.
 
+### src/io/images.ts · PSD as a project · _v0.42.0
+
+`.psd` opens like a project. Removed:
+
+```ts
+export const PROJECT_ACCEPT = '.sonny,.ref,.zip';
+export const isProjectFile = (f: File): boolean => /\.(sonny|ref|zip)$/i.test(f.name);
+```
+
 ## src/io/project-io.ts
 
 ### src/io/project-io.ts · serialize and deserialize · _v0.1.0
@@ -1871,6 +1956,10 @@ Created in _v0.1.0.
 ### src/ui/icons.ts · typeTool · _v0.40.0
 
 An inline currentColor T. Nothing was removed.
+
+### src/ui/icons.ts · healBrushTool, patchTool · _v0.42.0
+
+Two inline currentColor icons. Nothing was removed.
 
 ## src/ui/layers.ts
 

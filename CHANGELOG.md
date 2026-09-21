@@ -2,6 +2,15 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.42.0 · 2026-09-21
+
+### Added
+
+- The Healing Brush: Alt-click a source and paint; on release the copied texture blends into its surroundings' tone.
+- The Patch tool: draw around a flaw, then drag the selection onto clean texture to patch it.
+- J selects the healing tools and Shift+J cycles Spot Healing, Healing Brush and Patch.
+- Open layered Photoshop files (.psd) and export to them (File > Export PSD), keeping layers, folders, masks, clipping, opacity, blend modes and visibility.
+
 ## 0.41.0 · 2026-09-21
 
 ### Added
