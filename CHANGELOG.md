@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.48.0 · 2026-09-21
+
+### Added
+
+- Shape layers take a fill, a stroke centred on the outline, or both: Layer > Shape Fill and Stroke, or double-click the shape badge. A path of open lines becomes a stroked vector line.
+- PSD export writes shape layers as Photoshop shapes with their fill and stroke, and PSD import turns Photoshop shapes back into editable shape layers.
+- A GIF encoder, the groundwork for frame animation.
+
+### Fixed
+
+- The Hand tool's icon was malformed; it now uses the supplied cursor-hand icon from Remix Icon.
+
 ## 0.47.0 · 2026-09-21
 
 ### Added

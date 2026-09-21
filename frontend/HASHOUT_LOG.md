@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/io/gif.ts
+
+### src/io/gif.ts · new · _v0.48.0
+
+The GIF encoder. Nothing was removed.
+
+## src/ui/panels/shape-style-dialog.ts
+
+### src/ui/panels/shape-style-dialog.ts · new · _v0.48.0
+
+The Shape Fill and Stroke dialog. Nothing was removed.
+
 ## src/ui/paths.ts
 
 ### src/ui/paths.ts · new · _v0.47.0
@@ -141,6 +153,14 @@ Smart objects export as pixels, with a note. Nothing was removed.
 ### src/io/psd.ts · note · _v0.47.0
 
 Shape layers export as pixels, with a note. Nothing was removed.
+
+### src/io/psd.ts · shape layers · _v0.48.0
+
+Shape layers written as Photoshop shapes and read back as shape layers. Removed:
+
+```ts
+    if (l.vector) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as a shape layer.`);
+```
 
 ## src/extensions/tools/patch.ts
 
@@ -793,6 +813,15 @@ The Paths panel mounted; path sets saved and restored; shape and New Path comman
   contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
 ```
 
+### src/app.ts · shape style, PSD note · _v0.48.0
+
+The dialog and its command; PSD export notes Paths-panel paths. Removed:
+
+```ts
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1407,6 +1436,31 @@ export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, s
     if (al?.smart && !(this.current?.maskTarget && al.mask)) { this.notice(SMART_NOTICE); return; }
 ```
 
+### src/engine/index.ts · shape fill and stroke · _v0.48.0
+
+Rendering with fill and stroke, lines stroked by default, setShapeStyle. Removed:
+
+```ts
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter } from './types';
+  private renderShape(path: VectorPath, fill: RGB): { raster: Raster; x: number; y: number } | null {
+    if (!b) return null;
+    const x = Math.floor(b.x) - 1, y = Math.floor(b.y) - 1, w = Math.min(LIMITS.side, Math.ceil(b.x + b.w) + 1 - x), h = Math.min(LIMITS.side, Math.ceil(b.y + b.h) + 1 - y);
+    const raster = new Raster(Math.max(1, w), Math.max(1, h));
+    raster.ctx.translate(-x, -y);
+    raster.ctx.fillStyle = rgbCss(fill);
+    raster.ctx.fill(tracePath(path));
+    raster.ctx.setTransform(1, 0, 0, 1, 0, 0);
+  private reshape(p: Project, id: ID, path: VectorPath, fill: RGB): void {
+    const r = this.renderShape(path, fill), l = p.layer(id);
+    if (!r || !l) return;
+    p.updateLayer(id, { raster: r.raster, transform: { ...l.transform, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height, rotation: 0, flipX: false, flipY: false }, vector: { path: stored, fill, origin: { x: r.x, y: r.y } }, shape: null });
+    const path = structuredClone(vp), fill = { ...this.fg }, r = this.renderShape(path, fill);
+    this.insertRasterLayer(r.raster, `Shape ${n}`, r.x, r.y, { vector: { path, fill, origin: { x: r.x, y: r.y } } }, 'New Shape Layer');
+    this.edit('Shape Color', (p) => this.reshape(p, l.id, shiftPath(v.path, dx, dy), { ...this.fg }));
+        if (this.pathGesture === p) this.reshape(p, l.id, vp, l.vector.fill);
+        else this.edit('Edit Shape Path', (q) => this.reshape(q, l.id, vp, (l.vector as NonNullable<Layer['vector']>).fill));
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1618,6 +1672,16 @@ Smart object types and a checked reader for saved filters. Nothing was removed.
 ### src/engine/types.ts · VectorLayer · _v0.47.0
 
 The shape-layer type. Nothing was removed.
+
+### src/engine/types.ts · ShapeStyle · _v0.48.0
+
+Optional fill and a stroke on shape layers. Removed:
+
+```ts
+/** A shape layer: a path filled with a colour. `origin` is where its raster was rendered, so a later move of the layer
+ *  can carry the path along. */
+export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB; origin: Pt }
+```
 
 ## src/engine/viewport.ts
 
@@ -2120,6 +2184,18 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   return { workPath: pathFrom(manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
 ```
 
+### src/io/project-io.ts · shape style · _v0.48.0
+
+Fill and stroke saved and read back checked. Removed:
+
+```ts
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet,
+    if (l.vector) r.vector = { fill: l.vector.fill, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
+    const vp = r.vector && typeof r.vector === 'object' ? pathFrom(r.vector) : null, vf = obj(obj(r.vector).fill), vo = obj(obj(r.vector).origin);
+    const vector = raster && vp && [vf.r, vf.g, vf.b, vo.x, vo.y].every((v) => typeof v === 'number' && Number.isFinite(v))
+      ? { path: vp, fill: { r: num(vf.r, 0), g: num(vf.g, 0), b: num(vf.b, 0) }, origin: { x: num(vo.x, 0), y: num(vo.y, 0) } } : null;
+```
+
 ## src/main.ts
 
 ### src/main.ts · entry, calls startApp · _v0.1.0
@@ -2179,6 +2255,10 @@ The Paths panel, its rows and the shape badge; the layers grid gains a row. Remo
 .cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; min-height: 0; background: var(--bg-secondary); }
 .cv-layer-smart { flex: none; color: var(--text-muted); line-height: 0; }
 ```
+
+### src/styles/panels.css · shape dialog · _v0.48.0
+
+Swatch and row styles for the dialog. Nothing was removed.
 
 ## src/styles/scrollbars.css
 
@@ -2310,6 +2390,14 @@ Two inline currentColor icons. Nothing was removed.
 
 One inline currentColor icon. Nothing was removed.
 
+### src/ui/icons.ts · hand · _v0.48.0
+
+The Hand tool icon replaced with the owner-supplied Remix Icon cursor-hand. Removed:
+
+```ts
+  hand: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 13c-.7 0-1.4.4-1.7 1l-.7-6.4c-.1-.9-.9-1.6-1.8-1.6-.9 0-1.7.7-1.8 1.6V3.2c0-1-.8-1.8-1.8-1.8-1 0-1.8.8-1.8 1.8v5.4L8.1 8C7.2 7.7 6.2 8.2 5.9 9.1c-.3.9.2 1.9 1.1 2.2l4 1.3v7.3c0 1.1.9 2 2 2h5c1.1 0 2-.9 2-2v-4.9c0-1.1-.9-2-2-2z"/></svg>`,
+```
+
 ## src/ui/layers.ts
 
 ### src/ui/layers.ts · LayersPanel.bindRows · pointerdown · _v0.1.0
@@ -2384,6 +2472,14 @@ The shape-layer badge. Removed:
 
 ```ts
     const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-fx" hidden title="Layer style">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span></span></div>`);
+```
+
+### src/ui/layers.ts · shape badge · _v0.48.0
+
+Double-clicking the shape badge opens its fill and stroke. Removed:
+
+```ts
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-fx" hidden title="Layer style">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer">${icon('penTool', 12)}</span></span></div>`);
 ```
 
 ## src/ui/menu.ts
