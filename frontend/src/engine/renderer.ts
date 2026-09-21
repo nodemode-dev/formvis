@@ -214,9 +214,63 @@ export class Renderer {
    *  off the surface, so only its shadow lands; blurs over 8 px run at half resolution and are scaled back, which looks
    *  the same for a quarter of the work. The outside stroke is the silhouette grown by a Euclidean distance transform,
    *  round at the corners and as quick at 50 px as at 1, less the silhouette itself. */
+  /** Bevel and Emboss's highlight and shadow for silhouette alpha `a` (RGBA, `w` by `h`): the silhouette softened by
+   *  three box blurs approximating a Gaussian of half the size is the height map; each pixel's normal comes from its
+   *  slopes, steepened by depth, and its lighting from the angle and altitude, flat ground scoring zero. Highlight and
+   *  shadow are kept inside, outside or on both sides of the edge by style, then softened. */
+  private bevelMaps(a: Uint8ClampedArray, w: number, h: number, bv: LayerEffects['bevel'], scale: number): [ImageData, ImageData] {
+    const n = w * h, A = new Float32Array(n);
+    for (let i = 0; i < n; i++) A[i] = a[i * 4 + 3] / 255;
+    const blur = (src: Float32Array, r: number): Float32Array => {
+      if (r < 1) return src;
+      let x: Float32Array = src, y: Float32Array = new Float32Array(n);
+      const k = 1 / (2 * r + 1);
+      for (let pass = 0; pass < 3; pass++) {
+        for (let row = 0; row < h; row++) {
+          const o = row * w;
+          let s = 0;
+          for (let i = -r; i <= r; i++) s += x[o + Math.min(w - 1, Math.max(0, i))];
+          for (let i = 0; i < w; i++) { y[o + i] = s * k; s += x[o + Math.min(w - 1, i + r + 1)] - x[o + Math.max(0, i - r)]; }
+        }
+        [x, y] = [y, x === src ? new Float32Array(n) : x];
+        for (let col = 0; col < w; col++) {
+          let s = 0;
+          for (let j = -r; j <= r; j++) s += x[Math.min(h - 1, Math.max(0, j)) * w + col];
+          for (let j = 0; j < h; j++) { y[j * w + col] = s * k; s += x[Math.min(h - 1, j + r + 1) * w + col] - x[Math.max(0, j - r) * w + col]; }
+        }
+        [x, y] = [y, x];
+      }
+      return x;
+    };
+    const size = Math.max(0.5, bv.size * scale), H = blur(A, Math.max(1, Math.round(size / 2)));
+    const th = (bv.angle * Math.PI) / 180, ph = (Math.max(0, Math.min(90, bv.altitude)) * Math.PI) / 180;
+    const lx = Math.cos(ph) * Math.cos(th), ly = -Math.cos(ph) * Math.sin(th), lz = Math.sin(ph), steep = (bv.depth / 100) * size * 2;
+    let hiMap: Float32Array = new Float32Array(n), shMap: Float32Array = new Float32Array(n);
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const p = j * w + i, inside = A[p];
+        const region = bv.style === 'inner' ? inside : bv.style === 'outer' ? 1 - inside : 1;
+        if (region <= 0) continue;
+        let gx = (H[j * w + Math.min(w - 1, i + 1)] - H[j * w + Math.max(0, i - 1)]) / 2, gy = (H[Math.min(h - 1, j + 1) * w + i] - H[Math.max(0, j - 1) * w + i]) / 2;
+        if (bv.down !== (bv.style === 'pillow' && inside < 0.5)) { gx = -gx; gy = -gy; }
+        const nx = -gx * steep, ny = -gy * steep, len = Math.hypot(nx, ny, 1), shade = (nx * lx + ny * ly + lz) / len;
+        if (shade > lz) hiMap[p] = region * Math.min(1, (shade - lz) / Math.max(1e-6, 1 - lz));
+        else if (shade < lz) shMap[p] = region * Math.min(1, (lz - shade) / Math.max(1e-6, lz));
+      }
+    }
+    const soft = Math.round(bv.soften * scale);
+    if (soft > 0) { hiMap = blur(hiMap, soft); shMap = blur(shMap, soft); }
+    const paint = (m: Float32Array, col: { r: number; g: number; b: number }): ImageData => {
+      const img = new ImageData(w, h), d = img.data;
+      for (let i = 0; i < n; i++) { const o = i * 4; d[o] = col.r; d[o + 1] = col.g; d[o + 2] = col.b; d[o + 3] = Math.round(Math.min(1, m[i]) * 255); }
+      return img;
+    };
+    return [paint(hiMap, bv.highlight), paint(shMap, bv.shadow)];
+  }
+
   private effects(out: (s: Surface, box: Rect, alpha: number, op: GlobalCompositeOperation) => void, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect, phase: 'below' | 'above'): void {
-    const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow, co = fx.colorOverlay;
-    const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) * scale + 2;
+    const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow, co = fx.colorOverlay, bv = fx.bevel;
+    const reach = Math.max(bv.enabled ? (bv.size + bv.soften) * 2 : 0, d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) * scale + 2;
     const box = intersectRect(integral({ x: bounds.x - reach, y: bounds.y - reach, w: bounds.w + 2 * reach, h: bounds.h + 2 * reach }), { x: 0, y: 0, w: W, h: H });
     if (!box) return;
     const { x: bx, y: by, w: bw, h: bh } = box;
@@ -308,6 +362,11 @@ export class Renderer {
       if (is.enabled && is.opacity > 0) {
         const rad = (is.angle * Math.PI) / 180;
         lay(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale), is.opacity * opacity, compositeOp(is.blend));
+      }
+      if (bv.enabled && bv.size > 0 && (bv.highlightOpacity > 0 || bv.shadowOpacity > 0)) {
+        const [hi, sh] = this.bevelMaps(sil.c.getImageData(bx, by, bw, bh).data, bw, bh, bv, scale);
+        if (bv.highlightOpacity > 0) { const s = this.slot(9, bw, bh); s.c.putImageData(hi, 0, 0); lay(s.s, bv.highlightOpacity * opacity, compositeOp(bv.highlightBlend)); }
+        if (bv.shadowOpacity > 0) { const s = this.slot(10, bw, bh); s.c.putImageData(sh, 0, 0); lay(s.s, bv.shadowOpacity * opacity, compositeOp(bv.shadowBlend)); }
       }
       return;
     }

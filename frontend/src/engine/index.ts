@@ -769,7 +769,7 @@ export class Engine {
     t.current = id;
     const target = frameLayers(p.doc.layers, f.state);
     this.edit('Select Frame', (q) => {
-      target.forEach((l, i) => { const now = q.doc.layers[i]; if (l !== now && now?.id === l.id) q.updateLayer(l.id, { visible: l.visible, opacity: l.opacity, transform: l.transform }); });
+      target.forEach((l, i) => { const now = q.doc.layers[i]; if (l !== now && now?.id === l.id) q.updateLayer(l.id, { visible: l.visible, opacity: l.opacity, transform: l.transform, effects: l.effects }); });
     });
     this.emit('timeline', null);
   }
@@ -818,6 +818,7 @@ export class Engine {
         if (!sa || !sb) { state[lid] = { ...(sa ?? sb) }; continue; }
         const fades = opts.opacity && sa.visible !== sb.visible, oa = sa.visible ? sa.opacity : 0, ob = sb.visible ? sb.opacity : 0;
         state[lid] = {
+          fx: sa.fx,
           visible: fades ? true : sa.visible,
           opacity: !opts.opacity ? sa.opacity : fades ? oa + (ob - oa) * u : sa.opacity + (sb.opacity - sa.opacity) * u,
           x: opts.position ? sa.x + (sb.x - sa.x) * u : sa.x,

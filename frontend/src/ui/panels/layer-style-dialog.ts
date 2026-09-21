@@ -6,7 +6,7 @@ import { checkRow, sliderRow } from './controls';
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
 
-/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Color Overlay and Gradient Overlay for the
+/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Color Overlay, Gradient Overlay and Bevel & Emboss for the
  *  active pixel layer, shown live while the dialog is open. OK applies them as one undo step; Cancel leaves the layer as it was. */
 export class LayerStyleDialog extends Dialog {
   private fx: LayerEffects = defaultEffects();
@@ -32,6 +32,12 @@ export class LayerStyleDialog extends Dialog {
       input.addEventListener('input', () => { set(fromHex(input.value)); this.changed(); });
       this.field(label, input);
       this.syncs.push(() => { input.value = hex(get()); });
+    };
+    const choice = (label: string, options: Array<[string, string]>, get: () => string, set: (v: string) => void): void => {
+      const select = el<HTMLSelectElement>(`<select class="cv-input">${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select>`);
+      select.addEventListener('change', () => { set(select.value); this.changed(); });
+      this.field(label, select);
+      this.syncs.push(() => { select.value = get(); });
     };
     check('Drop Shadow', () => fx().dropShadow.enabled, (v) => { fx().dropShadow.enabled = v; });
     colour('Colour', () => fx().dropShadow.color, (c) => { fx().dropShadow.color = c; });
@@ -68,6 +74,18 @@ export class LayerStyleDialog extends Dialog {
     slider('Scale (%)', 10, 150, () => Math.round(fx().gradientOverlay.scale * 100), (v) => { fx().gradientOverlay.scale = v / 100; });
     check('Radial', () => fx().gradientOverlay.style === 'radial', (v) => { fx().gradientOverlay.style = v ? 'radial' : 'linear'; });
     check('Reverse', () => fx().gradientOverlay.reverse, (v) => { fx().gradientOverlay.reverse = v; });
+    check('Bevel & Emboss', () => fx().bevel.enabled, (v) => { fx().bevel.enabled = v; });
+    choice('Style', [['inner', 'Inner Bevel'], ['outer', 'Outer Bevel'], ['emboss', 'Emboss'], ['pillow', 'Pillow Emboss']], () => fx().bevel.style, (v) => { fx().bevel.style = v === 'outer' || v === 'emboss' || v === 'pillow' ? v : 'inner'; });
+    slider('Depth (%)', 1, 1000, () => fx().bevel.depth, (v) => { fx().bevel.depth = v; });
+    check('Direction down', () => fx().bevel.down, (v) => { fx().bevel.down = v; });
+    slider('Size (px)', 0, 250, () => fx().bevel.size, (v) => { fx().bevel.size = v; });
+    slider('Soften (px)', 0, 16, () => fx().bevel.soften, (v) => { fx().bevel.soften = v; });
+    slider('Angle (\u00b0)', -180, 180, () => fx().bevel.angle, (v) => { fx().bevel.angle = v; });
+    slider('Altitude (\u00b0)', 0, 90, () => fx().bevel.altitude, (v) => { fx().bevel.altitude = v; });
+    colour('Highlight', () => fx().bevel.highlight, (c) => { fx().bevel.highlight = c; });
+    slider('Highlight opacity (%)', 0, 100, () => Math.round(fx().bevel.highlightOpacity * 100), (v) => { fx().bevel.highlightOpacity = v / 100; });
+    colour('Shadow', () => fx().bevel.shadow, (c) => { fx().bevel.shadow = c; });
+    slider('Shadow opacity (%)', 0, 100, () => Math.round(fx().bevel.shadowOpacity * 100), (v) => { fx().bevel.shadowOpacity = v / 100; });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { if (!this.applied) this.engine.previewLayerEffects(null); };
