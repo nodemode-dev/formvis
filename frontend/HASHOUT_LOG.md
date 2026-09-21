@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/extensions/tools/direct-select.ts
+
+### src/extensions/tools/direct-select.ts · new · _v0.43.0
+
+The Direct Selection tool. Nothing was removed.
+
+## src/extensions/tools/pen.ts
+
+### src/extensions/tools/pen.ts · new · _v0.43.0
+
+The Pen tool. Nothing was removed.
+
+## src/engine/paths.ts
+
+### src/engine/paths.ts · new · _v0.43.0
+
+Anchors, sub-paths and Work Paths; tracing to Path2D; bounds. Nothing was removed.
+
 ## src/io/psd.ts
 
 ### src/io/psd.ts · new · _v0.42.0
@@ -595,6 +613,15 @@ import { toolForKey } from './extensions/registry';
     else if (!e.shiftKey && toolForKey(k)) engine.setTool(toolForKey(k)?.id ?? engine.tool);
 ```
 
+### src/app.ts · path commands · _v0.43.0
+
+Make Selection from Path (Mod+Enter) in Select, Fill Path and Stroke Path in Edit, Delete Path. Removed:
+
+```ts
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', '-', 'transform', '-', 'settings'] },
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract'] },
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1146,6 +1173,14 @@ import { WarpStroke, contentFill, fillTransparent, premultiply, spotHeal, unprem
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : undefined };
 ```
 
+### src/engine/index.ts · Work Path and path commands · _v0.43.0
+
+The Work Path per open document; Make Selection, Fill Path, Stroke Path and Delete Path. Removed:
+
+```ts
+import { Raster, createSurface, ctxOf, toBlob, type Surface } from './surface';
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1342,6 +1377,14 @@ export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGl
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
 ```
 
+### src/engine/types.ts · tool ids · _v0.43.0
+
+`pen` and `directSelect` join the tool ids. Removed:
+
+```ts
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
+```
+
 ## src/engine/viewport.ts
 
 ### src/engine/viewport.ts · zoom and pan · _v0.1.0
@@ -1522,6 +1565,14 @@ Registers the Healing Brush and Patch. Removed:
 
 ```ts
   for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, cloneTool, smearTool, gradientTool, shapeTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+```
+
+### src/extensions/tools/index.ts · register · _v0.43.0
+
+Registers the Pen and Direct Selection. Removed:
+
+```ts
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, gradientTool, shapeTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 ```
 
 ## src/extensions/tools/lasso.ts
@@ -1958,6 +2009,10 @@ Created in _v0.1.0.
 An inline currentColor T. Nothing was removed.
 
 ### src/ui/icons.ts · healBrushTool, patchTool · _v0.42.0
+
+Two inline currentColor icons. Nothing was removed.
+
+### src/ui/icons.ts · penTool, directSelectTool · _v0.43.0
 
 Two inline currentColor icons. Nothing was removed.
 

@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.43.0 · 2026-09-21
+
+### Added
+
+- The Pen tool (P): click for corner points and drag for curves to draw a path; click the first point to close it.
+- The Direct Selection tool (A): drag a path's points to move them and their handles to reshape its curves.
+- Select > Make Selection from Path (Ctrl or Cmd with Enter), Edit > Fill Path and Stroke Path, and Delete Path.
+
 ## 0.42.0 · 2026-09-21
 
 ### Added
