@@ -2,6 +2,10 @@ import { applyMat, invert, mul, placement, radians, sameTransform, unitPoint } f
 import type { Mat } from './geometry';
 import type { Pt, Transform } from './types';
 
+/** Free Transform for sonny: dragging a box's body, its eight handles or outside it to rotate, and turning any
+ *  affine placement of the unit square back into a box (centre, width, height, rotation and flips). */
+
+/** The eight handles in unit coordinates, clockwise from the top-left corner. */
 export const HANDLES: ReadonlyArray<Pt> = [
   { x: 0, y: 0 }, { x: 0.5, y: 0 }, { x: 1, y: 0 }, { x: 1, y: 0.5 },
   { x: 1, y: 1 }, { x: 0.5, y: 1 }, { x: 0, y: 1 }, { x: 0, y: 0.5 },
@@ -9,73 +13,82 @@ export const HANDLES: ReadonlyArray<Pt> = [
 
 export type DragMode = { kind: 'move' } | { kind: 'resize'; handle: number } | { kind: 'rotate' };
 
+/** A box every renderer can draw: finite numbers, 1 to 300,000 units a side, within a million units of the origin. */
 export function validTransform(t: Transform): boolean {
-  return [t.x, t.y, t.w, t.h, t.rotation].every(Number.isFinite) && t.w >= 1 && t.h >= 1 && t.w <= 300000 && t.h <= 300000 && Math.abs(t.x) <= 1e6 && Math.abs(t.y) <= 1e6;
+  const finite = Number.isFinite(t.x) && Number.isFinite(t.y) && Number.isFinite(t.w) && Number.isFinite(t.h) && Number.isFinite(t.rotation);
+  return finite && t.w >= 1 && t.h >= 1 && t.w <= 300000 && t.h <= 300000 && Math.abs(t.x) <= 1e6 && Math.abs(t.y) <= 1e6;
 }
 
+/** The box `o` after dragging from `start` to `p`. Shift keeps a move to one axis and snaps rotation to 15 degrees;
+ *  a handle resizes against the opposite side, or against the centre with Alt, and scales proportionally when
+ *  `lockRatio` and Shift disagree. An invalid result leaves the box as it was. */
 export function dragged(o: Transform, start: Pt, p: Pt, mode: DragMode, lockRatio: boolean, shift: boolean, alt: boolean): Transform {
-  const r: Transform = { ...o };
+  const next: Transform = { ...o };
   if (mode.kind === 'move') {
-    let dx = p.x - start.x, dy = p.y - start.y;
-    if (shift) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }
-    r.x += dx;
-    r.y += dy;
-  } else if (mode.kind === 'rotate') {
-    const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
-    const delta = Math.atan2(p.y - cy, p.x - cx) - Math.atan2(start.y - cy, start.x - cx);
-    r.rotation = o.rotation + (delta * 180) / Math.PI;
-    if (shift) r.rotation = Math.round(r.rotation / 15) * 15;
-  } else {
-    const hd = HANDLES[mode.handle];
-    const au = alt ? { x: 0.5, y: 0.5 } : { x: 1 - hd.x, y: 1 - hd.y };
-    const anchor = unitPoint(o, au.x, au.y), initial = unitPoint(o, hd.x, hd.y);
-    const dx = initial.x + p.x - start.x - anchor.x, dy = initial.y + p.y - start.y - anchor.y;
-    const span = alt ? 2 : 1, rad = radians(o.rotation);
-    const lx = (dx * Math.cos(rad) + dy * Math.sin(rad)) * span, ly = (-dx * Math.sin(rad) + dy * Math.cos(rad)) * span;
-    const sx = hd.x * 2 - 1, sy = hd.y * 2 - 1;
-    let w = sx === 0 ? o.w : Math.max(1, lx * sx);
-    let h = sy === 0 ? o.h : Math.max(1, ly * sy);
-    if (lockRatio !== shift) {
-      let f: number;
-      if (sx === 0) f = h / o.h;
-      else if (sy === 0) f = w / o.w;
-      else f = Math.max(1 / Math.min(o.w, o.h), (lx * sx * o.w + ly * sy * o.h) / (o.w * o.w + o.h * o.h));
-      w = o.w * f;
-      h = o.h * f;
-    }
-    r.w = w;
-    r.h = h;
-    const ox = (0.5 - au.x) * w, oy = (0.5 - au.y) * h;
-    const cx = anchor.x + ox * Math.cos(rad) - oy * Math.sin(rad), cy = anchor.y + ox * Math.sin(rad) + oy * Math.cos(rad);
-    r.x = cx - w / 2;
-    r.y = cy - h / 2;
+    const dx = p.x - start.x, dy = p.y - start.y, horizontal = Math.abs(dx) >= Math.abs(dy);
+    next.x += shift && !horizontal ? 0 : dx;
+    next.y += shift && horizontal ? 0 : dy;
+    return validTransform(next) ? next : o;
   }
-  return validTransform(r) ? r : o;
+  const centreX = o.x + o.w / 2, centreY = o.y + o.h / 2;
+  if (mode.kind === 'rotate') {
+    const turned = Math.atan2(p.y - centreY, p.x - centreX) - Math.atan2(start.y - centreY, start.x - centreX);
+    const degrees = o.rotation + (turned * 180) / Math.PI;
+    next.rotation = shift ? Math.round(degrees / 15) * 15 : degrees;
+    return validTransform(next) ? next : o;
+  }
+  const handle = HANDLES[mode.handle];
+  const pin = alt ? { x: 0.5, y: 0.5 } : { x: 1 - handle.x, y: 1 - handle.y };
+  const pinned = unitPoint(o, pin.x, pin.y), grabbed = unitPoint(o, handle.x, handle.y);
+  // The dragged handle's new position relative to the pinned point, in the box's own axes; doubled about the centre.
+  const rx = grabbed.x + (p.x - start.x) - pinned.x, ry = grabbed.y + (p.y - start.y) - pinned.y;
+  const angle = radians(o.rotation), cos = Math.cos(angle), sin = Math.sin(angle), reach = alt ? 2 : 1;
+  const along = (rx * cos + ry * sin) * reach, across = (ry * cos - rx * sin) * reach;
+  const sideX = handle.x * 2 - 1, sideY = handle.y * 2 - 1;
+  let w = sideX ? Math.max(1, along * sideX) : o.w;
+  let h = sideY ? Math.max(1, across * sideY) : o.h;
+  if (lockRatio !== shift) {
+    // Proportional: an edge handle scales by its own axis; a corner by the least-squares fit of the dragged corner to
+    // the original diagonal, never below one unit on the shorter side.
+    const scale = !sideX ? h / o.h : !sideY ? w / o.w
+      : Math.max(1 / Math.min(o.w, o.h), (along * sideX * o.w + across * sideY * o.h) / (o.w * o.w + o.h * o.h));
+    w = o.w * scale;
+    h = o.h * scale;
+  }
+  // Put the resized box back so the pinned point stays where it was.
+  const offX = (0.5 - pin.x) * w, offY = (0.5 - pin.y) * h;
+  next.w = w;
+  next.h = h;
+  next.x = pinned.x + offX * cos - offY * sin - w / 2;
+  next.y = pinned.y + offX * sin + offY * cos - h / 2;
+  return validTransform(next) ? next : o;
 }
 
-/** the transform that places the unit square as `map` does, a rotated and maybe
- *  flipped rectangle (shear, which only uneven scaling of something rotated adds, is dropped). Keeps `base`'s
- *  horizontal flip, its sampling, and the rotation nearest its own, so the numbers stay familiar. */
+/** The box that places the unit square as the affine `map` does: its width is the length of the mapped x axis, its
+ *  rotation that axis's angle (read through `base`'s horizontal flip), its height the mapped y axis's reach across
+ *  it, negative meaning flipped vertically. Shear is dropped. `base`'s flip, sampling and nearest rotation turn are
+ *  kept, so the numbers stay familiar. */
 export function placing(base: Transform, map: Mat): Transform {
-  const [a, b, c, d] = map;
-  const sign = base.flipX ? -1 : 1;
-  const angle = Math.atan2(b * sign, a * sign);
-  const along = -c * Math.sin(angle) + d * Math.cos(angle);
-  const middle = applyMat(map, 0.5, 0.5);
-  const w = Math.hypot(a, b), h = Math.abs(along), degrees = (angle * 180) / Math.PI;
-  return { ...base, w, h, rotation: degrees + Math.round((base.rotation - degrees) / 360) * 360, flipY: along < 0, x: middle.x - w / 2, y: middle.y - h / 2 };
+  const [xa, xb, ya, yb] = map;
+  const mirror = base.flipX ? -1 : 1;
+  const angle = Math.atan2(xb * mirror, xa * mirror), ux = Math.cos(angle), uy = Math.sin(angle);
+  const height = ya * -uy + yb * ux;
+  const width = Math.hypot(xa, xb), centre = applyMat(map, 0.5, 0.5), degrees = (angle * 180) / Math.PI;
+  const turns = Math.round((base.rotation - degrees) / 360);
+  return { ...base, w: width, h: Math.abs(height), rotation: degrees + turns * 360, flipY: height < 0, x: centre.x - width / 2, y: centre.y - Math.abs(height) / 2 };
 }
 
-/** `t` carried along as a box moves from `from` to `to`. A plain move carries
- *  exactly; anything else composes `t` with the box's change and decomposes the result. */
+/** `t` carried along while a box moves from `from` to `to`: translated exactly when the box only moved, otherwise
+ *  mapped through the box's change and read back as a box. */
 export function following(t: Transform, from: Transform, to: Transform): Transform {
   if (sameTransform(from, to)) return t;
-  if (from.w === to.w && from.h === to.h && from.rotation === to.rotation && from.flipX === to.flipX && from.flipY === to.flipY) {
-    return { ...t, x: t.x + to.x - from.x, y: t.y + to.y - from.y };
-  }
-  return placing(t, mul(placement(to, 1, 1), mul(invert(placement(from, 1, 1)), placement(t, 1, 1))));
+  const onlyMoved = from.w === to.w && from.h === to.h && from.rotation === to.rotation && from.flipX === to.flipX && from.flipY === to.flipY;
+  if (onlyMoved) return { ...t, x: t.x + (to.x - from.x), y: t.y + (to.y - from.y) };
+  const change = mul(placement(to, 1, 1), invert(placement(from, 1, 1)));
+  return placing(t, mul(change, placement(t, 1, 1)));
 }
 
+/** The box snapped to whole units and whole degrees, at least one unit a side. */
 export function rounded(t: Transform): Transform {
   return { ...t, x: Math.round(t.x), y: Math.round(t.y), w: Math.max(1, Math.round(t.w)), h: Math.max(1, Math.round(t.h)), rotation: Math.round(t.rotation) };
 }
