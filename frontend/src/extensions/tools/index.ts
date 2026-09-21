@@ -18,7 +18,9 @@ import { cloneTool } from './clone';
 import { healingBrushTool } from './healing-brush';
 import { patchTool } from './patch';
 import { smearTool } from './smear';
+import { bucketTool } from './bucket';
+import { burnTool, dodgeTool, spongeTool } from './tone';
 
 export function registerBuiltinTools(): void {
-  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, gradientTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 }

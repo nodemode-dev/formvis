@@ -410,6 +410,13 @@ export class Engine {
 
   setBrushMode(mode: 'paint' | 'erase'): void { this.brushMode = mode; this.emit('options', null); this.emit('tool', null); }
   setWand(patch: Partial<Engine['wand']>): void { this.wand = { ...this.wand, ...patch }; this.emit('options', null); }
+  /** Paint Bucket: fills the area of similar colour clicked with the foreground colour. */
+  bucket = { tolerance: 32, contiguous: true, sampleAll: false, opacity: 1, antiAlias: true };
+  setBucket(patch: Partial<Engine['bucket']>): void { this.bucket = { ...this.bucket, ...patch }; this.emit('options', null); }
+  /** Dodge and Burn lighten and darken, weighted to a tonal range by Exposure; Sponge moves colour away from or toward
+   *  its own grey by Flow. */
+  tone: { range: 'shadows' | 'midtones' | 'highlights'; exposure: number; spongeMode: 'desaturate' | 'saturate'; flow: number } = { range: 'midtones', exposure: 0.5, spongeMode: 'desaturate', flow: 0.5 };
+  setTone(patch: Partial<Engine['tone']>): void { this.tone = { ...this.tone, ...patch }; this.emit('options', null); }
   setColors(fg?: RGB, bg?: RGB): void { if (fg) this.fg = fg; if (bg) this.bg = bg; this.emit('colors', null); this.emit('options', null); }
   swapColors(): void { this.setColors(this.bg, this.fg); }
   defaultColors(): void { this.setColors({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 }); }
@@ -1868,7 +1875,7 @@ export class Engine {
     st.s.release();
   }
 
-  private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void): void {
+  private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void, region?: SelectionMask | null): void {
     this.edit(name, (p) => {
       if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer first.'); return false; }
       if (this.smartLocked(p)) return false;
@@ -1877,7 +1884,7 @@ export class Engine {
       const { raster } = pick;
       let rect: Rect = { x: 0, y: 0, w: raster.width, h: raster.height };
       let cover: Surface | null = null;
-      const sel = p.selection;
+      const sel = region !== undefined ? region : p.selection;
       if (sel) {
         const toLocal = mul(invert(pick.local), translation(sel.x, sel.y));
         const b = integral(boundsOf([applyMat(toLocal, 0, 0), applyMat(toLocal, sel.w, 0), applyMat(toLocal, sel.w, sel.h), applyMat(toLocal, 0, sel.h)]));
@@ -1988,6 +1995,78 @@ export class Engine {
     setMat(c, mul(translation(-b.x, -b.y), placement(l.transform, l.raster.width, l.raster.height)));
     c.drawImage(l.raster.canvas, 0, 0);
     this.applySelection(SelectionMask.fromAlpha(b.x, b.y, b.w, b.h, c.getImageData(0, 0, b.w, b.h).data), 'replace', "Select Layer's Pixels");
+  }
+
+  /** Paint Bucket: the area of similar colour around `pt`, found as Magic Wand finds it with the bucket's own settings,
+   *  its edge softened by a pixel when anti-aliased, kept within any selection, filled with the foreground colour at the
+   *  bucket's opacity; one undo step. */
+  paintBucket(pt: Pt): void {
+    const p = this.current;
+    if (!p) return;
+    const { width: W, height: H } = p.doc;
+    const x = Math.floor(pt.x), y = Math.floor(pt.y);
+    if (x < 0 || y < 0 || x >= W || y >= H) return;
+    if (p.selection && p.selection.valueAt(x, y) <= 0) { this.notice('Click inside the selection to fill; the Paint Bucket fills only there.'); return; }
+    let surface: Surface;
+    if (this.bucket.sampleAll) surface = renderDoc(this.work, p.doc);
+    else {
+      const l = p.activeLayer;
+      if (!l?.raster) { this.notice('Select a pixel layer first.'); return; }
+      surface = createSurface(W, H);
+      const c = ctxOf(surface);
+      setMat(c, placement(l.transform, l.raster.width, l.raster.height));
+      c.drawImage(l.raster.canvas, 0, 0);
+    }
+    const data = ctxOf(surface).getImageData(0, 0, W, H).data;
+    let mask = wandMask(data, W, H, x, y, this.bucket.tolerance, this.bucket.contiguous, 0);
+    if (this.bucket.antiAlias) {
+      const soft = new Uint8Array(mask.length);
+      for (let j = 0; j < H; j++) for (let i = 0; i < W; i++) {
+        const o = j * W + i, v = mask[o];
+        const edge = (i > 0 && mask[o - 1] !== v) || (i < W - 1 && mask[o + 1] !== v) || (j > 0 && mask[o - W] !== v) || (j < H - 1 && mask[o + W] !== v);
+        if (!edge) { soft[o] = v; continue; }
+        let s = 0, n = 0;
+        for (let dj = -1; dj <= 1; dj++) for (let di = -1; di <= 1; di++) { const ii = i + di, jj = j + dj; if (ii >= 0 && jj >= 0 && ii < W && jj < H) { s += mask[jj * W + ii]; n++; } }
+        soft[o] = Math.round(s / n);
+      }
+      mask = soft;
+    }
+    let region: SelectionMask | null = SelectionMask.cropped(0, 0, W, H, mask);
+    if (p.selection && region) region = p.selection.combine(region, 'intersect');
+    if (!region) { this.notice('The area clicked is outside the selection.'); return; }
+    const color = this.fg, alpha = this.bucket.opacity;
+    this.regionEdit('Paint Bucket', ({ raster, target, rect, cover }) => {
+      const c = raster.ctx;
+      c.save();
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.globalAlpha = alpha;
+      if (target === 'mask') {
+        const t = this.tint(rect, '#ffffff', cover), v = luminance(color);
+        c.globalCompositeOperation = 'destination-out';
+        c.drawImage(t, rect.x, rect.y);
+        if (v > 0) { c.globalCompositeOperation = 'lighter'; c.globalAlpha = alpha * v; c.drawImage(t, rect.x, rect.y); }
+      } else c.drawImage(this.tint(rect, rgbCss(color), cover), rect.x, rect.y);
+      c.restore();
+    }, region);
+  }
+
+  /** The layer sample toned by Dodge, Burn or Sponge at the current settings, for a retouch stroke to reveal. */
+  private toned(src: Surface, kind: 'dodge' | 'burn' | 'sponge'): Surface {
+    const W = src.width, H = src.height, img = ctxOf(src).getImageData(0, 0, W, H), d = img.data, t = this.tone;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] === 0) continue;
+      const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, l = 0.299 * r + 0.587 * g + 0.114 * b;
+      let f: (v: number) => number;
+      if (kind === 'sponge') { const k = t.spongeMode === 'saturate' ? -t.flow : t.flow; f = (v) => v + (l - v) * k; }
+      else {
+        const w = t.range === 'shadows' ? (1 - l) * (1 - l) : t.range === 'highlights' ? l * l : 1 - (2 * l - 1) * (2 * l - 1), a = t.exposure * w;
+        f = kind === 'dodge' ? (v) => v + (1 - v) * a : (v) => v * (1 - a);
+      }
+      d[i] = Math.round(Math.min(1, Math.max(0, f(r))) * 255); d[i + 1] = Math.round(Math.min(1, Math.max(0, f(g))) * 255); d[i + 2] = Math.round(Math.min(1, Math.max(0, f(b))) * 255);
+    }
+    const out = createSurface(W, H);
+    ctxOf(out).putImageData(img, 0, 0);
+    return out;
   }
 
   magicWand(pt: Pt, mode: SelectionMode): void {
@@ -3022,7 +3101,7 @@ export class Engine {
     return s;
   }
 
-  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur' | 'healBrush', pt: Pt, shift: boolean): boolean {
+  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur' | 'healBrush' | 'dodge' | 'burn' | 'sponge', pt: Pt, shift: boolean): boolean {
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
@@ -3040,8 +3119,8 @@ export class Engine {
     } else if (kind === 'blur') {
       const sigma = clamp(this.brush.diameter / 10, 1.5, 30);
       texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };
-    }
-    p.history.begin(kind === 'heal' ? 'Spot Healing' : kind === 'clone' ? 'Clone Stamp' : kind === 'healBrush' ? 'Healing Brush' : 'Blur', p.snapshot());
+    } else if (kind === 'dodge' || kind === 'burn' || kind === 'sponge') texture = { surface: this.toned(this.layerSample(p, l0), kind), dx: 0, dy: 0 };
+    p.history.begin({ heal: 'Spot Healing', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     const style = kind === 'heal' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };

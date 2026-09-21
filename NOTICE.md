@@ -28,3 +28,7 @@ sonny is licensed under the Apache License 2.0 (see `LICENSE`). It includes or d
 ## Build tools, not distributed
 
 Vite (MIT), TypeScript (Apache-2.0), @tauri-apps/cli (Apache-2.0 or MIT), PyInstaller (GPL-2.0-or-later with the bootloader exception, which permits distributing the frozen engine under this project's license).
+
+## Phosphor Icons
+
+The Paint Bucket, Dodge, Burn and Sponge tool icons are Phosphor Icons (paint-bucket-fill, sun-dim-fill, fire-fill and drop-half-fill), Copyright (c) 2023 Phosphor Icons, used under the MIT License, taken from the IcoLab dataset.
