@@ -6,6 +6,7 @@ import type { Commands } from './commands';
 import { Dialog, confirmAction } from './dialogs';
 import { el, patchList, q, setClass, setDisabled, setHidden, setText, setValue } from './dom';
 import { icon } from './icons';
+import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
 
@@ -248,7 +249,7 @@ export class AboutDialog extends Dialog {
 
   constructor() {
     super('About sonny', 420);
-    this.body.appendChild(el(`<div class="cv-welcome-title">${icon('paintbrush', 20)}sonny ${VERSION}</div>`));
+    this.body.appendChild(el(`<div class="cv-welcome-title">${brandMark(28)}sonny ${VERSION}</div>`));
     this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system.</p>'));
     this.body.appendChild(this.engineLine);
     this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 nodemode-ai.</p>'));

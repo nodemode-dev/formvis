@@ -17,6 +17,7 @@ import { Commands } from './ui/commands';
 import { anyDialogOpen, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
 import { icon } from './ui/icons';
+import { brandMark } from './ui/brand';
 import { LayersPanel } from './ui/layers';
 import { MenuBar, PopupMenu, type MenuDef } from './ui/menu';
 import { OptionsBar } from './ui/options';
@@ -62,7 +63,7 @@ const SHELL = `<div class="cv-app">
 <canvas class="cv-canvas cv-scene"></canvas>
 <canvas class="cv-canvas cv-overlay-canvas"></canvas>
 <div class="cv-welcome"><div class="cv-welcome-card">
-<div class="cv-welcome-title">${icon('paintbrush', 20)}sonny</div>
+<div class="cv-welcome-title">${brandMark(28)}sonny</div>
 <div class="cv-welcome-sub">Layered image compositing. Start a canvas, open a project, or drop images anywhere on this stage.</div>
 <div class="cv-welcome-actions"><button class="cv-btn cv-btn-primary" type="button" data-cmd="new">${icon('newFile', 14)}New Canvas</button><button class="cv-btn" type="button" data-cmd="open">${icon('load', 14)}Open Project</button><button class="cv-btn" type="button" data-cmd="import">${icon('image', 14)}Import Images</button></div>
 </div></div>
