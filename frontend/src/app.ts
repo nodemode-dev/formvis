@@ -3,7 +3,7 @@ import { TextDialog } from './ui/panels/text-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive } from './engine';
-import { toolForKey } from './extensions/registry';
+import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, type Capabilities, type OpenedProject } from './io/api';
@@ -578,7 +578,12 @@ export function startApp(): void {
     else if (k === 'B') { engine.setTool('brush'); engine.setBrushMode('paint'); }
     else if (k === 'M' && e.shiftKey) { engine.setTool('marquee'); engine.update({ marqueeKind: engine.marqueeKind === 'rectangle' ? 'ellipse' : 'rectangle' }); }
     else if (k === 'L' && e.shiftKey) { engine.setTool('lasso'); engine.update({ lassoKind: engine.lassoKind === 'freehand' ? 'polygonal' : 'freehand' }); }
-    else if (!e.shiftKey && toolForKey(k)) engine.setTool(toolForKey(k)?.id ?? engine.tool);
+    else if (toolForKey(k)) {
+      // A letter picks its tool, keeping one already chosen from the same group; Shift with it cycles the group.
+      const group = toolsForKey(k), at = group.findIndex((t) => t.id === engine.tool);
+      if (e.shiftKey) { if (group.length > 1) engine.setTool(group[(at + 1) % group.length].id); }
+      else if (at < 0) engine.setTool(group[0].id);
+    }
     else return;
     e.preventDefault();
   });

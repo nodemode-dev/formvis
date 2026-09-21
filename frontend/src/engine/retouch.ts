@@ -194,9 +194,9 @@ function findSource(px: Uint8ClampedArray, coverage: Uint8Array, W: number, H: n
   return found ? { dx: found.dx, dy: found.dy } : null;
 }
 
-/** Spot Healing: heals the pixels under `coverage` (0 to 255 per pixel) in premultiplied `rgba`, blended by coverage
- *  times `opacity`. Returns false when there is no spot or nothing around it to heal from. */
-export function spotHeal(rgba: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, opacity: number, mode: HealMode, seed: number): boolean {
+/** The healing window around the pixels under `coverage`: the spot, a ring around it (a square dilation a tenth of the
+ *  spot's size, 2 to 8 px) and the window's place; null when there is no spot or no ring. */
+function healWindow(coverage: Uint8Array, W: number, H: number): { win: HealWindow; extent: number; ringWidth: number; inSpot: Uint8Array } | null {
   let x0 = W, y0 = H, x1 = -1, y1 = -1;
   for (let y = 0; y < H; y++) {
     for (let x = 0, row = y * W; x < W; x++) {
@@ -207,7 +207,7 @@ export function spotHeal(rgba: Uint8ClampedArray, coverage: Uint8Array, W: numbe
       y1 = y;
     }
   }
-  if (x1 < 0) return false;
+  if (x1 < 0) return null;
   const extent = Math.max(x1 - x0 + 1, y1 - y0 + 1), ringWidth = clamp(Math.round(extent / 10), 2, 8);
   const wx0 = Math.max(0, x0 - ringWidth), wy0 = Math.max(0, y0 - ringWidth);
   const ww = Math.min(W - 1, x1 + ringWidth) - wx0 + 1, wh = Math.min(H - 1, y1 + ringWidth) - wy0 + 1, n = ww * wh;
@@ -216,7 +216,45 @@ export function spotHeal(rgba: Uint8ClampedArray, coverage: Uint8Array, W: numbe
   const near = dilate(inSpot, ww, wh, ringWidth);
   const win: HealWindow = { x0: wx0, y0: wy0, w: ww, h: wh, spot: [], ring: [] };
   for (let p = 0; p < n; p++) { if (inSpot[p]) win.spot.push(p); else if (near[p]) win.ring.push(p); }
-  if (!win.ring.length) return false;
+  return win.ring.length ? { win, extent, ringWidth, inSpot } : null;
+}
+
+/** Healing Brush and Patch: fills the pixels under `coverage` from the pixels (dx, dy) away, then corrects them with the
+ *  harmonic membrane so they meet the area's edge without a seam, as in Poisson image editing. The source is read from
+ *  the pixels as they were, since it may overlap the area, and is clamped to the image's edge. Returns false when
+ *  there is nothing to heal. */
+export function healFromSource(rgba: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, opacity: number, dx: number, dy: number): boolean {
+  const hw = healWindow(coverage, W, H);
+  if (!hw) return false;
+  const { win } = hw, ww = win.w, n = ww * win.h, original = rgba.slice();
+  const at = (p: number): number => (Math.floor(p / ww) + win.y0) * W + (p % ww) + win.x0;
+  const from = (g: number): number => { const x = g % W, y = (g - x) / W; return (clamp(y + dy, 0, H - 1) * W + clamp(x + dx, 0, W - 1)) * 4; };
+  const v = new Float32Array(n * 4), state = new Uint8Array(n);
+  for (const p of win.ring) {
+    state[p] = FIXED;
+    const t = at(p) * 4, s = from(at(p));
+    for (let c = 0; c < 4; c++) v[p * 4 + c] = original[t + c] - original[s + c];
+  }
+  for (const p of win.spot) state[p] = FREE;
+  solveMembrane(v, state, ww, win.h);
+  const f = [0, 0, 0, 0], strength = clamp(opacity, 0, 1);
+  for (const p of win.spot) {
+    const g = at(p), t = g * 4, s = from(g);
+    for (let c = 0; c < 4; c++) f[c] = v[p * 4 + c] + original[s + c];
+    f[3] = clamp(f[3], 0, 255);
+    for (let c = 0; c < 3; c++) f[c] = clamp(f[c], 0, f[3]);
+    const k = (coverage[g] / 255) * strength;
+    for (let c = 0; c < 4; c++) rgba[t + c] = Math.round(original[t + c] + (f[c] - original[t + c]) * k);
+  }
+  return true;
+}
+
+/** Spot Healing: heals the pixels under `coverage` (0 to 255 per pixel) in premultiplied `rgba`, blended by coverage
+ *  times `opacity`. Returns false when there is no spot or nothing around it to heal from. */
+export function spotHeal(rgba: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, opacity: number, mode: HealMode, seed: number): boolean {
+  const hw = healWindow(coverage, W, H);
+  if (!hw) return false;
+  const { win, extent, ringWidth, inSpot } = hw, ww = win.w, wh = win.h, wx0 = win.x0, wy0 = win.y0, n = ww * wh;
   const image = (p: number): number => (Math.floor(p / ww) + wy0) * W + (p % ww) + wx0;
   const source = mode === 'createTexture' ? null : findSource(rgba, coverage, W, H, win, extent, ringWidth, mode);
   const shift = source ? source.dy * W + source.dx : 0;

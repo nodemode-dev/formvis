@@ -30,7 +30,7 @@ export type { FilterSettings } from './filter-jobs';
 export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
-import { WarpStroke, contentFill, fillTransparent, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
+import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
@@ -101,7 +101,7 @@ export class Engine {
   private viewSize = { w: 800, h: 600 };
   private readonly display = new Renderer();
   private readonly work = new Renderer();
-  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode } | null = null;
+  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode; healFrom?: Pt } | null = null;
   private lastBrush: { layerId: ID; target: Target; p: Pt } | null = null;
   private opacityOpen: Project | null = null;
   private swipeOpen: Project | null = null;
@@ -1112,7 +1112,7 @@ export class Engine {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
-    const patch = st.heal ? this.healPatch(st.s, st.heal) : st.s.commit();
+    const patch = st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
     st.project.history.end(st.project.snapshot());
@@ -2155,7 +2155,7 @@ export class Engine {
     return s;
   }
 
-  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur', pt: Pt, shift: boolean): boolean {
+  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur' | 'healBrush', pt: Pt, shift: boolean): boolean {
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
@@ -2164,27 +2164,67 @@ export class Engine {
     const onMask = p.maskTarget && !!l0.mask;
     if (onMask && kind !== 'blur') { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
     let texture: { surface: Surface; dx: number; dy: number } | null = null;
-    if (kind === 'clone') {
+    if (kind === 'clone' || kind === 'healBrush') {
       const off = this.cloneStrokeOffset(pt);
-      if (!off) { this.notice('Alt-click to set where Clone Stamp copies from.'); return false; }
+      if (!off) { this.notice(`Alt-click to set where ${kind === 'clone' ? 'Clone Stamp' : 'the Healing Brush'} copies from.`); return false; }
       this.cloneOffset = off;
       texture = { surface: this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), dx: off.x, dy: off.y };
     } else if (kind === 'blur') {
       const sigma = clamp(this.brush.diameter / 10, 1.5, 30);
       texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };
     }
-    p.history.begin(kind === 'heal' ? 'Spot Healing' : kind === 'clone' ? 'Clone Stamp' : 'Blur', p.snapshot());
+    p.history.begin(kind === 'heal' ? 'Spot Healing' : kind === 'clone' ? 'Clone Stamp' : kind === 'healBrush' ? 'Healing Brush' : 'Blur', p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     const style = kind === 'heal' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
     const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture, pick.target === 'mask');
-    this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : undefined };
+    // The Healing Brush heals from the same offset at release, in the layer's own pixels.
+    let healFrom: Pt | undefined;
+    if (kind === 'healBrush' && texture) {
+      const toLayer = invert(pick.local), a = applyMat(toLayer, pt.x, pt.y), b = applyMat(toLayer, pt.x + texture.dx, pt.y + texture.dy);
+      healFrom = { x: Math.round(b.x - a.x), y: Math.round(b.y - a.y) };
+    }
+    this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : undefined, healFrom };
     const last = this.lastBrush;
     if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p);
     s.to(pt);
     s.compose();
     this.emit('render', null);
     return true;
+  }
+
+  private healFromPatch(s: PixelStroke, off: Pt): ReturnType<PixelStroke['commit']> {
+    const r = s.raster;
+    const before = r.read();
+    const pm = premultiply(before.data);
+    if (!healFromSource(pm, s.coverageAlpha(), r.width, r.height, this.brush.opacity, off.x, off.y)) return null;
+    const out = new ImageData(r.width, r.height);
+    unpremultiply(pm, out.data);
+    r.write(out);
+    return { raster: r, x: 0, y: 0, before, after: r.read() };
+  }
+
+  /** Patch: heals the selected area of the active pixel layer from the area (dx, dy) document pixels away, blended to
+   *  meet the selection's edge, as one undo step. */
+  patchSelection(dx: number, dy: number): void {
+    const p0 = this.current;
+    if (!p0?.selection) { this.notice('Make a selection, then drag it onto the area to copy from.'); return; }
+    if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    this.regionEdit('Patch', ({ raster, target, rect }) => {
+      if (target !== 'pixels') return;
+      const p = this.current as Project, l = p.activeLayer as Layer;
+      const cov = this.coverageFor(p, l, target, raster.width, raster.height);
+      if (!cov) return;
+      const toLayer = invert(placement(l.transform, raster.width, raster.height)), a = applyMat(toLayer, 0, 0), b = applyMat(toLayer, dx, dy);
+      const mask = new Uint8Array(raster.width * raster.height);
+      for (let i = 0; i < mask.length; i++) mask[i] = cov[i * 4 + 3];
+      const pm = premultiply(raster.read().data);
+      if (!healFromSource(pm, mask, raster.width, raster.height, 1, Math.round(b.x - a.x), Math.round(b.y - a.y))) return;
+      const out = new ImageData(raster.width, raster.height);
+      unpremultiply(pm, out.data);
+      raster.ctx.putImageData(out, 0, 0, rect.x, rect.y, rect.w, rect.h);
+    });
   }
 
   private healPatch(s: PixelStroke, mode: HealMode): ReturnType<PixelStroke['commit']> {

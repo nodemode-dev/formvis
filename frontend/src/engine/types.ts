@@ -57,7 +57,7 @@ export interface Layer {
 }
 export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[] }
 
-export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
 
 export const LIMITS = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 } as const;
 

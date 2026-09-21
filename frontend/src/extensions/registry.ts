@@ -42,6 +42,8 @@ export function registerTool(tool: Tool): void {
 export const toolList = (): Tool[] => [...tools.values()].sort((a, b) => a.order - b.order);
 export const getTool = (id: ToolId): Tool | undefined => tools.get(id);
 export const toolForKey = (key: string): Tool | undefined => toolList().find((t) => t.key === key.toUpperCase());
+/** Every tool on a key, in toolbar order: J holds Spot Healing, the Healing Brush and Patch, cycled with Shift. */
+export const toolsForKey = (key: string): Tool[] => toolList().filter((t) => t.key === key.toUpperCase());
 
 export function digitOf(e: KeyboardEvent): number | null {
   return e.code.startsWith('Digit') ? Number(e.code.slice(5)) : null;
