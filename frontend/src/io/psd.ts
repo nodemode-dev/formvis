@@ -1,6 +1,6 @@
-import type { BlendMode as PsdBlend, Layer as PsdLayer, LinkedFile, Psd } from 'ag-psd';
+import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, UnitsValue } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt,
+  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects,
 } from '../engine';
 import { maskEdgeTone } from '../engine/distort';
 
@@ -52,6 +52,103 @@ async function decodeLinked(data: Uint8Array, readPsd: typeof import('ag-psd').r
     const bmp = await createImageBitmap(new Blob([data.slice()]));
     return Raster.from(bmp, bmp.width, bmp.height);
   } catch { return null; }
+}
+
+const BEVEL_TO: Record<LayerEffects['bevel']['style'], 'inner bevel' | 'outer bevel' | 'emboss' | 'pillow emboss'> = { inner: 'inner bevel', outer: 'outer bevel', emboss: 'emboss', pillow: 'pillow emboss' };
+
+/** A sonny layer style as Photoshop layer effects: each enabled effect in Photoshop's own terms. A pattern used by
+ *  Pattern Overlay travels in the PSD's patterns, under a GUID. */
+function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsInfo | null {
+  const px = (value: number): UnitsValue => ({ units: 'Pixels', value }), bm = (m: BlendMode): PsdBlend => TO_PSD[m] ?? 'normal', on = { enabled: true, present: true, showInDialog: true };
+  const e: LayerEffectsInfo = {};
+  const d = fx.dropShadow, is = fx.innerShadow, g = fx.outerGlow, ig = fx.innerGlow, k = fx.stroke, co = fx.colorOverlay, go = fx.gradientOverlay, sa = fx.satin, bv = fx.bevel, po = fx.patternOverlay;
+  if (d.enabled) e.dropShadow = [{ ...on, color: d.color, opacity: d.opacity, blendMode: bm(d.blend), angle: d.angle, distance: px(d.distance), size: px(d.size), useGlobalLight: false }];
+  if (is.enabled) e.innerShadow = [{ ...on, color: is.color, opacity: is.opacity, blendMode: bm(is.blend), angle: is.angle, distance: px(is.distance), size: px(is.size), useGlobalLight: false }];
+  if (g.enabled) e.outerGlow = { ...on, color: g.color, opacity: g.opacity, blendMode: bm(g.blend), size: px(g.size) };
+  if (ig.enabled) e.innerGlow = { ...on, color: ig.color, opacity: ig.opacity, blendMode: bm(ig.blend), size: px(ig.size), source: 'edge' };
+  if (k.enabled) e.stroke = [{ ...on, position: 'outside', fillType: 'color', color: k.color, opacity: k.opacity, blendMode: 'normal', size: px(k.size) }];
+  if (co.enabled) e.solidFill = [{ ...on, color: co.color, opacity: co.opacity, blendMode: bm(co.blend) }];
+  if (go.enabled) e.gradientOverlay = [{ ...on, opacity: go.opacity, blendMode: bm(go.blend), type: go.style, angle: go.angle, scale: go.scale, reverse: go.reverse, align: true,
+    gradient: { name: 'sonny', type: 'solid', colorStops: [{ color: go.from, location: 0, midpoint: 0.5 }, { color: go.to, location: 1, midpoint: 0.5 }], opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] } }];
+  if (sa.enabled) e.satin = { ...on, color: sa.color, opacity: sa.opacity, blendMode: bm(sa.blend), angle: sa.angle, distance: px(sa.distance), size: px(sa.size), invert: sa.invert };
+  if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: false,
+    highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend) };
+  const pat = po.enabled ? patternById(po.pattern) : null;
+  if (pat) {
+    let info = patterns.find((x) => x.name === pat.name && (x as PatternInfo & { sonny?: string }).sonny === pat.id);
+    if (!info) {
+      const w = pat.surface.width, h = pat.surface.height, rgba = ctxOf(pat.surface).getImageData(0, 0, w, h).data;
+      info = { name: pat.name, id: guid(), x: 0, y: 0, bounds: { x: 0, y: 0, w, h }, data: new Uint8Array(rgba) };
+      (info as PatternInfo & { sonny?: string }).sonny = pat.id;
+      patterns.push(info);
+    }
+    e.patternOverlay = { ...on, opacity: po.opacity, blendMode: bm(po.blend), scale: po.scale, pattern: { name: info.name, id: info.id }, align: true };
+  }
+  return Object.keys(e).length ? e : null;
+}
+
+/** Photoshop layer effects as a sonny layer style, noting what sonny does not have. */
+function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefined, name: string, notes: string[]): LayerEffects | null {
+  const fx = defaultEffects(), px = (u: UnitsValue | undefined, d: number): number => (u && typeof u.value === 'number' ? u.value : d);
+  const col = (c: unknown, d: { r: number; g: number; b: number }): { r: number; g: number; b: number } => {
+    const o = c as Record<string, number> | null | undefined;
+    if (o && typeof o.r === 'number') return { r: Math.round(o.r), g: Math.round(o.g), b: Math.round(o.b) };
+    if (o && typeof o.fr === 'number') return { r: Math.round(o.fr * 255), g: Math.round(o.fg * 255), b: Math.round(o.fb * 255) };
+    return d;
+  };
+  const bm = (m: string | undefined, d: BlendMode): BlendMode => (m && FROM_PSD.get(m as PsdBlend)) || d, op = (v: number | undefined, d: number): number => (typeof v === 'number' ? Math.max(0, Math.min(1, v)) : d);
+  const first = <T extends { enabled?: boolean }>(list: T[] | undefined, what: string): T | null => {
+    if (!list?.length) return null;
+    if (list.length > 1) notes.push(`"${name}" has more than one ${what}; sonny kept the first.`);
+    return list[0];
+  };
+  const on = (x: { enabled?: boolean } | null | undefined): boolean => !!x && x.enabled !== false;
+  const d = first(info.dropShadow, 'Drop Shadow');
+  if (d) fx.dropShadow = { enabled: on(d), color: col(d.color, fx.dropShadow.color), opacity: op(d.opacity, fx.dropShadow.opacity), blend: bm(d.blendMode, 'multiply'), angle: d.angle ?? 120, distance: px(d.distance, 5), size: px(d.size, 5) };
+  const is = first(info.innerShadow, 'Inner Shadow');
+  if (is) fx.innerShadow = { enabled: on(is), color: col(is.color, fx.innerShadow.color), opacity: op(is.opacity, fx.innerShadow.opacity), blend: bm(is.blendMode, 'multiply'), angle: is.angle ?? 120, distance: px(is.distance, 5), size: px(is.size, 5) };
+  const g = info.outerGlow;
+  if (g) fx.outerGlow = { enabled: on(g), color: col(g.color, fx.outerGlow.color), opacity: op(g.opacity, fx.outerGlow.opacity), blend: bm(g.blendMode, 'screen'), size: px(g.size, 5) };
+  const ig = info.innerGlow;
+  if (ig) fx.innerGlow = { enabled: on(ig), color: col(ig.color, fx.innerGlow.color), opacity: op(ig.opacity, fx.innerGlow.opacity), blend: bm(ig.blendMode, 'screen'), size: px(ig.size, 5) };
+  const k = first(info.stroke, 'Stroke');
+  if (k) {
+    fx.stroke = { enabled: on(k), color: col(k.color, fx.stroke.color), opacity: op(k.opacity, 1), size: px(k.size, 3) };
+    if ((k.position && k.position !== 'outside') || (k.fillType && k.fillType !== 'color')) notes.push(`"${name}" has a Photoshop stroke sonny draws as an outside colour stroke.`);
+  }
+  const co = first(info.solidFill, 'Color Overlay');
+  if (co) fx.colorOverlay = { enabled: on(co), color: col(co.color, fx.colorOverlay.color), opacity: op(co.opacity, 1), blend: bm(co.blendMode, 'normal') };
+  const go = first(info.gradientOverlay, 'Gradient Overlay');
+  if (go) {
+    const stops = go.gradient && 'colorStops' in go.gradient ? go.gradient.colorStops : [];
+    fx.gradientOverlay = { enabled: on(go), from: col(stops[0]?.color, fx.gradientOverlay.from), to: col(stops[stops.length - 1]?.color, fx.gradientOverlay.to), opacity: op(go.opacity, 1), blend: bm(go.blendMode, 'normal'),
+      angle: go.angle ?? 90, style: go.type === 'radial' ? 'radial' : 'linear', scale: Math.max(0.1, Math.min(1.5, go.scale ?? 1)), reverse: !!go.reverse };
+    if (stops.length > 2 || (go.type && go.type !== 'linear' && go.type !== 'radial')) notes.push(`"${name}" has a Photoshop gradient sonny simplifies to two colours, linear or radial.`);
+  }
+  const sa = info.satin;
+  if (sa) fx.satin = { enabled: on(sa), color: col(sa.color, fx.satin.color), opacity: op(sa.opacity, 0.5), blend: bm(sa.blendMode, 'multiply'), angle: sa.angle ?? 19, distance: px(sa.distance, 11), size: px(sa.size, 14), invert: sa.invert !== false };
+  const bv = info.bevel;
+  if (bv) {
+    const style = bv.style === 'outer bevel' ? 'outer' : bv.style === 'emboss' ? 'emboss' : bv.style === 'pillow emboss' ? 'pillow' : 'inner';
+    fx.bevel = { enabled: on(bv), style, depth: Math.max(1, Math.min(1000, Math.round((bv.strength ?? 1) * 100))), down: bv.direction === 'down', size: px(bv.size, 5), soften: px(bv.soften, 0), angle: bv.angle ?? 120, altitude: bv.altitude ?? 30,
+      highlight: col(bv.highlightColor, fx.bevel.highlight), highlightOpacity: op(bv.highlightOpacity, 0.75), highlightBlend: bm(bv.highlightBlendMode, 'screen'), shadow: col(bv.shadowColor, fx.bevel.shadow), shadowOpacity: op(bv.shadowOpacity, 0.75), shadowBlend: bm(bv.shadowBlendMode, 'multiply') };
+    if ((bv.technique && bv.technique !== 'smooth') || bv.style === 'stroke emboss') notes.push(`"${name}" has a Photoshop bevel sonny draws with its smooth technique.`);
+  }
+  const po = info.patternOverlay;
+  if (po) {
+    const src = patterns?.find((x) => x.id === po.pattern?.id);
+    let id = 'builtin:checker';
+    if (src && src.data && src.bounds.w > 0 && src.bounds.h > 0) {
+      const w = src.bounds.w, h = src.bounds.h, surface = createSurface(w, h), img = new ImageData(w, h);
+      img.data.set(src.data.subarray(0, w * h * 4));
+      ctxOf(surface).putImageData(img, 0, 0);
+      id = `psd-${src.id}`;
+      if (!patternById(id)) { addPattern(src.name || 'Pattern', surface, id); projectPatterns.add(id); }
+    } else notes.push(`"${name}" uses a Photoshop pattern the file does not include; sonny shows Checker in its place.`);
+    fx.patternOverlay = { enabled: on(po), pattern: id, opacity: op(po.opacity, 1), blend: bm(po.blendMode, 'normal'), scale: Math.max(0.1, Math.min(10, po.scale ?? 1)) };
+  }
+  if (info.disabled) { notes.push(`"${name}" has its Photoshop layer style switched off; sonny opened it switched off.`); return null; }
+  return effectsActive(fx) ? fx : null;
 }
 
 export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null }> {
@@ -120,7 +217,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         } else notes.push(`"${name}" is a smart object whose contents sonny cannot read; it opened as pixels.`);
       }
       if (pl.text) notes.push(`"${name}" is type in Photoshop; it opened as pixels.`);
-      if (pl.effects) notes.push(`"${name}" has a Photoshop layer style; it opened without it.`);
+      if (pl.effects) { const fx = fromPsdEffects(pl.effects, psd.patterns, name, notes); if (fx) layer.effects = fx; }
       if (pl.clipping && base) layer.clipId = base.id;
       else base = layer;
       layers.push(layer);
@@ -137,7 +234,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
 /** The document as a layered PSD, with notes on what it could not carry. */
 export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
   const { writePsd } = await import('ag-psd');
-  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, Uint8Array>();
+  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, Uint8Array>(), psdPatterns: PatternInfo[] = [];
   for (const l of doc.layers) if (l.smart) sources.set(l.id, new Uint8Array(await (await toBlob(l.smart.source.canvas)).arrayBuffer()));
   /** A raster drawn through `t` into a box aligned to the canvas; null when it covers nothing. */
   const placed = (r: Raster, t: Layer['transform']): { c: HTMLCanvasElement; x: number; y: number } | null => {
@@ -156,10 +253,10 @@ export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ byte
     if (!l.raster) return null;
     const px = placed(l.raster, l.transform);
     if (!px) return null;
-    if (effectsActive(l.effects)) notes.push(`"${l.name}" loses its layer style; the PSD holds its pixels only.`);
     if (liveText(l)) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as editable type.`);
 
     const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId };
+    if (effectsActive(l.effects)) { const e = toPsdEffects(l.effects, psdPatterns); if (e) out.effects = e; }
     const embed = l.smart ? sources.get(l.id) : undefined;
     if (l.smart && embed && l.raster) {
       // A smart object goes as a Photoshop placed layer: its source embedded as PNG, its corners where it sits.
@@ -201,5 +298,6 @@ export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ byte
   (flat.getContext('2d') as CanvasRenderingContext2D).drawImage(composite as CanvasImageSource, 0, 0);
   const psd: Psd = { width: doc.width, height: doc.height, children: build(null), canvas: flat };
   if (linked.length) psd.linkedFiles = linked;
+  if (psdPatterns.length) psd.patterns = psdPatterns;
   return { bytes: writePsd(psd, { generateThumbnail: false }), notes };
 }
