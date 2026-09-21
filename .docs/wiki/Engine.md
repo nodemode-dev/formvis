@@ -9,8 +9,8 @@ The engine is the document model and every operation on it, with no DOM access: 
 | `frontend/src/engine/renderer.ts` | Rendering: blend modes, opacity, pass-through folders, raster and folder masks, clipping chains, adjustments |
 | `frontend/src/engine/history.ts` | Structure snapshots plus region pixel patches, 100 entries and 256 MB |
 | `frontend/src/engine/selection.ts` | `SelectionMask` and the ported pixel-edge contour tracer for marching ants |
-| `frontend/src/engine/kernels.ts` | Levels, Curves, Exposure, Gradient Map kernels and the Magic Wand fill, ported from the C sources |
-| `frontend/src/engine/adjust.ts`, `filters.ts` | Hue/Saturation and Grain kernels, the hue band operations (center, include, exclude, handle moves) and the complete adjustment data `.ref` projects carry; blurs, noise, lens, histogram and the distance-transform selection resize |
+| `frontend/src/engine/kernels.ts` | Levels, Curves (monotone cubic), Exposure (linear light) and Gradient Map kernels, and the Magic Wand's segment seed fill |
+| `frontend/src/engine/adjust.ts`, `filters.ts` | Hue/Saturation with its hue bands and colour cube, Grain, the `.ref` adjustment data; three-box Gaussian, motion blur, noise, lens correction, histograms, Unsharp Mask, and the distance transform behind expand and contract |
 | `frontend/src/engine/retouch.ts` | Spot Healing, Content-Aware Fill, and the Smudge and Liquify warp, ported from `HealPixels.c`, `ContentFill.c` and `SmudgeLiquify.swift` |
 | `frontend/src/engine/matte.ts` | Remove Background's refining: the guided filter, Shift Edge and Contrast, ported from `GuidedMatte.swift` and `SubjectRemoval.swift` |
 | `frontend/src/engine/stroke.ts` | Brush stamping at the spacing (2.5 percent soft, 1.5 percent hard) |

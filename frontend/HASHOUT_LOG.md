@@ -396,6 +396,10 @@ Hue/Saturation ported from `HueSaturation.swift` (HSL, per-range band weights, m
 
 Implements `HueBand` methods as pure functions: `bandForward`, `bandHandles`, `bandCentered` (the Sample eyedropper), `bandInclude` (Add), `bandExclude` (Remove), `bandSetHandle` (a handle drag, refused when it would break the order or exceed 350 degrees) and the private `normalizeBand`. Swift's `truncatingRemainder` matches JavaScript's `%`, so wraparound behaves identically. Nothing was removed.
 
+### src/engine/adjust.ts · rewritten independently · _v0.34.0
+
+Hue bands, the eyedroppers' band operations, the HSL model, the 33-point cube, the `.ref` data layout and the defaults are new code with outputs identical to the replaced code; Grain now comes from new triangular lattice noise with the same strength and character and a different pattern. The removed code is not quoted here, deliberately: it is the translated code this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.33.0.
+
 ## src/engine/renderer.ts
 
 ### src/engine/renderer.ts · rendering pipeline · _v0.1.0
@@ -512,6 +516,10 @@ Gaussian Blur as three premultiplied box passes with zero padding, so it fades p
 ### src/engine/filters.ts · unsharpMask · _v0.33.0
 
 Unsharp Mask: each channel pushed from its Gaussian blur by Amount where the difference reaches Threshold; alpha untouched. Nothing was removed.
+
+### src/engine/filters.ts · rewritten independently · _v0.34.0
+
+Kovesi's three-box Gaussian, a bilinear line-integral motion blur, a radial lens model, alpha-weighted histograms and Felzenszwalb and Huttenlocher's distance transform, all new code with outputs identical to the replaced code; Add Noise now draws from SplitMix32, keeping the old statistics with a new pattern. `unsharpMask` (0.33.0) is unchanged. The removed code is not quoted here, deliberately: it is the translated code this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.33.0.
 
 ## src/engine/geometry.ts
 
@@ -806,6 +814,10 @@ export function wandMask(rgba: Uint8ClampedArray, width: number, height: number,
   const s = (seedY * width + seedX) * 4;
   const ref = [rgba[s], rgba[s + 1], rgba[s + 2], rgba[s + 3]];
 ```
+
+### src/engine/kernels.ts · rewritten independently · _v0.34.0
+
+Every kernel replaced with a new implementation of the standard method: Levels as composed clipped power curves, Curves as Fritsch and Butland monotone cubics in Horner form, Exposure through the IEC 61966-2-1 sRGB transfer, a Rec. 709 gradient map, and the Magic Wand's contiguous fill as Heckbert's segment seed fill. Exports and settings meanings unchanged; outputs identical to the replaced code in randomized side-by-side runs. The removed code is not quoted here, deliberately: it is the translated code this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.33.0.
 
 ## src/engine/matte.ts
 
