@@ -17,7 +17,7 @@ import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -397,6 +397,52 @@ export function startApp(): void {
     });
   }
 
+  /** The pattern library: patterns defined here, kept in this browser as PNG data. */
+  const PATTERN_KEY = 'sonny.patterns';
+  async function loadPatterns(): Promise<void> {
+    let list: Array<{ id: string; name: string; png: string }> = [];
+    try { list = JSON.parse(localStorage.getItem(PATTERN_KEY) ?? '[]'); } catch { list = []; }
+    for (const p of Array.isArray(list) ? list : []) {
+      if (typeof p?.id !== 'string' || typeof p.png !== 'string' || patternById(p.id)) continue;
+      try {
+        const bmp = await createImageBitmap(await (await fetch(p.png)).blob()), s = createSurface(bmp.width, bmp.height);
+        ctxOf(s).drawImage(bmp, 0, 0);
+        addPattern(typeof p.name === 'string' ? p.name : 'Pattern', s, p.id);
+      } catch { /* skip an unreadable pattern */ }
+    }
+  }
+  async function savePatterns(): Promise<boolean> {
+    const list: Array<{ id: string; name: string; png: string }> = [];
+    for (const p of allPatterns()) {
+      if (p.builtin || projectPatterns.has(p.id)) continue;
+      const blob = await toBlob(p.surface), png = await new Promise<string>((done) => { const r = new FileReader(); r.onload = () => done(String(r.result)); r.readAsDataURL(blob); });
+      list.push({ id: p.id, name: p.name, png });
+    }
+    try { localStorage.setItem(PATTERN_KEY, JSON.stringify(list)); return true; } catch { return false; }
+  }
+
+  /** Edit > Define Pattern: the visible image within the selection, or the whole canvas, up to 1024 px a side. */
+  async function definePattern(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    const flat = engine.flattened();
+    if (!flat) return;
+    const sel = p.selection, x = sel ? Math.max(0, Math.floor(sel.x)) : 0, y = sel ? Math.max(0, Math.floor(sel.y)) : 0;
+    const w = Math.min(flat.width - x, sel ? Math.ceil(sel.w) : flat.width), h = Math.min(flat.height - y, sel ? Math.ceil(sel.h) : flat.height);
+    if (w < 1 || h < 1) return;
+    if (w > 1024 || h > 1024) { toast('A pattern can be at most 1024 by 1024 pixels. Select a smaller area first.', 'error'); return; }
+    let n = 1;
+    while (allPatterns().some((q) => q.name === `Pattern ${n}`)) n += 1;
+    const name = await promptName('Define Pattern', `Pattern ${n}`, 'OK');
+    if (!name) return;
+    const s = createSurface(w, h);
+    ctxOf(s).drawImage(flat as CanvasImageSource, -x, -y);
+    addPattern(name, s);
+    if (await savePatterns()) toast(`Defined the pattern "${name}". Choose it in Layer Style > Pattern Overlay.`);
+    else toast(`Defined "${name}" for this session; the pattern library is full, so it will not be kept.`, 'error');
+  }
+
   async function exportPsd(): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -526,6 +572,7 @@ export function startApp(): void {
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
     { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
     { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
+    { id: 'define-pattern', label: 'Define Pattern...', enabled: () => !!engine.current, run: () => void definePattern() },
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
     { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
     { id: 'settings', label: 'Settings...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
@@ -654,7 +701,7 @@ export function startApp(): void {
 
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
-    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'trim', 'reveal-all', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', '-', 'path-selection', 'delete-path'] },
@@ -705,6 +752,7 @@ export function startApp(): void {
   root.addEventListener('cv:smart-filters', () => dialogs.smartFilters.show());
   root.addEventListener('cv:shape-style', () => dialogs.shapeStyle.show());
   engine.smartFilterMargin = (kind, settings) => filterMargin(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) });
+  void loadPatterns();
   engine.smartFilterRunnerAsync = (kind, settings, src) => {
     const s = { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : 0;
     return runFilterOffThread(kind as FilterKind, s, 1, seed, src) ?? Promise.resolve(runFilter(kind as FilterKind, s, seed, src, 1));

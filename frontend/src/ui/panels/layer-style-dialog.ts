@@ -1,4 +1,4 @@
-import { defaultEffects, effectsActive, type Engine, type LayerEffects, type RGB } from '../../engine';
+import { defaultEffects, effectsActive, type Engine, type LayerEffects, type RGB, allPatterns } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { checkRow, sliderRow } from './controls';
@@ -6,7 +6,7 @@ import { checkRow, sliderRow } from './controls';
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
 
-/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay and Bevel & Emboss for the
+/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay, Pattern Overlay and Bevel & Emboss for the
  *  active pixel layer, shown live while the dialog is open. OK applies them as one undo step; Cancel leaves the layer as it was. */
 export class LayerStyleDialog extends Dialog {
   private fx: LayerEffects = defaultEffects();
@@ -74,6 +74,26 @@ export class LayerStyleDialog extends Dialog {
     slider('Scale (%)', 10, 150, () => Math.round(fx().gradientOverlay.scale * 100), (v) => { fx().gradientOverlay.scale = v / 100; });
     check('Radial', () => fx().gradientOverlay.style === 'radial', (v) => { fx().gradientOverlay.style = v ? 'radial' : 'linear'; });
     check('Reverse', () => fx().gradientOverlay.reverse, (v) => { fx().gradientOverlay.reverse = v; });
+    check('Pattern Overlay', () => fx().patternOverlay.enabled, (v) => { fx().patternOverlay.enabled = v; });
+    const patternPick = el<HTMLSelectElement>('<select class="cv-input"></select>');
+    patternPick.addEventListener('change', () => { fx().patternOverlay.pattern = patternPick.value; this.changed(); });
+    this.field('Pattern', patternPick);
+    this.syncs.push(() => {
+      // The list refreshes each time the dialog opens, since patterns can be defined meanwhile; a pattern this style
+      // names but that is not here shows as missing.
+      const want = fx().patternOverlay.pattern, list = allPatterns().map((p) => [p.id, p.name] as [string, string]);
+      if (!list.some(([id]) => id === want)) list.push([want, 'Missing pattern']);
+      while (patternPick.options.length > list.length) patternPick.remove(patternPick.options.length - 1);
+      list.forEach(([id, name], i) => {
+        let o = patternPick.options[i];
+        if (!o) { o = document.createElement('option'); patternPick.appendChild(o); }
+        if (o.value !== id) o.value = id;
+        if (o.textContent !== name) o.textContent = name;
+      });
+      patternPick.value = want;
+    });
+    slider('Opacity (%)', 0, 100, () => Math.round(fx().patternOverlay.opacity * 100), (v) => { fx().patternOverlay.opacity = v / 100; });
+    slider('Scale (%)', 10, 1000, () => Math.round(fx().patternOverlay.scale * 100), (v) => { fx().patternOverlay.scale = v / 100; });
     check('Satin', () => fx().satin.enabled, (v) => { fx().satin.enabled = v; });
     colour('Colour', () => fx().satin.color, (c) => { fx().satin.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().satin.opacity * 100), (v) => { fx().satin.opacity = v / 100; });

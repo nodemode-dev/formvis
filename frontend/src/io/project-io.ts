@@ -1,5 +1,5 @@
 import {
-  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline,
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns,
 } from '../engine';
 import type { FilePart } from './api';
 
@@ -84,6 +84,18 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   if (activeId && doc.layers.some((l) => l.id === activeId)) manifest.activeLayerID = activeId;
   const pathRecord = pathSetData(paths);
   if (pathRecord) { manifest.paths = pathRecord.list; if (pathRecord.active) manifest.activePath = pathRecord.active; }
+  // The patterns this document's styles use travel inside it, so it opens the same where they are not defined.
+  const used = new Set<string>();
+  for (const l of doc.layers) { const po = l.effects?.patternOverlay; if (po?.enabled && po.pattern && !po.pattern.startsWith('builtin:')) used.add(po.pattern); }
+  const carried: Array<{ id: string; name: string; file: string }> = [];
+  for (const id of used) {
+    const pat = patternById(id);
+    if (!pat) continue;
+    const file = `pattern-${carried.length + 1}.png`;
+    files.push({ name: file, blob: await toBlob(pat.surface) });
+    carried.push({ id, name: pat.name, file });
+  }
+  if (carried.length) manifest.patterns = carried;
   const frames = timelineData(timeline);
   if (frames) manifest.timeline = frames;
   return { manifest, files };
@@ -169,6 +181,19 @@ function vectorFrom(raw: unknown): Layer['vector'] {
 }
 
 export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null; timeline: Timeline | null }> {
+  // Patterns carried by the project, registered before its layers render.
+  if (Array.isArray(manifest.patterns)) {
+    for (const raw of manifest.patterns.slice(0, 200)) {
+      const r = raw as Record<string, unknown>;
+      if (typeof r?.id !== 'string' || typeof r.file !== 'string' || patternById(r.id)) continue;
+      try {
+        const bmp = await createImageBitmap(await fetchImage(r.file)), surface = createSurface(bmp.width, bmp.height);
+        ctxOf(surface).drawImage(bmp, 0, 0);
+        addPattern(typeof r.name === 'string' ? r.name : 'Pattern', surface, r.id.slice(0, 120));
+        projectPatterns.add(r.id.slice(0, 120));
+      } catch { /* a pattern that cannot be read leaves its style showing nothing */ }
+    }
+  }
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
   const records = Array.isArray(manifest.layers) ? manifest.layers.map(obj) : [];
   const names = new Set<string>();

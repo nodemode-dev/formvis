@@ -1,4 +1,5 @@
 import { resizeMask } from './filters';
+import { patternById } from './patterns';
 import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
 import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
@@ -350,6 +351,18 @@ export class Renderer {
           c.drawImage(inv.s, -far, 0);
         });
       };
+      const po = fx.patternOverlay, pat = po.enabled && po.opacity > 0 ? patternById(po.pattern) : null;
+      if (pat) {
+        // Lowest of the overlays: the pattern tiled from the layer's top-left corner, kept to its silhouette.
+        const k = po.scale * scale, ox = bounds.x - bx, oy = bounds.y - by;
+        lay(kept((c) => {
+          const fill = c.createPattern(pat.surface as CanvasImageSource, 'repeat');
+          if (!fill) return;
+          fill.setTransform(new DOMMatrix([k, 0, 0, k, ox, oy]));
+          c.fillStyle = fill;
+          c.fillRect(0, 0, bw, bh);
+        }), po.opacity * opacity, compositeOp(po.blend));
+      }
       const go = fx.gradientOverlay;
       if (go.enabled && go.opacity > 0) {
         // Beneath Color Overlay, as in Photoshop: the gradient spans the layer's bounds, kept to its silhouette.
