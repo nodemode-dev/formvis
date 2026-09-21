@@ -1,4 +1,5 @@
 import { TrimDialog } from './ui/panels/trim-dialog';
+import { ColorRangeDialog } from './ui/panels/color-range-dialog';
 import { HistoryPanel } from './ui/history';
 import { StopDialog } from './ui/panels/stop-dialog';
 import { TweenDialog } from './ui/panels/tween-dialog';
@@ -512,6 +513,7 @@ export function startApp(): void {
     tween: new TweenDialog(engine),
     stop: new StopDialog(),
     trim: new TrimDialog(engine),
+    colorRange: new ColorRangeDialog(engine),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
     generative: new GenerativeDialog(engine),
@@ -605,6 +607,7 @@ export function startApp(): void {
     { id: 'select-all', label: 'All', keys: ['Mod+A'], enabled: has, run: () => engine.selectAll() },
     { id: 'deselect', label: 'Deselect', keys: ['Mod+D'], enabled: selected, run: () => engine.deselect() },
     { id: 'inverse', label: 'Inverse', keys: ['Shift+Mod+I'], enabled: selected, run: () => engine.invertSelection() },
+    { id: 'color-range', label: 'Color Range...', enabled: () => !!engine.current, run: () => dialogs.colorRange.show() },
     { id: 'layer-pixels', label: "Layer's Pixels", enabled: () => !!layer()?.raster, run: () => engine.selectLayerPixels() },
     { id: 'zoom-in', label: 'Zoom In', keys: ['Mod+='], enabled: has, run: () => engine.zoomStep(true) },
     { id: 'zoom-out', label: 'Zoom Out', keys: ['Mod+-'], enabled: has, run: () => engine.zoomStep(false) },
@@ -704,7 +707,7 @@ export function startApp(): void {
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'trim', 'reveal-all', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
-    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', '-', 'path-selection', 'delete-path'] },
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
     { label: 'Help', items: ['shortcuts', 'about'] },

@@ -31,4 +31,4 @@ Vite (MIT), TypeScript (Apache-2.0), @tauri-apps/cli (Apache-2.0 or MIT), PyInst
 
 ## Phosphor Icons
 
-The Paint Bucket, Dodge, Burn and Sponge tool icons are Phosphor Icons (paint-bucket-fill, sun-dim-fill, fire-fill and drop-half-fill), Copyright (c) 2023 Phosphor Icons, used under the MIT License, taken from the IcoLab dataset.
+The Quick Selection, Paint Bucket, Dodge, Burn and Sponge tool icons are Phosphor Icons (selection-plus-fill, paint-bucket-fill, sun-dim-fill, fire-fill and drop-half-fill), Copyright (c) 2023 Phosphor Icons, used under the MIT License, taken from the IcoLab dataset.

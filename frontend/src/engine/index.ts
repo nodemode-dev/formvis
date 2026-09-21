@@ -2069,6 +2069,136 @@ export class Engine {
     return out;
   }
 
+  /** Select > Color Range: each pixel of the composite scored by how close its colour is to the sampled colours (fully
+   *  selected at a sample, falling to none at Fuzziness away, less what is close to a colour taken away), or by tone for
+   *  Highlights, Midtones or Shadows; inverted on request; kept within any selection. `scale` below 1 works on a reduced
+   *  copy for the dialog's preview. */
+  colorRangeMask(o: { mode: 'sampled' | 'highlights' | 'midtones' | 'shadows'; plus: RGB[]; minus: RGB[]; fuzziness: number; invert: boolean }, scale = 1): { mask: Uint8Array; w: number; h: number; any: boolean } | null {
+    const p = this.current;
+    if (!p) return null;
+    const { width: W, height: H } = p.doc, comp = renderDoc(this.work, p.doc);
+    const w = scale < 1 ? Math.max(1, Math.round(W * scale)) : W, h = scale < 1 ? Math.max(1, Math.round(H * scale)) : H;
+    let src = comp;
+    if (scale < 1) { src = createSurface(w, h); ctxOf(src).drawImage(comp as CanvasImageSource, 0, 0, w, h); }
+    const d = ctxOf(src).getImageData(0, 0, w, h).data, out = new Uint8Array(w * h), f = Math.max(1, o.fuzziness), k = 1 / Math.sqrt(3);
+    const near = (list: RGB[], r: number, g: number, b: number): number => {
+      let best = Infinity;
+      for (const c of list) { const dr = r - c.r, dg = g - c.g, db = b - c.b, dist = Math.sqrt(dr * dr + dg * dg + db * db) * k; if (dist < best) best = dist; }
+      return list.length ? Math.max(0, 1 - best / f) : 0;
+    };
+    let any = false;
+    for (let i = 0, j = 0; i < out.length; i++, j += 4) {
+      const r = d[j], g = d[j + 1], b = d[j + 2], L = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+      let v = o.mode === 'sampled' ? Math.max(0, near(o.plus, r, g, b) - near(o.minus, r, g, b))
+        : o.mode === 'highlights' ? Math.min(1, Math.max(0, (L - 0.55) / 0.2))
+        : o.mode === 'shadows' ? Math.min(1, Math.max(0, (0.45 - L) / 0.2))
+        : Math.min(1, Math.max(0, 1 - Math.abs(L - 0.5) / 0.3));
+      if (o.invert) v = 1 - v;
+      const sx = scale < 1 ? Math.floor((i % w) / scale) : i % w, sy = scale < 1 ? Math.floor(Math.floor(i / w) / scale) : Math.floor(i / w);
+      if (p.selection) v *= p.selection.valueAt(sx, sy) / 255;
+      out[i] = Math.round(v * 255);
+      if (out[i]) any = true;
+    }
+    return { mask: out, w, h, any };
+  }
+
+  selectColorRange(o: Parameters<Engine['colorRangeMask']>[0]): void {
+    const r = this.colorRangeMask(o);
+    if (!r) return;
+    if (!r.any) { this.notice('No pixels matched; nothing was selected.'); return; }
+    this.applySelection(SelectionMask.cropped(0, 0, r.w, r.h, r.mask), 'replace', 'Color Range');
+  }
+
+  /** Quick Selection: brush over an area and the selection grows to it, stopping at edges; it shares the brush size. */
+  quick = { sampleAll: false };
+  setQuick(patch: Partial<Engine['quick']>): void { this.quick = { ...this.quick, ...patch }; this.emit('options', null); }
+  private quickState: { project: Project; data: Uint8ClampedArray; W: number; H: number; base: SelectionMask | null; grown: Uint8Array; box: Rect | null; subtract: boolean; last: Pt | null } | null = null;
+  get quickSelecting(): boolean { return !!this.quickState; }
+
+  beginQuickSelect(pt: Pt, subtract: boolean): void {
+    const p = this.current;
+    if (!p || this.quickState) return;
+    this.settle();
+    const { width: W, height: H } = p.doc;
+    let surface: Surface;
+    if (this.quick.sampleAll) surface = renderDoc(this.work, p.doc);
+    else {
+      const l = p.activeLayer;
+      if (!l?.raster) { this.notice('Quick Selection samples the active pixel layer; turn on Sample all layers to use the whole image.'); return; }
+      surface = createSurface(W, H);
+      const c = ctxOf(surface);
+      setMat(c, placement(l.transform, l.raster.width, l.raster.height));
+      c.drawImage(l.raster.canvas, 0, 0);
+    }
+    this.quickState = { project: p, data: ctxOf(surface).getImageData(0, 0, W, H).data, W, H, base: p.selection, grown: new Uint8Array(W * H), box: null, subtract, last: null };
+    this.quickTo(pt);
+  }
+
+  /** Grows the selection from the brush at `pt`: seeds are the pixels under the brush; a neighbour joins when its colour
+   *  is within tolerance of the brushed colours and the step to it is small, so growth stops at edges; kept within eight
+   *  brush radii of the brush (at least 96 px). The selection shows live; the stroke becomes one undo step when it ends. */
+  quickTo(pt: Pt): void {
+    const q = this.quickState;
+    if (!q) return;
+    const r = Math.max(1, this.brush.diameter / 2);
+    if (q.last && Math.hypot(pt.x - q.last.x, pt.y - q.last.y) < Math.max(1, r / 2)) return;
+    q.last = pt;
+    const { data, W, H, grown } = q, R = Math.max(r * 8, 96);
+    const x0 = Math.max(0, Math.floor(pt.x - R)), x1 = Math.min(W - 1, Math.ceil(pt.x + R)), y0 = Math.max(0, Math.floor(pt.y - R)), y1 = Math.min(H - 1, Math.ceil(pt.y + R));
+    if (x0 > x1 || y0 > y1) return;
+    const seeds: number[] = [], colours: number[][] = [];
+    for (let y = Math.max(0, Math.floor(pt.y - r)); y <= Math.min(H - 1, Math.ceil(pt.y + r)); y++) for (let x = Math.max(0, Math.floor(pt.x - r)); x <= Math.min(W - 1, Math.ceil(pt.x + r)); x++) {
+      if ((x - pt.x) ** 2 + (y - pt.y) ** 2 > r * r) continue;
+      const i = y * W + x;
+      seeds.push(i);
+      if (seeds.length % 3 === 1 && colours.length < 64) colours.push([data[i * 4], data[i * 4 + 1], data[i * 4 + 2]]);
+    }
+    if (!seeds.length) return;
+    const k = 1 / Math.sqrt(3), dist = (a: number, b: number[]): number => Math.hypot(data[a * 4] - b[0], data[a * 4 + 1] - b[1], data[a * 4 + 2] - b[2]) * k;
+    const mean = [0, 1, 2].map((c) => colours.reduce((s, x) => s + x[c], 0) / colours.length), spread = colours.reduce((s, x) => s + Math.hypot(x[0] - mean[0], x[1] - mean[1], x[2] - mean[2]) * k, 0) / colours.length;
+    const tol = Math.max(18, spread * 2.5), step = Math.max(10, tol * 0.6);
+    const seen = new Uint8Array((x1 - x0 + 1) * (y1 - y0 + 1)), at = (i: number): number => ((Math.floor(i / W) - y0) * (x1 - x0 + 1)) + (i % W - x0), stack: number[] = [];
+    for (const i of seeds) { grown[i] = 255; seen[at(i)] = 1; stack.push(i); }
+    while (stack.length) {
+      const i = stack.pop() as number, x = i % W, y = (i - x) / W;
+      for (const n of [x > x0 ? i - 1 : -1, x < x1 ? i + 1 : -1, y > y0 ? i - W : -1, y < y1 ? i + W : -1]) {
+        if (n < 0 || seen[at(n)]) continue;
+        seen[at(n)] = 1;
+        let close = false;
+        for (const c of colours) if (dist(n, c) <= tol) { close = true; break; }
+        if (!close || dist(n, [data[i * 4], data[i * 4 + 1], data[i * 4 + 2]]) > step) continue;
+        grown[n] = 255;
+        stack.push(n);
+      }
+    }
+    const b = q.box, nx0 = b ? Math.min(b.x, x0) : x0, ny0 = b ? Math.min(b.y, y0) : y0, nx1 = b ? Math.max(b.x + b.w - 1, x1) : x1, ny1 = b ? Math.max(b.y + b.h - 1, y1) : y1;
+    q.box = { x: nx0, y: ny0, w: nx1 - nx0 + 1, h: ny1 - ny0 + 1 };
+    const crop = new Uint8Array(q.box.w * q.box.h);
+    for (let y = 0; y < q.box.h; y++) crop.set(grown.subarray((q.box.y + y) * W + q.box.x, (q.box.y + y) * W + q.box.x + q.box.w), y * q.box.w);
+    const stroke = SelectionMask.cropped(q.box.x, q.box.y, q.box.w, q.box.h, crop);
+    q.project.selection = !stroke ? q.base : q.base ? q.base.combine(stroke, q.subtract ? 'subtract' : 'add') : q.subtract ? null : stroke;
+    this.emit('selection', null);
+    this.emit('render', null);
+  }
+
+  endQuickSelect(): void {
+    const q = this.quickState;
+    if (!q) return;
+    this.quickState = null;
+    const result = q.project.selection;
+    q.project.selection = q.base;
+    if (result !== q.base) { if (this.current === q.project) this.applySelection(result, 'replace', 'Quick Selection'); else q.project.selection = result; }
+  }
+
+  cancelQuickSelect(): void {
+    const q = this.quickState;
+    if (!q) return;
+    this.quickState = null;
+    q.project.selection = q.base;
+    this.emit('selection', null);
+    this.emit('render', null);
+  }
+
   magicWand(pt: Pt, mode: SelectionMode): void {
     const p = this.current;
     if (!p) return;

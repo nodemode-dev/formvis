@@ -3,6 +3,7 @@ import { moveTool } from './move';
 import { marqueeTool } from './marquee';
 import { lassoTool } from './lasso';
 import { wandTool } from './wand';
+import { quickSelectTool } from './quick-select';
 import { brushTool } from './brush';
 import { eyedropperTool } from './eyedropper';
 import { handTool } from './hand';
@@ -22,5 +23,5 @@ import { bucketTool } from './bucket';
 import { burnTool, dodgeTool, spongeTool } from './tone';
 
 export function registerBuiltinTools(): void {
-  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+  for (const tool of [moveTool, marqueeTool, lassoTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 }
