@@ -112,6 +112,30 @@ function solveMembrane(v: Float32Array, state: Uint8Array, w: number, h: number)
   }
 }
 
+/** Fills the see-through pixels of straight-alpha `img` (alpha under half) with the smoothest colours that meet the
+ *  visible pixels around them, the same harmonic membrane Spot Healing uses, and makes the whole image opaque: what a
+ *  generative model should see in place of a void. Returns how many pixels were filled; with nothing to fill, or
+ *  nothing visible to fill from, the image is left as it was. */
+export function fillTransparent(img: ImageData): number {
+  const { width: w, height: h, data: d } = img, n = w * h;
+  const v = new Float32Array(n * 4), state = new Uint8Array(n);
+  let holes = 0;
+  for (let p = 0; p < n; p++) {
+    const o = p * 4;
+    if (d[o + 3] < 128) { state[p] = FREE; holes++; continue; }
+    state[p] = FIXED;
+    v[o] = d[o]; v[o + 1] = d[o + 1]; v[o + 2] = d[o + 2]; v[o + 3] = 255;
+  }
+  if (!holes || holes === n) return 0;
+  solveMembrane(v, state, w, h);
+  for (let p = 0; p < n; p++) {
+    const o = p * 4;
+    if (state[p] === FREE) for (let c = 0; c < 3; c++) d[o + c] = Math.round(clamp(v[o + c], 0, 255));
+    d[o + 3] = 255;
+  }
+  return holes;
+}
+
 /** 1 wherever a set cell lies within `r` cells horizontally and vertically (a square dilation, done as two passes). */
 function dilate(set: Uint8Array, w: number, h: number, r: number): Uint8Array {
   const across = new Uint8Array(set.length), out = new Uint8Array(set.length);

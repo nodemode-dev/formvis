@@ -1,5 +1,5 @@
-"""Generative Fill through fal. FLUX.1 Fill [pro] fills the masked area from a prompt; with no prompt, FLUX.1 Erase
-[pro] removes what the mask covers. The fal key comes from FAL_KEY (or FAL_API_KEY) in the environment, or from a
+"""Generative Fill and Upscale through fal. FLUX.1 Fill [pro] fills the masked area from a prompt; with no prompt,
+FLUX.1 Erase [pro] removes what the mask covers; Real-ESRGAN upscales 2 or 4 times. The fal key comes from FAL_KEY (or FAL_API_KEY) in the environment, or from a
 settings file in the sonny data folder that only this user can read; it is never sent back to the app. Requests go
 to fal's synchronous endpoint with the image and mask inline as PNG data URIs, so nothing is uploaded elsewhere first.
 """
@@ -20,6 +20,7 @@ from app.core import config
 
 FILL_MODEL = "fal-ai/flux-pro/v1/fill"
 ERASE_MODEL = "fal-ai/flux-pro/v1/erase"
+UPSCALE_MODEL = "fal-ai/esrgan"
 
 
 class GenerativeError(Exception):
@@ -55,7 +56,7 @@ def _key() -> tuple[str | None, str | None]:
 
 def status() -> dict:
     _, source = _key()
-    return {"configured": source is not None, "source": source, "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL}
+    return {"configured": source is not None, "source": source, "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
 
 
 def save_key(key: str) -> dict:
@@ -142,6 +143,23 @@ def fill(image_png: bytes, mask_png: bytes, prompt: str) -> bytes:
         result = _post(FILL_MODEL, body, key)
     else:
         result = _post(ERASE_MODEL, {"image_url": _data_uri(image_png), "mask_url": _data_uri(mask_png)}, key)
+    return _result_png(result)
+
+
+def upscale(image_png: bytes, scale: int) -> bytes:
+    """`image_png` upscaled `scale` (2 or 4) times with Real-ESRGAN, as PNG."""
+    key, _ = _key()
+    if not key:
+        raise GenerativeError("Add a fal API key to upscale.", 428)
+    if scale not in (2, 4):
+        raise GenerativeError("Upscale by 2 or 4.", 400)
+    _size(image_png)
+    body = {"image_url": _data_uri(image_png), "scale": scale, "model": "RealESRGAN_x4plus", "output_format": "png"}
+    return _result_png(_post(UPSCALE_MODEL, body, key))
+
+
+def _result_png(result: dict) -> bytes:
+    """The first image in a fal result (an `images` list or a single `image`), as PNG."""
     images = result.get("images") or ([result["image"]] if isinstance(result.get("image"), dict) else [])
     if not images or not isinstance(images[0], dict) or not images[0].get("url"):
         raise GenerativeError("fal returned no image.", 502)

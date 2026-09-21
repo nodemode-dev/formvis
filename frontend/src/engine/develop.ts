@@ -3,8 +3,8 @@ import { gaussianBlur } from './filters';
 /** Develop: Camera Raw-style tone, colour and detail adjustments, brought over from formnodal's develop core (the
  *  studio in nodemode-ai's sonny extension for NodeMode, the owner's own code). The per-pixel pass below is
  *  formnodal's as written; clarity, texture and sharpening at the end keep its formulas but blur with sonny's own
- *  Gaussian, so the whole filter runs in the preview worker. formnodal's LICENSES.md names the MIT-licensed reference
- *  its adjustment algorithms derive from; that project's notice belongs in sonny's NOTICE. */
+ *  Gaussian, so the whole filter runs in the preview worker. formnodal is also nodemode-ai's own build; the owner
+ *  confirmed no further notice is needed for it. */
 
 // ------------------------------------------------------------ state types
 

@@ -29,7 +29,7 @@ export type { FilterSettings } from './filter-jobs';
 export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
-import { WarpStroke, contentFill, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
+import { WarpStroke, contentFill, fillTransparent, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
@@ -2160,12 +2160,58 @@ export class Engine {
     this.refresh();
   }
 
-  /** Generative Fill: sends what the document shows around the selection, with the selection grown by three pixels as
-   *  the mask, to `generate`, then places the result as a new layer masked to the selection, in one undo step. An empty
-   *  prompt asks for removal. Returns false when nothing was placed. */
+  /** Generative Fill: paints the selection from `prompt`, or removes what it covers when the prompt is empty, through
+   *  `generate`; the result arrives as a new layer masked to the selection, in one undo step. */
   async generativeFill(prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>): Promise<boolean> {
     const p = this.current, sel = p?.selection;
     if (!p || !sel) { this.notice('Generative Fill needs a selection.'); return false; }
+    return this.fillArea(p, sel, prompt, generate, 'Generative Fill', 'remove');
+  }
+
+  /** Generative Expand: grows the canvas by the margins, then fills the new border from `prompt` (an empty prompt
+   *  extends the scene) as a layer masked to the border. The canvas change and the fill are two undo steps. */
+  async generativeExpand(margins: { left: number; top: number; right: number; bottom: number }, prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>): Promise<boolean> {
+    const p = this.current;
+    if (!p) return false;
+    const side = (v: number): number => Math.max(0, Math.round(Number.isFinite(v) ? v : 0));
+    const left = side(margins.left), top = side(margins.top), right = side(margins.right), bottom = side(margins.bottom);
+    if (!(left + top + right + bottom)) { this.notice('Set how far to expand the canvas.'); return false; }
+    const oldW = p.doc.width, oldH = p.doc.height, W = oldW + left + right, H = oldH + top + bottom;
+    if (!this.resizeCanvas(W, H, left, top, null, 'Generative Expand')) return false;
+    const border = new Uint8Array(W * H).fill(255);
+    for (let y = top; y < top + oldH; y++) border.fill(0, y * W + left, y * W + left + oldW);
+    return this.fillArea(p, new SelectionMask(0, 0, W, H, border), prompt, generate, 'Generative Expand', 'extend');
+  }
+
+  /** Upscale: what the document shows, enlarged `scale` times by `run`, opened as a new document. */
+  async upscaleToDocument(scale: number, run: (image: Blob) => Promise<Blob>): Promise<boolean> {
+    const p = this.current, view = this.flattened();
+    if (!p || !view) return false;
+    const W = p.doc.width * scale, H = p.doc.height * scale;
+    if (W > LIMITS.side || H > LIMITS.side || W * H > LIMITS.pixels) { this.notice(`Upscaled ${scale} times, this image would pass 30,000 px a side or 100 megapixels.`, 'error'); return false; }
+    let result: Blob;
+    try {
+      result = await run(await toBlob(view));
+    } catch (err) {
+      this.notice(err instanceof Error ? err.message : 'Upscale failed.', 'error');
+      return false;
+    }
+    const bitmap = await createImageBitmap(result);
+    const raster = new Raster(W, H);
+    raster.ctx.imageSmoothingQuality = 'high';
+    raster.ctx.drawImage(bitmap, 0, 0, W, H);
+    bitmap.close();
+    raster.touch();
+    const base: Doc = { id: uid(), width: W, height: H, resolution: p.doc.resolution, layers: [] };
+    const layer = { ...newLayer('Background', base), raster };
+    this.addProject({ ...base, layers: [layer] }, `${p.name} ${scale}x`, layer.id);
+    return true;
+  }
+
+  /** Sends what the document shows around `sel` (a quarter of its size again as context, 16 to 256 px), with see-
+   *  through areas pre-filled smoothly and `sel` grown by three pixels as the mask, to `generate`, then places the
+   *  result as a new layer masked to `sel`, unless the document changed meanwhile. */
+  private async fillArea(p: Project, sel: SelectionMask, prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>, undoName: string, emptyName: string): Promise<boolean> {
     const view = this.flattened();
     if (!view) return false;
     const reach = Math.min(256, Math.max(16, Math.round(Math.max(sel.w, sel.h) * 0.25)));
@@ -2174,6 +2220,8 @@ export class Engine {
     if (w < 1 || h < 1) { this.notice('The selection is outside the canvas.'); return false; }
     const context = new Raster(w, h);
     context.ctx.drawImage(view, -x0, -y0);
+    const pixels = context.ctx.getImageData(0, 0, w, h);
+    if (fillTransparent(pixels)) context.ctx.putImageData(pixels, 0, 0);
     const cover = new Raster(w, h);
     cover.ctx.drawImage(sel.surface(), sel.x - x0, sel.y - y0);
     const mask = Raster.filled(w, h, '#000000');
@@ -2182,10 +2230,10 @@ export class Engine {
     try {
       result = await generate(await toBlob(context.canvas), await toBlob(mask.canvas));
     } catch (err) {
-      this.notice(err instanceof Error ? err.message : 'Generative Fill failed.', 'error');
+      this.notice(err instanceof Error ? err.message : `${undoName} failed.`, 'error');
       return false;
     }
-    if (this.current !== p) { this.notice('The document changed while generating, so the fill was not placed.', 'error'); return false; }
+    if (this.current !== p) { this.notice(`The document changed while generating, so the ${undoName} result was not placed.`, 'error'); return false; }
     const bitmap = await createImageBitmap(result);
     const layer = new Raster(w, h);
     layer.ctx.imageSmoothingQuality = 'high';
@@ -2193,8 +2241,8 @@ export class Engine {
     bitmap.close();
     layer.touch();
     cover.touch();
-    const name = `Generative Fill: ${prompt.trim() || 'remove'}`;
-    this.insertRasterLayer(layer, name.length > 60 ? `${name.slice(0, 57)}...` : name, x0, y0, { mask: { raster: cover, enabled: true, linked: true, placement: null } }, 'Generative Fill');
+    const name = `${undoName}: ${prompt.trim() || emptyName}`;
+    this.insertRasterLayer(layer, name.length > 60 ? `${name.slice(0, 57)}...` : name, x0, y0, { mask: { raster: cover, enabled: true, linked: true, placement: null } }, undoName);
     return true;
   }
 

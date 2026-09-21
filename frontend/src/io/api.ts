@@ -9,7 +9,7 @@ export interface Capabilities {
 export interface LibraryItem { name: string; modified: number; size: number }
 export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string> }
 export interface FilePart { name: string; blob: Blob }
-export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; fillModel: string; eraseModel: string }
+export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; fillModel: string; eraseModel: string; upscaleModel: string }
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -55,6 +55,13 @@ export const api = {
     f.append('mask', mask, 'mask.png');
     f.append('prompt', prompt);
     return (await request('/generative/fill', { method: 'POST', body: f })).blob();
+  },
+  /** `image` upscaled 2 or 4 times. */
+  async upscale(image: Blob, scale: number): Promise<Blob> {
+    const f = new FormData();
+    f.append('image', image, 'image.png');
+    f.append('scale', String(scale));
+    return (await request('/generative/upscale', { method: 'POST', body: f })).blob();
   },
   async decode(file: Blob, name: string): Promise<Blob> {
     return (await request('/io/decode', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).blob();

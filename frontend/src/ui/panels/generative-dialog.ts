@@ -3,11 +3,25 @@ import { api, type GenerativeStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 
-/** Edit > Generative Fill: a prompt for what to paint into the selection, sent by the sonny engine to fal (FLUX.1
- *  Fill [pro]); an empty prompt removes what the selection covers (FLUX.1 Erase [pro]). Until a key is saved the dialog
- *  asks for one; the engine keeps it in its data folder and never hands it back to the page. */
+type Mode = 'fill' | 'expand' | 'upscale';
+
+const TITLES: Record<Mode, string> = { fill: 'Generative Fill', expand: 'Generative Expand', upscale: 'Upscale' };
+const HINTS: Record<Mode, string> = {
+  fill: 'The result arrives as a new layer masked to the selection. fal charges about $0.05 per megapixel of the area sent.',
+  expand: 'The canvas grows by these margins and the new border is filled as a layer masked to it; leave the prompt empty to extend the scene. fal charges about $0.05 per megapixel.',
+  upscale: 'Real-ESRGAN on fal enlarges what the document shows and opens it as a new document, for a fraction of a cent per image.',
+};
+
+/** Generative Fill, Generative Expand and Upscale, sent by the sonny engine to fal: FLUX.1 Fill [pro] with a
+ *  prompt, FLUX.1 Erase [pro] without one, Real-ESRGAN to upscale. Until a key is saved the dialog asks for one; the
+ *  engine keeps it in its data folder and never hands it back to the page. */
 export class GenerativeDialog extends Dialog {
-  private readonly prompt = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="true" placeholder="Describe what to add, or leave empty to remove">');
+  private mode: Mode = 'fill';
+  private scale = 2;
+  private readonly prompt = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="true">');
+  private readonly margin = { left: this.number(), top: this.number(), right: this.number(), bottom: this.number() };
+  private readonly marginRows: HTMLElement;
+  private readonly hint = el('<p class="cv-note"></p>');
   private readonly keyRow = el('<div class="cv-panel-section"></div>');
   private readonly key = el<HTMLInputElement>('<input class="cv-input" type="password" autocomplete="off" spellcheck="false" placeholder="fal API key">');
   private readonly state = el('<p class="cv-note"></p>');
@@ -17,7 +31,15 @@ export class GenerativeDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Generative Fill', 440);
     this.body.appendChild(this.prompt);
-    this.body.appendChild(el('<p class="cv-note">The result arrives as a new layer masked to the selection. fal charges about $0.05 per megapixel of the area sent.</p>'));
+    this.marginRows = el('<div class="cv-panel-section"></div>');
+    this.body.appendChild(this.marginRows);
+    for (const [label, input] of [['Left (px)', this.margin.left], ['Top (px)', this.margin.top], ['Right (px)', this.margin.right], ['Bottom (px)', this.margin.bottom]] as const) {
+      const row = el('<label class="cv-field"><span></span></label>');
+      setText(row.firstElementChild as HTMLElement, label);
+      row.appendChild(input);
+      this.marginRows.appendChild(row);
+    }
+    this.body.appendChild(this.hint);
     this.keyRow.append(this.key, el('<p class="cv-note">Get a key at fal.ai. The sonny engine keeps it in its data folder on this computer.</p>'));
     this.body.appendChild(this.keyRow);
     this.body.appendChild(this.state);
@@ -26,12 +48,23 @@ export class GenerativeDialog extends Dialog {
     this.button('Generate', 'primary', () => void this.generate());
   }
 
-  async show(): Promise<void> {
+  private number(): HTMLInputElement {
+    return el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="30000" step="1" value="0">');
+  }
+
+  /** Opens the dialog for Generative Fill, Generative Expand or Upscale (`scale` 2 or 4). */
+  async show(mode: Mode = 'fill', scale = 2): Promise<void> {
+    this.mode = mode;
+    this.scale = scale;
+    this.setTitle(mode === 'upscale' ? `Upscale ${scale}x` : TITLES[mode]);
+    this.prompt.placeholder = mode === 'expand' ? 'Describe the surroundings, or leave empty to extend the scene' : 'Describe what to add, or leave empty to remove';
+    setHidden(this.prompt, mode === 'upscale');
+    setHidden(this.marginRows, mode !== 'expand');
+    setText(this.hint, HINTS[mode]);
     this.status = await api.generativeStatus();
     this.sync();
     this.open();
-    this.prompt.focus();
-    this.prompt.select();
+    if (mode !== 'upscale') { this.prompt.focus(); this.prompt.select(); }
   }
 
   private sync(): void {
@@ -56,8 +89,12 @@ export class GenerativeDialog extends Dialog {
       this.key.value = '';
       this.sync();
     }
-    const prompt = this.prompt.value;
+    const prompt = this.prompt.value, mode = this.mode, scale = this.scale, e = this.engine;
+    const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
     this.close();
-    await this.engine.task(() => this.engine.generativeFill(prompt, (image, mask) => api.generativeFill(image, mask, prompt)));
+    const fill = (image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt);
+    if (mode === 'upscale') await e.task(() => e.upscaleToDocument(scale, (image) => api.upscale(image, scale)));
+    else if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
+    else await e.task(() => e.generativeFill(prompt, fill));
   }
 }

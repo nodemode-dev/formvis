@@ -451,6 +451,9 @@ export function startApp(): void {
     { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Alt+Mod+T', 'Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
     { id: 'content-fill', label: 'Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
     { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: () => void dialogs.generative.show() },
+    { id: 'generative-expand', label: 'Generative Expand...', enabled: has, run: () => void dialogs.generative.show('expand') },
+    { id: 'upscale-2x', label: 'Upscale 2x...', enabled: has, run: () => void dialogs.generative.show('upscale', 2) },
+    { id: 'upscale-4x', label: 'Upscale 4x...', enabled: has, run: () => void dialogs.generative.show('upscale', 4) },
     { id: 'mask-black', label: "Mask's Black Areas", enabled: () => !!layer()?.mask, run: () => engine.selectMaskBlack() },
     { id: 'expand', label: () => `Expand by ${engine.selectionAmounts.expand} px...`, enabled: selected, run: () => dialogs.amount.show(true) },
     { id: 'contract', label: () => `Contract by ${engine.selectionAmounts.contract} px...`, enabled: selected, run: () => dialogs.amount.show(false) },
@@ -465,7 +468,7 @@ export function startApp(): void {
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', '-', 'transform', '-', 'settings'] },
-    { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'image-size', '-', 'flip-canvas-h', 'flip-canvas-v'] },
+    { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract'] },
     { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
