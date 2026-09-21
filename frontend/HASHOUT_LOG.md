@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/io/zip.ts
+
+### src/io/zip.ts · new · _v0.44.0
+
+A dependency-free ZIP writer, stored, UTF-8 names. Nothing was removed.
+
+## src/ui/panels/actions-dialogs.ts
+
+### src/ui/panels/actions-dialogs.ts · new · _v0.44.0
+
+The Actions and Batch dialogs. Nothing was removed.
+
+## src/ui/actions.ts
+
+### src/ui/actions.ts · new · _v0.44.0
+
+The actions store: recordable commands, steps checked on the way in, storage, playback. Nothing was removed.
+
 ## src/extensions/tools/direct-select.ts
 
 ### src/extensions/tools/direct-select.ts · new · _v0.43.0
@@ -622,6 +640,16 @@ Make Selection from Path (Mod+Enter) in Select, Fill Path and Stroke Path in Edi
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract'] },
 ```
 
+### src/app.ts · Actions and Batch · _v0.44.0
+
+Recording hooks, playback, batch to zip, File menu entries; the image-import input is marked for the harness. Removed:
+
+```ts
+  const imageInput = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" hidden>`);
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+  if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands };
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1180,6 +1208,10 @@ The Work Path per open document; Make Selection, Fill Path, Stroke Path and Dele
 ```ts
 import { Raster, createSurface, ctxOf, toBlob, type Surface } from './surface';
 ```
+
+### src/engine/index.ts · openImage · _v0.44.0
+
+A document holding one image as its one layer, for Batch. Nothing was removed.
 
 ## src/engine/develop.ts
 
@@ -1978,6 +2010,10 @@ The app mark (the desktop icon and favicon artwork) as inline SVG: the source's 
 
 Created in _v0.1.0.
 
+### src/ui/commands.ts · onRun · _v0.44.0
+
+A hook after each command runs, for recording. Nothing was removed.
+
 ## src/ui/dialogs.ts
 
 ### src/ui/dialogs.ts · Dialog.open · _v0.1.0
@@ -2271,6 +2307,10 @@ Sixteen sliders in Light, Colour, Effects and Detail groups, built from one tabl
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask';
 ```
 
+### src/ui/panels/filter-panel.ts · onApplied, applySettings · _v0.44.0
+
+Records applied filters and replays them without the dialog. Nothing was removed.
+
 ## src/ui/panels/jpeg-dialog.ts
 
 ### src/ui/panels/jpeg-dialog.ts · JpegDialog · _v0.6.0
@@ -2288,6 +2328,15 @@ the alert for deleting a layer that other layers are clipped to (their live mask
 ### src/ui/panels/size-dialogs.ts · CanvasSizeDialog, ImageSizeDialog, AmountDialog · _v0.2.0
 
 Canvas Size with the anchor offset formula and extension fill, Image Size with constrain, resolution and resampling, and the Expand and Contract amount dialog that remembers its amounts.
+
+### src/ui/panels/size-dialogs.ts · onApplied · _v0.44.0
+
+Records Image and Canvas Size changes. Removed:
+
+```ts
+    if (this.engine.resizeCanvas(W, H, dx, dy, colors[choice] ?? null)) this.close();
+    if (this.engine.resampleImage(this.w, this.h, this.sampling, this.res)) this.close();
+```
 
 ## src/ui/rail.ts
 

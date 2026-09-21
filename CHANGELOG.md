@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.44.0 · 2026-09-21
+
+### Added
+
+- File > Actions: record what you do into a named action, play it on any document, and export or import it as JSON.
+- File > Batch: play an action on a set of images and download the results as one zip.
+
 ## 0.43.0 · 2026-09-21
 
 ### Added
