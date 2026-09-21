@@ -2,6 +2,12 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.36.0 · 2026-09-21
+
+### Added
+
+- Filter > Develop (Shift+Cmd+A): Camera Raw-style Exposure, Contrast, Highlights, Shadows, Whites, Blacks, Temperature, Tint, Vibrance, Saturation, Dehaze, Vignette, Grain, Clarity, Texture and Sharpening, brought over from formnodal's develop studio and previewed without freezing the window.
+
 ## 0.35.0 · 2026-09-21
 
 ### Changed

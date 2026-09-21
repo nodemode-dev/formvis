@@ -386,6 +386,14 @@ Filter > Unsharp Mask joins the menu. The 0.31.0 attribution sweep had collapsed
 const FILTERS: FilterKind[] = ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection'];
 ```
 
+### src/app.ts · Filter > Develop · _v0.36.0
+
+Develop leads the Filter menu on Shift+Mod+A. Removed:
+
+```ts
+const FILTERS: FilterKind[] = ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'unsharpMask'];
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -491,6 +499,14 @@ One long-lived module worker with numbered jobs, pixels transferred in and out, 
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection';
 ```
 
+### src/engine/filter-jobs.ts · develop · _v0.36.0
+
+`FilterSettings` carries the Develop state. Removed:
+
+```ts
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask';
+```
+
 ## src/engine/filter-worker.ts
 
 ### src/engine/filter-worker.ts · filter worker · _v0.26.0
@@ -504,6 +520,10 @@ The worker runs Unsharp Mask too. Removed:
 ```ts
 import { addNoise, gaussianBlur, lensDistort, motionBlur } from './filters';
 ```
+
+### src/engine/filter-worker.ts · develop · _v0.36.0
+
+The worker runs Develop. Nothing was removed.
 
 ## src/engine/events.ts
 
@@ -791,6 +811,12 @@ The render event carries `Rect | null`; a stroke frame reports the document boun
 ```ts
     if (st.s.compose()) this.emit('render', null);
 ```
+
+## src/engine/develop.ts
+
+### src/engine/develop.ts · new · _v0.36.0
+
+formnodal's develop core from the owner's sonny extension for NodeMode: the per-pixel pass as written, en and em dashes in comments normalised; `detailPass`, `clarityPass` and `developImage` keep formnodal's detail formulas with sonny's Gaussian in place of a canvas blur filter. Nothing was removed.
 
 ## src/engine/kernels.ts
 
@@ -1701,6 +1727,14 @@ Amount, Radius and Threshold sliders and the `run` branch. Removed:
 
 ```ts
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection';
+```
+
+### src/ui/panels/filter-panel.ts · Develop section · _v0.36.0
+
+Sixteen sliders in Light, Colour, Effects and Detail groups, built from one table. Removed:
+
+```ts
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask';
 ```
 
 ## src/ui/panels/jpeg-dialog.ts
