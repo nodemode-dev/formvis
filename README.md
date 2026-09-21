@@ -122,7 +122,7 @@ Version 0.36.0 has all 14 tools complete (Smear's Blur now works on masks too) a
 
 ## Acknowledgements
 
-Some inspiration was drawn from the reference app by its authors. sonny is an independent build and uses no code from it; it supports the reference app `.ref` project files, reading and writing them.
+sonny began as a port of the reference app by its authors, with thanks. Parts of its code are still derived from the reference app and are used under the MIT License; the notice is in `.docs/REFERENCE_NOTICE.md`. sonny reads and writes the reference app `.ref` project files.
 
 ## Licensing
 

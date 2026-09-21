@@ -9,6 +9,7 @@ export interface Capabilities {
 export interface LibraryItem { name: string; modified: number; size: number }
 export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string> }
 export interface FilePart { name: string; blob: Blob }
+export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; fillModel: string; eraseModel: string }
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -37,6 +38,23 @@ function form(fields: Record<string, string>, files: FilePart[] = [], key = 'fil
 export const api = {
   async capabilities(): Promise<Capabilities | null> {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
+  },
+  async generativeStatus(): Promise<GenerativeStatus | null> {
+    try { return (await (await request('/generative/status')).json()) as GenerativeStatus; } catch { return null; }
+  },
+  async saveGenerativeKey(key: string): Promise<GenerativeStatus> {
+    return (await (await request('/generative/key', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) })).json()) as GenerativeStatus;
+  },
+  async forgetGenerativeKey(): Promise<GenerativeStatus> {
+    return (await (await request('/generative/key', { method: 'DELETE' })).json()) as GenerativeStatus;
+  },
+  /** The filled image for `image` with white in `mask` marking what to fill; an empty prompt removes. */
+  async generativeFill(image: Blob, mask: Blob, prompt: string): Promise<Blob> {
+    const f = new FormData();
+    f.append('image', image, 'image.png');
+    f.append('mask', mask, 'mask.png');
+    f.append('prompt', prompt);
+    return (await request('/generative/fill', { method: 'POST', body: f })).blob();
   },
   async decode(file: Blob, name: string): Promise<Blob> {
     return (await request('/io/decode', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).blob();

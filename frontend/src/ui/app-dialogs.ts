@@ -1,3 +1,4 @@
+import { REFERENCE_NOTICE } from './notices';
 import type { Engine } from '../engine';
 import { api, type Capabilities, type LibraryItem } from '../io/api';
 import { PROJECT_ACCEPT } from '../io/images';
@@ -253,6 +254,10 @@ export class AboutDialog extends Dialog {
     this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system.</p>'));
     this.body.appendChild(this.engineLine);
     this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 nodemode-ai.</p>'));
+    this.body.appendChild(el('<p class="cv-note">sonny began as a port of the reference app by its authors. Parts derived from it are used under the MIT License:</p>'));
+    const notice = el('<pre class="cv-notice"></pre>');
+    setText(notice, REFERENCE_NOTICE);
+    this.body.appendChild(notice);
     this.button('Close', 'primary', () => this.close());
   }
 

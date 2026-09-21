@@ -2160,6 +2160,44 @@ export class Engine {
     this.refresh();
   }
 
+  /** Generative Fill: sends what the document shows around the selection, with the selection grown by three pixels as
+   *  the mask, to `generate`, then places the result as a new layer masked to the selection, in one undo step. An empty
+   *  prompt asks for removal. Returns false when nothing was placed. */
+  async generativeFill(prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>): Promise<boolean> {
+    const p = this.current, sel = p?.selection;
+    if (!p || !sel) { this.notice('Generative Fill needs a selection.'); return false; }
+    const view = this.flattened();
+    if (!view) return false;
+    const reach = Math.min(256, Math.max(16, Math.round(Math.max(sel.w, sel.h) * 0.25)));
+    const x0 = Math.max(0, sel.x - reach), y0 = Math.max(0, sel.y - reach);
+    const w = Math.min(p.doc.width, sel.x + sel.w + reach) - x0, h = Math.min(p.doc.height, sel.y + sel.h + reach) - y0;
+    if (w < 1 || h < 1) { this.notice('The selection is outside the canvas.'); return false; }
+    const context = new Raster(w, h);
+    context.ctx.drawImage(view, -x0, -y0);
+    const cover = new Raster(w, h);
+    cover.ctx.drawImage(sel.surface(), sel.x - x0, sel.y - y0);
+    const mask = Raster.filled(w, h, '#000000');
+    for (let dy = -3; dy <= 3; dy++) for (let dx = -3; dx <= 3; dx++) if (dx * dx + dy * dy <= 9) mask.ctx.drawImage(cover.canvas, dx, dy);
+    let result: Blob;
+    try {
+      result = await generate(await toBlob(context.canvas), await toBlob(mask.canvas));
+    } catch (err) {
+      this.notice(err instanceof Error ? err.message : 'Generative Fill failed.', 'error');
+      return false;
+    }
+    if (this.current !== p) { this.notice('The document changed while generating, so the fill was not placed.', 'error'); return false; }
+    const bitmap = await createImageBitmap(result);
+    const layer = new Raster(w, h);
+    layer.ctx.imageSmoothingQuality = 'high';
+    layer.ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    layer.touch();
+    cover.touch();
+    const name = `Generative Fill: ${prompt.trim() || 'remove'}`;
+    this.insertRasterLayer(layer, name.length > 60 ? `${name.slice(0, 57)}...` : name, x0, y0, { mask: { raster: cover, enabled: true, linked: true, placement: null } }, 'Generative Fill');
+    return true;
+  }
+
   contentAwareFill(): void {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Content-Aware Fill needs a selection.'); return; }
