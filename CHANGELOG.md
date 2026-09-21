@@ -2,6 +2,12 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.51.0 · 2026-09-21
+
+### Added
+
+- Actions record adjustments with their settings, applied to the image or as a new adjustment layer, and replay them without opening a dialog.
+
 ## 0.50.0 · 2026-09-21
 
 ### Added

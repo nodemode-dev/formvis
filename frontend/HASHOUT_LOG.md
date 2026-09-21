@@ -132,6 +132,14 @@ export interface Action { name: string; steps: ActionStep[] }
     return [{ name: (a as Action).name.slice(0, 80) || 'Action', steps }];
 ```
 
+### src/ui/actions.ts · adjustment steps · _v0.51.0
+
+The adjustment step and its check on import. Removed:
+
+```ts
+import type { RGB } from '../engine';
+```
+
 ## src/extensions/tools/direct-select.ts
 
 ### src/extensions/tools/direct-select.ts · new · _v0.43.0
@@ -887,6 +895,15 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, 
 ### src/app.ts · tween · _v0.50.0
 
 The Tween dialog and command. Nothing was removed.
+
+### src/app.ts · adjustments in Actions · _v0.51.0
+
+Recording and replaying adjustment steps; new adjustment layers are marked as made. Removed:
+
+```ts
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface } from './engine';
+    ...ADJUSTMENT_KINDS.map((kind) => ({ id: `new-adj-${kind}`, label: `New ${ADJUSTMENT_LABELS[kind]} Layer...`, enabled: has, run: () => { const id = engine.addAdjustmentLayer(kind); if (id) dialogs.adjust.openForLayer(id); } })),
+```
 
 ## src/engine/adjust.ts
 
@@ -2731,6 +2748,15 @@ Removed, the Hue/Saturation rows:
 
 ```ts
 import { el, setHidden } from '../dom';
+```
+
+### src/ui/panels/adjust-panel.ts · onApplied, applySettings · _v0.51.0
+
+Reports applied adjustments for recording and replays them without the dialog. Removed:
+
+```ts
+  openForLayer(id: ID): void {
+    if (this.mode === 'layer') this.engine.commitLive();
 ```
 
 ## src/ui/panels/background-panel.ts
