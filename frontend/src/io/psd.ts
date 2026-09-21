@@ -1,6 +1,6 @@
 import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, UnitsValue } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects,
+  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec,
 } from '../engine';
 import { maskEdgeTone } from '../engine/distort';
 
@@ -151,6 +151,17 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
   return effectsActive(fx) ? fx : null;
 }
 
+/** Photoshop's PostScript names for sonny's type families; bold and italic travel as Photoshop's faux styles. */
+const PS_FONT: Record<string, string> = { Inter: 'Inter-Regular', Arial: 'ArialMT', Helvetica: 'Helvetica', Georgia: 'Georgia', 'Times New Roman': 'TimesNewRomanPSMT', 'Courier New': 'CourierNewPSMT', Verdana: 'Verdana', 'Trebuchet MS': 'TrebuchetMS', Impact: 'Impact', serif: 'TimesNewRomanPSMT', 'sans-serif': 'ArialMT', monospace: 'CourierNewPSMT' };
+
+/** The sonny family a Photoshop font name belongs to, by its PostScript name or its family part. */
+function familyOf(psName: string): { family: string; bold: boolean; italic: boolean } {
+  const known = Object.entries(PS_FONT).find(([fam, ps]) => ps === psName && fam !== 'serif' && fam !== 'sans-serif' && fam !== 'monospace');
+  const bare = psName.replace(/-(Bold|Italic|BoldItalic|Regular|Oblique|BoldOblique)?(MT|PSMT)?$/i, '').replace(/(PSMT|MT)$/, '');
+  const guess = TEXT_FONTS.find((f) => f.replace(/\s+/g, '').toLowerCase() === bare.replace(/\s+/g, '').toLowerCase());
+  return { family: known?.[0] ?? guess ?? psName, bold: /bold/i.test(psName), italic: /italic|oblique/i.test(psName) };
+}
+
 export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null }> {
   const { readPsd } = await import('ag-psd');
   const psd = readPsd(await file.arrayBuffer(), { skipThumbnail: true });
@@ -216,7 +227,19 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
           if (plc.filter) notes.push(`"${name}" has Photoshop smart filters; they stay applied in its pixels and are not editable here.`);
         } else notes.push(`"${name}" is a smart object whose contents sonny cannot read; it opened as pixels.`);
       }
-      if (pl.text) notes.push(`"${name}" is type in Photoshop; it opened as pixels.`);
+      const tx = pl.text;
+      if (tx && typeof tx.text === 'string') {
+        // Photoshop type opens as editable sonny type: Photoshop's pixels until it is edited, then sonny's.
+        const st = tx.style ?? {}, m = tx.transform ?? [1, 0, 0, 1, 0, 0], scale = Math.hypot(m[2] ?? 0, m[3] ?? 1) || 1, face = familyOf(st.font?.name ?? 'ArialMT');
+        const col = st.fillColor as Record<string, number> | undefined, just = tx.paragraphStyle?.justification;
+        const size = Math.max(1, Math.round((st.fontSize ?? 12) * scale * 100) / 100);
+        const spec: TextSpec = { content: tx.text.replace(/\r/g, '\n'), family: face.family, size, color: col && typeof col.r === 'number' ? { r: Math.round(col.r), g: Math.round(col.g), b: Math.round(col.b) } : col && typeof col.fr === 'number' ? { r: Math.round(col.fr * 255), g: Math.round(col.fg * 255), b: Math.round(col.fb * 255) } : { r: 0, g: 0, b: 0 },
+          align: just === 'center' || just === 'right' ? just : 'left', bold: !!st.fauxBold || face.bold, italic: !!st.fauxItalic || face.italic, lineHeight: st.autoLeading === false && st.leading ? Math.round((st.leading * scale / size) * 100) / 100 : 1.2 };
+        layer.text = { ...spec, rendered: textKey(raster) };
+        if ((tx.styleRuns?.length ?? 0) > 1) notes.push(`"${name}" mixes type styles; sonny keeps the first for the whole text.`);
+        const warped = !!tx.warp?.style && tx.warp.style !== 'none';
+        if (tx.shapeType === 'box' || warped) notes.push(`"${name}" is ${warped ? 'warped' : 'paragraph'} type in Photoshop; sonny edits it as plain point type.`);
+      }
       if (pl.effects) { const fx = fromPsdEffects(pl.effects, psd.patterns, name, notes); if (fx) layer.effects = fx; }
       if (pl.clipping && base) layer.clipId = base.id;
       else base = layer;
@@ -253,10 +276,20 @@ export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ byte
     if (!l.raster) return null;
     const px = placed(l.raster, l.transform);
     if (!px) return null;
-    if (liveText(l)) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as editable type.`);
+
 
     const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId };
     if (effectsActive(l.effects)) { const e = toPsdEffects(l.effects, psdPatterns); if (e) out.effects = e; }
+    if (liveText(l) && l.text && l.raster) {
+      // Live type goes as Photoshop point type: anchored where sonny anchors it, on the first line's baseline, the
+      // layer's placement carried into the text transform so moved, scaled or rotated type lands the same.
+      const t = l.text, r = renderText(t), pm = placement(l.transform, l.raster.width, l.raster.height);
+      const ax = t.align === 'center' ? r.raster.width / 2 : t.align === 'right' ? r.raster.width - r.pad : r.pad, at = applyMat(pm, ax * (l.raster.width / r.raster.width), r.baseline * (l.raster.height / r.raster.height));
+      const k = Math.hypot(pm[2], pm[3]) * (l.raster.height / r.raster.height) || 1;
+      out.text = { text: t.content.replace(/\n/g, '\r'), transform: [pm[0] / k * (l.raster.width / r.raster.width), pm[1] / k * (l.raster.width / r.raster.width), pm[2] / k * (l.raster.height / r.raster.height), pm[3] / k * (l.raster.height / r.raster.height), at.x, at.y],
+        style: { font: { name: PS_FONT[t.family] ?? t.family.replace(/\s+/g, '') }, fontSize: t.size * k, fauxBold: t.bold, fauxItalic: t.italic, fillColor: t.color, autoLeading: false, leading: t.size * t.lineHeight * k },
+        paragraphStyle: { justification: t.align }, shapeType: 'point' };
+    }
     const embed = l.smart ? sources.get(l.id) : undefined;
     if (l.smart && embed && l.raster) {
       // A smart object goes as a Photoshop placed layer: its source embedded as PNG, its corners where it sits.
