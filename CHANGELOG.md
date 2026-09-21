@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.59.0 · 2026-09-21
+
+### Added
+
+- The Bevel and Emboss layer style: Inner Bevel, Outer Bevel, Emboss and Pillow Emboss, with depth, direction, size, soften, angle, altitude, and highlight and shadow colours and opacities.
+- Animation frames keep each layer's style, so a style can appear in some frames and not others.
+
 ## 0.58.0 · 2026-09-21
 
 ### Added

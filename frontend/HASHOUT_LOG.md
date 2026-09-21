@@ -89,6 +89,19 @@ Frames drag to a new place; the Tween button. Removed:
 
 Frames, their capture and application, and checked reading. Nothing was removed.
 
+### src/engine/timeline.ts · frame styles · _v0.59.0
+
+Frames capture, apply and read back each layer's style. Removed:
+
+```ts
+import { uid, type Doc, type ID, type Layer } from './types';
+export interface FrameLayer { visible: boolean; opacity: number; x: number; y: number }
+  for (const l of doc.layers) out[l.id] = { visible: l.visible, opacity: l.opacity, x: l.transform.x, y: l.transform.y };
+    if (!s || (s.visible === l.visible && s.opacity === l.opacity && s.x === l.transform.x && s.y === l.transform.y)) return l;
+    return { ...l, visible: s.visible, opacity: s.opacity, transform: { ...l.transform, x: s.x, y: s.y } };
+      if (s && typeof s.visible === 'boolean' && finite(s.opacity) && finite(s.x) && finite(s.y)) state[id] = { visible: s.visible, opacity: Math.min(1, Math.max(0, s.opacity)), x: s.x, y: s.y };
+```
+
 ## src/io/gif.ts
 
 ### src/io/gif.ts · new · _v0.48.0
@@ -410,6 +423,14 @@ The Gradient Overlay section. Removed:
 
 ```ts
 /** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow and Color Overlay for the
+```
+
+### src/ui/panels/layer-style-dialog.ts · Bevel and Emboss · _v0.59.0
+
+The Bevel & Emboss section and a choice helper. Removed:
+
+```ts
+/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Color Overlay and Gradient Overlay for the
 ```
 
 ## src/ui/panels/generative-dialog.ts
@@ -1195,6 +1216,15 @@ import { IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, 
 
 The gradient painted beneath Color Overlay, kept to the silhouette. Nothing was removed.
 
+### src/engine/renderer.ts · Bevel and Emboss · _v0.59.0
+
+Height-map shading kept by style, above the other inner effects; the effect reach covers it. Removed:
+
+```ts
+    const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow, co = fx.colorOverlay;
+    const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) * scale + 2;
+```
+
 ## src/engine/distort.ts
 
 ### src/engine/distort.ts · DistortWarp port · _v0.21.0
@@ -1845,6 +1875,14 @@ Snapshot sizes and their budget; trim and revealAll. Removed:
     const list = this.historySnapshots.get(p) ?? [];
 ```
 
+### src/engine/index.ts · frame styles · _v0.59.0
+
+Selecting a frame applies styles; tweens carry the first frame's. Removed:
+
+```ts
+      target.forEach((l, i) => { const now = q.doc.layers[i]; if (l !== now && now?.id === l.id) q.updateLayer(l.id, { visible: l.visible, opacity: l.opacity, transform: l.transform }); });
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -2094,6 +2132,16 @@ The effect type, its defaults and checked reading. Removed:
 export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect }
   return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled);
   const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay');
+```
+
+### src/engine/types.ts · Bevel and Emboss · _v0.59.0
+
+The effect type, its defaults and checked reading. Removed:
+
+```ts
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect }
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled);
+  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay'), go = part('gradientOverlay');
 ```
 
 ## src/engine/viewport.ts

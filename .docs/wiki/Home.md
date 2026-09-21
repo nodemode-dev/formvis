@@ -16,6 +16,6 @@ sonny is a layered image editor for the web and the desktop, built in the NodeMo
 | [Verification](Verification) | The throttled browser procedure every UI change passes |
 | [Releasing](Releasing) | Signing, notarization and updater secrets, and cutting a desktop release |
 
-Status at 0.58.0: all 14 tools and all 59 web-relevant menu commands are complete, the plan's Phase 5 (selections) is closed, and Phase 3 (layers) is in progress; the README's Status section and `CHANGELOG.md` list what each release added and what is not built yet.
+Status at 0.59.0: all 14 tools and all 59 web-relevant menu commands are complete, the plan's Phase 5 (selections) is closed, and Phase 3 (layers) is in progress; the README's Status section and `CHANGELOG.md` list what each release added and what is not built yet.
 
 These pages are the source of truth in the repository under `.docs/wiki/`. Edit them there; the wiki workflow publishes them.
