@@ -1,5 +1,5 @@
 import {
-  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, type PathSet,
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet,
 } from '../engine';
 import type { FilePart } from './api';
 
@@ -52,6 +52,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   for (const l of doc.layers) {
     const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
     if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
+    if (l.vector) r.vector = { fill: l.vector.fill, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.smart && !l.isGroup) {
       const name = `${l.id}.source.png`;
       files.push({ name, blob: await toBlob(l.smart.source.canvas) });
@@ -116,6 +117,7 @@ export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: 
       else { rename.set(str(r.imageFile) as string, `${id}.png`); out.imageFile = `${id}.png`; }
     }
     if (str(r.maskFile)) { rename.set(str(r.maskFile) as string, `${id}.mask.png`); out.maskFile = `${id}.mask.png`; }
+    if (r.vector) { delete out.vector; notes.push(`"${name || 'Layer'}" goes as pixels; .ref projects have no shape layers.`); }
     if (str(r.smartSourceFile)) {
       drop.add(str(r.smartSourceFile) as string);
       delete out.smartSourceFile;
@@ -159,6 +161,9 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const image = bitmaps.get(str(r.imageFile) ?? '');
     const raster = image ? Raster.from(image, image.width, image.height) : null;
     const sourceImage = bitmaps.get(str(r.smartSourceFile) ?? '');
+    const vp = r.vector && typeof r.vector === 'object' ? pathFrom(r.vector) : null, vf = obj(obj(r.vector).fill), vo = obj(obj(r.vector).origin);
+    const vector = raster && vp && [vf.r, vf.g, vf.b, vo.x, vo.y].every((v) => typeof v === 'number' && Number.isFinite(v))
+      ? { path: vp, fill: { r: num(vf.r, 0), g: num(vf.g, 0), b: num(vf.b, 0) }, origin: { x: num(vo.x, 0), y: num(vo.y, 0) } } : null;
     const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart) } : null;
     const maskImage = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskImage
@@ -169,7 +174,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     return {
       id: str(r.id) ?? uid(), name: str(r.name) ?? 'Layer', raster, transform: transformFrom(r.transform, raster?.width ?? width, raster?.height ?? height),
       visible: r.isVisible !== false, parentId: str(r.parentID), isGroup: r.isGroup === true, opacity: clamp(num(r.opacity, 1), 0, 1),
-      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
     };
   });
   for (const b of bitmaps.values()) b.close();

@@ -111,6 +111,8 @@ export class FilterPanel extends Dialog {
 
   show(kind: FilterKind): void {
     if (this.isOpen) return;
+    const al = this.engine.current?.activeLayer;
+    if (al?.vector && !(this.engine.current?.maskTarget && al.mask)) { toast('This is a shape layer. Rasterize it (Layer > Rasterize Layer) to filter its pixels.'); return; }
     if (!this.engine.targetImage()) { toast('Select a layer with pixels first.'); return; }
     this.kind = kind;
     this.done = false;

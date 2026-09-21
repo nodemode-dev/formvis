@@ -38,6 +38,7 @@ export const penTool: Tool = {
   ],
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
+    ctx.engine.beginPathEdit();
     const vp = workPath(ctx), v = ctx.view();
     if (active && active.anchors.length > 1) {
       const first = v.toScreen(active.anchors[0]), at = v.toScreen(p.doc);
@@ -74,10 +75,11 @@ export const penTool: Tool = {
   },
   up(ctx) {
     pulling = null;
+    ctx.engine.endPathEdit();
     ctx.engine.emit('overlay', null);
   },
   hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },
-  cancel() { pulling = null; },
+  cancel(ctx) { pulling = null; ctx.engine.endPathEdit(); },
   keydown(ctx, e) {
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { active = null; ctx.engine.pathToSelection(); return true; }
     if ((e.key === 'Enter' || e.key === 'Escape') && active) { active = null; ctx.engine.emit('overlay', null); return true; }

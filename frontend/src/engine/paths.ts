@@ -119,7 +119,7 @@ export function splitSegment(sp: SubPath, index: number, t: number): Anchor {
 }
 
 /** A document's paths: at most one temporary Work Path and any number of named ones, and which is selected. */
-export interface NamedPath { id: ID; name: string; path: VectorPath; work: boolean }
+export interface NamedPath { id: ID; name: string; path: VectorPath; work: boolean; shape?: boolean }
 export interface PathSet { list: NamedPath[]; active: ID | null }
 
 /** A document's paths as project-file data; null when there are none. A named path saves even when empty. */
@@ -144,4 +144,9 @@ export function pathSetFrom(raw: unknown, active: unknown, legacy: unknown): Pat
     if (path) list.push({ id: uid(), name: 'Work Path', path, work: true });
   }
   return list.length ? { list, active: typeof active === 'string' && list.some((n) => n.id === active) ? active : null } : null;
+}
+
+/** The path moved by `dx`, `dy`, as a new path. */
+export function shiftPath(vp: VectorPath, dx: number, dy: number): VectorPath {
+  return { subpaths: vp.subpaths.map((s) => ({ closed: s.closed, anchors: s.anchors.map((a) => ({ x: a.x + dx, y: a.y + dy, inX: a.inX + dx, inY: a.inY + dy, outX: a.outX + dx, outY: a.outY + dy })) })) };
 }

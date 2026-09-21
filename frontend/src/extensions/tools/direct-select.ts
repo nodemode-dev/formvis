@@ -28,6 +28,7 @@ export const directSelectTool: Tool = {
     if (p.button !== 0 || !vp) return;
     const v = ctx.view(), hit = pick(vp.subpaths.flatMap((s) => s.anchors), v.toScreen(p.doc), (q) => v.toScreen(q));
     grab = hit ? { ...hit, from: p.doc, start: { ...hit.anchor } } : null;
+    if (grab) ctx.engine.beginPathEdit();
   },
   move(ctx, p) {
     const g = grab, vp = ctx.engine.workPath;
@@ -48,11 +49,12 @@ export const directSelectTool: Tool = {
     }
     ctx.engine.setWorkPath(vp);
   },
-  up() { grab = null; },
+  up(ctx) { grab = null; ctx.engine.endPathEdit(); },
   cancel(ctx) {
     const g = grab;
     grab = null;
     if (g) { Object.assign(g.anchor, g.start); ctx.engine.setWorkPath(ctx.engine.workPath); }
+    ctx.engine.endPathEdit();
   },
   overlay(ctx, gx) {
     const vp = ctx.engine.workPath;

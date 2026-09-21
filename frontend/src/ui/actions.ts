@@ -18,7 +18,7 @@ export const RECORDABLE: ReadonlySet<string> = new Set([
   'fill-fg', 'fill-bg', 'clear', 'delete', 'invert', 'flip-canvas-h', 'flip-canvas-v', 'new-layer', 'new-folder', 'delete-layer', 'group',
   'move-out', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', 'flip-layer-h', 'flip-layer-v',
   'forward', 'backward', 'blend-next', 'blend-prev', 'select-all', 'deselect', 'inverse', 'path-selection', 'fill-path', 'stroke-path',
-  'paste-layer-style', 'clear-layer-style', 'convert-smart', 'rasterize', 'duplicate', 'merge-down', 'merge-visible', 'flatten',
+  'paste-layer-style', 'clear-layer-style', 'convert-smart', 'rasterize', 'new-shape-path', 'shape-color', 'duplicate', 'merge-down', 'merge-visible', 'flatten',
 ]);
 
 const KEY = 'sonny.actions';

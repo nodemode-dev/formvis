@@ -44,6 +44,8 @@ export interface Layer {
   text?: TextSpec | null;
   /** A smart object's original pixels and live filter stack; `raster` shows the result. */
   smart?: SmartObject | null;
+  /** A shape layer's outline and fill colour, in document pixels at `origin`; `raster` is their rendering. */
+  vector?: VectorLayer | null;
   name: string;
   raster: Raster | null;
   transform: Transform;
@@ -156,3 +158,7 @@ export function smartFiltersFrom(raw: unknown): SmartFilter[] {
     return [{ id: typeof o.id === 'string' && o.id ? o.id : uid(), kind: o.kind, settings: o.settings as Record<string, unknown>, enabled: o.enabled !== false }];
   });
 }
+
+/** A shape layer: a path filled with a colour. `origin` is where its raster was rendered, so a later move of the layer
+ *  can carry the path along. */
+export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB; origin: Pt }

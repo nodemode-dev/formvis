@@ -20,6 +20,7 @@ export class PathsPanel {
       `<div class="cv-paths-body"><div class="cv-path-list"><div class="cv-path-rows" role="listbox" aria-label="Paths"></div><div class="cv-paths-empty">No paths. Draw one with the Pen (P).</div></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="path-selection" title="Load path as a selection" aria-label="Load path as a selection">${icon('marquee', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="fill-path" title="Fill path" aria-label="Fill path">${icon('fill', 16)}</button>` +
+      `<button class="cv-icon-btn" type="button" data-cmd="new-shape-path" title="New shape layer from path" aria-label="New shape layer from path">${icon('rectTool', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="stroke-path" title="Stroke path" aria-label="Stroke path">${icon('paintbrush', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="delete-path" title="Delete path" aria-label="Delete path">${icon('delete', 16)}</button></div></div></section>`);
     const section = q(root, '.cv-paths');
@@ -43,6 +44,8 @@ export class PathsPanel {
     });
     engine.on('paths', () => this.sync());
     engine.on('projects', () => this.sync());
+    engine.on('active', () => this.sync());
+    engine.on('doc', () => this.sync());
     this.sync();
   }
 
@@ -64,16 +67,16 @@ export class PathsPanel {
   private fill(row: HTMLElement, n: NamedPath, active: string | null): void {
     const name = q(row, '.cv-path-name');
     if (!name.querySelector('input')) setText(name, n.name);
-    row.classList.toggle('is-work', n.work);
+    row.classList.toggle('is-work', n.work || !!n.shape);
     row.classList.toggle('is-active', n.id === active);
     row.setAttribute('aria-selected', String(n.id === active));
-    row.title = n.work ? 'Work Path: double-click to name and keep it' : 'Double-click to rename';
+    row.title = n.shape ? 'The shape layer\'s outline: reshape it with Direct Selection' : n.work ? 'Work Path: double-click to name and keep it' : 'Double-click to rename';
   }
 
   /** Inline renaming in place of the name; Enter or leaving the field keeps the name, Escape cancels. */
   private rename(row: HTMLElement): void {
     const id = row.dataset.key, n = this.engine.paths.list.find((x) => x.id === id), name = q(row, '.cv-path-name');
-    if (!n || name.querySelector('input')) return;
+    if (!n || n.shape || name.querySelector('input')) return;
     const input = el<HTMLInputElement>('<input class="cv-input cv-path-rename" type="text" spellcheck="false">');
     input.value = n.work ? '' : n.name;
     input.placeholder = n.work ? 'Name to keep this path' : '';

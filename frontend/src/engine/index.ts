@@ -1,4 +1,4 @@
-import { pathBounds, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
+import { pathBounds, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
 import { Emitter } from './events';
 import type { Snapshot } from './history';
@@ -79,6 +79,7 @@ function mirrored(t: Transform, horizontal: boolean, W: number, H: number): Tran
 interface DistortedMask { warped: Warped | null; placement: Transform | null }
 
 /** Why a smart object's pixels cannot be changed directly, and what to do instead. */
+const SHAPE_NOTICE = 'This is a shape layer. Reshape it with Direct Selection on its Shape Path, or rasterize it (Layer > Rasterize Layer) to change its pixels.';
 const SMART_NOTICE = 'This layer is a smart object. Rasterize it (Layer > Rasterize Layer) to change its pixels; its filters stay editable in Layer > Smart Filters.';
 
 export class Engine {
@@ -403,8 +404,8 @@ export class Engine {
    *  mask. Checked before any history step opens. */
   private smartLocked(p: Project): boolean {
     const l = p.activeLayer;
-    if (!l?.smart || (p.maskTarget && l.mask)) return false;
-    this.notice(SMART_NOTICE);
+    if (!(l?.smart || l?.vector) || (p.maskTarget && l.mask)) return false;
+    this.notice(l.vector ? SHAPE_NOTICE : SMART_NOTICE);
     return true;
   }
 
@@ -440,8 +441,8 @@ export class Engine {
   rasterizeLayer(): void {
     this.edit('Rasterize Layer', (p) => {
       const l = p.activeLayer;
-      if (!l || (!l.smart && !l.text)) return false;
-      p.updateLayer(l.id, { smart: null, text: null });
+      if (!l || (!l.smart && !l.text && !l.vector)) return false;
+      p.updateLayer(l.id, { smart: null, text: null, vector: null });
     });
   }
 
@@ -535,7 +536,89 @@ export class Engine {
     return set;
   }
 
-  private selectedPath(p: Project): NamedPath | null { const set = this.pathSet(p); return set.list.find((n) => n.id === set.active) ?? null; }
+  private selectedPath(p: Project): NamedPath | null {
+    const set = this.pathSet(p);
+    if (set.active?.startsWith('shape:')) return this.shapeEntry(p)?.id === set.active ? this.shapeEntry(p) : null;
+    return set.list.find((n) => n.id === set.active) ?? null;
+  }
+
+  /** The working copy of the active shape layer's path, and the layer object it matches: a copy the tools hold during
+   *  a drag, rebuilt only when the layer changes some other way (a move, an undo, a recolour). */
+  private shapeEdit: { project: Project; layerId: ID; layer: Layer; path: VectorPath } | null = null;
+  private pathGesture: Project | null = null;
+
+  /** The active shape layer's outline as a path entry, its working copy moved along with any move of the layer. */
+  private shapeEntry(p: Project): NamedPath | null {
+    const l = p.activeLayer;
+    if (!l?.vector) return null;
+    const e = this.shapeEdit;
+    if (!e || e.project !== p || e.layerId !== l.id || e.layer !== l) {
+      const dx = l.transform.x - l.vector.origin.x, dy = l.transform.y - l.vector.origin.y;
+      this.shapeEdit = { project: p, layerId: l.id, layer: l, path: shiftPath(l.vector.path, dx, dy) };
+    }
+    return { id: `shape:${l.id}`, name: `${l.name} Shape Path`, path: (this.shapeEdit as { path: VectorPath }).path, work: false, shape: true };
+  }
+
+  /** A shape layer's pixels: its path filled with its colour, in a raster over the path's bounds. */
+  private renderShape(path: VectorPath, fill: RGB): { raster: Raster; x: number; y: number } | null {
+    const b = pathBounds(path);
+    if (!b) return null;
+    const x = Math.floor(b.x) - 1, y = Math.floor(b.y) - 1, w = Math.min(LIMITS.side, Math.ceil(b.x + b.w) + 1 - x), h = Math.min(LIMITS.side, Math.ceil(b.y + b.h) + 1 - y);
+    const raster = new Raster(Math.max(1, w), Math.max(1, h));
+    raster.ctx.translate(-x, -y);
+    raster.ctx.fillStyle = rgbCss(fill);
+    raster.ctx.fill(tracePath(path));
+    raster.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    raster.touch();
+    return { raster, x, y };
+  }
+
+  /** Re-renders shape layer `id` in `p` from `path` and `fill`. */
+  private reshape(p: Project, id: ID, path: VectorPath, fill: RGB): void {
+    const r = this.renderShape(path, fill), l = p.layer(id);
+    if (!r || !l) return;
+    const stored = structuredClone(path);
+    p.updateLayer(id, { raster: r.raster, transform: { ...l.transform, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height, rotation: 0, flipX: false, flipY: false }, vector: { path: stored, fill, origin: { x: r.x, y: r.y } }, shape: null });
+    const e = this.shapeEdit, now = p.layer(id);
+    if (e && e.project === p && e.layerId === id && now) { e.layer = now; e.path = path; }
+  }
+
+  /** Brackets a pointer gesture on the selected path, so a gesture on a Shape Path is one undo step. */
+  beginPathEdit(): void {
+    const p = this.current;
+    if (!p || this.pathGesture || !this.selectedPath(p)?.shape) return;
+    this.settle();
+    p.history.begin('Edit Shape Path', p.snapshot());
+    this.pathGesture = p;
+  }
+
+  endPathEdit(): void {
+    const p = this.pathGesture;
+    if (!p) return;
+    this.pathGesture = null;
+    p.history.end(p.snapshot());
+    this.refresh();
+  }
+
+  /** Layer > New Shape Layer from Path: the selected path filled with the foreground colour as a shape layer, whose
+   *  outline stays editable. */
+  newShapeFromPath(): void {
+    const p = this.current, vp = this.workPath;
+    if (!p || !vp || !pathBounds(vp)) { this.notice('Select or draw a path first.'); return; }
+    const path = structuredClone(vp), fill = { ...this.fg }, r = this.renderShape(path, fill);
+    if (!r) return;
+    let n = 1;
+    while (p.doc.layers.some((l) => l.name === `Shape ${n}`)) n++;
+    this.insertRasterLayer(r.raster, `Shape ${n}`, r.x, r.y, { vector: { path, fill, origin: { x: r.x, y: r.y } } }, 'New Shape Layer');
+  }
+
+  /** Layer > Shape Color from Foreground: the active shape layer refilled in the foreground colour. */
+  recolorShape(): void {
+    const l = this.current?.activeLayer;
+    if (!l?.vector) { this.notice('Select a shape layer first.'); return; }
+    const v = l.vector, dx = l.transform.x - v.origin.x, dy = l.transform.y - v.origin.y;
+    this.edit('Shape Color', (p) => this.reshape(p, l.id, shiftPath(v.path, dx, dy), { ...this.fg }));
+  }
 
   private pathsChanged(p: Project): void {
     if (p === this.current) { this.emit('overlay', null); this.emit('options', null); }
@@ -544,7 +627,12 @@ export class Engine {
 
   /** The current document's paths, the Work Path among them, and which one is selected. Paths live with the document
    *  and save with the project, outside undo, as in Photoshop. */
-  get paths(): PathSet { const p = this.current; return p ? this.pathSet(p) : { list: [], active: null }; }
+  get paths(): PathSet {
+    const p = this.current;
+    if (!p) return { list: [], active: null };
+    const set = this.pathSet(p), shape = this.shapeEntry(p);
+    return shape ? { list: [shape, ...set.list], active: set.active } : set;
+  }
 
   /** The selected path, which the Pen, Direct Selection and the path commands work on; null when none is selected. */
   get workPath(): VectorPath | null { const p = this.current; return p ? this.selectedPath(p)?.path ?? null : null; }
@@ -555,6 +643,18 @@ export class Engine {
     const p = this.current;
     if (!p) return;
     const set = this.pathSet(p), entry = this.selectedPath(p), has = !!vp && vp.subpaths.some((sp) => sp.anchors.length);
+    if (entry?.shape) {
+      // Reshaping a shape layer: live within a gesture's undo step, or one step of its own from the keyboard.
+      const l = p.activeLayer;
+      if (l?.vector && vp && has) {
+        (this.shapeEdit as { path: VectorPath }).path = vp;
+        if (this.pathGesture === p) this.reshape(p, l.id, vp, l.vector.fill);
+        else this.edit('Edit Shape Path', (q) => this.reshape(q, l.id, vp, (l.vector as NonNullable<Layer['vector']>).fill));
+        this.refresh();
+      }
+      this.pathsChanged(p);
+      return;
+    }
     if (entry) {
       if (entry.work && !has) { set.list = set.list.filter((n) => n !== entry); set.active = null; }
       else entry.path = vp ?? { subpaths: [] };
@@ -571,7 +671,7 @@ export class Engine {
     const p = this.current;
     if (!p) return;
     const set = this.pathSet(p);
-    set.active = id && set.list.some((n) => n.id === id) ? id : null;
+    set.active = id && (set.list.some((n) => n.id === id) || this.shapeEntry(p)?.id === id) ? id : null;
     this.pathsChanged(p);
   }
 
@@ -1680,7 +1780,7 @@ export class Engine {
   private distortFrame = 0;
 
   beginDistort(): boolean {
-    if (this.current?.activeLayer?.smart) { this.notice(SMART_NOTICE); return false; }
+    if (this.current?.activeLayer?.smart || this.current?.activeLayer?.vector) { this.notice(this.current.activeLayer.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit) return false;
     const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
@@ -1981,7 +2081,7 @@ export class Engine {
 
   applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0): void {
     const al = this.current?.activeLayer;
-    if (al?.smart && !(this.current?.maskTarget && al.mask)) { this.notice(SMART_NOTICE); return; }
+    if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return; }
     this.preview = null;
     const p0 = this.current;
     const l0 = p0?.activeLayer ?? null;
