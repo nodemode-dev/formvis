@@ -11,6 +11,7 @@ import { cropTool } from './crop';
 import { gradientTool } from './gradient';
 import { shapeTool } from './shape';
 import { typeTool } from './type';
+import { penTool } from './pen';
 import { healTool } from './heal';
 import { cloneTool } from './clone';
 import { healingBrushTool } from './healing-brush';
@@ -18,5 +19,5 @@ import { patchTool } from './patch';
 import { smearTool } from './smear';
 
 export function registerBuiltinTools(): void {
-  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, gradientTool, shapeTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, gradientTool, shapeTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 }

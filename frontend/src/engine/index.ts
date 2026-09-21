@@ -1,10 +1,11 @@
+import { pathBounds, tracePath, type VectorPath } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
 import { Emitter } from './events';
 import type { Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { PixelStroke } from './stroke';
 import { SelectionMask, type SelectionMode } from './selection';
-import { Raster, createSurface, ctxOf, toBlob, type Surface } from './surface';
+import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
@@ -38,6 +39,7 @@ export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
 export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics } from './text';
+export { cornerAt, pathBounds, tracePath, type Anchor, type SubPath, type VectorPath } from './paths';
 export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
 export type { Kernel, KernelContext } from './kernels';
 
@@ -392,6 +394,68 @@ export class Engine {
     const name = l.name === autoName ? spec.content.split('\n')[0].trim().slice(0, 40) || 'Type' : l.name;
     this.textSettings = { ...spec, content: '', rendered: undefined };
     this.edit('Edit Type', (pp) => { pp.updateLayer(id, { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, name, text: { ...spec, rendered: textKey(r.raster) } }); });
+  }
+
+  private readonly workPaths = new WeakMap<Project, VectorPath>();
+
+  /** The current document's Work Path, drawn with the Pen tool. It lives with the open document and is not saved yet. */
+  get workPath(): VectorPath | null { const p = this.current; return p ? this.workPaths.get(p) ?? null : null; }
+
+  setWorkPath(vp: VectorPath | null): void {
+    const p = this.current;
+    if (!p) return;
+    if (vp && vp.subpaths.some((sp) => sp.anchors.length)) this.workPaths.set(p, vp); else this.workPaths.delete(p);
+    this.emit('overlay', null);
+    this.emit('options', null);
+  }
+
+  deletePath(): void { this.setWorkPath(null); }
+
+  /** Select > Make Selection from Path: the path's inside, by the non-zero winding rule, becomes the selection. */
+  pathToSelection(): void {
+    const p = this.current, vp = this.workPath, b = vp ? pathBounds(vp) : null;
+    if (!p || !vp || !b) { this.notice('Draw a path with the Pen tool first.'); return; }
+    const shape = tracePath(vp);
+    const mask = SelectionMask.fromPath(p.doc.width, p.doc.height, b, (c) => c.fill(shape), true);
+    if (!mask) { this.notice('The path lies outside the canvas.'); return; }
+    this.applySelection(mask, 'replace', 'Make Selection');
+  }
+
+  /** Edit > Fill Path: the path's inside painted into the active layer in the foreground colour, within any selection. */
+  fillPath(): void { this.paintPath('Fill Path', (c, shape) => { c.fillStyle = rgbCss(this.fg); c.fill(shape); }); }
+
+  /** Edit > Stroke Path: the path traced in the foreground colour as wide as the brush, within any selection. */
+  strokePath(): void {
+    this.paintPath('Stroke Path', (c, shape) => {
+      c.strokeStyle = rgbCss(this.fg);
+      c.lineWidth = Math.max(1, this.brush.diameter);
+      c.lineJoin = 'round';
+      c.lineCap = 'round';
+      c.stroke(shape);
+    });
+  }
+
+  private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D) => void): void {
+    const vp = this.workPath;
+    if (!vp || !pathBounds(vp)) { this.notice('Draw a path with the Pen tool first.'); return; }
+    const shape = tracePath(vp);
+    this.regionEdit(name, ({ raster, target, rect, cover }) => {
+      const p = this.current as Project, l = p.activeLayer as Layer;
+      const t = target === 'mask' ? l.mask?.placement ?? l.transform : l.transform;
+      const s = createSurface(rect.w, rect.h), c = ctxOf(s);
+      setMat(c, mul(translation(-rect.x, -rect.y), invert(placement(t, raster.width, raster.height))));
+      paint(c, shape);
+      if (cover) {
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.globalCompositeOperation = 'destination-in';
+        c.drawImage(cover, 0, 0);
+      }
+      const r = raster.ctx;
+      r.save();
+      r.setTransform(1, 0, 0, 1, 0, 0);
+      r.drawImage(s, rect.x, rect.y);
+      r.restore();
+    });
   }
 
   private styleClipboard: LayerEffects | null = null;
