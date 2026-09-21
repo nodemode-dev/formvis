@@ -39,7 +39,7 @@ export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
 export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics } from './text';
-export { cornerAt, pathBounds, pathData, pathFrom, tracePath, type Anchor, type SubPath, type VectorPath } from './paths';
+export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, splitSegment, tracePath, type Anchor, type SubPath, type VectorPath } from './paths';
 export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
 export type { Kernel, KernelContext } from './kernels';
 

@@ -1,10 +1,19 @@
-import { cornerAt, tracePath, type Anchor, type Pt, type SubPath, type VectorPath } from '../../engine';
+import { anchorNear, cornerAt, nearestSegment, splitSegment, tracePath, type Anchor, type Pt, type SubPath, type VectorPath } from '../../engine';
 import type { Tool, ToolContext } from '../registry';
 
 let active: SubPath | null = null;
 let pulling: Anchor | null = null;
 let hover: Pt | null = null;
 const NEAR = 7;
+
+/** What a click at screen point `at` would do to the path between drawing: delete the point there, add one on the
+ *  path there (not right at an existing point), or nothing. */
+function editAt(vp: VectorPath, at: Pt, map: (p: Pt) => Pt): { kind: 'delete'; sp: SubPath; index: number } | { kind: 'add'; sp: SubPath; index: number; t: number } | null {
+  const hit = anchorNear(vp, at, map, NEAR);
+  if (hit) return { kind: 'delete', ...hit };
+  const seg = nearestSegment(vp, at, map);
+  return seg && seg.d <= NEAR && seg.t > 0.02 && seg.t < 0.98 ? { kind: 'add', sp: seg.sp, index: seg.index, t: seg.t } : null;
+}
 
 /** The Work Path to draw into, forgetting a sub-path left over from another document. */
 function workPath(ctx: ToolContext): VectorPath {
@@ -19,7 +28,7 @@ function workPath(ctx: ToolContext): VectorPath {
 export const penTool: Tool = {
   id: 'pen', label: 'Pen', key: 'P', order: 77,
   icon: () => 'penTool',
-  hint: () => 'Click for corner points, drag for curves · Click the first point to close · Enter ends an open path, Backspace removes the last point · Ctrl+Enter makes a selection',
+  hint: () => 'Click for corner points, drag for curves · Click the first point to close · Enter ends an open path, Backspace removes the last point · Between paths, click the path to add a point or a point to delete it · Ctrl+Enter makes a selection',
   cursor: () => 'crosshair',
   options: (e) => [
     { kind: 'button', label: 'Make Selection', run: () => { active = null; e.pathToSelection(); } },
@@ -39,7 +48,19 @@ export const penTool: Tool = {
         return;
       }
     }
-    if (!active) { active = { anchors: [], closed: false }; vp.subpaths.push(active); }
+    if (!active) {
+      // Between paths the Pen adds and deletes points: clicking a point deletes it, clicking the path adds one there.
+      const edit = editAt(vp, v.toScreen(p.doc), (q) => v.toScreen(q));
+      if (edit?.kind === 'delete') {
+        edit.sp.anchors.splice(edit.index, 1);
+        if (!edit.sp.anchors.length) vp.subpaths.splice(vp.subpaths.indexOf(edit.sp), 1);
+        ctx.engine.setWorkPath(vp);
+        return;
+      }
+      if (edit?.kind === 'add') { splitSegment(edit.sp, edit.index, edit.t); ctx.engine.setWorkPath(vp); return; }
+      active = { anchors: [], closed: false };
+      vp.subpaths.push(active);
+    }
     const anchor = cornerAt(p.doc);
     active.anchors.push(anchor);
     pulling = anchor;
@@ -101,6 +122,19 @@ export const penTool: Tool = {
         }
         g.fillStyle = sp === active ? pal.accent : pal.handle;
         g.fillRect(Math.round(s.x) - 3, Math.round(s.y) - 3, 6, 6);
+      }
+    }
+    if (!active && hover && !pulling) {
+      // A plus or minus beside the pointer says whether a click adds or deletes a point.
+      const at = v.toScreen(hover), edit = editAt(vp, at, (q) => v.toScreen(q));
+      if (edit) {
+        const x = Math.round(at.x) + 12, y = Math.round(at.y) + 12;
+        g.lineWidth = 1.5;
+        g.strokeStyle = pal.accent;
+        g.beginPath();
+        g.moveTo(x - 4, y); g.lineTo(x + 4, y);
+        if (edit.kind === 'add') { g.moveTo(x, y - 4); g.lineTo(x, y + 4); }
+        g.stroke();
       }
     }
     g.restore();

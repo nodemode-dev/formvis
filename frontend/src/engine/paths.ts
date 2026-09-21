@@ -63,3 +63,57 @@ export function pathFrom(raw: unknown): VectorPath | null {
   }
   return subpaths.length ? { subpaths } : null;
 }
+
+const lerp = (a: Pt, b: Pt, t: number): Pt => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+
+/** The segments of a sub-path as anchor index pairs: each anchor to the next, and the last back to the first when closed. */
+function segments(sp: SubPath): Array<[number, number]> {
+  const n = sp.anchors.length, out: Array<[number, number]> = [];
+  for (let i = 0; i + 1 < n; i++) out.push([i, i + 1]);
+  if (sp.closed && n > 1) out.push([n - 1, 0]);
+  return out;
+}
+
+/** The anchor within `near` of point `at`, both measured after `map` (screen pixels for the Pen). */
+export function anchorNear(vp: VectorPath, at: Pt, map: (p: Pt) => Pt, near: number): { sp: SubPath; index: number } | null {
+  for (const sp of vp.subpaths) for (let i = 0; i < sp.anchors.length; i++) {
+    const q = map(sp.anchors[i]);
+    if (Math.hypot(q.x - at.x, q.y - at.y) <= near) return { sp, index: i };
+  }
+  return null;
+}
+
+/** The point of the path nearest `at` after `map`: its sub-path, the anchor its segment leaves from, the curve
+ *  parameter and the distance. A coarse sweep of each segment is refined by ternary search. */
+export function nearestSegment(vp: VectorPath, at: Pt, map: (p: Pt) => Pt): { sp: SubPath; index: number; t: number; d: number } | null {
+  let best: { sp: SubPath; index: number; t: number; d: number } | null = null;
+  for (const sp of vp.subpaths) for (const [i, j] of segments(sp)) {
+    const a = sp.anchors[i], b = sp.anchors[j];
+    const p0 = map(a), p1 = map({ x: a.outX, y: a.outY }), p2 = map({ x: b.inX, y: b.inY }), p3 = map(b);
+    const dist = (t: number): number => {
+      const u = 1 - t, x = u * u * u * p0.x + 3 * u * u * t * p1.x + 3 * u * t * t * p2.x + t * t * t * p3.x;
+      const y = u * u * u * p0.y + 3 * u * u * t * p1.y + 3 * u * t * t * p2.y + t * t * t * p3.y;
+      return Math.hypot(x - at.x, y - at.y);
+    };
+    let bt = 0, bd = Infinity;
+    for (let k = 0; k <= 48; k++) { const d = dist(k / 48); if (d < bd) { bd = d; bt = k / 48; } }
+    let lo = Math.max(0, bt - 1 / 48), hi = Math.min(1, bt + 1 / 48);
+    for (let k = 0; k < 24; k++) { const m1 = lo + (hi - lo) / 3, m2 = hi - (hi - lo) / 3; if (dist(m1) < dist(m2)) hi = m2; else lo = m1; }
+    const t = (lo + hi) / 2, d = dist(t);
+    if (!best || d < best.d) best = { sp, index: i, t, d };
+  }
+  return best;
+}
+
+/** Splits the segment leaving anchor `index` of `sp` at parameter `t` by de Casteljau's construction, inserting an
+ *  anchor there; the curve keeps its exact shape. */
+export function splitSegment(sp: SubPath, index: number, t: number): Anchor {
+  const a = sp.anchors[index], b = sp.anchors[(index + 1) % sp.anchors.length];
+  const p0 = { x: a.x, y: a.y }, p1 = { x: a.outX, y: a.outY }, p2 = { x: b.inX, y: b.inY }, p3 = { x: b.x, y: b.y };
+  const q0 = lerp(p0, p1, t), q1 = lerp(p1, p2, t), q2 = lerp(p2, p3, t), r0 = lerp(q0, q1, t), r1 = lerp(q1, q2, t), s = lerp(r0, r1, t);
+  a.outX = q0.x; a.outY = q0.y;
+  b.inX = q2.x; b.inY = q2.y;
+  const added: Anchor = { x: s.x, y: s.y, inX: r0.x, inY: r0.y, outX: r1.x, outY: r1.y };
+  sp.anchors.splice(index + 1, 0, added);
+  return added;
+}
