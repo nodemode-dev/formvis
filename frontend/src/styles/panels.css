@@ -123,3 +123,6 @@
 .cv-history-row.is-undone { color: var(--text-muted); }
 .cv-history-icon { display: inline-flex; color: var(--text-muted); }
 .cv-history-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cv-history-row.is-snapshot .cv-history-name { font-weight: 500; }
+.cv-history-row.is-snapshot.is-picked { background: var(--bg-tertiary); }
+.cv-history-row.is-snapshot + .cv-history-row:not(.is-snapshot) { border-top: 1px solid var(--border-color); }

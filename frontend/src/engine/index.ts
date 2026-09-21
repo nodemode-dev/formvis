@@ -238,6 +238,58 @@ export class Engine {
     p.maskTarget = false;
   }
 
+  private readonly historySnapshots = new WeakMap<Project, Array<{ id: ID; name: string; state: Snapshot }>>();
+
+  /** A copy of `doc` whose layer pixels and masks are copies too: strokes change pixels in place, so a snapshot that
+   *  only referred to them would change with later painting. Type stays editable on its copied pixels; smart sources,
+   *  paths and shapes are never changed in place, so they are shared. */
+  private copyDoc(doc: Doc): Doc {
+    const copy = (r: Raster | null | undefined): Raster | null => {
+      if (!r) return null;
+      const c = new Raster(r.width, r.height);
+      c.ctx.drawImage(r.canvas, 0, 0);
+      return c;
+    };
+    return { ...doc, layers: doc.layers.map((l) => {
+      const raster = copy(l.raster), text = l.text && raster && liveText(l) ? { ...l.text, rendered: textKey(raster) } : l.text;
+      return { ...l, raster, text, mask: l.mask ? { ...l.mask, raster: copy(l.mask.raster) } : l.mask };
+    }) };
+  }
+
+  /** The current document's snapshots, newest last. They live with the open document and are not saved. */
+  get snapshots(): ReadonlyArray<{ id: ID; name: string }> { const p = this.current; return p ? this.historySnapshots.get(p) ?? [] : []; }
+
+  /** History > New Snapshot: the document as it is now, kept to return to however far the steps move on. */
+  takeSnapshot(): void {
+    const p = this.current;
+    if (!p || this.stroke) return;
+    this.settle();
+    const list = this.historySnapshots.get(p) ?? [];
+    let n = list.length + 1;
+    while (list.some((x) => x.name === `Snapshot ${n}`)) n += 1;
+    list.push({ id: uid(), name: `Snapshot ${n}`, state: { doc: this.copyDoc(p.doc), activeId: p.activeId, selection: p.selection } });
+    this.historySnapshots.set(p, list);
+    this.emit('history', null);
+  }
+
+  /** Returns the document to a snapshot as one undo step, from a fresh copy, so the snapshot stays as it was taken. */
+  revertToSnapshot(id: ID): void {
+    const p = this.current, snap = p ? this.historySnapshots.get(p)?.find((x) => x.id === id) : undefined;
+    if (!p || !snap) return;
+    this.edit(`Revert to ${snap.name}`, (q) => {
+      q.doc = this.copyDoc(snap.state.doc);
+      q.selection = snap.state.selection;
+      this.focus(q, snap.state.activeId && q.doc.layers.some((l) => l.id === snap.state.activeId) ? snap.state.activeId : null);
+    });
+  }
+
+  deleteSnapshot(id: ID): void {
+    const p = this.current, list = p ? this.historySnapshots.get(p) : undefined;
+    if (!p || !list) return;
+    this.historySnapshots.set(p, list.filter((x) => x.id !== id));
+    this.emit('history', null);
+  }
+
   /** The History panel's list for the current document. */
   get historySteps(): { names: string[]; current: number } { return this.current?.history.steps ?? { names: [], current: 0 }; }
 
@@ -734,7 +786,7 @@ export class Engine {
   /** Timeline > Tween: `count` frames between frame `id` and the one after it, stepping each layer's position and
    *  opacity evenly. A layer shown in only one of the two fades, shown in the new frames with its opacity stepping from
    *  or to nothing; without opacity it keeps the first frame's visibility. New frames take the first frame's delay. */
-  tween(id: ID, count: number, opts: { position: boolean; opacity: boolean }): boolean {
+  tween(id: ID, count: number, opts: { position: boolean; opacity: boolean; easing?: 'linear' | 'in' | 'out' | 'inOut' }): boolean {
     const p = this.current;
     if (!p) return false;
     this.syncFrame(p);
@@ -742,7 +794,10 @@ export class Engine {
     if (i < 0 || i + 1 >= t.frames.length) { this.notice('Select a frame with another after it to tween towards.'); return false; }
     const a = t.frames[i], b = t.frames[i + 1], n = Math.min(50, Math.max(1, Math.round(count))), made: Frame[] = [];
     for (let k = 1; k <= n; k++) {
-      const u = k / (n + 1), state: Record<ID, FrameLayer> = {};
+      // Easing shapes the steps: in starts slow (the square), out ends slow (its mirror), in and out does both.
+      const t0 = k / (n + 1), e = opts.easing ?? 'linear';
+      const u = e === 'in' ? t0 * t0 : e === 'out' ? 1 - (1 - t0) * (1 - t0) : e === 'inOut' ? (t0 < 0.5 ? 2 * t0 * t0 : 1 - 2 * (1 - t0) * (1 - t0)) : t0;
+      const state: Record<ID, FrameLayer> = {};
       for (const lid of new Set([...Object.keys(a.state), ...Object.keys(b.state)])) {
         const sa = a.state[lid], sb = b.state[lid];
         if (!sa || !sb) { state[lid] = { ...(sa ?? sb) }; continue; }

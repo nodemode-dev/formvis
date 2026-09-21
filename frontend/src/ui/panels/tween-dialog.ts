@@ -7,6 +7,7 @@ export class TweenDialog extends Dialog {
   private readonly count = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="50" step="1" value="5">');
   private readonly position = el<HTMLInputElement>('<input type="checkbox" checked>');
   private readonly opacity = el<HTMLInputElement>('<input type="checkbox" checked>');
+  private readonly easing = el<HTMLSelectElement>('<select class="cv-input"><option value="linear">Linear</option><option value="in">Ease In</option><option value="out">Ease Out</option><option value="inOut">Ease In and Out</option></select>');
   private readonly note = el('<p class="cv-note"></p>');
 
   constructor(private readonly engine: Engine) {
@@ -14,6 +15,7 @@ export class TweenDialog extends Dialog {
     this.field('Frames to add', this.count);
     this.field('Position', this.position);
     this.field('Opacity', this.opacity);
+    this.field('Easing', this.easing);
     this.body.appendChild(this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
@@ -29,6 +31,7 @@ export class TweenDialog extends Dialog {
   private apply(): void {
     const t = this.engine.timeline, n = Math.min(50, Math.max(1, Math.round(Number(this.count.value) || 1)));
     this.close();
-    if (t.current) this.engine.tween(t.current, n, { position: this.position.checked, opacity: this.opacity.checked });
+    const easing = this.easing.value === 'in' || this.easing.value === 'out' || this.easing.value === 'inOut' ? this.easing.value : 'linear';
+    if (t.current) this.engine.tween(t.current, n, { position: this.position.checked, opacity: this.opacity.checked, easing });
   }
 }
