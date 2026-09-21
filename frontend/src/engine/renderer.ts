@@ -123,13 +123,15 @@ export class Renderer {
         a.c.drawImage(cov, 0, 0);
         a.c.globalCompositeOperation = 'source-over';
       }
-      if (styled) this.effects(ctx, a, fx, matScale(job.view), opacity, W, H, boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]));
+      const placed = styled ? boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]) : null;
+      if (styled && placed) this.effects(ctx, a, fx, matScale(job.view), opacity, W, H, placed, 'below');
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = opacity;
       ctx.globalCompositeOperation = op;
       ctx.drawImage(a.s, 0, 0);
       ctx.restore();
+      if (styled && placed) this.effects(ctx, a, fx, matScale(job.view), opacity, W, H, placed, 'above');
     }
   }
 
@@ -139,9 +141,9 @@ export class Renderer {
    *  off the surface, so only its shadow lands; blurs over 8 px run at half resolution and are scaled back, which looks
    *  the same for a quarter of the work. The outside stroke is the silhouette grown by a Euclidean distance transform,
    *  round at the corners and as quick at 50 px as at 1, less the silhouette itself. */
-  private effects(ctx: Ctx2D, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect): void {
-    const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke;
-    const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0) * scale + 2;
+  private effects(ctx: Ctx2D, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect, phase: 'below' | 'above'): void {
+    const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow, co = fx.colorOverlay;
+    const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) * scale + 2;
     const box = intersectRect(integral({ x: bounds.x - reach, y: bounds.y - reach, w: bounds.w + 2 * reach, h: bounds.h + 2 * reach }), { x: 0, y: 0, w: W, h: H });
     if (!box) return;
     const { x: bx, y: by, w: bw, h: bh } = box;
@@ -184,6 +186,48 @@ export class Renderer {
       out.c.restore();
       return out.s;
     };
+    if (phase === 'above') {
+      // Above the content, each kept to the silhouette: Color Overlay, then Inner Glow, then Inner Shadow on top. The
+      // inner effects are the shadow cast by everything around the silhouette (its inverse within the box).
+      const kept = (paint: (c: Ctx2D) => void): Surface => {
+        const out = this.slot(5, bw, bh);
+        out.c.save();
+        out.c.setTransform(1, 0, 0, 1, 0, 0);
+        out.c.clearRect(0, 0, bw, bh);
+        paint(out.c);
+        out.c.shadowColor = 'transparent';
+        out.c.globalCompositeOperation = 'destination-in';
+        out.c.drawImage(sil.s, bx, by, bw, bh, 0, 0, bw, bh);
+        out.c.restore();
+        return out.s;
+      };
+      const castByInverse = (color: RGB, blur: number, dx: number, dy: number): Surface => {
+        const inv = this.slot(6, bw, bh);
+        inv.c.save();
+        inv.c.setTransform(1, 0, 0, 1, 0, 0);
+        inv.c.globalCompositeOperation = 'source-over';
+        inv.c.fillStyle = '#000';
+        inv.c.fillRect(0, 0, bw, bh);
+        inv.c.globalCompositeOperation = 'destination-out';
+        inv.c.drawImage(sil.s, bx, by, bw, bh, 0, 0, bw, bh);
+        inv.c.restore();
+        return kept((c) => {
+          const far = bw + Math.ceil(Math.abs(dx) + blur * 3) + 16;
+          c.shadowColor = css(color);
+          c.shadowBlur = blur;
+          c.shadowOffsetX = dx + far;
+          c.shadowOffsetY = dy;
+          c.drawImage(inv.s, -far, 0);
+        });
+      };
+      if (co.enabled && co.opacity > 0) lay(kept((c) => { c.fillStyle = css(co.color); c.fillRect(0, 0, bw, bh); }), co.opacity * opacity, compositeOp(co.blend));
+      if (ig.enabled && ig.opacity > 0 && ig.size > 0) lay(castByInverse(ig.color, ig.size * scale, 0, 0), ig.opacity * opacity, compositeOp(ig.blend));
+      if (is.enabled && is.opacity > 0) {
+        const rad = (is.angle * Math.PI) / 180;
+        lay(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale), is.opacity * opacity, compositeOp(is.blend));
+      }
+      return;
+    }
     if (d.enabled && d.opacity > 0) {
       const rad = (d.angle * Math.PI) / 180;
       lay(shadowOf(d.color, d.size * scale, -Math.cos(rad) * d.distance * scale, Math.sin(rad) * d.distance * scale), d.opacity * opacity, compositeOp(d.blend));

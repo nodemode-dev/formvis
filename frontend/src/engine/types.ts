@@ -86,7 +86,10 @@ export function newLayer(name: string, size: { width: number; height: number }, 
 export interface DropShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number }
 export interface OuterGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number }
 export interface StrokeEffect { enabled: boolean; color: RGB; opacity: number; size: number }
-export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect }
+export interface InnerShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number }
+export interface InnerGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number }
+export interface ColorOverlayEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode }
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect }
 
 /** Photoshop's starting values: a 75% multiplied black shadow at 120 degrees, 5 px away and 5 px soft; a 75% screened
  *  pale yellow glow of 5 px; a 3 px black outside stroke. All off. */
@@ -95,11 +98,14 @@ export function defaultEffects(): LayerEffects {
     dropShadow: { enabled: false, color: { r: 0, g: 0, b: 0 }, opacity: 0.75, blend: 'multiply', angle: 120, distance: 5, size: 5 },
     outerGlow: { enabled: false, color: { r: 255, g: 255, b: 190 }, opacity: 0.75, blend: 'screen', size: 5 },
     stroke: { enabled: false, color: { r: 0, g: 0, b: 0 }, opacity: 1, size: 3 },
+    innerShadow: { enabled: false, color: { r: 0, g: 0, b: 0 }, opacity: 0.75, blend: 'multiply', angle: 120, distance: 5, size: 5 },
+    innerGlow: { enabled: false, color: { r: 255, g: 255, b: 190 }, opacity: 0.75, blend: 'screen', size: 5 },
+    colorOverlay: { enabled: false, color: { r: 255, g: 0, b: 0 }, opacity: 1, blend: 'normal' },
   };
 }
 
 export function effectsActive(fx: LayerEffects | null | undefined): fx is LayerEffects {
-  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled);
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled);
 }
 
 /** Effects read back from saved data, every field checked and clamped; null when none is enabled. */
@@ -113,11 +119,14 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
     return { r: Math.round(num(c.r, fallback.r, 0, 255)), g: Math.round(num(c.g, fallback.g, 0, 255)), b: Math.round(num(c.b, fallback.b, 0, 255)) };
   };
   const blend = (v: unknown, fallback: BlendMode): BlendMode => (BLEND_MODES.some((m) => m.id === v) ? (v as BlendMode) : fallback);
-  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke');
+  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay');
   const fx: LayerEffects = {
     dropShadow: { enabled: s.enabled === true, color: rgb(s.color, d.dropShadow.color), opacity: num(s.opacity, 0.75, 0, 1), blend: blend(s.blend, 'multiply'), angle: num(s.angle, 120, -360, 360), distance: num(s.distance, 5, 0, 1000), size: num(s.size, 5, 0, 250) },
     outerGlow: { enabled: g.enabled === true, color: rgb(g.color, d.outerGlow.color), opacity: num(g.opacity, 0.75, 0, 1), blend: blend(g.blend, 'screen'), size: num(g.size, 5, 0, 250) },
     stroke: { enabled: k.enabled === true, color: rgb(k.color, d.stroke.color), opacity: num(k.opacity, 1, 0, 1), size: num(k.size, 3, 1, 250) },
+    innerShadow: { enabled: is.enabled === true, color: rgb(is.color, d.innerShadow.color), opacity: num(is.opacity, 0.75, 0, 1), blend: blend(is.blend, 'multiply'), angle: num(is.angle, 120, -360, 360), distance: num(is.distance, 5, 0, 1000), size: num(is.size, 5, 0, 250) },
+    innerGlow: { enabled: ig.enabled === true, color: rgb(ig.color, d.innerGlow.color), opacity: num(ig.opacity, 0.75, 0, 1), blend: blend(ig.blend, 'screen'), size: num(ig.size, 5, 0, 250) },
+    colorOverlay: { enabled: co.enabled === true, color: rgb(co.color, d.colorOverlay.color), opacity: num(co.opacity, 1, 0, 1), blend: blend(co.blend, 'normal') },
   };
   return effectsActive(fx) ? fx : null;
 }

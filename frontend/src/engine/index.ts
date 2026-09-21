@@ -341,6 +341,40 @@ export class Engine {
     if (!ok) this.emit('render', null);
   }
 
+  private styleClipboard: LayerEffects | null = null;
+
+  get canPasteLayerStyle(): boolean { return !!this.styleClipboard; }
+
+  /** Copy Layer Style: remembers the active layer's effects for Paste Layer Style. */
+  copyLayerStyle(): void {
+    const l = this.current?.activeLayer;
+    if (!l || !effectsActive(l.effects)) { this.notice('This layer has no layer style to copy.'); return; }
+    this.styleClipboard = structuredClone(l.effects);
+  }
+
+  /** Paste Layer Style: gives every selected pixel layer the copied effects, as one undo step. */
+  pasteLayerStyle(): void {
+    const fx = this.styleClipboard;
+    if (fx) this.restyle('Paste Layer Style', fx);
+  }
+
+  /** Clear Layer Style: removes the effects from every selected layer, as one undo step. */
+  clearLayerStyle(): void { this.restyle('Clear Layer Style', null); }
+
+  private restyle(name: string, fx: LayerEffects | null): void {
+    this.effectPreview = null;
+    this.edit(name, (p) => {
+      let changed = false;
+      for (const id of p.selectedIds.size ? [...p.selectedIds] : p.activeId ? [p.activeId] : []) {
+        const l = p.layer(id);
+        if (!l || l.isGroup || l.adjustment || (!fx && !l.effects)) continue;
+        p.updateLayer(id, { effects: fx ? structuredClone(fx) : null });
+        changed = true;
+      }
+      return changed;
+    });
+  }
+
   /** Shows `effects` on layer `id` without recording anything, while the Layer Style dialog is open; null ends it. */
   previewLayerEffects(id: ID | null, effects: LayerEffects | null = null): void {
     const p = this.current;

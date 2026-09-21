@@ -1,4 +1,4 @@
-import { BLEND_MODES, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Raster } from '../engine';
+import { BLEND_MODES, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Raster, effectsActive } from '../engine';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
 import { icon } from './icons';
 import { paint } from './palette';
@@ -75,7 +75,7 @@ export class LayersPanel {
   }
 
   private createRow(e: HierarchyEntry): HTMLElement {
-    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span></span></div>`);
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-fx" hidden title="Layer style">fx</span></span></div>`);
     row.dataset.id = e.layer.id;
     this.updateRow(row, e);
     return row;
@@ -99,6 +99,7 @@ export class LayersPanel {
     setClass(row, 'is-mask-target', active && p.maskTarget && !!l.mask);
     setClass(row, 'is-pixel-target', active && !p.maskTarget && !!l.mask);
     setClass(row, 'is-clipped', !!l.clipId);
+    setHidden(q(row, '.cv-layer-fx'), !effectsActive(l.effects));
     setStyleVar(row, '--depth', String(e.depth));
     if (this.renaming !== l.id) setText(q(row, '.cv-layer-label'), l.name);
     setTitle(row, l.name);
@@ -306,7 +307,8 @@ export class LayersPanel {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('.cv-layer');
       if (!row?.dataset.id) return;
-      if (t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
+      if (t.closest('.cv-layer-fx')) row.dispatchEvent(new CustomEvent('cv:edit-layer-style', { bubbles: true, detail: row.dataset.id }));
+      else if (t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
       else if (row.classList.contains('is-adjust')) row.dispatchEvent(new CustomEvent('cv:edit-adjustment', { bubbles: true, detail: row.dataset.id }));
     });
     this.list.addEventListener('contextmenu', (e) => {

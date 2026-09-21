@@ -1,6 +1,6 @@
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive } from './engine';
 import { toolForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -454,6 +454,9 @@ export function startApp(): void {
     { id: 'content-fill', label: 'Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
     { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: () => void dialogs.generative.show() },
     { id: 'layer-style', label: 'Layer Style...', enabled: () => pixel(), run: () => dialogs.layerStyle.show() },
+    { id: 'copy-layer-style', label: 'Copy Layer Style', enabled: () => effectsActive(engine.current?.activeLayer?.effects), run: () => engine.copyLayerStyle() },
+    { id: 'paste-layer-style', label: 'Paste Layer Style', enabled: () => pixel() && engine.canPasteLayerStyle, run: () => engine.pasteLayerStyle() },
+    { id: 'clear-layer-style', label: 'Clear Layer Style', enabled: () => effectsActive(engine.current?.activeLayer?.effects), run: () => engine.clearLayerStyle() },
     { id: 'generative-expand', label: 'Generative Expand...', enabled: has, run: () => void dialogs.generative.show('expand') },
     { id: 'upscale-2x', label: 'Upscale 2x...', enabled: has, run: () => void dialogs.generative.show('upscale', 2) },
     { id: 'upscale-4x', label: 'Upscale 4x...', enabled: has, run: () => void dialogs.generative.show('upscale', 4) },
@@ -472,14 +475,14 @@ export function startApp(): void {
     { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
-    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract'] },
     { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
     { label: 'Help', items: ['shortcuts', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
-  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
   new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));
 
   const zoomLabel = q(root, '.cv-zoom-label');
@@ -508,6 +511,7 @@ export function startApp(): void {
     const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-cmd]');
     if (b && root.contains(b) && !b.disabled) commands.run(b.dataset.cmd ?? '');
   });
+  root.addEventListener('cv:edit-layer-style', () => dialogs.layerStyle.show());
   root.addEventListener('cv:edit-adjustment', (e) => {
     const id = (e as CustomEvent<string>).detail;
     if (typeof id === 'string') dialogs.adjust.openForLayer(id);
