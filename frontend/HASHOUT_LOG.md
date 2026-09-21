@@ -2,11 +2,45 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/ui/panels/gif-dialog.ts
+
+### src/ui/panels/gif-dialog.ts · new · _v0.49.0
+
+The Export GIF dialog. Nothing was removed.
+
+## src/ui/panels/animation-dialog.ts
+
+### src/ui/panels/animation-dialog.ts · new · _v0.49.0
+
+The animation preview. Nothing was removed.
+
+## src/ui/timeline.ts
+
+### src/ui/timeline.ts · new · _v0.49.0
+
+The Timeline panel. Nothing was removed.
+
+## src/engine/timeline.ts
+
+### src/engine/timeline.ts · new · _v0.49.0
+
+Frames, their capture and application, and checked reading. Nothing was removed.
+
 ## src/io/gif.ts
 
 ### src/io/gif.ts · new · _v0.48.0
 
 The GIF encoder. Nothing was removed.
+
+### src/io/gif.ts · plays · _v0.49.0
+
+The repeat count means total plays; one play writes no looping extension. Removed:
+
+```ts
+/** The GIF file for `frames`, each `width` by `height`; `loops` 0 repeats forever. */
+export function encodeGif(frames: GifFrame[], width: number, height: number, loops = 0): Uint8Array {
+  bytes.push(0x21, 0xff, 11); text('NETSCAPE2.0'); bytes.push(3, 1); u16(loops); bytes.push(0);
+```
 
 ## src/ui/panels/shape-style-dialog.ts
 
@@ -822,6 +856,20 @@ The dialog and its command; PSD export notes Paths-panel paths. Removed:
   contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
 ```
 
+### src/app.ts · animation · _v0.49.0
+
+The Timeline mounted, frame commands, GIF export with sizes, timelines saved and restored. Removed:
+
+```ts
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText } from './engine';
+    const { doc, activeId, paths } = await deserialize(o.manifest, (name) => {
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p));
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p));
+        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathsOf(p));
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+  if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions };
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1459,6 +1507,14 @@ import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode
     this.edit('Shape Color', (p) => this.reshape(p, l.id, shiftPath(v.path, dx, dy), { ...this.fg }));
         if (this.pathGesture === p) this.reshape(p, l.id, vp, l.vector.fill);
         else this.edit('Edit Shape Path', (q) => this.reshape(q, l.id, vp, (l.vector as NonNullable<Layer['vector']>).fill));
+```
+
+### src/engine/index.ts · timeline · _v0.49.0
+
+Timelines per document, frame selection as undo steps, reconciling after undo and redo, rendering a frame. Removed:
+
+```ts
+  history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null;
 ```
 
 ## src/engine/develop.ts
@@ -2196,6 +2252,18 @@ Fill and stroke saved and read back checked. Removed:
       ? { path: vp, fill: { r: num(vf.r, 0), g: num(vf.g, 0), b: num(vf.b, 0) }, origin: { x: num(vo.x, 0), y: num(vo.y, 0) } } : null;
 ```
 
+### src/io/project-io.ts · timeline · _v0.49.0
+
+Timelines saved and read back; .ref notes them. Removed:
+
+```ts
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB,
+export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
+export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: PathSet | null = null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
+export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null }> {
+  return { paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
+```
+
 ## src/main.ts
 
 ### src/main.ts · entry, calls startApp · _v0.1.0
@@ -2259,6 +2327,14 @@ The Paths panel, its rows and the shape badge; the layers grid gains a row. Remo
 ### src/styles/panels.css · shape dialog · _v0.48.0
 
 Swatch and row styles for the dialog. Nothing was removed.
+
+### src/styles/panels.css · Timeline · _v0.49.0
+
+The Timeline section, frames and preview; the layers grid gains a row. Removed:
+
+```css
+.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto; min-height: 0; background: var(--bg-secondary); }
+```
 
 ## src/styles/scrollbars.css
 
@@ -2397,6 +2473,10 @@ The Hand tool icon replaced with the owner-supplied Remix Icon cursor-hand. Remo
 ```ts
   hand: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M18 13c-.7 0-1.4.4-1.7 1l-.7-6.4c-.1-.9-.9-1.6-1.8-1.6-.9 0-1.7.7-1.8 1.6V3.2c0-1-.8-1.8-1.8-1.8-1 0-1.8.8-1.8 1.8v5.4L8.1 8C7.2 7.7 6.2 8.2 5.9 9.1c-.3.9.2 1.9 1.1 2.2l4 1.3v7.3c0 1.1.9 2 2 2h5c1.1 0 2-.9 2-2v-4.9c0-1.1-.9-2-2-2z"/></svg>`,
 ```
+
+### src/ui/icons.ts · play · _v0.49.0
+
+One inline currentColor icon. Nothing was removed.
 
 ## src/ui/layers.ts
 

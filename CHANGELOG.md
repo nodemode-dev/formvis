@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.49.0 · 2026-09-21
+
+### Added
+
+- Frame animation: a Timeline below Paths, where each frame keeps every layer's visibility, opacity and position with a delay; frames are made, selected, timed and deleted there, played in a preview, and saved with the project.
+- File > Export GIF exports the frames, or the image as it stands, at 100, 75, 50 or 25 percent.
+
 ## 0.48.0 · 2026-09-21
 
 ### Added
