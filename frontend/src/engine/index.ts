@@ -14,7 +14,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle } from './types';
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle, effectsFromData } from './types';
 
 export * from './types';
 export * from './geometry';
@@ -343,7 +343,9 @@ export class Engine {
    *  effects are unchanged. */
   setLayerEffects(id: ID, effects: LayerEffects | null): void {
     this.effectPreview = null;
-    const next = effectsActive(effects) ? structuredClone(effects) : null;
+    // Normalised, so a partial style gets every effect's defaults rather than failing later in the renderer.
+    const whole = effects ? effectsFromData(JSON.parse(JSON.stringify(effects))) : null;
+    const next = effectsActive(whole) ? whole : null;
     const ok = this.edit('Layer Style', (p) => {
       const l = p.layer(id);
       if (!l || l.isGroup || l.adjustment) return false;

@@ -45,22 +45,35 @@ function threeBoxWidths(sigma: number): number[] {
 }
 
 /** One box blur of radius `r` along rows (`across`) or columns, with a running sum per channel; the window is always
- *  divided by its full width, so values fade past the image edge. */
+ *  divided by its full width, so values fade past the image edge. Channels are summed in locals, and the column pass
+ *  keeps one running sum per column and moves down a row at a time, so memory is read in order rather than a whole
+ *  row apart; the additions happen in the same order as before, so results are identical. */
 function boxBlur(src: Float32Array, dst: Float32Array, w: number, h: number, r: number, across: boolean): void {
-  const scale = 1 / (2 * r + 1), lines = across ? h : w, length = across ? w : h, stride = across ? 4 : w * 4;
-  const sum = new Float64Array(4);
-  for (let line = 0; line < lines; line++) {
-    const origin = across ? line * w * 4 : line * 4;
-    sum.fill(0);
-    const warm = Math.min(r, length - 1);
-    for (let k = 0; k <= warm; k++) for (let c = 0; c < 4; c++) sum[c] += src[origin + k * stride + c];
-    for (let i = 0; i < length; i++) {
-      const at = origin + i * stride;
-      for (let c = 0; c < 4; c++) dst[at + c] = sum[c] * scale;
-      const enter = i + r + 1, leave = i - r;
-      if (enter < length) for (let c = 0; c < 4; c++) sum[c] += src[origin + enter * stride + c];
-      if (leave >= 0) for (let c = 0; c < 4; c++) sum[c] -= src[origin + leave * stride + c];
+  const scale = 1 / (2 * r + 1);
+  if (across) {
+    const warm = Math.min(r, w - 1);
+    for (let y = 0; y < h; y++) {
+      const o = y * w * 4;
+      let s0 = 0, s1 = 0, s2 = 0, s3 = 0;
+      for (let k = 0; k <= warm; k++) { const q = o + k * 4; s0 += src[q]; s1 += src[q + 1]; s2 += src[q + 2]; s3 += src[q + 3]; }
+      for (let i = 0; i < w; i++) {
+        const at = o + i * 4;
+        dst[at] = s0 * scale; dst[at + 1] = s1 * scale; dst[at + 2] = s2 * scale; dst[at + 3] = s3 * scale;
+        const enter = i + r + 1, leave = i - r;
+        if (enter < w) { const q = o + enter * 4; s0 += src[q]; s1 += src[q + 1]; s2 += src[q + 2]; s3 += src[q + 3]; }
+        if (leave >= 0) { const q = o + leave * 4; s0 -= src[q]; s1 -= src[q + 1]; s2 -= src[q + 2]; s3 -= src[q + 3]; }
+      }
     }
+    return;
+  }
+  const row = w * 4, sum = new Float64Array(row), warm = Math.min(r, h - 1);
+  for (let k = 0; k <= warm; k++) { const o = k * row; for (let x = 0; x < row; x++) sum[x] += src[o + x]; }
+  for (let i = 0; i < h; i++) {
+    const at = i * row;
+    for (let x = 0; x < row; x++) dst[at + x] = sum[x] * scale;
+    const enter = i + r + 1, leave = i - r;
+    if (enter < h) { const o = enter * row; for (let x = 0; x < row; x++) sum[x] += src[o + x]; }
+    if (leave >= 0) { const o = leave * row; for (let x = 0; x < row; x++) sum[x] -= src[o + x]; }
   }
 }
 
