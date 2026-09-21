@@ -77,6 +77,7 @@ src/
  tokens.css · NodeMode tokens plus the sonny block
  ui/
  app-dialogs.ts · new canvas, open, settings, shortcuts, about
+ brand.ts · the inline app mark
  commands.ts · command registry and key labels
  dialogs.ts · dialog base, confirm, prompt
  dom.ts · NodeMode dom-stable plus setters
@@ -169,6 +170,7 @@ vite.config.ts · ports 5190 and 5191, host false, /api proxy
 - [src/styles/shell.css](#srcstylesshellcss)
 - [src/styles/tokens.css](#srcstylestokenscss)
 - [src/ui/app-dialogs.ts](#srcuiapp-dialogsts)
+- [src/ui/brand.ts](#srcuibrandts)
 - [src/ui/commands.ts](#srcuicommandsts)
 - [src/ui/dialogs.ts](#srcuidialogsts)
 - [src/ui/dom.ts](#srcuidomts)
@@ -236,6 +238,10 @@ Created in _v0.1.0.
 ### public/favicon.svg · tab icon · _v0.1.0
 
 Created in _v0.1.0.
+
+### public/favicon.svg · the app mark · _v0.32.0
+
+Replaced with the supplied artwork; `favicon.ico` (16 to 256) and a 180 px `apple-touch-icon.png` join it. Nothing else was removed.
 
 ## public/splash.html
 
@@ -362,6 +368,14 @@ Export JPEG takes the Alt+Shift+Mod+S, the one gap the shortcut audit found. Rem
 
 ```ts
     { id: 'export-ref', label: 'Export .ref Project...', enabled: has, run: () => void exportRefProject() },
+```
+
+### src/app.ts · welcome card · app mark · _v0.32.0
+
+The welcome title shows the app mark at 28 px. Removed:
+
+```ts
+<div class="cv-welcome-title">${icon('paintbrush', 20)}sonny</div>
 ```
 
 ## src/engine/adjust.ts
@@ -1320,6 +1334,10 @@ Removed: content-sized tabs moved their neighbors when a save renamed a project.
 
 `.cv-tab.is-drop-target` tints a project tab with the accent while a layer drag would copy into it. Nothing was removed.
 
+### src/styles/shell.css · .cv-mark · _v0.32.0
+
+The app mark keeps its size in the title row. Nothing was removed.
+
 ## src/styles/tokens.css
 
 ### src/styles/tokens.css · NodeMode tokens plus the sonny block · _v0.1.0
@@ -1335,6 +1353,20 @@ Removed: a copyright line that did not match `LICENSE`.
 ```ts
  this.body.appendChild(el('<p class="cv-note">[licence line, redacted in 0.31.1]</p>'));
 ```
+
+### src/ui/app-dialogs.ts · AboutDialog · app mark · _v0.32.0
+
+The About title shows the app mark at 28 px. Removed:
+
+```ts
+    this.body.appendChild(el(`<div class="cv-welcome-title">${icon('paintbrush', 20)}sonny ${VERSION}</div>`));
+```
+
+## src/ui/brand.ts
+
+### src/ui/brand.ts · brandMark · _v0.32.0
+
+The app mark (the desktop icon and favicon artwork) as inline SVG: the source's style rules folded into attributes so nothing leaks into the page, and ids namespaced per copy. Nothing was removed.
 
 ## src/ui/commands.ts
 

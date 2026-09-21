@@ -2,6 +2,12 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.32.0 · 2026-09-21
+
+### Changed
+
+- New app icon everywhere sonny shows its mark: the desktop apps (macOS, Windows and Linux icons), the browser tab (with an `.ico` fallback and an Apple touch icon), the welcome card, the About dialog, and the desktop splash window shown while the engine starts.
+
 ## 0.31.1 · 2026-09-20
 
 ### Changed
