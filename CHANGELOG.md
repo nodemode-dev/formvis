@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.41.0 · 2026-09-21
+
+### Added
+
+- Type straight onto the canvas: click with the Type tool and type, or click existing text to edit it in place. Ctrl or Cmd with Enter, clicking elsewhere, or switching tools commits; Escape cancels.
+- The Type tool's options bar sets Font, Size, Align, Bold, Italic and Leading, changing text as you type.
+
+### Changed
+
+- Layer styles are computed once and kept, so panning, zooming and painting other layers stay quick in documents that use them.
+
 ## 0.40.0 · 2026-09-21
 
 ### Added

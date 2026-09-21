@@ -2,11 +2,26 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/ui/text-editor.ts
+
+### src/ui/text-editor.ts · new · _v0.41.0
+
+Typing on the canvas: one kept text box over the stage, placed on the text's first baseline, restyled from the options bar, committing through the engine. Nothing was removed.
+
 ## src/extensions/tools/type.ts
 
 ### src/extensions/tools/type.ts · new · _v0.40.0
 
 The Type tool announces where to type; the app opens the dialog. Nothing was removed.
+
+### src/extensions/tools/type.ts · options, on-canvas typing · _v0.41.0
+
+Font, Size, Align, Bold, Italic and Leading in the options bar. Removed:
+
+```ts
+/** Type (T): click a type layer to edit its text, or anywhere else to start new text whose first baseline begins at
+ *  the click. The Type dialog does the typing; the tool announces where, for the app to open it. */
+```
 
 ## src/ui/panels/text-dialog.ts
 
@@ -19,6 +34,10 @@ New Type and Edit Type. Nothing was removed.
 ### src/engine/text.ts · new · _v0.40.0
 
 Fonts, rendering, the raster pairing that keeps type editable, and checked loading. Nothing was removed.
+
+### src/engine/text.ts · textMetrics · _v0.41.0
+
+Shares `renderText`'s padding and font ascent and descent. Nothing was removed.
 
 ## src/ui/panels/layer-style-dialog.ts
 
@@ -538,6 +557,15 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, 
   contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
 ```
 
+### src/app.ts · text editor · _v0.41.0
+
+The canvas text editor takes Type clicks and type-layer double-clicks. Removed:
+
+```ts
+    if (d?.layerId) dialogs.text.showEdit(d.layerId);
+    else if (typeof d?.x === 'number' && typeof d?.y === 'number') dialogs.text.showCreate(d.x, d.y);
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -633,6 +661,27 @@ Effects draw in two passes, below and above the content; the above pass keeps Co
   private effects(ctx: Ctx2D, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect): void {
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke;
     const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0) * scale + 2;
+```
+
+### src/engine/renderer.ts · effect cache · _v0.41.0
+
+Effects at document resolution cached per layer and drawn through the view; `effects()` hands parts to a callback. Removed:
+
+```ts
+import { IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
+      if (!own && !folders.length && !base && !styled) { this.draw(ctx, src, m, t.sampling, opacity, op, job.quality); continue; }
+      const placed = styled ? boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]) : null;
+      if (styled && placed) this.effects(ctx, a, fx, matScale(job.view), opacity, W, H, placed, 'below');
+      if (styled && placed) this.effects(ctx, a, fx, matScale(job.view), opacity, W, H, placed, 'above');
+  private effects(ctx: Ctx2D, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect, phase: 'below' | 'above'): void {
+    const lay = (s: Surface, alpha: number, op: GlobalCompositeOperation): void => {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = op;
+      ctx.drawImage(s, 0, 0, bw, bh, bx, by, bw, bh);
+      ctx.restore();
+    };
 ```
 
 ## src/engine/distort.ts
@@ -1043,6 +1092,16 @@ Copy, Paste and Clear Layer Style (paste and clear over every selected layer in 
 import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects } from './types';
 ```
 
+### src/engine/index.ts · setTextEditing, repaint rule · _v0.41.0
+
+Hides a type layer while it is edited on the canvas; strokes repaint whole only for the painted styled layer, clipped styled layers and styled layers in folders. Removed:
+
+```ts
+export { TEXT_FONTS, defaultText, liveText, textFromData, textKey } from './text';
+    // Layer styles can cast from outside a stroke's region into it, so documents using them repaint whole.
+    const styled = st.project.doc.layers.some((x) => effectsActive(x.effects));
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1234,6 +1293,10 @@ Created in _v0.1.0.
 ### src/extensions/registry.ts · OptionSpec number · _v0.4.0
 
 Adds the `number` option kind: an editable field with optional min, max, step and unit, whose `get` returns null when there is nothing to edit. Nothing was removed.
+
+### src/extensions/registry.ts · select option · _v0.41.0
+
+A `select` option kind. Nothing was removed.
 
 ## src/extensions/tools/brush-common.ts
 
@@ -1735,6 +1798,10 @@ Removed: content-sized tabs moved their neighbors when a save renamed a project.
 
 The app mark keeps its size in the title row. Nothing was removed.
 
+### src/styles/shell.css · select and text box · _v0.41.0
+
+Styles for the options-bar select and the canvas text box. Nothing was removed.
+
 ## src/styles/tokens.css
 
 ### src/styles/tokens.css · NodeMode tokens plus the sonny block · _v0.1.0
@@ -1905,6 +1972,10 @@ Removed: `q(n, 'span')` returned the icon box, so the label replaced the icon an
 ### src/ui/options.ts · OptionsBar · number fields · _v0.4.0
 
 Builds `number` options as inputs that commit on Enter or blur exactly once (a relative field such as Scale would otherwise apply twice, since Enter blurs and blur fires `change`), restore the last committed value on Escape, and never overwrite a field while it has focus. Nothing was removed.
+
+### src/ui/options.ts · select option · _v0.41.0
+
+Renders the `select` option. Nothing was removed.
 
 ## src/ui/palette.ts
 
