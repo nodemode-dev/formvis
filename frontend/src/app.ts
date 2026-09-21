@@ -1,3 +1,4 @@
+import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
@@ -108,6 +109,7 @@ export function startApp(): void {
   const commands = new Commands();
   const contextMenu = new PopupMenu(commands);
   const stage = new Stage(q(root, '.cv-stage'), engine);
+  const typing = new TextEditor(q(root, '.cv-stage'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   new Rail(q(root, '.cv-rail'), engine);
   new OptionsBar(q(root, '.cv-options'), engine);
@@ -517,8 +519,8 @@ export function startApp(): void {
   root.addEventListener('cv:edit-layer-style', () => dialogs.layerStyle.show());
   document.addEventListener('cv:type', (e) => {
     const d = (e as CustomEvent<{ layerId?: string; x?: number; y?: number }>).detail;
-    if (d?.layerId) dialogs.text.showEdit(d.layerId);
-    else if (typeof d?.x === 'number' && typeof d?.y === 'number') dialogs.text.showCreate(d.x, d.y);
+    if (d?.layerId) typing.begin({ layerId: d.layerId });
+    else if (typeof d?.x === 'number' && typeof d?.y === 'number') typing.begin({ x: d.x, y: d.y });
   });
   root.addEventListener('cv:edit-adjustment', (e) => {
     const id = (e as CustomEvent<string>).detail;

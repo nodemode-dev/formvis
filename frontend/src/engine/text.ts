@@ -29,6 +29,14 @@ export function liveText(l: Layer | null | undefined): boolean {
   return !!l?.text && !!l.raster && l.text.rendered === textKey(l.raster);
 }
 
+/** The padding and font ascent and descent `renderText` uses, for placing things on its first baseline. */
+export function textMetrics(t: TextSpec): { pad: number; ascent: number; descent: number } {
+  const probe = ctxOf(createSurface(1, 1));
+  probe.font = fontCss(t);
+  const m = probe.measureText('Ag');
+  return { pad: Math.ceil(t.size * 0.1) + 2, ascent: m.fontBoundingBoxAscent || t.size * 0.8, descent: m.fontBoundingBoxDescent || t.size * 0.25 };
+}
+
 export interface TextRender { raster: Raster; baseline: number; pad: number }
 
 /** The text drawn into a fresh raster: one line per line break, each measured, with line boxes from the font's ascent

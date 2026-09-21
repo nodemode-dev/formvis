@@ -37,7 +37,7 @@ export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentDat
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
-export { TEXT_FONTS, defaultText, liveText, textFromData, textKey } from './text';
+export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics } from './text';
 export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
 export type { Kernel, KernelContext } from './kernels';
 
@@ -343,6 +343,15 @@ export class Engine {
     if (!ok) this.emit('render', null);
   }
 
+  private textEditing: { project: Project; layerId: ID } | null = null;
+
+  /** Hides type layer `id` while its text is edited on the canvas; null shows it again. */
+  setTextEditing(id: ID | null): void {
+    const p = this.current;
+    this.textEditing = p && id ? { project: p, layerId: id } : null;
+    this.emit('render', null);
+  }
+
   /** The Type dialog's last settings, which new text starts from. */
   textSettings: TextSpec = defaultText();
 
@@ -450,6 +459,8 @@ export class Engine {
     if (gr && gr.project === p) m.set(gr.layerId, { ...(m.get(gr.layerId) ?? {}), ...(gr.target === 'pixels' ? { source: gr.surface } : { maskSource: gr.surface }) });
     const wp = this.warpState;
     if (wp && wp.project === p) m.set(wp.layerId, { ...(m.get(wp.layerId) ?? {}), source: wp.surface, transform: docTransform(p.doc.width, p.doc.height) });
+    const tx = this.textEditing;
+    if (tx && tx.project === p) m.set(tx.layerId, { ...(m.get(tx.layerId) ?? {}), hidden: true });
     const ep = this.effectPreview;
     if (ep && ep.project === p) m.set(ep.layerId, { ...(m.get(ep.layerId) ?? {}), effects: ep.effects });
     const fl = this.floating;

@@ -57,6 +57,15 @@ export class OptionsBar {
         num.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') num.blur(); });
         sync.push(() => { const v = String(Math.round(spec.get() * 100) / 100); setValue(range, v); setValue(num, v); });
         node.appendChild(n);
+      } else if (spec.kind === 'select') {
+        const n = el('<label class="cv-opt"><span></span><select class="cv-opt-select"></select></label>');
+        setText(q(n, 'span'), spec.label);
+        const box = q<HTMLSelectElement>(n, 'select');
+        for (const c of spec.choices) { const o = document.createElement('option'); o.value = c.id; o.textContent = c.label; box.appendChild(o); }
+        box.addEventListener('change', () => spec.set(box.value));
+        box.addEventListener('keydown', (e) => e.stopPropagation());
+        sync.push(() => { const v = spec.get(); if (box.value !== v) box.value = v; });
+        node.appendChild(n);
       } else if (spec.kind === 'toggle') {
         const n = el('<label class="cv-opt"><input type="checkbox"><span></span></label>');
         setText(q(n, 'span'), spec.label);
