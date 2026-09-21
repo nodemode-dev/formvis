@@ -2,7 +2,7 @@ import type { Engine } from '../engine';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
 
-type Row = { key: string; name: string; index: number; snap?: string };
+type Row = { key: string; name: string; index: number; snap?: string; bytes?: number };
 
 /** The History panel, below the Timeline: the document's starting point and each step kept, oldest first. Clicking a
  *  row goes back or forward to just after that step; steps undone show muted until a new change replaces them.
@@ -49,7 +49,7 @@ export class HistoryPanel {
     const p = this.engine.current, { names, current } = this.engine.historySteps;
     setText(this.count, p ? `${current} of ${names.length}` : '');
     if (this.body.hidden) return;
-    const snaps: Row[] = this.engine.snapshots.map((x) => ({ key: `snap:${x.id}`, name: x.name, index: -1, snap: x.id }));
+    const snaps: Row[] = this.engine.snapshots.map((x) => ({ key: `snap:${x.id}`, name: x.name, index: -1, snap: x.id, bytes: x.bytes }));
     if (this.picked && !snaps.some((r) => r.snap === this.picked)) this.picked = null;
     this.remove.disabled = !this.picked;
     const list: Row[] = p ? [...snaps, { key: 'start', name: p.name, index: 0 }, ...names.map((name, i) => ({ key: `${i}:${name}`, name, index: i + 1 }))] : [];
@@ -74,6 +74,7 @@ export class HistoryPanel {
   private fill(row: HTMLElement, r: Row, current: number): void {
     row.dataset.index = String(r.index);
     if (r.snap) row.dataset.snap = r.snap;
+    row.title = r.snap ? `${r.name}: keeps ${Math.ceil((r.bytes ?? 0) / 1048576)} MB` : '';
     row.classList.toggle('is-snapshot', !!r.snap);
     row.classList.toggle('is-picked', !!r.snap && r.snap === this.picked);
     setText(q(row, '.cv-history-name'), r.name);

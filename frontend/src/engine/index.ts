@@ -256,15 +256,30 @@ export class Engine {
     }) };
   }
 
-  /** The current document's snapshots, newest last. They live with the open document and are not saved. */
-  get snapshots(): ReadonlyArray<{ id: ID; name: string }> { const p = this.current; return p ? this.historySnapshots.get(p) ?? [] : []; }
+  /** Snapshots copy every layer's pixels, so beside the history's own limit they have a budget of their own, per
+   *  document; past it, New Snapshot declines rather than risk running out of memory. */
+  snapshotByteLimit = 768 * 1024 * 1024;
+
+  private docBytes(doc: Doc): number {
+    let n = 0;
+    for (const l of doc.layers) { if (l.raster) n += l.raster.bytes; if (l.mask?.raster) n += l.mask.raster.bytes; }
+    return n;
+  }
+
+  /** The current document's snapshots, newest last, with the memory each keeps. They live with the open document and
+   *  are not saved. */
+  get snapshots(): ReadonlyArray<{ id: ID; name: string; bytes: number }> {
+    const p = this.current;
+    return p ? (this.historySnapshots.get(p) ?? []).map((x) => ({ id: x.id, name: x.name, bytes: this.docBytes(x.state.doc) })) : [];
+  }
 
   /** History > New Snapshot: the document as it is now, kept to return to however far the steps move on. */
   takeSnapshot(): void {
     const p = this.current;
     if (!p || this.stroke) return;
     this.settle();
-    const list = this.historySnapshots.get(p) ?? [];
+    const list = this.historySnapshots.get(p) ?? [], need = this.docBytes(p.doc), used = list.reduce((a, x) => a + this.docBytes(x.state.doc), 0), mb = (b: number): number => Math.ceil(b / 1048576);
+    if (used + need > this.snapshotByteLimit) { this.notice(`A snapshot of this document needs ${mb(need)} MB, and snapshots already keep ${mb(used)} MB of the ${mb(this.snapshotByteLimit)} MB they may use. Delete one first.`); return; }
     let n = list.length + 1;
     while (list.some((x) => x.name === `Snapshot ${n}`)) n += 1;
     list.push({ id: uid(), name: `Snapshot ${n}`, state: { doc: this.copyDoc(p.doc), activeId: p.activeId, selection: p.selection } });
@@ -2599,6 +2614,43 @@ export class Engine {
     });
     if (ok) this.fit();
     return ok;
+  }
+
+  /** Image > Trim: crops away the border of transparent pixels, or of pixels the colour of the top-left or bottom-right
+   *  pixel, judged on the flattened image, as one undo step. */
+  trim(basis: 'transparent' | 'topLeft' | 'bottomRight'): boolean {
+    const p = this.current;
+    if (!p) return false;
+    this.settle();
+    const flat = this.flattened();
+    if (!flat) return false;
+    const W = flat.width, H = flat.height, d = ctxOf(flat).getImageData(0, 0, W, H).data;
+    const at = basis === 'topLeft' ? 0 : (W * H - 1) * 4, r0 = d[at], g0 = d[at + 1], b0 = d[at + 2], a0 = d[at + 3];
+    let x0 = W, y0 = H, x1 = -1, y1 = -1;
+    for (let y = 0; y < H; y++) {
+      for (let x = 0, i = y * W * 4; x < W; x++, i += 4) {
+        const keep = basis === 'transparent' ? d[i + 3] > 0 : d[i] !== r0 || d[i + 1] !== g0 || d[i + 2] !== b0 || d[i + 3] !== a0;
+        if (!keep) continue;
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        y1 = y;
+      }
+    }
+    if (x1 < 0) { this.notice('Trimming would leave nothing.'); return false; }
+    if (x0 === 0 && y0 === 0 && x1 === W - 1 && y1 === H - 1) { this.notice('There is nothing to trim.'); return false; }
+    return this.resizeCanvas(x1 - x0 + 1, y1 - y0 + 1, -x0, -y0, null, 'Trim');
+  }
+
+  /** Image > Reveal All: grows the canvas to show every layer, parts beyond its edges included, as one undo step. */
+  revealAll(): boolean {
+    const p = this.current;
+    if (!p) return false;
+    let b: Rect = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+    for (const l of p.doc.layers) if (l.raster && !l.isGroup && !l.adjustment) b = unionRect(b, transformBounds(l.transform));
+    const r = integral(b);
+    if (r.x >= 0 && r.y >= 0 && r.x + r.w <= p.doc.width && r.y + r.h <= p.doc.height) { this.notice('Every layer is already inside the canvas.'); return false; }
+    return this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Reveal All');
   }
 
   cropTo(rect: Rect): boolean {
