@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/ui/panels/generative-dialog.ts
+
+### src/ui/panels/generative-dialog.ts · new · _v0.37.0
+
+The prompt, the key field shown only until a key is saved, and Forget key. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -392,6 +398,14 @@ Develop leads the Filter menu on Shift+Mod+A. Removed:
 
 ```ts
 const FILTERS: FilterKind[] = ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'unsharpMask'];
+```
+
+### src/app.ts · Generative Fill · _v0.37.0
+
+The Generative Fill dialog joins the registry and Edit > Generative Fill sits after Content-Aware Fill. Removed:
+
+```ts
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', '-', 'transform', '-', 'settings'] },
 ```
 
 ## src/engine/adjust.ts
@@ -811,6 +825,10 @@ The render event carries `Rect | null`; a stroke frame reports the document boun
 ```ts
     if (st.s.compose()) this.emit('render', null);
 ```
+
+### src/engine/index.ts · generativeFill · _v0.37.0
+
+Sends the visible composite around the selection (25% context, 16 to 256 px) and the selection grown by three pixels as the mask, then inserts the result as one masked layer; refuses to place it if the document changed. Nothing was removed.
 
 ## src/engine/develop.ts
 
@@ -1331,6 +1349,10 @@ Created in _v0.1.0.
     return (await request('/projects/package', { method: 'POST', body: form({ manifest: JSON.stringify(manifest) }, files) })).blob();
 ```
 
+### src/io/api.ts · generative calls · _v0.37.0
+
+`generativeStatus`, `saveGenerativeKey`, `forgetGenerativeKey` and `generativeFill`. Nothing was removed.
+
 ## src/io/images.ts
 
 ### src/io/images.ts · image decoding with engine fallback · _v0.1.0
@@ -1457,6 +1479,10 @@ The About title shows the app mark at 28 px. Removed:
 ```ts
     this.body.appendChild(el(`<div class="cv-welcome-title">${icon('paintbrush', 20)}sonny ${VERSION}</div>`));
 ```
+
+### src/ui/app-dialogs.ts · the reference app notice in About · _v0.37.0
+
+About sonny says sonny began as a port of the reference app and shows the MIT notice from `ui/notices.ts` in a fixed-height box. Nothing was removed.
 
 ## src/ui/brand.ts
 

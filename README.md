@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-0.36.0-f97316" alt="version 0.36.0">
+<img src="https://img.shields.io/badge/version-0.37.0-f97316" alt="version 0.37.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -21,6 +21,7 @@ sonny is a layered image editor: stack photos and paintings as layers, group the
 - **Opens and writes `.ref` projects.** Reads `.ref` packages (zipped or as folders, format versions 1 to 7), saves `.sonny` w/ the same manifest field layout, and exports a `.ref` package that apps reading that format can open.
 - **Fourteen tools.** Move w/ transform handles, Marquee, Lasso, Magic Wand, Crop, Brush and Eraser, Spot Healing (Content-Aware, Create Texture, Proximity Match), Clone Stamp, Smear (Liquify, Blur, Smudge), Gradient, Shape, Eyedropper, Hand, Zoom; each is a self-registering extension module. Content-Aware Fill works from the Edit menu.
 - **Adjustments and filters.** Levels w/ histogram, Auto and black, gray and white eyedroppers; Curves; Hue/Saturation w/ spectrum band handles, Sample, Add and Remove eyedroppers and targeted adjustment; Exposure, Gradient Map and Grain; as editable adjustment layers or direct edits; Gaussian Blur, Motion Blur, Add Noise and Lens Correction; all ported from the source, w/ live preview.
+- **Generative Fill (optional).** Edit > Generative Fill paints a selection from a prompt, or removes what it covers with an empty prompt, through FLUX.1 Fill and Erase on fal. Set `FAL_KEY` or paste a key into the dialog once; the engine keeps it. Filter > Develop adds Camera Raw-style tone, colour and detail controls.
 - **Precise transforms.** Move snaps to the canvas and other layers w/ guides and takes exact X, Y, W, H, Scale and Angle values; several selected layers, or a folder, transform together; drag inside a selection to move or duplicate its pixels; Transform Selection (Alt+Mod+T) floats them w/ handles and merges back, growing the layer past its edges.
 - **Clipboard, selections, canvas.** Cut, Copy, Copy Merged, Paste in place and Layer via Copy; Expand, Contract and Mask's Black Areas; arrow-key nudging, marquee autoscroll, Anti-alias, and the Magic Wand's Sample Size; Canvas Size w/ anchors and Image Size w/ resampling.
 - **Two background removers, one refine panel.** rembg (ML, default when installed) and OpenCV GrabCut (lightweight, always available) feed Basic, or Advanced w/ Refine (guided filter, for hair and fur), Contrast and Shift Edge; the result is an editable layer mask, never destroyed pixels.
@@ -114,7 +115,7 @@ Branch model: `main` plus short-lived work branches, see `.docs/BRANCHING.md`. D
 
 ## Status
 
-Version 0.36.0 has all 14 tools complete (Smear's Blur now works on masks too) and all 59 web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the color picker, which can sample the canvas, and sampling drags show the sample ring. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and Smear's Blur on masks.
+Version 0.37.0 has all 14 tools complete (Smear's Blur now works on masks too) and all 59 web-relevant menu commands complete, each checked in a browser against predicted pixel values. The Move tool snaps with guides, takes exact X, Y, W, H, Scale and Angle values, and moves or duplicates selected pixels; Transform Selection (Alt+Mod+T) scales and rotates them, growing the layer past its edges. Levels has the Auto modes and eyedroppers, Hue/Saturation its band handles, eyedroppers and targeted adjustment, Remove Background its Basic and Advanced refine panel, and Export JPEG its quality sheet with a live encoded preview. The foreground and background swatches open the color picker, which can sample the canvas, and sampling drags show the sample ring. What remains is mostly in panels outside the menus, listed above. Current focus: free distort and Smear's Blur on masks.
 
 ## Contributors
 

@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## app/routers/generative.py
+
+### app/routers/generative.py · new · _v0.37.0
+
+`GET /status`, `PUT /key`, `DELETE /key`, `POST /fill` (the call runs in a thread so it never blocks the server). Nothing was removed.
+
+## app/services/generative.py
+
+### app/services/generative.py · new · _v0.37.0
+
+fal client for FLUX.1 Fill [pro] and Erase [pro]: key from FAL_KEY, FAL_API_KEY or `generative.json` (mode 600) in the data folder, never returned; inline PNG data URIs; fal's errors mapped to clear messages; `SONNY_FAL_BASE` points it elsewhere for testing. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -96,6 +108,14 @@ Created in _v0.1.0.
 ### app/main.py · app assembly, CORS, static mount · _v0.1.0
 
 Created in _v0.1.0.
+
+### app/main.py · generative router · _v0.37.0
+
+Mounts `/api/generative`. Removed:
+
+```py
+from app.routers import io, ops, projects, system
+```
 
 ## app/routers/__init__.py
 

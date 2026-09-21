@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.37.0 · 2026-09-21
+
+### Added
+
+- Edit > Generative Fill: describe what to paint into the selection, or leave the prompt empty to remove what it covers. It runs FLUX.1 Fill or Erase on fal with your fal key, set as `FAL_KEY` or pasted once into the dialog, and the result arrives as a new layer masked to the selection.
+
+### Changed
+
+- The README and About sonny now say sonny began as a port of the reference app by its authors, with the reference app's MIT notice in `.docs/REFERENCE_NOTICE.md` and in the About box.
+
 ## 0.36.0 · 2026-09-21
 
 ### Added
