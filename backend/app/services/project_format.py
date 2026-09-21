@@ -41,7 +41,7 @@ def validate(manifest: dict, files: set[str]) -> None:
         if not isinstance(layer_id, str) or not layer_id or layer_id in records:
             raise ProjectError("A layer id is missing or repeated.")
         records[layer_id] = record
-        for key in ("imageFile", "maskFile"):
+        for key in ("imageFile", "maskFile", "smartSourceFile"):
             name = record.get(key)
             if name is None:
                 continue

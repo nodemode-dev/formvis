@@ -13,7 +13,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec } from './types';
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter } from './types';
 
 export * from './types';
 export * from './geometry';
@@ -77,6 +77,9 @@ function mirrored(t: Transform, horizontal: boolean, W: number, H: number): Tran
 /** A layer mask through a distortion: warped pixels (for a linked mask), and where it is placed (for a mask placed
  *  apart, its warped bounds; for an unlinked mask, where it stays). */
 interface DistortedMask { warped: Warped | null; placement: Transform | null }
+
+/** Why a smart object's pixels cannot be changed directly, and what to do instead. */
+const SMART_NOTICE = 'This layer is a smart object. Rasterize it (Layer > Rasterize Layer) to change its pixels; its filters stay editable in Layer > Smart Filters.';
 
 export class Engine {
   readonly events = new Emitter<EngineEvents>();
@@ -394,6 +397,77 @@ export class Engine {
     const name = l.name === autoName ? spec.content.split('\n')[0].trim().slice(0, 40) || 'Type' : l.name;
     this.textSettings = { ...spec, content: '', rendered: undefined };
     this.edit('Edit Type', (pp) => { pp.updateLayer(id, { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, name, text: { ...spec, rendered: textKey(r.raster) } }); });
+  }
+
+  /** True, with a notice, when the active layer is a smart object and an edit would change its pixels rather than its
+   *  mask. Checked before any history step opens. */
+  private smartLocked(p: Project): boolean {
+    const l = p.activeLayer;
+    if (!l?.smart || (p.maskTarget && l.mask)) return false;
+    this.notice(SMART_NOTICE);
+    return true;
+  }
+
+  /** Runs one smart filter on `src`, supplied by the app, since the filter code lives with the Filter dialog. */
+  smartFilterRunner: ((kind: string, settings: Record<string, unknown>, src: ImageData) => ImageData) | null = null;
+
+  /** How far a smart filter's effect reaches past its input, supplied by the app with the runner. */
+  smartFilterMargin: ((kind: string, settings: Record<string, unknown>) => number) | null = null;
+
+  /** A smart object's pixels: its source padded by the shown filters' total reach, with each applied in order. */
+  private renderSmart(source: Raster, filters: SmartFilter[]): Raster {
+    const shown = filters.filter((f) => f.enabled);
+    const m = Math.min(512, Math.ceil(shown.reduce((n, f) => n + (this.smartFilterMargin?.(f.kind, f.settings) ?? 0), 0)));
+    const pad = createSurface(source.width + 2 * m, source.height + 2 * m);
+    ctxOf(pad).drawImage(source.canvas, m, m);
+    let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
+    for (const f of shown) if (this.smartFilterRunner) img = this.smartFilterRunner(f.kind, f.settings, img);
+    const out = new Raster(img.width, img.height);
+    out.write(img);
+    return out;
+  }
+
+  /** Layer > Convert to Smart Object: keeps the layer's pixels as the untouched source of a smart object. */
+  convertToSmartObject(): void {
+    this.edit('Convert to Smart Object', (p) => {
+      const l = p.activeLayer;
+      if (!l || l.isGroup || l.adjustment || l.smart || !l.raster) { this.notice('Select a pixel layer to convert.'); return false; }
+      p.updateLayer(l.id, { smart: { source: l.raster, filters: [] }, text: null, shape: null });
+    });
+  }
+
+  /** Layer > Rasterize Layer: a smart object or a type layer becomes plain pixels, looking as it does now. */
+  rasterizeLayer(): void {
+    this.edit('Rasterize Layer', (p) => {
+      const l = p.activeLayer;
+      if (!l || (!l.smart && !l.text)) return false;
+      p.updateLayer(l.id, { smart: null, text: null });
+    });
+  }
+
+  /** Adds a filter to the active smart object's stack and re-renders it, as one undo step. */
+  addSmartFilter(kind: string, settings: Record<string, unknown>): void {
+    const l = this.current?.activeLayer;
+    if (l?.smart) this.setSmartFilters(l.id, [...l.smart.filters, { id: uid(), kind, settings: structuredClone(settings), enabled: true }], 'Smart Filter');
+  }
+
+  /** Replaces a smart object's filter stack and re-renders its pixels from the source, as one undo step. */
+  setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void {
+    this.edit(name, (p) => {
+      const l = p.layer(id);
+      if (!l?.smart) return false;
+      const stack = structuredClone(filters), raster = this.renderSmart(l.smart.source, stack), old = l.raster as Raster, t = l.transform;
+      // The padding grows or shrinks about the layer's centre, so the source pixels stay exactly where they were.
+      const w = (t.w / old.width) * raster.width, h = (t.h / old.height) * raster.height, cx = t.x + t.w / 2, cy = t.y + t.h / 2;
+      let mask = l.mask;
+      if (mask?.raster && !mask.placement && (raster.width !== old.width || raster.height !== old.height)) {
+        const dx = (raster.width - old.width) / 2, dy = (raster.height - old.height) / 2, nm = Raster.filled(raster.width, raster.height, '#ffffff');
+        nm.ctx.clearRect(dx, dy, old.width, old.height);
+        nm.ctx.drawImage(mask.raster.canvas, dx, dy);
+        mask = { ...mask, raster: nm };
+      }
+      p.updateLayer(id, { smart: { source: l.smart.source, filters: stack }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
+    });
   }
 
   private readonly workPaths = new WeakMap<Project, VectorPath>();
@@ -1137,6 +1211,7 @@ export class Engine {
     if (!p || this.stroke) return false;
     this.settle();
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to paint on.'); return false; }
+    if (this.smartLocked(p)) return false;
     p.history.begin(this.brushMode === 'erase' ? 'Eraser' : 'Brush', p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = pick.target === 'mask' && luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
@@ -1197,6 +1272,7 @@ export class Engine {
   private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void): void {
     this.edit(name, (p) => {
       if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer first.'); return false; }
+      if (this.smartLocked(p)) return false;
       const pick = this.target(p);
       if (!pick) return false;
       const { raster } = pick;
@@ -1473,6 +1549,7 @@ export class Engine {
   private distortFrame = 0;
 
   beginDistort(): boolean {
+    if (this.current?.activeLayer?.smart) { this.notice(SMART_NOTICE); return false; }
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit) return false;
     const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
@@ -1772,6 +1849,8 @@ export class Engine {
   }
 
   applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0): void {
+    const al = this.current?.activeLayer;
+    if (al?.smart && !(this.current?.maskTarget && al.mask)) { this.notice(SMART_NOTICE); return; }
     this.preview = null;
     const p0 = this.current;
     const l0 = p0?.activeLayer ?? null;
@@ -2012,6 +2091,7 @@ export class Engine {
     if (!p || this.stroke) return false;
     this.settle();
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer for the gradient.'); return false; }
+    if (this.smartLocked(p)) return false;
     p.history.begin('Gradient', p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     this.gradient = { project: p, layerId: pick.layer.id, target: pick.target, start: pt, end: pt, raster: pick.raster, local: pick.local, surface: createSurface(pick.raster.width, pick.raster.height) };
@@ -2225,6 +2305,7 @@ export class Engine {
     this.settle();
     const l0 = p.activeLayer;
     if (!this.paintable(l0)) { this.notice('Select a pixel layer first.'); return false; }
+    if (this.smartLocked(p)) return false;
     const onMask = p.maskTarget && !!l0.mask;
     if (onMask && kind !== 'blur') { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
     let texture: { surface: Surface; dx: number; dy: number } | null = null;
@@ -2308,6 +2389,7 @@ export class Engine {
     this.settle();
     const l0 = p.activeLayer;
     if (!this.paintable(l0) || !l0.raster) { this.notice('Select a layer with pixels first.'); return false; }
+    if (this.smartLocked(p)) return false;
     if (p.maskTarget && l0.mask) { this.notice('Smudge and Liquify work on layer pixels. Click the layer thumbnail to target them.'); return false; }
     p.history.begin(mode === 'smudge' ? 'Smudge' : 'Liquify', p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
@@ -2585,6 +2667,7 @@ export class Engine {
     this.settle();
     const l0 = p.activeLayer;
     if (!this.paintable(l0) || !l0.raster || (p.maskTarget && l0.mask)) { this.notice('Moving selected pixels works on a layer with pixels.'); return false; }
+    if (this.smartLocked(p)) return false;
     p.history.begin(duplicate ? 'Duplicate Pixels' : 'Move Pixels', p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const r = pick.raster;
@@ -2686,6 +2769,7 @@ export class Engine {
   beginSelectionTransform(): boolean {
     const p = this.current;
     if (!p || !this.canTransformSelection) return false;
+    if (this.smartLocked(p)) return false;
     this.settle();
     this.setTool('move');
     if (!p.selection) return false;

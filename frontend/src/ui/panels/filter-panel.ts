@@ -7,9 +7,35 @@ import { checkRow, selectRow, sliderRow, type Row } from './controls';
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop';
 export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop' };
 
+export function defaultFilterSettings() {
+  return { radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState() };
+}
+export type FilterPanelSettings = ReturnType<typeof defaultFilterSettings>;
+
+/** One filter on `src` with settings `s` (and `seed` for noise), radii scaled by `scale` for a scaled preview: the
+ *  Filter dialog's work, shared with smart filters. */
+export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number, src: ImageData, scale: number): ImageData {
+  switch (kind) {
+      case 'gaussianBlur': return gaussianBlur(src, s.radius * scale);
+      case 'motionBlur': return motionBlur(src, s.angle, s.distance * scale);
+      case 'addNoise': return addNoise(src, s.amount, s.gaussian, s.monochromatic, seed);
+      case 'lensCorrection': return lensDistort(src, s.distortion);
+      case 'unsharpMask': return unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
+      case 'develop': return developImage(src, s.develop, scale);
+    default: return src;
+  }
+}
+
+/** How far a filter's effect reaches past its input, in pixels. */
+export function filterMargin(kind: FilterKind, s: FilterPanelSettings): number {
+  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : 0;
+}
+
 export class FilterPanel extends Dialog {
   private kind: FilterKind = 'gaussianBlur';
-  private readonly s = { radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState() };
+  private readonly s = defaultFilterSettings();
+  private editing: ((settings: Record<string, unknown>) => void) | null = null;
+  private savedPreview: boolean | null = null;
   private seed = 0;
   private preview = true;
   private done = false;
@@ -97,21 +123,9 @@ export class FilterPanel extends Dialog {
     this.schedule(0);
   }
 
-  private run(src: ImageData, scale: number): ImageData {
-    const s = this.s;
-    switch (this.kind) {
-      case 'gaussianBlur': return gaussianBlur(src, s.radius * scale);
-      case 'motionBlur': return motionBlur(src, s.angle, s.distance * scale);
-      case 'addNoise': return addNoise(src, s.amount, s.gaussian, s.monochromatic, this.seed);
-      case 'lensCorrection': return lensDistort(src, s.distortion);
-      case 'unsharpMask': return unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
-      case 'develop': return developImage(src, s.develop, scale);
-    }
-  }
+  private run(src: ImageData, scale: number): ImageData { return runFilter(this.kind, this.s, this.seed, src, scale); }
 
-  private grow(): number {
-    return this.kind === 'gaussianBlur' ? gaussianMargin(this.s.radius) : this.kind === 'motionBlur' ? motionMargin(this.s.distance) : 0;
-  }
+  private grow(): number { return filterMargin(this.kind, this.s); }
 
   private schedule(delay = 140): void {
     window.clearTimeout(this.timer);
@@ -128,6 +142,7 @@ export class FilterPanel extends Dialog {
   /** Applies `kind` with `settings` straight away, without the dialog, as Actions replay a recorded filter. */
   applySettings(kind: FilterKind, settings: Record<string, unknown>): boolean {
     if (!(kind in FILTER_LABELS)) return false;
+    if (this.smartTarget()) { this.engine.addSmartFilter(kind, structuredClone(settings)); return true; }
     this.kind = kind;
     Object.assign(this.s, structuredClone(settings));
     const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
@@ -135,10 +150,30 @@ export class FilterPanel extends Dialog {
     return true;
   }
 
+  /** True when the filter should join the active smart object's stack rather than change pixels. */
+  private smartTarget(): boolean { const p = this.engine.current, l = p?.activeLayer; return !!l?.smart && !(p?.maskTarget && l.mask); }
+
+  /** Opens `kind` with a smart filter's `settings` to change them; OK hands the new settings to `done`. The live
+   *  preview is off meanwhile, since the stack already shows the filter being changed. */
+  showFor(kind: FilterKind, settings: Record<string, unknown>, done: (settings: Record<string, unknown>) => void): void {
+    if (this.isOpen) return;
+    this.savedPreview = this.preview;
+    this.preview = false;
+    this.show(kind);
+    Object.assign(this.s, structuredClone(settings));
+    if (typeof settings.seed === 'number') this.seed = settings.seed;
+    this.sections.get(kind)?.sync();
+    this.previewRow.set(false);
+    this.editing = done;
+  }
+
   private commit(): void {
     window.clearTimeout(this.timer);
     this.done = true;
+    const kind = this.kind, settings: Record<string, unknown> = { ...structuredClone(this.s), seed: this.seed }, editing = this.editing;
+    if (editing) { this.close(); editing(settings); return; }
     this.onApplied?.(this.kind, structuredClone(this.s));
+    if (this.smartTarget()) { this.engine.setPreview(null); this.close(); this.engine.addSmartFilter(kind, settings); return; }
     const label = FILTER_LABELS[this.kind], grow = this.grow();
     const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
     this.close();
@@ -147,6 +182,8 @@ export class FilterPanel extends Dialog {
 
   private abandon(): void {
     window.clearTimeout(this.timer);
+    this.editing = null;
+    if (this.savedPreview !== null) { this.preview = this.savedPreview; this.savedPreview = null; }
     if (!this.done) this.engine.setPreview(null);
   }
 }

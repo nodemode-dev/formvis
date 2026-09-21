@@ -1,6 +1,6 @@
 import {
   BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid,
-  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData,
+  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom,
 } from '../engine';
 import type { FilePart } from './api';
 
@@ -53,6 +53,12 @@ export async function serialize(doc: Doc, activeId: ID | null): Promise<{ manife
   for (const l of doc.layers) {
     const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
     if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
+    if (l.smart && !l.isGroup) {
+      const name = `${l.id}.source.png`;
+      files.push({ name, blob: await toBlob(l.smart.source.canvas) });
+      r.smartSourceFile = name;
+      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })) };
+    }
     if (l.parentId) r.parentID = l.parentId;
     if (l.isGroup) r.isGroup = true;
     if (l.opacity !== 1) r.opacity = l.opacity;
@@ -108,6 +114,12 @@ export async function serializeRefProject(doc: Doc, activeId: ID | null): Promis
       else { rename.set(str(r.imageFile) as string, `${id}.png`); out.imageFile = `${id}.png`; }
     }
     if (str(r.maskFile)) { rename.set(str(r.maskFile) as string, `${id}.mask.png`); out.maskFile = `${id}.mask.png`; }
+    if (str(r.smartSourceFile)) {
+      drop.add(str(r.smartSourceFile) as string);
+      delete out.smartSourceFile;
+      delete out.smart;
+      notes.push(`"${name || 'Layer'}" goes as pixels; .ref projects have no smart objects.`);
+    }
     if (r.isGroup === true && ((typeof r.opacity === 'number' && r.opacity !== 1) || (r.blendMode && r.blendMode !== 'Normal'))) {
       delete out.opacity; delete out.blendMode;
       notes.push(`Folder "${name || 'Layer'}" loses its opacity or blend mode; .ref folders carry neither.`);
@@ -138,12 +150,14 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
   const records = Array.isArray(manifest.layers) ? manifest.layers.map(obj) : [];
   const names = new Set<string>();
-  for (const r of records) { const a = str(r.imageFile), b = str(r.maskFile); if (a) names.add(a); if (b) names.add(b); }
+  for (const r of records) { for (const n of [str(r.imageFile), str(r.maskFile), str(r.smartSourceFile)]) if (n) names.add(n); }
   const bitmaps = new Map<string, ImageBitmap>();
   await Promise.all([...names].map(async (n) => { bitmaps.set(n, await createImageBitmap(await fetchImage(n))); }));
   const layers: Layer[] = records.map((r) => {
     const image = bitmaps.get(str(r.imageFile) ?? '');
     const raster = image ? Raster.from(image, image.width, image.height) : null;
+    const sourceImage = bitmaps.get(str(r.smartSourceFile) ?? '');
+    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart) } : null;
     const maskImage = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskImage
       ? { raster: grayToMask(maskImage), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskImage.width, maskImage.height) : null }
@@ -153,7 +167,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     return {
       id: str(r.id) ?? uid(), name: str(r.name) ?? 'Layer', raster, transform: transformFrom(r.transform, raster?.width ?? width, raster?.height ?? height),
       visible: r.isVisible !== false, parentId: str(r.parentID), isGroup: r.isGroup === true, opacity: clamp(num(r.opacity, 1), 0, 1),
-      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
     };
   });
   for (const b of bitmaps.values()) b.close();

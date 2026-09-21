@@ -66,3 +66,6 @@
 .cv-pick-field, .cv-pick-strip { border-radius: var(--radius-sm); cursor: crosshair; touch-action: none; }
 .cv-pick-side { display: flex; flex-direction: column; gap: var(--space-2); min-width: 0; }
 .cv-pick-swatch { border-radius: var(--radius-sm); border: 1px solid var(--border-light); }
+.cv-layer-smart { flex: none; color: var(--text-muted); line-height: 0; }
+.cv-sf-list { max-height: 220px; overflow-y: auto; }
+.cv-sf-row { grid-template-columns: 18px minmax(0, 1fr) auto auto; }

@@ -42,6 +42,8 @@ export interface Layer {
   effects?: LayerEffects | null;
   /** A type layer's text, while its pixels are still the rendering of it; see `liveText`. */
   text?: TextSpec | null;
+  /** A smart object's original pixels and live filter stack; `raster` shows the result. */
+  smart?: SmartObject | null;
   name: string;
   raster: Raster | null;
   transform: Transform;
@@ -137,3 +139,20 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
  *  to the next. `rendered` pairs the spec with the raster it was drawn into (id and version): once the pixels are
  *  edited the pair breaks and the layer is plain pixels, as painting on type rasterizes it. */
 export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; rendered?: string }
+
+/** A smart filter: a filter kind and its settings (the noise seed among them), re-run on the smart object's source
+ *  whenever the stack changes. */
+export interface SmartFilter { id: ID; kind: string; settings: Record<string, unknown>; enabled: boolean }
+/** A smart object: the pixels it was made from, kept untouched, and the filters shown on them. */
+export interface SmartObject { source: Raster; filters: SmartFilter[] }
+
+/** Smart filters read back from saved data, checked. */
+export function smartFiltersFrom(raw: unknown): SmartFilter[] {
+  const list = raw && typeof raw === 'object' && Array.isArray((raw as { filters?: unknown }).filters) ? (raw as { filters: unknown[] }).filters : [];
+  return list.flatMap((f) => {
+    if (!f || typeof f !== 'object') return [];
+    const o = f as Record<string, unknown>;
+    if (typeof o.kind !== 'string' || !o.settings || typeof o.settings !== 'object') return [];
+    return [{ id: typeof o.id === 'string' && o.id ? o.id : uid(), kind: o.kind, settings: o.settings as Record<string, unknown>, enabled: o.enabled !== false }];
+  });
+}
