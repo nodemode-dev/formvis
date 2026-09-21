@@ -1,6 +1,7 @@
-import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform } from './types';
+import { resizeMask } from './filters';
+import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
-import { IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, type Mat } from './geometry';
+import { IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
 import { ancestors, hierarchy } from './tree';
 import { adjustmentKernel, type Kernel } from './kernels';
 import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
@@ -43,7 +44,7 @@ function halved(r: Raster, level: number): { surface: Surface; scale: number } {
   return { surface: prev, scale: 2 ** level };
 }
 
-export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number }
+export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number; effects?: LayerEffects | null }
 export interface RenderJob {
   doc: Doc;
   target: Surface;
@@ -105,7 +106,8 @@ export class Renderer {
       if (!src || !layer.raster) continue;
       const m = mul(job.view, placement(t, src.width, src.height));
       const op = compositeOp(ov?.blend ?? layer.blend);
-      if (!own && !folders.length && !base) { this.draw(ctx, src, m, t.sampling, opacity, op, job.quality); continue; }
+      const fx = ov && 'effects' in ov ? ov.effects ?? null : layer.effects ?? null, styled = effectsActive(fx);
+      if (!own && !folders.length && !base && !styled) { this.draw(ctx, src, m, t.sampling, opacity, op, job.quality); continue; }
       let cov: Surface | null = null;
       if (base) {
         cov = clipCache.has(base.id) ? clipCache.get(base.id) ?? null : this.clipCoverage(job, base, map, W, H, 0);
@@ -121,12 +123,85 @@ export class Renderer {
         a.c.drawImage(cov, 0, 0);
         a.c.globalCompositeOperation = 'source-over';
       }
+      if (styled) this.effects(ctx, a, fx, matScale(job.view), opacity, W, H, boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]));
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = opacity;
       ctx.globalCompositeOperation = op;
       ctx.drawImage(a.s, 0, 0);
       ctx.restore();
+    }
+  }
+
+  /** Layer styles beneath a layer, from `sil`, its visible pixels in target space, with document sizes scaled by
+   *  `scale`. The work stays inside the layer's placed `bounds` grown by the effects' reach, so a small layer costs
+   *  little on a large canvas. The drop shadow and outer glow use the canvas shadow API with the silhouette drawn far
+   *  off the surface, so only its shadow lands; blurs over 8 px run at half resolution and are scaled back, which looks
+   *  the same for a quarter of the work. The outside stroke is the silhouette grown by a Euclidean distance transform,
+   *  round at the corners and as quick at 50 px as at 1, less the silhouette itself. */
+  private effects(ctx: Ctx2D, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect): void {
+    const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke;
+    const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0) * scale + 2;
+    const box = intersectRect(integral({ x: bounds.x - reach, y: bounds.y - reach, w: bounds.w + 2 * reach, h: bounds.h + 2 * reach }), { x: 0, y: 0, w: W, h: H });
+    if (!box) return;
+    const { x: bx, y: by, w: bw, h: bh } = box;
+    const css = (c: RGB): string => `rgb(${c.r},${c.g},${c.b})`;
+    const lay = (s: Surface, alpha: number, op: GlobalCompositeOperation): void => {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = op;
+      ctx.drawImage(s, 0, 0, bw, bh, bx, by, bw, bh);
+      ctx.restore();
+    };
+    const shadowOf = (color: RGB, blur: number, dx: number, dy: number): Surface => {
+      const out = this.slot(5, bw, bh);
+      out.c.save();
+      out.c.setTransform(1, 0, 0, 1, 0, 0);
+      out.c.clearRect(0, 0, bw, bh);
+      if (blur > 8) {
+        const hw = Math.ceil(bw / 2), hh = Math.ceil(bh / 2), half = this.slot(7, hw, hh), far = hw + Math.ceil(Math.abs(dx) / 2 + blur * 1.5) + 16;
+        half.c.save();
+        half.c.setTransform(1, 0, 0, 1, 0, 0);
+        half.c.clearRect(0, 0, hw, hh);
+        half.c.shadowColor = css(color);
+        half.c.shadowBlur = blur / 2;
+        half.c.shadowOffsetX = dx / 2 + far;
+        half.c.shadowOffsetY = dy / 2;
+        half.c.drawImage(sil.s, bx, by, bw, bh, -far, 0, bw / 2, bh / 2);
+        half.c.restore();
+        out.c.imageSmoothingEnabled = true;
+        out.c.imageSmoothingQuality = 'high';
+        out.c.drawImage(half.s, 0, 0, bw / 2, bh / 2, 0, 0, bw, bh);
+      } else {
+        const far = bw + Math.ceil(Math.abs(dx) + blur * 3) + 16;
+        out.c.shadowColor = css(color);
+        out.c.shadowBlur = blur;
+        out.c.shadowOffsetX = dx + far;
+        out.c.shadowOffsetY = dy;
+        out.c.drawImage(sil.s, bx, by, bw, bh, -far, 0, bw, bh);
+      }
+      out.c.restore();
+      return out.s;
+    };
+    if (d.enabled && d.opacity > 0) {
+      const rad = (d.angle * Math.PI) / 180;
+      lay(shadowOf(d.color, d.size * scale, -Math.cos(rad) * d.distance * scale, Math.sin(rad) * d.distance * scale), d.opacity * opacity, compositeOp(d.blend));
+    }
+    if (g.enabled && g.opacity > 0 && g.size > 0) lay(shadowOf(g.color, g.size * scale, 0, 0), g.opacity * opacity, compositeOp(g.blend));
+    if (k.enabled && k.opacity > 0 && k.size * scale > 0) {
+      const alpha = sil.c.getImageData(bx, by, bw, bh).data, inside = new Uint8Array(bw * bh);
+      for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];
+      const ring = resizeMask(inside, bw, bh, k.size * scale), img = new ImageData(bw, bh), px = img.data;
+      for (let i = 0; i < ring.length; i++) { const o = i * 4; px[o] = k.color.r; px[o + 1] = k.color.g; px[o + 2] = k.color.b; px[o + 3] = ring[i]; }
+      const out = this.slot(6, bw, bh);
+      out.c.save();
+      out.c.setTransform(1, 0, 0, 1, 0, 0);
+      out.c.putImageData(img, 0, 0);
+      out.c.globalCompositeOperation = 'destination-out';
+      out.c.drawImage(sil.s, bx, by, bw, bh, 0, 0, bw, bh);
+      out.c.restore();
+      lay(out.s, k.opacity * opacity, 'source-over');
     }
   }
 

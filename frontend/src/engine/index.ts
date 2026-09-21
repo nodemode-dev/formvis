@@ -11,7 +11,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform } from './types';
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects } from './types';
 
 export * from './types';
 export * from './geometry';
@@ -325,6 +325,29 @@ export class Engine {
     if (p) this.display.render({ doc: p.doc, target, view, overrides: this.overrides(p), quality });
   }
 
+  private effectPreview: { project: Project; layerId: ID; effects: LayerEffects | null } | null = null;
+
+  /** Layer > Layer Style: sets or clears a pixel layer's effects as one undo step; nothing is recorded when the
+   *  effects are unchanged. */
+  setLayerEffects(id: ID, effects: LayerEffects | null): void {
+    this.effectPreview = null;
+    const next = effectsActive(effects) ? structuredClone(effects) : null;
+    const ok = this.edit('Layer Style', (p) => {
+      const l = p.layer(id);
+      if (!l || l.isGroup || l.adjustment) return false;
+      if (JSON.stringify(l.effects ?? null) === JSON.stringify(next)) return false;
+      p.updateLayer(id, { effects: next });
+    });
+    if (!ok) this.emit('render', null);
+  }
+
+  /** Shows `effects` on layer `id` without recording anything, while the Layer Style dialog is open; null ends it. */
+  previewLayerEffects(id: ID | null, effects: LayerEffects | null = null): void {
+    const p = this.current;
+    this.effectPreview = p && id ? { project: p, layerId: id, effects: effects ? structuredClone(effects) : null } : null;
+    this.emit('render', null);
+  }
+
   private overrides(p: Project): Map<ID, LayerOverride> | undefined {
     const m = new Map<ID, LayerOverride>();
     const st = this.stroke;
@@ -349,6 +372,8 @@ export class Engine {
     if (gr && gr.project === p) m.set(gr.layerId, { ...(m.get(gr.layerId) ?? {}), ...(gr.target === 'pixels' ? { source: gr.surface } : { maskSource: gr.surface }) });
     const wp = this.warpState;
     if (wp && wp.project === p) m.set(wp.layerId, { ...(m.get(wp.layerId) ?? {}), source: wp.surface, transform: docTransform(p.doc.width, p.doc.height) });
+    const ep = this.effectPreview;
+    if (ep && ep.project === p) m.set(ep.layerId, { ...(m.get(ep.layerId) ?? {}), effects: ep.effects });
     const fl = this.floating;
     if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.work });
     const fs = this.floatSel;
@@ -986,7 +1011,9 @@ export class Engine {
     if (!f) return;
     const l = st.project.layer(st.layerId), r = st.target === 'mask' ? l?.mask?.raster : l?.raster;
     const t = st.target === 'mask' ? l?.mask?.placement ?? l?.transform : l?.transform;
-    if (!this.dirtyRendering || !l || !r || !t) { this.emit('render', null); return; }
+    // Layer styles can cast from outside a stroke's region into it, so documents using them repaint whole.
+    const styled = st.project.doc.layers.some((x) => effectsActive(x.effects));
+    if (!this.dirtyRendering || !l || !r || !t || styled) { this.emit('render', null); return; }
     const m = placement(t, r.width, r.height);
     this.emit('render', boundsOf([applyMat(m, f.x, f.y), applyMat(m, f.x + f.w, f.y), applyMat(m, f.x + f.w, f.y + f.h), applyMat(m, f.x, f.y + f.h)]));
   }

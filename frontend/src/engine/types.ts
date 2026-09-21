@@ -38,6 +38,8 @@ export type AdjustmentKind = 'hsv' | 'levels' | 'curves' | 'exposure' | 'gradien
 export interface Adjustment { kind: AdjustmentKind; data: Record<string, unknown> }
 export interface Layer {
   readonly id: ID;
+  /** Layer styles drawn beneath the layer; absent or null for none. */
+  effects?: LayerEffects | null;
   name: string;
   raster: Raster | null;
   transform: Transform;
@@ -76,4 +78,46 @@ export function newLayer(name: string, size: { width: number; height: number }, 
     id: uid(), name, raster: null, transform: docTransform(size.width, size.height), visible: true, parentId: null,
     isGroup: false, opacity: 1, blend: 'normal', mask: null, clipId: null, adjustment: null, shape: null, ...patch,
   };
+}
+
+/** Layer styles, drawn beneath a layer from its visible silhouette. Sizes and distances are document pixels; the drop
+ *  shadow's angle is where the light comes from, in degrees counter-clockwise from the right, so 120 casts the shadow
+ *  down and to the right. */
+export interface DropShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number }
+export interface OuterGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number }
+export interface StrokeEffect { enabled: boolean; color: RGB; opacity: number; size: number }
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect }
+
+/** Photoshop's starting values: a 75% multiplied black shadow at 120 degrees, 5 px away and 5 px soft; a 75% screened
+ *  pale yellow glow of 5 px; a 3 px black outside stroke. All off. */
+export function defaultEffects(): LayerEffects {
+  return {
+    dropShadow: { enabled: false, color: { r: 0, g: 0, b: 0 }, opacity: 0.75, blend: 'multiply', angle: 120, distance: 5, size: 5 },
+    outerGlow: { enabled: false, color: { r: 255, g: 255, b: 190 }, opacity: 0.75, blend: 'screen', size: 5 },
+    stroke: { enabled: false, color: { r: 0, g: 0, b: 0 }, opacity: 1, size: 3 },
+  };
+}
+
+export function effectsActive(fx: LayerEffects | null | undefined): fx is LayerEffects {
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled);
+}
+
+/** Effects read back from saved data, every field checked and clamped; null when none is enabled. */
+export function effectsFromData(raw: unknown): LayerEffects | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>, d = defaultEffects();
+  const part = (k: string): Record<string, unknown> => (o[k] && typeof o[k] === 'object' ? (o[k] as Record<string, unknown>) : {});
+  const num = (v: unknown, fallback: number, lo: number, hi: number): number => (typeof v === 'number' && Number.isFinite(v) ? clamp(v, lo, hi) : fallback);
+  const rgb = (v: unknown, fallback: RGB): RGB => {
+    const c = v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+    return { r: Math.round(num(c.r, fallback.r, 0, 255)), g: Math.round(num(c.g, fallback.g, 0, 255)), b: Math.round(num(c.b, fallback.b, 0, 255)) };
+  };
+  const blend = (v: unknown, fallback: BlendMode): BlendMode => (BLEND_MODES.some((m) => m.id === v) ? (v as BlendMode) : fallback);
+  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke');
+  const fx: LayerEffects = {
+    dropShadow: { enabled: s.enabled === true, color: rgb(s.color, d.dropShadow.color), opacity: num(s.opacity, 0.75, 0, 1), blend: blend(s.blend, 'multiply'), angle: num(s.angle, 120, -360, 360), distance: num(s.distance, 5, 0, 1000), size: num(s.size, 5, 0, 250) },
+    outerGlow: { enabled: g.enabled === true, color: rgb(g.color, d.outerGlow.color), opacity: num(g.opacity, 0.75, 0, 1), blend: blend(g.blend, 'screen'), size: num(g.size, 5, 0, 250) },
+    stroke: { enabled: k.enabled === true, color: rgb(k.color, d.stroke.color), opacity: num(k.opacity, 1, 0, 1), size: num(k.size, 3, 1, 250) },
+  };
+  return effectsActive(fx) ? fx : null;
 }

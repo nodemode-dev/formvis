@@ -1,6 +1,6 @@
 import {
   BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid,
-  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform,
+  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData,
 } from '../engine';
 import type { FilePart } from './api';
 
@@ -57,6 +57,7 @@ export async function serialize(doc: Doc, activeId: ID | null): Promise<{ manife
     if (l.isGroup) r.isGroup = true;
     if (l.opacity !== 1) r.opacity = l.opacity;
     if (l.blend !== 'normal') r.blendMode = blendLabel(l.blend);
+  if (effectsActive(l.effects)) r.effects = structuredClone(l.effects);
     if (l.mask) {
       const w = l.mask.raster?.width ?? l.raster?.width ?? Math.max(1, Math.round(l.transform.w));
       const h = l.mask.raster?.height ?? l.raster?.height ?? Math.max(1, Math.round(l.transform.h));
@@ -114,6 +115,10 @@ export async function serializeRefProject(doc: Doc, activeId: ID | null): Promis
       notes.push(`"${name || 'Layer'}" uses ${out.blendMode}, which .ref projects cannot hold; it exports as Normal.`);
       delete out.blendMode;
     }
+    if (out.effects) {
+      notes.push(`"${name || 'Layer'}" loses its layer style; .ref projects have none.`);
+      delete out.effects;
+    }
     return out;
   });
   const res = num(manifest.resolution, 72);
@@ -143,7 +148,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     return {
       id: str(r.id) ?? uid(), name: str(r.name) ?? 'Layer', raster, transform: transformFrom(r.transform, raster?.width ?? width, raster?.height ?? height),
       visible: r.isVisible !== false, parentId: str(r.parentID), isGroup: r.isGroup === true, opacity: clamp(num(r.opacity, 1), 0, 1),
-      blend: blendFromLabel(r.blendMode), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
     };
   });
   for (const b of bitmaps.values()) b.close();
