@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.45.0 · 2026-09-21
+
+### Added
+
+- Smart objects: Layer > Convert to Smart Object keeps the original pixels; filters on it stay editable in Layer > Smart Filters, where each can be hidden, re-edited or removed.
+- Layer > Rasterize Layer turns a smart object or a type layer into plain pixels.
+
 ## 0.44.0 · 2026-09-21
 
 ### Added

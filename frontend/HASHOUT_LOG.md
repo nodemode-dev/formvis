@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## backend/app/services/project_format.py
+
+### backend/app/services/project_format.py · smartSourceFile · _v0.45.0
+
+The source image is validated like layer images and masks. Removed:
+
+```python
+        for key in ("imageFile", "maskFile"):
+```
+
+## src/ui/panels/smart-filters-dialog.ts
+
+### src/ui/panels/smart-filters-dialog.ts · new · _v0.45.0
+
+The Smart Filters dialog. Nothing was removed.
+
 ## src/io/zip.ts
 
 ### src/io/zip.ts · new · _v0.44.0
@@ -19,6 +35,14 @@ The Actions and Batch dialogs. Nothing was removed.
 ### src/ui/actions.ts · new · _v0.44.0
 
 The actions store: recordable commands, steps checked on the way in, storage, playback. Nothing was removed.
+
+### src/ui/actions.ts · recordable · _v0.45.0
+
+Convert and Rasterize become recordable. Removed:
+
+```ts
+  'paste-layer-style', 'clear-layer-style', 'duplicate', 'merge-down', 'merge-visible', 'flatten',
+```
 
 ## src/extensions/tools/direct-select.ts
 
@@ -43,6 +67,10 @@ Anchors, sub-paths and Work Paths; tracing to Path2D; bounds. Nothing was remove
 ### src/io/psd.ts · new · _v0.42.0
 
 Layered PSD reading and writing with ag-psd, loaded on first use. Nothing was removed.
+
+### src/io/psd.ts · note · _v0.45.0
+
+Smart objects export as pixels, with a note. Nothing was removed.
 
 ## src/extensions/tools/patch.ts
 
@@ -650,6 +678,17 @@ Recording hooks, playback, batch to zip, File menu entries; the image-import inp
   if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands };
 ```
 
+### src/app.ts · smart objects · _v0.45.0
+
+Commands, menus, the dialog, and the runner and margin wiring. Removed:
+
+```ts
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive } from './engine';
+import { FILTER_LABELS, FilterPanel, type FilterKind } from './ui/panels/filter-panel';
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1213,6 +1252,14 @@ import { Raster, createSurface, ctxOf, toBlob, type Surface } from './surface';
 
 A document holding one image as its one layer, for Batch. Nothing was removed.
 
+### src/engine/index.ts · smart objects · _v0.45.0
+
+Convert, Rasterize, the filter stack with padded re-rendering, and the smart-object gate at every pixel-editing entry point. Removed:
+
+```ts
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec } from './types';
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1416,6 +1463,10 @@ export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 
 ```ts
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
 ```
+
+### src/engine/types.ts · SmartObject, SmartFilter · _v0.45.0
+
+Smart object types and a checked reader for saved filters. Nothing was removed.
 
 ## src/engine/viewport.ts
 
@@ -1879,6 +1930,16 @@ Live type saves in `.sonny` and reopens editable; `.ref` export notes it becomes
       blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
 ```
 
+### src/io/project-io.ts · smart objects · _v0.45.0
+
+Saves and reads the source and stack; .ref drops them with a note. Removed:
+
+```ts
+  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData,
+  for (const r of records) { const a = str(r.imageFile), b = str(r.maskFile); if (a) names.add(a); if (b) names.add(b); }
+      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+```
+
 ## src/main.ts
 
 ### src/main.ts · entry, calls startApp · _v0.1.0
@@ -1925,6 +1986,10 @@ Removed: showing the mask thumbnail on demand pushed the layer name right, a mea
 ### src/styles/panels.css · fx mark · _v0.40.0
 
 The fx mark in muted italic. Nothing was removed.
+
+### src/styles/panels.css · smart badge and dialog rows · _v0.45.0
+
+Styles for the badge and the filter list. Nothing was removed.
 
 ## src/styles/scrollbars.css
 
@@ -2052,6 +2117,10 @@ Two inline currentColor icons. Nothing was removed.
 
 Two inline currentColor icons. Nothing was removed.
 
+### src/ui/icons.ts · smartObject · _v0.45.0
+
+One inline currentColor icon. Nothing was removed.
+
 ## src/ui/layers.ts
 
 ### src/ui/layers.ts · LayersPanel.bindRows · pointerdown · _v0.1.0
@@ -2110,6 +2179,14 @@ The fx mark updated in place; double-clicking it opens Layer Style, and double-c
 import { BLEND_MODES, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Raster } from '../engine';
     const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span></span></div>`);
       if (t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
+```
+
+### src/ui/layers.ts · smart badge · _v0.45.0
+
+The smart-object badge and its double-click. Removed:
+
+```ts
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-fx" hidden title="Layer style">fx</span></span></div>`);
 ```
 
 ## src/ui/menu.ts
@@ -2310,6 +2387,28 @@ export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorre
 ### src/ui/panels/filter-panel.ts · onApplied, applySettings · _v0.44.0
 
 Records applied filters and replays them without the dialog. Nothing was removed.
+
+### src/ui/panels/filter-panel.ts · runFilter, filterMargin · _v0.45.0
+
+Filter code made shareable; smart-object routing and editing a stored filter. Removed:
+
+```ts
+  private readonly s = { radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState() };
+  private run(src: ImageData, scale: number): ImageData {
+    const s = this.s;
+    switch (this.kind) {
+      case 'gaussianBlur': return gaussianBlur(src, s.radius * scale);
+      case 'motionBlur': return motionBlur(src, s.angle, s.distance * scale);
+      case 'addNoise': return addNoise(src, s.amount, s.gaussian, s.monochromatic, this.seed);
+      case 'lensCorrection': return lensDistort(src, s.distortion);
+      case 'unsharpMask': return unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
+      case 'develop': return developImage(src, s.develop, scale);
+    }
+  }
+  private grow(): number {
+    return this.kind === 'gaussianBlur' ? gaussianMargin(this.s.radius) : this.kind === 'motionBlur' ? motionMargin(this.s.distance) : 0;
+  }
+```
 
 ## src/ui/panels/jpeg-dialog.ts
 
