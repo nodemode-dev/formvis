@@ -79,25 +79,25 @@ The engine reads `backend/.env`, which is never committed; `backend/.env.example
 
 ```text
 sonny/
-├── sonny, sonny.bat root dispatcher: install, boot, build, serve, desktop, doctor
-├── sonny_oc_install(.bat) one-command install
-├── setup/ one script per task, each w/ a.bat twin; lib.sh holds shared helpers
-├── assets/ repo art (README logo, desktop icon source), not app runtime files
-├── backend/ FastAPI engine
-│ ├── app/core/config.py ports, limits, data folders
-│ ├── app/routers/ system, io, projects, ops
-│ ├── app/services/ imaging, project_format, sessions, background
-│ └── sonny_engine.py PyInstaller entry for the desktop sidecar
-├── frontend/ Vite app, vanilla TypeScript
-│ ├── src/engine/ document engine, no DOM: layers, renderer, history, selections, strokes
-│ ├── src/extensions/ tool registry and one module per tool
-│ ├── src/ui/ shell, stage, layers panel, menus, dialogs, icons, themes
-│ ├── src/io/ engine client, image decoding, project serialization
-│ └── src/styles/ NodeMode tokens and component sheets
-├── src-tauri/ Tauri 2 shell: sidecar spawn, port handshake, window sizing
-├──.docs/ BRANCHING.md and the wiki source
-├──.github/workflows/ ci, wiki publish, desktop release matrix
-└──.claude/skills/sonny-skillset/ project skill pack
+├── sonny, sonny.bat           root dispatcher: install, boot, build, serve, desktop, doctor
+├── sonny_oc_install(.bat)        one-command install
+├── setup/                           one script per task, each w/ a .bat twin; lib.sh holds shared helpers
+├── assets/                          repo art (README logo, desktop icon source), not app runtime files
+├── backend/                         FastAPI engine
+│   ├── app/core/config.py           ports, limits, data folders
+│   ├── app/routers/                 system, io, projects, ops
+│   ├── app/services/                imaging, project_format, sessions, background
+│   └── sonny_engine.py           PyInstaller entry for the desktop sidecar
+├── frontend/                        Vite app, vanilla TypeScript
+│   ├── src/engine/                  document engine, no DOM: layers, renderer, history, selections, strokes
+│   ├── src/extensions/              tool registry and one module per tool
+│   ├── src/ui/                      shell, stage, layers panel, menus, dialogs, icons, themes
+│   ├── src/io/                      engine client, image decoding, project serialization
+│   └── src/styles/                  NodeMode tokens and component sheets
+├── src-tauri/                       Tauri 2 shell: sidecar spawn, port handshake, window sizing
+├── .docs/                           BRANCHING.md and the wiki source
+├── .github/workflows/               ci, wiki publish, desktop release matrix
+└── .claude/skills/sonny-skillset/  project skill pack
 ```
 
 ## Status by domain

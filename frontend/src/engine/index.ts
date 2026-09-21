@@ -34,7 +34,7 @@ export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
-export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin } from './filters';
+export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
 export type { Kernel, KernelContext } from './kernels';
 
@@ -193,7 +193,7 @@ export class Engine {
     }
     const base: Doc = { id: uid(), width, height, resolution: 72, layers: [] };
     let layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', base);
-    if (fill !== 'transparent') layer = { ...layer, raster: Raster.filled(width, height, fill === 'white' ? '#ffffff': rgbCss(this.bg)) };
+    if (fill !== 'transparent') layer = { ...layer, raster: Raster.filled(width, height, fill === 'white' ? '#ffffff' : rgbCss(this.bg)) };
     return this.addProject({ ...base, layers: [layer] }, name, layer.id);
   }
 
@@ -2543,7 +2543,7 @@ export class Engine {
   async exportBlob(type: 'image/png' | 'image/jpeg', quality = 0.92): Promise<Blob | null> {
     const p = this.current;
     if (!p) return null;
-    return withResolution(await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff': null), type, quality), p.doc.resolution);
+    return withResolution(await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality), p.doc.resolution);
   }
 
   flattened(): Surface | null { const p = this.current; return p ? renderDoc(this.work, p.doc) : null; }

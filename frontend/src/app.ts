@@ -87,38 +87,38 @@ async function readEntry(entry: FileSystemEntry, prefix: string, out: { files: F
   let batch: FileSystemEntry[];
   do {
     batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
- for (const child of batch) await readEntry(child, `${prefix}${entry.name}/`, out);
+    for (const child of batch) await readEntry(child, `${prefix}${entry.name}/`, out);
   } while (batch.length);
 }
 
 export function startApp(): void {
   registerBuiltinTools();
- const appHost = document.getElementById('app');
+  const appHost = document.getElementById('app');
   if (!appHost) return;
   mountOnce(appHost, SHELL);
- const root = q(appHost, '.cv-app');
+  const root = q(appHost, '.cv-app');
   const savedWidth = Number(stored(LAYERS_W_KEY));
- if (savedWidth >= 200 && savedWidth <= 480) setStyleVar(root, '--cv-layers-w', `${savedWidth}px`);
+  if (savedWidth >= 200 && savedWidth <= 480) setStyleVar(root, '--cv-layers-w', `${savedWidth}px`);
 
   const engine = new Engine();
- engine.on('notice', (n) => toast(n.text, n.kind));
+  engine.on('notice', (n) => toast(n.text, n.kind));
   const commands = new Commands();
   const contextMenu = new PopupMenu(commands);
- const stage = new Stage(q(root, '.cv-stage'), engine);
- const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
- new Rail(q(root, '.cv-rail'), engine);
- new OptionsBar(q(root, '.cv-options'), engine);
- const status = new StatusBar(q(root, '.cv-status'), engine);
+  const stage = new Stage(q(root, '.cv-stage'), engine);
+  const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
+  new Rail(q(root, '.cv-rail'), engine);
+  new OptionsBar(q(root, '.cv-options'), engine);
+  const status = new StatusBar(q(root, '.cv-status'), engine);
   const hostLink = new HostLink(() => undefined, () => undefined);
   let caps: Capabilities | null = null;
 
   async function deliver(blob: Blob, name: string): Promise<void> {
- if (caps?.desktop) { toast(`Saved to ${await api.exportFile(blob, name)}`); return; }
+    if (caps?.desktop) { toast(`Saved to ${await api.exportFile(blob, name)}`); return; }
     const url = URL.createObjectURL(blob);
- const a = document.createElement('a');
+    const a = document.createElement('a');
     a.href = url;
     a.download = name;
- a.rel = 'noopener';
+    a.rel = 'noopener';
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -128,19 +128,19 @@ export function startApp(): void {
   async function openOpened(o: OpenedProject, libraryName: string | null): Promise<void> {
     const { doc, activeId } = await deserialize(o.manifest, (name) => {
       const url = o.images[name];
- return url ? api.fetchAsset(url): Promise.reject(new Error(`${name} is missing from the project.`));
+      return url ? api.fetchAsset(url) : Promise.reject(new Error(`${name} is missing from the project.`));
     });
     const p = engine.addProject(doc, o.name, activeId);
     engine.markSaved(p, p.name, libraryName);
   }
 
- /** the Open Recent (the system's recent documents, noted on every save and open): the ten library projects
- * most recently saved or opened in this app, newest first, kept in this browser or desktop app's storage. */
- const RECENT_KEY = 'sonny.recent';
+  /** the Open Recent (the system's recent documents, noted on every save and open): the ten library projects
+   *  most recently saved or opened in this app, newest first, kept in this browser or desktop app's storage. */
+  const RECENT_KEY = 'sonny.recent';
   let recent: string[] = [];
   try {
- const stored: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
- if (Array.isArray(stored)) recent = stored.filter((n): n is string => typeof n === 'string' && !!n).slice(0, 10);
+    const stored: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    if (Array.isArray(stored)) recent = stored.filter((n): n is string => typeof n === 'string' && !!n).slice(0, 10);
   } catch { recent = []; }
   function keepRecent(next: string[]): void {
     recent = next.slice(0, 10);
@@ -152,21 +152,21 @@ export function startApp(): void {
     const existing = engine.projects.find((p) => p.libraryName === name && !p.modified);
     if (existing) { engine.switchTo(existing.id); return true; }
     return engine.task(async () => {
- try { await openOpened(await api.openLibrary(name), name); noteRecent(name); return true; } catch (err) { if (/not found/i.test(message(err))) keepRecent(recent.filter((n) => n !== name)); toast(message(err), 'error'); return false; }
+      try { await openOpened(await api.openLibrary(name), name); noteRecent(name); return true; } catch (err) { if (/not found/i.test(message(err))) keepRecent(recent.filter((n) => n !== name)); toast(message(err), 'error'); return false; }
     });
   }
 
   async function openFiles(files: File[]): Promise<void> {
     await engine.task(async () => {
       for (const f of files) {
- try { await openOpened(await api.importProject([f]), null); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+        try { await openOpened(await api.importProject([f]), null); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
       }
     });
   }
 
   async function openFolder(files: File[], paths: string[]): Promise<void> {
     await engine.task(async () => {
- try { await openOpened(await api.importProject(files, paths), null); } catch (err) { toast(message(err), 'error'); }
+      try { await openOpened(await api.importProject(files, paths), null); } catch (err) { toast(message(err), 'error'); }
     });
   }
 
@@ -179,12 +179,12 @@ export function startApp(): void {
       await engine.task(async () => {
         const decoded: ImportedImage[] = [];
         for (const f of images) {
- try { decoded.push(await decodeImage(f, f.name)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+          try { decoded.push(await decodeImage(f, f.name)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
         }
         engine.insertImages(decoded, at);
       });
     }
- if (skipped) toast(skipped === 1 ? 'One file is not an image or a project and was skipped.': `${skipped} files are not images or projects and were skipped.`);
+    if (skipped) toast(skipped === 1 ? 'One file is not an image or a project and was skipped.' : `${skipped} files are not images or projects and were skipped.`);
   }
 
   async function save(saveAs: boolean): Promise<boolean> {
@@ -193,11 +193,11 @@ export function startApp(): void {
     engine.settle();
     let name = saveAs ? null : p.libraryName;
     if (!name) {
- name = await promptName(saveAs ? 'Save As': 'Save to Library', p.libraryName ?? p.name, 'Save');
+      name = await promptName(saveAs ? 'Save As' : 'Save to Library', p.libraryName ?? p.name, 'Save');
       if (!name) return false;
       if (name !== p.libraryName) {
         const taken = (await api.library().catch(() => [])).some((i) => i.name === name);
- if (taken && !(await confirmAction('Replace project?', `${name} already exists in the library.`, 'Replace', true))) return false;
+        if (taken && !(await confirmAction('Replace project?', `${name} already exists in the library.`, 'Replace', true))) return false;
       }
     }
     const target = name;
@@ -207,12 +207,12 @@ export function startApp(): void {
         const { manifest, files } = await serialize(p.doc, p.activeId);
         const res = await api.save(target, manifest, files);
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
- else { p.name = res.name; p.libraryName = res.name; engine.emit('projects', null); }
- toast(`Saved ${res.name}.`);
+        else { p.name = res.name; p.libraryName = res.name; engine.emit('projects', null); }
+        toast(`Saved ${res.name}.`);
         noteRecent(res.name);
         return true;
       } catch (err) {
- toast(message(err), 'error');
+        toast(message(err), 'error');
         return false;
       }
     });
@@ -225,12 +225,12 @@ export function startApp(): void {
     await engine.task(async () => {
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId);
- await deliver(await api.package(manifest, files), `${p.name}.sonny`);
- } catch (err) { toast(message(err), 'error'); }
+        await deliver(await api.package(manifest, files), `${p.name}.sonny`);
+      } catch (err) { toast(message(err), 'error'); }
     });
   }
 
- /** A project: `Name.ref.zip`, which unzips to the `Name.ref` package opens. */
+  /** A project: `Name.ref.zip`, which unzips to the `Name.ref` package opens. */
   async function exportRefProject(): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -238,37 +238,37 @@ export function startApp(): void {
     await engine.task(async () => {
       try {
         const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId);
- await deliver(await api.package(manifest, files, `${p.name}.ref`), `${p.name}.ref.zip`);
- if (notes.length) toast(`Exported as.ref with changes: ${notes.join(' ')}`);
- } catch (err) { toast(message(err), 'error'); }
+        await deliver(await api.package(manifest, files, `${p.name}.ref`), `${p.name}.ref.zip`);
+        if (notes.length) toast(`Exported as.ref with changes: ${notes.join(' ')}`);
+      } catch (err) { toast(message(err), 'error'); }
     });
   }
 
- /** deleting a layer that other layers are clipped to asks whether to bake
- * their masked look or remove the links; with no such layers it deletes at once. */
+  /** deleting a layer that other layers are clipped to asks whether to bake
+   *  their masked look or remove the links; with no such layers it deletes at once. */
   async function deleteLayersWithChoice(): Promise<void> {
     const p = engine.current;
     if (!p) return;
     if (!engine.liveMaskDependents().length) { engine.deleteLayers(); return; }
     const choice = await dialogs.liveMask.choose(p.selectedIds.size > 1);
- if (choice) engine.deleteLayers(choice === 'bake');
+    if (choice) engine.deleteLayers(choice === 'bake');
   }
 
- async function exportImage(kind: 'png' | 'jpg', quality = 0.92): Promise<void> {
+  async function exportImage(kind: 'png' | 'jpg', quality = 0.92): Promise<void> {
     const p = engine.current;
     if (!p) return;
     engine.settle();
     await engine.task(async () => {
       try {
- const blob = await engine.exportBlob(kind === 'png' ? 'image/png': 'image/jpeg', quality);
- if (blob) await deliver(blob, `${p.name}.${kind}`);
- } catch (err) { toast(message(err), 'error'); }
+        const blob = await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality);
+        if (blob) await deliver(blob, `${p.name}.${kind}`);
+      } catch (err) { toast(message(err), 'error'); }
     });
   }
 
- async function removeBackground(method: 'auto' | 'lite'): Promise<void> {
+  async function removeBackground(method: 'auto' | 'lite'): Promise<void> {
     const l = engine.activeLayer;
- if (!l?.raster || l.isGroup) { toast('Select a pixel layer first.'); return; }
+    if (!l?.raster || l.isGroup) { toast('Select a pixel layer first.'); return; }
     const raster = l.raster;
     await engine.task(async () => {
       try {
@@ -276,14 +276,14 @@ export function startApp(): void {
         const bitmap = await createImageBitmap(mask);
         if (engine.activeLayer?.id !== l.id) { bitmap.close(); return; }
         dialogs.background.show(l.id, bitmap);
- toast(`Subject found with the ${used === 'ml' ? 'ML': 'lightweight'} engine.`);
- } catch (err) { toast(message(err), 'error'); }
+        toast(`Subject found with the ${used === 'ml' ? 'ML' : 'lightweight'} engine.`);
+      } catch (err) { toast(message(err), 'error'); }
     });
   }
 
   async function sendToHost(): Promise<void> {
     const p = engine.current;
- const blob = p ? await engine.exportBlob('image/png'): null;
+    const blob = p ? await engine.exportBlob('image/png') : null;
     if (!p || !blob) return;
     const dataUrl = await new Promise<string>((resolve, reject) => {
       const r = new FileReader();
@@ -291,22 +291,22 @@ export function startApp(): void {
       r.onerror = () => reject(r.error);
       r.readAsDataURL(blob);
     });
- hostLink.assign([{ name: `${p.name}.png`, mime: 'image/png', width: p.doc.width, height: p.doc.height, dataUrl }]);
- toast('Sent to the NodeMode canvas.');
+    hostLink.assign([{ name: `${p.name}.png`, mime: 'image/png', width: p.doc.width, height: p.doc.height, dataUrl }]);
+    toast('Sent to the NodeMode canvas.');
   }
 
   async function requestClose(id: string): Promise<void> {
     const p = engine.projects.find((x) => x.id === id);
     if (!p) return;
- if (p.modified && !(await confirmAction('Close without saving?', `${p.name} has changes that are not saved.`, 'Close', true))) return;
+    if (p.modified && !(await confirmAction('Close without saving?', `${p.name} has changes that are not saved.`, 'Close', true))) return;
     engine.closeProject(id);
   }
 
- const imageInput = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" hidden>`);
+  const imageInput = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" hidden>`);
   document.body.appendChild(imageInput);
- imageInput.addEventListener('change', () => {
+  imageInput.addEventListener('change', () => {
     const files = Array.from(imageInput.files ?? []);
- imageInput.value = '';
+    imageInput.value = '';
     if (files.length) void importFiles(files);
   });
 
@@ -334,74 +334,74 @@ export function startApp(): void {
   const selected = (): boolean => !!engine.current?.selection;
 
   commands.add(
- { id: 'new', label: 'New Canvas...', keys: ['Alt+Mod+N', 'Mod+N'], run: () => dialogs.newCanvas.show() },
- { id: 'open', label: 'Open Project...', keys: ['Mod+O'], run: () => void dialogs.open.show() },
- { id: 'recent-heading', label: 'Open Recent', enabled: () => false, run: () => undefined },
-...Array.from({ length: 10 }, (_, i) => ({ id: `recent-${i}`, label: () => recent[i] ?? '', enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
- { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
- { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
- { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
- { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
- { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
- { id: 'export-ref', label: 'Export.ref Project...', enabled: has, run: () => void exportRefProject() },
- { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
- { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
- { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
- // the File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
- // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W too.
- { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W', 'Alt+Mod+W']: ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
- { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}`: 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
- { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}`: 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
- { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
- { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
- { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
- { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels(): void deleteLayersWithChoice()) },
- { id: 'settings', label: 'Settings...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
- { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
- { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
- { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
- { id: 'flip-canvas-h', label: 'Flip Canvas Horizontal', enabled: has, run: () => engine.flipCanvas(true) },
- { id: 'flip-canvas-v', label: 'Flip Canvas Vertical', enabled: has, run: () => engine.flipCanvas(false) },
- { id: 'new-layer', label: 'New Layer', keys: ['Shift+Mod+N'], enabled: has, run: () => engine.addLayer() },
- { id: 'new-folder', label: 'New Folder', enabled: has, run: () => engine.addFolder() },
- { id: 'duplicate', label: () => (engine.current?.selection ? 'Layer via Copy': 'Duplicate Layer'), keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
- { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => void deleteLayersWithChoice() },
- { id: 'rename', label: 'Rename Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) layers.startRename(l.id); } },
- { id: 'group', label: 'Group Layers', keys: ['Mod+G'], enabled: () => !!layer(), run: () => engine.groupLayers() },
- { id: 'move-out', label: 'Move Out of Folder', keys: ['Shift+Mod+G'], enabled: () => !!layer()?.parentId, run: () => engine.moveOutOfFolder() },
- { id: 'add-mask', label: 'Add Layer Mask', enabled: () => !!layer() && !layer()?.mask, run: () => engine.addMask(false) },
- { id: 'add-mask-hide', label: 'Add Mask Hiding All', enabled: () => !!layer() && !layer()?.mask, run: () => engine.addMask(true) },
- { id: 'apply-mask', label: 'Apply Layer Mask', enabled: () => withPixels() && !!layer()?.mask, run: () => engine.deleteMask(true) },
- { id: 'delete-mask', label: 'Delete Layer Mask', enabled: () => !!layer()?.mask, run: () => engine.deleteMask(false) },
- { id: 'toggle-mask', label: () => (layer()?.mask?.enabled === false ? 'Enable Layer Mask': 'Disable Layer Mask'), enabled: () => !!layer()?.mask, run: () => engine.toggleMaskEnabled() },
- { id: 'link-mask', label: () => (layer()?.mask?.linked === false ? 'Link Layer Mask': 'Unlink Layer Mask'), enabled: () => !!layer()?.mask, run: () => engine.toggleMaskLink() },
- { id: 'clip', label: () => (layer()?.clipId ? 'Release Clipping Mask': 'Create Clipping Mask'), keys: ['Alt+Mod+G'], enabled: () => !!layer() && !layer()?.isGroup, run: () => engine.toggleClip() },
- { id: 'merge', label: () => ((engine.current?.selectedIds.size ?? 0) > 1 ? 'Merge Layers': layer()?.isGroup ? 'Merge Group': 'Merge Down'), keys: ['Mod+E'], enabled: () => !!layer(), run: () => engine.mergeLayers() },
- { id: 'flip-layer-h', label: 'Flip Layer Horizontal', enabled: withPixels, run: () => engine.flipLayers(true) },
- { id: 'flip-layer-v', label: 'Flip Layer Vertical', enabled: withPixels, run: () => engine.flipLayers(false) },
- { id: 'forward', label: 'Bring Forward', keys: ['Mod+]'], enabled: () => !!layer(), run: () => engine.moveActive(1) },
- { id: 'backward', label: 'Send Backward', keys: ['Mod+['], enabled: () => !!layer(), run: () => engine.moveActive(-1) },
- { id: 'blend-next', label: 'Next Blend Mode', keys: ['Shift+='], enabled: pixel, run: () => engine.cycleBlend(true) },
- { id: 'blend-prev', label: 'Previous Blend Mode', keys: ['Shift+-'], enabled: pixel, run: () => engine.cycleBlend(false) },
- { id: 'select-all', label: 'All', keys: ['Mod+A'], enabled: has, run: () => engine.selectAll() },
- { id: 'deselect', label: 'Deselect', keys: ['Mod+D'], enabled: selected, run: () => engine.deselect() },
- { id: 'inverse', label: 'Inverse', keys: ['Shift+Mod+I'], enabled: selected, run: () => engine.invertSelection() },
- { id: 'layer-pixels', label: "Layer's Pixels", enabled: () => !!layer()?.raster, run: () => engine.selectLayerPixels() },
- { id: 'zoom-in', label: 'Zoom In', keys: ['Mod+='], enabled: has, run: () => engine.zoomStep(true) },
- { id: 'zoom-out', label: 'Zoom Out', keys: ['Mod+-'], enabled: has, run: () => engine.zoomStep(false) },
- { id: 'fit', label: 'Fit on Screen', keys: ['Mod+0'], enabled: has, run: () => engine.fit() },
- { id: 'actual', label: 'Actual Pixels', keys: ['Mod+1'], enabled: has, run: () => engine.zoomTo(1) },
- { id: 'pixel-grid', label: 'Pixel Grid', checked: () => engine.showPixelGrid, run: () => engine.update({ showPixelGrid: !engine.showPixelGrid }) },
- { id: 'transform-controls', label: 'Transform Controls', checked: () => engine.showTransformControls, run: () => engine.update({ showTransformControls: !engine.showTransformControls }) },
- { id: 'shortcuts', label: 'Keyboard Shortcuts', keys: ['Shift+/'], run: () => dialogs.shortcuts.show() },
- { id: 'about', label: 'About sonny', run: () => dialogs.about.show(caps) },
+    { id: 'new', label: 'New Canvas...', keys: ['Alt+Mod+N', 'Mod+N'], run: () => dialogs.newCanvas.show() },
+    { id: 'open', label: 'Open Project...', keys: ['Mod+O'], run: () => void dialogs.open.show() },
+    { id: 'recent-heading', label: 'Open Recent', enabled: () => false, run: () => undefined },
+    ...Array.from({ length: 10 }, (_, i) => ({ id: `recent-${i}`, label: () => recent[i] ?? '', enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
+    { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
+    { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
+    { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
+    { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
+    { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
+    { id: 'export-ref', label: 'Export .ref Project...', enabled: has, run: () => void exportRefProject() },
+    { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
+    { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
+    { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
+    // the File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
+    // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W too.
+    { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W', 'Alt+Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
+    { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
+    { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
+    { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
+    { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
+    { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
+    { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
+    { id: 'settings', label: 'Settings...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
+    { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
+    { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
+    { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
+    { id: 'flip-canvas-h', label: 'Flip Canvas Horizontal', enabled: has, run: () => engine.flipCanvas(true) },
+    { id: 'flip-canvas-v', label: 'Flip Canvas Vertical', enabled: has, run: () => engine.flipCanvas(false) },
+    { id: 'new-layer', label: 'New Layer', keys: ['Shift+Mod+N'], enabled: has, run: () => engine.addLayer() },
+    { id: 'new-folder', label: 'New Folder', enabled: has, run: () => engine.addFolder() },
+    { id: 'duplicate', label: () => (engine.current?.selection ? 'Layer via Copy' : 'Duplicate Layer'), keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
+    { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => void deleteLayersWithChoice() },
+    { id: 'rename', label: 'Rename Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) layers.startRename(l.id); } },
+    { id: 'group', label: 'Group Layers', keys: ['Mod+G'], enabled: () => !!layer(), run: () => engine.groupLayers() },
+    { id: 'move-out', label: 'Move Out of Folder', keys: ['Shift+Mod+G'], enabled: () => !!layer()?.parentId, run: () => engine.moveOutOfFolder() },
+    { id: 'add-mask', label: 'Add Layer Mask', enabled: () => !!layer() && !layer()?.mask, run: () => engine.addMask(false) },
+    { id: 'add-mask-hide', label: 'Add Mask Hiding All', enabled: () => !!layer() && !layer()?.mask, run: () => engine.addMask(true) },
+    { id: 'apply-mask', label: 'Apply Layer Mask', enabled: () => withPixels() && !!layer()?.mask, run: () => engine.deleteMask(true) },
+    { id: 'delete-mask', label: 'Delete Layer Mask', enabled: () => !!layer()?.mask, run: () => engine.deleteMask(false) },
+    { id: 'toggle-mask', label: () => (layer()?.mask?.enabled === false ? 'Enable Layer Mask' : 'Disable Layer Mask'), enabled: () => !!layer()?.mask, run: () => engine.toggleMaskEnabled() },
+    { id: 'link-mask', label: () => (layer()?.mask?.linked === false ? 'Link Layer Mask' : 'Unlink Layer Mask'), enabled: () => !!layer()?.mask, run: () => engine.toggleMaskLink() },
+    { id: 'clip', label: () => (layer()?.clipId ? 'Release Clipping Mask' : 'Create Clipping Mask'), keys: ['Alt+Mod+G'], enabled: () => !!layer() && !layer()?.isGroup, run: () => engine.toggleClip() },
+    { id: 'merge', label: () => ((engine.current?.selectedIds.size ?? 0) > 1 ? 'Merge Layers' : layer()?.isGroup ? 'Merge Group' : 'Merge Down'), keys: ['Mod+E'], enabled: () => !!layer(), run: () => engine.mergeLayers() },
+    { id: 'flip-layer-h', label: 'Flip Layer Horizontal', enabled: withPixels, run: () => engine.flipLayers(true) },
+    { id: 'flip-layer-v', label: 'Flip Layer Vertical', enabled: withPixels, run: () => engine.flipLayers(false) },
+    { id: 'forward', label: 'Bring Forward', keys: ['Mod+]'], enabled: () => !!layer(), run: () => engine.moveActive(1) },
+    { id: 'backward', label: 'Send Backward', keys: ['Mod+['], enabled: () => !!layer(), run: () => engine.moveActive(-1) },
+    { id: 'blend-next', label: 'Next Blend Mode', keys: ['Shift+='], enabled: pixel, run: () => engine.cycleBlend(true) },
+    { id: 'blend-prev', label: 'Previous Blend Mode', keys: ['Shift+-'], enabled: pixel, run: () => engine.cycleBlend(false) },
+    { id: 'select-all', label: 'All', keys: ['Mod+A'], enabled: has, run: () => engine.selectAll() },
+    { id: 'deselect', label: 'Deselect', keys: ['Mod+D'], enabled: selected, run: () => engine.deselect() },
+    { id: 'inverse', label: 'Inverse', keys: ['Shift+Mod+I'], enabled: selected, run: () => engine.invertSelection() },
+    { id: 'layer-pixels', label: "Layer's Pixels", enabled: () => !!layer()?.raster, run: () => engine.selectLayerPixels() },
+    { id: 'zoom-in', label: 'Zoom In', keys: ['Mod+='], enabled: has, run: () => engine.zoomStep(true) },
+    { id: 'zoom-out', label: 'Zoom Out', keys: ['Mod+-'], enabled: has, run: () => engine.zoomStep(false) },
+    { id: 'fit', label: 'Fit on Screen', keys: ['Mod+0'], enabled: has, run: () => engine.fit() },
+    { id: 'actual', label: 'Actual Pixels', keys: ['Mod+1'], enabled: has, run: () => engine.zoomTo(1) },
+    { id: 'pixel-grid', label: 'Pixel Grid', checked: () => engine.showPixelGrid, run: () => engine.update({ showPixelGrid: !engine.showPixelGrid }) },
+    { id: 'transform-controls', label: 'Transform Controls', checked: () => engine.showTransformControls, run: () => engine.update({ showTransformControls: !engine.showTransformControls }) },
+    { id: 'shortcuts', label: 'Keyboard Shortcuts', keys: ['Shift+/'], run: () => dialogs.shortcuts.show() },
+    { id: 'about', label: 'About sonny', run: () => dialogs.about.show(caps) },
   );
 
   function writeClipboard(): void {
     const cb = engine.clipboard;
- if (!cb || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return;
+    if (!cb || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return;
     try {
- const item = new ClipboardItem({ 'image/png': toBlob(cb.surface), 'text/plain': new Blob([`sonny:${cb.stamp}`], { type: 'text/plain' }) });
+      const item = new ClipboardItem({ 'image/png': toBlob(cb.surface), 'text/plain': new Blob([`sonny:${cb.stamp}`], { type: 'text/plain' }) });
       void navigator.clipboard.write([item]).catch(() => undefined);
     } catch { return; }
   }
@@ -409,28 +409,28 @@ export function startApp(): void {
   async function pasteExternal(file: File): Promise<void> {
     await engine.task(async () => {
       try {
- const img = await decodeImage(file, file.name || 'Pasted.png');
+        const img = await decodeImage(file, file.name || 'Pasted.png');
         if (!engine.current) engine.insertImages([img]);
         else engine.insertRasterLayer(Raster.from(img.source, img.width, img.height), stripExt(img.name), null, null);
- } catch (err) { toast(message(err), 'error'); }
+      } catch (err) { toast(message(err), 'error'); }
     });
   }
 
   async function pasteFromMenu(): Promise<void> {
     try {
       for (const item of await navigator.clipboard.read()) {
- if (item.types.includes('text/plain') && engine.clipboard) {
- const text = await (await item.getType('text/plain')).text();
- if (text === `sonny:${engine.clipboard.stamp}`) { engine.pasteClipboard(); return; }
+        if (item.types.includes('text/plain') && engine.clipboard) {
+          const text = await (await item.getType('text/plain')).text();
+          if (text === `sonny:${engine.clipboard.stamp}`) { engine.pasteClipboard(); return; }
         }
- const type = item.types.find((t) => t.startsWith('image/'));
- if (type) { await pasteExternal(new File([await item.getType(type)], 'Pasted.png', { type })); return; }
+        const type = item.types.find((t) => t.startsWith('image/'));
+        if (type) { await pasteExternal(new File([await item.getType(type)], 'Pasted.png', { type })); return; }
       }
     } catch {
- if (!engine.pasteClipboard()) toast('Nothing to paste. Use the keyboard shortcut to paste from other apps.');
+      if (!engine.pasteClipboard()) toast('Nothing to paste. Use the keyboard shortcut to paste from other apps.');
       return;
     }
- if (!engine.pasteClipboard()) toast('Nothing to paste.');
+    if (!engine.pasteClipboard()) toast('Nothing to paste.');
   }
 
   const hasTargetPixels = (): boolean => {
@@ -438,159 +438,159 @@ export function startApp(): void {
     if (!p || !l || l.isGroup || l.adjustment) return false;
     return p.maskTarget && l.mask ? !!l.mask.raster : !!l.raster;
   };
- const ADJUST_KEYS: Partial<Record<string, string[]>> = { curves: ['Mod+M'], levels: ['Mod+L'], hsv: ['Mod+U'] };
- const FILTERS: FilterKind[] = ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection'];
+  const ADJUST_KEYS: Partial<Record<string, string[]>> = { curves: ['Mod+M'], levels: ['Mod+L'], hsv: ['Mod+U'] };
+  const FILTERS: FilterKind[] = ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'unsharpMask'];
 
   commands.add(
- { id: 'cut', label: 'Cut', keys: ['Mod+X'], enabled: () => pixel() && selected(), run: () => { engine.cutSelection(); writeClipboard(); } },
- { id: 'copy', label: 'Copy', keys: ['Mod+C'], enabled: pixel, run: () => { if (engine.copySelection(false)) writeClipboard(); } },
- { id: 'copy-merged', label: 'Copy Merged', keys: ['Shift+Mod+C'], enabled: has, run: () => { if (engine.copySelection(true)) writeClipboard(); } },
- { id: 'paste', label: 'Paste', keys: ['Mod+V'], run: () => void pasteFromMenu() },
- { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection': 'Transform Layer'), keys: ['Alt+Mod+T', 'Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
- { id: 'content-fill', label: 'Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
- { id: 'mask-black', label: "Mask's Black Areas", enabled: () => !!layer()?.mask, run: () => engine.selectMaskBlack() },
- { id: 'expand', label: () => `Expand by ${engine.selectionAmounts.expand} px...`, enabled: selected, run: () => dialogs.amount.show(true) },
- { id: 'contract', label: () => `Contract by ${engine.selectionAmounts.contract} px...`, enabled: selected, run: () => dialogs.amount.show(false) },
-...ADJUSTMENT_KINDS.map((kind) => ({ id: `adj-${kind}`, label: `${ADJUSTMENT_LABELS[kind]}...`, keys: ADJUST_KEYS[kind], enabled: hasTargetPixels, run: () => dialogs.adjust.openForImage(kind) })),
-...ADJUSTMENT_KINDS.map((kind) => ({ id: `new-adj-${kind}`, label: `New ${ADJUSTMENT_LABELS[kind]} Layer...`, enabled: has, run: () => { const id = engine.addAdjustmentLayer(kind); if (id) dialogs.adjust.openForLayer(id); } })),
- { id: 'edit-adjustment', label: 'Edit Adjustment...', enabled: () => !!layer()?.adjustment, run: () => { const l = layer(); if (l?.adjustment) dialogs.adjust.openForLayer(l.id); } },
- { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
- { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
-...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
+    { id: 'cut', label: 'Cut', keys: ['Mod+X'], enabled: () => pixel() && selected(), run: () => { engine.cutSelection(); writeClipboard(); } },
+    { id: 'copy', label: 'Copy', keys: ['Mod+C'], enabled: pixel, run: () => { if (engine.copySelection(false)) writeClipboard(); } },
+    { id: 'copy-merged', label: 'Copy Merged', keys: ['Shift+Mod+C'], enabled: has, run: () => { if (engine.copySelection(true)) writeClipboard(); } },
+    { id: 'paste', label: 'Paste', keys: ['Mod+V'], run: () => void pasteFromMenu() },
+    { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Alt+Mod+T', 'Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
+    { id: 'content-fill', label: 'Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
+    { id: 'mask-black', label: "Mask's Black Areas", enabled: () => !!layer()?.mask, run: () => engine.selectMaskBlack() },
+    { id: 'expand', label: () => `Expand by ${engine.selectionAmounts.expand} px...`, enabled: selected, run: () => dialogs.amount.show(true) },
+    { id: 'contract', label: () => `Contract by ${engine.selectionAmounts.contract} px...`, enabled: selected, run: () => dialogs.amount.show(false) },
+    ...ADJUSTMENT_KINDS.map((kind) => ({ id: `adj-${kind}`, label: `${ADJUSTMENT_LABELS[kind]}...`, keys: ADJUST_KEYS[kind], enabled: hasTargetPixels, run: () => dialogs.adjust.openForImage(kind) })),
+    ...ADJUSTMENT_KINDS.map((kind) => ({ id: `new-adj-${kind}`, label: `New ${ADJUSTMENT_LABELS[kind]} Layer...`, enabled: has, run: () => { const id = engine.addAdjustmentLayer(kind); if (id) dialogs.adjust.openForLayer(id); } })),
+    { id: 'edit-adjustment', label: 'Edit Adjustment...', enabled: () => !!layer()?.adjustment, run: () => { const l = layer(); if (l?.adjustment) dialogs.adjust.openForLayer(l.id); } },
+    { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
+    { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
+    ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
   );
 
   const menus: MenuDef[] = [
- { label: 'File', items: () => ['new', 'open', 'import',...(recent.length ? ['-', 'recent-heading',...recent.map((_, i) => `recent-${i}`), 'clear-recent']: []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg',...(hostLink.embedded ? ['send-host']: []), '-', 'close-tab'] },
- { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', '-', 'transform', '-', 'settings'] },
- { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'image-size', '-', 'flip-canvas-h', 'flip-canvas-v'] },
- { label: 'Layer', items: ['new-layer', 'new-folder', '-',...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
- { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract'] },
- { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
- { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
- { label: 'Help', items: ['shortcuts', 'about'] },
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', '-', 'transform', '-', 'settings'] },
+    { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'image-size', '-', 'flip-canvas-h', 'flip-canvas-v'] },
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract'] },
+    { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
+    { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
+    { label: 'Help', items: ['shortcuts', 'about'] },
   ];
- const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
- contextMenu.setItems(['duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
- new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));
+  const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+  new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));
 
- const zoomLabel = q(root, '.cv-zoom-label');
+  const zoomLabel = q(root, '.cv-zoom-label');
   let chromeFrame = 0;
   const syncChrome = (): void => {
     if (chromeFrame) return;
     chromeFrame = requestAnimationFrame(() => {
       chromeFrame = 0;
- for (const b of Array.from(root.querySelectorAll<HTMLButtonElement>('button[data-cmd]'))) {
- const cmd = commands.get(b.dataset.cmd ?? '');
+      for (const b of Array.from(root.querySelectorAll<HTMLButtonElement>('button[data-cmd]'))) {
+        const cmd = commands.get(b.dataset.cmd ?? '');
         if (!cmd) continue;
         setDisabled(b, !commands.enabled(cmd));
- const label = commands.label(cmd).replace(/\.\.\.$/, '');
+        const label = commands.label(cmd).replace(/\.\.\.$/, '');
         const keys = commands.keyLabel(cmd);
- setTitle(b, keys ? `${label} (${keys})`: label);
- if (b.classList.contains('cv-icon-btn') && b.getAttribute('aria-label') !== label) b.setAttribute('aria-label', label);
+        setTitle(b, keys ? `${label} (${keys})` : label);
+        if (b.classList.contains('cv-icon-btn') && b.getAttribute('aria-label') !== label) b.setAttribute('aria-label', label);
       }
       const p = engine.current;
- setText(zoomLabel, p ? `${Math.round(p.viewport.zoom * 100)}%`: '');
+      setText(zoomLabel, p ? `${Math.round(p.viewport.zoom * 100)}%` : '');
     });
   };
- for (const k of ['projects', 'history', 'active', 'doc', 'selection', 'viewport', 'options', 'tool'] as const) engine.on(k, syncChrome);
+  for (const k of ['projects', 'history', 'active', 'doc', 'selection', 'viewport', 'options', 'tool'] as const) engine.on(k, syncChrome);
   syncChrome();
 
- root.addEventListener('click', (e) => {
- const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-cmd]');
- if (b && root.contains(b) && !b.disabled) commands.run(b.dataset.cmd ?? '');
+  root.addEventListener('click', (e) => {
+    const b = (e.target as HTMLElement).closest<HTMLButtonElement>('button[data-cmd]');
+    if (b && root.contains(b) && !b.disabled) commands.run(b.dataset.cmd ?? '');
   });
- root.addEventListener('cv:edit-adjustment', (e) => {
+  root.addEventListener('cv:edit-adjustment', (e) => {
     const id = (e as CustomEvent<string>).detail;
- if (typeof id === 'string') dialogs.adjust.openForLayer(id);
+    if (typeof id === 'string') dialogs.adjust.openForLayer(id);
   });
 
- const resizer = q(root, '.cv-resizer');
- resizer.addEventListener('pointerdown', (e) => {
+  const resizer = q(root, '.cv-resizer');
+  resizer.addEventListener('pointerdown', (e) => {
     if (e.button !== 0) return;
     e.preventDefault();
     resizer.setPointerCapture(e.pointerId);
- resizer.classList.add('is-dragging');
+    resizer.classList.add('is-dragging');
     const startX = e.clientX;
- const startW = q(root, '.cv-layers').getBoundingClientRect().width;
+    const startW = q(root, '.cv-layers').getBoundingClientRect().width;
     const move = (ev: PointerEvent): void => {
       const w = Math.round(Math.min(480, Math.max(200, startW - (ev.clientX - startX))));
- setStyleVar(root, '--cv-layers-w', `${w}px`);
+      setStyleVar(root, '--cv-layers-w', `${w}px`);
     };
     const up = (ev: PointerEvent): void => {
       if (resizer.hasPointerCapture(ev.pointerId)) resizer.releasePointerCapture(ev.pointerId);
- resizer.classList.remove('is-dragging');
- resizer.removeEventListener('pointermove', move);
- resizer.removeEventListener('pointerup', up);
- resizer.removeEventListener('pointercancel', up);
- store(LAYERS_W_KEY, String(Math.round(q(root, '.cv-layers').getBoundingClientRect().width)));
+      resizer.classList.remove('is-dragging');
+      resizer.removeEventListener('pointermove', move);
+      resizer.removeEventListener('pointerup', up);
+      resizer.removeEventListener('pointercancel', up);
+      store(LAYERS_W_KEY, String(Math.round(q(root, '.cv-layers').getBoundingClientRect().width)));
     };
- resizer.addEventListener('pointermove', move);
- resizer.addEventListener('pointerup', up);
- resizer.addEventListener('pointercancel', up);
+    resizer.addEventListener('pointermove', move);
+    resizer.addEventListener('pointerup', up);
+    resizer.addEventListener('pointercancel', up);
   });
 
- window.addEventListener('keydown', (e) => {
+  window.addEventListener('keydown', (e) => {
     if (anyDialogOpen() || e.defaultPrevented) return;
     if (menubar.isOpen || contextMenu.isOpen) {
- if (e.key === 'Escape') { e.preventDefault(); menubar.close(); contextMenu.close(); }
+      if (e.key === 'Escape') { e.preventDefault(); menubar.close(); contextMenu.close(); }
       return;
     }
     const target = e.target as HTMLElement | null;
- if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
- if (e.code === 'Space' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); if (!e.repeat) stage.setSpace(true); return; }
+    if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
+    if (e.code === 'Space' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); if (!e.repeat) stage.setSpace(true); return; }
     if (stage.toolKeydown(e)) { e.preventDefault(); return; }
     const cmd = commands.forEvent(e);
- if (cmd?.id === 'paste') return;
+    if (cmd?.id === 'paste') return;
     if (cmd) {
       e.preventDefault();
       if (!e.repeat || /^(undo|redo|zoom-in|zoom-out)$/.test(cmd.id)) commands.run(cmd.id);
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
- const k = e.code.startsWith('Key') ? e.code.slice(3): '';
+    const k = e.code.startsWith('Key') ? e.code.slice(3) : '';
     if (!k) return;
- if (k === 'X') engine.swapColors();
- else if (k === 'D') engine.defaultColors();
- else if (k === 'E') { engine.setTool('brush'); engine.setBrushMode('erase'); }
- else if (k === 'B') { engine.setTool('brush'); engine.setBrushMode('paint'); }
- else if (k === 'M' && e.shiftKey) { engine.setTool('marquee'); engine.update({ marqueeKind: engine.marqueeKind === 'rectangle' ? 'ellipse': 'rectangle' }); }
- else if (k === 'L' && e.shiftKey) { engine.setTool('lasso'); engine.update({ lassoKind: engine.lassoKind === 'freehand' ? 'polygonal': 'freehand' }); }
+    if (k === 'X') engine.swapColors();
+    else if (k === 'D') engine.defaultColors();
+    else if (k === 'E') { engine.setTool('brush'); engine.setBrushMode('erase'); }
+    else if (k === 'B') { engine.setTool('brush'); engine.setBrushMode('paint'); }
+    else if (k === 'M' && e.shiftKey) { engine.setTool('marquee'); engine.update({ marqueeKind: engine.marqueeKind === 'rectangle' ? 'ellipse' : 'rectangle' }); }
+    else if (k === 'L' && e.shiftKey) { engine.setTool('lasso'); engine.update({ lassoKind: engine.lassoKind === 'freehand' ? 'polygonal' : 'freehand' }); }
     else if (!e.shiftKey && toolForKey(k)) engine.setTool(toolForKey(k)?.id ?? engine.tool);
     else return;
     e.preventDefault();
   });
- window.addEventListener('keyup', (e) => { if (e.code === 'Space') stage.setSpace(false); });
- window.addEventListener('blur', () => stage.setSpace(false));
+  window.addEventListener('keyup', (e) => { if (e.code === 'Space') stage.setSpace(false); });
+  window.addEventListener('blur', () => stage.setSpace(false));
 
- document.addEventListener('paste', (e) => {
+  document.addEventListener('paste', (e) => {
     const target = e.target as HTMLElement | null;
- if (anyDialogOpen() || target?.closest('input, textarea, [contenteditable="true"]')) return;
+    if (anyDialogOpen() || target?.closest('input, textarea, [contenteditable="true"]')) return;
     const files = Array.from(e.clipboardData?.files ?? []).filter(isImageFile);
- const marker = e.clipboardData?.getData('text/plain') ?? '';
- if (engine.clipboard && (marker === `sonny:${engine.clipboard.stamp}` || !files.length)) { e.preventDefault(); engine.pasteClipboard(); return; }
+    const marker = e.clipboardData?.getData('text/plain') ?? '';
+    if (engine.clipboard && (marker === `sonny:${engine.clipboard.stamp}` || !files.length)) { e.preventDefault(); engine.pasteClipboard(); return; }
     if (!files.length) return;
     e.preventDefault();
     if (files.length === 1) { void pasteExternal(files[0]); return; }
- void importFiles(files.map((f, i) => (f.name ? f: new File([f], `Pasted ${i + 1}.png`, { type: f.type }))));
+    void importFiles(files.map((f, i) => (f.name ? f : new File([f], `Pasted ${i + 1}.png`, { type: f.type }))));
   });
 
- const drop = q(root, '.cv-drop');
+  const drop = q(root, '.cv-drop');
   let dragDepth = 0;
- const hasFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files');
- root.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth += 1; setHidden(drop, false); });
- root.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
- root.addEventListener('dragleave', (e) => { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) setHidden(drop, true); });
- root.addEventListener('drop', (e) => {
+  const hasFiles = (e: DragEvent): boolean => Array.from(e.dataTransfer?.types ?? []).includes('Files');
+  root.addEventListener('dragenter', (e) => { if (!hasFiles(e)) return; e.preventDefault(); dragDepth += 1; setHidden(drop, false); });
+  root.addEventListener('dragover', (e) => { if (!hasFiles(e)) return; e.preventDefault(); if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy'; });
+  root.addEventListener('dragleave', (e) => { if (!hasFiles(e)) return; dragDepth = Math.max(0, dragDepth - 1); if (!dragDepth) setHidden(drop, true); });
+  root.addEventListener('drop', (e) => {
     if (!hasFiles(e)) return;
     e.preventDefault();
     dragDepth = 0;
     setHidden(drop, true);
     const at = stage.docPoint(e.clientX, e.clientY) ?? undefined;
- const items = Array.from(e.dataTransfer?.items ?? []).filter((i) => i.kind === 'file');
+    const items = Array.from(e.dataTransfer?.items ?? []).filter((i) => i.kind === 'file');
     const folders: FileSystemEntry[] = [];
     const files: File[] = [];
     for (const item of items) {
- const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry(): null;
+      const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null;
       if (entry?.isDirectory) { folders.push(entry); continue; }
       const f = item.getAsFile();
       if (f) files.push(f);
@@ -599,7 +599,7 @@ export function startApp(): void {
     void (async () => {
       for (const entry of folders) {
         const out = { files: [] as File[], paths: [] as string[] };
- try { await readEntry(entry, '', out); await openFolder(out.files, out.paths); } catch (err) { toast(message(err), 'error'); }
+        try { await readEntry(entry, '', out); await openFolder(out.files, out.paths); } catch (err) { toast(message(err), 'error'); }
       }
       if (files.length) await importFiles(files, at);
     })();
@@ -607,7 +607,7 @@ export function startApp(): void {
 
   let restyleFrame = 0;
   const syncThemeMarker = (): void => {
- const mode = document.body.classList.contains('theme-light') ? 'light': 'dark';
+    const mode = document.body.classList.contains('theme-light') ? 'light' : 'dark';
     if (document.documentElement.dataset.theme !== mode) document.documentElement.dataset.theme = mode;
   };
   const restyle = (): void => {
@@ -620,26 +620,26 @@ export function startApp(): void {
       layers.restyle();
     });
   };
- new MutationObserver(restyle).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] });
- new MutationObserver(restyle).observe(document.body, { attributes: true, attributeFilter: ['class'] });
- document.addEventListener('nm:ui-settings-changed', restyle);
+  new MutationObserver(restyle).observe(document.documentElement, { attributes: true, attributeFilter: ['style', 'class', 'data-theme'] });
+  new MutationObserver(restyle).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  document.addEventListener('nm:ui-settings-changed', restyle);
   syncThemeMarker();
 
- window.addEventListener('beforeunload', (e) => {
+  window.addEventListener('beforeunload', (e) => {
     if (!engine.projects.some((p) => p.modified)) return;
     e.preventDefault();
- e.returnValue = '';
+    e.returnValue = '';
   });
 
- status.setEngine('Engine: checking');
+  status.setEngine('Engine: checking');
   void api.capabilities().then((c) => {
     caps = c;
- status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop': ''}`: 'Engine offline');
- if (!c) toast('The sonny engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./sonny boot).');
+    status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop' : ''}` : 'Engine offline');
+    if (!c) toast('The sonny engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./sonny boot).');
   });
 
   if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands };
 
- const faces = Promise.all(['400', '500', '600'].map((w) => document.fonts.load(`${w} 12px Inter`))).catch(() => undefined);
+  const faces = Promise.all(['400', '500', '600'].map((w) => document.fonts.load(`${w} 12px Inter`))).catch(() => undefined);
   void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => revealApp()));
 }

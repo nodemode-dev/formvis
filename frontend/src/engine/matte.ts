@@ -1,5 +1,5 @@
 /** Remove Background's refining, ported from the `SubjectRemoval.refined` and `GuidedMatte`. Masks and
- * guides are 0 to 1 per pixel, row by row. Radii are in layer pixels; `scale` shrinks them for a scaled preview. */
+ *  guides are 0 to 1 per pixel, row by row. Radii are in layer pixels; `scale` shrinks them for a scaled preview. */
 
 export interface MatteSettings { quality: 'basic' | 'advanced'; refineEdges: number; matteContrast: number; shiftEdge: number }
 
@@ -32,7 +32,7 @@ export function boxMean(src: Float32Array, w: number, h: number, r: number): Flo
 }
 
 /** Guided filtering (He, Sun and Tang): `mask` pulled onto the edges of `guide`, which recovers hair and fur a
- * segmentation model cuts straight through. `eps` decides how much of an edge in the guide counts. */
+ *  segmentation model cuts straight through. `eps` decides how much of an edge in the guide counts. */
 export function guidedFilter(mask: Float32Array, guide: Float32Array, w: number, h: number, r: number, eps: number): Float32Array {
   const n = w * h, squares = new Float32Array(n), products = new Float32Array(n);
   for (let i = 0; i < n; i++) { squares[i] = guide[i] * guide[i]; products[i] = guide[i] * mask[i]; }
@@ -74,10 +74,10 @@ function gaussian(src: Float32Array, w: number, h: number, sigma: number): Float
 }
 
 /** The refined subject mask, in Refine pulls the mask onto the image's own edges, Shift Edge blurs
- * by half its reach and cuts hard at 0.25 (grow) or 0.75 (shrink), and Contrast pushes the grays apart (100 is a hard
- * cut at the middle). Basic returns the model's mask unchanged. */
+ *  by half its reach and cuts hard at 0.25 (grow) or 0.75 (shrink), and Contrast pushes the grays apart (100 is a hard
+ *  cut at the middle). Basic returns the model's mask unchanged. */
 export function refineMatte(mask: Float32Array, guide: Float32Array, w: number, h: number, s: MatteSettings, scale = 1): Float32Array {
- if (s.quality !== 'advanced') return mask;
+  if (s.quality !== 'advanced') return mask;
   let m = mask;
   if (s.refineEdges > 0) m = guidedFilter(m, guide, w, h, Math.max(1, Math.round(s.refineEdges * scale)), 1e-4);
   if (s.shiftEdge !== 0) {

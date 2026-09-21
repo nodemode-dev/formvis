@@ -1,15 +1,15 @@
-import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, type Engine } from '../../engine';
+import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, type Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { toast } from '../toast';
 import { checkRow, selectRow, sliderRow, type Row } from './controls';
 
-export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection';
-export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction' };
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask';
+export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask' };
 
 export class FilterPanel extends Dialog {
   private kind: FilterKind = 'gaussianBlur';
-  private readonly s = { radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0 };
+  private readonly s = { radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0 };
   private seed = 0;
   private preview = true;
   private done = false;
@@ -32,6 +32,10 @@ export class FilterPanel extends Dialog {
     this.section('addNoise', [amount.el, distribution.el, mono.el], () => { amount.set(s.amount); distribution.set(s.gaussian ? 'gaussian' : 'uniform'); mono.set(s.monochromatic); });
     const distortion = sliderRow('Distortion', -100, 100, 1, (v) => { s.distortion = v; this.schedule(); });
     this.section('lensCorrection', [distortion.el, el('<p class="cv-note">Positive values correct barrel distortion, negative values pincushion.</p>')], () => distortion.set(s.distortion));
+    const usmAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { s.usmAmount = v; this.schedule(); });
+    const usmRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 250 });
+    const threshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); });
+    this.section('unsharpMask', [usmAmount.el, usmRadius.el, threshold.el], () => { usmAmount.set(s.usmAmount); usmRadius.set(s.usmRadius); threshold.set(s.threshold); });
     this.previewRow = checkRow('Preview', (v) => { this.preview = v; this.schedule(0); });
     this.body.appendChild(this.previewRow.el);
     this.button('Cancel', 'ghost', () => this.close());
@@ -67,6 +71,7 @@ export class FilterPanel extends Dialog {
       case 'motionBlur': return motionBlur(src, s.angle, s.distance * scale);
       case 'addNoise': return addNoise(src, s.amount, s.gaussian, s.monochromatic, this.seed);
       case 'lensCorrection': return lensDistort(src, s.distortion);
+      case 'unsharpMask': return unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
     }
   }
 

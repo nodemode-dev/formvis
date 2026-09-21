@@ -1,6 +1,6 @@
 ---
 name: sonny-skillset
-description: Use for any sonny task, the NodeMode-styled layered image editor for the web and the desktop. Add a tool, fix the layers panel, open a.ref file, build the desktop app. Covers layers, folders, masks, clipping, blend modes, undo history, selections, marquee, lasso, magic wand, brush, eraser, eyedropper, the tool registry, the options bar, the stage canvas, menus, dialogs, themes, zero-flash DOM rules, the FastAPI engine, HEIC or TIFF decoding, the project library, the.sonny and.ref project format, remove background with rembg or GrabCut, the PyInstaller sidecar, Tauri desktop builds, NodeMode portal embedding and the throttled browser verification. Stack is a vanilla TypeScript and Vite frontend, a Python FastAPI engine and a Tauri 2 shell. Trigger on sonny, port, sidecar, or any file under frontend/src, backend/app or src-tauri, and route through this orchestrator before any specialist.
+description: Use for any sonny task, the NodeMode-styled layered image editor for the web and the desktop. Add a tool, fix the layers panel, open a .ref file, build the desktop app. Covers layers, folders, masks, clipping, blend modes, undo history, selections, marquee, lasso, magic wand, brush, eraser, eyedropper, the tool registry, the options bar, the stage canvas, menus, dialogs, themes, zero-flash DOM rules, the FastAPI engine, HEIC or TIFF decoding, the project library, the .sonny and .ref project format, remove background with rembg or GrabCut, the PyInstaller sidecar, Tauri desktop builds, NodeMode portal embedding and the throttled browser verification. Stack is a vanilla TypeScript and Vite frontend, a Python FastAPI engine and a Tauri 2 shell. Trigger on sonny, port, sidecar, or any file under frontend/src, backend/app or src-tauri, and route through this orchestrator before any specialist.
 ---
 
 # sonny-skillset
@@ -23,11 +23,11 @@ Route every sonny task through this file first. It maps the subsystems, states t
 ## Dependency graph
 
 ```text
-tools → engine
-UI shell → engine, tools (registry), io
-io → engine (types), engine service over HTTP /api
-host.ts → NodeMode portal over postMessage
-desktop shell → frozen engine service (sidecar) → serves the built frontend
+tools          → engine
+UI shell       → engine, tools (registry), io
+io             → engine (types), engine service over HTTP /api
+host.ts        → NodeMode portal over postMessage
+desktop shell  → frozen engine service (sidecar) → serves the built frontend
 ```
 
 The engine imports nothing from `ui`, `io` or `extensions`. Tools import only the engine and the registry. The frontend reaches the engine service only through `frontend/src/io/api.ts`.

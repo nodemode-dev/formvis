@@ -50,7 +50,7 @@ The desktop shell has not been compiled (first CI run pending), and the desktop-
 
 ### Added
 
-- Export `.ref` projects: File > Export.ref Project writes `Name.ref.zip`, which unzips to a `.ref` package other apps reading that format can open. Projects can now travel both ways. Where the format is stricter (folders carry no opacity or blend mode, adjustment layers carry no pixels, names cannot be empty), the export adjusts and tells you what changed.
+- Export `.ref` projects: File > Export .ref Project writes `Name.ref.zip`, which unzips to a `.ref` package other apps reading that format can open. Projects can now travel both ways. Where the format is stricter (folders carry no opacity or blend mode, adjustment layers carry no pixels, names cannot be empty), the export adjusts and tells you what changed.
 
 ### Note
 
@@ -392,7 +392,7 @@ The Remove Background panel, the editable transform inspector with free distort 
 
 ### Added
 
-- Adjustments from the.ref format: Hue/Saturation (Master and six color ranges, colorize, invert range) and Grain join Levels, Curves, Exposure and Gradient Map. Each works as an editable adjustment layer (Layer, New Adjustment Layer; double-click to edit) and as a direct edit (Image menu), with live preview. Levels shows a histogram; Curves has a point editor.
+- Adjustments that `.ref` projects carry: Hue/Saturation (Master and six color ranges, colorize, invert range) and Grain join Levels, Curves, Exposure and Gradient Map. Each works as an editable adjustment layer (Layer, New Adjustment Layer; double-click to edit) and as a direct edit (Image menu), with live preview. Levels shows a histogram; Curves has a point editor.
 - Filter menu: Gaussian Blur and Motion Blur (spreading past the layer edge), Add Noise, Lens Correction, and Remove Background moved here.
 - Edit: Cut, Copy, Copy Merged, Paste in place, using the system clipboard.
 - Select: Mask's Black Areas, Expand and Contract by an amount.

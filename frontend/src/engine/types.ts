@@ -7,16 +7,24 @@ export interface RGB { r: number; g: number; b: number }
 
 export type BlendMode =
   | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'difference'
-  | 'color-dodge' | 'color-burn' | 'hue' | 'saturation' | 'color' | 'luminosity';
+  | 'color-dodge' | 'color-burn' | 'hue' | 'saturation' | 'color' | 'luminosity'
+  | 'linear-dodge' | 'soft-light' | 'hard-light' | 'exclusion';
 
+/** Photoshop's menu order, grouped darken, lighten, contrast, inversion, component; the modes the browser canvas
+ *  composites natively. Linear Dodge (Add) is the canvas's `lighter`. */
 export const BLEND_MODES: ReadonlyArray<{ id: BlendMode; label: string }> = [
-  { id: 'normal', label: 'Normal' }, { id: 'multiply', label: 'Multiply' }, { id: 'screen', label: 'Screen' },
-  { id: 'overlay', label: 'Overlay' }, { id: 'darken', label: 'Darken' }, { id: 'lighten', label: 'Lighten' },
-  { id: 'difference', label: 'Difference' }, { id: 'color-dodge', label: 'Color Dodge' }, { id: 'color-burn', label: 'Color Burn' },
+  { id: 'normal', label: 'Normal' },
+  { id: 'darken', label: 'Darken' }, { id: 'multiply', label: 'Multiply' }, { id: 'color-burn', label: 'Color Burn' },
+  { id: 'lighten', label: 'Lighten' }, { id: 'screen', label: 'Screen' }, { id: 'color-dodge', label: 'Color Dodge' }, { id: 'linear-dodge', label: 'Linear Dodge (Add)' },
+  { id: 'overlay', label: 'Overlay' }, { id: 'soft-light', label: 'Soft Light' }, { id: 'hard-light', label: 'Hard Light' },
+  { id: 'difference', label: 'Difference' }, { id: 'exclusion', label: 'Exclusion' },
   { id: 'hue', label: 'Hue' }, { id: 'saturation', label: 'Saturation' }, { id: 'color', label: 'Color' }, { id: 'luminosity', label: 'Luminosity' },
 ];
 
-export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return mode === 'normal' ? 'source-over' : mode; }
+/** The modes a `.ref` project can hold; others export as Normal. */
+export const REF_BLEND_MODES: ReadonlySet<BlendMode> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'color-burn', 'hue', 'saturation', 'color', 'luminosity']);
+
+export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return mode === 'normal' ? 'source-over' : mode === 'linear-dodge' ? 'lighter' : mode; }
 export function blendFromLabel(label: unknown): BlendMode { return BLEND_MODES.find((b) => b.label === label)?.id ?? 'normal'; }
 export function blendLabel(mode: BlendMode): string { return BLEND_MODES.find((b) => b.id === mode)?.label ?? 'Normal'; }
 

@@ -1,6 +1,6 @@
 ---
 name: project-format
-description: The sonny and project format. Use when reading or writing manifest.json,.sonny or.ref files, adding a layer field, changing mask, clipping, adjustment or transform encoding, bumping the format version, or when a project fails to open or loses data in a round trip.
+description: The sonny and .ref project format. Use when reading or writing manifest.json, .sonny or .ref files, adding a layer field, changing mask, clipping, adjustment or transform encoding, bumping the format version, or when a project fails to open or loses data in a round trip.
 ---
 
 # project-format

@@ -107,6 +107,20 @@ function hash(x: number): number {
 }
 const unit = (key: number): number => (hash(key >>> 0) >>> 8) * (1 / 16777216);
 
+/** Unsharp Mask, the classic sharpen: each colour channel is pushed away from its Gaussian-blurred value by `amount`
+ *  percent wherever the two differ by at least `threshold` levels; alpha is untouched. `radius` is the blur's sigma. */
+export function unsharpMask(img: ImageData, amount: number, radius: number, threshold: number): ImageData {
+  const blur = gaussianBlur(img, Math.max(0.1, radius)), s = img.data, b = blur.data, out = new ImageData(img.width, img.height), o = out.data, k = amount / 100;
+  for (let i = 0; i < s.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      const d = s[i + c] - b[i + c];
+      o[i + c] = Math.abs(d) >= threshold ? s[i + c] + k * d : s[i + c];
+    }
+    o[i + 3] = s[i + 3];
+  }
+  return out;
+}
+
 export function addNoise(img: ImageData, amount: number, gaussian: boolean, monochromatic: boolean, seed: number): ImageData {
   const { width: w, height: h } = img;
   const out = new ImageData(new Uint8ClampedArray(img.data), w, h);

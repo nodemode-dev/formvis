@@ -2,8 +2,8 @@
  *  returns null where module workers are unavailable (or after a failure), so callers fall back to running the kernel
  *  themselves. Requests carry the pixels as a transferred buffer, so neither side copies them. */
 
-export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number }
-export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection';
+export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; usmAmount: number; usmRadius: number; threshold: number }
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask';
 export interface FilterJob { id: number; kind: FilterKind; settings: FilterSettings; scale: number; seed: number; width: number; height: number; pixels: ArrayBuffer }
 interface FilterResult { id: number; width: number; height: number; pixels: ArrayBuffer }
 
