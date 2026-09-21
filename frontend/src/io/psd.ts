@@ -58,6 +58,23 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
           layer.mask = { raster: mr, enabled: !mk.disabled, linked: true, placement: { ...docTransform(mw, mh), x: mk.left ?? 0, y: mk.top ?? 0 } };
         }
       }
+      const vm = pl.vectorMask, vf = pl.vectorFill, vs = pl.vectorStroke;
+      if (vm?.paths?.length && (vf?.type === 'color' || vs?.strokeEnabled)) {
+        // A Photoshop shape opens as a sonny shape layer: its pixels as saved, its outline editable again.
+        const col = (c: unknown): { r: number; g: number; b: number } | null => {
+          const o = c as Record<string, number> | null;
+          if (!o) return null;
+          if (typeof o.r === 'number') return { r: o.r, g: o.g, b: o.b };
+          if (typeof o.fr === 'number') return { r: Math.round(o.fr * 255), g: Math.round(o.fg * 255), b: Math.round(o.fb * 255) };
+          return null;
+        };
+        const path = { subpaths: vm.paths.map((bp) => ({ closed: !bp.open, anchors: bp.knots.map((k) => ({ inX: k.points[0], inY: k.points[1], x: k.points[2], y: k.points[3], outX: k.points[4], outY: k.points[5] })) })).filter((sp) => sp.anchors.length) };
+        const fill = vs?.fillEnabled === false || vf?.type !== 'color' ? null : col(vf.color);
+        const sc = vs?.strokeEnabled && vs.content?.type === 'color' ? col(vs.content.color) : null;
+        const stroke = sc ? { color: sc, width: vs?.lineWidth?.value ?? 1 } : null;
+        if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
+        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine')) notes.push(`"${name}" combines shapes in ways sonny does not; its outline may differ once edited.`);
+      }
       if (pl.text) notes.push(`"${name}" is type in Photoshop; it opened as pixels.`);
       if (pl.effects) notes.push(`"${name}" has a Photoshop layer style; it opened without it.`);
       if (pl.clipping && base) layer.clipId = base.id;
@@ -97,8 +114,23 @@ export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ byte
     if (effectsActive(l.effects)) notes.push(`"${l.name}" loses its layer style; the PSD holds its pixels only.`);
     if (liveText(l)) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as editable type.`);
     if (l.smart) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as a smart object.`);
-    if (l.vector) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as a shape layer.`);
+
     const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId };
+    const v = l.vector, t = l.transform;
+    if (v && l.raster) {
+      // A shape layer goes as a Photoshop shape: its path as a vector mask, with its fill and stroke, beside its pixels.
+      // Only a move keeps the path exact; after a scale, rotation or flip it goes as pixels.
+      const moved = t.rotation === 0 && !t.flipX && !t.flipY && Math.abs(t.w - l.raster.width) < 1e-6 && Math.abs(t.h - l.raster.height) < 1e-6;
+      if (moved) {
+        const dx = t.x - v.origin.x, dy = t.y - v.origin.y, rgb = (c: { r: number; g: number; b: number }) => ({ r: c.r, g: c.g, b: c.b });
+        out.vectorMask = { paths: v.path.subpaths.filter((sp) => sp.anchors.length).map((sp) => ({
+          open: !sp.closed, operation: 'combine' as const, fillRule: 'non-zero' as const,
+          knots: sp.anchors.map((a) => ({ linked: Math.abs((a.outX - a.x) * (a.inY - a.y) - (a.outY - a.y) * (a.inX - a.x)) < 1e-6 && (a.outX !== a.x || a.outY !== a.y), points: [a.inX + dx, a.inY + dy, a.x + dx, a.y + dy, a.outX + dx, a.outY + dy] })),
+        })) };
+        out.vectorFill = { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };
+        out.vectorStroke = { strokeEnabled: !!v.stroke, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: v.stroke?.width ?? 1 }, lineCapType: 'round', lineJoinType: 'round', lineAlignment: 'center', content: { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
+      } else notes.push(`"${l.name}" goes as pixels; after a scale, rotation or flip the PSD cannot keep it as a shape.`);
+    }
     const mk = l.mask;
     if (mk?.raster) {
       const mp = placed(mk.raster, mk.placement ?? l.transform);

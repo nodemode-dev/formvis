@@ -8,6 +8,7 @@ sonny is licensed under the Apache License 2.0 (see `LICENSE`). It includes or d
 | --- | --- | --- |
 | NodeMode stylized design system: tokens, theme profiles, theme boot, dom-stable helpers, icon subset | MIT | `frontend/src/styles/tokens.css`, `frontend/src/ui/themes.ts`, `frontend/src/ui/dom.ts`, `frontend/src/ui/icons.ts`, `frontend/index.html` |
 | `paintbrush` icon from Remix Icon | Apache-2.0 | `frontend/src/ui/icons.ts` |
+| `hand` icon (cursor-hand) from Remix Icon | Apache-2.0 | `frontend/src/ui/icons.ts` |
 | Tauri sidecar shell template (tauri-compiler-skill) | MIT | `src-tauri/src/main.rs` |
 
 ## Distributed with the app

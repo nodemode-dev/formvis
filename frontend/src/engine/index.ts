@@ -13,7 +13,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter } from './types';
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle } from './types';
 
 export * from './types';
 export * from './geometry';
@@ -560,25 +560,35 @@ export class Engine {
   }
 
   /** A shape layer's pixels: its path filled with its colour, in a raster over the path's bounds. */
-  private renderShape(path: VectorPath, fill: RGB): { raster: Raster; x: number; y: number } | null {
+  private renderShape(path: VectorPath, style: ShapeStyle): { raster: Raster; x: number; y: number } | null {
     const b = pathBounds(path);
-    if (!b) return null;
-    const x = Math.floor(b.x) - 1, y = Math.floor(b.y) - 1, w = Math.min(LIMITS.side, Math.ceil(b.x + b.w) + 1 - x), h = Math.min(LIMITS.side, Math.ceil(b.y + b.h) + 1 - y);
-    const raster = new Raster(Math.max(1, w), Math.max(1, h));
-    raster.ctx.translate(-x, -y);
-    raster.ctx.fillStyle = rgbCss(fill);
-    raster.ctx.fill(tracePath(path));
-    raster.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (!b || (!style.fill && !style.stroke)) return null;
+    const pad = (style.stroke ? style.stroke.width / 2 : 0) + 1;
+    const x = Math.floor(b.x - pad), y = Math.floor(b.y - pad), w = Math.min(LIMITS.side, Math.ceil(b.x + b.w + pad) - x), h = Math.min(LIMITS.side, Math.ceil(b.y + b.h + pad) - y);
+    const raster = new Raster(Math.max(1, w), Math.max(1, h)), c = raster.ctx, shape = tracePath(path);
+    c.translate(-x, -y);
+    if (style.fill) { c.fillStyle = rgbCss(style.fill); c.fill(shape); }
+    if (style.stroke && style.stroke.width > 0) {
+      // Centred on the path, with round joins and caps so corners and open ends stay smooth.
+      c.strokeStyle = rgbCss(style.stroke.color);
+      c.lineWidth = style.stroke.width;
+      c.lineJoin = 'round';
+      c.lineCap = 'round';
+      c.stroke(shape);
+    }
+    c.setTransform(1, 0, 0, 1, 0, 0);
     raster.touch();
     return { raster, x, y };
   }
 
   /** Re-renders shape layer `id` in `p` from `path` and `fill`. */
-  private reshape(p: Project, id: ID, path: VectorPath, fill: RGB): void {
-    const r = this.renderShape(path, fill), l = p.layer(id);
-    if (!r || !l) return;
+  private reshape(p: Project, id: ID, path: VectorPath, style?: ShapeStyle): void {
+    const l = p.layer(id), v = l?.vector;
+    if (!l || !v) return;
+    const look = style ?? { fill: v.fill, stroke: v.stroke ?? null }, r = this.renderShape(path, look);
+    if (!r) return;
     const stored = structuredClone(path);
-    p.updateLayer(id, { raster: r.raster, transform: { ...l.transform, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height, rotation: 0, flipX: false, flipY: false }, vector: { path: stored, fill, origin: { x: r.x, y: r.y } }, shape: null });
+    p.updateLayer(id, { raster: r.raster, transform: { ...l.transform, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height, rotation: 0, flipX: false, flipY: false }, vector: { path: stored, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } }, shape: null });
     const e = this.shapeEdit, now = p.layer(id);
     if (e && e.project === p && e.layerId === id && now) { e.layer = now; e.path = path; }
   }
@@ -605,11 +615,14 @@ export class Engine {
   newShapeFromPath(): void {
     const p = this.current, vp = this.workPath;
     if (!p || !vp || !pathBounds(vp)) { this.notice('Select or draw a path first.'); return; }
-    const path = structuredClone(vp), fill = { ...this.fg }, r = this.renderShape(path, fill);
+    // A path with a closed part is filled; one of open lines only is stroked, as wide as the brush.
+    const path = structuredClone(vp), closed = path.subpaths.some((sp) => sp.closed && sp.anchors.length > 2);
+    const look: ShapeStyle = closed ? { fill: { ...this.fg }, stroke: null } : { fill: null, stroke: { color: { ...this.fg }, width: Math.min(200, Math.max(1, Math.round(this.brush.diameter))) } };
+    const r = this.renderShape(path, look);
     if (!r) return;
     let n = 1;
     while (p.doc.layers.some((l) => l.name === `Shape ${n}`)) n++;
-    this.insertRasterLayer(r.raster, `Shape ${n}`, r.x, r.y, { vector: { path, fill, origin: { x: r.x, y: r.y } } }, 'New Shape Layer');
+    this.insertRasterLayer(r.raster, `Shape ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'New Shape Layer');
   }
 
   /** Layer > Shape Color from Foreground: the active shape layer refilled in the foreground colour. */
@@ -617,7 +630,16 @@ export class Engine {
     const l = this.current?.activeLayer;
     if (!l?.vector) { this.notice('Select a shape layer first.'); return; }
     const v = l.vector, dx = l.transform.x - v.origin.x, dy = l.transform.y - v.origin.y;
-    this.edit('Shape Color', (p) => this.reshape(p, l.id, shiftPath(v.path, dx, dy), { ...this.fg }));
+    this.edit('Shape Color', (p) => this.reshape(p, l.id, shiftPath(v.path, dx, dy), { fill: { ...this.fg }, stroke: v.stroke ?? null }));
+  }
+
+  /** Layer > Shape Fill and Stroke: the active shape layer's fill and stroke, as one undo step. */
+  setShapeStyle(style: ShapeStyle): void {
+    const l = this.current?.activeLayer;
+    if (!l?.vector) { this.notice('Select a shape layer first.'); return; }
+    if (!style.fill && !style.stroke) { this.notice('A shape needs a fill, a stroke or both.'); return; }
+    const v = l.vector, dx = l.transform.x - v.origin.x, dy = l.transform.y - v.origin.y;
+    this.edit('Shape Style', (p) => this.reshape(p, l.id, shiftPath(v.path, dx, dy), structuredClone(style)));
   }
 
   private pathsChanged(p: Project): void {
@@ -648,8 +670,8 @@ export class Engine {
       const l = p.activeLayer;
       if (l?.vector && vp && has) {
         (this.shapeEdit as { path: VectorPath }).path = vp;
-        if (this.pathGesture === p) this.reshape(p, l.id, vp, l.vector.fill);
-        else this.edit('Edit Shape Path', (q) => this.reshape(q, l.id, vp, (l.vector as NonNullable<Layer['vector']>).fill));
+        if (this.pathGesture === p) this.reshape(p, l.id, vp);
+        else this.edit('Edit Shape Path', (q) => this.reshape(q, l.id, vp));
         this.refresh();
       }
       this.pathsChanged(p);

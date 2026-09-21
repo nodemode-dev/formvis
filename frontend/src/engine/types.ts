@@ -159,6 +159,8 @@ export function smartFiltersFrom(raw: unknown): SmartFilter[] {
   });
 }
 
-/** A shape layer: a path filled with a colour. `origin` is where its raster was rendered, so a later move of the layer
- *  can carry the path along. */
-export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB; origin: Pt }
+/** A shape layer: a path with a fill colour, a stroke centred on it, or both. `origin` is where its raster was
+ *  rendered, so a later move of the layer can carry the path along. */
+export interface ShapeStroke { color: RGB; width: number }
+export interface ShapeStyle { fill: RGB | null; stroke: ShapeStroke | null }
+export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB | null; stroke?: ShapeStroke | null; origin: Pt }

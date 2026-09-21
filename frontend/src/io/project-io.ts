@@ -1,5 +1,5 @@
 import {
-  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet,
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB,
 } from '../engine';
 import type { FilePart } from './api';
 
@@ -52,7 +52,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   for (const l of doc.layers) {
     const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
     if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
-    if (l.vector) r.vector = { fill: l.vector.fill, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
+    if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.smart && !l.isGroup) {
       const name = `${l.id}.source.png`;
       files.push({ name, blob: await toBlob(l.smart.source.canvas) });
@@ -150,6 +150,21 @@ export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: 
   return { manifest: out, files: parts, notes };
 }
 
+const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+const colorFrom = (raw: unknown): RGB | null => {
+  const c = obj(raw);
+  return finite(c.r) && finite(c.g) && finite(c.b) ? { r: Math.min(255, Math.max(0, c.r)), g: Math.min(255, Math.max(0, c.g)), b: Math.min(255, Math.max(0, c.b)) } : null;
+};
+
+/** A shape layer read back, checked: a path, a render origin, and a fill, a stroke or both. */
+function vectorFrom(raw: unknown): Layer['vector'] {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = obj(raw), path = pathFrom(o), origin = obj(o.origin), fill = colorFrom(o.fill), s = obj(o.stroke), color = colorFrom(s.color);
+  const stroke = color && finite(s.width) && s.width > 0 ? { color, width: Math.min(1000, s.width) } : null;
+  if (!path || !finite(origin.x) || !finite(origin.y) || (!fill && !stroke)) return null;
+  return { path, fill, stroke, origin: { x: origin.x, y: origin.y } };
+}
+
 export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null }> {
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
   const records = Array.isArray(manifest.layers) ? manifest.layers.map(obj) : [];
@@ -161,9 +176,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const image = bitmaps.get(str(r.imageFile) ?? '');
     const raster = image ? Raster.from(image, image.width, image.height) : null;
     const sourceImage = bitmaps.get(str(r.smartSourceFile) ?? '');
-    const vp = r.vector && typeof r.vector === 'object' ? pathFrom(r.vector) : null, vf = obj(obj(r.vector).fill), vo = obj(obj(r.vector).origin);
-    const vector = raster && vp && [vf.r, vf.g, vf.b, vo.x, vo.y].every((v) => typeof v === 'number' && Number.isFinite(v))
-      ? { path: vp, fill: { r: num(vf.r, 0), g: num(vf.g, 0), b: num(vf.b, 0) }, origin: { x: num(vo.x, 0), y: num(vo.y, 0) } } : null;
+    const vector = raster ? vectorFrom(r.vector) : null;
     const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart) } : null;
     const maskImage = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskImage
