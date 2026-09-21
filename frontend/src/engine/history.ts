@@ -21,6 +21,10 @@ export class History {
   get canRedo(): boolean { return this.depth === 0 && this.future.length > 0; }
   get undoName(): string { return this.past[this.past.length - 1]?.name ?? ''; }
   get redoName(): string { return this.future[this.future.length - 1]?.name ?? ''; }
+  /** Every step kept, oldest first, undone ones after the done ones; `current` is how many are done. */
+  get steps(): { names: string[]; current: number } {
+    return { names: [...this.past.map((e) => e.name), ...[...this.future].reverse().map((e) => e.name)], current: this.past.length };
+  }
   get modified(): boolean { return this.revision !== this.saved; }
   get open(): boolean { return this.depth > 0; }
   markSaved(): void { this.saved = this.revision; }

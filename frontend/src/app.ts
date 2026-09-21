@@ -1,3 +1,4 @@
+import { HistoryPanel } from './ui/history';
 import { StopDialog } from './ui/panels/stop-dialog';
 import { TweenDialog } from './ui/panels/tween-dialog';
 import { GifDialog } from './ui/panels/gif-dialog';
@@ -126,6 +127,7 @@ export function startApp(): void {
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   new PathsPanel(q(root, '.cv-layers'), engine);
   new TimelinePanel(q(root, '.cv-layers'), engine);
+  new HistoryPanel(q(root, '.cv-layers'), engine);
   new Rail(q(root, '.cv-rail'), engine);
   new OptionsBar(q(root, '.cv-options'), engine);
   const status = new StatusBar(q(root, '.cv-status'), engine);

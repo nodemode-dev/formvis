@@ -1,4 +1,4 @@
-.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto; min-height: 0; background: var(--bg-secondary); }
+.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; min-height: 0; background: var(--bg-secondary); }
 .cv-panel-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-2); height: 36px; padding: 0 var(--space-2) 0 var(--space-3); border-bottom: 1px solid var(--border-color); }
 .cv-panel-title { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-11); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .cv-layer-props { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); }
@@ -114,3 +114,12 @@
 .cv-step-go { display: inline-flex; align-items: center; gap: var(--space-1); color: var(--text-secondary); font-size: var(--fs-11); }
 .cv-steps-empty[hidden] { display: none; }
 .cv-stop-message { margin: 0; color: var(--text-primary); line-height: 1.5; }
+.cv-history { border-top: 1px solid var(--border-color); }
+.cv-history-count { color: var(--text-muted); font-size: var(--fs-11); }
+.cv-history-list { position: relative; height: 132px; overflow-y: auto; padding: var(--space-1) 0; }
+.cv-history-row { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: var(--space-2); height: 26px; padding: 0 var(--space-3); color: var(--text-secondary); cursor: pointer; }
+.cv-history-row:hover { background: var(--bg-hover); }
+.cv-history-row.is-current { background: var(--bg-tertiary); color: var(--text-primary); box-shadow: inset 2px 0 0 var(--accent-color); }
+.cv-history-row.is-undone { color: var(--text-muted); }
+.cv-history-icon { display: inline-flex; color: var(--text-muted); }
+.cv-history-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }

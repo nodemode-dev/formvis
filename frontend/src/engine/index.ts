@@ -238,6 +238,19 @@ export class Engine {
     p.maskTarget = false;
   }
 
+  /** The History panel's list for the current document. */
+  get historySteps(): { names: string[]; current: number } { return this.current?.history.steps ?? { names: [], current: 0 }; }
+
+  /** Goes to the state after step `index` (0 is before the first step kept) by undoing or redoing in turn, so
+   *  everything that follows undo and redo, frames included, stays right. */
+  jumpHistory(index: number): void {
+    const p = this.current;
+    if (!p || this.stroke) return;
+    const { names, current } = p.history.steps, target = Math.max(0, Math.min(names.length, Math.round(index)));
+    for (let k = current; k > target; k--) this.undo();
+    for (let k = current; k < target; k++) this.redo();
+  }
+
   undo(): void {
     const p = this.current;
     if (!p || this.stroke) return;
