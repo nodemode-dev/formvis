@@ -1,50 +1,65 @@
 import { clamp } from './types';
 
-function premultiplied(src: Uint8ClampedArray): Float32Array {
-  const p = new Float32Array(src.length);
-  for (let i = 0; i < src.length; i += 4) {
-    const a = src[i + 3] / 255;
-    p[i] = src[i] * a; p[i + 1] = src[i + 1] * a; p[i + 2] = src[i + 2] * a; p[i + 3] = src[i + 3];
-  }
-  return p;
-}
+/** Image filters, written for sonny from standard methods: a Gaussian blur approximated by three successive box
+ *  blurs (widths from Kovesi's formula), a motion blur as a bilinear line integral, seeded noise, a radial lens
+ *  distortion model, alpha-weighted histograms, and selection growing and shrinking through Felzenszwalb and
+ *  Huttenlocher's squared-distance transform. Colour filtering runs on premultiplied values, so transparent pixels
+ *  never bleed their colour, and samples beyond the image count as transparent. */
 
-function straight(p: Float32Array, width: number, height: number): ImageData {
-  const out = new ImageData(width, height);
-  const d = out.data;
-  for (let i = 0; i < p.length; i += 4) {
-    const a = p[i + 3];
-    if (a < 0.5) continue;
-    const k = 255 / a;
-    d[i] = Math.round(p[i] * k); d[i + 1] = Math.round(p[i + 1] * k); d[i + 2] = Math.round(p[i + 2] * k); d[i + 3] = Math.round(a);
+/** Straight RGBA bytes to premultiplied floats; alpha stays on the 0 to 255 scale. */
+function premultiply(rgba: Uint8ClampedArray): Float32Array {
+  const out = new Float32Array(rgba.length);
+  for (let i = 0; i < rgba.length; i += 4) {
+    const a = rgba[i + 3], k = a / 255;
+    out[i] = rgba[i] * k;
+    out[i + 1] = rgba[i + 1] * k;
+    out[i + 2] = rgba[i + 2] * k;
+    out[i + 3] = a;
   }
   return out;
 }
 
-function boxSizes(sigma: number): number[] {
-  const n = 3, wIdeal = Math.sqrt((12 * sigma * sigma) / n + 1);
-  let wl = Math.floor(wIdeal);
-  if (wl % 2 === 0) wl -= 1;
-  const wu = wl + 2, mIdeal = (12 * sigma * sigma - n * wl * wl - 4 * n * wl - 3 * n) / (-4 * wl - 4);
-  const m = Math.round(mIdeal);
-  return [0, 1, 2].map((i) => (i < m ? wl : wu));
+/** Premultiplied floats back to straight RGBA bytes; anything under half a level of alpha becomes transparent. */
+function unpremultiply(p: Float32Array, width: number, height: number): ImageData {
+  const img = new ImageData(width, height), d = img.data;
+  for (let i = 0; i < p.length; i += 4) {
+    const a = p[i + 3];
+    if (!(a >= 0.5)) continue;
+    const k = 255 / a;
+    d[i] = Math.round(p[i] * k);
+    d[i + 1] = Math.round(p[i + 1] * k);
+    d[i + 2] = Math.round(p[i + 2] * k);
+    d[i + 3] = Math.round(a);
+  }
+  return img;
 }
 
-function boxPass(src: Float32Array, dst: Float32Array, w: number, h: number, r: number, horizontal: boolean): void {
-  const norm = 1 / (2 * r + 1);
-  const lines = horizontal ? h : w, len = horizontal ? w : h;
-  const step = horizontal ? 4 : w * 4;
+/** Kovesi's widths for three box blurs whose succession approximates a Gaussian of standard deviation `sigma`:
+ *  the ideal width rounded down to odd, some passes one size up so the variances add to sigma squared. */
+function threeBoxWidths(sigma: number): number[] {
+  const passes = 3, v = 12 * sigma * sigma;
+  let lower = Math.floor(Math.sqrt(v / passes + 1));
+  if (lower % 2 === 0) lower -= 1;
+  const atLower = Math.round((v - passes * lower * lower - 4 * passes * lower - 3 * passes) / (-4 * lower - 4));
+  return Array.from({ length: passes }, (_, i) => (i < atLower ? lower : lower + 2));
+}
+
+/** One box blur of radius `r` along rows (`across`) or columns, with a running sum per channel; the window is always
+ *  divided by its full width, so values fade past the image edge. */
+function boxBlur(src: Float32Array, dst: Float32Array, w: number, h: number, r: number, across: boolean): void {
+  const scale = 1 / (2 * r + 1), lines = across ? h : w, length = across ? w : h, stride = across ? 4 : w * 4;
+  const sum = new Float64Array(4);
   for (let line = 0; line < lines; line++) {
-    const base = horizontal ? line * w * 4 : line * 4;
-    for (let c = 0; c < 4; c++) {
-      let acc = 0;
-      for (let k = 0; k <= Math.min(r, len - 1); k++) acc += src[base + k * step + c];
-      for (let i = 0; i < len; i++) {
-        dst[base + i * step + c] = acc * norm;
-        const add = i + r + 1, sub = i - r;
-        if (add < len) acc += src[base + add * step + c];
-        if (sub >= 0) acc -= src[base + sub * step + c];
-      }
+    const origin = across ? line * w * 4 : line * 4;
+    sum.fill(0);
+    const warm = Math.min(r, length - 1);
+    for (let k = 0; k <= warm; k++) for (let c = 0; c < 4; c++) sum[c] += src[origin + k * stride + c];
+    for (let i = 0; i < length; i++) {
+      const at = origin + i * stride;
+      for (let c = 0; c < 4; c++) dst[at + c] = sum[c] * scale;
+      const enter = i + r + 1, leave = i - r;
+      if (enter < length) for (let c = 0; c < 4; c++) sum[c] += src[origin + enter * stride + c];
+      if (leave >= 0) for (let c = 0; c < 4; c++) sum[c] -= src[origin + leave * stride + c];
     }
   }
 }
@@ -52,60 +67,59 @@ function boxPass(src: Float32Array, dst: Float32Array, w: number, h: number, r: 
 export function gaussianBlur(img: ImageData, sigma: number): ImageData {
   const { width: w, height: h } = img;
   if (!(sigma >= 0.1)) return new ImageData(new Uint8ClampedArray(img.data), w, h);
-  const a = premultiplied(img.data);
-  const b = new Float32Array(a.length);
-  for (const size of boxSizes(sigma)) {
-    const r = (size - 1) / 2;
-    boxPass(a, b, w, h, r, true);
-    boxPass(b, a, w, h, r, false);
+  const a = premultiply(img.data), b = new Float32Array(a.length);
+  for (const width of threeBoxWidths(sigma)) {
+    const r = (width - 1) / 2;
+    boxBlur(a, b, w, h, r, true);
+    boxBlur(b, a, w, h, r, false);
   }
-  return straight(a, w, h);
+  return unpremultiply(a, w, h);
 }
 
+/** How far a Gaussian blur reaches past a layer's edge, in pixels. */
 export const gaussianMargin = (sigma: number): number => Math.ceil(sigma * 3) + 1;
 
-export function motionBlur(img: ImageData, angleDeg: number, distance: number): ImageData {
-  const { width: w, height: h } = img;
-  const p = premultiplied(img.data), out = new Float32Array(p.length);
-  const rad = (angleDeg * Math.PI) / 180, dx = Math.cos(rad), dy = -Math.sin(rad);
-  const samples = Math.max(2, Math.min(96, Math.ceil(distance) + 1));
-  const offsets: number[] = [];
-  for (let s = 0; s < samples; s++) offsets.push(-distance / 2 + (distance * s) / (samples - 1));
-  const at = (x: number, y: number, c: number): number => {
-    const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+/** Adds the bilinear sample of premultiplied `p` at (x, y) into `acc`, channel by channel. */
+function addBilinear(p: Float32Array, w: number, h: number, x: number, y: number, acc: Float64Array): void {
+  const x0 = Math.floor(x), y0 = Math.floor(y), fx = x - x0, fy = y - y0;
+  for (let c = 0; c < 4; c++) {
     let v = 0;
     for (let j = 0; j < 2; j++) {
-      const yy = y0 + j;
-      if (yy < 0 || yy >= h) continue;
+      const row = y0 + j;
+      if (row < 0 || row >= h) continue;
       const wy = j ? fy : 1 - fy;
       for (let i = 0; i < 2; i++) {
-        const xx = x0 + i;
-        if (xx < 0 || xx >= w) continue;
-        v += wy * (i ? fx : 1 - fx) * p[(yy * w + xx) * 4 + c];
+        const col = x0 + i;
+        if (col < 0 || col >= w) continue;
+        v += wy * (i ? fx : 1 - fx) * p[(row * w + col) * 4 + c];
       }
     }
-    return v;
-  };
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const o = (y * w + x) * 4;
-    for (let c = 0; c < 4; c++) {
-      let acc = 0;
-      for (const t of offsets) acc += at(x + dx * t, y + dy * t, c);
-      out[o + c] = acc / samples;
+    acc[c] += v;
+  }
+}
+
+/** Motion blur: the mean of evenly spaced bilinear samples along a line of `distance` pixels centred on each pixel,
+ *  at `angleDeg` counter-clockwise from the x axis; between 2 and 96 samples. */
+export function motionBlur(img: ImageData, angleDeg: number, distance: number): ImageData {
+  const { width: w, height: h } = img;
+  const p = premultiply(img.data), out = new Float32Array(p.length);
+  const theta = (angleDeg * Math.PI) / 180, ux = Math.cos(theta), uy = -Math.sin(theta);
+  const count = Math.max(2, Math.min(96, Math.ceil(distance) + 1));
+  const along = Array.from({ length: count }, (_, s) => -distance / 2 + (distance * s) / (count - 1));
+  const acc = new Float64Array(4);
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      acc.fill(0);
+      for (const t of along) addBilinear(p, w, h, x + ux * t, y + uy * t, acc);
+      const o = (y * w + x) * 4;
+      for (let c = 0; c < 4; c++) out[o + c] = acc[c] / count;
     }
   }
-  return straight(out, w, h);
+  return unpremultiply(out, w, h);
 }
 
+/** How far a motion blur reaches past a layer's edge, in pixels. */
 export const motionMargin = (distance: number): number => Math.ceil(distance / 2) + 1;
-
-function hash(x: number): number {
-  x ^= x >>> 16; x = Math.imul(x, 0x7feb352d);
-  x ^= x >>> 15; x = Math.imul(x, 0x846ca68b);
-  x ^= x >>> 16;
-  return x >>> 0;
-}
-const unit = (key: number): number => (hash(key >>> 0) >>> 8) * (1 / 16777216);
 
 /** Unsharp Mask, the classic sharpen: each colour channel is pushed away from its Gaussian-blurred value by `amount`
  *  percent wherever the two differ by at least `threshold` levels; alpha is untouched. `radius` is the blur's sigma. */
@@ -121,125 +135,143 @@ export function unsharpMask(img: ImageData, amount: number, radius: number, thre
   return out;
 }
 
+/** SplitMix32: a well-mixed 32-bit value from any 32-bit input. */
+function mix32(z: number): number {
+  z = (z + 0x9e3779b9) | 0;
+  z = Math.imul(z ^ (z >>> 16), 0x85ebca6b);
+  z = Math.imul(z ^ (z >>> 13), 0xc2b2ae35);
+  return (z ^ (z >>> 16)) >>> 0;
+}
+const toUnit = (bits: number): number => (bits + 0.5) / 4294967296;
+
+/** Add Noise: per pixel and channel (or once per pixel when monochromatic), uniform noise within plus or minus
+ *  `amount` percent of half the range, or Gaussian noise (Box and Muller) whose deviation is two thirds of that;
+ *  the same seed always gives the same grain. Transparent pixels are left alone. */
 export function addNoise(img: ImageData, amount: number, gaussian: boolean, monochromatic: boolean, seed: number): ImageData {
-  const { width: w, height: h } = img;
-  const out = new ImageData(new Uint8ClampedArray(img.data), w, h);
-  const d = out.data, spread = (amount / 100) * 127.5;
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = (y * w + x) * 4;
-    if (!d[i + 3]) continue;
-    const base = hash((seed ^ hash((y * w + x) >>> 0)) >>> 0);
+  const out = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), d = out.data;
+  const spread = (amount / 100) * 127.5;
+  for (let px = 0, i = 0; i < d.length; px++, i += 4) {
+    if (d[i + 3] === 0) continue;
+    const pixelKey = mix32(mix32(px) ^ seed);
+    let shared = NaN;
     for (let c = 0; c < 3; c++) {
-      const key = monochromatic ? base : (base + Math.imul(c, 0x9e3779b9)) >>> 0;
-      let n: number;
-      if (gaussian) {
-        const u1 = unit(key), u2 = unit((key ^ 0x68e31da4) >>> 0);
-        n = Math.sqrt(-2 * Math.log(1 - u1)) * Math.cos(6.2831853 * u2) * spread * (2 / 3);
-      } else n = (unit(key) * 2 - 1) * spread;
-      d[i + c] = Math.round(clamp(d[i + c] + n, 0, 255));
+      if (!monochromatic || Number.isNaN(shared)) {
+        const k = mix32(pixelKey + (monochromatic ? 0 : c));
+        const n = gaussian
+          ? Math.sqrt(-2 * Math.log(toUnit(k))) * Math.cos(2 * Math.PI * toUnit(mix32(k))) * spread * (2 / 3)
+          : (toUnit(k) * 2 - 1) * spread;
+        if (monochromatic) shared = n;
+        d[i + c] = Math.round(clamp(d[i + c] + n, 0, 255));
+      } else d[i + c] = Math.round(clamp(d[i + c] + shared, 0, 255));
     }
   }
   return out;
 }
 
+/** Lens Correction: a radial model scaling each pixel's distance from the centre by 1 - k (r / R) squared, where R is
+ *  the half diagonal and k runs from -0.35 to 0.35 as `distortion` runs from -100 to 100; resampled bilinearly. */
 export function lensDistort(img: ImageData, distortion: number): ImageData {
   const { width: w, height: h } = img;
-  const k = (distortion / 100) * 0.35;
-  const src = premultiplied(img.data), dst = new Float32Array(src.length);
-  const cx = w * 0.5, cy = h * 0.5, half2 = cx * cx + cy * cy;
+  const k = (distortion / 100) * 0.35, src = premultiply(img.data), dst = new Float32Array(src.length);
+  const cx = w / 2, cy = h / 2, halfDiagonal2 = cx * cx + cy * cy;
+  const acc = new Float64Array(4);
   for (let y = 0; y < h; y++) {
     const dy = y + 0.5 - cy;
     for (let x = 0; x < w; x++) {
-      const dx = x + 0.5 - cx;
-      const scale = 1 - (k * (dx * dx + dy * dy)) / half2;
-      const sx = cx + dx * scale - 0.5, sy = cy + dy * scale - 0.5;
-      const fx0 = Math.floor(sx), fy0 = Math.floor(sy), fx = sx - fx0, fy = sy - fy0;
+      const dx = x + 0.5 - cx, s = 1 - (k * (dx * dx + dy * dy)) / halfDiagonal2;
+      acc.fill(0);
+      addBilinear(src, w, h, cx + dx * s - 0.5, cy + dy * s - 0.5, acc);
       const o = (y * w + x) * 4;
-      for (let j = 0; j < 2; j++) {
-        const row = fy0 + j;
-        if (row < 0 || row >= h) continue;
-        const wy = j ? fy : 1 - fy;
-        if (!wy) continue;
-        for (let i = 0; i < 2; i++) {
-          const col = fx0 + i;
-          if (col < 0 || col >= w) continue;
-          const wt = wy * (i ? fx : 1 - fx);
-          if (!wt) continue;
-          const s = (row * w + col) * 4;
-          dst[o] += wt * src[s]; dst[o + 1] += wt * src[s + 1]; dst[o + 2] += wt * src[s + 2]; dst[o + 3] += wt * src[s + 3];
-        }
-      }
+      for (let c = 0; c < 4; c++) dst[o + c] = acc[c];
     }
   }
-  return straight(dst, w, h);
+  return unpremultiply(dst, w, h);
 }
 
+/** Histograms for Levels: bins 0 to 255 are the composite (each channel adding a third), then red, green and blue.
+ *  Each pixel counts by its alpha, times the selection's coverage when one is given. */
 export function histogram(img: ImageData, coverage: Uint8ClampedArray | null = null): Float64Array {
-  const bins = new Float64Array(4 * 256), d = img.data;
-  for (let i = 0, px = 0; i < d.length; i += 4, px++) {
-    if (!d[i + 3]) continue;
-    const weight = (d[i + 3] / 255) * (coverage ? coverage[px * 4 + 3] / 255 : 1);
+  const bins = new Float64Array(1024), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
+    const weight = (d[i + 3] / 255) * (coverage ? coverage[i + 3] / 255 : 1);
     for (let c = 0; c < 3; c++) {
-      const v = d[i + c];
-      bins[(c + 1) * 256 + v] += weight;
-      bins[v] += weight / 3;
+      bins[256 * (c + 1) + d[i + c]] += weight;
+      bins[d[i + c]] += weight / 3;
     }
   }
   return bins;
 }
 
-function edt1d(f: Float64Array, n: number, d: Float64Array, v: Int32Array, z: Float64Array): void {
-  let k = 0;
-  v[0] = 0; z[0] = -Infinity; z[1] = Infinity;
+/** Felzenszwalb and Huttenlocher's one-dimensional squared-distance transform: `out[q]` becomes the minimum over p of
+ *  (q - p) squared plus `f[p]`, from the lower envelope of the parabolas rooted at each p. */
+function squaredDistance1d(f: Float64Array, n: number, out: Float64Array, roots: Int32Array, bounds: Float64Array): void {
+  let top = 0;
+  roots[0] = 0;
+  bounds[0] = -Infinity;
+  bounds[1] = Infinity;
+  const cross = (q: number, p: number): number => (f[q] + q * q - (f[p] + p * p)) / (2 * (q - p));
   for (let q = 1; q < n; q++) {
-    let s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]);
-    while (s <= z[k]) { k--; s = (f[q] + q * q - (f[v[k]] + v[k] * v[k])) / (2 * q - 2 * v[k]); }
-    k++; v[k] = q; z[k] = s; z[k + 1] = Infinity;
+    let s = cross(q, roots[top]);
+    while (s <= bounds[top]) s = cross(q, roots[--top]);
+    top++;
+    roots[top] = q;
+    bounds[top] = s;
+    bounds[top + 1] = Infinity;
   }
-  k = 0;
-  for (let q = 0; q < n; q++) { while (z[k + 1] < q) k++; d[q] = (q - v[k]) * (q - v[k]) + f[v[k]]; }
+  for (let q = 0, j = 0; q < n; q++) {
+    while (bounds[j + 1] < q) j++;
+    const dq = q - roots[j];
+    out[q] = dq * dq + f[roots[j]];
+  }
 }
 
-function distanceTo(inside: (i: number) => boolean, w: number, h: number): Float64Array {
-  const INF = 1e20, grid = new Float64Array(w * h);
-  for (let i = 0; i < w * h; i++) grid[i] = inside(i) ? 0 : INF;
-  const n = Math.max(w, h), f = new Float64Array(n), d = new Float64Array(n), v = new Int32Array(n), z = new Float64Array(n + 1);
+/** The Euclidean distance from each pixel to the nearest pixel where `inside` holds, by columns then rows. */
+function distanceField(inside: (i: number) => boolean, w: number, h: number): Float64Array {
+  const far = 1e20, field = new Float64Array(w * h);
+  for (let i = 0; i < field.length; i++) field[i] = inside(i) ? 0 : far;
+  const n = Math.max(w, h), f = new Float64Array(n), out = new Float64Array(n), roots = new Int32Array(n), bounds = new Float64Array(n + 1);
   for (let x = 0; x < w; x++) {
-    for (let y = 0; y < h; y++) f[y] = grid[y * w + x];
-    edt1d(f, h, d, v, z);
-    for (let y = 0; y < h; y++) grid[y * w + x] = d[y];
+    for (let y = 0; y < h; y++) f[y] = field[y * w + x];
+    squaredDistance1d(f, h, out, roots, bounds);
+    for (let y = 0; y < h; y++) field[y * w + x] = out[y];
   }
   for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) f[x] = grid[y * w + x];
-    edt1d(f, w, d, v, z);
-    for (let x = 0; x < w; x++) grid[y * w + x] = Math.sqrt(d[x]);
+    for (let x = 0; x < w; x++) f[x] = field[y * w + x];
+    squaredDistance1d(f, w, out, roots, bounds);
+    for (let x = 0; x < w; x++) field[y * w + x] = Math.sqrt(out[x]);
   }
-  return grid;
+  return field;
 }
 
+/** Expand (positive `delta`) or contract a selection mask by `delta` pixels, with a one-pixel soft edge. */
 export function resizeMask(mask: Uint8Array, w: number, h: number, delta: number): Uint8Array {
   const out = new Uint8Array(w * h);
   if (delta > 0) {
-    const dist = distanceTo((i) => mask[i] >= 128, w, h);
-    for (let i = 0; i < w * h; i++) out[i] = mask[i] >= 128 ? 255 : Math.round(clamp(delta + 0.5 - dist[i], 0, 1) * 255);
+    const dist = distanceField((i) => mask[i] >= 128, w, h);
+    for (let i = 0; i < out.length; i++) out[i] = mask[i] >= 128 ? 255 : Math.round(clamp(delta + 0.5 - dist[i], 0, 1) * 255);
   } else {
-    const r = -delta;
-    const dist = distanceTo((i) => mask[i] < 128, w, h);
-    for (let i = 0; i < w * h; i++) out[i] = mask[i] < 128 ? 0 : Math.round(clamp(dist[i] - r - 0.5, 0, 1) * 255);
+    const dist = distanceField((i) => mask[i] < 128, w, h);
+    for (let i = 0; i < out.length; i++) out[i] = mask[i] < 128 ? 0 : Math.round(clamp(dist[i] + delta - 0.5, 0, 1) * 255);
   }
   return out;
 }
 
+/** A mask's alpha as an opaque grey image, for filtering a mask like pixels. */
 export function toGray(img: ImageData): ImageData {
   const out = new ImageData(img.width, img.height), s = img.data, d = out.data;
-  for (let i = 0; i < s.length; i += 4) { d[i] = s[i + 3]; d[i + 1] = s[i + 3]; d[i + 2] = s[i + 3]; d[i + 3] = 255; }
+  for (let i = 0; i < s.length; i += 4) {
+    d[i] = d[i + 1] = d[i + 2] = s[i + 3];
+    d[i + 3] = 255;
+  }
   return out;
 }
 
+/** A grey image back to white with the grey (scaled by its alpha) as alpha. */
 export function fromGray(img: ImageData): ImageData {
   const out = new ImageData(img.width, img.height), s = img.data, d = out.data;
   for (let i = 0; i < s.length; i += 4) {
-    d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
+    d[i] = d[i + 1] = d[i + 2] = 255;
     d[i + 3] = Math.round(((s[i] + s[i + 1] + s[i + 2]) / 3) * (s[i + 3] / 255));
   }
   return out;

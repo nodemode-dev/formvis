@@ -1,167 +1,199 @@
 import { clamp, type Adjustment } from './types';
 
+/** Pixel kernels for adjustment layers and the Magic Wand, written for sonny from standard methods: Levels as a
+ *  clipped power curve between black and white points, Curves as monotone piecewise-cubic interpolation (Fritsch
+ *  and Butland's harmonic-mean tangents), Exposure in linear light through the IEC 61966-2-1 sRGB transfer, a
+ *  Rec. 709 luminance gradient map, and Heckbert's segment seed fill (Graphics Gems, 1990). Settings keep the field
+ *  names and meanings `.ref` projects use. */
+
 export interface KernelContext { width: number; height: number; originX: number; originY: number; unitsPerPixel: number }
 export type Kernel = (data: Uint8ClampedArray, ctx?: KernelContext) => void;
 
-const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
-const obj = (v: unknown): Record<string, unknown> => (v && typeof v === 'object' ? (v as Record<string, unknown>) : {});
-const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
+type Json = Record<string, unknown>;
+const finite = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
+const record = (v: unknown): Json => (v !== null && typeof v === 'object' ? (v as Json) : {});
+const list = (v: unknown): unknown[] => (Array.isArray(v) ? v : []);
 
-function lut(tables: Uint8Array[]): Kernel {
-  const [r, g, b] = tables;
-  return (d) => {
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i + 3] === 0) continue;
-      d[i] = r[d[i]];
-      d[i + 1] = g[d[i + 1]];
-      d[i + 2] = b[d[i + 2]];
+/** A kernel from one lookup table per colour channel, sampled from `transfer(channel, level)` over 0 to 255.
+ *  Fully transparent pixels are left alone. */
+function tableKernel(transfer: (channel: number, level: number) => number): Kernel {
+  const tables: Uint8Array[] = [];
+  for (let c = 0; c < 3; c++) {
+    const t = new Uint8Array(256);
+    for (let level = 0; level < 256; level++) t[level] = Math.round(clamp(transfer(c, level), 0, 255));
+    tables.push(t);
+  }
+  const [tr, tg, tb] = tables;
+  return (px) => {
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] === 0) continue;
+      px[i] = tr[px[i]];
+      px[i + 1] = tg[px[i + 1]];
+      px[i + 2] = tb[px[i + 2]];
     }
   };
 }
 
-interface Range { black: number; white: number; gamma: number; outBlack: number; outWhite: number }
-function levelRange(raw: unknown): Range {
-  const o = obj(raw);
-  const black = clamp(num(o.black, 0), 0, 254);
-  return { black, white: clamp(num(o.white, 255), black + 1, 255), gamma: clamp(num(o.gamma, 1), 0.1, 9.99), outBlack: clamp(num(o.outputBlack, 0), 0, 255), outWhite: clamp(num(o.outputWhite, 255), 0, 255) };
+/** One Levels range as a transfer on 0 to 255: input black and white points, a midtone gamma, output black and white. */
+function levelsTransfer(raw: unknown): (v: number) => number {
+  const r = record(raw);
+  const inLo = clamp(finite(r.black, 0), 0, 254);
+  const inHi = clamp(finite(r.white, 255), inLo + 1, 255);
+  const invGamma = 1 / clamp(finite(r.gamma, 1), 0.1, 9.99);
+  const outLo = clamp(finite(r.outputBlack, 0), 0, 255), outHi = clamp(finite(r.outputWhite, 255), 0, 255);
+  return (v) => outLo + (outHi - outLo) * Math.pow(clamp((v - inLo) / (inHi - inLo), 0, 1), invGamma);
 }
-function applyRange(r: Range, v: number): number {
-  const input = Math.min(1, Math.max(0, (v * 255 - r.black) / (r.white - r.black)));
-  return (r.outBlack + Math.pow(input, 1 / r.gamma) * (r.outWhite - r.outBlack)) / 255;
-}
+
+/** Levels: the composite range (index 0) applied after each channel's own (1 to 3). */
 export function levelsKernel(settings: unknown): Kernel {
-  const ranges = arr(obj(settings).ranges).map(levelRange);
-  while (ranges.length < 4) ranges.push(levelRange(null));
-  const tables = [1, 2, 3].map((ch) => {
-    const t = new Uint8Array(256);
-    for (let x = 0; x < 256; x++) t[x] = Math.round(255 * clamp(applyRange(ranges[0], applyRange(ranges[ch], x / 255)), 0, 1));
-    return t;
-  });
-  return lut(tables);
+  const ranges = list(record(settings).ranges);
+  const composite = levelsTransfer(ranges[0]);
+  const channel = [levelsTransfer(ranges[1]), levelsTransfer(ranges[2]), levelsTransfer(ranges[3])];
+  return tableKernel((c, level) => composite(channel[c](level)));
 }
 
-function curve(points: Array<{ x: number; y: number }>): (x: number) => number {
-  const p = points.length >= 2 ? points : [{ x: 0, y: 0 }, { x: 255, y: 255 }];
-  const d = p.slice(1).map((q, i) => (q.y - p[i].y) / Math.max(1e-6, q.x - p[i].x));
-  const slope = (j: number): number => {
-    if (j === 0) return d[0];
-    if (j === p.length - 1) return d[d.length - 1];
-    if (d[j - 1] * d[j] <= 0) return 0;
-    return 2 / (1 / d[j - 1] + 1 / d[j]);
-  };
-  return (x: number) => {
-    let i = 0;
-    for (let k = 0; k < p.length - 1; k++) if (p[k].x <= x) i = k;
-    i = Math.min(p.length - 2, i);
-    const h = p[i + 1].x - p[i].x, t = clamp((x - p[i].x) / Math.max(1e-6, h), 0, 1);
-    const t2 = t * t, t3 = t2 * t;
-    const y = (2 * t3 - 3 * t2 + 1) * p[i].y + (t3 - 2 * t2 + t) * h * slope(i) + (-2 * t3 + 3 * t2) * p[i + 1].y + (t3 - t2) * h * slope(i + 1);
-    return clamp(y, 0, 255);
-  };
-}
-export function curvesKernel(settings: unknown): Kernel {
-  const channels = arr(obj(settings).channels).map((c) => arr(c).map((pt) => ({ x: num(obj(pt).x, 0), y: num(obj(pt).y, 0) })));
-  while (channels.length < 4) channels.push([]);
-  const fns = channels.map(curve);
-  const tables = [1, 2, 3].map((ch) => {
-    const t = new Uint8Array(256);
-    for (let x = 0; x < 256; x++) t[x] = Math.round(fns[0](fns[ch](x)));
-    return t;
-  });
-  return lut(tables);
-}
+interface Knot { x: number; y: number }
 
-export function exposureKernel(settings: unknown): Kernel {
-  const o = obj(settings);
-  const scale = Math.pow(2, clamp(num(o.exposure, 0), -20, 20)), offset = clamp(num(o.offset, 0), -0.5, 0.5), gamma = clamp(num(o.gamma, 1), 0.01, 9.99);
-  const t = new Uint8Array(256);
-  for (let i = 0; i < 256; i++) {
-    const e = i / 255;
-    let lin = e <= 0.04045 ? e / 12.92 : Math.pow((e + 0.055) / 1.055, 2.4);
-    lin = Math.pow(Math.max(0, lin * scale + offset), 1 / gamma);
-    const enc = lin <= 0.0031308 ? 12.92 * lin : 1.055 * Math.pow(lin, 1 / 2.4) - 0.055;
-    t[i] = Math.round(clamp(enc, 0, 1) * 255);
+/** Monotone piecewise-cubic interpolation through knots on 0 to 255: each interior tangent is the harmonic mean of
+ *  its two secants (zero at a local extremum), end tangents are the end secants, and each segment is a cubic
+ *  Hermite polynomial evaluated in Horner form. Inputs outside the knots hold the end values. */
+function monotoneCurve(input: Knot[]): (x: number) => number {
+  const k = (input.length >= 2 ? input : [{ x: 0, y: 0 }, { x: 255, y: 255 }]).slice().sort((a, b) => a.x - b.x);
+  const n = k.length;
+  const secant = new Float64Array(n - 1), tangent = new Float64Array(n);
+  for (let j = 0; j < n - 1; j++) secant[j] = (k[j + 1].y - k[j].y) / Math.max(1e-6, k[j + 1].x - k[j].x);
+  tangent[0] = secant[0];
+  tangent[n - 1] = secant[n - 2];
+  for (let j = 1; j < n - 1; j++) {
+    const a = secant[j - 1], b = secant[j];
+    tangent[j] = a * b > 0 ? (2 * a * b) / (a + b) : 0;
   }
-  return lut([t, t, t]);
+  return (x) => {
+    let lo = 0, hi = n - 2;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (k[mid].x <= x) lo = mid; else hi = mid - 1;
+    }
+    const a = k[lo], b = k[lo + 1], h = Math.max(1e-6, b.x - a.x);
+    const t = clamp((x - a.x) / h, 0, 1);
+    const c1 = h * tangent[lo], c2 = 3 * (b.y - a.y) - h * (2 * tangent[lo] + tangent[lo + 1]), c3 = 2 * (a.y - b.y) + h * (tangent[lo] + tangent[lo + 1]);
+    return clamp(((c3 * t + c2) * t + c1) * t + a.y, 0, 255);
+  };
 }
 
+/** Curves: the composite curve (index 0) applied after each channel's own (1 to 3). */
+export function curvesKernel(settings: unknown): Kernel {
+  const channels = list(record(settings).channels).map((c) => list(c).map((p): Knot => ({ x: finite(record(p).x, 0), y: finite(record(p).y, 0) })));
+  const curveAt = (i: number) => monotoneCurve(channels[i] ?? []);
+  const composite = curveAt(0), channel = [curveAt(1), curveAt(2), curveAt(3)];
+  return tableKernel((c, level) => composite(channel[c](level)));
+}
+
+const toLinear = (e: number): number => (e <= 0.04045 ? e / 12.92 : Math.pow((e + 0.055) / 1.055, 2.4));
+const toEncoded = (l: number): number => (l <= 0.0031308 ? 12.92 * l : 1.055 * Math.pow(l, 1 / 2.4) - 0.055);
+
+/** Exposure in linear light: a gain of 2 to the power of the exposure, then the offset, then the gamma. */
+export function exposureKernel(settings: unknown): Kernel {
+  const r = record(settings);
+  const gain = Math.pow(2, clamp(finite(r.exposure, 0), -20, 20));
+  const offset = clamp(finite(r.offset, 0), -0.5, 0.5);
+  const invGamma = 1 / clamp(finite(r.gamma, 1), 0.01, 9.99);
+  return tableKernel((_, level) => 255 * clamp(toEncoded(Math.pow(Math.max(0, toLinear(level / 255) * gain + offset), invGamma)), 0, 1));
+}
+
+/** Gradient Map: each pixel's Rec. 709 luminance picks a colour between the shadow and highlight colours. */
 export function gradientMapKernel(settings: unknown): Kernel {
-  const o = obj(settings);
-  const color = (c: unknown, d: number) => { const k = obj(c); return [num(k.red, d), num(k.green, d), num(k.blue, d)]; };
-  let dark = color(o.shadows, 0), light = color(o.highlights, 1);
-  if (o.reversed === true) [dark, light] = [light, dark];
-  const table = new Uint8Array(256 * 3);
-  for (let i = 0; i < 256; i++) for (let c = 0; c < 3; c++) table[i * 3 + c] = Math.round(clamp(dark[c] + (light[c] - dark[c]) * (i / 255), 0, 1) * 255);
-  return (d) => {
-    for (let i = 0; i < d.length; i += 4) {
-      if (!d[i + 3]) continue;
-      const level = Math.min(255, Math.round(0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2]));
-      d[i] = table[level * 3]; d[i + 1] = table[level * 3 + 1]; d[i + 2] = table[level * 3 + 2];
+  const r = record(settings);
+  const rgb = (v: unknown, fallback: number): number[] => { const c = record(v); return [finite(c.red, fallback), finite(c.green, fallback), finite(c.blue, fallback)]; };
+  const shadows = rgb(r.shadows, 0), highlights = rgb(r.highlights, 1);
+  const [from, to] = r.reversed === true ? [highlights, shadows] : [shadows, highlights];
+  const ramp = new Uint8Array(256 * 3);
+  for (let level = 0; level < 256; level++) {
+    for (let c = 0; c < 3; c++) ramp[level * 3 + c] = Math.round(255 * clamp(from[c] + ((to[c] - from[c]) * level) / 255, 0, 1));
+  }
+  return (px) => {
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] === 0) continue;
+      const y = Math.min(255, Math.round(0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2])) * 3;
+      px[i] = ramp[y];
+      px[i + 1] = ramp[y + 1];
+      px[i + 2] = ramp[y + 2];
     }
   };
 }
 
 export function invertKernel(): Kernel {
-  return (d) => { for (let i = 0; i < d.length; i += 4) { d[i] = 255 - d[i]; d[i + 1] = 255 - d[i + 1]; d[i + 2] = 255 - d[i + 2]; } };
+  return (px) => {
+    for (let i = 0; i < px.length; i += 4) {
+      px[i] = 255 - px[i];
+      px[i + 1] = 255 - px[i + 1];
+      px[i + 2] = 255 - px[i + 2];
+    }
+  };
 }
 
 export function adjustmentKernel(adj: Adjustment | null): Kernel | null {
   if (!adj) return null;
-  const d = adj.data;
-  switch (adj.kind) {
-    case 'levels': return levelsKernel(d.levels);
-    case 'curves': return curvesKernel(d.curves);
-    case 'exposure': return exposureKernel(d.exposureSettings);
-    case 'gradientMap': return gradientMapKernel(d.gradientMapSettings);
-    default: return null;
-  }
+  if (adj.kind === 'levels') return levelsKernel(adj.data.levels);
+  if (adj.kind === 'curves') return curvesKernel(adj.data.curves);
+  if (adj.kind === 'exposure') return exposureKernel(adj.data.exposureSettings);
+  if (adj.kind === 'gradientMap') return gradientMapKernel(adj.data.gradientMapSettings);
+  return null;
 }
 
+/** Magic Wand: 255 where a pixel is within `tolerance` of the reference colour on every channel, alpha included.
+ *  The reference is the mean of the pixels within `sampleRadius` of the seed (0 a single point, 1 a 3 by 3 square,
+ *  2 a 5 by 5), clipped to the image. Contiguous selections grow 4-connected from the seed with Heckbert's segment
+ *  seed fill; otherwise every matching pixel is selected. */
 export function wandMask(rgba: Uint8ClampedArray, width: number, height: number, seedX: number, seedY: number, tolerance: number, contiguous: boolean, sampleRadius = 0): Uint8Array {
-  const mask = new Uint8Array(width * height);
-  if (seedX < 0 || seedY < 0 || seedX >= width || seedY >= height) return mask;
-  // the Sample Size: the color to match averages the pixels within `sampleRadius` of the click (0 is Point,
-  // 1 is 3 by 3, 2 is 5 by 5), clipped to the image.
-  const ref = [0, 0, 0, 0];
-  let count = 0;
-  for (let dy = -sampleRadius; dy <= sampleRadius; dy++) {
-    for (let dx = -sampleRadius; dx <= sampleRadius; dx++) {
-      const x = seedX + dx, y = seedY + dy;
-      if (x < 0 || y < 0 || x >= width || y >= height) continue;
-      const o = (y * width + x) * 4;
-      for (let k = 0; k < 4; k++) ref[k] += rgba[o + k];
-      count++;
-    }
-  }
-  for (let k = 0; k < 4; k++) ref[k] = Math.round(ref[k] / count);
+  const out = new Uint8Array(width * height);
+  if (seedX < 0 || seedY < 0 || seedX >= width || seedY >= height) return out;
+  const xa = Math.max(0, seedX - sampleRadius), xb = Math.min(width - 1, seedX + sampleRadius);
+  const ya = Math.max(0, seedY - sampleRadius), yb = Math.min(height - 1, seedY + sampleRadius);
+  const sum = [0, 0, 0, 0];
+  for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) for (let c = 0; c < 4; c++) sum[c] += rgba[(y * width + x) * 4 + c];
+  const n = (xb - xa + 1) * (yb - ya + 1);
+  const ref = sum.map((s) => Math.round(s / n));
   const tol = clamp(Math.round(tolerance), 0, 255);
-  const match = (p: number): boolean => {
+  const near = (p: number): boolean => {
     const o = p * 4;
     return Math.abs(rgba[o] - ref[0]) <= tol && Math.abs(rgba[o + 1] - ref[1]) <= tol && Math.abs(rgba[o + 2] - ref[2]) <= tol && Math.abs(rgba[o + 3] - ref[3]) <= tol;
   };
   if (!contiguous) {
-    for (let p = 0; p < width * height; p++) if (match(p)) mask[p] = 255;
-    return mask;
+    for (let p = 0; p < out.length; p++) if (near(p)) out[p] = 255;
+    return out;
   }
-  const stack: number[] = [seedX, seedY];
+  // A pixel is fillable while unselected and near the reference.
+  const open = (x: number, y: number): boolean => !out[y * width + x] && near(y * width + x);
+  if (!open(seedX, seedY)) return out;
+  // Each stacked segment says: row `y - dy` was filled over [l, r]; scan row `y` beneath it.
+  const stack: number[] = [];
+  const push = (y: number, l: number, r: number, dy: number): void => { if (y + dy >= 0 && y + dy < height) stack.push(y, l, r, dy); };
+  push(seedY, seedX, seedX, 1);
+  push(seedY + 1, seedX, seedX, -1);
   while (stack.length) {
-    const y = stack.pop() as number, x = stack.pop() as number;
-    const row = y * width;
-    if (mask[row + x] || !match(row + x)) continue;
-    let left = x, right = x;
-    while (left > 0 && !mask[row + left - 1] && match(row + left - 1)) left--;
-    while (right + 1 < width && !mask[row + right + 1] && match(row + right + 1)) right++;
-    mask.fill(255, row + left, row + right + 1);
-    for (const ny of [y - 1, y + 1]) {
-      if (ny < 0 || ny >= height) continue;
-      const nrow = ny * width;
-      let inRun = false;
-      for (let nx = left; nx <= right; nx++) {
-        const candidate = !mask[nrow + nx] && match(nrow + nx);
-        if (candidate && !inRun) stack.push(nx, ny);
-        inRun = candidate;
+    const dy = stack.pop() as number, r = stack.pop() as number, l = stack.pop() as number;
+    const y = (stack.pop() as number) + dy;
+    let x = l;
+    while (x >= 0 && open(x, y)) { out[y * width + x] = 255; x--; }
+    // Nothing fillable at the parent's left end: skip ahead to the first fillable pixel under the parent.
+    let skipping = x >= l, start = x + 1;
+    if (!skipping) {
+      if (start < l) push(y, start, l - 1, -dy);
+      x = l + 1;
+    }
+    for (;;) {
+      if (!skipping) {
+        while (x < width && open(x, y)) { out[y * width + x] = 255; x++; }
+        push(y, start, x - 1, dy);
+        if (x > r + 1) push(y, r + 1, x - 1, -dy);
       }
+      skipping = false;
+      x++;
+      while (x <= r && !open(x, y)) x++;
+      start = x;
+      if (x > r) break;
     }
   }
-  return mask;
+  return out;
 }
