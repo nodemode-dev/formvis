@@ -364,6 +364,16 @@ import type { BlendMode as PsdBlend, Layer as PsdLayer, Psd } from 'ag-psd';
     if (l.smart) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as a smart object.`);
 ```
 
+### src/io/psd.ts · editable type · _v0.63.0
+
+Live type written as Photoshop point type and read back as editable type. Removed:
+
+```ts
+  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects,
+      if (pl.text) notes.push(`"${name}" is type in Photoshop; it opened as pixels.`);
+    if (liveText(l)) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as editable type.`);
+```
+
 ## src/extensions/tools/patch.ts
 
 ### src/extensions/tools/patch.ts · new · _v0.42.0
@@ -1978,6 +1988,14 @@ The screen renderer previews styles at reduced resolution on large layers. Nothi
 ### src/engine/index.ts · patterns · _v0.61.0
 
 Pattern functions exported. Nothing was removed.
+
+### src/engine/index.ts · renderText · _v0.63.0
+
+renderText exported for the PSD writer. Removed:
+
+```ts
+export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics } from './text';
+```
 
 ## src/engine/develop.ts
 

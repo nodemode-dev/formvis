@@ -2,6 +2,12 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.63.0 · 2026-09-21
+
+### Added
+
+- Editable type travels to and from Photoshop: PSD export writes type layers as Photoshop type, and PSD import opens Photoshop type as editable sonny type.
+
 ## 0.62.0 · 2026-09-21
 
 ### Added
