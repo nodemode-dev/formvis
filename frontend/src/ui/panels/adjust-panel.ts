@@ -76,6 +76,9 @@ export class AdjustPanel extends Dialog {
   private mode: 'layer' | 'image' = 'layer';
   private layerId: ID | null = null;
   private data: Json = {};
+  private madeLayer = false;
+  /** Called when the dialog applies an adjustment, for Actions: to the image, or as a layer it just made. */
+  onApplied: ((v: { kind: AdjustmentKind; data: Json; layer: boolean; made: boolean }) => void) | null = null;
   private hsv: HsvSettings = hsvFromData({});
   private done = false;
   private frame = 0;
@@ -98,11 +101,12 @@ export class AdjustPanel extends Dialog {
     this.onClose = () => this.abandon();
   }
 
-  openForLayer(id: ID): void {
+  openForLayer(id: ID, made = false): void {
     const l = this.engine.current?.layer(id);
     if (!l?.adjustment || this.isOpen) return;
     if (!this.engine.beginLive(`Edit ${ADJUSTMENT_LABELS[l.adjustment.kind]}`)) return;
     this.mode = 'layer';
+    this.madeLayer = made;
     this.layerId = id;
     this.kind = l.adjustment.kind;
     this.data = structuredClone(l.adjustment.data);
@@ -313,9 +317,33 @@ export class AdjustPanel extends Dialog {
 
   private commit(): void {
     this.done = true;
-    if (this.mode === 'layer') this.engine.commitLive();
+    const kind = this.kind, data = structuredClone(this.data), layer = this.mode === 'layer';
+    if (layer) this.engine.commitLive();
     else this.engine.applyImageEdit(ADJUSTMENT_LABELS[this.kind], (src, scale) => this.run(src, scale));
     this.close();
+    this.onApplied?.({ kind, data, layer, made: layer && this.madeLayer });
+  }
+
+  /** Replays a recorded adjustment without the dialog: applied to the image, or as a new adjustment layer. */
+  applySettings(kind: AdjustmentKind, data: Json, layer: boolean): boolean {
+    if (this.isOpen) return false;
+    if (layer) {
+      const id = this.engine.addAdjustmentLayer(kind);
+      if (!id || !this.engine.beginLive(`Edit ${ADJUSTMENT_LABELS[kind]}`)) return !!id;
+      this.engine.updateLive((p) => p.updateLayer(id, { adjustment: { kind, data: structuredClone(data) } }));
+      this.engine.commitLive();
+      return true;
+    }
+    this.kind = kind;
+    this.data = structuredClone(data);
+    const k = this.kernel();
+    if (!k) return false;
+    this.engine.applyImageEdit(ADJUSTMENT_LABELS[kind], (src, scale) => {
+      const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      k(out.data, { width: src.width, height: src.height, originX: 0, originY: 0, unitsPerPixel: 1 / scale });
+      return out;
+    });
+    return true;
   }
 
   private abandon(): void {

@@ -14,7 +14,7 @@ import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -305,6 +305,7 @@ export function startApp(): void {
   async function runStep(s: ActionStep, relative = false): Promise<boolean> {
     if (s.kind === 'command') return commands.run(s.id);
     if (s.kind === 'filter') return dialogs.filter.applySettings(s.filter as FilterKind, s.settings);
+    if (s.kind === 'adjustment') return dialogs.adjust.applySettings(s.adj as AdjustmentKind, s.data as Parameters<typeof dialogs.adjust.applySettings>[1], s.layer);
     const doc = engine.current?.doc, follow = relative && !!doc && !!s.fromW && !!s.fromH;
     if (s.kind === 'imageSize') {
       // Following each image: the same proportion of this document as of the one the step was recorded on.
@@ -622,7 +623,7 @@ export function startApp(): void {
     { id: 'expand', label: () => `Expand by ${engine.selectionAmounts.expand} px...`, enabled: selected, run: () => dialogs.amount.show(true) },
     { id: 'contract', label: () => `Contract by ${engine.selectionAmounts.contract} px...`, enabled: selected, run: () => dialogs.amount.show(false) },
     ...ADJUSTMENT_KINDS.map((kind) => ({ id: `adj-${kind}`, label: `${ADJUSTMENT_LABELS[kind]}...`, keys: ADJUST_KEYS[kind], enabled: hasTargetPixels, run: () => dialogs.adjust.openForImage(kind) })),
-    ...ADJUSTMENT_KINDS.map((kind) => ({ id: `new-adj-${kind}`, label: `New ${ADJUSTMENT_LABELS[kind]} Layer...`, enabled: has, run: () => { const id = engine.addAdjustmentLayer(kind); if (id) dialogs.adjust.openForLayer(id); } })),
+    ...ADJUSTMENT_KINDS.map((kind) => ({ id: `new-adj-${kind}`, label: `New ${ADJUSTMENT_LABELS[kind]} Layer...`, enabled: has, run: () => { const id = engine.addAdjustmentLayer(kind); if (id) dialogs.adjust.openForLayer(id, true); } })),
     { id: 'edit-adjustment', label: 'Edit Adjustment...', enabled: () => !!layer()?.adjustment, run: () => { const l = layer(); if (l?.adjustment) dialogs.adjust.openForLayer(l.id); } },
     { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
     { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
@@ -672,6 +673,9 @@ export function startApp(): void {
   // Recording: commands that change the document, filters with their settings, and size changes.
   commands.onRun = (cmd) => { if (RECORDABLE.has(cmd.id)) actions.record({ kind: 'command', id: cmd.id, label: typeof cmd.label === 'function' ? cmd.label() : cmd.label }); };
   dialogs.filter.onApplied = (kind, settings) => actions.record({ kind: 'filter', filter: kind, label: FILTER_LABELS[kind], settings });
+  // Adjustments applied to the image, or new adjustment layers, record with their settings; edits of an existing
+  // adjustment layer do not, since a replay could not know which layer to change.
+  dialogs.adjust.onApplied = (v) => { if (!v.layer || v.made) actions.record({ kind: 'adjustment', adj: v.kind, label: v.layer ? `New ${ADJUSTMENT_LABELS[v.kind]} Layer` : ADJUSTMENT_LABELS[v.kind], data: v.data as Record<string, unknown>, layer: v.layer }); };
   dialogs.imageSize.onApplied = (v) => actions.record({ kind: 'imageSize', label: `Image Size ${v.w} x ${v.h}`, ...v });
   dialogs.canvasSize.onApplied = (v) => actions.record({ kind: 'canvasSize', label: `Canvas Size ${v.w} x ${v.h}`, ...v });
   root.addEventListener('cv:edit-layer-style', () => dialogs.layerStyle.show());

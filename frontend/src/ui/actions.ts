@@ -1,4 +1,4 @@
-import type { RGB } from '../engine';
+import { ADJUSTMENT_KINDS, type RGB } from '../engine';
 
 /** Actions: recorded sequences of document changes, replayed on the current document or a batch of files. A step is a
  *  command that changes the document without asking anything, a filter with its settings, or an Image or Canvas Size
@@ -7,6 +7,7 @@ import type { RGB } from '../engine';
 export type ActionStep =
   | { kind: 'command'; id: string; label: string }
   | { kind: 'filter'; filter: string; label: string; settings: Record<string, unknown> }
+  | { kind: 'adjustment'; adj: string; label: string; data: Record<string, unknown>; layer: boolean }
   | { kind: 'imageSize'; label: string; w: number; h: number; sampling: string; res: number; fromW?: number; fromH?: number }
   | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number };
 /** `relative`: size steps follow each document, Image Size as the same proportion and Canvas Size as the same pixels
@@ -29,6 +30,7 @@ function stepFrom(v: unknown): ActionStep | null {
   if (!v || typeof v !== 'object') return null;
   const s = v as Record<string, unknown>, label = typeof s.label === 'string' ? s.label.slice(0, 200) : '';
   if (s.kind === 'command' && typeof s.id === 'string' && RECORDABLE.has(s.id)) return { kind: 'command', id: s.id, label: label || s.id };
+  if (s.kind === 'adjustment' && typeof s.adj === 'string' && (ADJUSTMENT_KINDS as readonly string[]).includes(s.adj) && s.data && typeof s.data === 'object') return { kind: 'adjustment', adj: s.adj, label: label || s.adj, data: s.data as Record<string, unknown>, layer: s.layer === true };
   if (s.kind === 'filter' && typeof s.filter === 'string' && s.settings && typeof s.settings === 'object') return { kind: 'filter', filter: s.filter, label: label || s.filter, settings: s.settings as Record<string, unknown> };
   const from = isNum(s.fromW) && isNum(s.fromH) && s.fromW > 0 && s.fromH > 0 ? { fromW: s.fromW, fromH: s.fromH } : {};
   if (s.kind === 'imageSize' && isNum(s.w) && isNum(s.h) && typeof s.sampling === 'string' && isNum(s.res)) return { kind: 'imageSize', label: label || 'Image Size', w: s.w, h: s.h, sampling: s.sampling, res: s.res, ...from };
