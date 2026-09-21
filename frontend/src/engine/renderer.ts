@@ -1,7 +1,7 @@
 import { resizeMask } from './filters';
 import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
-import { IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
+import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
 import { ancestors, hierarchy } from './tree';
 import { adjustmentKernel, type Kernel } from './kernels';
 import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
@@ -56,10 +56,12 @@ export interface RenderJob {
   ignoreFolderMasks?: boolean;
 }
 interface Slot { s: Surface; c: Ctx2D }
+interface FxPart { s: Surface; x: number; y: number; alpha: number; op: GlobalCompositeOperation; above: boolean }
 interface MaskInfo { src: Surface; w: number; h: number; t: Transform; covers: boolean }
 
 export class Renderer {
   private slots: Slot[] = [];
+  private readonly fxCache = new Map<ID, { key: string; parts: FxPart[] }>();
   private clipPool = new Map<ID, Slot>();
 
   private prepare(slot: Slot, w: number, h: number): Slot {
@@ -107,7 +109,16 @@ export class Renderer {
       const m = mul(job.view, placement(t, src.width, src.height));
       const op = compositeOp(ov?.blend ?? layer.blend);
       const fx = ov && 'effects' in ov ? ov.effects ?? null : layer.effects ?? null, styled = effectsActive(fx);
-      if (!own && !folders.length && !base && !styled) { this.draw(ctx, src, m, t.sampling, opacity, op, job.quality); continue; }
+      // A styled layer's effects come from the per-layer cache at document resolution when they can, so any view and
+      // any repainted region shows them whole; strokes and transforms in progress, clipping and folder masks are
+      // drawn per render instead.
+      const parts = styled && !base && !folders.length && !ov?.source && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height) : null;
+      if (parts) this.drawParts(ctx, parts, job.view, opacity, false);
+      if (!own && !folders.length && !base && (!styled || parts)) {
+        this.draw(ctx, src, m, t.sampling, opacity, op, job.quality);
+        if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
+        continue;
+      }
       let cov: Surface | null = null;
       if (base) {
         cov = clipCache.has(base.id) ? clipCache.get(base.id) ?? null : this.clipCoverage(job, base, map, W, H, 0);
@@ -123,15 +134,77 @@ export class Renderer {
         a.c.drawImage(cov, 0, 0);
         a.c.globalCompositeOperation = 'source-over';
       }
-      const placed = styled ? boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]) : null;
-      if (styled && placed) this.effects(ctx, a, fx, matScale(job.view), opacity, W, H, placed, 'below');
+      const placed = styled && !parts ? boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]) : null;
+      if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'below');
       ctx.save();
       ctx.setTransform(1, 0, 0, 1, 0, 0);
       ctx.globalAlpha = opacity;
       ctx.globalCompositeOperation = op;
       ctx.drawImage(a.s, 0, 0);
       ctx.restore();
-      if (styled && placed) this.effects(ctx, a, fx, matScale(job.view), opacity, W, H, placed, 'above');
+      if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'above');
+      if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
+    }
+  }
+
+  /** Draws effect parts straight onto `ctx` at their target position. */
+  private drawer(ctx: Ctx2D): (s: Surface, box: Rect, alpha: number, op: GlobalCompositeOperation) => void {
+    return (s, box, alpha, op) => {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = alpha;
+      ctx.globalCompositeOperation = op;
+      ctx.drawImage(s, 0, 0, box.w, box.h, box.x, box.y, box.w, box.h);
+      ctx.restore();
+    };
+  }
+
+  /** A styled layer's effects at document resolution, each part kept with its place, blend and opacity, cached per
+   *  layer until its pixels, transform, mask or effects change. */
+  private effectParts(layer: Layer, fx: LayerEffects, src: Surface, t: Transform, own: MaskInfo | null, maskPlacement: Transform | null, docW: number, docH: number): FxPart[] {
+    const r = layer.raster, mk = layer.mask;
+    const key = JSON.stringify([r?.id ?? null, r?.version ?? 0, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement] : null, fx, docW, docH]);
+    const hit = this.fxCache.get(layer.id);
+    if (hit && hit.key === key) return hit.parts;
+    const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow;
+    const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) + 4;
+    const lm = placement(t, src.width, src.height);
+    const placed = boundsOf([applyMat(lm, 0, 0), applyMat(lm, src.width, 0), applyMat(lm, src.width, src.height), applyMat(lm, 0, src.height)]);
+    const region = intersectRect(integral({ x: placed.x - reach, y: placed.y - reach, w: placed.w + 2 * reach, h: placed.h + 2 * reach }), { x: 0, y: 0, w: docW, h: docH });
+    const parts: FxPart[] = [];
+    if (region) {
+      const view = translation(-region.x, -region.y), sil = this.slot(8, region.w, region.h);
+      sil.c.save();
+      sil.c.setTransform(1, 0, 0, 1, 0, 0);
+      sil.c.clearRect(0, 0, region.w, region.h);
+      sil.c.restore();
+      this.draw(sil.c, src, mul(view, lm), t.sampling, 1, 'source-over', 'high');
+      if (own) this.cover(sil.c, own, view, region.w, region.h);
+      const local = { x: placed.x - region.x, y: placed.y - region.y, w: placed.w, h: placed.h };
+      for (const phase of ['below', 'above'] as const) {
+        this.effects((s, box, alpha, op) => {
+          const copy = createSurface(box.w, box.h);
+          ctxOf(copy).drawImage(s, 0, 0, box.w, box.h, 0, 0, box.w, box.h);
+          parts.push({ s: copy, x: region.x + box.x, y: region.y + box.y, alpha, op, above: phase === 'above' });
+        }, sil, fx, 1, 1, region.w, region.h, local, phase);
+      }
+    }
+    if (this.fxCache.size > 64) this.fxCache.clear();
+    this.fxCache.set(layer.id, { key, parts });
+    return parts;
+  }
+
+  /** Cached effect parts through the view, below or above the layer, each at its own blend times the layer's opacity. */
+  private drawParts(ctx: Ctx2D, parts: FxPart[], view: Mat, opacity: number, above: boolean): void {
+    for (const p of parts) {
+      if (p.above !== above) continue;
+      ctx.save();
+      setMat(ctx, mul(view, translation(p.x, p.y)));
+      ctx.globalAlpha = p.alpha * opacity;
+      ctx.globalCompositeOperation = p.op;
+      ctx.imageSmoothingEnabled = true;
+      ctx.drawImage(p.s, 0, 0);
+      ctx.restore();
     }
   }
 
@@ -141,21 +214,14 @@ export class Renderer {
    *  off the surface, so only its shadow lands; blurs over 8 px run at half resolution and are scaled back, which looks
    *  the same for a quarter of the work. The outside stroke is the silhouette grown by a Euclidean distance transform,
    *  round at the corners and as quick at 50 px as at 1, less the silhouette itself. */
-  private effects(ctx: Ctx2D, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect, phase: 'below' | 'above'): void {
+  private effects(out: (s: Surface, box: Rect, alpha: number, op: GlobalCompositeOperation) => void, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect, phase: 'below' | 'above'): void {
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow, co = fx.colorOverlay;
     const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) * scale + 2;
     const box = intersectRect(integral({ x: bounds.x - reach, y: bounds.y - reach, w: bounds.w + 2 * reach, h: bounds.h + 2 * reach }), { x: 0, y: 0, w: W, h: H });
     if (!box) return;
     const { x: bx, y: by, w: bw, h: bh } = box;
     const css = (c: RGB): string => `rgb(${c.r},${c.g},${c.b})`;
-    const lay = (s: Surface, alpha: number, op: GlobalCompositeOperation): void => {
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalAlpha = alpha;
-      ctx.globalCompositeOperation = op;
-      ctx.drawImage(s, 0, 0, bw, bh, bx, by, bw, bh);
-      ctx.restore();
-    };
+    const lay = (s: Surface, alpha: number, op: GlobalCompositeOperation): void => out(s, box, alpha, op);
     const shadowOf = (color: RGB, blur: number, dx: number, dy: number): Surface => {
       const out = this.slot(5, bw, bh);
       out.c.save();

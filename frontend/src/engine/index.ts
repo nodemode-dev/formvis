@@ -1100,8 +1100,9 @@ export class Engine {
     if (!f) return;
     const l = st.project.layer(st.layerId), r = st.target === 'mask' ? l?.mask?.raster : l?.raster;
     const t = st.target === 'mask' ? l?.mask?.placement ?? l?.transform : l?.transform;
-    // Layer styles can cast from outside a stroke's region into it, so documents using them repaint whole.
-    const styled = st.project.doc.layers.some((x) => effectsActive(x.effects));
+    // Styled layers' effects are cached at document resolution, so a region repaint shows them whole; the layer being
+    // painted, clipped layers and layers in folders draw their effects per render, so those repaint whole.
+    const styled = st.project.doc.layers.some((x) => effectsActive(x.effects) && (x.id === st.layerId || !!x.clipId || x.parentId !== null));
     if (!this.dirtyRendering || !l || !r || !t || styled) { this.emit('render', null); return; }
     const m = placement(t, r.width, r.height);
     this.emit('render', boundsOf([applyMat(m, f.x, f.y), applyMat(m, f.x + f.w, f.y), applyMat(m, f.x + f.w, f.y + f.h), applyMat(m, f.x, f.y + f.h)]));
