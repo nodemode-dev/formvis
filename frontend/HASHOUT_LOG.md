@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/extensions/tools/quick-select.ts
+
+### src/extensions/tools/quick-select.ts · new · _v0.65.0
+
+The Quick Selection tool. Nothing was removed.
+
+## src/ui/panels/color-range-dialog.ts
+
+### src/ui/panels/color-range-dialog.ts · new · _v0.65.0
+
+The Color Range dialog with canvas sampling and a fixed-size preview. Nothing was removed.
+
 ## src/extensions/tools/tone.ts
 
 ### src/extensions/tools/tone.ts · new · _v0.64.0
@@ -1162,6 +1174,14 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, 
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
 ```
 
+### src/app.ts · Color Range command · _v0.65.0
+
+Select > Color Range and its dialog. Removed:
+
+```ts
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', '-', 'path-selection', 'delete-path'] },
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -2021,6 +2041,10 @@ Bucket and tone settings, paintBucket, toned retouch strokes, a region for regio
     p.history.begin(kind === 'heal' ? 'Spot Healing' : kind === 'clone' ? 'Clone Stamp' : kind === 'healBrush' ? 'Healing Brush' : 'Blur', p.snapshot());
 ```
 
+### src/engine/index.ts · Color Range, Quick Selection · _v0.65.0
+
+colorRangeMask, selectColorRange, and the Quick Selection stroke. Nothing was removed.
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -2310,6 +2334,14 @@ Four tool ids. Removed:
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'directSelect' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'idle';
 ```
 
+### src/engine/types.ts · tool id · _v0.65.0
+
+The quickSelect tool id. Removed:
+
+```ts
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'directSelect' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'idle';
+```
+
 ## src/engine/viewport.ts
 
 ### src/engine/viewport.ts · zoom and pan · _v0.1.0
@@ -2506,6 +2538,14 @@ The four tools registered. Removed:
 
 ```ts
   for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, gradientTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+```
+
+### src/extensions/tools/index.ts · tool registered · _v0.65.0
+
+Quick Selection registered before Magic Wand. Removed:
+
+```ts
+  for (const tool of [moveTool, marqueeTool, lassoTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 ```
 
 ## src/extensions/tools/lasso.ts
@@ -3109,6 +3149,10 @@ One inline currentColor icon. Nothing was removed.
 ### src/ui/icons.ts · tool icons · _v0.64.0
 
 Four Phosphor icons. Nothing was removed.
+
+### src/ui/icons.ts · tool icon · _v0.65.0
+
+The Quick Selection icon. Nothing was removed.
 
 ## src/ui/layers.ts
 
