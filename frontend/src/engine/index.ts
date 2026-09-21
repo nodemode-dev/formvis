@@ -39,7 +39,7 @@ export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
 export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics } from './text';
-export { cornerAt, pathBounds, tracePath, type Anchor, type SubPath, type VectorPath } from './paths';
+export { cornerAt, pathBounds, pathData, pathFrom, tracePath, type Anchor, type SubPath, type VectorPath } from './paths';
 export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
 export type { Kernel, KernelContext } from './kernels';
 
@@ -452,11 +452,26 @@ export class Engine {
   }
 
   /** Replaces a smart object's filter stack and re-renders its pixels from the source, as one undo step. */
-  setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void {
-    this.edit(name, (p) => {
+  setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void { const p = this.current; if (p) this.restack(p, id, null, filters, name); }
+
+  /** A change made as one undo step in `p`, which need not be the document in view. */
+  private editOn(p: Project, name: string, fn: () => boolean | void): boolean {
+    if (p === this.current) return this.edit(name, () => fn());
+    if (this.stroke) return false;
+    p.history.begin(name, p.snapshot());
+    let ok: boolean | void = true;
+    try { ok = fn(); } finally { p.history.end(p.snapshot()); }
+    this.emit('projects', null);
+    return ok !== false;
+  }
+
+  /** Re-renders smart object `id` in `p` from a new source, a new filter stack, or both, as one undo step. */
+  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string): boolean {
+    return this.editOn(p, name, () => {
       const l = p.layer(id);
       if (!l?.smart) return false;
-      const stack = structuredClone(filters), raster = this.renderSmart(l.smart.source, stack), old = l.raster as Raster, t = l.transform;
+      const src = source ?? l.smart.source;
+      const stack = structuredClone(filters ?? l.smart.filters), raster = this.renderSmart(src, stack), old = l.raster as Raster, t = l.transform;
       // The padding grows or shrinks about the layer's centre, so the source pixels stay exactly where they were.
       const w = (t.w / old.width) * raster.width, h = (t.h / old.height) * raster.height, cx = t.x + t.w / 2, cy = t.y + t.h / 2;
       let mask = l.mask;
@@ -466,8 +481,50 @@ export class Engine {
         nm.ctx.drawImage(mask.raster.canvas, dx, dy);
         mask = { ...mask, raster: nm };
       }
-      p.updateLayer(id, { smart: { source: l.smart.source, filters: stack }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
+      p.updateLayer(id, { smart: { source: src, filters: stack }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
     });
+  }
+
+  private readonly contentsLinks = new WeakMap<Project, { parent: Project; layerId: ID }>();
+
+  /** Layer > Edit Contents: the active smart object's original pixels open as their own document. Saving that document
+   *  writes it back into the smart object. */
+  editContents(): Project | null {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l?.smart) { this.notice('Select a smart object to edit its contents.'); return null; }
+    const src = l.smart.source, base: Doc = { id: uid(), width: src.width, height: src.height, resolution: p.doc.resolution, layers: [] };
+    const copy = new Raster(src.width, src.height);
+    copy.ctx.drawImage(src.canvas, 0, 0);
+    const layer = { ...newLayer('Layer 1', base), raster: copy };
+    const child = this.addProject({ ...base, layers: [layer] }, `${l.name} contents`, layer.id);
+    this.contentsLinks.set(child, { parent: p, layerId: l.id });
+    return child;
+  }
+
+  /** True for a document opened by Edit Contents, whether or not its smart object is still open. */
+  isContents(p: Project | null): boolean { return !!p && this.contentsLinks.has(p); }
+
+  /** The smart object a contents document writes back to, while it is still open; null otherwise. */
+  contentsOf(p: Project | null): { parent: Project; layer: Layer } | null {
+    const link = p ? this.contentsLinks.get(p) : undefined;
+    if (!link || !this.projects.includes(link.parent)) return null;
+    const layer = link.parent.layer(link.layerId);
+    return layer?.smart ? { parent: link.parent, layer } : null;
+  }
+
+  /** Saving a contents document (the one in view): its flattened pixels become the smart object's new source and the
+   *  filters re-run, as one undo step in the smart object's document. A new size keeps the object's scale per pixel. */
+  updateContents(): boolean {
+    const child = this.current;
+    if (!child || !this.contentsLinks.has(child)) return false;
+    const target = this.contentsOf(child);
+    if (!target) { this.notice('The smart object for these contents is no longer open, so they cannot go back into it. Save As keeps them as a project of their own.'); return false; }
+    this.settle();
+    const flat = this.flattened();
+    if (!flat) { this.notice('These contents have nothing visible to put back.'); return false; }
+    const ok = this.restack(target.parent, target.layer.id, Raster.from(flat, flat.width, flat.height), null, 'Update Smart Object');
+    if (ok) { child.history.markSaved(); this.emit('projects', null); this.emit('history', null); }
+    return ok;
   }
 
   private readonly workPaths = new WeakMap<Project, VectorPath>();
@@ -475,12 +532,15 @@ export class Engine {
   /** The current document's Work Path, drawn with the Pen tool. It lives with the open document and is not saved yet. */
   get workPath(): VectorPath | null { const p = this.current; return p ? this.workPaths.get(p) ?? null : null; }
 
-  setWorkPath(vp: VectorPath | null): void {
-    const p = this.current;
-    if (!p) return;
+  setWorkPath(vp: VectorPath | null): void { const p = this.current; if (p) this.setPathOf(p, vp); }
+
+  /** Any open document's Work Path, as saving reads it. */
+  pathOf(p: Project): VectorPath | null { return this.workPaths.get(p) ?? null; }
+
+  /** Sets any open document's Work Path, as opening a project restores it. */
+  setPathOf(p: Project, vp: VectorPath | null): void {
     if (vp && vp.subpaths.some((sp) => sp.anchors.length)) this.workPaths.set(p, vp); else this.workPaths.delete(p);
-    this.emit('overlay', null);
-    this.emit('options', null);
+    if (p === this.current) { this.emit('overlay', null); this.emit('options', null); }
   }
 
   deletePath(): void { this.setWorkPath(null); }

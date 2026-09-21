@@ -35,3 +35,31 @@ export function pathBounds(vp: VectorPath): Rect | null {
   }
   return x0 === Infinity ? null : { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
 }
+
+const round3 = (v: number): number => Math.round(v * 1000) / 1000;
+
+/** The path as plain data for a project file, coordinates to a thousandth of a pixel; null when it has no points. */
+export function pathData(vp: VectorPath | null): { subpaths: Array<{ closed: boolean; anchors: number[][] }> } | null {
+  const subpaths = (vp?.subpaths ?? []).filter((s) => s.anchors.length).map((s) => ({
+    closed: s.closed,
+    anchors: s.anchors.map((a) => [a.x, a.y, a.inX, a.inY, a.outX, a.outY].map(round3)),
+  }));
+  return subpaths.length ? { subpaths } : null;
+}
+
+/** A path read back from a project file, checked: numbers must be finite, and sizes stay bounded. */
+export function pathFrom(raw: unknown): VectorPath | null {
+  const list = raw && typeof raw === 'object' && Array.isArray((raw as { subpaths?: unknown }).subpaths) ? (raw as { subpaths: unknown[] }).subpaths : [];
+  const subpaths: SubPath[] = [];
+  for (const s of list.slice(0, 1000)) {
+    if (!s || typeof s !== 'object' || !Array.isArray((s as { anchors?: unknown }).anchors)) continue;
+    const anchors: Anchor[] = [];
+    for (const a of (s as { anchors: unknown[] }).anchors.slice(0, 10000)) {
+      if (!Array.isArray(a) || a.length !== 6 || !a.every((v) => typeof v === 'number' && Number.isFinite(v))) continue;
+      const [x, y, inX, inY, outX, outY] = a as number[];
+      anchors.push({ x, y, inX, inY, outX, outY });
+    }
+    if (anchors.length) subpaths.push({ anchors, closed: (s as { closed?: unknown }).closed === true });
+  }
+  return subpaths.length ? { subpaths } : null;
+}

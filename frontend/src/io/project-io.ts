@@ -1,6 +1,5 @@
 import {
-  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid,
-  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom,
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathData, pathFrom, type VectorPath,
 } from '../engine';
 import type { FilePart } from './api';
 
@@ -47,7 +46,7 @@ function grayToMask(src: ImageBitmap): Raster {
   return r;
 }
 
-export async function serialize(doc: Doc, activeId: ID | null): Promise<{ manifest: Json; files: FilePart[] }> {
+export async function serialize(doc: Doc, activeId: ID | null, workPath: VectorPath | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
   const files: FilePart[] = [];
   const layers: Json[] = [];
   for (const l of doc.layers) {
@@ -82,6 +81,8 @@ export async function serialize(doc: Doc, activeId: ID | null): Promise<{ manife
   }
   const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers };
   if (activeId && doc.layers.some((l) => l.id === activeId)) manifest.activeLayerID = activeId;
+  const pathRecord = pathData(workPath);
+  if (pathRecord) manifest.workPath = pathRecord;
   return { manifest, files };
 }
 
@@ -100,9 +101,10 @@ const asUuid = (v: unknown, map: Map<string, string>): string | null => {
  * sonny fell back to counters), image files named after them, folders without opacity or blend (the
  *  folders carry neither), adjustment layers without pixels, non-empty names and a resolution of 1 to 9600. Anything
  * changed is listed in `notes` so the person knows what will see differently. */
-export async function serializeRefProject(doc: Doc, activeId: ID | null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
+export async function serializeRefProject(doc: Doc, activeId: ID | null, workPath: VectorPath | null = null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
   const { manifest, files } = await serialize(doc, activeId);
   const ids = new Map<string, string>(), rename = new Map<string, string>(), drop = new Set<string>(), notes: string[] = [];
+  if (pathData(workPath)) notes.push('The Work Path is left out; .ref projects have no paths.');
   const layers = (Array.isArray(manifest.layers) ? manifest.layers.map(obj) : []).map((r) => {
     const id = asUuid(r.id, ids) as string, out: Json = { ...r, id };
     const name = (str(r.name) ?? '').trim();
@@ -146,7 +148,7 @@ export async function serializeRefProject(doc: Doc, activeId: ID | null): Promis
   return { manifest: out, files: parts, notes };
 }
 
-export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null }> {
+export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null; workPath: VectorPath | null }> {
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
   const records = Array.isArray(manifest.layers) ? manifest.layers.map(obj) : [];
   const names = new Set<string>();
@@ -171,5 +173,5 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     };
   });
   for (const b of bitmaps.values()) b.close();
-  return { doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
+  return { workPath: pathFrom(manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
 }

@@ -136,11 +136,12 @@ export function startApp(): void {
   }
 
   async function openOpened(o: OpenedProject, libraryName: string | null): Promise<void> {
-    const { doc, activeId } = await deserialize(o.manifest, (name) => {
+    const { doc, activeId, workPath } = await deserialize(o.manifest, (name) => {
       const url = o.images[name];
       return url ? api.fetchAsset(url) : Promise.reject(new Error(`${name} is missing from the project.`));
     });
     const p = engine.addProject(doc, o.name, activeId);
+    if (workPath) engine.setPathOf(p, workPath);
     engine.markSaved(p, p.name, libraryName);
   }
 
@@ -207,6 +208,13 @@ export function startApp(): void {
     const p = engine.current;
     if (!p) return false;
     engine.settle();
+    if (!saveAs && engine.isContents(p)) {
+      // A document opened by Edit Contents saves back into its smart object rather than to the library.
+      const into = engine.contentsOf(p)?.parent.name;
+      const ok = engine.updateContents();
+      if (ok) toast(`Updated the smart object in ${into}.`);
+      return ok;
+    }
     let name = saveAs ? null : p.libraryName;
     if (!name) {
       name = await promptName(saveAs ? 'Save As' : 'Save to Library', p.libraryName ?? p.name, 'Save');
@@ -220,7 +228,7 @@ export function startApp(): void {
     return engine.task(async () => {
       const revision = p.history.revision;
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId);
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathOf(p));
         const res = await api.save(target, manifest, files);
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
         else { p.name = res.name; p.libraryName = res.name; engine.emit('projects', null); }
@@ -240,7 +248,7 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const { manifest, files } = await serialize(p.doc, p.activeId);
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathOf(p));
         await deliver(await api.package(manifest, files), `${p.name}.sonny`);
       } catch (err) { toast(message(err), 'error'); }
     });
@@ -253,9 +261,9 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId);
+        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathOf(p));
         await deliver(await api.package(manifest, files, `${p.name}.ref`), `${p.name}.ref.zip`);
-        if (notes.length) toast(`Exported as.ref with changes: ${notes.join(' ')}`);
+        if (notes.length) toast(`Exported as .ref with changes: ${notes.join(' ')}`);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -542,6 +550,7 @@ export function startApp(): void {
     { id: 'convert-smart', label: 'Convert to Smart Object', enabled: () => { const l = engine.current?.activeLayer; return !!l?.raster && !l.isGroup && !l.adjustment && !l.smart; }, run: () => engine.convertToSmartObject() },
     { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || liveText(l)); }, run: () => engine.rasterizeLayer() },
     { id: 'smart-filters', label: 'Smart Filters...', enabled: () => !!engine.current?.activeLayer?.smart, run: () => dialogs.smartFilters.show() },
+    { id: 'edit-contents', label: 'Edit Contents', enabled: () => !!engine.current?.activeLayer?.smart, run: () => engine.editContents() },
     { id: 'copy-layer-style', label: 'Copy Layer Style', enabled: () => effectsActive(engine.current?.activeLayer?.effects), run: () => engine.copyLayerStyle() },
     { id: 'paste-layer-style', label: 'Paste Layer Style', enabled: () => pixel() && engine.canPasteLayerStyle, run: () => engine.pasteLayerStyle() },
     { id: 'clear-layer-style', label: 'Clear Layer Style', enabled: () => effectsActive(engine.current?.activeLayer?.effects), run: () => engine.clearLayerStyle() },
@@ -563,14 +572,14 @@ export function startApp(): void {
     { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
-    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
     { label: 'Help', items: ['shortcuts', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
-  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
   new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));
 
   const zoomLabel = q(root, '.cv-zoom-label');
