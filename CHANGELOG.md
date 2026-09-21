@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.60.0 · 2026-09-21
+
+### Added
+
+- The Satin layer style.
+
+### Changed
+
+- The Layer Style dialog previews quicker on large layers, computing effects at reduced resolution until the style is applied.
+
+### Fixed
+
+- Outer Bevel and Emboss could be cut off at the edge of a layer whose pixels fit its shape exactly.
+
 ## 0.59.0 · 2026-09-21
 
 ### Added

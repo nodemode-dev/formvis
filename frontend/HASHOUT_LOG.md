@@ -433,6 +433,14 @@ The Bevel & Emboss section and a choice helper. Removed:
 /** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Color Overlay and Gradient Overlay for the
 ```
 
+### src/ui/panels/layer-style-dialog.ts · Satin · _v0.60.0
+
+The Satin section. Removed:
+
+```ts
+/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Color Overlay, Gradient Overlay and Bevel & Emboss for the
+```
+
 ## src/ui/panels/generative-dialog.ts
 
 ### src/ui/panels/generative-dialog.ts · new · _v0.37.0
@@ -1225,6 +1233,44 @@ Height-map shading kept by style, above the other inner effects; the effect reac
     const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) * scale + 2;
 ```
 
+### src/engine/renderer.ts · Satin, fast previews, reach · _v0.60.0
+
+Satin painted between Color Overlay and Inner Glow; the shared blur; parts at reduced resolution while previewing; Bevel reach in the effect region. Removed:
+
+```ts
+interface FxPart { s: Surface; x: number; y: number; alpha: number; op: GlobalCompositeOperation; above: boolean }
+    const key = JSON.stringify([r?.id ?? null, r?.version ?? 0, t, mk ? [mk.raster?.id ?? null, mk.raster?.version ?? 0, mk.enabled, maskPlacement ?? mk.placement] : null, fx, docW, docH]);
+    const reach = Math.max(d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) + 4;
+      const view = translation(-region.x, -region.y), sil = this.slot(8, region.w, region.h);
+      sil.c.clearRect(0, 0, region.w, region.h);
+      if (own) this.cover(sil.c, own, view, region.w, region.h);
+      const local = { x: placed.x - region.x, y: placed.y - region.y, w: placed.w, h: placed.h };
+          parts.push({ s: copy, x: region.x + box.x, y: region.y + box.y, alpha, op, above: phase === 'above' });
+        }, sil, fx, 1, 1, region.w, region.h, local, phase);
+      ctx.drawImage(p.s, 0, 0);
+    const blur = (src: Float32Array, r: number): Float32Array => {
+      if (r < 1) return src;
+      let x: Float32Array = src, y: Float32Array = new Float32Array(n);
+      const k = 1 / (2 * r + 1);
+      for (let pass = 0; pass < 3; pass++) {
+        for (let row = 0; row < h; row++) {
+          const o = row * w;
+          let s = 0;
+          for (let i = -r; i <= r; i++) s += x[o + Math.min(w - 1, Math.max(0, i))];
+          for (let i = 0; i < w; i++) { y[o + i] = s * k; s += x[o + Math.min(w - 1, i + r + 1)] - x[o + Math.max(0, i - r)]; }
+        }
+        [x, y] = [y, x === src ? new Float32Array(n) : x];
+        for (let col = 0; col < w; col++) {
+          let s = 0;
+          for (let j = -r; j <= r; j++) s += x[Math.min(h - 1, Math.max(0, j)) * w + col];
+          for (let j = 0; j < h; j++) { y[j * w + col] = s * k; s += x[Math.min(h - 1, j + r + 1) * w + col] - x[Math.max(0, j - r) * w + col]; }
+        }
+        [x, y] = [y, x];
+      }
+      return x;
+    };
+```
+
 ## src/engine/distort.ts
 
 ### src/engine/distort.ts · DistortWarp port · _v0.21.0
@@ -1883,6 +1929,10 @@ Selecting a frame applies styles; tweens carry the first frame's. Removed:
       target.forEach((l, i) => { const now = q.doc.layers[i]; if (l !== now && now?.id === l.id) q.updateLayer(l.id, { visible: l.visible, opacity: l.opacity, transform: l.transform }); });
 ```
 
+### src/engine/index.ts · fast previews · _v0.60.0
+
+The screen renderer previews styles at reduced resolution on large layers. Nothing was removed.
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -2142,6 +2192,16 @@ The effect type, its defaults and checked reading. Removed:
 export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect }
   return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled);
   const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay'), go = part('gradientOverlay');
+```
+
+### src/engine/types.ts · Satin · _v0.60.0
+
+The effect type, its defaults and checked reading. Removed:
+
+```ts
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect }
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled || fx.bevel.enabled);
+  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay'), go = part('gradientOverlay'), bv = part('bevel');
 ```
 
 ## src/engine/viewport.ts
