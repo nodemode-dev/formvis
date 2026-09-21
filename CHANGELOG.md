@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.46.0 · 2026-09-21
+
+### Added
+
+- Paths save with `.sonny` projects and come back when they open.
+- The Pen adds a point where you click on a path and deletes a point you click, keeping curves exact.
+- Layer > Edit Contents opens a smart object's original pixels as their own document; saving it updates the smart object.
+
+### Fixed
+
+- The .ref export message was missing a space.
+
 ## 0.45.0 · 2026-09-21
 
 ### Added

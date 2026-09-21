@@ -56,11 +56,25 @@ The Direct Selection tool. Nothing was removed.
 
 The Pen tool. Nothing was removed.
 
+### src/extensions/tools/pen.ts · add and delete points · _v0.46.0
+
+Clicks between paths add or delete points, with a plus or minus beside the pointer. Removed:
+
+```ts
+import { cornerAt, tracePath, type Anchor, type Pt, type SubPath, type VectorPath } from '../../engine';
+  hint: () => 'Click for corner points, drag for curves · Click the first point to close · Enter ends an open path, Backspace removes the last point · Ctrl+Enter makes a selection',
+    if (!active) { active = { anchors: [], closed: false }; vp.subpaths.push(active); }
+```
+
 ## src/engine/paths.ts
 
 ### src/engine/paths.ts · new · _v0.43.0
 
 Anchors, sub-paths and Work Paths; tracing to Path2D; bounds. Nothing was removed.
+
+### src/engine/paths.ts · saving and point editing · _v0.46.0
+
+pathData and pathFrom for project files; anchorNear, nearestSegment and splitSegment for adding and deleting points. Nothing was removed.
 
 ## src/io/psd.ts
 
@@ -689,6 +703,20 @@ import { FILTER_LABELS, FilterPanel, type FilterKind } from './ui/panels/filter-
   contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
 ```
 
+### src/app.ts · paths and contents · _v0.46.0
+
+Saving and opening carry the path; Save writes contents back; Edit Contents in the menus; a space restored in the .ref message. Removed:
+
+```ts
+    const { doc, activeId } = await deserialize(o.manifest, (name) => {
+        const { manifest, files } = await serialize(p.doc, p.activeId);
+        const { manifest, files } = await serialize(p.doc, p.activeId);
+        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId);
+        if (notes.length) toast(`Exported as.ref with changes: ${notes.join(' ')}`);
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1258,6 +1286,23 @@ Convert, Rasterize, the filter stack with padded re-rendering, and the smart-obj
 
 ```ts
 import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec } from './types';
+```
+
+### src/engine/index.ts · paths per document, Edit Contents · _v0.46.0
+
+pathOf and setPathOf; editOn and restack; editContents, contentsOf and updateContents. Removed:
+
+```ts
+export { cornerAt, pathBounds, tracePath, type Anchor, type SubPath, type VectorPath } from './paths';
+  setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void {
+    this.edit(name, (p) => {
+      const stack = structuredClone(filters), raster = this.renderSmart(l.smart.source, stack), old = l.raster as Raster, t = l.transform;
+      p.updateLayer(id, { smart: { source: l.smart.source, filters: stack }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
+  setWorkPath(vp: VectorPath | null): void {
+    const p = this.current;
+    if (!p) return;
+    this.emit('overlay', null);
+    this.emit('options', null);
 ```
 
 ## src/engine/develop.ts
@@ -1938,6 +1983,19 @@ Saves and reads the source and stack; .ref drops them with a note. Removed:
   type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData,
   for (const r of records) { const a = str(r.imageFile), b = str(r.maskFile); if (a) names.add(a); if (b) names.add(b); }
       blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+```
+
+### src/io/project-io.ts · Work Path · _v0.46.0
+
+The Work Path saved and read back; .ref leaves it out with a note. Removed:
+
+```ts
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid,
+  type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom,
+export async function serialize(doc: Doc, activeId: ID | null): Promise<{ manifest: Json; files: FilePart[] }> {
+export async function serializeRefProject(doc: Doc, activeId: ID | null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
+export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null }> {
+  return { doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
 ```
 
 ## src/main.ts
