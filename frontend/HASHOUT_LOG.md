@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## io/psd.ts
+
+### io/psd.ts · layer styles · _v0.62.0
+
+Layer styles written as Photoshop layer effects and read back, patterns carried. Removed:
+
+```ts
+import type { BlendMode as PsdBlend, Layer as PsdLayer, LinkedFile, Psd } from 'ag-psd';
+  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt,
+      if (pl.effects) notes.push(`"${name}" has a Photoshop layer style; it opened without it.`);
+  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, Uint8Array>();
+    if (effectsActive(l.effects)) notes.push(`"${l.name}" loses its layer style; the PSD holds its pixels only.`);
+```
+
 ## src/engine/patterns.ts
 
 ### src/engine/patterns.ts · new · _v0.61.0

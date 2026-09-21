@@ -2,6 +2,12 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.62.0 · 2026-09-21
+
+### Added
+
+- Layer styles travel to and from Photoshop: PSD export writes them as editable Photoshop layer effects, patterns included, and PSD import turns Photoshop's effects into editable sonny styles.
+
 ## 0.61.0 · 2026-09-21
 
 ### Added
