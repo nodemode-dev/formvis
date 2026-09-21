@@ -1,7 +1,6 @@
-import type { BlendMode as PsdBlend, Layer as PsdLayer, Psd } from 'ag-psd';
+import type { BlendMode as PsdBlend, Layer as PsdLayer, LinkedFile, Psd } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid,
-  type BlendMode, type Doc, type ID, type Layer, type Surface,
+  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt,
 } from '../engine';
 import { maskEdgeTone } from '../engine/distort';
 
@@ -23,9 +22,44 @@ export const isPsdFile = (f: File): boolean => /\.psd$/i.test(f.name) || f.type 
 const canvas = (w: number, h: number): HTMLCanvasElement => { const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; };
 
 /** A PSD's layers as a sonny document, bottom to top as in the file, with notes on anything left out. */
+/** A GUID, which Photoshop requires for a placed layer's id. */
+function guid(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const h = (n: number): string => Array.from({ length: n }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+  return `${h(8)}-${h(4)}-4${h(3)}-${'89ab'[Math.floor(Math.random() * 4)]}${h(3)}-${h(12)}`;
+}
+
+/** Where a smart object's source corners sit in the document (top left, top right, bottom right, bottom left): its
+ *  warp, with any move since its last render carried in, or its placement when it has none. */
+function smartCorners(l: Layer): Pt[] {
+  const sm = l.smart as NonNullable<Layer['smart']>, r = l.raster as Raster;
+  if (sm.warp) {
+    if (!sm.warpAt || JSON.stringify(sm.warpAt) === JSON.stringify(l.transform)) return sm.warp;
+    const move = mul(placement(l.transform, r.width, r.height), invert(placement(sm.warpAt, r.width, r.height)));
+    return sm.warp.map((q) => applyMat(move, q.x, q.y));
+  }
+  const mx = (r.width - sm.source.width) / 2, my = (r.height - sm.source.height) / 2, m = placement(l.transform, r.width, r.height);
+  return [[mx, my], [mx + sm.source.width, my], [mx + sm.source.width, my + sm.source.height], [mx, my + sm.source.height]].map(([x, y]) => applyMat(m, x, y));
+}
+
+/** A smart object's embedded contents as pixels: an image decoded directly, or a Photoshop document by its composite. */
+async function decodeLinked(data: Uint8Array, readPsd: typeof import('ag-psd').readPsd): Promise<Raster | null> {
+  try {
+    if (String.fromCharCode(data[0], data[1], data[2], data[3]) === '8BPS') {
+      const inner = readPsd(data.slice().buffer, { skipLayerImageData: true, skipThumbnail: true });
+      return inner.canvas ? Raster.from(inner.canvas, inner.canvas.width, inner.canvas.height) : null;
+    }
+    const bmp = await createImageBitmap(new Blob([data.slice()]));
+    return Raster.from(bmp, bmp.width, bmp.height);
+  } catch { return null; }
+}
+
 export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null }> {
   const { readPsd } = await import('ag-psd');
   const psd = readPsd(await file.arrayBuffer(), { skipThumbnail: true });
+  // Smart objects' embedded contents, decoded before the layers are built.
+  const contents = new Map<string, Raster | null>();
+  for (const lf of psd.linkedFiles ?? []) if (lf.data) contents.set(lf.id, await decodeLinked(lf.data, readPsd));
   const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: 72, layers: [] };
   const layers: Layer[] = [], notes: string[] = [];
   const walk = (children: PsdLayer[] | undefined, parentId: ID | null): void => {
@@ -75,6 +109,16 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
         if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine')) notes.push(`"${name}" combines shapes in ways sonny does not; its outline may differ once edited.`);
       }
+      const plc = pl.placedLayer;
+      if (plc) {
+        // A Photoshop smart object opens as a sonny one: its contents the source, its corners the warp, its pixels as
+        // Photoshop saved them until it is next re-rendered.
+        const source = contents.get(plc.id) ?? null, t8 = plc.nonAffineTransform ?? plc.transform;
+        if (source && t8?.length === 8 && t8.every((v) => Number.isFinite(v))) {
+          layer.smart = { source, filters: [], warp: [0, 2, 4, 6].map((k) => ({ x: t8[k], y: t8[k + 1] })), warpAt: layer.transform };
+          if (plc.filter) notes.push(`"${name}" has Photoshop smart filters; they stay applied in its pixels and are not editable here.`);
+        } else notes.push(`"${name}" is a smart object whose contents sonny cannot read; it opened as pixels.`);
+      }
       if (pl.text) notes.push(`"${name}" is type in Photoshop; it opened as pixels.`);
       if (pl.effects) notes.push(`"${name}" has a Photoshop layer style; it opened without it.`);
       if (pl.clipping && base) layer.clipId = base.id;
@@ -93,7 +137,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
 /** The document as a layered PSD, with notes on what it could not carry. */
 export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
   const { writePsd } = await import('ag-psd');
-  const notes: string[] = [];
+  const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, Uint8Array>();
+  for (const l of doc.layers) if (l.smart) sources.set(l.id, new Uint8Array(await (await toBlob(l.smart.source.canvas)).arrayBuffer()));
   /** A raster drawn through `t` into a box aligned to the canvas; null when it covers nothing. */
   const placed = (r: Raster, t: Layer['transform']): { c: HTMLCanvasElement; x: number; y: number } | null => {
     const m = placement(t, r.width, r.height);
@@ -113,9 +158,16 @@ export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ byte
     if (!px) return null;
     if (effectsActive(l.effects)) notes.push(`"${l.name}" loses its layer style; the PSD holds its pixels only.`);
     if (liveText(l)) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as editable type.`);
-    if (l.smart) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as a smart object.`);
 
     const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId };
+    const embed = l.smart ? sources.get(l.id) : undefined;
+    if (l.smart && embed && l.raster) {
+      // A smart object goes as a Photoshop placed layer: its source embedded as PNG, its corners where it sits.
+      const id = guid(), corners = smartCorners(l).flatMap((q) => [q.x, q.y]);
+      linked.push({ id, name: `${l.name || 'Smart Object'}.png`, type: 'png ', data: embed });
+      out.placedLayer = { id, placed: id, type: 'raster', transform: corners, nonAffineTransform: corners, width: l.smart.source.width, height: l.smart.source.height };
+      if (l.smart.filters.some((f) => f.enabled)) notes.push(`"${l.name}" keeps its smart filters applied in its pixels; in Photoshop its smart object holds the original without them.`);
+    }
     const v = l.vector, t = l.transform;
     if (v && l.raster) {
       // A shape layer goes as a Photoshop shape: its path as a vector mask, with its fill and stroke, beside its pixels.
@@ -148,5 +200,6 @@ export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ byte
   const flat = canvas(doc.width, doc.height);
   (flat.getContext('2d') as CanvasRenderingContext2D).drawImage(composite as CanvasImageSource, 0, 0);
   const psd: Psd = { width: doc.width, height: doc.height, children: build(null), canvas: flat };
+  if (linked.length) psd.linkedFiles = linked;
   return { bytes: writePsd(psd, { generateThumbnail: false }), notes };
 }
