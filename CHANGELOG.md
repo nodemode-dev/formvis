@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.58.0 · 2026-09-21
+
+### Added
+
+- The Gradient Overlay layer style: linear or radial, with angle, scale, opacity and reverse.
+- Image > Trim, by transparent pixels or a corner pixel's colour, and Image > Reveal All.
+
+### Changed
+
+- Snapshots have a memory budget of their own, 768 MB per document; past it New Snapshot declines and says why, and each snapshot shows its size.
+
 ## 0.57.0 · 2026-09-21
 
 ### Added

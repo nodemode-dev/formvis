@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/ui/panels/trim-dialog.ts
+
+### src/ui/panels/trim-dialog.ts · new · _v0.58.0
+
+The Trim dialog. Nothing was removed.
+
 ## src/ui/history.ts
 
 ### src/ui/history.ts · new · _v0.56.0
@@ -20,6 +26,15 @@ type Row = { key: string; name: string; index: number };
         const row = el(`<div class="cv-history-row" role="option"><span class="cv-history-icon">${icon(r.index === 0 ? 'image' : 'history', 12)}</span><span class="cv-history-name"></span></div>`);
     row.classList.toggle('is-current', r.index === current);
     row.classList.toggle('is-undone', r.index > current);
+```
+
+### src/ui/history.ts · snapshot sizes · _v0.58.0
+
+Snapshot rows show what they keep. Removed:
+
+```ts
+type Row = { key: string; name: string; index: number; snap?: string };
+    const snaps: Row[] = this.engine.snapshots.map((x) => ({ key: `snap:${x.id}`, name: x.name, index: -1, snap: x.id }));
 ```
 
 ## src/ui/panels/stop-dialog.ts
@@ -218,6 +233,14 @@ Stop steps, the dialog toggle, and playback that tells a stop from a failure. Re
       return { done: a.steps.length, failed: null };
 ```
 
+### src/ui/actions.ts · Reveal All · _v0.58.0
+
+Reveal All becomes recordable. Removed:
+
+```ts
+  'paste-layer-style', 'clear-layer-style', 'convert-smart', 'rasterize', 'new-shape-path', 'shape-color', 'duplicate', 'merge-down', 'merge-visible', 'flatten',
+```
+
 ## src/extensions/tools/direct-select.ts
 
 ### src/extensions/tools/direct-select.ts · new · _v0.43.0
@@ -379,6 +402,14 @@ Reports applied styles for recording. Removed:
 ```ts
     const id = this.layerId;
     if (id) this.engine.setLayerEffects(id, effectsActive(this.fx) ? this.fx : null);
+```
+
+### src/ui/panels/layer-style-dialog.ts · Gradient Overlay · _v0.58.0
+
+The Gradient Overlay section. Removed:
+
+```ts
+/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow and Color Overlay for the
 ```
 
 ## src/ui/panels/generative-dialog.ts
@@ -1034,6 +1065,14 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, 
 
 The New Snapshot command. Nothing was removed.
 
+### src/app.ts · Trim, Reveal All · _v0.58.0
+
+The Trim dialog and both commands on the Image menu. Removed:
+
+```ts
+    { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1151,6 +1190,10 @@ import { IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, 
       ctx.restore();
     };
 ```
+
+### src/engine/renderer.ts · Gradient Overlay · _v0.58.0
+
+The gradient painted beneath Color Overlay, kept to the silhouette. Nothing was removed.
 
 ## src/engine/distort.ts
 
@@ -1792,6 +1835,16 @@ copyDoc, takeSnapshot, revertToSnapshot and deleteSnapshot; tween easing. Remove
       const u = k / (n + 1), state: Record<ID, FrameLayer> = {};
 ```
 
+### src/engine/index.ts · snapshot budget, Trim, Reveal All · _v0.58.0
+
+Snapshot sizes and their budget; trim and revealAll. Removed:
+
+```ts
+  /** The current document's snapshots, newest last. They live with the open document and are not saved. */
+  get snapshots(): ReadonlyArray<{ id: ID; name: string }> { const p = this.current; return p ? this.historySnapshots.get(p) ?? [] : []; }
+    const list = this.historySnapshots.get(p) ?? [];
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -2031,6 +2084,16 @@ A smart object keeps its warp and the transform it was rendered at. Removed:
 
 ```ts
 export interface SmartObject { source: Raster; filters: SmartFilter[] }
+```
+
+### src/engine/types.ts · Gradient Overlay · _v0.58.0
+
+The effect type, its defaults and checked reading. Removed:
+
+```ts
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect }
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled);
+  const s = part('dropShadow'), g = part('outerGlow'), k = part('stroke'), is = part('innerShadow'), ig = part('innerGlow'), co = part('colorOverlay');
 ```
 
 ## src/engine/viewport.ts
