@@ -1117,6 +1117,18 @@ Exported for smart-object distortion. Removed:
 function imageCorners(c: readonly Pt[], flipX: boolean, flipY: boolean): Pt[] {
 ```
 
+### src/engine/distort.ts · masks in alpha, inverse3 · _v0.54.0
+
+The warp keeps mask levels in alpha; maskEdgeTone samples alpha; inverse3 exported. Removed:
+
+```ts
+function inverse3(m: readonly number[]): number[] | null {
+  if (mask) for (let k = 0; k < od.length; k += 4) { od[k] = od[k + 1] = od[k + 2] = background; od[k + 3] = 255; }
+          const o = texel(ix + dx, iy + dy), k = weight * (mask ? 255 : sd[o + 3]);
+      od[o + 3] = mask ? 255 : Math.round(a);
+  const add = (x: number, y: number): void => { sum += d[(y * w + x) * 4]; count++; };
+```
+
 ## src/engine/dpi.ts
 
 ### src/engine/dpi.ts · withResolution · _v0.25.0
@@ -1182,6 +1194,27 @@ Unsharp Mask: each channel pushed from its Gaussian blur by Amount where the dif
 ### src/engine/filters.ts · rewritten independently · _v0.34.0
 
 Kovesi's three-box Gaussian, a bilinear line-integral motion blur, a radial lens model, alpha-weighted histograms and Felzenszwalb and Huttenlocher's distance transform, all new code with outputs identical to the replaced code; Add Noise now draws from SplitMix32, keeping the old statistics with a new pattern. `unsharpMask` (0.33.0) is unchanged. The removed code is not quoted here, deliberately: it is the translated code this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.33.0.
+
+### src/engine/filters.ts · faster box blur · _v0.54.0
+
+Box passes with channel locals and a row-major column pass, identical output. Removed:
+
+```ts
+ *  divided by its full width, so values fade past the image edge. */
+  const scale = 1 / (2 * r + 1), lines = across ? h : w, length = across ? w : h, stride = across ? 4 : w * 4;
+  const sum = new Float64Array(4);
+  for (let line = 0; line < lines; line++) {
+    const origin = across ? line * w * 4 : line * 4;
+    sum.fill(0);
+    const warm = Math.min(r, length - 1);
+    for (let k = 0; k <= warm; k++) for (let c = 0; c < 4; c++) sum[c] += src[origin + k * stride + c];
+    for (let i = 0; i < length; i++) {
+      const at = origin + i * stride;
+      for (let c = 0; c < 4; c++) dst[at + c] = sum[c] * scale;
+      const enter = i + r + 1, leave = i - r;
+      if (enter < length) for (let c = 0; c < 4; c++) sum[c] += src[origin + enter * stride + c];
+      if (leave >= 0) for (let c = 0; c < 4; c++) sum[c] -= src[origin + leave * stride + c];
+```
 
 ## src/engine/geometry.ts
 
@@ -1654,6 +1687,23 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
   distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
     if (this.current?.activeLayer?.smart || this.current?.activeLayer?.vector) { this.notice(this.current.activeLayer.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
       if (l?.raster && q) d.previews.set(id, { pixels: warpRaster(l.raster, l.transform, q, scale), mask: this.distortMask(l, q, scale) });
+```
+
+### src/engine/index.ts · masked smart distortion, style normalising · _v0.54.0
+
+Smart objects distort with their masks; setLayerEffects normalises partial styles. Removed:
+
+```ts
+import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped, imageCorners, homography, project } from './distort';
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle } from './types';
+    const next = effectsActive(effects) ? structuredClone(effects) : null;
+  distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; smart?: { R: Raster; t: Transform; margin: number }; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
+      if (l.mask) { this.notice('A smart object with a layer mask cannot be distorted yet; apply or delete the mask first.'); return false; }
+      this.distortEdit = { project: p, layerId: l.id, box: rt, members: null, corners, previews: new Map(), smart: { R, t: rt, margin } };
+      if (l?.raster && q) d.previews.set(id, sm ? { pixels: warpRaster(sm.R, sm.t, q, scale), mask: null } : { pixels: warpRaster(l.raster, l.transform, q, scale), mask: this.distortMask(l, q, scale) });
+      const w = this.warpedSmart(sm.R, m, src, warp);
+      const smart = sl.smart;
+      if (w) this.edit('Distort', (q) => q.updateLayer(sl.id, { raster: w.raster, transform: w.t, smart: { ...smart, warp, warpAt: w.t } }));
 ```
 
 ## src/engine/develop.ts

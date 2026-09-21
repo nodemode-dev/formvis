@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.54.0 · 2026-09-21
+
+### Added
+
+- Smart objects with a layer mask can be distorted; a linked mask follows the distortion.
+
+### Changed
+
+- Gaussian Blur, and the effects built on it, run about 2.7 times faster on large images, with identical results.
+
+### Fixed
+
+- Distorting a layer that had a mask lost the masking: the whole layer showed afterwards.
+- Setting a layer style that named only some effects could make rendering fail.
+
 ## 0.53.0 · 2026-09-21
 
 ### Added
