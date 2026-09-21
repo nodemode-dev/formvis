@@ -1,9 +1,11 @@
+import type { DevelopState } from './develop';
+
 /** The main-thread side of the filter worker: one worker, kept alive, with numbered jobs. `runFilterOffThread`
  *  returns null where module workers are unavailable (or after a failure), so callers fall back to running the kernel
  *  themselves. Requests carry the pixels as a transferred buffer, so neither side copies them. */
 
-export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; usmAmount: number; usmRadius: number; threshold: number }
-export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask';
+export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState }
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop';
 export interface FilterJob { id: number; kind: FilterKind; settings: FilterSettings; scale: number; seed: number; width: number; height: number; pixels: ArrayBuffer }
 interface FilterResult { id: number; width: number; height: number; pixels: ArrayBuffer }
 

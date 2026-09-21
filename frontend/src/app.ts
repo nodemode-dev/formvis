@@ -439,7 +439,7 @@ export function startApp(): void {
     return p.maskTarget && l.mask ? !!l.mask.raster : !!l.raster;
   };
   const ADJUST_KEYS: Partial<Record<string, string[]>> = { curves: ['Mod+M'], levels: ['Mod+L'], hsv: ['Mod+U'] };
-  const FILTERS: FilterKind[] = ['gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'unsharpMask'];
+  const FILTERS: FilterKind[] = ['develop', 'gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'unsharpMask'];
 
   commands.add(
     { id: 'cut', label: 'Cut', keys: ['Mod+X'], enabled: () => pixel() && selected(), run: () => { engine.cutSelection(); writeClipboard(); } },
@@ -456,7 +456,7 @@ export function startApp(): void {
     { id: 'edit-adjustment', label: 'Edit Adjustment...', enabled: () => !!layer()?.adjustment, run: () => { const l = layer(); if (l?.adjustment) dialogs.adjust.openForLayer(l.id); } },
     { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
     { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
-    ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
+    ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, ...(kind === 'develop' ? { keys: ['Shift+Mod+A'] } : {}), enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
   );
 
   const menus: MenuDef[] = [

@@ -35,6 +35,7 @@ import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
+export { defaultDevelopState, developImage, type DevelopState } from './develop';
 export { curvesKernel, exposureKernel, gradientMapKernel, levelsKernel } from './kernels';
 export type { Kernel, KernelContext } from './kernels';
 

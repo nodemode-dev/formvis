@@ -1,15 +1,15 @@
-import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, type Engine } from '../../engine';
+import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { toast } from '../toast';
 import { checkRow, selectRow, sliderRow, type Row } from './controls';
 
-export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask';
-export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask' };
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop';
+export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop' };
 
 export class FilterPanel extends Dialog {
   private kind: FilterKind = 'gaussianBlur';
-  private readonly s = { radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0 };
+  private readonly s = { radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState() };
   private seed = 0;
   private preview = true;
   private done = false;
@@ -36,6 +36,39 @@ export class FilterPanel extends Dialog {
     const usmRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 250 });
     const threshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); });
     this.section('unsharpMask', [usmAmount.el, usmRadius.el, threshold.el], () => { usmAmount.set(s.usmAmount); usmRadius.set(s.usmRadius); threshold.set(s.threshold); });
+    // Develop: Camera Raw-style controls over formnodal's develop core, grouped as the develop studio groups them.
+    const dev = s.develop, t = dev.tone, dt = dev.detail;
+    const devRows: Array<[string, number, number, number, () => number, (v: number) => void] | string> = [
+      'Light',
+      ['Exposure (EV)', -5, 5, 0.05, () => t.exposure / 100, (v) => { t.exposure = v * 100; }],
+      ['Contrast', -100, 100, 1, () => t.contrast, (v) => { t.contrast = v; }],
+      ['Highlights', -100, 100, 1, () => t.highlights, (v) => { t.highlights = v; }],
+      ['Shadows', -100, 100, 1, () => t.shadows, (v) => { t.shadows = v; }],
+      ['Whites', -100, 100, 1, () => t.whites, (v) => { t.whites = v; }],
+      ['Blacks', -100, 100, 1, () => t.blacks, (v) => { t.blacks = v; }],
+      'Colour',
+      ['Temperature', -100, 100, 1, () => t.temperature, (v) => { t.temperature = v; }],
+      ['Tint', -100, 100, 1, () => t.tint, (v) => { t.tint = v; }],
+      ['Vibrance', -100, 100, 1, () => t.vibrance, (v) => { t.vibrance = v; }],
+      ['Saturation', -100, 100, 1, () => t.saturation, (v) => { t.saturation = v; }],
+      'Effects',
+      ['Dehaze', -100, 100, 1, () => t.dehaze, (v) => { t.dehaze = v; }],
+      ['Vignette', 0, 100, 1, () => t.vignette, (v) => { t.vignette = v; }],
+      ['Grain', 0, 100, 1, () => t.grain, (v) => { t.grain = v; }],
+      'Detail',
+      ['Clarity', -100, 100, 1, () => dt.clarity, (v) => { dt.clarity = v; }],
+      ['Texture', -100, 100, 1, () => dt.texture, (v) => { dt.texture = v; }],
+      ['Sharpening', 0, 100, 1, () => dt.sharpen, (v) => { dt.sharpen = v; }],
+    ];
+    const devNodes: HTMLElement[] = [], devSync: Array<() => void> = [];
+    for (const row of devRows) {
+      if (typeof row === 'string') { devNodes.push(el(`<p class="cv-note">${row}</p>`)); continue; }
+      const [label, min, max, step, read, write] = row;
+      const r = sliderRow(label, min, max, step, (v) => { write(v); this.schedule(); });
+      devNodes.push(r.el);
+      devSync.push(() => r.set(read()));
+    }
+    this.section('develop', devNodes, () => { for (const f of devSync) f(); });
     this.previewRow = checkRow('Preview', (v) => { this.preview = v; this.schedule(0); });
     this.body.appendChild(this.previewRow.el);
     this.button('Cancel', 'ghost', () => this.close());
@@ -72,6 +105,7 @@ export class FilterPanel extends Dialog {
       case 'addNoise': return addNoise(src, s.amount, s.gaussian, s.monochromatic, this.seed);
       case 'lensCorrection': return lensDistort(src, s.distortion);
       case 'unsharpMask': return unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
+      case 'develop': return developImage(src, s.develop, scale);
     }
   }
 
