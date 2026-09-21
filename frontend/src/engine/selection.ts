@@ -4,53 +4,76 @@ import type { Rect } from './types';
 
 export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect';
 
-const EAST = 1, SOUTH = 2, WEST = 4, NORTH = 8;
-const turnRight = (d: number): number => (d === NORTH ? EAST : d << 1);
-const turnLeft = (d: number): number => (d === EAST ? NORTH : d >> 1);
-
+/** The outline of the pixels where `mask` reaches `threshold`, as closed loops along pixel edges, offset by (ox, oy).
+ *  Boundary edges are first merged into maximal horizontal and vertical runs, each oriented so the selected side lies
+ *  to its right (outer loops clockwise, holes counter-clockwise); runs are then linked end to start into loops. Where
+ *  two selected pixels touch only at a corner, the right turn is taken, so they stay separate loops. */
 export function traceOutline(mask: Uint8Array, width: number, height: number, ox: number, oy: number, threshold = 128): Path2D {
   const path = new Path2D();
   if (!width || !height) return path;
-  const stride = width + 1;
-  const out = new Uint8Array(stride * (height + 1));
-  let edges = 0;
-  for (let y = 0; y < height; y++) {
-    const row = y * width;
-    for (let x = 0; x < width; x++) {
-      if (mask[row + x] < threshold) continue;
-      if (y === 0 || mask[row - width + x] < threshold) { out[y * stride + x] |= EAST; edges++; }
-      if (x + 1 === width || mask[row + x + 1] < threshold) { out[y * stride + x + 1] |= SOUTH; edges++; }
-      if (y + 1 === height || mask[row + width + x] < threshold) { out[(y + 1) * stride + x + 1] |= WEST; edges++; }
-      if (x === 0 || mask[row + x - 1] < threshold) { out[(y + 1) * stride + x] |= NORTH; edges++; }
-    }
-  }
-  if (edges > 8_000_000) { path.rect(ox, oy, width, height); return path; }
-  for (let start = 0; start < out.length; start++) {
-    while (out[start]) {
-      let v = start, heading = 0, initial = 0;
-      const pts: number[] = [];
-      do {
-        const bits = out[v];
-        let d: number;
-        if (!heading) d = bits & -bits;
-        else if (bits & turnRight(heading)) d = turnRight(heading);
-        else if (bits & heading) d = heading;
-        else if (bits & turnLeft(heading)) d = turnLeft(heading);
-        else d = bits & -bits;
-        if (!d) break;
-        out[v] &= ~d;
-        if (d !== heading) pts.push(v % stride, Math.floor(v / stride));
-        if (!heading) initial = d;
-        heading = d;
-        v = d === EAST ? v + 1 : d === WEST ? v - 1 : d === SOUTH ? v + stride : v - stride;
-      } while (v !== start);
-      if (heading === initial && pts.length > 2) pts.splice(0, 2);
-      if (pts.length >= 4) {
-        path.moveTo(pts[0] + ox, pts[1] + oy);
-        for (let i = 2; i < pts.length; i += 2) path.lineTo(pts[i] + ox, pts[i + 1] + oy);
-        path.closePath();
+  const corners = width + 1, on = new Uint8Array(width * height);
+  for (let i = 0; i < on.length; i++) on[i] = mask[i] >= threshold ? 1 : 0;
+  const runStart: number[] = [], runEnd: number[] = [], runDir: number[] = [];
+  const open = new Map<number, number>();
+  const addRun = (sx: number, sy: number, ex: number, ey: number, dir: number): void => {
+    const start = sy * corners + sx;
+    open.set(start * 4 + dir, runStart.length);
+    runStart.push(start);
+    runEnd.push(ey * corners + ex);
+    runDir.push(dir);
+  };
+  // One row-major sweep over consecutive row pairs (the rows before the first and after the last count as empty).
+  // Wherever the pair differs there is a horizontal edge: top edges run east, bottom edges west. Vertical runs on
+  // each column boundary stay open (1 south for right edges, 2 north for left edges) and can only start or stop at a
+  // boundary beside a pixel that differs from the one above it, so only those boundaries are re-examined.
+  const openKind = new Uint8Array(corners), openFrom = new Int32Array(corners), empty = new Uint8Array(width);
+  const closeColumn = (x: number, y: number): void => {
+    if (openKind[x] === 1) addRun(x, openFrom[x], x, y, 1);
+    else if (openKind[x] === 2) addRun(x, y, x, openFrom[x], 3);
+  };
+  let prev = empty;
+  for (let y = 0; y <= height; y++) {
+    const cur = y < height ? on.subarray(y * width, (y + 1) * width) : empty;
+    let x = 0;
+    while (x < width) {
+      if (prev[x] === cur[x]) { x++; continue; }
+      const b = cur[x], first = x;
+      while (x < width && cur[x] === b && prev[x] !== b) x++;
+      if (b) addRun(first, y, x, y, 0); else addRun(x, y, first, y, 2);
+      if (y === height) continue;
+      for (let xb = first; xb <= x; xb++) {
+        const left = xb > 0 ? cur[xb - 1] : 0, right = xb < width ? cur[xb] : 0;
+        const kind = left === right ? 0 : left ? 1 : 2;
+        if (kind === openKind[xb]) continue;
+        closeColumn(xb, y);
+        openKind[xb] = kind;
+        openFrom[xb] = y;
       }
     }
+    prev = cur;
+    if (runStart.length > 4_000_000) { path.rect(ox, oy, width, height); return path; }
+  }
+  for (let xb = 0; xb <= width; xb++) closeColumn(xb, height);
+  for (let r0 = 0; r0 < runStart.length; r0++) {
+    const origin = runStart[r0], firstDir = runDir[r0];
+    if (open.get(origin * 4 + firstDir) !== r0) continue;
+    open.delete(origin * 4 + firstDir);
+    path.moveTo((origin % corners) + ox, Math.floor(origin / corners) + oy);
+    let run = r0;
+    for (;;) {
+      const at = runEnd[run], dir = runDir[run];
+      path.lineTo((at % corners) + ox, Math.floor(at / corners) + oy);
+      let next = -1, closed = false;
+      for (const turn of [1, 0, 3]) {
+        const d = (dir + turn) % 4;
+        if (at === origin && d === firstDir) { closed = true; break; }
+        const candidate = open.get(at * 4 + d);
+        if (candidate !== undefined) { next = candidate; open.delete(at * 4 + d); break; }
+      }
+      if (closed || next < 0) break;
+      run = next;
+    }
+    path.closePath();
   }
   return path;
 }

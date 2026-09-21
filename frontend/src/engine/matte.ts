@@ -1,105 +1,107 @@
-/** Remove Background's refining, ported from the `SubjectRemoval.refined` and `GuidedMatte`. Masks and
- *  guides are 0 to 1 per pixel, row by row. Radii are in layer pixels; `scale` shrinks them for a scaled preview. */
+/** Remove Background's refining, written for sonny. The model's subject mask is pulled onto the image's own edges
+ *  with He, Sun and Tang's guided filter (2010), which recovers hair and fur a segmentation cuts straight through;
+ *  Shift Edge grows or shrinks it through a Gaussian blur and a steep threshold; Contrast pushes its greys apart.
+ *  Masks and guides hold 0 to 1 per pixel, row by row. Radii are in layer pixels; `scale` shrinks them for a scaled
+ *  preview. */
 
 export interface MatteSettings { quality: 'basic' | 'advanced'; refineEdges: number; matteContrast: number; shiftEdge: number }
 
 /** Basic, Refine 12 px (0 to 40), Contrast 25% (0 to 100), Shift Edge 0 px (-10 to 10). */
 export const DEFAULT_MATTE: MatteSettings = { quality: 'basic', refineEdges: 12, matteContrast: 25, shiftEdge: 0 };
 
-/** Mean over a (2r+1) square as two running-sum passes with edge clamping, so the cost does not grow with the radius. */
+/** Box means along one axis: `lines` runs of `length` values `stride` apart, starting at `origin(line)`. Each output is
+ *  the mean over 2r + 1 positions, positions past either end repeating the end value, taken from a prefix sum. */
+function boxAlong(src: Float32Array, out: Float32Array, lines: number, length: number, stride: number, origin: (line: number) => number, r: number): void {
+  const prefix = new Float64Array(length + 1), span = 2 * r + 1;
+  for (let line = 0; line < lines; line++) {
+    const o = origin(line);
+    for (let i = 0; i < length; i++) prefix[i + 1] = prefix[i] + src[o + i * stride];
+    const first = src[o], last = src[o + (length - 1) * stride];
+    for (let i = 0; i < length; i++) {
+      const lo = i - r, hi = i + r;
+      let sum = prefix[Math.min(hi, length - 1) + 1] - prefix[Math.max(lo, 0)];
+      if (lo < 0) sum += -lo * first;
+      if (hi > length - 1) sum += (hi - length + 1) * last;
+      out[o + i * stride] = sum / span;
+    }
+  }
+}
+
+/** The mean over a (2r + 1) square around each pixel, edges repeated; the cost does not grow with the radius. */
 export function boxMean(src: Float32Array, w: number, h: number, r: number): Float32Array {
-  const span = r * 2 + 1, pass = new Float32Array(w * h), out = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) {
-    const row = y * w;
-    let sum = 0;
-    for (let x = -r; x <= r; x++) sum += src[row + Math.min(w - 1, Math.max(0, x))];
-    for (let x = 0; x < w; x++) {
-      pass[row + x] = sum / span;
-      sum -= src[row + Math.min(w - 1, Math.max(0, x - r))];
-      sum += src[row + Math.min(w - 1, Math.max(0, x + r + 1))];
-    }
-  }
-  for (let x = 0; x < w; x++) {
-    let sum = 0;
-    for (let y = -r; y <= r; y++) sum += pass[Math.min(h - 1, Math.max(0, y)) * w + x];
-    for (let y = 0; y < h; y++) {
-      out[y * w + x] = sum / span;
-      sum -= pass[Math.min(h - 1, Math.max(0, y - r)) * w + x];
-      sum += pass[Math.min(h - 1, Math.max(0, y + r + 1)) * w + x];
-    }
-  }
+  const across = new Float32Array(w * h), out = new Float32Array(w * h);
+  boxAlong(src, across, h, w, 1, (y) => y * w, r);
+  boxAlong(across, out, w, h, w, (x) => x, r);
   return out;
 }
 
-/** Guided filtering (He, Sun and Tang): `mask` pulled onto the edges of `guide`, which recovers hair and fur a
- *  segmentation model cuts straight through. `eps` decides how much of an edge in the guide counts. */
+/** The guided filter: within each window the output is a linear function of the guide, a I + b, fitted to the mask by
+ *  least squares with `eps` regularising the slope; the per-window a and b are averaged before being applied, so a
+ *  step in the guide carries into the mask and flat regions stay smooth. Output is clamped to 0 to 1. */
 export function guidedFilter(mask: Float32Array, guide: Float32Array, w: number, h: number, r: number, eps: number): Float32Array {
-  const n = w * h, squares = new Float32Array(n), products = new Float32Array(n);
-  for (let i = 0; i < n; i++) { squares[i] = guide[i] * guide[i]; products[i] = guide[i] * mask[i]; }
-  const meanGuide = boxMean(guide, w, h, r), meanMask = boxMean(mask, w, h, r);
-  const meanSquares = boxMean(squares, w, h, r), meanProducts = boxMean(products, w, h, r);
-  const slope = new Float32Array(n), offset = new Float32Array(n);
+  const n = w * h, guideSquared = new Float32Array(n), guideTimesMask = new Float32Array(n);
   for (let i = 0; i < n; i++) {
-    const variance = meanSquares[i] - meanGuide[i] * meanGuide[i], covariance = meanProducts[i] - meanGuide[i] * meanMask[i];
-    slope[i] = covariance / (variance + eps);
-    offset[i] = meanMask[i] - slope[i] * meanGuide[i];
+    guideSquared[i] = guide[i] * guide[i];
+    guideTimesMask[i] = guide[i] * mask[i];
   }
-  const meanSlope = boxMean(slope, w, h, r), meanOffset = boxMean(offset, w, h, r), out = new Float32Array(n);
-  for (let i = 0; i < n; i++) out[i] = Math.min(1, Math.max(0, meanSlope[i] * guide[i] + meanOffset[i]));
+  const mI = boxMean(guide, w, h, r), mP = boxMean(mask, w, h, r), mII = boxMean(guideSquared, w, h, r), mIP = boxMean(guideTimesMask, w, h, r);
+  const a = new Float32Array(n), b = new Float32Array(n);
+  for (let i = 0; i < n; i++) {
+    a[i] = (mIP[i] - mI[i] * mP[i]) / (mII[i] - mI[i] * mI[i] + eps);
+    b[i] = mP[i] - a[i] * mI[i];
+  }
+  const mA = boxMean(a, w, h, r), mB = boxMean(b, w, h, r), out = new Float32Array(n);
+  for (let i = 0; i < n; i++) out[i] = Math.min(1, Math.max(0, mA[i] * guide[i] + mB[i]));
   return out;
 }
 
-/** A separable Gaussian with edge clamping, as Core Image's blur over a clamped extent. */
-function gaussian(src: Float32Array, w: number, h: number, sigma: number): Float32Array {
-  const rad = Math.max(1, Math.ceil(sigma * 3)), k = new Float32Array(rad * 2 + 1);
+/** A separable Gaussian of standard deviation `sigma` (taps to three sigma, normalised), edges repeated. */
+function gaussianSmooth(src: Float32Array, w: number, h: number, sigma: number): Float32Array {
+  const reach = Math.max(1, Math.ceil(sigma * 3)), taps = new Float64Array(2 * reach + 1);
   let total = 0;
-  for (let i = -rad; i <= rad; i++) { const v = Math.exp(-(i * i) / (2 * sigma * sigma)); k[i + rad] = v; total += v; }
-  for (let i = 0; i < k.length; i++) k[i] /= total;
-  const tmp = new Float32Array(w * h), out = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let s = 0;
-      for (let i = -rad; i <= rad; i++) s += src[y * w + Math.min(w - 1, Math.max(0, x + i))] * k[i + rad];
-      tmp[y * w + x] = s;
+  for (let k = -reach; k <= reach; k++) total += taps[k + reach] = Math.exp(-(k * k) / (2 * sigma * sigma));
+  for (let k = 0; k < taps.length; k++) taps[k] /= total;
+  const convolve = (from: Float32Array, to: Float32Array, lines: number, length: number, stride: number, origin: (line: number) => number): void => {
+    for (let line = 0; line < lines; line++) {
+      const o = origin(line);
+      for (let i = 0; i < length; i++) {
+        let s = 0;
+        for (let k = -reach; k <= reach; k++) s += taps[k + reach] * from[o + Math.min(length - 1, Math.max(0, i + k)) * stride];
+        to[o + i * stride] = s;
+      }
     }
-  }
-  for (let y = 0; y < h; y++) {
-    for (let x = 0; x < w; x++) {
-      let s = 0;
-      for (let i = -rad; i <= rad; i++) s += tmp[Math.min(h - 1, Math.max(0, y + i)) * w + x] * k[i + rad];
-      out[y * w + x] = s;
-    }
-  }
+  };
+  const across = new Float32Array(w * h), out = new Float32Array(w * h);
+  convolve(src, across, h, w, 1, (y) => y * w);
+  convolve(across, out, w, h, w, (x) => x);
   return out;
 }
 
-/** The refined subject mask, in Refine pulls the mask onto the image's own edges, Shift Edge blurs
- *  by half its reach and cuts hard at 0.25 (grow) or 0.75 (shrink), and Contrast pushes the grays apart (100 is a hard
- *  cut at the middle). Basic returns the model's mask unchanged. */
+/** The refined subject mask. Refine pulls the mask onto the guide's edges; Shift Edge blurs by half its reach and cuts
+ *  steeply at 0.25 to grow or 0.75 to shrink; Contrast scales the greys about the middle (100 is a hard cut). Basic
+ *  returns the model's mask unchanged. */
 export function refineMatte(mask: Float32Array, guide: Float32Array, w: number, h: number, s: MatteSettings, scale = 1): Float32Array {
   if (s.quality !== 'advanced') return mask;
   let m = mask;
   if (s.refineEdges > 0) m = guidedFilter(m, guide, w, h, Math.max(1, Math.round(s.refineEdges * scale)), 1e-4);
   if (s.shiftEdge !== 0) {
-    const level = s.shiftEdge < 0 ? 0.75 : 0.25, blurred = gaussian(m, w, h, (Math.abs(s.shiftEdge) / 2) * scale);
-    m = new Float32Array(w * h);
-    for (let i = 0; i < m.length; i++) m[i] = Math.min(1, Math.max(0, (blurred[i] - level) * 1000));
+    const cut = s.shiftEdge > 0 ? 0.25 : 0.75, soft = gaussianSmooth(m, w, h, (Math.abs(s.shiftEdge) / 2) * scale);
+    m = soft.map((v) => Math.min(1, Math.max(0, (v - cut) * 1000)));
   }
   if (s.matteContrast > 0) {
-    const slope = 1 / Math.max(0.02, 1 - (s.matteContrast / 100) * 0.98), bias = (1 - slope) / 2, out = new Float32Array(w * h);
-    for (let i = 0; i < out.length; i++) out[i] = Math.min(1, Math.max(0, slope * m[i] + bias));
-    m = out;
+    const gain = 1 / Math.max(0.02, 1 - (s.matteContrast / 100) * 0.98), lift = (1 - gain) / 2;
+    m = m.map((v) => Math.min(1, Math.max(0, gain * v + lift)));
   }
   return m;
 }
 
-/** 0 to 1 levels of an image: a mask's gray (its alpha counting as coverage), or a guide's luminance over black, as
- * draws both into a gray context. */
+/** 0 to 1 levels of an image: a guide's luminance or a mask's grey, either scaled by alpha (drawn over black). */
 export function levelsOf(img: ImageData, luminance: boolean): Float32Array {
   const d = img.data, out = new Float32Array(img.width * img.height);
-  for (let i = 0, j = 0; i < out.length; i++, j += 4) {
-    const a = d[j + 3] / 255;
-    out[i] = (luminance ? (0.299 * d[j] + 0.587 * d[j + 1] + 0.114 * d[j + 2]) / 255 : (d[j] + d[j + 1] + d[j + 2]) / 765) * a;
+  for (let p = 0; p < out.length; p++) {
+    const i = p * 4, alpha = d[i + 3] / 255;
+    const level = luminance ? (0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]) / 255 : (d[i] + d[i + 1] + d[i + 2]) / 765;
+    out[p] = level * alpha;
   }
   return out;
 }
