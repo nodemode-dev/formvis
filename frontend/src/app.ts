@@ -1,3 +1,4 @@
+import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
 import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
@@ -164,7 +165,13 @@ export function startApp(): void {
   async function openFiles(files: File[]): Promise<void> {
     await engine.task(async () => {
       for (const f of files) {
-        try { await openOpened(await api.importProject([f]), null); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+        try {
+          if (isPsdFile(f)) {
+            const { doc, notes, activeId } = await readPsdFile(f);
+            engine.addProject(doc, f.name.replace(/\.psd$/i, ''), activeId);
+            if (notes.length) toast(notes.join(' '), 'info');
+          } else await openOpened(await api.importProject([f]), null);
+        } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
       }
     });
   }
@@ -271,6 +278,21 @@ export function startApp(): void {
     });
   }
 
+  async function exportPsd(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const flat = engine.flattened();
+        if (!flat) return;
+        const { bytes, notes } = writePsdFile(p.doc, flat);
+        await deliver(new Blob([bytes], { type: 'image/vnd.adobe.photoshop' }), `${p.name}.psd`);
+        if (notes.length) toast(notes.join(' '), 'info');
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function removeBackground(method: 'auto' | 'lite'): Promise<void> {
     const l = engine.activeLayer;
     if (!l?.raster || l.isGroup) { toast('Select a pixel layer first.'); return; }
@@ -354,6 +376,7 @@ export function startApp(): void {
     { id: 'export-ref', label: 'Export .ref Project...', enabled: has, run: () => void exportRefProject() },
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
+    { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
     // the File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
     // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W too.
@@ -477,7 +500,7 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'clear', 'content-fill', 'generative-fill', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
