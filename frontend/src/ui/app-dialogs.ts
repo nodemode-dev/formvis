@@ -251,7 +251,7 @@ export class AboutDialog extends Dialog {
     this.body.appendChild(el(`<div class="cv-welcome-title">${icon('paintbrush', 20)}sonny ${VERSION}</div>`));
     this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system.</p>'));
     this.body.appendChild(this.engineLine);
-    this.body.appendChild(el('<p class="cv-note">MIT licensed. Copyright 2026 nodemode-ai. Portions copyright 2026 its authors.</p>'));
+    this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 nodemode-ai.</p>'));
     this.button('Close', 'primary', () => this.close());
   }
 

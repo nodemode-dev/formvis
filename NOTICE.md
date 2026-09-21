@@ -1,12 +1,11 @@
 # Third-party notices
 
-sonny is MIT licensed (see `LICENSE`). It includes or depends on the following works.
+sonny is licensed under the Apache License 2.0 (see `LICENSE`). It includes or depends on the following works.
 
-## Ported or copied into this repository
+## Included in this repository
 
 | Work | License | Where |
 | --- | --- | --- |
-| by its authors (https://github.com/robbietilton/the.ref format): document model, project format, ported kernels (Levels, Curves, Exposure, Gradient Map, Magic Wand fill, selection contour tracer), brush spacing | MIT, copyright retained in `LICENSE` | `frontend/src/engine/`, `frontend/src/io/project-io.ts`, `backend/app/services/project_format.py` |
 | NodeMode stylized design system: tokens, theme profiles, theme boot, dom-stable helpers, icon subset | MIT | `frontend/src/styles/tokens.css`, `frontend/src/ui/themes.ts`, `frontend/src/ui/dom.ts`, `frontend/src/ui/icons.ts`, `frontend/index.html` |
 | `paintbrush` icon from Remix Icon | Apache-2.0 | `frontend/src/ui/icons.ts` |
 | Tauri sidecar shell template (tauri-compiler-skill) | MIT | `src-tauri/src/main.rs` |

@@ -2,6 +2,12 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.31.1 · 2026-09-20
+
+### Changed
+
+- The README acknowledges that some inspiration was drawn from the reference app by its authors, states that sonny is an independent build using none of its code, and notes that sonny supports `.ref` project files.
+
 ## 0.31.0 · 2026-09-20
 
 ### Changed

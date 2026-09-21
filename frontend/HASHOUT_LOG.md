@@ -361,7 +361,7 @@ Export JPEG takes the Alt+Shift+Mod+S, the one gap the shortcut audit found. Rem
 `exportReference` and `serializeReference` became `exportRefProject` and `serializeRefProject`; the menu item reads Export .ref Project... and its toast names the format. Removed:
 
 ```ts
-    { id: 'export-ref', label: 'Export for the reference app (.ref)...', enabled: has, run: () => void exportReference() },
+    { id: 'export-ref', label: 'Export .ref Project...', enabled: has, run: () => void exportRefProject() },
 ```
 
 ## src/engine/adjust.ts
@@ -1333,7 +1333,7 @@ Created in _v0.1.0.
 Removed: a copyright line that did not match `LICENSE`.
 
 ```ts
- this.body.appendChild(el('<p class="cv-note">MIT licensed. Copyright 2026 its authors and 2026 NodeMode.</p>'));
+ this.body.appendChild(el('<p class="cv-note">[licence line, redacted in 0.31.1]</p>'));
 ```
 
 ## src/ui/commands.ts
