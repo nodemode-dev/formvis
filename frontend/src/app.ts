@@ -1,3 +1,4 @@
+import { GifDialog } from './ui/panels/gif-dialog';
 import { TimelinePanel } from './ui/timeline';
 import { AnimationDialog } from './ui/panels/animation-dialog';
 import { encodeGif, type GifFrame } from './io/gif';
@@ -12,7 +13,7 @@ import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -350,20 +351,27 @@ export function startApp(): void {
   }
 
   /** File > Export GIF: every frame of the timeline at full size, or the image as it stands when there are no frames. */
-  async function exportGif(): Promise<void> {
+  async function exportGif(scale = 1): Promise<void> {
     const p = engine.current;
     if (!p) return;
     engine.settle();
     await engine.task(async () => {
       try {
         const t = engine.timeline, frames = t.frames.length ? t.frames : [null], out: GifFrame[] = [];
+        const w = Math.max(1, Math.round(p.doc.width * scale)), h = Math.max(1, Math.round(p.doc.height * scale));
         for (const f of frames) {
           const s = engine.renderFrame(f);
           if (!s) return;
-          out.push({ data: ctxOf(s).getImageData(0, 0, s.width, s.height), delayMs: f?.delay ?? 0 });
+          if (scale === 1) out.push({ data: ctxOf(s).getImageData(0, 0, s.width, s.height), delayMs: f?.delay ?? 0 });
+          else {
+            const small = createSurface(w, h), c = ctxOf(small);
+            c.imageSmoothingQuality = 'high';
+            c.drawImage(s as CanvasImageSource, 0, 0, w, h);
+            out.push({ data: c.getImageData(0, 0, w, h), delayMs: f?.delay ?? 0 });
+          }
           await new Promise((r) => window.setTimeout(r, 0));
         }
-        const bytes = encodeGif(out, p.doc.width, p.doc.height, t.loops);
+        const bytes = encodeGif(out, w, h, t.loops);
         await deliver(new Blob([bytes], { type: 'image/gif' }), `${p.name}.gif`);
         toast(out.length > 1 ? `Exported ${out.length} frames as a GIF.` : 'Exported as a GIF.');
       } catch (err) { toast(message(err), 'error'); }
@@ -435,6 +443,7 @@ export function startApp(): void {
     smartFilters: new SmartFiltersDialog(engine, (): FilterPanel => dialogs.filter),
     shapeStyle: new ShapeStyleDialog(engine),
     animation: new AnimationDialog(engine),
+    gif: new GifDialog(engine, (k) => exportGif(k)),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
     generative: new GenerativeDialog(engine),
@@ -476,7 +485,7 @@ export function startApp(): void {
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
-    { id: 'export-gif', label: 'Export GIF', enabled: () => !!engine.current, run: () => void exportGif() },
+    { id: 'export-gif', label: 'Export GIF...', enabled: () => !!engine.current, run: () => dialogs.gif.show() },
     { id: 'new-frame', label: 'New Frame', enabled: () => !!engine.current, run: () => engine.newFrame() },
     { id: 'delete-frame', label: 'Delete Frame', enabled: () => !!engine.current && engine.timeline.frames.length > 0, run: () => engine.deleteFrame() },
     { id: 'play-animation', label: 'Play Animation', enabled: () => !!engine.current && engine.timeline.frames.length > 1, run: () => dialogs.animation.show() },
