@@ -140,6 +140,10 @@ The adjustment step and its check on import. Removed:
 import type { RGB } from '../engine';
 ```
 
+### src/ui/actions.ts · layer style steps · _v0.52.0
+
+The Layer Style step and its check on import. Nothing was removed.
+
 ## src/extensions/tools/direct-select.ts
 
 ### src/extensions/tools/direct-select.ts · new · _v0.43.0
@@ -280,6 +284,15 @@ Sections for Inner Shadow, Inner Glow and Color Overlay. Removed:
 ```ts
 /** Layer > Layer Style: Drop Shadow, Outer Glow and an outside Stroke for the active pixel layer, shown live while the
  *  dialog is open. OK applies them as one undo step; Cancel leaves the layer as it was. */
+```
+
+### src/ui/panels/layer-style-dialog.ts · onApplied · _v0.52.0
+
+Reports applied styles for recording. Removed:
+
+```ts
+    const id = this.layerId;
+    if (id) this.engine.setLayerEffects(id, effectsActive(this.fx) ? this.fx : null);
 ```
 
 ## src/ui/panels/generative-dialog.ts
@@ -905,6 +918,14 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, 
     ...ADJUSTMENT_KINDS.map((kind) => ({ id: `new-adj-${kind}`, label: `New ${ADJUSTMENT_LABELS[kind]} Layer...`, enabled: has, run: () => { const id = engine.addAdjustmentLayer(kind); if (id) dialogs.adjust.openForLayer(id); } })),
 ```
 
+### src/app.ts · layer style in Actions · _v0.52.0
+
+Recording and replaying Layer Style steps. Removed:
+
+```ts
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind } from './engine';
+```
+
 ## src/engine/adjust.ts
 
 ### src/engine/adjust.ts · hsvKernel, grainKernel, defaultAdjustmentData · _v0.2.0
@@ -1032,6 +1053,14 @@ the free distort math: `cornersOf` (handle order), `distortUsable` (convex and n
 ### src/engine/distort.ts · rewritten independently · _v0.35.0
 
 The perspective map solved from its eight corner equations by Gauss-Jordan elimination, inverted through cross products, resampled with premultiplied bilinear filtering; identical outputs. The removed code is not quoted here, deliberately: it is the implementation this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.34.0.
+
+### src/engine/distort.ts · imageCorners · _v0.52.0
+
+Exported for smart-object distortion. Removed:
+
+```ts
+function imageCorners(c: readonly Pt[], flipX: boolean, flipY: boolean): Pt[] {
+```
 
 ## src/engine/dpi.ts
 
@@ -1560,6 +1589,18 @@ Reordering frames and filling in tweened frames. Removed:
 import { captureFrame, frameLayers, type Frame, type Timeline } from './timeline';
 ```
 
+### src/engine/index.ts · smart distortion, applyLayerStyle · _v0.52.0
+
+Warped re-renders, distorting from the undistorted render, carrying moves into the warp; Layer Style for Actions. Removed:
+
+```ts
+import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped } from './distort';
+    const m = Math.min(512, Math.ceil(shown.reduce((n, f) => n + (this.smartFilterMargin?.(f.kind, f.settings) ?? 0), 0)));
+  distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
+    if (this.current?.activeLayer?.smart || this.current?.activeLayer?.vector) { this.notice(this.current.activeLayer.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
+      if (l?.raster && q) d.previews.set(id, { pixels: warpRaster(l.raster, l.transform, q, scale), mask: this.distortMask(l, q, scale) });
+```
+
 ## src/engine/develop.ts
 
 ### src/engine/develop.ts · new · _v0.36.0
@@ -1780,6 +1821,14 @@ Optional fill and a stroke on shape layers. Removed:
 /** A shape layer: a path filled with a colour. `origin` is where its raster was rendered, so a later move of the layer
  *  can carry the path along. */
 export interface VectorLayer { path: import('./paths').VectorPath; fill: RGB; origin: Pt }
+```
+
+### src/engine/types.ts · warp · _v0.52.0
+
+A smart object keeps its warp and the transform it was rendered at. Removed:
+
+```ts
+export interface SmartObject { source: Raster; filters: SmartFilter[] }
 ```
 
 ## src/engine/viewport.ts
@@ -2305,6 +2354,15 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
 export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: PathSet | null = null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
 export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null }> {
   return { paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
+```
+
+### src/io/project-io.ts · warp · _v0.52.0
+
+The warp saved and read back checked. Removed:
+
+```ts
+      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })) };
+    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart) } : null;
 ```
 
 ## src/main.ts

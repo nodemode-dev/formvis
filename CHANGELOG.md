@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.52.0 · 2026-09-21
+
+### Added
+
+- Distort and Perspective work on smart objects and stay editable: every re-render warps afresh from the original, and distorting again adjusts the same shape.
+- Actions record Layer Style.
+
 ## 0.51.0 · 2026-09-21
 
 ### Added
