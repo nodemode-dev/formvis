@@ -507,6 +507,28 @@ Live type written as Photoshop point type and read back as editable type. Remove
 ### src/extensions/tools/patch.ts · new · _v0.42.0
 
 The Patch tool: lasso to select, drag the selection to heal from there. Nothing was removed.
+### src/extensions/tools/patch.ts and src/engine/index.ts · Patch modes · _v0.73.0
+
+Options for Patch (Normal, Content-Aware), From (Source, Destination) and Transparent, and a hint that follows From. In the engine, `retouch` holds them; `patchSelection` runs inside one `edit`, moving the selection for Destination and reversing the drag, adds the source's high pass for Transparent, and content-aware fills a three-pixel band inside the seam for Content-Aware. Removed:
+
+```ts
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false };
+   *  meet the selection's edge, as one undo step. */
+    this.regionEdit('Patch', ({ raster, target, rect }) => {
+      if (target !== 'pixels') return;
+      const p = this.current as Project, l = p.activeLayer as Layer;
+      const cov = this.coverageFor(p, l, target, raster.width, raster.height);
+      if (!cov) return;
+      const toLayer = invert(placement(l.transform, raster.width, raster.height)), a = applyMat(toLayer, 0, 0), b = applyMat(toLayer, dx, dy);
+      const mask = new Uint8Array(raster.width * raster.height);
+      for (let i = 0; i < mask.length; i++) mask[i] = cov[i * 4 + 3];
+      const pm = premultiply(raster.read().data);
+      if (!healFromSource(pm, mask, raster.width, raster.height, 1, Math.round(b.x - a.x), Math.round(b.y - a.y))) return;
+      const out = new ImageData(raster.width, raster.height);
+      unpremultiply(pm, out.data);
+      raster.ctx.putImageData(out, 0, 0, rect.x, rect.y, rect.w, rect.h);
+  hint: () => 'Draw around the area to fix, then drag the selection onto the area to copy from · Shift+J cycles the healing tools',
+```
 
 ## src/extensions/tools/healing-brush.ts
 

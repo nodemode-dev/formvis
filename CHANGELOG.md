@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.73.0 · 2026-09-22
+
+### Added
+
+- Patch modes: Destination (drag the selection onto what it should cover), Transparent (keep what is underneath and add only the source's texture) and Content-Aware (the seam is synthesized rather than colour-blended).
+- 4 more browser tests: 86 in all.
+
 ## 0.72.0 · 2026-09-22
 
 ### Added
