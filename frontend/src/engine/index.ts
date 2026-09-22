@@ -14,7 +14,8 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle, effectsFromData } from './types';
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle, effectsFromData } from './types';
+import { patternById } from './patterns';
 
 export * from './types';
 export * from './geometry';
@@ -1967,6 +1968,44 @@ export class Engine {
     c.fillRect(0, 0, rect.w, rect.h);
     if (cover) { c.globalCompositeOperation = 'destination-in'; c.drawImage(cover, 0, 0); }
     return s;
+  }
+
+  /** Edit > Fill: the selection, or the whole layer, filled with a colour or a pattern (tiled from the layer's corner)
+   *  in a blend mode at an opacity, optionally keeping transparent pixels transparent, as one step. On a mask the
+   *  colour's grey is used and patterns are refused. */
+  fillWith(contents: { color: RGB } | { patternId: ID }, blend: BlendMode, opacity: number, preserveTransparency: boolean): void {
+    const pat = 'patternId' in contents ? patternById(contents.patternId) : null;
+    if ('patternId' in contents && !pat) { this.notice('That pattern is no longer available.'); return; }
+    this.regionEdit('Fill', ({ raster, target, rect, cover }) => {
+      const rc = raster.ctx;
+      rc.save();
+      rc.setTransform(1, 0, 0, 1, 0, 0);
+      if (target === 'mask') {
+        if (!('color' in contents)) { rc.restore(); return; }
+        const t = this.tint(rect, '#ffffff', cover), v = luminance(contents.color);
+        rc.globalAlpha = opacity;
+        rc.globalCompositeOperation = 'destination-out';
+        rc.drawImage(t, rect.x, rect.y);
+        if (v > 0) { rc.globalCompositeOperation = 'lighter'; rc.globalAlpha = v * opacity; rc.drawImage(t, rect.x, rect.y); }
+        rc.restore();
+        return;
+      }
+      const s = createSurface(rect.w, rect.h), sc = ctxOf(s);
+      if (pat) { const cp = sc.createPattern(pat.surface, 'repeat'); if (cp) { cp.setTransform(new DOMMatrix().translate(-rect.x, -rect.y)); sc.fillStyle = cp; } }
+      else if ('color' in contents) sc.fillStyle = rgbCss(contents.color);
+      sc.fillRect(0, 0, rect.w, rect.h);
+      if (cover) { sc.globalCompositeOperation = 'destination-in'; sc.drawImage(cover, 0, 0); }
+      const orig = createSurface(rect.w, rect.h), out = createSurface(rect.w, rect.h), oc = ctxOf(out);
+      ctxOf(orig).putImageData(raster.read(rect.x, rect.y, rect.w, rect.h), 0, 0);
+      oc.drawImage(orig, 0, 0);
+      oc.globalAlpha = opacity;
+      oc.globalCompositeOperation = compositeOp(blend);
+      oc.drawImage(s, 0, 0);
+      if (preserveTransparency) { oc.globalAlpha = 1; oc.globalCompositeOperation = 'destination-in'; oc.drawImage(orig, 0, 0); }
+      rc.clearRect(rect.x, rect.y, rect.w, rect.h);
+      rc.drawImage(out, rect.x, rect.y);
+      rc.restore();
+    });
   }
 
   fill(which: 'fg' | 'bg'): void {
