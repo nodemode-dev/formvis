@@ -1,4 +1,5 @@
 import type { Pt } from '../../engine';
+import { GRADIENT_PRESETS, GRADIENT_TYPES, type GradientType } from '../../engine/gradients';
 import type { Tool, ToolContext } from '../registry';
 
 let drag: 'start' | 'end' | null = null;
@@ -65,8 +66,8 @@ export const gradientTool: Tool = {
     const set = (fn: () => void): void => { fn(); e.renderGradient(); e.emit('options', null); };
     return [
       { kind: 'title', text: 'Gradient' },
-      { kind: 'segment', label: 'Shape', choices: [{ id: 'linear', label: 'Linear' }, { id: 'radial', label: 'Radial' }], get: () => e.gradientSettings.shape, set: (v) => set(() => { e.gradientSettings.shape = v as 'linear' | 'radial'; }) },
-      { kind: 'segment', label: 'Colors', choices: [{ id: 'background', label: 'Foreground to Background' }, { id: 'transparent', label: 'Foreground to Transparent' }], get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v as 'background' | 'transparent'; }) },
+      { kind: 'segment', label: 'Shape', choices: GRADIENT_TYPES, get: () => e.gradientSettings.shape, set: (v) => set(() => { e.gradientSettings.shape = v as GradientType; }) },
+      { kind: 'select', label: 'Colors', choices: GRADIENT_PRESETS.map((p) => ({ id: p.id, label: p.label })), get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v; }) },
       { kind: 'toggle', label: 'Reverse', get: () => e.gradientSettings.reversed, set: (v) => set(() => { e.gradientSettings.reversed = v; }) },
       { kind: 'range', label: 'Opacity', min: 1, max: 100, unit: '%', get: () => Math.round(e.gradientSettings.opacity * 100), set: (v) => set(() => { e.gradientSettings.opacity = v / 100; }) },
     ];

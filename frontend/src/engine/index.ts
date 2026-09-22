@@ -33,6 +33,7 @@ export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
 import { sharpenSample } from './filters-more';
+import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
 import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
@@ -2710,7 +2711,7 @@ export class Engine {
    *  request, or after the preview is switched off, is dropped instead of painted. */
   private previewToken = 0;
   gradient: { project: Project; layerId: ID; target: Target; start: Pt; end: Pt; raster: Raster; local: Mat; surface: Surface } | null = null;
-  gradientSettings: { shape: 'linear' | 'radial'; style: 'background' | 'transparent'; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
+  gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
   shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number } & PathShapeOptions = { kind: 'rectangle', cornerRadius: 0, ...DEFAULT_PATH_SHAPE };
   clipboard: { surface: Surface; x: number; y: number; w: number; h: number; stamp: string } | null = null;
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };
@@ -3230,16 +3231,26 @@ export class Engine {
     const st = this.gradientSettings;
     const tone = (col: RGB): RGB => { const v = Math.round(luminance(col) * 255); return { r: v, g: v, b: v }; };
     const fg = mask ? tone(this.fg) : this.fg, bg = mask ? tone(this.bg) : this.bg;
-    let c0 = rgbCss(fg, 1), c1 = st.style === 'background' ? rgbCss(bg, 1) : rgbCss(fg, 0);
-    if (st.reversed) [c0, c1] = [c1, c0];
+    const stops = resolveStops(presetById(st.style), fg, bg, st.reversed);
     const a = g.start, b = g.end;
     const len = Math.max(0.5, Math.hypot(b.x - a.x, b.y - a.y));
-    const grad = st.shape === 'radial' ? lc.createRadialGradient(a.x, a.y, 0, a.x, a.y, len) : lc.createLinearGradient(a.x, a.y, len > 0.5 ? b.x : a.x + 0.5, b.y);
-    grad.addColorStop(0, c0);
-    grad.addColorStop(1, c1);
-    lc.fillStyle = grad;
     const bb = boundsOf([applyMat(local, 0, 0), applyMat(local, w, 0), applyMat(local, w, h), applyMat(local, 0, h)]);
-    lc.fillRect(bb.x - 1, bb.y - 1, bb.w + 2, bb.h + 2);
+    if (st.shape === 'diamond') {
+      const img = new ImageData(w, h);
+      diamondFill(img, (x, y) => applyMat(local, x, y), a, b, stops);
+      lc.save();
+      lc.setTransform(1, 0, 0, 1, 0, 0);
+      lc.putImageData(img, 0, 0);
+      lc.restore();
+    } else {
+      const grad = st.shape === 'radial' ? lc.createRadialGradient(a.x, a.y, 0, a.x, a.y, len)
+        : st.shape === 'angle' ? lc.createConicGradient(Math.atan2(b.y - a.y, b.x - a.x), a.x, a.y)
+        : st.shape === 'reflected' ? lc.createLinearGradient(2 * a.x - b.x, 2 * a.y - b.y, b.x, b.y)
+        : lc.createLinearGradient(a.x, a.y, len > 0.5 ? b.x : a.x + 0.5, b.y);
+      for (const s of st.shape === 'reflected' ? reflectStops(stops) : stops) grad.addColorStop(s.at, rgbCss(s.rgb, s.alpha));
+      lc.fillStyle = grad;
+      lc.fillRect(bb.x - 1, bb.y - 1, bb.w + 2, bb.h + 2);
+    }
     const sel = g.project.selection;
     if (sel) {
       setMat(lc, mul(invert(local), translation(sel.x, sel.y)));
