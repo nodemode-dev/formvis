@@ -1,13 +1,15 @@
 import {
   BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns,
 } from '../engine';
+import { PARAM_ADJUSTMENTS, PARAM_KINDS } from '../engine/adjust-params';
 import type { FilePart } from './api';
 
 export const FORMAT = 'com.nodemode.sonny';
 export const FORMAT_VERSION = 1;
 
 type Json = Record<string, unknown>;
-const KINDS: Record<string, AdjustmentKind> = { 'Hue/Saturation': 'hsv', Levels: 'levels', Curves: 'curves', Exposure: 'exposure', 'Gradient Map': 'gradientMap', Grain: 'grain' };
+const KINDS: Record<string, AdjustmentKind> = { 'Hue/Saturation': 'hsv', Levels: 'levels', Curves: 'curves', Exposure: 'exposure', 'Gradient Map': 'gradientMap', Grain: 'grain', ...Object.fromEntries(PARAM_KINDS.map((k) => [PARAM_ADJUSTMENTS[k].label, k])) };
+const REF_KINDS: ReadonlySet<string> = new Set(['Hue/Saturation', 'Levels', 'Curves', 'Exposure', 'Gradient Map', 'Grain']);
 const KIND_LABELS = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [v, k])) as Record<AdjustmentKind, string>;
 const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -155,8 +157,12 @@ export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: 
       notes.push(`"${name || 'Layer'}" becomes plain pixels; .ref projects have no editable type.`);
       delete out.text;
     }
+    if (r.adjustment && !REF_KINDS.has(String(obj(r.adjustment).kind))) {
+      notes.push(`"${name || 'Layer'}" is a ${String(obj(r.adjustment).kind)} layer, which .ref projects cannot hold; it is left out.`);
+      return null;
+    }
     return out;
-  });
+  }).filter((x): x is Json => x !== null);
   const res = num(manifest.resolution, 72);
   const out: Json = { ...manifest, format: 'com.reference.project', version: 7, documentID: asUuid(manifest.documentID, ids) ?? uid().toUpperCase(), resolution: Math.min(9600, Math.max(1, res)), layers };
   if (manifest.activeLayerID) out.activeLayerID = asUuid(manifest.activeLayerID, ids);

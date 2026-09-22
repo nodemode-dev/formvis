@@ -4,6 +4,7 @@ import {
   type AdjustmentKind, type ColorRange, type Engine, type HsvSettings, type ID, type Kernel,
 } from '../../engine';
 import { bandCentered, bandExclude, bandHandles, bandInclude, bandSetHandle, bandWeight, hsvAdjust, hueResponse } from '../../engine/adjust';
+import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramKernel, paramValues, type ParamKind } from '../../engine/adjust-params';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { toast } from '../toast';
@@ -96,6 +97,7 @@ export class AdjustPanel extends Dialog {
     this.sections.set('exposure', this.buildExposure());
     this.sections.set('gradientMap', this.buildGradientMap());
     this.sections.set('grain', this.buildGrain());
+    for (const k of PARAM_KINDS) this.sections.set(k, this.buildParams(k));
     for (const s of this.sections.values()) { s.node.hidden = true; this.body.appendChild(s.node); }
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => this.commit());
@@ -139,6 +141,7 @@ export class AdjustPanel extends Dialog {
     if (this.kind === 'exposure') { const e = obj(d.exposureSettings); d.exposureSettings = { exposure: num(e.exposure, 0), offset: num(e.offset, 0), gamma: num(e.gamma, 1) }; }
     if (this.kind === 'gradientMap') { const g = obj(d.gradientMapSettings); d.gradientMapSettings = { shadows: g.shadows ?? { red: 0, green: 0, blue: 0 }, highlights: g.highlights ?? { red: 1, green: 1, blue: 1 }, reversed: g.reversed === true }; }
     if (this.kind === 'grain') { const g = grainFromData(d); d.grainSettings = { amount: g.amount, size: g.size, roughness: g.roughness, seed: g.seed }; }
+    if (isParamKind(this.kind)) d.params = paramValues(this.kind, d.params);
     this.hsv = hsvFromData(d);
     this.setTitle(this.mode === 'layer' ? `${ADJUSTMENT_LABELS[this.kind]} Layer` : ADJUSTMENT_LABELS[this.kind]);
     for (const [k, s] of this.sections) setHidden(s.node, k !== this.kind);
@@ -307,6 +310,7 @@ export class AdjustPanel extends Dialog {
       case 'gradientMap': return gradientMapKernel(d.gradientMapSettings);
       case 'hsv': return hsvKernel(this.hsv);
       case 'grain': return grainKernel(grainFromData(d));
+      default: return isParamKind(this.kind) ? paramKernel(this.kind, d.params) : null;
     }
   }
 
@@ -594,5 +598,24 @@ export class AdjustPanel extends Dialog {
     reseed.addEventListener('click', () => { gr().seed = randomSeed(); this.changed(); });
     node.append(amount.el, size.el, rough.el, reseed);
     return { node, sync: () => { amount.set(gr().amount); size.set(gr().size); rough.set(gr().roughness); } };
+  }
+
+  /** A section from a parametric adjustment's control list. Every row exists from the start; rows of other groups
+   *  (Color Balance's tones, Channel Mixer's outputs, Selective Color's colours) are only hidden, never rebuilt. */
+  private buildParams(kind: ParamKind): Section {
+    const node = el('<div class="cv-panel-section"></div>'), spec = PARAM_ADJUSTMENTS[kind];
+    const pv = (): Json => obj(this.data.params);
+    const put = (key: string, v: unknown): void => { this.data.params = { ...pv(), [key]: v }; this.changed(); if (key === spec.groupBy) this.sections.get(kind)?.sync(); };
+    const toHex = (c: unknown): string => { const o = obj(c); return hexOf({ r: num(o.r, 0), g: num(o.g, 0), b: num(o.b, 0) }); };
+    const rows = spec.params.map((s) => {
+      if (s.kind === 'range') { const r = sliderRow(s.label, s.min, s.max, s.step, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(num(pv()[s.key], s.def)) }; }
+      if (s.kind === 'check') { const r = checkRow(s.label, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(pv()[s.key] === true) }; }
+      if (s.kind === 'select') { const r = selectRow(s.label, s.options, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(String(pv()[s.key] ?? s.def)) }; }
+      const r = colorRow(s.label, (hex) => put(s.key, { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) }));
+      return { s, el: r.el, set: () => r.set(toHex(pv()[s.key])) };
+    });
+    if (!rows.length) node.appendChild(el('<p class="cv-note">No settings: the layer inverts the colours beneath it.</p>'));
+    for (const r of rows) node.appendChild(r.el);
+    return { node, sync: () => { const g = spec.groupBy ? String(pv()[spec.groupBy]) : null; for (const r of rows) { r.set(); setHidden(r.el, !!r.s.group && r.s.group !== g); } } };
   }
 }

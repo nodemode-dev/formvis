@@ -1,4 +1,5 @@
 import { clamp, type AdjustmentKind } from './types';
+import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramValues, type ParamKind } from './adjust-params';
 import type { Kernel, KernelContext } from './kernels';
 
 /** Hue/Saturation and Grain adjustment layers, written for sonny. Hue/Saturation works in HSL: seven colour
@@ -10,8 +11,9 @@ import type { Kernel, KernelContext } from './kernels';
 
 export const ADJUSTMENT_LABELS: Record<AdjustmentKind, string> = {
   hsv: 'Hue/Saturation', levels: 'Levels', curves: 'Curves', exposure: 'Exposure', gradientMap: 'Gradient Map', grain: 'Grain',
+  ...(Object.fromEntries(PARAM_KINDS.map((k) => [k, PARAM_ADJUSTMENTS[k].label])) as Record<ParamKind, string>),
 };
-export const ADJUSTMENT_KINDS: AdjustmentKind[] = ['hsv', 'levels', 'curves', 'exposure', 'gradientMap', 'grain'];
+export const ADJUSTMENT_KINDS: AdjustmentKind[] = ['hsv', 'levels', 'curves', 'exposure', 'gradientMap', 'grain', ...PARAM_KINDS];
 
 export const COLOR_RANGES = ['Master', 'Reds', 'Yellows', 'Greens', 'Cyans', 'Blues', 'Magentas'] as const;
 export type ColorRange = (typeof COLOR_RANGES)[number];
@@ -301,5 +303,6 @@ export function defaultAdjustmentData(kind: AdjustmentKind): Json {
   else if (kind === 'exposure') data.exposureSettings = { exposure: 0, offset: 0, gamma: 1 };
   else if (kind === 'gradientMap') data.gradientMapSettings = { shadows: { red: 0, green: 0, blue: 0 }, highlights: { red: 1, green: 1, blue: 1 }, reversed: false };
   else if (kind === 'grain') data.grainSettings = { amount: 25, size: 1.5, roughness: 50, seed: randomSeed() };
+  else if (isParamKind(kind)) data.params = paramValues(kind, {});
   return data;
 }

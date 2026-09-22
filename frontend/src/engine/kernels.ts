@@ -1,4 +1,5 @@
 import { clamp, type Adjustment } from './types';
+import { isParamKind, paramKernel } from './adjust-params';
 
 /** Pixel kernels for adjustment layers and the Magic Wand, written for sonny from standard methods: Levels as a
  *  clipped power curve between black and white points, Curves as monotone piecewise-cubic interpolation (Fritsch
@@ -138,6 +139,7 @@ export function adjustmentKernel(adj: Adjustment | null): Kernel | null {
   if (adj.kind === 'curves') return curvesKernel(adj.data.curves);
   if (adj.kind === 'exposure') return exposureKernel(adj.data.exposureSettings);
   if (adj.kind === 'gradientMap') return gradientMapKernel(adj.data.gradientMapSettings);
+  if (isParamKind(adj.kind)) return paramKernel(adj.kind, adj.data.params);
   return null;
 }
 

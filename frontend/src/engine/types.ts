@@ -37,7 +37,7 @@ export function samplingFromLabel(label: unknown): Sampling { return label === '
 
 export interface Transform { x: number; y: number; w: number; h: number; rotation: number; flipX: boolean; flipY: boolean; sampling: Sampling }
 export interface Mask { raster: Raster | null; enabled: boolean; linked: boolean; placement: Transform | null }
-export type AdjustmentKind = 'hsv' | 'levels' | 'curves' | 'exposure' | 'gradientMap' | 'grain';
+export type AdjustmentKind = 'hsv' | 'levels' | 'curves' | 'exposure' | 'gradientMap' | 'grain' | import('./adjust-params').ParamKind;
 export interface Adjustment { kind: AdjustmentKind; data: Record<string, unknown> }
 export interface Layer {
   readonly id: ID;
