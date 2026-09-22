@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.72.0 · 2026-09-22
+
+### Added
+
+- Clone Stamp source transforms: Source scale, Source angle, Flip horizontal and Flip vertical, with the brush preview showing the result.
+- 4 more browser tests: 82 in all.
+
 ## 0.71.0 · 2026-09-22
 
 ### Added

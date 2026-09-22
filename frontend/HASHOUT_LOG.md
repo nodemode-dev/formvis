@@ -2633,6 +2633,17 @@ let hover: Pt | null = null;
   overlay(ctx, g) {
     drawBrushCursor(ctx, g, hover);
 ```
+### src/extensions/tools/clone.ts and src/engine/index.ts · Clone Source transforms · _v0.72.0
+
+Options for Source scale, Source angle, Flip horizontal and Flip vertical. In the engine, `retouch` holds them; `cloneTransform(pivot)` builds the matrix about the sample point; `beginRetouchStroke` draws the Clone Stamp's source through it; `clonePreview` shows it and keys its cache on it. The Healing Brush is left untransformed. Removed from `engine/index.ts` (nothing from `clone.ts`):
+
+```ts
+import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify' } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur' };
+    const key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, this.retouch.cloneSampleAll, l.id, p.history.revision].join('|');
+    const s = createSurface(side, side), c = ctxOf(s), per = side / d;
+    const view = mul(scaling(per, per), translation(d / 2 - sp.x, d / 2 - sp.y));
+```
 
 ## src/extensions/tools/crop.ts
 
