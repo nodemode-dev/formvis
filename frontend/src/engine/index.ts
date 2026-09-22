@@ -33,6 +33,7 @@ export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
 import { sharpenSample } from './filters-more';
+import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
@@ -988,6 +989,22 @@ export class Engine {
     let n = 1;
     while (p.doc.layers.some((l) => l.name === `Shape ${n}`)) n++;
     this.insertRasterLayer(r.raster, `Shape ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'New Shape Layer');
+  }
+
+  /** The Shape tool's polygon, star, line, arrow and heart: a new vector layer filled in the foreground colour. A box
+   *  (`a` and `b` as corners) fits polygons, stars and hearts; lines and arrows run from `a` to `b`. */
+  createPathShape(a: Pt, b: Pt): void {
+    const p = this.current, st = this.shapeSettings, kind = st.kind;
+    if (!p || kind === 'rectangle' || kind === 'ellipse') return;
+    const line = kind === 'line' || kind === 'arrow';
+    if (line ? Math.hypot(b.x - a.x, b.y - a.y) < 2 : Math.abs(b.x - a.x) < 2 || Math.abs(b.y - a.y) < 2) return;
+    const path = line ? linePath(kind, a, b, st) : boxedShapePath(kind, { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }, st);
+    const look: ShapeStyle = { fill: { ...this.fg }, stroke: null }, r = this.renderShape(path, look);
+    if (!r) return;
+    const name = { polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart' }[kind];
+    let n = 1;
+    while (p.doc.layers.some((l) => l.name === `${name} ${n}`)) n++;
+    this.insertRasterLayer(r.raster, `${name} ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: null, origin: { x: r.x, y: r.y } } }, `New ${name}`);
   }
 
   /** Layer > Shape Color from Foreground: the active shape layer refilled in the foreground colour. */
@@ -2681,7 +2698,7 @@ export class Engine {
   private previewToken = 0;
   gradient: { project: Project; layerId: ID; target: Target; start: Pt; end: Pt; raster: Raster; local: Mat; surface: Surface } | null = null;
   gradientSettings: { shape: 'linear' | 'radial'; style: 'background' | 'transparent'; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
-  shapeSettings: { kind: 'rectangle' | 'ellipse'; cornerRadius: number } = { kind: 'rectangle', cornerRadius: 0 };
+  shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number } & PathShapeOptions = { kind: 'rectangle', cornerRadius: 0, ...DEFAULT_PATH_SHAPE };
   clipboard: { surface: Surface; x: number; y: number; w: number; h: number; stamp: string } | null = null;
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };
 
