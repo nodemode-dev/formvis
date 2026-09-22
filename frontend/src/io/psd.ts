@@ -14,6 +14,8 @@ const TO_PSD: Record<BlendMode, PsdBlend> = {
   normal: 'normal', darken: 'darken', multiply: 'multiply', 'color-burn': 'color burn', lighten: 'lighten', screen: 'screen',
   'color-dodge': 'color dodge', 'linear-dodge': 'linear dodge', overlay: 'overlay', 'soft-light': 'soft light', 'hard-light': 'hard light',
   difference: 'difference', exclusion: 'exclusion', hue: 'hue', saturation: 'saturation', color: 'color', luminosity: 'luminosity',
+  dissolve: 'dissolve', 'linear-burn': 'linear burn', 'darker-color': 'darker color', 'lighter-color': 'lighter color', 'vivid-light': 'vivid light',
+  'linear-light': 'linear light', 'pin-light': 'pin light', 'hard-mix': 'hard mix', subtract: 'subtract', divide: 'divide',
 };
 const FROM_PSD = new Map<PsdBlend, BlendMode>(Object.entries(TO_PSD).map(([k, v]) => [v, k as BlendMode]));
 

@@ -8,23 +8,26 @@ export interface RGB { r: number; g: number; b: number }
 export type BlendMode =
   | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'difference'
   | 'color-dodge' | 'color-burn' | 'hue' | 'saturation' | 'color' | 'luminosity'
-  | 'linear-dodge' | 'soft-light' | 'hard-light' | 'exclusion';
+  | 'linear-dodge' | 'soft-light' | 'hard-light' | 'exclusion'
+  | 'dissolve' | 'linear-burn' | 'darker-color' | 'lighter-color' | 'vivid-light' | 'linear-light' | 'pin-light' | 'hard-mix' | 'subtract' | 'divide';
 
-/** Photoshop's menu order, grouped darken, lighten, contrast, inversion, component; the modes the browser canvas
- *  composites natively. Linear Dodge (Add) is the canvas's `lighter`. */
+/** Photoshop's menu order, all 27 of its layer modes, grouped darken, lighten, contrast, inversion, component.
+ *  Linear Dodge (Add) is the canvas's `lighter`; the ten the canvas lacks are blended per pixel (`blend.ts`). */
 export const BLEND_MODES: ReadonlyArray<{ id: BlendMode; label: string }> = [
-  { id: 'normal', label: 'Normal' },
-  { id: 'darken', label: 'Darken' }, { id: 'multiply', label: 'Multiply' }, { id: 'color-burn', label: 'Color Burn' },
-  { id: 'lighten', label: 'Lighten' }, { id: 'screen', label: 'Screen' }, { id: 'color-dodge', label: 'Color Dodge' }, { id: 'linear-dodge', label: 'Linear Dodge (Add)' },
-  { id: 'overlay', label: 'Overlay' }, { id: 'soft-light', label: 'Soft Light' }, { id: 'hard-light', label: 'Hard Light' },
-  { id: 'difference', label: 'Difference' }, { id: 'exclusion', label: 'Exclusion' },
+  { id: 'normal', label: 'Normal' }, { id: 'dissolve', label: 'Dissolve' },
+  { id: 'darken', label: 'Darken' }, { id: 'multiply', label: 'Multiply' }, { id: 'color-burn', label: 'Color Burn' }, { id: 'linear-burn', label: 'Linear Burn' }, { id: 'darker-color', label: 'Darker Color' },
+  { id: 'lighten', label: 'Lighten' }, { id: 'screen', label: 'Screen' }, { id: 'color-dodge', label: 'Color Dodge' }, { id: 'linear-dodge', label: 'Linear Dodge (Add)' }, { id: 'lighter-color', label: 'Lighter Color' },
+  { id: 'overlay', label: 'Overlay' }, { id: 'soft-light', label: 'Soft Light' }, { id: 'hard-light', label: 'Hard Light' }, { id: 'vivid-light', label: 'Vivid Light' }, { id: 'linear-light', label: 'Linear Light' }, { id: 'pin-light', label: 'Pin Light' }, { id: 'hard-mix', label: 'Hard Mix' },
+  { id: 'difference', label: 'Difference' }, { id: 'exclusion', label: 'Exclusion' }, { id: 'subtract', label: 'Subtract' }, { id: 'divide', label: 'Divide' },
   { id: 'hue', label: 'Hue' }, { id: 'saturation', label: 'Saturation' }, { id: 'color', label: 'Color' }, { id: 'luminosity', label: 'Luminosity' },
 ];
 
 /** The modes a `.ref` project can hold; others export as Normal. */
 export const REF_BLEND_MODES: ReadonlySet<BlendMode> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'color-burn', 'hue', 'saturation', 'color', 'luminosity']);
 
-export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return mode === 'normal' ? 'source-over' : mode === 'linear-dodge' ? 'lighter' : mode; }
+const CANVAS_BLENDS: ReadonlySet<BlendMode> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'color-burn', 'hue', 'saturation', 'color', 'luminosity', 'linear-dodge', 'soft-light', 'hard-light', 'exclusion']);
+export const canvasBlend = (mode: BlendMode): boolean => CANVAS_BLENDS.has(mode);
+export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return mode === 'normal' || !CANVAS_BLENDS.has(mode) ? 'source-over' : mode === 'linear-dodge' ? 'lighter' : (mode as GlobalCompositeOperation); }
 export function blendFromLabel(label: unknown): BlendMode { return BLEND_MODES.find((b) => b.label === label)?.id ?? 'normal'; }
 export function blendLabel(mode: BlendMode): string { return BLEND_MODES.find((b) => b.id === mode)?.label ?? 'Normal'; }
 

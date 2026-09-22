@@ -1,6 +1,7 @@
 import { resizeMask } from './filters';
+import { blendPixels } from './blend';
 import { patternById } from './patterns';
-import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
+import { canvasBlend, compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
 import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
 import { ancestors, hierarchy } from './tree';
@@ -136,14 +137,14 @@ export class Renderer {
       const src = ov?.source ?? layer.raster?.canvas;
       if (!src || !layer.raster) continue;
       const m = mul(job.view, placement(t, src.width, src.height));
-      const op = compositeOp(ov?.blend ?? layer.blend);
+      const mode = ov?.blend ?? layer.blend, op = compositeOp(mode), pixelBlend = !canvasBlend(mode);
       const fx = ov && 'effects' in ov ? ov.effects ?? null : layer.effects ?? null, styled = effectsActive(fx);
       // A styled layer's effects come from the per-layer cache at document resolution when they can, so any view and
       // any repainted region shows them whole; strokes and transforms in progress, clipping and folder masks are
       // drawn per render instead.
       const parts = styled && !base && !folders.length && !ov?.source && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height) : null;
       if (parts) this.drawParts(ctx, parts, job.view, opacity, false);
-      if (!own && !folders.length && !base && (!styled || parts)) {
+      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts)) {
         this.draw(ctx, src, m, t.sampling, opacity, op, job.quality);
         if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
         continue;
@@ -165,15 +166,28 @@ export class Renderer {
       }
       const placed = styled && !parts ? boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]) : null;
       if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'below');
-      ctx.save();
-      ctx.setTransform(1, 0, 0, 1, 0, 0);
-      ctx.globalAlpha = opacity;
-      ctx.globalCompositeOperation = op;
-      ctx.drawImage(a.s, 0, 0);
-      ctx.restore();
+      if (pixelBlend) this.pixelBlend(ctx, a, mode, opacity, m, src, job.view, W, H);
+      else {
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.globalAlpha = opacity;
+        ctx.globalCompositeOperation = op;
+        ctx.drawImage(a.s, 0, 0);
+        ctx.restore();
+      }
       if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'above');
       if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
     }
+  }
+
+  /** A layer in a mode the canvas lacks: its prepared slot is blended onto the target per pixel, within its placed
+   *  bounds only. */
+  private pixelBlend(ctx: Ctx2D, a: Slot, mode: BlendMode, opacity: number, m: Mat, src: Surface, view: Mat, W: number, H: number): void {
+    const box = intersectRect(integral(boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)])), { x: 0, y: 0, w: W, h: H });
+    if (!box) return;
+    const dst = ctx.getImageData(box.x, box.y, box.w, box.h), top = a.c.getImageData(box.x, box.y, box.w, box.h), inv = invert(view);
+    blendPixels(dst.data, top.data, mode, opacity, (i) => { const p = applyMat(inv, box.x + (i % box.w) + 0.5, box.y + Math.floor(i / box.w) + 0.5); return [Math.floor(p.x), Math.floor(p.y)]; });
+    ctx.putImageData(dst, box.x, box.y);
   }
 
   /** Draws effect parts straight onto `ctx` at their target position. */
