@@ -164,12 +164,15 @@ export class AmountDialog extends Dialog {
     enterTo(this.amount.input, () => this.apply());
   }
 
-  show(expand: boolean): void {
+  private modify: 'feather' | 'border' | 'smooth' | null = null;
+
+  show(expand: boolean, modify: 'feather' | 'border' | 'smooth' | null = null): void {
     if (this.isOpen) return;
     if (!this.engine.current?.selection) { toast('Make a selection first.'); return; }
     this.expand = expand;
-    this.setTitle(expand ? 'Expand Selection' : 'Contract Selection');
-    this.amount.set(expand ? this.engine.selectionAmounts.expand : this.engine.selectionAmounts.contract);
+    this.modify = modify;
+    this.setTitle(modify ? `${modify[0].toUpperCase()}${modify.slice(1)} Selection` : expand ? 'Expand Selection' : 'Contract Selection');
+    this.amount.set(modify ? this.engine.selectionAmounts[modify] : expand ? this.engine.selectionAmounts.expand : this.engine.selectionAmounts.contract);
     this.open(this.amount.input);
     this.amount.input.select();
   }
@@ -177,6 +180,8 @@ export class AmountDialog extends Dialog {
   private apply(): void {
     const n = clamp(Math.round(Number(this.amount.input.value)), 1, 500);
     if (!Number.isFinite(n)) return;
+    const m = this.modify;
+    if (m) { this.engine.selectionAmounts[m] = n; this.close(); this.engine.modifySelection(m, n); return; }
     if (this.expand) this.engine.selectionAmounts.expand = n;
     else this.engine.selectionAmounts.contract = n;
     this.close();

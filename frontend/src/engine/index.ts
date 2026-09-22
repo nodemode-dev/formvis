@@ -2535,6 +2535,86 @@ export class Engine {
     });
   }
 
+  /** The selected layers and folders as units to align, each with the document bounds of its visible pixels. */
+  private alignItems(p: Project): Array<{ ids: ID[]; box: Rect }> {
+    const map = byId(p.doc);
+    return this.selectedRoots(p).flatMap((root) => {
+      const members = p.doc.layers.filter((l) => !l.isGroup && !!l.raster && (l.id === root || isDescendant(map, l.id, root)));
+      let box: Rect | null = null;
+      for (const l of members) {
+        const r = l.raster as Raster, vb = visibleBounds(r);
+        if (!vb) continue;
+        const m = placement(l.transform, r.width, r.height);
+        const b = boundsOf([applyMat(m, vb.x, vb.y), applyMat(m, vb.x + vb.w, vb.y), applyMat(m, vb.x + vb.w, vb.y + vb.h), applyMat(m, vb.x, vb.y + vb.h)]);
+        box = box ? unionRect(box, b) : b;
+      }
+      return box ? [{ ids: members.map((l) => l.id), box }] : [];
+    });
+  }
+
+  private shiftItems(name: string, moves: Array<{ ids: ID[]; dx: number; dy: number }>): void {
+    this.edit(name, (p) => {
+      let moved = false;
+      for (const mv of moves) {
+        const dx = Math.round(mv.dx), dy = Math.round(mv.dy);
+        if (!dx && !dy) continue;
+        for (const id of mv.ids) {
+          const l = p.layer(id);
+          if (!l) continue;
+          const t = { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy };
+          p.updateLayer(id, { transform: t, mask: followMask(l, t) });
+          moved = true;
+        }
+      }
+      return moved;
+    });
+  }
+
+  /** Layer > Align: several layers or folders align to the bounds of them all; one aligns to the selection, or to
+   *  the canvas when nothing is selected. Visible pixels decide each one's edges, as in Photoshop. */
+  alignLayers(edge: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom'): void {
+    const p = this.current;
+    if (!p || this.stroke) return;
+    this.settle();
+    const items = this.alignItems(p);
+    if (!items.length) { this.notice('Select layers with visible pixels to align.'); return; }
+    const sel = p.selection, ref = items.length > 1 ? items.slice(1).reduce((a, it) => unionRect(a, it.box), items[0].box) : sel ? { x: sel.x, y: sel.y, w: sel.w, h: sel.h } : { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+    const names = { left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges' };
+    this.shiftItems(`Align ${names[edge]}`, items.map(({ ids, box: b }) => ({
+      ids,
+      dx: edge === 'left' ? ref.x - b.x : edge === 'right' ? ref.x + ref.w - b.x - b.w : edge === 'hcenter' ? ref.x + ref.w / 2 - b.x - b.w / 2 : 0,
+      dy: edge === 'top' ? ref.y - b.y : edge === 'bottom' ? ref.y + ref.h - b.y - b.h : edge === 'vcenter' ? ref.y + ref.h / 2 - b.y - b.h / 2 : 0,
+    })));
+  }
+
+  /** Layer > Distribute: three or more layers or folders, the outermost two staying put, spaced so the chosen edges
+   *  or centres fall at equal steps, or so the gaps between them are equal. */
+  distributeLayers(kind: 'left' | 'hcenter' | 'right' | 'top' | 'vcenter' | 'bottom' | 'hspace' | 'vspace'): void {
+    const p = this.current;
+    if (!p || this.stroke) return;
+    this.settle();
+    const items = this.alignItems(p);
+    if (items.length < 3) { this.notice('Select three or more layers with visible pixels to distribute.'); return; }
+    const horizontal = kind === 'left' || kind === 'hcenter' || kind === 'right' || kind === 'hspace';
+    const lo = (b: Rect): number => (horizontal ? b.x : b.y), size = (b: Rect): number => (horizontal ? b.w : b.h);
+    const at = (b: Rect): number => (kind === 'left' || kind === 'top' || kind.endsWith('space') ? lo(b) : kind === 'right' || kind === 'bottom' ? lo(b) + size(b) : lo(b) + size(b) / 2);
+    const sorted = [...items].sort((a, b) => at(a.box) - at(b.box)), n = sorted.length;
+    const want: number[] = [];
+    if (kind.endsWith('space')) {
+      const span = lo(sorted[n - 1].box) + size(sorted[n - 1].box) - lo(sorted[0].box), gap = (span - sorted.reduce((s, it) => s + size(it.box), 0)) / (n - 1);
+      let cur = lo(sorted[0].box);
+      for (const it of sorted) { want.push(cur); cur += size(it.box) + gap; }
+    } else {
+      const a = at(sorted[0].box), b = at(sorted[n - 1].box);
+      for (let i = 0; i < n; i++) want.push(a + ((b - a) * i) / (n - 1));
+    }
+    const label = { left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges', hspace: 'Horizontal Spacing', vspace: 'Vertical Spacing' }[kind];
+    this.shiftItems(`Distribute ${label}`, sorted.map((it, i) => {
+      const d = want[i] - (kind.endsWith('space') ? lo(it.box) : at(it.box));
+      return { ids: it.ids, dx: horizontal ? d : 0, dy: horizontal ? 0 : d };
+    }));
+  }
+
   layerAt(pt: Pt): ID | null {
     const p = this.current;
     if (!p) return null;
@@ -2602,7 +2682,7 @@ export class Engine {
   gradientSettings: { shape: 'linear' | 'radial'; style: 'background' | 'transparent'; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
   shapeSettings: { kind: 'rectangle' | 'ellipse'; cornerRadius: number } = { kind: 'rectangle', cornerRadius: 0 };
   clipboard: { surface: Surface; x: number; y: number; w: number; h: number; stamp: string } | null = null;
-  selectionAmounts = { expand: 1, contract: 1 };
+  selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };
 
   beginLive(name: string): boolean {
     const p = this.current;
@@ -2943,6 +3023,43 @@ export class Engine {
     for (let j = 0; j < region.h; j++) for (let i = 0; i < region.w; i++) src[j * region.w + i] = sel.valueAt(region.x + i, region.y + j);
     const out = resizeMask(src, region.w, region.h, delta);
     this.applySelection(SelectionMask.cropped(region.x, region.y, region.w, region.h, out), 'replace', delta > 0 ? 'Expand Selection' : 'Contract Selection');
+  }
+
+  /** Select > Modify. Feather blurs the selection's edge with a Gaussian of half the radius (so the edge fades over
+   *  about the radius each way); Border keeps a band `amount` wide centred on the edge; Smooth rounds off corners
+   *  and specks by a majority vote over a square of the radius. */
+  modifySelection(kind: 'feather' | 'border' | 'smooth', amount: number): void {
+    const p = this.current, sel = p?.selection;
+    if (!p || !sel || !(amount > 0) || amount > 500) return;
+    const pad = Math.ceil(kind === 'feather' ? amount * 1.5 : amount) + 2;
+    const region = intersectRect({ x: sel.x - pad, y: sel.y - pad, w: sel.w + 2 * pad, h: sel.h + 2 * pad }, { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
+    if (!region) return;
+    const { w, h } = region, src = new Uint8Array(w * h);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) src[j * w + i] = sel.valueAt(region.x + i, region.y + j);
+    let out: Uint8Array;
+    if (kind === 'feather') {
+      const img = new ImageData(w, h);
+      for (let i = 0; i < src.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 255; img.data[i * 4 + 3] = src[i]; }
+      const b = gaussianBlur(img, amount / 2);
+      out = new Uint8Array(w * h);
+      for (let i = 0; i < out.length; i++) out[i] = b.data[i * 4 + 3];
+    } else if (kind === 'border') {
+      const grown = resizeMask(src, w, h, amount / 2), shrunk = resizeMask(src, w, h, -amount / 2);
+      out = new Uint8Array(w * h);
+      for (let i = 0; i < out.length; i++) out[i] = Math.max(0, grown[i] - shrunk[i]);
+    } else {
+      const r = Math.round(amount), S = new Float64Array((w + 1) * (h + 1));
+      for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) S[(j + 1) * (w + 1) + i + 1] = src[j * w + i] / 255 + S[j * (w + 1) + i + 1] + S[(j + 1) * (w + 1) + i] - S[j * (w + 1) + i];
+      out = new Uint8Array(w * h);
+      for (let j = 0; j < h; j++) {
+        for (let i = 0; i < w; i++) {
+          const x0 = Math.max(0, i - r), x1 = Math.min(w, i + r + 1), y0 = Math.max(0, j - r), y1 = Math.min(h, j + r + 1);
+          const s = S[y1 * (w + 1) + x1] - S[y0 * (w + 1) + x1] - S[y1 * (w + 1) + x0] + S[y0 * (w + 1) + x0];
+          out[j * w + i] = s * 2 >= (x1 - x0) * (y1 - y0) ? 255 : 0;
+        }
+      }
+    }
+    this.applySelection(SelectionMask.cropped(region.x, region.y, w, h, out), 'replace', kind === 'feather' ? 'Feather Selection' : kind === 'border' ? 'Border Selection' : 'Smooth Selection');
   }
 
   selectMaskBlack(): void {
