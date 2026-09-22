@@ -32,6 +32,7 @@ export type { FilterSettings } from './filter-jobs';
 export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
+import { sharpenSample } from './filters-more';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
@@ -3277,7 +3278,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'smudge' | 'liquify' } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur' };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify' } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur' };
   cloneSource: Pt | null = null;
   cloneOffset: Pt | null = null;
   private warpState: { project: Project; layerId: ID; stroke: WarpStroke; surface: Surface; image: ImageData } | null = null;
@@ -3372,7 +3373,7 @@ export class Engine {
     return s;
   }
 
-  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur' | 'healBrush' | 'dodge' | 'burn' | 'sponge', pt: Pt, shift: boolean): boolean {
+  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge', pt: Pt, shift: boolean): boolean {
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
@@ -3390,8 +3391,12 @@ export class Engine {
     } else if (kind === 'blur') {
       const sigma = clamp(this.brush.diameter / 10, 1.5, 30);
       texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };
+    } else if (kind === 'sharpen') {
+      const src = this.layerSample(p, l0), W = src.width, H = src.height, out = createSurface(W, H);
+      ctxOf(out).putImageData(sharpenSample(ctxOf(src).getImageData(0, 0, W, H), clamp(this.brush.diameter / 40, 0.8, 4)), 0, 0);
+      texture = { surface: out, dx: 0, dy: 0 };
     } else if (kind === 'dodge' || kind === 'burn' || kind === 'sponge') texture = { surface: this.toned(this.layerSample(p, l0), kind), dx: 0, dy: 0 };
-    p.history.begin({ heal: 'Spot Healing', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }[kind], p.snapshot());
+    p.history.begin({ heal: 'Spot Healing', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     const style = kind === 'heal' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };

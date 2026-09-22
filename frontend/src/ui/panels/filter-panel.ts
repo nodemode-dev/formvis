@@ -3,12 +3,17 @@ import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { toast } from '../toast';
 import { checkRow, selectRow, sliderRow, type Row } from './controls';
+import { lensBlur, lensBlurMargin, smartSharpen, smartSharpenMargin, type SharpenRemove } from '../../engine/filters-more';
 
-export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop';
-export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop' };
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen';
+export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen' };
 
 export function defaultFilterSettings() {
-  return { radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState() };
+  return {
+    radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState(),
+    lensRadius: 15, lensBrightness: 0, lensThreshold: 255,
+    smart: { amount: 200, radius: 1, noise: 10, remove: 'lens' as SharpenRemove, angle: 0, shadows: 0, highlights: 0 },
+  };
 }
 export type FilterPanelSettings = ReturnType<typeof defaultFilterSettings>;
 
@@ -22,13 +27,15 @@ export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number
       case 'lensCorrection': return lensDistort(src, s.distortion);
       case 'unsharpMask': return unsharpMask(src, s.usmAmount, s.usmRadius * scale, s.threshold);
       case 'develop': return developImage(src, s.develop, scale);
+      case 'lensBlur': return lensBlur(src, s.lensRadius * scale, s.lensBrightness, s.lensThreshold);
+      case 'smartSharpen': return smartSharpen(src, s.smart, scale);
     default: return src;
   }
 }
 
 /** How far a filter's effect reaches past its input, in pixels. */
 export function filterMargin(kind: FilterKind, s: FilterPanelSettings): number {
-  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : 0;
+  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : kind === 'lensBlur' ? lensBlurMargin(s.lensRadius) : kind === 'smartSharpen' ? smartSharpenMargin(s.smart) : 0;
 }
 
 export class FilterPanel extends Dialog {
@@ -63,6 +70,21 @@ export class FilterPanel extends Dialog {
     const usmRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 250 });
     const threshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); });
     this.section('unsharpMask', [usmAmount.el, usmRadius.el, threshold.el], () => { usmAmount.set(s.usmAmount); usmRadius.set(s.usmRadius); threshold.set(s.threshold); });
+    const lensR = sliderRow('Radius (px)', 1, 100, 1, (v) => { s.lensRadius = v; this.schedule(); });
+    const lensB = sliderRow('Specular brightness', 0, 100, 1, (v) => { s.lensBrightness = v; this.schedule(); });
+    const lensT = sliderRow('Specular threshold', 0, 255, 1, (v) => { s.lensThreshold = v; this.schedule(); });
+    this.section('lensBlur', [lensR.el, lensB.el, lensT.el, el('<p class="cv-note">An iris-shaped blur in linear light; pixels at or above the threshold bloom into bright discs.</p>')], () => { lensR.set(s.lensRadius); lensB.set(s.lensBrightness); lensT.set(s.lensThreshold); });
+    const ss = s.smart;
+    const ssAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { ss.amount = v; this.schedule(); });
+    const ssRadius = sliderRow('Radius (px)', 0.1, 64, 0.1, (v) => { ss.radius = v; this.schedule(); });
+    const ssNoise = sliderRow('Reduce Noise (%)', 0, 100, 1, (v) => { ss.noise = v; this.schedule(); });
+    const ssAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { ss.angle = v; this.schedule(); });
+    const ssRemove = selectRow('Remove', [['gaussian', 'Gaussian Blur'], ['lens', 'Lens Blur'], ['motion', 'Motion Blur']], (v) => { ss.remove = v as SharpenRemove; setHidden(ssAngle.el, ss.remove !== 'motion'); this.schedule(); });
+    const ssShadows = sliderRow('Shadows fade (%)', 0, 100, 1, (v) => { ss.shadows = v; this.schedule(); });
+    const ssHighlights = sliderRow('Highlights fade (%)', 0, 100, 1, (v) => { ss.highlights = v; this.schedule(); });
+    this.section('smartSharpen', [ssAmount.el, ssRadius.el, ssNoise.el, ssRemove.el, ssAngle.el, ssShadows.el, ssHighlights.el], () => {
+      ssAmount.set(ss.amount); ssRadius.set(ss.radius); ssNoise.set(ss.noise); ssRemove.set(ss.remove); ssAngle.set(ss.angle); setHidden(ssAngle.el, ss.remove !== 'motion'); ssShadows.set(ss.shadows); ssHighlights.set(ss.highlights);
+    });
     // Develop: Camera Raw-style controls over formnodal's develop core, grouped as the develop studio groups them.
     const dev = s.develop, t = dev.tone, dt = dev.detail;
     const devRows: Array<[string, number, number, number, () => number, (v: number) => void] | string> = [
