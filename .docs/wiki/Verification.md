@@ -1,5 +1,17 @@
 # Verification
 
+## Automated tests
+
+`./sonny test` runs three suites and exits non-zero if any fails; name one to run it alone.
+
+- `unit`: engine modules in Node through vitest (`frontend/tests`), no canvas or browser.
+- `backend`: the engine service through FastAPI's test client with a throwaway data folder (`backend/tests`).
+- `e2e`: Chromium through Playwright against the dev build (`e2e/`), which it starts on 5190 when nothing is running; install with `pip install pytest playwright` and `python -m playwright install chromium`.
+
+CI runs all three on every push and pull request. A change that adds behaviour adds its tests in the same commit; the throttled run below still applies to anything touching the DOM, since tests do not catch flashes.
+
+## Throttled browser run
+
 Every change that touches the DOM passes a throttled browser run before it lands, because flashes and layout jumps are transients that a fast machine hides.
 
 1. Build the frontend and serve it from the engine (`./sonny serve`), cache disabled.

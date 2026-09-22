@@ -2,6 +2,12 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## tests/
+
+### tests/__init__.py, conftest.py, test_api.py · new · _v0.67.0
+
+The backend suite, run by `python -m pytest -q tests` from `backend/`. `conftest.py` points `SONNY_DATA_DIR` at a fresh temporary folder per test and yields a FastAPI `TestClient`, plus `png_bytes` and `manifest` helpers; `test_api.py` covers health, version, capabilities, decode, export naming, the project library and its validation, packaging and the background engine's 501 answer, 9 tests. Nothing was removed.
+
 ## app/routers/generative.py
 
 ### app/routers/generative.py · new · _v0.37.0

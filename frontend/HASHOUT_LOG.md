@@ -2,6 +2,12 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## tests/
+
+### tests/setup.ts, blend.test.ts, adjust-params.test.ts, history.test.ts, geometry-filters.test.ts · new · _v0.67.0
+
+The unit suite, run by `npm test` (vitest in Node). `setup.ts` supplies a minimal `ImageData` and the `px` helper; the four test files cover the blend modes, the parametric adjustments, `History` and the geometry and mask helpers, 31 tests. Tests import engine modules directly and never touch a canvas, so they stay fast and need no browser. Nothing was removed.
+
 ## src/engine/adjust-params.ts
 
 ### src/engine/adjust-params.ts · new · _v0.66.0
@@ -837,6 +843,14 @@ Created in _v0.1.0.
 ### package.json · pinned dependencies and scripts · _v0.1.0
 
 Created in _v0.1.0.
+
+### package.json · test script, vitest · _v0.67.0
+
+`npm test` runs `vitest run`; vitest 5.0.1 pinned as a dev dependency (npm rewrote the lockfile on install). Removed:
+
+```json
+    "vite": "8.3.0"
+```
 
 ## public/favicon.svg
 

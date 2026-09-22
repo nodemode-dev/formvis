@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.67.0 · 2026-09-22
+
+### Added
+
+- Automated tests: 31 unit tests for the engine (vitest), 9 for the engine service (pytest) and 7 in the browser against the dev build (Playwright), 47 in all.
+- `./sonny test` (and `sonny.bat test`) runs all three suites, or `unit`, `backend` or `e2e` alone.
+- CI runs every suite on each push and pull request, the browser tests in their own job.
+
 ## 0.66.0 · 2026-09-22
 
 ### Added
