@@ -3308,7 +3308,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -3476,25 +3476,56 @@ export class Engine {
   }
 
   /** Patch: heals the selected area of the active pixel layer from the area (dx, dy) document pixels away, blended to
-   *  meet the selection's edge, as one undo step. */
+   *  meet the selection's edge, as one undo step. Destination (Photoshop's Patch: Destination) copies the selection
+   *  onto the area it is dragged to instead: the same work on the moved selection with the drag reversed, and the
+   *  selection ends there. Transparent keeps what is under the patch and adds only the source's detail (its high
+   *  pass). Content-Aware heals, then rebuilds a band along the seam by content-aware fill, so the edge is
+   *  synthesized rather than colour-blended. */
   patchSelection(dx: number, dy: number): void {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Make a selection, then drag it onto the area to copy from.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
     if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
-    this.regionEdit('Patch', ({ raster, target, rect }) => {
-      if (target !== 'pixels') return;
-      const p = this.current as Project, l = p.activeLayer as Layer;
-      const cov = this.coverageFor(p, l, target, raster.width, raster.height);
-      if (!cov) return;
-      const toLayer = invert(placement(l.transform, raster.width, raster.height)), a = applyMat(toLayer, 0, 0), b = applyMat(toLayer, dx, dy);
-      const mask = new Uint8Array(raster.width * raster.height);
-      for (let i = 0; i < mask.length; i++) mask[i] = cov[i * 4 + 3];
-      const pm = premultiply(raster.read().data);
-      if (!healFromSource(pm, mask, raster.width, raster.height, 1, Math.round(b.x - a.x), Math.round(b.y - a.y))) return;
-      const out = new ImageData(raster.width, raster.height);
-      unpremultiply(pm, out.data);
-      raster.ctx.putImageData(out, 0, 0, rect.x, rect.y, rect.w, rect.h);
+    const opts = this.retouch, dest = opts.patchFrom === 'destination';
+    this.edit('Patch', (pp) => {
+      const sel = pp.selection as SelectionMask;
+      if (dest) pp.selection = SelectionMask.cropped(sel.x + dx, sel.y + dy, sel.w, sel.h, sel.data);
+      const ddx = dest ? -dx : dx, ddy = dest ? -dy : dy;
+      this.regionEdit('Patch', ({ raster, target, rect }) => {
+        if (target !== 'pixels') return;
+        const p = this.current as Project, l = p.activeLayer as Layer, W = raster.width, H = raster.height;
+        const cov = this.coverageFor(p, l, target, W, H);
+        if (!cov) return;
+        const toLayer = invert(placement(l.transform, W, H)), a = applyMat(toLayer, 0, 0), b = applyMat(toLayer, ddx, ddy);
+        const ox = Math.round(b.x - a.x), oy = Math.round(b.y - a.y);
+        const mask = new Uint8Array(W * H);
+        for (let i = 0; i < mask.length; i++) mask[i] = cov[i * 4 + 3];
+        const orig = raster.read().data, pm = premultiply(orig);
+        if (!healFromSource(pm, mask, W, H, 1, ox, oy)) return;
+        const out = new ImageData(W, H);
+        unpremultiply(pm, out.data);
+        if (opts.patchTransparent) {
+          const src = new ImageData(W, H);
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const sx = Math.min(W - 1, Math.max(0, x + ox)), sy = Math.min(H - 1, Math.max(0, y + oy)); src.data.set(orig.subarray((sy * W + sx) * 4, (sy * W + sx) * 4 + 4), (y * W + x) * 4); }
+          const low = gaussianBlur(src, 4);
+          for (let i = 0; i < mask.length; i++) {
+            const k = mask[i] / 255;
+            for (let ch = 0; ch < 3; ch++) out.data[i * 4 + ch] = Math.round(orig[i * 4 + ch] + k * (src.data[i * 4 + ch] - low.data[i * 4 + ch]));
+            out.data[i * 4 + 3] = orig[i * 4 + 3];
+          }
+        }
+        if (opts.patchMode === 'contentAware') {
+          const band = new Uint8Array(W * H), R = 3;
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const inside = mask[y * W + x] >= 128;
+            let edge = false;
+            for (let j = -R; j <= R && !edge; j++) for (let i = -R; i <= R; i++) { const X = x + i, Y = y + j; if (X >= 0 && Y >= 0 && X < W && Y < H && (mask[Y * W + X] >= 128) !== inside) { edge = true; break; } }
+            if (edge && inside) band[y * W + x] = 255;
+          }
+          contentFill(out.data, band, W, H);
+        }
+        raster.ctx.putImageData(out, 0, 0, rect.x, rect.y, rect.w, rect.h);
+      });
     });
   }
 

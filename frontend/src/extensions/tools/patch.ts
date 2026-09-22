@@ -9,7 +9,15 @@ let drag: { start: Pt; now: Pt } | null = null;
 export const patchTool: Tool = {
   id: 'patch', label: 'Patch', key: 'J', order: 57,
   icon: () => 'patchTool',
-  hint: () => 'Draw around the area to fix, then drag the selection onto the area to copy from · Shift+J cycles the healing tools',
+  hint: (e) => e.retouch.patchFrom === 'destination'
+    ? 'Draw around the area to copy, then drag the selection onto the area it should cover · Shift+J cycles the healing tools'
+    : 'Draw around the area to fix, then drag the selection onto the area to copy from · Shift+J cycles the healing tools',
+  options: (e) => [
+    { kind: 'title', text: 'Patch' },
+    { kind: 'segment', label: 'Patch', choices: [{ id: 'normal', label: 'Normal' }, { id: 'contentAware', label: 'Content-Aware' }], get: () => e.retouch.patchMode, set: (v) => { e.retouch.patchMode = v as 'normal' | 'contentAware'; e.emit('options', null); } },
+    { kind: 'segment', label: 'From', choices: [{ id: 'source', label: 'Source' }, { id: 'destination', label: 'Destination' }], get: () => e.retouch.patchFrom, set: (v) => { e.retouch.patchFrom = v as 'source' | 'destination'; e.emit('options', null); e.emit('tool', null); } },
+    { kind: 'toggle', label: 'Transparent', get: () => e.retouch.patchTransparent, set: (v) => { e.retouch.patchTransparent = v; e.emit('options', null); } },
+  ],
   cursor: (ctx, p) => {
     const sel = ctx.engine.current?.selection;
     return p && sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) > 0 ? 'move' : 'crosshair';
