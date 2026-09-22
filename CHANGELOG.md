@@ -2,6 +2,22 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.66.0 · 2026-09-22
+
+### Added
+
+- All 27 of Photoshop's layer blend modes: Dissolve, Linear Burn, Darker Color, Lighter Color, Vivid Light, Linear Light, Pin Light, Hard Mix, Subtract and Divide join the seventeen, and travel through PSD.
+- Eleven adjustments, as adjustment layers and on the image: Brightness/Contrast, Vibrance, Color Balance, Black & White, Photo Filter, Channel Mixer, Invert, Posterize, Threshold, Selective Color and Develop.
+- Layer > Align (six edges and centres) and Distribute (six, plus horizontal and vertical spacing), measured on visible pixels.
+- Select > Feather (Shift+F6), Border and Smooth.
+- Help > Copy Error Log.
+
+### Changed
+
+- An operation that fails part-way is undone, pixels and layers alike, and named in a notice, instead of leaving a half-applied step.
+- Uncaught errors show one notice and are logged; the app keeps working.
+- Documents with unsaved changes are kept in the browser while you work and offered back after a crash or a closed tab.
+
 ## 0.65.0 · 2026-09-21
 
 ### Added

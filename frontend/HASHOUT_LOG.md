@@ -2,6 +2,30 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/engine/adjust-params.ts
+
+### src/engine/adjust-params.ts · new · _v0.66.0
+
+Eleven adjustments declared as control lists with kernels: Brightness/Contrast, Vibrance, Color Balance, Black & White, Photo Filter, Channel Mixer, Invert, Posterize, Threshold, Selective Color and Develop. Values live in `data.params`, read back clamped by `paramValues`. Rows with a `group` are shown only when the kind's `groupBy` select holds that group. Black & White follows Photoshop's documented hue weighting; Selective Color and Photo Filter are standard approximations, named as such in the build notes. Nothing was removed.
+
+## src/engine/blend.ts
+
+### src/engine/blend.ts · new · _v0.66.0
+
+The ten blend modes Canvas 2D lacks, composited per pixel by the W3C source-over formula; Dissolve on a document-fixed hash pattern. Nothing was removed.
+
+## src/io/recovery.ts
+
+### src/io/recovery.ts · new · _v0.66.0
+
+The IndexedDB store for crash-recovery copies (`sonny-recovery`, store `docs`, keyed by project id). Every call resolves, to null or an empty list when storage is unavailable, so recovery can never break editing. Nothing was removed.
+
+## src/ui/errors.ts
+
+### src/ui/errors.ts · new · _v0.66.0
+
+The global error log: window `error` and `unhandledrejection` become entries and at most one notice every four seconds; `text()` joins them with the engine's rolled-back failures for Help > Copy Error Log. Nothing was removed.
+
 ## src/extensions/tools/quick-select.ts
 
 ### src/extensions/tools/quick-select.ts · new · _v0.65.0
@@ -397,6 +421,9 @@ Live type written as Photoshop point type and read back as editable type. Remove
       if (pl.text) notes.push(`"${name}" is type in Photoshop; it opened as pixels.`);
     if (liveText(l)) notes.push(`"${l.name}" goes as pixels; the PSD does not hold it as editable type.`);
 ```
+### src/io/psd.ts · blend modes · _v0.66.0
+
+`TO_PSD` maps the ten new modes to Photoshop's names, so they are written and read back. Nothing was removed.
 
 ## src/extensions/tools/patch.ts
 
@@ -1181,6 +1208,17 @@ Select > Color Range and its dialog. Removed:
 ```ts
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', '-', 'path-selection', 'delete-path'] },
 ```
+### src/app.ts · error log, recovery, adjustments, align, modify · _v0.66.0
+
+The error log installed after notices, Help > Copy Error Log; crash-recovery copies kept twenty seconds after a change (`keepModified`) and offered after reveal (`offerRecovery`); the new adjustments on the Image menu; Feather (Shift+F6), Border and Smooth on the Select menu; Align and Distribute on the Layer menu. Removed:
+
+```ts
+    { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'canvas-size', 'trim', 'reveal-all', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', '-', 'path-selection', 'delete-path'] },
+    { label: 'Help', items: ['shortcuts', 'about'] },
+  void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => revealApp()));
+```
 
 ## src/engine/adjust.ts
 
@@ -1195,6 +1233,13 @@ Implements `HueBand` methods as pure functions: `bandForward`, `bandHandles`, `b
 ### src/engine/adjust.ts · rewritten independently · _v0.34.0
 
 Hue bands, the eyedroppers' band operations, the HSL model, the 33-point cube, the `.ref` data layout and the defaults are new code with outputs identical to the replaced code; Grain now comes from new triangular lattice noise with the same strength and character and a different pattern. The removed code is not quoted here, deliberately: it is the translated code this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.33.0.
+### src/engine/adjust.ts · parametric kinds · _v0.66.0
+
+Labels and kinds extended from `PARAM_ADJUSTMENTS`; `defaultAdjustmentData` fills `data.params` for them. Removed:
+
+```ts
+export const ADJUSTMENT_KINDS: AdjustmentKind[] = ['hsv', 'levels', 'curves', 'exposure', 'gradientMap', 'grain'];
+```
 
 ## src/engine/renderer.ts
 
@@ -1354,6 +1399,21 @@ interface FxPart { s: Surface; x: number; y: number; alpha: number; op: GlobalCo
 ### src/engine/renderer.ts · Pattern Overlay · _v0.61.0
 
 The pattern tiled from the layer corner, the lowest overlay. Nothing was removed.
+### src/engine/renderer.ts · per-pixel blend modes · _v0.66.0
+
+`render` sends a layer in a mode the canvas lacks through the slot path, then `pixelBlend` reads the target and the slot within the layer's placed bounds and blends them with `blendPixels`; Dissolve's pattern is taken in document pixels through the inverse view. Removed:
+
+```ts
+import { compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
+      const op = compositeOp(ov?.blend ?? layer.blend);
+      if (!own && !folders.length && !base && (!styled || parts)) {
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.globalAlpha = opacity;
+      ctx.globalCompositeOperation = op;
+      ctx.drawImage(a.s, 0, 0);
+      ctx.restore();
+```
 
 ## src/engine/distort.ts
 
@@ -1487,6 +1547,9 @@ Created in _v0.1.0.
 ### src/engine/history.ts · steps · _v0.56.0
 
 The steps kept, in order, and how many are done. Nothing was removed.
+### src/engine/history.ts · rollback, markUnsaved · _v0.66.0
+
+`rollback` hands back the open step's starting snapshot and the pixel patches recorded so far, for `Engine.rollBack`; `markUnsaved` makes a recovered document count as modified. Nothing was removed.
 
 ## src/engine/index.ts
 
@@ -2044,6 +2107,15 @@ Bucket and tone settings, paintBucket, toned retouch strokes, a region for regio
 ### src/engine/index.ts · Color Range, Quick Selection · _v0.65.0
 
 colorRangeMask, selectColorRange, and the Quick Selection stroke. Nothing was removed.
+### src/engine/index.ts · rollback, align, distribute, modify selection · _v0.66.0
+
+`edit` catches a throwing operation at the outermost level (nested edits rethrow) and `rollBack` writes its patches back in reverse, restores the snapshot, keeps the failure in `failures` and raises a notice. `regionEdit` writes its region back when `apply` throws. `alignItems` measures each selected root by its layers' visible pixels; `shiftItems` moves them by whole pixels with masks following; `alignLayers` and `distributeLayers` are the menu commands. `modifySelection` does Feather (Gaussian, sigma half the radius), Border (grown less shrunk by half the width) and Smooth (majority over a square, through a summed-area table). Removed:
+
+```ts
+    try { ok = fn(p); } finally { p.history.end(p.snapshot()); }
+      apply({ raster, target: pick.target, rect, cover });
+  selectionAmounts = { expand: 1, contract: 1 };
+```
 
 ## src/engine/develop.ts
 
@@ -2083,6 +2155,9 @@ _Quoted code redacted in 0.35.0: it came from an implementation since replaced w
 ### src/engine/kernels.ts · rewritten independently · _v0.34.0
 
 Every kernel replaced with a new implementation of the standard method: Levels as composed clipped power curves, Curves as Fritsch and Butland monotone cubics in Horner form, Exposure through the IEC 61966-2-1 sRGB transfer, a Rec. 709 gradient map, and the Magic Wand's contiguous fill as Heckbert's segment seed fill. Exports and settings meanings unchanged; outputs identical to the replaced code in randomized side-by-side runs. The removed code is not quoted here, deliberately: it is the translated code this rewrite retires, and quoting it would put it back in the repository. It remains in git history at tag v0.33.0.
+### src/engine/kernels.ts · parametric kernels · _v0.66.0
+
+`adjustmentKernel` returns `paramKernel` for the parametric kinds. Nothing was removed.
 
 ## src/engine/matte.ts
 
@@ -2340,6 +2415,22 @@ The quickSelect tool id. Removed:
 
 ```ts
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'directSelect' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'idle';
+```
+### src/engine/types.ts · 27 blend modes, parametric kinds · _v0.66.0
+
+`BlendMode` and `BLEND_MODES` hold all 27 of Photoshop's modes in its order; `canvasBlend` tells the renderer which the canvas does itself, and `compositeOp` gives `source-over` for the rest so effect blends from PSD never set an invalid operation. `AdjustmentKind` takes in `ParamKind`. Removed:
+
+```ts
+  | 'linear-dodge' | 'soft-light' | 'hard-light' | 'exclusion';
+/** Photoshop's menu order, grouped darken, lighten, contrast, inversion, component; the modes the browser canvas
+ *  composites natively. Linear Dodge (Add) is the canvas's `lighter`. */
+  { id: 'normal', label: 'Normal' },
+  { id: 'darken', label: 'Darken' }, { id: 'multiply', label: 'Multiply' }, { id: 'color-burn', label: 'Color Burn' },
+  { id: 'lighten', label: 'Lighten' }, { id: 'screen', label: 'Screen' }, { id: 'color-dodge', label: 'Color Dodge' }, { id: 'linear-dodge', label: 'Linear Dodge (Add)' },
+  { id: 'overlay', label: 'Overlay' }, { id: 'soft-light', label: 'Soft Light' }, { id: 'hard-light', label: 'Hard Light' },
+  { id: 'difference', label: 'Difference' }, { id: 'exclusion', label: 'Exclusion' },
+export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return mode === 'normal' ? 'source-over' : mode === 'linear-dodge' ? 'lighter' : mode; }
+export type AdjustmentKind = 'hsv' | 'levels' | 'curves' | 'exposure' | 'gradientMap' | 'grain';
 ```
 
 ## src/engine/viewport.ts
@@ -2899,6 +2990,14 @@ Projects save the patterns their styles use and register them on open. Removed:
 ```ts
   BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline,
 ```
+### src/io/project-io.ts · parametric kinds · _v0.66.0
+
+`KINDS` reads and writes the new adjustments by label; `serializeRefProject` leaves out layers whose kind is not in `REF_KINDS`, with a note. Removed:
+
+```ts
+const KINDS: Record<string, AdjustmentKind> = { 'Hue/Saturation': 'hsv', Levels: 'levels', Curves: 'curves', Exposure: 'exposure', 'Gradient Map': 'gradientMap', Grain: 'grain' };
+  });
+```
 
 ## src/main.ts
 
@@ -3387,6 +3486,9 @@ Reports applied adjustments for recording and replays them without the dialog. R
 ### src/ui/panels/adjust-panel.ts · askImage · _v0.53.0
 
 Opens an image adjustment with recorded settings for an action paused for input. Nothing was removed.
+### src/ui/panels/adjust-panel.ts · parametric sections · _v0.66.0
+
+`buildParams` makes one section per parametric kind from its control list, all rows built once and group rows hidden rather than rebuilt; `prepare` normalises `data.params`; `kernel` falls through to `paramKernel`. Nothing was removed.
 
 ## src/ui/panels/background-panel.ts
 
@@ -3527,6 +3629,15 @@ Image and Canvas Size report the size they started from. Removed:
     if (this.engine.resizeCanvas(W, H, dx, dy, colors[choice] ?? null)) { this.onApplied?.({ w: W, h: H, dx, dy, fill: colors[choice] ?? null }); this.close(); }
   onApplied: ((v: { w: number; h: number; sampling: string; res: number }) => void) | null = null;
     if (this.engine.resampleImage(this.w, this.h, this.sampling, this.res)) { this.onApplied?.({ w: this.w, h: this.h, sampling: this.sampling, res: this.res }); this.close(); }
+```
+### src/ui/panels/size-dialogs.ts · Feather, Border, Smooth · _v0.66.0
+
+`AmountDialog.show` takes an optional modify kind; `apply` sends it to `modifySelection` and remembers the amount. Removed:
+
+```ts
+  show(expand: boolean): void {
+    this.setTitle(expand ? 'Expand Selection' : 'Contract Selection');
+    this.amount.set(expand ? this.engine.selectionAmounts.expand : this.engine.selectionAmounts.contract);
 ```
 
 ## src/ui/rail.ts

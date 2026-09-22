@@ -22,6 +22,7 @@ Mod is Command on macOS and Ctrl elsewhere. Help, Keyboard Shortcuts shows the s
 | Bring forward, Send backward | Mod+], Mod+[ |
 | Next and previous blend mode | Shift+=, Shift+- |
 | Select all, Deselect, Inverse | Mod+A, Mod+D, Mod+Shift+I |
+| Feather Selection | Shift+F6 |
 | Zoom in, out, fit, actual pixels | Mod+=, Mod+-, Mod+0, Mod+1 |
 | Settings, Shortcuts | Mod+,, Shift+/ |
 | Tools | V Move, M Marquee, L Lasso, W Magic Wand, C Crop, B Brush, E Eraser, J Spot Healing, S Clone Stamp, R Smear, G Gradient, U Shape, I Eyedropper, H Hand, Z Zoom |
