@@ -18,6 +18,7 @@ usage: ./sonny [command] [options]
   freeze              freeze the backend into the Tauri sidecar binary
   desktop dev|build   run or bundle the desktop app
   doctor              check the toolchain, installs and ports
+  test [unit|backend|e2e]  run the tests (all three suites by default)
   clean [--all]       remove build output (--all also venv and node_modules)
   help                this text
 EOF
@@ -43,6 +44,7 @@ case "$cmd" in
       *) usage; exit 2 ;;
     esac ;;
   doctor) exec setup/doctor "$@" ;;
+  test) exec setup/test "$@" ;;
   clean) exec setup/clean "$@" ;;
   help|-h|--help) usage ;;
   *) printf '[sonny] unknown command: %s\n\n' "$cmd"; usage; exit 2 ;;

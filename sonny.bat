@@ -19,6 +19,7 @@ if /i "%CMD%"=="desktop" (
   goto :eof
 )
 if /i "%CMD%"=="doctor" ( call setup\doctor.bat & goto :eof )
+if /i "%CMD%"=="test" ( call setup\test.bat & goto :eof )
 if /i "%CMD%"=="clean" ( call setup\clean.bat %ARG% & goto :eof )
 if /i "%CMD%"=="help" ( call :usage & exit /b 0 )
 echo [sonny] unknown command: %CMD%
@@ -27,5 +28,5 @@ exit /b 2
 :usage
 echo sonny.bat [command]
 echo   boot ^| install [--lite] ^| install-ml ^| install-desktop ^| backend ^| frontend
-echo   build ^| serve ^| freeze ^| desktop dev ^| desktop build ^| doctor ^| clean [--all] ^| help
+echo   build ^| serve ^| freeze ^| desktop dev ^| desktop build ^| doctor ^| test ^| clean [--all] ^| help
 exit /b 0
