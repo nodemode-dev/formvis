@@ -74,3 +74,35 @@ def decode_to_png(data: bytes, filename: str) -> tuple[bytes, int, int]:
             except Exception as fallback:
                 raise DecodeError(f"Could not decode {filename}: {fallback}") from fallback
         raise DecodeError(f"Could not decode {filename or 'the image'}: {exc}") from exc
+
+
+ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif"}
+
+
+def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72) -> bytes:
+    """Re-encodes a PNG from the editor: TIFF (LZW, alpha kept), PDF (one page at `dpi`, flattened on white, since PDF
+    images carry no alpha here), WebP or AVIF (at `quality`, alpha kept)."""
+    if fmt not in ENCODINGS:
+        raise DecodeError(f"Cannot export as {fmt}.")
+    try:
+        with Image.open(io.BytesIO(png)) as image:
+            image.load()
+            _check(*image.size)
+            rgba = image.convert("RGBA")
+    except DecodeError:
+        raise
+    except Exception as exc:
+        raise DecodeError(f"The image could not be read: {exc}") from exc
+    out = io.BytesIO()
+    q = max(1, min(100, int(quality)))
+    if fmt == "tiff":
+        rgba.save(out, "TIFF", compression="tiff_lzw", dpi=(dpi, dpi))
+    elif fmt == "pdf":
+        flat = Image.new("RGB", rgba.size, (255, 255, 255))
+        flat.paste(rgba, mask=rgba.getchannel("A"))
+        flat.save(out, "PDF", resolution=float(max(1, dpi)))
+    elif fmt == "webp":
+        rgba.save(out, "WEBP", quality=q, method=4)
+    else:
+        rgba.save(out, "AVIF", quality=q)
+    return out.getvalue()

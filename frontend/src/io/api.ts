@@ -93,6 +93,9 @@ export const api = {
     const res = await request('/ops/remove-background', { method: 'POST', body: form({ method }, [{ name: 'layer.png', blob: image }], 'file') });
     return { mask: await res.blob(), method: res.headers.get('X-Method') ?? method };
   },
+  async encode(png: Blob, format: 'tiff' | 'pdf' | 'webp' | 'avif', quality = 90, dpi = 72): Promise<Blob> {
+    return (await request('/io/encode', { method: 'POST', body: form({ format, quality: String(quality), dpi: String(dpi) }, [{ name: 'image.png', blob: png }], 'file') })).blob();
+  },
   async exportFile(blob: Blob, name: string): Promise<string> {
     return ((await (await request('/io/export', { method: 'POST', body: form({ name }, [{ name, blob }], 'file') })).json()) as { path: string }).path;
   },

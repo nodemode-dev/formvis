@@ -4146,7 +4146,7 @@ export class Engine {
     });
   }
 
-  async exportBlob(type: 'image/png' | 'image/jpeg', quality = 0.92): Promise<Blob | null> {
+  async exportBlob(type: 'image/png' | 'image/jpeg' | 'image/webp', quality = 0.92): Promise<Blob | null> {
     const p = this.current;
     if (!p) return null;
     return withResolution(await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality), p.doc.resolution);

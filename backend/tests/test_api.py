@@ -43,6 +43,27 @@ def test_export_refuses_unsafe_names(client, tmp_path):
     assert r.json()["path"] == str(tmp_path / "Exports" / "x.png")
 
 
+def test_encode_to_tiff_pdf_webp_and_avif(client):
+    src = png_bytes((10, 6), (200, 100, 50, 128))
+    for fmt, head, pil in [("tiff", (b"II*\x00", b"MM\x00*"), "TIFF"), ("pdf", (b"%PDF-",), None), ("webp", (b"RIFF",), "WEBP"), ("avif", None, "AVIF")]:
+        r = client.post("/api/io/encode", files={"file": ("a.png", src, "image/png")}, data={"format": fmt, "quality": "80"})
+        assert r.status_code == 200, (fmt, r.text)
+        if head:
+            assert r.content.startswith(head), fmt
+        if pil:
+            with Image.open(io.BytesIO(r.content)) as im:
+                assert im.format == pil and im.size == (10, 6), fmt
+                if fmt != "avif":
+                    assert im.convert("RGBA").getpixel((3, 3))[3] == 128, fmt
+
+
+def test_encode_refuses_unknown_formats_and_bad_images(client):
+    assert client.post("/api/io/encode", files={"file": ("a.png", png_bytes(), "image/png")}, data={"format": "bmp"}).status_code == 415
+    assert client.post("/api/io/encode", files={"file": ("a.png", b"junk", "image/png")}, data={"format": "tiff"}).status_code == 415
+    ok = client.post("/api/io/export", files={"file": ("f", b"1", "image/tiff")}, data={"name": "out.tiff"})
+    assert ok.status_code == 200
+
+
 def test_project_save_list_open_delete_round_trip(client):
     layers = [{"id": "L1", "name": "Layer", "imageFile": "L1.png"}]
     r = client.post("/api/projects/save", data={"name": "Trip", "manifest": json.dumps(manifest(layers=layers))}, files=[("files", ("L1.png", png_bytes(), "image/png"))])

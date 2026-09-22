@@ -8,7 +8,16 @@ from app.core import config
 from app.services import imaging
 
 router = APIRouter(tags=["io"])
-EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|sonny)$", re.IGNORECASE)
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|sonny|webp|tif|tiff|pdf|avif)$", re.IGNORECASE)
+
+
+@router.post("/encode")
+def encode(file: UploadFile = File(...), format: str = Form(...), quality: int = Form(90), dpi: int = Form(72)) -> Response:
+    try:
+        data = imaging.encode(file.file.read(), format.lower(), quality, dpi)
+    except imaging.DecodeError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+    return Response(data, media_type=imaging.ENCODINGS[format.lower()])
 
 
 @router.post("/decode")
