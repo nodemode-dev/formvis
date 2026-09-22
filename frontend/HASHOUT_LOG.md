@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Export WebP, TIFF, PDF and AVIF · _v0.75.0 (src/app.ts, src/io/api.ts, src/engine/index.ts; e2e/test_export_formats.py new)
+
+`api.encode` posts a PNG to `/io/encode`; `exportImage` takes WebP from the canvas and TIFF, PDF and AVIF through the engine (unavailable until capabilities arrive), naming TIFF `.tif`; four commands on the File menu; `exportBlob` accepts WebP. Removed:
+
+```ts
+  async function exportImage(kind: 'png' | 'jpg', quality = 0.92): Promise<void> {
+        const blob = await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality);
+        if (blob) await deliver(blob, `${p.name}.${kind}`);
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+  async exportBlob(type: 'image/png' | 'image/jpeg', quality = 0.92): Promise<Blob | null> {
+```
+
 ## Gradients and Edit > Fill · _v0.74.0 (one change across five files and two new ones, logged together)
 
 ### src/engine/gradients.ts · new

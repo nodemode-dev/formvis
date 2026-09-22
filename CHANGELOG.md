@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.75.0 · 2026-09-22
+
+### Added
+
+- File > Export WebP, Export TIFF, Export PDF and Export AVIF. WebP is encoded in the browser; TIFF (LZW, transparency kept), PDF (one page, on white) and AVIF go through the engine.
+- 6 more tests (2 backend, 4 browser): 104 in all.
+
 ## 0.74.0 · 2026-09-22
 
 ### Added
