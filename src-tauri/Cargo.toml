@@ -1,6 +1,6 @@
 [package]
 name = "sonny"
-version = "0.73.0"
+version = "0.74.0"
 description = "sonny desktop shell"
 authors = ["nodemode-ai"]
 license = "MIT"
