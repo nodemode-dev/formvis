@@ -216,12 +216,36 @@ export class Engine {
     const p = this.current;
     if (!p || this.stroke) return false;
     this.settle();
+    const nested = p.history.open;
     p.history.begin(name, p.snapshot());
     let ok: boolean | void = true;
-    try { ok = fn(p); } finally { p.history.end(p.snapshot()); }
+    try { ok = fn(p); } catch (err) {
+      if (nested) throw err;
+      this.rollBack(p, name, err);
+      return false;
+    }
+    p.history.end(p.snapshot());
     this.refresh();
     return ok !== false;
   }
+
+  /** Undoes whatever a failed operation had done so far, pixels and structure, and says so; nothing is recorded. */
+  private rollBack(p: Project, name: string, err: unknown): void {
+    const r = p.history.rollback();
+    if (r) {
+      for (let i = r.patches.length - 1; i >= 0; i--) { const q = r.patches[i]; q.raster.write(q.before, q.x, q.y); }
+      p.doc = r.before.doc;
+      p.selection = r.before.selection;
+      this.focus(p, r.before.activeId && r.before.doc.layers.some((l) => l.id === r.before.activeId) ? r.before.activeId : null);
+    }
+    this.refresh();
+    this.failures.push({ at: Date.now(), what: name, message: err instanceof Error ? `${err.name}: ${err.message}` : String(err) });
+    if (this.failures.length > 50) this.failures.shift();
+    this.notice(`${name} could not finish and was undone: ${err instanceof Error ? err.message : String(err)}`, 'error');
+  }
+
+  /** Operations that failed and were rolled back this session, newest last, for the error log. */
+  readonly failures: Array<{ at: number; what: string; message: string }> = [];
 
   settle(keepFloating = false): void {
     if (this.distortEdit) this.applyDistort();
@@ -1897,7 +1921,7 @@ export class Engine {
         c.drawImage(sel.surface(), 0, 0);
       }
       const before = raster.read(rect.x, rect.y, rect.w, rect.h);
-      apply({ raster, target: pick.target, rect, cover });
+      try { apply({ raster, target: pick.target, rect, cover }); } catch (err) { raster.write(before, rect.x, rect.y); raster.touch(); throw err; }
       if (pick.target === 'pixels' && p.layer(pick.layer.id)?.shape) p.updateLayer(pick.layer.id, { shape: null });
       raster.touch();
       p.history.addPatch({ raster, x: rect.x, y: rect.y, before, after: raster.read(rect.x, rect.y, rect.w, rect.h) });

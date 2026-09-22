@@ -28,6 +28,7 @@ export class History {
   get modified(): boolean { return this.revision !== this.saved; }
   get open(): boolean { return this.depth > 0; }
   markSaved(): void { this.saved = this.revision; }
+  markUnsaved(): void { this.saved = -1; }
 
   begin(name: string, snap: Snapshot): void {
     if (this.depth === 0) this.pending = { name, before: snap, patches: [] };
@@ -57,6 +58,13 @@ export class History {
     this.pending = null;
     this.depth = 0;
     return before;
+  }
+
+  rollback(): { before: Snapshot; patches: PixelPatch[] } | null {
+    const p = this.pending;
+    this.pending = null;
+    this.depth = 0;
+    return p ? { before: p.before, patches: p.patches } : null;
   }
 
   undo(): HistoryEntry | null {

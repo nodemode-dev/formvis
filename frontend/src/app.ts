@@ -1,3 +1,5 @@
+import { ErrorLog } from './ui/errors';
+import { recovery } from './io/recovery';
 import { TrimDialog } from './ui/panels/trim-dialog';
 import { ColorRangeDialog } from './ui/panels/color-range-dialog';
 import { HistoryPanel } from './ui/history';
@@ -122,6 +124,8 @@ export function startApp(): void {
 
   const engine = new Engine();
   engine.on('notice', (n) => toast(n.text, n.kind));
+  const errorLog = new ErrorLog((t) => toast(t, 'error'), () => engine.failures);
+  errorLog.install();
   const commands = new Commands();
   const contextMenu = new PopupMenu(commands);
   const stage = new Stage(q(root, '.cv-stage'), engine);
@@ -617,6 +621,7 @@ export function startApp(): void {
     { id: 'transform-controls', label: 'Transform Controls', checked: () => engine.showTransformControls, run: () => engine.update({ showTransformControls: !engine.showTransformControls }) },
     { id: 'shortcuts', label: 'Keyboard Shortcuts', keys: ['Shift+/'], run: () => dialogs.shortcuts.show() },
     { id: 'about', label: 'About sonny', run: () => dialogs.about.show(caps) },
+    { id: 'copy-error-log', label: 'Copy Error Log', run: () => { void navigator.clipboard?.writeText(errorLog.text()).then(() => toast('Copied the error log.'), () => toast('The clipboard is not available here.', 'error')); } },
   );
 
   function writeClipboard(): void {
@@ -710,7 +715,7 @@ export function startApp(): void {
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
-    { label: 'Help', items: ['shortcuts', 'about'] },
+    { label: 'Help', items: ['shortcuts', 'copy-error-log', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
@@ -912,6 +917,43 @@ export function startApp(): void {
 
   if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions, animation: dialogs.animation };
 
+  const keptAt = new Map<string, number>();
+  let keepTimer = 0;
+  async function keepModified(): Promise<void> {
+    for (const p of engine.projects) {
+      if (!p.modified) { if (keptAt.delete(p.id)) await recovery.drop(p.id); continue; }
+      if (keptAt.get(p.id) === p.history.revision) continue;
+      try {
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+        if (await recovery.keep({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files })) keptAt.set(p.id, p.history.revision);
+      } catch (err) { errorLog.add('Recovery copy', message(err)); }
+    }
+    for (const id of [...keptAt.keys()]) if (!engine.projects.some((p) => p.id === id)) { keptAt.delete(id); await recovery.drop(id); }
+  }
+  const keepSoon = (): void => { if (!keepTimer) keepTimer = window.setTimeout(() => { keepTimer = 0; void keepModified(); }, recoveryDelay); };
+  let recoveryDelay = 20000;
+  engine.on('history', keepSoon);
+  engine.on('projects', keepSoon);
+  async function offerRecovery(): Promise<void> {
+    const found = await recovery.list();
+    if (!found.length) return;
+    const names = found.map((r) => r.name).join(', ');
+    if (!(await confirmAction('Recover unsaved work?', `sonny closed with unsaved changes in ${names}. Open them again?`, 'Recover'))) { await recovery.clear(); return; }
+    for (const r of found) {
+      try {
+        const byName = new Map(r.files.map((f) => [f.name, f.blob]));
+        const { doc, activeId, paths, timeline } = await deserialize(r.manifest, (n) => { const b = byName.get(n); return b ? Promise.resolve(b) : Promise.reject(new Error(`${n} is missing.`)); });
+        const p = engine.addProject(doc, `${r.name} (recovered)`, activeId);
+        if (paths) engine.setPathsOf(p, paths);
+        if (timeline) engine.setTimelineFor(p, timeline);
+        p.history.markUnsaved();
+        engine.emit('projects', null);
+      } catch (err) { toast(`${r.name}: ${message(err)}`, 'error'); }
+    }
+    await recovery.clear();
+  }
+  if (import.meta.env.DEV) Object.assign((window as unknown as { sonny: object }).sonny, { errorLog, keepModified, offerRecovery, setRecoveryDelay: (ms: number) => { recoveryDelay = ms; } });
+
   const faces = Promise.all(['400', '500', '600'].map((w) => document.fonts.load(`${w} 12px Inter`))).catch(() => undefined);
-  void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => revealApp()));
+  void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => { revealApp(); void offerRecovery(); }));
 }
