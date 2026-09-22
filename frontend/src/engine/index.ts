@@ -7,7 +7,7 @@ import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { PixelStroke, warmStrokeSurfaces } from './stroke';
 import { SelectionMask, type SelectionMode } from './selection';
 import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
-import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
+import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
 import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped, imageCorners, homography, project, inverse3 } from './distort';
@@ -3308,7 +3308,17 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify' } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur' };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false };
+
+  /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
+   *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
+   *  50 percent paints the source at half size, as Photoshop's W and H do. */
+  private cloneTransform(pivot: Pt): Mat | null {
+    const r = this.retouch, s = Math.min(1000, Math.max(1, r.cloneScale)) / 100;
+    if (s === 1 && !(r.cloneAngle % 360) && !r.cloneFlipH && !r.cloneFlipV) return null;
+    const a = mul(rotation((r.cloneAngle * Math.PI) / 180), scaling(s * (r.cloneFlipH ? -1 : 1), s * (r.cloneFlipV ? -1 : 1)));
+    return mul(translation(pivot.x, pivot.y), mul(a, translation(-pivot.x, -pivot.y)));
+  }
   cloneSource: Pt | null = null;
   cloneOffset: Pt | null = null;
   private warpState: { project: Project; layerId: ID; stroke: WarpStroke; surface: Surface; image: ImageData } | null = null;
@@ -3338,10 +3348,10 @@ export class Engine {
     const p = this.current, l = p?.activeLayer, sp = this.clonePoint(at);
     if (!p || !l || !sp || this.stroke) return null;
     const d = this.brush.diameter, side = Math.min(1024, Math.max(1, Math.ceil(d * scale)));
-    const key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, this.retouch.cloneSampleAll, l.id, p.history.revision].join('|');
+    const r0 = this.retouch, key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, r0.cloneSampleAll, l.id, p.history.revision, r0.cloneScale, r0.cloneAngle, r0.cloneFlipH, r0.cloneFlipV].join('|');
     if (this.clonePreviewCache?.key === key) return this.clonePreviewCache.surface;
-    const s = createSurface(side, side), c = ctxOf(s), per = side / d;
-    const view = mul(scaling(per, per), translation(d / 2 - sp.x, d / 2 - sp.y));
+    const s = createSurface(side, side), c = ctxOf(s), per = side / d, tm = this.cloneTransform(sp);
+    const view = mul(mul(scaling(per, per), translation(d / 2 - sp.x, d / 2 - sp.y)), tm ?? [1, 0, 0, 1, 0, 0]);
     if (this.retouch.cloneSampleAll) this.work.render({ doc: p.doc, target: s, view, quality: 'medium' });
     else if (l.raster) { setMat(c, mul(view, placement(l.transform, l.raster.width, l.raster.height))); c.drawImage(l.raster.canvas, 0, 0); c.setTransform(1, 0, 0, 1, 0, 0); }
     const r = side / 2, tip = c.createRadialGradient(r, r, r * Math.min(0.999, Math.max(0, this.brush.hardness)), r, r, r);
@@ -3418,6 +3428,14 @@ export class Engine {
       if (!off) { this.notice(`Alt-click to set where ${kind === 'clone' ? 'Clone Stamp' : 'the Healing Brush'} copies from.`); return false; }
       this.cloneOffset = off;
       texture = { surface: this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), dx: off.x, dy: off.y };
+      const m = kind === 'clone' && this.cloneSource ? this.cloneTransform(this.cloneSource) : null;
+      if (m) {
+        const t = createSurface(texture.surface.width, texture.surface.height), tc = ctxOf(t);
+        setMat(tc, m);
+        tc.drawImage(texture.surface, 0, 0);
+        tc.setTransform(1, 0, 0, 1, 0, 0);
+        texture = { surface: t, dx: off.x, dy: off.y };
+      }
     } else if (kind === 'blur') {
       const sigma = clamp(this.brush.diameter / 10, 1.5, 30);
       texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };

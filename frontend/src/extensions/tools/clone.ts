@@ -50,6 +50,10 @@ export const cloneTool: Tool = {
     { kind: 'title', text: 'Clone Stamp' },
     { kind: 'toggle', label: 'Aligned', get: () => e.retouch.cloneAligned, set: (v) => { e.retouch.cloneAligned = v; e.cloneOffset = null; e.emit('options', null); } },
     { kind: 'toggle', label: 'Sample all layers', get: () => e.retouch.cloneSampleAll, set: (v) => { e.retouch.cloneSampleAll = v; e.emit('options', null); } },
+    { kind: 'range', label: 'Source scale', min: 1, max: 1000, unit: '%', get: () => e.retouch.cloneScale, set: (v) => { e.retouch.cloneScale = v; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'range', label: 'Source angle', min: -180, max: 180, unit: '\u00b0', get: () => e.retouch.cloneAngle, set: (v) => { e.retouch.cloneAngle = v; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'toggle', label: 'Flip horizontal', get: () => e.retouch.cloneFlipH, set: (v) => { e.retouch.cloneFlipH = v; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'toggle', label: 'Flip vertical', get: () => e.retouch.cloneFlipV, set: (v) => { e.retouch.cloneFlipV = v; e.emit('options', null); e.emit('overlay', null); } },
     ...brushOptions(e),
   ],
 };
