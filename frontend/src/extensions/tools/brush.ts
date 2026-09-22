@@ -1,4 +1,5 @@
 import { clamp, type Pt } from '../../engine';
+import { BUILTIN_BRUSH_PRESETS, identityOption, pressureOption } from '../../engine/brush-dynamics';
 import { digitOf, type Tool } from '../registry';
 
 let hoverPt: Pt | null = null;
@@ -8,8 +9,8 @@ export const brushTool: Tool = {
   icon: (e) => (e.brushMode === 'erase' ? 'eraser' : 'brush'),
   hint: (e) => `${e.brushMode === 'erase' ? 'Drag to erase' : 'Drag to paint'} · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans`,
   cursor: () => 'none',
-  down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; ctx.engine.beginStroke(p.doc, p.shift); } },
-  move(ctx, p) { hoverPt = p.doc; ctx.engine.strokeTo(p.doc); ctx.engine.emit('overlay', null); },
+  down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; ctx.engine.beginStroke(p.doc, p.shift, p.pressure); } },
+  move(ctx, p) { hoverPt = p.doc; ctx.engine.strokeTo(p.doc, p.pressure); ctx.engine.emit('overlay', null); },
   up(ctx) { ctx.engine.endStroke(); },
   hover(ctx, p) { hoverPt = p ? p.doc : null; ctx.engine.emit('overlay', null); },
   cancel(ctx) { ctx.engine.cancelStroke(); },
@@ -62,5 +63,10 @@ export const brushTool: Tool = {
     { kind: 'range', label: 'Size', min: 1, max: 1000, unit: 'px', get: () => e.brush.diameter, set: (v) => e.setBrush({ diameter: v }) },
     { kind: 'range', label: 'Hardness', min: 0, max: 100, unit: '%', get: () => Math.round(e.brush.hardness * 100), set: (v) => e.setBrush({ hardness: v / 100 }) },
     { kind: 'range', label: 'Opacity', min: 1, max: 100, unit: '%', get: () => Math.round(e.brush.opacity * 100), set: (v) => e.setBrush({ opacity: v / 100 }) },
+    { kind: 'select', label: 'Preset', choices: [{ id: '', label: 'Custom' }, ...BUILTIN_BRUSH_PRESETS.map((b) => ({ id: b.id, label: b.name }))], get: () => e.brushPresetId ?? '', set: (id) => { const b = BUILTIN_BRUSH_PRESETS.find((x) => x.id === id); if (b) e.applyBrushPreset(b); else { e.brushPresetId = null; e.emit('options', null); } } },
+    { kind: 'toggle', label: 'Pressure: size', get: () => e.brushDynamics.size.enabled, set: (v) => { e.brushDynamics.size = v ? pressureOption(e.brushDynamics.size.enabled ? e.brushDynamics.size.min : 0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
+    { kind: 'range', label: 'Min size', min: 0, max: 100, unit: '%', get: () => Math.round((e.brushDynamics.size.enabled ? e.brushDynamics.size.min : 0.2) * 100), set: (v) => { if (e.brushDynamics.size.enabled) e.brushDynamics.size = pressureOption(v / 100); e.brushPresetId = null; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Pressure: flow', get: () => e.brushDynamics.flow.enabled, set: (v) => { e.brushDynamics.flow = v ? pressureOption(e.brushDynamics.flow.enabled ? e.brushDynamics.flow.min : 0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
+    { kind: 'range', label: 'Min flow', min: 0, max: 100, unit: '%', get: () => Math.round((e.brushDynamics.flow.enabled ? e.brushDynamics.flow.min : 0.2) * 100), set: (v) => { if (e.brushDynamics.flow.enabled) e.brushDynamics.flow = pressureOption(v / 100); e.brushPresetId = null; e.emit('options', null); } },
   ],
 };

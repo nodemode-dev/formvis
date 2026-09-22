@@ -3,6 +3,7 @@ import { createSurface, ctxOf, type Ctx2D, type Raster, type Surface } from './s
 import type { SelectionMask } from './selection';
 import type { PixelPatch } from './history';
 import type { Pt, Rect, RGB } from './types';
+import { computeOption, type BrushDynamics } from './brush-dynamics';
 
 /** Painting strokes for sonny. Dabs of a round brush tip are laid along the pointer's path into a separate paint
  *  layer, evenly spaced and carried over between moves; composing lays that layer onto a working copy of the pixels at
@@ -118,23 +119,31 @@ export class PixelStroke {
 
   get lastPoint(): Pt | null { return this.last; }
 
+  /** Pen dynamics, set by the engine before the first point; null or neutral options leave dabs as the style says. */
+  dynamics: BrushDynamics | null = null;
+  private lastPressure = 1;
+
   /** Extends the stroke to `p` (document units): the first point lays a dab, later ones lay dabs every `spacing` along
-   *  the way, the distance since the last dab carried into the next move. */
-  to(p: Pt): void {
-    const from = this.last;
-    if (!from) { this.dab(p); this.last = p; this.carry = 0; return; }
+   *  the way, the distance since the last dab carried into the next move. `pressure` (0 to 1, 1 for a mouse) is
+   *  interpolated along the way, so a pen's changes between samples are smooth. */
+  to(p: Pt, pressure = 1): void {
+    const from = this.last, pr = Math.min(1, Math.max(0, pressure));
+    if (!from) { this.dab(p, pr); this.last = p; this.carry = 0; this.lastPressure = pr; return; }
     const dx = p.x - from.x, dy = p.y - from.y, length = Math.hypot(dx, dy);
     if (length === 0) return;
     let along = this.spacing - this.carry;
-    for (; along <= length; along += this.spacing) this.dab({ x: from.x + (dx * along) / length, y: from.y + (dy * along) / length });
+    for (; along <= length; along += this.spacing) this.dab({ x: from.x + (dx * along) / length, y: from.y + (dy * along) / length }, this.lastPressure + ((pr - this.lastPressure) * along) / length);
     this.carry = length - (along - this.spacing);
     this.last = p;
+    this.lastPressure = pr;
   }
 
-  private dab(p: Pt): void {
-    const r = this.radius;
+  private dab(p: Pt, pressure = 1): void {
+    const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = d ? computeOption(d.flow, info) : 1;
     setMat(this.paintCtx, this.toLocal);
+    if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
     this.paintCtx.drawImage(this.tip, p.x - r, p.y - r, r * 2, r * 2);
+    if (flow < 1) this.paintCtx.globalAlpha = 1;
     const corners = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([ox, oy]) => applyMat(this.toLocal, p.x + ox, p.y + oy));
     const box = integral(boundsOf(corners));
     const hit = intersectRect({ x: box.x - 1, y: box.y - 1, w: box.w + 2, h: box.h + 2 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });

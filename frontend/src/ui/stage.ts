@@ -245,7 +245,8 @@ export class Stage {
     const r = this.rect ?? this.host.getBoundingClientRect();
     const screen = { x: e.clientX - r.left, y: e.clientY - r.top };
     const v = this.engine.current?.viewport;
-    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks };
+    const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
+    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: pen ? Math.min(1, Math.max(0, (e as PointerEvent).pressure)) : 1 };
   }
 
   docPoint(clientX: number, clientY: number): Pt | null {

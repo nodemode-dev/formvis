@@ -33,6 +33,7 @@ export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
 import { sharpenSample } from './filters-more';
+import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
 export type { HealMode } from './retouch';
@@ -95,6 +96,17 @@ export class Engine {
   readonly projects: Project[] = [];
   tool: ToolId = 'move';
   brush: BrushSettings = { diameter: 40, hardness: 1, opacity: 1 };
+  /** Pen pressure's effect on the Brush's size and flow; neutral until a preset or the options turn it on. */
+  brushDynamics: BrushDynamics = noDynamics();
+  /** The preset last applied, for the options bar; cleared by nothing, since changing a value is Photoshop's way too. */
+  brushPresetId: string | null = null;
+
+  /** Size, hardness, opacity and dynamics from a preset. */
+  applyBrushPreset(preset: BrushPreset): void {
+    this.brushDynamics = structuredClone(preset.dynamics);
+    this.brushPresetId = preset.id;
+    this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity });
+  }
   brushMode: 'paint' | 'erase' = 'paint';
   fg: RGB = { r: 0, g: 0, b: 0 };
   bg: RGB = { r: 255, g: 255, b: 255 };
@@ -1852,7 +1864,7 @@ export class Engine {
     return { layer: l, target, raster, local: placement(t, raster.width, raster.height) };
   }
 
-  beginStroke(pt: Pt, shift: boolean): boolean {
+  beginStroke(pt: Pt, shift: boolean, pressure = 1): boolean {
     const p = this.current;
     if (!p || this.stroke) return false;
     this.settle();
@@ -1864,10 +1876,11 @@ export class Engine {
     const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : this.brushMode === 'erase' ? 'destination-out' : 'source-over';
     const color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : this.fg;
     const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color }, op, p.selection);
+    s.dynamics = structuredClone(this.brushDynamics);
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s };
     const last = this.lastBrush;
-    if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p);
-    s.to(pt);
+    if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p, pressure);
+    s.to(pt, pressure);
     s.compose();
     this.emit('render', null);
     return true;
@@ -1877,10 +1890,10 @@ export class Engine {
    *  that alone. Off, every stroke frame redraws everything. */
   dirtyRendering = true;
 
-  strokeTo(pt: Pt): void {
+  strokeTo(pt: Pt, pressure = 1): void {
     const st = this.stroke;
     if (!st) return;
-    st.s.to(pt);
+    st.s.to(pt, pressure);
     const f = st.s.compose();
     if (!f) return;
     const l = st.project.layer(st.layerId), r = st.target === 'mask' ? l?.mask?.raster : l?.raster;
