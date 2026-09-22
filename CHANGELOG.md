@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.71.0 · 2026-09-22
+
+### Added
+
+- Select > Subject selects the main subject of the image in one step.
+- Select > Object in Selection selects the object inside a marquee you draw around it.
+- 2 more browser tests (skipped with a reason when the engine has no background method): 78 in all.
+
 ## 0.70.0 · 2026-09-22
 
 ### Added

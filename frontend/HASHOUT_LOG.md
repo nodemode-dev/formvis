@@ -1304,6 +1304,14 @@ The error log installed after notices, Help > Copy Error Log; crash-recovery cop
     { label: 'Help', items: ['shortcuts', 'about'] },
   void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => revealApp()));
 ```
+### src/app.ts · Select Subject, Object in Selection · _v0.71.0
+
+`selectSubject` sends the visible composite (or the current selection's bounds of it) to `/ops/remove-background` and loads the returned mask as the selection, clipped to the old selection for Object in Selection; commands `select-subject` and `select-object` on the Select menu. Removed:
+
+```ts
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns } from './engine';
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', 'feather', 'border', 'smooth', '-', 'path-selection', 'delete-path'] },
+```
 
 ## src/engine/adjust.ts
 
