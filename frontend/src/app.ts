@@ -21,7 +21,7 @@ import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -480,6 +480,33 @@ export function startApp(): void {
     });
   }
 
+  /** Select > Subject: the visible image goes to the background engine and its subject mask comes back as the
+   *  selection, one step. Select > Object in Selection does the same inside the current selection's bounds (draw a
+   *  marquee around one object first), keeping only what falls inside that selection. */
+  async function selectSubject(withinSelection: boolean): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    const sel = p.selection, box = withinSelection && sel ? { x: sel.x, y: sel.y, w: sel.w, h: sel.h } : { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+    if (withinSelection && !sel) { toast('Draw a selection around the object first.'); return; }
+    const flat = engine.flattened(), crop = createSurface(box.w, box.h);
+    if (!flat) return;
+    ctxOf(crop).drawImage(flat, box.x, box.y, box.w, box.h, 0, 0, box.w, box.h);
+    await engine.task(async () => {
+      try {
+        const { mask, method: used } = await api.removeBackground(await toBlob(crop), 'auto');
+        const bitmap = await createImageBitmap(mask), m = createSurface(box.w, box.h), c = ctxOf(m);
+        c.drawImage(bitmap, 0, 0, box.w, box.h);
+        bitmap.close();
+        const px = c.getImageData(0, 0, box.w, box.h).data, data = new Uint8Array(box.w * box.h);
+        for (let i = 0; i < data.length; i++) data[i] = withinSelection && sel && !sel.valueAt(box.x + (i % box.w), box.y + Math.floor(i / box.w)) ? 0 : px[i * 4];
+        if (engine.current !== p) return;
+        if (!data.some((v) => v >= 128)) { toast('No subject was found there.'); return; }
+        engine.applySelection(SelectionMask.cropped(box.x, box.y, box.w, box.h, data), 'replace', withinSelection ? 'Select Object' : 'Select Subject');
+        toast(`${withinSelection ? 'Object' : 'Subject'} selected with the ${used === 'ml' ? 'ML' : 'lightweight'} engine.`);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function sendToHost(): Promise<void> {
     const p = engine.current;
     const blob = p ? await engine.exportBlob('image/png') : null;
@@ -586,6 +613,8 @@ export function startApp(): void {
     { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
+    { id: 'select-subject', label: 'Subject', enabled: () => !!engine.current, run: () => void selectSubject(false) },
+    { id: 'select-object', label: 'Object in Selection', enabled: selected, run: () => void selectSubject(true) },
     { id: 'flip-canvas-h', label: 'Flip Canvas Horizontal', enabled: has, run: () => engine.flipCanvas(true) },
     { id: 'flip-canvas-v', label: 'Flip Canvas Vertical', enabled: has, run: () => engine.flipCanvas(false) },
     { id: 'new-layer', label: 'New Layer', keys: ['Shift+Mod+N'], enabled: has, run: () => engine.addLayer() },
@@ -718,7 +747,7 @@ export function startApp(): void {
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'invert', '-', 'canvas-size', 'trim', 'reveal-all', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
-    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', 'feather', 'border', 'smooth', '-', 'path-selection', 'delete-path'] },
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'select-subject', 'select-object', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', 'feather', 'border', 'smooth', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'about'] },
