@@ -11,6 +11,10 @@ Versions follow `v*.*.*` with dots. Dates are UTC.
 - A Sharpen mode for the Smear tool (R), beside Blur.
 - 12 more tests (9 unit, 3 browser): 59 in all.
 
+### Fixed
+
+- The History panel's step count no longer nudges the panel header as it changes.
+
 ## 0.67.0 · 2026-09-22
 
 ### Added

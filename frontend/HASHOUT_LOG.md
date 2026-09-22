@@ -3079,6 +3079,9 @@ Panel section, slider, histogram, curves and anchor-grid styles, with fixed canv
 ### src/styles/dialogs.css · click-through scrim · _v0.7.0
 
 `.cv-scrim-through` makes a dialog's scrim transparent and lets clicks reach the canvas while the dialog stays interactive, for eyedroppers. The rule is written as `#overlay-root > .cv-scrim.cv-scrim-through` because `#overlay-root > *` in `shell.css` sets `pointer-events: auto` and an ID selector outranks classes; without it a sampling click lands on the scrim, which closes the dialog. Nothing was removed.
+### src/styles/dialogs.css · .cv-field.is-off · _v0.68.0
+
+A field that is unavailable keeps its place and dims, so dialogs do not change height when a choice turns a control off (Smart Sharpen's Angle). Nothing was removed.
 
 ## src/styles/fonts.css
 
@@ -3151,6 +3154,13 @@ The History section and rows; the layers grid gains a row. Removed:
 ### src/styles/panels.css · snapshot rows · _v0.57.0
 
 Snapshot rows and their separation from the steps. Nothing was removed.
+### src/styles/panels.css · History count width · _v0.68.0
+
+Tabular figures and a fixed 10ch width for the History step count, ending the layout shift it caused on every step. Removed:
+
+```css
+.cv-history-count { color: var(--text-muted); font-size: var(--fs-11); }
+```
 
 ## src/styles/scrollbars.css
 
