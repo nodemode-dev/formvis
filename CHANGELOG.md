@@ -2,6 +2,15 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.68.0 · 2026-09-22
+
+### Added
+
+- Filter > Lens Blur: an iris-shaped blur in linear light, with specular highlights that bloom into bright discs.
+- Filter > Smart Sharpen: removes Gaussian, lens or motion blur, with Reduce Noise and fades for shadows and highlights.
+- A Sharpen mode for the Smear tool (R), beside Blur.
+- 12 more tests (9 unit, 3 browser): 59 in all.
+
 ## 0.67.0 · 2026-09-22
 
 ### Added

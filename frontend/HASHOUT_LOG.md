@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/engine/filters-more.ts
+
+### src/engine/filters-more.ts · new · _v0.68.0
+
+`lensBlur` (a disc average in linear light through per-row prefix sums, highlights lifted above a threshold first), `smartSharpen` (unsharp mask for Gaussian removal; Richardson-Lucy, eight iterations, for lens and motion removal; noise gate; shadow and highlight fades; alpha kept), `sharpenSample` for the Sharpen brush, and their margins. Richardson-Lucy steepens edges but rings, so its total error against a sharp original stays about level; that is expected of the method. Nothing was removed.
+
+### tests/filters-more.test.ts · new · _v0.68.0
+
+Nine unit tests for the two filters and the brush sample. Nothing was removed.
+
 ## tests/
 
 ### tests/setup.ts, blend.test.ts, adjust-params.test.ts, history.test.ts, geometry-filters.test.ts · new · _v0.67.0
@@ -1486,6 +1496,14 @@ export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorre
 ```ts
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask';
 ```
+### src/engine/filter-jobs.ts · Lens Blur, Smart Sharpen · _v0.68.0
+
+`FilterSettings` gains `lensRadius`, `lensBrightness`, `lensThreshold` and `smart`; `FilterKind` gains `lensBlur` and `smartSharpen`. Removed:
+
+```ts
+export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState }
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop';
+```
 
 ## src/engine/filter-worker.ts
 
@@ -1504,6 +1522,9 @@ import { addNoise, gaussianBlur, lensDistort, motionBlur } from './filters';
 ### src/engine/filter-worker.ts · develop · _v0.36.0
 
 The worker runs Develop. Nothing was removed.
+### src/engine/filter-worker.ts · Lens Blur, Smart Sharpen · _v0.68.0
+
+Two branches run the new filters off the main thread. Nothing was removed.
 
 ## src/engine/events.ts
 
@@ -2129,6 +2150,23 @@ colorRangeMask, selectColorRange, and the Quick Selection stroke. Nothing was re
     try { ok = fn(p); } finally { p.history.end(p.snapshot()); }
       apply({ raster, target: pick.target, rect, cover });
   selectionAmounts = { expand: 1, contract: 1 };
+```
+### src/engine/index.ts · Sharpen stroke · _v0.68.0
+
+`retouch.smearMode` and `beginRetouchStroke` take `sharpen`, whose texture is `sharpenSample` of the layer at a radius from the brush size, recorded as Sharpen. Removed:
+
+```ts
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'smudge' | 'liquify' } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur' };
+  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur' | 'healBrush' | 'dodge' | 'burn' | 'sponge', pt: Pt, shift: boolean): boolean {
+    p.history.begin({ heal: 'Spot Healing', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }[kind], p.snapshot());
+```
+
+### src/app.ts · filter menu · _v0.68.0 (logged here beside the engine entry)
+
+Lens Blur and Smart Sharpen on the Filter menu. Removed:
+
+```ts
+  const FILTERS: FilterKind[] = ['develop', 'gaussianBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'unsharpMask'];
 ```
 
 ## src/engine/develop.ts
@@ -2811,6 +2849,15 @@ Rectangle and ellipse shape layers in the foreground color with a corner radius,
 ### src/extensions/tools/smear.ts · smearTool · _v0.3.0
 
 the Blur tool, labeled Smear: Liquify and Smudge run as warp strokes, Blur paints a softened sample; Strength is the brush opacity.
+### src/extensions/tools/smear.ts · Sharpen mode · _v0.68.0
+
+Sharpen joins Liquify, Blur and Smudge: its hint, the blur icon, dispatch to `beginRetouchStroke('sharpen')`, and the mode segment. Removed:
+
+```ts
+  icon: (e) => (e.retouch.smearMode === 'blur' ? 'blurTool' : 'smudge'),
+    if (m === 'blur') ctx.engine.beginRetouchStroke('blur', p.doc, p.shift);
+    { kind: 'segment', label: 'Mode', choices: [{ id: 'liquify', label: 'Liquify' }, { id: 'blur', label: 'Blur' }, { id: 'smudge', label: 'Smudge' }], get: () => e.retouch.smearMode, set: (v) => { e.retouch.smearMode = v as 'blur' | 'smudge' | 'liquify'; e.emit('options', null); e.emit('tool', null); } },
+```
 
 ## src/extensions/tools/wand.ts
 
@@ -3605,6 +3652,16 @@ OK and Actions replay apply filters through the worker. Removed:
     const label = FILTER_LABELS[this.kind], grow = this.grow();
     const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
     requestAnimationFrame(() => window.setTimeout(() => this.engine.applyImageEdit(label, run, grow), 0));
+```
+### src/ui/panels/filter-panel.ts · Lens Blur, Smart Sharpen · _v0.68.0
+
+Kinds, labels, defaults, `runFilter` cases and margins for the two filters; their dialog sections, Smart Sharpen's Angle row shown only for Motion Blur removal. Removed:
+
+```ts
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop';
+export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop' };
+  return { radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState() };
+  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : 0;
 ```
 
 ## src/ui/panels/jpeg-dialog.ts
