@@ -10,7 +10,7 @@ A tool is a self-registering module: it declares its key, icon, hint, cursor, po
 | `frontend/src/extensions/tools/marquee.ts`, `lasso.ts`, `wand.ts`, `select-common.ts` | Selection tools and the shared modifier-to-mode rule |
 | `frontend/src/extensions/tools/brush.ts` | Brush and Eraser, size and hardness keys, right-drag to resize (Shift: hardness) with the circle pinned at the press, the brush cursor |
 | `frontend/src/extensions/tools/eyedropper.ts`, `hand.ts`, `zoom.ts` | Sampling (with the sample ring during drags and its Sample Ring option) and navigation |
-| `frontend/src/extensions/tools/crop.ts`, `gradient.ts`, `shape.ts` | Crop frame with ratios and snapping to the canvas and visible layers' edges, pending gradient with movable ends, shape layers |
+| `frontend/src/extensions/tools/crop.ts`, `gradient.ts`, `shape.ts` | Crop frame with ratios and snapping to the canvas and visible layers' edges, pending gradient with movable ends, shape layers (Rectangle, Ellipse, Polygon, Star, Line, Arrow, Heart; the path shapes from `engine/shape-paths.ts`, ported from NodeMode's sonny studio) |
 | `frontend/src/extensions/tools/heal.ts`, `clone.ts`, `smear.ts`, `brush-common.ts` | Spot Healing, Clone Stamp (with the preview inside the brush circle of what a click would stamp), Smear (Liquify, Blur, Sharpen, Smudge; Blur also softens a targeted layer mask), and the brush cursor, keys and options they share |
 
 ## Contract

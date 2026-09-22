@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## src/engine/shape-paths.ts
+
+### src/engine/shape-paths.ts · new · _v0.69.0
+
+Ported from NodeMode's sonny studio, `studio/pixel/shapes.ts` (nodemode_dev v8.73.1, the owner's build, MIT): `ngonPoints`, `starPoints`, `arrowPoints` and `heartPoints`, moved from `[x, y]` tuples to `Pt` and from a tile-store scanline fill to closed corner-anchor `VectorPath`s through `boxedShapePath` (fitted to the dragged box) and `linePath` (a line is an arrow with no head). Nothing was removed.
+
+### tests/shape-paths.test.ts · new · _v0.69.0
+
+Six unit tests for the generators and the box fitting. Nothing was removed.
+
+### src/engine/index.ts · createPathShape · _v0.69.0 (logged here beside the new module)
+
+`shapeSettings` takes the path kinds and their options (`DEFAULT_PATH_SHAPE`); `createPathShape` inserts a foreground-filled vector layer named for the shape, as one step. Removed:
+
+```ts
+  shapeSettings: { kind: 'rectangle' | 'ellipse'; cornerRadius: number } = { kind: 'rectangle', cornerRadius: 0 };
+```
+
 ## src/engine/filters-more.ts
 
 ### src/engine/filters-more.ts · new · _v0.68.0
@@ -2843,6 +2861,25 @@ import type { OptionSpec, ToolPointer } from '../registry';
 ### src/extensions/tools/shape.ts · shapeTool · _v0.2.0
 
 Rectangle and ellipse shape layers in the foreground color with a corner radius, Shift after starting for square, Alt for centered, Shift+U to switch shape. The layer keeps the `LayerShapeStyle` fields (`kind`, `red`, `green`, `blue`, `cornerRadius`).
+### src/extensions/tools/shape.ts · seven shapes · _v0.69.0
+
+Rectangle, Ellipse, Polygon, Star, Line, Arrow and Heart, Shift+U cycling all seven; path shapes go to `Engine.createPathShape`, lines along the drag with Shift snapping to 45 degrees (`snapped`); the overlay draws the real outline; options show only the rows the chosen shape uses. Removed:
+
+```ts
+  icon: (e) => (e.shapeSettings.kind === 'ellipse' ? 'circleTool' : 'rectTool'),
+  hint: (e) => `Drag to draw ${e.shapeSettings.kind === 'ellipse' ? 'an ellipse' : 'a rectangle'} in the foreground color on a new shape layer · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape`,
+    if (r.w >= 1 && r.h >= 1) ctx.engine.createShape(r);
+    ctx.engine.shapeSettings.kind = ctx.engine.shapeSettings.kind === 'ellipse' ? 'rectangle' : 'ellipse';
+    const r = dragRect(draft.anchor, draft.point, draft.square, draft.center), v = ctx.view();
+    const ellipse = ctx.engine.shapeSettings.kind === 'ellipse';
+    const radius = Math.min(ctx.engine.shapeSettings.cornerRadius * v.zoom, (b.x - a.x) / 2, (b.y - a.y) / 2);
+  options: (e) => [
+    { kind: 'title', text: 'Shape' },
+    { kind: 'segment', label: 'Shape', choices: [{ id: 'rectangle', label: 'Rectangle' }, { id: 'ellipse', label: 'Ellipse' }], get: () => e.shapeSettings.kind, set: (v) => { e.shapeSettings.kind = v as 'rectangle' | 'ellipse'; e.emit('options', null); e.emit('tool', null); } },
+    { kind: 'range', label: 'Corner radius', min: 0, max: 500, unit: 'px', get: () => e.shapeSettings.cornerRadius, set: (v) => { e.shapeSettings.cornerRadius = v; e.emit('options', null); } },
+    { kind: 'readout', label: 'Color', get: () => hexOf(e.fg) },
+  ],
+```
 
 ## src/extensions/tools/smear.ts
 

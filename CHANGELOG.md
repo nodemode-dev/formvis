@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.69.0 · 2026-09-22
+
+### Added
+
+- The Shape tool (U) draws Polygon (3 to 100 sides), Star (points and indent), Line (weight), Arrow (head length and width) and Heart, beside Rectangle and Ellipse, each as an editable shape layer; Shift+U cycles all seven. The generators are ported from NodeMode's sonny studio.
+- 9 more tests (6 unit, 3 browser): 68 in all.
+
 ## 0.68.0 · 2026-09-22
 
 ### Added
