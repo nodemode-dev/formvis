@@ -79,11 +79,12 @@ export class FilterPanel extends Dialog {
     const ssRadius = sliderRow('Radius (px)', 0.1, 64, 0.1, (v) => { ss.radius = v; this.schedule(); });
     const ssNoise = sliderRow('Reduce Noise (%)', 0, 100, 1, (v) => { ss.noise = v; this.schedule(); });
     const ssAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { ss.angle = v; this.schedule(); });
-    const ssRemove = selectRow('Remove', [['gaussian', 'Gaussian Blur'], ['lens', 'Lens Blur'], ['motion', 'Motion Blur']], (v) => { ss.remove = v as SharpenRemove; setHidden(ssAngle.el, ss.remove !== 'motion'); this.schedule(); });
+    const angleOn = (): void => { const off = ss.remove !== 'motion'; ssAngle.el.classList.toggle('is-off', off); for (const i of ssAngle.el.querySelectorAll('input')) i.disabled = off; };
+    const ssRemove = selectRow('Remove', [['gaussian', 'Gaussian Blur'], ['lens', 'Lens Blur'], ['motion', 'Motion Blur']], (v) => { ss.remove = v as SharpenRemove; angleOn(); this.schedule(); });
     const ssShadows = sliderRow('Shadows fade (%)', 0, 100, 1, (v) => { ss.shadows = v; this.schedule(); });
     const ssHighlights = sliderRow('Highlights fade (%)', 0, 100, 1, (v) => { ss.highlights = v; this.schedule(); });
     this.section('smartSharpen', [ssAmount.el, ssRadius.el, ssNoise.el, ssRemove.el, ssAngle.el, ssShadows.el, ssHighlights.el], () => {
-      ssAmount.set(ss.amount); ssRadius.set(ss.radius); ssNoise.set(ss.noise); ssRemove.set(ss.remove); ssAngle.set(ss.angle); setHidden(ssAngle.el, ss.remove !== 'motion'); ssShadows.set(ss.shadows); ssHighlights.set(ss.highlights);
+      ssAmount.set(ss.amount); ssRadius.set(ss.radius); ssNoise.set(ss.noise); ssRemove.set(ss.remove); ssAngle.set(ss.angle); angleOn(); ssShadows.set(ss.shadows); ssHighlights.set(ss.highlights);
     });
     // Develop: Camera Raw-style controls over formnodal's develop core, grouped as the develop studio groups them.
     const dev = s.develop, t = dev.tone, dt = dev.detail;
