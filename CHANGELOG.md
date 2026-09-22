@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.70.0 · 2026-09-22
+
+### Added
+
+- Pen pressure for the Brush: size and flow can follow pressure, each with a minimum; a mouse paints as before.
+- Brush presets: Hard round, Soft airbrush, Ink, Pencil and Marker, from the Brush options. The dynamics model and the presets are ported from NodeMode's sonny studio.
+- 8 more tests (5 unit, 3 browser): 76 in all.
+
 ## 0.69.0 · 2026-09-22
 
 ### Added

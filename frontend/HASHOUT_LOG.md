@@ -2,6 +2,49 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Pen pressure and brush presets · _v0.70.0 (one change across six files, logged together)
+
+### src/engine/brush-dynamics.ts · new
+
+Ported from NodeMode's sonny studio (`studio/paint/dynamics.ts` and `preset.ts`, nodemode_dev v8.73.1, the owner's build, MIT): `computeOption` with sampled curves, reversal, combine modes and strength; `identityOption`, `pressureOption`; five built-in presets trimmed to sonny's brush; `presetsFromJson` for stored presets. Nothing was removed.
+
+### src/engine/stroke.ts · PixelStroke pressure
+
+`dynamics` field; `to(p, pressure)` interpolates pressure between samples; `dab(p, pressure)` scales the tip's radius and the dab's alpha. Removed:
+
+```ts
+   *  the way, the distance since the last dab carried into the next move. */
+  to(p: Pt): void {
+    const from = this.last;
+    if (!from) { this.dab(p); this.last = p; this.carry = 0; return; }
+    for (; along <= length; along += this.spacing) this.dab({ x: from.x + (dx * along) / length, y: from.y + (dy * along) / length });
+  private dab(p: Pt): void {
+    const r = this.radius;
+```
+
+### src/engine/index.ts · beginStroke, strokeTo, brushDynamics, applyBrushPreset
+
+Removed:
+
+```ts
+  beginStroke(pt: Pt, shift: boolean): boolean {
+    if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p);
+    s.to(pt);
+  strokeTo(pt: Pt): void {
+    st.s.to(pt);
+```
+
+### src/extensions/registry.ts, src/ui/stage.ts, src/extensions/tools/brush.ts · pressure input
+
+`ToolPointer.pressure`, pens only (mouse and touch report 1); the Brush passes it on and gains Preset and pressure options. Removed:
+
+```ts
+export interface ToolPointer { doc: Pt; screen: Pt; button: number; shift: boolean; alt: boolean; mod: boolean; clicks: number }
+    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks };
+  down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; ctx.engine.beginStroke(p.doc, p.shift); } },
+  move(ctx, p) { hoverPt = p.doc; ctx.engine.strokeTo(p.doc); ctx.engine.emit('overlay', null); },
+```
+
 ## src/engine/shape-paths.ts
 
 ### src/engine/shape-paths.ts · new · _v0.69.0
