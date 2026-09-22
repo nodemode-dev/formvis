@@ -851,7 +851,7 @@ export function startApp(): void {
       if (e.key === 'Escape') { e.preventDefault(); menubar.close(); contextMenu.close(); }
       return;
     }
-    const target = e.target as HTMLElement | null;
+    const target = e.target instanceof Element ? e.target : null;
     if (target?.closest('input, textarea, select, [contenteditable="true"]')) return;
     if (e.code === 'Space' && !e.metaKey && !e.ctrlKey) { e.preventDefault(); if (!e.repeat) stage.setSpace(true); return; }
     if (stage.toolKeydown(e)) { e.preventDefault(); return; }
@@ -884,7 +884,7 @@ export function startApp(): void {
   window.addEventListener('blur', () => stage.setSpace(false));
 
   document.addEventListener('paste', (e) => {
-    const target = e.target as HTMLElement | null;
+    const target = e.target instanceof Element ? e.target : null;
     if (anyDialogOpen() || target?.closest('input, textarea, [contenteditable="true"]')) return;
     const files = Array.from(e.clipboardData?.files ?? []).filter(isImageFile);
     const marker = e.clipboardData?.getData('text/plain') ?? '';
