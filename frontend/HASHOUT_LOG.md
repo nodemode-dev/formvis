@@ -2,6 +2,53 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Gradients and Edit > Fill · _v0.74.0 (one change across five files and two new ones, logged together)
+
+### src/engine/gradients.ts · new
+
+Five types, colour-stop presets (the two old choices keep their ids), `resolveStops`, `reflectStops`, `colorAt` and `diamondFill` (the L1 distance in the drag frame). Nothing was removed.
+
+### src/ui/panels/fill-dialog.ts · new
+
+Photoshop's Fill dialog; rows disabled in place, never hidden. Nothing was removed.
+
+### tests/gradients.test.ts · new
+
+Five unit tests for the gradient maths. Nothing was removed.
+
+### src/engine/index.ts · gradientSettings, renderGradient, fillWith
+
+`gradientSettings.shape` takes the five types and `style` a preset id; `renderGradient` draws from the preset's stops, Angle as a conic gradient, Reflected mirrored, Diamond per pixel; `fillWith` is Edit > Fill's work. Removed:
+
+```ts
+import { BLEND_MODES, LIMITS, clamp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle, effectsFromData } from './types';
+  gradientSettings: { shape: 'linear' | 'radial'; style: 'background' | 'transparent'; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
+    let c0 = rgbCss(fg, 1), c1 = st.style === 'background' ? rgbCss(bg, 1) : rgbCss(fg, 0);
+    if (st.reversed) [c0, c1] = [c1, c0];
+    const grad = st.shape === 'radial' ? lc.createRadialGradient(a.x, a.y, 0, a.x, a.y, len) : lc.createLinearGradient(a.x, a.y, len > 0.5 ? b.x : a.x + 0.5, b.y);
+    grad.addColorStop(0, c0);
+    grad.addColorStop(1, c1);
+    lc.fillStyle = grad;
+    lc.fillRect(bb.x - 1, bb.y - 1, bb.w + 2, bb.h + 2);
+```
+
+### src/extensions/tools/gradient.ts · types and presets
+
+Removed:
+
+```ts
+      { kind: 'segment', label: 'Shape', choices: [{ id: 'linear', label: 'Linear' }, { id: 'radial', label: 'Radial' }], get: () => e.gradientSettings.shape, set: (v) => set(() => { e.gradientSettings.shape = v as 'linear' | 'radial'; }) },
+      { kind: 'segment', label: 'Colors', choices: [{ id: 'background', label: 'Foreground to Background' }, { id: 'transparent', label: 'Foreground to Transparent' }], get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v as 'background' | 'transparent'; }) },
+```
+
+### src/app.ts · Edit > Fill
+
+The dialog, the `fill-dialog` command (Shift+F5) and its Edit menu place. Removed:
+
+```ts
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
+```
+
 ## Pen pressure and brush presets · _v0.70.0 (one change across six files, logged together)
 
 ### src/engine/brush-dynamics.ts · new

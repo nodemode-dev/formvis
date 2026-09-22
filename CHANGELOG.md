@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.74.0 · 2026-09-22
+
+### Added
+
+- The Gradient tool draws all five of Photoshop's types (Linear, Radial, Angle, Reflected, Diamond) and offers gradient presets: Foreground to Background, Foreground to Transparent, Black, White, Spectrum, Copper, Chrome, and Foreground, Background, Foreground.
+- Edit > Fill (Shift+F5): Contents (foreground, background, any colour, Content-Aware, pattern, black, 50% grey, white), Mode, Opacity and Preserve Transparency.
+- 12 more tests (5 unit, 7 browser): 98 in all.
+
 ## 0.73.0 · 2026-09-22
 
 ### Added
