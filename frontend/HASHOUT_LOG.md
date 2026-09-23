@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Content-Aware Fill workspace · _v0.84.0 (src/engine/retouch.ts, src/engine/index.ts, src/styles/dialogs.css, src/app.ts; src/ui/panels/content-fill-dialog.ts new; tests/content-fill-sampling.test.ts and e2e/test_content_fill_workspace.py new)
+
+`contentFill` takes an optional sampling mask: sources must lie wholly inside it (a second summed-area table) and the region grows to include it; without one it is unchanged. `Engine.contentAwareFillWith` maps a document-space sampling area into the layer's pixels and outputs to the current layer, a new layer of only the filled pixels (upright, unscaled layers; others go to a duplicate) or a duplicate, as one step. `content-fill-dialog.ts` is the workspace (Auto, Rectangular or painted Custom sampling, Show Result, Output To). `dialogs.css` adds `.cv-fill-canvas` to the shared preview rule. `app.ts` adds `content-fill-workspace` and relabels the one-click fill Quick Content-Aware Fill. Removed:
+
+```ts
+    { id: 'content-fill', label: 'Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', 'transform-warp', 'puppet-warp', '-', 'settings'] },
+export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, h: number): boolean {
+  const rx0 = Math.max(0, x0 - margin), ry0 = Math.max(0, y0 - margin);
+  const rw = Math.min(w - 1, x1 + margin) - rx0 + 1, rh = Math.min(h - 1, y1 + margin) - ry0 + 1, rn = rw * rh;
+  for (let cy = half; cy < rh - half; cy++) for (let cx = half; cx < rw - half; cx++) if (!holeIn(cx - half, cy - half, cx + half, cy + half)) sources.push(cy * rw + cx);
+```
+
+```css
+.cv-liquify-canvas, .cv-mask-canvas { display: block; width: 640px; max-width: 100%; aspect-ratio: 640 / 440; height: auto; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); cursor: crosshair; touch-action: none; }
+```
+
 ## Select and Mask · _v0.83.0 (src/engine/select-mask.ts and src/ui/panels/select-mask-dialog.ts new, src/engine/index.ts, src/styles/dialogs.css, src/app.ts; tests/select-mask.test.ts and e2e/test_select_mask.py new)
 
 `select-mask.ts`: `RefineSettings`, `DEFAULT_REFINE` and `refineSelection`, running Radius, Smooth, Feather, Contrast and Shift Edge in Photoshop's order, each `refineMatte` call in advanced mode doing one thing. `select-mask-dialog.ts`: the workspace (fixed preview under `.cv-mask-canvas`, four view modes, five sliders, Output To). `Engine.applyRefinedSelection` sets the refined selection and runs the chosen output (selection, layer mask replacing any, Layer via Copy, or a duplicate with a mask and the original hidden) as one step. `dialogs.css` gives the new preview class the Liquify preview's style. `app.ts` adds `select-and-mask` (Alt+Mod+R) to the Select menu. Removed:

@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.84.0 · 2026-09-23
+
+### Added
+
+- Edit > Content-Aware Fill: a workspace that shows where the fill samples from (Auto, Rectangular, or painted Custom), previews the result, and outputs to the current layer, a new layer or a duplicate.
+- 5 more tests (3 unit, 2 browser): 158 in all.
+
+### Changed
+
+- The one-click fill on Shift+Backspace is now labelled Quick Content-Aware Fill.
+
 ## 0.83.0 · 2026-09-23
 
 ### Added
