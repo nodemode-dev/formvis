@@ -11,6 +11,26 @@ export interface VectorPath { subpaths: SubPath[] }
 
 export const cornerAt = (p: Pt): Anchor => ({ x: p.x, y: p.y, inX: p.x, inY: p.y, outX: p.x, outY: p.y });
 
+/** Points along a subpath's curves about `step` pixels apart (each cubic segment evaluated at a count from its control
+ *  polygon's length), closing back to the start when the subpath is closed; for stroking a path with a tool. */
+export function samplePath(sp: SubPath, step: number): Pt[] {
+  const a = sp.anchors, out: Pt[] = [];
+  if (!a.length) return out;
+  out.push({ x: a[0].x, y: a[0].y });
+  const segment = (p: Anchor, q: Anchor): void => {
+    const c1 = { x: p.outX, y: p.outY }, c2 = { x: q.inX, y: q.inY };
+    const len = Math.hypot(c1.x - p.x, c1.y - p.y) + Math.hypot(c2.x - c1.x, c2.y - c1.y) + Math.hypot(q.x - c2.x, q.y - c2.y);
+    const n = Math.max(1, Math.min(2000, Math.ceil(len / Math.max(0.5, step))));
+    for (let i = 1; i <= n; i++) {
+      const t = i / n, u = 1 - t;
+      out.push({ x: u * u * u * p.x + 3 * u * u * t * c1.x + 3 * u * t * t * c2.x + t * t * t * q.x, y: u * u * u * p.y + 3 * u * u * t * c1.y + 3 * u * t * t * c2.y + t * t * t * q.y });
+    }
+  };
+  for (let i = 1; i < a.length; i++) segment(a[i - 1], a[i]);
+  if (sp.closed && a.length > 1) segment(a[a.length - 1], a[0]);
+  return out;
+}
+
 /** Fills a path's inside on a fresh surface with `c`'s fill style, its path operations applied in order: subpaths that
  *  combine are filled together by the non-zero rule (so outlines wound against each other still cut holes), and each
  *  subtract, intersect or exclude subpath is applied to what is there so far (destination-out, destination-in, xor). */

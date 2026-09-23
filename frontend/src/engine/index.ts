@@ -1,5 +1,5 @@
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
-import { fillVector, pathBounds, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
+import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
 import { Emitter } from './events';
@@ -43,7 +43,7 @@ import { findWires } from './distractions';
 import type { SampledTip } from './abr';
 import { DEFAULT_GLOBAL_LIGHT, type GlobalLight } from './style-extras';
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
-import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
+import { noDynamics, pressureOption, type BrushDynamics, type BrushPreset } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { CUSTOM_SHAPES } from './custom-shapes';
 export { CUSTOM_SHAPES } from './custom-shapes';
@@ -102,6 +102,10 @@ const SMART_NOTICE = 'This layer is a smart object. Rasterize it (Layer > Raster
 
 /** Tools that paint with a PixelStroke, whose surfaces are warmed when the tool is chosen. */
 const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'cloneStamp', 'healingBrush', 'spotHealing', 'remove']);
+
+/** The tools Stroke Path can stroke with, and their names in its dialog. */
+export type StrokeTool = 'brush' | 'eraser' | 'clone' | 'healBrush' | 'spotHealing' | 'dodge' | 'burn' | 'sponge' | 'blur' | 'sharpen';
+export const STROKE_TOOLS: ReadonlyArray<readonly [StrokeTool, string]> = [['brush', 'Brush'], ['eraser', 'Eraser'], ['clone', 'Clone Stamp'], ['healBrush', 'Healing Brush'], ['spotHealing', 'Spot Healing Brush'], ['blur', 'Blur'], ['sharpen', 'Sharpen'], ['dodge', 'Dodge'], ['burn', 'Burn'], ['sponge', 'Sponge']];
 
 /** A rectangle shape's four corner radii (top left, top right, bottom right, bottom left) when it carries them and
  *  they are all finite and not negative; null when it has one radius for all. */
@@ -1264,6 +1268,38 @@ export class Engine {
       c.lineCap = 'round';
       c.stroke(shape);
     });
+  }
+
+  /** Stroke Path with its settings, as Photoshop's dialog has them: each subpath stroked with `tool` at its current
+   *  settings, following the curves; Simulate Pressure runs the pressure from nothing at each end to full in the middle
+   *  (thin, thick, thin), and when the brush's size does not follow pressure it does so for this stroke. One step. */
+  strokePathWith(tool: StrokeTool, simulatePressure: boolean): void {
+    const p = this.current, vp = this.workPath;
+    if (!p || !vp || !pathBounds(vp)) { this.notice('Draw a path with the Pen tool first.'); return; }
+    if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to stroke on.'); return; }
+    const runs = vp.subpaths.map((sp) => samplePath(sp, 2)).filter((pts) => pts.length > 1);
+    if (!runs.length) return;
+    const brush = tool === 'brush' || tool === 'eraser', savedDyn = this.brushDynamics, savedMode = this.brushMode;
+    if (brush) {
+      this.brushMode = tool === 'eraser' ? 'erase' : 'paint';
+      if (simulatePressure && !this.brushDynamics.size.enabled) this.brushDynamics = { ...savedDyn, size: pressureOption(0.02) };
+    }
+    const kind = ({ clone: 'clone', healBrush: 'healBrush', spotHealing: 'heal', dodge: 'dodge', burn: 'burn', sponge: 'sponge', blur: 'blur', sharpen: 'sharpen' } as const)[tool as Exclude<StrokeTool, 'brush' | 'eraser'>];
+    p.history.begin('Stroke Path', p.snapshot());
+    try {
+      for (const pts of runs) {
+        const pressure = (i: number): number => (simulatePressure ? Math.max(0.01, Math.sin((Math.PI * i) / (pts.length - 1))) : 1);
+        const ok = brush ? this.beginStroke(pts[0], false, pressure(0)) : this.beginRetouchStroke(kind, pts[0], false);
+        if (!ok) break;
+        for (let i = 1; i < pts.length; i++) this.strokeTo(pts[i], pressure(i));
+        this.endStroke();
+      }
+    } finally {
+      this.brushDynamics = savedDyn;
+      this.brushMode = savedMode;
+      p.history.end(p.snapshot());
+    }
+    this.refresh();
   }
 
   private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D, vp: VectorPath) => void): void {
