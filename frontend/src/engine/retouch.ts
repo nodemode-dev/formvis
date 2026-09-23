@@ -307,7 +307,7 @@ export function spotHeal(rgba: Uint8ClampedArray, coverage: Uint8Array, W: numbe
 
 /** Content-Aware Fill: fills the pixels where `mask` is set in premultiplied `px` from the surrounding image. Returns
  *  false when there is nothing opaque around the hole, or no whole patch of the surroundings to copy from. */
-export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, h: number): boolean {
+export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, h: number, allow: Uint8Array | null = null): boolean {
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0, row = y * w; x < w; x++) {
@@ -321,8 +321,10 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
   if (x1 < 0) return true;
   const extent = Math.max(x1 - x0 + 1, y1 - y0 + 1), half = extent > 48 ? 4 : 3, side = 2 * half + 1;
   const margin = Math.max(side * 3, Math.min(160, extent));
-  const rx0 = Math.max(0, x0 - margin), ry0 = Math.max(0, y0 - margin);
-  const rw = Math.min(w - 1, x1 + margin) - rx0 + 1, rh = Math.min(h - 1, y1 + margin) - ry0 + 1, rn = rw * rh;
+  let rx0 = Math.max(0, x0 - margin), ry0 = Math.max(0, y0 - margin), rx1 = Math.min(w - 1, x1 + margin), ry1 = Math.min(h - 1, y1 + margin);
+  // A sampling area (Content-Aware Fill's workspace) may lie beyond the margin: the region grows to take it in.
+  if (allow) for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (allow[y * w + x]) { rx0 = Math.min(rx0, x); ry0 = Math.min(ry0, y); rx1 = Math.max(rx1, x); ry1 = Math.max(ry1, y); }
+  const rw = rx1 - rx0 + 1, rh = ry1 - ry0 + 1, rn = rw * rh;
   const global = (l: number): number => ((Math.floor(l / rw) + ry0) * w + (l % rw) + rx0) * 4;
   const unknown = new Uint8Array(rn);
   let remaining = 0, opaque = false;
@@ -336,7 +338,13 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
   for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) table[(y + 1) * (rw + 1) + x + 1] = unknown[y * rw + x] + table[y * (rw + 1) + x + 1] + table[(y + 1) * (rw + 1) + x] - table[y * (rw + 1) + x];
   const holeIn = (ax: number, ay: number, bx: number, by: number): number => table[(by + 1) * (rw + 1) + bx + 1] - table[ay * (rw + 1) + bx + 1] - table[(by + 1) * (rw + 1) + ax] + table[ay * (rw + 1) + ax];
   let sources: number[] = [];
-  for (let cy = half; cy < rh - half; cy++) for (let cx = half; cx < rw - half; cx++) if (!holeIn(cx - half, cy - half, cx + half, cy + half)) sources.push(cy * rw + cx);
+  let outside: ((ax: number, ay: number, bx: number, by: number) => number) | null = null;
+  if (allow) {
+    const t2 = new Int32Array((rw + 1) * (rh + 1));
+    for (let y = 0; y < rh; y++) for (let x = 0; x < rw; x++) t2[(y + 1) * (rw + 1) + x + 1] = (allow[(y + ry0) * w + x + rx0] ? 0 : 1) + t2[y * (rw + 1) + x + 1] + t2[(y + 1) * (rw + 1) + x] - t2[y * (rw + 1) + x];
+    outside = (ax, ay, bx, by) => t2[(by + 1) * (rw + 1) + bx + 1] - t2[ay * (rw + 1) + bx + 1] - t2[(by + 1) * (rw + 1) + ax] + t2[ay * (rw + 1) + ax];
+  }
+  for (let cy = half; cy < rh - half; cy++) for (let cx = half; cx < rw - half; cx++) if (!holeIn(cx - half, cy - half, cx + half, cy + half) && (!outside || !outside(cx - half, cy - half, cx + half, cy + half))) sources.push(cy * rw + cx);
   if (!sources.length) return false;
   if (sources.length > 8000) { const step = sources.length / 8000, all = sources; sources = Array.from({ length: 8000 }, (_, i) => all[Math.floor(i * step)]); }
   const confidence = new Float32Array(rn);

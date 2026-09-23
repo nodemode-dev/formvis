@@ -4109,6 +4109,55 @@ export class Engine {
     });
   }
 
+  /** The Content-Aware Fill workspace's OK: fills the selection on the active layer, sampling only from `allowDoc`
+   *  (1 where sampling is allowed, over the whole canvas) when given, and sends the result to the current layer, a
+   *  new layer holding only the filled pixels (for an upright, unscaled layer), or a duplicate of the layer. One step. */
+  contentAwareFillWith(allowDoc: Uint8Array | null, output: 'current' | 'new' | 'duplicate'): void {
+    const p0 = this.current;
+    if (!p0?.selection) { this.notice('Content-Aware Fill needs a selection.'); return; }
+    if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
+    const l0 = p0.activeLayer as Layer, plain = !!l0.raster && !l0.transform.rotation && l0.transform.w === l0.raster.width && l0.transform.h === l0.raster.height && !l0.transform.flipX && !l0.transform.flipY;
+    const mode = output === 'new' && !plain ? 'duplicate' : output;
+    this.edit('Content-Aware Fill', (p) => {
+      if (mode === 'duplicate') this.duplicateLayers();
+      const l = p.activeLayer as Layer, r = l.raster;
+      if (!r) return false;
+      const cov = this.coverageFor(p, l, 'pixels', r.width, r.height);
+      if (!cov) return false;
+      let allow: Uint8Array | null = null;
+      if (allowDoc && allowDoc.length === p.doc.width * p.doc.height) {
+        const doc = createSurface(p.doc.width, p.doc.height), dc = ctxOf(doc), di = dc.createImageData(p.doc.width, p.doc.height);
+        for (let i = 0; i < allowDoc.length; i++) di.data[i * 4 + 3] = allowDoc[i] ? 255 : 0;
+        dc.putImageData(di, 0, 0);
+        const local = createSurface(r.width, r.height), lc = ctxOf(local);
+        setMat(lc, invert(placement(l.transform, r.width, r.height)));
+        lc.imageSmoothingEnabled = false;
+        lc.drawImage(doc, 0, 0);
+        const ld = lc.getImageData(0, 0, r.width, r.height).data;
+        allow = new Uint8Array(r.width * r.height);
+        for (let i = 0; i < allow.length; i++) allow[i] = ld[i * 4 + 3] >= 128 ? 1 : 0;
+      }
+      const src = r.read(), pm = premultiply(src.data), hole = new Uint8Array(r.width * r.height);
+      for (let i = 0; i < hole.length; i++) hole[i] = cov[i * 4 + 3] ? 1 : 0;
+      if (!contentFill(pm, hole, r.width, r.height, allow)) { this.notice('There is nothing opaque in the sampling area to fill from.'); return false; }
+      const out = new ImageData(r.width, r.height);
+      unpremultiply(pm, out.data);
+      const result = this.blendThrough(src, out, cov);
+      if (mode === 'new') {
+        const only = new ImageData(r.width, r.height);
+        for (let i = 0; i < hole.length; i++) if (hole[i]) only.data.set(result.data.subarray(i * 4, i * 4 + 4), i * 4);
+        const nr = new Raster(r.width, r.height);
+        nr.ctx.putImageData(only, 0, 0);
+        this.insertRasterLayer(nr, 'Content-Aware Fill', l.transform.x, l.transform.y, {}, 'Content-Aware Fill');
+        return true;
+      }
+      const nr = new Raster(r.width, r.height);
+      nr.ctx.putImageData(result, 0, 0);
+      p.updateLayer(l.id, { raster: nr, shape: null });
+      return true;
+    });
+  }
+
   snapping = true;
   snapGuides: { xs: number[]; ys: number[] } | null = null;
   private contentBoxes = new WeakMap<Raster, { version: number; box: Rect | null }>();
