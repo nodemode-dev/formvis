@@ -35,6 +35,7 @@ import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
 import { sharpenSample } from './filters-more';
 import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
+import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
 import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
@@ -1252,6 +1253,8 @@ export class Engine {
       }
     }
     const pv = this.preview;
+    const mw = this.meshWarpEdit;
+    if (mw && mw.project === p && mw.preview) m.set(mw.layerId, { ...(m.get(mw.layerId) ?? {}), source: mw.preview.raster.canvas, transform: mw.preview.t });
     if (pv && pv.project === p) m.set(pv.layerId, { ...(m.get(pv.layerId) ?? {}), ...(pv.target === 'pixels' ? { source: pv.surface } : { maskSource: pv.surface }), ...(pv.transform ? { transform: pv.transform } : {}) });
     const gr = this.gradient;
     if (gr && gr.project === p) m.set(gr.layerId, { ...(m.get(gr.layerId) ?? {}), ...(gr.target === 'pixels' ? { source: gr.surface } : { maskSource: gr.surface }) });
@@ -2580,6 +2583,82 @@ export class Engine {
 
   cancelDistort(): void {
     if (this.distortEdit) this.dropDistort();
+  }
+
+  /** Edit > Transform > Warp: a 4 x 4 control grid over the active layer's corners, pending until applied (Enter) or
+   *  cancelled (Escape). The warp is the smooth one (engine/mesh-warp.ts, ported from NodeMode's sonny): the surface
+   *  curves through the points. A linked mask without a placement of its own warps with the pixels. */
+  meshWarpEdit: { project: Project; layerId: ID; gw: number; gh: number; points: P2[]; source: ImageData; mask: ImageData | null; preview: Warped | null } | null = null;
+  private meshFrame = 0;
+
+  beginMeshWarp(): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit) return false;
+    if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
+    this.settle();
+    const r = l.raster, c = cornersOf(l.transform), gw = 4, gh = 4, points: P2[] = [];
+    for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
+      const u = i / (gw - 1), v = j / (gh - 1), top = { x: c[0].x + (c[1].x - c[0].x) * u, y: c[0].y + (c[1].y - c[0].y) * u }, bot = { x: c[3].x + (c[2].x - c[3].x) * u, y: c[3].y + (c[2].y - c[3].y) * u };
+      points.push([top.x + (bot.x - top.x) * v, top.y + (bot.y - top.y) * v]);
+    }
+    const m = l.mask?.raster && l.mask.linked && !l.mask.placement ? l.mask.raster.read() : null;
+    this.meshWarpEdit = { project: p, layerId: l.id, gw, gh, points, source: r.read(), mask: m, preview: null };
+    this.emit('render', null);
+    this.emit('options', null);
+    return true;
+  }
+
+  /** Moves one control point (row-major); a move that would fold a cell is ignored. Re-previews once per frame. */
+  moveMeshWarpPoint(i: number, pt: Pt): void {
+    const w = this.meshWarpEdit;
+    if (!w || i < 0 || i >= w.points.length) return;
+    const next = w.points.map((q, k): P2 => (k === i ? [pt.x, pt.y] : q));
+    for (let cy = 0; cy < w.gh - 1; cy++) for (let cx = 0; cx < w.gw - 1; cx++) {
+      if (!convexQuad([next[cy * w.gw + cx], next[cy * w.gw + cx + 1], next[(cy + 1) * w.gw + cx], next[(cy + 1) * w.gw + cx + 1]])) return;
+    }
+    w.points = next;
+    if (!this.meshFrame) this.meshFrame = requestAnimationFrame(() => { this.meshFrame = 0; const e = this.meshWarpEdit; if (e) { e.preview = this.meshWarped(e.source, e.points, e.gw, e.gh, 360); this.emit('render', null); } });
+    this.emit('overlay', null);
+  }
+
+  /** `img` through the grid into document space, at most `maxSide` pixels a side (0 for full size). */
+  private meshWarped(img: ImageData, points: P2[], gw: number, gh: number, maxSide = 0): Warped | null {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const [x, y] of points) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    const mg = 0.12 * Math.max(x1 - x0, y1 - y0);
+    x0 = Math.floor(x0 - mg); y0 = Math.floor(y0 - mg); x1 = Math.ceil(x1 + mg); y1 = Math.ceil(y1 + mg);
+    const W = Math.max(1, x1 - x0), H = Math.max(1, y1 - y0), s = maxSide ? Math.min(1, maxSide / Math.max(W, H)) : 1;
+    const ow = Math.max(1, Math.round(W * s)), oh = Math.max(1, Math.round(H * s));
+    const out = meshWarpImage(img, gw, gh, points.map(([x, y]): P2 => [(x - x0) * s, (y - y0) * s]), ow, oh, true);
+    if (!out) return null;
+    const raster = new Raster(ow, oh);
+    raster.ctx.putImageData(out, 0, 0);
+    return { raster, t: { ...docTransform(W, H), x: x0, y: y0, w: W, h: H } };
+  }
+
+  /** Applies the warp at full resolution as one Warp step, trimmed to what is visible. */
+  applyMeshWarp(): void {
+    const w = this.meshWarpEdit;
+    if (!w) return;
+    this.dropMeshWarp();
+    const p = w.project, l = p.layer(w.layerId);
+    if (p !== this.current || !l) return;
+    const full = this.meshWarped(w.source, w.points, w.gw, w.gh);
+    if (!full) { this.notice('That warp folds over itself. Try smaller moves.'); return; }
+    const crop = visibleBounds(full.raster), pixels = crop ? cropWarp(full, crop) : full;
+    let mask = l.mask;
+    if (mask && w.mask) { const mw = this.meshWarped(w.mask, w.points, w.gw, w.gh); if (mw) mask = { ...mask, raster: crop ? cropWarp(mw, crop).raster : mw.raster }; }
+    this.edit('Warp', (q) => q.updateLayer(l.id, { raster: pixels.raster, transform: pixels.t, mask, shape: null }));
+  }
+
+  cancelMeshWarp(): void { if (this.meshWarpEdit) this.dropMeshWarp(); }
+
+  private dropMeshWarp(): void {
+    if (this.meshFrame) cancelAnimationFrame(this.meshFrame);
+    this.meshFrame = 0;
+    this.meshWarpEdit = null;
+    this.emit('render', null);
+    this.emit('options', null);
   }
 
   private dropDistort(): void {

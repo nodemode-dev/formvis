@@ -1,4 +1,5 @@
 import { HANDLES, contains, corners, unitPoint, type DragMode, type Transform } from '../../engine';
+import { meshSurfacePoint, type P2 } from '../../engine/mesh-warp';
 import { digitOf, type Tool, type ToolContext, type ToolPointer } from '../registry';
 
 const HANDLE_PX = 7;
@@ -18,6 +19,15 @@ function editable(ctx: ToolContext): Transform | null {
 /** the free distort: the corner under the pointer in handle order (top-left, top-right, bottom-right,
  *  bottom-left): any corner of a pending distortion, or with Cmd held a corner handle of the transform box. */
 let cornerDrag: number | null = null;
+/** The warp control point being dragged, and the one under the pointer while a warp is pending. */
+let warpDrag: number | null = null;
+function warpPoint(ctx: ToolContext, p: ToolPointer): number | null {
+  const w = ctx.engine.meshWarpEdit, v = ctx.view();
+  if (!w) return null;
+  let best: number | null = null, bestD = HANDLE_PX + 1;
+  w.points.forEach(([x, y], i) => { const s = v.toScreen({ x, y }), d = Math.hypot(s.x - p.screen.x, s.y - p.screen.y); if (d <= HANDLE_PX && d < bestD) { best = i; bestD = d; } });
+  return best;
+}
 function distortCorner(ctx: ToolContext, p: ToolPointer): number | null {
   const e = ctx.engine, v = ctx.view(), d = e.distortEdit;
   let pts = d ? [...d.corners] : null;
@@ -77,6 +87,7 @@ export const moveTool: Tool = {
   down(ctx, p) {
     if (p.button !== 0) return;
     const e = ctx.engine;
+    if (e.meshWarpEdit) { warpDrag = warpPoint(ctx, p); return; }
     const corner = distortCorner(ctx, p);
     if (corner !== null && (e.distortEdit || e.beginDistort())) { cornerDrag = corner; return; }
     if (e.distortEdit) return;
@@ -87,6 +98,7 @@ export const moveTool: Tool = {
     if (m) e.beginTransform(m, p.doc);
   },
   move(ctx, p) {
+    if (warpDrag !== null) { ctx.engine.moveMeshWarpPoint(warpDrag, p.doc); return; }
     if (cornerDrag !== null) { ctx.engine.moveDistortCorner(cornerDrag, p.doc); return; }
     if (pixelStart) {
       let dx = p.doc.x - pixelStart.x, dy = p.doc.y - pixelStart.y;
@@ -97,11 +109,14 @@ export const moveTool: Tool = {
     ctx.engine.updateTransform(p.doc, p.shift, p.alt);
   },
   up(ctx) {
+    if (warpDrag !== null) { warpDrag = null; return; }
+    if (ctx.engine.meshWarpEdit) return;
     if (cornerDrag !== null) { cornerDrag = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.endPixelMove(); return; }
     ctx.engine.endTransform();
   },
   cancel(ctx) {
+    if (warpDrag !== null) { warpDrag = null; return; }
     if (cornerDrag !== null) { cornerDrag = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.cancelPixelMove(); return; }
     ctx.engine.cancelTransform();
@@ -114,6 +129,8 @@ export const moveTool: Tool = {
     if (arrows[e.key]) { eng.nudge(arrows[e.key][0], arrows[e.key][1]); return true; }
     const digit = digitOf(e);
     if (digit !== null && !e.shiftKey && !e.altKey) { eng.setOpacity(digit === 0 ? 1 : digit / 10); return true; }
+    if (e.key === 'Enter' && eng.meshWarpEdit) { eng.applyMeshWarp(); return true; }
+    if (e.key === 'Escape' && eng.meshWarpEdit) { eng.cancelMeshWarp(); return true; }
     if (e.key === 'Enter' && eng.distortEdit) { eng.applyDistort(); return true; }
     if (e.key === 'Escape' && eng.distortEdit) { eng.cancelDistort(); return true; }
     if (e.key === 'Escape' && pixelStart) { pixelStart = null; eng.cancelPixelMove(); return true; }
@@ -135,6 +152,27 @@ export const moveTool: Tool = {
       for (const x of guides.xs) { const s = Math.round(v.toScreen({ x, y: 0 }).x) + 0.5; g.moveTo(s, 0); g.lineTo(s, v.height); }
       for (const y of guides.ys) { const s = Math.round(v.toScreen({ x: 0, y }).y) + 0.5; g.moveTo(0, s); g.lineTo(v.width, s); }
       g.stroke();
+      g.restore();
+    }
+    const mw = e.meshWarpEdit;
+    if (mw) {
+      const v = ctx.view(), pal = ctx.paint(), q: P2 = [0, 0];
+      g.save();
+      g.lineWidth = 1;
+      g.strokeStyle = pal.accent;
+      g.beginPath();
+      for (let line = 0; line < mw.gw + mw.gh; line++) {
+        const alongU = line < mw.gh, fixed = alongU ? line : line - mw.gh;
+        for (let k = 0; k <= 24; k++) {
+          const t = (k / 24) * ((alongU ? mw.gw : mw.gh) - 1);
+          meshSurfacePoint(mw.gw, mw.gh, mw.points, alongU ? t : fixed, alongU ? fixed : t, q);
+          const s = v.toScreen({ x: q[0], y: q[1] });
+          if (k) g.lineTo(s.x, s.y); else g.moveTo(s.x, s.y);
+        }
+      }
+      g.stroke();
+      g.fillStyle = pal.handle;
+      for (const [x, y] of mw.points) { const s = v.toScreen({ x, y }); g.fillRect(s.x - 3.5, s.y - 3.5, 7, 7); g.strokeRect(s.x - 3.5, s.y - 3.5, 7, 7); }
       g.restore();
     }
     const dz = e.distortEdit;
