@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.82.0 · 2026-09-23
+
+### Added
+
+- Crop: Straighten (up to 45 degrees either way) with a Level line button that sets the angle from a line you drag; Content-Aware fills the corners the turn opens and canvas a wider frame adds; Perspective turns the frame into four free corners and flattens that area into the whole canvas.
+- 7 more tests (3 unit, 4 browser): 146 in all.
+
+### Fixed
+
+- The status bar's tool hint no longer nudges the layout when its text changes.
+- Several browser tests switched tools through a command that does not exist; they now switch through the engine and check that it happened.
+
 ## 0.81.0 · 2026-09-23
 
 ### Added

@@ -10,6 +10,8 @@
 
 CI runs all three on every push and pull request. A change that adds behaviour adds its tests in the same commit; the throttled run below still applies to anything touching the DOM, since tests do not catch flashes.
 
+Scripted checks switch tools with `engine.setTool(id)` and confirm `engine.tool` afterwards; there are no `tool-...` commands, and running an unknown command id quietly does nothing. A step that looks for a control must fail when the control is missing, never skip it, or the check measures an empty screen.
+
 ## Throttled browser run
 
 Every change that touches the DOM passes a throttled browser run before it lands, because flashes and layout jumps are transients that a fast machine hides.

@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Crop straighten, Content-Aware edges, Perspective Crop; the status hint · _v0.82.0 (src/engine/index.ts, src/extensions/tools/crop.ts, src/styles/shell.css; tests/crop-straighten.test.ts, e2e/test_crop_straighten.py and e2e/test_perspective_crop.py new)
+
+In the engine, `straightenCrop` (every layer turned about the frame's centre, the crop, and `fillOpenedEdges`, content-aware fill of what the bottom pixel layer no longer covers) and `perspectiveCrop` (the quad's inverse homography scaled to a rectangle, every pixel layer and linked mask warped through it). The Crop tool gains `angle`, `contentAware`, `leveling` with `levelAngle`, and `perspective` with `quad`, `cornerDrag`, `quadOf` and `hitCorner`; commit goes through the new engine methods; Escape and Cancel reset all of it; the overlay shows the level line, the tilted region to keep, and the quad. `shell.css`: the status hint fills the remaining space with its text right-aligned, so its box no longer moves as its text changes. Removed:
+
+```ts
+  e.cropTo(r);
+    if (e.key === 'Enter' && frame) { commit(ctx.engine); return true; }
+    if (e.key === 'Escape' && frame) { frame = null; drag = null; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return true; }
+    { kind: 'button', label: 'Cancel', icon: 'close', run: () => { frame = null; drag = null; e.emit('overlay', null); e.emit('options', null); } },
+```
+
+```css
+.cv-st-hint { margin-left: auto; overflow: hidden; text-overflow: ellipsis; }
+```
+
 ## Puppet Warp · _v0.81.0 (src/engine/puppet.ts new, src/engine/index.ts, src/extensions/tools/move.ts, src/app.ts; tests/puppet.test.ts and e2e/test_puppet.py new)
 
 `puppet.ts` is rigid moving least squares (Schaefer, McPhail and Warren, 2006), written for sonny: `mlsRigid` and `puppetImage` (the backward map on an 8 px grid, interpolated). In the engine, `puppetEdit` with `beginPuppetWarp`, `addPuppetPin`, `movePuppetPin`, `removePuppetPin`, `schedulePuppet`, `puppetRender`, `applyPuppetWarp`, `cancelPuppetWarp` and `dropPuppet`, and the preview in the layer overrides. The Move tool places, drags and Alt-removes pins (`pinDrag`, `puppetPin`), applies on Enter, cancels on Escape and draws the pins. `app.ts` adds `puppet-warp` to the Edit menu. Removed:
