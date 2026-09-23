@@ -3830,6 +3830,20 @@ export class Engine {
 
   snapping = true;
   snapGuides: { xs: number[]; ys: number[] } | null = null;
+  private contentBoxes = new WeakMap<Raster, { version: number; box: Rect | null }>();
+
+  /** A layer's visible pixels in document space under transform `t`, or its whole bounds when it has none; the
+   *  pixel scan is cached until the raster changes. */
+  private snapBox(l: Layer, t: Transform): Rect {
+    const r = l.raster;
+    if (!r) return transformBounds(t);
+    let c = this.contentBoxes.get(r);
+    if (!c || c.version !== r.version) { c = { version: r.version, box: visibleBounds(r) }; this.contentBoxes.set(r, c); }
+    const vb = c.box;
+    if (!vb) return transformBounds(t);
+    const m = placement(t, r.width, r.height);
+    return boundsOf([applyMat(m, vb.x, vb.y), applyMat(m, vb.x + vb.w, vb.y), applyMat(m, vb.x + vb.w, vb.y + vb.h), applyMat(m, vb.x, vb.y + vb.h)]);
+  }
 
   private snapMove(p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform {
     const tol = 6 / p.viewport.zoom;
@@ -3837,11 +3851,17 @@ export class Engine {
     for (const e of hierarchy(p.doc)) {
       const l = e.layer;
       if (!e.visible || l.isGroup || !l.raster || l.id === id || moving?.has(l.id)) continue;
-      const b = transformBounds(l.transform);
+      const b = this.snapBox(l, l.transform);
       xs.push(Math.round(b.x), Math.round(b.x + b.w / 2), Math.round(b.x + b.w));
       ys.push(Math.round(b.y), Math.round(b.y + b.h / 2), Math.round(b.y + b.h));
     }
-    const b = transformBounds(t);
+    const self = p.layer(id), b = self ? this.snapBox(self, t) : transformBounds(t);
+    if (this.view.guides) for (const g of p.doc.guides ?? []) (g.axis === 'x' ? xs : ys).push(g.at);
+    if (this.view.grid) {
+      const sub = Math.max(1, this.view.gridSpacing / Math.max(1, this.view.gridSubdivisions));
+      for (const e of [b.x, b.x + b.w / 2, b.x + b.w]) xs.push(Math.round(e / sub) * sub);
+      for (const e of [b.y, b.y + b.h / 2, b.y + b.h]) ys.push(Math.round(e / sub) * sub);
+    }
     const pick = (edges: number[], targets: number[]): { d: number; at: number } | null => {
       let best: { d: number; at: number } | null = null;
       for (const edge of edges) for (const g of targets) {
