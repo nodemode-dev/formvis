@@ -176,7 +176,10 @@ export interface SmartFilter { id: ID; kind: string; settings: Record<string, un
 /** `warp`: where the source's corners land (top left, top right, bottom right, bottom left) after Distort or
  *  Perspective, kept so every re-render warps afresh from the source; `warpAt` is the layer transform its last render
  *  set, so a later move or transform of the layer can be carried into the warp. */
-export interface SmartObject { source: Raster; filters: SmartFilter[]; warp?: Pt[] | null; warpAt?: Transform | null; filterMask?: Raster | null; filterMaskEnabled?: boolean }
+/** A linked smart object's file: an id for its source in the app's link registry, and the name, size and modified time
+ *  its contents were last read at. */
+export interface SmartLink { id: string; name: string; size: number; lastModified: number }
+export interface SmartObject { source: Raster; filters: SmartFilter[]; warp?: Pt[] | null; warpAt?: Transform | null; filterMask?: Raster | null; filterMaskEnabled?: boolean; link?: SmartLink | null }
 
 /** Smart filters read back from saved data, checked. */
 export function smartFiltersFrom(raw: unknown): SmartFilter[] {

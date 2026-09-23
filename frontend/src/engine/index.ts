@@ -14,7 +14,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle, effectsFromData } from './types';
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData } from './types';
 import { patternById } from './patterns';
 
 export * from './types';
@@ -681,6 +681,24 @@ export class Engine {
     if (p && l && sm?.filterMask) this.restackSoon(p, l.id, null, null, sm.filterMaskEnabled === false ? 'Enable Smart Filter Mask' : 'Disable Smart Filter Mask', { filterMask: sm.filterMask, filterMaskEnabled: sm.filterMaskEnabled === false });
   }
 
+  /** File > Place Linked: `raster` as a new smart object, centred, linked to a file through `link`. */
+  placeLinked(raster: Raster, link: SmartLink, name: string): void {
+    this.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [], link } }, 'Place Linked');
+  }
+
+  /** New contents read from a linked file: the smart object `id` re-rendered from `raster` at the same scale and
+   *  centre, its link noting what was read, as one step. */
+  updateLinkedContents(id: ID, raster: Raster, link: SmartLink, name = 'Update Modified Content'): boolean {
+    const p = this.current;
+    return !!p && this.restackSoon(p, id, raster, null, name, null, { link });
+  }
+
+  /** Layer > Embed Linked: the smart object keeps its contents and forgets the file. */
+  embedLinked(): void {
+    const p = this.current, l = p?.activeLayer;
+    if (p && l?.smart?.link) this.edit('Embed Linked', (q) => q.updateLayer(l.id, { smart: { ...(l.smart as SmartObject), link: null } }));
+  }
+
   /** A change made as one undo step in `p`, which need not be the document in view. */
   private editOn(p: Project, name: string, fn: () => boolean | void): boolean {
     if (p === this.current) return this.edit(name, () => fn());
@@ -721,14 +739,14 @@ export class Engine {
   /** Re-renders a smart object: at once when it is small (up to 2 megapixels) or shows no filter, else in the
    *  background, the result applied as one undo step when it is ready. A later change to the same object supersedes a
    *  render still running, and a render whose source changed meanwhile is dropped. */
-  private restackSoon(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, maskChange: { filterMask: Raster | null; filterMaskEnabled: boolean } | null = null): boolean {
+  private restackSoon(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, maskChange: { filterMask: Raster | null; filterMaskEnabled: boolean } | null = null, extra: Partial<SmartObject> | null = null): boolean {
     const l = p.layer(id);
     if (!l?.smart) return false;
     const src = source ?? l.smart.source, stack = structuredClone(filters ?? this.smartFiltersShown(id) ?? l.smart.filters);
     const fm = maskChange ?? { filterMask: l.smart.filterMask ?? null, filterMaskEnabled: l.smart.filterMaskEnabled !== false }, active = fm.filterMaskEnabled ? fm.filterMask : null;
     if (!this.smartFilterRunnerAsync || src.width * src.height <= 2_000_000 || !stack.some((f) => f.enabled)) {
       this.smartPending.delete(id);
-      return this.restack(p, id, source, stack, name, null, maskChange);
+      return this.restack(p, id, source, stack, name, null, maskChange, extra);
     }
     const token = ++this.smartToken;
     this.smartPending.set(id, { token, filters: stack });
@@ -738,12 +756,12 @@ export class Engine {
       this.smartPending.delete(id);
       const now = p.layer(id);
       if (!this.projects.includes(p) || !now?.smart || (source === null && now.smart.source !== src)) { this.emit('doc', null); return; }
-      this.restack(p, id, source, stack, name, rendered, maskChange);
+      this.restack(p, id, source, stack, name, rendered, maskChange, extra);
     });
     return true;
   }
 
-  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, rendered: Raster | null = null, maskChange: { filterMask: Raster | null; filterMaskEnabled: boolean } | null = null): boolean {
+  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, rendered: Raster | null = null, maskChange: { filterMask: Raster | null; filterMaskEnabled: boolean } | null = null, extra: Partial<SmartObject> | null = null): boolean {
     return this.editOn(p, name, () => {
       const l = p.layer(id);
       if (!l?.smart) return false;
@@ -757,7 +775,7 @@ export class Engine {
         const w = this.warpedSmart(raster, this.smartMargin(stack), src, warp);
         if (!w) return false;
         const mask = l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask;
-        p.updateLayer(id, { smart: { source: src, filters: stack, warp, warpAt: w.t, filterMask: fm.filterMask, filterMaskEnabled: fm.filterMaskEnabled }, raster: w.raster, transform: w.t, mask });
+        p.updateLayer(id, { smart: { ...l.smart, ...extra, source: src, filters: stack, warp, warpAt: w.t, filterMask: fm.filterMask, filterMaskEnabled: fm.filterMaskEnabled }, raster: w.raster, transform: w.t, mask });
         return;
       }
       // The padding grows or shrinks about the layer's centre, so the source pixels stay exactly where they were.
@@ -769,7 +787,7 @@ export class Engine {
         nm.ctx.drawImage(mask.raster.canvas, dx, dy);
         mask = { ...mask, raster: nm };
       }
-      p.updateLayer(id, { smart: { source: src, filters: stack, filterMask: fm.filterMask, filterMaskEnabled: fm.filterMaskEnabled }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
+      p.updateLayer(id, { smart: { ...l.smart, ...extra, source: src, filters: stack, filterMask: fm.filterMask, filterMaskEnabled: fm.filterMaskEnabled }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
     });
   }
 
