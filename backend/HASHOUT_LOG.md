@@ -2,6 +2,21 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Colour profiles in the encoder · _v0.92.0 (app/services/imaging.py, app/routers/io.py, tests/test_api.py)
+
+`imaging.encode` takes `icc`: checked by LittleCMS (`ImageCms`), at most 1 MB, embedded in TIFF, WebP and AVIF, not in PDF. `/encode` takes an optional `icc` file. One test added. Removed:
+
+```python
+def encode(file: UploadFile = File(...), format: str = Form(...), quality: int = Form(90), dpi: int = Form(72)) -> Response:
+        data = imaging.encode(file.file.read(), format.lower(), quality, dpi)
+from PIL import Image, ImageOps
+def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72) -> bytes:
+    images carry no alpha here), WebP or AVIF (at `quality`, alpha kept)."""
+        rgba.save(out, "TIFF", compression="tiff_lzw", dpi=(dpi, dpi))
+        rgba.save(out, "WEBP", quality=q, method=4)
+        rgba.save(out, "AVIF", quality=q)
+```
+
 ## .sny projects · _v0.90.0 (app/routers/projects.py, app/routers/io.py, tests/test_api.py)
 
 `projects.py`: `EXT` (.sny) and `OLD_EXT` (.sonny); `_library_path` names `.sny`; `_existing` finds either for opening; the library lists both, `.sny` preferred; save removes an older `.sonny` of the same name; delete removes either; `SUFFIXES` strips `.sny` from imported names. `io.py`: the export rule takes `.sny`. One test added. Removed:

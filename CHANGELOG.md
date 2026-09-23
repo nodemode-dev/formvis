@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.92.0 · 2026-09-23
+
+### Added
+
+- Export As > Colour profile: sRGB, Display P3 or Adobe RGB (1998). The pixels are converted and the file carries the profile (PNG, JPEG, WebP, TIFF, AVIF; PDF carries none). Saved with export presets.
+- 6 more tests (4 unit, 1 backend, 1 browser): 217 in all.
+
+### Notes
+
+- Images with embedded profiles were already shown in the right colours on opening: the browser converts them to sRGB.
+
 ## 0.91.0 · 2026-09-23
 
 ### Added

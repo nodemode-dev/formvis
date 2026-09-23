@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Colour profiles on export · _v0.92.0 (src/engine/icc.ts and src/io/embed-icc.ts new, src/app.ts, src/io/api.ts, src/io/export-presets.ts, src/ui/panels/export-dialog.ts; tests/icc.test.ts and e2e/test_colour_profiles.py new)
+
+`icc.ts`: `SPACES`, `SpaceId`, `toXyz`, `convertPixels`, `iccProfile`. `embed-icc.ts`: `embedPng` (iCCP after IHDR, conflicting chunks dropped) and `embedJpeg` (APP2 after APP0, existing ICC_PROFILE segments removed). `ExportSettings.profile`, checked by `clampSettings` and kept with presets; the dialog's Colour profile row and PDF note; `exportAs` converts and embeds; `api.encode` sends an optional profile. Removed:
+
+```ts
+        const blob = ENGINE_FORMATS.has(s.format) ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf', s.quality, p.doc.resolution ?? 72)
+          : await toBlob(c, s.format === 'png' ? 'image/png' : s.format === 'jpg' ? 'image/jpeg' : 'image/webp', s.quality / 100);
+  async encode(png: Blob, format: 'tiff' | 'pdf' | 'webp' | 'avif', quality = 90, dpi = 72): Promise<Blob> {
+    return (await request('/io/encode', { method: 'POST', body: form({ format, quality: String(quality), dpi: String(dpi) }, [{ name: 'image.png', blob: png }], 'file') })).blob();
+export interface ExportSettings { format: ExportFormat; quality: number; scale: number }
+    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale) });
+    this.body.append(this.presetRow.el, this.formatRow.el, this.qualityRow.el, this.scaleRow.el, this.sizeNote, manage);
+    try { localStorage.setItem(KEY, JSON.stringify(this.saved.map(({ id, name, format, quality, scale }) => ({ id, name, format, quality, scale })))); } catch { toast('Presets cannot be saved in this browser.', 'error'); }
+    if (doc) { const z = exportSize(doc.width, doc.height, s.scale); setText(this.sizeNote, `${z.w} x ${z.h} px · ${exportName(this.engine.current?.name ?? 'Untitled', s)}`); }
+```
+
 ## Adjustment layers in PSD and PSB; Export PSB · _v0.91.0 (src/io/psd-adjust.ts new, src/io/psd.ts, src/io/images.ts, src/app.ts, .github/workflows/ci.yml; tests/psd-adjust.test.ts and e2e/test_psd_adjustments.py new)
 
 `psd-adjust.ts`: `toPsdAdjustment` and `fromPsdAdjustment` for fifteen kinds. `psd.ts`: `maskOnto` (the writer's mask code as a helper), adjustment layers written with masks, opacity, blend, visibility and clipping, and read back as live ones; `writePsdFile` takes `psb`; `.psb` recognised. `app.ts`: `exportPsd(psb)` and the `export-psb` command in the File menu. CI installs psd-tools for the independent check. Removed:
