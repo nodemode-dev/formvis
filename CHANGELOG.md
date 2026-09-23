@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.80.0 · 2026-09-23
+
+### Added
+
+- Filter > Liquify (Shift+Mod+X): Forward Warp, Reconstruct, Twirl Clockwise and Counterclockwise, Pucker and Bloat in a preview, with brush size and pressure and Restore All; OK applies as one step, Cancel changes nothing. The displacement field is ported from NodeMode's sonny studio.
+- 7 more tests (5 unit, 2 browser): 133 in all.
+
 ## 0.79.0 · 2026-09-23
 
 ### Added

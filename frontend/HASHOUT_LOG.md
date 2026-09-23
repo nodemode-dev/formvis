@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Liquify workspace · _v0.80.0 (src/engine/liquify.ts and src/ui/panels/liquify-dialog.ts new, src/engine/index.ts, src/styles/dialogs.css, src/app.ts; tests/liquify.test.ts and e2e/test_liquify.py new)
+
+`liquify.ts` ports NodeMode's displacement field (`studio/pixel/liquify.ts`: `makeField`, `fieldAt`, `pushField`; nodemode_dev v8.73.1, the owner's build, MIT) and adds `dabField` (Reconstruct, Twirl both ways, Pucker, Bloat), `resetField`, `fieldIsZero` and `liquifyImage`, which resamples from the original pixels at any scale. `liquify-dialog.ts` is the workspace: a fixed 640 x 440 preview, the six tools, size, pressure, Restore All, OK and Cancel; its member is `liq`, since the base `Dialog` already has a `field` method. `Engine.applyLiquify` resamples the layer through the field in one step. `dialogs.css` styles the preview and the active tool. `app.ts` adds `filter-liquify` (Shift+Mod+X) to the Filter menu. Removed:
+
+```ts
+    { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
+```
+
 ## Mesh warp and Edit > Warp · _v0.79.0 (src/engine/mesh-warp.ts new, src/engine/index.ts, src/extensions/tools/move.ts, src/app.ts; tests/mesh-warp.test.ts and e2e/test_warp.py new)
 
 `mesh-warp.ts` is ported from NodeMode's sonny studio (`studio/pixel/transform.ts`, nodemode_dev v8.73.1, the owner's build, MIT): `convexQuad`, `invBilinear`, `meshSurfacePoint`, a private `invSmooth`, `meshWarpImage` (plain or smooth, on ImageData instead of a tile store) and `uniformGrid`. In the engine, `meshWarpEdit` with `beginMeshWarp`, `moveMeshWarpPoint` (folding moves ignored, preview once per frame), `meshWarped`, `applyMeshWarp` (one Warp step, trimmed), `cancelMeshWarp` and `dropMeshWarp`, and the pending warp's preview in the layer overrides. The Move tool drags control points (`warpDrag`, `warpPoint`), applies on Enter, cancels on Escape and draws the grid as the surface's curves. `app.ts` adds `transform-warp` to the Edit menu. Removed:
