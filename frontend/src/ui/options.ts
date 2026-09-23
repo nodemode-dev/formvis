@@ -64,7 +64,16 @@ export class OptionsBar {
         for (const c of spec.choices) { const o = document.createElement('option'); o.value = c.id; o.textContent = c.label; box.appendChild(o); }
         box.addEventListener('change', () => spec.set(box.value));
         box.addEventListener('keydown', (e) => e.stopPropagation());
-        sync.push(() => { const v = spec.get(); if (box.value !== v) box.value = v; });
+        sync.push(() => {
+          // A live list (presets added while the tool is active) is patched in place: same values keep their nodes.
+          const list = spec.live?.();
+          if (list) {
+            while (box.options.length > list.length) box.remove(box.options.length - 1);
+            list.forEach((c, i) => { const o = box.options[i] ?? box.appendChild(document.createElement('option')); if (o.value !== c.id) o.value = c.id; if (o.textContent !== c.label) o.textContent = c.label; });
+          }
+          const v = spec.get();
+          if (box.value !== v) box.value = v;
+        });
         node.appendChild(n);
       } else if (spec.kind === 'toggle') {
         const n = el('<label class="cv-opt"><input type="checkbox"><span></span></label>');

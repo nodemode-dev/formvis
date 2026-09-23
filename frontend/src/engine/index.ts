@@ -39,6 +39,7 @@ import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
 import { liquifyImage, type LiquifyField } from './liquify';
 import { puppetImage } from './puppet';
 import { findWires } from './distractions';
+import type { SampledTip } from './abr';
 import { DEFAULT_GLOBAL_LIGHT, type GlobalLight } from './style-extras';
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
@@ -62,7 +63,7 @@ export interface EngineEvents {
   projects: null; doc: null; selection: null; active: null; viewport: null; tool: null; options: null;
   history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null; timeline: null;
 }
-export interface BrushSettings { diameter: number; hardness: number; opacity: number }
+export interface BrushSettings { diameter: number; hardness: number; opacity: number; tip?: SampledTip | null }
 export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string }
 type Target = 'pixels' | 'mask';
 type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'lockRatio'>;
@@ -113,7 +114,7 @@ export class Engine {
   applyBrushPreset(preset: BrushPreset): void {
     this.brushDynamics = structuredClone(preset.dynamics);
     this.brushPresetId = preset.id;
-    this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity });
+    this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity, tip: preset.tip ?? null });
   }
   brushMode: 'paint' | 'erase' = 'paint';
   fg: RGB = { r: 0, g: 0, b: 0 };
@@ -449,6 +450,7 @@ export class Engine {
       diameter: Math.round(clamp(patch.diameter ?? this.brush.diameter, 1, 5000)),
       hardness: clamp(patch.hardness ?? this.brush.hardness, 0, 1),
       opacity: clamp(patch.opacity ?? this.brush.opacity, 0.01, 1),
+      tip: 'tip' in patch ? patch.tip ?? null : this.brush.tip ?? null,
     };
     this.emit('options', null);
     this.emit('overlay', null);
@@ -3074,7 +3076,7 @@ export class Engine {
   gradient: { project: Project; layerId: ID; target: Target; start: Pt; end: Pt; raster: Raster; local: Mat; surface: Surface } | null = null;
   gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
   /** Dialogs a tool's options can open; the app fills these in, since tools only see the engine. */
-  uiHooks: { gradientEditor?: () => void } = {};
+  uiHooks: { gradientEditor?: () => void; importBrushes?: () => void } = {};
   shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number } & PathShapeOptions = { kind: 'rectangle', cornerRadius: 0, ...DEFAULT_PATH_SHAPE };
   clipboard: { surface: Surface; x: number; y: number; w: number; h: number; stamp: string } | null = null;
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };

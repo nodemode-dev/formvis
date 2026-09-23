@@ -1,3 +1,5 @@
+import type { SampledTip } from './abr';
+
 /** Brush dynamics and presets, ported from NodeMode's sonny studio (`studio/paint/dynamics.ts` and `preset.ts`,
  *  nodemode_dev v8.73.1, the owner's build, MIT). A brush parameter is modulated by sensors, each mapped through a
  *  sampled response curve, combined, then scaled into the option's range by its strength; a disabled option is 1.
@@ -44,7 +46,17 @@ export function computeOption(opt: CurveOptionSpec | null | undefined, info: Pai
 export interface BrushDynamics { size: CurveOptionSpec; flow: CurveOptionSpec }
 export const noDynamics = (): BrushDynamics => ({ size: identityOption(), flow: identityOption() });
 
-export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics }
+export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics; tip?: SampledTip }
+
+/** Presets made from imported .abr files, kept by the app and listed after the built-ins. */
+export let importedBrushPresets: BrushPreset[] = [];
+export function setImportedBrushPresets(list: BrushPreset[]): void { importedBrushPresets = list; }
+export const allBrushPresets = (): BrushPreset[] => [...BUILTIN_BRUSH_PRESETS, ...importedBrushPresets];
+
+/** A preset for an imported sampled tip: its size, full opacity, pressure on size as Hard round has it. */
+export function presetFromTip(id: string, name: string, tip: SampledTip): BrushPreset {
+  return { id, name, description: `Imported sampled tip, ${tip.w} x ${tip.h} px.`, diameter: Math.min(1000, Math.max(tip.w, tip.h)), hardness: 1, opacity: 1, dynamics: { size: pressureOption(0.15), flow: identityOption() }, tip };
+}
 
 /** NodeMode's built-in painting presets, as sonny's brush can hold them (Ink's speed sensor, Pencil's tilted tip and
  *  scatter, Marker's chisel and Blender's smudge have no counterpart here yet and are left out of those presets). */

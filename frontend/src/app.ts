@@ -7,6 +7,7 @@ import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
 import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
 import { pickLinkSource, placeLinked, relink, updateLinked } from './io/links';
+import { importAbr, loadImportedBrushes } from './io/brush-library';
 import { ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery } from './io/recovery';
@@ -634,6 +635,21 @@ export function startApp(): void {
   };
   loadSavedGradients();
   engine.uiHooks.gradientEditor = () => dialogs.gradientEditor.show();
+  void loadImportedBrushes().then(() => engine.emit('options', null));
+  const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr" data-role="import-brushes" hidden>');
+  document.body.appendChild(abrInput);
+  abrInput.addEventListener('change', () => {
+    const f = abrInput.files?.[0];
+    abrInput.value = '';
+    if (!f) return;
+    void engine.task(async () => {
+      try {
+        const r = await importAbr(engine, f);
+        toast(r.added ? `Imported ${r.added} brush${r.added === 1 ? '' : 'es'} from ${f.name}${r.kept ? '' : ' (for this session only: they could not be stored)'}.` : `${f.name} has no sampled brushes to import.`);
+      } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+    });
+  });
+  engine.uiHooks.importBrushes = () => abrInput.click();
 
   const has = (): boolean => !!engine.current;
   const layer = () => engine.activeLayer;

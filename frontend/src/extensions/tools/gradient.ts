@@ -67,7 +67,7 @@ export const gradientTool: Tool = {
     return [
       { kind: 'title', text: 'Gradient' },
       { kind: 'segment', label: 'Shape', choices: GRADIENT_TYPES, get: () => e.gradientSettings.shape, set: (v) => set(() => { e.gradientSettings.shape = v as GradientType; }) },
-      { kind: 'select', label: 'Colors', choices: allGradients().map((p) => ({ id: p.id, label: p.label })), get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v; }) },
+      { kind: 'select', label: 'Colors', choices: allGradients().map((p) => ({ id: p.id, label: p.label })), live: () => allGradients().map((p) => ({ id: p.id, label: p.label })), get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v; }) },
       { kind: 'button', label: 'Edit', icon: 'gradient', run: () => e.uiHooks.gradientEditor?.() },
       { kind: 'toggle', label: 'Reverse', get: () => e.gradientSettings.reversed, set: (v) => set(() => { e.gradientSettings.reversed = v; }) },
       { kind: 'range', label: 'Opacity', min: 1, max: 100, unit: '%', get: () => Math.round(e.gradientSettings.opacity * 100), set: (v) => set(() => { e.gradientSettings.opacity = v / 100; }) },

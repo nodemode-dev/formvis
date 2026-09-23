@@ -4,6 +4,7 @@ import type { SelectionMask } from './selection';
 import type { PixelPatch } from './history';
 import type { Pt, Rect, RGB } from './types';
 import { computeOption, type BrushDynamics } from './brush-dynamics';
+import type { SampledTip } from './abr';
 
 /** Painting strokes for sonny. Dabs of a round brush tip are laid along the pointer's path into a separate paint
  *  layer, evenly spaced and carried over between moves; composing lays that layer onto a working copy of the pixels at
@@ -11,7 +12,19 @@ import { computeOption, type BrushDynamics } from './brush-dynamics';
  *  lands, a texture (Clone Stamp's source) can stand in for the brush colour, and on an alpha-coded mask the value
  *  under the brush moves toward the paint rather than only gaining coverage. */
 
-export interface StrokeStyle { diameter: number; hardness: number; opacity: number; color: RGB }
+export interface StrokeStyle { diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null }
+
+/** A sampled tip (from an .abr file) as the brush's colour with the tip's greys as alpha, its longer side `sizePx`. */
+function sampledTip(sizePx: number, tip: SampledTip, color: RGB): Surface {
+  const src = createSurface(tip.w, tip.h), img = new ImageData(tip.w, tip.h), d = img.data;
+  for (let i = 0; i < tip.data.length; i++) { d[i * 4] = color.r; d[i * 4 + 1] = color.g; d[i * 4 + 2] = color.b; d[i * 4 + 3] = tip.data[i]; }
+  ctxOf(src).putImageData(img, 0, 0);
+  const k = Math.max(2, sizePx) / Math.max(tip.w, tip.h), w = Math.max(1, Math.round(tip.w * k)), h = Math.max(1, Math.round(tip.h * k)), out = createSurface(w, h), c = ctxOf(out);
+  c.imageSmoothingEnabled = true;
+  c.imageSmoothingQuality = 'high';
+  c.drawImage(src, 0, 0, w, h);
+  return out;
+}
 
 /** The brush tip, `sizePx` across: full opacity through the hard core, then a raised-cosine shoulder to nothing at the
  *  rim. A fully hard tip keeps a pixel and a half of linear fall at its rim, so its edge stays smooth. */
@@ -112,10 +125,14 @@ export class PixelStroke {
     this.paintCtx = ctxOf(this.paint);
     this.masked = selection ? takeSurface(raster.width, raster.height) : null;
     this.radius = Math.max(0.5, style.diameter / 2);
-    // Dabs every 1.5% of the diameter for a hard tip and 2.5% for a soft one.
-    this.spacing = Math.max(0.5, style.diameter * (style.hardness >= 0.99 ? 0.015 : 0.025));
-    this.tip = brushTip(style.diameter * matScale(this.toLocal), style.hardness, style.color);
+    // Dabs every 1.5% of the diameter for a hard tip and 2.5% for a soft one; a sampled tip every quarter of its size.
+    this.spacing = Math.max(0.5, style.diameter * (style.tip ? 0.25 : style.hardness >= 0.99 ? 0.015 : 0.025));
+    this.tip = style.tip ? sampledTip(style.diameter * matScale(this.toLocal), style.tip, style.color) : brushTip(style.diameter * matScale(this.toLocal), style.hardness, style.color);
+    this.tipAspect = style.tip ? { x: style.tip.w / Math.max(style.tip.w, style.tip.h), y: style.tip.h / Math.max(style.tip.w, style.tip.h) } : { x: 1, y: 1 };
   }
+
+  /** A sampled tip's width and height as parts of its longer side; a round tip's are both 1. */
+  private readonly tipAspect: { x: number; y: number };
 
   get lastPoint(): Pt | null { return this.last; }
 
@@ -142,7 +159,8 @@ export class PixelStroke {
     const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = d ? computeOption(d.flow, info) : 1;
     setMat(this.paintCtx, this.toLocal);
     if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
-    this.paintCtx.drawImage(this.tip, p.x - r, p.y - r, r * 2, r * 2);
+    const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
+    this.paintCtx.drawImage(this.tip, p.x - rx, p.y - ry, rx * 2, ry * 2);
     if (flow < 1) this.paintCtx.globalAlpha = 1;
     const corners = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([ox, oy]) => applyMat(this.toLocal, p.x + ox, p.y + oy));
     const box = integral(boundsOf(corners));
