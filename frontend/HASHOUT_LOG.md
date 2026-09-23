@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Artboards · _v0.93.0 (src/ui/panels/artboard-dialog.ts new, src/engine/types.ts, src/engine/renderer.ts, src/engine/index.ts, src/io/project-io.ts, src/app.ts; tests/artboard.test.ts and e2e/test_artboards.py new)
+
+`types.ts`: `Artboard`, `artboardFromData`, `Layer.artboard`. `renderer.ts`: `whitePixel`; `folderMasks` clips to an artboard's rectangle; the render loop's `backdrop` draws backgrounds. In the engine, `artboards`, `newArtboard`, `artboardFromLayers`, `setArtboard`, `artboardImage`; artboard rectangles follow the group transform, `resizeCanvas`, `resampleImage` and `flipCanvas`. `project-io.ts` saves and reads them. `app.ts`: the dialog, four commands, menu entries and `exportArtboards`. Removed:
+
+```ts
+    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-as', 'export-png', 'export-jpg', 'export-psd', 'export-psb', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'replace-contents', 'update-linked', 'relink', 'embed-linked', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+      if (layer.isGroup || !entry.visible) continue;
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData } from './types';
+      let layers: Layer[] = p.doc.layers.map((l) => ({ ...l, transform: shift(l.transform), mask: l.mask?.placement ? { ...l.mask, placement: shift(l.mask.placement) } : l.mask }));
+        return { ...l, raster, mask, shape, transform: t };
+```
+
 ## Colour profiles on export · _v0.92.0 (src/engine/icc.ts and src/io/embed-icc.ts new, src/app.ts, src/io/api.ts, src/io/export-presets.ts, src/ui/panels/export-dialog.ts; tests/icc.test.ts and e2e/test_colour_profiles.py new)
 
 `icc.ts`: `SPACES`, `SpaceId`, `toXyz`, `convertPixels`, `iccProfile`. `embed-icc.ts`: `embedPng` (iCCP after IHDR, conflicting chunks dropped) and `embedJpeg` (APP2 after APP0, existing ICC_PROFILE segments removed). `ExportSettings.profile`, checked by `clampSettings` and kept with presets; the dialog's Colour profile row and PDF note; `exportAs` converts and embeds; `api.encode` sends an optional profile. Removed:

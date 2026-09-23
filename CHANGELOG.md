@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.93.0 · 2026-09-23
+
+### Added
+
+- Artboards: Layer > New Artboard, Artboard from Layers and Artboard Options (position, size, background). Contents show only inside the artboard, over its background; the artboard moves with its contents and follows Canvas Size, crops, Image Size and Flip Canvas. File > Export Artboards to Files writes each as a PNG, together in a zip. Saved in .sny projects.
+- 4 more tests (2 unit, 2 browser): 221 in all.
+
 ## 0.92.0 · 2026-09-23
 
 ### Added
