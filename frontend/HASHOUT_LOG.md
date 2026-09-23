@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Rulers, guides and grid · _v0.77.0 (types, index, project-io, palette, stage, shell.css, app; guide-dialog new)
+
+`Guide` and `Doc.guides` in `types.ts`; in the engine, `view`, `guideDraft`, `setView`, `addGuide`, `moveGuide`, `removeGuide`, `clearGuides` (each an undo step through `setGuides`) and `guideAt`; `project-io` writes guides when present and reads them defensively (on the canvas, at most 1000); the palette gains ruler colours from tokens; the stage draws the grid and guides under the tool overlay, draws the rulers (`renderRulers`, `rulerStep`), lets the Move tool drag guides and deletes those dropped on a ruler or off the view, and places guides dragged out of a ruler (`bindRuler`); `shell.css` lays the rulers over the stage on `--z-raised`; `app.ts` adds the ruler canvases, six View commands and the New Guide dialog. Removed:
+
+```ts
+export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[] }
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle, effectsFromData } from './types';
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers };
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers }, activeId: str(manifest.activeLayerID) };
+export interface StagePaint extends Paint { checkerA: string; checkerB: string; grid: string; edge: string }
+    { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
+```
+
 ## Export As · _v0.76.0 (src/app.ts, src/styles/dialogs.css; src/io/export-presets.ts and src/ui/panels/export-dialog.ts new)
 
 `export-presets.ts` holds the formats, built-in presets, `clampSettings`, `presetsFromStorage`, `exportName` and `exportSize`; `export-dialog.ts` is File > Export As, rows kept in place and preset options patched in place; `app.ts` adds `exportAs` (scale, JPEG on white, browser or engine encoding) and the `export-as` command on the File menu; `dialogs.css` adds `.cv-row-actions`. Removed:

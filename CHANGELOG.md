@@ -2,6 +2,15 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.77.0 · 2026-09-23
+
+### Added
+
+- Rulers (View > Show Rulers, Mod+R) along the top and left of the canvas.
+- Guides: drag them out of the rulers, move them with the Move tool, drop them on a ruler to delete; View > Show Guides (Mod+;), Lock Guides (Alt+Mod+;), Clear Guides and New Guide. Guides are undoable and save with .sonny projects.
+- A layout grid (View > Show Grid, Mod+') every 100 px with four subdivisions.
+- 3 more browser tests: 114 in all.
+
 ## 0.76.0 · 2026-09-23
 
 ### Added
