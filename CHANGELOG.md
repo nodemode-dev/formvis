@@ -2,6 +2,15 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.86.0 · 2026-09-23
+
+### Added
+
+- Layer > Replace Contents: a new image for a smart object, at the same scale and centre, its filters re-run.
+- Smart filter masks: add from the selection (or white), disable, enable and delete; saved with .sonny projects.
+- Linked smart objects: File > Place Linked, Layer > Update Modified Content, Relink to File and Embed Linked. In Chrome and Edge a link re-reads its file when it changes on disk and survives a reload; other browsers keep the link but cannot see later changes.
+- 4 more browser tests: 167 in all.
+
 ## 0.85.0 · 2026-09-23
 
 ### Added

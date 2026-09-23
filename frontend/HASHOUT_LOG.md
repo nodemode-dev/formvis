@@ -2,6 +2,32 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Replace Contents, smart filter masks, linked smart objects · _v0.86.0 (src/engine/types.ts, src/engine/index.ts, src/io/project-io.ts, src/app.ts; src/io/links.ts new; e2e/test_smart_objects_more.py and e2e/test_linked_smart_objects.py new)
+
+`types.ts`: `SmartLink`, and `SmartObject` gains `filterMask`, `filterMaskEnabled` and `link`. In the engine, `maskFilters` blends filtered and unfiltered renders through the mask in `renderSmart` and `renderSmartAsync`; `restackSoon` and `restack` take a mask change and an `extra` patch and keep every smart object field through re-renders; `replaceContents`, `addSmartFilterMask`, `deleteSmartFilterMask`, `toggleSmartFilterMask`, `placeLinked`, `updateLinkedContents` and `embedLinked`; Distort renders with the mask. `project-io.ts` saves the mask image and the link and reads them back checked; `.ref` drops the mask with the source. `links.ts`: sources (file handles kept in IndexedDB, or a one-time pick), `registerLinkSource`, `pickLinkSource`, `placeLinked`, `updateLinked`, `relink`. `app.ts`: the Replace Contents input, `pickOnce`, eight commands on the File and Layer menus and the context menu. Removed:
+
+```ts
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-as', 'export-png', 'export-jpg', 'export-psd', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle, effectsFromData } from './types';
+  private renderSmart(source: Raster, filters: SmartFilter[]): Raster {
+  private async renderSmartAsync(source: Raster, filters: SmartFilter[]): Promise<Raster> {
+  private restackSoon(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string): boolean {
+      return this.restack(p, id, source, stack, name);
+      const rendered = await this.renderSmartAsync(src, stack);
+      this.restack(p, id, source, stack, name, rendered);
+  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, rendered: Raster | null = null): boolean {
+      const stack = structuredClone(filters ?? l.smart.filters), raster = rendered ?? this.renderSmart(src, stack), old = l.raster as Raster, t = l.transform;
+        p.updateLayer(id, { smart: { source: src, filters: stack, warp, warpAt: w.t }, raster: w.raster, transform: w.t, mask });
+      p.updateLayer(id, { smart: { source: src, filters: stack }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
+      const R = warp ? this.renderSmart(l.smart.source, l.smart.filters) : l.raster, rt = warp ? docTransform(R.width, R.height) : l.transform;
+export interface SmartObject { source: Raster; filters: SmartFilter[]; warp?: Pt[] | null; warpAt?: Transform | null }
+      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null };
+  for (const r of records) { for (const n of [str(r.imageFile), str(r.maskFile), str(r.smartSourceFile)]) if (n) names.add(n); }
+    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null } : null;
+```
+
 ## Gradient Editor, noise gradients, History fill · _v0.85.0 (src/engine/gradients.ts, src/engine/history.ts, src/engine/index.ts, src/extensions/tools/gradient.ts, src/ui/panels/fill-dialog.ts, src/styles/dialogs.css, src/app.ts; src/ui/panels/gradient-editor.ts new; tests/gradient-editor.test.ts and e2e/test_history_fill_gradient_editor.py new)
 
 `gradients.ts`: `customGradients`, `setCustomGradients`, `allGradients`, `gradientsFromJson` and `noiseStops`; `presetById` looks in saved gradients first. `history.ts`: `origin()`. In the engine, `uiHooks`, `historySource` and a History branch in `fillWith`. `gradient-editor.ts` is the editor with `loadSavedGradients`; the Gradient tool lists every gradient and has Edit; the Fill dialog has History; `dialogs.css` styles the bar and strip; `app.ts` registers the editor, loads saved gradients and sets the hook. Removed:
