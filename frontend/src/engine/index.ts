@@ -14,7 +14,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData } from './types';
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
 import { patternById } from './patterns';
 
 export * from './types';
@@ -1471,6 +1471,83 @@ export class Engine {
     });
   }
 
+  /** The document's artboards, top to bottom as the Layers panel lists them. */
+  artboards(p: Project | null = this.current): Layer[] {
+    return p ? p.doc.layers.filter((l) => l.isGroup && !l.parentId && l.artboard).reverse() : [];
+  }
+
+  /** Layer > New > Artboard: the whole canvas when there is none yet; otherwise the last one's size, 100 px to the
+   *  right of the rightmost, the canvas widened to hold it as Photoshop's grows. White by default. One step. */
+  newArtboard(rect: { x: number; y: number; w: number; h: number } | null = null, background: RGB | null = { r: 255, g: 255, b: 255 }): ID | null {
+    const p = this.current;
+    if (!p) return null;
+    const existing = this.artboards(p).map((l) => l.artboard as Artboard);
+    let r = rect;
+    if (!r) {
+      if (!existing.length) r = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+      else {
+        const last = existing[0], right = Math.max(...existing.map((a) => a.x + a.w));
+        r = { x: right + 100, y: last.y, w: last.w, h: last.h };
+      }
+    }
+    const want = { w: Math.max(p.doc.width, r.x + r.w), h: Math.max(p.doc.height, r.y + r.h) };
+    let created: ID | null = null;
+    this.edit('New Artboard', (q) => {
+      if (want.w !== q.doc.width || want.h !== q.doc.height) {
+        if (!this.sizeOk(want.w, want.h)) return false;
+        q.doc = { ...q.doc, width: want.w, height: want.h };
+      }
+      const names = new Set(q.doc.layers.map((l) => l.name));
+      let n = 1;
+      while (names.has(`Artboard ${n}`)) n += 1;
+      const board = newLayer(`Artboard ${n}`, q.doc, { isGroup: true, parentId: null, artboard: { ...(r as Rect), background } });
+      q.setLayers([...q.doc.layers, board]);
+      this.focus(q, board.id);
+      created = board.id;
+      return true;
+    });
+    if (created) this.fit();
+    return created;
+  }
+
+  /** Layer > New > Artboard from Layers: the selected top-level layers moved into a new artboard fitted to their
+   *  visible pixels, transparent behind them. One step. */
+  artboardFromLayers(): ID | null {
+    const p = this.current;
+    if (!p) return null;
+    const roots = this.selectedRoots(p).filter((id) => { const l = p.layer(id); return !!l && !l.parentId && !l.artboard; });
+    const boxes = this.alignItems(p).filter((it) => it.ids.some((id) => roots.includes(id))).map((it) => it.box);
+    if (!roots.length || !boxes.length) { this.notice('Select layers outside any folder or artboard, with pixels, first.'); return null; }
+    const b = integral(boxes.reduce((a, c) => unionRect(a, c)));
+    let created: ID | null = null;
+    this.edit('Artboard from Layers', (q) => {
+      const names = new Set(q.doc.layers.map((l) => l.name));
+      let n = 1;
+      while (names.has(`Artboard ${n}`)) n += 1;
+      const board = newLayer(`Artboard ${n}`, q.doc, { isGroup: true, parentId: null, artboard: { x: b.x, y: b.y, w: Math.max(1, b.w), h: Math.max(1, b.h), background: null } });
+      const at = Math.max(...roots.map((id) => q.doc.layers.findIndex((l) => l.id === id))) + 1;
+      const layers = q.doc.layers.map((l) => (roots.includes(l.id) ? { ...l, parentId: board.id } : l));
+      layers.splice(at, 0, board);
+      q.setLayers(this.normalizeClips(layers));
+      this.focus(q, board.id);
+      created = board.id;
+      return true;
+    });
+    return created;
+  }
+
+  /** Artboard Options: its rectangle and background, checked, as one step. */
+  setArtboard(id: ID, patch: Partial<Artboard>): boolean {
+    return this.edit('Artboard Options', (p) => {
+      const l = p.layer(id);
+      if (!l?.artboard) return false;
+      const next = artboardFromData({ ...l.artboard, ...patch });
+      if (!next || JSON.stringify(next) === JSON.stringify(l.artboard)) return false;
+      p.updateLayer(id, { artboard: next });
+      return true;
+    });
+  }
+
   duplicateLayers(): void {
     this.edit('Duplicate Layer', (p) => {
       const roots = this.selectedRoots(p);
@@ -1938,6 +2015,7 @@ export class Engine {
         ...l,
         transform: mirrored(l.transform, horizontal, W, H),
         mask: l.mask?.placement ? { ...l.mask, placement: mirrored(l.mask.placement, horizontal, W, H) } : l.mask,
+        ...(l.artboard ? { artboard: horizontal ? { ...l.artboard, x: W - l.artboard.x - l.artboard.w } : { ...l.artboard, y: H - l.artboard.y - l.artboard.h } } : {}),
       })));
       if (p.selection) p.selection = p.selection.flipped(horizontal, W, H);
     });
@@ -2585,6 +2663,14 @@ export class Engine {
           const redraw = !!l.shape && (Math.round(t.w) !== l.raster?.width || Math.round(t.h) !== l.raster?.height);
           p.updateLayer(id, { transform: t, mask: followMask(l, t), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, t.w, t.h) } : {}) });
           moved = true;
+        }
+        // A moved artboard takes its rectangle along, mapped as its contents are (artboards do not rotate).
+        for (const id of this.selectedRoots(p)) {
+          const a = p.layer(id)?.artboard;
+          if (!a) continue;
+          const t = following({ x: a.x, y: a.y, w: a.w, h: a.h, rotation: 0, flipX: false, flipY: false, sampling: 'smooth' }, g.box, next);
+          const r = artboardFromData({ ...a, x: t.x, y: t.y, w: t.w, h: t.h });
+          if (r) { p.updateLayer(id, { artboard: r }); moved = true; }
         }
         return moved;
       });
@@ -3362,7 +3448,7 @@ export class Engine {
       const { width: oldW, height: oldH } = p.doc;
       if (width === oldW && height === oldH && !dx && !dy) return false;
       const shift = (t: Transform): Transform => ({ ...t, x: t.x + dx, y: t.y + dy });
-      let layers: Layer[] = p.doc.layers.map((l) => ({ ...l, transform: shift(l.transform), mask: l.mask?.placement ? { ...l.mask, placement: shift(l.mask.placement) } : l.mask }));
+      let layers: Layer[] = p.doc.layers.map((l) => ({ ...l, transform: shift(l.transform), mask: l.mask?.placement ? { ...l.mask, placement: shift(l.mask.placement) } : l.mask, ...(l.artboard ? { artboard: { ...l.artboard, x: l.artboard.x + dx, y: l.artboard.y + dy } } : {}) }));
       if (fill && (width > oldW || height > oldH)) {
         const r = Raster.filled(width, height, rgbCss(fill));
         r.ctx.clearRect(dx, dy, oldW, oldH);
@@ -3520,7 +3606,7 @@ export class Engine {
         const raster = shape ? this.shapeRaster(shape, t.w, t.h) : l.raster ? scaleRaster(l.raster, Math.max(1, Math.round(l.raster.width * sx)), Math.max(1, Math.round(l.raster.height * sy))) : null;
         const mr = l.mask?.raster ?? null;
         const mask = l.mask ? { ...l.mask, raster: mr ? scaleRaster(mr, Math.max(1, Math.round(mr.width * sx)), Math.max(1, Math.round(mr.height * sy))) : null, placement: l.mask.placement ? scaleT(l.mask.placement) : null } : null;
-        return { ...l, raster, mask, shape, transform: t };
+        return { ...l, raster, mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) };
       });
       p.doc = { ...p.doc, width, height, resolution, layers };
       p.selection = null;
@@ -4711,4 +4797,16 @@ export class Engine {
   }
 
   flattened(): Surface | null { const p = this.current; return p ? renderDoc(this.work, p.doc) : null; }
+
+  /** One artboard as its own image: only it and what it holds, rendered and cut to its rectangle. */
+  artboardImage(id: ID): Surface | null {
+    const p = this.current, a = p?.layer(id);
+    if (!p || !a?.artboard) return null;
+    const map = byId(p.doc), keep = p.doc.layers.filter((l) => l.id === id || isDescendant(map, l.id, id));
+    const r = a.artboard, pad = { x: Math.min(0, r.x), y: Math.min(0, r.y) };
+    const doc: Doc = { ...p.doc, width: Math.max(p.doc.width, r.x + r.w) - pad.x, height: Math.max(p.doc.height, r.y + r.h) - pad.y, layers: pad.x || pad.y ? keep.map((l) => ({ ...l, transform: { ...l.transform, x: l.transform.x - pad.x, y: l.transform.y - pad.y }, mask: l.mask?.placement ? { ...l.mask, placement: { ...l.mask.placement, x: l.mask.placement.x - pad.x, y: l.mask.placement.y - pad.y } } : l.mask, ...(l.artboard ? { artboard: { ...l.artboard, x: l.artboard.x - pad.x, y: l.artboard.y - pad.y } } : {}) })) : keep };
+    const full = renderDoc(this.work, doc), out = createSurface(r.w, r.h);
+    ctxOf(out).drawImage(full, r.x - pad.x, r.y - pad.y, r.w, r.h, 0, 0, r.w, r.h);
+    return out;
+  }
 }

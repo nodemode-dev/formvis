@@ -63,6 +63,13 @@ interface Slot { s: Surface; c: Ctx2D }
 interface FxPart { s: Surface; x: number; y: number; k: number; alpha: number; op: GlobalCompositeOperation; above: boolean }
 interface MaskInfo { src: Surface; w: number; h: number; t: Transform; covers: boolean }
 
+let white: Surface | null = null;
+/** One opaque white pixel, made once. */
+function whitePixel(): Surface {
+  if (!white) { white = createSurface(1, 1); const c = ctxOf(white); c.fillStyle = '#ffffff'; c.fillRect(0, 0, 1, 1); }
+  return white;
+}
+
 /** Three box blurs of radius `r` over one channel, `w` by `h`, approximating a Gaussian; edges clamp. */
 function blur1(src: Float32Array, w: number, h: number, r: number): Float32Array {
   const n = w * h;
@@ -122,9 +129,24 @@ export class Renderer {
     const map = new Map(job.doc.layers.map((l) => [l.id, l]));
     const clipCache = new Map<ID, Surface | null>();
     if (this.clipPool.size > 24) this.clipPool.clear();
+    const backed = new Set<ID>();
+    // An artboard's background, once, in document space, just below whatever it holds.
+    const backdrop = (a: Layer): void => {
+      if (backed.has(a.id) || !a.artboard) return;
+      backed.add(a.id);
+      const bg = a.artboard.background;
+      if (!bg || (job.only && !job.only.has(a.id))) return;
+      ctx.save();
+      setMat(ctx, job.view);
+      ctx.fillStyle = `rgb(${bg.r},${bg.g},${bg.b})`;
+      ctx.fillRect(a.artboard.x, a.artboard.y, a.artboard.w, a.artboard.h);
+      ctx.restore();
+    };
     for (const entry of hierarchy(job.doc)) {
       const layer = entry.layer;
-      if (layer.isGroup || !entry.visible) continue;
+      if (layer.isGroup) { if (entry.visible && layer.artboard) backdrop(layer); continue; }
+      if (!entry.visible) continue;
+      for (const g of ancestors(map, layer)) if (g.artboard) backdrop(g);
       if (job.only && !job.only.has(layer.id)) continue;
       const ov = job.overrides?.get(layer.id);
       if (ov?.hidden) continue;
@@ -503,6 +525,10 @@ export class Renderer {
     for (const g of ancestors(map, layer)) {
       const m = g.mask;
       if (m?.enabled && m.raster) out.push({ src: m.raster.canvas, w: m.raster.width, h: m.raster.height, t: m.placement ?? g.transform, covers: false });
+      // An artboard shows its contents only inside its rectangle: one white pixel stretched over it, sampled nearest so
+      // its edges stay crisp.
+      const a = g.artboard;
+      if (a) out.push({ src: whitePixel(), w: 1, h: 1, t: { x: a.x, y: a.y, w: a.w, h: a.h, rotation: 0, flipX: false, flipY: false, sampling: 'nearest' }, covers: false });
     }
     return out;
   }

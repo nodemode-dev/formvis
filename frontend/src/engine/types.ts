@@ -48,6 +48,9 @@ export interface Layer {
   text?: TextSpec | null;
   /** A smart object's original pixels and live filter stack; `raster` shows the result. */
   smart?: SmartObject | null;
+  /** On a top-level folder, makes it an artboard: its contents shown only inside `x, y, w, h` (document pixels), over
+   *  `background` (none is transparent), and exported as its own image. */
+  artboard?: Artboard | null;
   /** A shape layer's outline and fill colour, in document pixels at `origin`; `raster` is their rendering. */
   vector?: VectorLayer | null;
   name: string;
@@ -64,6 +67,18 @@ export interface Layer {
   shape: Record<string, unknown> | null;
 }
 /** A ruler guide: `axis: 'x'` is a vertical guide at x = `at`, `'y'` a horizontal one, in document pixels. */
+export interface Artboard { x: number; y: number; w: number; h: number; background: RGB | null }
+
+/** An artboard read back from saved data, every field checked; null when it is not one. */
+export function artboardFromData(raw: unknown): Artboard | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>, n = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+  const x = n(o.x), y = n(o.y), w = n(o.w), h = n(o.h);
+  if (x === null || y === null || w === null || h === null || w < 1 || h < 1 || w > 30000 || h > 30000) return null;
+  const b = o.background as Record<string, unknown> | null | undefined, c = (v: unknown): number => Math.round(clamp(n(v) ?? 0, 0, 255));
+  return { x: Math.round(x), y: Math.round(y), w: Math.round(w), h: Math.round(h), background: b && typeof b === 'object' ? { r: c(b.r), g: c(b.g), b: c(b.b) } : null };
+}
+
 export interface Guide { axis: 'x' | 'y'; at: number }
 export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; globalLight?: GlobalLight }
 
