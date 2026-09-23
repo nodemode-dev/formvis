@@ -5,6 +5,7 @@ import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
 import { StrokePathDialog } from './ui/panels/stroke-path-dialog';
+import { DuplicateLayerDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
 import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
@@ -664,6 +665,8 @@ export function startApp(): void {
     artboard: new ArtboardDialog(engine),
     corners: new CornersDialog(engine),
     strokePath: new StrokePathDialog(engine),
+    newLayer: new NewLayerDialog(engine),
+    duplicateLayer: new DuplicateLayerDialog(engine),
     liquify: new LiquifyDialog(engine),
     selectMask: new SelectMaskDialog(engine),
     contentFill: new ContentFillDialog(engine),
@@ -756,13 +759,15 @@ export function startApp(): void {
     { id: 'select-and-mask', label: 'Select and Mask...', keys: ['Alt+Mod+R'], enabled: selected, run: () => dialogs.selectMask.show() },
     { id: 'flip-canvas-h', label: 'Flip Canvas Horizontal', enabled: has, run: () => engine.flipCanvas(true) },
     { id: 'flip-canvas-v', label: 'Flip Canvas Vertical', enabled: has, run: () => engine.flipCanvas(false) },
-    { id: 'new-layer', label: 'New Layer', keys: ['Shift+Mod+N'], enabled: has, run: () => engine.addLayer() },
+    { id: 'new-layer', label: 'New Layer', enabled: has, run: () => engine.addLayer() },
+    { id: 'new-layer-dialog', label: 'Layer...', keys: ['Shift+Mod+N'], enabled: has, run: () => dialogs.newLayer.show() },
     { id: 'new-folder', label: 'New Folder', enabled: has, run: () => engine.addFolder() },
     { id: 'new-artboard', label: 'New Artboard', enabled: has, run: () => { engine.newArtboard(); } },
     { id: 'artboard-from-layers', label: 'Artboard from Layers', enabled: has, run: () => { engine.artboardFromLayers(); } },
     { id: 'artboard-options', label: 'Artboard Options...', enabled: () => !!engine.current?.activeLayer?.artboard, run: () => dialogs.artboard.show() },
     { id: 'export-artboards', label: 'Export Artboards to Files', enabled: () => engine.artboards().length > 0, run: () => void exportArtboards() },
     { id: 'duplicate', label: () => (engine.current?.selection ? 'Layer via Copy' : 'Duplicate Layer'), keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
+    { id: 'duplicate-dialog', label: 'Duplicate Layer...', enabled: () => !!layer(), run: () => dialogs.duplicateLayer.show() },
     { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => void deleteLayersWithChoice() },
     { id: 'rename', label: 'Rename Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) layers.startRename(l.id); } },
     { id: 'group', label: 'Group Layers', keys: ['Mod+G'], enabled: () => !!layer(), run: () => engine.groupLayers() },
@@ -907,9 +912,9 @@ export function startApp(): void {
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
       'image-size', 'canvas-size', { label: 'Image Rotation', items: ['flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
-      { label: 'New', items: ['new-layer', 'new-folder', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
+      { label: 'New', items: ['new-layer-dialog', 'new-folder', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
       { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', '-',
-      'duplicate', 'delete-layer', 'rename', '-',
+      'duplicate-dialog', 'delete-layer', 'rename', '-',
       { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
       { label: 'Smart Objects', items: ['convert-smart', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       'rasterize', 'edit-text', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] }, '-',
@@ -930,7 +935,7 @@ export function startApp(): void {
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
-  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', '-',
+  contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', '-',
     { label: 'Smart Objects', items: ['convert-smart', 'rasterize', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] }, '-',

@@ -1484,14 +1484,16 @@ export class Engine {
     return { ...l, raster: l.raster ? l.raster.clone() : null, mask: l.mask ? { ...l.mask, raster: l.mask.raster ? l.mask.raster.clone() : null } : null, ...patch, id: uid() };
   }
 
-  addLayer(): void {
+  /** Layer > New > Layer; the New Layer dialog passes its name, blending mode and opacity. One step either way. */
+  addLayer(opts: { name?: string; blend?: BlendMode; opacity?: number } = {}): void {
     this.edit('New Layer', (p) => {
       const names = new Set(p.doc.layers.map((l) => l.name));
       let n = 1;
       while (names.has(`Layer ${n}`)) n += 1;
       const active = p.activeLayer;
       const parentId = active?.isGroup ? active.id : active?.parentId ?? null;
-      const layer = newLayer(`Layer ${n}`, p.doc, { parentId });
+      const name = opts.name?.trim().slice(0, 200) || `Layer ${n}`;
+      const layer = newLayer(name, p.doc, { parentId, ...(opts.blend ? { blend: opts.blend } : {}), ...(opts.opacity !== undefined ? { opacity: clamp(opts.opacity, 0, 1) } : {}) });
       const layers = [...p.doc.layers];
       let index = active ? layers.indexOf(active) + 1 : layers.length;
       if (active?.isGroup) layers.forEach((l, i) => { if (l.parentId === active.id) index = Math.max(index, i + 1); });
@@ -1593,10 +1595,12 @@ export class Engine {
     });
   }
 
-  duplicateLayers(): void {
+  /** Layer > Duplicate Layer; the dialog passes a name, used when one layer or folder is duplicated. One step. */
+  duplicateLayers(name?: string): void {
     this.edit('Duplicate Layer', (p) => {
       const roots = this.selectedRoots(p);
       if (!roots.length) return false;
+      const given = roots.length === 1 ? name?.trim().slice(0, 200) : undefined;
       let layers = [...p.doc.layers];
       let last: ID | null = null;
       for (const id of roots) {
@@ -1604,7 +1608,7 @@ export class Engine {
         if (!src) continue;
         const subtree = [src, ...descendantIds(layers, id).map((d) => layers.find((l) => l.id === d) as Layer)];
         const idMap = new Map<ID, ID>();
-        const clones = subtree.map((l) => { const c = this.cloneLayer(l, l === src ? { name: `${l.name} copy` } : {}); idMap.set(l.id, c.id); return c; });
+        const clones = subtree.map((l) => { const c = this.cloneLayer(l, l === src ? { name: given || `${l.name} copy` } : {}); idMap.set(l.id, c.id); return c; });
         const fixed = clones.map((c) => ({ ...c, parentId: c.parentId && idMap.has(c.parentId) ? (idMap.get(c.parentId) as ID) : c.parentId, clipId: c.clipId && idMap.has(c.clipId) ? (idMap.get(c.clipId) as ID) : c.clipId }));
         layers.splice(layers.indexOf(src) + 1, 0, ...fixed);
         last = fixed[0].id;
