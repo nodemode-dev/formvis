@@ -100,6 +100,13 @@ const SMART_NOTICE = 'This layer is a smart object. Rasterize it (Layer > Raster
 /** Tools that paint with a PixelStroke, whose surfaces are warmed when the tool is chosen. */
 const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'cloneStamp', 'healingBrush', 'spotHealing', 'remove']);
 
+/** A rectangle shape's four corner radii (top left, top right, bottom right, bottom left) when it carries them and
+ *  they are all finite and not negative; null when it has one radius for all. */
+export function cornerRadiiOf(style: Record<string, unknown>): number[] | null {
+  const r = style.cornerRadii;
+  return Array.isArray(r) && r.length === 4 && r.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0) ? (r as number[]).slice() : null;
+}
+
 export class Engine {
   readonly events = new Emitter<EngineEvents>();
   readonly projects: Project[] = [];
@@ -3602,7 +3609,8 @@ export class Engine {
       const scaleT = (t: Transform): Transform => ({ ...t, x: t.x * sx, y: t.y * sy, w: t.w * sx, h: t.h * sy });
       const layers = p.doc.layers.map((l) => {
         const t = scaleT(l.transform);
-        const shape = l.shape ? { ...l.shape, cornerRadius: (Number(l.shape.cornerRadius) || 0) * Math.min(sx, sy) } : null;
+        const radii = l.shape ? cornerRadiiOf(l.shape) : null;
+        const shape = l.shape ? { ...l.shape, cornerRadius: (Number(l.shape.cornerRadius) || 0) * Math.min(sx, sy), ...(radii ? { cornerRadii: radii.map((v) => v * Math.min(sx, sy)) } : {}) } : null;
         const raster = shape ? this.shapeRaster(shape, t.w, t.h) : l.raster ? scaleRaster(l.raster, Math.max(1, Math.round(l.raster.width * sx)), Math.max(1, Math.round(l.raster.height * sy))) : null;
         const mr = l.mask?.raster ?? null;
         const mask = l.mask ? { ...l.mask, raster: mr ? scaleRaster(mr, Math.max(1, Math.round(mr.width * sx)), Math.max(1, Math.round(mr.height * sy))) : null, placement: l.mask.placement ? scaleT(l.mask.placement) : null } : null;
@@ -3871,6 +3879,22 @@ export class Engine {
     this.refresh();
   }
 
+  /** Live corners: a rectangle shape layer's four radii (top left, top right, bottom right, bottom left, in pixels),
+   *  redrawn from its parameters, as one step. */
+  setShapeCorners(id: ID, radii: readonly number[]): boolean {
+    const clean = radii.length === 4 && radii.every((v) => Number.isFinite(v)) ? radii.map((v) => Math.max(0, Math.min(15000, v))) : null;
+    if (!clean) return false;
+    return this.edit('Corner Radii', (p) => {
+      const l = p.layer(id);
+      if (!l?.shape || l.shape.kind === 'Ellipse') return false;
+      const same = clean.every((v) => v === clean[0]), shape = { ...l.shape, cornerRadius: clean[0], cornerRadii: same ? undefined : clean };
+      if (same) delete (shape as Record<string, unknown>).cornerRadii;
+      if (JSON.stringify(shape) === JSON.stringify(l.shape)) return false;
+      p.updateLayer(id, { shape, raster: this.shapeRaster(shape, l.transform.w, l.transform.h) });
+      return true;
+    });
+  }
+
   private shapeRaster(style: Record<string, unknown>, w: number, h: number): Raster {
     const r = new Raster(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
     const c = r.ctx;
@@ -3878,7 +3902,12 @@ export class Engine {
     c.fillStyle = `rgb(${ch(style.red)},${ch(style.green)},${ch(style.blue)})`;
     c.beginPath();
     if (style.kind === 'Ellipse') c.ellipse(r.width / 2, r.height / 2, r.width / 2, r.height / 2, 0, 0, Math.PI * 2);
-    else c.roundRect(0, 0, r.width, r.height, Math.min(Number(style.cornerRadius) || 0, r.width / 2, r.height / 2));
+    else {
+      // Live corners: four radii (top left, top right, bottom right, bottom left) when set, else one for all; each is
+      // held to half the shorter side, as Photoshop holds them.
+      const cap = Math.min(r.width, r.height) / 2, radii = cornerRadiiOf(style);
+      c.roundRect(0, 0, r.width, r.height, radii ? radii.map((v) => Math.min(v, cap)) : Math.min(Number(style.cornerRadius) || 0, cap));
+    }
     c.fill();
     return r;
   }
