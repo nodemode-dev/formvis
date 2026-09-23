@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Export As · _v0.76.0 (src/app.ts, src/styles/dialogs.css; src/io/export-presets.ts and src/ui/panels/export-dialog.ts new)
+
+`export-presets.ts` holds the formats, built-in presets, `clampSettings`, `presetsFromStorage`, `exportName` and `exportSize`; `export-dialog.ts` is File > Export As, rows kept in place and preset options patched in place; `app.ts` adds `exportAs` (scale, JPEG on white, browser or engine encoding) and the `export-as` command on the File menu; `dialogs.css` adds `.cv-row-actions`. Removed:
+
+```ts
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+```
+
+### src/app.ts · keydown and paste targets · _v0.75.0, logged late
+
+The 0.75.0 fix (4b9497e) was made after that version's entry was written, so its removed lines are quoted here. Both handlers now narrow the target with `instanceof Element`. Removed (the same line in each handler):
+
+```ts
+    const target = e.target as HTMLElement | null;
+```
+
 ## Export WebP, TIFF, PDF and AVIF · _v0.75.0 (src/app.ts, src/io/api.ts, src/engine/index.ts; e2e/test_export_formats.py new)
 
 `api.encode` posts a PNG to `/io/encode`; `exportImage` takes WebP from the canvas and TIFF, PDF and AVIF through the engine (unavailable until capabilities arrive), naming TIFF `.tif`; four commands on the File menu; `exportBlob` accepts WebP. Removed:

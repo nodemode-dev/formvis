@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.76.0 · 2026-09-23
+
+### Added
+
+- File > Export As (Alt+Shift+Mod+W): PNG, JPEG, WebP, AVIF, TIFF or PDF at a chosen quality and scale, with the size and file name shown first (`Shot@2x.png`), seven built-in presets, and your own presets saved in the browser.
+- 7 more tests (4 unit, 3 browser): 111 in all.
+
 ## 0.75.0 · 2026-09-22
 
 ### Added
