@@ -1,4 +1,5 @@
 import type { Raster } from './surface';
+import { isContour, type ContourId, type GlobalLight } from './style-extras';
 
 export type ID = string;
 export interface Pt { x: number; y: number }
@@ -64,7 +65,7 @@ export interface Layer {
 }
 /** A ruler guide: `axis: 'x'` is a vertical guide at x = `at`, `'y'` a horizontal one, in document pixels. */
 export interface Guide { axis: 'x' | 'y'; at: number }
-export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[] }
+export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; globalLight?: GlobalLight }
 
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'directSelect' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'idle';
 
@@ -94,11 +95,12 @@ export function newLayer(name: string, size: { width: number; height: number }, 
 /** Layer styles, drawn beneath a layer from its visible silhouette. Sizes and distances are document pixels; the drop
  *  shadow's angle is where the light comes from, in degrees counter-clockwise from the right, so 120 casts the shadow
  *  down and to the right. */
-export interface DropShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number }
-export interface OuterGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number }
-export interface StrokeEffect { enabled: boolean; color: RGB; opacity: number; size: number }
-export interface InnerShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number }
-export interface InnerGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number }
+export interface DropShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean }
+export interface OuterGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId }
+/** `position`: Outside (the default, drawn beneath), Inside or Center (drawn over the layer, as Photoshop draws them). */
+export interface StrokeEffect { enabled: boolean; color: RGB; opacity: number; size: number; position?: 'outside' | 'inside' | 'center' }
+export interface InnerShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; contour?: ContourId; useGlobal?: boolean }
+export interface InnerGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number; contour?: ContourId }
 export interface ColorOverlayEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode }
 /** A gradient across the layer's bounds, kept to its silhouette: from `from` to `to` along `angle` (degrees
  *  counter-clockwise from the right, so 90 runs bottom to top), or outward from the centre when radial; `scale` stretches
@@ -107,7 +109,7 @@ export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; o
 /** Bevel and Emboss: the silhouette, softened over `size`, taken as a height map and lit from `angle` (as Drop Shadow's)
  *  at `altitude` degrees; slopes facing the light take the highlight, those facing away the shadow. Inner shades inside
  *  the edge, outer outside it, emboss both, pillow both with the outside pressed in; `down` swaps light and dark. */
-export interface BevelEffect { enabled: boolean; style: 'inner' | 'outer' | 'emboss' | 'pillow'; depth: number; down: boolean; size: number; soften: number; angle: number; altitude: number; highlight: RGB; highlightOpacity: number; highlightBlend: BlendMode; shadow: RGB; shadowOpacity: number; shadowBlend: BlendMode }
+export interface BevelEffect { enabled: boolean; style: 'inner' | 'outer' | 'emboss' | 'pillow'; depth: number; down: boolean; size: number; soften: number; angle: number; altitude: number; highlight: RGB; highlightOpacity: number; highlightBlend: BlendMode; shadow: RGB; shadowOpacity: number; shadowBlend: BlendMode; gloss?: ContourId; useGlobal?: boolean }
 /** Satin: the silhouette offset both ways along `angle` by `distance`, each copy softened over `size`, their difference
  *  kept inside the silhouette as a silky shading; `invert` shades where they agree instead. */
 export interface SatinEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; invert: boolean }
@@ -161,6 +163,14 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
     satin: { enabled: sa.enabled === true, color: rgb(sa.color, d.satin.color), opacity: num(sa.opacity, 0.5, 0, 1), blend: blend(sa.blend, 'multiply'), angle: num(sa.angle, 19, -360, 360), distance: num(sa.distance, 11, 0, 250), size: num(sa.size, 14, 0, 250), invert: sa.invert !== false },
     bevel: { enabled: bv.enabled === true, style: bv.style === 'outer' || bv.style === 'emboss' || bv.style === 'pillow' ? bv.style : 'inner', depth: num(bv.depth, 100, 1, 1000), down: bv.down === true, size: num(bv.size, 5, 0, 250), soften: num(bv.soften, 0, 0, 16), angle: num(bv.angle, 120, -360, 360), altitude: num(bv.altitude, 30, 0, 90), highlight: rgb(bv.highlight, d.bevel.highlight), highlightOpacity: num(bv.highlightOpacity, 0.75, 0, 1), highlightBlend: blend(bv.highlightBlend, 'screen'), shadow: rgb(bv.shadow, d.bevel.shadow), shadowOpacity: num(bv.shadowOpacity, 0.75, 0, 1), shadowBlend: blend(bv.shadowBlend, 'multiply') },
   };
+  const contour = (v: unknown): ContourId | undefined => (isContour(v) && v !== 'linear' ? v : undefined);
+  for (const [dst, src] of [[fx.dropShadow, s], [fx.outerGlow, g], [fx.innerShadow, is], [fx.innerGlow, ig]] as const) { const c = contour(src.contour); if (c) dst.contour = c; }
+  if (s.useGlobal === true) fx.dropShadow.useGlobal = true;
+  if (is.useGlobal === true) fx.innerShadow.useGlobal = true;
+  if (bv.useGlobal === true) fx.bevel.useGlobal = true;
+  const gloss = contour(bv.gloss);
+  if (gloss) fx.bevel.gloss = gloss;
+  if (k.position === 'inside' || k.position === 'center') fx.stroke.position = k.position;
   return effectsActive(fx) ? fx : null;
 }
 

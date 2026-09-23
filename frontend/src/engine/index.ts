@@ -38,6 +38,8 @@ import { diamondFill, presetById, reflectStops, resolveStops, type GradientType 
 import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
 import { liquifyImage, type LiquifyField } from './liquify';
 import { puppetImage } from './puppet';
+import { DEFAULT_GLOBAL_LIGHT, type GlobalLight } from './style-extras';
+export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
@@ -485,6 +487,26 @@ export class Engine {
 
   /** Layer > Layer Style: sets or clears a pixel layer's effects as one undo step; nothing is recorded when the
    *  effects are unchanged. */
+  /** The document's Global Light (Photoshop's Layer > Layer Style > Global Light), shared by effects that use it. */
+  setGlobalLight(light: GlobalLight): void {
+    const next = { angle: clamp(Math.round(light.angle), -180, 180), altitude: clamp(Math.round(light.altitude), 0, 90) };
+    this.edit('Global Light', (p) => {
+      const cur = p.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT;
+      if (cur.angle === next.angle && cur.altitude === next.altitude) return false;
+      p.doc = { ...p.doc, globalLight: next };
+      return true;
+    });
+  }
+
+  /** The Layer Style dialog's OK: the layer's effects and, when it changed, the document's Global Light, one step. */
+  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null): void {
+    this.edit('Layer Style', () => {
+      if (light) this.setGlobalLight(light);
+      this.setLayerEffects(id, effects);
+      return true;
+    });
+  }
+
   setLayerEffects(id: ID, effects: LayerEffects | null): void {
     this.effectPreview = null;
     this.display.fastEffects = false;

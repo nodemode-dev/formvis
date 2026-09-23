@@ -1,4 +1,4 @@
-import { defaultEffects, effectsActive, type Engine, type LayerEffects, type RGB, allPatterns } from '../../engine';
+import { CONTOURS, DEFAULT_GLOBAL_LIGHT, defaultEffects, effectsActive, withGlobalLight, type ContourId, type Engine, type GlobalLight, type LayerEffects, type RGB, allPatterns } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { checkRow, sliderRow } from './controls';
@@ -6,10 +6,13 @@ import { checkRow, sliderRow } from './controls';
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
 
-/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay, Pattern Overlay and Bevel & Emboss for the
- *  active pixel layer, shown live while the dialog is open. OK applies them as one undo step; Cancel leaves the layer as it was. */
+/** Layer > Layer Style: the document's Global Light, then Drop Shadow, Outer Glow, Stroke (outside, inside or
+ *  center), Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay, Pattern Overlay and Bevel & Emboss for the
+ *  active pixel layer, with contours on the shadows, glows and bevel, shown live while the dialog is open. OK applies
+ *  the style and any change of light as one undo step; Cancel leaves the layer and the light as they were. */
 export class LayerStyleDialog extends Dialog {
   private fx: LayerEffects = defaultEffects();
+  private light: GlobalLight = { ...DEFAULT_GLOBAL_LIGHT };
   private layerId: string | null = null;
   private applied = false;
   private readonly syncs: Array<() => void> = [];
@@ -39,17 +42,26 @@ export class LayerStyleDialog extends Dialog {
       this.field(label, select);
       this.syncs.push(() => { select.value = get(); });
     };
+    const contours = CONTOURS.map((c) => [c.id, c.label] as [string, string]);
+    const lightRowA = sliderRow('Global light angle (\u00b0)', -180, 180, 1, (v) => { this.light = { ...this.light, angle: v }; this.changed(); });
+    const lightRowB = sliderRow('Global light altitude (\u00b0)', 0, 90, 1, (v) => { this.light = { ...this.light, altitude: v }; this.changed(); });
+    this.body.append(lightRowA.el, lightRowB.el);
+    this.syncs.push(() => { lightRowA.set(this.light.angle); lightRowB.set(this.light.altitude); });
     check('Drop Shadow', () => fx().dropShadow.enabled, (v) => { fx().dropShadow.enabled = v; });
     colour('Colour', () => fx().dropShadow.color, (c) => { fx().dropShadow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().dropShadow.opacity * 100), (v) => { fx().dropShadow.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().dropShadow.angle, (v) => { fx().dropShadow.angle = v; });
+    check('Use Global Light', () => !!fx().dropShadow.useGlobal, (v) => { fx().dropShadow.useGlobal = v; });
     slider('Distance (px)', 0, 200, () => fx().dropShadow.distance, (v) => { fx().dropShadow.distance = v; });
     slider('Size (px)', 0, 100, () => fx().dropShadow.size, (v) => { fx().dropShadow.size = v; });
+    choice('Contour', contours, () => fx().dropShadow.contour ?? 'linear', (v) => { fx().dropShadow.contour = v as ContourId; });
     check('Outer Glow', () => fx().outerGlow.enabled, (v) => { fx().outerGlow.enabled = v; });
     colour('Colour', () => fx().outerGlow.color, (c) => { fx().outerGlow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().outerGlow.opacity * 100), (v) => { fx().outerGlow.opacity = v / 100; });
     slider('Size (px)', 0, 100, () => fx().outerGlow.size, (v) => { fx().outerGlow.size = v; });
-    check('Stroke (outside)', () => fx().stroke.enabled, (v) => { fx().stroke.enabled = v; });
+    choice('Contour', contours, () => fx().outerGlow.contour ?? 'linear', (v) => { fx().outerGlow.contour = v as ContourId; });
+    check('Stroke', () => fx().stroke.enabled, (v) => { fx().stroke.enabled = v; });
+    choice('Position', [['outside', 'Outside'], ['inside', 'Inside'], ['center', 'Center']], () => fx().stroke.position ?? 'outside', (v) => { fx().stroke.position = v === 'inside' || v === 'center' ? v : 'outside'; });
     colour('Colour', () => fx().stroke.color, (c) => { fx().stroke.color = c; });
     slider('Size (px)', 1, 50, () => fx().stroke.size, (v) => { fx().stroke.size = v; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().stroke.opacity * 100), (v) => { fx().stroke.opacity = v / 100; });
@@ -57,12 +69,15 @@ export class LayerStyleDialog extends Dialog {
     colour('Colour', () => fx().innerShadow.color, (c) => { fx().innerShadow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().innerShadow.opacity * 100), (v) => { fx().innerShadow.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().innerShadow.angle, (v) => { fx().innerShadow.angle = v; });
+    check('Use Global Light', () => !!fx().innerShadow.useGlobal, (v) => { fx().innerShadow.useGlobal = v; });
     slider('Distance (px)', 0, 200, () => fx().innerShadow.distance, (v) => { fx().innerShadow.distance = v; });
     slider('Size (px)', 0, 100, () => fx().innerShadow.size, (v) => { fx().innerShadow.size = v; });
+    choice('Contour', contours, () => fx().innerShadow.contour ?? 'linear', (v) => { fx().innerShadow.contour = v as ContourId; });
     check('Inner Glow', () => fx().innerGlow.enabled, (v) => { fx().innerGlow.enabled = v; });
     colour('Colour', () => fx().innerGlow.color, (c) => { fx().innerGlow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().innerGlow.opacity * 100), (v) => { fx().innerGlow.opacity = v / 100; });
     slider('Size (px)', 0, 100, () => fx().innerGlow.size, (v) => { fx().innerGlow.size = v; });
+    choice('Contour', contours, () => fx().innerGlow.contour ?? 'linear', (v) => { fx().innerGlow.contour = v as ContourId; });
     check('Color Overlay', () => fx().colorOverlay.enabled, (v) => { fx().colorOverlay.enabled = v; });
     colour('Colour', () => fx().colorOverlay.color, (c) => { fx().colorOverlay.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().colorOverlay.opacity * 100), (v) => { fx().colorOverlay.opacity = v / 100; });
@@ -109,6 +124,8 @@ export class LayerStyleDialog extends Dialog {
     slider('Soften (px)', 0, 16, () => fx().bevel.soften, (v) => { fx().bevel.soften = v; });
     slider('Angle (\u00b0)', -180, 180, () => fx().bevel.angle, (v) => { fx().bevel.angle = v; });
     slider('Altitude (\u00b0)', 0, 90, () => fx().bevel.altitude, (v) => { fx().bevel.altitude = v; });
+    check('Use Global Light', () => !!fx().bevel.useGlobal, (v) => { fx().bevel.useGlobal = v; });
+    choice('Gloss Contour', contours, () => fx().bevel.gloss ?? 'linear', (v) => { fx().bevel.gloss = v as ContourId; });
     colour('Highlight', () => fx().bevel.highlight, (c) => { fx().bevel.highlight = c; });
     slider('Highlight opacity (%)', 0, 100, () => Math.round(fx().bevel.highlightOpacity * 100), (v) => { fx().bevel.highlightOpacity = v / 100; });
     colour('Shadow', () => fx().bevel.shadow, (c) => { fx().bevel.shadow = c; });
@@ -124,13 +141,22 @@ export class LayerStyleDialog extends Dialog {
     this.layerId = layer.id;
     this.applied = false;
     this.fx = structuredClone(layer.effects ?? defaultEffects());
+    this.light = { ...(this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT) };
     for (const sync of this.syncs) sync();
     this.open();
-    this.engine.previewLayerEffects(layer.id, this.fx);
+    this.changed();
+  }
+
+  /** What the preview shows: the pending light put into effects that use it, those flags then dropped so the
+   *  document's current light does not override the pending one. */
+  private previewFx(): LayerEffects {
+    const fx = structuredClone(withGlobalLight(this.fx, this.light));
+    delete fx.dropShadow.useGlobal; delete fx.innerShadow.useGlobal; delete fx.bevel.useGlobal;
+    return fx;
   }
 
   private changed(): void {
-    if (this.layerId) this.engine.previewLayerEffects(this.layerId, this.fx);
+    if (this.layerId) this.engine.previewLayerEffects(this.layerId, this.previewFx());
   }
 
   /** Called when the dialog applies a style, or none, for Actions to record it. */
@@ -138,8 +164,9 @@ export class LayerStyleDialog extends Dialog {
 
   private apply(): void {
     this.applied = true;
-    const id = this.layerId, fx = effectsActive(this.fx) ? structuredClone(this.fx) : null;
+    const id = this.layerId, fx = effectsActive(this.fx) ? structuredClone(this.fx) : null, cur = this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT;
+    const light = this.light.angle !== cur.angle || this.light.altitude !== cur.altitude ? { ...this.light } : null;
     this.close();
-    if (id) { this.engine.setLayerEffects(id, fx); this.onApplied?.(fx ? structuredClone(fx) : null); }
+    if (id) { this.engine.applyStyleAndLight(id, fx, light); this.onApplied?.(fx ? structuredClone(fx) : null); }
   }
 }

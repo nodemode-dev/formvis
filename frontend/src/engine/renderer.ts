@@ -1,6 +1,7 @@
 import { resizeMask } from './filters';
 import { blendPixels } from './blend';
 import { patternById } from './patterns';
+import { applyContour, contourLut, withGlobalLight, type ContourId } from './style-extras';
 import { canvasBlend, compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
 import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
@@ -138,7 +139,7 @@ export class Renderer {
       if (!src || !layer.raster) continue;
       const m = mul(job.view, placement(t, src.width, src.height));
       const mode = ov?.blend ?? layer.blend, op = compositeOp(mode), pixelBlend = !canvasBlend(mode);
-      const fx = ov && 'effects' in ov ? ov.effects ?? null : layer.effects ?? null, styled = effectsActive(fx);
+      const fx0 = ov && 'effects' in ov ? ov.effects ?? null : layer.effects ?? null, fx = fx0 ? withGlobalLight(fx0, job.doc.globalLight) : null, styled = effectsActive(fx);
       // A styled layer's effects come from the per-layer cache at document resolution when they can, so any view and
       // any repainted region shows them whole; strokes and transforms in progress, clipping and folder masks are
       // drawn per render instead.
@@ -263,6 +264,19 @@ export class Renderer {
    *  three box blurs approximating a Gaussian of half the size is the height map; each pixel's normal comes from its
    *  slopes, steepened by depth, and its lighting from the angle and altitude, flat ground scoring zero. Highlight and
    *  shadow are kept inside, outside or on both sides of the edge by style, then softened. */
+  /** An effect's rendered coverage passed through its contour, in place; Linear leaves the surface as it is. The
+   *  shadows and glows here come from canvas shadows, whose coverage at the silhouette's edge is about a half, while a
+   *  contour's input runs from full at the edge to nothing at the effect's reach, so coverage is doubled (capped at
+   *  full) before the curve. */
+  private contoured(s: Surface, w: number, h: number, id: ContourId | undefined): Surface {
+    const lut = contourLut(id);
+    if (!lut) return s;
+    const c = ctxOf(s), img = c.getImageData(0, 0, w, h), d = img.data;
+    for (let i = 3; i < d.length; i += 4) d[i] = lut[Math.min(255, d[i] * 2)];
+    c.putImageData(img, 0, 0);
+    return s;
+  }
+
   private bevelMaps(a: Uint8ClampedArray, w: number, h: number, bv: LayerEffects['bevel'], scale: number): [ImageData, ImageData] {
     const n = w * h, A = new Float32Array(n);
     for (let i = 0; i < n; i++) A[i] = a[i * 4 + 3] / 255;
@@ -416,24 +430,37 @@ export class Renderer {
         s.c.putImageData(img, 0, 0);
         lay(s.s, sa.opacity * opacity, compositeOp(sa.blend));
       }
-      if (ig.enabled && ig.opacity > 0 && ig.size > 0) lay(castByInverse(ig.color, ig.size * scale, 0, 0), ig.opacity * opacity, compositeOp(ig.blend));
+      if (ig.enabled && ig.opacity > 0 && ig.size > 0) lay(this.contoured(castByInverse(ig.color, ig.size * scale, 0, 0), bw, bh, ig.contour), ig.opacity * opacity, compositeOp(ig.blend));
       if (is.enabled && is.opacity > 0) {
         const rad = (is.angle * Math.PI) / 180;
-        lay(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale), is.opacity * opacity, compositeOp(is.blend));
+        lay(this.contoured(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale), bw, bh, is.contour), is.opacity * opacity, compositeOp(is.blend));
       }
       if (bv.enabled && bv.size > 0 && (bv.highlightOpacity > 0 || bv.shadowOpacity > 0)) {
         const [hi, sh] = this.bevelMaps(sil.c.getImageData(bx, by, bw, bh).data, bw, bh, bv, scale);
+        applyContour(hi.data, bv.gloss);
+        applyContour(sh.data, bv.gloss);
         if (bv.highlightOpacity > 0) { const s = this.slot(9, bw, bh); s.c.putImageData(hi, 0, 0); lay(s.s, bv.highlightOpacity * opacity, compositeOp(bv.highlightBlend)); }
         if (bv.shadowOpacity > 0) { const s = this.slot(10, bw, bh); s.c.putImageData(sh, 0, 0); lay(s.s, bv.shadowOpacity * opacity, compositeOp(bv.shadowBlend)); }
+      }
+      if (k.enabled && k.opacity > 0 && k.size * scale > 0 && (k.position === 'inside' || k.position === 'center')) {
+        // Inside: the silhouette less itself shrunk by the size; Center: grown by half less shrunk by half.
+        const alpha = sil.c.getImageData(bx, by, bw, bh).data, inside = new Uint8Array(bw * bh);
+        for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];
+        const s = k.size * scale, outer = k.position === 'inside' ? inside : resizeMask(inside, bw, bh, s / 2), inner = resizeMask(inside, bw, bh, -(k.position === 'inside' ? s : s / 2));
+        const img = new ImageData(bw, bh), px = img.data;
+        for (let i = 0; i < inside.length; i++) { const o = i * 4; px[o] = k.color.r; px[o + 1] = k.color.g; px[o + 2] = k.color.b; px[o + 3] = Math.max(0, outer[i] - inner[i]); }
+        const out = this.slot(12, bw, bh);
+        out.c.putImageData(img, 0, 0);
+        lay(out.s, k.opacity * opacity, 'source-over');
       }
       return;
     }
     if (d.enabled && d.opacity > 0) {
       const rad = (d.angle * Math.PI) / 180;
-      lay(shadowOf(d.color, d.size * scale, -Math.cos(rad) * d.distance * scale, Math.sin(rad) * d.distance * scale), d.opacity * opacity, compositeOp(d.blend));
+      lay(this.contoured(shadowOf(d.color, d.size * scale, -Math.cos(rad) * d.distance * scale, Math.sin(rad) * d.distance * scale), bw, bh, d.contour), d.opacity * opacity, compositeOp(d.blend));
     }
-    if (g.enabled && g.opacity > 0 && g.size > 0) lay(shadowOf(g.color, g.size * scale, 0, 0), g.opacity * opacity, compositeOp(g.blend));
-    if (k.enabled && k.opacity > 0 && k.size * scale > 0) {
+    if (g.enabled && g.opacity > 0 && g.size > 0) lay(this.contoured(shadowOf(g.color, g.size * scale, 0, 0), bw, bh, g.contour), g.opacity * opacity, compositeOp(g.blend));
+    if (k.enabled && k.opacity > 0 && k.size * scale > 0 && (k.position ?? 'outside') === 'outside') {
       const alpha = sil.c.getImageData(bx, by, bw, bh).data, inside = new Uint8Array(bw * bh);
       for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];
       const ring = resizeMask(inside, bw, bh, k.size * scale), img = new ImageData(bw, bh), px = img.data;
