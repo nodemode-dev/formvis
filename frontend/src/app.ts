@@ -281,7 +281,7 @@ export function startApp(): void {
     await engine.task(async () => {
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        await deliver(await api.package(manifest, files), `${p.name}.sonny`);
+        await deliver(await api.package(manifest, files), `${p.name}.sny`);
       } catch (err) { toast(message(err), 'error'); }
     });
   }

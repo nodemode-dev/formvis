@@ -13,14 +13,23 @@ from app.services import sessions
 
 router = APIRouter(tags=["projects"])
 NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,120}$")
-SUFFIXES = (".sonny", ".ref", ".zip")
+SUFFIXES = (".sny", ".sonny", ".ref", ".zip")
+#: The library writes .sny; .sonny (the extension before 0.90.0) is still read, listed, opened and deleted.
+EXT, OLD_EXT = ".sny", ".sonny"
 
 
 def _library_path(name: str) -> Path:
     clean = name.strip()
     if not NAME.match(clean) or clean.startswith("."):
         raise HTTPException(status_code=400, detail="Invalid project name.")
-    return config.projects_dir() / f"{clean}.sonny"
+    return config.projects_dir() / f"{clean}{EXT}"
+
+
+def _existing(name: str) -> Path:
+    """The library file for `name`: the .sny one, or else an older .sonny one."""
+    path = _library_path(name)
+    old = path.with_suffix(OLD_EXT)
+    return path if path.is_file() or not old.is_file() else old
 
 
 def _project_name(raw: str) -> str:
@@ -66,11 +75,12 @@ def _validated(manifest: dict, assets: dict[str, bytes]) -> None:
 
 @router.get("")
 def library() -> list[dict]:
-    items = []
-    for path in config.projects_dir().glob("*.sonny"):
-        stat = path.stat()
-        items.append({"name": path.stem, "modified": stat.st_mtime, "size": stat.st_size})
-    return sorted(items, key=lambda item: item["modified"], reverse=True)
+    items: dict[str, dict] = {}
+    for suffix in (OLD_EXT, EXT):
+        for path in config.projects_dir().glob(f"*{suffix}"):
+            stat = path.stat()
+            items[path.stem] = {"name": path.stem, "modified": stat.st_mtime, "size": stat.st_size}
+    return sorted(items.values(), key=lambda item: item["modified"], reverse=True)
 
 
 @router.post("/save")
@@ -83,6 +93,7 @@ def save(name: str = Form(...), manifest: str = Form(...), files: list[UploadFil
     with os.fdopen(fd, "wb") as handle:
         handle.write(blob)
     os.replace(tmp, target)
+    target.with_suffix(OLD_EXT).unlink(missing_ok=True)
     return {"name": target.stem, "path": str(target), "size": len(blob)}
 
 
@@ -97,7 +108,7 @@ def package(manifest: str = Form(...), files: list[UploadFile] = File(default=[]
 
 @router.get("/library/{name}")
 def open_library(name: str) -> dict:
-    path = _library_path(name)
+    path = _existing(name)
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Project not found.")
     try:
@@ -110,7 +121,9 @@ def open_library(name: str) -> dict:
 
 @router.delete("/library/{name}")
 def delete_library(name: str) -> dict:
-    _library_path(name).unlink(missing_ok=True)
+    path = _library_path(name)
+    path.unlink(missing_ok=True)
+    path.with_suffix(OLD_EXT).unlink(missing_ok=True)
     return {"deleted": name}
 
 

@@ -38,7 +38,7 @@
       "entitlements": "entitlements.plist"
     },
     "fileAssociations": [
-      { "ext": ["sonny"], "name": "sonny Project", "description": "sonny layered image project", "role": "Editor", "mimeType": "application/x-sonny" },
+      { "ext": ["sny", "sonny"], "name": "sonny Project", "description": "sonny layered image project", "role": "Editor", "mimeType": "application/x-sonny" },
  { "ext": ["comp"], "name": "Project", "description": "project", "role": "Editor" }
     ],
     "createUpdaterArtifacts": false

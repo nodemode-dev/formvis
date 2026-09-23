@@ -76,6 +76,31 @@ def test_project_save_list_open_delete_round_trip(client):
     assert client.get("/api/projects").json() == []
 
 
+def test_projects_save_as_sny_and_older_sonny_files_still_work(client):
+    from app.core import config
+    import shutil
+
+    layers = [{"id": "L1", "name": "Layer", "imageFile": "L1.png"}]
+    body = {"name": "Old", "manifest": json.dumps(manifest(layers=layers))}
+    img = [("files", ("L1.png", png_bytes(), "image/png"))]
+    r = client.post("/api/projects/save", data=body, files=img)
+    assert r.status_code == 200 and r.json()["path"].endswith("Old.sny"), r.text
+    lib = config.projects_dir()
+    # an older project, as saved before 0.90.0
+    shutil.move(str(lib / "Old.sny"), str(lib / "Old.sonny"))
+    assert [p["name"] for p in client.get("/api/projects").json()] == ["Old"]
+    assert client.get("/api/projects/library/Old").status_code == 200
+    # saving it again writes .sny and leaves one entry
+    assert client.post("/api/projects/save", data=body, files=img).status_code == 200
+    assert sorted(p.name for p in lib.iterdir() if p.stem == "Old") == ["Old.sny"]
+    assert [p["name"] for p in client.get("/api/projects").json()] == ["Old"]
+    # delete removes either
+    shutil.copy(str(lib / "Old.sny"), str(lib / "Old.sonny"))
+    assert client.delete("/api/projects/library/Old").status_code == 200
+    assert client.get("/api/projects").json() == []
+    assert client.post("/api/io/export", files={"file": ("f", b"1", "application/zip")}, data={"name": "x.sny"}).status_code == 200
+
+
 def test_project_validation_refuses_bad_manifests(client):
     cases = [
         {"format": "other", "version": 1, "width": 8, "height": 6, "layers": []},
