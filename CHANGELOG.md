@@ -2,6 +2,19 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.94.0 · 2026-09-23
+
+### Added
+
+- Layer > Corner Radii: a drawn rectangle's corners set afterwards, linked or each on its own.
+- Custom shapes in the Shape tool: thirteen of sonny's own (check mark, cross, plus, lightning, speech bubble, drop, ring, crescent, tag, shield, cloud, house, block arrow), with holes where they have them.
+- Shapes with holes keep them in PSD files, both ways.
+- 7 more tests (4 unit, 3 browser): 228 in all.
+
+### Fixed
+
+- The Shape tool's options now follow the chosen shape: Sides, Points, Indent, Weight and the arrow head settings could not be reached from the options bar since 0.69.0.
+
 ## 0.93.0 · 2026-09-23
 
 ### Added

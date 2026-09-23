@@ -2,6 +2,38 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Live corner radii, custom shapes, option rows that follow state · _v0.94.0 (src/engine/custom-shapes.ts and src/ui/panels/corners-dialog.ts new, src/engine/index.ts, src/engine/shape-paths.ts, src/extensions/registry.ts, src/extensions/tools/shape.ts, src/io/psd.ts, src/ui/options.ts, src/app.ts; tests/corners.test.ts, tests/custom-shapes.test.ts, e2e/test_corner_radii.py and e2e/test_custom_shapes.py new)
+
+In the engine, `cornerRadiiOf`, `setShapeCorners`, four radii in `shapeRaster` and in Image Size; `CUSTOM_SHAPES` re-exported and custom shape layers named after their shape. `custom-shapes.ts`: `CUSTOM_SHAPES`, `parseShape`, `customShapePath`, `windingArea`. `shape-paths.ts`: the `custom` kind and option. `OptionSpec` takes `when`; `options.ts` shows or hides such rows in place. The Shape tool lists every row with a `when`, previews every outline with its curves. `psd.ts` writes holes as subtract and reads subtract as holes. `app.ts`: the Corner Radii dialog, command and menu entries. Removed:
+
+```ts
+    { label: 'Layer', items: ['new-layer', 'new-folder', 'new-artboard', 'artboard-from-layers', 'artboard-options', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'replace-contents', 'update-linked', 'relink', 'embed-linked', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'replace-contents', 'update-linked', 'relink', 'embed-linked', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+    const name = { polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart' }[kind];
+        const shape = l.shape ? { ...l.shape, cornerRadius: (Number(l.shape.cornerRadius) || 0) * Math.min(sx, sy) } : null;
+    else c.roundRect(0, 0, r.width, r.height, Math.min(Number(style.cornerRadius) || 0, r.width / 2, r.height / 2));
+export type PathShapeKind = 'polygon' | 'star' | 'line' | 'arrow' | 'heart';
+export interface PathShapeOptions { sides: number; starInset: number; weight: number; headLength: number; headWidth: number }
+export const DEFAULT_PATH_SHAPE: PathShapeOptions = { sides: 5, starInset: 50, weight: 4, headLength: 24, headWidth: 24 };
+/** The closed path for a boxed shape (polygon, star, heart) fitted to `box`. */
+export function boxedShapePath(kind: 'polygon' | 'star' | 'heart', box: Rect, o: PathShapeOptions): VectorPath {
+export type OptionSpec =
+  | { kind: 'button'; label: string; icon?: string; run: () => void };
+import { hexOf, type Pt } from '../../engine';
+const NOUN: Record<string, string> = { rectangle: 'a rectangle', ellipse: 'an ellipse', polygon: 'a polygon', star: 'a star', heart: 'a heart', line: 'a line', arrow: 'an arrow' };
+const KINDS = ['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'heart'] as const;
+      const path = lineLike(s.kind) ? linePath(s.kind as 'line' | 'arrow', draft.anchor, snapped(draft), s) : boxedShapePath(s.kind as 'polygon' | 'star' | 'heart', r, s);
+      dashed(ctx, g, () => { const pts = path.subpaths[0].anchors.map((a) => v.toScreen(a)); pts.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y))); g.closePath(); });
+      ...(s.kind === 'rectangle' ? [{ kind: 'range' as const, label: 'Corner radius', min: 0, max: 500, unit: 'px', get: () => s.cornerRadius, set: (v: number) => set({ cornerRadius: v }) }] : []),
+      ...(s.kind === 'polygon' || s.kind === 'star' ? [{ kind: 'range' as const, label: s.kind === 'star' ? 'Points' : 'Sides', min: 3, max: 100, get: () => s.sides, set: (v: number) => set({ sides: Math.round(v) }) }] : []),
+      ...(s.kind === 'star' ? [{ kind: 'range' as const, label: 'Indent', min: 1, max: 99, unit: '%', get: () => s.starInset, set: (v: number) => set({ starInset: v }) }] : []),
+      ...(lineLike(s.kind) ? [{ kind: 'range' as const, label: 'Weight', min: 1, max: 1000, unit: 'px', get: () => s.weight, set: (v: number) => set({ weight: v }) }] : []),
+      ...(s.kind === 'arrow' ? [{ kind: 'range' as const, label: 'Head length', min: 1, max: 1000, unit: 'px', get: () => s.headLength, set: (v: number) => set({ headLength: v }) }, { kind: 'range' as const, label: 'Head width', min: 1, max: 1000, unit: 'px', get: () => s.headWidth, set: (v: number) => set({ headWidth: v }) }] : []),
+        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine')) notes.push(`"${name}" combines shapes in ways sonny does not; its outline may differ once edited.`);
+        out.vectorMask = { paths: v.path.subpaths.filter((sp) => sp.anchors.length).map((sp) => ({
+          open: !sp.closed, operation: 'combine' as const, fillRule: 'non-zero' as const,
+```
+
 ## Artboards · _v0.93.0 (src/ui/panels/artboard-dialog.ts new, src/engine/types.ts, src/engine/renderer.ts, src/engine/index.ts, src/io/project-io.ts, src/app.ts; tests/artboard.test.ts and e2e/test_artboards.py new)
 
 `types.ts`: `Artboard`, `artboardFromData`, `Layer.artboard`. `renderer.ts`: `whitePixel`; `folderMasks` clips to an artboard's rectangle; the render loop's `backdrop` draws backgrounds. In the engine, `artboards`, `newArtboard`, `artboardFromLayers`, `setArtboard`, `artboardImage`; artboard rectangles follow the group transform, `resizeCanvas`, `resampleImage` and `flipCanvas`. `project-io.ts` saves and reads them. `app.ts`: the dialog, four commands, menu entries and `exportArtboards`. Removed:
