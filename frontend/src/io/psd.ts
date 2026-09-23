@@ -1,7 +1,8 @@
 import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, UnitsValue } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec,
+  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS,
 } from '../engine';
+import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { maskEdgeTone } from '../engine/distort';
 
 /** Layered PSD files, read and written with ag-psd (MIT). Pixel layers keep their position, opacity, blend mode and
@@ -19,7 +20,7 @@ const TO_PSD: Record<BlendMode, PsdBlend> = {
 };
 const FROM_PSD = new Map<PsdBlend, BlendMode>(Object.entries(TO_PSD).map(([k, v]) => [v, k as BlendMode]));
 
-export const isPsdFile = (f: File): boolean => /\.psd$/i.test(f.name) || f.type === 'image/vnd.adobe.photoshop';
+export const isPsdFile = (f: File): boolean => /\.ps[db]$/i.test(f.name) || f.type === 'image/vnd.adobe.photoshop';
 
 const canvas = (w: number, h: number): HTMLCanvasElement => { const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; };
 
@@ -184,12 +185,13 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         continue;
       }
       if (pl.blendMode && !FROM_PSD.has(pl.blendMode) && pl.blendMode !== 'pass through') notes.push(`"${name}" uses ${pl.blendMode}, which sonny does not have; it opened as Normal.`);
-      if (!pl.canvas || !pl.canvas.width || !pl.canvas.height) {
-        if (pl.adjustment) notes.push(`"${name}" is an adjustment layer; sonny left it out.`);
-        continue;
-      }
-      const w = pl.canvas.width, h = pl.canvas.height, raster = Raster.from(pl.canvas, w, h);
-      const layer = newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: pl.left ?? 0, y: pl.top ?? 0 }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend });
+      const adj = pl.adjustment ? fromPsdAdjustment(pl.adjustment) : null;
+      if (pl.adjustment && !adj) { notes.push(`"${name}" is a ${pl.adjustment.type} adjustment, which sonny does not have; sonny left it out.`); continue; }
+      if (!adj && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
+      const w = pl.canvas?.width ?? 0, h = pl.canvas?.height ?? 0, raster = adj || !pl.canvas ? null : Raster.from(pl.canvas, w, h);
+      // An adjustment layer opens as sonny's own, live, with its mask, opacity, blend and clipping.
+      const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend })
+        : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: pl.left ?? 0, y: pl.top ?? 0 }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend });
       const mk = pl.mask;
       if (mk?.canvas && mk.canvas.width && mk.canvas.height) {
         // PSD masks are grey; sonny's are white with the level in alpha.
@@ -230,7 +232,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         } else notes.push(`"${name}" is a smart object whose contents sonny cannot read; it opened as pixels.`);
       }
       const tx = pl.text;
-      if (tx && typeof tx.text === 'string') {
+      if (tx && typeof tx.text === 'string' && raster) {
         // Photoshop type opens as editable sonny type: Photoshop's pixels until it is edited, then sonny's.
         const st = tx.style ?? {}, m = tx.transform ?? [1, 0, 0, 1, 0, 0], scale = Math.hypot(m[2] ?? 0, m[3] ?? 1) || 1, face = familyOf(st.font?.name ?? 'ArialMT');
         const col = st.fillColor as Record<string, number> | undefined, just = tx.paragraphStyle?.justification;
@@ -257,7 +259,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
 }
 
 /** The document as a layered PSD, with notes on what it could not carry. */
-export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
+export async function writePsdFile(doc: Doc, composite: Surface, psb = false): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
   const { writePsd } = await import('ag-psd');
   const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, Uint8Array>(), psdPatterns: PatternInfo[] = [];
   for (const l of doc.layers) if (l.smart) sources.set(l.id, new Uint8Array(await (await toBlob(l.smart.source.canvas)).arrayBuffer()));
@@ -272,9 +274,29 @@ export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ byte
     g.drawImage(r.canvas as CanvasImageSource, 0, 0);
     return { c, x: box.x, y: box.y };
   };
+  /** The layer's mask on `out`, as Photoshop's grey mask placed on the canvas. */
+  const maskOnto = (l: Layer, out: PsdLayer): void => {
+    const mk = l.mask;
+    if (!mk?.raster) return;
+    const mp = placed(mk.raster, mk.placement ?? l.transform);
+    if (!mp) return;
+    const g = mp.c.getContext('2d') as CanvasRenderingContext2D, img = g.getImageData(0, 0, mp.c.width, mp.c.height);
+    for (let i = 0; i < img.data.length; i += 4) { const a = img.data[i + 3]; img.data[i] = img.data[i + 1] = img.data[i + 2] = a; img.data[i + 3] = 255; }
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.putImageData(img, 0, 0);
+    out.mask = { canvas: mp.c, left: mp.x, top: mp.y, defaultColor: maskEdgeTone(mk.raster), disabled: !mk.enabled };
+  };
   const toPsd = (l: Layer): PsdLayer | null => {
     if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: 'pass through', opened: true, children: build(l.id) };
-    if (l.adjustment) { notes.push(`"${l.name}" is an adjustment layer; it is left out of the PSD.`); return null; }
+    if (l.adjustment) {
+      // An adjustment layer goes as Photoshop's, live, with its mask, opacity, blend and clipping.
+      const adjustment = toPsdAdjustment(l.adjustment);
+      if (!adjustment) { notes.push(`"${l.name}" is a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment, which Photoshop has no adjustment layer for; it is left out of the PSD.`); return null; }
+      if (l.adjustment.kind === 'hsv' && (l.adjustment.data as { colorize?: unknown }).colorize === true) notes.push(`"${l.name}" uses Colorize, which the PSD's Hue/Saturation layer does not carry from sonny.`);
+      const out: PsdLayer = { name: l.name, opacity: l.opacity, hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment };
+      maskOnto(l, out);
+      return out;
+    }
     if (!l.raster) return null;
     const px = placed(l.raster, l.transform);
     if (!px) return null;
@@ -315,17 +337,7 @@ export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ byte
         out.vectorStroke = { strokeEnabled: !!v.stroke, fillEnabled: !!v.fill, lineWidth: { units: 'Pixels', value: v.stroke?.width ?? 1 }, lineCapType: 'round', lineJoinType: 'round', lineAlignment: 'center', content: { type: 'color', color: rgb(v.stroke?.color ?? v.fill ?? { r: 0, g: 0, b: 0 }) } };
       } else notes.push(`"${l.name}" goes as pixels; after a scale, rotation or flip the PSD cannot keep it as a shape.`);
     }
-    const mk = l.mask;
-    if (mk?.raster) {
-      const mp = placed(mk.raster, mk.placement ?? l.transform);
-      if (mp) {
-        const g = mp.c.getContext('2d') as CanvasRenderingContext2D, img = g.getImageData(0, 0, mp.c.width, mp.c.height);
-        for (let i = 0; i < img.data.length; i += 4) { const a = img.data[i + 3]; img.data[i] = img.data[i + 1] = img.data[i + 2] = a; img.data[i + 3] = 255; }
-        g.setTransform(1, 0, 0, 1, 0, 0);
-        g.putImageData(img, 0, 0);
-        out.mask = { canvas: mp.c, left: mp.x, top: mp.y, defaultColor: maskEdgeTone(mk.raster), disabled: !mk.enabled };
-      }
-    }
+    maskOnto(l, out);
     return out;
   };
   const build = (parentId: ID | null): PsdLayer[] => doc.layers.filter((l) => l.parentId === parentId).map(toPsd).filter((x): x is PsdLayer => x !== null);
@@ -334,5 +346,5 @@ export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ byte
   const psd: Psd = { width: doc.width, height: doc.height, children: build(null), canvas: flat };
   if (linked.length) psd.linkedFiles = linked;
   if (psdPatterns.length) psd.patterns = psdPatterns;
-  return { bytes: writePsd(psd, { generateThumbnail: false }), notes };
+  return { bytes: writePsd(psd, { generateThumbnail: false, psb }), notes };
 }

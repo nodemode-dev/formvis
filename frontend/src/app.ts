@@ -485,7 +485,7 @@ export function startApp(): void {
     else toast(`Defined "${name}" for this session; the pattern library is full, so it will not be kept.`, 'error');
   }
 
-  async function exportPsd(): Promise<void> {
+  async function exportPsd(psb = false): Promise<void> {
     const p = engine.current;
     if (!p) return;
     engine.settle();
@@ -493,9 +493,9 @@ export function startApp(): void {
       try {
         const flat = engine.flattened();
         if (!flat) return;
-        const { bytes, notes } = await writePsdFile(p.doc, flat);
+        const { bytes, notes } = await writePsdFile(p.doc, flat, psb);
         if (engine.pathsOf(p).list.length) notes.push('Paths in the Paths panel are left out; shape layers keep their outlines.');
-        await deliver(new Blob([bytes], { type: 'image/vnd.adobe.photoshop' }), `${p.name}.psd`);
+        await deliver(new Blob([bytes], { type: 'image/vnd.adobe.photoshop' }), `${p.name}.${psb ? 'psb' : 'psd'}`);
         if (notes.length) toast(notes.join(' '), 'info');
       } catch (err) { toast(message(err), 'error'); }
     });
@@ -678,6 +678,7 @@ export function startApp(): void {
     { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
     { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
+    { id: 'export-psb', label: 'Export PSB (Large Document)...', enabled: has, run: () => void exportPsd(true) },
     { id: 'export-webp', label: 'Export WebP', enabled: has, run: () => void exportImage('webp', 0.9) },
     { id: 'export-tiff', label: 'Export TIFF', enabled: () => has() && !!caps, run: () => void exportImage('tiff', 0.9) },
     { id: 'export-pdf', label: 'Export PDF', enabled: () => has() && !!caps, run: () => void exportImage('pdf', 0.9) },
@@ -853,7 +854,7 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-as', 'export-png', 'export-jpg', 'export-psd', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-as', 'export-png', 'export-jpg', 'export-psd', 'export-psb', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill-workspace', 'content-fill', 'remove-wires', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', 'transform-warp', 'puppet-warp', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'invert', '-', 'canvas-size', 'trim', 'reveal-all', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'replace-contents', 'update-linked', 'relink', 'embed-linked', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },

@@ -39,7 +39,7 @@ jobs:
           python-version: '3.12'
       - run: npm ci
         working-directory: frontend
-      - run: pip install pytest playwright
+      - run: pip install pytest playwright psd-tools
       - run: python -m playwright install --with-deps chromium
       - name: Browser tests against the dev build
         run: python -m pytest -q e2e
