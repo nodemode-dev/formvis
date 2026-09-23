@@ -41,7 +41,8 @@ def test_drag_a_guide_out_of_the_top_ruler_then_move_and_delete_it(page):
     expected = page.evaluate(f"window.sonny.engine.current.viewport.toDoc({w / 2}, 150).y")
     assert abs(g[0][1] - expected) <= 0.5
     # the Move tool drags it; dropping it on the ruler deletes it
-    page.evaluate("window.sonny.commands.run('tool-move')")
+    page.evaluate("window.sonny.engine.setTool('move')")
+    assert page.evaluate("window.sonny.engine.tool") == "move"
     screen_y = page.evaluate("(() => { const v = window.sonny.engine.current.viewport, g = window.sonny.engine.current.doc.guides[0]; return v.panY + g.at * v.zoom; })()")
     page.mouse.move(x + 60, y + screen_y)
     page.mouse.down()

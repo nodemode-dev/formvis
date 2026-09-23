@@ -6,7 +6,7 @@ SCENE = """async ([guide, grid, snapping]) => {
   e.setView({ guides: true, grid, gridSpacing: 100, gridSubdivisions: 4 });
   if (guide) e.addGuide('x', 100);
   e.snapping = snapping;
-  window.sonny.commands.run('tool-move');
+  e.setTool('move');
   const v = e.current.viewport, r = document.querySelector('.cv-stage').getBoundingClientRect();
   return { from: [r.left + v.panX + 40 * v.zoom, r.top + v.panY + 40 * v.zoom], zoom: v.zoom };
 }"""

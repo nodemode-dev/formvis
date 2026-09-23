@@ -32,7 +32,8 @@ def test_presets_set_the_brush(page):
     r = page.evaluate("""(() => {
       const e = window.sonny.engine;
       e.commands ? 0 : 0;
-      window.sonny.commands.run('tool-brush');
+      e.setTool('brush');
+      if (e.tool !== 'brush') return ['tool not switched'];
       const sel = [...document.querySelectorAll('select')].find((s) => [...s.options].some((o) => o.value === 'soft-air'));
       sel.value = 'soft-air'; sel.dispatchEvent(new Event('change', { bubbles: true }));
       return [e.brush.diameter, e.brush.hardness, e.brushDynamics.size.min, e.brushDynamics.flow.min, e.brushPresetId];
