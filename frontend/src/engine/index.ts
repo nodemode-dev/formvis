@@ -2204,12 +2204,12 @@ export class Engine {
     return doc;
   }
 
-  fillWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserveTransparency: boolean): void {
+  fillWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserveTransparency: boolean, opts: { name?: string; region?: SelectionMask | null } = {}): void {
     const hist = 'history' in contents && this.current ? this.historySource(this.current) : null;
     if ('history' in contents && !hist) { this.notice('This layer did not exist at the oldest history step, so there is nothing to fill from.'); return; }
     const pat = 'patternId' in contents ? patternById(contents.patternId) : null;
     if ('patternId' in contents && !pat) { this.notice('That pattern is no longer available.'); return; }
-    this.regionEdit('Fill', ({ raster, target, rect, cover }) => {
+    this.regionEdit(opts.name ?? 'Fill', ({ raster, target, rect, cover }) => {
       const rc = raster.ctx;
       rc.save();
       rc.setTransform(1, 0, 0, 1, 0, 0);
@@ -2245,7 +2245,33 @@ export class Engine {
       rc.clearRect(rect.x, rect.y, rect.w, rect.h);
       rc.drawImage(out, rect.x, rect.y);
       rc.restore();
-    });
+    }, opts.region);
+  }
+
+  /** Fill Path with its settings, as Photoshop's dialog has them: the path's inside (its operations applied),
+   *  anti-aliased or not and feathered by `feather` pixels, within any selection, filled as Edit > Fill fills
+   *  (contents, mode, opacity, Preserve Transparency), as one Fill Path step. */
+  fillPathWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserve: boolean, feather: number, antialias: boolean): void {
+    const p = this.current, vp = this.workPath, b = vp ? pathBounds(vp) : null;
+    if (!p || !vp || !b) { this.notice('Draw a path with the Pen tool first.'); return; }
+    const W = p.doc.width, H = p.doc.height, f = Math.max(0, Math.min(250, feather));
+    let mask = SelectionMask.fromPath(W, H, b, (c) => fillVector(c as CanvasRenderingContext2D, vp), antialias);
+    if (mask && f > 0) {
+      // Feathered as Select > Modify > Feather feathers: a Gaussian of half the radius over the mask's alpha. Masks
+      // are trimmed to their pixels, so the blur runs over a region grown by its reach, clipped to the canvas.
+      const pad = Math.ceil(f * 1.5) + 2, m = mask;
+      const region = intersectRect({ x: m.x - pad, y: m.y - pad, w: m.w + 2 * pad, h: m.h + 2 * pad }, { x: 0, y: 0, w: W, h: H });
+      if (region) {
+        const img = new ImageData(region.w, region.h);
+        for (let j = 0; j < region.h; j++) for (let i = 0; i < region.w; i++) { const k = (j * region.w + i) * 4; img.data[k] = img.data[k + 1] = img.data[k + 2] = 255; img.data[k + 3] = m.valueAt(region.x + i, region.y + j); }
+        const blurred = gaussianBlur(img, f / 2), out = new Uint8Array(region.w * region.h);
+        for (let i = 0; i < out.length; i++) out[i] = blurred.data[i * 4 + 3];
+        mask = SelectionMask.cropped(region.x, region.y, region.w, region.h, out);
+      }
+    }
+    if (mask && p.selection) mask = mask.combine(p.selection, 'intersect');
+    if (!mask) { this.notice('The path lies outside the canvas or the selection.'); return; }
+    this.fillWith(contents, blend, opacity, preserve, { name: 'Fill Path', region: mask });
   }
 
   /** Filter > Liquify's OK: the active layer's pixels resampled through `field` (built over this layer's raster by
