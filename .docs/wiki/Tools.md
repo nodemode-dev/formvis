@@ -12,11 +12,12 @@ A tool is a self-registering module: it declares its key, icon, hint, cursor, po
 | `frontend/src/extensions/tools/eyedropper.ts`, `hand.ts`, `zoom.ts` | Sampling (with the sample ring during drags and its Sample Ring option) and navigation |
 | `frontend/src/extensions/tools/crop.ts`, `gradient.ts`, `shape.ts` | Crop frame with ratios and snapping to the canvas and visible layers' edges, Straighten with a Level line, Content-Aware edges and Perspective corners, pending gradient with movable ends (Linear, Radial, Angle, Reflected, Diamond, colour-stop presets from `engine/gradients.ts`, and the Gradient Editor with noise gradients through its Edit button), shape layers (Rectangle, Ellipse, Polygon, Star, Line, Arrow, Heart; the path shapes from `engine/shape-paths.ts`, ported from NodeMode's sonny studio) |
 | `frontend/src/extensions/tools/heal.ts`, `remove.ts`, `clone.ts`, `smear.ts`, `brush-common.ts` | Spot Healing, Remove (content-aware fill of the stroke, and Remove Wires and Cables through `engine/distractions.ts`), Clone Stamp (with the preview inside the brush circle of what a click would stamp), Smear (Liquify, Blur, Sharpen, Smudge; Blur also softens a targeted layer mask), and the brush cursor, keys and options they share |
+| `frontend/src/extensions/tools/pen.ts`, `freeform-pen.ts`, `curvature-pen.ts`, `path-select.ts`, `direct-select.ts` | The Pen (P), Freeform Pen and Curvature Pen (both through `engine/curve-fit.ts`), Path Selection and Direct Selection (A): drawing paths, choosing whole subpaths with their path operation, and editing points. Paths fill through `fillVector` in `engine/paths.ts`, which applies the operations |
 
 ## Contract
 
-- Register through `registerBuiltinTools`; ids and keys are unique.
+- Register through `registerBuiltinTools`; ids are unique, and tools may share a key (the healing tools share J, the pens P, the selection arrows A).
 - Change documents only through `Engine` methods; never touch the DOM.
 - Draw overlays in CSS pixels on the `CanvasRenderingContext2D` you are given, using colors from `ctx.paint()`.
-- Options are declarative `OptionSpec` entries; the options bar owns their DOM.
+- Options are declarative `OptionSpec` entries; the options bar owns their DOM. It builds each tool's bar once, so a row that applies only sometimes (a shape kind's own settings) is listed always with a `when` condition, and is shown or hidden in place.
 - `cancel` must leave no partial edit behind.

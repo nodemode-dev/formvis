@@ -2,6 +2,38 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Pen and paths: paths in PSD, Path Selection, Freeform and Curvature Pens, path operations; single notices · _v0.95.0 (src/io/psd-paths.ts, src/engine/curve-fit.ts, src/extensions/tools/path-select.ts, freeform-pen.ts and curvature-pen.ts new; src/engine/paths.ts, src/engine/index.ts, src/engine/types.ts, src/extensions/tools/index.ts, src/io/psd.ts, src/ui/toast.ts, src/app.ts; tests/psd-paths.test.ts, tests/curve-fit.test.ts and six browser test files new)
+
+`psd-paths.ts`: `pathRecords`, `pathFromRecords`, `addPathResources`, `readPathResources`, with operations in length records. `curve-fit.ts`: `simplify`, `smoothAnchors`. `paths.ts`: `PathOp`, `PATH_OPS`, `SubPath.op`, `fillVector`, operations saved and read. In the engine, shape layers, Make Selection and Fill Path fill through `fillVector`; `paintPath` passes the path. Three tools registered with their ids. `psd.ts` writes and reads the Paths panel and keeps operations both ways; `readPsdFile` returns `paths`. `toast.ts` renews a notice already showing. Removed:
+
+```ts
+            const { doc, notes, activeId } = await readPsdFile(f);
+            engine.addProject(doc, f.name.replace(/\.psd$/i, ''), activeId);
+        const { bytes, notes } = await writePsdFile(p.doc, flat, psb);
+        if (engine.pathsOf(p).list.length) notes.push('Paths in the Paths panel are left out; shape layers keep their outlines.');
+import { pathBounds, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
+    if (style.fill) { c.fillStyle = rgbCss(style.fill); c.fill(shape); }
+    const shape = tracePath(vp);
+    const mask = SelectionMask.fromPath(p.doc.width, p.doc.height, b, (c) => c.fill(shape), true);
+  fillPath(): void { this.paintPath('Fill Path', (c, shape) => { c.fillStyle = rgbCss(this.fg); c.fill(shape); }); }
+  private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D) => void): void {
+      paint(c, shape);
+export interface SubPath { anchors: Anchor[]; closed: boolean }
+export function pathData(vp: VectorPath | null): { subpaths: Array<{ closed: boolean; anchors: number[][] }> } | null {
+    if (anchors.length) subpaths.push({ anchors, closed: (s as { closed?: unknown }).closed === true });
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'directSelect' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'idle';
+  for (const tool of [moveTool, marqueeTool, lassoTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null }> {
+  const psd = readPsd(await file.arrayBuffer(), { skipThumbnail: true });
+        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine' && bp.operation !== 'subtract')) notes.push(`"${name}" combines shapes in ways sonny does not (intersect or exclude); its outline may differ once edited.`);
+  return { doc: { ...doc, layers }, notes, activeId: layers.at(-1)?.id ?? null };
+export async function writePsdFile(doc: Doc, composite: Surface, psb = false): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
+          open: !sp.closed, operation: sp.closed && main && Math.sign(areas[i]) === -Math.sign(main) ? 'subtract' as const : 'combine' as const, fillRule: 'non-zero' as const,
+  return { bytes: writePsd(psd, { generateThumbnail: false, psb }), notes };
+  const node = el(`<div class="cv-toast${kind === 'error' ? ' is-error' : ''}" role="status"></div>`);
+  window.setTimeout(() => node.remove(), kind === 'error' ? 6000 : 3600);
+```
+
 ## Live corner radii, custom shapes, option rows that follow state · _v0.94.0 (src/engine/custom-shapes.ts and src/ui/panels/corners-dialog.ts new, src/engine/index.ts, src/engine/shape-paths.ts, src/extensions/registry.ts, src/extensions/tools/shape.ts, src/io/psd.ts, src/ui/options.ts, src/app.ts; tests/corners.test.ts, tests/custom-shapes.test.ts, e2e/test_corner_radii.py and e2e/test_custom_shapes.py new)
 
 In the engine, `cornerRadiiOf`, `setShapeCorners`, four radii in `shapeRaster` and in Image Size; `CUSTOM_SHAPES` re-exported and custom shape layers named after their shape. `custom-shapes.ts`: `CUSTOM_SHAPES`, `parseShape`, `customShapePath`, `windingArea`. `shape-paths.ts`: the `custom` kind and option. `OptionSpec` takes `when`; `options.ts` shows or hides such rows in place. The Shape tool lists every row with a `when`, previews every outline with its curves. `psd.ts` writes holes as subtract and reads subtract as holes. `app.ts`: the Corner Radii dialog, command and menu entries. Removed:

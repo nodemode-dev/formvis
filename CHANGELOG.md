@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.95.0 · 2026-09-23
+
+### Added
+
+- The Path Selection tool: choose, move, copy, nudge and delete whole subpaths.
+- The Freeform Pen (draw a path freehand, smoothed by Curve Fit) and the Curvature Pen (click points; the curve runs smoothly through them).
+- Path operations: Combine, Subtract, Intersect and Exclude, set from Path Selection and honoured by shape layers, Make Selection and Fill Path.
+- Paths panel paths, and path operations, in PSD files, both ways.
+- 15 more tests (5 unit, 10 browser): 243 in all.
+
+### Fixed
+
+- The same notice asked for again is shown once, rather than stacked.
+
 ## 0.94.0 · 2026-09-23
 
 ### Added
