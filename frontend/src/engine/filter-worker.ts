@@ -1,7 +1,7 @@
 /// <reference lib="webworker" />
 import { addNoise, gaussianBlur, lensDistort, motionBlur, unsharpMask } from './filters';
 import { developImage } from './develop';
-import { lensBlur, smartSharpen } from './filters-more';
+import { lensBlur, shakeReduce, smartSharpen } from './filters-more';
 import type { FilterJob } from './filter-jobs';
 
 /** runs its filters off the main thread (Core Image on the GPU). sonny's kernels are JavaScript, so the
@@ -20,6 +20,7 @@ onmessage = (e: MessageEvent<FilterJob>) => {
   else if (job.kind === 'develop') out = developImage(src, s.develop, job.scale);
   else if (job.kind === 'lensBlur') out = lensBlur(src, s.lensRadius * job.scale, s.lensBrightness, s.lensThreshold);
   else if (job.kind === 'smartSharpen') out = smartSharpen(src, s.smart, job.scale);
+  else if (job.kind === 'shakeReduction') out = shakeReduce(src, s.shake, job.scale);
   const pixels = out.data.buffer as ArrayBuffer;
   postMessage({ id: job.id, width: out.width, height: out.height, pixels }, [pixels]);
 };

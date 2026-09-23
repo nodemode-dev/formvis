@@ -93,6 +93,14 @@ export type SharpenRemove = 'gaussian' | 'lens' | 'motion';
 export interface SmartSharpenSettings { amount: number; radius: number; noise: number; remove: SharpenRemove; angle: number; shadows: number; highlights: number }
 export const smartSharpenMargin = (s: SmartSharpenSettings): number => Math.ceil(s.radius * 3) + 2;
 
+/** Filter > Sharpen > Shake Reduction: a straight blur trace (`angle` as the filters measure it, `length` its full span
+ *  in pixels, usually from estimateShake) removed by Smart Sharpen's motion deconvolution; `smoothing` (0 to 100)
+ *  gates small differences as Reduce Noise does and `amount` (percent) scales the correction. */
+export interface ShakeSettings { angle: number; length: number; smoothing: number; amount: number }
+const shakeAsSharpen = (s: ShakeSettings): SmartSharpenSettings => ({ amount: s.amount, radius: Math.max(0.5, s.length / 2), noise: s.smoothing, remove: 'motion', angle: s.angle, shadows: 0, highlights: 0 });
+export const shakeMargin = (s: ShakeSettings): number => smartSharpenMargin(shakeAsSharpen(s));
+export function shakeReduce(img: ImageData, s: ShakeSettings, scale = 1): ImageData { return smartSharpen(img, shakeAsSharpen(s), scale); }
+
 /** Smart Sharpen: `amount` in percent (1 to 500), `radius` in pixels, `noise` (0 to 100) gates small differences,
  *  `shadows` and `highlights` (0 to 100) fade the effect in those tones. `scale` shrinks the radius for previews. */
 export function smartSharpen(img: ImageData, s: SmartSharpenSettings, scale = 1): ImageData {

@@ -3,16 +3,18 @@ import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { toast } from '../toast';
 import { checkRow, selectRow, sliderRow, type Row } from './controls';
-import { lensBlur, lensBlurMargin, smartSharpen, smartSharpenMargin, type SharpenRemove } from '../../engine/filters-more';
+import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
+import { estimateShake } from '../../engine/shake';
 
-export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen';
-export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen' };
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction';
+export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen', shakeReduction: 'Shake Reduction' };
 
 export function defaultFilterSettings() {
   return {
     radius: 1, angle: 0, distance: 10, amount: 10, gaussian: false, monochromatic: false, distortion: 0, usmAmount: 100, usmRadius: 1, threshold: 0, develop: defaultDevelopState(),
     lensRadius: 15, lensBrightness: 0, lensThreshold: 255,
     smart: { amount: 200, radius: 1, noise: 10, remove: 'lens' as SharpenRemove, angle: 0, shadows: 0, highlights: 0 },
+    shake: { angle: 0, length: 10, smoothing: 10, amount: 100 } as ShakeSettings,
   };
 }
 export type FilterPanelSettings = ReturnType<typeof defaultFilterSettings>;
@@ -29,13 +31,14 @@ export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number
       case 'develop': return developImage(src, s.develop, scale);
       case 'lensBlur': return lensBlur(src, s.lensRadius * scale, s.lensBrightness, s.lensThreshold);
       case 'smartSharpen': return smartSharpen(src, s.smart, scale);
+      case 'shakeReduction': return shakeReduce(src, s.shake, scale);
     default: return src;
   }
 }
 
 /** How far a filter's effect reaches past its input, in pixels. */
 export function filterMargin(kind: FilterKind, s: FilterPanelSettings): number {
-  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : kind === 'lensBlur' ? lensBlurMargin(s.lensRadius) : kind === 'smartSharpen' ? smartSharpenMargin(s.smart) : 0;
+  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : kind === 'lensBlur' ? lensBlurMargin(s.lensRadius) : kind === 'smartSharpen' ? smartSharpenMargin(s.smart) : kind === 'shakeReduction' ? shakeMargin(s.shake) : 0;
 }
 
 export class FilterPanel extends Dialog {
@@ -87,6 +90,14 @@ export class FilterPanel extends Dialog {
       ssAmount.set(ss.amount); ssRadius.set(ss.radius); ssNoise.set(ss.noise); ssRemove.set(ss.remove); ssAngle.set(ss.angle); angleOn(); ssShadows.set(ss.shadows); ssHighlights.set(ss.highlights);
     });
     // Develop: Camera Raw-style controls over formnodal's develop core, grouped as the develop studio groups them.
+    const sh = s.shake;
+    const shAngle = sliderRow('Trace angle (\u00b0)', -90, 90, 1, (v) => { sh.angle = v; this.schedule(); });
+    const shLength = sliderRow('Trace length (px)', 1, 100, 1, (v) => { sh.length = v; this.schedule(); }, { max: 300 });
+    const shSmooth = sliderRow('Smoothing (%)', 0, 100, 1, (v) => { sh.smoothing = v; this.schedule(); });
+    const shAmount = sliderRow('Amount (%)', 1, 300, 1, (v) => { sh.amount = v; this.schedule(); });
+    const shEstimate = el<HTMLButtonElement>('<button class="cv-btn" type="button">Estimate from image</button>');
+    shEstimate.addEventListener('click', () => this.estimateShake());
+    this.section('shakeReduction', [this.shakeNote, shAngle.el, shLength.el, shSmooth.el, shAmount.el, shEstimate], () => { shAngle.set(sh.angle); shLength.set(sh.length); shSmooth.set(sh.smoothing); shAmount.set(sh.amount); });
     const dev = s.develop, t = dev.tone, dt = dev.detail;
     const devRows: Array<[string, number, number, number, () => number, (v: number) => void] | string> = [
       'Light',
@@ -142,11 +153,25 @@ export class FilterPanel extends Dialog {
     this.done = false;
     this.seed = randomSeed();
     this.setTitle(FILTER_LABELS[kind]);
+    if (kind === 'shakeReduction') this.estimateShake(false);
     for (const [k, sec] of this.sections) setHidden(sec.node, k !== kind);
     this.sections.get(kind)?.sync();
     this.previewRow.set(this.preview);
     this.open(this.okBtn);
     this.schedule(0);
+  }
+
+  private readonly shakeNote = el('<p class="cv-note"></p>');
+
+  /** Shake Reduction's trace estimated from the target image (estimateShake), the sliders updated. */
+  private estimateShake(refresh = true): void {
+    const t = this.engine.targetImage();
+    if (!t) return;
+    const e = estimateShake(t.image);
+    this.s.shake.angle = e.angle;
+    this.s.shake.length = e.length;
+    this.shakeNote.textContent = `Estimated a straight ${e.length} px trace at ${e.angle}\u00b0${e.confidence < 0.15 ? ' (weak: the image may not be shaken)' : ''}. Photoshop also finds curved traces; this estimate is straight.`;
+    if (refresh) { this.sections.get('shakeReduction')?.sync(); this.schedule(0); }
   }
 
   private run(src: ImageData, scale: number): ImageData { return runFilter(this.kind, this.s, this.seed, src, scale); }
