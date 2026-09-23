@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.90.0 · 2026-09-23
+
+### Added
+
+- Import Photoshop brushes (.abr, versions 1, 2 and 6 to 10) from the Brush tool: their sampled tips become presets, kept between sessions, and brushes paint with them.
+- 7 more tests (4 unit, 1 backend, 2 browser): 195 in all.
+
+### Changed
+
+- Projects are saved as `.sny`. Older `.sonny` projects still open, and saving one again writes `.sny`.
+
+### Fixed
+
+- Brushes imported, and gradients saved or edited in the Gradient Editor, now appear in their tool's list at once rather than after switching tools.
+
 ## 0.89.0 · 2026-09-23
 
 ### Added

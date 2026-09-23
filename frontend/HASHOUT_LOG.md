@@ -2,6 +2,36 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## .abr brush import, live option lists, .sny projects · _v0.90.0 (src/engine/abr.ts and src/io/brush-library.ts new, src/engine/stroke.ts, src/engine/brush-dynamics.ts, src/engine/index.ts, src/extensions/registry.ts, src/ui/options.ts, src/extensions/tools/brush.ts, src/extensions/tools/gradient.ts, src/io/images.ts, src/app.ts; tests/abr.test.ts, e2e/test_abr_import.py and e2e/test_sny_projects.py new)
+
+`abr.ts`: `parseAbr` for versions 1, 2 and 6 to 10, `SampledTip`, `AbrBrush`. `stroke.ts`: `sampledTip`, a tip in the style, `tipAspect`, spacing a quarter of a sampled tip. `brush-dynamics.ts`: `tip` on presets, `importedBrushPresets`, `setImportedBrushPresets`, `allBrushPresets`, `presetFromTip`. In the engine, `tip` on brush settings (kept by `setBrush`, set by presets) and `uiHooks.importBrushes`. `brush-library.ts`: IndexedDB keeping and `importAbr`. The select option spec takes a `live` list, patched in place by the options bar; the Brush Preset and Gradient Colors lists use it. Projects download as `.sny`; `.sny` and `.sonny` are accepted. Removed:
+
+```ts
+        await deliver(await api.package(manifest, files), `${p.name}.sonny`);
+export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics }
+export interface BrushSettings { diameter: number; hardness: number; opacity: number }
+    this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity });
+  uiHooks: { gradientEditor?: () => void } = {};
+export interface StrokeStyle { diameter: number; hardness: number; opacity: number; color: RGB }
+    // Dabs every 1.5% of the diameter for a hard tip and 2.5% for a soft one.
+    this.spacing = Math.max(0.5, style.diameter * (style.hardness >= 0.99 ? 0.015 : 0.025));
+    this.tip = brushTip(style.diameter * matScale(this.toLocal), style.hardness, style.color);
+    this.paintCtx.drawImage(this.tip, p.x - r, p.y - r, r * 2, r * 2);
+  | { kind: 'select'; label: string; choices: ReadonlyArray<{ id: string; label: string }>; get: () => string; set: (id: string) => void }
+import { BUILTIN_BRUSH_PRESETS, identityOption, pressureOption } from '../../engine/brush-dynamics';
+    { kind: 'select', label: 'Preset', choices: [{ id: '', label: 'Custom' }, ...BUILTIN_BRUSH_PRESETS.map((b) => ({ id: b.id, label: b.name }))], get: () => e.brushPresetId ?? '', set: (id) => { const b = BUILTIN_BRUSH_PRESETS.find((x) => x.id === id); if (b) e.applyBrushPreset(b); else { e.brushPresetId = null; e.emit('options', null); } } },
+      { kind: 'select', label: 'Colors', choices: allGradients().map((p) => ({ id: p.id, label: p.label })), get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v; }) },
+export const PROJECT_ACCEPT = '.sonny,.ref,.zip,.psd';
+export const isProjectFile = (f: File): boolean => /\.(sonny|ref|zip|psd)$/i.test(f.name);
+        sync.push(() => { const v = spec.get(); if (box.value !== v) box.value = v; });
+```
+
+In `src-tauri/tauri.conf.json` the association takes `.sny` beside `.sonny`. Removed:
+
+```json
+      { "ext": ["sonny"], "name": "sonny Project", "description": "sonny layered image project", "role": "Editor", "mimeType": "application/x-sonny" },
+```
+
 ## Shake Reduction · _v0.89.0 (src/engine/shake.ts new, src/engine/filters-more.ts, src/engine/filter-jobs.ts, src/engine/filter-worker.ts, src/ui/panels/filter-panel.ts, src/app.ts; tests/shake.test.ts and e2e/test_shake_reduction.py new)
 
 `shake.ts`: `estimateShake` (angle by the along-to-across derivative ratio, length by the derivative's autocorrelation dip) with `ShakeTrace`. `filters-more.ts`: `ShakeSettings`, `shakeMargin` and `shakeReduce` (Smart Sharpen's motion deconvolution). The job types, the worker and the filter panel (kind, label, defaults, runner, margin, a section with an Estimate button and a note, estimating on open) take the new kind; `app.ts` lists it after Smart Sharpen. Removed:
