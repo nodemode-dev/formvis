@@ -1484,8 +1484,9 @@ export class Engine {
     return { ...l, raster: l.raster ? l.raster.clone() : null, mask: l.mask ? { ...l.mask, raster: l.mask.raster ? l.mask.raster.clone() : null } : null, ...patch, id: uid() };
   }
 
-  /** Layer > New > Layer; the New Layer dialog passes its name, blending mode and opacity. One step either way. */
-  addLayer(opts: { name?: string; blend?: BlendMode; opacity?: number } = {}): void {
+  /** Layer > New > Layer; the New Layer dialog passes its name, blending mode, opacity and whether to clip the new layer
+   *  to the one below (Use Previous Layer to Create Clipping Mask). One step either way. */
+  addLayer(opts: { name?: string; blend?: BlendMode; opacity?: number; clip?: boolean } = {}): void {
     this.edit('New Layer', (p) => {
       const names = new Set(p.doc.layers.map((l) => l.name));
       let n = 1;
@@ -1493,7 +1494,9 @@ export class Engine {
       const active = p.activeLayer;
       const parentId = active?.isGroup ? active.id : active?.parentId ?? null;
       const name = opts.name?.trim().slice(0, 200) || `Layer ${n}`;
-      const layer = newLayer(name, p.doc, { parentId, ...(opts.blend ? { blend: opts.blend } : {}), ...(opts.opacity !== undefined ? { opacity: clamp(opts.opacity, 0, 1) } : {}) });
+      // Clipped to the layer below it: that layer's own base when it is already clipped, else that layer.
+      const clipId = opts.clip && active && !active.isGroup ? active.clipId ?? active.id : null;
+      const layer = newLayer(name, p.doc, { parentId, clipId, ...(opts.blend ? { blend: opts.blend } : {}), ...(opts.opacity !== undefined ? { opacity: clamp(opts.opacity, 0, 1) } : {}) });
       const layers = [...p.doc.layers];
       let index = active ? layers.indexOf(active) + 1 : layers.length;
       if (active?.isGroup) layers.forEach((l, i) => { if (l.parentId === active.id) index = Math.max(index, i + 1); });
@@ -1504,13 +1507,14 @@ export class Engine {
     });
   }
 
-  addFolder(): void {
+  /** Layer > New > Group; the New Group dialog passes a name. One step. */
+  addFolder(name?: string): void {
     this.edit('New Folder', (p) => {
       const names = new Set(p.doc.layers.map((l) => l.name));
       let n = 1;
       while (names.has(`Folder ${n}`)) n += 1;
       const active = p.activeLayer;
-      const group = newLayer(`Folder ${n}`, p.doc, { isGroup: true, parentId: active?.parentId ?? null });
+      const group = newLayer(name?.trim().slice(0, 200) || `Folder ${n}`, p.doc, { isGroup: true, parentId: active?.parentId ?? null });
       const layers = [...p.doc.layers];
       layers.splice(active ? layers.indexOf(active) + 1 : layers.length, 0, group);
       p.setLayers(layers);

@@ -5,7 +5,7 @@ import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
 import { StrokePathDialog } from './ui/panels/stroke-path-dialog';
-import { DuplicateLayerDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
+import { DuplicateLayerDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
 import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
@@ -667,6 +667,7 @@ export function startApp(): void {
     strokePath: new StrokePathDialog(engine),
     newLayer: new NewLayerDialog(engine),
     duplicateLayer: new DuplicateLayerDialog(engine),
+    newGroup: new NewGroupDialog(engine),
     liquify: new LiquifyDialog(engine),
     selectMask: new SelectMaskDialog(engine),
     contentFill: new ContentFillDialog(engine),
@@ -762,6 +763,7 @@ export function startApp(): void {
     { id: 'new-layer', label: 'New Layer', enabled: has, run: () => engine.addLayer() },
     { id: 'new-layer-dialog', label: 'Layer...', keys: ['Shift+Mod+N'], enabled: has, run: () => dialogs.newLayer.show() },
     { id: 'new-folder', label: 'New Folder', enabled: has, run: () => engine.addFolder() },
+    { id: 'new-folder-dialog', label: 'Group...', enabled: has, run: () => dialogs.newGroup.show() },
     { id: 'new-artboard', label: 'New Artboard', enabled: has, run: () => { engine.newArtboard(); } },
     { id: 'artboard-from-layers', label: 'Artboard from Layers', enabled: has, run: () => { engine.artboardFromLayers(); } },
     { id: 'artboard-options', label: 'Artboard Options...', enabled: () => !!engine.current?.activeLayer?.artboard, run: () => dialogs.artboard.show() },
@@ -912,7 +914,7 @@ export function startApp(): void {
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
       'image-size', 'canvas-size', { label: 'Image Rotation', items: ['flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
-      { label: 'New', items: ['new-layer-dialog', 'new-folder', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
+      { label: 'New', items: ['new-layer-dialog', 'new-folder-dialog', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
       { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', '-',
       'duplicate-dialog', 'delete-layer', 'rename', '-',
       { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
