@@ -4,6 +4,8 @@ import {
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { windingArea } from '../engine/custom-shapes';
+import { addPathResources, readPathResources } from './psd-paths';
+import type { PathSet } from '../engine/paths';
 import { maskEdgeTone } from '../engine/distort';
 
 /** Layered PSD files, read and written with ag-psd (MIT). Pixel layers keep their position, opacity, blend mode and
@@ -166,9 +168,10 @@ function familyOf(psName: string): { family: string; bold: boolean; italic: bool
   return { family: known?.[0] ?? guess ?? psName, bold: /bold/i.test(psName), italic: /italic|oblique/i.test(psName) };
 }
 
-export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null }> {
+export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null; paths: PathSet | null }> {
   const { readPsd } = await import('ag-psd');
-  const psd = readPsd(await file.arrayBuffer(), { skipThumbnail: true });
+  const buffer = await file.arrayBuffer();
+  const psd = readPsd(buffer, { skipThumbnail: true });
   // Smart objects' embedded contents, decoded before the layers are built.
   const contents = new Map<string, Raster | null>();
   for (const lf of psd.linkedFiles ?? []) if (lf.data) contents.set(lf.id, await decodeLinked(lf.data, readPsd));
@@ -263,11 +266,17 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
     layers.push(newLayer('Background', doc, { raster: Raster.from(psd.canvas, psd.width, psd.height) }));
     notes.push('This PSD has no layers; it opened as a single one.');
   }
-  return { doc: { ...doc, layers }, notes, activeId: layers.at(-1)?.id ?? null };
+  // The Paths panel: saved paths and the Work Path, which ag-psd leaves in the image resources.
+  let paths: PathSet | null = null;
+  try {
+    const list = readPathResources(buffer, psd.width, psd.height);
+    if (list.length) paths = { list, active: null };
+  } catch { notes.push('The file\'s paths could not be read; the layers opened without them.'); }
+  return { doc: { ...doc, layers }, notes, activeId: layers.at(-1)?.id ?? null, paths };
 }
 
 /** The document as a layered PSD, with notes on what it could not carry. */
-export async function writePsdFile(doc: Doc, composite: Surface, psb = false): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
+export async function writePsdFile(doc: Doc, composite: Surface, psb = false, paths: PathSet | null = null): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
   const { writePsd } = await import('ag-psd');
   const notes: string[] = [], linked: LinkedFile[] = [], sources = new Map<ID, Uint8Array>(), psdPatterns: PatternInfo[] = [];
   for (const l of doc.layers) if (l.smart) sources.set(l.id, new Uint8Array(await (await toBlob(l.smart.source.canvas)).arrayBuffer()));
@@ -358,5 +367,5 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false): P
   const psd: Psd = { width: doc.width, height: doc.height, children: build(null), canvas: flat };
   if (linked.length) psd.linkedFiles = linked;
   if (psdPatterns.length) psd.patterns = psdPatterns;
-  return { bytes: writePsd(psd, { generateThumbnail: false, psb }), notes };
+  return { bytes: addPathResources(writePsd(psd, { generateThumbnail: false, psb }), paths, doc.width, doc.height), notes };
 }

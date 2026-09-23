@@ -208,8 +208,9 @@ export function startApp(): void {
       for (const f of files) {
         try {
           if (isPsdFile(f)) {
-            const { doc, notes, activeId } = await readPsdFile(f);
-            engine.addProject(doc, f.name.replace(/\.psd$/i, ''), activeId);
+            const { doc, notes, activeId, paths } = await readPsdFile(f);
+            const opened = engine.addProject(doc, f.name.replace(/\.ps[db]$/i, ''), activeId);
+            if (paths) engine.setPathsOf(opened, paths);
             if (notes.length) toast(notes.join(' '), 'info');
           } else await openOpened(await api.importProject([f]), null);
         } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
@@ -524,8 +525,7 @@ export function startApp(): void {
       try {
         const flat = engine.flattened();
         if (!flat) return;
-        const { bytes, notes } = await writePsdFile(p.doc, flat, psb);
-        if (engine.pathsOf(p).list.length) notes.push('Paths in the Paths panel are left out; shape layers keep their outlines.');
+        const { bytes, notes } = await writePsdFile(p.doc, flat, psb, engine.pathsOf(p));
         await deliver(new Blob([bytes], { type: 'image/vnd.adobe.photoshop' }), `${p.name}.${psb ? 'psb' : 'psd'}`);
         if (notes.length) toast(notes.join(' '), 'info');
       } catch (err) { toast(message(err), 'error'); }
