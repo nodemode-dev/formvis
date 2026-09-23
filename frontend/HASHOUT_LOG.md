@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Select and Mask · _v0.83.0 (src/engine/select-mask.ts and src/ui/panels/select-mask-dialog.ts new, src/engine/index.ts, src/styles/dialogs.css, src/app.ts; tests/select-mask.test.ts and e2e/test_select_mask.py new)
+
+`select-mask.ts`: `RefineSettings`, `DEFAULT_REFINE` and `refineSelection`, running Radius, Smooth, Feather, Contrast and Shift Edge in Photoshop's order, each `refineMatte` call in advanced mode doing one thing. `select-mask-dialog.ts`: the workspace (fixed preview under `.cv-mask-canvas`, four view modes, five sliders, Output To). `Engine.applyRefinedSelection` sets the refined selection and runs the chosen output (selection, layer mask replacing any, Layer via Copy, or a duplicate with a mask and the original hidden) as one step. `dialogs.css` gives the new preview class the Liquify preview's style. `app.ts` adds `select-and-mask` (Alt+Mod+R) to the Select menu. Removed:
+
+```ts
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'select-subject', 'select-object', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', 'feather', 'border', 'smooth', '-', 'path-selection', 'delete-path'] },
+```
+
+```css
+.cv-liquify-canvas { display: block; width: 640px; max-width: 100%; aspect-ratio: 640 / 440; height: auto; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); cursor: crosshair; touch-action: none; }
+```
+
 ## Crop straighten, Content-Aware edges, Perspective Crop; the status hint · _v0.82.0 (src/engine/index.ts, src/extensions/tools/crop.ts, src/styles/shell.css; tests/crop-straighten.test.ts, e2e/test_crop_straighten.py and e2e/test_perspective_crop.py new)
 
 In the engine, `straightenCrop` (every layer turned about the frame's centre, the crop, and `fillOpenedEdges`, content-aware fill of what the bottom pixel layer no longer covers) and `perspectiveCrop` (the quad's inverse homography scaled to a rectangle, every pixel layer and linked mask warped through it). The Crop tool gains `angle`, `contentAware`, `leveling` with `levelAngle`, and `perspective` with `quad`, `cornerDrag`, `quadOf` and `hitCorner`; commit goes through the new engine methods; Escape and Cancel reset all of it; the overlay shows the level line, the tilted region to keep, and the quad. `shell.css`: the status hint fills the remaining space with its text right-aligned, so its box no longer moves as its text changes. Removed:

@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.83.0 · 2026-09-23
+
+### Added
+
+- Select > Select and Mask (Alt+Mod+R): view the selection as Overlay, On Black, On White or Black & White; refine it with Radius, Smooth, Feather, Contrast and Shift Edge; output it as the selection, a layer mask, a new layer or a new layer with a layer mask.
+- 7 more tests (5 unit, 2 browser): 153 in all.
+
 ## 0.82.0 · 2026-09-23
 
 ### Added
