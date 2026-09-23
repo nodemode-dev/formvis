@@ -15,13 +15,14 @@ function commit(ctx: ToolContext): void {
   const poly = pts;
   reset(ctx);
   if (!doc || poly.length < 3) return;
-  const mask = SelectionMask.fromPath(doc.width, doc.height, boundsOf(poly), (c) => {
+  const hard = SelectionMask.fromPath(doc.width, doc.height, boundsOf(poly), (c) => {
     c.beginPath();
     c.moveTo(poly[0].x, poly[0].y);
     for (let i = 1; i < poly.length; i++) c.lineTo(poly[i].x, poly[i].y);
     c.closePath();
     c.fill();
   }, e.selectionAntialiased);
+  const mask = hard && e.lassoFeather > 0 ? e.featherMask(hard, e.lassoFeather) : hard;
   e.applySelection(mask, mode, e.lassoKind === 'polygonal' ? 'Polygonal Lasso' : 'Lasso');
 }
 
@@ -72,6 +73,7 @@ export const lassoTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Lasso' },
     { kind: 'segment', label: 'Kind', choices: [{ id: 'freehand', label: 'Freehand' }, { id: 'polygonal', label: 'Polygonal' }], get: () => e.lassoKind, set: (v) => e.update({ lassoKind: v as 'freehand' | 'polygonal' }) },
+    { kind: 'range', label: 'Feather', min: 0, max: 250, unit: 'px', get: () => e.lassoFeather, set: (v: number) => { e.lassoFeather = Math.max(0, Math.min(250, v)); e.emit('options', null); } },
     { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     modeSegment(e),
   ],

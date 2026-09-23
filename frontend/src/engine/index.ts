@@ -141,6 +141,8 @@ export class Engine {
   marqueeStyle: 'normal' | 'ratio' | 'size' = 'normal';
   marqueeRatio = { w: 1, h: 1 };
   marqueeSize = { w: 64, h: 64 };
+  /** The Lasso's Feather (pixels), kept apart from the Marquee's as Photoshop keeps each tool's. */
+  lassoFeather = 0;
   lassoKind: 'freehand' | 'polygonal' = 'freehand';
   wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0, antialias: true };
   /** smooth Lasso and elliptical Marquee edges (rectangles snap to whole pixels and
