@@ -30,7 +30,7 @@ export class Stage {
   private panLast: Pt | null = null;
   private space = false;
   /** right-drag with these resizes the brush tip. */
-  private static readonly brushTools = new Set(['brush', 'spotHealing', 'cloneStamp', 'smear']);
+  private static readonly brushTools = new Set(['brush', 'spotHealing', 'remove', 'cloneStamp', 'smear']);
   private tipDragging = false;
   private cursor = '';
   private hover: ToolPointer | null = null;

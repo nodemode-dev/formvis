@@ -38,6 +38,7 @@ import { diamondFill, presetById, reflectStops, resolveStops, type GradientType 
 import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
 import { liquifyImage, type LiquifyField } from './liquify';
 import { puppetImage } from './puppet';
+import { findWires } from './distractions';
 import { DEFAULT_GLOBAL_LIGHT, type GlobalLight } from './style-extras';
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
@@ -96,7 +97,7 @@ const SHAPE_NOTICE = 'This is a shape layer. Reshape it with Direct Selection on
 const SMART_NOTICE = 'This layer is a smart object. Rasterize it (Layer > Rasterize Layer) to change its pixels; its filters stay editable in Layer > Smart Filters.';
 
 /** Tools that paint with a PixelStroke, whose surfaces are warmed when the tool is chosen. */
-const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'cloneStamp', 'healingBrush', 'spotHealing']);
+const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'cloneStamp', 'healingBrush', 'spotHealing', 'remove']);
 
 export class Engine {
   readonly events = new Emitter<EngineEvents>();
@@ -134,7 +135,7 @@ export class Engine {
   private viewSize = { w: 800, h: 600 };
   private readonly display = new Renderer();
   private readonly work = new Renderer();
-  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode; healFrom?: Pt } | null = null;
+  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt } | null = null;
   private lastBrush: { layerId: ID; target: Target; p: Pt } | null = null;
   private opacityOpen: Project | null = null;
   private swipeOpen: Project | null = null;
@@ -2037,7 +2038,7 @@ export class Engine {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
-    const patch = st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
+    const patch = st.heal === 'remove' ? this.removePatch(st.s) : st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
     st.project.history.end(st.project.snapshot());
@@ -3908,7 +3909,7 @@ export class Engine {
     return s;
   }
 
-  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge', pt: Pt, shift: boolean): boolean {
+  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge', pt: Pt, shift: boolean): boolean {
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
@@ -3939,10 +3940,10 @@ export class Engine {
       ctxOf(out).putImageData(sharpenSample(ctxOf(src).getImageData(0, 0, W, H), clamp(this.brush.diameter / 40, 0.8, 4)), 0, 0);
       texture = { surface: out, dx: 0, dy: 0 };
     } else if (kind === 'dodge' || kind === 'burn' || kind === 'sponge') texture = { surface: this.toned(this.layerSample(p, l0), kind), dx: 0, dy: 0 };
-    p.history.begin({ heal: 'Spot Healing', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }[kind], p.snapshot());
+    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
-    const style = kind === 'heal' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
+    const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
     const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture, pick.target === 'mask');
     // The Healing Brush heals from the same offset at release, in the layer's own pixels.
     let healFrom: Pt | undefined;
@@ -3950,7 +3951,7 @@ export class Engine {
       const toLayer = invert(pick.local), a = applyMat(toLayer, pt.x, pt.y), b = applyMat(toLayer, pt.x + texture.dx, pt.y + texture.dy);
       healFrom = { x: Math.round(b.x - a.x), y: Math.round(b.y - a.y) };
     }
-    this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : undefined, healFrom };
+    this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : kind === 'remove' ? 'remove' : undefined, healFrom };
     const last = this.lastBrush;
     if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p);
     s.to(pt);
@@ -4022,6 +4023,47 @@ export class Engine {
         raster.ctx.putImageData(out, 0, 0, rect.x, rect.y, rect.w, rect.h);
       });
     });
+  }
+
+  /** The Remove tool's release: what the stroke covered, grown by two pixels so its soft edge goes too, rebuilt by
+   *  content-aware fill (PatchMatch-style patch copying) from the rest of the layer. */
+  private removePatch(s: PixelStroke): ReturnType<PixelStroke['commit']> {
+    const r = s.raster, W = r.width, H = r.height, before = r.read(), pm = premultiply(before.data), cov = s.coverageAlpha(), hole0 = new Uint8Array(W * H);
+    for (let i = 0; i < hole0.length; i++) hole0[i] = cov[i] > 0 ? 255 : 0;
+    const grown = resizeMask(hole0, W, H, 2), hole = new Uint8Array(W * H);
+    for (let i = 0; i < hole.length; i++) hole[i] = grown[i] >= 128 ? 1 : 0;
+    if (!contentFill(pm, hole, W, H)) { this.notice('There is nothing opaque around the stroke to fill from.'); return null; }
+    const out = new ImageData(W, H);
+    unpremultiply(pm, out.data);
+    r.write(out);
+    return { raster: r, x: 0, y: 0, before, after: r.read() };
+  }
+
+  /** Remove Distractions: Wires and Cables on the active layer (within the selection when there is one), filled
+   *  smoothly as Spot Healing's Create Texture fills, as one step. Returns how many pixels were taken. */
+  removeWires(): number {
+    const p0 = this.current;
+    if (!this.paintable(p0?.activeLayer ?? null)) { this.notice('Select a pixel layer first.'); return 0; }
+    let found = 0;
+    this.regionEdit('Remove Wires and Cables', ({ raster, target, rect, cover }) => {
+      if (target !== 'pixels') return;
+      const W = raster.width, H = raster.height, img = raster.read(), wires = findWires(img), cov = new Uint8Array(W * H);
+      const inSel = cover ? ctxOf(cover).getImageData(0, 0, rect.w, rect.h).data : null;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x;
+        if (!wires[i]) continue;
+        if (inSel && (x < rect.x || y < rect.y || x >= rect.x + rect.w || y >= rect.y + rect.h || inSel[((y - rect.y) * rect.w + (x - rect.x)) * 4 + 3] < 128)) continue;
+        cov[i] = 255; found++;
+      }
+      if (!found) return;
+      const pm = premultiply(img.data);
+      if (!spotHeal(pm, cov, W, H, 1, 'createTexture', 0x5eed)) { found = 0; return; }
+      const out = new ImageData(W, H);
+      unpremultiply(pm, out.data);
+      raster.ctx.putImageData(out, 0, 0, rect.x, rect.y, rect.w, rect.h);
+    });
+    if (!found) this.notice('No wires or cables were found.');
+    return found;
   }
 
   private healPatch(s: PixelStroke, mode: HealMode): ReturnType<PixelStroke['commit']> {
