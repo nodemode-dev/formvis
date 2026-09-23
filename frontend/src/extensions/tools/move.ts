@@ -21,6 +21,15 @@ function editable(ctx: ToolContext): Transform | null {
 let cornerDrag: number | null = null;
 /** The warp control point being dragged, and the one under the pointer while a warp is pending. */
 let warpDrag: number | null = null;
+/** The Puppet Warp pin being dragged. */
+let pinDrag: number | null = null;
+function puppetPin(ctx: ToolContext, p: ToolPointer): number | null {
+  const w = ctx.engine.puppetEdit, v = ctx.view();
+  if (!w) return null;
+  let best: number | null = null, bestD = HANDLE_PX + 1;
+  w.to.forEach(([x, y], i) => { const s = v.toScreen({ x, y }), d = Math.hypot(s.x - p.screen.x, s.y - p.screen.y); if (d <= HANDLE_PX && d < bestD) { best = i; bestD = d; } });
+  return best;
+}
 function warpPoint(ctx: ToolContext, p: ToolPointer): number | null {
   const w = ctx.engine.meshWarpEdit, v = ctx.view();
   if (!w) return null;
@@ -88,6 +97,12 @@ export const moveTool: Tool = {
     if (p.button !== 0) return;
     const e = ctx.engine;
     if (e.meshWarpEdit) { warpDrag = warpPoint(ctx, p); return; }
+    if (e.puppetEdit) {
+      const hitPin = puppetPin(ctx, p);
+      if (p.alt) { if (hitPin !== null) e.removePuppetPin(hitPin); return; }
+      pinDrag = hitPin ?? e.addPuppetPin(p.doc);
+      return;
+    }
     const corner = distortCorner(ctx, p);
     if (corner !== null && (e.distortEdit || e.beginDistort())) { cornerDrag = corner; return; }
     if (e.distortEdit) return;
@@ -98,6 +113,7 @@ export const moveTool: Tool = {
     if (m) e.beginTransform(m, p.doc);
   },
   move(ctx, p) {
+    if (pinDrag !== null) { ctx.engine.movePuppetPin(pinDrag, p.doc); return; }
     if (warpDrag !== null) { ctx.engine.moveMeshWarpPoint(warpDrag, p.doc); return; }
     if (cornerDrag !== null) { ctx.engine.moveDistortCorner(cornerDrag, p.doc); return; }
     if (pixelStart) {
@@ -109,13 +125,15 @@ export const moveTool: Tool = {
     ctx.engine.updateTransform(p.doc, p.shift, p.alt);
   },
   up(ctx) {
+    if (pinDrag !== null) { pinDrag = null; return; }
     if (warpDrag !== null) { warpDrag = null; return; }
-    if (ctx.engine.meshWarpEdit) return;
+    if (ctx.engine.meshWarpEdit || ctx.engine.puppetEdit) return;
     if (cornerDrag !== null) { cornerDrag = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.endPixelMove(); return; }
     ctx.engine.endTransform();
   },
   cancel(ctx) {
+    if (pinDrag !== null) { pinDrag = null; return; }
     if (warpDrag !== null) { warpDrag = null; return; }
     if (cornerDrag !== null) { cornerDrag = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.cancelPixelMove(); return; }
@@ -129,6 +147,8 @@ export const moveTool: Tool = {
     if (arrows[e.key]) { eng.nudge(arrows[e.key][0], arrows[e.key][1]); return true; }
     const digit = digitOf(e);
     if (digit !== null && !e.shiftKey && !e.altKey) { eng.setOpacity(digit === 0 ? 1 : digit / 10); return true; }
+    if (e.key === 'Enter' && eng.puppetEdit) { eng.applyPuppetWarp(); return true; }
+    if (e.key === 'Escape' && eng.puppetEdit) { eng.cancelPuppetWarp(); return true; }
     if (e.key === 'Enter' && eng.meshWarpEdit) { eng.applyMeshWarp(); return true; }
     if (e.key === 'Escape' && eng.meshWarpEdit) { eng.cancelMeshWarp(); return true; }
     if (e.key === 'Enter' && eng.distortEdit) { eng.applyDistort(); return true; }
@@ -152,6 +172,19 @@ export const moveTool: Tool = {
       for (const x of guides.xs) { const s = Math.round(v.toScreen({ x, y: 0 }).x) + 0.5; g.moveTo(s, 0); g.lineTo(s, v.height); }
       for (const y of guides.ys) { const s = Math.round(v.toScreen({ x: 0, y }).y) + 0.5; g.moveTo(0, s); g.lineTo(v.width, s); }
       g.stroke();
+      g.restore();
+    }
+    const pe = e.puppetEdit;
+    if (pe) {
+      const v = ctx.view(), pal = ctx.paint();
+      g.save();
+      g.lineWidth = 1;
+      g.strokeStyle = pal.accent;
+      pe.to.forEach(([x, y], i) => {
+        const s = v.toScreen({ x, y }), f = v.toScreen({ x: pe.from[i][0], y: pe.from[i][1] });
+        g.setLineDash([3, 3]); g.beginPath(); g.moveTo(f.x, f.y); g.lineTo(s.x, s.y); g.stroke(); g.setLineDash([]);
+        g.fillStyle = pal.handle; g.beginPath(); g.arc(s.x, s.y, 5, 0, Math.PI * 2); g.fill(); g.stroke();
+      });
       g.restore();
     }
     const mw = e.meshWarpEdit;

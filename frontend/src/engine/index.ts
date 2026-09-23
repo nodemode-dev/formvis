@@ -37,6 +37,7 @@ import { sharpenSample } from './filters-more';
 import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
 import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
 import { liquifyImage, type LiquifyField } from './liquify';
+import { puppetImage } from './puppet';
 import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
@@ -1256,6 +1257,8 @@ export class Engine {
     const pv = this.preview;
     const mw = this.meshWarpEdit;
     if (mw && mw.project === p && mw.preview) m.set(mw.layerId, { ...(m.get(mw.layerId) ?? {}), source: mw.preview.raster.canvas, transform: mw.preview.t });
+    const pw = this.puppetEdit;
+    if (pw && pw.project === p && pw.preview) m.set(pw.layerId, { ...(m.get(pw.layerId) ?? {}), source: pw.preview.raster.canvas, transform: pw.preview.t });
     if (pv && pv.project === p) m.set(pv.layerId, { ...(m.get(pv.layerId) ?? {}), ...(pv.target === 'pixels' ? { source: pv.surface } : { maskSource: pv.surface }), ...(pv.transform ? { transform: pv.transform } : {}) });
     const gr = this.gradient;
     if (gr && gr.project === p) m.set(gr.layerId, { ...(m.get(gr.layerId) ?? {}), ...(gr.target === 'pixels' ? { source: gr.surface } : { maskSource: gr.surface }) });
@@ -2666,6 +2669,88 @@ export class Engine {
   }
 
   cancelMeshWarp(): void { if (this.meshWarpEdit) this.dropMeshWarp(); }
+
+  /** Edit > Puppet Warp: pins placed on the active layer (click to add, drag to move, Alt-click to remove); the layer
+   *  bends by rigid moving least squares (engine/puppet.ts) so pins land where they are dragged. Pending until Enter,
+   *  cancelled by Escape. */
+  puppetEdit: { project: Project; layerId: ID; from: P2[]; to: P2[]; source: ImageData; toLocal: Mat; box: Rect; preview: Warped | null } | null = null;
+  private puppetFrame = 0;
+
+  beginPuppetWarp(): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.puppetEdit) return false;
+    if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Puppet Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
+    this.settle();
+    const r = l.raster, m = placement(l.transform, r.width, r.height);
+    this.puppetEdit = { project: p, layerId: l.id, from: [], to: [], source: r.read(), toLocal: invert(m), box: transformBounds(l.transform), preview: null };
+    this.emit('render', null);
+    this.emit('options', null);
+    return true;
+  }
+
+  addPuppetPin(pt: Pt): number {
+    const w = this.puppetEdit;
+    if (!w) return -1;
+    w.from.push([pt.x, pt.y]);
+    w.to.push([pt.x, pt.y]);
+    this.emit('overlay', null);
+    return w.to.length - 1;
+  }
+
+  movePuppetPin(i: number, pt: Pt): void {
+    const w = this.puppetEdit;
+    if (!w || i < 0 || i >= w.to.length) return;
+    w.to[i] = [pt.x, pt.y];
+    this.schedulePuppet();
+  }
+
+  removePuppetPin(i: number): void {
+    const w = this.puppetEdit;
+    if (!w || i < 0 || i >= w.to.length) return;
+    w.from.splice(i, 1);
+    w.to.splice(i, 1);
+    this.schedulePuppet();
+  }
+
+  private schedulePuppet(): void {
+    if (!this.puppetFrame) this.puppetFrame = requestAnimationFrame(() => { this.puppetFrame = 0; const w = this.puppetEdit; if (w) { w.preview = this.puppetRender(w, 360); this.emit('render', null); } });
+    this.emit('overlay', null);
+  }
+
+  /** The layer through the pins over the layer's box grown by the largest pin move, at most `maxSide` pixels a side
+   *  (0 for full size); null when nothing has moved. */
+  private puppetRender(w: NonNullable<Engine['puppetEdit']>, maxSide = 0): Warped | null {
+    if (!w.to.length || w.to.every((q, i) => q[0] === w.from[i][0] && q[1] === w.from[i][1])) return null;
+    const grow = Math.ceil(Math.max(...w.to.map((q, i) => Math.hypot(q[0] - w.from[i][0], q[1] - w.from[i][1])))) + 2;
+    const x0 = Math.floor(w.box.x - grow), y0 = Math.floor(w.box.y - grow), W = Math.ceil(w.box.w + 2 * grow), H = Math.ceil(w.box.h + 2 * grow);
+    const s = maxSide ? Math.min(1, maxSide / Math.max(W, H)) : 1, img = puppetImage(w.source, (x, y) => { const q = applyMat(w.toLocal, x, y); return [q.x, q.y]; }, w.from, w.to, x0, y0, W, H, s);
+    const raster = new Raster(img.width, img.height);
+    raster.ctx.putImageData(img, 0, 0);
+    return { raster, t: { ...docTransform(W, H), x: x0, y: y0, w: W, h: H } };
+  }
+
+  /** Applies at full resolution as one Puppet Warp step, trimmed to the visible pixels. */
+  applyPuppetWarp(): void {
+    const w = this.puppetEdit;
+    if (!w) return;
+    this.dropPuppet();
+    const p = w.project, l = p.layer(w.layerId);
+    if (p !== this.current || !l) return;
+    const full = this.puppetRender(w);
+    if (!full) return;
+    const crop = visibleBounds(full.raster), pixels = crop ? cropWarp(full, crop) : full;
+    this.edit('Puppet Warp', (q) => q.updateLayer(l.id, { raster: pixels.raster, transform: pixels.t, shape: null }));
+  }
+
+  cancelPuppetWarp(): void { if (this.puppetEdit) this.dropPuppet(); }
+
+  private dropPuppet(): void {
+    if (this.puppetFrame) cancelAnimationFrame(this.puppetFrame);
+    this.puppetFrame = 0;
+    this.puppetEdit = null;
+    this.emit('render', null);
+    this.emit('options', null);
+  }
 
   private dropMeshWarp(): void {
     if (this.meshFrame) cancelAnimationFrame(this.meshFrame);
