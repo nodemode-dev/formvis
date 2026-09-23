@@ -2,51 +2,95 @@ import { el, q, setClass, setDisabled, setText } from './dom';
 import { icon } from './icons';
 import type { Commands } from './commands';
 
-export type MenuItem = string | '-';
+/** A command id, a separator, or a submenu of further items. */
+export type MenuItem = string | '-' | SubMenu;
+export interface SubMenu { label: string; items: MenuItem[] }
+const isSub = (i: MenuItem): i is SubMenu => typeof i === 'object';
 
 export class PopupMenu {
   readonly panel: HTMLElement;
   private rows: Array<{ id: string; node: HTMLButtonElement }> = [];
+  private subs: Array<{ sub: SubMenu; node: HTMLButtonElement; menu: PopupMenu }> = [];
   private seps: HTMLElement[] = [];
-  private items: MenuItem[] = [];
+  private key = '';
+  private openSub: PopupMenu | null = null;
   onClose: (() => void) | null = null;
 
-  constructor(private readonly commands: Commands) {
+  constructor(private readonly commands: Commands, private readonly parent: PopupMenu | null = null, standalone = false) {
     this.panel = el('<div class="cv-menu" role="menu" hidden></div>');
     document.getElementById('overlay-root')?.appendChild(this.panel);
     this.panel.addEventListener('contextmenu', (e) => e.preventDefault());
+    // A scrolled menu moves its rows, so a submenu opened beside one would no longer line up.
+    this.panel.addEventListener('scroll', () => this.closeSub(), { passive: true });
+    // A menu opened on its own (the layers' right-click menu) closes on a press anywhere outside it; the menubar's
+    // menus are closed by the menubar, which also owns their buttons.
+    if (standalone) document.addEventListener('pointerdown', (e) => { if (this.isOpen && !this.contains(e.target as Node)) this.close(); }, true);
   }
 
   get isOpen(): boolean { return !this.panel.hidden; }
 
+  /** Whether `t` is inside this menu or any submenu open from it. */
+  contains(t: Node): boolean { return this.panel.contains(t) || !!this.openSub?.contains(t); }
+
   setItems(items: MenuItem[]): void {
-    if (items.join('|') === this.items.join('|')) return;
-    this.items = items;
+    const key = JSON.stringify(items);
+    if (key === this.key) return;
+    this.key = key;
+    this.closeSub();
+    for (const s of this.subs) s.menu.panel.remove();
     this.panel.textContent = '';
     this.rows = [];
+    this.subs = [];
     this.seps = [];
     for (const item of items) {
       if (item === '-') { const s = el('<div class="cv-menu-sep"></div>'); this.seps.push(s); this.panel.appendChild(s); continue; }
+      if (isSub(item)) {
+        const node = el<HTMLButtonElement>(`<button class="cv-menu-item cv-menu-sub" role="menuitem" aria-haspopup="menu" type="button"><span class="cv-menu-check"></span><span class="cv-menu-label"></span><span class="cv-menu-keys">${icon('chevronRight', 12)}</span></button>`);
+        setText(q(node, '.cv-menu-label'), item.label);
+        const menu = new PopupMenu(this.commands, this);
+        menu.setItems(item.items);
+        node.addEventListener('pointerenter', () => this.showSub(menu, node));
+        node.addEventListener('click', () => this.showSub(menu, node));
+        this.subs.push({ sub: item, node, menu });
+        this.panel.appendChild(node);
+        continue;
+      }
       const cmd = this.commands.get(item);
       if (!cmd) continue;
       const node = el<HTMLButtonElement>(`<button class="cv-menu-item" role="menuitem" type="button"><span class="cv-menu-check">${icon('check', 14)}</span><span class="cv-menu-label"></span><span class="cv-menu-keys"></span></button>`);
       setText(q(node, '.cv-menu-keys'), this.commands.keyLabel(cmd));
-      node.addEventListener('click', () => { this.close(); this.commands.run(item); });
+      node.addEventListener('pointerenter', () => this.closeSub());
+      node.addEventListener('click', () => { this.root().close(); this.commands.run(item); });
       this.rows.push({ id: item, node });
       this.panel.appendChild(node);
     }
   }
 
+  private root(): PopupMenu { let m: PopupMenu = this; while (m.parent) m = m.parent; return m; }
+
+  private showSub(menu: PopupMenu, row: HTMLElement): void {
+    if (this.openSub === menu && menu.isOpen) return;
+    this.closeSub();
+    this.openSub = menu;
+    setClass(row, 'is-open', true);
+    menu.onClose = () => setClass(row, 'is-open', false);
+    const r = row.getBoundingClientRect();
+    menu.openBeside(r);
+  }
+
+  private closeSub(): void {
+    const s = this.openSub;
+    this.openSub = null;
+    s?.close();
+  }
+
+  /** Refreshes labels, checks and enabled states, then shows the menu at `x, y`, kept within the window; a menu taller
+   *  than the window scrolls. */
   openAt(x: number, y: number): void {
-    for (const r of this.rows) {
-      const cmd = this.commands.get(r.id);
-      if (!cmd) continue;
-      setText(q(r.node, '.cv-menu-label'), this.commands.label(cmd));
-      setDisabled(r.node, !this.commands.enabled(cmd));
-      setClass(r.node, 'is-checked', !!cmd.checked?.());
-    }
+    this.refresh();
     this.panel.style.visibility = 'hidden';
     this.panel.hidden = false;
+    this.panel.scrollTop = 0;
     const w = this.panel.offsetWidth, h = this.panel.offsetHeight;
     const left = Math.max(4, Math.min(x, window.innerWidth - w - 4));
     const top = Math.max(4, Math.min(y, window.innerHeight - h - 4));
@@ -55,7 +99,33 @@ export class PopupMenu {
     this.panel.style.visibility = '';
   }
 
+  /** A submenu beside its row: to the right, or to the left when the right has no room. */
+  private openBeside(row: DOMRect): void {
+    this.refresh();
+    this.panel.style.visibility = 'hidden';
+    this.panel.hidden = false;
+    this.panel.scrollTop = 0;
+    const w = this.panel.offsetWidth, h = this.panel.offsetHeight, pad = 4;
+    const right = row.right - 2, left = row.left - w + 2;
+    const x = right + w <= window.innerWidth - pad ? right : Math.max(pad, left);
+    const y = Math.max(pad, Math.min(row.top - pad, window.innerHeight - h - pad));
+    this.panel.style.left = `${Math.round(x)}px`;
+    this.panel.style.top = `${Math.round(y)}px`;
+    this.panel.style.visibility = '';
+  }
+
+  private refresh(): void {
+    for (const r of this.rows) {
+      const cmd = this.commands.get(r.id);
+      if (!cmd) continue;
+      setText(q(r.node, '.cv-menu-label'), this.commands.label(cmd));
+      setDisabled(r.node, !this.commands.enabled(cmd));
+      setClass(r.node, 'is-checked', !!cmd.checked?.());
+    }
+  }
+
   close(): void {
+    this.closeSub();
     if (this.panel.hidden) return;
     this.panel.hidden = true;
     this.onClose?.();
@@ -87,7 +157,7 @@ export class MenuBar {
       if (this.openIndex < 0) return;
       const m = this.menus[this.openIndex];
       const t = e.target as Node;
-      if (!m.menu.panel.contains(t) && !m.btn.contains(t)) this.close();
+      if (!m.menu.contains(t) && !m.btn.contains(t)) this.close();
     }, true);
     window.addEventListener('blur', () => this.close());
     window.addEventListener('resize', () => this.close());

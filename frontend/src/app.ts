@@ -144,7 +144,7 @@ export function startApp(): void {
   const errorLog = new ErrorLog((t) => toast(t, 'error'), () => engine.failures);
   errorLog.install();
   const commands = new Commands();
-  const contextMenu = new PopupMenu(commands);
+  const contextMenu = new PopupMenu(commands, null, true);
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
@@ -892,17 +892,44 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-as', 'export-png', 'export-jpg', 'export-psd', 'export-psb', 'export-artboards', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
-    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill-workspace', 'content-fill', 'remove-wires', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', 'transform-warp', 'puppet-warp', '-', 'settings'] },
-    { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'invert', '-', 'canvas-size', 'trim', 'reveal-all', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
-    { label: 'Layer', items: ['new-layer', 'new-folder', 'new-artboard', 'artboard-from-layers', 'artboard-options', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'replace-contents', 'update-linked', 'relink', 'embed-linked', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask', 'new-shape-path', 'shape-color', 'shape-style', 'shape-corners', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
-    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'select-subject', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', 'feather', 'border', 'smooth', '-', 'path-selection', 'delete-path'] },
-    { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), 'filter-liquify', '-', 'remove-bg', 'remove-bg-lite'] },
-    { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-guides', 'toggle-grid', 'lock-guides', 'clear-guides', 'new-guide', '-', 'pixel-grid', 'transform-controls'] },
+    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-',
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', '-', 'export-artboards'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'remove-wires', '-',
+      'fill-path', 'stroke-path', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'settings'] },
+    { label: 'Image', items: [
+      { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
+      'image-size', 'canvas-size', { label: 'Image Rotation', items: ['flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
+    { label: 'Layer', items: [
+      { label: 'New', items: ['new-layer', 'new-folder', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
+      { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', '-',
+      'duplicate', 'delete-layer', 'rename', '-',
+      { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
+      { label: 'Smart Objects', items: ['convert-smart', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
+      'rasterize', 'edit-text', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] }, '-',
+      { label: 'Layer Mask', items: ['add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-',
+      'group', 'move-out', 'merge', '-',
+      { label: 'Arrange', items: ['forward', 'backward'] },
+      { label: 'Align', items: ['align-left', 'align-hcenter', 'align-right', '-', 'align-top', 'align-vcenter', 'align-bottom'] },
+      { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
+      { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }] },
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'select-subject', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
+      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, '-', 'path-selection', 'delete-path'] },
+    { label: 'Filter', items: ['filter-develop', 'filter-lensCorrection', 'filter-liquify', '-',
+      { label: 'Blur', items: ['filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur'] },
+      { label: 'Sharpen', items: ['filter-smartSharpen', 'filter-shakeReduction', 'filter-unsharpMask'] },
+      { label: 'Noise', items: ['filter-addNoise'] }, '-', 'remove-bg', 'remove-bg-lite'] },
+    { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }] },
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
-  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'replace-contents', 'update-linked', 'relink', 'embed-linked', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask', 'new-shape-path', 'shape-color', 'shape-style', 'shape-corners', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', '-',
+    { label: 'Smart Objects', items: ['convert-smart', 'rasterize', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
+    { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] },
+    { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] }, '-',
+    { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-', 'group', 'move-out', 'merge', '-', 'layer-pixels']);
   new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));
 
   const zoomLabel = q(root, '.cv-zoom-label');

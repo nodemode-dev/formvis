@@ -48,7 +48,11 @@
 .cv-layers-empty[hidden] { display: none; }
 .cv-panel-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); height: 36px; padding: 0 var(--space-2); border-top: 1px solid var(--border-color); }
 
-.cv-menu { position: fixed; min-width: 232px; padding: var(--space-1); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-window); }
+.cv-menu { position: fixed; min-width: 232px; max-height: calc(100vh - 8px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: var(--space-1); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-window); }
+.cv-menu::-webkit-scrollbar { display: none; }
+.cv-menu-sub.is-open:not(:disabled) { background: var(--accent-color); color: var(--text-on-accent); }
+.cv-menu-sub.is-open .cv-menu-keys, .cv-menu-sub:hover .cv-menu-keys { color: var(--text-on-accent); }
+.cv-menu-sub .cv-menu-keys { display: inline-flex; }
 .cv-menu[hidden] { display: none; }
 .cv-menu-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); width: 100%; height: var(--ctl-md); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-size: var(--fs-12); text-align: left; cursor: default; }
 .cv-menu-item:hover:not(:disabled), .cv-menu-item.is-focus:not(:disabled) { background: var(--accent-color); color: var(--text-on-accent); }
