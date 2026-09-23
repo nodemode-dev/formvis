@@ -15,6 +15,7 @@ export const freeformPenTool: Tool = {
   hint: () => 'Drag to draw a path freehand · end near the start to close it · Curve Fit sets how closely it follows',
   cursor: () => 'crosshair',
   options: () => [
+    { kind: 'title', text: 'Freeform Pen' },
     { kind: 'range', label: 'Curve fit', min: 0.5, max: 10, step: 0.5, unit: 'px', get: () => fit.px, set: (v: number) => { fit.px = v; } },
   ],
   down(ctx, p) {

@@ -49,7 +49,7 @@ export const healingBrushTool: Tool = {
     g.restore();
   },
   options: (e) => [
-    { kind: 'title', text: 'Clone Stamp' },
+    { kind: 'title', text: 'Healing Brush' },
     { kind: 'toggle', label: 'Aligned', get: () => e.retouch.cloneAligned, set: (v) => { e.retouch.cloneAligned = v; e.cloneOffset = null; e.emit('options', null); } },
     { kind: 'toggle', label: 'Sample all layers', get: () => e.retouch.cloneSampleAll, set: (v) => { e.retouch.cloneSampleAll = v; e.emit('options', null); } },
     ...brushOptions(e),

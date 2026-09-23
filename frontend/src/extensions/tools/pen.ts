@@ -31,6 +31,7 @@ export const penTool: Tool = {
   hint: () => 'Click for corner points, drag for curves · Click the first point to close · Enter ends an open path, Backspace removes the last point · Between paths, click the path to add a point or a point to delete it · Ctrl+Enter makes a selection',
   cursor: () => 'crosshair',
   options: (e) => [
+    { kind: 'title', text: 'Pen' },
     { kind: 'button', label: 'Make Selection', run: () => { active = null; e.pathToSelection(); } },
     { kind: 'button', label: 'Fill Path', run: () => e.fillPath() },
     { kind: 'button', label: 'Stroke Path', run: () => e.strokePath() },

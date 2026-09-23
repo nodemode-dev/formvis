@@ -16,6 +16,7 @@ export const typeTool: Tool = {
   hint: () => 'Click to add text on a new type layer · Click a type layer to edit its text',
   cursor: () => 'text',
   options: (e) => [
+    { kind: 'title', text: 'Type' },
     { kind: 'select', label: 'Font', choices: TEXT_FONTS.map((f) => ({ id: f, label: f })), get: () => e.textSettings.family, set: (v) => setType(e, { family: v }) },
     { kind: 'number', label: 'Size', min: 1, max: 2000, unit: 'px', get: () => e.textSettings.size, set: (v) => setType(e, { size: Math.min(2000, Math.max(1, v)) }) },
     { kind: 'segment', label: 'Align', choices: [{ id: 'left', label: 'Left' }, { id: 'center', label: 'Centre' }, { id: 'right', label: 'Right' }], get: () => e.textSettings.align, set: (v) => setType(e, { align: v === 'center' || v === 'right' ? v : 'left' }) },
