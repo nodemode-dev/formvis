@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.78.0 · 2026-09-23
+
+### Added
+
+- Moving a layer snaps to guides when they are shown and to the grid when it is shown.
+- 3 more browser tests: 117 in all.
+
+### Changed
+
+- Snapping measures each layer's visible pixels, as Photoshop does, instead of its whole bounds, so painted layers snap by what you see.
+
 ## 0.77.0 · 2026-09-23
 
 ### Added

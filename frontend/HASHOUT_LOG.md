@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Snapping to guides and the grid · _v0.78.0 (src/engine/index.ts; e2e/test_snapping.py new)
+
+`snapMove` adds shown guides and the grid's nearest subdivision lines to its targets, and measures layers by `snapBox`: the visible pixels under a transform, the scan cached per raster version in `contentBoxes`, falling back to the whole bounds for an empty layer. Removed:
+
+```ts
+      const b = transformBounds(l.transform);
+    const b = transformBounds(t);
+```
+
 ## Rulers, guides and grid · _v0.77.0 (types, index, project-io, palette, stage, shell.css, app; guide-dialog new)
 
 `Guide` and `Doc.guides` in `types.ts`; in the engine, `view`, `guideDraft`, `setView`, `addGuide`, `moveGuide`, `removeGuide`, `clearGuides` (each an undo step through `setGuides`) and `guideAt`; `project-io` writes guides when present and reads them defensively (on the canvas, at most 1000); the palette gains ruler colours from tokens; the stage draws the grid and guides under the tool overlay, draws the rulers (`renderRulers`, `rulerStep`), lets the Move tool drag guides and deletes those dropped on a ruler or off the view, and places guides dragged out of a ruler (`bindRuler`); `shell.css` lays the rulers over the stage on `--z-raised`; `app.ts` adds the ruler canvases, six View commands and the New Guide dialog. Removed:
