@@ -9,6 +9,19 @@ const RATIOS: ReadonlyArray<{ id: string; label: string; value: number | 'origin
 let ratioId = 'free';
 let frame: Rect | null = null;
 let drag: { mode: 'create' | 'move' | 'resize'; handle: number; start: Pt; origin: Rect } | null = null;
+/** Straighten: degrees the image turns about the frame's centre on commit; `leveling` arms a drag that measures a
+ *  line meant to be level (or plumb) and sets the angle from it. Content-Aware fills what the turn or a frame past
+ *  the canvas opens. */
+let angle = 0;
+let contentAware = false;
+let leveling = false;
+let line: { a: Pt; b: Pt } | null = null;
+
+/** The turn that makes the line from a to b level, or plumb when it is nearer vertical, within -45 to 45 degrees. */
+export function levelAngle(a: Pt, b: Pt): number {
+  const deg = (Math.atan2(b.y - a.y, b.x - a.x) * 180) / Math.PI;
+  return -(((deg + 45) % 90 + 90) % 90 - 45);
+}
 
 function ratioOf(e: Engine): number | null {
   const v = RATIOS.find((r) => r.id === ratioId)?.value ?? null;
@@ -112,7 +125,8 @@ function commit(e: Engine): void {
   const r = whole(frame);
   frame = null;
   drag = null;
-  e.cropTo(r);
+  e.straightenCrop(r, angle, contentAware);
+  angle = 0;
   e.emit('overlay', null);
   e.emit('options', null);
 }
@@ -129,6 +143,7 @@ export const cropTool: Tool = {
   },
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
+    if (leveling) { line = { a: p.doc, b: p.doc }; ctx.engine.emit('overlay', null); return; }
     const h = hitHandle(ctx, p);
     if (frame && h >= 0) drag = { mode: 'resize', handle: h, start: p.doc, origin: norm(frame) };
     else if (frame && inside(frame, p.doc)) drag = { mode: 'move', handle: -1, start: p.doc, origin: norm(frame) };
@@ -136,6 +151,7 @@ export const cropTool: Tool = {
     ctx.engine.emit('overlay', null);
   },
   move(ctx, p) {
+    if (line) { line.b = p.doc; ctx.engine.emit('overlay', null); return; }
     if (!drag) return;
     const ratio = ratioOf(ctx.engine);
     if (drag.mode === 'create') frame = create(drag.start, p.doc, ratio, p.alt);
@@ -146,6 +162,15 @@ export const cropTool: Tool = {
     ctx.engine.emit('options', null);
   },
   up(ctx) {
+    if (line) {
+      const l = line, d = ctx.engine.current?.doc;
+      line = null;
+      leveling = false;
+      if (Math.hypot(l.b.x - l.a.x, l.b.y - l.a.y) >= 4) { angle = levelAngle(l.a, l.b); if (!frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; }
+      ctx.engine.emit('overlay', null);
+      ctx.engine.emit('options', null);
+      return;
+    }
     if (!drag) return;
     drag = null;
     if (frame) { const n = norm(frame); frame = n.w >= 1 && n.h >= 1 ? whole(frame) : null; }
@@ -154,12 +179,21 @@ export const cropTool: Tool = {
   },
   keydown(ctx, e) {
     if (e.key === 'Enter' && frame) { commit(ctx.engine); return true; }
-    if (e.key === 'Escape' && frame) { frame = null; drag = null; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return true; }
+    if (e.key === 'Escape' && (frame || leveling)) { frame = null; drag = null; line = null; leveling = false; angle = 0; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return true; }
     return false;
   },
   cancel(ctx) { drag = null; ctx.engine.emit('overlay', null); },
   overlay(ctx, g) {
+    if (line) {
+      const v = ctx.view(), pal = ctx.paint(), a = v.toScreen(line.a), b = v.toScreen(line.b);
+      g.save(); g.strokeStyle = pal.accent; g.lineWidth = 1.5; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.restore();
+    }
     if (!frame) return;
+    if (angle) {
+      const v = ctx.view(), pal = ctx.paint(), f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2, t = (-angle * Math.PI) / 180, cs = Math.cos(t), sn = Math.sin(t);
+      const q = [[f.x, f.y], [f.x + f.w, f.y], [f.x + f.w, f.y + f.h], [f.x, f.y + f.h]].map(([x, y]) => v.toScreen({ x: cx + (x - cx) * cs - (y - cy) * sn, y: cy + (x - cx) * sn + (y - cy) * cs }));
+      g.save(); g.strokeStyle = pal.accent; g.setLineDash([5, 4]); g.beginPath(); q.forEach((s, i) => (i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y))); g.closePath(); g.stroke(); g.restore();
+    }
     const v = ctx.view(), pal = ctx.paint(), f = norm(frame);
     const a = v.toScreen({ x: f.x, y: f.y }), b = v.toScreen({ x: f.x + f.w, y: f.y + f.h });
     g.save();
@@ -194,7 +228,10 @@ export const cropTool: Tool = {
       e.emit('overlay', null);
     } },
     { kind: 'readout', label: 'Size', get: () => (frame ? `${Math.round(norm(frame).w)} \u00d7 ${Math.round(norm(frame).h)}` : '') },
+    { kind: 'range', label: 'Straighten', min: -45, max: 45, step: 0.1, unit: '\u00b0', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'button', label: 'Level line', icon: 'rotate', run: () => { leveling = true; e.emit('tool', null); e.emit('options', null); } },
+    { kind: 'toggle', label: 'Content-Aware', get: () => contentAware, set: (v) => { contentAware = v; e.emit('options', null); } },
     { kind: 'button', label: 'Crop', icon: 'check', run: () => commit(e) },
-    { kind: 'button', label: 'Cancel', icon: 'close', run: () => { frame = null; drag = null; e.emit('overlay', null); e.emit('options', null); } },
+    { kind: 'button', label: 'Cancel', icon: 'close', run: () => { frame = null; drag = null; line = null; leveling = false; angle = 0; e.emit('overlay', null); e.emit('options', null); } },
   ],
 };

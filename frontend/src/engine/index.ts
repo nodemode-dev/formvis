@@ -3265,6 +3265,49 @@ export class Engine {
     return this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Reveal All');
   }
 
+  /** Crop with Straighten and Content-Aware, as one step: every layer turns by `angleDeg` about the frame's centre
+   *  (masks follow as a move does), the canvas is cut to the frame, and with `contentAware` the parts of the canvas
+   *  that the bottom pixel layer no longer covers (corners opened by the turn, or canvas added by a frame past the
+   *  edge) are filled by content-aware fill from the rest of that layer, which becomes canvas-sized. */
+  straightenCrop(rect: Rect, angleDeg: number, contentAware: boolean): boolean {
+    const p0 = this.current, r = integral(rect);
+    if (!p0 || r.w < 1 || r.h < 1 || !this.sizeOk(r.w, r.h)) return false;
+    const turn = Number.isFinite(angleDeg) ? Math.max(-45, Math.min(45, angleDeg)) : 0, c = { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+    return this.edit(turn ? 'Straighten and Crop' : 'Crop', (p) => {
+      if (turn) {
+        const a = (turn * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a);
+        for (const l of p.doc.layers) {
+          if (l.isGroup) continue;
+          const t = l.transform, lx = t.x + t.w / 2 - c.x, ly = t.y + t.h / 2 - c.y;
+          const next = { ...t, x: c.x + lx * cs - ly * sn - t.w / 2, y: c.y + lx * sn + ly * cs - t.h / 2, rotation: t.rotation + turn };
+          p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
+        }
+      }
+      this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
+      if (contentAware) this.fillOpenedEdges(p);
+      return true;
+    });
+  }
+
+  /** Content-aware fill of the canvas the bottom visible pixel layer does not reach; that layer becomes canvas-sized. */
+  private fillOpenedEdges(p: Project): void {
+    const l = hierarchy(p.doc).find((e) => e.visible && !e.layer.isGroup && !!e.layer.raster && !e.layer.adjustment && !e.layer.vector)?.layer;
+    if (!l?.raster) return;
+    const W = p.doc.width, H = p.doc.height, reach = createSurface(W, H), rc = ctxOf(reach);
+    setMat(rc, placement(l.transform, l.raster.width, l.raster.height));
+    rc.fillStyle = '#fff';
+    rc.fillRect(0, 0, l.raster.width, l.raster.height);
+    const cov = rc.getImageData(0, 0, W, H).data, mask = new Uint8Array(W * H);
+    let open = 0;
+    for (let i = 0; i < mask.length; i++) if (cov[i * 4 + 3] < 128) { mask[i] = 255; open++; }
+    if (!open) return;
+    const img = ctxOf(this.layerSample(p, l)).getImageData(0, 0, W, H);
+    contentFill(img.data, mask, W, H);
+    const out = new Raster(W, H);
+    out.ctx.putImageData(img, 0, 0);
+    p.updateLayer(l.id, { raster: out, transform: docTransform(W, H), mask: l.mask ? { ...l.mask, placement: l.mask.placement ?? l.transform } : null, shape: null });
+  }
+
   cropTo(rect: Rect): boolean {
     const r = integral(rect);
     if (r.w < 1 || r.h < 1) return false;
