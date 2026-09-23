@@ -66,7 +66,17 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-main { display: grid; grid-template-columns: var(--cv-rail-w) minmax(0, 1fr) 6px var(--cv-layers-w); min-height: 0; }
 .cv-rail { display: flex; flex-direction: column; align-items: center; gap: var(--space-1); padding: var(--space-2) 0; background: var(--bg-secondary); border-right: 1px solid var(--border-color); overflow-y: auto; scrollbar-width: none; min-height: 0; }
 .cv-rail::-webkit-scrollbar { display: none; }
-.cv-rail-tools { display: flex; flex-direction: column; gap: var(--space-1); }
+.cv-rail-tools { display: flex; flex-direction: column; gap: var(--space-1); min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; }
+.cv-rail-tools::-webkit-scrollbar { display: none; }
+.cv-tool.has-group { position: relative; }
+.cv-tool.has-group::after { content: ''; position: absolute; right: 3px; bottom: 3px; border-style: solid; border-width: 0 0 5px 5px; border-color: transparent transparent currentColor transparent; opacity: 0.55; }
+.cv-flyout { position: fixed; min-width: 196px; padding: var(--space-1); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-window); }
+.cv-flyout[hidden] { display: none; }
+.cv-flyout-item { display: grid; grid-template-columns: 16px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); width: 100%; height: var(--ctl-md); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-size: var(--fs-12); text-align: left; }
+.cv-flyout-item:hover { background: var(--accent-color); color: var(--text-on-accent); }
+.cv-flyout-item.is-active { color: var(--accent-color); }
+.cv-flyout-item.is-active:hover { color: var(--text-on-accent); }
+.cv-flyout-key { color: var(--text-muted); font-size: var(--fs-11); }
 .cv-tool { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text-muted); cursor: pointer; }
 .cv-tool:hover { background: var(--bg-tertiary); color: var(--text-primary); }
 .cv-tool.is-active { background: var(--bg-tertiary); border-color: var(--border-light); color: var(--accent-color); }

@@ -9,7 +9,7 @@ let hover: Pt | null = null;
  *  by itself and fills them. Photoshop's Remove uses generative fill for large objects and also finds people; neither
  *  is here. */
 export const removeTool: Tool = {
-  id: 'remove', label: 'Remove', key: 'J', order: 54,
+  id: 'remove', label: 'Remove', key: 'J', order: 55.5,
   icon: () => 'eraser',
   hint: () => 'Paint over what to remove; it is filled from its surroundings when you release · [ ] size',
   cursor: () => 'none',

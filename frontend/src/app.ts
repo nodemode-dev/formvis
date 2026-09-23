@@ -60,6 +60,7 @@ import { MenuBar, PopupMenu, type MenuDef } from './ui/menu';
 import { OptionsBar } from './ui/options';
 import { invalidatePaint } from './ui/palette';
 import { Rail } from './ui/rail';
+import { slotTool, toolGroups } from './ui/tool-groups';
 import { Stage } from './ui/stage';
 import { StatusBar } from './ui/status';
 import { Tabs } from './ui/tabs';
@@ -1039,10 +1040,11 @@ export function startApp(): void {
     else if (k === 'M' && e.shiftKey) { engine.setTool('marquee'); engine.update({ marqueeKind: engine.marqueeKind === 'rectangle' ? 'ellipse' : 'rectangle' }); }
     else if (k === 'L' && e.shiftKey) { engine.setTool('lasso'); engine.update({ lassoKind: engine.lassoKind === 'freehand' ? 'polygonal' : 'freehand' }); }
     else if (toolForKey(k)) {
-      // A letter picks its tool, keeping one already chosen from the same group; Shift with it cycles the group.
+      // A letter picks its slot's tool (the one last chosen from its group, as Photoshop's does), keeping one already
+      // chosen from the same group; Shift with it cycles the group.
       const group = toolsForKey(k), at = group.findIndex((t) => t.id === engine.tool);
       if (e.shiftKey) { if (group.length > 1) engine.setTool(group[(at + 1) % group.length].id); }
-      else if (at < 0) engine.setTool(group[0].id);
+      else if (at < 0) { const g = toolGroups().find((x) => x.key === k); engine.setTool(g ? slotTool(g, engine.tool).id : group[0].id); }
     }
     else return;
     e.preventDefault();
