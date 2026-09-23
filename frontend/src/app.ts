@@ -1,6 +1,7 @@
 import { ErrorLog } from './ui/errors';
 import { FillDialog } from './ui/panels/fill-dialog';
 import { ExportDialog } from './ui/panels/export-dialog';
+import { GuideDialog } from './ui/panels/guide-dialog';
 import { ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery } from './io/recovery';
@@ -88,6 +89,8 @@ const SHELL = `<div class="cv-app">
 <main class="cv-stage">
 <canvas class="cv-canvas cv-scene"></canvas>
 <canvas class="cv-canvas cv-overlay-canvas"></canvas>
+<canvas class="cv-ruler cv-ruler-h" hidden></canvas>
+<canvas class="cv-ruler cv-ruler-v" hidden></canvas>
 <div class="cv-welcome"><div class="cv-welcome-card">
 <div class="cv-welcome-title">${brandMark(28)}sonny</div>
 <div class="cv-welcome-sub">Layered image compositing. Start a canvas, open a project, or drop images anywhere on this stage.</div>
@@ -594,6 +597,7 @@ export function startApp(): void {
     amount: new AmountDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
+    guide: new GuideDialog(engine),
   };
 
   const has = (): boolean => !!engine.current;
@@ -616,6 +620,12 @@ export function startApp(): void {
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
+    { id: 'toggle-rulers', label: () => (engine.view.rulers ? 'Hide Rulers' : 'Show Rulers'), keys: ['Mod+R'], enabled: has, run: () => engine.setView({ rulers: !engine.view.rulers }) },
+    { id: 'toggle-guides', label: () => (engine.view.guides ? 'Hide Guides' : 'Show Guides'), keys: ['Mod+;'], enabled: has, run: () => engine.setView({ guides: !engine.view.guides }) },
+    { id: 'toggle-grid', label: () => (engine.view.grid ? 'Hide Grid' : 'Show Grid'), keys: ["Mod+'"], enabled: has, run: () => engine.setView({ grid: !engine.view.grid }) },
+    { id: 'lock-guides', label: () => (engine.view.guidesLocked ? 'Unlock Guides' : 'Lock Guides'), keys: ['Alt+Mod+;'], enabled: has, run: () => engine.setView({ guidesLocked: !engine.view.guidesLocked }) },
+    { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
+    { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
     { id: 'export-webp', label: 'Export WebP', enabled: has, run: () => void exportImage('webp', 0.9) },
     { id: 'export-tiff', label: 'Export TIFF', enabled: () => has() && !!caps, run: () => void exportImage('tiff', 0.9) },
@@ -784,7 +794,7 @@ export function startApp(): void {
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'select-subject', 'select-object', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', 'feather', 'border', 'smooth', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
-    { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'pixel-grid', 'transform-controls'] },
+    { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-guides', 'toggle-grid', 'lock-guides', 'clear-guides', 'new-guide', '-', 'pixel-grid', 'transform-controls'] },
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);

@@ -62,7 +62,9 @@ export interface Layer {
   adjustment: Adjustment | null;
   shape: Record<string, unknown> | null;
 }
-export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[] }
+/** A ruler guide: `axis: 'x'` is a vertical guide at x = `at`, `'y'` a horizontal one, in document pixels. */
+export interface Guide { axis: 'x' | 'y'; at: number }
+export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[] }
 
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'directSelect' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'idle';
 

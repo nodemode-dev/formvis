@@ -1,6 +1,6 @@
 import type { Paint } from '../extensions/registry';
 
-export interface StagePaint extends Paint { checkerA: string; checkerB: string; grid: string; edge: string }
+export interface StagePaint extends Paint { checkerA: string; checkerB: string; grid: string; edge: string; rulerBg: string; rulerText: string; rulerLine: string }
 
 let cache: StagePaint | null = null;
 
@@ -11,6 +11,7 @@ export function paint(): StagePaint {
   cache = {
     accent: v('--accent-color'), handle: v('--cv-handle-fill'), antsA: v('--cv-ants-a'), antsB: v('--cv-ants-b'),
     checkerA: v('--cv-checker-a'), checkerB: v('--cv-checker-b'), grid: v('--cv-pixel-grid'), edge: v('--cv-doc-edge'),
+    rulerBg: v('--bg-secondary'), rulerText: v('--text-muted'), rulerLine: v('--border-color'),
   };
   return cache;
 }

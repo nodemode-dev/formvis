@@ -4,11 +4,15 @@ import { isMac, q, setHidden } from './dom';
 import { paint, type StagePaint } from './palette';
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+/** Ruler thickness in CSS pixels; the rulers lie over the stage's top and left edges, so showing them moves nothing. */
+const RULER = 18;
 
 export class Stage {
   readonly ctx: ToolContext;
   private readonly scene: HTMLCanvasElement;
   private readonly overlay: HTMLCanvasElement;
+  private readonly rulerH: HTMLCanvasElement;
+  private readonly rulerV: HTMLCanvasElement;
   private readonly sctx: CanvasRenderingContext2D;
   private readonly octx: CanvasRenderingContext2D;
   private readonly welcome: HTMLElement;
@@ -35,6 +39,9 @@ export class Stage {
   constructor(private readonly host: HTMLElement, private readonly engine: Engine) {
     this.scene = q<HTMLCanvasElement>(host, '.cv-scene');
     this.overlay = q<HTMLCanvasElement>(host, '.cv-overlay-canvas');
+    this.rulerH = q<HTMLCanvasElement>(host, '.cv-ruler-h');
+    this.rulerV = q<HTMLCanvasElement>(host, '.cv-ruler-v');
+    for (const [r, axis] of [[this.rulerH, 'y'], [this.rulerV, 'x']] as const) this.bindRuler(r, axis);
     this.welcome = q(host, '.cv-welcome');
     const s = this.scene.getContext('2d');
     const o = this.overlay.getContext('2d');
@@ -78,6 +85,8 @@ export class Stage {
     if (dpr !== this.dpr) this.checker = null;
     this.dpr = dpr;
     for (const c of [this.scene, this.overlay]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    this.rulerH.width = Math.round(w * dpr); this.rulerH.height = Math.round(RULER * dpr);
+    this.rulerV.width = Math.round(RULER * dpr); this.rulerV.height = Math.round(h * dpr);
     this.engine.setViewSize(w, h);
     this.renderScene();
     this.renderOverlay();
@@ -181,11 +190,87 @@ export class Stage {
     g.restore();
   }
 
+  /** The layout grid over the canvas (every spacing, fainter every subdivision) and the guides across the view, with
+   *  a guide being dragged drawn where it would land. */
+  private drawGuides(g: CanvasRenderingContext2D, pal: StagePaint): void {
+    const p = this.engine.current, vw = this.engine.view;
+    if (!p) return;
+    const v = p.viewport, W = p.doc.width, H = p.doc.height, x0 = v.panX, y0 = v.panY, x1 = v.panX + W * v.zoom, y1 = v.panY + H * v.zoom;
+    g.save();
+    g.lineWidth = 1;
+    if (vw.grid) {
+      const major = Math.max(1, vw.gridSpacing), sub = major / Math.max(1, vw.gridSubdivisions);
+      for (const [step, alpha] of [[sub, 0.35], [major, 0.9]] as const) {
+        if (step * v.zoom < 4) continue;
+        g.globalAlpha = alpha;
+        g.strokeStyle = pal.grid;
+        g.beginPath();
+        for (let x = step; x < W; x += step) { const sx = Math.round(x0 + x * v.zoom) + 0.5; g.moveTo(sx, y0); g.lineTo(sx, y1); }
+        for (let y = step; y < H; y += step) { const sy = Math.round(y0 + y * v.zoom) + 0.5; g.moveTo(x0, sy); g.lineTo(x1, sy); }
+        g.stroke();
+      }
+      g.globalAlpha = 1;
+    }
+    const draft = this.engine.guideDraft, guides = (p.doc.guides ?? []).map((x, i) => (draft && draft.index === i ? null : x));
+    if (vw.guides || draft) {
+      g.strokeStyle = pal.accent;
+      g.beginPath();
+      for (const x of [...guides, draft].filter((q): q is NonNullable<typeof q> => !!q && (vw.guides || q === draft))) {
+        if (x.axis === 'x') { const sx = Math.round(v.panX + x.at * v.zoom) + 0.5; g.moveTo(sx, 0); g.lineTo(sx, this.cssH); }
+        else { const sy = Math.round(v.panY + x.at * v.zoom) + 0.5; g.moveTo(0, sy); g.lineTo(this.cssW, sy); }
+      }
+      g.stroke();
+    }
+    g.restore();
+  }
+
+  /** A major tick step in document pixels at least 60 screen pixels apart, from 1, 2, 5 and their powers of ten. */
+  static rulerStep(zoom: number): number {
+    for (let k = 0; k < 8; k++) for (const m of [1, 2, 5]) { const s = m * 10 ** k; if (s * zoom >= 60) return s; }
+    return 1e8;
+  }
+
+  /** The rulers along the top and left, in document pixels from the canvas origin, shown when View > Rulers is on. */
+  private renderRulers(): void {
+    const show = this.engine.view.rulers && !!this.engine.current;
+    setHidden(this.rulerH, !show);
+    setHidden(this.rulerV, !show);
+    if (!show) return;
+    const v = (this.engine.current as NonNullable<Engine['current']>).viewport, pal = paint(), d = this.dpr, step = Stage.rulerStep(v.zoom);
+    const minor = step * v.zoom >= 150 ? step / 10 : step / 5;
+    for (const [c, horiz] of [[this.rulerH, true], [this.rulerV, false]] as const) {
+      const g = c.getContext('2d');
+      if (!g) continue;
+      const len = horiz ? this.cssW : this.cssH, pan = horiz ? v.panX : v.panY;
+      g.setTransform(d, 0, 0, d, 0, 0);
+      g.fillStyle = pal.rulerBg;
+      g.fillRect(0, 0, horiz ? len : RULER, horiz ? RULER : len);
+      g.strokeStyle = pal.rulerLine;
+      g.fillStyle = pal.rulerText;
+      g.font = '9px system-ui, sans-serif';
+      g.lineWidth = 1;
+      g.beginPath();
+      if (horiz) { g.moveTo(0, RULER - 0.5); g.lineTo(len, RULER - 0.5); } else { g.moveTo(RULER - 0.5, 0); g.lineTo(RULER - 0.5, len); }
+      const first = Math.floor(-pan / v.zoom / minor) * minor;
+      for (let t = first; t * v.zoom + pan <= len; t += minor) {
+        const s = Math.round(t * v.zoom + pan) + 0.5, isMajor = Math.abs(t / step - Math.round(t / step)) < 1e-6, tick = isMajor ? RULER : RULER / 3;
+        if (horiz) { g.moveTo(s, RULER - tick); g.lineTo(s, RULER); } else { g.moveTo(RULER - tick, s); g.lineTo(RULER, s); }
+        if (isMajor) {
+          const label = String(Math.round(t));
+          if (horiz) g.fillText(label, s + 2, 9);
+          else { g.save(); g.translate(9, s + 2); g.rotate(-Math.PI / 2); g.textAlign = 'right'; g.fillText(label, 0, 0); g.restore(); }
+        }
+      }
+      g.stroke();
+    }
+  }
+
   private renderOverlay(): void {
     this.wantOverlay = false;
     const g = this.octx;
     g.setTransform(1, 0, 0, 1, 0, 0);
     g.clearRect(0, 0, this.overlay.width, this.overlay.height);
+    this.renderRulers();
     const p = this.engine.current;
     if (!p) return;
     const pal = paint();
@@ -209,6 +294,7 @@ export class Stage {
       g.setLineDash([]);
     }
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    this.drawGuides(g, pal);
     this.tool()?.overlay?.(this.ctx, g);
     const ring = this.engine.sampleRing;
     if (ring) {
@@ -247,6 +333,43 @@ export class Stage {
     const v = this.engine.current?.viewport;
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
     return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: pen ? Math.min(1, Math.max(0, (e as PointerEvent).pressure)) : 1 };
+  }
+
+  /** Drag out of a ruler to place a guide: the top ruler makes horizontal guides, the left one vertical guides. The
+   *  guide lands only when released over the view past the ruler; guides locked or hidden take none. */
+  private bindRuler(r: HTMLCanvasElement, axis: 'x' | 'y'): void {
+    let id: number | null = null;
+    const at = (e: PointerEvent): { doc: Pt; inside: boolean } => {
+      const b = this.rect ?? this.host.getBoundingClientRect(), sx = e.clientX - b.left, sy = e.clientY - b.top, v = this.engine.current?.viewport;
+      const doc = v ? v.toDoc(sx, sy) : { x: sx, y: sy };
+      return { doc, inside: sx >= 0 && sy >= 0 && sx <= b.width && sy <= b.height && (axis === 'y' ? sy > RULER : sx > RULER) };
+    };
+    r.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || !this.engine.current || this.engine.view.guidesLocked) return;
+      e.preventDefault();
+      r.setPointerCapture(e.pointerId);
+      id = e.pointerId;
+      const p = at(e).doc;
+      this.engine.guideDraft = { axis, at: axis === 'x' ? p.x : p.y, index: null };
+      this.engine.emit('overlay', null);
+    });
+    r.addEventListener('pointermove', (e) => {
+      const d = this.engine.guideDraft;
+      if (id !== e.pointerId || !d) return;
+      const p = at(e).doc;
+      d.at = axis === 'x' ? p.x : p.y;
+      this.engine.emit('overlay', null);
+    });
+    const end = (e: PointerEvent, cancel: boolean): void => {
+      if (id !== e.pointerId) return;
+      id = null;
+      const d = this.engine.guideDraft, where = at(e);
+      this.engine.guideDraft = null;
+      if (!cancel && d && where.inside) { if (!this.engine.view.guides) this.engine.setView({ guides: true }); this.engine.addGuide(axis, d.at); }
+      else this.engine.emit('overlay', null);
+    };
+    r.addEventListener('pointerup', (e) => end(e, false));
+    r.addEventListener('pointercancel', (e) => end(e, true));
   }
 
   docPoint(clientX: number, clientY: number): Pt | null {
@@ -303,6 +426,13 @@ export class Stage {
       if (e.button !== 0) return;
       o.setPointerCapture(e.pointerId);
       this.dragId = e.pointerId;
+      const gi = this.tool()?.id === 'move' ? this.engine.guideAt(p.screen) : null;
+      if (gi !== null) {
+        const g = (this.engine.current?.doc.guides ?? [])[gi];
+        this.engine.guideDraft = { axis: g.axis, at: g.at, index: gi };
+        this.engine.emit('overlay', null);
+        return;
+      }
       this.tool()?.down?.(this.ctx, p);
       this.updateCursor(p);
     });
@@ -315,6 +445,8 @@ export class Stage {
           return;
         }
         if (this.tipDragging) { this.engine.updateTipDrag(this.pointer(e).screen.x, e.shiftKey); return; }
+        const gd = this.engine.guideDraft;
+        if (gd && gd.index !== null) { const pd = this.pointer(e).doc; gd.at = gd.axis === 'x' ? pd.x : pd.y; this.engine.emit('overlay', null); return; }
         const t = this.tool();
         if (!t?.move) return;
         const events = typeof e.getCoalescedEvents === 'function' ? e.getCoalescedEvents() : [];
@@ -334,6 +466,16 @@ export class Stage {
       const p = this.pointer(e);
       if (this.panLast) { this.panLast = null; this.updateCursor(p); return; }
       if (this.tipDragging) { this.tipDragging = false; this.engine.endTipDrag(); this.updateCursor(p); return; }
+      const gd = this.engine.guideDraft;
+      if (gd && gd.index !== null) {
+        this.engine.guideDraft = null;
+        const off = p.screen.x < 0 || p.screen.y < 0 || p.screen.x > this.cssW || p.screen.y > this.cssH;
+        const onRuler = this.engine.view.rulers && (gd.axis === 'x' ? p.screen.x < RULER : p.screen.y < RULER);
+        if (cancel) this.engine.emit('overlay', null);
+        else if (off || onRuler) this.engine.removeGuide(gd.index);
+        else this.engine.moveGuide(gd.index, gd.at);
+        return;
+      }
       const t = this.tool();
       if (cancel) t?.cancel?.(this.ctx);
       else t?.up?.(this.ctx, p);

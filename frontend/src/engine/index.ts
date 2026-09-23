@@ -14,7 +14,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle, effectsFromData } from './types';
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type ShapeStyle, effectsFromData } from './types';
 import { patternById } from './patterns';
 
 export * from './types';
@@ -2754,6 +2754,50 @@ export class Engine {
   shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number } & PathShapeOptions = { kind: 'rectangle', cornerRadius: 0, ...DEFAULT_PATH_SHAPE };
   clipboard: { surface: Surface; x: number; y: number; w: number; h: number; stamp: string } | null = null;
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };
+
+  /** View > Rulers, Guides, Grid and Lock Guides; the grid's spacing and subdivisions in document pixels. */
+  view = { rulers: false, guides: true, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4 };
+  /** A guide being dragged out of a ruler or across the canvas, drawn but not yet in the document. */
+  guideDraft: { axis: 'x' | 'y'; at: number; index: number | null } | null = null;
+
+  setView(patch: Partial<Engine['view']>): void { Object.assign(this.view, patch); this.emit('overlay', null); this.emit('options', null); }
+
+  private setGuides(name: string, next: (g: Guide[]) => Guide[]): void {
+    this.edit(name, (p) => {
+      const before = p.doc.guides ?? [], after = next([...before]);
+      if (after.length === before.length && after.every((g, i) => g.axis === before[i].axis && g.at === before[i].at)) return false;
+      p.doc = { ...p.doc, guides: after };
+      return true;
+    });
+    this.emit('overlay', null);
+  }
+
+  /** View > New Guide, or a guide dropped from a ruler: at a whole or half pixel, kept within the canvas. */
+  addGuide(axis: 'x' | 'y', at: number): void {
+    const d = this.current?.doc;
+    if (!d || !Number.isFinite(at)) return;
+    const v = Math.min(axis === 'x' ? d.width : d.height, Math.max(0, Math.round(at * 2) / 2));
+    this.setGuides('New Guide', (g) => [...g, { axis, at: v }]);
+  }
+
+  moveGuide(index: number, at: number): void {
+    const d = this.current?.doc;
+    if (!d || !Number.isFinite(at)) return;
+    this.setGuides('Move Guide', (g) => g.map((x, i) => (i === index ? { axis: x.axis, at: Math.min(x.axis === 'x' ? d.width : d.height, Math.max(0, Math.round(at * 2) / 2)) } : x)));
+  }
+
+  removeGuide(index: number): void { this.setGuides('Delete Guide', (g) => g.filter((_, i) => i !== index)); }
+  clearGuides(): void { this.setGuides('Clear Guides', () => []); }
+
+  /** The guide within `tol` screen pixels of a screen point, nearest first; null when guides are hidden or locked. */
+  guideAt(screen: Pt, tol = 4): number | null {
+    const p = this.current, g = p?.doc.guides;
+    if (!p || !g?.length || !this.view.guides || this.view.guidesLocked) return null;
+    const v = p.viewport;
+    let best: number | null = null, bestD = tol + 1;
+    g.forEach((x, i) => { const d = Math.abs(x.axis === 'x' ? v.panX + x.at * v.zoom - screen.x : v.panY + x.at * v.zoom - screen.y); if (d <= tol && d < bestD) { best = i; bestD = d; } });
+    return best;
+  }
 
   beginLive(name: string): boolean {
     const p = this.current;
