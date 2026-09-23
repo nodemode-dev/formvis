@@ -1736,6 +1736,31 @@ export class Engine {
     });
   }
 
+  /** Select and Mask's OK: the refined selection (`data`, 0 to 255 over the whole canvas) sent to Photoshop's outputs:
+   *  the selection itself, a layer mask on the active layer (replacing one it has), a new layer of the selected
+   *  pixels, or a new layer (a duplicate) with it as a mask. One step; outputs other than the selection deselect. */
+  applyRefinedSelection(data: Uint8Array, output: 'selection' | 'mask' | 'layer' | 'layerMask'): void {
+    const p0 = this.current;
+    if (!p0 || data.length !== p0.doc.width * p0.doc.height) return;
+    if (!data.some((v) => v > 0)) { this.notice('Nothing is selected after refining.'); return; }
+    const sel = SelectionMask.cropped(0, 0, p0.doc.width, p0.doc.height, data);
+    this.edit('Select and Mask', (p) => {
+      this.applySelection(sel, 'replace', 'Select and Mask');
+      if (output === 'selection') return true;
+      if (output === 'layer') this.layerViaCopy();
+      else {
+        const original = p.activeLayer?.id ?? null;
+        if (output === 'layerMask') this.duplicateLayers();
+        const l = p.activeLayer;
+        if (l?.mask) p.updateLayer(l.id, { mask: null });
+        this.addMask(false);
+        if (output === 'layerMask' && original && original !== p.activeLayer?.id) p.updateLayer(original, { visible: false });
+      }
+      p.selection = null;
+      return true;
+    });
+  }
+
   addMask(hide = false): void {
     this.edit(hide ? 'Add Mask Hiding All' : 'Add Layer Mask', (p) => {
       const l = p.activeLayer;
