@@ -1,5 +1,7 @@
 import { ErrorLog } from './ui/errors';
 import { FillDialog } from './ui/panels/fill-dialog';
+import { ExportDialog } from './ui/panels/export-dialog';
+import { ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery } from './io/recovery';
 import { TrimDialog } from './ui/panels/trim-dialog';
@@ -299,6 +301,28 @@ export function startApp(): void {
     if (choice) engine.deleteLayers(choice === 'bake');
   }
 
+  /** File > Export As: the composite scaled by the settings, then encoded (PNG, JPEG and WebP by the browser, JPEG
+   *  flattened on white; AVIF, TIFF and PDF by the engine), named as Photoshop names scaled exports. */
+  async function exportAs(s: ExportSettings): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const base = await engine.exportBlob('image/png');
+        if (!base) return;
+        const bmp = await createImageBitmap(base), z = exportSize(bmp.width, bmp.height, s.scale), c = createSurface(z.w, z.h), x = ctxOf(c);
+        if (s.format === 'jpg') { x.fillStyle = '#ffffff'; x.fillRect(0, 0, z.w, z.h); }
+        x.imageSmoothingQuality = 'high';
+        x.drawImage(bmp, 0, 0, z.w, z.h);
+        bmp.close();
+        const blob = ENGINE_FORMATS.has(s.format) ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf', s.quality, p.doc.resolution ?? 72)
+          : await toBlob(c, s.format === 'png' ? 'image/png' : s.format === 'jpg' ? 'image/jpeg' : 'image/webp', s.quality / 100);
+        await deliver(blob, exportName(p.name, s));
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function exportImage(kind: 'png' | 'jpg' | 'webp' | 'tiff' | 'pdf' | 'avif', quality = 0.92): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -569,6 +593,7 @@ export function startApp(): void {
     imageSize: new ImageSizeDialog(engine),
     amount: new AmountDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
+    exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
   };
 
   const has = (): boolean => !!engine.current;
@@ -590,6 +615,7 @@ export function startApp(): void {
     { id: 'export-ref', label: 'Export .ref Project...', enabled: has, run: () => void exportRefProject() },
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
+    { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
     { id: 'export-webp', label: 'Export WebP', enabled: has, run: () => void exportImage('webp', 0.9) },
     { id: 'export-tiff', label: 'Export TIFF', enabled: () => has() && !!caps, run: () => void exportImage('tiff', 0.9) },
@@ -752,7 +778,7 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-as', 'export-png', 'export-jpg', 'export-psd', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'invert', '-', 'canvas-size', 'trim', 'reveal-all', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
