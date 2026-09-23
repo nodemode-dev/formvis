@@ -3308,6 +3308,41 @@ export class Engine {
     p.updateLayer(l.id, { raster: out, transform: docTransform(W, H), mask: l.mask ? { ...l.mask, placement: l.mask.placement ?? l.transform } : null, shape: null });
   }
 
+  /** Perspective Crop: the quad `quad` (top-left, top-right, bottom-right, bottom-left, in document pixels) becomes the
+   *  whole canvas, a rectangle as wide and tall as the quad's opposite sides on average; every pixel layer is carried
+   *  through the same perspective (linked masks with it), as one step. Shape, type and smart layers become pixels. */
+  perspectiveCrop(quad: Pt[]): boolean {
+    const p0 = this.current;
+    if (!p0) return false;
+    if (!distortUsable(quad)) { this.notice('Keep the four corners in order, with no sides crossing, to crop in perspective.'); return false; }
+    const len = (a: Pt, b: Pt): number => Math.hypot(b.x - a.x, b.y - a.y);
+    const W = Math.max(1, Math.round((len(quad[0], quad[1]) + len(quad[3], quad[2])) / 2)), H = Math.max(1, Math.round((len(quad[0], quad[3]) + len(quad[1], quad[2])) / 2));
+    const back = inverse3(homography(quad));
+    if (!back || !this.sizeOk(W, H)) return false;
+    const toOut = (q: Pt): Pt => { const u = project(back, q.x, q.y); return { x: u.x * W, y: u.y * H }; };
+    const moved = new Map<ID, Partial<Layer>>();
+    for (const l of p0.doc.layers) {
+      if (l.isGroup || !l.raster) continue;
+      const nq = cornersOf(l.transform).map(toOut);
+      if (!distortUsable(nq)) continue;
+      const b = boundsOf(nq);
+      if (b.w * b.h > LIMITS.pixels) { this.notice('That perspective would stretch a layer past the 100-megapixel limit. Pull the corners in a little.', 'error'); return false; }
+      const w = warpRaster(l.raster, l.transform, nq);
+      if (!w) continue;
+      let mask = l.mask;
+      if (mask?.raster && mask.linked) {
+        const mt = mask.placement ?? l.transform, mq = cornersOf(mt).map(toOut), wm = distortUsable(mq) ? warpRaster(mask.raster, mt, mq, 1, true, maskEdgeTone(mask.raster)) : null;
+        if (wm) mask = { ...mask, raster: wm.raster, placement: mask.placement ? wm.t : null };
+      }
+      moved.set(l.id, { raster: w.raster, transform: w.t, mask, shape: null, vector: null, text: null, smart: null });
+    }
+    return this.edit('Perspective Crop', (p) => {
+      p.doc = { ...p.doc, width: W, height: H, layers: p.doc.layers.map((l) => (moved.has(l.id) ? { ...l, ...moved.get(l.id) } : l)) };
+      p.selection = null;
+      return true;
+    });
+  }
+
   cropTo(rect: Rect): boolean {
     const r = integral(rect);
     if (r.w < 1 || r.h < 1) return false;

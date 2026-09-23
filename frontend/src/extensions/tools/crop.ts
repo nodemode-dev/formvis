@@ -16,6 +16,16 @@ let angle = 0;
 let contentAware = false;
 let leveling = false;
 let line: { a: Pt; b: Pt } | null = null;
+/** Perspective: the frame's four corners move independently (top-left, top-right, bottom-right, bottom-left). */
+let perspective = false;
+let quad: Pt[] | null = null;
+let cornerDrag = -1;
+const quadOf = (r: Rect): Pt[] => { const n = norm(r); return [{ x: n.x, y: n.y }, { x: n.x + n.w, y: n.y }, { x: n.x + n.w, y: n.y + n.h }, { x: n.x, y: n.y + n.h }]; };
+function hitCorner(ctx: ToolContext, p: ToolPointer): number {
+  if (!quad) return -1;
+  const v = ctx.view();
+  return quad.findIndex((c) => { const s = v.toScreen(c); return Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= 9; });
+}
 
 /** The turn that makes the line from a to b level, or plumb when it is nearer vertical, within -45 to 45 degrees. */
 export function levelAngle(a: Pt, b: Pt): number {
@@ -121,6 +131,14 @@ function hitHandle(ctx: ToolContext, p: ToolPointer): number {
 const inside = (r: Rect, p: Pt): boolean => { const n = norm(r); return p.x >= n.x && p.y >= n.y && p.x <= n.x + n.w && p.y <= n.y + n.h; };
 
 function commit(e: Engine): void {
+  if (perspective && quad) {
+    const q = quad;
+    quad = null; frame = null; drag = null; cornerDrag = -1;
+    e.perspectiveCrop(q);
+    e.emit('overlay', null);
+    e.emit('options', null);
+    return;
+  }
   if (!frame) return;
   const r = whole(frame);
   frame = null;
@@ -144,6 +162,7 @@ export const cropTool: Tool = {
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
     if (leveling) { line = { a: p.doc, b: p.doc }; ctx.engine.emit('overlay', null); return; }
+    if (perspective && quad) { cornerDrag = hitCorner(ctx, p); if (cornerDrag >= 0) return; quad = null; }
     const h = hitHandle(ctx, p);
     if (frame && h >= 0) drag = { mode: 'resize', handle: h, start: p.doc, origin: norm(frame) };
     else if (frame && inside(frame, p.doc)) drag = { mode: 'move', handle: -1, start: p.doc, origin: norm(frame) };
@@ -152,6 +171,7 @@ export const cropTool: Tool = {
   },
   move(ctx, p) {
     if (line) { line.b = p.doc; ctx.engine.emit('overlay', null); return; }
+    if (cornerDrag >= 0 && quad) { quad[cornerDrag] = { x: p.doc.x, y: p.doc.y }; ctx.engine.emit('overlay', null); return; }
     if (!drag) return;
     const ratio = ratioOf(ctx.engine);
     if (drag.mode === 'create') frame = create(drag.start, p.doc, ratio, p.alt);
@@ -171,19 +191,32 @@ export const cropTool: Tool = {
       ctx.engine.emit('options', null);
       return;
     }
+    if (cornerDrag >= 0) { cornerDrag = -1; ctx.engine.emit('overlay', null); return; }
     if (!drag) return;
     drag = null;
     if (frame) { const n = norm(frame); frame = n.w >= 1 && n.h >= 1 ? whole(frame) : null; }
+    if (perspective && frame) quad = quadOf(frame);
     ctx.engine.emit('overlay', null);
     ctx.engine.emit('options', null);
   },
   keydown(ctx, e) {
-    if (e.key === 'Enter' && frame) { commit(ctx.engine); return true; }
-    if (e.key === 'Escape' && (frame || leveling)) { frame = null; drag = null; line = null; leveling = false; angle = 0; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return true; }
+    if (e.key === 'Enter' && (frame || quad)) { commit(ctx.engine); return true; }
+    if (e.key === 'Escape' && (frame || quad || leveling)) { frame = null; quad = null; cornerDrag = -1; drag = null; line = null; leveling = false; angle = 0; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return true; }
     return false;
   },
   cancel(ctx) { drag = null; ctx.engine.emit('overlay', null); },
   overlay(ctx, g) {
+    if (perspective && quad) {
+      const v = ctx.view(), pal = ctx.paint(), s = quad.map((c) => v.toScreen(c));
+      g.save();
+      g.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      g.beginPath(); g.rect(0, 0, v.width, v.height); s.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y))); g.closePath(); g.fill('evenodd');
+      g.strokeStyle = pal.accent; g.lineWidth = 1; g.beginPath(); s.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y))); g.closePath(); g.stroke();
+      g.fillStyle = pal.handle;
+      for (const q of s) { g.fillRect(Math.round(q.x) - 4, Math.round(q.y) - 4, 8, 8); g.strokeRect(Math.round(q.x) - 3.5, Math.round(q.y) - 3.5, 7, 7); }
+      g.restore();
+      return;
+    }
     if (line) {
       const v = ctx.view(), pal = ctx.paint(), a = v.toScreen(line.a), b = v.toScreen(line.b);
       g.save(); g.strokeStyle = pal.accent; g.lineWidth = 1.5; g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke(); g.restore();
@@ -231,7 +264,8 @@ export const cropTool: Tool = {
     { kind: 'range', label: 'Straighten', min: -45, max: 45, step: 0.1, unit: '\u00b0', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'button', label: 'Level line', icon: 'rotate', run: () => { leveling = true; e.emit('tool', null); e.emit('options', null); } },
     { kind: 'toggle', label: 'Content-Aware', get: () => contentAware, set: (v) => { contentAware = v; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Perspective', get: () => perspective, set: (v) => { perspective = v; quad = v && frame ? quadOf(frame) : null; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'button', label: 'Crop', icon: 'check', run: () => commit(e) },
-    { kind: 'button', label: 'Cancel', icon: 'close', run: () => { frame = null; drag = null; line = null; leveling = false; angle = 0; e.emit('overlay', null); e.emit('options', null); } },
+    { kind: 'button', label: 'Cancel', icon: 'close', run: () => { frame = null; quad = null; cornerDrag = -1; drag = null; line = null; leveling = false; angle = 0; e.emit('overlay', null); e.emit('options', null); } },
   ],
 };
