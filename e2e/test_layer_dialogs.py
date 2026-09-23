@@ -8,6 +8,7 @@ def test_new_layer_dialog_from_its_shortcut(page):
     page.keyboard.press("Shift+Control+N")
     dlg = page.locator(DLG)
     assert dlg.locator(".cv-dialog-title").inner_text().strip() == "New Layer"
+    assert dlg.locator("p.cv-note", has_text="Color label").is_visible()
     assert dlg.locator(".cv-field", has_text="Name").locator("input").input_value() == "Layer 1"
     dlg.locator(".cv-field", has_text="Name").locator("input").fill("Sky")
     dlg.locator(".cv-field", has_text="Mode").locator("select").select_option("multiply")
@@ -24,6 +25,7 @@ def test_duplicate_layer_dialog_names_the_copy_and_ctrl_j_stays_quick(page):
     page.evaluate("window.sonny.engine.newDocument(200, 100, 'L', 'white')")
     assert page.evaluate("window.sonny.commands.run('duplicate-dialog')") is True
     dlg = page.locator(DLG)
+    assert dlg.locator("p.cv-note", has_text="goes in this document").is_visible()
     assert dlg.locator(".cv-field", has_text="As").locator("input").input_value() == "Background copy"
     dlg.locator(".cv-field", has_text="As").locator("input").fill("Backup")
     dlg.locator(".cv-field", has_text="As").locator("input").press("Enter")

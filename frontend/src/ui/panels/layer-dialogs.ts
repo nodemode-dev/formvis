@@ -18,7 +18,7 @@ export class NewLayerDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('New Layer', 360);
     this.field('Name', this.name);
-    this.body.append(this.modeRow.el, this.opacityRow.el);
+    this.body.append(this.modeRow.el, this.opacityRow.el, el('<p class="cv-note">Photoshop\'s Color label for layers is not in sonny yet.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
@@ -55,7 +55,7 @@ export class DuplicateLayerDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Duplicate Layer', 360);
     this.field('As', this.name);
-    this.body.append(this.note);
+    this.body.append(this.note, el('<p class="cv-note">The duplicate goes in this document; choosing another open document is not in sonny yet.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
