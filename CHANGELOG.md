@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.88.0 · 2026-09-23
+
+### Added
+
+- Remove tool (J): paint over something and it is filled from its surroundings when you release.
+- Remove Wires and Cables (Remove tool option and Edit menu): finds wires and cables on the layer by itself and fills them.
+- 4 more tests (2 unit, 2 browser): 183 in all.
+
 ## 0.87.0 · 2026-09-23
 
 ### Added

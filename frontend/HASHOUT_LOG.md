@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Remove tool and Remove Wires and Cables · _v0.88.0 (src/engine/distractions.ts and src/extensions/tools/remove.ts new, src/engine/index.ts, src/engine/types.ts, src/extensions/tools/index.ts, src/ui/stage.ts, src/app.ts; tests/distractions.test.ts and e2e/test_remove_tool.py new)
+
+`distractions.ts`: `findWires` (black-hat, threshold, long thin pieces, grown) with `WIRE_DEFAULTS`. In the engine, the `remove` stroke kind, `removePatch` (content-aware fill of the grown stroke) and `removeWires` (Create Texture fill of the found wires, within the selection); Remove warms stroke surfaces. `types.ts` adds the `remove` tool id; the tool registers after Spot Healing; the stage allows right-drag sizing for it; `app.ts` adds `remove-wires` to the Edit menu. Removed:
+
+```ts
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill-workspace', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', 'transform-warp', 'puppet-warp', '-', 'settings'] },
+const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'cloneStamp', 'healingBrush', 'spotHealing']);
+  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode; healFrom?: Pt } | null = null;
+    const patch = st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
+  beginRetouchStroke(kind: 'heal' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge', pt: Pt, shift: boolean): boolean {
+    p.history.begin({ heal: 'Spot Healing', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }[kind], p.snapshot());
+    const style = kind === 'heal' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
+    this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : undefined, healFrom };
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'directSelect' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'idle';
+  for (const tool of [moveTool, marqueeTool, lassoTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+  private static readonly brushTools = new Set(['brush', 'spotHealing', 'cloneStamp', 'smear']);
+```
+
 ## Layer style depth: contours, Global Light, stroke positions, several instances · _v0.87.0 (src/engine/style-extras.ts new, src/engine/types.ts, src/engine/renderer.ts, src/engine/index.ts, src/io/project-io.ts, src/ui/panels/layer-style-dialog.ts; tests/style-extras.test.ts, tests/effect-instances.test.ts, e2e/test_layer_style_depth.py and e2e/test_effect_instances.py new)
 
 `style-extras.ts`: `CONTOURS`, `contourLut`, `applyContour`, `isContour`, `GlobalLight`, `DEFAULT_GLOBAL_LIGHT`, `withGlobalLight`. `types.ts`: contour, `useGlobal` and `position` fields; `Doc.globalLight`; `EffectExtras`, `MULTI_EFFECTS`, `MAX_EXTRA`, `instances`; `effectsActive` and `effectsFromData` extended. `renderer.ts`: Global Light resolved where effects are read; `contoured`; Inside and Center strokes above; every instance drawn; `fxReach`. In the engine, `setGlobalLight` and `applyStyleAndLight`. `project-io.ts` saves the light. The dialog: the light at the top, contours, Use Global Light, Position, Instances rows, `assembled` and `previewFx`. Removed:
