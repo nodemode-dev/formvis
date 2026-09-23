@@ -2,6 +2,46 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layer style depth: contours, Global Light, stroke positions, several instances · _v0.87.0 (src/engine/style-extras.ts new, src/engine/types.ts, src/engine/renderer.ts, src/engine/index.ts, src/io/project-io.ts, src/ui/panels/layer-style-dialog.ts; tests/style-extras.test.ts, tests/effect-instances.test.ts, e2e/test_layer_style_depth.py and e2e/test_effect_instances.py new)
+
+`style-extras.ts`: `CONTOURS`, `contourLut`, `applyContour`, `isContour`, `GlobalLight`, `DEFAULT_GLOBAL_LIGHT`, `withGlobalLight`. `types.ts`: contour, `useGlobal` and `position` fields; `Doc.globalLight`; `EffectExtras`, `MULTI_EFFECTS`, `MAX_EXTRA`, `instances`; `effectsActive` and `effectsFromData` extended. `renderer.ts`: Global Light resolved where effects are read; `contoured`; Inside and Center strokes above; every instance drawn; `fxReach`. In the engine, `setGlobalLight` and `applyStyleAndLight`. `project-io.ts` saves the light. The dialog: the light at the top, contours, Use Global Light, Position, Instances rows, `assembled` and `previewFx`. Removed:
+
+```ts
+import { canvasBlend, compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
+      const fx = ov && 'effects' in ov ? ov.effects ?? null : layer.effects ?? null, styled = effectsActive(fx);
+    const reach = Math.max(fx.bevel.enabled ? (fx.bevel.size + fx.bevel.soften) * 2 : 0, d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) + 4;
+    const reach = Math.max(bv.enabled ? (bv.size + bv.soften) * 2 : 0, d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) * scale + 2;
+      const go = fx.gradientOverlay;
+      if (go.enabled && go.opacity > 0) {
+      if (co.enabled && co.opacity > 0) lay(kept((c) => { c.fillStyle = css(co.color); c.fillRect(0, 0, bw, bh); }), co.opacity * opacity, compositeOp(co.blend));
+      if (ig.enabled && ig.opacity > 0 && ig.size > 0) lay(castByInverse(ig.color, ig.size * scale, 0, 0), ig.opacity * opacity, compositeOp(ig.blend));
+      if (is.enabled && is.opacity > 0) {
+        lay(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale), is.opacity * opacity, compositeOp(is.blend));
+    if (d.enabled && d.opacity > 0) {
+      lay(shadowOf(d.color, d.size * scale, -Math.cos(rad) * d.distance * scale, Math.sin(rad) * d.distance * scale), d.opacity * opacity, compositeOp(d.blend));
+    if (g.enabled && g.opacity > 0 && g.size > 0) lay(shadowOf(g.color, g.size * scale, 0, 0), g.opacity * opacity, compositeOp(g.blend));
+    if (k.enabled && k.opacity > 0 && k.size * scale > 0) {
+export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[] }
+export interface DropShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number }
+export interface OuterGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number }
+export interface StrokeEffect { enabled: boolean; color: RGB; opacity: number; size: number }
+export interface InnerShadowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number }
+export interface InnerGlowEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; size: number }
+export interface BevelEffect { enabled: boolean; style: 'inner' | 'outer' | 'emboss' | 'pillow'; depth: number; down: boolean; size: number; soften: number; angle: number; altitude: number; highlight: RGB; highlightOpacity: number; highlightBlend: BlendMode; shadow: RGB; shadowOpacity: number; shadowBlend: BlendMode }
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect; patternOverlay: PatternOverlayEffect }
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled || fx.bevel.enabled || fx.satin.enabled || fx.patternOverlay.enabled);
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}) };
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(guides.length ? { guides } : {}) }, activeId: str(manifest.activeLayerID) };
+import { defaultEffects, effectsActive, type Engine, type LayerEffects, type RGB, allPatterns } from '../../engine';
+/** Layer > Layer Style: Drop Shadow, Outer Glow, an outside Stroke, Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay, Pattern Overlay and Bevel & Emboss for the
+ *  active pixel layer, shown live while the dialog is open. OK applies them as one undo step; Cancel leaves the layer as it was. */
+    check('Stroke (outside)', () => fx().stroke.enabled, (v) => { fx().stroke.enabled = v; });
+    this.engine.previewLayerEffects(layer.id, this.fx);
+    if (this.layerId) this.engine.previewLayerEffects(this.layerId, this.fx);
+    const id = this.layerId, fx = effectsActive(this.fx) ? structuredClone(this.fx) : null;
+    if (id) { this.engine.setLayerEffects(id, fx); this.onApplied?.(fx ? structuredClone(fx) : null); }
+```
+
 ## Replace Contents, smart filter masks, linked smart objects · _v0.86.0 (src/engine/types.ts, src/engine/index.ts, src/io/project-io.ts, src/app.ts; src/io/links.ts new; e2e/test_smart_objects_more.py and e2e/test_linked_smart_objects.py new)
 
 `types.ts`: `SmartLink`, and `SmartObject` gains `filterMask`, `filterMaskEnabled` and `link`. In the engine, `maskFilters` blends filtered and unfiltered renders through the mask in `renderSmart` and `renderSmartAsync`; `restackSoon` and `restack` take a mask change and an `extra` patch and keep every smart object field through re-renders; `replaceContents`, `addSmartFilterMask`, `deleteSmartFilterMask`, `toggleSmartFilterMask`, `placeLinked`, `updateLinkedContents` and `embedLinked`; Distort renders with the mask. `project-io.ts` saves the mask image and the link and reads them back checked; `.ref` drops the mask with the source. `links.ts`: sources (file handles kept in IndexedDB, or a one-time pick), `registerLinkSource`, `pickLinkSource`, `placeLinked`, `updateLinked`, `relink`. `app.ts`: the Replace Contents input, `pickOnce`, eight commands on the File and Layer menus and the context menu. Removed:

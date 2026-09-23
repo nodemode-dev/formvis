@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.87.0 · 2026-09-23
+
+### Added
+
+- Layer styles: up to ten each of Drop Shadow, Stroke, Inner Shadow, Color Overlay and Gradient Overlay; Stroke positions Outside, Inside and Center; contours on shadows, glows and Bevel & Emboss (eleven presets); the document's Global Light, used by shadows and bevels that ask for it.
+- 12 more tests (6 unit, 6 browser): 179 in all.
+
 ## 0.86.0 · 2026-09-23
 
 ### Added
