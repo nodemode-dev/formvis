@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Puppet Warp · _v0.81.0 (src/engine/puppet.ts new, src/engine/index.ts, src/extensions/tools/move.ts, src/app.ts; tests/puppet.test.ts and e2e/test_puppet.py new)
+
+`puppet.ts` is rigid moving least squares (Schaefer, McPhail and Warren, 2006), written for sonny: `mlsRigid` and `puppetImage` (the backward map on an 8 px grid, interpolated). In the engine, `puppetEdit` with `beginPuppetWarp`, `addPuppetPin`, `movePuppetPin`, `removePuppetPin`, `schedulePuppet`, `puppetRender`, `applyPuppetWarp`, `cancelPuppetWarp` and `dropPuppet`, and the preview in the layer overrides. The Move tool places, drags and Alt-removes pins (`pinDrag`, `puppetPin`), applies on Enter, cancels on Escape and draws the pins. `app.ts` adds `puppet-warp` to the Edit menu. Removed:
+
+```ts
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', 'transform-warp', '-', 'settings'] },
+    if (ctx.engine.meshWarpEdit) return;
+```
+
 ## Liquify workspace · _v0.80.0 (src/engine/liquify.ts and src/ui/panels/liquify-dialog.ts new, src/engine/index.ts, src/styles/dialogs.css, src/app.ts; tests/liquify.test.ts and e2e/test_liquify.py new)
 
 `liquify.ts` ports NodeMode's displacement field (`studio/pixel/liquify.ts`: `makeField`, `fieldAt`, `pushField`; nodemode_dev v8.73.1, the owner's build, MIT) and adds `dabField` (Reconstruct, Twirl both ways, Pucker, Bloat), `resetField`, `fieldIsZero` and `liquifyImage`, which resamples from the original pixels at any scale. `liquify-dialog.ts` is the workspace: a fixed 640 x 440 preview, the six tools, size, pressure, Restore All, OK and Cancel; its member is `liq`, since the base `Dialog` already has a `field` method. `Engine.applyLiquify` resamples the layer through the field in one step. `dialogs.css` styles the preview and the active tool. `app.ts` adds `filter-liquify` (Shift+Mod+X) to the Filter menu. Removed:

@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.81.0 · 2026-09-23
+
+### Added
+
+- Edit > Puppet Warp: click to place pins, drag them to bend the layer, Alt-click to remove one; Enter applies, Escape cancels.
+- 6 more tests (4 unit, 2 browser): 139 in all.
+
+### Known issues
+
+- Puppet Warp leaves a layer mask where it was rather than bending it with the pixels.
+
 ## 0.80.0 · 2026-09-23
 
 ### Added
