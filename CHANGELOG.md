@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.79.0 · 2026-09-23
+
+### Added
+
+- Edit > Warp: drag the points of a 4 x 4 grid to bend a layer smoothly; Enter applies, Escape cancels. The warp is ported from NodeMode's sonny studio.
+- 9 more tests (7 unit, 2 browser): 126 in all.
+
 ## 0.78.0 · 2026-09-23
 
 ### Added

@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Mesh warp and Edit > Warp · _v0.79.0 (src/engine/mesh-warp.ts new, src/engine/index.ts, src/extensions/tools/move.ts, src/app.ts; tests/mesh-warp.test.ts and e2e/test_warp.py new)
+
+`mesh-warp.ts` is ported from NodeMode's sonny studio (`studio/pixel/transform.ts`, nodemode_dev v8.73.1, the owner's build, MIT): `convexQuad`, `invBilinear`, `meshSurfacePoint`, a private `invSmooth`, `meshWarpImage` (plain or smooth, on ImageData instead of a tile store) and `uniformGrid`. In the engine, `meshWarpEdit` with `beginMeshWarp`, `moveMeshWarpPoint` (folding moves ignored, preview once per frame), `meshWarped`, `applyMeshWarp` (one Warp step, trimmed), `cancelMeshWarp` and `dropMeshWarp`, and the pending warp's preview in the layer overrides. The Move tool drags control points (`warpDrag`, `warpPoint`), applies on Enter, cancels on Escape and draws the grid as the surface's curves. `app.ts` adds `transform-warp` to the Edit menu. Removed:
+
+```ts
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
+```
+
 ## Snapping to guides and the grid · _v0.78.0 (src/engine/index.ts; e2e/test_snapping.py new)
 
 `snapMove` adds shown guides and the grid's nearest subdivision lines to its targets, and measures layers by `snapBox`: the visible pixels under a transform, the scan cached per raster version in `contentBoxes`, falling back to the whole bounds for an empty layer. Removed:
