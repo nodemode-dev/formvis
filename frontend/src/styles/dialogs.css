@@ -11,6 +11,9 @@
 .cv-field.is-off { opacity: 0.45; }
 .cv-row-actions { display: flex; gap: var(--space-2); align-items: center; min-width: 0; }
 .cv-row-actions .cv-input { flex: 1 1 auto; min-width: 0; }
+.cv-liquify-tools { flex-wrap: wrap; }
+.cv-liquify-tools .cv-btn.is-active { background: var(--accent-color); color: var(--text-on-accent); border-color: var(--accent-color); }
+.cv-liquify-canvas { display: block; width: 640px; max-width: 100%; aspect-ratio: 640 / 440; height: auto; background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: var(--radius-md); cursor: crosshair; touch-action: none; }
 .cv-input { height: var(--ctl-md); min-width: 0; padding: 0 var(--space-2); border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: var(--fs-12); }
 .cv-input:focus { outline: none; border-color: var(--accent-color); }
 .cv-note { color: var(--text-muted); font-size: var(--fs-11); }

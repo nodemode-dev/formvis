@@ -2,6 +2,7 @@ import { ErrorLog } from './ui/errors';
 import { FillDialog } from './ui/panels/fill-dialog';
 import { ExportDialog } from './ui/panels/export-dialog';
 import { GuideDialog } from './ui/panels/guide-dialog';
+import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery } from './io/recovery';
@@ -598,6 +599,7 @@ export function startApp(): void {
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
     guide: new GuideDialog(engine),
+    liquify: new LiquifyDialog(engine),
   };
 
   const has = (): boolean => !!engine.current;
@@ -652,6 +654,7 @@ export function startApp(): void {
     { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
     { id: 'fill-dialog', label: 'Fill...', keys: ['Shift+F5'], enabled: pixel, run: () => dialogs.fill.show() },
     { id: 'transform-warp', label: 'Warp', enabled: pixel, run: () => { engine.setTool('move'); engine.beginMeshWarp(); } },
+    { id: 'filter-liquify', label: 'Liquify...', keys: ['Shift+Mod+X'], enabled: pixel, run: () => dialogs.liquify.show() },
     { id: 'define-pattern', label: 'Define Pattern...', enabled: () => !!engine.current, run: () => void definePattern() },
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
     { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
@@ -794,7 +797,7 @@ export function startApp(): void {
     { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'invert', '-', 'canvas-size', 'trim', 'reveal-all', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
     { label: 'Layer', items: ['new-layer', 'new-folder', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'new-shape-path', 'shape-color', 'shape-style', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'select-subject', 'select-object', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', 'feather', 'border', 'smooth', '-', 'path-selection', 'delete-path'] },
-    { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), '-', 'remove-bg', 'remove-bg-lite'] },
+    { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), 'filter-liquify', '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-guides', 'toggle-grid', 'lock-guides', 'clear-guides', 'new-guide', '-', 'pixel-grid', 'transform-controls'] },
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'about'] },
   ];

@@ -36,6 +36,7 @@ import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
 import { sharpenSample } from './filters-more';
 import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
 import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
+import { liquifyImage, type LiquifyField } from './liquify';
 import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
@@ -2008,6 +2009,19 @@ export class Engine {
       rc.clearRect(rect.x, rect.y, rect.w, rect.h);
       rc.drawImage(out, rect.x, rect.y);
       rc.restore();
+    });
+  }
+
+  /** Filter > Liquify's OK: the active layer's pixels resampled through `field` (built over this layer's raster by
+   *  the Liquify dialog), within the selection's bounds when there is one, as one step. */
+  applyLiquify(layerId: ID, field: LiquifyField): void {
+    const p = this.current;
+    if (!p || p.activeId !== layerId) return;
+    this.regionEdit('Liquify', ({ raster, target, rect }) => {
+      if (target !== 'pixels') return;
+      const g = field.gw - 1, h = field.gh - 1;
+      if (g < Math.ceil(raster.width / field.cell) || h < Math.ceil(raster.height / field.cell)) return;
+      raster.ctx.putImageData(liquifyImage(raster.read(), field), 0, 0, rect.x, rect.y, rect.w, rect.h);
     });
   }
 
