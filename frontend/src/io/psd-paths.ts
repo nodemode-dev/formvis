@@ -1,4 +1,4 @@
-import type { NamedPath, PathSet, VectorPath } from '../engine/paths';
+import type { NamedPath, PathOp, PathSet, VectorPath } from '../engine/paths';
 
 /** The Paths panel in PSD files, which ag-psd does not handle. Photoshop keeps saved paths as image resources 2000 to
  *  2997 (named) and 1025 (the Work Path), each a run of 26-byte path records: a fill rule record, then for each
@@ -8,6 +8,8 @@ import type { NamedPath, PathSet, VectorPath } from '../engine/paths';
  *  reading picks them out of a file before ag-psd parses it. */
 
 const WORK_ID = 1025, FIRST = 2000, LAST = 2997;
+/** Photoshop's path operations by number, as ag-psd lists them. */
+const OPS: readonly PathOp[] = ['exclude', 'combine', 'subtract', 'intersect'];
 
 function fixed(v: number): number[] {
   const n = Math.round(Math.max(-127, Math.min(127, v)) * (1 << 24)) | 0;
@@ -20,8 +22,9 @@ export function pathRecords(vp: VectorPath, w: number, h: number): Uint8Array {
   const out: number[] = [...u16(6), ...new Array(24).fill(0), ...u16(8), ...new Array(24).fill(0)];
   for (const sp of vp.subpaths) {
     if (!sp.anchors.length) continue;
-    // length record: kind, knot count, combine (1), non-zero fill (2), then padding
-    out.push(...u16(sp.closed ? 0 : 3), ...u16(sp.anchors.length), ...u16(1), ...u16(2), ...new Array(18).fill(0));
+    // length record: kind, knot count, the operation (Photoshop numbers exclude 0, combine 1, subtract 2, intersect 3),
+    // non-zero fill (2), then padding
+    out.push(...u16(sp.closed ? 0 : 3), ...u16(sp.anchors.length), ...u16(OPS.indexOf(sp.op ?? 'combine')), ...u16(2), ...new Array(18).fill(0));
     for (const a of sp.anchors) {
       const cornered = a.inX === a.x && a.inY === a.y && a.outX === a.x && a.outY === a.y;
       const linked = !cornered && Math.abs((a.outX - a.x) * (a.inY - a.y) - (a.outY - a.y) * (a.inX - a.x)) < 1e-6;
@@ -37,7 +40,10 @@ export function pathFromRecords(b: Uint8Array, w: number, h: number): VectorPath
   const vp: VectorPath = { subpaths: [] };
   for (let o = 0; o + 26 <= b.length; o += 26) {
     const sel = dv.getUint16(o);
-    if (sel === 0 || sel === 3) vp.subpaths.push({ closed: sel === 0, anchors: [] });
+    if (sel === 0 || sel === 3) {
+      const op = OPS[dv.getInt16(o + 4)];
+      vp.subpaths.push({ closed: sel === 0, anchors: [], ...(op && op !== 'combine' ? { op } : {}) });
+    }
     else if (sel === 1 || sel === 2 || sel === 4 || sel === 5) {
       const sp = vp.subpaths[vp.subpaths.length - 1];
       if (!sp) continue;

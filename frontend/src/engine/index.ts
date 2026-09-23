@@ -1,5 +1,6 @@
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
-import { pathBounds, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
+import { fillVector, pathBounds, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
+export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
 import { Emitter } from './events';
 import type { Snapshot } from './history';
@@ -1055,7 +1056,7 @@ export class Engine {
     const x = Math.floor(b.x - pad), y = Math.floor(b.y - pad), w = Math.min(LIMITS.side, Math.ceil(b.x + b.w + pad) - x), h = Math.min(LIMITS.side, Math.ceil(b.y + b.h + pad) - y);
     const raster = new Raster(Math.max(1, w), Math.max(1, h)), c = raster.ctx, shape = tracePath(path);
     c.translate(-x, -y);
-    if (style.fill) { c.fillStyle = rgbCss(style.fill); c.fill(shape); }
+    if (style.fill) { c.fillStyle = rgbCss(style.fill); fillVector(c, path); }
     if (style.stroke && style.stroke.width > 0) {
       // Centred on the path, with round joins and caps so corners and open ends stay smooth.
       c.strokeStyle = rgbCss(style.stroke.color);
@@ -1246,14 +1247,13 @@ export class Engine {
   pathToSelection(): void {
     const p = this.current, vp = this.workPath, b = vp ? pathBounds(vp) : null;
     if (!p || !vp || !b) { this.notice('Draw a path with the Pen tool first.'); return; }
-    const shape = tracePath(vp);
-    const mask = SelectionMask.fromPath(p.doc.width, p.doc.height, b, (c) => c.fill(shape), true);
+    const mask = SelectionMask.fromPath(p.doc.width, p.doc.height, b, (c) => fillVector(c as CanvasRenderingContext2D, vp), true);
     if (!mask) { this.notice('The path lies outside the canvas.'); return; }
     this.applySelection(mask, 'replace', 'Make Selection');
   }
 
   /** Edit > Fill Path: the path's inside painted into the active layer in the foreground colour, within any selection. */
-  fillPath(): void { this.paintPath('Fill Path', (c, shape) => { c.fillStyle = rgbCss(this.fg); c.fill(shape); }); }
+  fillPath(): void { this.paintPath('Fill Path', (c, _shape, vp) => { c.fillStyle = rgbCss(this.fg); fillVector(c as CanvasRenderingContext2D, vp); }); }
 
   /** Edit > Stroke Path: the path traced in the foreground colour as wide as the brush, within any selection. */
   strokePath(): void {
@@ -1266,7 +1266,7 @@ export class Engine {
     });
   }
 
-  private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D) => void): void {
+  private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D, vp: VectorPath) => void): void {
     const vp = this.workPath;
     if (!vp || !pathBounds(vp)) { this.notice('Draw a path with the Pen tool first.'); return; }
     const shape = tracePath(vp);
@@ -1275,7 +1275,7 @@ export class Engine {
       const t = target === 'mask' ? l.mask?.placement ?? l.transform : l.transform;
       const s = createSurface(rect.w, rect.h), c = ctxOf(s);
       setMat(c, mul(translation(-rect.x, -rect.y), invert(placement(t, raster.width, raster.height))));
-      paint(c, shape);
+      paint(c, shape, vp);
       if (cover) {
         c.setTransform(1, 0, 0, 1, 0, 0);
         c.globalCompositeOperation = 'destination-in';

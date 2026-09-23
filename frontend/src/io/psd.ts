@@ -5,7 +5,7 @@ import {
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { windingArea } from '../engine/custom-shapes';
 import { addPathResources, readPathResources } from './psd-paths';
-import type { PathSet } from '../engine/paths';
+import type { PathSet, SubPath } from '../engine/paths';
 import { maskEdgeTone } from '../engine/distort';
 
 /** Layered PSD files, read and written with ag-psd (MIT). Pixel layers keep their position, opacity, blend mode and
@@ -230,7 +230,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         const sc = vs?.strokeEnabled && vs.content?.type === 'color' ? col(vs.content.color) : null;
         const stroke = sc ? { color: sc, width: vs?.lineWidth?.value ?? 1 } : null;
         if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
-        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine' && bp.operation !== 'subtract')) notes.push(`"${name}" combines shapes in ways sonny does not (intersect or exclude); its outline may differ once edited.`);
+        // Photoshop's path operations kept as sonny's (subtract outlines were also wound against the rest above).
+        path.subpaths.forEach((sp, i) => { const op = ops[i]; if (op === 'subtract' || op === 'intersect' || op === 'exclude') (sp as SubPath).op = op; });
       }
       const plc = pl.placedLayer;
       if (plc) {
@@ -351,7 +352,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
         const live = v.path.subpaths.filter((sp) => sp.anchors.length), areas = live.map((sp) => (sp.closed ? windingArea(sp.anchors) : 0));
         const main = areas.reduce((m, a) => (Math.abs(a) > Math.abs(m) ? a : m), 0);
         out.vectorMask = { paths: live.map((sp, i) => ({
-          open: !sp.closed, operation: sp.closed && main && Math.sign(areas[i]) === -Math.sign(main) ? 'subtract' as const : 'combine' as const, fillRule: 'non-zero' as const,
+          open: !sp.closed, operation: sp.op && sp.op !== 'combine' ? sp.op : sp.closed && main && Math.sign(areas[i]) === -Math.sign(main) ? 'subtract' as const : 'combine' as const, fillRule: 'non-zero' as const,
           knots: sp.anchors.map((a) => ({ linked: Math.abs((a.outX - a.x) * (a.inY - a.y) - (a.outY - a.y) * (a.inX - a.x)) < 1e-6 && (a.outX !== a.x || a.outY !== a.y), points: [a.inX + dx, a.inY + dy, a.x + dx, a.y + dy, a.outX + dx, a.outY + dy] })),
         })) };
         out.vectorFill = { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };

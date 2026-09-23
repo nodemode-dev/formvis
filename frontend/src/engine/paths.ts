@@ -3,10 +3,31 @@ import { uid, type ID, type Pt, type Rect } from './types';
 /** Vector paths drawn with the Pen tool, in document pixels: sub-paths of anchors, each holding the control handles of
  *  the cubic Bezier segments arriving at it (`in`) and leaving it (`out`). A corner's handles sit on the anchor. */
 export interface Anchor { x: number; y: number; inX: number; inY: number; outX: number; outY: number }
-export interface SubPath { anchors: Anchor[]; closed: boolean }
+/** How a subpath joins those before it, as Photoshop's path operations do; none is combine. */
+export type PathOp = 'combine' | 'subtract' | 'intersect' | 'exclude';
+export const PATH_OPS: readonly PathOp[] = ['combine', 'subtract', 'intersect', 'exclude'];
+export interface SubPath { anchors: Anchor[]; closed: boolean; op?: PathOp }
 export interface VectorPath { subpaths: SubPath[] }
 
 export const cornerAt = (p: Pt): Anchor => ({ x: p.x, y: p.y, inX: p.x, inY: p.y, outX: p.x, outY: p.y });
+
+/** Fills a path's inside on a fresh surface with `c`'s fill style, its path operations applied in order: subpaths that
+ *  combine are filled together by the non-zero rule (so outlines wound against each other still cut holes), and each
+ *  subtract, intersect or exclude subpath is applied to what is there so far (destination-out, destination-in, xor). */
+export function fillVector(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, vp: VectorPath): void {
+  const mode = c.globalCompositeOperation;
+  let run: SubPath[] = [];
+  const flush = (): void => { if (run.length) { c.globalCompositeOperation = mode; c.fill(tracePath({ subpaths: run }), 'nonzero'); run = []; } };
+  for (const sp of vp.subpaths) {
+    const op = sp.op ?? 'combine';
+    if (op === 'combine') { run.push(sp); continue; }
+    flush();
+    c.globalCompositeOperation = op === 'subtract' ? 'destination-out' : op === 'intersect' ? 'destination-in' : 'xor';
+    c.fill(tracePath({ subpaths: [sp] }), 'nonzero');
+  }
+  flush();
+  c.globalCompositeOperation = mode;
+}
 
 /** The path as a Path2D, each point mapped through `map` (document pixels by default, the screen for an overlay). */
 export function tracePath(vp: VectorPath, map: (p: Pt) => Pt = (p) => p): Path2D {
@@ -39,10 +60,11 @@ export function pathBounds(vp: VectorPath): Rect | null {
 const round3 = (v: number): number => Math.round(v * 1000) / 1000;
 
 /** The path as plain data for a project file, coordinates to a thousandth of a pixel; null when it has no points. */
-export function pathData(vp: VectorPath | null): { subpaths: Array<{ closed: boolean; anchors: number[][] }> } | null {
+export function pathData(vp: VectorPath | null): { subpaths: Array<{ closed: boolean; anchors: number[][]; op?: PathOp }> } | null {
   const subpaths = (vp?.subpaths ?? []).filter((s) => s.anchors.length).map((s) => ({
     closed: s.closed,
     anchors: s.anchors.map((a) => [a.x, a.y, a.inX, a.inY, a.outX, a.outY].map(round3)),
+    ...(s.op && s.op !== 'combine' ? { op: s.op } : {}),
   }));
   return subpaths.length ? { subpaths } : null;
 }
@@ -59,7 +81,8 @@ export function pathFrom(raw: unknown): VectorPath | null {
       const [x, y, inX, inY, outX, outY] = a as number[];
       anchors.push({ x, y, inX, inY, outX, outY });
     }
-    if (anchors.length) subpaths.push({ anchors, closed: (s as { closed?: unknown }).closed === true });
+    const op = (s as { op?: unknown }).op;
+    if (anchors.length) subpaths.push({ anchors, closed: (s as { closed?: unknown }).closed === true, ...(op === 'subtract' || op === 'intersect' || op === 'exclude' ? { op } : {}) });
   }
   return subpaths.length ? { subpaths } : null;
 }

@@ -1,4 +1,4 @@
-import { tracePath, type Anchor, type Pt, type SubPath, type VectorPath } from '../../engine';
+import { PATH_OPS, tracePath, type Anchor, type PathOp, type Pt, type SubPath, type VectorPath } from '../../engine';
 import type { Tool } from '../registry';
 
 /** The subpath chosen with Path Selection, as an index into the selected path's subpaths. */
@@ -31,12 +31,29 @@ export const pathSelectTool: Tool = {
   icon: () => 'cursor',
   hint: () => 'Click a path to select it whole · drag to move it · Alt-drag to copy · Delete removes it · arrows nudge',
   cursor: () => 'default',
+  options: (e) => [
+    { kind: 'title', text: 'Path Selection' },
+    {
+      kind: 'segment', label: 'Operation', choices: PATH_OPS.map((o) => ({ id: o, label: o[0].toUpperCase() + o.slice(1) })),
+      get: () => { const sp = chosen !== null ? e.workPath?.subpaths[chosen] : null; return sp?.op ?? 'combine'; },
+      set: (v: string) => {
+        const vp = e.workPath, sp = chosen !== null ? vp?.subpaths[chosen] : null;
+        if (!vp || !sp) { e.notice('Choose a path with the Path Selection tool first.'); return; }
+        e.beginPathEdit();
+        if (v === 'combine') delete sp.op; else sp.op = v as PathOp;
+        e.setWorkPath(vp);
+        e.endPathEdit();
+        e.emit('options', null);
+      },
+    },
+  ],
   down(ctx, p) {
     const vp = ctx.engine.workPath;
     if (p.button !== 0 || !vp) return;
     const hit = subpathAt(vp, p.doc, 5 / ctx.view().zoom);
     chosen = hit;
     drag = null;
+    ctx.engine.emit('options', null);
     if (hit === null) { ctx.engine.emit('overlay', null); return; }
     ctx.engine.beginPathEdit();
     // Alt-drag leaves the original where it was and moves a copy placed just above it.
