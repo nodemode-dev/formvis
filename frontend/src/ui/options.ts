@@ -29,6 +29,7 @@ export class OptionsBar {
     const node = el('<div class="cv-opt-group" hidden></div>');
     const sync: Array<() => void> = [];
     for (const spec of t.options?.(this.engine) ?? [{ kind: 'title', text: t.label } as OptionSpec]) {
+      const before = node.children.length;
       if (spec.kind === 'title') {
         const n = el('<span class="cv-opt-title"></span>');
         setText(n, spec.text);
@@ -114,6 +115,13 @@ export class OptionsBar {
         setText(q(n, '.cv-btn-label'), spec.label);
         n.addEventListener('click', () => spec.run());
         node.appendChild(n);
+      }
+      // A row that applies only sometimes (a shape kind's own settings) is built once like every row and shown or
+      // hidden in place, so the bar is never rebuilt.
+      const when = spec.when;
+      if (when) {
+        const added = Array.from(node.children).slice(before) as HTMLElement[];
+        sync.push(() => { const on = when(); for (const a of added) setHidden(a, !on); });
       }
     }
     return { node, sync };

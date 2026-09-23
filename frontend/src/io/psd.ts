@@ -3,6 +3,7 @@ import {
   Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS,
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
+import { windingArea } from '../engine/custom-shapes';
 import { maskEdgeTone } from '../engine/distort';
 
 /** Layered PSD files, read and written with ag-psd (MIT). Pixel layers keep their position, opacity, blend mode and
@@ -215,11 +216,18 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
           return null;
         };
         const path = { subpaths: vm.paths.map((bp) => ({ closed: !bp.open, anchors: bp.knots.map((k) => ({ inX: k.points[0], inY: k.points[1], x: k.points[2], y: k.points[3], outX: k.points[4], outY: k.points[5] })) })).filter((sp) => sp.anchors.length) };
+        // A subtract outline cuts a hole: wound against the combined ones, as the nonzero rule sonny fills by needs.
+        const ops = vm.paths.filter((bp) => bp.knots.length).map((bp) => bp.operation ?? 'combine');
+        const mainArea = path.subpaths.reduce((m, sp, i) => (ops[i] !== 'subtract' && sp.closed && Math.abs(windingArea(sp.anchors)) > Math.abs(m) ? windingArea(sp.anchors) : m), 0);
+        path.subpaths.forEach((sp, i) => {
+          if (ops[i] !== 'subtract' || !sp.closed || !mainArea || Math.sign(windingArea(sp.anchors)) !== Math.sign(mainArea)) return;
+          sp.anchors = sp.anchors.slice().reverse().map((a) => ({ x: a.x, y: a.y, inX: a.outX, inY: a.outY, outX: a.inX, outY: a.inY }));
+        });
         const fill = vs?.fillEnabled === false || vf?.type !== 'color' ? null : col(vf.color);
         const sc = vs?.strokeEnabled && vs.content?.type === 'color' ? col(vs.content.color) : null;
         const stroke = sc ? { color: sc, width: vs?.lineWidth?.value ?? 1 } : null;
         if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
-        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine')) notes.push(`"${name}" combines shapes in ways sonny does not; its outline may differ once edited.`);
+        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine' && bp.operation !== 'subtract')) notes.push(`"${name}" combines shapes in ways sonny does not (intersect or exclude); its outline may differ once edited.`);
       }
       const plc = pl.placedLayer;
       if (plc) {
@@ -329,8 +337,12 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false): P
       const moved = t.rotation === 0 && !t.flipX && !t.flipY && Math.abs(t.w - l.raster.width) < 1e-6 && Math.abs(t.h - l.raster.height) < 1e-6;
       if (moved) {
         const dx = t.x - v.origin.x, dy = t.y - v.origin.y, rgb = (c: { r: number; g: number; b: number }) => ({ r: c.r, g: c.g, b: c.b });
-        out.vectorMask = { paths: v.path.subpaths.filter((sp) => sp.anchors.length).map((sp) => ({
-          open: !sp.closed, operation: 'combine' as const, fillRule: 'non-zero' as const,
+        // sonny fills by the nonzero rule, so an outline wound against the largest one is a hole; Photoshop says so with
+        // the subtract operation.
+        const live = v.path.subpaths.filter((sp) => sp.anchors.length), areas = live.map((sp) => (sp.closed ? windingArea(sp.anchors) : 0));
+        const main = areas.reduce((m, a) => (Math.abs(a) > Math.abs(m) ? a : m), 0);
+        out.vectorMask = { paths: live.map((sp, i) => ({
+          open: !sp.closed, operation: sp.closed && main && Math.sign(areas[i]) === -Math.sign(main) ? 'subtract' as const : 'combine' as const, fillRule: 'non-zero' as const,
           knots: sp.anchors.map((a) => ({ linked: Math.abs((a.outX - a.x) * (a.inY - a.y) - (a.outY - a.y) * (a.inX - a.x)) < 1e-6 && (a.outX !== a.x || a.outY !== a.y), points: [a.inX + dx, a.inY + dy, a.x + dx, a.y + dy, a.outX + dx, a.outY + dy] })),
         })) };
         out.vectorFill = { type: 'color', color: rgb(v.fill ?? v.stroke?.color ?? { r: 0, g: 0, b: 0 }) };

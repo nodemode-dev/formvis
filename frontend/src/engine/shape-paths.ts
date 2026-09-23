@@ -1,4 +1,5 @@
 import { cornerAt, type VectorPath } from './paths';
+import { customShapePath } from './custom-shapes';
 import type { Pt, Rect } from './types';
 
 /** Parametric shapes for the Shape tool, ported from NodeMode's sonny studio (`studio/pixel/shapes.ts`, the owner's
@@ -6,9 +7,9 @@ import type { Pt, Rect } from './types';
  *  they become corner anchors of a closed `VectorPath`, so the shape stays an editable vector layer. Each generator
  *  is fitted to the dragged box, as Photoshop's Polygon and custom shapes are. Lines are arrows without heads. */
 
-export type PathShapeKind = 'polygon' | 'star' | 'line' | 'arrow' | 'heart';
-export interface PathShapeOptions { sides: number; starInset: number; weight: number; headLength: number; headWidth: number }
-export const DEFAULT_PATH_SHAPE: PathShapeOptions = { sides: 5, starInset: 50, weight: 4, headLength: 24, headWidth: 24 };
+export type PathShapeKind = 'polygon' | 'star' | 'line' | 'arrow' | 'heart' | 'custom';
+export interface PathShapeOptions { sides: number; starInset: number; weight: number; headLength: number; headWidth: number; custom: string }
+export const DEFAULT_PATH_SHAPE: PathShapeOptions = { sides: 5, starInset: 50, weight: 4, headLength: 24, headWidth: 24, custom: 'check' };
 
 /** Regular n-gon, vertex 0 at `rot` (radians, 0 is +x). */
 export function ngonPoints(cx: number, cy: number, r: number, n: number, rot = -Math.PI / 2): Pt[] {
@@ -49,8 +50,9 @@ function fit(pts: Pt[], box: Rect): Pt[] {
 
 const closed = (pts: Pt[]): VectorPath => ({ subpaths: [{ anchors: pts.map(cornerAt), closed: true }] });
 
-/** The closed path for a boxed shape (polygon, star, heart) fitted to `box`. */
-export function boxedShapePath(kind: 'polygon' | 'star' | 'heart', box: Rect, o: PathShapeOptions): VectorPath {
+/** The closed path for a boxed shape (polygon, star, heart, or a custom shape from the library) fitted to `box`. */
+export function boxedShapePath(kind: 'polygon' | 'star' | 'heart' | 'custom', box: Rect, o: PathShapeOptions): VectorPath {
+  if (kind === 'custom') return customShapePath(o.custom, box);
   const n = Math.max(3, Math.min(100, Math.round(o.sides)));
   const pts = kind === 'polygon' ? ngonPoints(0, 0, 1, n) : kind === 'star' ? starPoints(0, 0, 1, Math.max(0.01, 1 - Math.min(99, Math.max(1, o.starInset)) / 100), n) : heartPoints(0, 0, 1);
   return closed(fit(pts, box));

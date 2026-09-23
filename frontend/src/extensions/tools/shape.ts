@@ -1,12 +1,12 @@
-import { hexOf, type Pt } from '../../engine';
+import { CUSTOM_SHAPES, hexOf, type Pt } from '../../engine';
 import { boxedShapePath, linePath } from '../../engine/shape-paths';
 import { dashed, type Tool } from '../registry';
 import { dragRect } from './marquee';
 
 let draft: { anchor: Pt; point: Pt; shiftAtPress: boolean; altAtPress: boolean; square: boolean; center: boolean } | null = null;
 
-const NOUN: Record<string, string> = { rectangle: 'a rectangle', ellipse: 'an ellipse', polygon: 'a polygon', star: 'a star', heart: 'a heart', line: 'a line', arrow: 'an arrow' };
-const KINDS = ['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'heart'] as const;
+const NOUN: Record<string, string> = { rectangle: 'a rectangle', ellipse: 'an ellipse', polygon: 'a polygon', star: 'a star', heart: 'a heart', line: 'a line', arrow: 'an arrow', custom: 'a custom shape' };
+const KINDS = ['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'heart', 'custom'] as const;
 const lineLike = (k: string): boolean => k === 'line' || k === 'arrow';
 
 export const shapeTool: Tool = {
@@ -51,8 +51,22 @@ export const shapeTool: Tool = {
     if (!draft) return;
     const r = dragRect(draft.anchor, draft.point, draft.square, draft.center), v = ctx.view(), s = ctx.engine.shapeSettings;
     if (s.kind !== 'rectangle' && s.kind !== 'ellipse') {
-      const path = lineLike(s.kind) ? linePath(s.kind as 'line' | 'arrow', draft.anchor, snapped(draft), s) : boxedShapePath(s.kind as 'polygon' | 'star' | 'heart', r, s);
-      dashed(ctx, g, () => { const pts = path.subpaths[0].anchors.map((a) => v.toScreen(a)); pts.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y))); g.closePath(); });
+      const path = lineLike(s.kind) ? linePath(s.kind as 'line' | 'arrow', draft.anchor, snapped(draft), s) : boxedShapePath(s.kind as 'polygon' | 'star' | 'heart' | 'custom', r, s);
+      // Every outline, with its curves, so custom shapes' holes and rounded parts preview as they will be drawn.
+      dashed(ctx, g, () => {
+        for (const sp of path.subpaths) {
+          sp.anchors.forEach((a, i) => {
+            const q = v.toScreen(a);
+            if (!i) { g.moveTo(q.x, q.y); return; }
+            const prev = sp.anchors[i - 1], c1 = v.toScreen({ x: prev.outX, y: prev.outY }), c2 = v.toScreen({ x: a.inX, y: a.inY });
+            g.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, q.x, q.y);
+          });
+          if (sp.closed && sp.anchors.length) {
+            const last = sp.anchors[sp.anchors.length - 1], first = sp.anchors[0], c1 = v.toScreen({ x: last.outX, y: last.outY }), c2 = v.toScreen({ x: first.inX, y: first.inY }), q = v.toScreen(first);
+            g.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, q.x, q.y);
+          }
+        }
+      });
       return;
     }
     const a = v.toScreen({ x: r.x, y: r.y }), b = v.toScreen({ x: r.x + r.w, y: r.y + r.h });
@@ -68,11 +82,15 @@ export const shapeTool: Tool = {
     return [
       { kind: 'title', text: 'Shape' },
       { kind: 'segment', label: 'Shape', choices: KINDS.map((k) => ({ id: k, label: k[0].toUpperCase() + k.slice(1) })), get: () => s.kind, set: (v) => { s.kind = v as typeof s.kind; e.emit('options', null); e.emit('tool', null); } },
-      ...(s.kind === 'rectangle' ? [{ kind: 'range' as const, label: 'Corner radius', min: 0, max: 500, unit: 'px', get: () => s.cornerRadius, set: (v: number) => set({ cornerRadius: v }) }] : []),
-      ...(s.kind === 'polygon' || s.kind === 'star' ? [{ kind: 'range' as const, label: s.kind === 'star' ? 'Points' : 'Sides', min: 3, max: 100, get: () => s.sides, set: (v: number) => set({ sides: Math.round(v) }) }] : []),
-      ...(s.kind === 'star' ? [{ kind: 'range' as const, label: 'Indent', min: 1, max: 99, unit: '%', get: () => s.starInset, set: (v: number) => set({ starInset: v }) }] : []),
-      ...(lineLike(s.kind) ? [{ kind: 'range' as const, label: 'Weight', min: 1, max: 1000, unit: 'px', get: () => s.weight, set: (v: number) => set({ weight: v }) }] : []),
-      ...(s.kind === 'arrow' ? [{ kind: 'range' as const, label: 'Head length', min: 1, max: 1000, unit: 'px', get: () => s.headLength, set: (v: number) => set({ headLength: v }) }, { kind: 'range' as const, label: 'Head width', min: 1, max: 1000, unit: 'px', get: () => s.headWidth, set: (v: number) => set({ headWidth: v }) }] : []),
+      // Each kind's own settings: built once with the bar, shown while that kind is chosen.
+      { kind: 'range', label: 'Corner radius', min: 0, max: 500, unit: 'px', get: () => s.cornerRadius, set: (v: number) => set({ cornerRadius: v }), when: () => s.kind === 'rectangle' },
+      { kind: 'select', label: 'Custom shape', choices: CUSTOM_SHAPES.map((c) => ({ id: c.id, label: c.label })), get: () => s.custom, set: (v: string) => set({ custom: v }), when: () => s.kind === 'custom' },
+      { kind: 'range', label: 'Sides', min: 3, max: 100, get: () => s.sides, set: (v: number) => set({ sides: Math.round(v) }), when: () => s.kind === 'polygon' },
+      { kind: 'range', label: 'Points', min: 3, max: 100, get: () => s.sides, set: (v: number) => set({ sides: Math.round(v) }), when: () => s.kind === 'star' },
+      { kind: 'range', label: 'Indent', min: 1, max: 99, unit: '%', get: () => s.starInset, set: (v: number) => set({ starInset: v }), when: () => s.kind === 'star' },
+      { kind: 'range', label: 'Weight', min: 1, max: 1000, unit: 'px', get: () => s.weight, set: (v: number) => set({ weight: v }), when: () => lineLike(s.kind) },
+      { kind: 'range', label: 'Head length', min: 1, max: 1000, unit: 'px', get: () => s.headLength, set: (v: number) => set({ headLength: v }), when: () => s.kind === 'arrow' },
+      { kind: 'range', label: 'Head width', min: 1, max: 1000, unit: 'px', get: () => s.headWidth, set: (v: number) => set({ headWidth: v }), when: () => s.kind === 'arrow' },
       { kind: 'readout', label: 'Color', get: () => hexOf(e.fg) },
     ];
   },

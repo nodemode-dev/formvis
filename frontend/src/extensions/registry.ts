@@ -5,7 +5,7 @@ export interface ViewInfo { zoom: number; dpr: number; width: number; height: nu
 export interface Paint { accent: string; handle: string; antsA: string; antsB: string }
 export interface ToolContext { engine: Engine; view(): ViewInfo; paint(): Paint; antsPhase(): number }
 
-export type OptionSpec =
+export type OptionSpec = (
   | { kind: 'title'; text: string }
   | { kind: 'segment'; label?: string; choices: ReadonlyArray<{ id: string; label: string }>; get: () => string; set: (id: string) => void }
   | { kind: 'range'; label: string; min: number; max: number; step?: number; unit?: string; get: () => number; set: (v: number) => void }
@@ -13,7 +13,11 @@ export type OptionSpec =
   | { kind: 'select'; label: string; choices: ReadonlyArray<{ id: string; label: string }>; get: () => string; set: (id: string) => void; live?: () => ReadonlyArray<{ id: string; label: string }> }
   | { kind: 'readout'; label: string; get: () => string }
   | { kind: 'number'; label: string; min?: number; max?: number; step?: number; unit?: string; get: () => number | null; set: (v: number) => void }
-  | { kind: 'button'; label: string; icon?: string; run: () => void };
+  | { kind: 'button'; label: string; icon?: string; run: () => void }
+) & {
+  /** Shown only while this holds (checked on each sync); the row is built once either way. */
+  when?: () => boolean;
+};
 
 export interface Tool {
   id: ToolId;
