@@ -1,5 +1,7 @@
+import { SPACES, type SpaceId } from '../engine/icc';
+
 export type ExportFormat = 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf';
-export interface ExportSettings { format: ExportFormat; quality: number; scale: number }
+export interface ExportSettings { format: ExportFormat; quality: number; scale: number; profile?: SpaceId }
 export interface ExportPreset extends ExportSettings { id: string; name: string; builtin: boolean }
 
 export const EXPORT_FORMATS: ReadonlyArray<readonly [ExportFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['webp', 'WebP'], ['avif', 'AVIF'], ['tiff', 'TIFF'], ['pdf', 'PDF']];
@@ -22,6 +24,7 @@ export const clampSettings = (s: ExportSettings): ExportSettings => ({
   format: EXPORT_FORMATS.some(([f]) => f === s.format) ? s.format : 'png',
   quality: Math.round(Math.min(100, Math.max(1, Number.isFinite(s.quality) ? s.quality : 90))),
   scale: Math.round(Math.min(1000, Math.max(1, Number.isFinite(s.scale) ? s.scale : 100))),
+  ...(s.profile && s.profile in SPACES && s.profile !== 'srgb' ? { profile: s.profile } : {}),
 });
 
 /** Saved presets read back from storage: well-formed entries only, values clamped, never marked built-in. */
@@ -32,7 +35,7 @@ export function presetsFromStorage(raw: string | null): ExportPreset[] {
   return v.flatMap((r) => {
     const o = r && typeof r === 'object' ? (r as Record<string, unknown>) : null;
     if (!o || typeof o.id !== 'string' || typeof o.name !== 'string' || !o.name.trim()) return [];
-    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale) });
+    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale), profile: o.profile as SpaceId | undefined });
     return [{ id: o.id, name: o.name.trim().slice(0, 60), ...s, builtin: false }];
   });
 }

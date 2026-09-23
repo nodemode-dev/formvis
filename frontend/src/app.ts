@@ -8,6 +8,8 @@ import { ContentFillDialog } from './ui/panels/content-fill-dialog';
 import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
 import { pickLinkSource, placeLinked, relink, updateLinked } from './io/links';
 import { importAbr, loadImportedBrushes } from './io/brush-library';
+import { SPACES, convertPixels, iccProfile } from './engine/icc';
+import { embedJpeg, embedPng } from './io/embed-icc';
 import { ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery } from './io/recovery';
@@ -325,8 +327,15 @@ export function startApp(): void {
         x.imageSmoothingQuality = 'high';
         x.drawImage(bmp, 0, 0, z.w, z.h);
         bmp.close();
-        const blob = ENGINE_FORMATS.has(s.format) ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf', s.quality, p.doc.resolution ?? 72)
-          : await toBlob(c, s.format === 'png' ? 'image/png' : s.format === 'jpg' ? 'image/jpeg' : 'image/webp', s.quality / 100);
+        // Colour: sonny works in sRGB; another profile converts the pixels, and every format but PDF carries the
+        // profile (WebP through the engine when it is not sRGB, as the browser's WebP encoder cannot embed one).
+        const space = s.profile ?? 'srgb', icc = iccProfile(space);
+        if (space !== 'srgb') { const img = x.getImageData(0, 0, z.w, z.h); convertPixels(img.data, 'srgb', space); x.putImageData(img, 0, 0); }
+        const viaEngine = ENGINE_FORMATS.has(s.format) || (s.format === 'webp' && space !== 'srgb');
+        const blob = viaEngine ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, s.format === 'pdf' || (s.format === 'webp' && space === 'srgb') ? null : icc)
+          : s.format === 'png' ? await embedPng(await toBlob(c, 'image/png'), icc, SPACES[space].label)
+          : s.format === 'jpg' ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), icc)
+          : await toBlob(c, 'image/webp', s.quality / 100);
         await deliver(blob, exportName(p.name, s));
       } catch (err) { toast(message(err), 'error'); }
     });

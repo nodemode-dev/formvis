@@ -5,7 +5,7 @@ import subprocess
 import tempfile
 from pathlib import Path
 
-from PIL import Image, ImageOps
+from PIL import Image, ImageCms, ImageOps
 
 from app.core import config
 
@@ -79,11 +79,19 @@ def decode_to_png(data: bytes, filename: str) -> tuple[bytes, int, int]:
 ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif"}
 
 
-def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72) -> bytes:
+def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | None = None) -> bytes:
     """Re-encodes a PNG from the editor: TIFF (LZW, alpha kept), PDF (one page at `dpi`, flattened on white, since PDF
-    images carry no alpha here), WebP or AVIF (at `quality`, alpha kept)."""
+    images carry no alpha here), WebP or AVIF (at `quality`, alpha kept). `icc`, an ICC profile the pixels are already
+    in, is embedded in TIFF, WebP and AVIF; PDF carries none."""
     if fmt not in ENCODINGS:
         raise DecodeError(f"Cannot export as {fmt}.")
+    if icc is not None:
+        if len(icc) > 1_000_000:
+            raise DecodeError("The colour profile is too large.")
+        try:
+            ImageCms.ImageCmsProfile(io.BytesIO(icc))
+        except Exception as exc:
+            raise DecodeError(f"The colour profile could not be read: {exc}") from exc
     try:
         with Image.open(io.BytesIO(png)) as image:
             image.load()
@@ -95,14 +103,15 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72) -> bytes:
         raise DecodeError(f"The image could not be read: {exc}") from exc
     out = io.BytesIO()
     q = max(1, min(100, int(quality)))
+    extra = {"icc_profile": icc} if icc else {}
     if fmt == "tiff":
-        rgba.save(out, "TIFF", compression="tiff_lzw", dpi=(dpi, dpi))
+        rgba.save(out, "TIFF", compression="tiff_lzw", dpi=(dpi, dpi), **extra)
     elif fmt == "pdf":
         flat = Image.new("RGB", rgba.size, (255, 255, 255))
         flat.paste(rgba, mask=rgba.getchannel("A"))
         flat.save(out, "PDF", resolution=float(max(1, dpi)))
     elif fmt == "webp":
-        rgba.save(out, "WEBP", quality=q, method=4)
+        rgba.save(out, "WEBP", quality=q, method=4, **extra)
     else:
-        rgba.save(out, "AVIF", quality=q)
+        rgba.save(out, "AVIF", quality=q, **extra)
     return out.getvalue()

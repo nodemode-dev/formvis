@@ -101,6 +101,19 @@ def test_projects_save_as_sny_and_older_sonny_files_still_work(client):
     assert client.post("/api/io/export", files={"file": ("f", b"1", "application/zip")}, data={"name": "x.sny"}).status_code == 200
 
 
+def test_encode_embeds_an_icc_profile(client):
+    import io as _io
+    from PIL import Image, ImageCms
+
+    icc = ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")).tobytes()
+    for fmt in ("tiff", "webp", "avif"):
+        r = client.post("/api/io/encode", data={"format": fmt, "quality": "90"}, files={"file": ("a.png", png_bytes(), "image/png"), "icc": ("p.icc", icc, "application/vnd.iccprofile")})
+        assert r.status_code == 200, (fmt, r.text)
+        assert Image.open(_io.BytesIO(r.content)).info.get("icc_profile") == icc, fmt
+    r = client.post("/api/io/encode", data={"format": "tiff"}, files={"file": ("a.png", png_bytes(), "image/png"), "icc": ("p.icc", b"not a profile", "application/vnd.iccprofile")})
+    assert r.status_code == 415
+
+
 def test_project_validation_refuses_bad_manifests(client):
     cases = [
         {"format": "other", "version": 1, "width": 8, "height": 6, "layers": []},

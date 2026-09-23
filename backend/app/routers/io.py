@@ -12,9 +12,9 @@ EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|sny|so
 
 
 @router.post("/encode")
-def encode(file: UploadFile = File(...), format: str = Form(...), quality: int = Form(90), dpi: int = Form(72)) -> Response:
+def encode(file: UploadFile = File(...), format: str = Form(...), quality: int = Form(90), dpi: int = Form(72), icc: UploadFile | None = File(default=None)) -> Response:
     try:
-        data = imaging.encode(file.file.read(), format.lower(), quality, dpi)
+        data = imaging.encode(file.file.read(), format.lower(), quality, dpi, icc.file.read() if icc else None)
     except imaging.DecodeError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     return Response(data, media_type=imaging.ENCODINGS[format.lower()])
