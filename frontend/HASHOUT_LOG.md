@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Gradient Editor, noise gradients, History fill · _v0.85.0 (src/engine/gradients.ts, src/engine/history.ts, src/engine/index.ts, src/extensions/tools/gradient.ts, src/ui/panels/fill-dialog.ts, src/styles/dialogs.css, src/app.ts; src/ui/panels/gradient-editor.ts new; tests/gradient-editor.test.ts and e2e/test_history_fill_gradient_editor.py new)
+
+`gradients.ts`: `customGradients`, `setCustomGradients`, `allGradients`, `gradientsFromJson` and `noiseStops`; `presetById` looks in saved gradients first. `history.ts`: `origin()`. In the engine, `uiHooks`, `historySource` and a History branch in `fillWith`. `gradient-editor.ts` is the editor with `loadSavedGradients`; the Gradient tool lists every gradient and has Edit; the Fill dialog has History; `dialogs.css` styles the bar and strip; `app.ts` registers the editor, loads saved gradients and sets the hook. Removed:
+
+```ts
+export const presetById = (id: string): GradientPreset => GRADIENT_PRESETS.find((p) => p.id === id) ?? GRADIENT_PRESETS[0];
+  fillWith(contents: { color: RGB } | { patternId: ID }, blend: BlendMode, opacity: number, preserveTransparency: boolean): void {
+      if (pat) { const cp = sc.createPattern(pat.surface, 'repeat'); if (cp) { cp.setTransform(new DOMMatrix().translate(-rect.x, -rect.y)); sc.fillStyle = cp; } }
+      else if ('color' in contents) sc.fillStyle = rgbCss(contents.color);
+      sc.fillRect(0, 0, rect.w, rect.h);
+import { GRADIENT_PRESETS, GRADIENT_TYPES, type GradientType } from '../../engine/gradients';
+      { kind: 'select', label: 'Colors', choices: GRADIENT_PRESETS.map((p) => ({ id: p.id, label: p.label })), get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v; }) },
+type Contents = 'fg' | 'bg' | 'color' | 'black' | 'gray' | 'white' | 'pattern' | 'contentAware';
+  ['fg', 'Foreground Color'], ['bg', 'Background Color'], ['color', 'Color...'], ['contentAware', 'Content-Aware'], ['pattern', 'Pattern'], ['black', 'Black'], ['gray', '50% Gray'], ['white', 'White'],
+    e.fillWith(color ? { color: { ...color } } : { patternId: this.patternId }, this.blend, this.opacity / 100, this.preserve);
+```
+
 ## Content-Aware Fill workspace · _v0.84.0 (src/engine/retouch.ts, src/engine/index.ts, src/styles/dialogs.css, src/app.ts; src/ui/panels/content-fill-dialog.ts new; tests/content-fill-sampling.test.ts and e2e/test_content_fill_workspace.py new)
 
 `contentFill` takes an optional sampling mask: sources must lie wholly inside it (a second summed-area table) and the region grows to include it; without one it is unchanged. `Engine.contentAwareFillWith` maps a document-space sampling area into the layer's pixels and outputs to the current layer, a new layer of only the filled pixels (upright, unscaled layers; others go to a duplicate) or a duplicate, as one step. `content-fill-dialog.ts` is the workspace (Auto, Rectangular or painted Custom sampling, Show Result, Output To). `dialogs.css` adds `.cv-fill-canvas` to the shared preview rule. `app.ts` adds `content-fill-workspace` and relabels the one-click fill Quick Content-Aware Fill. Removed:

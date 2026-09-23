@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.85.0 · 2026-09-23
+
+### Added
+
+- Gradient Editor (Gradient tool > Edit): add, move and remove colour stops with their colour, opacity and location; Noise gradients with Roughness and Randomize; save gradients by name.
+- Edit > Fill > History: fill with the layer as it was at the oldest kept history step.
+- 5 more tests (3 unit, 2 browser): 163 in all.
+
 ## 0.84.0 · 2026-09-23
 
 ### Added
