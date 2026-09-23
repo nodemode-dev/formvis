@@ -199,3 +199,25 @@ export function wandMask(rgba: Uint8ClampedArray, width: number, height: number,
   }
   return out;
 }
+
+/** Anti-alias for a hard selection (the Magic Wand's option): each pixel on the boundary, where the mask differs from
+ *  a 4-neighbour, takes the mean of its 3 by 3 neighbourhood, so edges step through partial values while the inside
+ *  stays fully selected and the outside empty. A new mask; the input is untouched. */
+export function antialiasMask(mask: Uint8Array, width: number, height: number): Uint8Array {
+  const out = mask.slice();
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = y * width + x, v = mask[i];
+      const edge = (x > 0 && mask[i - 1] !== v) || (x < width - 1 && mask[i + 1] !== v) || (y > 0 && mask[i - width] !== v) || (y < height - 1 && mask[i + width] !== v);
+      if (!edge) continue;
+      let sum = 0, n = 0;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= width || yy >= height) continue;
+        sum += mask[yy * width + xx]; n++;
+      }
+      out[i] = Math.round(sum / n);
+    }
+  }
+  return out;
+}

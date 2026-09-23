@@ -13,7 +13,7 @@ import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree'
 import { dragged, following, rounded, type DragMode } from './transform';
 import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped, imageCorners, homography, project, inverse3 } from './distort';
 import { withResolution } from './dpi';
-import { wandMask } from './kernels';
+import { antialiasMask, wandMask } from './kernels';
 import { Project } from './project';
 import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
 import { patternById } from './patterns';
@@ -136,7 +136,7 @@ export class Engine {
   selectionMode: SelectionMode = 'replace';
   marqueeKind: 'rectangle' | 'ellipse' = 'rectangle';
   lassoKind: 'freehand' | 'polygonal' = 'freehand';
-  wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0 };
+  wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0, antialias: true };
   /** smooth Lasso and elliptical Marquee edges (rectangles snap to whole pixels and
    *  the Magic Wand's edges follow pixels exactly, so neither changes). On by default. */
   selectionAntialiased = true;
@@ -2634,7 +2634,8 @@ export class Engine {
       c.drawImage(l.raster.canvas, 0, 0);
     }
     const data = ctxOf(surface).getImageData(0, 0, W, H).data;
-    const mask = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous, this.wand.sampleSize);
+    const hard = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous, this.wand.sampleSize);
+    const mask = this.wand.antialias ? antialiasMask(hard, W, H) : hard;
     this.applySelection(SelectionMask.cropped(0, 0, W, H, mask), mode, 'Magic Wand');
   }
 
