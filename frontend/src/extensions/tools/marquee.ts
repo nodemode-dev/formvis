@@ -1,4 +1,4 @@
-import { SelectionMask, type Pt, type Rect, type SelectionMode } from '../../engine';
+import { SelectionMask, type Engine, type Pt, type Rect, type SelectionMode } from '../../engine';
 import { dashed, type Tool, type ToolContext, type ToolPointer } from '../registry';
 import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
@@ -58,6 +58,18 @@ export function dragRect(a: Pt, b: Pt, square: boolean, center: boolean): Rect {
 
 const inside = (ctx: ToolContext, p: ToolPointer): boolean => (ctx.engine.current?.selection?.valueAt(p.doc.x, p.doc.y) ?? 0) >= 128;
 
+/** The marquee's rectangle for its Style, as Photoshop's options bar sets it: as dragged (Normal); held to the width to
+ *  height ratio, growing from the press or, with Alt, from its centre (Fixed Ratio); or the set size placed at the
+ *  pointer, so dragging moves it (Fixed Size). */
+function styledRect(e: Engine, d: { anchor: Pt; point: Pt; square: boolean; center: boolean }): Rect {
+  if (e.marqueeStyle === 'size') return { x: Math.round(d.point.x), y: Math.round(d.point.y), w: Math.max(1, Math.round(e.marqueeSize.w)), h: Math.max(1, Math.round(e.marqueeSize.h)) };
+  if (e.marqueeStyle !== 'ratio') return dragRect(d.anchor, d.point, d.square, d.center);
+  const k = Math.max(0.001, e.marqueeRatio.h) / Math.max(0.001, e.marqueeRatio.w), dx = d.point.x - d.anchor.x, dy = d.point.y - d.anchor.y;
+  const w = Math.max(Math.abs(dx), Math.abs(dy) / k), h = w * k;
+  if (d.center) return { x: Math.round(d.anchor.x - w), y: Math.round(d.anchor.y - h), w: Math.round(2 * w), h: Math.round(2 * h) };
+  return { x: Math.round(dx >= 0 ? d.anchor.x : d.anchor.x - w), y: Math.round(dy >= 0 ? d.anchor.y : d.anchor.y - h), w: Math.round(w), h: Math.round(h) };
+}
+
 export const marqueeTool: Tool = {
   id: 'marquee', label: 'Marquee', key: 'M', order: 20,
   icon: (e) => (e.marqueeKind === 'ellipse' ? 'ellipseSelect' : 'marquee'),
@@ -84,15 +96,16 @@ export const marqueeTool: Tool = {
     draft = null;
     const doc = e.current?.doc;
     if (!d || !doc) return;
-    const r = dragRect(d.anchor, d.point, d.square, d.center);
+    const r = styledRect(e, d);
     if (r.w < 1 || r.h < 1) { if (d.mode === 'replace') e.deselect(); else e.emit('overlay', null); return; }
     const ellipse = e.marqueeKind === 'ellipse';
-    const mask = SelectionMask.fromPath(doc.width, doc.height, r, (c) => {
+    const hard = SelectionMask.fromPath(doc.width, doc.height, r, (c) => {
       c.beginPath();
       if (ellipse) c.ellipse(r.x + r.w / 2, r.y + r.h / 2, r.w / 2, r.h / 2, 0, 0, Math.PI * 2);
       else c.rect(r.x, r.y, r.w, r.h);
       c.fill();
     }, e.selectionAntialiased);
+    const mask = hard && e.marqueeFeather > 0 ? e.featherMask(hard, e.marqueeFeather) : hard;
     e.applySelection(mask, d.mode, ellipse ? 'Elliptical Marquee' : 'Rectangular Marquee');
   },
   cancel(ctx) {
@@ -103,7 +116,7 @@ export const marqueeTool: Tool = {
   },
   overlay(ctx, g) {
     if (!draft) return;
-    const r = dragRect(draft.anchor, draft.point, draft.square, draft.center);
+    const r = styledRect(ctx.engine, draft);
     const v = ctx.view();
     const a = v.toScreen({ x: r.x, y: r.y }), b = v.toScreen({ x: r.x + r.w, y: r.y + r.h });
     const ellipse = ctx.engine.marqueeKind === 'ellipse';
@@ -115,7 +128,13 @@ export const marqueeTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Marquee' },
     { kind: 'segment', label: 'Shape', choices: [{ id: 'rectangle', label: 'Rectangle' }, { id: 'ellipse', label: 'Ellipse' }], get: () => e.marqueeKind, set: (v) => e.update({ marqueeKind: v as 'rectangle' | 'ellipse' }) },
-    { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
+    { kind: 'range', label: 'Feather', min: 0, max: 250, unit: 'px', get: () => e.marqueeFeather, set: (v: number) => { e.marqueeFeather = Math.max(0, Math.min(250, v)); e.emit('options', null); } },
+    { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); }, when: () => e.marqueeKind === 'ellipse' },
+    { kind: 'select', label: 'Style', choices: [{ id: 'normal', label: 'Normal' }, { id: 'ratio', label: 'Fixed Ratio' }, { id: 'size', label: 'Fixed Size' }], get: () => e.marqueeStyle, set: (v: string) => { e.marqueeStyle = v === 'ratio' || v === 'size' ? v : 'normal'; e.emit('options', null); } },
+    { kind: 'number', label: 'Width', min: 0.01, max: 1000, get: () => e.marqueeRatio.w, set: (v: number) => { e.marqueeRatio = { ...e.marqueeRatio, w: Math.max(0.01, v) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'ratio' },
+    { kind: 'number', label: 'Height', min: 0.01, max: 1000, get: () => e.marqueeRatio.h, set: (v: number) => { e.marqueeRatio = { ...e.marqueeRatio, h: Math.max(0.01, v) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'ratio' },
+    { kind: 'number', label: 'Width', min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.w, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, w: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
+    { kind: 'number', label: 'Height', min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.h, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, h: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
     modeSegment(e),
   ],
 };

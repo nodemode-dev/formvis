@@ -51,7 +51,8 @@ def test_each_shape_kind_shows_its_own_options(page):
     # unreachable before 0.94.0, when only the startup kind's rows existed).
     page.evaluate("(() => { const e = window.sonny.engine; e.newDocument(100, 100, 'O', 'transparent'); e.setTool('shape'); })()")
     bar = page.locator(".cv-opt-group:not([hidden])")
-    shown = lambda: page.evaluate("[...document.querySelectorAll('.cv-opt-group:not([hidden]) .cv-opt:not([hidden])')].map((x) => (x.querySelector('span') || x).textContent.trim()).filter(Boolean)")
+    # rows actually on screen (a row can lack the hidden attribute's effect if CSS overrides it, as it once did)
+    shown = lambda: page.evaluate("[...document.querySelectorAll('.cv-opt-group:not([hidden]) .cv-opt')].filter((x) => x.offsetParent !== null && getComputedStyle(x).display !== 'none').map((x) => (x.querySelector('span') || x).textContent.trim()).filter(Boolean)")
     expect = {"Rectangle": ["Corner radius"], "Polygon": ["Sides"], "Star": ["Points", "Indent"], "Line": ["Weight"], "Arrow": ["Weight", "Head length", "Head width"], "Custom": ["Custom shape"], "Heart": []}
     kind_rows = {"Corner radius", "Sides", "Points", "Indent", "Weight", "Head length", "Head width", "Custom shape"}
     for kind, rows in expect.items():

@@ -53,6 +53,8 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-opt-group { display: flex; align-items: center; gap: var(--space-4); flex: none; }
 .cv-opt-group > * { flex: none; }
 .cv-opt-group[hidden] { display: none; }
+/* Rows shown only sometimes (a `when` condition) are hidden by attribute; the rows' own display must not override it. */
+.cv-options [hidden] { display: none; }
 .cv-opt-title { font-size: var(--fs-12); font-weight: 600; color: var(--text-primary); }
 .cv-opt { display: inline-flex; align-items: center; gap: var(--space-2); color: var(--text-muted); font-size: var(--fs-11); }
 .cv-opt input[type="range"] { width: 104px; accent-color: var(--accent-color); }

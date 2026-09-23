@@ -135,6 +135,12 @@ export class Engine {
   bg: RGB = { r: 255, g: 255, b: 255 };
   selectionMode: SelectionMode = 'replace';
   marqueeKind: 'rectangle' | 'ellipse' = 'rectangle';
+  /** The Marquee's Feather (pixels) and Style, as Photoshop's options bar has them: Normal, Fixed Ratio (width to
+   *  height) or Fixed Size (pixels). */
+  marqueeFeather = 0;
+  marqueeStyle: 'normal' | 'ratio' | 'size' = 'normal';
+  marqueeRatio = { w: 1, h: 1 };
+  marqueeSize = { w: 64, h: 64 };
   lassoKind: 'freehand' | 'polygonal' = 'freehand';
   wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0, antialias: true };
   /** smooth Lasso and elliptical Marquee edges (rectangles snap to whole pixels and
@@ -2292,6 +2298,22 @@ export class Engine {
     }, opts.region);
   }
 
+  /** A mask feathered as Select > Modify > Feather feathers: a Gaussian of half the radius over its values, on the
+   *  current document. Masks are trimmed to their pixels, so the blur runs over a region grown by its reach, clipped to
+   *  the canvas. Used by Fill Path and by the Marquee and Lasso's Feather. The input is untouched. */
+  featherMask(mask: SelectionMask, radius: number): SelectionMask | null {
+    const p = this.current, f = Math.max(0, Math.min(250, radius));
+    if (!p || !(f > 0)) return mask;
+    const pad = Math.ceil(f * 1.5) + 2;
+    const region = intersectRect({ x: mask.x - pad, y: mask.y - pad, w: mask.w + 2 * pad, h: mask.h + 2 * pad }, { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
+    if (!region) return mask;
+    const img = new ImageData(region.w, region.h);
+    for (let j = 0; j < region.h; j++) for (let i = 0; i < region.w; i++) { const k = (j * region.w + i) * 4; img.data[k] = img.data[k + 1] = img.data[k + 2] = 255; img.data[k + 3] = mask.valueAt(region.x + i, region.y + j); }
+    const blurred = gaussianBlur(img, f / 2), out = new Uint8Array(region.w * region.h);
+    for (let i = 0; i < out.length; i++) out[i] = blurred.data[i * 4 + 3];
+    return SelectionMask.cropped(region.x, region.y, region.w, region.h, out);
+  }
+
   /** Fill Path with its settings, as Photoshop's dialog has them: the path's inside (its operations applied),
    *  anti-aliased or not and feathered by `feather` pixels, within any selection, filled as Edit > Fill fills
    *  (contents, mode, opacity, Preserve Transparency), as one Fill Path step. */
@@ -2300,19 +2322,7 @@ export class Engine {
     if (!p || !vp || !b) { this.notice('Draw a path with the Pen tool first.'); return; }
     const W = p.doc.width, H = p.doc.height, f = Math.max(0, Math.min(250, feather));
     let mask = SelectionMask.fromPath(W, H, b, (c) => fillVector(c as CanvasRenderingContext2D, vp), antialias);
-    if (mask && f > 0) {
-      // Feathered as Select > Modify > Feather feathers: a Gaussian of half the radius over the mask's alpha. Masks
-      // are trimmed to their pixels, so the blur runs over a region grown by its reach, clipped to the canvas.
-      const pad = Math.ceil(f * 1.5) + 2, m = mask;
-      const region = intersectRect({ x: m.x - pad, y: m.y - pad, w: m.w + 2 * pad, h: m.h + 2 * pad }, { x: 0, y: 0, w: W, h: H });
-      if (region) {
-        const img = new ImageData(region.w, region.h);
-        for (let j = 0; j < region.h; j++) for (let i = 0; i < region.w; i++) { const k = (j * region.w + i) * 4; img.data[k] = img.data[k + 1] = img.data[k + 2] = 255; img.data[k + 3] = m.valueAt(region.x + i, region.y + j); }
-        const blurred = gaussianBlur(img, f / 2), out = new Uint8Array(region.w * region.h);
-        for (let i = 0; i < out.length; i++) out[i] = blurred.data[i * 4 + 3];
-        mask = SelectionMask.cropped(region.x, region.y, region.w, region.h, out);
-      }
-    }
+    if (mask && f > 0) mask = this.featherMask(mask, f);
     if (mask && p.selection) mask = mask.combine(p.selection, 'intersect');
     if (!mask) { this.notice('The path lies outside the canvas or the selection.'); return; }
     this.fillWith(contents, blend, opacity, preserve, { name: 'Fill Path', region: mask });
