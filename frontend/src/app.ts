@@ -5,6 +5,7 @@ import { GuideDialog } from './ui/panels/guide-dialog';
 import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
+import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
 import { ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery } from './io/recovery';
@@ -604,7 +605,10 @@ export function startApp(): void {
     liquify: new LiquifyDialog(engine),
     selectMask: new SelectMaskDialog(engine),
     contentFill: new ContentFillDialog(engine),
+    gradientEditor: new GradientEditor(engine),
   };
+  loadSavedGradients();
+  engine.uiHooks.gradientEditor = () => dialogs.gradientEditor.show();
 
   const has = (): boolean => !!engine.current;
   const layer = () => engine.activeLayer;

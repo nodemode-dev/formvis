@@ -24,7 +24,43 @@ export const GRADIENT_PRESETS: GradientPreset[] = [
   { id: 'fg-bg-fg', label: 'Foreground, Background, Foreground', stops: [{ at: 0, color: 'fg', alpha: 1 }, { at: 0.5, color: 'bg', alpha: 1 }, { at: 1, color: 'fg', alpha: 1 }] },
 ];
 
-export const presetById = (id: string): GradientPreset => GRADIENT_PRESETS.find((p) => p.id === id) ?? GRADIENT_PRESETS[0];
+export const presetById = (id: string): GradientPreset => customGradients.find((p) => p.id === id) ?? GRADIENT_PRESETS.find((p) => p.id === id) ?? GRADIENT_PRESETS[0];
+
+/** Gradients made in the Gradient Editor, kept by the app in browser storage and listed after the built-ins. */
+export let customGradients: GradientPreset[] = [];
+export function setCustomGradients(list: GradientPreset[]): void { customGradients = list; }
+export const allGradients = (): GradientPreset[] => [...GRADIENT_PRESETS, ...customGradients];
+
+/** Stored gradients read back defensively: well-formed entries, at least two stops, values clamped. */
+export function gradientsFromJson(raw: unknown): GradientPreset[] {
+  if (!Array.isArray(raw)) return [];
+  const n = (v: unknown, lo: number, hi: number, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+  return raw.flatMap((r) => {
+    const o = r && typeof r === 'object' ? (r as Record<string, unknown>) : null;
+    if (!o || typeof o.id !== 'string' || typeof o.label !== 'string' || !o.label.trim() || !Array.isArray(o.stops)) return [];
+    const stops = (o.stops as unknown[]).flatMap((s) => {
+      const q = s && typeof s === 'object' ? (s as Record<string, unknown>) : null;
+      if (!q) return [];
+      const c = q.color, color: GradientStop['color'] | null = c === 'fg' || c === 'bg' ? c : c && typeof c === 'object' ? { r: n((c as RGB).r, 0, 255, 0), g: n((c as RGB).g, 0, 255, 0), b: n((c as RGB).b, 0, 255, 0) } : null;
+      return color ? [{ at: n(q.at, 0, 1, 0), color, alpha: n(q.alpha, 0, 1, 1) } as GradientStop] : [];
+    });
+    return stops.length >= 2 ? [{ id: o.id, label: o.label.trim().slice(0, 60), stops }] : [];
+  });
+}
+
+/** Photoshop's Noise gradient: colours that wander at random between stops, more wildly with roughness (0 to 100),
+ *  the same for the same seed. Returned as ordinary stops so it draws, saves and reverses like any gradient. */
+export function noiseStops(seed: number, roughness: number): GradientStop[] {
+  let s = (seed >>> 0) || 1;
+  const rand = (): number => { s ^= s << 13; s >>>= 0; s ^= s >>> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  const rough = Math.min(100, Math.max(0, roughness)) / 100, count = 4 + Math.round(rough * 28);
+  const c = [rand() * 255, rand() * 255, rand() * 255], out: GradientStop[] = [];
+  for (let i = 0; i < count; i++) {
+    if (i) for (let k = 0; k < 3; k++) c[k] = Math.min(255, Math.max(0, c[k] + (rand() - 0.5) * 2 * (40 + 215 * rough)));
+    out.push({ at: i / (count - 1), color: { r: Math.round(c[0]), g: Math.round(c[1]), b: Math.round(c[2]) }, alpha: 1 });
+  }
+  return out;
+}
 
 /** A preset's stops with the foreground and background filled in, sorted, and reversed when asked. */
 export function resolveStops(preset: GradientPreset, fg: RGB, bg: RGB, reversed: boolean): Array<{ at: number; rgb: RGB; alpha: number }> {

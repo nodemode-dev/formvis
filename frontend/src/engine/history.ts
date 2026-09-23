@@ -67,6 +67,12 @@ export class History {
     return p ? { before: p.before, patches: p.patches } : null;
   }
 
+  /** The oldest kept state and every pixel patch done since, oldest first, for rebuilding pixels as they were
+   *  (Edit > Fill with History). Undone steps are excluded, since undoing already wrote their pixels back. */
+  origin(): { first: Snapshot | null; patches: PixelPatch[] } {
+    return { first: this.past[0]?.before ?? null, patches: this.past.flatMap((e) => e.patches) };
+  }
+
   undo(): HistoryEntry | null {
     if (!this.canUndo) return null;
     const e = this.past.pop() as HistoryEntry;

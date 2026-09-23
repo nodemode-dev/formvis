@@ -2005,7 +2005,25 @@ export class Engine {
   /** Edit > Fill: the selection, or the whole layer, filled with a colour or a pattern (tiled from the layer's corner)
    *  in a blend mode at an opacity, optionally keeping transparent pixels transparent, as one step. On a mask the
    *  colour's grey is used and patterns are refused. */
-  fillWith(contents: { color: RGB } | { patternId: ID }, blend: BlendMode, opacity: number, preserveTransparency: boolean): void {
+  /** The active layer as it was at the oldest kept history step, drawn in document space: its raster from that
+   *  step's snapshot with every later patch on it written back, newest first. Null when the layer did not exist then. */
+  private historySource(p: Project): Surface | null {
+    const l = p.activeLayer;
+    if (!l) return null;
+    const { first, patches } = p.history.origin(), l0 = (first?.doc ?? p.doc).layers.find((x) => x.id === l.id), R0 = l0?.raster;
+    if (!l0 || !R0) return null;
+    const copy = createSurface(R0.width, R0.height), cc = ctxOf(copy);
+    cc.drawImage(R0.canvas, 0, 0);
+    for (let i = patches.length - 1; i >= 0; i--) if (patches[i].raster === R0) cc.putImageData(patches[i].before, patches[i].x, patches[i].y);
+    const doc = createSurface(p.doc.width, p.doc.height), dc = ctxOf(doc);
+    setMat(dc, placement(l0.transform, R0.width, R0.height));
+    dc.drawImage(copy, 0, 0);
+    return doc;
+  }
+
+  fillWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserveTransparency: boolean): void {
+    const hist = 'history' in contents && this.current ? this.historySource(this.current) : null;
+    if ('history' in contents && !hist) { this.notice('This layer did not exist at the oldest history step, so there is nothing to fill from.'); return; }
     const pat = 'patternId' in contents ? patternById(contents.patternId) : null;
     if ('patternId' in contents && !pat) { this.notice('That pattern is no longer available.'); return; }
     this.regionEdit('Fill', ({ raster, target, rect, cover }) => {
@@ -2023,9 +2041,16 @@ export class Engine {
         return;
       }
       const s = createSurface(rect.w, rect.h), sc = ctxOf(s);
-      if (pat) { const cp = sc.createPattern(pat.surface, 'repeat'); if (cp) { cp.setTransform(new DOMMatrix().translate(-rect.x, -rect.y)); sc.fillStyle = cp; } }
-      else if ('color' in contents) sc.fillStyle = rgbCss(contents.color);
-      sc.fillRect(0, 0, rect.w, rect.h);
+      if (hist) {
+        const l = (this.current as Project).activeLayer as Layer;
+        setMat(sc, mul(translation(-rect.x, -rect.y), invert(placement(l.transform, raster.width, raster.height))));
+        sc.drawImage(hist, 0, 0);
+        sc.setTransform(1, 0, 0, 1, 0, 0);
+      } else {
+        if (pat) { const cp = sc.createPattern(pat.surface, 'repeat'); if (cp) { cp.setTransform(new DOMMatrix().translate(-rect.x, -rect.y)); sc.fillStyle = cp; } }
+        else if ('color' in contents) sc.fillStyle = rgbCss(contents.color);
+        sc.fillRect(0, 0, rect.w, rect.h);
+      }
       if (cover) { sc.globalCompositeOperation = 'destination-in'; sc.drawImage(cover, 0, 0); }
       const orig = createSurface(rect.w, rect.h), out = createSurface(rect.w, rect.h), oc = ctxOf(out);
       ctxOf(orig).putImageData(raster.read(rect.x, rect.y, rect.w, rect.h), 0, 0);
@@ -2954,6 +2979,8 @@ export class Engine {
   private previewToken = 0;
   gradient: { project: Project; layerId: ID; target: Target; start: Pt; end: Pt; raster: Raster; local: Mat; surface: Surface } | null = null;
   gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
+  /** Dialogs a tool's options can open; the app fills these in, since tools only see the engine. */
+  uiHooks: { gradientEditor?: () => void } = {};
   shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number } & PathShapeOptions = { kind: 'rectangle', cornerRadius: 0, ...DEFAULT_PATH_SHAPE };
   clipboard: { surface: Surface; x: number; y: number; w: number; h: number; stamp: string } | null = null;
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };

@@ -3,9 +3,9 @@ import { Dialog } from '../dialogs';
 import { toast } from '../toast';
 import { checkRow, colorRow, selectRow, sliderRow, type Row } from './controls';
 
-type Contents = 'fg' | 'bg' | 'color' | 'black' | 'gray' | 'white' | 'pattern' | 'contentAware';
+type Contents = 'fg' | 'bg' | 'color' | 'black' | 'gray' | 'white' | 'pattern' | 'contentAware' | 'history';
 const CONTENTS: ReadonlyArray<readonly [Contents, string]> = [
-  ['fg', 'Foreground Color'], ['bg', 'Background Color'], ['color', 'Color...'], ['contentAware', 'Content-Aware'], ['pattern', 'Pattern'], ['black', 'Black'], ['gray', '50% Gray'], ['white', 'White'],
+  ['fg', 'Foreground Color'], ['bg', 'Background Color'], ['color', 'Color...'], ['contentAware', 'Content-Aware'], ['pattern', 'Pattern'], ['history', 'History'], ['black', 'Black'], ['gray', '50% Gray'], ['white', 'White'],
 ];
 
 /** Edit > Fill (Shift+F5), as Photoshop lays it out: Contents, then Mode, Opacity and Preserve Transparency. Every
@@ -66,6 +66,6 @@ export class FillDialog extends Dialog {
     this.close();
     if (k === 'contentAware') { this.contentAware(); return; }
     const color: RGB | null = k === 'fg' ? e.fg : k === 'bg' ? e.bg : k === 'color' ? this.color : k === 'black' ? { r: 0, g: 0, b: 0 } : k === 'gray' ? { r: 128, g: 128, b: 128 } : k === 'white' ? { r: 255, g: 255, b: 255 } : null;
-    e.fillWith(color ? { color: { ...color } } : { patternId: this.patternId }, this.blend, this.opacity / 100, this.preserve);
+    e.fillWith(k === 'history' ? { history: true } : color ? { color: { ...color } } : { patternId: this.patternId }, this.blend, this.opacity / 100, this.preserve);
   }
 }
