@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.91.0 · 2026-09-23
+
+### Added
+
+- Adjustment layers go into PSD files as live Photoshop adjustment layers (fifteen kinds, with masks, opacity, blend and clipping), and Photoshop adjustment layers open as live sonny ones. Grain and Develop, which Photoshop has no layer for, are reported and left out.
+- File > Export PSB (Large Document); .psb files open.
+- 16 more tests (15 unit, 1 browser): 211 in all.
+
 ## 0.90.0 · 2026-09-23
 
 ### Added

@@ -2,6 +2,48 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Adjustment layers in PSD and PSB; Export PSB · _v0.91.0 (src/io/psd-adjust.ts new, src/io/psd.ts, src/io/images.ts, src/app.ts, .github/workflows/ci.yml; tests/psd-adjust.test.ts and e2e/test_psd_adjustments.py new)
+
+`psd-adjust.ts`: `toPsdAdjustment` and `fromPsdAdjustment` for fifteen kinds. `psd.ts`: `maskOnto` (the writer's mask code as a helper), adjustment layers written with masks, opacity, blend, visibility and clipping, and read back as live ones; `writePsdFile` takes `psb`; `.psb` recognised. `app.ts`: `exportPsd(psb)` and the `export-psb` command in the File menu. CI installs psd-tools for the independent check. Removed:
+
+```ts
+  async function exportPsd(): Promise<void> {
+        const { bytes, notes } = await writePsdFile(p.doc, flat);
+        await deliver(new Blob([bytes], { type: 'image/vnd.adobe.photoshop' }), `${p.name}.psd`);
+    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-as', 'export-png', 'export-jpg', 'export-psd', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+export const PROJECT_ACCEPT = '.sny,.sonny,.ref,.zip,.psd';
+export const isProjectFile = (f: File): boolean => /\.(sny|sonny|ref|zip|psd)$/i.test(f.name);
+  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec,
+export const isPsdFile = (f: File): boolean => /\.psd$/i.test(f.name) || f.type === 'image/vnd.adobe.photoshop';
+      if (!pl.canvas || !pl.canvas.width || !pl.canvas.height) {
+        if (pl.adjustment) notes.push(`"${name}" is an adjustment layer; sonny left it out.`);
+        continue;
+      }
+      const w = pl.canvas.width, h = pl.canvas.height, raster = Raster.from(pl.canvas, w, h);
+      const layer = newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: pl.left ?? 0, y: pl.top ?? 0 }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend });
+      if (tx && typeof tx.text === 'string') {
+export async function writePsdFile(doc: Doc, composite: Surface): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
+    if (l.adjustment) { notes.push(`"${l.name}" is an adjustment layer; it is left out of the PSD.`); return null; }
+    const mk = l.mask;
+    if (mk?.raster) {
+      const mp = placed(mk.raster, mk.placement ?? l.transform);
+      if (mp) {
+        const g = mp.c.getContext('2d') as CanvasRenderingContext2D, img = g.getImageData(0, 0, mp.c.width, mp.c.height);
+        for (let i = 0; i < img.data.length; i += 4) { const a = img.data[i + 3]; img.data[i] = img.data[i + 1] = img.data[i + 2] = a; img.data[i + 3] = 255; }
+        g.setTransform(1, 0, 0, 1, 0, 0);
+        g.putImageData(img, 0, 0);
+        out.mask = { canvas: mp.c, left: mp.x, top: mp.y, defaultColor: maskEdgeTone(mk.raster), disabled: !mk.enabled };
+      }
+    }
+  return { bytes: writePsd(psd, { generateThumbnail: false }), notes };
+```
+
+In `.github/workflows/ci.yml`. Removed:
+
+```yaml
+      - run: pip install pytest playwright
+```
+
 ## .abr brush import, live option lists, .sny projects · _v0.90.0 (src/engine/abr.ts and src/io/brush-library.ts new, src/engine/stroke.ts, src/engine/brush-dynamics.ts, src/engine/index.ts, src/extensions/registry.ts, src/ui/options.ts, src/extensions/tools/brush.ts, src/extensions/tools/gradient.ts, src/io/images.ts, src/app.ts; tests/abr.test.ts, e2e/test_abr_import.py and e2e/test_sny_projects.py new)
 
 `abr.ts`: `parseAbr` for versions 1, 2 and 6 to 10, `SampledTip`, `AbrBrush`. `stroke.ts`: `sampledTip`, a tip in the style, `tipAspect`, spacing a quarter of a sampled tip. `brush-dynamics.ts`: `tip` on presets, `importedBrushPresets`, `setImportedBrushPresets`, `allBrushPresets`, `presetFromTip`. In the engine, `tip` on brush settings (kept by `setBrush`, set by presets) and `uiHooks.importBrushes`. `brush-library.ts`: IndexedDB keeping and `importAbr`. The select option spec takes a `live` list, patched in place by the options bar; the Brush Preset and Gradient Colors lists use it. Projects download as `.sny`; `.sny` and `.sonny` are accepted. Removed:
