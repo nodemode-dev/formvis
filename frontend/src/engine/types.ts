@@ -116,7 +116,17 @@ export interface SatinEffect { enabled: boolean; color: RGB; opacity: number; bl
 /** Pattern Overlay: pattern `pattern` (an id) tiled from the layer's top-left corner at `scale`, kept to its silhouette,
  *  beneath the other overlays as in Photoshop. */
 export interface PatternOverlayEffect { enabled: boolean; pattern: string; opacity: number; blend: BlendMode; scale: number }
-export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect; patternOverlay: PatternOverlayEffect }
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect; patternOverlay: PatternOverlayEffect; extra?: EffectExtras }
+/** More instances of the effects Photoshop allows several of (up to ten in all, so nine here), drawn after the main
+ *  one, each above the last. */
+export interface EffectExtras { dropShadow?: DropShadowEffect[]; stroke?: StrokeEffect[]; innerShadow?: InnerShadowEffect[]; colorOverlay?: ColorOverlayEffect[]; gradientOverlay?: GradientOverlayEffect[] }
+export type MultiEffect = keyof EffectExtras;
+export const MULTI_EFFECTS: readonly MultiEffect[] = ['dropShadow', 'stroke', 'innerShadow', 'colorOverlay', 'gradientOverlay'];
+export const MAX_EXTRA = 9;
+/** Every instance of a multi effect: the main one, then its extras. */
+export function instances<K extends MultiEffect>(fx: LayerEffects, k: K): Array<LayerEffects[K]> {
+  return [fx[k], ...((fx.extra?.[k] as Array<LayerEffects[K]> | undefined) ?? [])];
+}
 
 /** Photoshop's starting values: a 75% multiplied black shadow at 120 degrees, 5 px away and 5 px soft; a 75% screened
  *  pale yellow glow of 5 px; a 3 px black outside stroke. All off. */
@@ -136,7 +146,8 @@ export function defaultEffects(): LayerEffects {
 }
 
 export function effectsActive(fx: LayerEffects | null | undefined): fx is LayerEffects {
-  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled || fx.bevel.enabled || fx.satin.enabled || fx.patternOverlay.enabled);
+  return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled || fx.bevel.enabled || fx.satin.enabled || fx.patternOverlay.enabled
+    || MULTI_EFFECTS.some((k) => (fx.extra?.[k] ?? []).some((e) => e.enabled)));
 }
 
 /** Effects read back from saved data, every field checked and clamped; null when none is enabled. */
@@ -171,6 +182,20 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
   const gloss = contour(bv.gloss);
   if (gloss) fx.bevel.gloss = gloss;
   if (k.position === 'inside' || k.position === 'center') fx.stroke.position = k.position;
+  const ex = o.extra && typeof o.extra === 'object' ? (o.extra as Record<string, unknown>) : null;
+  if (ex) {
+    const extra: EffectExtras = {};
+    for (const key of MULTI_EFFECTS) {
+      const list = Array.isArray(ex[key]) ? (ex[key] as unknown[]).slice(0, MAX_EXTRA) : [];
+      const got = list.flatMap((item) => {
+        if (!item || typeof item !== 'object') return [];
+        const one = effectsFromData({ [key]: { ...(item as object), enabled: true } });
+        return one ? [{ ...one[key], enabled: (item as { enabled?: unknown }).enabled === true }] : [];
+      });
+      if (got.length) (extra as Record<string, unknown>)[key] = got;
+    }
+    if (Object.keys(extra).length) fx.extra = extra;
+  }
   return effectsActive(fx) ? fx : null;
 }
 

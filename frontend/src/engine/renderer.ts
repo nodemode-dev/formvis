@@ -2,7 +2,7 @@ import { resizeMask } from './filters';
 import { blendPixels } from './blend';
 import { patternById } from './patterns';
 import { applyContour, contourLut, withGlobalLight, type ContourId } from './style-extras';
-import { canvasBlend, compositeOp, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
+import { canvasBlend, compositeOp, instances, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
 import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
 import { ancestors, hierarchy } from './tree';
@@ -211,7 +211,7 @@ export class Renderer {
     const hit = this.fxCache.get(layer.id);
     if (hit && hit.key === key) return hit.parts;
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow;
-    const reach = Math.max(fx.bevel.enabled ? (fx.bevel.size + fx.bevel.soften) * 2 : 0, d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) + 4;
+    const reach = fxReach(fx) + 4;
     const lm = placement(t, src.width, src.height);
     const placed = boundsOf([applyMat(lm, 0, 0), applyMat(lm, src.width, 0), applyMat(lm, src.width, src.height), applyMat(lm, 0, src.height)]);
     const region = intersectRect(integral({ x: placed.x - reach, y: placed.y - reach, w: placed.w + 2 * reach, h: placed.h + 2 * reach }), { x: 0, y: 0, w: docW, h: docH });
@@ -309,7 +309,7 @@ export class Renderer {
 
   private effects(out: (s: Surface, box: Rect, alpha: number, op: GlobalCompositeOperation) => void, sil: Slot, fx: LayerEffects, scale: number, opacity: number, W: number, H: number, bounds: Rect, phase: 'below' | 'above'): void {
     const d = fx.dropShadow, g = fx.outerGlow, k = fx.stroke, is = fx.innerShadow, ig = fx.innerGlow, co = fx.colorOverlay, bv = fx.bevel;
-    const reach = Math.max(bv.enabled ? (bv.size + bv.soften) * 2 : 0, d.enabled ? d.distance + d.size * 1.5 : 0, g.enabled ? g.size * 1.5 : 0, k.enabled ? k.size : 0, is.enabled ? is.distance + is.size * 1.5 : 0, ig.enabled ? ig.size * 1.5 : 0) * scale + 2;
+    const reach = fxReach(fx) * scale + 2;
     const box = intersectRect(integral({ x: bounds.x - reach, y: bounds.y - reach, w: bounds.w + 2 * reach, h: bounds.h + 2 * reach }), { x: 0, y: 0, w: W, h: H });
     if (!box) return;
     const { x: bx, y: by, w: bw, h: bh } = box;
@@ -391,8 +391,7 @@ export class Renderer {
           c.fillRect(0, 0, bw, bh);
         }), po.opacity * opacity, compositeOp(po.blend));
       }
-      const go = fx.gradientOverlay;
-      if (go.enabled && go.opacity > 0) {
+      for (const go of instances(fx, 'gradientOverlay')) if (go.enabled && go.opacity > 0) {
         // Beneath Color Overlay, as in Photoshop: the gradient spans the layer's bounds, kept to its silhouette.
         const cx = bounds.x + bounds.w / 2 - bx, cy = bounds.y + bounds.h / 2 - by, a = (go.angle * Math.PI) / 180, [c0, c1] = go.reverse ? [go.to, go.from] : [go.from, go.to];
         lay(kept((c) => {
@@ -408,7 +407,7 @@ export class Renderer {
           c.fillRect(0, 0, bw, bh);
         }), go.opacity * opacity, compositeOp(go.blend));
       }
-      if (co.enabled && co.opacity > 0) lay(kept((c) => { c.fillStyle = css(co.color); c.fillRect(0, 0, bw, bh); }), co.opacity * opacity, compositeOp(co.blend));
+      for (const co of instances(fx, 'colorOverlay')) if (co.enabled && co.opacity > 0) lay(kept((c) => { c.fillStyle = css(co.color); c.fillRect(0, 0, bw, bh); }), co.opacity * opacity, compositeOp(co.blend));
       const sa = fx.satin;
       if (sa.enabled && sa.opacity > 0) {
         // Satin, between Color Overlay and Inner Glow as Photoshop stacks it.
@@ -431,7 +430,7 @@ export class Renderer {
         lay(s.s, sa.opacity * opacity, compositeOp(sa.blend));
       }
       if (ig.enabled && ig.opacity > 0 && ig.size > 0) lay(this.contoured(castByInverse(ig.color, ig.size * scale, 0, 0), bw, bh, ig.contour), ig.opacity * opacity, compositeOp(ig.blend));
-      if (is.enabled && is.opacity > 0) {
+      for (const is of instances(fx, 'innerShadow')) if (is.enabled && is.opacity > 0) {
         const rad = (is.angle * Math.PI) / 180;
         lay(this.contoured(castByInverse(is.color, is.size * scale, -Math.cos(rad) * is.distance * scale, Math.sin(rad) * is.distance * scale), bw, bh, is.contour), is.opacity * opacity, compositeOp(is.blend));
       }
@@ -442,7 +441,7 @@ export class Renderer {
         if (bv.highlightOpacity > 0) { const s = this.slot(9, bw, bh); s.c.putImageData(hi, 0, 0); lay(s.s, bv.highlightOpacity * opacity, compositeOp(bv.highlightBlend)); }
         if (bv.shadowOpacity > 0) { const s = this.slot(10, bw, bh); s.c.putImageData(sh, 0, 0); lay(s.s, bv.shadowOpacity * opacity, compositeOp(bv.shadowBlend)); }
       }
-      if (k.enabled && k.opacity > 0 && k.size * scale > 0 && (k.position === 'inside' || k.position === 'center')) {
+      for (const k of instances(fx, 'stroke')) if (k.enabled && k.opacity > 0 && k.size * scale > 0 && (k.position === 'inside' || k.position === 'center')) {
         // Inside: the silhouette less itself shrunk by the size; Center: grown by half less shrunk by half.
         const alpha = sil.c.getImageData(bx, by, bw, bh).data, inside = new Uint8Array(bw * bh);
         for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];
@@ -455,12 +454,12 @@ export class Renderer {
       }
       return;
     }
-    if (d.enabled && d.opacity > 0) {
+    for (const d of instances(fx, 'dropShadow')) if (d.enabled && d.opacity > 0) {
       const rad = (d.angle * Math.PI) / 180;
       lay(this.contoured(shadowOf(d.color, d.size * scale, -Math.cos(rad) * d.distance * scale, Math.sin(rad) * d.distance * scale), bw, bh, d.contour), d.opacity * opacity, compositeOp(d.blend));
     }
     if (g.enabled && g.opacity > 0 && g.size > 0) lay(this.contoured(shadowOf(g.color, g.size * scale, 0, 0), bw, bh, g.contour), g.opacity * opacity, compositeOp(g.blend));
-    if (k.enabled && k.opacity > 0 && k.size * scale > 0 && (k.position ?? 'outside') === 'outside') {
+    for (const k of instances(fx, 'stroke')) if (k.enabled && k.opacity > 0 && k.size * scale > 0 && (k.position ?? 'outside') === 'outside') {
       const alpha = sil.c.getImageData(bx, by, bw, bh).data, inside = new Uint8Array(bw * bh);
       for (let i = 0; i < inside.length; i++) inside[i] = alpha[i * 4 + 3];
       const ring = resizeMask(inside, bw, bh, k.size * scale), img = new ImageData(bw, bh), px = img.data;
@@ -604,6 +603,13 @@ export class Renderer {
     }
     ctx.putImageData(img, 0, 0);
   }
+}
+
+/** How far, in document pixels, the enabled effects reach past the layer's silhouette, over every instance. */
+function fxReach(fx: LayerEffects): number {
+  const on = <T extends { enabled: boolean }>(list: T[], f: (e: T) => number): number => Math.max(0, ...list.filter((e) => e.enabled).map(f));
+  return Math.max(fx.bevel.enabled ? (fx.bevel.size + fx.bevel.soften) * 2 : 0, fx.outerGlow.enabled ? fx.outerGlow.size * 1.5 : 0, fx.innerGlow.enabled ? fx.innerGlow.size * 1.5 : 0,
+    on(instances(fx, 'dropShadow'), (d) => d.distance + d.size * 1.5), on(instances(fx, 'stroke'), (k) => k.size), on(instances(fx, 'innerShadow'), (s) => s.distance + s.size * 1.5));
 }
 
 export function renderDoc(renderer: Renderer, doc: Doc, background: string | null = null): Surface {

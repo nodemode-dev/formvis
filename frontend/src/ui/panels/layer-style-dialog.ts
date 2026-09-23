@@ -1,4 +1,4 @@
-import { CONTOURS, DEFAULT_GLOBAL_LIGHT, defaultEffects, effectsActive, withGlobalLight, type ContourId, type Engine, type GlobalLight, type LayerEffects, type RGB, allPatterns } from '../../engine';
+import { CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, instances, withGlobalLight, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { checkRow, sliderRow } from './controls';
@@ -13,6 +13,9 @@ const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseI
 export class LayerStyleDialog extends Dialog {
   private fx: LayerEffects = defaultEffects();
   private light: GlobalLight = { ...DEFAULT_GLOBAL_LIGHT };
+  /** Every instance of each multi effect, and which one the controls edit. */
+  private inst = {} as Record<MultiEffect, Array<LayerEffects[MultiEffect]>>;
+  private sel = {} as Record<MultiEffect, number>;
   private layerId: string | null = null;
   private applied = false;
   private readonly syncs: Array<() => void> = [];
@@ -43,11 +46,32 @@ export class LayerStyleDialog extends Dialog {
       this.syncs.push(() => { select.value = get(); });
     };
     const contours = CONTOURS.map((c) => [c.id, c.label] as [string, string]);
+    // Instances: each multi effect's controls edit the selected instance, since this.fx[k] is that very object.
+    const multi = (k: MultiEffect): void => {
+      const pick = el<HTMLSelectElement>('<select class="cv-input"></select>');
+      const add = el<HTMLButtonElement>('<button class="cv-btn" type="button">Add</button>'), remove = el<HTMLButtonElement>('<button class="cv-btn" type="button">Remove</button>');
+      const row = el('<div class="cv-row-actions"></div>');
+      row.append(pick, add, remove);
+      this.field('Instances', row);
+      const choose = (i: number): void => { this.sel[k] = i; (this.fx as unknown as Record<string, unknown>)[k] = this.inst[k][i]; for (const s of this.syncs) s(); this.changed(); };
+      pick.addEventListener('change', () => choose(Number(pick.value)));
+      add.addEventListener('click', () => { const list = this.inst[k]; if (list.length > MAX_EXTRA) return; list.push(structuredClone(list[this.sel[k]])); choose(list.length - 1); });
+      remove.addEventListener('click', () => { const list = this.inst[k]; if (list.length <= 1) return; list.splice(this.sel[k], 1); choose(Math.min(this.sel[k], list.length - 1)); });
+      this.syncs.push(() => {
+        const n = this.inst[k].length;
+        while (pick.options.length > n) pick.remove(pick.options.length - 1);
+        for (let i = 0; i < n; i++) { const o = pick.options[i] ?? pick.appendChild(document.createElement('option')); if (o.value !== String(i)) o.value = String(i); if (o.textContent !== `${i + 1} of ${n}`) o.textContent = `${i + 1} of ${n}`; }
+        pick.value = String(this.sel[k]);
+        add.disabled = n > MAX_EXTRA;
+        remove.disabled = n <= 1;
+      });
+    };
     const lightRowA = sliderRow('Global light angle (\u00b0)', -180, 180, 1, (v) => { this.light = { ...this.light, angle: v }; this.changed(); });
     const lightRowB = sliderRow('Global light altitude (\u00b0)', 0, 90, 1, (v) => { this.light = { ...this.light, altitude: v }; this.changed(); });
     this.body.append(lightRowA.el, lightRowB.el);
     this.syncs.push(() => { lightRowA.set(this.light.angle); lightRowB.set(this.light.altitude); });
     check('Drop Shadow', () => fx().dropShadow.enabled, (v) => { fx().dropShadow.enabled = v; });
+    multi('dropShadow');
     colour('Colour', () => fx().dropShadow.color, (c) => { fx().dropShadow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().dropShadow.opacity * 100), (v) => { fx().dropShadow.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().dropShadow.angle, (v) => { fx().dropShadow.angle = v; });
@@ -61,11 +85,13 @@ export class LayerStyleDialog extends Dialog {
     slider('Size (px)', 0, 100, () => fx().outerGlow.size, (v) => { fx().outerGlow.size = v; });
     choice('Contour', contours, () => fx().outerGlow.contour ?? 'linear', (v) => { fx().outerGlow.contour = v as ContourId; });
     check('Stroke', () => fx().stroke.enabled, (v) => { fx().stroke.enabled = v; });
+    multi('stroke');
     choice('Position', [['outside', 'Outside'], ['inside', 'Inside'], ['center', 'Center']], () => fx().stroke.position ?? 'outside', (v) => { fx().stroke.position = v === 'inside' || v === 'center' ? v : 'outside'; });
     colour('Colour', () => fx().stroke.color, (c) => { fx().stroke.color = c; });
     slider('Size (px)', 1, 50, () => fx().stroke.size, (v) => { fx().stroke.size = v; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().stroke.opacity * 100), (v) => { fx().stroke.opacity = v / 100; });
     check('Inner Shadow', () => fx().innerShadow.enabled, (v) => { fx().innerShadow.enabled = v; });
+    multi('innerShadow');
     colour('Colour', () => fx().innerShadow.color, (c) => { fx().innerShadow.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().innerShadow.opacity * 100), (v) => { fx().innerShadow.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().innerShadow.angle, (v) => { fx().innerShadow.angle = v; });
@@ -79,9 +105,11 @@ export class LayerStyleDialog extends Dialog {
     slider('Size (px)', 0, 100, () => fx().innerGlow.size, (v) => { fx().innerGlow.size = v; });
     choice('Contour', contours, () => fx().innerGlow.contour ?? 'linear', (v) => { fx().innerGlow.contour = v as ContourId; });
     check('Color Overlay', () => fx().colorOverlay.enabled, (v) => { fx().colorOverlay.enabled = v; });
+    multi('colorOverlay');
     colour('Colour', () => fx().colorOverlay.color, (c) => { fx().colorOverlay.color = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().colorOverlay.opacity * 100), (v) => { fx().colorOverlay.opacity = v / 100; });
     check('Gradient Overlay', () => fx().gradientOverlay.enabled, (v) => { fx().gradientOverlay.enabled = v; });
+    multi('gradientOverlay');
     colour('From', () => fx().gradientOverlay.from, (c) => { fx().gradientOverlay.from = c; });
     colour('To', () => fx().gradientOverlay.to, (c) => { fx().gradientOverlay.to = c; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().gradientOverlay.opacity * 100), (v) => { fx().gradientOverlay.opacity = v / 100; });
@@ -141,6 +169,8 @@ export class LayerStyleDialog extends Dialog {
     this.layerId = layer.id;
     this.applied = false;
     this.fx = structuredClone(layer.effects ?? defaultEffects());
+    for (const k of MULTI_EFFECTS) { this.inst[k] = instances(this.fx, k); this.sel[k] = 0; (this.fx as unknown as Record<string, unknown>)[k] = this.inst[k][0]; }
+    delete this.fx.extra;
     this.light = { ...(this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT) };
     for (const sync of this.syncs) sync();
     this.open();
@@ -149,9 +179,23 @@ export class LayerStyleDialog extends Dialog {
 
   /** What the preview shows: the pending light put into effects that use it, those flags then dropped so the
    *  document's current light does not override the pending one. */
+  /** The whole style: each multi effect's first instance as the main one and the rest as extras. */
+  private assembled(): LayerEffects {
+    const out = structuredClone({ ...this.fx, extra: undefined }) as LayerEffects, extra: EffectExtras = {};
+    for (const k of MULTI_EFFECTS) {
+      const list = structuredClone(this.inst[k] ?? [this.fx[k]]);
+      (out as unknown as Record<string, unknown>)[k] = list[0];
+      if (list.length > 1) (extra as Record<string, unknown>)[k] = list.slice(1);
+    }
+    delete out.extra;
+    if (Object.keys(extra).length) out.extra = extra;
+    return out;
+  }
+
   private previewFx(): LayerEffects {
-    const fx = structuredClone(withGlobalLight(this.fx, this.light));
+    const fx = structuredClone(withGlobalLight(this.assembled(), this.light));
     delete fx.dropShadow.useGlobal; delete fx.innerShadow.useGlobal; delete fx.bevel.useGlobal;
+    for (const e of [...(fx.extra?.dropShadow ?? []), ...(fx.extra?.innerShadow ?? [])]) delete e.useGlobal;
     return fx;
   }
 
@@ -164,7 +208,7 @@ export class LayerStyleDialog extends Dialog {
 
   private apply(): void {
     this.applied = true;
-    const id = this.layerId, fx = effectsActive(this.fx) ? structuredClone(this.fx) : null, cur = this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT;
+    const whole = this.assembled(), id = this.layerId, fx = effectsActive(whole) ? whole : null, cur = this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT;
     const light = this.light.angle !== cur.angle || this.light.altitude !== cur.altitude ? { ...this.light } : null;
     this.close();
     if (id) { this.engine.applyStyleAndLight(id, fx, light); this.onApplied?.(fx ? structuredClone(fx) : null); }

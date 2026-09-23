@@ -54,13 +54,15 @@ export const DEFAULT_GLOBAL_LIGHT: GlobalLight = { angle: 120, altitude: 30 };
 
 /** The effects with the document's light put into every effect that uses it; the original is left as it was. */
 export function withGlobalLight(fx: LayerEffects, light: GlobalLight | null | undefined): LayerEffects {
-  const g = light ?? DEFAULT_GLOBAL_LIGHT;
-  const uses = fx.dropShadow.useGlobal || fx.innerShadow.useGlobal || fx.bevel.useGlobal;
+  const g = light ?? DEFAULT_GLOBAL_LIGHT, ex = fx.extra;
+  const uses = fx.dropShadow.useGlobal || fx.innerShadow.useGlobal || fx.bevel.useGlobal || !!ex?.dropShadow?.some((e) => e.useGlobal) || !!ex?.innerShadow?.some((e) => e.useGlobal);
   if (!uses) return fx;
+  const lit = <T extends { useGlobal?: boolean; angle: number }>(e: T): T => (e.useGlobal ? { ...e, angle: g.angle } : e);
   return {
     ...fx,
-    dropShadow: fx.dropShadow.useGlobal ? { ...fx.dropShadow, angle: g.angle } : fx.dropShadow,
-    innerShadow: fx.innerShadow.useGlobal ? { ...fx.innerShadow, angle: g.angle } : fx.innerShadow,
+    dropShadow: lit(fx.dropShadow),
+    innerShadow: lit(fx.innerShadow),
     bevel: fx.bevel.useGlobal ? { ...fx.bevel, angle: g.angle, altitude: g.altitude } : fx.bevel,
+    ...(ex ? { extra: { ...ex, ...(ex.dropShadow ? { dropShadow: ex.dropShadow.map(lit) } : {}), ...(ex.innerShadow ? { innerShadow: ex.innerShadow.map(lit) } : {}) } } : {}),
   };
 }
