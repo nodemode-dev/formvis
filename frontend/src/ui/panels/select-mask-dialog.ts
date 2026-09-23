@@ -27,7 +27,7 @@ export class SelectMaskDialog extends Dialog {
   private guide: Float32Array | null = null;
   private mask: Float32Array | null = null;
   private frame = 0;
-  private readonly canvas = el(`<canvas class="cv-liquify-canvas" width="${PW}" height="${PH}"></canvas>`) as HTMLCanvasElement;
+  private readonly canvas = el(`<canvas class="cv-mask-canvas" width="${PW}" height="${PH}"></canvas>`) as HTMLCanvasElement;
 
   constructor(private readonly engine: Engine) {
     super('Select and Mask', PW + 48);
