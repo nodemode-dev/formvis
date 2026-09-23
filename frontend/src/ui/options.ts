@@ -15,6 +15,22 @@ export class OptionsBar {
       this.groups.set(t.id, g);
       root.appendChild(g.node);
     }
+    // A bar wider than the window: a vertical wheel scrolls it sideways, and a chevron shows at each end with
+    // settings past it (laid over the bar, so showing one moves nothing).
+    const edge = (side: 'start' | 'end'): HTMLButtonElement => {
+      const b = el<HTMLButtonElement>(`<button class="cv-options-edge is-${side}" type="button" tabindex="-1" aria-label="${side === 'start' ? 'Earlier settings' : 'More settings'}" hidden>${icon(side === 'start' ? 'chevronLeft' : 'chevronRight', 14)}</button>`);
+      b.addEventListener('click', () => root.scrollBy({ left: (side === 'start' ? -1 : 1) * root.clientWidth * 0.7, behavior: 'smooth' }));
+      root.parentElement?.appendChild(b);
+      return b;
+    };
+    this.edges = [edge('start'), edge('end')];
+    root.addEventListener('wheel', (e) => {
+      if (root.scrollWidth <= root.clientWidth || Math.abs(e.deltaX) > Math.abs(e.deltaY)) return;
+      e.preventDefault();
+      root.scrollLeft += e.deltaY;
+    }, { passive: false });
+    root.addEventListener('scroll', () => this.syncEdges(), { passive: true });
+    new ResizeObserver(() => this.syncEdges()).observe(root);
     engine.on('tool', () => this.show());
     for (const k of ['options', 'active', 'colors', 'doc'] as const) engine.on(k, () => this.queue());
     this.show();
@@ -129,7 +145,26 @@ export class OptionsBar {
 
   private show(): void {
     for (const [id, g] of this.groups) setHidden(g.node, id !== this.engine.tool);
+    this.root.scrollLeft = 0;
     this.refresh();
+    this.syncEdges();
+  }
+
+  private readonly edges: HTMLButtonElement[];
+
+  /** Each end's chevron shown only while settings lie past that end, placed over the bar's own edge. */
+  private syncEdges(): void {
+    const r = this.root, max = r.scrollWidth - r.clientWidth, box = r.getBoundingClientRect();
+    const [start, end] = this.edges;
+    setHidden(start, !(max > 1 && r.scrollLeft > 1));
+    setHidden(end, !(max > 1 && r.scrollLeft < max - 1));
+    for (const b of this.edges) {
+      if (b.hidden) continue;
+      const top = `${Math.round(box.top)}px`, h = `${Math.round(box.height)}px`, x = b === start ? `${Math.round(box.left)}px` : `${Math.round(box.right - b.offsetWidth)}px`;
+      if (b.style.top !== top) b.style.top = top;
+      if (b.style.height !== h) b.style.height = h;
+      if (b.style.left !== x) b.style.left = x;
+    }
   }
 
   private refresh(): void {

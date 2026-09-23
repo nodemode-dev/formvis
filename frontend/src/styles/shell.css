@@ -45,6 +45,11 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 
 .cv-options { display: flex; align-items: center; padding: 0 var(--space-4); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); overflow-x: auto; white-space: nowrap; scrollbar-width: none; min-width: 0; }
 .cv-options::-webkit-scrollbar { display: none; }
+.cv-options-edge { position: fixed; width: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; color: var(--text-secondary); cursor: pointer; }
+.cv-options-edge.is-start { background: linear-gradient(to right, var(--bg-secondary) 60%, transparent); }
+.cv-options-edge.is-end { background: linear-gradient(to left, var(--bg-secondary) 60%, transparent); }
+.cv-options-edge:hover { color: var(--accent-color); }
+.cv-options-edge[hidden] { display: none; }
 .cv-opt-group { display: flex; align-items: center; gap: var(--space-4); flex: none; }
 .cv-opt-group > * { flex: none; }
 .cv-opt-group[hidden] { display: none; }
