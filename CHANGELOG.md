@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.89.0 · 2026-09-23
+
+### Added
+
+- Filter > Shake Reduction: estimates the camera shake's blur trace from the image and removes it; the trace's angle and length, Smoothing and Amount can be adjusted. The trace is straight; Photoshop also finds curved ones.
+- 5 more tests (4 unit, 1 browser): 188 in all.
+
 ## 0.88.0 · 2026-09-23
 
 ### Added

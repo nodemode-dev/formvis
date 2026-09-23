@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Shake Reduction · _v0.89.0 (src/engine/shake.ts new, src/engine/filters-more.ts, src/engine/filter-jobs.ts, src/engine/filter-worker.ts, src/ui/panels/filter-panel.ts, src/app.ts; tests/shake.test.ts and e2e/test_shake_reduction.py new)
+
+`shake.ts`: `estimateShake` (angle by the along-to-across derivative ratio, length by the derivative's autocorrelation dip) with `ShakeTrace`. `filters-more.ts`: `ShakeSettings`, `shakeMargin` and `shakeReduce` (Smart Sharpen's motion deconvolution). The job types, the worker and the filter panel (kind, label, defaults, runner, margin, a section with an Estimate button and a note, estimating on open) take the new kind; `app.ts` lists it after Smart Sharpen. Removed:
+
+```ts
+  const FILTERS: FilterKind[] = ['develop', 'gaussianBlur', 'lensBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'smartSharpen', 'unsharpMask'];
+import type { SmartSharpenSettings } from './filters-more';
+export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState; lensRadius: number; lensBrightness: number; lensThreshold: number; smart: SmartSharpenSettings }
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen';
+import { lensBlur, smartSharpen } from './filters-more';
+import { lensBlur, lensBlurMargin, smartSharpen, smartSharpenMargin, type SharpenRemove } from '../../engine/filters-more';
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen';
+export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen' };
+  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : kind === 'lensBlur' ? lensBlurMargin(s.lensRadius) : kind === 'smartSharpen' ? smartSharpenMargin(s.smart) : 0;
+```
+
 ## Remove tool and Remove Wires and Cables · _v0.88.0 (src/engine/distractions.ts and src/extensions/tools/remove.ts new, src/engine/index.ts, src/engine/types.ts, src/extensions/tools/index.ts, src/ui/stage.ts, src/app.ts; tests/distractions.test.ts and e2e/test_remove_tool.py new)
 
 `distractions.ts`: `findWires` (black-hat, threshold, long thin pieces, grown) with `WIRE_DEFAULTS`. In the engine, the `remove` stroke kind, `removePatch` (content-aware fill of the grown stroke) and `removeWires` (Create Texture fill of the found wires, within the selection); Remove warms stroke surfaces. `types.ts` adds the `remove` tool id; the tool registers after Spot Healing; the stage allows right-drag sizing for it; `app.ts` adds `remove-wires` to the Edit menu. Removed:
