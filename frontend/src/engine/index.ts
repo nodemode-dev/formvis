@@ -592,13 +592,29 @@ export class Engine {
     return crop ? cropWarp(full, crop) : full;
   }
 
-  private renderSmart(source: Raster, filters: SmartFilter[]): Raster {
+  /** A smart filter mask applied: where the mask (alpha, source-sized) is clear the unfiltered source shows, where it
+   *  is full the filtered render; the padding past the source shows the filters, as Photoshop's mask is white there. */
+  private maskFilters(filtered: ImageData, source: Raster, m: number, mask: Raster | null): ImageData {
+    if (!mask) return filtered;
+    const W = filtered.width, H = filtered.height, plain = createSurface(W, H), pc = ctxOf(plain), mk = createSurface(W, H), mc = ctxOf(mk);
+    pc.drawImage(source.canvas, m, m);
+    mc.fillStyle = '#ffffff';
+    mc.fillRect(0, 0, W, H);
+    mc.clearRect(m, m, source.width, source.height);
+    mc.drawImage(mask.canvas, m, m, source.width, source.height);
+    const u = pc.getImageData(0, 0, W, H).data, a = mc.getImageData(0, 0, W, H).data, f = filtered.data, out = new ImageData(W, H), o = out.data;
+    for (let i = 0; i < W * H; i++) { const k = a[i * 4 + 3] / 255; for (let c = 0; c < 4; c++) o[i * 4 + c] = Math.round(u[i * 4 + c] + (f[i * 4 + c] - u[i * 4 + c]) * k); }
+    return out;
+  }
+
+  private renderSmart(source: Raster, filters: SmartFilter[], mask: Raster | null = null): Raster {
     const shown = filters.filter((f) => f.enabled);
     const m = this.smartMargin(filters);
     const pad = createSurface(source.width + 2 * m, source.height + 2 * m);
     ctxOf(pad).drawImage(source.canvas, m, m);
     let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
     for (const f of shown) if (this.smartFilterRunner) img = this.smartFilterRunner(f.kind, f.settings, img);
+    if (shown.length) img = this.maskFilters(img, source, m, mask);
     const out = new Raster(img.width, img.height);
     out.write(img);
     return out;
@@ -631,6 +647,40 @@ export class Engine {
   /** Replaces a smart object's filter stack and re-renders its pixels from the source, as one undo step. */
   setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void { const p = this.current; if (p) this.restackSoon(p, id, null, filters, name); }
 
+  /** Layer > Smart Objects > Replace Contents: a new source for the active smart object, shown at the same scale per
+   *  source pixel and about the same centre, its filters and mask re-run, as one step. */
+  replaceContents(source: Raster): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l?.smart) { this.notice('Select a smart object to replace its contents.'); return false; }
+    return this.restackSoon(p, l.id, source, null, 'Replace Contents');
+  }
+
+  /** Adds a smart filter mask to the active smart object: from the selection (mapped into the source's pixels) when
+   *  there is one and the object is not distorted, else white, showing the filters everywhere. */
+  addSmartFilterMask(): void {
+    const p = this.current, l = p?.activeLayer, sm = l?.smart;
+    if (!p || !l || !sm || !l.raster) { this.notice('Select a smart object first.'); return; }
+    if (sm.filterMask) return;
+    const src = sm.source, mask = new Raster(src.width, src.height), sel = p.selection;
+    if (sel && !sm.warp) {
+      const m = (l.raster.width - src.width) / 2;
+      setMat(mask.ctx, mul(translation(-m, -m), mul(invert(placement(l.transform, l.raster.width, l.raster.height)), translation(sel.x, sel.y))));
+      mask.ctx.drawImage(sel.surface(), 0, 0);
+      mask.ctx.setTransform(1, 0, 0, 1, 0, 0);
+    } else { mask.ctx.fillStyle = '#ffffff'; mask.ctx.fillRect(0, 0, src.width, src.height); }
+    this.restackSoon(p, l.id, null, null, 'Add Smart Filter Mask', { filterMask: mask, filterMaskEnabled: true });
+  }
+
+  deleteSmartFilterMask(): void {
+    const p = this.current, l = p?.activeLayer;
+    if (p && l?.smart?.filterMask) this.restackSoon(p, l.id, null, null, 'Delete Smart Filter Mask', { filterMask: null, filterMaskEnabled: true });
+  }
+
+  toggleSmartFilterMask(): void {
+    const p = this.current, l = p?.activeLayer, sm = l?.smart;
+    if (p && l && sm?.filterMask) this.restackSoon(p, l.id, null, null, sm.filterMaskEnabled === false ? 'Enable Smart Filter Mask' : 'Disable Smart Filter Mask', { filterMask: sm.filterMask, filterMaskEnabled: sm.filterMaskEnabled === false });
+  }
+
   /** A change made as one undo step in `p`, which need not be the document in view. */
   private editOn(p: Project, name: string, fn: () => boolean | void): boolean {
     if (p === this.current) return this.edit(name, () => fn());
@@ -655,13 +705,14 @@ export class Engine {
   }
 
   /** renderSmart with each filter run in the worker in turn, the interface staying live. */
-  private async renderSmartAsync(source: Raster, filters: SmartFilter[]): Promise<Raster> {
+  private async renderSmartAsync(source: Raster, filters: SmartFilter[], mask: Raster | null = null): Promise<Raster> {
     const m = this.smartMargin(filters), pad = createSurface(source.width + 2 * m, source.height + 2 * m);
     ctxOf(pad).drawImage(source.canvas, m, m);
     let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
     for (const f of filters.filter((x) => x.enabled)) {
       img = this.smartFilterRunnerAsync ? await this.smartFilterRunnerAsync(f.kind, f.settings, img) : this.smartFilterRunner ? this.smartFilterRunner(f.kind, f.settings, img) : img;
     }
+    if (filters.some((x) => x.enabled)) img = this.maskFilters(img, source, m, mask);
     const out = new Raster(img.width, img.height);
     out.write(img);
     return out;
@@ -670,33 +721,35 @@ export class Engine {
   /** Re-renders a smart object: at once when it is small (up to 2 megapixels) or shows no filter, else in the
    *  background, the result applied as one undo step when it is ready. A later change to the same object supersedes a
    *  render still running, and a render whose source changed meanwhile is dropped. */
-  private restackSoon(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string): boolean {
+  private restackSoon(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, maskChange: { filterMask: Raster | null; filterMaskEnabled: boolean } | null = null): boolean {
     const l = p.layer(id);
     if (!l?.smart) return false;
     const src = source ?? l.smart.source, stack = structuredClone(filters ?? this.smartFiltersShown(id) ?? l.smart.filters);
+    const fm = maskChange ?? { filterMask: l.smart.filterMask ?? null, filterMaskEnabled: l.smart.filterMaskEnabled !== false }, active = fm.filterMaskEnabled ? fm.filterMask : null;
     if (!this.smartFilterRunnerAsync || src.width * src.height <= 2_000_000 || !stack.some((f) => f.enabled)) {
       this.smartPending.delete(id);
-      return this.restack(p, id, source, stack, name);
+      return this.restack(p, id, source, stack, name, null, maskChange);
     }
     const token = ++this.smartToken;
     this.smartPending.set(id, { token, filters: stack });
     void this.task(async () => {
-      const rendered = await this.renderSmartAsync(src, stack);
+      const rendered = await this.renderSmartAsync(src, stack, active);
       if (this.smartPending.get(id)?.token !== token) return;
       this.smartPending.delete(id);
       const now = p.layer(id);
       if (!this.projects.includes(p) || !now?.smart || (source === null && now.smart.source !== src)) { this.emit('doc', null); return; }
-      this.restack(p, id, source, stack, name, rendered);
+      this.restack(p, id, source, stack, name, rendered, maskChange);
     });
     return true;
   }
 
-  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, rendered: Raster | null = null): boolean {
+  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, rendered: Raster | null = null, maskChange: { filterMask: Raster | null; filterMaskEnabled: boolean } | null = null): boolean {
     return this.editOn(p, name, () => {
       const l = p.layer(id);
       if (!l?.smart) return false;
       const src = source ?? l.smart.source;
-      const stack = structuredClone(filters ?? l.smart.filters), raster = rendered ?? this.renderSmart(src, stack), old = l.raster as Raster, t = l.transform;
+      const fm = maskChange ?? { filterMask: l.smart.filterMask ?? null, filterMaskEnabled: l.smart.filterMaskEnabled !== false };
+      const stack = structuredClone(filters ?? l.smart.filters), raster = rendered ?? this.renderSmart(src, stack, fm.filterMaskEnabled ? fm.filterMask : null), old = l.raster as Raster, t = l.transform;
       const warp = this.smartWarpNow(l);
       if (warp) {
         // A distorted smart object warps its fresh render through its kept warp; a mask tied to its pixels is pinned
@@ -704,7 +757,7 @@ export class Engine {
         const w = this.warpedSmart(raster, this.smartMargin(stack), src, warp);
         if (!w) return false;
         const mask = l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask;
-        p.updateLayer(id, { smart: { source: src, filters: stack, warp, warpAt: w.t }, raster: w.raster, transform: w.t, mask });
+        p.updateLayer(id, { smart: { source: src, filters: stack, warp, warpAt: w.t, filterMask: fm.filterMask, filterMaskEnabled: fm.filterMaskEnabled }, raster: w.raster, transform: w.t, mask });
         return;
       }
       // The padding grows or shrinks about the layer's centre, so the source pixels stay exactly where they were.
@@ -716,7 +769,7 @@ export class Engine {
         nm.ctx.drawImage(mask.raster.canvas, dx, dy);
         mask = { ...mask, raster: nm };
       }
-      p.updateLayer(id, { smart: { source: src, filters: stack }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
+      p.updateLayer(id, { smart: { source: src, filters: stack, filterMask: fm.filterMask, filterMaskEnabled: fm.filterMaskEnabled }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
     });
   }
 
@@ -2532,7 +2585,7 @@ export class Engine {
       // A smart object distorts from its undistorted render, starting from its current warp, which the new one replaces.
       this.settle();
       const warp = this.smartWarpNow(l), margin = this.smartMargin(l.smart.filters);
-      const R = warp ? this.renderSmart(l.smart.source, l.smart.filters) : l.raster, rt = warp ? docTransform(R.width, R.height) : l.transform;
+      const R = warp ? this.renderSmart(l.smart.source, l.smart.filters, l.smart.filterMaskEnabled !== false ? l.smart.filterMask ?? null : null) : l.raster, rt = warp ? docTransform(R.width, R.height) : l.transform;
       let corners = cornersOf(rt);
       if (warp) {
         const H = homography(warp), ex = margin / l.smart.source.width, ey = margin / l.smart.source.height;

@@ -59,7 +59,12 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
       const name = `${l.id}.source.png`;
       files.push({ name, blob: await toBlob(l.smart.source.canvas) });
       r.smartSourceFile = name;
-      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null };
+      r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null, filterMaskEnabled: l.smart.filterMaskEnabled !== false };
+      if (l.smart.filterMask) {
+        const mn = `${name.replace(/\.png$/i, '')}-filtermask.png`;
+        files.push({ name: mn, blob: await toBlob(l.smart.filterMask.canvas) });
+        r.smartFilterMaskFile = mn;
+      }
     }
     if (l.parentId) r.parentID = l.parentId;
     if (l.isGroup) r.isGroup = true;
@@ -137,7 +142,9 @@ export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: 
     if (r.vector) { delete out.vector; notes.push(`"${name || 'Layer'}" goes as pixels; .ref projects have no shape layers.`); }
     if (str(r.smartSourceFile)) {
       drop.add(str(r.smartSourceFile) as string);
+      if (str(r.smartFilterMaskFile)) drop.add(str(r.smartFilterMaskFile) as string);
       delete out.smartSourceFile;
+      delete out.smartFilterMaskFile;
       delete out.smart;
       notes.push(`"${name || 'Layer'}" goes as pixels; .ref projects have no smart objects.`);
     }
@@ -203,7 +210,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
   const records = Array.isArray(manifest.layers) ? manifest.layers.map(obj) : [];
   const names = new Set<string>();
-  for (const r of records) { for (const n of [str(r.imageFile), str(r.maskFile), str(r.smartSourceFile)]) if (n) names.add(n); }
+  for (const r of records) { for (const n of [str(r.imageFile), str(r.maskFile), str(r.smartSourceFile), str(r.smartFilterMaskFile)]) if (n) names.add(n); }
   const bitmaps = new Map<string, ImageBitmap>();
   await Promise.all([...names].map(async (n) => { bitmaps.set(n, await createImageBitmap(await fetchImage(n))); }));
   const layers: Layer[] = records.map((r) => {
@@ -212,7 +219,8 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const sourceImage = bitmaps.get(str(r.smartSourceFile) ?? '');
     const vector = raster ? vectorFrom(r.vector) : null;
     const sw = obj(r.smart), warpPts = Array.isArray(sw.warp) && sw.warp.length === 4 && sw.warp.every((q) => finite(obj(q).x) && finite(obj(q).y)) ? (sw.warp as Array<{ x: number; y: number }>).map((q) => ({ x: q.x, y: q.y })) : null;
-    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null } : null;
+    const fmImage = bitmaps.get(str(r.smartFilterMaskFile) ?? ''), fmOk = !!fmImage && !!sourceImage && fmImage.width === sourceImage.width && fmImage.height === sourceImage.height;
+    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false } : null;
     const maskImage = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskImage
       ? { raster: grayToMask(maskImage), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskImage.width, maskImage.height) : null }
