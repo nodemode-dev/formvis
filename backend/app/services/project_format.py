@@ -7,7 +7,10 @@ from app.core import config
 
 REFERENCE = "com.reference.project"
 SONNY = "com.nodemode.sonny"
-SUPPORTED = {REFERENCE: range(1, 8), SONNY: range(1, 2)}
+# NodeMode canvasor's projects: the same manifest and images/ layout as .ref (bottom-to-top layers, each transform an
+# origin and a displayed size), under their own id. Version 1 is the one seen; later versions are rejected, not guessed.
+CANVASOR = "com.nodemode.canvasor"
+SUPPORTED = {REFERENCE: range(1, 8), SONNY: range(1, 2), CANVASOR: range(1, 2)}
 SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
 
 
@@ -24,7 +27,7 @@ def validate(manifest: dict, files: set[str]) -> None:
         raise ProjectError("The manifest is not a JSON object.")
     fmt, version = manifest.get("format"), manifest.get("version")
     if fmt not in SUPPORTED:
-        raise ProjectError("This is not a sonny or .ref project.")
+        raise ProjectError("This is not a sonny, .ref or canvasor project.")
     if not isinstance(version, int) or version not in SUPPORTED[fmt]:
         raise ProjectError(f"This project uses format version {version}, which this build cannot read.")
     width, height = manifest.get("width"), manifest.get("height")
@@ -109,7 +112,7 @@ def read_zip(data: bytes) -> tuple[dict, dict[str, bytes]]:
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
-        raise ProjectError("The file is not a sonny or .ref package.") from exc
+        raise ProjectError("The file is not a sonny, .ref or canvasor package.") from exc
     with archive:
         infos = [info for info in archive.infolist() if not info.is_dir()]
         entries = [(info.filename, info.file_size, (lambda info=info: archive.read(info))) for info in infos]

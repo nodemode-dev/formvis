@@ -4,10 +4,10 @@ import { api } from './api';
 const NATIVE = /\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)$/i;
 const SERVER = /\.(heic|heif|hif|tiff?)$/i;
 export const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,image/*';
-export const PROJECT_ACCEPT = '.sny,.sonny,.ref,.zip,.psd,.psb';
+export const PROJECT_ACCEPT = '.sny,.sonny,.ref,.canvasor,.zip,.psd,.psb';
 
 export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name);
-export const isProjectFile = (f: File): boolean => /\.(sny|sonny|ref|zip|psd|psb)$/i.test(f.name);
+export const isProjectFile = (f: File): boolean => /\.(sny|sonny|ref|canvasor|zip|psd|psb)$/i.test(f.name);
 
 function viaElement(blob: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {

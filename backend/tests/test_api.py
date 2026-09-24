@@ -137,3 +137,32 @@ def test_package_returns_a_zip(client):
 def test_background_unknown_engine_is_501(client):
     r = client.post("/api/ops/remove-background", files={"file": ("a.png", png_bytes(), "image/png")}, data={"method": "nonexistent"})
     assert r.status_code == 501
+
+
+def _canvasor_zip(version=1, fmt="com.nodemode.canvasor") -> bytes:
+    """A small canvasor project laid out as NodeMode canvasor writes it: manifest.json and images/<id>.png."""
+    import zipfile
+
+    m = {"format": fmt, "version": version, "colorSpace": "sRGB", "resolution": 72, "documentID": "D0C", "width": 8, "height": 6,
+         "layers": [{"id": "A", "name": "Base", "isVisible": True, "imageFile": "A.png",
+                     "transform": {"origin": [0, 0], "size": [8, 6], "rotation": 0, "flipX": False, "flipY": False, "sampling": "High quality"}},
+                    {"id": "B", "name": "Empty", "isVisible": True,
+                     "transform": {"origin": [0, 0], "size": [8, 6], "rotation": 0, "flipX": False, "flipY": False, "sampling": "High quality"}}],
+         "activeLayerID": "A"}
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w") as z:
+        z.writestr("manifest.json", json.dumps(m))
+        z.writestr("images/A.png", png_bytes())
+    return buf.getvalue()
+
+
+def test_canvasor_projects_open_and_unknown_versions_are_refused(client):
+    ok = client.post("/api/projects/import", files=[("files", ("My Scene.canvasor", _canvasor_zip(), "application/zip"))])
+    assert ok.status_code == 200, ok.text
+    body = ok.json()
+    assert body["name"] == "My Scene"                                   # .canvasor is stripped from the name
+    assert [l["name"] for l in body["manifest"]["layers"]] == ["Base", "Empty"]
+    later = client.post("/api/projects/import", files=[("files", ("x.canvasor", _canvasor_zip(version=2), "application/zip"))])
+    assert later.status_code == 422 and "format version 2" in later.json()["detail"]
+    other = client.post("/api/projects/import", files=[("files", ("x.canvasor", _canvasor_zip(fmt="com.example.other"), "application/zip"))])
+    assert other.status_code == 422 and "canvasor" in other.json()["detail"]

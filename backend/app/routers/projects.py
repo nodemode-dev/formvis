@@ -13,7 +13,7 @@ from app.services import sessions
 
 router = APIRouter(tags=["projects"])
 NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,120}$")
-SUFFIXES = (".sny", ".sonny", ".ref", ".zip")
+SUFFIXES = (".sny", ".sonny", ".ref", ".canvasor", ".zip")
 #: The library writes .sny; .sonny (the extension before 0.90.0) is still read, listed, opened and deleted.
 EXT, OLD_EXT = ".sny", ".sonny"
 
