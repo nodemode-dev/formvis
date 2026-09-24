@@ -10,6 +10,8 @@ import { icon } from './icons';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
+import { RECOVERY_CHOICES, loadPrefs, savePrefs, type Prefs } from './prefs';
+import { checkRow, selectRow, sliderRow } from './panels/controls';
 
 const PRESETS: ReadonlyArray<[string, number, number]> = [
   ['HD 1920 \u00d7 1080', 1920, 1080], ['4K 3840 \u00d7 2160', 3840, 2160], ['Square 2048', 2048, 2048],
@@ -172,17 +174,43 @@ export class OpenDialog extends Dialog {
 export class SettingsDialog extends Dialog {
   private readonly grid = el('<div class="nm-theme-grid" role="group" aria-label="Theme"></div>');
   private readonly accent = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Accent color">');
+  private readonly nav = el('<div class="cv-prefs-nav" role="tablist"></div>');
+  private readonly sections = new Map<string, HTMLElement>();
+  private prefs: Prefs = loadPrefs();
+  private readonly statesRow = sliderRow('History States', 1, 1000, 1, (v) => this.change({ historyStates: v }));
+  private readonly memoryRow = sliderRow('History memory (MB)', 16, 4096, 16, (v) => this.change({ historyMB: v }));
+  private readonly redrawRow = checkRow('Redraw only what a brush stroke changed', (v) => this.change({ regionRedraws: v }));
+  private readonly recoveryRow = selectRow('Keep recovery information after changes, within', RECOVERY_CHOICES, (v) => this.change({ recoverySeconds: Number(v) }));
 
-  constructor() {
-    super('Settings', 460);
+  /** Edit > Preferences (Ctrl+,), laid out as Photoshop's: sections on the left, each section's settings on the right,
+   *  kept on this device. `onPrefs` puts a change into effect. */
+  constructor(private readonly onPrefs: (p: Prefs) => void) {
+    super('Preferences', 620);
     const t = document.createElement('template');
     t.innerHTML = themeSwatchesHtml();
     this.grid.append(t.content);
     const row = el('<div class="cv-field"><span>Theme</span></div>');
     row.appendChild(this.grid);
-    this.body.appendChild(row);
-    this.field('Accent', this.accent);
-    this.body.appendChild(el('<p class="cv-note">Theme and accent are shared with NodeMode on this device.</p>'));
+    const pages = el('<div class="cv-prefs-pages"></div>');
+    const add = (name: string, ...content: HTMLElement[]): void => {
+      const tab = el<HTMLButtonElement>('<button class="cv-prefs-tab" type="button" role="tab"></button>');
+      tab.textContent = name;
+      tab.addEventListener('click', () => this.showSection(name));
+      this.nav.appendChild(tab);
+      const page = el('<div class="cv-prefs-page" role="tabpanel"></div>');
+      page.append(...content);
+      pages.appendChild(page);
+      this.sections.set(name, page);
+    };
+    const accentRow = el('<label class="cv-field"><span>Accent</span></label>');
+    accentRow.appendChild(this.accent);
+    add('Interface', row, accentRow, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device.</p>'));
+    add('Performance', this.statesRow.el, this.memoryRow.el, this.redrawRow.el,
+      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'));
+    add('File Handling', this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
+    const wrap = el('<div class="cv-prefs"></div>');
+    wrap.append(this.nav, pages);
+    this.body.appendChild(wrap);
     this.button('Done', 'primary', () => this.close());
     this.grid.addEventListener('click', (e) => {
       const b = (e.target as HTMLElement).closest<HTMLElement>('[data-theme-id]');
@@ -191,11 +219,30 @@ export class SettingsDialog extends Dialog {
       this.sync();
     });
     this.accent.addEventListener('input', () => { setAccent(this.accent.value); this.sync(); });
+    this.showSection('Interface');
   }
 
-  show(): void {
+  /** Opens on a section, Interface unless named. */
+  show(section?: string): void {
+    this.prefs = loadPrefs();
+    this.statesRow.set(this.prefs.historyStates);
+    this.memoryRow.set(this.prefs.historyMB);
+    this.redrawRow.set(this.prefs.regionRedraws);
+    this.recoveryRow.set(String(this.prefs.recoverySeconds));
+    if (section && this.sections.has(section)) this.showSection(section);
     this.sync();
     this.open();
+  }
+
+  private showSection(name: string): void {
+    for (const [n, page] of this.sections) setHidden(page, n !== name);
+    for (const tab of Array.from(this.nav.children) as HTMLElement[]) { const on = tab.textContent === name; setClass(tab, 'is-active', on); tab.setAttribute('aria-selected', String(on)); }
+  }
+
+  private change(patch: Partial<Prefs>): void {
+    this.prefs = { ...this.prefs, ...patch };
+    savePrefs(this.prefs);
+    this.onPrefs(this.prefs);
   }
 
   private sync(): void {

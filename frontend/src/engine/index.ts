@@ -125,6 +125,13 @@ export class Engine {
   /** The Crop tool's Delete Cropped Pixels: on by default, as Photoshop's (its Crop page and CreativeLive agree); off,
    *  cropped pixels stay beyond the canvas and Image > Reveal All brings them back. */
   cropDeletePixels = true;
+  /** Preferences > Performance: History States (steps kept for undo, 1 to 1000) and the memory history may hold. Each
+   *  project takes them when made; changing them applies to every open project from its next step. */
+  historyLimits = { states: 100, bytes: 256 * 1024 * 1024 };
+  setHistoryLimits(states: number, bytes: number): void {
+    this.historyLimits = { states: Math.round(clamp(states, 1, 1000)), bytes: Math.round(clamp(bytes, 16 * 1024 * 1024, 4096 * 1024 * 1024)) };
+    for (const p of this.projects) { p.history.entryLimit = this.historyLimits.states; p.history.byteLimit = this.historyLimits.bytes; }
+  }
   /** Pen pressure's effect on the Brush's size and flow; neutral until a preset or the options turn it on. */
   brushDynamics: BrushDynamics = noDynamics();
   /** The preset last applied, for the options bar; cleared by nothing, since changing a value is Photoshop's way too. */
@@ -212,6 +219,8 @@ export class Engine {
 
   addProject(doc: Doc, name: string, activeId: ID | null = null): Project {
     const p = new Project(doc, this.uniqueName(name));
+    p.history.entryLimit = this.historyLimits.states;
+    p.history.byteLimit = this.historyLimits.bytes;
     p.viewport.width = this.viewSize.w;
     p.viewport.height = this.viewSize.h;
     p.viewport.fit(doc.width, doc.height);

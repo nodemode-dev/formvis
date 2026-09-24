@@ -45,6 +45,7 @@ import { api, type Capabilities, type OpenedProject } from './io/api';
 import { IMAGE_ACCEPT, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { deserialize, serialize, serializeRefProject } from './io/project-io';
 import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
+import { applyPrefs, loadPrefs } from './ui/prefs';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
@@ -148,6 +149,7 @@ export function startApp(): void {
   errorLog.install();
   const commands = new Commands();
   const contextMenu = new PopupMenu(commands, null, true);
+  applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
@@ -651,7 +653,7 @@ export function startApp(): void {
     color: new ColorPickerDialog(engine),
     liveMask: new LiveMaskDialog(),
     open: new OpenDialog({ openLibrary, openFiles, openFolder }),
-    settings: new SettingsDialog(),
+    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; }),
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
     adjust: new AdjustPanel(engine),
@@ -751,7 +753,7 @@ export function startApp(): void {
     { id: 'define-pattern', label: 'Define Pattern...', enabled: () => !!engine.current, run: () => void definePattern() },
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
     { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
-    { id: 'settings', label: 'Settings...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
+    { id: 'settings', label: 'Preferences...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
     { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
@@ -1155,7 +1157,7 @@ export function startApp(): void {
     for (const id of [...keptAt.keys()]) if (!engine.projects.some((p) => p.id === id)) { keptAt.delete(id); await recovery.drop(id); }
   }
   const keepSoon = (): void => { if (!keepTimer) keepTimer = window.setTimeout(() => { keepTimer = 0; void keepModified(); }, recoveryDelay); };
-  let recoveryDelay = 20000;
+  let recoveryDelay = loadPrefs().recoverySeconds * 1000;
   engine.on('history', keepSoon);
   engine.on('projects', keepSoon);
   async function offerRecovery(): Promise<void> {
