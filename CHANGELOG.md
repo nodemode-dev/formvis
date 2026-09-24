@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.12.0 · 2026-09-24
+
+### Added
+
+- The Healing Brush's Sample menu (Current Layer, Current & Below, All Layers) and Spot Healing's Sample All Layers: heal onto an empty layer above the picture, keeping the repair separate.
+
+### Fixed
+
+- The Healing Brush's Sample all layers only affected the preview while painting; the finished heal still came from the layer alone, so healing onto an empty layer did not work.
+
+### Tests
+
+- 2 more (browser): 294 in all.
+
 ## 1.11.0 · 2026-09-24
 
 ### Added

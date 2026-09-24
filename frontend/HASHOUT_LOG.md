@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The healing brushes' Sample options · _v1.12.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/healing-brush.ts, src/extensions/tools/heal.ts; e2e/test_heal_sample.py new)
+
+`retouch.ts`: `HealSample`, `HEAL_SAMPLES`. Engine: `healSampleSurface`, `rasterSpace`, `layHeal`, `retouch.healSample`, `retouch.spotSampleAll`; `healFromPatch` and `healPatch` heal the sampled image and lay the repair on; the Healing Brush's stroke texture follows its Sample. Healing Brush: the Sample select replaces the shared toggle; Spot Healing: Sample All Layers. Removed:
+
+```ts
+import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode } from './retouch';
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal' };
+      texture = { surface: this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), dx: off.x, dy: off.y };
+import { HEAL_BLENDS, type HealBlend } from '../../engine/retouch';
+    { kind: 'toggle', label: 'Sample all layers', get: () => e.retouch.cloneSampleAll, set: (v) => { e.retouch.cloneSampleAll = v; e.emit('options', null); } },
+```
+
 ## The healing brushes' Mode · _v1.11.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/heal.ts, src/extensions/tools/healing-brush.ts; e2e/test_heal_modes.py new)
 
 `retouch.ts`: `HealBlend`, `HEAL_BLENDS`. Engine: `healBlend` (the full-strength heal recomposited in the mode; Replace whole pixels on the Dissolve pattern), `retouch.healBlendMode`, `retouch.spotBlendMode`; `healFromPatch` and `healPatch` apply it. Both tools: a Mode select. Removed:
