@@ -1,4 +1,4 @@
-import type { Pt } from '../../engine';
+import { BLEND_MODES, canvasBlend, type BlendMode, type Pt } from '../../engine';
 import { GRADIENT_TYPES, allGradients, type GradientType } from '../../engine/gradients';
 import type { Tool, ToolContext } from '../registry';
 
@@ -70,6 +70,8 @@ export const gradientTool: Tool = {
       { kind: 'select', label: 'Colors', choices: allGradients().map((p) => ({ id: p.id, label: p.label })), live: () => allGradients().map((p) => ({ id: p.id, label: p.label })), get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v; }) },
       { kind: 'button', label: 'Edit', icon: 'gradient', run: () => e.uiHooks.gradientEditor?.() },
       { kind: 'toggle', label: 'Reverse', get: () => e.gradientSettings.reversed, set: (v) => set(() => { e.gradientSettings.reversed = v; }) },
+      { kind: 'toggle', label: 'Dither', get: () => e.gradientSettings.dither, set: (v) => set(() => { e.gradientSettings.dither = v; }) },
+      { kind: 'select', label: 'Mode', choices: BLEND_MODES.filter((m) => canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label })), get: () => e.gradientSettings.blend, set: (v) => set(() => { e.gradientSettings.blend = v as BlendMode; }) },
       { kind: 'range', label: 'Opacity', min: 1, max: 100, unit: '%', get: () => Math.round(e.gradientSettings.opacity * 100), set: (v) => set(() => { e.gradientSettings.opacity = v / 100; }) },
     ];
   },

@@ -3252,7 +3252,9 @@ export class Engine {
    *  request, or after the preview is switched off, is dropped instead of painted. */
   private previewToken = 0;
   gradient: { project: Project; layerId: ID; target: Target; start: Pt; end: Pt; raster: Raster; local: Mat; surface: Surface } | null = null;
-  gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
+  /** The Gradient tool's settings: Shape, Colors (style), Reverse, Opacity, and Mode and Dither as Photoshop's options
+   *  bar has them (Dither off by default here: no source fetched gives Photoshop's default). */
+  gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false };
   /** Dialogs a tool's options can open; the app fills these in, since tools only see the engine. */
   uiHooks: { gradientEditor?: () => void; importBrushes?: () => void } = {};
   shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number } & PathShapeOptions = { kind: 'rectangle', cornerRadius: 0, ...DEFAULT_PATH_SHAPE };
@@ -3917,6 +3919,21 @@ export class Engine {
       lc.fillStyle = grad;
       lc.fillRect(bb.x - 1, bb.y - 1, bb.w + 2, bb.h + 2);
     }
+    if (st.dither) {
+      // Dither: each colour channel moved by up to one level either way, by a fixed hash of the pixel so the preview and
+      // the commit agree. The canvas has already rounded the gradient to whole levels, so smaller offsets would round
+      // back; a level of grain breaks the steps of a slow gradient into grain too fine to see as bands.
+      const img = lc.getImageData(0, 0, w, h), d = img.data;
+      for (let i = 0; i < w * h; i++) {
+        let hsh = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b);
+        for (let ch = 0; ch < 3; ch++) {
+          hsh = Math.imul(hsh ^ (hsh >>> 13), 0xc2b2ae35);
+          const k = i * 4 + ch, v = d[k] + 2 * ((hsh >>> 8) / 16777216 - 0.5);
+          d[k] = Math.max(0, Math.min(255, Math.round(v)));
+        }
+      }
+      lc.putImageData(img, 0, 0);
+    }
     const sel = g.project.selection;
     if (sel) {
       setMat(lc, mul(invert(local), translation(sel.x, sel.y)));
@@ -3924,8 +3941,10 @@ export class Engine {
       lc.drawImage(sel.surface(), 0, 0);
     }
     c.globalAlpha = st.opacity;
+    c.globalCompositeOperation = mask ? 'source-over' : compositeOp(st.blend);
     c.drawImage(layer, 0, 0);
     c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
     if (mask) c.putImageData(fromGray(c.getImageData(0, 0, w, h)), 0, 0);
     this.emit('render', null);
     this.emit('overlay', null);
