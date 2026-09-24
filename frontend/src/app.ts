@@ -43,7 +43,7 @@ import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, type Capabilities, type OpenedProject } from './io/api';
 import { IMAGE_ACCEPT, decodeImage, isImageFile, isProjectFile } from './io/images';
-import { deserialize, serialize, serializeRefProject } from './io/project-io';
+import { deserialize, serialize } from './io/project-io';
 import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { applyPrefs, loadPrefs } from './ui/prefs';
 import { HomeScreen } from './ui/home';
@@ -310,19 +310,6 @@ export function startApp(): void {
     });
   }
 
-  /** A project: `Name.ref.zip`, which unzips to the `Name.ref` package opens. */
-  async function exportRefProject(): Promise<void> {
-    const p = engine.current;
-    if (!p) return;
-    engine.settle();
-    await engine.task(async () => {
-      try {
-        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        await deliver(await api.package(manifest, files, `${p.name}.ref`), `${p.name}.ref.zip`);
-        if (notes.length) toast(`Exported as .ref with changes: ${notes.join(' ')}`);
-      } catch (err) { toast(message(err), 'error'); }
-    });
-  }
 
   /** deleting a layer that other layers are clipped to asks whether to bake
    *  their masked look or remove the links; with no such layers it deletes at once. */
@@ -723,7 +710,6 @@ export function startApp(): void {
     { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
     { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
-    { id: 'export-ref', label: 'Export .ref Project...', enabled: has, run: () => void exportRefProject() },
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
@@ -920,7 +906,7 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-',
+    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',

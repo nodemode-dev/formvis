@@ -2,6 +2,23 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The reference app's project format removed · _v1.4.0 (app/services/project_format.py, app/routers/projects.py, app/__init__.py)
+
+`project_format.py` no longer accepts `com.reference.project`: `SUPPORTED` holds `com.nodemode.sonny` and `com.nodemode.canvasor` version 1; the refusals and `write_zip`'s docstring name only sonny's and canvasor's projects. `projects.py` drops `.ref` from `SUFFIXES`. Version 1.4.0. Removed:
+
+```py
+__version__ = "1.3.0"
+SUFFIXES = (".sny", ".sonny", ".ref", ".canvasor", ".zip")
+REFERENCE = "com.reference.project"
+# NodeMode canvasor's projects: the same manifest and images/ layout as .ref (bottom-to-top layers, each transform an
+# origin and a displayed size), under their own id. Version 1 is the one seen; later versions are rejected, not guessed.
+SUPPORTED = {REFERENCE: range(1, 8), SONNY: range(1, 2), CANVASOR: range(1, 2)}
+        raise ProjectError("This is not a sonny, .ref or canvasor project.")
+        raise ProjectError("The file is not a sonny, .ref or canvasor package.") from exc
+    """The project as a zip: manifest.json and images/. With `root`, everything sits inside that one folder, so
+    unzipping a .ref export yields a `Name.ref` package."""
+```
+
 ## canvasor projects open · _v0.97.0 (app/services/project_format.py, app/routers/projects.py; tests/test_api.py)
 
 `project_format.py`: `CANVASOR = "com.nodemode.canvasor"`, accepted at version 1 in `SUPPORTED` (later versions refused); the refusals name canvasor. `projects.py`: `SUFFIXES` strips `.canvasor` from project names. Removed:

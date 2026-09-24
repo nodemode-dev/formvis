@@ -6,7 +6,7 @@ import type { Kernel, KernelContext } from './kernels';
  *  ranges (Master and six hue bands, each a trapezoid on the colour wheel with soft shoulders) shift hue, scale
  *  saturation and pull lightness toward white or black; the result is baked into a 33-point colour cube read by
  *  trilinear interpolation. Grain is smoothed lattice noise mixed with per-pixel noise, strongest in the midtones.
- *  Settings keep the field names and layouts `.ref` projects use, including dictionaries stored as alternating
+ *  Settings keep the field names and layouts sonny's project files use, including dictionaries stored as alternating
  *  key and value arrays. */
 
 export const ADJUSTMENT_LABELS: Record<AdjustmentKind, string> = {
@@ -291,7 +291,7 @@ export function grainKernel(g: GrainSettings): Kernel {
 
 export const randomSeed = (): number => (Math.random() * 0x100000000) >>> 0;
 
-/** The data a new adjustment layer starts with, in the `.ref` field layout. */
+/** The data a new adjustment layer starts with, in the project file's field layout. */
 export function defaultAdjustmentData(kind: AdjustmentKind): Json {
   const identityRange = { black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 };
   const data: Json = {

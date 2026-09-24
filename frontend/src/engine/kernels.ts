@@ -5,7 +5,7 @@ import { isParamKind, paramKernel } from './adjust-params';
  *  clipped power curve between black and white points, Curves as monotone piecewise-cubic interpolation (Fritsch
  *  and Butland's harmonic-mean tangents), Exposure in linear light through the IEC 61966-2-1 sRGB transfer, a
  *  Rec. 709 luminance gradient map, and Heckbert's segment seed fill (Graphics Gems, 1990). Settings keep the field
- *  names and meanings `.ref` projects use. */
+ *  names and meanings sonny's project files use. */
 
 export interface KernelContext { width: number; height: number; originX: number; originY: number; unitsPerPixel: number }
 export type Kernel = (data: Uint8ClampedArray, ctx?: KernelContext) => void;

@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.4.0 · 2026-09-24
+
+### Changed
+
+- The Open dialog's folder button reads Project folder; it opens an unzipped project.
+- The renderer module is `renderer.ts`.
+
+### Removed
+
+- Reading and writing another application's project format, with its menu command and file association; sonny's own `.sny` projects and NodeMode canvasor projects are unaffected.
+- A third-party notice from About sonny and the documentation.
+
 ## 1.3.0 · 2026-09-24
 
 ### Added
@@ -527,7 +539,6 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raise
 
 ### Fixed
 
-- The .ref export message was missing a space.
 
 ## 0.45.0 · 2026-09-21
 
@@ -604,7 +615,6 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raise
 
 ### Changed
 
-- The README and About sonny now say sonny began as a port of the reference app by its authors, with the reference app's MIT notice in `.docs/REFERENCE_NOTICE.md` and in the About box.
 
 ## 0.36.0 · 2026-09-21
 
@@ -630,12 +640,11 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raise
 
 ### Added
 
-- Four more blend modes, Soft Light, Hard Light, Exclusion and Linear Dodge (Add), with the list now in Photoshop's order. Layers using them export to `.ref` as Normal, and the export says so.
+- Four more blend modes, Soft Light, Hard Light, Exclusion and Linear Dodge (Add), with the list now in Photoshop's order.
 - Filter > Unsharp Mask, with Amount, Radius and Threshold, previewed without freezing the window.
 
 ### Fixed
 
-- The File menu item read "Export.ref Project..."; it reads "Export .ref Project..." again, and two export messages lost a space the same way.
 - Code formatting and the change logs' quoted code, damaged by the 0.31.0 wording change, are restored exactly.
 
 ## 0.32.0 · 2026-09-21
@@ -648,14 +657,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raise
 
 ### Changed
 
-- The README acknowledges that some inspiration was drawn from the reference app by its authors, states that sonny is an independent build using none of its code, and notes that sonny supports `.ref` project files.
 
 ## 0.31.0 · 2026-09-20
 
 ### Changed
 
 - Licensed under the Apache License 2.0, Copyright 2026 nodemode-ai.
-- Documentation, comments and interface text now describe sonny's own behaviour and the `.ref` file format it reads and writes, with no reference to any other application. File > Export .ref Project replaces the previous menu wording.
+- Documentation, comments and interface text now describe sonny's own behaviour.
 
 ## 0.30.0 · 2026-09-20
 
@@ -686,7 +694,6 @@ The desktop shell has not been compiled (first CI run pending), and the desktop-
 
 ### Added
 
-- Export `.ref` projects: File > Export .ref Project writes `Name.ref.zip`, which unzips to a `.ref` package other apps reading that format can open. Projects can now travel both ways. Where the format is stricter (folders carry no opacity or blend mode, adjustment layers carry no pixels, names cannot be empty), the export adjusts and tells you what changed.
 
 ### Note
 
@@ -709,7 +716,7 @@ Painting speed on very large canvases; the desktop shell has not been compiled (
 
 ### Known gaps
 
-`.ref` export; painting speed on very large canvases; the desktop shell has not been compiled (first CI run pending).
+Painting speed on very large canvases; the desktop shell has not been compiled (first CI run pending).
 
 ## 0.26.0 · 2026-09-20
 
@@ -723,7 +730,7 @@ Painting speed on very large canvases; the desktop shell has not been compiled (
 
 ### Known gaps
 
-The Clone Stamp preview above; `.ref` export; painting speed on very large canvases; the desktop shell has not been compiled (first CI run pending).
+The Clone Stamp preview above; painting speed on very large canvases; the desktop shell has not been compiled (first CI run pending).
 
 ## 0.25.0 · 2026-09-20
 
@@ -898,7 +905,7 @@ Free distort; Smear's Blur on masks; ants that follow a floating selection; open
 ### Added
 
 - Layer via Copy (Cmd-J with a selection): the selected pixels become a new layer in place; without a selection Cmd-J still duplicates the layer, and the menu names whichever it will do.
-- Desktop releases: macOS signing and notarization from repository secrets, the hardened runtime, `.sonny` and `.ref` file associations, and in-app updates from GitHub Releases once the updater key exists. See the wiki's Releasing page.
+- Desktop releases: macOS signing and notarization from repository secrets, the hardened runtime, `.sonny` file associations, and in-app updates from GitHub Releases once the updater key exists. See the wiki's Releasing page.
 
 ### Fixed
 
@@ -1028,7 +1035,7 @@ The Remove Background panel, the editable transform inspector with free distort 
 
 ### Added
 
-- Adjustments that `.ref` projects carry: Hue/Saturation (Master and six color ranges, colorize, invert range) and Grain join Levels, Curves, Exposure and Gradient Map. Each works as an editable adjustment layer (Layer, New Adjustment Layer; double-click to edit) and as a direct edit (Image menu), with live preview. Levels shows a histogram; Curves has a point editor.
+- More adjustments: Hue/Saturation (Master and six color ranges, colorize, invert range) and Grain join Levels, Curves, Exposure and Gradient Map. Each works as an editable adjustment layer (Layer, New Adjustment Layer; double-click to edit) and as a direct edit (Image menu), with live preview. Levels shows a histogram; Curves has a point editor.
 - Filter menu: Gaussian Blur and Motion Blur (spreading past the layer edge), Add Noise, Lens Correction, and Remove Background moved here.
 - Edit: Cut, Copy, Copy Merged, Paste in place, using the system clipboard.
 - Select: Mask's Black Areas, Expand and Contract by an amount.
@@ -1050,7 +1057,7 @@ Spot Healing, Clone Stamp, the Blur tool, Content-Aware Fill, the Remove Backgro
 
 - Engine: layers with pass-through folders, 13 blend modes, raster and folder masks, clipping chains, Levels, Curves, Exposure and Gradient Map adjustments on open, selections with marching ants, brush strokes, transforms, 100-step history.
 - Tools: Move with transform handles, Marquee, Lasso, Magic Wand, Brush and Eraser, Eyedropper, Hand, Zoom.
-- Files: new canvas, image import (drop, paste, picker; HEIC and TIFF through the engine), project library save and open, `.ref` import (zip or folder), `.sonny` download, PNG and JPEG export.
+- Files: new canvas, image import (drop, paste, picker; HEIC and TIFF through the engine), project library save and open, `.sonny` download, PNG and JPEG export.
 - Remove Background with rembg (ML) or OpenCV GrabCut (lightweight), producing a layer mask.
 - NodeMode styling, 14 themes, the portal protocol and send to canvas.
 - Engine service, setup scripts with Windows twins, Tauri 2 desktop shell, CI, wiki publishing and desktop release workflows, wiki, project skill pack.
@@ -1061,4 +1068,4 @@ Found by the throttled browser verification and the Phase 2 check: Escape could 
 
 ### Known gaps
 
-Desktop shell not yet compiled; ML background removal not exercised end to end; Hue/Saturation and Grain adjustments render without effect; crop, retouching, gradient and shape tools, filters, Image Size, Canvas Size and `.ref` export are not built yet.
+Desktop shell not yet compiled; ML background removal not exercised end to end; Hue/Saturation and Grain adjustments render without effect; crop, retouching, gradient and shape tools, filters, Image Size and Canvas Size are not built yet.

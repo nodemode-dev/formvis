@@ -23,8 +23,6 @@ export const BLEND_MODES: ReadonlyArray<{ id: BlendMode; label: string }> = [
   { id: 'hue', label: 'Hue' }, { id: 'saturation', label: 'Saturation' }, { id: 'color', label: 'Color' }, { id: 'luminosity', label: 'Luminosity' },
 ];
 
-/** The modes a `.ref` project can hold; others export as Normal. */
-export const REF_BLEND_MODES: ReadonlySet<BlendMode> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'color-burn', 'hue', 'saturation', 'color', 'luminosity']);
 
 const CANVAS_BLENDS: ReadonlySet<BlendMode> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'color-burn', 'hue', 'saturation', 'color', 'luminosity', 'linear-dodge', 'soft-light', 'hard-light', 'exclusion']);
 export const canvasBlend = (mode: BlendMode): boolean => CANVAS_BLENDS.has(mode);

@@ -1,11 +1,11 @@
 ---
 name: project-format
-description: The sonny and .ref project format. Use when reading or writing manifest.json, .sonny or .ref files, adding a layer field, changing mask, clipping, adjustment or transform encoding, bumping the format version, or when a project fails to open or loses data in a round trip.
+description: The sonny project format. Use when reading or writing manifest.json, .sny or .sonny files, adding a layer field, changing mask, clipping, adjustment or transform encoding, bumping the format version, or when a project fails to open or loses data in a round trip.
 ---
 
 # project-format
 
-A project is `manifest.json` plus `images/`. sonny writes `com.nodemode.sonny` version 1 and reads that plus `com.reference.project` versions 1 to 7. Field names and value labels are the, verbatim.
+A project is `manifest.json` plus `images/`. sonny writes `com.nodemode.sonny` version 1 and reads that plus NodeMode canvasor's `com.nodemode.canvasor` version 1. Field names and value labels are the, verbatim.
 
 ## Where it lives
 

@@ -2,6 +2,135 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The reference app's project format and notice removed · _v1.4.0 (src/app.ts, src/io/project-io.ts, src/io/images.ts, src/engine/types.ts, src/engine/adjust.ts, src/engine/kernels.ts, src/ui/app-dialogs.ts, src/ui/icons.ts, src/styles/dialogs.css, src/version.ts; src/ui/notices.ts deleted)
+
+`project-io.ts` loses `serializeRefProject` and its helpers; `app.ts` its command and menu entry; `types.ts` and `project-io.ts` the constants only it used; `images.ts` the `.ref` extension. `notices.ts` is deleted, and About sonny no longer shows the notice; its style rule goes. The Open dialog's folder button reads Project folder. The unused `renderer` icon goes. Comments describe sonny's own project file. Version 1.4.0. Removed:
+
+```ts
+import { deserialize, serialize, serializeRefProject } from './io/project-io';
+  /** A project: `Name.ref.zip`, which unzips to the `Name.ref` package opens. */
+  async function exportRefProject(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+        await deliver(await api.package(manifest, files, `${p.name}.ref`), `${p.name}.ref.zip`);
+        if (notes.length) toast(`Exported as .ref with changes: ${notes.join(' ')}`);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+    { id: 'export-ref', label: 'Export .ref Project...', enabled: has, run: () => void exportRefProject() },
+    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-',
+ *  Settings keep the field names and layouts `.ref` projects use, including dictionaries stored as alternating
+/** The data a new adjustment layer starts with, in the `.ref` field layout. */
+ *  names and meanings `.ref` projects use. */
+/** The modes a `.ref` project can hold; others export as Normal. */
+export const REF_BLEND_MODES: ReadonlySet<BlendMode> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'color-burn', 'hue', 'saturation', 'color', 'luminosity']);
+export const PROJECT_ACCEPT = '.sny,.sonny,.ref,.canvasor,.zip,.psd,.psb';
+export const isProjectFile = (f: File): boolean => /\.(sny|sonny|ref|canvasor|zip|psd|psb)$/i.test(f.name);
+  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns,
+const REF_KINDS: ReadonlySet<string> = new Set(['Hue/Saturation', 'Levels', 'Curves', 'Exposure', 'Gradient Map', 'Grain']);
+const REF_BLEND_LABELS: ReadonlySet<string> = new Set(BLEND_MODES.filter((b) => REF_BLEND_MODES.has(b.id)).map((b) => b.label));
+const UUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/;
+const asUuid = (v: unknown, map: Map<string, string>): string | null => {
+  const s = str(v);
+  if (!s) return null;
+  let u = map.get(s);
+  if (!u) { u = UUID.test(s) ? s : uid().toUpperCase(); map.set(s, u); }
+  return u;
+};
+/** The document as a project (format `com.reference.project`, version 7), for `Name.ref/`: the same
+ *  manifest and files as `serialize`, reshaped to what `ProjectStore.validate` accepts: UUID ids (regenerated where
+ * sonny fell back to counters), image files named after them, folders without opacity or blend (the
+ *  folders carry neither), adjustment layers without pixels, non-empty names and a resolution of 1 to 9600. Anything
+ * changed is listed in `notes` so the person knows what will see differently. */
+export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
+  const { manifest, files } = await serialize(doc, activeId);
+  const ids = new Map<string, string>(), rename = new Map<string, string>(), drop = new Set<string>(), notes: string[] = [];
+  if (pathSetData(paths)) notes.push('Paths are left out; .ref projects have none.');
+  if (timelineData(timeline)) notes.push('Animation frames are left out; .ref projects have none.');
+  const layers = (Array.isArray(manifest.layers) ? manifest.layers.map(obj) : []).map((r) => {
+    const id = asUuid(r.id, ids) as string, out: Json = { ...r, id };
+    const name = (str(r.name) ?? '').trim();
+    if (!name) { out.name = 'Layer'; notes.push('An unnamed layer was named "Layer".'); }
+    if (r.parentID) out.parentID = asUuid(r.parentID, ids);
+    if (r.maskSourceID) out.maskSourceID = asUuid(r.maskSourceID, ids);
+    if (str(r.imageFile)) {
+      if (r.adjustment) { drop.add(str(r.imageFile) as string); delete out.imageFile; }
+      else { rename.set(str(r.imageFile) as string, `${id}.png`); out.imageFile = `${id}.png`; }
+    }
+    if (str(r.maskFile)) { rename.set(str(r.maskFile) as string, `${id}.mask.png`); out.maskFile = `${id}.mask.png`; }
+    if (r.vector) { delete out.vector; notes.push(`"${name || 'Layer'}" goes as pixels; .ref projects have no shape layers.`); }
+    if (str(r.smartSourceFile)) {
+      drop.add(str(r.smartSourceFile) as string);
+      if (str(r.smartFilterMaskFile)) drop.add(str(r.smartFilterMaskFile) as string);
+      delete out.smartSourceFile;
+      delete out.smartFilterMaskFile;
+      delete out.smart;
+      notes.push(`"${name || 'Layer'}" goes as pixels; .ref projects have no smart objects.`);
+    }
+    if (r.isGroup === true && ((typeof r.opacity === 'number' && r.opacity !== 1) || (r.blendMode && r.blendMode !== 'Normal'))) {
+      delete out.opacity; delete out.blendMode;
+      notes.push(`Folder "${name || 'Layer'}" loses its opacity or blend mode; .ref folders carry neither.`);
+    }
+    if (typeof out.blendMode === 'string' && !REF_BLEND_LABELS.has(out.blendMode)) {
+      notes.push(`"${name || 'Layer'}" uses ${out.blendMode}, which .ref projects cannot hold; it exports as Normal.`);
+      delete out.blendMode;
+    }
+    if (out.effects) {
+      notes.push(`"${name || 'Layer'}" loses its layer style; .ref projects have none.`);
+      delete out.effects;
+    }
+    if (out.text) {
+      notes.push(`"${name || 'Layer'}" becomes plain pixels; .ref projects have no editable type.`);
+      delete out.text;
+    }
+    if (r.adjustment && !REF_KINDS.has(String(obj(r.adjustment).kind))) {
+      notes.push(`"${name || 'Layer'}" is a ${String(obj(r.adjustment).kind)} layer, which .ref projects cannot hold; it is left out.`);
+      return null;
+    }
+    return out;
+  }).filter((x): x is Json => x !== null);
+  const res = num(manifest.resolution, 72);
+  const out: Json = { ...manifest, format: 'com.reference.project', version: 7, documentID: asUuid(manifest.documentID, ids) ?? uid().toUpperCase(), resolution: Math.min(9600, Math.max(1, res)), layers };
+  if (manifest.activeLayerID) out.activeLayerID = asUuid(manifest.activeLayerID, ids);
+  if (res < 1 || res > 9600) notes.push(`Resolution ${res} was clamped to the .ref range, 1 to 9600.`);
+  const parts = files.filter((f) => !drop.has(f.name)).map((f) => ({ ...f, name: rename.get(f.name) ?? f.name }));
+  return { manifest: out, files: parts, notes };
+}
+.cv-notice { height: 132px; margin: 0; overflow-y: auto; padding: var(--space-2); border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-primary); color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-11); line-height: 1.45; white-space: pre-wrap; }
+import { REFERENCE_NOTICE } from './notices';
+    const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file">${icon('upload', 14)}From disk</button><button class="cv-btn" type="button" data-from="folder">${icon('folderOpen', 14)}.ref folder</button></div>`);
+    this.body.appendChild(el('<p class="cv-note">sonny began as a port of the reference app by its authors. Parts derived from it are used under the MIT License:</p>'));
+    const notice = el('<pre class="cv-notice"></pre>');
+    setText(notice, REFERENCE_NOTICE);
+    this.body.appendChild(notice);
+  renderer: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/></svg>`,
+/** the reference app's MIT License notice, shown in About sonny. sonny began as a port of the reference app by its authors
+ *  and the license asks for this notice in every copy, the built web and desktop apps included. The same text is
+ *  in `.docs/REFERENCE_NOTICE.md`. */
+export const REFERENCE_NOTICE = `MIT License
+Copyright (c) 2026 its authors
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.`;
+export const VERSION = '1.3.0';
+```
+
 ## Home screen · _v1.3.0 (src/app.ts, src/ui/app-dialogs.ts, src/ui/prefs.ts, src/styles/shell.css; src/ui/home.ts and e2e/test_home_screen.py new)
 
 `home.ts`: `HomeScreen` (New file, Open, recent projects; shown with no document when Auto Show is on, or from the brand mark; Esc leaves). `Prefs.autoShowHome`; Preferences gains a General section and opens on it. Removed:

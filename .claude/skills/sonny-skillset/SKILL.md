@@ -1,6 +1,6 @@
 ---
 name: sonny-skillset
-description: Use for any sonny task, the NodeMode-styled layered image editor for the web and the desktop. Add a tool, fix the layers panel, open a .ref file, build the desktop app. Covers layers, folders, masks, clipping, blend modes, undo history, selections, marquee, lasso, magic wand, brush, eraser, eyedropper, the tool registry, the options bar, the stage canvas, menus, dialogs, themes, zero-flash DOM rules, the FastAPI engine, HEIC or TIFF decoding, the project library, the .sonny and .ref project format, remove background with rembg or GrabCut, the PyInstaller sidecar, Tauri desktop builds, NodeMode portal embedding and the throttled browser verification. Stack is a vanilla TypeScript and Vite frontend, a Python FastAPI engine and a Tauri 2 shell. Trigger on sonny, port, sidecar, or any file under frontend/src, backend/app or src-tauri, and route through this orchestrator before any specialist.
+description: Use for any sonny task, the NodeMode-styled layered image editor for the web and the desktop. Add a tool, fix the layers panel, open a .sny file, build the desktop app. Covers layers, folders, masks, clipping, blend modes, undo history, selections, marquee, lasso, magic wand, brush, eraser, eyedropper, the tool registry, the options bar, the stage canvas, menus, dialogs, themes, zero-flash DOM rules, the FastAPI engine, HEIC or TIFF decoding, the project library, the .sny and .sonny project format, remove background with rembg or GrabCut, the PyInstaller sidecar, Tauri desktop builds, NodeMode portal embedding and the throttled browser verification. Stack is a vanilla TypeScript and Vite frontend, a Python FastAPI engine and a Tauri 2 shell. Trigger on sonny, port, sidecar, or any file under frontend/src, backend/app or src-tauri, and route through this orchestrator before any specialist.
 ---
 
 # sonny-skillset
@@ -50,7 +50,7 @@ The engine imports nothing from `ui`, `io` or `extensions`. Tools import only th
 | A new layer, mask, selection, paint or transform operation | `engine-core` |
 | Panels, menus, dialogs, commands, shortcuts, styles, themes | `ui-shell`, then `ui-verification` |
 | Decode, library, import, export or background removal endpoints | `engine-service` |
-| Anything in `manifest.json`, `.sonny` or `.ref` | `project-format` (both sides) |
+| Anything in `manifest.json`, `.sny` or `.sonny` | `project-format` (both sides) |
 | Desktop app, sidecar, icons, release workflow | `desktop-shell` |
 | Running inside NodeMode, the theme bridge, send to canvas | `nodemode-embed` |
 | Before handing back any UI change | `ui-verification` |

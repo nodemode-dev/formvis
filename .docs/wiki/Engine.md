@@ -10,7 +10,7 @@ The engine is the document model and every operation on it, with no DOM access: 
 | `frontend/src/engine/history.ts` | Structure snapshots plus region pixel patches, 100 entries and 256 MB |
 | `frontend/src/engine/selection.ts` | `SelectionMask` and the run-linking outline tracer for marching ants |
 | `frontend/src/engine/kernels.ts` | Levels, Curves (monotone cubic), Exposure (linear light) and Gradient Map kernels, and the Magic Wand's segment seed fill |
-| `frontend/src/engine/adjust.ts`, `filters.ts` | Hue/Saturation with its hue bands and colour cube, Grain, the `.ref` adjustment data; three-box Gaussian, motion blur, noise, lens correction, histograms, Unsharp Mask, and the distance transform behind expand and contract |
+| `frontend/src/engine/adjust.ts`, `filters.ts` | Hue/Saturation with its hue bands and colour cube, Grain, the adjustment data in the project file; three-box Gaussian, motion blur, noise, lens correction, histograms, Unsharp Mask, and the distance transform behind expand and contract |
 | `frontend/src/engine/retouch.ts` | Spot Healing (ring-matched source, harmonic correction), Content-Aware Fill (exemplar inpainting), Smudge and Liquify |
 | `frontend/src/engine/matte.ts` | Remove Background's refine: the guided filter, Shift Edge and Contrast |
 | `frontend/src/engine/stroke.ts` | Brush stamping at the spacing (2.5 percent soft, 1.5 percent hard) |

@@ -37,4 +37,4 @@ Put the private key file's contents in `TAURI_SIGNING_PRIVATE_KEY` and paste the
 
 - The macOS bundle runs with the hardened runtime; `src-tauri/entitlements.plist` lets the PyInstaller engine sidecar load the libraries it unpacks at launch.
 - Windows builds are unsigned until a code-signing certificate is available, so SmartScreen warns on first run.
-- `.sny`, `.sonny` (older projects) and `.ref` files are associated with the app; opening a clicked file in the running app is not built yet.
+- `.sny` and `.sonny` (older projects) files are associated with the app; opening a clicked file in the running app is not built yet.

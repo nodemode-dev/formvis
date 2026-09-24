@@ -1,5 +1,5 @@
 import {
-  BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns,
+  Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns,
 } from '../engine';
 import { artboardFromData } from '../engine/types';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS } from '../engine/adjust-params';
@@ -10,7 +10,6 @@ export const FORMAT_VERSION = 1;
 
 type Json = Record<string, unknown>;
 const KINDS: Record<string, AdjustmentKind> = { 'Hue/Saturation': 'hsv', Levels: 'levels', Curves: 'curves', Exposure: 'exposure', 'Gradient Map': 'gradientMap', Grain: 'grain', ...Object.fromEntries(PARAM_KINDS.map((k) => [PARAM_ADJUSTMENTS[k].label, k])) };
-const REF_KINDS: ReadonlySet<string> = new Set(['Hue/Saturation', 'Levels', 'Curves', 'Exposure', 'Gradient Map', 'Grain']);
 const KIND_LABELS = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [v, k])) as Record<AdjustmentKind, string>;
 const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
@@ -108,76 +107,6 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   const frames = timelineData(timeline);
   if (frames) manifest.timeline = frames;
   return { manifest, files };
-}
-
-const REF_BLEND_LABELS: ReadonlySet<string> = new Set(BLEND_MODES.filter((b) => REF_BLEND_MODES.has(b.id)).map((b) => b.label));
-const UUID = /^[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}$/;
-const asUuid = (v: unknown, map: Map<string, string>): string | null => {
-  const s = str(v);
-  if (!s) return null;
-  let u = map.get(s);
-  if (!u) { u = UUID.test(s) ? s : uid().toUpperCase(); map.set(s, u); }
-  return u;
-};
-
-/** The document as a project (format `com.reference.project`, version 7), for `Name.ref/`: the same
- *  manifest and files as `serialize`, reshaped to what `ProjectStore.validate` accepts: UUID ids (regenerated where
- * sonny fell back to counters), image files named after them, folders without opacity or blend (the
- *  folders carry neither), adjustment layers without pixels, non-empty names and a resolution of 1 to 9600. Anything
- * changed is listed in `notes` so the person knows what will see differently. */
-export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
-  const { manifest, files } = await serialize(doc, activeId);
-  const ids = new Map<string, string>(), rename = new Map<string, string>(), drop = new Set<string>(), notes: string[] = [];
-  if (pathSetData(paths)) notes.push('Paths are left out; .ref projects have none.');
-  if (timelineData(timeline)) notes.push('Animation frames are left out; .ref projects have none.');
-  const layers = (Array.isArray(manifest.layers) ? manifest.layers.map(obj) : []).map((r) => {
-    const id = asUuid(r.id, ids) as string, out: Json = { ...r, id };
-    const name = (str(r.name) ?? '').trim();
-    if (!name) { out.name = 'Layer'; notes.push('An unnamed layer was named "Layer".'); }
-    if (r.parentID) out.parentID = asUuid(r.parentID, ids);
-    if (r.maskSourceID) out.maskSourceID = asUuid(r.maskSourceID, ids);
-    if (str(r.imageFile)) {
-      if (r.adjustment) { drop.add(str(r.imageFile) as string); delete out.imageFile; }
-      else { rename.set(str(r.imageFile) as string, `${id}.png`); out.imageFile = `${id}.png`; }
-    }
-    if (str(r.maskFile)) { rename.set(str(r.maskFile) as string, `${id}.mask.png`); out.maskFile = `${id}.mask.png`; }
-    if (r.vector) { delete out.vector; notes.push(`"${name || 'Layer'}" goes as pixels; .ref projects have no shape layers.`); }
-    if (str(r.smartSourceFile)) {
-      drop.add(str(r.smartSourceFile) as string);
-      if (str(r.smartFilterMaskFile)) drop.add(str(r.smartFilterMaskFile) as string);
-      delete out.smartSourceFile;
-      delete out.smartFilterMaskFile;
-      delete out.smart;
-      notes.push(`"${name || 'Layer'}" goes as pixels; .ref projects have no smart objects.`);
-    }
-    if (r.isGroup === true && ((typeof r.opacity === 'number' && r.opacity !== 1) || (r.blendMode && r.blendMode !== 'Normal'))) {
-      delete out.opacity; delete out.blendMode;
-      notes.push(`Folder "${name || 'Layer'}" loses its opacity or blend mode; .ref folders carry neither.`);
-    }
-    if (typeof out.blendMode === 'string' && !REF_BLEND_LABELS.has(out.blendMode)) {
-      notes.push(`"${name || 'Layer'}" uses ${out.blendMode}, which .ref projects cannot hold; it exports as Normal.`);
-      delete out.blendMode;
-    }
-    if (out.effects) {
-      notes.push(`"${name || 'Layer'}" loses its layer style; .ref projects have none.`);
-      delete out.effects;
-    }
-    if (out.text) {
-      notes.push(`"${name || 'Layer'}" becomes plain pixels; .ref projects have no editable type.`);
-      delete out.text;
-    }
-    if (r.adjustment && !REF_KINDS.has(String(obj(r.adjustment).kind))) {
-      notes.push(`"${name || 'Layer'}" is a ${String(obj(r.adjustment).kind)} layer, which .ref projects cannot hold; it is left out.`);
-      return null;
-    }
-    return out;
-  }).filter((x): x is Json => x !== null);
-  const res = num(manifest.resolution, 72);
-  const out: Json = { ...manifest, format: 'com.reference.project', version: 7, documentID: asUuid(manifest.documentID, ids) ?? uid().toUpperCase(), resolution: Math.min(9600, Math.max(1, res)), layers };
-  if (manifest.activeLayerID) out.activeLayerID = asUuid(manifest.activeLayerID, ids);
-  if (res < 1 || res > 9600) notes.push(`Resolution ${res} was clamped to the .ref range, 1 to 9600.`);
-  const parts = files.filter((f) => !drop.has(f.name)).map((f) => ({ ...f, name: rename.get(f.name) ?? f.name }));
-  return { manifest: out, files: parts, notes };
 }
 
 const finite = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);

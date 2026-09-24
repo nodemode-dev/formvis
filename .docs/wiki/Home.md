@@ -1,6 +1,6 @@
 # sonny
 
-sonny is a layered image editor for the web and the desktop, built in the NodeMode design system. It opens and writes `.ref` projects unchanged, alongside its own `.sny` format. It runs in a browser, inside NodeMode as a full-screen portal app, and as a Tauri desktop app.
+sonny is a layered image editor for the web and the desktop, built in the NodeMode design system. It saves its own `.sny` projects and opens NodeMode canvasor projects. It runs in a browser, inside NodeMode as a full-screen portal app, and as a Tauri desktop app.
 
 | Page | What it covers |
 | --- | --- |
@@ -9,7 +9,7 @@ sonny is a layered image editor for the web and the desktop, built in the NodeMo
 | [Tools](Tools) | The tool registry and the tool modules |
 | [UI Shell](UI-Shell) | Stage, panels, menus, dialogs, themes, the zero-flash rules |
 | [Engine Service](Engine-Service) | The FastAPI engine in `backend/` |
-| [Project Format](Project-Format) | The `.sny` and `.ref` manifest, field by field |
+| [Project Format](Project-Format) | The `.sny` manifest, field by field |
 | [Desktop](Desktop) | The Tauri shell, the frozen sidecar, release builds |
 | [NodeMode Embedding](NodeMode-Embedding) | Portal protocol, theme bridge, send to canvas |
 | [Keyboard Shortcuts](Keyboard-Shortcuts) | Every shortcut |

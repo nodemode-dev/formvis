@@ -34,4 +34,4 @@ The engine is the only code that changes a document. It has no DOM access and ca
 - A mask raster keeps its value in the alpha channel with white color; on disk it is a grayscale PNG. A mask whose raster is `null` reveals everything.
 - `ensurePixels` grows an axis-aligned layer to cover the canvas before painting; a transformed layer is painted in its own pixel space.
 - Limits: 30,000 px per side, 100 megapixels per document, 64 folder levels.
-- Independent implementations (0.34.0 and 0.35.0), written from standard published methods, replaced every engine module earlier translated from the reference app's sources: `kernels.ts`, `filters.ts`, `adjust.ts`, `retouch.ts`, `matte.ts`, the tracer in `selection.ts`, `distort.ts`, `transform.ts` and `stroke.ts`. Settings keep their `.ref` meanings.
+- The engine's modules (`kernels.ts`, `filters.ts`, `adjust.ts`, `retouch.ts`, `matte.ts`, the tracer in `selection.ts`, `distort.ts`, `transform.ts`, `stroke.ts` and the rest) are sonny's own, written from standard published methods; new work is written the same way. Settings keep the meanings the project file gives them.

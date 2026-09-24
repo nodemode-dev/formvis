@@ -1,4 +1,3 @@
-import { REFERENCE_NOTICE } from './notices';
 import type { Engine } from '../engine';
 import { api, type Capabilities, type LibraryItem } from '../io/api';
 import { PROJECT_ACCEPT } from '../io/images';
@@ -78,7 +77,7 @@ export class OpenDialog extends Dialog {
     super('Open Project', 500);
     this.folderInput.webkitdirectory = true;
     this.body.append(this.status, this.list, this.empty);
-    const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file">${icon('upload', 14)}From disk</button><button class="cv-btn" type="button" data-from="folder">${icon('folderOpen', 14)}.ref folder</button></div>`);
+    const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file">${icon('upload', 14)}From disk</button><button class="cv-btn" type="button" data-from="folder">${icon('folderOpen', 14)}Project folder</button></div>`);
     this.body.append(row, this.fileInput, this.folderInput);
     q(row, '[data-from="file"]').addEventListener('click', () => this.fileInput.click());
     q(row, '[data-from="folder"]').addEventListener('click', () => this.folderInput.click());
@@ -304,10 +303,6 @@ export class AboutDialog extends Dialog {
     this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system.</p>'));
     this.body.appendChild(this.engineLine);
     this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 nodemode-ai.</p>'));
-    this.body.appendChild(el('<p class="cv-note">sonny began as a port of the reference app by its authors. Parts derived from it are used under the MIT License:</p>'));
-    const notice = el('<pre class="cv-notice"></pre>');
-    setText(notice, REFERENCE_NOTICE);
-    this.body.appendChild(notice);
     this.button('Close', 'primary', () => this.close());
   }
 
