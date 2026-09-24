@@ -10,6 +10,12 @@ import { clamp, type Pt, type Rect } from './types';
  *  stroke, Smudge drags paint picked up where the stroke began. Everything works on premultiplied pixels. */
 
 export type HealMode = 'contentAware' | 'createTexture' | 'proximityMatch';
+/** The Healing Brush's and Spot Healing's Mode menu. */
+export type HealBlend = 'normal' | 'replace' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'color' | 'luminosity';
+export const HEAL_BLENDS: ReadonlyArray<{ id: HealBlend; label: string }> = [
+  { id: 'normal', label: 'Normal' }, { id: 'replace', label: 'Replace' }, { id: 'multiply', label: 'Multiply' }, { id: 'screen', label: 'Screen' },
+  { id: 'darken', label: 'Darken' }, { id: 'lighten', label: 'Lighten' }, { id: 'color', label: 'Color' }, { id: 'luminosity', label: 'Luminosity' },
+];
 
 /** Straight RGBA to premultiplied, 8 bits per channel. */
 export function premultiply(rgba: Uint8ClampedArray): Uint8ClampedArray {

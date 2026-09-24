@@ -47,7 +47,8 @@ import { noDynamics, pressureOption, type BrushDynamics, type BrushPreset } from
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { CUSTOM_SHAPES } from './custom-shapes';
 export { CUSTOM_SHAPES } from './custom-shapes';
-import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealMode } from './retouch';
+import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode } from './retouch';
+import { dissolveNoise } from './blend';
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
@@ -4088,7 +4089,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7 };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal' };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -4293,6 +4294,39 @@ export class Engine {
     return true;
   }
 
+  /** The healing brushes' Mode (sourced: Font Bundles' Healing Brush and Spot Healing tutorials; tutvid; Photofocus).
+   *  The heal arrives mixed into `before` by the brush's coverage times `opacity`; the full-strength heal is recovered
+   *  and composited again in `mode`. Multiply, Screen, Darken, Lighten, Color and Luminosity use the canvas's standard
+   *  composite operations. Replace keeps grain and texture at a soft edge by never averaging the two: each pixel takes
+   *  the heal or the original whole, with a chance equal to the brush's strength there, on the same stable per-pixel
+   *  pattern as the Dissolve blend mode. Pixels the brush barely touches (under 2%) are left as the heal made them. */
+  private healBlend(before: ImageData, out: ImageData, coverage: Uint8Array, opacity: number, mode: HealBlend): void {
+    if (mode === 'normal') return;
+    const W = out.width, H = out.height, a = before.data, o = out.data, full = new ImageData(W, H), f = full.data;
+    for (let i = 0; i < coverage.length; i++) {
+      const k = (coverage[i] / 255) * opacity, j = i * 4;
+      if (k < 0.02) continue;
+      for (let ch = 0; ch < 3; ch++) f[j + ch] = a[j + ch] + (o[j + ch] - a[j + ch]) / k;
+      f[j + 3] = Math.round(k * 255);
+      if (mode === 'replace') {
+        const take = dissolveNoise(i % W, (i / W) | 0) < k;
+        for (let ch = 0; ch < 3; ch++) o[j + ch] = take ? f[j + ch] : a[j + ch];
+      }
+    }
+    if (mode === 'replace') return;
+    const base = createSurface(W, H), bc = ctxOf(base), top = createSurface(W, H);
+    bc.putImageData(before, 0, 0);
+    ctxOf(top).putImageData(full, 0, 0);
+    bc.globalCompositeOperation = mode;
+    bc.drawImage(top, 0, 0);
+    const res = bc.getImageData(0, 0, W, H).data;
+    for (let i = 0; i < coverage.length; i++) {
+      if ((coverage[i] / 255) * opacity < 0.02) continue;
+      const j = i * 4;
+      o[j] = res[j]; o[j + 1] = res[j + 1]; o[j + 2] = res[j + 2];
+    }
+  }
+
   private healFromPatch(s: PixelStroke, off: Pt): ReturnType<PixelStroke['commit']> {
     const r = s.raster;
     const before = r.read();
@@ -4301,6 +4335,7 @@ export class Engine {
     const out = new ImageData(r.width, r.height);
     unpremultiply(pm, out.data);
     scaleHealCorrection(out.data, before.data, s.coverageAlpha(), r.width, r.height, off.x, off.y, this.retouch.healDiffusion, 1, this.brush.opacity);
+    this.healBlend(before, out, s.coverageAlpha(), this.brush.opacity, this.retouch.healBlendMode);
     r.write(out);
     return { raster: r, x: 0, y: 0, before, after: r.read() };
   }
@@ -4416,6 +4451,7 @@ export class Engine {
     if (!spotHeal(pm, s.coverageAlpha(), r.width, r.height, this.brush.opacity, mode, (Math.random() * 0x100000000) >>> 0)) return null;
     const out = new ImageData(r.width, r.height);
     unpremultiply(pm, out.data);
+    this.healBlend(before, out, s.coverageAlpha(), this.brush.opacity, this.retouch.spotBlendMode);
     r.write(out);
     return { raster: r, x: 0, y: 0, before, after: r.read() };
   }

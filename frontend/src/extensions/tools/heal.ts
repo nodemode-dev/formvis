@@ -1,4 +1,5 @@
 import type { HealMode, Pt } from '../../engine';
+import { HEAL_BLENDS, type HealBlend } from '../../engine/retouch';
 import type { Tool } from '../registry';
 import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
@@ -18,6 +19,7 @@ export const healTool: Tool = {
   overlay(ctx, g) { drawBrushCursor(ctx, g, hover); },
   options: (e) => [
     { kind: 'title', text: 'Spot Healing' },
+    { kind: 'select', label: 'Mode', choices: HEAL_BLENDS.map((b) => ({ id: b.id, label: b.label })), get: () => e.retouch.spotBlendMode, set: (v: string) => { e.retouch.spotBlendMode = v as HealBlend; e.emit('options', null); } },
     { kind: 'segment', label: 'Type', choices: [{ id: 'contentAware', label: 'Content-Aware' }, { id: 'createTexture', label: 'Create Texture' }, { id: 'proximityMatch', label: 'Proximity Match' }], get: () => e.retouch.healMode, set: (v) => { e.retouch.healMode = v as HealMode; e.emit('options', null); } },
     ...brushOptions(e),
   ],

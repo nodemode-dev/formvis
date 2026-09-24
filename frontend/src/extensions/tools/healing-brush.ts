@@ -1,4 +1,5 @@
 import type { Pt } from '../../engine';
+import { HEAL_BLENDS, type HealBlend } from '../../engine/retouch';
 import type { Tool } from '../registry';
 import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
@@ -50,6 +51,7 @@ export const healingBrushTool: Tool = {
   },
   options: (e) => [
     { kind: 'title', text: 'Healing Brush' },
+    { kind: 'select', label: 'Mode', choices: HEAL_BLENDS.map((b) => ({ id: b.id, label: b.label })), get: () => e.retouch.healBlendMode, set: (v: string) => { e.retouch.healBlendMode = v as HealBlend; e.emit('options', null); } },
     { kind: 'toggle', label: 'Aligned', get: () => e.retouch.cloneAligned, set: (v) => { e.retouch.cloneAligned = v; e.cloneOffset = null; e.emit('options', null); } },
     { kind: 'toggle', label: 'Sample all layers', get: () => e.retouch.cloneSampleAll, set: (v) => { e.retouch.cloneSampleAll = v; e.emit('options', null); } },
     { kind: 'number', label: 'Diffusion', min: 1, max: 7, step: 1, get: () => e.retouch.healDiffusion, set: (v: number) => { e.retouch.healDiffusion = Math.round(Math.min(7, Math.max(1, v))); e.emit('options', null); } },
