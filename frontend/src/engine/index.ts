@@ -524,6 +524,30 @@ export class Engine {
     if (p) this.display.render({ doc: p.doc, target, view, overrides: this.overrides(p), quality });
   }
 
+  /** The GPU display's view of the current document (Phase 18.2b): its visible layers bottom to top, each with its
+   *  pixels, placement, opacity and blend mode, live previews applied as `compose` applies them; or the reason the
+   *  document still draws on the CPU (what the GPU path does not draw yet). */
+  gpuLayers(): { layers: Array<{ image: Surface; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }> } | { reason: string } {
+    const p = this.current;
+    if (!p) return { reason: 'no document is open' };
+    const ov = this.overrides(p), layers: Array<{ image: Surface; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }> = [];
+    for (const l of p.doc.layers) {
+      const o = ov?.get(l.id);
+      if (o?.hidden || !l.visible) continue;
+      if (l.isGroup || l.parentId) return { reason: 'folders' };
+      if (l.mask || o?.maskSource) return { reason: 'layer masks' };
+      if (l.clipId) return { reason: 'clipping masks' };
+      if (l.adjustment) return { reason: 'adjustment layers' };
+      if (effectsActive(o?.effects ?? l.effects)) return { reason: 'layer styles' };
+      // Dissolve's pattern is fixed to document pixels; the display composites in screen pixels, so it stays on the CPU.
+      if ((o?.blend ?? l.blend) === 'dissolve') return { reason: 'a layer in Dissolve mode' };
+      const img = o?.source ?? l.raster?.canvas;
+      if (!img || !l.raster) continue;
+      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: o?.opacity ?? l.opacity, blend: o?.blend ?? l.blend });
+    }
+    return { layers };
+  }
+
   private effectPreview: { project: Project; layerId: ID; effects: LayerEffects | null } | null = null;
 
   /** Layer > Layer Style: sets or clears a pixel layer's effects as one undo step; nothing is recorded when the

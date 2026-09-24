@@ -2,6 +2,7 @@ import { createSurface, integral, intersectRect, sizeSurface, translation, union
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
 import { isMac, q, setHidden } from './dom';
 import { paint, type StagePaint } from './palette';
+import type { DisplayLayer, GpuDisplay } from '../gpu/display';
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Ruler thickness in CSS pixels; the rulers lie over the stage's top and left edges, so showing them moves nothing. */
@@ -35,9 +36,18 @@ export class Stage {
   private cursor = '';
   private hover: ToolPointer | null = null;
   private checker: { key: string; pattern: CanvasPattern } | null = null;
+  /** The GPU display (Phase 18.2b) when the chosen renderer is WebGPU; the scene canvas then draws only the edge and
+   *  pixel grid, and a document the GPU path cannot draw yet falls back here, its reason reported through `gpuState`. */
+  private readonly gpuCanvas: HTMLCanvasElement;
+  private gpu: GpuDisplay | null = null;
+  private gpuLimit = 0;
+  private gpuState: ((reason: string | null) => void) | null = null;
+  private gpuReason: string | null | undefined = undefined;
+  private rgbCache = new Map<string, [number, number, number]>();
 
   constructor(private readonly host: HTMLElement, private readonly engine: Engine) {
     this.scene = q<HTMLCanvasElement>(host, '.cv-scene');
+    this.gpuCanvas = q<HTMLCanvasElement>(host, '.cv-scene-gpu');
     this.overlay = q<HTMLCanvasElement>(host, '.cv-overlay-canvas');
     this.rulerH = q<HTMLCanvasElement>(host, '.cv-ruler-h');
     this.rulerV = q<HTMLCanvasElement>(host, '.cv-ruler-v');
@@ -47,6 +57,9 @@ export class Stage {
     const o = this.overlay.getContext('2d');
     if (!s || !o) throw new Error('2D canvas is unavailable');
     this.sctx = s;
+    // A GPU reset (a lost device, a driver restart) also resets 2D canvases, which the browser renders through the
+    // GPU process: their contents are gone when the context comes back, so everything is drawn again then.
+    for (const c of [this.scene, this.overlay, this.rulerH, this.rulerV]) c.addEventListener('contextrestored', () => this.queue(true, true));
     this.octx = o;
     this.ctx = { engine, view: () => this.viewInfo(), paint: () => paint(), antsPhase: () => this.phase };
     new ResizeObserver(() => this.resize()).observe(host);
@@ -84,7 +97,7 @@ export class Stage {
     this.cssH = h;
     if (dpr !== this.dpr) this.checker = null;
     this.dpr = dpr;
-    for (const c of [this.scene, this.overlay]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    for (const c of [this.scene, this.overlay, this.gpuCanvas]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
     this.rulerH.width = Math.round(w * dpr); this.rulerH.height = Math.round(RULER * dpr);
     this.rulerV.width = Math.round(RULER * dpr); this.rulerV.height = Math.round(h * dpr);
     this.engine.setViewSize(w, h);
@@ -114,6 +127,31 @@ export class Stage {
 
   private syncWelcome(): void { setHidden(this.welcome, this.engine.projects.length > 0); }
 
+  /** Draw through the GPU display (or stop, with null); `limitBytes` is Preferences' GPU memory limit, and `onState`
+   *  hears the reason a document falls back to the CPU, or null when the GPU draws it. */
+  setGpu(display: GpuDisplay | null, limitBytes: number, onState: ((reason: string | null) => void) | null): void {
+    this.gpu = display;
+    this.gpuLimit = limitBytes;
+    this.gpuState = onState;
+    this.gpuReason = undefined;
+    if (!display) setHidden(this.gpuCanvas, true);
+    this.queue(true, false);
+  }
+
+  /** A CSS colour as bytes, for the GPU's checkerboard. */
+  private rgb(css: string): [number, number, number] {
+    let v = this.rgbCache.get(css);
+    if (!v) {
+      const c = createSurface(1, 1), g = c.getContext('2d') as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
+      g.fillStyle = css;
+      g.fillRect(0, 0, 1, 1);
+      const d = g.getImageData(0, 0, 1, 1).data;
+      v = [d[0], d[1], d[2]];
+      this.rgbCache.set(css, v);
+    }
+    return v;
+  }
+
   private checkerPattern(pal: StagePaint): CanvasPattern | null {
     const key = `${this.dpr}|${pal.checkerA}|${pal.checkerB}`;
     if (this.checker?.key === key) return this.checker.pattern;
@@ -137,8 +175,21 @@ export class Stage {
     const W = this.scene.width, H = this.scene.height;
     g.setTransform(1, 0, 0, 1, 0, 0);
     const p = this.engine.current;
-    if (!p) { g.clearRect(0, 0, W, H); return; }
+    if (!p) { g.clearRect(0, 0, W, H); setHidden(this.gpuCanvas, true); return; }
     const pal = paint();
+    // The GPU display draws the whole frame when it can draw this document; otherwise the CPU path below, with the
+    // reason reported once each time it changes.
+    let gpuLayers: DisplayLayer[] | null = null;
+    if (this.gpu) {
+      const gl = this.engine.gpuLayers();
+      let reason: string | null = null;
+      if ('reason' in gl) reason = `this document has ${gl.reason}`;
+      else if (this.gpu.bytesFor(gl.layers, W, H) > this.gpuLimit) reason = 'this document is over the GPU memory limit';
+      else gpuLayers = gl.layers;
+      if (reason !== this.gpuReason) { this.gpuReason = reason; this.gpuState?.(reason); }
+      if (gpuLayers) region = null;
+    }
+    setHidden(this.gpuCanvas, !gpuLayers);
     const v = p.viewport;
     const z = v.zoom * this.dpr, ox = v.panX * this.dpr, oy = v.panY * this.dpr;
     const docRect = { x: ox, y: oy, w: p.doc.width * z, h: p.doc.height * z };
@@ -154,18 +205,21 @@ export class Stage {
       g.strokeStyle = pal.edge;
       g.strokeRect(Math.round(docRect.x) - 0.5, Math.round(docRect.y) - 0.5, Math.round(docRect.w) + 1, Math.round(docRect.h) + 1);
     }
-    if (!vis) return;
+    if (!vis) { if (gpuLayers) setHidden(this.gpuCanvas, true); return; }
     g.save();
     g.beginPath();
     g.rect(vis.x, vis.y, vis.w, vis.h);
     g.clip();
-    const pattern = this.checkerPattern(pal);
+    const pattern = gpuLayers ? null : this.checkerPattern(pal);
     if (pattern) {
       pattern.setTransform(new DOMMatrix([1, 0, 0, 1, Math.round(ox), Math.round(oy)]));
       g.fillStyle = pattern;
       g.fillRect(vis.x, vis.y, vis.w, vis.h);
     }
-    if (v.zoom >= 2) {
+    if (gpuLayers && this.gpu) {
+      this.gpu.render(gpuLayers, [z, 0, 0, z, ox, oy], v.zoom, [vis.x, vis.y, vis.x + vis.w, vis.y + vis.h],
+        { a: this.rgb(pal.checkerA), b: this.rgb(pal.checkerB), cell: Math.max(1, Math.round(8 * this.dpr)), origin: [Math.round(ox), Math.round(oy)] });
+    } else if (v.zoom >= 2) {
       const d = intersectRect(integral({ x: (vis.x - ox) / z, y: (vis.y - oy) / z, w: vis.w / z, h: vis.h / z }), { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
       if (d) {
         sizeSurface(this.work, d.w, d.h);
