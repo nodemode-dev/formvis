@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.2.0 · 2026-09-24
+
+### Added
+
+- Preferences (Ctrl+,), with sections as in Photoshop: Interface (theme, accent), Performance (History States, the memory undo may hold, region redraws while painting) and File Handling (how soon unsaved work is kept for recovery). Every setting acts on sonny, is kept on this device and takes effect at once.
+- 1 more test (browser): 275 in all.
+
+### Changed
+
+- Edit > Settings is now Edit > Preferences.
+
 ## 1.1.0 · 2026-09-24
 
 ### Added

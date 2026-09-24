@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Preferences · _v1.2.0 (src/ui/app-dialogs.ts, src/app.ts, src/engine/index.ts, src/styles/dialogs.css; src/ui/prefs.ts and e2e/test_preferences.py new)
+
+`SettingsDialog` is Preferences, with Interface, Performance and File Handling sections. `prefs.ts`: `Prefs`, `DEFAULT_PREFS`, `RECOVERY_CHOICES`, `loadPrefs`, `savePrefs`, `applyPrefs`. Engine: `historyLimits`, `setHistoryLimits`, applied in `addProject`. The app applies preferences at startup and reads the recovery delay from them. Removed:
+
+```ts
+    settings: new SettingsDialog(),
+    { id: 'settings', label: 'Settings...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
+  let recoveryDelay = 20000;
+  constructor() {
+    super('Settings', 460);
+    this.body.appendChild(row);
+    this.field('Accent', this.accent);
+    this.body.appendChild(el('<p class="cv-note">Theme and accent are shared with NodeMode on this device.</p>'));
+  show(): void {
+```
+
 ## Crop overlays · _v1.1.0 (src/extensions/tools/crop.ts; src/extensions/tools/crop-overlays.ts, tests/crop-overlays.test.ts and e2e/test_crop_overlays.py new)
 
 `crop-overlays.ts`: `CropOverlay`, `CROP_OVERLAYS`, `ORIENTED`, `overlayLines`. The Crop tool keeps `overlayKind` and `overlayOrient`, draws the chosen overlay, takes O and Shift+O while a frame shows, and has an Overlay select. Removed:
