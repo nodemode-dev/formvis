@@ -2,6 +2,10 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Delete Cropped Pixels · _v1.0.0 (src/engine/index.ts, src/extensions/tools/crop.ts; e2e/test_crop_delete_pixels.py new)
+
+Engine: `cropDeletePixels` (on by default) and `deleteCroppedPixels`, called by `straightenCrop` after the crop. The Crop tool's bar has Delete Cropped Pixels before Content-Aware. Nothing removed: git reports no removed lines since v0.99.0.
+
 ## Brush Flow · _v0.99.0 (src/engine/stroke.ts, src/engine/index.ts, src/extensions/tools/brush.ts; e2e/test_brush_flow.py new)
 
 `StrokeStyle.flow` scales each dab in `PixelStroke.dab`, times the pressure dynamics' flow. Engine: `brushFlow`, passed only to the Brush and Eraser's stroke in `beginStroke`. The Brush's bar has Flow after Opacity. Removed:

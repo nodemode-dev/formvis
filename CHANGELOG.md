@@ -1,6 +1,17 @@
 # Changelog
 
-Versions follow `v*.*.*` with dots. Dates are UTC.
+Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
+
+## 1.0.0 · 2026-09-24
+
+### Added
+
+- The Crop tool's Delete Cropped Pixels, on by default as in Photoshop: cropping trims pixel layers to the canvas. Turn it off to keep cropped pixels beyond the canvas, where Image > Reveal All brings them back (the only behaviour before 1.0.0).
+- 1 more test (browser): 269 in all.
+
+### Changed
+
+- A crop now deletes the cropped pixels unless Delete Cropped Pixels is turned off.
 
 ## 0.99.0 · 2026-09-24
 
