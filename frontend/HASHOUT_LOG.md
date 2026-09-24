@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Panels move in the dock; the Window menu · _v1.6.0 (src/app.ts, src/styles/panels.css; src/ui/dock.ts and e2e/test_dock.py new)
+
+`dock.ts`: `DOCK_PANELS`, `Dock` (drag a header to reorder, `toggle`, `reset`, the arrangement kept on this device). `app.ts` makes the dock after the panels, adds a command per panel and Reset Panels, and a Window menu. `.cv-layers` becomes the marker's positioning context; `.cv-dock-grip` and `.cv-dock-marker` are new. Removed:
+
+```css
+.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; min-height: 0; background: var(--bg-secondary); }
+```
+
 ## Crop W x H x Resolution and presets · _v1.5.0 (src/extensions/tools/crop.ts, src/engine/index.ts; e2e/test_crop_size.py new)
 
 Engine: `cropToSize` (crop, then `resampleImage`, in one history step). Crop tool: the `size` choice with its state, `toPx`, `sizePx`, `frontImage`, `sizeChanged`, saved presets (`loadPresets`, `savePresets`, `presetLabel`), the W, H, Unit, Resolution, Front Image, Preset, New Crop Preset and Delete Crop Preset rows, and `commit` resampling when a size is set. Removed:

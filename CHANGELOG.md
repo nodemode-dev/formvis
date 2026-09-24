@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.6.0 · 2026-09-24
+
+### Added
+
+- Panels move: drag the Paths, Timeline or History panel by its header up or down the side dock; the arrangement is remembered. A Window menu shows or hides each panel, and Reset Panels restores the default.
+- 1 more test (browser): 278 in all.
+
 ## 1.5.0 · 2026-09-24
 
 ### Added
