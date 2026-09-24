@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Eyedropper Sample Size · _v0.98.0 (src/engine/index.ts, src/extensions/tools/eyedropper.ts; e2e/test_eyedropper_sample_size.py new)
+
+Engine: `eyedropperSize`; `sampleColor` averages the Sample Size square, weighted by opacity. The Eyedropper's bar has a Sample Size select. Removed:
+
+```ts
+    const s = createSurface(1, 1);
+    this.work.render({ doc: p.doc, target: s, view: translation(-Math.floor(pt.x), -Math.floor(pt.y)) });
+    const d = ctxOf(s).getImageData(0, 0, 1, 1).data;
+    return d[3] ? { r: d[0], g: d[1], b: d[2] } : null;
+```
+
 ## canvasor projects open · _v0.97.0 (src/io/images.ts; e2e/test_canvasor_open.py new)
 
 `PROJECT_ACCEPT` and `isProjectFile` take `.canvasor`, so the picker offers NodeMode canvasor projects and a dropped one opens as a project; the backend reads it (see the backend log). Removed:

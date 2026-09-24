@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.98.0 · 2026-09-24
+
+### Added
+
+- The Eyedropper's Sample Size: Point Sample, or the average of a 3, 5, 11, 31, 51 or 101 pixel square, weighted by opacity; Alt-click sampling in other tools follows it.
+- 1 more test (browser): 267 in all.
+
 ## 0.97.0 · 2026-09-24
 
 ### Added
