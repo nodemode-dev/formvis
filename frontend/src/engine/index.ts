@@ -47,7 +47,7 @@ import { noDynamics, pressureOption, type BrushDynamics, type BrushPreset } from
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { CUSTOM_SHAPES } from './custom-shapes';
 export { CUSTOM_SHAPES } from './custom-shapes';
-import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode } from './retouch';
+import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { dissolveNoise } from './blend';
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
@@ -4089,7 +4089,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal' };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -4257,7 +4257,7 @@ export class Engine {
       const off = this.cloneStrokeOffset(pt);
       if (!off) { this.notice(`Alt-click to set where ${kind === 'clone' ? 'Clone Stamp' : 'the Healing Brush'} copies from.`); return false; }
       this.cloneOffset = off;
-      texture = { surface: this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), dx: off.x, dy: off.y };
+      texture = { surface: kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), dx: off.x, dy: off.y };
       const m = kind === 'clone' && this.cloneSource ? this.cloneTransform(this.cloneSource) : null;
       if (m) {
         const t = createSurface(texture.surface.width, texture.surface.height), tc = ctxOf(t);
@@ -4327,9 +4327,63 @@ export class Engine {
     }
   }
 
+  /** The healing brushes' Sample (Font Bundles' Healing Brush and Spot Healing tutorials; SLR Lounge), in document
+   *  space: the active layer alone, it and the layers under it (every layer above hidden, except the folders it sits
+   *  in), or every layer shown. */
+  private healSampleSurface(p: Project, l: Layer, sample: HealSample): Surface {
+    if (sample === 'current') return this.layerSample(p, l);
+    if (sample === 'all') return renderDoc(this.work, p.doc);
+    const layers = p.doc.layers, at = layers.findIndex((x) => x.id === l.id), ancestors = new Set<ID>();
+    for (let a = l.parentId; a; a = layers.find((x) => x.id === a)?.parentId ?? null) ancestors.add(a);
+    const overrides = new Map<ID, LayerOverride>();
+    layers.forEach((x, i) => { if (i > at && !ancestors.has(x.id)) overrides.set(x.id, { hidden: true }); });
+    const s = createSurface(p.doc.width, p.doc.height);
+    this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
+    return s;
+  }
+
+  /** A document-space image in the layer's own pixel space. */
+  private rasterSpace(image: Surface, l: Layer, W: number, H: number): ImageData {
+    const s = createSurface(W, H), c = ctxOf(s);
+    setMat(c, invert(placement(l.transform, W, H)));
+    c.drawImage(image, 0, 0);
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    return c.getImageData(0, 0, W, H);
+  }
+
+  /** Healed pixels, worked out on a sampled image, laid onto the layer's own pixels at the brush's strength (coverage
+   *  times opacity) with source-over, so an empty layer ends up holding just the repair. */
+  private layHeal(before: ImageData, healed: ImageData, coverage: Uint8Array, opacity: number): ImageData {
+    const W = before.width, H = before.height, top = new ImageData(W, H), t = top.data, h = healed.data;
+    for (let i = 0; i < coverage.length; i++) {
+      const j = i * 4;
+      t[j] = h[j]; t[j + 1] = h[j + 1]; t[j + 2] = h[j + 2];
+      t[j + 3] = Math.round((h[j + 3] / 255) * coverage[i] * opacity);
+    }
+    const base = createSurface(W, H), bc = ctxOf(base), over = createSurface(W, H);
+    bc.putImageData(before, 0, 0);
+    ctxOf(over).putImageData(top, 0, 0);
+    bc.drawImage(over, 0, 0);
+    return bc.getImageData(0, 0, W, H);
+  }
+
   private healFromPatch(s: PixelStroke, off: Pt): ReturnType<PixelStroke['commit']> {
     const r = s.raster;
     const before = r.read();
+    const sample = this.retouch.healSample, p = this.current, l = p?.doc.layers.find((x) => x.raster === r);
+    if (sample !== 'current' && p && l) {
+      // Healed at full strength over the stroke's whole footprint on the sampled image, then laid on at the brush's
+      // own soft coverage; healing with the soft coverage and laying it on again would square the falloff.
+      const cov = s.coverageAlpha(), hard = cov.map((v) => (v > 0 ? 255 : 0)), W = r.width, H = r.height;
+      const base = this.rasterSpace(this.healSampleSurface(p, l, sample), l, W, H), pmS = premultiply(base.data);
+      if (!healFromSource(pmS, hard, W, H, 1, off.x, off.y)) return null;
+      const healed = new ImageData(W, H);
+      unpremultiply(pmS, healed.data);
+      scaleHealCorrection(healed.data, base.data, hard, W, H, off.x, off.y, this.retouch.healDiffusion, 1, 1);
+      this.healBlend(base, healed, hard, 1, this.retouch.healBlendMode);
+      r.write(this.layHeal(before, healed, cov, this.brush.opacity));
+      return { raster: r, x: 0, y: 0, before, after: r.read() };
+    }
     const pm = premultiply(before.data);
     if (!healFromSource(pm, s.coverageAlpha(), r.width, r.height, this.brush.opacity, off.x, off.y)) return null;
     const out = new ImageData(r.width, r.height);
@@ -4447,6 +4501,18 @@ export class Engine {
   private healPatch(s: PixelStroke, mode: HealMode): ReturnType<PixelStroke['commit']> {
     const r = s.raster;
     const before = r.read();
+    const p = this.current, l = p?.doc.layers.find((x) => x.raster === r);
+    if (this.retouch.spotSampleAll && p && l) {
+      // Sample All Layers: healed at full strength on everything shown, then laid on at the brush's soft coverage.
+      const cov = s.coverageAlpha(), hard = cov.map((v) => (v > 0 ? 255 : 0)), W = r.width, H = r.height;
+      const base = this.rasterSpace(this.healSampleSurface(p, l, 'all'), l, W, H), pmS = premultiply(base.data);
+      if (!spotHeal(pmS, hard, W, H, 1, mode, (Math.random() * 0x100000000) >>> 0)) return null;
+      const healed = new ImageData(W, H);
+      unpremultiply(pmS, healed.data);
+      this.healBlend(base, healed, hard, 1, this.retouch.spotBlendMode);
+      r.write(this.layHeal(before, healed, cov, this.brush.opacity));
+      return { raster: r, x: 0, y: 0, before, after: r.read() };
+    }
     const pm = premultiply(before.data);
     if (!spotHeal(pm, s.coverageAlpha(), r.width, r.height, this.brush.opacity, mode, (Math.random() * 0x100000000) >>> 0)) return null;
     const out = new ImageData(r.width, r.height);

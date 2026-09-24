@@ -12,6 +12,11 @@ import { clamp, type Pt, type Rect } from './types';
 export type HealMode = 'contentAware' | 'createTexture' | 'proximityMatch';
 /** The Healing Brush's and Spot Healing's Mode menu. */
 export type HealBlend = 'normal' | 'replace' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'color' | 'luminosity';
+/** The Healing Brush's Sample menu: the active layer, it and the layers under it, or every layer shown. */
+export type HealSample = 'current' | 'below' | 'all';
+export const HEAL_SAMPLES: ReadonlyArray<{ id: HealSample; label: string }> = [
+  { id: 'current', label: 'Current Layer' }, { id: 'below', label: 'Current & Below' }, { id: 'all', label: 'All Layers' },
+];
 export const HEAL_BLENDS: ReadonlyArray<{ id: HealBlend; label: string }> = [
   { id: 'normal', label: 'Normal' }, { id: 'replace', label: 'Replace' }, { id: 'multiply', label: 'Multiply' }, { id: 'screen', label: 'Screen' },
   { id: 'darken', label: 'Darken' }, { id: 'lighten', label: 'Lighten' }, { id: 'color', label: 'Color' }, { id: 'luminosity', label: 'Luminosity' },

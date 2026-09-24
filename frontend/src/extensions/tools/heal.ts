@@ -21,6 +21,7 @@ export const healTool: Tool = {
     { kind: 'title', text: 'Spot Healing' },
     { kind: 'select', label: 'Mode', choices: HEAL_BLENDS.map((b) => ({ id: b.id, label: b.label })), get: () => e.retouch.spotBlendMode, set: (v: string) => { e.retouch.spotBlendMode = v as HealBlend; e.emit('options', null); } },
     { kind: 'segment', label: 'Type', choices: [{ id: 'contentAware', label: 'Content-Aware' }, { id: 'createTexture', label: 'Create Texture' }, { id: 'proximityMatch', label: 'Proximity Match' }], get: () => e.retouch.healMode, set: (v) => { e.retouch.healMode = v as HealMode; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Sample All Layers', get: () => e.retouch.spotSampleAll, set: (v) => { e.retouch.spotSampleAll = v; e.emit('options', null); } },
     ...brushOptions(e),
   ],
 };
