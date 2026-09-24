@@ -5,9 +5,10 @@ import { COMPOSITE_WGSL, blendIndex } from './blend-wgsl';
 const TEX = { COPY_SRC: 0x01, COPY_DST: 0x02, TEXTURE_BINDING: 0x04, RENDER_ATTACHMENT: 0x10 } as const;
 const BUF = { MAP_READ: 0x0001, COPY_DST: 0x0008, UNIFORM: 0x0040 } as const;
 
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
-/** The shader mode for an adjustment's lookup table (Phase 18.5), after the 27 blend modes. */
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+/** The shader modes for an adjustment's lookup table (Phase 18.5), after the 27 blend modes: per channel, and 3D. */
 export const LUT_MODE = 100;
+export const LUT3_MODE = 101;
 export interface Checker { a: [number, number, number]; b: [number, number, number]; cell: number; origin: [number, number] }
 /** What the stage draws through: the WebGPU display or the WebGL2 one (gl-display.ts), each on its own canvas. */
 export interface ScreenDisplay {
@@ -102,7 +103,7 @@ export class GpuDisplay {
       const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
       const raw = new ArrayBuffer(64), f = new Float32Array(raw);
       f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
-      new Uint32Array(raw)[15] = l.lut ? LUT_MODE : blendIndex(l.blend);
+      new Uint32Array(raw)[15] = l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend);
       const ub = d.createBuffer({ size: 64, usage: BUF.UNIFORM | BUF.COPY_DST });
       d.queue.writeBuffer(ub, 0, raw);
       buffers.push(ub);
@@ -158,8 +159,8 @@ export class GpuDisplay {
       this.cache.set(key, e);
     }
     if (l.lut) {
-      // A table is fixed for its settings (a new table comes with new settings), so it is written once.
-      if (Number.isNaN(e.version)) { this.device.queue.writeTexture({ texture: e.tex }, l.lut, { bytesPerRow: 256 * 4 }, [256, 1]); e.version = 0; }
+      // A table is fixed for its settings (a new table comes with new settings), so it is written once, at its own size.
+      if (Number.isNaN(e.version)) { this.device.queue.writeTexture({ texture: e.tex }, l.lut, { bytesPerRow: l.width * 4 }, [l.width, l.height]); e.version = 0; }
     } else if (l.image && (l.version < 0 || e.version !== l.version)) {
       this.device.queue.copyExternalImageToTexture({ source: l.image }, { texture: e.tex, premultipliedAlpha: true }, [l.width, l.height]);
       e.version = l.version;

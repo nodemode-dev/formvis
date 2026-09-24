@@ -19,6 +19,7 @@ DOC = """async ([kind]) => {
   if (kind === 'exposure') d.exposureSettings = { exposure: 0.6, offset: -0.02, gamma: 1.2 };
   if (kind === 'brightnessContrast') d.params = { brightness: 25, contrast: 30, legacy: false };
   if (kind === 'posterize') d.params = { levels: 5 };
+  if (kind === 'hsv') Object.assign(d, { hue: 40, saturation: 30, lightness: 5 });
   a.opacity = 0.8;
   e.refresh();
 }"""
@@ -36,9 +37,17 @@ FRAME = """async ([mod, cls]) => {
   // src + (table(src) - src) * opacity, rounded as the CPU's Uint8ClampedArray rounds.
   const table = gl.layers[gl.layers.length - 1], below = await disp.renderToPixels(gl.layers.slice(0, -1), [1, 0, 0, 1, ox, oy], 1, rect, { a: A, b: B, cell, origin: [ox, oy] }, W, H);
   disp.destroy();
+  // For a 3D table the stage is checked against the real CPU kernel run on the GPU's own backdrop, not the table.
+  let exact = null;
+  if (table.lut3) {
+    const A2 = await import('/src/engine/adjust.ts'), K = await import('/src/engine/kernels.ts'), adj = e.current.activeLayer.adjustment;
+    const kern = adj.kind === 'hsv' ? A2.hsvKernel(A2.hsvFromData(adj.data)) : K.adjustmentKernel(adj);
+    exact = new Uint8ClampedArray(below);
+    kern(exact, { width: W, height: H, originX: 0, originY: 0, unitsPerPixel: 1 });
+  }
   let stage = 0;
   for (let y = oy; y < oy + dh; y++) for (let x = ox; x < ox + dw; x++) for (let k = 0; k < 3; k++) {
-    const i = (y * W + x) * 4 + k, s = below[i], want = Math.round(s + (table.lut[s * 4 + k] - s) * table.opacity);
+    const i = (y * W + x) * 4 + k, s = below[i], adjusted = exact ? exact[i] : table.lut[s * 4 + k], want = Math.round(s + (adjusted - s) * table.opacity);
     stage = Math.max(stage, Math.abs(gpu[i] - want));
   }
   const s = E.createSurface(W, H), c = E.ctxOf(s);
@@ -53,26 +62,29 @@ FRAME = """async ([mod, cls]) => {
   return { stage, max, share: within / n, layers: gl.layers.length, lut: !!gl.layers[gl.layers.length - 1].lut };
 }"""
 
-KINDS = ["levels", "curves", "exposure", "brightnessContrast", "posterize", "invert"]
+KINDS = ["levels", "curves", "exposure", "brightnessContrast", "posterize", "invert", "hsv", "photoFilter", "blackWhite"]
 
 
 @pytest.mark.parametrize("kind", KINDS)
 def test_a_per_channel_adjustment_draws_on_the_gpu_as_the_cpu_does(page, kind):
     page.evaluate(DOC, [kind])
+    three_d = kind in ("hsv", "photoFilter", "blackWhite")
     for mod, cls in (("/src/gpu/gl-display.ts", "GlDisplay"), ("/src/gpu/display.ts", "GpuDisplay")):
         r = page.evaluate(FRAME, [mod, cls])
         assert "error" not in r, (cls, r)
         assert r["layers"] == 3 and r["lut"], (cls, r)                     # the adjustment went to the GPU as its table
-        assert r["stage"] <= 1, (cls, r)                                      # the table stage exact on the GPU's own backdrop
+        # the table stage on the GPU's own backdrop: exact for a per-channel table; for a 3D table within the proof's
+        # 1 level of the real kernel, plus 1 for the mixing rounding
+        assert r["stage"] <= (2 if three_d else 1), (cls, r)
         # End to end against the CPU: the layers below differ by up to 3 levels between GPU and canvas compositing, and a
         # steep or stepped adjustment amplifies that (Posterize turns 1 level at a step boundary into a whole step), so
         # the bound is on the share of values, not the maximum.
         assert r["share"] >= 0.99, (cls, r)
 
 
-def test_a_channel_mixing_adjustment_keeps_the_document_on_the_cpu_by_name(page):
-    page.evaluate(DOC, ["hsv"])
-    assert page.evaluate("window.sonny.engine.gpuLayers().reason") == "a Hue/Saturation adjustment layer"
+def test_a_discontinuous_adjustment_keeps_the_document_on_the_cpu_by_name(page):
+    page.evaluate(DOC, ["threshold"])
+    assert page.evaluate("window.sonny.engine.gpuLayers().reason") == "a Threshold adjustment layer"
 
 
 def test_on_screen_webgl2_draws_a_levels_document(page):

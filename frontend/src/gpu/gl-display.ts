@@ -1,6 +1,6 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
-import { LUT_MODE, type Checker, type DisplayLayer } from './display';
+import { LUT3_MODE, LUT_MODE, type Checker, type DisplayLayer } from './display';
 
 /** The display on WebGL2 (Phase 18.4): the GPU path where WebGPU is missing, as in the Linux desktop shell, whose
  *  webview has none. The same passes as the WebGPU display and the same maths as blend-wgsl.ts, in GLSL ES 3.00: layers
@@ -51,6 +51,20 @@ void main() {
     ivec3 i = ivec3(floor(bd.rgb * 255.0 + 0.5));
     vec3 t = vec3(texelFetch(source, ivec2(i.r, 0), 0).r, texelFetch(source, ivec2(i.g, 0), 0).g, texelFetch(source, ivec2(i.b, 0), 0).b);
     outColor = vec4(bd.rgb + (t - bd.rgb) * opacity, bd.a); return;
+  }
+  if (mode == 101) {
+    if (bd.a <= 0.0) { outColor = bd; return; }
+    vec3 v = floor(bd.rgb * 255.0 + 0.5) / 5.0;
+    ivec3 b0 = min(ivec3(floor(v)), ivec3(50));
+    vec3 f = v - vec3(b0), acc = vec3(0.0);
+    for (int k = 0; k < 8; k++) {
+      ivec3 o = ivec3(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+      float w = (o.x == 1 ? f.x : 1.0 - f.x) * (o.y == 1 ? f.y : 1.0 - f.y) * (o.z == 1 ? f.z : 1.0 - f.z);
+      ivec3 c = b0 + o;
+      acc += w * texelFetch(source, ivec2(c.x + c.y * 52, c.z), 0).rgb;
+    }
+    vec3 t3 = floor(acc * 255.0 + 0.5) / 255.0;
+    outColor = vec4(bd.rgb + (t3 - bd.rgb) * opacity, bd.a); return;
   }
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y);
   vec3 q = inv * vec3(p, 1.0);
@@ -164,7 +178,7 @@ export class GlDisplay {
       gl.uniformMatrix3fv(u('inv'), false, [ia, ib, 0, ic, id, 0, ie, iff, 1]);
       gl.uniform2f(u('size'), l.width, l.height);
       gl.uniform1f(u('opacity'), Math.min(1, Math.max(0, l.opacity)));
-      gl.uniform1i(u('mode'), l.lut ? LUT_MODE : blendIndex(l.blend));
+      gl.uniform1i(u('mode'), l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend));
       gl.bindFramebuffer(gl.FRAMEBUFFER, b.fb);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, a.tex);
@@ -211,7 +225,7 @@ export class GlDisplay {
       // A table is data, not an image: uploaded as it is (no premultiplying), once for its settings.
       if (Number.isNaN(e.version)) {
         gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, l.lut);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, l.width, l.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, l.lut);
         e.version = 0;
       }
     } else if (l.image && (l.version < 0 || e.version !== l.version)) {

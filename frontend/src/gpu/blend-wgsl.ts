@@ -100,6 +100,23 @@ fn dissolveNoise(x: i32, y: i32) -> f32 {
     let t = vec3<f32>(textureLoad(source, vec2<i32>(i.r, 0), 0).r, textureLoad(source, vec2<i32>(i.g, 0), 0).g, textureLoad(source, vec2<i32>(i.b, 0), 0).b);
     return vec4<f32>(bd.rgb + (t - bd.rgb) * layer.opacity, bd.a);
   }
+  // A 3D table (Phase 18.5), as engine/lut.ts lut3Sample computes it: the eight nodes (every 5 levels, 52 a side, packed
+  // x = r + g * 52, y = b) around the colour, weighted per axis, rounded to 8 bits, then mixed in by opacity.
+  if (layer.mode == 101u) {
+    if (bd.a <= 0.0) { return bd; }
+    let v = round(bd.rgb * 255.0) / 5.0;
+    let b0 = min(vec3<i32>(floor(v)), vec3<i32>(50));
+    let f = v - vec3<f32>(b0);
+    var acc = vec3<f32>(0.0);
+    for (var k = 0; k < 8; k++) {
+      let o = vec3<i32>(k & 1, (k >> 1) & 1, (k >> 2) & 1);
+      let w = select(1.0 - f.x, f.x, o.x == 1) * select(1.0 - f.y, f.y, o.y == 1) * select(1.0 - f.z, f.z, o.z == 1);
+      let c = b0 + o;
+      acc += w * textureLoad(source, vec2<i32>(c.x + c.y * 52, c.z), 0).rgb;
+    }
+    let t3 = round(acc * 255.0) / 255.0;
+    return vec4<f32>(bd.rgb + (t3 - bd.rgb) * layer.opacity, bd.a);
+  }
   let q = layer.inv * vec3<f32>(pos.xy, 1.0);
   if (q.x < 0.0 || q.y < 0.0 || q.x >= layer.size.x || q.y >= layer.size.y) { return bd; }
   // The layer is uploaded premultiplied, as the canvas stores it, and un-premultiplied here in float: unpremultiplying
