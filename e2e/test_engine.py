@@ -29,7 +29,8 @@ def test_uncaught_errors_are_logged_and_the_app_keeps_working(page):
     page.evaluate("setTimeout(() => { throw new Error('deliberate'); }, 0)")
     page.wait_for_timeout(100)
     log = page.evaluate("window.sonny.errorLog.text()")
-    assert "deliberate" in log and "sonny 0." in log
+    version = page.evaluate("(async () => (await import('/src/version.ts')).VERSION)()")
+    assert "deliberate" in log and f"sonny {version}" in log
     assert page.evaluate("window.sonny.engine.newDocument(10, 10, 'A', 'white'), window.sonny.engine.current.doc.width") == 10
 
 
