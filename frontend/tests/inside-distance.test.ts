@@ -1,5 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { insideDistance } from '../src/engine/retouch';
+import { insideDistance, scaleHealCorrection } from '../src/engine/retouch';
+
+describe('scaleHealCorrection', () => {
+  // 3 by 1: the middle pixel is covered and heals from the pixel one to the right.
+  const before = new Uint8ClampedArray([0, 0, 0, 255, 100, 100, 100, 255, 200, 40, 40, 255]);
+  const cov = new Uint8Array([0, 255, 0]);
+  it('leaves the heal alone at Diffusion 7 and full colour', () => {
+    const out = new Uint8ClampedArray([0, 0, 0, 255, 150, 150, 150, 255, 200, 40, 40, 255]);
+    scaleHealCorrection(out, before, cov, 3, 1, 1, 0, 7, 1, 1);
+    expect(Array.from(out.subarray(4, 7))).toEqual([150, 150, 150]);
+  });
+  it('at colour 0 gives a plain copy, mixed at the opacity the heal used', () => {
+    const out = new Uint8ClampedArray([0, 0, 0, 255, 125, 125, 125, 255, 200, 40, 40, 255]);   // a heal at opacity 0.5
+    scaleHealCorrection(out, before, cov, 3, 1, 1, 0, 7, 0, 0.5);
+    expect(Array.from(out.subarray(4, 7))).toEqual([150, 70, 70]);                         // halfway to the source
+  });
+});
 
 describe('insideDistance', () => {
   it('is 0 outside and grows by one pixel per step inward', () => {

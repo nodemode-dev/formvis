@@ -245,6 +245,27 @@ export function insideDistance(coverage: Uint8Array, W: number, H: number): Floa
   return d;
 }
 
+/** Diffusion and Color for the healing tools: scales the heal's colour correction, the difference between the healed
+ *  pixels and a plain copy of the source (dx, dy) away, for pixels with coverage at or above 128. Diffusion (1 to 7)
+ *  fades it with the distance inside the edge over 2^Diffusion px, 7 keeping it everywhere; `colour` (0 to 1) scales
+ *  it, 0 leaving a plain copy. `opacity` is what the heal was applied at: the full-strength heal is recovered, scaled,
+ *  and mixed back at that opacity. `out` is changed in place; `before` is the pixels as they were. */
+export function scaleHealCorrection(out: Uint8ClampedArray, before: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, dx: number, dy: number, diffusion: number, colour: number, opacity = 1): void {
+  const diff = Math.round(Math.min(7, Math.max(1, diffusion))), col = Math.min(1, Math.max(0, colour)), op = Math.min(1, Math.max(0, opacity));
+  if ((diff >= 7 && col >= 1) || op <= 0) return;
+  const dist = diff < 7 ? insideDistance(coverage, W, H) : null, L = 2 ** diff;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (coverage[i] < 128) continue;
+    const w = col * (dist ? Math.exp(-dist[i] / L) : 1);
+    const s = (Math.min(H - 1, Math.max(0, y + dy)) * W + Math.min(W - 1, Math.max(0, x + dx))) * 4;
+    for (let ch = 0; ch < 3; ch++) {
+      const b = before[i * 4 + ch], full = b + (out[i * 4 + ch] - b) / op, raw = before[s + ch];
+      out[i * 4 + ch] = Math.round(b + op * (raw + w * (full - raw) - b));
+    }
+  }
+}
+
 /** Healing Brush and Patch: fills the pixels under `coverage` from the pixels (dx, dy) away, then corrects them with the
  *  harmonic membrane so they meet the area's edge without a seam, as in Poisson image editing. The source is read from
  *  the pixels as they were, since it may overlap the area, and is clamped to the image's edge. Returns false when

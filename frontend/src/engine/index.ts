@@ -47,7 +47,7 @@ import { noDynamics, pressureOption, type BrushDynamics, type BrushPreset } from
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { CUSTOM_SHAPES } from './custom-shapes';
 export { CUSTOM_SHAPES } from './custom-shapes';
-import { WarpStroke, contentFill, fillTransparent, healFromSource, insideDistance, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
+import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealMode } from './retouch';
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
@@ -4088,7 +4088,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10 };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7 };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -4300,6 +4300,7 @@ export class Engine {
     if (!healFromSource(pm, s.coverageAlpha(), r.width, r.height, this.brush.opacity, off.x, off.y)) return null;
     const out = new ImageData(r.width, r.height);
     unpremultiply(pm, out.data);
+    scaleHealCorrection(out.data, before.data, s.coverageAlpha(), r.width, r.height, off.x, off.y, this.retouch.healDiffusion, 1, this.brush.opacity);
     r.write(out);
     return { raster: r, x: 0, y: 0, before, after: r.read() };
   }
@@ -4337,18 +4338,9 @@ export class Engine {
         // difference between the healed result and a plain copy of the source. Diffusion fades it with the distance
         // inside the edge over 2^Diffusion px (7 keeps it everywhere, as before; lower keeps more of the source's own
         // texture inside); Color scales it (0 is a plain copy, no colour blending; 10 is the full blend, as before).
-        const diffusion = opts.patchMode === 'normal' ? Math.round(Math.min(7, Math.max(1, opts.patchDiffusion))) : 7;
+        const diffusion = opts.patchMode === 'normal' ? opts.patchDiffusion : 7;
         const colour = opts.patchMode === 'contentAware' ? Math.min(10, Math.max(0, opts.patchColor)) / 10 : 1;
-        if (diffusion < 7 || colour < 1) {
-          const dist = diffusion < 7 ? insideDistance(mask, W, H) : null, L = 2 ** diffusion;
-          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-            const i = y * W + x;
-            if (mask[i] < 128) continue;
-            const w = colour * (dist ? Math.exp(-dist[i] / L) : 1);
-            const s = (Math.min(H - 1, Math.max(0, y + oy)) * W + Math.min(W - 1, Math.max(0, x + ox))) * 4;
-            for (let ch = 0; ch < 3; ch++) out.data[i * 4 + ch] = Math.round(orig[s + ch] + w * (out.data[i * 4 + ch] - orig[s + ch]));
-          }
-        }
+        scaleHealCorrection(out.data, orig, mask, W, H, ox, oy, diffusion, colour);
         if (opts.patchTransparent) {
           const src = new ImageData(W, H);
           for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const sx = Math.min(W - 1, Math.max(0, x + ox)), sy = Math.min(H - 1, Math.max(0, y + oy)); src.data.set(orig.subarray((sy * W + sx) * 4, (sy * W + sx) * 4 + 4), (y * W + x) * 4); }
