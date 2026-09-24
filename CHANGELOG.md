@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.20.0 · 2026-09-24
+
+### Added
+
+- Levels, Curves, Exposure, Invert, Posterize and Brightness/Contrast adjustment layers now draw on the graphics processor (WebGPU or WebGL2) instead of sending the document back to the CPU. Each is applied through a table made by sonny's own CPU code and checked against it, so the result is the CPU's. Other adjustment kinds still draw on the CPU, named in the status bar.
+- 8 more tests (browser): 383 in all.
+
 ## 1.19.0 · 2026-09-24
 
 ### Added

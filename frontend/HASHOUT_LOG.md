@@ -2,6 +2,29 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Per-channel adjustments on the GPU · _v1.20.0 (src/engine/lut.ts new; src/engine/index.ts, src/gpu/display.ts, src/gpu/gl-display.ts, src/gpu/blend-wgsl.ts; e2e/test_gpu_adjust.py new)
+
+`lut.ts`: `LUT_KINDS`, `adjustmentLut` (the table from the CPU kernel, proven on a colour lattice). Engine: `GpuLayerSpec`; `gpuLayers` sends per-channel adjustments as tables and names the others. Displays: `DisplayLayer.lut`, `LUT_MODE`, the table upload and cache key, shader mode 100 in WGSL and GLSL. Removed:
+
+```ts
+  gpuLayers(): { layers: Array<{ image: Surface; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }> } | { reason: string } {
+    const ov = this.overrides(p), layers: Array<{ image: Surface; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }> = [];
+      if (l.adjustment) return { reason: 'adjustment layers' };
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+      used.add(l.image);
+      new Uint32Array(raw)[15] = blendIndex(l.blend);
+    let e = this.cache.get(l.image);
+      this.cache.set(l.image, e);
+    if (l.version < 0 || e.version !== l.version) {
+import type { Checker, DisplayLayer } from './display';
+      used.add(l.image);
+      gl.uniform1i(u('mode'), blendIndex(l.blend));
+    const gl = this.gl;
+    let e = this.cache.get(l.image);
+    if (!e) { e = { tex: gl.createTexture() as WebGLTexture, version: NaN, w: l.width, h: l.height }; this.cache.set(l.image, e); }
+    if (l.version < 0 || e.version !== l.version) {
+```
+
 ## The WebGL2 renderer · _v1.19.0 (src/gpu/gl-display.ts new; src/gpu/display.ts, src/gpu/fallback.ts, src/ui/stage.ts, src/app.ts; e2e/test_gl_display.py new, tests/gpu-fallback.test.ts, e2e/test_gpu_prefs.py)
 
 `gl-display.ts`: `GlDisplay` (GLSL ES 3.00 composite and present programs, `render`, `renderToPixels`, the texture cache, `maxTexture`, `onLost`). `display.ts`: the `ScreenDisplay` interface; `GpuDisplay.canvas` public. `rendererFallback` treats WebGL2 as WebGPU. Stage: `gpuCanvases`, `showGpu`. `syncGpu` starts either display on its own canvas and tracks failures per API; the markup gains `.cv-scene-gl`. Removed:
