@@ -2,6 +2,27 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Channel-mixing adjustments on the GPU · _v1.21.0 (src/engine/lut.ts, src/engine/index.ts, src/gpu/display.ts, src/gpu/gl-display.ts, src/gpu/blend-wgsl.ts; e2e/test_gpu_adjust.py)
+
+`lut.ts`: `LUT3_N`, `LUT3_KINDS`, `lut3Sample`, `adjustmentLut3` (the 3D table from the CPU kernel, proven within 1 level off the lattice). `GpuLayerSpec.lut3` and `DisplayLayer.lut3`; `LUT3_MODE`; tables upload at their own size; shader mode 101 in WGSL and GLSL. Removed:
+
+```ts
+import { adjustmentLut } from './lut';
+/** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's per-channel lookup
+ *  table (256 x 1, RGBA) applied to what is below it. */
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+        if (!lut) return { reason: `a ${ADJUSTMENT_LABELS[l.adjustment.kind] ?? l.adjustment.kind} adjustment layer` };
+        layers.push({ image: null, lut, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+/** The shader mode for an adjustment's lookup table (Phase 18.5), after the 27 blend modes. */
+      new Uint32Array(raw)[15] = l.lut ? LUT_MODE : blendIndex(l.blend);
+      // A table is fixed for its settings (a new table comes with new settings), so it is written once.
+      if (Number.isNaN(e.version)) { this.device.queue.writeTexture({ texture: e.tex }, l.lut, { bytesPerRow: 256 * 4 }, [256, 1]); e.version = 0; }
+import { LUT_MODE, type Checker, type DisplayLayer } from './display';
+      gl.uniform1i(u('mode'), l.lut ? LUT_MODE : blendIndex(l.blend));
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, l.lut);
+```
+
 ## Per-channel adjustments on the GPU · _v1.20.0 (src/engine/lut.ts new; src/engine/index.ts, src/gpu/display.ts, src/gpu/gl-display.ts, src/gpu/blend-wgsl.ts; e2e/test_gpu_adjust.py new)
 
 `lut.ts`: `LUT_KINDS`, `adjustmentLut` (the table from the CPU kernel, proven on a colour lattice). Engine: `GpuLayerSpec`; `gpuLayers` sends per-channel adjustments as tables and names the others. Displays: `DisplayLayer.lut`, `LUT_MODE`, the table upload and cache key, shader mode 100 in WGSL and GLSL. Removed:

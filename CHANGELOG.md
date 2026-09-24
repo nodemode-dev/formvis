@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.21.0 · 2026-09-24
+
+### Added
+
+- Hue/Saturation, Photo Filter, Black & White, Channel Mixer, Vibrance, Color Balance and Selective Color adjustment layers now draw on the graphics processor, through a 3D colour table made by sonny's own CPU code and checked to within 1 level of it. Threshold, a hard cut, still draws on the CPU.
+- 3 more tests (browser): 386 in all.
+
 ## 1.20.0 · 2026-09-24
 
 ### Added
