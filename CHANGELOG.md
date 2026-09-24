@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.17.0 · 2026-09-24
+
+### Added
+
+- With the renderer at WebGPU (chosen, or Automatic on a hardware graphics processor), the canvas draws through the GPU: layers, opacity and all blend modes but Dissolve. Documents with folders, masks, clipping, adjustment layers or layer styles, or over the GPU memory limit, still draw on the CPU, and the status bar says why.
+- 4 more tests (browser): 339 in all.
+
+### Fixed
+
+- After a graphics processor reset the canvas could stay blank until the next change; it now redraws as soon as the browser restores it.
+- The status bar showed WebGL2 when it was chosen although drawing stayed on the CPU; it now says the CPU draws, and why.
+
 ## 1.16.0 · 2026-09-24
 
 ### Added

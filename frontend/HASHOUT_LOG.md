@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The canvas draws through WebGPU · _v1.17.0 (src/gpu/display.ts new; src/engine/index.ts, src/ui/stage.ts, src/app.ts, src/styles/shell.css; e2e/test_gpu_display.py new, e2e/test_gpu_prefs.py)
+
+`display.ts`: `GpuDisplay` (`create`, `render` with an optional offscreen target, `renderToPixels`, `bytesFor`, the texture cache, `onLost`), `PRESENT_WGSL`. Engine: `gpuLayers`. Stage: the `.cv-scene-gpu` canvas, `setGpu`, `rgb`, the GPU branch of `renderScene`, redraw on `contextrestored`. `app.ts`: `syncGpu` starts the display and reports what draws. Removed:
+
+```ts
+import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, modeLabel, probeGpu, type GpuProbe } from './gpu/probe';
+    status.setGpu(`GPU: ${modeLabel(ch.mode)}`, name ? `${name}: ${ch.reason}` : ch.reason);
+    dialogs.settings.setGpu(detectedName(gpuProbe), modeLabel(ch.mode), ch.reason);
+    for (const c of [this.scene, this.overlay]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    if (!p) { g.clearRect(0, 0, W, H); return; }
+    if (!vis) return;
+    const pattern = this.checkerPattern(pal);
+    if (v.zoom >= 2) {
+```
+
 ## The WebGPU blender · _v1.16.0 (src/gpu/blender.ts and src/gpu/blend-wgsl.ts new; e2e/test_gpu_blend.py new; e2e/conftest.py)
 
 `blender.ts`: `GpuBlender` (`create`, `composite`, `read`, `destroy`), `GpuLayer`, the specification's usage flags. `blend-wgsl.ts`: `COMPOSITE_WGSL`, `BLEND_IDS`, `blendIndex`. Nothing removed from src; not yet wired to the display. The test browser launches with WebGPU on SwiftShader; removed from e2e/conftest.py:
