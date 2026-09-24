@@ -92,6 +92,14 @@ fn dissolveNoise(x: i32, y: i32) -> f32 {
 @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
   let px = vec2<i32>(floor(pos.xy));
   let bd = textureLoad(backdrop, px, 0);
+  // An adjustment's lookup table (Phase 18.5), as the CPU renderer applies it: each channel looked up by its 8-bit value,
+  // then mixed in by opacity (src += (adjusted - src) * opacity), alpha kept, transparent pixels left alone.
+  if (layer.mode == 100u) {
+    if (bd.a <= 0.0) { return bd; }
+    let i = vec3<i32>(round(bd.rgb * 255.0));
+    let t = vec3<f32>(textureLoad(source, vec2<i32>(i.r, 0), 0).r, textureLoad(source, vec2<i32>(i.g, 0), 0).g, textureLoad(source, vec2<i32>(i.b, 0), 0).b);
+    return vec4<f32>(bd.rgb + (t - bd.rgb) * layer.opacity, bd.a);
+  }
   let q = layer.inv * vec3<f32>(pos.xy, 1.0);
   if (q.x < 0.0 || q.y < 0.0 || q.x >= layer.size.x || q.y >= layer.size.y) { return bd; }
   // The layer is uploaded premultiplied, as the canvas stores it, and un-premultiplied here in float: unpremultiplying

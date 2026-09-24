@@ -49,6 +49,11 @@ import { CUSTOM_SHAPES } from './custom-shapes';
 export { CUSTOM_SHAPES } from './custom-shapes';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { dissolveNoise } from './blend';
+import { adjustmentLut } from './lut';
+
+/** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's per-channel lookup
+ *  table (256 x 1, RGBA) applied to what is below it. */
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
@@ -527,17 +532,24 @@ export class Engine {
   /** The GPU display's view of the current document (Phase 18.2b): its visible layers bottom to top, each with its
    *  pixels, placement, opacity and blend mode, live previews applied as `compose` applies them; or the reason the
    *  document still draws on the CPU (what the GPU path does not draw yet). */
-  gpuLayers(): { layers: Array<{ image: Surface; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }> } | { reason: string } {
+  gpuLayers(): { layers: GpuLayerSpec[] } | { reason: string } {
     const p = this.current;
     if (!p) return { reason: 'no document is open' };
-    const ov = this.overrides(p), layers: Array<{ image: Surface; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }> = [];
+    const ov = this.overrides(p), layers: GpuLayerSpec[] = [];
     for (const l of p.doc.layers) {
       const o = ov?.get(l.id);
       if (o?.hidden || !l.visible) continue;
       if (l.isGroup || l.parentId) return { reason: 'folders' };
       if (l.mask || o?.maskSource) return { reason: 'layer masks' };
       if (l.clipId) return { reason: 'clipping masks' };
-      if (l.adjustment) return { reason: 'adjustment layers' };
+      if (l.adjustment) {
+        // Phase 18.5: a per-channel adjustment goes to the GPU as its proven lookup table (engine/lut.ts); others, by name,
+        // keep the document on the CPU.
+        const lut = adjustmentLut(l.adjustment);
+        if (!lut) return { reason: `a ${ADJUSTMENT_LABELS[l.adjustment.kind] ?? l.adjustment.kind} adjustment layer` };
+        layers.push({ image: null, lut, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+        continue;
+      }
       if (effectsActive(o?.effects ?? l.effects)) return { reason: 'layer styles' };
       // Dissolve's pattern is fixed to document pixels; the display composites in screen pixels, so it stays on the CPU.
       if ((o?.blend ?? l.blend) === 'dissolve') return { reason: 'a layer in Dissolve mode' };

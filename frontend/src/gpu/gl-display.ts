@@ -1,6 +1,6 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
-import type { Checker, DisplayLayer } from './display';
+import { LUT_MODE, type Checker, type DisplayLayer } from './display';
 
 /** The display on WebGL2 (Phase 18.4): the GPU path where WebGPU is missing, as in the Linux desktop shell, whose
  *  webview has none. The same passes as the WebGPU display and the same maths as blend-wgsl.ts, in GLSL ES 3.00: layers
@@ -46,6 +46,12 @@ float dissolveNoise(int x, int y) { uint h = uint(x) * 374761393u + uint(y) * 66
 void main() {
   ivec2 fb = ivec2(gl_FragCoord.xy);
   vec4 bd = texelFetch(backdrop, fb, 0);
+  if (mode == 100) {
+    if (bd.a <= 0.0) { outColor = bd; return; }
+    ivec3 i = ivec3(floor(bd.rgb * 255.0 + 0.5));
+    vec3 t = vec3(texelFetch(source, ivec2(i.r, 0), 0).r, texelFetch(source, ivec2(i.g, 0), 0).g, texelFetch(source, ivec2(i.b, 0), 0).b);
+    outColor = vec4(bd.rgb + (t - bd.rgb) * opacity, bd.a); return;
+  }
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y);
   vec3 q = inv * vec3(p, 1.0);
   if (q.x < 0.0 || q.y < 0.0 || q.x >= size.x || q.y >= size.y) { outColor = bd; return; }
@@ -150,7 +156,7 @@ export class GlDisplay {
     const used = new Set<object>(), filter = zoom >= 2 ? gl.NEAREST : gl.LINEAR;
     for (const l of layers) {
       if (l.opacity <= 0 || l.width < 1 || l.height < 1) continue;
-      used.add(l.image);
+      used.add(l.lut ?? (l.image as object));
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, this.texture(l));
       for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
@@ -158,7 +164,7 @@ export class GlDisplay {
       gl.uniformMatrix3fv(u('inv'), false, [ia, ib, 0, ic, id, 0, ie, iff, 1]);
       gl.uniform2f(u('size'), l.width, l.height);
       gl.uniform1f(u('opacity'), Math.min(1, Math.max(0, l.opacity)));
-      gl.uniform1i(u('mode'), blendIndex(l.blend));
+      gl.uniform1i(u('mode'), l.lut ? LUT_MODE : blendIndex(l.blend));
       gl.bindFramebuffer(gl.FRAMEBUFFER, b.fb);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, a.tex);
@@ -196,12 +202,19 @@ export class GlDisplay {
   }
 
   private texture(l: DisplayLayer): WebGLTexture {
-    const gl = this.gl;
-    let e = this.cache.get(l.image);
+    const gl = this.gl, key = l.lut ?? (l.image as object);
+    let e = this.cache.get(key);
     if (e && (e.w !== l.width || e.h !== l.height)) { gl.deleteTexture(e.tex); e = undefined; }
-    if (!e) { e = { tex: gl.createTexture() as WebGLTexture, version: NaN, w: l.width, h: l.height }; this.cache.set(l.image, e); }
+    if (!e) { e = { tex: gl.createTexture() as WebGLTexture, version: NaN, w: l.width, h: l.height }; this.cache.set(key, e); }
     gl.bindTexture(gl.TEXTURE_2D, e.tex);
-    if (l.version < 0 || e.version !== l.version) {
+    if (l.lut) {
+      // A table is data, not an image: uploaded as it is (no premultiplying), once for its settings.
+      if (Number.isNaN(e.version)) {
+        gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 256, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, l.lut);
+        e.version = 0;
+      }
+    } else if (l.image && (l.version < 0 || e.version !== l.version)) {
       gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
       gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, gl.RGBA, gl.UNSIGNED_BYTE, l.image as TexImageSource);

@@ -5,7 +5,9 @@ import { COMPOSITE_WGSL, blendIndex } from './blend-wgsl';
 const TEX = { COPY_SRC: 0x01, COPY_DST: 0x02, TEXTURE_BINDING: 0x04, RENDER_ATTACHMENT: 0x10 } as const;
 const BUF = { MAP_READ: 0x0001, COPY_DST: 0x0008, UNIFORM: 0x0040 } as const;
 
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+/** The shader mode for an adjustment's lookup table (Phase 18.5), after the 27 blend modes. */
+export const LUT_MODE = 100;
 export interface Checker { a: [number, number, number]; b: [number, number, number]; cell: number; origin: [number, number] }
 /** What the stage draws through: the WebGPU display or the WebGL2 one (gl-display.ts), each on its own canvas. */
 export interface ScreenDisplay {
@@ -95,12 +97,12 @@ export class GpuDisplay {
     enc.beginRenderPass({ colorAttachments: [{ view: a.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] }).end();
     for (const l of layers) {
       if (l.opacity <= 0 || l.width < 1 || l.height < 1) continue;
-      used.add(l.image);
+      used.add(l.lut ?? (l.image as object));
       const tex = this.texture(l);
       const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
       const raw = new ArrayBuffer(64), f = new Float32Array(raw);
       f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
-      new Uint32Array(raw)[15] = blendIndex(l.blend);
+      new Uint32Array(raw)[15] = l.lut ? LUT_MODE : blendIndex(l.blend);
       const ub = d.createBuffer({ size: 64, usage: BUF.UNIFORM | BUF.COPY_DST });
       d.queue.writeBuffer(ub, 0, raw);
       buffers.push(ub);
@@ -148,13 +150,17 @@ export class GpuDisplay {
   }
 
   private texture(l: DisplayLayer): GPUTexture {
-    let e = this.cache.get(l.image);
+    const key = l.lut ?? (l.image as object);
+    let e = this.cache.get(key);
     if (e && (e.w !== l.width || e.h !== l.height)) { e.tex.destroy(); e = undefined; }
     if (!e) {
       e = { tex: this.device.createTexture({ size: [l.width, l.height], format: 'rgba8unorm', usage: TEX.TEXTURE_BINDING | TEX.COPY_DST | TEX.RENDER_ATTACHMENT }), version: NaN, w: l.width, h: l.height };
-      this.cache.set(l.image, e);
+      this.cache.set(key, e);
     }
-    if (l.version < 0 || e.version !== l.version) {
+    if (l.lut) {
+      // A table is fixed for its settings (a new table comes with new settings), so it is written once.
+      if (Number.isNaN(e.version)) { this.device.queue.writeTexture({ texture: e.tex }, l.lut, { bytesPerRow: 256 * 4 }, [256, 1]); e.version = 0; }
+    } else if (l.image && (l.version < 0 || e.version !== l.version)) {
       this.device.queue.copyExternalImageToTexture({ source: l.image }, { texture: e.tex, premultipliedAlpha: true }, [l.width, l.height]);
       e.version = l.version;
     }
