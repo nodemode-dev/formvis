@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Home screen · _v1.3.0 (src/app.ts, src/ui/app-dialogs.ts, src/ui/prefs.ts, src/styles/shell.css; src/ui/home.ts and e2e/test_home_screen.py new)
+
+`home.ts`: `HomeScreen` (New file, Open, recent projects; shown with no document when Auto Show is on, or from the brand mark; Esc leaves). `Prefs.autoShowHome`; Preferences gains a General section and opens on it. Removed:
+
+```ts
+    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; }),
+    this.showSection('Interface');
+export interface Prefs { historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number }
+export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20 };
+```
+
 ## Preferences · _v1.2.0 (src/ui/app-dialogs.ts, src/app.ts, src/engine/index.ts, src/styles/dialogs.css; src/ui/prefs.ts and e2e/test_preferences.py new)
 
 `SettingsDialog` is Preferences, with Interface, Performance and File Handling sections. `prefs.ts`: `Prefs`, `DEFAULT_PREFS`, `RECOVERY_CHOICES`, `loadPrefs`, `savePrefs`, `applyPrefs`. Engine: `historyLimits`, `setHistoryLimits`, applied in `addProject`. The app applies preferences at startup and reads the recovery delay from them. Removed:

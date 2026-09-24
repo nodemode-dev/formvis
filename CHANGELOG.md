@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.3.0 · 2026-09-24
+
+### Added
+
+- A Home screen: New file, Open and recent projects, shown whenever no document is open (Preferences > General > Auto show the Home Screen) and at any time from the brand mark at the top left; Esc leaves it. Recent projects show names and dates; thumbnails are not built yet.
+- 1 more test (browser): 276 in all.
+
 ## 1.2.0 · 2026-09-24
 
 ### Added
