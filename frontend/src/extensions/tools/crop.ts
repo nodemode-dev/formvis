@@ -1,5 +1,6 @@
 import { HANDLES, hierarchy, transformBounds, type Engine, type Pt, type Rect } from '../../engine';
 import type { Tool, ToolContext, ToolPointer } from '../registry';
+import { CROP_OVERLAYS, ORIENTED, overlayLines, type CropOverlay } from './crop-overlays';
 
 const RATIOS: ReadonlyArray<{ id: string; label: string; value: number | 'original' | null }> = [
   { id: 'free', label: 'Free', value: null }, { id: 'original', label: 'Original', value: 'original' }, { id: '1:1', label: '1:1', value: 1 },
@@ -14,6 +15,9 @@ let drag: { mode: 'create' | 'move' | 'resize'; handle: number; start: Pt; origi
  *  the canvas opens. */
 let angle = 0;
 let contentAware = false;
+/** The composition overlay drawn in the frame, and its orientation for Triangle and Golden Spiral. */
+let overlayKind: CropOverlay = 'thirds';
+let overlayOrient = 0;
 let leveling = false;
 let line: { a: Pt; b: Pt } | null = null;
 /** Perspective: the frame's four corners move independently (top-left, top-right, bottom-right, bottom-left). */
@@ -201,6 +205,15 @@ export const cropTool: Tool = {
   },
   keydown(ctx, e) {
     if (e.key === 'Enter' && (frame || quad)) { commit(ctx.engine); return true; }
+    // With a frame showing, O cycles the overlays and Shift+O flips Triangle and Golden Spiral, as in Photoshop; with
+    // none, O is left to pick the Dodge group as usual.
+    if ((e.key === 'o' || e.key === 'O') && frame && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.shiftKey) { if (ORIENTED.has(overlayKind)) overlayOrient = (overlayOrient + 1) % 4; }
+      else overlayKind = CROP_OVERLAYS[(CROP_OVERLAYS.findIndex((o) => o.id === overlayKind) + 1) % CROP_OVERLAYS.length].id;
+      ctx.engine.emit('options', null);
+      ctx.engine.emit('overlay', null);
+      return true;
+    }
     if (e.key === 'Escape' && (frame || quad || leveling)) { frame = null; quad = null; cornerDrag = -1; drag = null; line = null; leveling = false; angle = 0; ctx.engine.emit('overlay', null); ctx.engine.emit('options', null); return true; }
     return false;
   },
@@ -238,9 +251,9 @@ export const cropTool: Tool = {
     g.strokeStyle = pal.antsB;
     g.globalAlpha = 0.5;
     g.beginPath();
-    for (let i = 1; i < 3; i++) {
-      const x = a.x + ((b.x - a.x) * i) / 3, y = a.y + ((b.y - a.y) * i) / 3;
-      g.moveTo(x, a.y); g.lineTo(x, b.y); g.moveTo(a.x, y); g.lineTo(b.x, y);
+    for (const pts of overlayLines(overlayKind, Math.min(a.x, b.x), Math.min(a.y, b.y), Math.abs(b.x - a.x), Math.abs(b.y - a.y), overlayOrient)) {
+      g.moveTo(pts[0].x, pts[0].y);
+      for (let i = 1; i < pts.length; i++) g.lineTo(pts[i].x, pts[i].y);
     }
     g.stroke();
     g.globalAlpha = 1;
@@ -263,6 +276,7 @@ export const cropTool: Tool = {
     { kind: 'readout', label: 'Size', get: () => (frame ? `${Math.round(norm(frame).w)} \u00d7 ${Math.round(norm(frame).h)}` : '') },
     { kind: 'range', label: 'Straighten', min: -45, max: 45, step: 0.1, unit: '\u00b0', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'button', label: 'Level line', icon: 'rotate', run: () => { leveling = true; e.emit('tool', null); e.emit('options', null); } },
+    { kind: 'select', label: 'Overlay', choices: CROP_OVERLAYS, get: () => overlayKind, set: (v: string) => { overlayKind = (CROP_OVERLAYS.find((o) => o.id === v)?.id ?? 'thirds'); e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'toggle', label: 'Delete Cropped Pixels', get: () => e.cropDeletePixels, set: (v) => { e.cropDeletePixels = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Content-Aware', get: () => contentAware, set: (v) => { contentAware = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Perspective', get: () => perspective, set: (v) => { perspective = v; quad = v && frame ? quadOf(frame) : null; e.emit('options', null); e.emit('overlay', null); } },
