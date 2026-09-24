@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.97.0 · 2026-09-24
+
+### Added
+
+- NodeMode canvasor projects (`.canvasor`, format `com.nodemode.canvasor` version 1) open in sonny, from File > Open, the file picker, or a drop; later versions are refused rather than guessed. They save as `.sny`.
+- 3 more tests (1 backend, 2 browser): 266 in all.
+
 ## 0.96.0 · 2026-09-23
 
 ### Added

@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## canvasor projects open · _v0.97.0 (src/io/images.ts; e2e/test_canvasor_open.py new)
+
+`PROJECT_ACCEPT` and `isProjectFile` take `.canvasor`, so the picker offers NodeMode canvasor projects and a dropped one opens as a project; the backend reads it (see the backend log). Removed:
+
+```ts
+export const PROJECT_ACCEPT = '.sny,.sonny,.ref,.zip,.psd,.psb';
+export const isProjectFile = (f: File): boolean => /\.(sny|sonny|ref|zip|psd|psb)$/i.test(f.name);
+```
+
 ## The interface: menus, rail, options bar; settings dialogs; tool options · _v0.96.0 (src/ui/menu.ts, src/ui/rail.ts, src/ui/options.ts, src/ui/toast.ts, src/ui/panels/fill-dialog.ts, src/app.ts, src/engine/index.ts, src/engine/paths.ts, src/engine/kernels.ts, src/extensions/tools/{marquee,lasso,wand,gradient,healing-brush,pen,freeform-pen,type,remove}.ts, src/styles/{panels,shell}.css; src/ui/tool-groups.ts, src/ui/panels/stroke-path-dialog.ts and src/ui/panels/layer-dialogs.ts new; tests/antialias-mask.test.ts and fourteen browser test files new)
 
 `menu.ts`: `MenuItem` may be a `SubMenu`; `PopupMenu` opens submenus beside rows, scrolls within the window, and closes a standalone menu on an outside press. `rail.ts`: one slot per tool group with a flyout, through `tool-groups.ts`. `options.ts`: wheel scrolling and edge chevrons. Engine: `fillWith` takes a name and region; `fillPathWith`, `featherMask`, `strokePathWith`, `STROKE_TOOLS`; `addLayer`, `addFolder` and `duplicateLayers` take their dialogs' settings; the wand's `antialias`; the Marquee's feather and style; the Lasso's feather; the Gradient's blend and dither. `paths.ts`: `samplePath`. `kernels.ts`: `antialiasMask`. Removed:

@@ -1,6 +1,6 @@
 # Project Format
 
-A project is a zip (`.sny`; before 0.90.0 `.sonny`, still read) or a package (`.ref`, zipped or a folder) holding `manifest.json` and an `images/` folder. sonny writes format `com.nodemode.sonny` version 1 and reads that plus `com.reference.project` versions 1 to 7.
+A project is a zip (`.sny`; before 0.90.0 `.sonny`, still read) or a package (`.ref`, zipped or a folder) holding `manifest.json` and an `images/` folder. sonny writes format `com.nodemode.sonny` version 1 and reads that plus `com.reference.project` versions 1 to 7 and, since 0.97.0, NodeMode canvasor's `com.nodemode.canvasor` version 1 (`.canvasor`, a zip). A canvasor project has the `.ref` layout below under its own id: layers bottom to top, each transform an origin and a displayed size that may differ from its image's size; it opens through the same reader and saves as `.sny`. (NodeMode's canvasor plugin also saves `*.canvasor.json`, a different format that sonny does not read.)
 
 Since 0.28.0, File > Export .ref Project writes `Name.ref.zip`, which unzips to a `Name.ref` package (format `com.reference.project` version 7) that apps reading that format can open. That format is stricter in a few places, so the export regenerates any non-UUID id, names image files after the ids, strips opacity and blend mode from folders, drops pixels from adjustment layers, names unnamed layers "Layer" and clamps the resolution to 1 to 9600, reporting each change in a toast.
 
