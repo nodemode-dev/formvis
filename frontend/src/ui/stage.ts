@@ -3,6 +3,7 @@ import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo }
 import { isMac, q, setHidden } from './dom';
 import { paint, type StagePaint } from './palette';
 import type { DisplayLayer, GpuDisplay } from '../gpu/display';
+import { documentFallback } from '../gpu/fallback';
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 /** Ruler thickness in CSS pixels; the rulers lie over the stage's top and left edges, so showing them moves nothing. */
@@ -182,11 +183,13 @@ export class Stage {
     let gpuLayers: DisplayLayer[] | null = null;
     if (this.gpu) {
       const gl = this.engine.gpuLayers();
-      let reason: string | null = null;
-      if ('reason' in gl) reason = `this document has ${gl.reason}`;
-      else if (this.gpu.bytesFor(gl.layers, W, H) > this.gpuLimit) reason = 'this document is over the GPU memory limit';
-      else gpuLayers = gl.layers;
-      if (reason !== this.gpuReason) { this.gpuReason = reason; this.gpuState?.(reason); }
+      const reason = documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit });
+      if (!reason && 'layers' in gl) gpuLayers = gl.layers;
+      if (reason !== this.gpuReason) {
+        this.gpuReason = reason;
+        console.info(reason ? `sonny: drawing on the CPU, because ${reason}` : 'sonny: drawing on the GPU (WebGPU)');
+        this.gpuState?.(reason);
+      }
       if (gpuLayers) region = null;
     }
     setHidden(this.gpuCanvas, !gpuLayers);

@@ -48,6 +48,7 @@ import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDial
 import { applyPrefs, loadPrefs, savePrefs } from './ui/prefs';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
 import { GpuDisplay } from './gpu/display';
+import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
 import { DOCK_PANELS, Dock } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
@@ -248,9 +249,9 @@ export function startApp(): void {
       });
     }
     if (ch.mode !== 'webgpu' && gpuDisplay) { gpuDisplay.destroy(); gpuDisplay = null; }
-    const live = ch.mode === 'webgpu' ? gpuDisplay : null;
-    const cpuWhy = ch.mode === 'webgl2' ? 'WebGL2 is chosen, but its renderer is not built yet, so drawing is on the CPU'
-      : ch.mode === 'webgpu' ? (gpuFailed ? 'WebGPU could not start or was lost, so drawing is on the CPU' : 'WebGPU is starting') : ch.reason;
+    const off = rendererFallback({ mode: ch.mode, chosenReason: ch.reason, displayReady: !!gpuDisplay, displayFailed: gpuFailed });
+    const live = off ? null : gpuDisplay;
+    const cpuWhy = off ?? ch.reason;
     stage.setGpu(live, pr.gpuMemoryMB * 1024 * 1024, live ? (reason) => status.setGpu(reason ? 'GPU: CPU' : 'GPU: WebGPU', reason ? `WebGPU is on, but ${reason}, so it draws on the CPU` : `${name}: ${ch.reason}`) : null);
     if (!live) status.setGpu('GPU: CPU', cpuWhy);
     dialogs.settings.setGpu(detectedName(gpuProbe), live ? 'WebGPU' : 'CPU', live ? ch.reason : cpuWhy);

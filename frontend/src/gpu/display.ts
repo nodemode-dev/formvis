@@ -68,10 +68,8 @@ export class GpuDisplay {
     }
   }
 
-  /** Bytes the frame would hold on the GPU: every layer's texture and the two screen-sized composites. */
-  bytesFor(layers: readonly DisplayLayer[], W: number, H: number): number {
-    return layers.reduce((s, l) => s + l.width * l.height * 4, 0) + W * H * 8;
-  }
+  /** The largest texture side this device takes (maxTextureDimension2D). */
+  get maxTexture(): number { return this.device.limits.maxTextureDimension2D; }
 
   /** One frame: `view` maps document pixels to canvas pixels; `rect` is the document's visible rectangle on the canvas
    *  (x0, y0, x1, y1). Sampling is nearest from 200% zoom up, as the CPU path draws it. With `out` the frame goes to that
