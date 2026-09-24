@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.19.0 · 2026-09-24
+
+### Added
+
+- The WebGL2 renderer: choosing WebGL2 in Preferences now draws the canvas on the graphics processor. It is the GPU path on Linux, whose desktop webview has no WebGPU, and on older systems, with the same blend modes and results as WebGPU and the CPU.
+- 31 more tests (1 unit, 30 browser): 375 in all.
+
+### Changed
+
+- Switching between WebGPU, WebGL2 and the CPU is clean, and a failure of one GPU API no longer rules out the other.
+
 ## 1.18.0 · 2026-09-24
 
 ### Added

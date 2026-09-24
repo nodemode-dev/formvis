@@ -2,6 +2,42 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The WebGL2 renderer · _v1.19.0 (src/gpu/gl-display.ts new; src/gpu/display.ts, src/gpu/fallback.ts, src/ui/stage.ts, src/app.ts; e2e/test_gl_display.py new, tests/gpu-fallback.test.ts, e2e/test_gpu_prefs.py)
+
+`gl-display.ts`: `GlDisplay` (GLSL ES 3.00 composite and present programs, `render`, `renderToPixels`, the texture cache, `maxTexture`, `onLost`). `display.ts`: the `ScreenDisplay` interface; `GpuDisplay.canvas` public. `rendererFallback` treats WebGL2 as WebGPU. Stage: `gpuCanvases`, `showGpu`. `syncGpu` starts either display on its own canvas and tracks failures per API; the markup gains `.cv-scene-gl`. Removed:
+
+```ts
+import { GpuDisplay } from './gpu/display';
+  let gpuDisplay: GpuDisplay | null = null, gpuStarting = false, gpuFailed = false;
+    // WebGPU draws through the GPU display (Phase 18.2b); WebGL2's renderer is Phase 18.4, so it still draws on the CPU.
+    if (ch.mode === 'webgpu' && !gpuDisplay && !gpuStarting && !gpuFailed) {
+      void GpuDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gpu')).then((d) => {
+        gpuDisplay = d;
+        gpuFailed = !d;
+        if (d) d.onLost = () => { gpuDisplay = null; gpuFailed = true; syncGpu(); };
+      });
+    if (ch.mode !== 'webgpu' && gpuDisplay) { gpuDisplay.destroy(); gpuDisplay = null; }
+    const off = rendererFallback({ mode: ch.mode, chosenReason: ch.reason, displayReady: !!gpuDisplay, displayFailed: gpuFailed });
+    const live = off ? null : gpuDisplay;
+    stage.setGpu(live, pr.gpuMemoryMB * 1024 * 1024, live ? (reason) => status.setGpu(reason ? 'GPU: CPU' : 'GPU: WebGPU', reason ? `WebGPU is on, but ${reason}, so it draws on the CPU` : `${name}: ${ch.reason}`) : null);
+    dialogs.settings.setGpu(detectedName(gpuProbe), live ? 'WebGPU' : 'CPU', live ? ch.reason : cpuWhy);
+  private constructor(private readonly canvas: HTMLCanvasElement, private readonly device: GPUDevice, private readonly ctx: GPUCanvasContext,
+/** Whether the GPU display draws at all: the chosen mode, a display that started and was not lost. */
+  if (s.mode === 'webgl2') return 'WebGL2 is chosen, but its renderer is not built yet, so drawing is on the CPU';
+  if (s.displayFailed) return 'WebGPU could not start or was lost, so drawing is on the CPU';
+  if (!s.displayReady) return 'WebGPU is starting';
+import type { DisplayLayer, GpuDisplay } from '../gpu/display';
+  private readonly gpuCanvas: HTMLCanvasElement;
+  private gpu: GpuDisplay | null = null;
+    this.gpuCanvas = q<HTMLCanvasElement>(host, '.cv-scene-gpu');
+    for (const c of [this.scene, this.overlay, this.gpuCanvas]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+  setGpu(display: GpuDisplay | null, limitBytes: number, onState: ((reason: string | null) => void) | null): void {
+    if (!display) setHidden(this.gpuCanvas, true);
+    if (!p) { g.clearRect(0, 0, W, H); setHidden(this.gpuCanvas, true); return; }
+    setHidden(this.gpuCanvas, !gpuLayers);
+    if (!vis) { if (gpuLayers) setHidden(this.gpuCanvas, true); return; }
+```
+
 ## Fallback rules in one place · _v1.18.0 (src/gpu/fallback.ts new; src/gpu/display.ts, src/ui/stage.ts, src/app.ts; tests/gpu-fallback.test.ts new)
 
 `fallback.ts`: `rendererFallback`, `documentFallback` (with the new texture-limit rule), `frameBytes`. `GpuDisplay.maxTexture`. The stage and `syncGpu` call them; each switch is logged. Removed:
