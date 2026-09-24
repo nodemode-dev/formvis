@@ -8,17 +8,19 @@ export class StatusBar {
   private readonly dims: HTMLElement;
   private readonly busy: HTMLElement;
   private readonly engineState: HTMLElement;
+  private readonly gpu: HTMLElement;
   private readonly hint: HTMLElement;
   private dismiss: Disposer | null = null;
 
   constructor(root: HTMLElement, private readonly engine: Engine) {
     root.insertAdjacentHTML('beforeend',
       '<span class="cv-st-zoom"></span><span class="cv-st-dims"></span>' +
-      `<span class="cv-st-busy">${icon('loading', 12)}Working</span><span class="cv-st-engine"></span><span class="cv-st-hint"></span>`);
+      `<span class="cv-st-busy">${icon('loading', 12)}Working</span><span class="cv-st-engine"></span><span class="cv-st-gpu"></span><span class="cv-st-hint"></span>`);
     this.zoom = q(root, '.cv-st-zoom');
     this.dims = q(root, '.cv-st-dims');
     this.busy = q(root, '.cv-st-busy');
     this.engineState = q(root, '.cv-st-engine');
+    this.gpu = q(root, '.cv-st-gpu');
     this.hint = q(root, '.cv-st-hint');
     for (const k of ['viewport', 'projects'] as const) engine.on(k, () => this.syncView());
     for (const k of ['tool', 'options'] as const) engine.on(k, () => this.syncHint());
@@ -31,6 +33,9 @@ export class StatusBar {
   }
 
   setEngine(text: string): void { setText(this.engineState, text); }
+
+  /** The GPU mode in use, as Photoshop's status bar shows it; the reason is its tooltip. */
+  setGpu(text: string, reason: string): void { setText(this.gpu, text); this.gpu.title = reason; }
 
   private syncView(): void {
     const p = this.engine.current;

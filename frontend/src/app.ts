@@ -45,7 +45,8 @@ import { api, type Capabilities, type OpenedProject } from './io/api';
 import { IMAGE_ACCEPT, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { deserialize, serialize } from './io/project-io';
 import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
-import { applyPrefs, loadPrefs } from './ui/prefs';
+import { applyPrefs, loadPrefs, savePrefs } from './ui/prefs';
+import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, modeLabel, probeGpu, type GpuProbe } from './gpu/probe';
 import { HomeScreen } from './ui/home';
 import { DOCK_PANELS, Dock } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
@@ -223,6 +224,27 @@ export function startApp(): void {
   brand.title = 'Home';
   brand.addEventListener('click', () => home.show());
   brand.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); home.show(); } });
+
+  // Graphics processor (Phase 18.1): a start that never finished last time turns Use Graphics Processor off, as
+  // Photoshop does after a driver crash; then the GPU is probed and the renderer chosen and shown.
+  let gpuProbe: GpuProbe = { webgpu: null, webgl2: null }, gpuProbed = false;
+  function syncGpu(): void {
+    if (!gpuProbed) return;
+    const pr = loadPrefs(), ch = chooseRenderer(gpuProbe, pr.useGpu, pr.renderer), name = ch.adapter ? `${ch.adapter.name}${ch.adapter.software ? ' (software)' : ''}` : '';
+    status.setGpu(`GPU: ${modeLabel(ch.mode)}`, name ? `${name}: ${ch.reason}` : ch.reason);
+    dialogs.settings.setGpu(detectedName(gpuProbe), modeLabel(ch.mode), ch.reason);
+  }
+  void (async () => {
+    if (gpuStartFailedLastTime()) {
+      savePrefs({ ...loadPrefs(), useGpu: false });
+      engine.notice('The graphics processor did not start last time, so Use Graphics Processor is now off. It can be turned on again in Preferences > Performance.');
+    }
+    markGpuStarting();
+    gpuProbe = await probeGpu();
+    markGpuStarted();
+    gpuProbed = true;
+    syncGpu();
+  })();
 
   async function openFiles(files: File[]): Promise<void> {
     await engine.task(async () => {
@@ -656,7 +678,7 @@ export function startApp(): void {
     color: new ColorPickerDialog(engine),
     liveMask: new LiveMaskDialog(),
     open: new OpenDialog({ openLibrary, openFiles, openFolder }),
-    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); }),
+    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); }),
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
     adjust: new AdjustPanel(engine),

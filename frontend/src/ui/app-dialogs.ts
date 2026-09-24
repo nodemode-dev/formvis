@@ -10,6 +10,7 @@ import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
 import { RECOVERY_CHOICES, loadPrefs, savePrefs, type Prefs } from './prefs';
+import { RENDERER_CHOICES, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
 
 const PRESETS: ReadonlyArray<[string, number, number]> = [
@@ -181,6 +182,13 @@ export class SettingsDialog extends Dialog {
   private readonly redrawRow = checkRow('Redraw only what a brush stroke changed', (v) => this.change({ regionRedraws: v }));
   private readonly recoveryRow = selectRow('Keep recovery information after changes, within', RECOVERY_CHOICES, (v) => this.change({ recoverySeconds: Number(v) }));
   private readonly homeRow = checkRow('Auto show the Home Screen', (v) => this.change({ autoShowHome: v }));
+  /** Graphics Processor Settings (Phase 18.1): the detected processor, Use Graphics Processor, the renderer and the GPU
+   *  memory limit, with the mode in use and why. */
+  private readonly gpuName = el('<span class="cv-gpu-name">Detecting...</span>');
+  private readonly gpuMode = el('<p class="cv-note cv-gpu-mode"></p>');
+  private readonly gpuUseRow = checkRow('Use Graphics Processor', (v) => this.change({ useGpu: v }));
+  private readonly rendererRow = selectRow('Renderer', RENDERER_CHOICES, (v) => this.change({ renderer: v as GpuRenderer }));
+  private readonly gpuMemoryRow = sliderRow('GPU memory (MB)', 128, 16384, 128, (v) => this.change({ gpuMemoryMB: v }));
 
   /** Edit > Preferences (Ctrl+,), laid out as Photoshop's: sections on the left, each section's settings on the right,
    *  kept on this device. `onPrefs` puts a change into effect. */
@@ -207,7 +215,9 @@ export class SettingsDialog extends Dialog {
     add('General', this.homeRow.el, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
     add('Interface', row, accentRow, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device.</p>'));
     add('Performance', this.statesRow.el, this.memoryRow.el, this.redrawRow.el,
-      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'));
+      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
+      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
+      el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, sonny turns this off and says so. In this version the graphics processor is detected and the choice kept; drawing still runs on the CPU until the GPU renderer that follows it arrives.</p>'));
     add('File Handling', this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
@@ -231,9 +241,27 @@ export class SettingsDialog extends Dialog {
     this.redrawRow.set(this.prefs.regionRedraws);
     this.recoveryRow.set(String(this.prefs.recoverySeconds));
     this.homeRow.set(this.prefs.autoShowHome);
+    this.gpuUseRow.set(this.prefs.useGpu);
+    this.rendererRow.set(this.prefs.renderer);
+    this.gpuMemoryRow.set(this.prefs.gpuMemoryMB);
     if (section && this.sections.has(section)) this.showSection(section);
     this.sync();
     this.open();
+  }
+
+  private gpuNameRow(): HTMLElement {
+    const row = el('<div class="cv-field"><span>Detected Graphics Processor</span></div>');
+    row.appendChild(this.gpuName);
+    return row;
+  }
+
+  /** The probe's result: the processor's name, or none (Use Graphics Processor then greyed, as Photoshop greys it),
+   *  and the mode in use with its reason. */
+  setGpu(name: string | null, mode: string, reason: string): void {
+    setText(this.gpuName, name ?? 'None found');
+    const box = this.gpuUseRow.el.querySelector('input');
+    if (box) setDisabled(box, !name);
+    setText(this.gpuMode, `In use: ${mode} (${reason}).`);
   }
 
   private showSection(name: string): void {
