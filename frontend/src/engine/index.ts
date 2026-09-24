@@ -4101,6 +4101,14 @@ export class Engine {
   }
   cloneSource: Pt | null = null;
   cloneOffset: Pt | null = null;
+  /** The Clone Source panel's five sources, as Photoshop's (Adobe's "Clone Source panel"; Breathing Color): Alt-click
+   *  sets the chosen slot's source, and each slot keeps its own point, scale, angle and flips, restored on choosing it. */
+  cloneSlots: Array<{ source: Pt; scale: number; angle: number; flipH: boolean; flipV: boolean } | null> = [null, null, null, null, null];
+  cloneSlot = 0;
+  /** The overlay: Show Overlay; Clipped (on by default) keeps it to the brush, off shows the whole source as a stroke
+   *  would copy it; its opacity; Auto Hide hides it while painting (KelbyOne's Planet Photoshop; Ben Willmore). */
+  cloneOverlay = { show: true, clipped: true, opacity: 1, autoHide: false };
+  private cloneFullCache: { key: string; image: Surface } | null = null;
   private warpState: { project: Project; layerId: ID; stroke: WarpStroke; surface: Surface; image: ImageData } | null = null;
 
   get warping(): boolean { return this.warpState !== null; }
@@ -4108,8 +4116,49 @@ export class Engine {
   setCloneSource(pt: Pt): void {
     this.cloneSource = { x: pt.x, y: pt.y };
     this.cloneOffset = null;
+    const r = this.retouch;
+    this.cloneSlots[this.cloneSlot] = { source: { x: pt.x, y: pt.y }, scale: r.cloneScale, angle: r.cloneAngle, flipH: r.cloneFlipH, flipV: r.cloneFlipV };
     this.emit('overlay', null);
     this.emit('options', null);
+  }
+
+  /** Choose one of the five sources: the slot left keeps the transform it had, the slot chosen brings back its own
+   *  point and transform; an empty slot has no source until an Alt-click sets one. */
+  selectCloneSlot(i: number): void {
+    if (!Number.isInteger(i) || i < 0 || i > 4 || i === this.cloneSlot) return;
+    const r = this.retouch, left = this.cloneSlots[this.cloneSlot];
+    if (left) Object.assign(left, { scale: r.cloneScale, angle: r.cloneAngle, flipH: r.cloneFlipH, flipV: r.cloneFlipV });
+    this.cloneSlot = i;
+    const s = this.cloneSlots[i];
+    this.cloneSource = s ? { ...s.source } : null;
+    if (s) Object.assign(r, { cloneScale: s.scale, cloneAngle: s.angle, cloneFlipH: s.flipH, cloneFlipV: s.flipV });
+    this.cloneOffset = null;
+    this.emit('overlay', null);
+    this.emit('options', null);
+  }
+
+  /** The panel's reset: scale 100%, no rotation, no flips. */
+  resetCloneTransform(): void {
+    Object.assign(this.retouch, { cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false });
+    this.emit('overlay', null);
+    this.emit('options', null);
+  }
+
+  /** The unclipped overlay: the whole source (the document as shown, or the active layer, as the stroke samples) and
+   *  the matrix placing it where a stroke at `at` would copy it, as `clonePreview` maps it. Cached by the document's
+   *  revision and the layer; null with no source. */
+  cloneOverlayImage(at: Pt): { image: Surface; m: Mat } | null {
+    const p = this.current, l = p?.activeLayer, sp = this.clonePoint(at);
+    if (!p || !l || !sp) return null;
+    const all = this.retouch.cloneSampleAll, key = [all, l.id, p.history.revision, p.id].join('|');
+    if (this.cloneFullCache?.key !== key) {
+      const image = all ? renderDoc(this.work, p.doc, null) : l.raster ? l.raster.canvas : null;
+      if (!image) return null;
+      this.cloneFullCache = { key, image };
+    }
+    const place = all || !l.raster ? [1, 0, 0, 1, 0, 0] as Mat : placement(l.transform, l.raster.width, l.raster.height);
+    const m = mul(mul(translation(at.x - sp.x, at.y - sp.y), this.cloneTransform(sp) ?? [1, 0, 0, 1, 0, 0]), place);
+    return { image: this.cloneFullCache.image, m };
   }
 
   cloneStrokeOffset(pt: Pt): Pt | null {

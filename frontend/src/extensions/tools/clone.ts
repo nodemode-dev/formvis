@@ -1,4 +1,4 @@
-import type { Pt } from '../../engine';
+import { mul, setMat, type Pt } from '../../engine';
 import type { Tool } from '../registry';
 import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
@@ -22,16 +22,29 @@ export const cloneTool: Tool = {
   cancel(ctx) { ctx.engine.cancelStroke(); },
   keydown: (ctx, e) => brushKeys(ctx, e),
   overlay(ctx, g) {
-    const e = ctx.engine, v = ctx.view();
-    // Between strokes, the circle previews what a click would stamp; Option (picking a source) hides it.
-    if (hover && !picking) {
-      const pv = e.clonePreview(hover, v.zoom * (window.devicePixelRatio || 1));
-      if (pv) {
-        const c = v.toScreen(hover), size = e.brush.diameter * v.zoom;
-        g.save();
-        g.globalAlpha = e.brush.opacity;
-        g.drawImage(pv, c.x - size / 2, c.y - size / 2, size, size);
-        g.restore();
+    const e = ctx.engine, v = ctx.view(), ov = e.cloneOverlay;
+    // The overlay (Show Overlay): clipped to the brush it previews what a click would stamp; unclipped it lays the whole
+    // source where a stroke would copy it. Option (picking a source) hides it, and Auto Hide does while painting.
+    if (hover && !picking && ov.show && !(ov.autoHide && e.stroking)) {
+      if (ov.clipped) {
+        const pv = e.clonePreview(hover, v.zoom * (window.devicePixelRatio || 1));
+        if (pv) {
+          const c = v.toScreen(hover), size = e.brush.diameter * v.zoom;
+          g.save();
+          g.globalAlpha = e.brush.opacity * ov.opacity;
+          g.drawImage(pv, c.x - size / 2, c.y - size / 2, size, size);
+          g.restore();
+        }
+      } else {
+        const full = e.cloneOverlayImage(hover);
+        if (full) {
+          const o = v.toScreen({ x: 0, y: 0 }), ex = v.toScreen({ x: 1, y: 0 }), ey = v.toScreen({ x: 0, y: 1 }), t = g.getTransform();
+          g.save();
+          g.globalAlpha = ov.opacity;
+          setMat(g, mul(mul([t.a, t.b, t.c, t.d, t.e, t.f], [ex.x - o.x, ex.y - o.y, ey.x - o.x, ey.y - o.y, o.x, o.y]), full.m));
+          g.drawImage(full.image, 0, 0);
+          g.restore();
+        }
       }
     }
     drawBrushCursor(ctx, g, hover);
@@ -48,12 +61,18 @@ export const cloneTool: Tool = {
   },
   options: (e) => [
     { kind: 'title', text: 'Clone Stamp' },
+    { kind: 'segment', label: 'Source', choices: [0, 1, 2, 3, 4].map((i) => ({ id: String(i), label: String(i + 1) })), get: () => String(e.cloneSlot), set: (v: string) => e.selectCloneSlot(Number(v)) },
     { kind: 'toggle', label: 'Aligned', get: () => e.retouch.cloneAligned, set: (v) => { e.retouch.cloneAligned = v; e.cloneOffset = null; e.emit('options', null); } },
     { kind: 'toggle', label: 'Sample all layers', get: () => e.retouch.cloneSampleAll, set: (v) => { e.retouch.cloneSampleAll = v; e.emit('options', null); } },
     { kind: 'range', label: 'Source scale', min: 1, max: 1000, unit: '%', get: () => e.retouch.cloneScale, set: (v) => { e.retouch.cloneScale = v; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'range', label: 'Source angle', min: -180, max: 180, unit: '\u00b0', get: () => e.retouch.cloneAngle, set: (v) => { e.retouch.cloneAngle = v; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'toggle', label: 'Flip horizontal', get: () => e.retouch.cloneFlipH, set: (v) => { e.retouch.cloneFlipH = v; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'toggle', label: 'Flip vertical', get: () => e.retouch.cloneFlipV, set: (v) => { e.retouch.cloneFlipV = v; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'button', label: 'Reset Transform', run: () => e.resetCloneTransform() },
+    { kind: 'toggle', label: 'Show Overlay', get: () => e.cloneOverlay.show, set: (v) => { e.cloneOverlay.show = v; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'toggle', label: 'Clipped', get: () => e.cloneOverlay.clipped, set: (v) => { e.cloneOverlay.clipped = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
+    { kind: 'range', label: 'Overlay opacity', min: 0, max: 100, unit: '%', get: () => Math.round(e.cloneOverlay.opacity * 100), set: (v) => { e.cloneOverlay.opacity = v / 100; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
+    { kind: 'toggle', label: 'Auto Hide', get: () => e.cloneOverlay.autoHide, set: (v) => { e.cloneOverlay.autoHide = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
     ...brushOptions(e),
   ],
 };
