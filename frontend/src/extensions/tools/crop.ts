@@ -263,6 +263,7 @@ export const cropTool: Tool = {
     { kind: 'readout', label: 'Size', get: () => (frame ? `${Math.round(norm(frame).w)} \u00d7 ${Math.round(norm(frame).h)}` : '') },
     { kind: 'range', label: 'Straighten', min: -45, max: 45, step: 0.1, unit: '\u00b0', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'button', label: 'Level line', icon: 'rotate', run: () => { leveling = true; e.emit('tool', null); e.emit('options', null); } },
+    { kind: 'toggle', label: 'Delete Cropped Pixels', get: () => e.cropDeletePixels, set: (v) => { e.cropDeletePixels = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Content-Aware', get: () => contentAware, set: (v) => { contentAware = v; e.emit('options', null); } },
     { kind: 'toggle', label: 'Perspective', get: () => perspective, set: (v) => { perspective = v; quad = v && frame ? quadOf(frame) : null; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'button', label: 'Crop', icon: 'check', run: () => commit(e) },

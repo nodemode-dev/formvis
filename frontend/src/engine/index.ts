@@ -122,6 +122,9 @@ export class Engine {
   /** The Brush and Eraser's Flow (0.01 to 1), as Photoshop's options bar has it: how much paint each dab lays down.
    *  Kept apart from `brush`, which the retouch tools spread into their own strokes. */
   brushFlow = 1;
+  /** The Crop tool's Delete Cropped Pixels: on by default, as Photoshop's (its Crop page and CreativeLive agree); off,
+   *  cropped pixels stay beyond the canvas and Image > Reveal All brings them back. */
+  cropDeletePixels = true;
   /** Pen pressure's effect on the Brush's size and flow; neutral until a preset or the options turn it on. */
   brushDynamics: BrushDynamics = noDynamics();
   /** The preset last applied, for the options bar; cleared by nothing, since changing a value is Photoshop's way too. */
@@ -3629,11 +3632,32 @@ export class Engine {
       }
       this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
       if (contentAware) this.fillOpenedEdges(p);
+      if (this.cropDeletePixels) this.deleteCroppedPixels(p);
       return true;
     });
   }
 
   /** Content-aware fill of the canvas the bottom visible pixel layer does not reach; that layer becomes canvas-sized. */
+  /** The Crop tool's Delete Cropped Pixels, as Photoshop's option has it: after the crop, each pixel layer reaching past
+   *  the canvas keeps only what lies on it. The layer is drawn through its own placement onto a canvas-sized raster, so
+   *  an unscaled, unturned layer at whole pixels is copied exactly and a scaled or turned one is resampled once to what
+   *  shows; a mask that followed the layer is pinned where it was. Smart objects, type, shapes, adjustments and folders
+   *  are left whole (Photoshop does not delete pixels inside smart objects either). */
+  private deleteCroppedPixels(p: Project): void {
+    const W = p.doc.width, H = p.doc.height;
+    for (const l of p.doc.layers) {
+      if (!l.raster || l.isGroup || l.adjustment || l.smart || l.text || l.shape) continue;
+      const b = transformBounds(l.transform);
+      if (b.x >= 0 && b.y >= 0 && b.x + b.w <= W && b.y + b.h <= H) continue;
+      const out = new Raster(W, H), c = out.ctx;
+      c.save();
+      setMat(c, placement(l.transform, l.raster.width, l.raster.height));
+      c.drawImage(l.raster.canvas, 0, 0);
+      c.restore();
+      p.updateLayer(l.id, { raster: out, transform: docTransform(W, H), mask: l.mask ? { ...l.mask, placement: l.mask.placement ?? l.transform } : null });
+    }
+  }
+
   private fillOpenedEdges(p: Project): void {
     const l = hierarchy(p.doc).find((e) => e.visible && !e.layer.isGroup && !!e.layer.raster && !e.layer.adjustment && !e.layer.vector)?.layer;
     if (!l?.raster) return;
