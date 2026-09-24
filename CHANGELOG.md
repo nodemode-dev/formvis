@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.8.0 · 2026-09-24
+
+### Added
+
+- The Layers panel moves too: drag it by its header anywhere in the side dock, hide or show it from the Window menu; wherever it sits it takes the space left. Arrangements saved by 1.6.0 keep it first.
+- 1 more test (browser): 280 in all.
+
 ## 1.7.0 · 2026-09-24
 
 ### Added

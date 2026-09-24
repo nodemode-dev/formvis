@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Layers panel moves in the dock · _v1.8.0 (src/ui/layers.ts, src/ui/dock.ts, src/styles/panels.css; e2e/test_dock_layers.py new)
+
+`LayersPanel` wraps its parts in `section.cv-layers-panel`. `.cv-layers` is a flex column; `.cv-layers-panel` takes the space left, with its own `[hidden]` rule. `DOCK_PANELS` gains Layers, first; `load` puts a panel missing from a saved arrangement at its default place. Removed:
+
+```css
+.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; min-height: 0; background: var(--bg-secondary); position: relative; }
+```
+
+```ts
+ *  panels"; TeachUcomp). This first slice moves Paths, Timeline and History below the Layers panel; floating panels
+ *  and grouping into tabs come later. */
+    for (const id of ids) if (!order.includes(id)) order.push(id);
+      `<div class="cv-panel-head"><span class="cv-panel-title">${icon('layers', 14)}Layers</span><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
+      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div>`);
+```
+
 ## Clone Source: five sources and the overlay · _v1.7.0 (src/extensions/tools/clone.ts, src/engine/index.ts; e2e/test_clone_slots.py new)
 
 Engine: `cloneSlots`, `cloneSlot`, `selectCloneSlot`, `resetCloneTransform`, `cloneOverlay`, `cloneOverlayImage` (with `cloneFullCache`); `setCloneSource` fills the chosen slot. Clone Stamp: the Source row, Reset Transform, Show Overlay, Clipped, Overlay opacity and Auto Hide; its overlay draws clipped or the whole source by those settings. Removed:
