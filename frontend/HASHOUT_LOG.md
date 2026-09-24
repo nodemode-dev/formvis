@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Brush Flow · _v0.99.0 (src/engine/stroke.ts, src/engine/index.ts, src/extensions/tools/brush.ts; e2e/test_brush_flow.py new)
+
+`StrokeStyle.flow` scales each dab in `PixelStroke.dab`, times the pressure dynamics' flow. Engine: `brushFlow`, passed only to the Brush and Eraser's stroke in `beginStroke`. The Brush's bar has Flow after Opacity. Removed:
+
+```ts
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color }, op, p.selection);
+export interface StrokeStyle { diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null }
+    const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = d ? computeOption(d.flow, info) : 1;
+```
+
 ## Eyedropper Sample Size · _v0.98.0 (src/engine/index.ts, src/extensions/tools/eyedropper.ts; e2e/test_eyedropper_sample_size.py new)
 
 Engine: `eyedropperSize`; `sampleColor` averages the Sample Size square, weighted by opacity. The Eyedropper's bar has a Sample Size select. Removed:

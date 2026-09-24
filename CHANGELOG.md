@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.99.0 · 2026-09-24
+
+### Added
+
+- The Brush's Flow: how much paint each dab lays down, building within a stroke up to its Opacity.
+- 1 more test (browser): 268 in all.
+
+### Known limitation
+
+- At very low Flow (around 2%) paint stops short of full, near 85%, however long the stroke builds, as the paint layer is 8 bit.
+
 ## 0.98.0 · 2026-09-24
 
 ### Added
