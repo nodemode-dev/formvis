@@ -2,6 +2,25 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Fallback rules in one place · _v1.18.0 (src/gpu/fallback.ts new; src/gpu/display.ts, src/ui/stage.ts, src/app.ts; tests/gpu-fallback.test.ts new)
+
+`fallback.ts`: `rendererFallback`, `documentFallback` (with the new texture-limit rule), `frameBytes`. `GpuDisplay.maxTexture`. The stage and `syncGpu` call them; each switch is logged. Removed:
+
+```ts
+    const live = ch.mode === 'webgpu' ? gpuDisplay : null;
+    const cpuWhy = ch.mode === 'webgl2' ? 'WebGL2 is chosen, but its renderer is not built yet, so drawing is on the CPU'
+      : ch.mode === 'webgpu' ? (gpuFailed ? 'WebGPU could not start or was lost, so drawing is on the CPU' : 'WebGPU is starting') : ch.reason;
+  /** Bytes the frame would hold on the GPU: every layer's texture and the two screen-sized composites. */
+  bytesFor(layers: readonly DisplayLayer[], W: number, H: number): number {
+    return layers.reduce((s, l) => s + l.width * l.height * 4, 0) + W * H * 8;
+  }
+      let reason: string | null = null;
+      if ('reason' in gl) reason = `this document has ${gl.reason}`;
+      else if (this.gpu.bytesFor(gl.layers, W, H) > this.gpuLimit) reason = 'this document is over the GPU memory limit';
+      else gpuLayers = gl.layers;
+      if (reason !== this.gpuReason) { this.gpuReason = reason; this.gpuState?.(reason); }
+```
+
 ## The canvas draws through WebGPU · _v1.17.0 (src/gpu/display.ts new; src/engine/index.ts, src/ui/stage.ts, src/app.ts, src/styles/shell.css; e2e/test_gpu_display.py new, e2e/test_gpu_prefs.py)
 
 `display.ts`: `GpuDisplay` (`create`, `render` with an optional offscreen target, `renderToPixels`, `bytesFor`, the texture cache, `onLost`), `PRESENT_WGSL`. Engine: `gpuLayers`. Stage: the `.cv-scene-gpu` canvas, `setGpu`, `rgb`, the GPU branch of `renderScene`, redraw on `contextrestored`. `app.ts`: `syncGpu` starts the display and reports what draws. Removed:

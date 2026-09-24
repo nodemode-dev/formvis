@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.18.0 · 2026-09-24
+
+### Added
+
+- A layer larger than the graphics processor's largest texture now draws on the CPU, with its size and the limit named in the status bar, instead of failing to upload.
+- 5 more tests (unit): 344 in all.
+
+### Changed
+
+- Every rule for when drawing falls back from the GPU to the CPU lives in one place, and each switch is logged with its reason.
+
 ## 1.17.0 · 2026-09-24
 
 ### Added
