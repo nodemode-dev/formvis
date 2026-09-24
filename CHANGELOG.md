@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.13.0 · 2026-09-24
+
+### Added
+
+- The Patch tool's Sample All Layers (Content-Aware): patch onto an empty layer above the picture, keeping the repair separate.
+- 2 more tests (browser): 296 in all.
+
 ## 1.12.0 · 2026-09-24
 
 ### Added

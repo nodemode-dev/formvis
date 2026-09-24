@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Patch Sample All Layers · _v1.13.0 (src/engine/index.ts, src/extensions/tools/patch.ts; e2e/test_patch_sample_all.py new)
+
+Engine: `retouch.patchSampleAll`; `patchSelection` in Content-Aware mode with it patches the composite (`healSampleSurface`, `rasterSpace`) and lays the result on through the selection (`layHeal`). Patch tool: the Sample All Layers row, in Content-Aware mode. Removed:
+
+```ts
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false };
+        const orig = raster.read().data, pm = premultiply(orig);
+        raster.ctx.putImageData(out, 0, 0, rect.x, rect.y, rect.w, rect.h);
+```
+
 ## The healing brushes' Sample options · _v1.12.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/healing-brush.ts, src/extensions/tools/heal.ts; e2e/test_heal_sample.py new)
 
 `retouch.ts`: `HealSample`, `HEAL_SAMPLES`. Engine: `healSampleSurface`, `rasterSpace`, `layHeal`, `retouch.healSample`, `retouch.spotSampleAll`; `healFromPatch` and `healPatch` heal the sampled image and lay the repair on; the Healing Brush's stroke texture follows its Sample. Healing Brush: the Sample select replaces the shared toggle; Spot Healing: Sample All Layers. Removed:
