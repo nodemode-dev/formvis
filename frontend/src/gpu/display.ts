@@ -7,6 +7,14 @@ const BUF = { MAP_READ: 0x0001, COPY_DST: 0x0008, UNIFORM: 0x0040 } as const;
 
 export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
 export interface Checker { a: [number, number, number]; b: [number, number, number]; cell: number; origin: [number, number] }
+/** What the stage draws through: the WebGPU display or the WebGL2 one (gl-display.ts), each on its own canvas. */
+export interface ScreenDisplay {
+  readonly canvas: HTMLCanvasElement;
+  readonly maxTexture: number;
+  onLost: (() => void) | null;
+  render(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker): void;
+  destroy(): void;
+}
 
 /** The last pass: the checkerboard under the document (colour A, B in alternate cells from the document's origin, as
  *  the stage's pattern), the composite over it, nothing outside the document's rectangle; premultiplied for the canvas. */
@@ -37,7 +45,7 @@ export class GpuDisplay {
   private acc: [GPUTexture, GPUTexture] | null = null;
   onLost: (() => void) | null = null;
 
-  private constructor(private readonly canvas: HTMLCanvasElement, private readonly device: GPUDevice, private readonly ctx: GPUCanvasContext,
+  private constructor(readonly canvas: HTMLCanvasElement, private readonly device: GPUDevice, private readonly ctx: GPUCanvasContext,
     private readonly composite: GPURenderPipeline, private readonly present: GPURenderPipeline, private readonly presentOff: GPURenderPipeline,
     private readonly linear: GPUSampler, private readonly nearest: GPUSampler) {
     void device.lost.then((info) => {

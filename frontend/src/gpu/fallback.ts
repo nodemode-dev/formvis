@@ -6,12 +6,12 @@ import type { GpuMode } from './probe';
 
 export interface RendererState { mode: GpuMode; chosenReason: string; displayReady: boolean; displayFailed: boolean }
 
-/** Whether the GPU display draws at all: the chosen mode, a display that started and was not lost. */
+/** Whether a GPU display draws at all: the chosen mode (WebGPU or WebGL2), a display that started and was not lost. */
 export function rendererFallback(s: RendererState): string | null {
   if (s.mode === 'cpu') return s.chosenReason;
-  if (s.mode === 'webgl2') return 'WebGL2 is chosen, but its renderer is not built yet, so drawing is on the CPU';
-  if (s.displayFailed) return 'WebGPU could not start or was lost, so drawing is on the CPU';
-  if (!s.displayReady) return 'WebGPU is starting';
+  const api = s.mode === 'webgpu' ? 'WebGPU' : 'WebGL2';
+  if (s.displayFailed) return `${api} could not start or was lost, so drawing is on the CPU`;
+  if (!s.displayReady) return `${api} is starting`;
   return null;
 }
 

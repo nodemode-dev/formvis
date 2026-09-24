@@ -10,7 +10,11 @@ describe('rendererFallback', () => {
   });
   it('says why the CPU draws otherwise', () => {
     expect(rendererFallback({ ...s, mode: 'cpu', chosenReason: 'Use Graphics Processor is off' })).toBe('Use Graphics Processor is off');
-    expect(rendererFallback({ ...s, mode: 'webgl2' })).toMatch(/WebGL2 is chosen, but its renderer is not built yet/);
+  });
+  it('treats WebGL2 as WebGPU: drawn when ready, the reason named when not', () => {
+    expect(rendererFallback({ ...s, mode: 'webgl2' })).toBeNull();
+    expect(rendererFallback({ ...s, mode: 'webgl2', displayReady: false })).toBe('WebGL2 is starting');
+    expect(rendererFallback({ ...s, mode: 'webgl2', displayFailed: true })).toBe('WebGL2 could not start or was lost, so drawing is on the CPU');
   });
 });
 

@@ -2,7 +2,7 @@ import { createSurface, integral, intersectRect, sizeSurface, translation, union
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
 import { isMac, q, setHidden } from './dom';
 import { paint, type StagePaint } from './palette';
-import type { DisplayLayer, GpuDisplay } from '../gpu/display';
+import type { DisplayLayer, ScreenDisplay } from '../gpu/display';
 import { documentFallback } from '../gpu/fallback';
 
 const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -39,8 +39,8 @@ export class Stage {
   private checker: { key: string; pattern: CanvasPattern } | null = null;
   /** The GPU display (Phase 18.2b) when the chosen renderer is WebGPU; the scene canvas then draws only the edge and
    *  pixel grid, and a document the GPU path cannot draw yet falls back here, its reason reported through `gpuState`. */
-  private readonly gpuCanvas: HTMLCanvasElement;
-  private gpu: GpuDisplay | null = null;
+  private readonly gpuCanvases: HTMLCanvasElement[];
+  private gpu: ScreenDisplay | null = null;
   private gpuLimit = 0;
   private gpuState: ((reason: string | null) => void) | null = null;
   private gpuReason: string | null | undefined = undefined;
@@ -48,7 +48,7 @@ export class Stage {
 
   constructor(private readonly host: HTMLElement, private readonly engine: Engine) {
     this.scene = q<HTMLCanvasElement>(host, '.cv-scene');
-    this.gpuCanvas = q<HTMLCanvasElement>(host, '.cv-scene-gpu');
+    this.gpuCanvases = Array.from(host.querySelectorAll<HTMLCanvasElement>('.cv-scene-gpu'));
     this.overlay = q<HTMLCanvasElement>(host, '.cv-overlay-canvas');
     this.rulerH = q<HTMLCanvasElement>(host, '.cv-ruler-h');
     this.rulerV = q<HTMLCanvasElement>(host, '.cv-ruler-v');
@@ -98,7 +98,7 @@ export class Stage {
     this.cssH = h;
     if (dpr !== this.dpr) this.checker = null;
     this.dpr = dpr;
-    for (const c of [this.scene, this.overlay, this.gpuCanvas]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    for (const c of [this.scene, this.overlay, ...this.gpuCanvases]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
     this.rulerH.width = Math.round(w * dpr); this.rulerH.height = Math.round(RULER * dpr);
     this.rulerV.width = Math.round(RULER * dpr); this.rulerV.height = Math.round(h * dpr);
     this.engine.setViewSize(w, h);
@@ -130,13 +130,18 @@ export class Stage {
 
   /** Draw through the GPU display (or stop, with null); `limitBytes` is Preferences' GPU memory limit, and `onState`
    *  hears the reason a document falls back to the CPU, or null when the GPU draws it. */
-  setGpu(display: GpuDisplay | null, limitBytes: number, onState: ((reason: string | null) => void) | null): void {
+  setGpu(display: ScreenDisplay | null, limitBytes: number, onState: ((reason: string | null) => void) | null): void {
     this.gpu = display;
     this.gpuLimit = limitBytes;
     this.gpuState = onState;
     this.gpuReason = undefined;
-    if (!display) setHidden(this.gpuCanvas, true);
+    this.showGpu(false);
     this.queue(true, false);
+  }
+
+  /** Only the active display's canvas shows, and only while it draws the frame. */
+  private showGpu(on: boolean): void {
+    for (const c of this.gpuCanvases) setHidden(c, !(on && c === this.gpu?.canvas));
   }
 
   /** A CSS colour as bytes, for the GPU's checkerboard. */
@@ -176,7 +181,7 @@ export class Stage {
     const W = this.scene.width, H = this.scene.height;
     g.setTransform(1, 0, 0, 1, 0, 0);
     const p = this.engine.current;
-    if (!p) { g.clearRect(0, 0, W, H); setHidden(this.gpuCanvas, true); return; }
+    if (!p) { g.clearRect(0, 0, W, H); this.showGpu(false); return; }
     const pal = paint();
     // The GPU display draws the whole frame when it can draw this document; otherwise the CPU path below, with the
     // reason reported once each time it changes.
@@ -192,7 +197,7 @@ export class Stage {
       }
       if (gpuLayers) region = null;
     }
-    setHidden(this.gpuCanvas, !gpuLayers);
+    this.showGpu(!!gpuLayers);
     const v = p.viewport;
     const z = v.zoom * this.dpr, ox = v.panX * this.dpr, oy = v.panY * this.dpr;
     const docRect = { x: ox, y: oy, w: p.doc.width * z, h: p.doc.height * z };
@@ -208,7 +213,7 @@ export class Stage {
       g.strokeStyle = pal.edge;
       g.strokeRect(Math.round(docRect.x) - 0.5, Math.round(docRect.y) - 0.5, Math.round(docRect.w) + 1, Math.round(docRect.h) + 1);
     }
-    if (!vis) { if (gpuLayers) setHidden(this.gpuCanvas, true); return; }
+    if (!vis) { if (gpuLayers) this.showGpu(false); return; }
     g.save();
     g.beginPath();
     g.rect(vis.x, vis.y, vis.w, vis.h);

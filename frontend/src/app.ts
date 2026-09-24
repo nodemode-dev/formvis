@@ -47,7 +47,8 @@ import { deserialize, serialize } from './io/project-io';
 import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { applyPrefs, loadPrefs, savePrefs } from './ui/prefs';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
-import { GpuDisplay } from './gpu/display';
+import { GpuDisplay, type ScreenDisplay } from './gpu/display';
+import { GlDisplay } from './gpu/gl-display';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
 import { DOCK_PANELS, Dock } from './ui/dock';
@@ -107,6 +108,7 @@ const SHELL = `<div class="cv-app">
 <aside class="cv-rail" aria-label="Tools"><div class="cv-rail-tools"></div><div class="cv-colors"></div></aside>
 <main class="cv-stage">
 <canvas class="cv-canvas cv-scene-gpu" hidden></canvas>
+<canvas class="cv-canvas cv-scene-gpu cv-scene-gl" hidden></canvas>
 <canvas class="cv-canvas cv-scene"></canvas>
 <canvas class="cv-canvas cv-overlay-canvas"></canvas>
 <canvas class="cv-ruler cv-ruler-h" hidden></canvas>
@@ -231,30 +233,34 @@ export function startApp(): void {
   // Graphics processor (Phase 18.1): a start that never finished last time turns Use Graphics Processor off, as
   // Photoshop does after a driver crash; then the GPU is probed and the renderer chosen and shown.
   let gpuProbe: GpuProbe = { webgpu: null, webgl2: null }, gpuProbed = false;
-  let gpuDisplay: GpuDisplay | null = null, gpuStarting = false, gpuFailed = false;
+  // The screen display for the chosen API, on that API's own canvas (a canvas takes one kind of context); a failed
+  // start or a lost device is remembered per API, so losing WebGPU does not rule out WebGL2.
+  let gpuDisplay: ScreenDisplay | null = null, gpuKind: 'webgpu' | 'webgl2' | null = null, gpuStarting = false;
+  const gpuFailed = new Set<'webgpu' | 'webgl2'>();
   function syncGpu(): void {
     if (!gpuProbed) return;
     const pr = loadPrefs(), ch = chooseRenderer(gpuProbe, pr.useGpu, pr.renderer), name = ch.adapter ? `${ch.adapter.name}${ch.adapter.software ? ' (software)' : ''}` : '';
-    // WebGPU draws through the GPU display (Phase 18.2b); WebGL2's renderer is Phase 18.4, so it still draws on the CPU.
-    if (ch.mode === 'webgpu' && !gpuDisplay && !gpuStarting && !gpuFailed) {
+    const want = ch.mode === 'cpu' ? null : ch.mode;
+    if (gpuDisplay && gpuKind !== want) { gpuDisplay.destroy(); gpuDisplay = null; gpuKind = null; }
+    if (want && !gpuDisplay && !gpuStarting && !gpuFailed.has(want)) {
       gpuStarting = true;
       markGpuStarting();
-      void GpuDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gpu')).then((d) => {
+      const started = (d: ScreenDisplay | null): void => {
         markGpuStarted();
         gpuStarting = false;
-        gpuDisplay = d;
-        gpuFailed = !d;
-        if (d) d.onLost = () => { gpuDisplay = null; gpuFailed = true; syncGpu(); };
+        if (d) { gpuDisplay = d; gpuKind = want; d.onLost = () => { gpuDisplay = null; gpuKind = null; gpuFailed.add(want); syncGpu(); }; } else gpuFailed.add(want);
         syncGpu();
-      });
+      };
+      if (want === 'webgpu') void GpuDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gpu:not(.cv-scene-gl)')).then(started);
+      else started(GlDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gl')));
     }
-    if (ch.mode !== 'webgpu' && gpuDisplay) { gpuDisplay.destroy(); gpuDisplay = null; }
-    const off = rendererFallback({ mode: ch.mode, chosenReason: ch.reason, displayReady: !!gpuDisplay, displayFailed: gpuFailed });
-    const live = off ? null : gpuDisplay;
+    const off = rendererFallback({ mode: ch.mode, chosenReason: ch.reason, displayReady: !!gpuDisplay, displayFailed: !!want && gpuFailed.has(want) });
+    const live = off ? null : gpuDisplay, api = ch.mode === 'webgl2' ? 'WebGL2' : 'WebGPU';
     const cpuWhy = off ?? ch.reason;
-    stage.setGpu(live, pr.gpuMemoryMB * 1024 * 1024, live ? (reason) => status.setGpu(reason ? 'GPU: CPU' : 'GPU: WebGPU', reason ? `WebGPU is on, but ${reason}, so it draws on the CPU` : `${name}: ${ch.reason}`) : null);
+    stage.setGpu(live, pr.gpuMemoryMB * 1024 * 1024, live ? (reason) => status.setGpu(reason ? 'GPU: CPU' : `GPU: ${api}`, reason ? `${api} is on, but ${reason}, so it draws on the CPU` : `${name}: ${ch.reason}`) : null);
     if (!live) status.setGpu('GPU: CPU', cpuWhy);
-    dialogs.settings.setGpu(detectedName(gpuProbe), live ? 'WebGPU' : 'CPU', live ? ch.reason : cpuWhy);
+    else status.setGpu(`GPU: ${api}`, `${name}: ${ch.reason}`);
+    dialogs.settings.setGpu(detectedName(gpuProbe), live ? api : 'CPU', live ? ch.reason : cpuWhy);
   }
   void (async () => {
     if (gpuStartFailedLastTime()) {

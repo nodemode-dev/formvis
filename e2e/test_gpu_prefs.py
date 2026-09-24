@@ -19,9 +19,8 @@ def test_the_gpu_is_detected_and_automatic_skips_a_software_one(page):
         assert "(software)" in name, name
         sel = page.locator(DLG + " .cv-prefs-page:not([hidden]) .cv-field", has_text="Renderer").locator("select")
         sel.select_option(label="WebGL2")
-        page.wait_for_function("document.querySelector('.cv-st-gpu').title.includes('WebGL2 is chosen')")   # its renderer comes in 18.4
-        assert page.evaluate(GPU_STATUS) == "GPU: CPU"
-        assert "In use: CPU" in page.locator(DLG + " .cv-gpu-mode").inner_text()
+        page.wait_for_function(f"{GPU_STATUS} === 'GPU: WebGL2'")                          # named: used, software or not
+        assert "In use: WebGL2" in page.locator(DLG + " .cv-gpu-mode").inner_text()
         page.locator(DLG + " .cv-prefs-page:not([hidden]) .cv-field", has_text="Use Graphics Processor").locator("input").uncheck()
         page.wait_for_function(f"{GPU_STATUS} === 'GPU: CPU'")
         page.locator(DLG + " .cv-dialog-foot button", has_text="Done").click()
