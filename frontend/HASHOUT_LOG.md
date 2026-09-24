@@ -2,6 +2,31 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layer masks on the GPU · _v1.22.0 (src/engine/index.ts, src/gpu/blend-wgsl.ts, src/gpu/blender.ts, src/gpu/display.ts, src/gpu/gl-display.ts; e2e/test_gpu_mask.py new, e2e/test_gpu_display.py)
+
+Engine: `GpuMaskSpec`, the mask in `gpuLayers` as `maskOf` reads it. WGSL: the 128-byte `Layer` block, binding 4, `coverage`. `GpuDisplay.blank`, the mask in the parameter block and binding 4; a `destroyed` loss is ignored. `GlDisplay.blank`, the mask uniforms and unit 2. The GPU blender passes the larger block and a stand-in. Removed:
+
+```ts
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+      if (l.mask || o?.maskSource) return { reason: 'layer masks' };
+          layers.push({ image: null, lut, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+        layers.push({ image: null, lut: lut3, lut3: true, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: o?.opacity ?? l.opacity, blend: o?.blend ?? l.blend });
+struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32 };
+    return vec4<f32>(bd.rgb + (t - bd.rgb) * layer.opacity, bd.a);
+    return vec4<f32>(bd.rgb + (t3 - bd.rgb) * layer.opacity, bd.a);
+  let sa = sc.a * layer.opacity;
+      const raw = new ArrayBuffer(64), f = new Float32Array(raw), u = new Uint32Array(raw);
+      const ub = d.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+      const raw = new ArrayBuffer(64), f = new Float32Array(raw);
+      new Uint32Array(raw)[15] = l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend);
+      const ub = d.createBuffer({ size: 64, usage: BUF.UNIFORM | BUF.COPY_DST });
+    outColor = vec4(bd.rgb + (t - bd.rgb) * opacity, bd.a); return;
+    outColor = vec4(bd.rgb + (t3 - bd.rgb) * opacity, bd.a); return;
+  float sa = sc.a * opacity; if (sa <= 0.0) { outColor = bd; return; }
+```
+
 ## Channel-mixing adjustments on the GPU · _v1.21.0 (src/engine/lut.ts, src/engine/index.ts, src/gpu/display.ts, src/gpu/gl-display.ts, src/gpu/blend-wgsl.ts; e2e/test_gpu_adjust.py)
 
 `lut.ts`: `LUT3_N`, `LUT3_KINDS`, `lut3Sample`, `adjustmentLut3` (the 3D table from the CPU kernel, proven within 1 level off the lattice). `GpuLayerSpec.lut3` and `DisplayLayer.lut3`; `LUT3_MODE`; tables upload at their own size; shader mode 101 in WGSL and GLSL. Removed:

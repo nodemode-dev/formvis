@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.22.0 · 2026-09-24
+
+### Added
+
+- Layer masks draw on the graphics processor, on pixel layers and adjustment layers alike, including masks placed separately from their layer. Folder masks and clipping masks still draw on the CPU.
+- 5 more tests (browser): 391 in all.
+
+### Fixed
+
+- Switching the renderer away from WebGPU and back in the same session no longer leaves drawing on the CPU.
+
 ## 1.21.0 · 2026-09-24
 
 ### Added
