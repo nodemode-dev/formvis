@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.1.0 · 2026-09-24
+
+### Added
+
+- The Crop tool's composition overlays: Rule of Thirds, Grid, Diagonal, Triangle, Golden Ratio and Golden Spiral, from an Overlay setting or O while a frame shows; Shift+O flips the Triangle and Golden Spiral.
+- 5 more tests (4 unit, 1 browser): 274 in all.
+
 ## 1.0.0 · 2026-09-24
 
 ### Added

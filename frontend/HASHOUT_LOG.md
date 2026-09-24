@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Crop overlays · _v1.1.0 (src/extensions/tools/crop.ts; src/extensions/tools/crop-overlays.ts, tests/crop-overlays.test.ts and e2e/test_crop_overlays.py new)
+
+`crop-overlays.ts`: `CropOverlay`, `CROP_OVERLAYS`, `ORIENTED`, `overlayLines`. The Crop tool keeps `overlayKind` and `overlayOrient`, draws the chosen overlay, takes O and Shift+O while a frame shows, and has an Overlay select. Removed:
+
+```ts
+    for (let i = 1; i < 3; i++) {
+      const x = a.x + ((b.x - a.x) * i) / 3, y = a.y + ((b.y - a.y) * i) / 3;
+      g.moveTo(x, a.y); g.lineTo(x, b.y); g.moveTo(a.x, y); g.lineTo(b.x, y);
+```
+
 ## Delete Cropped Pixels · _v1.0.0 (src/engine/index.ts, src/extensions/tools/crop.ts; e2e/test_crop_delete_pixels.py new)
 
 Engine: `cropDeletePixels` (on by default) and `deleteCroppedPixels`, called by `straightenCrop` after the crop. The Crop tool's bar has Delete Cropped Pixels before Content-Aware. Nothing removed: git reports no removed lines since v0.99.0.
