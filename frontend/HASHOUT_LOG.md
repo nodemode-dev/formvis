@@ -2,6 +2,86 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Clipping groups and folders on the GPU · _v1.23.0 (src/engine/index.ts, src/gpu/blend-wgsl.ts, src/gpu/blender.ts, src/gpu/display.ts, src/gpu/gl-display.ts; e2e/test_gpu_clip.py new)
+
+Engine: `gpuLayers` walks `hierarchy(doc)`; `maskFor`, `clipOf`, `GpuClipSpec`. WGSL: `hasClip`, binding 5, mode 102. Displays: `DisplayClip`, `CLIP_MODE`; the loop bodies moved into `GpuDisplay.layerPass` and `GlDisplay.drawLayer` (mode and clip as parameters), clip coverage rendered first into `clipTarget` pools. Removed:
+
+```ts
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; mask?: GpuMaskSpec; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+    const ov = this.overrides(p), layers: GpuLayerSpec[] = [];
+    for (const l of p.doc.layers) {
+      if (o?.hidden || !l.visible) continue;
+      if (l.isGroup || l.parentId) return { reason: 'folders' };
+      // The layer's mask, as the CPU renderer's maskOf reads it: enabled with pixels, the live preview's source while
+      // painting, and its own placement, else the layer's (Phase 18, masks).
+      const m = l.mask, msrc = m?.enabled && m.raster ? o?.maskSource ?? m.raster.canvas : null;
+      const mask = m && msrc ? { image: msrc, version: o?.maskSource ? -1 : (m.raster as Raster).version, width: msrc.width, height: msrc.height,
+        matrix: placement(o?.maskPlacement ?? m.placement ?? o?.transform ?? l.transform, msrc.width, msrc.height) } : undefined;
+      if (l.clipId) return { reason: 'clipping masks' };
+          layers.push({ image: null, lut, mask, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+        layers.push({ image: null, lut: lut3, lut3: true, mask, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: o?.opacity ?? l.opacity, blend: o?.blend ?? l.blend, mask });
+struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, pad: u32 };
+  let cov = coverage(pos.xy);
+        { binding: 4, resource: blank.createView() },
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; mask?: DisplayMask; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+      used.add(l.lut ?? (l.image as object));
+      const tex = this.texture(l);
+      const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
+      // 128 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
+      // size (112), whether there is one (120).
+      const raw = new ArrayBuffer(128), f = new Float32Array(raw), u32 = new Uint32Array(raw);
+      f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
+      u32[15] = l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend);
+      let maskTex = this.blank();
+      if (l.mask) {
+        const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
+        f.set([ma, mb, 0, 0, mc, md, 0, 0, me, mf, 1, 0, mk.width, mk.height], 16);
+        u32[30] = 1;
+        used.add(mk.image);
+        maskTex = this.texture({ image: mk.image, version: mk.version, width: mk.width, height: mk.height, matrix: mk.matrix, opacity: 1, blend: 'normal' });
+      }
+      const ub = d.createBuffer({ size: 128, usage: BUF.UNIFORM | BUF.COPY_DST });
+      d.queue.writeBuffer(ub, 0, raw);
+      buffers.push(ub);
+      const bind = d.createBindGroup({ layout: this.composite.getBindGroupLayout(0), entries: [
+        { binding: 0, resource: a.createView() }, { binding: 1, resource: tex.createView() }, { binding: 2, resource: sampler }, { binding: 3, resource: { buffer: ub } },
+        { binding: 4, resource: maskTex.createView() },
+      ] });
+      const pass = enc.beginRenderPass({ colorAttachments: [{ view: b.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+      pass.setPipeline(this.composite);
+      pass.setBindGroup(0, bind);
+      pass.draw(3);
+      pass.end();
+import { LUT3_MODE, LUT_MODE, type Checker, type DisplayLayer } from './display';
+      used.add(l.lut ?? (l.image as object));
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.texture(l));
+      for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
+      const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
+      gl.uniformMatrix3fv(u('inv'), false, [ia, ib, 0, ic, id, 0, ie, iff, 1]);
+      gl.uniform2f(u('size'), l.width, l.height);
+      gl.uniform1f(u('opacity'), Math.min(1, Math.max(0, l.opacity)));
+      gl.uniform1i(u('mode'), l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend));
+      gl.activeTexture(gl.TEXTURE2);
+      if (l.mask) {
+        const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
+        used.add(mk.image);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture({ image: mk.image, version: mk.version, width: mk.width, height: mk.height, matrix: mk.matrix, opacity: 1, blend: 'normal' }));
+        for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
+        gl.uniformMatrix3fv(u('minv'), false, [ma, mb, 0, mc, md, 0, me, mf, 1]);
+        gl.uniform2f(u('msize'), mk.width, mk.height);
+        gl.uniform1i(u('hasMask'), 1);
+      } else {
+        gl.bindTexture(gl.TEXTURE_2D, this.blank());
+        gl.uniform1i(u('hasMask'), 0);
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, b.fb);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, a.tex);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+```
+
 ## Layer masks on the GPU · _v1.22.0 (src/engine/index.ts, src/gpu/blend-wgsl.ts, src/gpu/blender.ts, src/gpu/display.ts, src/gpu/gl-display.ts; e2e/test_gpu_mask.py new, e2e/test_gpu_display.py)
 
 Engine: `GpuMaskSpec`, the mask in `gpuLayers` as `maskOf` reads it. WGSL: the 128-byte `Layer` block, binding 4, `coverage`. `GpuDisplay.blank`, the mask in the parameter block and binding 4; a `destroyed` loss is ignored. `GlDisplay.blank`, the mask uniforms and unit 2. The GPU blender passes the larger block and a stand-in. Removed:

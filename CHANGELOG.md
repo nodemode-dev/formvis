@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.23.0 · 2026-09-24
+
+### Added
+
+- Folders and clipping groups draw on the graphics processor: layers inside folders, hidden folders, and layers or adjustment layers clipped to a base. Folder masks, artboards and clipping nested more than one level still draw on the CPU, named in the status bar.
+- 4 more tests (browser): 395 in all.
+
 ## 1.22.0 · 2026-09-24
 
 ### Added
