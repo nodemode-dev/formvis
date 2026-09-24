@@ -6,8 +6,43 @@ const RATIOS: ReadonlyArray<{ id: string; label: string; value: number | 'origin
   { id: 'free', label: 'Free', value: null }, { id: 'original', label: 'Original', value: 'original' }, { id: '1:1', label: '1:1', value: 1 },
   { id: '4:3', label: '4:3', value: 4 / 3 }, { id: '3:2', label: '3:2', value: 3 / 2 }, { id: '16:9', label: '16:9', value: 16 / 9 },
   { id: '3:4', label: '3:4', value: 3 / 4 }, { id: '2:3', label: '2:3', value: 2 / 3 }, { id: '9:16', label: '9:16', value: 9 / 16 },
+  { id: 'size', label: 'W × H × Res', value: null },
 ];
 let ratioId = 'free';
+/** W × H × Resolution, as Photoshop's Crop menu has it: the size the crop is resampled to, in a unit, at a resolution
+ *  in ppi (inches and centimetres become pixels through it). Saved crop presets live on this device. */
+type SizeUnit = 'px' | 'in' | 'cm';
+const size: { w: number; h: number; unit: SizeUnit; res: number } = { w: 0, h: 0, unit: 'px', res: 72 };
+interface CropPreset { id: string; w: number; h: number; unit: SizeUnit; res: number }
+const PRESETS_KEY = 'sonny.cropPresets';
+let presetId = '';
+const toPx = (v: number): number => (size.unit === 'in' ? v * size.res : size.unit === 'cm' ? (v * size.res) / 2.54 : v);
+function sizePx(): { w: number; h: number } | null {
+  const w = Math.round(toPx(size.w)), h = Math.round(toPx(size.h));
+  return w >= 1 && h >= 1 && w <= 30000 && h <= 30000 ? { w, h } : null;
+}
+function loadPresets(): CropPreset[] {
+  try {
+    const a: unknown = JSON.parse(localStorage.getItem(PRESETS_KEY) ?? '[]');
+    return Array.isArray(a) ? a.filter((p): p is CropPreset => !!p && typeof p.id === 'string' && [p.w, p.h, p.res].every((n) => typeof n === 'number' && n > 0) && ['px', 'in', 'cm'].includes(p.unit)).slice(0, 100) : [];
+  } catch { return []; }
+}
+const savePresets = (list: CropPreset[]): void => { try { localStorage.setItem(PRESETS_KEY, JSON.stringify(list)); } catch { /* this session only */ } };
+const presetLabel = (p: CropPreset): string => `${p.w} × ${p.h} ${p.unit}${p.unit === 'px' ? '' : ` at ${p.res} ppi`}`;
+/** Front Image: the current document's size and resolution. */
+function frontImage(e: Engine): void {
+  const d = e.current?.doc;
+  if (!d) return;
+  Object.assign(size, { w: d.width, h: d.height, unit: 'px' as SizeUnit, res: d.resolution ?? 72 });
+  presetId = '';
+}
+/** A size field changed: the open frame takes the new ratio about its centre, as choosing a ratio does. */
+function sizeChanged(e: Engine): void {
+  const ratio = ratioOf(e);
+  if (frame && ratio) { const f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2; const w = Math.min(f.w, f.h * ratio), h = w / ratio; frame = whole({ x: cx - w / 2, y: cy - h / 2, w, h }); }
+  e.emit('options', null);
+  e.emit('overlay', null);
+}
 let frame: Rect | null = null;
 let drag: { mode: 'create' | 'move' | 'resize'; handle: number; start: Pt; origin: Rect } | null = null;
 /** Straighten: degrees the image turns about the frame's centre on commit; `leveling` arms a drag that measures a
@@ -38,6 +73,7 @@ export function levelAngle(a: Pt, b: Pt): number {
 }
 
 function ratioOf(e: Engine): number | null {
+  if (ratioId === 'size') { const px = sizePx(); return px ? px.w / px.h : null; }
   const v = RATIOS.find((r) => r.id === ratioId)?.value ?? null;
   if (v !== 'original') return v;
   const d = e.current?.doc;
@@ -147,7 +183,9 @@ function commit(e: Engine): void {
   const r = whole(frame);
   frame = null;
   drag = null;
-  e.straightenCrop(r, angle, contentAware);
+  const px = ratioId === 'size' ? sizePx() : null;
+  if (px) e.cropToSize(r, angle, contentAware, px.w, px.h, size.res);
+  else e.straightenCrop(r, angle, contentAware);
   angle = 0;
   e.emit('overlay', null);
   e.emit('options', null);
@@ -268,11 +306,31 @@ export const cropTool: Tool = {
     { kind: 'title', text: 'Crop' },
     { kind: 'segment', label: 'Ratio', choices: RATIOS.map((r) => ({ id: r.id, label: r.label })), get: () => ratioId, set: (id) => {
       ratioId = id;
+      if (id === 'size' && !sizePx()) frontImage(e);
       const ratio = ratioOf(e);
       if (frame && ratio) { const f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2; const w = Math.min(f.w, f.h * ratio), h = w / ratio; frame = whole({ x: cx - w / 2, y: cy - h / 2, w, h }); }
       e.emit('options', null);
       e.emit('overlay', null);
     } },
+    { kind: 'number', label: 'W', min: 0, max: 30000, step: 0.01, get: () => size.w, set: (v: number) => { size.w = Math.max(0, v); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'number', label: 'H', min: 0, max: 30000, step: 0.01, get: () => size.h, set: (v: number) => { size.h = Math.max(0, v); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'segment', label: 'Unit', choices: [{ id: 'px', label: 'px' }, { id: 'in', label: 'in' }, { id: 'cm', label: 'cm' }], get: () => size.unit, set: (v: string) => { size.unit = v as SizeUnit; presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'number', label: 'Resolution', min: 1, max: 9600, unit: 'ppi', get: () => size.res, set: (v: number) => { size.res = Math.max(1, Math.min(9600, v)); presetId = ''; sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'button', label: 'Front Image', run: () => { frontImage(e); sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'select', label: 'Preset', choices: [{ id: '', label: 'Custom' }], live: () => [{ id: '', label: 'Custom' }, ...loadPresets().map((p) => ({ id: p.id, label: presetLabel(p) }))], get: () => presetId,
+      set: (v: string) => { const p = loadPresets().find((x) => x.id === v); presetId = p ? p.id : ''; if (p) { Object.assign(size, { w: p.w, h: p.h, unit: p.unit, res: p.res }); } sizeChanged(e); }, when: () => ratioId === 'size' },
+    { kind: 'button', label: 'New Crop Preset', run: () => {
+      if (!sizePx()) { e.notice('Enter a width and height first.'); return; }
+      const list = loadPresets(), p: CropPreset = { id: `p${Date.now().toString(36)}`, w: size.w, h: size.h, unit: size.unit, res: size.res };
+      if (!list.some((x) => x.w === p.w && x.h === p.h && x.unit === p.unit && x.res === p.res)) { savePresets([...list, p]); presetId = p.id; }
+      e.emit('options', null);
+    }, when: () => ratioId === 'size' },
+    { kind: 'button', label: 'Delete Crop Preset', run: () => {
+      if (!presetId) { e.notice('Choose a saved preset to delete.'); return; }
+      savePresets(loadPresets().filter((x) => x.id !== presetId));
+      presetId = '';
+      e.emit('options', null);
+    }, when: () => ratioId === 'size' },
     { kind: 'readout', label: 'Size', get: () => (frame ? `${Math.round(norm(frame).w)} \u00d7 ${Math.round(norm(frame).h)}` : '') },
     { kind: 'range', label: 'Straighten', min: -45, max: 45, step: 0.1, unit: '\u00b0', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'button', label: 'Level line', icon: 'rotate', run: () => { leveling = true; e.emit('tool', null); e.emit('options', null); } },

@@ -3621,6 +3621,20 @@ export class Engine {
     return this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Reveal All');
   }
 
+  /** The Crop tool's W × H × Resolution, as Photoshop's: the crop as `straightenCrop` makes it, then the result
+   *  resampled to exactly `width` by `height` pixels at `resolution` ppi, as one Crop step (history steps nest). */
+  cropToSize(rect: Rect, angleDeg: number, contentAware: boolean, width: number, height: number, resolution: number): boolean {
+    const p = this.current, w = Math.round(width), h = Math.round(height);
+    if (!p || !this.sizeOk(w, h)) return false;
+    p.history.begin('Crop', p.snapshot());
+    try {
+      if (!this.straightenCrop(rect, angleDeg, contentAware)) return false;
+      return this.resampleImage(w, h, 'high', Math.max(1, Math.min(9600, resolution)));
+    } finally {
+      p.history.end(p.snapshot());
+    }
+  }
+
   /** Crop with Straighten and Content-Aware, as one step: every layer turns by `angleDeg` about the frame's centre
    *  (masks follow as a move does), the canvas is cut to the frame, and with `contentAware` the parts of the canvas
    *  that the bottom pixel layer no longer covers (corners opened by the turn, or canvas added by a frame past the
