@@ -261,17 +261,17 @@ export function insideDistance(coverage: Uint8Array, W: number, H: number): Floa
  *  fades it with the distance inside the edge over 2^Diffusion px, 7 keeping it everywhere; `colour` (0 to 1) scales
  *  it, 0 leaving a plain copy. `opacity` is what the heal was applied at: the full-strength heal is recovered, scaled,
  *  and mixed back at that opacity. `out` is changed in place; `before` is the pixels as they were. */
-export function scaleHealCorrection(out: Uint8ClampedArray, before: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, dx: number, dy: number, diffusion: number, colour: number, opacity = 1): void {
+export function scaleHealCorrection(out: Uint8ClampedArray, before: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, dx: number, dy: number, diffusion: number, colour: number, opacity = 1, source?: Uint8ClampedArray): void {
   const diff = Math.round(Math.min(7, Math.max(1, diffusion))), col = Math.min(1, Math.max(0, colour)), op = Math.min(1, Math.max(0, opacity));
   if ((diff >= 7 && col >= 1) || op <= 0) return;
-  const dist = diff < 7 ? insideDistance(coverage, W, H) : null, L = 2 ** diff;
+  const dist = diff < 7 ? insideDistance(coverage, W, H) : null, L = 2 ** diff, from = source ?? before;
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
     const i = y * W + x;
     if (coverage[i] < 128) continue;
     const w = col * (dist ? Math.exp(-dist[i] / L) : 1);
     const s = (Math.min(H - 1, Math.max(0, y + dy)) * W + Math.min(W - 1, Math.max(0, x + dx))) * 4;
     for (let ch = 0; ch < 3; ch++) {
-      const b = before[i * 4 + ch], full = b + (out[i * 4 + ch] - b) / op, raw = before[s + ch];
+      const b = before[i * 4 + ch], full = b + (out[i * 4 + ch] - b) / op, raw = from[s + ch];
       out[i * 4 + ch] = Math.round(b + op * (raw + w * (full - raw) - b));
     }
   }
@@ -281,24 +281,25 @@ export function scaleHealCorrection(out: Uint8ClampedArray, before: Uint8Clamped
  *  harmonic membrane so they meet the area's edge without a seam, as in Poisson image editing. The source is read from
  *  the pixels as they were, since it may overlap the area, and is clamped to the image's edge. Returns false when
  *  there is nothing to heal. */
-export function healFromSource(rgba: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, opacity: number, dx: number, dy: number): boolean {
+export function healFromSource(rgba: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, opacity: number, dx: number, dy: number, source?: Uint8ClampedArray): boolean {
   const hw = healWindow(coverage, W, H);
   if (!hw) return false;
-  const { win } = hw, ww = win.w, n = ww * win.h, original = rgba.slice();
+  // `source` (same size, premultiplied): heal from another image, such as a tiled pattern, instead of these pixels.
+  const { win } = hw, ww = win.w, n = ww * win.h, original = rgba.slice(), src = source ?? original;
   const at = (p: number): number => (Math.floor(p / ww) + win.y0) * W + (p % ww) + win.x0;
   const from = (g: number): number => { const x = g % W, y = (g - x) / W; return (clamp(y + dy, 0, H - 1) * W + clamp(x + dx, 0, W - 1)) * 4; };
   const v = new Float32Array(n * 4), state = new Uint8Array(n);
   for (const p of win.ring) {
     state[p] = FIXED;
     const t = at(p) * 4, s = from(at(p));
-    for (let c = 0; c < 4; c++) v[p * 4 + c] = original[t + c] - original[s + c];
+    for (let c = 0; c < 4; c++) v[p * 4 + c] = original[t + c] - src[s + c];
   }
   for (const p of win.spot) state[p] = FREE;
   solveMembrane(v, state, ww, win.h);
   const f = [0, 0, 0, 0], strength = clamp(opacity, 0, 1);
   for (const p of win.spot) {
     const g = at(p), t = g * 4, s = from(g);
-    for (let c = 0; c < 4; c++) f[c] = v[p * 4 + c] + original[s + c];
+    for (let c = 0; c < 4; c++) f[c] = v[p * 4 + c] + src[s + c];
     f[3] = clamp(f[3], 0, 255);
     for (let c = 0; c < 3; c++) f[c] = clamp(f[c], 0, f[3]);
     const k = (coverage[g] / 255) * strength;

@@ -1,4 +1,4 @@
-import type { Pt } from '../../engine';
+import { allPatterns, type Pt } from '../../engine';
 import { HEAL_BLENDS, HEAL_SAMPLES, type HealBlend, type HealSample } from '../../engine/retouch';
 import type { Tool } from '../registry';
 import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
@@ -52,6 +52,8 @@ export const healingBrushTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Healing Brush' },
     { kind: 'select', label: 'Mode', choices: HEAL_BLENDS.map((b) => ({ id: b.id, label: b.label })), get: () => e.retouch.healBlendMode, set: (v: string) => { e.retouch.healBlendMode = v as HealBlend; e.emit('options', null); } },
+    { kind: 'segment', label: 'Source', choices: [{ id: 'sampled', label: 'Sampled' }, { id: 'pattern', label: 'Pattern' }], get: () => e.retouch.healSource, set: (v: string) => { e.retouch.healSource = v as 'sampled' | 'pattern'; e.emit('options', null); } },
+    { kind: 'select', label: 'Pattern', choices: [], live: () => allPatterns().map((pt) => ({ id: pt.id, label: pt.name })), get: () => e.retouch.healPattern ?? allPatterns()[0]?.id ?? '', set: (v: string) => { e.retouch.healPattern = v; e.emit('options', null); }, when: () => e.retouch.healSource === 'pattern' },
     { kind: 'toggle', label: 'Aligned', get: () => e.retouch.cloneAligned, set: (v) => { e.retouch.cloneAligned = v; e.cloneOffset = null; e.emit('options', null); } },
     { kind: 'select', label: 'Sample', choices: HEAL_SAMPLES.map((b) => ({ id: b.id, label: b.label })), get: () => e.retouch.healSample, set: (v: string) => { e.retouch.healSample = v as HealSample; e.emit('options', null); } },
     { kind: 'number', label: 'Diffusion', min: 1, max: 7, step: 1, get: () => e.retouch.healDiffusion, set: (v: number) => { e.retouch.healDiffusion = Math.round(Math.min(7, Math.max(1, v))); e.emit('options', null); } },

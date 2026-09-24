@@ -16,7 +16,7 @@ import { withResolution } from './dpi';
 import { antialiasMask, wandMask } from './kernels';
 import { Project } from './project';
 import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
-import { patternById } from './patterns';
+import { allPatterns, patternById } from './patterns';
 
 export * from './types';
 export * from './geometry';
@@ -4089,7 +4089,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -4254,10 +4254,12 @@ export class Engine {
     if (onMask && kind !== 'blur') { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
     let texture: { surface: Surface; dx: number; dy: number } | null = null;
     if (kind === 'clone' || kind === 'healBrush') {
-      const off = this.cloneStrokeOffset(pt);
+      // Source: Pattern (the Healing Brush) heals from the chosen pattern tiled over the document; no source to set.
+      const pattern = kind === 'healBrush' && this.retouch.healSource === 'pattern' ? this.patternSurface(this.retouch.healPattern, p) : null;
+      const off = pattern ? { x: 0, y: 0 } : this.cloneStrokeOffset(pt);
       if (!off) { this.notice(`Alt-click to set where ${kind === 'clone' ? 'Clone Stamp' : 'the Healing Brush'} copies from.`); return false; }
-      this.cloneOffset = off;
-      texture = { surface: kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), dx: off.x, dy: off.y };
+      if (!pattern) this.cloneOffset = off;
+      texture = { surface: pattern ?? (kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0)), dx: off.x, dy: off.y };
       const m = kind === 'clone' && this.cloneSource ? this.cloneTransform(this.cloneSource) : null;
       if (m) {
         const t = createSurface(texture.surface.width, texture.surface.height), tc = ctxOf(t);
@@ -4327,6 +4329,15 @@ export class Engine {
     }
   }
 
+  /** A pattern (the one chosen, or the first there is) tiled over a document-sized surface from the document's origin,
+   *  as Fill tiles it: the source for the Healing Brush's Pattern and Patch's Use Pattern. */
+  private patternSurface(id: ID | null, p: Project): Surface {
+    const pat = patternById(id) ?? allPatterns()[0] ?? null, s = createSurface(p.doc.width, p.doc.height), c = ctxOf(s);
+    const cp = pat ? c.createPattern(pat.surface, 'repeat') : null;
+    if (cp) { c.fillStyle = cp; c.fillRect(0, 0, p.doc.width, p.doc.height); }
+    return s;
+  }
+
   /** The healing brushes' Sample (Font Bundles' Healing Brush and Spot Healing tutorials; SLR Lounge), in document
    *  space: the active layer alone, it and the layers under it (every layer above hidden, except the folders it sits
    *  in), or every layer shown. */
@@ -4371,27 +4382,56 @@ export class Engine {
     const r = s.raster;
     const before = r.read();
     const sample = this.retouch.healSample, p = this.current, l = p?.doc.layers.find((x) => x.raster === r);
+    // Source: Pattern: the pattern in the layer's pixel space, healed from in place (the offset is 0).
+    const patRaw = this.retouch.healSource === 'pattern' && p && l ? this.rasterSpace(this.patternSurface(this.retouch.healPattern, p), l, r.width, r.height) : null;
+    const patPm = patRaw ? premultiply(patRaw.data) : undefined;
     if (sample !== 'current' && p && l) {
       // Healed at full strength over the stroke's whole footprint on the sampled image, then laid on at the brush's
       // own soft coverage; healing with the soft coverage and laying it on again would square the falloff.
       const cov = s.coverageAlpha(), hard = cov.map((v) => (v > 0 ? 255 : 0)), W = r.width, H = r.height;
       const base = this.rasterSpace(this.healSampleSurface(p, l, sample), l, W, H), pmS = premultiply(base.data);
-      if (!healFromSource(pmS, hard, W, H, 1, off.x, off.y)) return null;
+      if (!healFromSource(pmS, hard, W, H, 1, off.x, off.y, patPm)) return null;
       const healed = new ImageData(W, H);
       unpremultiply(pmS, healed.data);
-      scaleHealCorrection(healed.data, base.data, hard, W, H, off.x, off.y, this.retouch.healDiffusion, 1, 1);
+      scaleHealCorrection(healed.data, base.data, hard, W, H, off.x, off.y, this.retouch.healDiffusion, 1, 1, patRaw?.data);
       this.healBlend(base, healed, hard, 1, this.retouch.healBlendMode);
       r.write(this.layHeal(before, healed, cov, this.brush.opacity));
       return { raster: r, x: 0, y: 0, before, after: r.read() };
     }
     const pm = premultiply(before.data);
-    if (!healFromSource(pm, s.coverageAlpha(), r.width, r.height, this.brush.opacity, off.x, off.y)) return null;
+    if (!healFromSource(pm, s.coverageAlpha(), r.width, r.height, this.brush.opacity, off.x, off.y, patPm)) return null;
     const out = new ImageData(r.width, r.height);
     unpremultiply(pm, out.data);
-    scaleHealCorrection(out.data, before.data, s.coverageAlpha(), r.width, r.height, off.x, off.y, this.retouch.healDiffusion, 1, this.brush.opacity);
+    scaleHealCorrection(out.data, before.data, s.coverageAlpha(), r.width, r.height, off.x, off.y, this.retouch.healDiffusion, 1, this.brush.opacity, patRaw?.data);
     this.healBlend(before, out, s.coverageAlpha(), this.brush.opacity, this.retouch.healBlendMode);
     r.write(out);
     return { raster: r, x: 0, y: 0, before, after: r.read() };
+  }
+
+  /** Patch's Use Pattern (Light Stalking's Patch tutorial: repair an area using a pattern, blended with the pixels
+   *  around it): heals the selected area of the active pixel layer from the chosen pattern, tiled from the document's
+   *  origin, so it meets the selection's edge without a seam, with the Patch tool's Diffusion, as one undo step. */
+  patchWithPattern(): void {
+    const p0 = this.current;
+    if (!p0?.selection) { this.notice('Make a selection, then choose Use Pattern.'); return; }
+    if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Patch works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    this.edit('Patch', () => {
+      this.regionEdit('Patch', ({ raster, target, rect }) => {
+        if (target !== 'pixels') return;
+        const p = this.current as Project, l = p.activeLayer as Layer, W = raster.width, H = raster.height;
+        const cov = this.coverageFor(p, l, target, W, H);
+        if (!cov) return;
+        const mask = new Uint8Array(W * H);
+        for (let i = 0; i < mask.length; i++) mask[i] = cov[i * 4 + 3];
+        const before = raster.read(), pm = premultiply(before.data), pat = this.rasterSpace(this.patternSurface(this.retouch.patchPattern, p), l, W, H);
+        if (!healFromSource(pm, mask, W, H, 1, 0, 0, premultiply(pat.data))) return;
+        const out = new ImageData(W, H);
+        unpremultiply(pm, out.data);
+        scaleHealCorrection(out.data, before.data, mask, W, H, 0, 0, this.retouch.patchDiffusion, 1, 1, pat.data);
+        raster.ctx.putImageData(out, 0, 0, rect.x, rect.y, rect.w, rect.h);
+      });
+    });
   }
 
   /** Patch: heals the selected area of the active pixel layer from the area (dx, dy) document pixels away, blended to
