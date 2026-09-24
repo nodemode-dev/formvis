@@ -1,4 +1,9 @@
-.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; min-height: 0; background: var(--bg-secondary); position: relative; }
+.cv-layers { display: flex; flex-direction: column; min-height: 0; background: var(--bg-secondary); position: relative; }
+/* The Layers panel is one section like the others; wherever it sits in the dock it takes the space that is left, and its
+   list scrolls within it. The other panels keep their own height. */
+.cv-layers-panel { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.cv-layers-panel[hidden] { display: none; }
+.cv-layers > section:not(.cv-layers-panel) { flex: none; }
 /* Moving panels in the dock: the header is the grip; the line shows where a dragged panel will land. */
 .cv-dock-grip { cursor: grab; }
 .cv-dock-grip:active { cursor: grabbing; }

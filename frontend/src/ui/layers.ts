@@ -24,11 +24,11 @@ export class LayersPanel {
 
   constructor(root: HTMLElement, private readonly engine: Engine, private readonly menu: PopupMenu) {
     root.insertAdjacentHTML('beforeend',
-      `<div class="cv-panel-head"><span class="cv-panel-title">${icon('layers', 14)}Layers</span><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
+      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><span class="cv-panel-title">${icon('layers', 14)}Layers</span><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
       `<div class="cv-layer-props"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${BLEND_MODES.map((b) => `<option value="${b.id}">${b.label}</option>`).join('')}</select>` +
       `<label class="cv-opacity" title="Opacity"><input class="cv-opacity-range" type="range" min="0" max="100" step="1" value="100" aria-label="Opacity"><span class="cv-readout cv-opacity-out">100%</span></label></div>` +
       `<div class="cv-layer-list"><div class="cv-layer-rows" role="listbox" aria-label="Layers"></div><div class="cv-drop-line"></div><div class="cv-layers-empty">No canvas open. Create one or drop images on the stage.</div></div>` +
-      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div>`);
+      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></section>`);
     this.rows = q(root, '.cv-layer-rows');
     this.list = q(root, '.cv-layer-list');
     this.empty = q(root, '.cv-layers-empty');

@@ -3,10 +3,11 @@ import { el, setHidden } from './dom';
 /** The side dock's panels, arranged as Photoshop's: drag a panel by its header to move it up or down the dock (a line
  *  shows where it will land), show or hide panels from the Window menu, and have the arrangement remembered on this
  *  device. Sourced in the planning notes' workspace research (Adobe's "Arrange and group panels" and "Dock or undock
- *  panels"; TeachUcomp). This first slice moves Paths, Timeline and History below the Layers panel; floating panels
- *  and grouping into tabs come later. */
+ *  panels"; TeachUcomp). Every panel in the side dock moves, the Layers panel included; floating panels and grouping into
+ *  tabs come later. */
 export interface DockPanel { id: string; label: string; selector: string }
 export const DOCK_PANELS: readonly DockPanel[] = [
+  { id: 'layers', label: 'Layers', selector: '.cv-layers-panel' },
   { id: 'paths', label: 'Paths', selector: '.cv-paths' },
   { id: 'timeline', label: 'Timeline', selector: '.cv-timeline' },
   { id: 'history', label: 'History', selector: '.cv-history' },
@@ -20,7 +21,8 @@ function load(): DockState {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<DockState>;
     const ids = DOCK_PANELS.map((p) => p.id);
     const order = Array.isArray(r.order) ? r.order.filter((id): id is string => ids.includes(id as string)) : [];
-    for (const id of ids) if (!order.includes(id)) order.push(id);
+    // A panel missing from a saved arrangement (one saved before it could move) takes its default place, not the end.
+    for (const id of ids) if (!order.includes(id)) order.splice(Math.min(ids.indexOf(id), order.length), 0, id);
     const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [];
     return { order, hidden };
   } catch { return { ...DEFAULT, order: [...DEFAULT.order] }; }
