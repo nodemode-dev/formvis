@@ -5,7 +5,8 @@ import { COMPOSITE_WGSL, blendIndex } from './blend-wgsl';
 const TEX = { COPY_SRC: 0x01, COPY_DST: 0x02, TEXTURE_BINDING: 0x04, RENDER_ATTACHMENT: 0x10 } as const;
 const BUF = { MAP_READ: 0x0001, COPY_DST: 0x0008, UNIFORM: 0x0040 } as const;
 
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat }
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; mask?: DisplayMask; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
 /** The shader modes for an adjustment's lookup table (Phase 18.5), after the 27 blend modes: per channel, and 3D. */
 export const LUT_MODE = 100;
 export const LUT3_MODE = 101;
@@ -52,6 +53,8 @@ export class GpuDisplay {
     private readonly composite: GPURenderPipeline, private readonly present: GPURenderPipeline, private readonly presentOff: GPURenderPipeline,
     private readonly linear: GPUSampler, private readonly nearest: GPUSampler) {
     void device.lost.then((info) => {
+      // destroy() also resolves this promise, with reason 'destroyed': switching renderers, not a failure.
+      if (info.reason === 'destroyed') return;
       console.warn(`sonny: the GPU device was lost (${info.reason}): ${info.message}`);
       this.onLost?.();
     });
@@ -101,14 +104,25 @@ export class GpuDisplay {
       used.add(l.lut ?? (l.image as object));
       const tex = this.texture(l);
       const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
-      const raw = new ArrayBuffer(64), f = new Float32Array(raw);
+      // 128 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
+      // size (112), whether there is one (120).
+      const raw = new ArrayBuffer(128), f = new Float32Array(raw), u32 = new Uint32Array(raw);
       f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
-      new Uint32Array(raw)[15] = l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend);
-      const ub = d.createBuffer({ size: 64, usage: BUF.UNIFORM | BUF.COPY_DST });
+      u32[15] = l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend);
+      let maskTex = this.blank();
+      if (l.mask) {
+        const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
+        f.set([ma, mb, 0, 0, mc, md, 0, 0, me, mf, 1, 0, mk.width, mk.height], 16);
+        u32[30] = 1;
+        used.add(mk.image);
+        maskTex = this.texture({ image: mk.image, version: mk.version, width: mk.width, height: mk.height, matrix: mk.matrix, opacity: 1, blend: 'normal' });
+      }
+      const ub = d.createBuffer({ size: 128, usage: BUF.UNIFORM | BUF.COPY_DST });
       d.queue.writeBuffer(ub, 0, raw);
       buffers.push(ub);
       const bind = d.createBindGroup({ layout: this.composite.getBindGroupLayout(0), entries: [
         { binding: 0, resource: a.createView() }, { binding: 1, resource: tex.createView() }, { binding: 2, resource: sampler }, { binding: 3, resource: { buffer: ub } },
+        { binding: 4, resource: maskTex.createView() },
       ] });
       const pass = enc.beginRenderPass({ colorAttachments: [{ view: b.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
       pass.setPipeline(this.composite);
@@ -148,6 +162,13 @@ export class GpuDisplay {
     buf.destroy();
     out.destroy();
     return px;
+  }
+
+  /** A 1 x 1 texture bound where a layer has no mask (the binding must always be filled; the shader ignores it). */
+  private blankTex: GPUTexture | null = null;
+  private blank(): GPUTexture {
+    this.blankTex ??= this.device.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: TEX.TEXTURE_BINDING | TEX.COPY_DST });
+    return this.blankTex;
   }
 
   private texture(l: DisplayLayer): GPUTexture {

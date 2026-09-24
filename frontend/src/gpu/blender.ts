@@ -41,6 +41,7 @@ export class GpuBlender {
     const usage = GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.RENDER_ATTACHMENT | GPUTextureUsage.COPY_SRC;
     let a = d.createTexture({ size: [width, height], format: 'rgba8unorm', usage });
     let b = d.createTexture({ size: [width, height], format: 'rgba8unorm', usage });
+    const blank = d.createTexture({ size: [1, 1], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
     const bg = background ?? [0, 0, 0, 0];
     const clear = d.createCommandEncoder();
     clear.beginRenderPass({ colorAttachments: [{ view: a.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: bg[0], g: bg[1], b: bg[2], a: bg[3] } }] }).end();
@@ -50,14 +51,15 @@ export class GpuBlender {
       const tex = d.createTexture({ size: [l.width, l.height], format: 'rgba8unorm', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST | GPUTextureUsage.RENDER_ATTACHMENT });
       d.queue.copyExternalImageToTexture({ source: l.image }, { texture: tex, premultipliedAlpha: true }, [l.width, l.height]);
       const [ia, ib, ic, id, ie, iff] = invert(l.matrix);
-      const raw = new ArrayBuffer(64), f = new Float32Array(raw), u = new Uint32Array(raw);
+      const raw = new ArrayBuffer(128), f = new Float32Array(raw), u = new Uint32Array(raw);
       f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
       u[15] = blendIndex(l.blend);
-      const ub = d.createBuffer({ size: 64, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+      const ub = d.createBuffer({ size: 128, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
       d.queue.writeBuffer(ub, 0, raw);
       const bind = d.createBindGroup({ layout: this.pipeline.getBindGroupLayout(0), entries: [
         { binding: 0, resource: a.createView() }, { binding: 1, resource: tex.createView() },
         { binding: 2, resource: this.sampler }, { binding: 3, resource: { buffer: ub } },
+        { binding: 4, resource: blank.createView() },
       ] });
       const enc = d.createCommandEncoder();
       const pass = enc.beginRenderPass({ colorAttachments: [{ view: b.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });

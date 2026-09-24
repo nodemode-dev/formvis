@@ -53,7 +53,9 @@ import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
-export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; mask?: GpuMaskSpec; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+/** A layer's mask for the GPU: its pixels (alpha is coverage), their version, size and placement. */
+export interface GpuMaskSpec { image: Surface; version: number; width: number; height: number; matrix: Mat }
 export type { HealMode } from './retouch';
 import type { AdjustmentKind } from './types';
 export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentData, defaultHsv, grainFromData, grainKernel, hsvFromData, hsvKernel, hsvToData, randomSeed } from './adjust';
@@ -540,19 +542,23 @@ export class Engine {
       const o = ov?.get(l.id);
       if (o?.hidden || !l.visible) continue;
       if (l.isGroup || l.parentId) return { reason: 'folders' };
-      if (l.mask || o?.maskSource) return { reason: 'layer masks' };
+      // The layer's mask, as the CPU renderer's maskOf reads it: enabled with pixels, the live preview's source while
+      // painting, and its own placement, else the layer's (Phase 18, masks).
+      const m = l.mask, msrc = m?.enabled && m.raster ? o?.maskSource ?? m.raster.canvas : null;
+      const mask = m && msrc ? { image: msrc, version: o?.maskSource ? -1 : (m.raster as Raster).version, width: msrc.width, height: msrc.height,
+        matrix: placement(o?.maskPlacement ?? m.placement ?? o?.transform ?? l.transform, msrc.width, msrc.height) } : undefined;
       if (l.clipId) return { reason: 'clipping masks' };
       if (l.adjustment) {
         // Phase 18.5: a per-channel adjustment goes to the GPU as its proven lookup table (engine/lut.ts); others, by name,
         // keep the document on the CPU.
         const lut = adjustmentLut(l.adjustment);
         if (lut) {
-          layers.push({ image: null, lut, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+          layers.push({ image: null, lut, mask, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
           continue;
         }
         const lut3 = adjustmentLut3(l.adjustment);
         if (!lut3) return { reason: `a ${ADJUSTMENT_LABELS[l.adjustment.kind] ?? l.adjustment.kind} adjustment layer` };
-        layers.push({ image: null, lut: lut3, lut3: true, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+        layers.push({ image: null, lut: lut3, lut3: true, mask, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
         continue;
       }
       if (effectsActive(o?.effects ?? l.effects)) return { reason: 'layer styles' };
@@ -560,7 +566,7 @@ export class Engine {
       if ((o?.blend ?? l.blend) === 'dissolve') return { reason: 'a layer in Dissolve mode' };
       const img = o?.source ?? l.raster?.canvas;
       if (!img || !l.raster) continue;
-      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: o?.opacity ?? l.opacity, blend: o?.blend ?? l.blend });
+      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: o?.opacity ?? l.opacity, blend: o?.blend ?? l.blend, mask });
     }
     return { layers };
   }

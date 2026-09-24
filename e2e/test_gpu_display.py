@@ -61,8 +61,14 @@ def test_choosing_webgpu_always_ends_with_a_drawn_canvas_and_a_true_status(page)
         page.evaluate(SETUP)
         # Either the GPU draws it, or (as on a software adapter, which cannot present to a canvas) the device is lost and
         # the CPU draws it, saying so; never a blank canvas or a status that claims the GPU.
-        page.wait_for_function("""(() => { const s = document.querySelector('.cv-st-gpu'); return s.textContent === 'GPU: WebGPU'
-          || (s.textContent === 'GPU: CPU' && s.title.includes('could not start or was lost')); })()""", timeout=10000)
+        # Settled means the status and the canvas agree: the status names WebGPU as soon as the display starts, and its
+        # canvas shows with the next frame, so a sample between the two is not a settled state.
+        settled = """(() => { const s = document.querySelector('.cv-st-gpu'), c = document.querySelector('.cv-scene-gpu');
+          return (s.textContent === 'GPU: WebGPU' && !c.hidden)
+          || (s.textContent === 'GPU: CPU' && s.title.includes('could not start or was lost') && c.hidden); })()"""
+        page.wait_for_function(settled, timeout=10000)
+        page.wait_for_timeout(1000)                    # a device lost on its first frame (a software adapter) settles to the CPU
+        page.wait_for_function(settled, timeout=10000)
         on_gpu = page.evaluate("document.querySelector('.cv-st-gpu').textContent === 'GPU: WebGPU'")
         assert page.evaluate("document.querySelector('.cv-scene-gpu').hidden") is (not on_gpu)
         if not on_gpu:
@@ -79,8 +85,23 @@ def test_the_engine_names_what_the_gpu_cannot_draw_yet(page):
     page.evaluate(SETUP)
     assert len(page.evaluate("window.sonny.engine.gpuLayers().layers")) == 2
     assert page.evaluate("window.sonny.commands.run('add-mask')")
-    assert page.evaluate("window.sonny.engine.gpuLayers().reason") == "layer masks"
+    assert page.evaluate("'layers' in window.sonny.engine.gpuLayers()")               # masks draw on the GPU since 1.22.0
     page.evaluate("window.sonny.engine.undo()")
     assert len(page.evaluate("window.sonny.engine.gpuLayers().layers")) == 2
     page.evaluate("window.sonny.engine.current.activeLayer.blend = 'dissolve'")
     assert page.evaluate("window.sonny.engine.gpuLayers().reason") == "a layer in Dissolve mode"
+
+
+def test_destroying_a_display_on_purpose_is_not_a_lost_device(page):
+    # Switching renderers destroys the WebGPU display; before 1.22.0 that fired the lost handler and marked WebGPU as
+    # failed for the rest of the session.
+    lost = page.evaluate("""async () => {
+      const D = await import('/src/gpu/display.ts');
+      const d = await D.GpuDisplay.create(document.createElement('canvas'));
+      if (!d) return 'no display';
+      let fired = false; d.onLost = () => { fired = true; };
+      d.destroy();
+      await new Promise((r) => setTimeout(r, 300));
+      return fired;
+    }""")
+    assert lost is False, lost

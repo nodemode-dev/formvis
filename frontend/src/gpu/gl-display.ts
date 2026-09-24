@@ -16,7 +16,14 @@ const COMPOSITE_FS = `#version 300 es
 precision highp float; precision highp int;
 uniform sampler2D backdrop; uniform sampler2D source;
 uniform mat3 inv; uniform vec2 size; uniform float opacity; uniform int mode; uniform float H;
+uniform sampler2D maskTex; uniform mat3 minv; uniform vec2 msize; uniform int hasMask;
 out vec4 outColor;
+float coverage(vec2 p) {
+  if (hasMask == 0) return 1.0;
+  vec3 qm = minv * vec3(p, 1.0);
+  if (qm.x < 0.0 || qm.y < 0.0 || qm.x >= msize.x || qm.y >= msize.y) return 1.0;
+  return texture(maskTex, qm.xy / msize).a;
+}
 float lum(vec3 c) { return dot(c, vec3(0.3, 0.59, 0.11)); }
 vec3 clipColor(vec3 c) { float l = lum(c), n = min(min(c.r, c.g), c.b), x = max(max(c.r, c.g), c.b); vec3 o = c;
   if (n < 0.0) o = l + (o - l) * l / (l - n); if (x > 1.0) o = l + (o - l) * (1.0 - l) / (x - l); return o; }
@@ -46,11 +53,12 @@ float dissolveNoise(int x, int y) { uint h = uint(x) * 374761393u + uint(y) * 66
 void main() {
   ivec2 fb = ivec2(gl_FragCoord.xy);
   vec4 bd = texelFetch(backdrop, fb, 0);
+  float cov = coverage(vec2(gl_FragCoord.x, H - gl_FragCoord.y));
   if (mode == 100) {
     if (bd.a <= 0.0) { outColor = bd; return; }
     ivec3 i = ivec3(floor(bd.rgb * 255.0 + 0.5));
     vec3 t = vec3(texelFetch(source, ivec2(i.r, 0), 0).r, texelFetch(source, ivec2(i.g, 0), 0).g, texelFetch(source, ivec2(i.b, 0), 0).b);
-    outColor = vec4(bd.rgb + (t - bd.rgb) * opacity, bd.a); return;
+    outColor = vec4(bd.rgb + (t - bd.rgb) * opacity * cov, bd.a); return;
   }
   if (mode == 101) {
     if (bd.a <= 0.0) { outColor = bd; return; }
@@ -64,7 +72,7 @@ void main() {
       acc += w * texelFetch(source, ivec2(c.x + c.y * 52, c.z), 0).rgb;
     }
     vec3 t3 = floor(acc * 255.0 + 0.5) / 255.0;
-    outColor = vec4(bd.rgb + (t3 - bd.rgb) * opacity, bd.a); return;
+    outColor = vec4(bd.rgb + (t3 - bd.rgb) * opacity * cov, bd.a); return;
   }
   vec2 p = vec2(gl_FragCoord.x, H - gl_FragCoord.y);
   vec3 q = inv * vec3(p, 1.0);
@@ -72,7 +80,7 @@ void main() {
   vec4 s0 = texture(source, q.xy / size);
   vec4 sc = s0.a > 0.0 ? vec4(s0.rgb / s0.a, s0.a) : s0;
   if (mode == 1 || mode == 5 || mode == 6 || mode == 11 || (mode >= 15 && mode <= 18) || mode == 21 || mode == 22) sc = vec4(floor(sc.rgb * 255.0 + 0.5) / 255.0, sc.a);
-  float sa = sc.a * opacity; if (sa <= 0.0) { outColor = bd; return; }
+  float sa = sc.a * opacity * cov; if (sa <= 0.0) { outColor = bd; return; }
   float ab = bd.a;
   if (mode == 1) { outColor = dissolveNoise(int(floor(p.x)), int(floor(p.y))) >= sa ? bd : vec4(sc.rgb, 1.0); return; }
   if (mode == 10) { float lo = min(1.0, sa + ab); vec3 lc = min(vec3(1.0), sc.rgb * sa + bd.rgb * ab); outColor = vec4(lc / max(lo, 1e-6), lo); return; }
@@ -166,6 +174,7 @@ export class GlDisplay {
     const u = (n: string): WebGLUniformLocation | null => gl.getUniformLocation(this.comp, n);
     gl.uniform1i(u('backdrop'), 0);
     gl.uniform1i(u('source'), 1);
+    gl.uniform1i(u('maskTex'), 2);
     gl.uniform1f(u('H'), H);
     const used = new Set<object>(), filter = zoom >= 2 ? gl.NEAREST : gl.LINEAR;
     for (const l of layers) {
@@ -179,6 +188,19 @@ export class GlDisplay {
       gl.uniform2f(u('size'), l.width, l.height);
       gl.uniform1f(u('opacity'), Math.min(1, Math.max(0, l.opacity)));
       gl.uniform1i(u('mode'), l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend));
+      gl.activeTexture(gl.TEXTURE2);
+      if (l.mask) {
+        const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
+        used.add(mk.image);
+        gl.bindTexture(gl.TEXTURE_2D, this.texture({ image: mk.image, version: mk.version, width: mk.width, height: mk.height, matrix: mk.matrix, opacity: 1, blend: 'normal' }));
+        for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
+        gl.uniformMatrix3fv(u('minv'), false, [ma, mb, 0, mc, md, 0, me, mf, 1]);
+        gl.uniform2f(u('msize'), mk.width, mk.height);
+        gl.uniform1i(u('hasMask'), 1);
+      } else {
+        gl.bindTexture(gl.TEXTURE_2D, this.blank());
+        gl.uniform1i(u('hasMask'), 0);
+      }
       gl.bindFramebuffer(gl.FRAMEBUFFER, b.fb);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, a.tex);
@@ -213,6 +235,18 @@ export class GlDisplay {
     gl.deleteTexture(t.tex);
     gl.deleteFramebuffer(t.fb);
     return px;
+  }
+
+  /** A 1 x 1 texture bound where a layer has no mask (the shader ignores it). */
+  private blankTex: WebGLTexture | null = null;
+  private blank(): WebGLTexture {
+    if (!this.blankTex) {
+      const gl = this.gl;
+      this.blankTex = gl.createTexture() as WebGLTexture;
+      gl.bindTexture(gl.TEXTURE_2D, this.blankTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+    }
+    return this.blankTex;
   }
 
   private texture(l: DisplayLayer): WebGLTexture {

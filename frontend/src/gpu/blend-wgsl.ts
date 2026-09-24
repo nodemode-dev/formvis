@@ -13,11 +13,20 @@ export const BLEND_IDS: readonly BlendMode[] = [
 export const blendIndex = (m: BlendMode): number => Math.max(0, BLEND_IDS.indexOf(m));
 
 export const COMPOSITE_WGSL = /* wgsl */ `
-struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32 };
+struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, pad: u32 };
 @group(0) @binding(0) var backdrop: texture_2d<f32>;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var smp: sampler;
 @group(0) @binding(3) var<uniform> layer: Layer;
+@group(0) @binding(4) var maskTex: texture_2d<f32>;
+
+/** A layer mask's coverage at p, as the CPU renderer applies masks: outside the mask's rectangle 1, inside its alpha. */
+fn coverage(p: vec2<f32>) -> f32 {
+  if (layer.hasMask == 0u) { return 1.0; }
+  let qm = layer.minv * vec3<f32>(p, 1.0);
+  if (qm.x < 0.0 || qm.y < 0.0 || qm.x >= layer.msize.x || qm.y >= layer.msize.y) { return 1.0; }
+  return textureSampleLevel(maskTex, smp, qm.xy / layer.msize, 0.0).a;
+}
 
 @vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
   let p = array<vec2<f32>, 3>(vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
@@ -92,13 +101,14 @@ fn dissolveNoise(x: i32, y: i32) -> f32 {
 @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
   let px = vec2<i32>(floor(pos.xy));
   let bd = textureLoad(backdrop, px, 0);
+  let cov = coverage(pos.xy);
   // An adjustment's lookup table (Phase 18.5), as the CPU renderer applies it: each channel looked up by its 8-bit value,
   // then mixed in by opacity (src += (adjusted - src) * opacity), alpha kept, transparent pixels left alone.
   if (layer.mode == 100u) {
     if (bd.a <= 0.0) { return bd; }
     let i = vec3<i32>(round(bd.rgb * 255.0));
     let t = vec3<f32>(textureLoad(source, vec2<i32>(i.r, 0), 0).r, textureLoad(source, vec2<i32>(i.g, 0), 0).g, textureLoad(source, vec2<i32>(i.b, 0), 0).b);
-    return vec4<f32>(bd.rgb + (t - bd.rgb) * layer.opacity, bd.a);
+    return vec4<f32>(bd.rgb + (t - bd.rgb) * layer.opacity * cov, bd.a);
   }
   // A 3D table (Phase 18.5), as engine/lut.ts lut3Sample computes it: the eight nodes (every 5 levels, 52 a side, packed
   // x = r + g * 52, y = b) around the colour, weighted per axis, rounded to 8 bits, then mixed in by opacity.
@@ -115,7 +125,7 @@ fn dissolveNoise(x: i32, y: i32) -> f32 {
       acc += w * textureLoad(source, vec2<i32>(c.x + c.y * 52, c.z), 0).rgb;
     }
     let t3 = round(acc * 255.0) / 255.0;
-    return vec4<f32>(bd.rgb + (t3 - bd.rgb) * layer.opacity, bd.a);
+    return vec4<f32>(bd.rgb + (t3 - bd.rgb) * layer.opacity * cov, bd.a);
   }
   let q = layer.inv * vec3<f32>(pos.xy, 1.0);
   if (q.x < 0.0 || q.y < 0.0 || q.x >= layer.size.x || q.y >= layer.size.y) { return bd; }
@@ -131,7 +141,7 @@ fn dissolveNoise(x: i32, y: i32) -> f32 {
   if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u) {
     sc = vec4<f32>(round(sc.rgb * 255.0) / 255.0, sc.a);
   }
-  let sa = sc.a * layer.opacity;
+  let sa = sc.a * layer.opacity * cov;
   if (sa <= 0.0) { return bd; }
   let ab = bd.a;
   if (layer.mode == 1u) {
