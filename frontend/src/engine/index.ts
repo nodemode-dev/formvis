@@ -4089,7 +4089,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -4419,7 +4419,11 @@ export class Engine {
         const ox = Math.round(b.x - a.x), oy = Math.round(b.y - a.y);
         const mask = new Uint8Array(W * H);
         for (let i = 0; i < mask.length; i++) mask[i] = cov[i * 4 + 3];
-        const orig = raster.read().data, pm = premultiply(orig);
+        // Sample All Layers (Content-Aware): the patch is worked out on everything shown, in the layer's pixel space, and
+        // the result laid onto the layer through the selection, so a patch can go onto an empty layer.
+        const sampleAll = opts.patchMode === 'contentAware' && opts.patchSampleAll;
+        const baseImage = sampleAll ? this.rasterSpace(this.healSampleSurface(p, l, 'all'), l, W, H) : raster.read();
+        const orig = baseImage.data, pm = premultiply(orig);
         if (!healFromSource(pm, mask, W, H, 1, ox, oy)) return;
         const out = new ImageData(W, H);
         unpremultiply(pm, out.data);
@@ -4452,7 +4456,7 @@ export class Engine {
           }
           contentFill(out.data, band, W, H);
         }
-        raster.ctx.putImageData(out, 0, 0, rect.x, rect.y, rect.w, rect.h);
+        raster.ctx.putImageData(sampleAll ? this.layHeal(raster.read(), out, mask, 1) : out, 0, 0, rect.x, rect.y, rect.w, rect.h);
       });
     });
   }

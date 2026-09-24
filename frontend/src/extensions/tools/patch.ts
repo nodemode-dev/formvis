@@ -20,6 +20,7 @@ export const patchTool: Tool = {
     { kind: 'number', label: 'Diffusion', min: 1, max: 7, step: 1, get: () => e.retouch.patchDiffusion, set: (v: number) => { e.retouch.patchDiffusion = Math.round(Math.min(7, Math.max(1, v))); e.emit('options', null); }, when: () => e.retouch.patchMode === 'normal' },
     { kind: 'number', label: 'Structure', min: 1, max: 7, step: 1, get: () => e.retouch.patchStructure, set: (v: number) => { e.retouch.patchStructure = Math.round(Math.min(7, Math.max(1, v))); e.emit('options', null); }, when: () => e.retouch.patchMode === 'contentAware' },
     { kind: 'number', label: 'Color', min: 0, max: 10, step: 1, get: () => e.retouch.patchColor, set: (v: number) => { e.retouch.patchColor = Math.round(Math.min(10, Math.max(0, v))); e.emit('options', null); }, when: () => e.retouch.patchMode === 'contentAware' },
+    { kind: 'toggle', label: 'Sample All Layers', get: () => e.retouch.patchSampleAll, set: (v) => { e.retouch.patchSampleAll = v; e.emit('options', null); }, when: () => e.retouch.patchMode === 'contentAware' },
   ],
   cursor: (ctx, p) => {
     const sel = ctx.engine.current?.selection;
