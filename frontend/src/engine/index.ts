@@ -3207,13 +3207,26 @@ export class Engine {
     return null;
   }
 
+  /** The Eyedropper's Sample Size, as Photoshop's options bar has it: 1 is Point Sample, otherwise the side of the
+   *  square averaged (3, 5, 11, 31, 51 or 101). */
+  eyedropperSize = 1;
+
+  /** The document's colour at `pt`: the pixel itself for Point Sample, or the average of the Sample Size square around
+   *  it, each pixel weighted by its opacity, so transparent pixels and anything past the canvas do not pull the colour. */
   sampleColor(pt: Pt): RGB | null {
     const p = this.current;
     if (!p || pt.x < 0 || pt.y < 0 || pt.x >= p.doc.width || pt.y >= p.doc.height) return null;
-    const s = createSurface(1, 1);
-    this.work.render({ doc: p.doc, target: s, view: translation(-Math.floor(pt.x), -Math.floor(pt.y)) });
-    const d = ctxOf(s).getImageData(0, 0, 1, 1).data;
-    return d[3] ? { r: d[0], g: d[1], b: d[2] } : null;
+    const n = Math.max(1, Math.min(101, Math.round(this.eyedropperSize))), half = Math.floor(n / 2);
+    const s = createSurface(n, n);
+    this.work.render({ doc: p.doc, target: s, view: translation(-(Math.floor(pt.x) - half), -(Math.floor(pt.y) - half)) });
+    const d = ctxOf(s).getImageData(0, 0, n, n).data;
+    let r = 0, g = 0, b = 0, a = 0;
+    for (let i = 0; i < n * n; i++) {
+      const w = d[i * 4 + 3];
+      if (!w) continue;
+      r += d[i * 4] * w; g += d[i * 4 + 1] * w; b += d[i * 4 + 2] * w; a += w;
+    }
+    return a ? { r: Math.round(r / a), g: Math.round(g / a), b: Math.round(b / a) } : null;
   }
 
   insertImages(images: ImportedImage[], at?: Pt): void {
