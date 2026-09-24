@@ -2,6 +2,85 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The interface: menus, rail, options bar; settings dialogs; tool options · _v0.96.0 (src/ui/menu.ts, src/ui/rail.ts, src/ui/options.ts, src/ui/toast.ts, src/ui/panels/fill-dialog.ts, src/app.ts, src/engine/index.ts, src/engine/paths.ts, src/engine/kernels.ts, src/extensions/tools/{marquee,lasso,wand,gradient,healing-brush,pen,freeform-pen,type,remove}.ts, src/styles/{panels,shell}.css; src/ui/tool-groups.ts, src/ui/panels/stroke-path-dialog.ts and src/ui/panels/layer-dialogs.ts new; tests/antialias-mask.test.ts and fourteen browser test files new)
+
+`menu.ts`: `MenuItem` may be a `SubMenu`; `PopupMenu` opens submenus beside rows, scrolls within the window, and closes a standalone menu on an outside press. `rail.ts`: one slot per tool group with a flyout, through `tool-groups.ts`. `options.ts`: wheel scrolling and edge chevrons. Engine: `fillWith` takes a name and region; `fillPathWith`, `featherMask`, `strokePathWith`, `STROKE_TOOLS`; `addLayer`, `addFolder` and `duplicateLayers` take their dialogs' settings; the wand's `antialias`; the Marquee's feather and style; the Lasso's feather; the Gradient's blend and dither. `paths.ts`: `samplePath`. `kernels.ts`: `antialiasMask`. Removed:
+
+```ts
+  const contextMenu = new PopupMenu(commands);
+    { id: 'new-layer', label: 'New Layer', keys: ['Shift+Mod+N'], enabled: has, run: () => engine.addLayer() },
+    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-as', 'export-png', 'export-jpg', 'export-psd', 'export-psb', 'export-artboards', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill-workspace', 'content-fill', 'remove-wires', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', 'transform-warp', 'puppet-warp', '-', 'settings'] },
+    { label: 'Image', items: ['adj-levels', 'adj-curves', 'adj-hsv', 'adj-exposure', 'adj-gradientMap', 'adj-grain', '-', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'invert', '-', 'canvas-size', 'trim', 'reveal-all', 'generative-expand', 'image-size', 'upscale-2x', 'upscale-4x', '-', 'flip-canvas-h', 'flip-canvas-v'] },
+    { label: 'Layer', items: ['new-layer', 'new-folder', 'new-artboard', 'artboard-from-layers', 'artboard-options', '-', ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'edit-adjustment', '-', 'duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'replace-contents', 'update-linked', 'relink', 'embed-linked', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask', 'new-shape-path', 'shape-color', 'shape-style', 'shape-corners', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'align-left', 'align-hcenter', 'align-right', 'align-top', 'align-vcenter', 'align-bottom', '-', 'distribute-left', 'distribute-hcenter', 'distribute-right', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', 'distribute-hspace', 'distribute-vspace', '-', 'flip-layer-h', 'flip-layer-v', '-', 'forward', 'backward'] },
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'select-subject', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-', 'expand', 'contract', 'feather', 'border', 'smooth', '-', 'path-selection', 'delete-path'] },
+    { label: 'Filter', items: [...FILTERS.map((k) => `filter-${k}`), 'filter-liquify', '-', 'remove-bg', 'remove-bg-lite'] },
+    { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-guides', 'toggle-grid', 'lock-guides', 'clear-guides', 'new-guide', '-', 'pixel-grid', 'transform-controls'] },
+  contextMenu.setItems(['duplicate', 'delete-layer', 'rename', 'edit-text', 'convert-smart', 'rasterize', 'smart-filters', 'edit-contents', 'replace-contents', 'update-linked', 'relink', 'embed-linked', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask', 'new-shape-path', 'shape-color', 'shape-style', 'shape-corners', 'layer-style', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'group', 'move-out', '-', 'add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask', '-', 'clip', 'merge', '-', 'layer-pixels']);
+      // A letter picks its tool, keeping one already chosen from the same group; Shift with it cycles the group.
+      else if (at < 0) engine.setTool(group[0].id);
+import { fillVector, pathBounds, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
+import { wandMask } from './kernels';
+import { noDynamics, type BrushDynamics, type BrushPreset } from './brush-dynamics';
+  wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0 };
+  addLayer(): void {
+      const layer = newLayer(`Layer ${n}`, p.doc, { parentId });
+  addFolder(): void {
+      const group = newLayer(`Folder ${n}`, p.doc, { isGroup: true, parentId: active?.parentId ?? null });
+  duplicateLayers(): void {
+        const clones = subtree.map((l) => { const c = this.cloneLayer(l, l === src ? { name: `${l.name} copy` } : {}); idMap.set(l.id, c.id); return c; });
+  fillWith(contents: { color: RGB } | { patternId: ID } | { history: true }, blend: BlendMode, opacity: number, preserveTransparency: boolean): void {
+    this.regionEdit('Fill', ({ raster, target, rect, cover }) => {
+    });
+    const mask = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous, this.wand.sampleSize);
+  gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1 };
+import type { Pt } from '../../engine';
+    { kind: 'title', text: 'Clone Stamp' },
+  const mask = SelectionMask.fromPath(doc.width, doc.height, boundsOf(poly), (c) => {
+import { SelectionMask, type Pt, type Rect, type SelectionMode } from '../../engine';
+    const r = dragRect(d.anchor, d.point, d.square, d.center);
+    const mask = SelectionMask.fromPath(doc.width, doc.height, r, (c) => {
+    const r = dragRect(draft.anchor, draft.point, draft.square, draft.center);
+    { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
+  id: 'remove', label: 'Remove', key: 'J', order: 54,
+.cv-menu { position: fixed; min-width: 232px; padding: var(--space-1); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-window); }
+.cv-rail-tools { display: flex; flex-direction: column; gap: var(--space-1); }
+export type MenuItem = string | '-';
+  private items: MenuItem[] = [];
+  constructor(private readonly commands: Commands) {
+    if (items.join('|') === this.items.join('|')) return;
+    this.items = items;
+      node.addEventListener('click', () => { this.close(); this.commands.run(item); });
+    for (const r of this.rows) {
+      const cmd = this.commands.get(r.id);
+      if (!cmd) continue;
+      setText(q(r.node, '.cv-menu-label'), this.commands.label(cmd));
+      setDisabled(r.node, !this.commands.enabled(cmd));
+      setClass(r.node, 'is-checked', !!cmd.checked?.());
+    }
+      if (!m.menu.panel.contains(t) && !m.btn.contains(t)) this.close();
+    this.body.append(this.contentsRow.el, this.colorRowEl.el, this.patternRow.el, this.modeRow.el, this.opacityRow.el, this.preserveRow.el);
+  show(): void {
+    const ca = this.contents === 'contentAware';
+    e.fillWith(k === 'history' ? { history: true } : color ? { color: { ...color } } : { patternId: this.patternId }, this.blend, this.opacity / 100, this.preserve);
+import { hexOf, type Engine, type RGB, type ToolId } from '../engine';
+import { toolList } from '../extensions/registry';
+import { el, q, setClass, setHtml, setTitle, setValue } from './dom';
+  private readonly buttons = new Map<ToolId, HTMLButtonElement>();
+    for (const t of toolList()) {
+      const b = el<HTMLButtonElement>('<button class="cv-tool" type="button"></button>');
+      b.setAttribute('aria-label', t.label);
+      setTitle(b, t.id === 'brush' ? 'Brush (B) · Eraser (E)' : `${t.label} (${t.key})`);
+      b.addEventListener('click', () => { engine.setTool(t.id); if (t.id === 'brush') engine.setBrushMode('paint'); });
+      this.buttons.set(t.id, b);
+    for (const t of toolList()) {
+      const b = this.buttons.get(t.id);
+      if (!b) continue;
+      const key = t.icon(this.engine);
+      setHtml(b, icon(key, 20), key);
+      setClass(b, 'is-active', this.engine.tool === t.id);
+```
+
 ## Pen and paths: paths in PSD, Path Selection, Freeform and Curvature Pens, path operations; single notices · _v0.95.0 (src/io/psd-paths.ts, src/engine/curve-fit.ts, src/extensions/tools/path-select.ts, freeform-pen.ts and curvature-pen.ts new; src/engine/paths.ts, src/engine/index.ts, src/engine/types.ts, src/extensions/tools/index.ts, src/io/psd.ts, src/ui/toast.ts, src/app.ts; tests/psd-paths.test.ts, tests/curve-fit.test.ts and six browser test files new)
 
 `psd-paths.ts`: `pathRecords`, `pathFromRecords`, `addPathResources`, `readPathResources`, with operations in length records. `curve-fit.ts`: `simplify`, `smoothAnchors`. `paths.ts`: `PathOp`, `PATH_OPS`, `SubPath.op`, `fillVector`, operations saved and read. In the engine, shape layers, Make Selection and Fill Path fill through `fillVector`; `paintPath` passes the path. Three tools registered with their ids. `psd.ts` writes and reads the Paths panel and keeps operations both ways; `readPsdFile` returns `paths`. `toast.ts` renews a notice already showing. Removed:

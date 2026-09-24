@@ -2,6 +2,23 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC.
 
+## 0.96.0 · 2026-09-23
+
+### Added
+
+- Menus have submenus, opened beside their rows, and scroll within the window with the scrollbar hidden; the menus are grouped as Photoshop's (File > Export, Layer > New Adjustment Layer, Filter > Blur and others).
+- The tool rail groups tools as Photoshop's toolbar does: one slot per group showing the last tool used, a flyout on press and hold or right-click, Shift with the key cycling the group.
+- The options bar scrolls sideways by wheel and shows chevrons where settings lie past its ends.
+- Settings dialogs for Fill Path (contents, mode, opacity, feather, anti-aliasing), Stroke Path (the tool, Simulate Pressure), New Layer (name, mode, opacity, clipping to the layer below), New Group (name) and Duplicate Layer (name); the quick forms stay on their buttons and shortcuts.
+- Tool options: Magic Wand Anti-alias; Marquee Feather and Style (Normal, Fixed Ratio, Fixed Size); Lasso Feather; Gradient Mode and Dither.
+- 20 more tests (1 unit, 19 browser): 263 in all.
+
+### Fixed
+
+- Rows the options bar hides (a Shape kind's own settings, for one) were still shown on screen; they are now hidden.
+- The Healing Brush's options bar was titled Clone Stamp; the Pen, Freeform Pen and Type bars had no title.
+- The layer context menu now closes on a click outside it.
+
 ## 0.95.0 · 2026-09-23
 
 ### Added
