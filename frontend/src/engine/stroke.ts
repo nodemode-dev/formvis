@@ -12,7 +12,9 @@ import type { SampledTip } from './abr';
  *  lands, a texture (Clone Stamp's source) can stand in for the brush colour, and on an alpha-coded mask the value
  *  under the brush moves toward the paint rather than only gaining coverage. */
 
-export interface StrokeStyle { diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null }
+/** `flow` (0 to 1, default 1) is Photoshop's Flow: how much paint each dab lays down, so paint builds within a stroke as
+ *  dabs overlap, up to the stroke's `opacity`, which caps the stroke as a whole. */
+export interface StrokeStyle { diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
 
 /** A sampled tip (from an .abr file) as the brush's colour with the tip's greys as alpha, its longer side `sizePx`. */
 function sampledTip(sizePx: number, tip: SampledTip, color: RGB): Surface {
@@ -156,7 +158,7 @@ export class PixelStroke {
   }
 
   private dab(p: Pt, pressure = 1): void {
-    const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = d ? computeOption(d.flow, info) : 1;
+    const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1);
     setMat(this.paintCtx, this.toLocal);
     if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
     const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;

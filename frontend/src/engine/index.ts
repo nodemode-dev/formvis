@@ -119,6 +119,9 @@ export class Engine {
   readonly projects: Project[] = [];
   tool: ToolId = 'move';
   brush: BrushSettings = { diameter: 40, hardness: 1, opacity: 1 };
+  /** The Brush and Eraser's Flow (0.01 to 1), as Photoshop's options bar has it: how much paint each dab lays down.
+   *  Kept apart from `brush`, which the retouch tools spread into their own strokes. */
+  brushFlow = 1;
   /** Pen pressure's effect on the Brush's size and flow; neutral until a preset or the options turn it on. */
   brushDynamics: BrushDynamics = noDynamics();
   /** The preset last applied, for the options bar; cleared by nothing, since changing a value is Photoshop's way too. */
@@ -2144,7 +2147,7 @@ export class Engine {
     const white = pick.target === 'mask' && luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
     const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : this.brushMode === 'erase' ? 'destination-out' : 'source-over';
     const color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : this.fg;
-    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color }, op, p.selection);
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, flow: this.brushFlow }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s };
     const last = this.lastBrush;
