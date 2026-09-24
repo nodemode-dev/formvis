@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The healing brushes' Mode · _v1.11.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/heal.ts, src/extensions/tools/healing-brush.ts; e2e/test_heal_modes.py new)
+
+`retouch.ts`: `HealBlend`, `HEAL_BLENDS`. Engine: `healBlend` (the full-strength heal recomposited in the mode; Replace whole pixels on the Dissolve pattern), `retouch.healBlendMode`, `retouch.spotBlendMode`; `healFromPatch` and `healPatch` apply it. Both tools: a Mode select. Removed:
+
+```ts
+import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealMode } from './retouch';
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7 };
+```
+
 ## Healing Brush Diffusion · _v1.10.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/healing-brush.ts; e2e/test_healing_diffusion.py new, tests/inside-distance.test.ts extended)
 
 `retouch.ts`: `scaleHealCorrection`, shared by Patch and the Healing Brush, allowing for the heal's opacity. Engine: `retouch.healDiffusion`; `healFromPatch` applies it; `patchSelection` calls the helper in place of its own loop. Healing Brush: the Diffusion row. Removed:

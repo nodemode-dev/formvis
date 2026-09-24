@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.11.0 · 2026-09-24
+
+### Added
+
+- The Healing Brush's and Spot Healing's Mode: Normal, Replace, Multiply, Screen, Darken, Lighten, Color and Luminosity. Replace keeps grain and texture at a soft brush's edge instead of averaging it away.
+- 3 more tests (browser): 292 in all.
+
 ## 1.10.0 · 2026-09-24
 
 ### Added
