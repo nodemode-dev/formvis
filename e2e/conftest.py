@@ -47,7 +47,9 @@ def dev_server():
 def browser(dev_server):
     with sync_playwright() as p:
         exe = os.environ.get("SONNY_E2E_CHROME") or None
-        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+        # WebGPU on SwiftShader, a software adapter, so the GPU blender's shaders can be checked here (Phase 18.2);
+        # sonny's Automatic renderer still falls back to the CPU on a software GPU, as the GPU tests expect.
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox", "--enable-unsafe-webgpu", "--enable-unsafe-swiftshader", "--use-webgpu-adapter=swiftshader"])
         yield b
         b.close()
 
