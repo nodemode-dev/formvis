@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.5.0 · 2026-09-24
+
+### Added
+
+- The Crop tool's W x H x Resolution: the crop is resampled to an exact width and height (px, in or cm) at a resolution, as one step; Front Image fills in the current document's size; New Crop Preset and Delete Crop Preset keep sizes on this device.
+- 1 more test (browser): 277 in all.
+
 ## 1.4.0 · 2026-09-24
 
 ### Changed

@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Crop W x H x Resolution and presets · _v1.5.0 (src/extensions/tools/crop.ts, src/engine/index.ts; e2e/test_crop_size.py new)
+
+Engine: `cropToSize` (crop, then `resampleImage`, in one history step). Crop tool: the `size` choice with its state, `toPx`, `sizePx`, `frontImage`, `sizeChanged`, saved presets (`loadPresets`, `savePresets`, `presetLabel`), the W, H, Unit, Resolution, Front Image, Preset, New Crop Preset and Delete Crop Preset rows, and `commit` resampling when a size is set. Removed:
+
+```ts
+  e.straightenCrop(r, angle, contentAware);
+```
+
 ## The reference app's project format and notice removed · _v1.4.0 (src/app.ts, src/io/project-io.ts, src/io/images.ts, src/engine/types.ts, src/engine/adjust.ts, src/engine/kernels.ts, src/ui/app-dialogs.ts, src/ui/icons.ts, src/styles/dialogs.css, src/version.ts; src/ui/notices.ts deleted)
 
 `project-io.ts` loses `serializeRefProject` and its helpers; `app.ts` its command and menu entry; `types.ts` and `project-io.ts` the constants only it used; `images.ts` the `.ref` extension. `notices.ts` is deleted, and About sonny no longer shows the notice; its style rule goes. The Open dialog's folder button reads Project folder. The unused `renderer` icon goes. Comments describe sonny's own project file. Version 1.4.0. Removed:
