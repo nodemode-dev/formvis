@@ -46,6 +46,7 @@ import { IMAGE_ACCEPT, decodeImage, isImageFile, isProjectFile } from './io/imag
 import { deserialize, serialize, serializeRefProject } from './io/project-io';
 import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { applyPrefs, loadPrefs } from './ui/prefs';
+import { HomeScreen } from './ui/home';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
@@ -207,6 +208,19 @@ export function startApp(): void {
       try { await openOpened(await api.openLibrary(name), name); noteRecent(name); return true; } catch (err) { if (/not found/i.test(message(err))) keepRecent(recent.filter((n) => n !== name)); toast(message(err), 'error'); return false; }
     });
   }
+
+  // The Home screen over the canvas; the brand mark is its Home button, as Photoshop's.
+  const home = new HomeScreen(q(root, '.cv-stage'), {
+    engine, autoShow: () => loadPrefs().autoShowHome, recent: () => recent,
+    openRecent: (name) => { void openLibrary(name); }, run: (c) => { commands.run(c); },
+  });
+  const brand = q(root, '.cv-brand');
+  brand.setAttribute('role', 'button');
+  brand.setAttribute('tabindex', '0');
+  brand.setAttribute('aria-label', 'Home');
+  brand.title = 'Home';
+  brand.addEventListener('click', () => home.show());
+  brand.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); home.show(); } });
 
   async function openFiles(files: File[]): Promise<void> {
     await engine.task(async () => {
@@ -653,7 +667,7 @@ export function startApp(): void {
     color: new ColorPickerDialog(engine),
     liveMask: new LiveMaskDialog(),
     open: new OpenDialog({ openLibrary, openFiles, openFolder }),
-    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; }),
+    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); }),
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
     adjust: new AdjustPanel(engine),

@@ -181,6 +181,7 @@ export class SettingsDialog extends Dialog {
   private readonly memoryRow = sliderRow('History memory (MB)', 16, 4096, 16, (v) => this.change({ historyMB: v }));
   private readonly redrawRow = checkRow('Redraw only what a brush stroke changed', (v) => this.change({ regionRedraws: v }));
   private readonly recoveryRow = selectRow('Keep recovery information after changes, within', RECOVERY_CHOICES, (v) => this.change({ recoverySeconds: Number(v) }));
+  private readonly homeRow = checkRow('Auto show the Home Screen', (v) => this.change({ autoShowHome: v }));
 
   /** Edit > Preferences (Ctrl+,), laid out as Photoshop's: sections on the left, each section's settings on the right,
    *  kept on this device. `onPrefs` puts a change into effect. */
@@ -204,6 +205,7 @@ export class SettingsDialog extends Dialog {
     };
     const accentRow = el('<label class="cv-field"><span>Accent</span></label>');
     accentRow.appendChild(this.accent);
+    add('General', this.homeRow.el, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
     add('Interface', row, accentRow, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device.</p>'));
     add('Performance', this.statesRow.el, this.memoryRow.el, this.redrawRow.el,
       el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'));
@@ -219,7 +221,7 @@ export class SettingsDialog extends Dialog {
       this.sync();
     });
     this.accent.addEventListener('input', () => { setAccent(this.accent.value); this.sync(); });
-    this.showSection('Interface');
+    this.showSection('General');
   }
 
   /** Opens on a section, Interface unless named. */
@@ -229,6 +231,7 @@ export class SettingsDialog extends Dialog {
     this.memoryRow.set(this.prefs.historyMB);
     this.redrawRow.set(this.prefs.regionRedraws);
     this.recoveryRow.set(String(this.prefs.recoverySeconds));
+    this.homeRow.set(this.prefs.autoShowHome);
     if (section && this.sections.has(section)) this.showSection(section);
     this.sync();
     this.open();
