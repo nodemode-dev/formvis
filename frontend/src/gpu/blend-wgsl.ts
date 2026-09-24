@@ -13,12 +13,13 @@ export const BLEND_IDS: readonly BlendMode[] = [
 export const blendIndex = (m: BlendMode): number => Math.max(0, BLEND_IDS.indexOf(m));
 
 export const COMPOSITE_WGSL = /* wgsl */ `
-struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, pad: u32 };
+struct Layer { inv: mat3x3<f32>, size: vec2<f32>, opacity: f32, mode: u32, minv: mat3x3<f32>, msize: vec2<f32>, hasMask: u32, hasClip: u32 };
 @group(0) @binding(0) var backdrop: texture_2d<f32>;
 @group(0) @binding(1) var source: texture_2d<f32>;
 @group(0) @binding(2) var smp: sampler;
 @group(0) @binding(3) var<uniform> layer: Layer;
 @group(0) @binding(4) var maskTex: texture_2d<f32>;
+@group(0) @binding(5) var clipTex: texture_2d<f32>;
 
 /** A layer mask's coverage at p, as the CPU renderer applies masks: outside the mask's rectangle 1, inside its alpha. */
 fn coverage(p: vec2<f32>) -> f32 {
@@ -101,7 +102,16 @@ fn dissolveNoise(x: i32, y: i32) -> f32 {
 @fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
   let px = vec2<i32>(floor(pos.xy));
   let bd = textureLoad(backdrop, px, 0);
-  let cov = coverage(pos.xy);
+  var cov = coverage(pos.xy);
+  // A clipped layer: its clipping base's coverage at this pixel (rendered by mode 102 before the layers).
+  if (layer.hasClip == 1u) { cov = cov * textureLoad(clipTex, px, 0).a; }
+  // A clipping base's coverage (mode 102), as the CPU renderer's clipCoverage draws it: the base's alpha at its opacity
+  // through its own mask, nothing outside it.
+  if (layer.mode == 102u) {
+    let qb = layer.inv * vec3<f32>(pos.xy, 1.0);
+    if (qb.x < 0.0 || qb.y < 0.0 || qb.x >= layer.size.x || qb.y >= layer.size.y) { return vec4<f32>(0.0); }
+    return vec4<f32>(0.0, 0.0, 0.0, textureSampleLevel(source, smp, qb.xy / layer.size, 0.0).a * layer.opacity * cov);
+  }
   // An adjustment's lookup table (Phase 18.5), as the CPU renderer applies it: each channel looked up by its 8-bit value,
   // then mixed in by opacity (src += (adjusted - src) * opacity), alpha kept, transparent pixels left alone.
   if (layer.mode == 100u) {

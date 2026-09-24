@@ -1,6 +1,6 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
-import { LUT3_MODE, LUT_MODE, type Checker, type DisplayLayer } from './display';
+import { CLIP_MODE, LUT3_MODE, LUT_MODE, type Checker, type DisplayClip, type DisplayLayer } from './display';
 
 /** The display on WebGL2 (Phase 18.4): the GPU path where WebGPU is missing, as in the Linux desktop shell, whose
  *  webview has none. The same passes as the WebGPU display and the same maths as blend-wgsl.ts, in GLSL ES 3.00: layers
@@ -17,6 +17,7 @@ precision highp float; precision highp int;
 uniform sampler2D backdrop; uniform sampler2D source;
 uniform mat3 inv; uniform vec2 size; uniform float opacity; uniform int mode; uniform float H;
 uniform sampler2D maskTex; uniform mat3 minv; uniform vec2 msize; uniform int hasMask;
+uniform sampler2D clipTex; uniform int hasClip;
 out vec4 outColor;
 float coverage(vec2 p) {
   if (hasMask == 0) return 1.0;
@@ -54,6 +55,12 @@ void main() {
   ivec2 fb = ivec2(gl_FragCoord.xy);
   vec4 bd = texelFetch(backdrop, fb, 0);
   float cov = coverage(vec2(gl_FragCoord.x, H - gl_FragCoord.y));
+  if (hasClip == 1) cov *= texelFetch(clipTex, fb, 0).a;
+  if (mode == 102) {
+    vec3 qb = inv * vec3(gl_FragCoord.x, H - gl_FragCoord.y, 1.0);
+    if (qb.x < 0.0 || qb.y < 0.0 || qb.x >= size.x || qb.y >= size.y) { outColor = vec4(0.0); return; }
+    outColor = vec4(0.0, 0.0, 0.0, texture(source, qb.xy / size).a * opacity * cov); return;
+  }
   if (mode == 100) {
     if (bd.a <= 0.0) { outColor = bd; return; }
     ivec3 i = ivec3(floor(bd.rgb * 255.0 + 0.5));
@@ -177,34 +184,18 @@ export class GlDisplay {
     gl.uniform1i(u('maskTex'), 2);
     gl.uniform1f(u('H'), H);
     const used = new Set<object>(), filter = zoom >= 2 ? gl.NEAREST : gl.LINEAR;
+    gl.uniform1i(u('clipTex'), 3);
+    // Each clipping base's coverage, once per frame, into its own screen-sized target (mode 102).
+    const clipOut = new Map<DisplayClip, WebGLTexture>();
+    for (const l of layers) {
+      if (!l.clip || clipOut.has(l.clip)) continue;
+      const t = this.clipTarget(clipOut.size, W, H), c = l.clip;
+      this.drawLayer({ image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, null, this.blank(), t.fb, view, filter, used, u);
+      clipOut.set(c, t.tex);
+    }
     for (const l of layers) {
       if (l.opacity <= 0 || l.width < 1 || l.height < 1) continue;
-      used.add(l.lut ?? (l.image as object));
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, this.texture(l));
-      for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
-      const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
-      gl.uniformMatrix3fv(u('inv'), false, [ia, ib, 0, ic, id, 0, ie, iff, 1]);
-      gl.uniform2f(u('size'), l.width, l.height);
-      gl.uniform1f(u('opacity'), Math.min(1, Math.max(0, l.opacity)));
-      gl.uniform1i(u('mode'), l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend));
-      gl.activeTexture(gl.TEXTURE2);
-      if (l.mask) {
-        const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
-        used.add(mk.image);
-        gl.bindTexture(gl.TEXTURE_2D, this.texture({ image: mk.image, version: mk.version, width: mk.width, height: mk.height, matrix: mk.matrix, opacity: 1, blend: 'normal' }));
-        for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
-        gl.uniformMatrix3fv(u('minv'), false, [ma, mb, 0, mc, md, 0, me, mf, 1]);
-        gl.uniform2f(u('msize'), mk.width, mk.height);
-        gl.uniform1i(u('hasMask'), 1);
-      } else {
-        gl.bindTexture(gl.TEXTURE_2D, this.blank());
-        gl.uniform1i(u('hasMask'), 0);
-      }
-      gl.bindFramebuffer(gl.FRAMEBUFFER, b.fb);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, a.tex);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      this.drawLayer(l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), l.clip ? clipOut.get(l.clip) ?? null : null, a.tex, b.fb, view, filter, used, u);
       [a, b] = [b, a];
     }
     gl.useProgram(this.pres);
@@ -235,6 +226,50 @@ export class GlDisplay {
     gl.deleteTexture(t.tex);
     gl.deleteFramebuffer(t.fb);
     return px;
+  }
+
+  /** One composite pass: `l` over `backdrop` into framebuffer `fb`, in shader `mode`, clipped by `clip` (a coverage texture). */
+  private drawLayer(l: DisplayLayer, mode: number, clip: WebGLTexture | null, backdrop: WebGLTexture, fb: WebGLFramebuffer, view: Mat, filter: number, used: Set<object>, u: (n: string) => WebGLUniformLocation | null): void {
+    const gl = this.gl;
+    used.add(l.lut ?? (l.image as object));
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.texture(l));
+    for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
+    const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
+    gl.uniformMatrix3fv(u('inv'), false, [ia, ib, 0, ic, id, 0, ie, iff, 1]);
+    gl.uniform2f(u('size'), l.width, l.height);
+    gl.uniform1f(u('opacity'), Math.min(1, Math.max(0, l.opacity)));
+    gl.uniform1i(u('mode'), mode);
+    gl.activeTexture(gl.TEXTURE2);
+    if (l.mask) {
+      const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
+      used.add(mk.image);
+      gl.bindTexture(gl.TEXTURE_2D, this.texture({ image: mk.image, version: mk.version, width: mk.width, height: mk.height, matrix: mk.matrix, opacity: 1, blend: 'normal' }));
+      for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
+      gl.uniformMatrix3fv(u('minv'), false, [ma, mb, 0, mc, md, 0, me, mf, 1]);
+      gl.uniform2f(u('msize'), mk.width, mk.height);
+      gl.uniform1i(u('hasMask'), 1);
+    } else {
+      gl.bindTexture(gl.TEXTURE_2D, this.blank());
+      gl.uniform1i(u('hasMask'), 0);
+    }
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, clip ?? this.blank());
+    gl.uniform1i(u('hasClip'), clip ? 1 : 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, backdrop);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+  }
+
+  /** The i-th clip coverage target at W x H, kept between frames and remade when the size changes. */
+  private clipPool: { tex: WebGLTexture; fb: WebGLFramebuffer; w: number; h: number }[] = [];
+  private clipTarget(i: number, W: number, H: number): { tex: WebGLTexture; fb: WebGLFramebuffer } {
+    const t = this.clipPool[i];
+    if (t && t.w === W && t.h === H) return t;
+    if (t) { this.gl.deleteTexture(t.tex); this.gl.deleteFramebuffer(t.fb); }
+    this.clipPool[i] = { ...this.target(W, H), w: W, h: H };
+    return this.clipPool[i];
   }
 
   /** A 1 x 1 texture bound where a layer has no mask (the shader ignores it). */

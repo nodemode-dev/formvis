@@ -6,7 +6,11 @@ const TEX = { COPY_SRC: 0x01, COPY_DST: 0x02, TEXTURE_BINDING: 0x04, RENDER_ATTA
 const BUF = { MAP_READ: 0x0001, COPY_DST: 0x0008, UNIFORM: 0x0040 } as const;
 
 export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat }
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; mask?: DisplayMask; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+/** A clipping base: its coverage (alpha x opacity x its mask) clips every layer that carries this same object. */
+export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask }
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; mask?: DisplayMask; clip?: DisplayClip; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+/** The shader mode that renders a clipping base's coverage. */
+export const CLIP_MODE = 102;
 /** The shader modes for an adjustment's lookup table (Phase 18.5), after the 27 blend modes: per channel, and 3D. */
 export const LUT_MODE = 100;
 export const LUT3_MODE = 101;
@@ -99,36 +103,17 @@ export class GpuDisplay {
     let [a, b] = this.acc;
     const enc = d.createCommandEncoder(), used = new Set<object>(), buffers: GPUBuffer[] = [], sampler = zoom >= 2 ? this.nearest : this.linear;
     enc.beginRenderPass({ colorAttachments: [{ view: a.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] }).end();
+    // Each clipping base's coverage, once per frame, into its own screen-sized texture (mode 102).
+    const clipTex = new Map<DisplayClip, GPUTexture>();
+    for (const l of layers) {
+      if (!l.clip || clipTex.has(l.clip)) continue;
+      const t = this.clipTarget(clipTex.size, W, H), c = l.clip;
+      this.layerPass(enc, this.blank(), t, { image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, null, sampler, view, used, buffers);
+      clipTex.set(c, t);
+    }
     for (const l of layers) {
       if (l.opacity <= 0 || l.width < 1 || l.height < 1) continue;
-      used.add(l.lut ?? (l.image as object));
-      const tex = this.texture(l);
-      const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
-      // 128 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
-      // size (112), whether there is one (120).
-      const raw = new ArrayBuffer(128), f = new Float32Array(raw), u32 = new Uint32Array(raw);
-      f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
-      u32[15] = l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend);
-      let maskTex = this.blank();
-      if (l.mask) {
-        const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
-        f.set([ma, mb, 0, 0, mc, md, 0, 0, me, mf, 1, 0, mk.width, mk.height], 16);
-        u32[30] = 1;
-        used.add(mk.image);
-        maskTex = this.texture({ image: mk.image, version: mk.version, width: mk.width, height: mk.height, matrix: mk.matrix, opacity: 1, blend: 'normal' });
-      }
-      const ub = d.createBuffer({ size: 128, usage: BUF.UNIFORM | BUF.COPY_DST });
-      d.queue.writeBuffer(ub, 0, raw);
-      buffers.push(ub);
-      const bind = d.createBindGroup({ layout: this.composite.getBindGroupLayout(0), entries: [
-        { binding: 0, resource: a.createView() }, { binding: 1, resource: tex.createView() }, { binding: 2, resource: sampler }, { binding: 3, resource: { buffer: ub } },
-        { binding: 4, resource: maskTex.createView() },
-      ] });
-      const pass = enc.beginRenderPass({ colorAttachments: [{ view: b.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
-      pass.setPipeline(this.composite);
-      pass.setBindGroup(0, bind);
-      pass.draw(3);
-      pass.end();
+      this.layerPass(enc, a, b, l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), l.clip ? clipTex.get(l.clip) ?? null : null, sampler, view, used, buffers);
       [a, b] = [b, a];
     }
     const pu = d.createBuffer({ size: 64, usage: BUF.UNIFORM | BUF.COPY_DST });
@@ -162,6 +147,50 @@ export class GpuDisplay {
     buf.destroy();
     out.destroy();
     return px;
+  }
+
+  /** One composite pass: `l` over `backdrop` into `target`, in shader `mode`, clipped by `clip` (a coverage texture). */
+  private layerPass(enc: GPUCommandEncoder, backdrop: GPUTexture, target: GPUTexture, l: DisplayLayer, mode: number, clip: GPUTexture | null, sampler: GPUSampler, view: Mat, used: Set<object>, buffers: GPUBuffer[]): void {
+    const d = this.device;
+    used.add(l.lut ?? (l.image as object));
+    const tex = this.texture(l);
+    const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
+    // 128 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
+    // size (112), whether there is one (120), whether the layer is clipped (124).
+    const raw = new ArrayBuffer(128), f = new Float32Array(raw), u32 = new Uint32Array(raw);
+    f.set([ia, ib, 0, 0, ic, id, 0, 0, ie, iff, 1, 0, l.width, l.height, Math.min(1, Math.max(0, l.opacity))]);
+    u32[15] = mode;
+    let maskTex = this.blank();
+    if (l.mask) {
+      const mk = l.mask, [ma, mb, mc, md, me, mf] = invert(mul(view, mk.matrix));
+      f.set([ma, mb, 0, 0, mc, md, 0, 0, me, mf, 1, 0, mk.width, mk.height], 16);
+      u32[30] = 1;
+      used.add(mk.image);
+      maskTex = this.texture({ image: mk.image, version: mk.version, width: mk.width, height: mk.height, matrix: mk.matrix, opacity: 1, blend: 'normal' });
+    }
+    if (clip) u32[31] = 1;
+    const ub = d.createBuffer({ size: 128, usage: BUF.UNIFORM | BUF.COPY_DST });
+    d.queue.writeBuffer(ub, 0, raw);
+    buffers.push(ub);
+    const bind = d.createBindGroup({ layout: this.composite.getBindGroupLayout(0), entries: [
+      { binding: 0, resource: backdrop.createView() }, { binding: 1, resource: tex.createView() }, { binding: 2, resource: sampler }, { binding: 3, resource: { buffer: ub } },
+      { binding: 4, resource: maskTex.createView() }, { binding: 5, resource: (clip ?? this.blank()).createView() },
+    ] });
+    const pass = enc.beginRenderPass({ colorAttachments: [{ view: target.createView(), loadOp: 'clear', storeOp: 'store', clearValue: { r: 0, g: 0, b: 0, a: 0 } }] });
+    pass.setPipeline(this.composite);
+    pass.setBindGroup(0, bind);
+    pass.draw(3);
+    pass.end();
+  }
+
+  /** The i-th clip coverage texture at W x H, kept between frames and remade when the size changes. */
+  private clipPool: GPUTexture[] = [];
+  private clipTarget(i: number, W: number, H: number): GPUTexture {
+    const t = this.clipPool[i];
+    if (t && t.width === W && t.height === H) return t;
+    t?.destroy();
+    this.clipPool[i] = this.device.createTexture({ size: [W, H], format: 'rgba8unorm', usage: TEX.TEXTURE_BINDING | TEX.RENDER_ATTACHMENT });
+    return this.clipPool[i];
   }
 
   /** A 1 x 1 texture bound where a layer has no mask (the binding must always be filled; the shader ignores it). */
