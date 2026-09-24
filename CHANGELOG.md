@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.14.0 · 2026-09-24
+
+### Added
+
+- The Healing Brush's Source: Pattern heals from a chosen pattern, with no source point to set.
+- The Patch tool's Pattern and Use Pattern (Normal mode): heal a selection from a pattern, blended to its surroundings.
+- 3 more tests (browser): 299 in all.
+
 ## 1.13.0 · 2026-09-24
 
 ### Added

@@ -2,6 +2,31 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Pattern sources for the Healing Brush and Patch · _v1.14.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/healing-brush.ts, src/extensions/tools/patch.ts; e2e/test_heal_patterns.py new)
+
+`retouch.ts`: `healFromSource` and `scaleHealCorrection` take an optional separate `source`. Engine: `patternSurface`, `patchWithPattern`, `retouch.healSource`, `healPattern`, `patchPattern`; `beginRetouchStroke` needs no source point with Source: Pattern; `healFromPatch` heals from the pattern in both paths. Healing Brush: Source and Pattern rows; Patch: Pattern and Use Pattern in Normal mode. Removed:
+
+```ts
+import { patternById } from './patterns';
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false };
+      const off = this.cloneStrokeOffset(pt);
+      this.cloneOffset = off;
+      texture = { surface: kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), dx: off.x, dy: off.y };
+      if (!healFromSource(pmS, hard, W, H, 1, off.x, off.y)) return null;
+      scaleHealCorrection(healed.data, base.data, hard, W, H, off.x, off.y, this.retouch.healDiffusion, 1, 1);
+    if (!healFromSource(pm, s.coverageAlpha(), r.width, r.height, this.brush.opacity, off.x, off.y)) return null;
+    scaleHealCorrection(out.data, before.data, s.coverageAlpha(), r.width, r.height, off.x, off.y, this.retouch.healDiffusion, 1, this.brush.opacity);
+export function scaleHealCorrection(out: Uint8ClampedArray, before: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, dx: number, dy: number, diffusion: number, colour: number, opacity = 1): void {
+  const dist = diff < 7 ? insideDistance(coverage, W, H) : null, L = 2 ** diff;
+      const b = before[i * 4 + ch], full = b + (out[i * 4 + ch] - b) / op, raw = before[s + ch];
+export function healFromSource(rgba: Uint8ClampedArray, coverage: Uint8Array, W: number, H: number, opacity: number, dx: number, dy: number): boolean {
+  const { win } = hw, ww = win.w, n = ww * win.h, original = rgba.slice();
+    for (let c = 0; c < 4; c++) v[p * 4 + c] = original[t + c] - original[s + c];
+    for (let c = 0; c < 4; c++) f[c] = v[p * 4 + c] + original[s + c];
+import type { Pt } from '../../engine';
+import type { Pt } from '../../engine';
+```
+
 ## Patch Sample All Layers · _v1.13.0 (src/engine/index.ts, src/extensions/tools/patch.ts; e2e/test_patch_sample_all.py new)
 
 Engine: `retouch.patchSampleAll`; `patchSelection` in Content-Aware mode with it patches the composite (`healSampleSurface`, `rasterSpace`) and lays the result on through the selection (`layHeal`). Patch tool: the Sample All Layers row, in Content-Aware mode. Removed:
