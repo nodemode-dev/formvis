@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.15.0 · 2026-09-24
+
+### Added
+
+- Preferences > Performance > Graphics Processor Settings: the detected graphics processor, Use Graphics Processor, Renderer (Automatic, WebGPU, WebGL2 or CPU) and a GPU memory limit; the GPU mode in use shows in the status bar. If the graphics processor fails to start, sonny turns it off and says so. Drawing still runs on the CPU; the GPU renderer comes next.
+- 9 more tests (7 unit, 2 browser): 308 in all.
+
+### Changed
+
+- The Preferences window keeps one size; a long section scrolls inside it.
+
 ## 1.14.0 · 2026-09-24
 
 ### Added

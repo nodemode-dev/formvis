@@ -2,6 +2,27 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## GPU detection and the renderer choice · _v1.15.0 (src/gpu/probe.ts new; src/app.ts, src/ui/app-dialogs.ts, src/ui/prefs.ts, src/ui/status.ts, src/styles/dialogs.css; tests/gpu-choice.test.ts and e2e/test_gpu_prefs.py new)
+
+`gpu/probe.ts`: `probeGpu`, `chooseRenderer`, `isSoftware`, `detectedName`, `modeLabel`, `RENDERER_CHOICES`, the start marker (`gpuStartFailedLastTime`, `markGpuStarting`, `markGpuStarted`). `Prefs` gains `useGpu`, `renderer`, `gpuMemoryMB`. Preferences > Performance: Graphics Processor Settings (`gpuName`, `gpuUseRow`, `rendererRow`, `gpuMemoryRow`, `gpuMode`, `setGpu`). `StatusBar.setGpu` and `.cv-st-gpu`. `app.ts`: `syncGpu` and the start-up probe. `.cv-prefs` keeps one height; `.cv-prefs-pages` scrolls; `.cv-prefs-sub` new. Removed:
+
+```ts
+import { applyPrefs, loadPrefs } from './ui/prefs';
+    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); }),
+```
+
+```css
+.cv-prefs { display: grid; grid-template-columns: 148px minmax(0, 1fr); gap: var(--space-4); min-height: 300px; }
+```
+
+```ts
+      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'));
+ *  kept for crash recovery. */
+export interface Prefs { historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean }
+export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true };
+      `<span class="cv-st-busy">${icon('loading', 12)}Working</span><span class="cv-st-engine"></span><span class="cv-st-hint"></span>`);
+```
+
 ## Pattern sources for the Healing Brush and Patch · _v1.14.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/healing-brush.ts, src/extensions/tools/patch.ts; e2e/test_heal_patterns.py new)
 
 `retouch.ts`: `healFromSource` and `scaleHealCorrection` take an optional separate `source`. Engine: `patternSurface`, `patchWithPattern`, `retouch.healSource`, `healPattern`, `patchPattern`; `beginRetouchStroke` needs no source point with Source: Pattern; `healFromPatch` heals from the pattern in both paths. Healing Brush: Source and Pattern rows; Patch: Pattern and Use Pattern in Normal mode. Removed:
