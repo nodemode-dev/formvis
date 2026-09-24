@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.9.0 · 2026-09-24
+
+### Added
+
+- The Patch tool's Diffusion (Normal mode, 1 to 7: lower keeps more of the source's own texture), and Content-Aware's Structure (1 to 7) and Color (0 to 10: 0 is a plain copy, 10 the full colour blend). The defaults give the same results as before.
+- 5 more tests (2 unit, 3 browser): 285 in all.
+
 ## 1.8.0 · 2026-09-24
 
 ### Added

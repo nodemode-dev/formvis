@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Patch Diffusion, Structure and Color · _v1.9.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/patch.ts; tests/inside-distance.test.ts and e2e/test_patch_settings.py new)
+
+`retouch.ts`: `insideDistance`. Engine: `retouch.patchDiffusion`, `patchStructure`, `patchColor`; `patchSelection` scales the heal's colour correction by Diffusion (Normal) and Color (Content-Aware) and sizes the rebuilt edge band by Structure. Patch tool: the three rows, each shown in its mode. Removed:
+
+```ts
+import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false };
+          const band = new Uint8Array(W * H), R = 3;
+```
+
 ## The Layers panel moves in the dock · _v1.8.0 (src/ui/layers.ts, src/ui/dock.ts, src/styles/panels.css; e2e/test_dock_layers.py new)
 
 `LayersPanel` wraps its parts in `section.cv-layers-panel`. `.cv-layers` is a flex column; `.cv-layers-panel` takes the space left, with its own `[hidden]` rule. `DOCK_PANELS` gains Layers, first; `load` puts a panel missing from a saved arrangement at its default place. Removed:
