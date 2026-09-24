@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.16.0 · 2026-09-24
+
+### Added
+
+- A WebGPU blender that blends layers on the graphics processor in all 27 blend modes, matching the CPU renderer to within 3 levels in 255 in every mode. The canvas does not draw through it yet; that is the next step.
+- 27 more tests (browser): 335 in all.
+
 ## 1.15.0 · 2026-09-24
 
 ### Added

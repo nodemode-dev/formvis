@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The WebGPU blender · _v1.16.0 (src/gpu/blender.ts and src/gpu/blend-wgsl.ts new; e2e/test_gpu_blend.py new; e2e/conftest.py)
+
+`blender.ts`: `GpuBlender` (`create`, `composite`, `read`, `destroy`), `GpuLayer`, the specification's usage flags. `blend-wgsl.ts`: `COMPOSITE_WGSL`, `BLEND_IDS`, `blendIndex`. Nothing removed from src; not yet wired to the display. The test browser launches with WebGPU on SwiftShader; removed from e2e/conftest.py:
+
+```py
+        b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
+```
+
 ## GPU detection and the renderer choice · _v1.15.0 (src/gpu/probe.ts new; src/app.ts, src/ui/app-dialogs.ts, src/ui/prefs.ts, src/ui/status.ts, src/styles/dialogs.css; tests/gpu-choice.test.ts and e2e/test_gpu_prefs.py new)
 
 `gpu/probe.ts`: `probeGpu`, `chooseRenderer`, `isSoftware`, `detectedName`, `modeLabel`, `RENDERER_CHOICES`, the start marker (`gpuStartFailedLastTime`, `markGpuStarting`, `markGpuStarted`). `Prefs` gains `useGpu`, `renderer`, `gpuMemoryMB`. Preferences > Performance: Graphics Processor Settings (`gpuName`, `gpuUseRow`, `rendererRow`, `gpuMemoryRow`, `gpuMode`, `setGpu`). `StatusBar.setGpu` and `.cv-st-gpu`. `app.ts`: `syncGpu` and the start-up probe. `.cv-prefs` keeps one height; `.cv-prefs-pages` scrolls; `.cv-prefs-sub` new. Removed:
