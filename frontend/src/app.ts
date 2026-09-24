@@ -47,6 +47,7 @@ import { deserialize, serialize } from './io/project-io';
 import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { applyPrefs, loadPrefs } from './ui/prefs';
 import { HomeScreen } from './ui/home';
+import { DOCK_PANELS, Dock } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
@@ -157,6 +158,7 @@ export function startApp(): void {
   new PathsPanel(q(root, '.cv-layers'), engine);
   new TimelinePanel(q(root, '.cv-layers'), engine);
   new HistoryPanel(q(root, '.cv-layers'), engine);
+  const dock = new Dock(q(root, '.cv-layers'));
   new Rail(q(root, '.cv-rail'), engine);
   new OptionsBar(q(root, '.cv-options'), engine);
   const status = new StatusBar(q(root, '.cv-status'), engine);
@@ -754,6 +756,8 @@ export function startApp(): void {
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
     { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
     { id: 'settings', label: 'Preferences...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
+    ...DOCK_PANELS.map((pn) => ({ id: `panel-${pn.id}`, label: pn.label, checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) })),
+    { id: 'reset-panels', label: 'Reset Panels', run: () => dock.reset() },
     { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
@@ -936,6 +940,7 @@ export function startApp(): void {
       { label: 'Noise', items: ['filter-addNoise'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }] },
+    { label: 'Window', items: [...DOCK_PANELS.map((pn) => `panel-${pn.id}`), '-', 'reset-panels'] },
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);

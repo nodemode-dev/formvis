@@ -1,4 +1,9 @@
-.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; min-height: 0; background: var(--bg-secondary); }
+.cv-layers { display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto auto auto auto; min-height: 0; background: var(--bg-secondary); position: relative; }
+/* Moving panels in the dock: the header is the grip; the line shows where a dragged panel will land. */
+.cv-dock-grip { cursor: grab; }
+.cv-dock-grip:active { cursor: grabbing; }
+.cv-dock-marker { position: absolute; left: 0; right: 0; height: 2px; background: var(--accent-color); pointer-events: none; z-index: var(--z-raised); }
+.cv-dock-marker[hidden] { display: none; }
 .cv-panel-head { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: var(--space-2); height: 36px; padding: 0 var(--space-2) 0 var(--space-3); border-bottom: 1px solid var(--border-color); }
 .cv-panel-title { display: inline-flex; align-items: center; gap: var(--space-2); font-size: var(--fs-11); font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
 .cv-layer-props { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); }
