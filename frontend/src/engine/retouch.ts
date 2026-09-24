@@ -219,6 +219,32 @@ function healWindow(coverage: Uint8Array, W: number, H: number): { win: HealWind
   return win.ring.length ? { win, extent, ringWidth, inSpot } : null;
 }
 
+/** For each pixel with coverage at or above 128, its distance in pixels to the nearest pixel below it (the area's edge),
+ *  by the standard two-pass chamfer transform (steps 3 and 4, divided by 3); 0 outside. The Patch tool's Diffusion
+ *  fades its colour correction with this distance. */
+export function insideDistance(coverage: Uint8Array, W: number, H: number): Float32Array {
+  const INF = 1e9, d = new Float32Array(W * H);
+  for (let i = 0; i < d.length; i++) d[i] = coverage[i] >= 128 ? INF : 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x;
+    if (!d[i]) continue;
+    let v = d[i];
+    if (x > 0) v = Math.min(v, d[i - 1] + 3); else v = Math.min(v, 3);
+    if (y > 0) { v = Math.min(v, d[i - W] + 3); if (x > 0) v = Math.min(v, d[i - W - 1] + 4); if (x < W - 1) v = Math.min(v, d[i - W + 1] + 4); } else v = Math.min(v, 3);
+    d[i] = v;
+  }
+  for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) {
+    const i = y * W + x;
+    if (!d[i]) continue;
+    let v = d[i];
+    if (x < W - 1) v = Math.min(v, d[i + 1] + 3); else v = Math.min(v, 3);
+    if (y < H - 1) { v = Math.min(v, d[i + W] + 3); if (x < W - 1) v = Math.min(v, d[i + W + 1] + 4); if (x > 0) v = Math.min(v, d[i + W - 1] + 4); } else v = Math.min(v, 3);
+    d[i] = v;
+  }
+  for (let i = 0; i < d.length; i++) d[i] /= 3;
+  return d;
+}
+
 /** Healing Brush and Patch: fills the pixels under `coverage` from the pixels (dx, dy) away, then corrects them with the
  *  harmonic membrane so they meet the area's edge without a seam, as in Poisson image editing. The source is read from
  *  the pixels as they were, since it may overlap the area, and is clamped to the image's edge. Returns false when
