@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Clone Source: five sources and the overlay · _v1.7.0 (src/extensions/tools/clone.ts, src/engine/index.ts; e2e/test_clone_slots.py new)
+
+Engine: `cloneSlots`, `cloneSlot`, `selectCloneSlot`, `resetCloneTransform`, `cloneOverlay`, `cloneOverlayImage` (with `cloneFullCache`); `setCloneSource` fills the chosen slot. Clone Stamp: the Source row, Reset Transform, Show Overlay, Clipped, Overlay opacity and Auto Hide; its overlay draws clipped or the whole source by those settings. Removed:
+
+```ts
+import type { Pt } from '../../engine';
+    const e = ctx.engine, v = ctx.view();
+    // Between strokes, the circle previews what a click would stamp; Option (picking a source) hides it.
+    if (hover && !picking) {
+      const pv = e.clonePreview(hover, v.zoom * (window.devicePixelRatio || 1));
+      if (pv) {
+        const c = v.toScreen(hover), size = e.brush.diameter * v.zoom;
+        g.save();
+        g.globalAlpha = e.brush.opacity;
+        g.drawImage(pv, c.x - size / 2, c.y - size / 2, size, size);
+        g.restore();
+```
+
 ## Panels move in the dock; the Window menu · _v1.6.0 (src/app.ts, src/styles/panels.css; src/ui/dock.ts and e2e/test_dock.py new)
 
 `dock.ts`: `DOCK_PANELS`, `Dock` (drag a header to reorder, `toggle`, `reset`, the arrangement kept on this device). `app.ts` makes the dock after the panels, adds a command per panel and Reset Panels, and a Window menu. `.cv-layers` becomes the marker's positioning context; `.cv-dock-grip` and `.cv-dock-marker` are new. Removed:

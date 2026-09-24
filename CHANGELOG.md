@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.7.0 · 2026-09-24
+
+### Added
+
+- The Clone Stamp's five sources: choose a slot 1 to 5, Alt-click to set its source; each slot keeps its own point, scale, angle and flips. Reset Transform returns them to their defaults.
+- The Clone Stamp's overlay settings: Show Overlay, Clipped (off shows the whole source where a stroke would copy it), Overlay opacity and Auto Hide while painting.
+- 1 more test (browser): 279 in all.
+
 ## 1.6.0 · 2026-09-24
 
 ### Added
