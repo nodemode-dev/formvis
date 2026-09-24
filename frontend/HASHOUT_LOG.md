@@ -2,6 +2,26 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Healing Brush Diffusion · _v1.10.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/healing-brush.ts; e2e/test_healing_diffusion.py new, tests/inside-distance.test.ts extended)
+
+`retouch.ts`: `scaleHealCorrection`, shared by Patch and the Healing Brush, allowing for the heal's opacity. Engine: `retouch.healDiffusion`; `healFromPatch` applies it; `patchSelection` calls the helper in place of its own loop. Healing Brush: the Diffusion row. Removed:
+
+```ts
+import { WarpStroke, contentFill, fillTransparent, healFromSource, insideDistance, premultiply, spotHeal, unpremultiply, type HealMode } from './retouch';
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10 };
+        const diffusion = opts.patchMode === 'normal' ? Math.round(Math.min(7, Math.max(1, opts.patchDiffusion))) : 7;
+        if (diffusion < 7 || colour < 1) {
+          const dist = diffusion < 7 ? insideDistance(mask, W, H) : null, L = 2 ** diffusion;
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+            const i = y * W + x;
+            if (mask[i] < 128) continue;
+            const w = colour * (dist ? Math.exp(-dist[i] / L) : 1);
+            const s = (Math.min(H - 1, Math.max(0, y + oy)) * W + Math.min(W - 1, Math.max(0, x + ox))) * 4;
+            for (let ch = 0; ch < 3; ch++) out.data[i * 4 + ch] = Math.round(orig[s + ch] + w * (out.data[i * 4 + ch] - orig[s + ch]));
+          }
+        }
+```
+
 ## Patch Diffusion, Structure and Color · _v1.9.0 (src/engine/index.ts, src/engine/retouch.ts, src/extensions/tools/patch.ts; tests/inside-distance.test.ts and e2e/test_patch_settings.py new)
 
 `retouch.ts`: `insideDistance`. Engine: `retouch.patchDiffusion`, `patchStructure`, `patchColor`; `patchSelection` scales the heal's colour correction by Diffusion (Normal) and Color (Content-Aware) and sizes the rebuilt edge band by Structure. Patch tool: the three rows, each shown in its mode. Removed:

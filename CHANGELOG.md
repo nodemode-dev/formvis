@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.10.0 · 2026-09-24
+
+### Added
+
+- The Healing Brush's Diffusion (1 to 7), as the Patch tool's: lower keeps more of the source's own colour and texture inside the stroke. The default gives the same result as before.
+- 4 more tests (2 unit, 2 browser): 289 in all.
+
 ## 1.9.0 · 2026-09-24
 
 ### Added
