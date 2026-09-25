@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Refine Edge brush and Decontaminate Colors · _v1.33.0 (src/engine/select-mask.ts, src/engine/index.ts, src/ui/panels/select-mask-dialog.ts; e2e/test_refine_edges.py new)
+
+`select-mask.ts`: `refineRegion`, `decontaminate`. `applyRefinedSelection` takes a decontaminate amount for output to a new layer. The dialog: Onion Skin, Marching Ants and On Layers views, the brush (`region`, `paint`), Decontaminate Colors and Amount. Removed:
+
+```ts
+  applyRefinedSelection(data: Uint8Array, output: 'selection' | 'mask' | 'layer' | 'layerMask'): void {
+import { DEFAULT_REFINE, refineSelection, type RefineSettings } from '../../engine/select-mask';
+import { selectRow, sliderRow } from './controls';
+type View = 'overlay' | 'onBlack' | 'onWhite' | 'blackWhite';
+    const viewRow = selectRow('View', [['overlay', 'Overlay'], ['onBlack', 'On Black'], ['onWhite', 'On White'], ['blackWhite', 'Black & White']], (v) => { this.view = v as View; this.render(); });
+    this.body.append(this.canvas, viewRow.el, ...rows.map((x) => x.r.el), outRow.el);
+    this.syncRows = () => { viewRow.set(this.view); outRow.set(this.output); for (const { k, r } of rows) r.set(this.s[k]); };
+      const m = refineSelection(mask, guide, this.pw, this.ph, this.s, this.scale), out = new ImageData(this.pw, this.ph), d = out.data, s = img.data;
+    const m = refineSelection(mask, guide, W, H, s, 1), data = new Uint8Array(W * H);
+    this.engine.applyRefinedSelection(data, output);
+```
+
 ## Develop's further panels · _v1.32.0 (src/engine/develop.ts, src/ui/panels/filter-panel.ts, src/ui/panels/curve-graph.ts new; e2e/test_develop_panels.py new)
 
 `develop.ts`: `GradingState`, `OpticsState`, `GeometryState`, `CalibrationState` (optional in `DevelopState`), their defaults and `gradingOf` and the like, `gradePass`, `opticsPass`, `geometryPass`, `sampleChannel`; `developImage` and `stateActive` extended. `curve-graph.ts`: `curveGraph`. The Develop dialog: Point Curve, Colour Mixer, Colour Grading, Optics, Geometry, Calibration. Removed:
