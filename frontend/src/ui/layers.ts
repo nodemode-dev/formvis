@@ -66,11 +66,29 @@ export class LayersPanel {
     const p = this.engine.current;
     const entries = p ? hierarchy(p.doc, true, p.collapsed) : [];
     setHidden(this.empty, entries.length > 0);
+    // Rows moved by a layer arriving or leaving are held where they were by a transform and then eased into place (FLIP),
+    // so a layer that arrives with no click just before it (an import, Remove Background finishing) does not make the
+    // list jump; browsers do not count movement by transform as a layout shift.
+    const count = this.rows.children.length, before = new Map<string, number>();
+    for (const r of Array.from(this.rows.children) as HTMLElement[]) before.set(r.dataset.id ?? '', r.getBoundingClientRect().top);
     patchList(this.rows, entries, {
       key: (e) => e.layer.id,
       create: (e) => this.createRow(e),
       update: (n, e) => this.updateRow(n, e),
     });
+    if (count && this.rows.children.length !== count) {
+      const moved: HTMLElement[] = [];
+      for (const r of Array.from(this.rows.children) as HTMLElement[]) {
+        const was = before.get(r.dataset.id ?? '');
+        if (was === undefined) continue;
+        const dy = Math.round(was - r.getBoundingClientRect().top);
+        if (!dy) continue;
+        setClass(r, 'is-settling', false);
+        setStyleVar(r, '--flip', `${dy}px`);
+        moved.push(r);
+      }
+      if (moved.length) requestAnimationFrame(() => { for (const r of moved) { setClass(r, 'is-settling', true); setStyleVar(r, '--flip', '0px'); } });
+    }
     this.syncProps();
   }
 

@@ -18,7 +18,10 @@
 .cv-opacity input[type="range"] { width: 64px; accent-color: var(--accent-color); }
 .cv-layer-list { position: relative; overflow-y: auto; min-height: 0; padding: var(--space-1) 0; }
 .cv-layer-rows.is-clip-zone, .cv-layer-rows.is-clip-zone * { cursor: alias; }
-.cv-layer { display: grid; grid-template-columns: 28px calc(var(--depth, 0) * 14px) 16px var(--cv-thumb) auto minmax(0, 1fr); align-items: center; column-gap: var(--space-1); height: var(--cv-row-h); padding: 0 var(--space-2) 0 var(--space-1); border-left: 3px solid transparent; color: var(--text-secondary); font-size: var(--fs-12); cursor: default; }
+.cv-layer { display: grid; grid-template-columns: 28px calc(var(--depth, 0) * 14px) 16px var(--cv-thumb) auto minmax(0, 1fr); align-items: center; column-gap: var(--space-1); height: var(--cv-row-h); padding: 0 var(--space-2) 0 var(--space-1); border-left: 3px solid transparent; color: var(--text-secondary); font-size: var(--fs-12); cursor: default; transform: translateY(var(--flip, 0px)); }
+/* A row moved by a layer arriving or leaving eases into its new place (ui/layers.ts render). */
+.cv-layer.is-settling { transition: transform 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .cv-layer.is-settling { transition: none; } }
 .cv-layer:hover { background: var(--bg-hover); }
 .cv-layer.is-selected { background: var(--bg-tertiary); }
 .cv-layer.is-active { border-left-color: var(--accent-color); color: var(--text-primary); }

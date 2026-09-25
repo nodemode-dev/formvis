@@ -16,3 +16,15 @@ def test_the_readme_matches_the_code():
     # blend modes must agree with the code; `python3 setup/line_counts.py` prints the current figures.
     problems = _line_counts().check(ROOT)
     assert problems == [], problems
+
+
+def test_every_manifest_states_the_licence_in_licence_file():
+    # sonny is Apache-2.0 (LICENSE, README); package.json, the lockfile's own entry and Cargo.toml said MIT until 1.38.0.
+    import json
+    import re
+
+    assert "Apache License" in (ROOT / "LICENSE").read_text(encoding="utf-8")[:400]
+    assert json.loads((ROOT / "frontend/package.json").read_text(encoding="utf-8"))["license"] == "Apache-2.0"
+    lock = json.loads((ROOT / "frontend/package-lock.json").read_text(encoding="utf-8"))
+    assert lock["packages"][""]["license"] == "Apache-2.0"
+    assert re.search(r'^license = "Apache-2.0"$', (ROOT / "src-tauri/Cargo.toml").read_text(encoding="utf-8"), re.M)
