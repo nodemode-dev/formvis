@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Type on Path · _v1.36.0 (src/engine/types.ts, src/engine/text.ts, src/engine/index.ts, src/ui/panels/type-on-path-dialog.ts new, src/app.ts; e2e/test_type_on_path.py new)
+
+`TextPath`, `TextSpec.onPath`. `text.ts`: `renderPathText`, `pathFrom`; `renderText` sends path type to it. Engine: `createTextOnPath`. `TypeOnPathDialog`; the `type-on-path` command in the Layer menu. Removed:
+
+```ts
+      'rasterize', 'edit-text', 'warp-text', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] }, '-',
+import { clamp, type Layer, type TextSpec, type TextWarp, type WarpStyle } from './types';
+/** The type as it is drawn: plain, or warped when the spec has an active Warp Text. */
+    warp: warpFrom(o.warp),
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; rendered?: string }
+```
+
 ## Warp Text · _v1.35.0 (src/engine/types.ts, src/engine/text.ts, src/ui/panels/warp-text-dialog.ts new, src/app.ts; e2e/test_warp_text.py new)
 
 `TextWarp`, `WarpStyle`, `TextSpec.warp`. `text.ts`: `renderPlain` (the former renderer), `WARP_STYLES`, `warpPoint`, `triangle`, `warpRender`, `renderText` (plain, then the warp), `warpFrom`. `WarpTextDialog`; the `warp-text` command in the Layer and context menus. Removed:

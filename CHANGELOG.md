@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.36.0 · 2026-09-24
+
+### Added
+
+- Layer > Type on Path: text set along the selected pen path, from a Start Offset; it stays editable and on its path.
+- 7 more tests (browser): 477 in all.
+
 ## 1.35.0 · 2026-09-24
 
 ### Added
