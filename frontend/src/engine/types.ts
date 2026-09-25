@@ -217,8 +217,11 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
  *  edited the pair breaks and the layer is plain pixels, as painting on type rasterizes it. */
 /** `tracking`: extra space between characters in thousandths of an em, as Photoshop measures it; `kerning`: the font's
  *  own pair kerning ('metrics') or none ('none'). */
-export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; rendered?: string }
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; rendered?: string }
 export type TextKerning = 'metrics' | 'none';
+/** Warp Text, as Photoshop's: a style, its orientation, and Bend, Horizontal and Vertical Distortion (-100 to 100). */
+export type WarpStyle = 'arc' | 'arcLower' | 'arcUpper' | 'arch' | 'bulge' | 'shellLower' | 'shellUpper' | 'flag' | 'wave' | 'fish' | 'rise' | 'fisheye' | 'inflate' | 'squeeze' | 'twist';
+export interface TextWarp { style: WarpStyle; orientation: 'horizontal' | 'vertical'; bend: number; horizontal: number; vertical: number }
 
 /** A smart filter: a filter kind and its settings (the noise seed among them), re-run on the smart object's source
  *  whenever the stack changes. */

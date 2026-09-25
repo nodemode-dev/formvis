@@ -1,5 +1,5 @@
 import { Raster, createSurface, ctxOf } from './surface';
-import { clamp, type Layer, type TextSpec } from './types';
+import { clamp, type Layer, type TextSpec, type TextWarp, type WarpStyle } from './types';
 
 /** Type layers: text set in a font, drawn into a layer's pixels and kept editable while those pixels are untouched. */
 
@@ -64,7 +64,7 @@ export interface TextRender { raster: Raster; baseline: number; pad: number }
 /** The text drawn into a fresh raster: one line per line break, each measured, with line boxes from the font's ascent
  *  and descent so every line sits the same distance apart, padding for overhangs such as italics, and `baseline`, the
  *  first baseline's distance from the top. */
-export function renderText(t: TextSpec): TextRender {
+export function renderPlain(t: TextSpec): TextRender {
   const lines = t.content.split('\n');
   const probe = ctxOf(createSurface(1, 1));
   setType(probe, t);
@@ -90,6 +90,104 @@ export function renderText(t: TextSpec): TextRender {
   return { raster, baseline: pad + ascent, pad };
 }
 
+/** Warp Text's styles, in Photoshop's order, with their names. */
+export const WARP_STYLES: ReadonlyArray<readonly [WarpStyle, string]> = [['arc', 'Arc'], ['arcLower', 'Arc Lower'], ['arcUpper', 'Arc Upper'], ['arch', 'Arch'],
+  ['bulge', 'Bulge'], ['shellLower', 'Shell Lower'], ['shellUpper', 'Shell Upper'], ['flag', 'Flag'], ['wave', 'Wave'], ['fish', 'Fish'], ['rise', 'Rise'],
+  ['fisheye', 'Fisheye'], ['inflate', 'Inflate'], ['squeeze', 'Squeeze'], ['twist', 'Twist']];
+
+const warpActive = (w: TextWarp | null | undefined): w is TextWarp => !!w && (w.bend !== 0 || w.horizontal !== 0 || w.vertical !== 0);
+
+/** Where a point of the text's box goes, in coordinates from -1 to 1 across and down it. The shapes are this build's
+ *  own formulas for each of Photoshop's styles (the arc and shell bends, flag and wave ripples, fisheye, inflate and
+ *  squeeze swells, twist); Horizontal and Vertical Distortion then taper the box like a perspective. */
+function warpPoint(w: TextWarp, u0: number, v0: number): [number, number] {
+  const vert = w.orientation === 'vertical', u = vert ? v0 : u0, v = vert ? u0 : v0, b = w.bend / 100;
+  let x = u, y = v;
+  const curve = 1 - u * u, r = Math.hypot(u, v);
+  switch (w.style) {
+    case 'arc': y = v - b * curve * 0.6; x = u * (1 + b * v * 0.3); break;
+    case 'arcLower': y = v - b * curve * 0.6 * ((v + 1) / 2); break;
+    case 'arcUpper': y = v - b * curve * 0.6 * ((1 - v) / 2); break;
+    case 'arch': y = v - b * curve * 0.6; break;
+    case 'bulge': y = v * (1 + b * curve * 0.6); break;
+    case 'shellLower': y = v + b * u * u * 0.6 * ((v + 1) / 2); break;
+    case 'shellUpper': y = v - b * u * u * 0.6 * ((1 - v) / 2); break;
+    case 'flag': y = v + b * 0.3 * Math.sin(u * Math.PI); break;
+    case 'wave': y = v + b * 0.25 * Math.sin(u * Math.PI + v * Math.PI * 0.5); break;
+    case 'fish': y = v * (1 + b * 0.6 * Math.cos((u * Math.PI) / 2)); x = u + b * 0.15 * v * v; break;
+    case 'rise': y = v - b * u * 0.5; break;
+    case 'fisheye': { const k = 1 + b * 0.5 * Math.max(0, 1 - r); x = u * k; y = v * k; break; }
+    case 'inflate': x = u * (1 + b * 0.4 * (1 - v * v)); y = v * (1 + b * 0.4 * curve); break;
+    case 'squeeze': x = u * (1 - b * 0.3 * (1 - v * v)); y = v * (1 + b * 0.4 * curve); break;
+    case 'twist': { const a = b * (Math.PI / 2) * Math.max(0, 1 - r), c = Math.cos(a), s = Math.sin(a); x = u * c - v * s; y = u * s + v * c; break; }
+  }
+  y *= 1 + (w.horizontal / 100) * 0.5 * x;
+  x *= 1 + (w.vertical / 100) * 0.5 * y;
+  return vert ? [y, x] : [x, y];
+}
+
+/** Draws the source triangle (s0, s1, s2) of `img` onto (d0, d1, d2) of `c`: the affine map between them, clipped to
+ *  the destination triangle grown by half a pixel so neighbouring cells meet without a seam. */
+function triangle(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, img: CanvasImageSource, s: number[][], d: number[][]): void {
+  const [[x0, y0], [x1, y1], [x2, y2]] = s, [[u0, v0], [u1, v1], [u2, v2]] = d;
+  const det = (x1 - x0) * (y2 - y0) - (x2 - x0) * (y1 - y0);
+  if (Math.abs(det) < 1e-9) return;
+  const a = ((u1 - u0) * (y2 - y0) - (u2 - u0) * (y1 - y0)) / det, cc = ((u2 - u0) * (x1 - x0) - (u1 - u0) * (x2 - x0)) / det;
+  const b = ((v1 - v0) * (y2 - y0) - (v2 - v0) * (y1 - y0)) / det, dd = ((v2 - v0) * (x1 - x0) - (v1 - v0) * (x2 - x0)) / det;
+  const e = u0 - a * x0 - cc * y0, f = v0 - b * x0 - dd * y0;
+  const mx = (u0 + u1 + u2) / 3, my = (v0 + v1 + v2) / 3, grow = (px: number, py: number): [number, number] => {
+    const dx = px - mx, dy = py - my, l = Math.hypot(dx, dy) || 1; return [px + (dx / l) * 0.5, py + (dy / l) * 0.5];
+  };
+  c.save();
+  c.beginPath();
+  const g = [grow(u0, v0), grow(u1, v1), grow(u2, v2)];
+  c.moveTo(g[0][0], g[0][1]); c.lineTo(g[1][0], g[1][1]); c.lineTo(g[2][0], g[2][1]); c.closePath();
+  c.clip();
+  c.setTransform(a, b, cc, dd, e, f);
+  c.drawImage(img, 0, 0);
+  c.restore();
+}
+
+/** A rendered text warped: its raster drawn through a 32 by 16 mesh, each cell as two triangles to the warped places of
+ *  its corners, onto a raster sized to the warped bounds; the baseline and pad move by where the original's origin
+ *  lands, so the layer is placed as before. */
+function warpRender(r: TextRender, w: TextWarp): TextRender {
+  const W = r.raster.width, H = r.raster.height, NX = 32, NY = 16, pts: number[][][] = [];
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (let j = 0; j <= NY; j++) {
+    const row: number[][] = [];
+    for (let i = 0; i <= NX; i++) {
+      const [u, v] = warpPoint(w, (i / NX) * 2 - 1, (j / NY) * 2 - 1), px = ((u + 1) / 2) * W, py = ((v + 1) / 2) * H;
+      row.push([px, py]);
+      x0 = Math.min(x0, px); y0 = Math.min(y0, py); x1 = Math.max(x1, px); y1 = Math.max(y1, py);
+    }
+    pts.push(row);
+  }
+  const ox = Math.ceil(-x0) + 2, oy = Math.ceil(-y0) + 2, out = new Raster(Math.max(1, Math.ceil(x1 - x0) + 4), Math.max(1, Math.ceil(y1 - y0) + 4)), c = out.ctx;
+  for (let j = 0; j < NY; j++) for (let i = 0; i < NX; i++) {
+    const s = (a: number, b2: number): number[] => [((i + a) / NX) * W, ((j + b2) / NY) * H], d = (a: number, b2: number): number[] => [pts[j + b2][i + a][0] + ox, pts[j + b2][i + a][1] + oy];
+    triangle(c, r.raster.canvas, [s(0, 0), s(1, 0), s(1, 1)], [d(0, 0), d(1, 0), d(1, 1)]);
+    triangle(c, r.raster.canvas, [s(0, 0), s(1, 1), s(0, 1)], [d(0, 0), d(1, 1), d(0, 1)]);
+  }
+  out.touch();
+  return { raster: out, baseline: r.baseline + oy, pad: r.pad + ox };
+}
+
+/** The type as it is drawn: plain, or warped when the spec has an active Warp Text. */
+export function renderText(t: TextSpec): TextRender {
+  const plain = renderPlain(t);
+  return warpActive(t.warp) ? warpRender(plain, t.warp) : plain;
+}
+
+/** A saved Warp Text read back: the style checked against the list, the values clamped; anything else is no warp. */
+function warpFrom(raw: unknown): TextWarp | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>, style = WARP_STYLES.find(([id]) => id === o.style)?.[0];
+  if (!style) return null;
+  const n = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.max(-100, Math.min(100, Math.round(v))) : 0);
+  return { style, orientation: o.orientation === 'vertical' ? 'vertical' : 'horizontal', bend: n(o.bend), horizontal: n(o.horizontal), vertical: n(o.vertical) };
+}
+
 /** A spec read back from saved data, checked and clamped, paired with the raster it was saved with; null if unusable. */
 export function textFromData(raw: unknown, raster: Raster | null): TextSpec | null {
   if (!raster || !raw || typeof raw !== 'object') return null;
@@ -102,6 +200,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     size: num(o.size, d.size, 1, 2000), color: { r: Math.round(num(c.r, 0, 0, 255)), g: Math.round(num(c.g, 0, 0, 255)), b: Math.round(num(c.b, 0, 0, 255)) },
     align: o.align === 'center' || o.align === 'right' ? o.align : 'left', bold: o.bold === true, italic: o.italic === true,
     lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' ? 'none' : 'metrics',
+    warp: warpFrom(o.warp),
     rendered: textKey(raster),
   };
 }
