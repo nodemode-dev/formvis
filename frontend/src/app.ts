@@ -37,6 +37,7 @@ import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { BrushSettingsDialog } from './ui/panels/brush-settings';
 import { WarpTextDialog } from './ui/panels/warp-text-dialog';
+import { TypeOnPathDialog } from './ui/panels/type-on-path-dialog';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns } from './engine';
@@ -714,6 +715,7 @@ export function startApp(): void {
     about: new AboutDialog(),
     brushSettings: new BrushSettingsDialog(engine),
     warpText: new WarpTextDialog(engine),
+    typeOnPath: new TypeOnPathDialog(engine),
     benchmark: new BenchmarkDialog(async () => benchText(await runBenchmark(engine), gpuProbed ? detectedName(gpuProbe) ?? 'none found' : 'not detected yet')),
     adjust: new AdjustPanel(engine),
     filter: new FilterPanel(engine),
@@ -865,6 +867,7 @@ export function startApp(): void {
     { id: 'about', label: 'About sonny', run: () => dialogs.about.show(caps) },
     { id: 'brush-settings', label: 'Brush Settings...', keys: ['F5'], run: () => dialogs.brushSettings.show() },
     { id: 'warp-text', label: 'Warp Text...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => dialogs.warpText.show() },
+    { id: 'type-on-path', label: 'Type on Path...', enabled: () => !!engine.workPath?.subpaths.some((s) => s.anchors.length > 1), run: () => dialogs.typeOnPath.show() },
     { id: 'benchmark', label: 'Performance Benchmark...', run: () => dialogs.benchmark.show() },
     { id: 'copy-error-log', label: 'Copy Error Log', run: () => { void navigator.clipboard?.writeText(errorLog.text()).then(() => toast('Copied the error log.'), () => toast('The clipboard is not available here.', 'error')); } },
   );
@@ -984,7 +987,7 @@ export function startApp(): void {
       'duplicate-dialog', 'delete-layer', 'rename', '-',
       { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
       { label: 'Smart Objects', items: ['convert-smart', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
-      'rasterize', 'edit-text', 'warp-text', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] }, '-',
+      'rasterize', 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] }, '-',
       { label: 'Layer Mask', items: ['add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-',
       'group', 'move-out', 'merge', '-',
       { label: 'Arrange', items: ['forward', 'backward'] },

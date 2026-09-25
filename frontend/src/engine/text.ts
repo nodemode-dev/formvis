@@ -1,5 +1,5 @@
 import { Raster, createSurface, ctxOf } from './surface';
-import { clamp, type Layer, type TextSpec, type TextWarp, type WarpStyle } from './types';
+import { clamp, type Layer, type Pt, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
 
 /** Type layers: text set in a font, drawn into a layer's pixels and kept editable while those pixels are untouched. */
 
@@ -173,10 +173,56 @@ function warpRender(r: TextRender, w: TextWarp): TextRender {
   return { raster: out, baseline: r.baseline + oy, pad: r.pad + ox };
 }
 
-/** The type as it is drawn: plain, or warped when the spec has an active Warp Text. */
+/** Type on a path: one line (line breaks read as spaces) set character by character along the path's polyline, each at
+ *  the point its centre falls on, turned to the path's direction there, sitting on it, from Start Offset; characters
+ *  that would run past the path's end are not drawn, as in Photoshop. Set one by one, pairs are not kerned. */
+function renderPathText(t: TextSpec, tp: TextPath): TextRender {
+  const raster = new Raster(Math.max(1, Math.round(tp.frame.w)), Math.max(1, Math.round(tp.frame.h))), c = raster.ctx, pts = tp.points;
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  const total = cum[cum.length - 1];
+  if (pts.length < 2 || total <= 0) { raster.touch(); return { raster, baseline: 0, pad: 0 }; }
+  const at = (d: number): { x: number; y: number; a: number } => {
+    let i = 1;
+    while (i < cum.length - 1 && cum[i] < d) i++;
+    const seg = cum[i] - cum[i - 1] || 1, f = Math.max(0, Math.min(1, (d - cum[i - 1]) / seg)), p = pts[i - 1], q = pts[i];
+    return { x: p.x + (q.x - p.x) * f, y: p.y + (q.y - p.y) * f, a: Math.atan2(q.y - p.y, q.x - p.x) };
+  };
+  setType(c, t);
+  c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
+  c.textBaseline = 'alphabetic';
+  c.textAlign = 'center';
+  let d = (Math.max(0, Math.min(100, tp.offset)) / 100) * total;
+  for (const ch of t.content.replace(/\r?\n/g, ' ')) {
+    const w = c.measureText(ch).width + (CANVAS_TRACKING ? 0 : trackingPx(t));
+    if (d + w > total + 0.5) break;
+    const p = at(d + w / 2);
+    c.save();
+    c.translate(p.x, p.y);
+    c.rotate(p.a);
+    c.fillText(ch, 0, 0);
+    c.restore();
+    d += w;
+  }
+  raster.touch();
+  return { raster, baseline: 0, pad: 0 };
+}
+
+/** The type as it is drawn: along its path, or plain, then warped when the spec has an active Warp Text. */
 export function renderText(t: TextSpec): TextRender {
+  if (t.onPath) return renderPathText(t, t.onPath);
   const plain = renderPlain(t);
   return warpActive(t.warp) ? warpRender(plain, t.warp) : plain;
+}
+
+/** A saved type path read back: at least two finite points, a finite frame, the offset clamped; anything else is none. */
+function pathFrom(raw: unknown): TextPath | null {
+  if (!raw || typeof raw !== 'object') return null;
+  const o = raw as Record<string, unknown>, fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  const pts = Array.isArray(o.points) ? o.points.filter((q): q is Pt => !!q && fin((q as Pt).x) && fin((q as Pt).y)).map((q) => ({ x: q.x, y: q.y })) : [];
+  const f = o.frame as { w?: unknown; h?: unknown } | undefined;
+  if (pts.length < 2 || !f || !fin(f.w) || !fin(f.h) || f.w < 1 || f.h < 1) return null;
+  return { points: pts, offset: fin(o.offset) ? Math.max(0, Math.min(100, o.offset)) : 0, frame: { w: f.w, h: f.h } };
 }
 
 /** A saved Warp Text read back: the style checked against the list, the values clamped; anything else is no warp. */
@@ -200,7 +246,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     size: num(o.size, d.size, 1, 2000), color: { r: Math.round(num(c.r, 0, 0, 255)), g: Math.round(num(c.g, 0, 0, 255)), b: Math.round(num(c.b, 0, 0, 255)) },
     align: o.align === 'center' || o.align === 'right' ? o.align : 'left', bold: o.bold === true, italic: o.italic === true,
     lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' ? 'none' : 'metrics',
-    warp: warpFrom(o.warp),
+    warp: warpFrom(o.warp), onPath: pathFrom(o.onPath),
     rendered: textKey(raster),
   };
 }

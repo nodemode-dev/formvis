@@ -217,7 +217,10 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
  *  edited the pair breaks and the layer is plain pixels, as painting on type rasterizes it. */
 /** `tracking`: extra space between characters in thousandths of an em, as Photoshop measures it; `kerning`: the font's
  *  own pair kerning ('metrics') or none ('none'). */
-export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; rendered?: string }
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; rendered?: string }
+/** Type on a path: the path's points in the layer's own pixels (a frame around the path, so editing the text never moves
+ *  the layer), where the text starts along it (Start Offset, a percentage of its length), and the frame's size. */
+export interface TextPath { points: Pt[]; offset: number; frame: { w: number; h: number } }
 export type TextKerning = 'metrics' | 'none';
 /** Warp Text, as Photoshop's: a style, its orientation, and Bend, Horizontal and Vertical Distortion (-100 to 100). */
 export type WarpStyle = 'arc' | 'arcLower' | 'arcUpper' | 'arch' | 'bulge' | 'shellLower' | 'shellUpper' | 'flag' | 'wave' | 'fish' | 'rise' | 'fisheye' | 'inflate' | 'squeeze' | 'twist';

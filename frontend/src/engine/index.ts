@@ -690,6 +690,28 @@ export class Engine {
     this.insertRasterLayer(r.raster, name, Math.round(x), Math.round(at.y - r.baseline), { text: { ...spec, rendered: textKey(r.raster) } }, 'Type');
   }
 
+  /** Layer > Type on Path: `content` set along the active path's first subpath of two or more anchors, in the current
+   *  type settings, from `offset` percent of its length; the path kept with the type, relative to a frame around it
+   *  (its bounds and a margin of one and a half times the type size), where the layer is placed. */
+  async createTextOnPath(content: string, offset: number): Promise<boolean> {
+    const p = this.current, sp = this.workPath?.subpaths.find((s) => s.anchors.length > 1);
+    if (!p) return false;
+    if (!sp) { this.notice('Draw a path with the Pen tool first, then set type on it.'); return false; }
+    if (!content.trim()) { this.notice('Type some text to set on the path.'); return false; }
+    const base: TextSpec = { ...this.textSettings, content: content.replace(/\r?\n/g, ' '), warp: null, onPath: null, rendered: undefined };
+    await loadTextFont(base);
+    if (this.current !== p) return false;
+    const rough = samplePath(sp, 4), length = rough.reduce((s, q, i) => (i ? s + Math.hypot(q.x - rough[i - 1].x, q.y - rough[i - 1].y) : 0), 0);
+    const pts = samplePath(sp, Math.max(1, length / 2000)), m = Math.ceil(base.size * 1.5);
+    const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y), ox = Math.floor(Math.min(...xs) - m), oy = Math.floor(Math.min(...ys) - m);
+    const frame = { w: Math.ceil(Math.max(...xs) - ox + m), h: Math.ceil(Math.max(...ys) - oy + m) };
+    const spec: TextSpec = { ...base, onPath: { points: pts.map((q) => ({ x: q.x - ox, y: q.y - oy })), offset: Math.max(0, Math.min(100, offset)), frame } };
+    const r = renderText(spec);
+    this.textSettings = { ...base, content: '', onPath: null };
+    this.insertRasterLayer(r.raster, spec.content.trim().slice(0, 40) || 'Type', ox, oy, { text: { ...spec, rendered: textKey(r.raster) } }, 'Type on Path');
+    return true;
+  }
+
   /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
    *  and so is its left edge, centre or right edge, by its alignment. */
   async updateTextLayer(id: ID, spec: TextSpec): Promise<void> {
