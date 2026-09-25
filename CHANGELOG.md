@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.40.0 · 2026-09-25
+
+### Added
+
+- Open `.comp` projects (as `Name.comp`, `Name.comp.zip` or the package folder), so they can be moved to sonny: layers, folders, masks, clipping, blend modes, opacity and visibility come across, and saving writes a `.sny`. sonny opens `.comp` but never writes it.
+- 6 more tests (5 backend, 1 browser): 492 in all.
+
 ## 1.39.0 · 2026-09-25
 
 ### Added

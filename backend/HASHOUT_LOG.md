@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## .comp import · _v1.40.0 (app/services/project_format.py, app/routers/projects.py; tests/test_comp_import.py new)
+
+`project_format.py`: `COMP_LABEL`, `COMP_VERSIONS`, `is_comp` (a .comp recognised by its shape, then fully validated); the refusal messages name .comp. `projects.py`: `.comp` in `SUFFIXES`. Removed:
+
+```python
+SUFFIXES = (".sny", ".sonny", ".canvasor", ".zip")
+    if fmt not in SUPPORTED:
+        raise ProjectError("This is not a sonny or canvasor project.")
+    if not isinstance(version, int) or version not in SUPPORTED[fmt]:
+        raise ProjectError(f"This project uses format version {version}, which this build cannot read.")
+        raise ProjectError("The file is not a sonny or canvasor package.") from exc
+```
+
 ## Camera RAW decoding · _v1.39.0 (app/services/imaging.py, requirements.txt, requirements_macos.txt; tests/test_raw.py and tests/fixtures/ new)
 
 `imaging.py`: `RAW`, `RAW_ENGINE`, `RAW_SUFFIXES`, `_raw` (LibRaw through rawpy, before Pillow), and `decoders` reporting `raw` and `rawEngine`. Removed:

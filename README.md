@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-1.39.0-f97316" alt="version 1.39.0">
+<img src="https://img.shields.io/badge/version-1.40.0-f97316" alt="version 1.40.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -18,7 +18,7 @@ sonny is a layered image editor: stack photos and paintings as layers, group the
 ## Highlights
 
 - **Layered document model.** Flat bottom-to-top layers w/ pass-through folders, 27 blend modes in Photoshop's order (17 drawn by Canvas 2D itself, 10 computed per pixel), raster masks, folder masks, clipping chains (Option-click a row's lower edge to clip or release), Option-drag mask copy, and value-snapshot history (100 steps, 256 MB).
-- **Its own project files.** Saves `.sny` (and still opens `.sonny` from before 0.90.0), and opens NodeMode canvasor projects (`.canvasor`, version 1).
+- **Its own project files.** Saves `.sny` (and still opens `.sonny` from before 0.90.0), opens NodeMode canvasor projects (`.canvasor`, version 1), and opens `.comp` projects so they can be moved to sonny (it never writes `.comp`).
 - **Twenty-eight tools.** Move w/ transform handles, Marquee, Lasso, Quick Selection, Magic Wand, Crop, Brush (and Eraser; Brush Settings has tip shape, shape dynamics w/ pen pressure, tilt and rotation, scattering, texture and dual brush), Spot Healing (Content-Aware, Create Texture, Proximity Match), Remove, Healing Brush, Patch, Clone Stamp, Smear (Liquify, Blur, Smudge), Dodge, Burn, Sponge, Gradient, Paint Bucket, Shape, Path Selection, Direct Selection, Pen, Freeform Pen, Curvature Pen, Type, Eyedropper, Hand and Zoom; each is a self-registering extension module. Content-Aware Fill works from the Edit menu.
 - **Adjustments and filters.** Twenty adjustment kinds: Levels w/ histogram, Auto and black, gray and white eyedroppers; Curves; Hue/Saturation w/ spectrum band handles, Sample, Add and Remove eyedroppers and targeted adjustment; Exposure, Brightness/Contrast, Vibrance, Color Balance, Black & White, Photo Filter, Channel Mixer, Selective Color, Shadows/Highlights, HDR Toning, Color Lookup (3D LUT .cube files or built-in looks), Gradient Map, Invert, Posterize, Threshold, Grain and Develop; as editable adjustment layers or direct edits. Sixteen filters: Liquify, Develop, Gaussian Blur, Lens Blur, Motion Blur, Radial Blur (Spin and Zoom), Surface Blur, the Blur Gallery's Field, Iris, Tilt-Shift and Path Blur, Add Noise, Lens Correction, Smart Sharpen, Shake Reduction and Unsharp Mask, w/ live preview.
 - **Healing.** Spot Healing, the Healing Brush (Alt-click a source) and the Patch tool blend copied texture into its surroundings; Shift+J cycles them.

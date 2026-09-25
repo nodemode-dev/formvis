@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## .comp import · _v1.40.0 (src/io/images.ts; e2e/test_comp_import.py new)
+
+`images.ts`: `.comp` in `PROJECT_ACCEPT` and `isProjectFile` (opened to migrate; sonny never writes it). Removed:
+
+```ts
+export const PROJECT_ACCEPT = '.sny,.sonny,.canvasor,.zip,.psd,.psb';
+export const isProjectFile = (f: File): boolean => /\.(sny|sonny|canvasor|zip|psd|psb)$/i.test(f.name);
+```
+
 ## Camera RAW import · _v1.39.0 (src/io/images.ts, src/io/api.ts, src/io/links.ts, src/app.ts; e2e/test_camera_raw.py new)
 
 `images.ts`: `RAW_FILE`, RAW extensions in `IMAGE_ACCEPT` and `isImageFile`, RAW sent to the engine in `decodeImage`. `api.ts`: the capability report's `raw` and `rawEngine`. `links.ts`: RAW extensions in the desktop picker. `app.ts` `importFiles`: a single RAW import opens Develop. Removed:
