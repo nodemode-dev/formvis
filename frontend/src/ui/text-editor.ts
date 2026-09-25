@@ -75,7 +75,7 @@ export class TextEditor {
   private restyle(): void {
     const s = this.session, t = this.engine.textSettings;
     if (!s) return;
-    s.spec = { ...s.spec, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight };
+    s.spec = { ...s.spec, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning };
     this.place();
   }
 
@@ -89,6 +89,9 @@ export class TextEditor {
     setStyleVar(box, '--lh', `${line}px`);
     setStyleVar(box, '--ink', `rgb(${c.r},${c.g},${c.b})`);
     setStyleVar(box, '--align', s.spec.align);
+    // Tracking at the on-screen size, and kerning, so typed text is spaced as it will render.
+    setStyleVar(box, '--ls', `${(s.spec.tracking / 1000) * size}px`);
+    setStyleVar(box, '--kern', s.spec.kerning === 'none' ? 'none' : 'normal');
     setStyleVar(box, '--w', '0px');
     setStyleVar(box, '--h', '0px');
     const w = Math.max(size * 0.6, box.scrollWidth + 2), h = Math.max(line, box.scrollHeight);

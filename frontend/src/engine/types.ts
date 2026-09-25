@@ -215,7 +215,10 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
 /** A type layer's text and how it is set. `size` is in document pixels; `lineHeight` multiplies it from one baseline
  *  to the next. `rendered` pairs the spec with the raster it was drawn into (id and version): once the pixels are
  *  edited the pair breaks and the layer is plain pixels, as painting on type rasterizes it. */
-export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; rendered?: string }
+/** `tracking`: extra space between characters in thousandths of an em, as Photoshop measures it; `kerning`: the font's
+ *  own pair kerning ('metrics') or none ('none'). */
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; rendered?: string }
+export type TextKerning = 'metrics' | 'none';
 
 /** A smart filter: a filter kind and its settings (the noise seed among them), re-run on the smart object's source
  *  whenever the stack changes. */

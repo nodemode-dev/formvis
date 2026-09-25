@@ -7,7 +7,29 @@ export const TEXT_FONTS = ['Inter', 'Arial', 'Helvetica', 'Georgia', 'Times New 
 const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'system-ui', 'cursive', 'fantasy']);
 
 export function defaultText(): TextSpec {
-  return { content: '', family: 'Inter', size: 48, color: { r: 0, g: 0, b: 0 }, align: 'left', bold: false, italic: false, lineHeight: 1.2 };
+  return { content: '', family: 'Inter', size: 48, color: { r: 0, g: 0, b: 0 }, align: 'left', bold: false, italic: false, lineHeight: 1.2, tracking: 0, kerning: 'metrics' };
+}
+
+/** Tracking in pixels at the spec's size: Photoshop's thousandths of an em. */
+export const trackingPx = (t: TextSpec): number => (t.tracking / 1000) * t.size;
+
+/** Whether this browser's canvas spaces letters itself (letterSpacing); where not, text with tracking is set character by
+ *  character. */
+const CANVAS_TRACKING = typeof CanvasRenderingContext2D !== 'undefined' && 'letterSpacing' in CanvasRenderingContext2D.prototype;
+
+/** Sets a context's font, kerning and, where the canvas can, tracking, as `renderText` draws with them. */
+function setType(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec): void {
+  c.font = fontCss(t);
+  const k = c as unknown as { fontKerning?: string; letterSpacing?: string };
+  if ('fontKerning' in c) k.fontKerning = t.kerning === 'none' ? 'none' : 'normal';
+  if (CANVAS_TRACKING) k.letterSpacing = `${trackingPx(t)}px`;
+}
+
+/** A line's advance with the spec's tracking: the canvas's own measure where it spaces letters, else each character's
+ *  advance plus the tracking after it (kerning between characters is then lost, as each is set alone). */
+function lineWidth(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec, line: string): number {
+  if (CANVAS_TRACKING || !t.tracking) return c.measureText(line).width;
+  return [...line].reduce((w, ch) => w + c.measureText(ch).width + trackingPx(t), 0);
 }
 
 /** The CSS font for a spec, with a sans-serif fallback for named families. */
@@ -43,21 +65,27 @@ export interface TextRender { raster: Raster; baseline: number; pad: number }
  *  and descent so every line sits the same distance apart, padding for overhangs such as italics, and `baseline`, the
  *  first baseline's distance from the top. */
 export function renderText(t: TextSpec): TextRender {
-  const font = fontCss(t), lines = t.content.split('\n');
+  const lines = t.content.split('\n');
   const probe = ctxOf(createSurface(1, 1));
-  probe.font = font;
+  setType(probe, t);
   const metrics = lines.map((line) => probe.measureText(line || ' '));
+  const widths = lines.map((line) => lineWidth(probe, t, line || ' '));
   const ascent = metrics[0].fontBoundingBoxAscent || t.size * 0.8, descent = metrics[0].fontBoundingBoxDescent || t.size * 0.25;
   const advance = t.size * t.lineHeight, pad = Math.ceil(t.size * 0.1) + 2;
-  const widest = Math.max(1, ...metrics.map((m) => Math.max(m.width, (m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0))));
+  const widest = Math.max(1, ...metrics.map((m, i) => Math.max(widths[i], (m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0))));
   const width = Math.ceil(widest) + pad * 2, height = Math.ceil(ascent + descent + advance * (lines.length - 1)) + pad * 2;
   const raster = new Raster(width, height), c = raster.ctx;
-  c.font = font;
+  setType(c, t);
   c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
   c.textBaseline = 'alphabetic';
-  c.textAlign = t.align;
-  const x = t.align === 'center' ? width / 2 : t.align === 'right' ? width - pad : pad;
-  lines.forEach((line, i) => c.fillText(line, x, pad + ascent + i * advance));
+  const perChar = !CANVAS_TRACKING && t.tracking !== 0;
+  c.textAlign = perChar ? 'left' : t.align;
+  lines.forEach((line, i) => {
+    const y = pad + ascent + i * advance;
+    if (!perChar) { c.fillText(line, t.align === 'center' ? width / 2 : t.align === 'right' ? width - pad : pad, y); return; }
+    let x = t.align === 'center' ? (width - widths[i]) / 2 : t.align === 'right' ? width - pad - widths[i] : pad;
+    for (const ch of line) { c.fillText(ch, x, y); x += c.measureText(ch).width + trackingPx(t); }
+  });
   raster.touch();
   return { raster, baseline: pad + ascent, pad };
 }
@@ -73,6 +101,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     content: o.content.slice(0, 20000), family: typeof o.family === 'string' && o.family.trim() ? o.family.slice(0, 80) : d.family,
     size: num(o.size, d.size, 1, 2000), color: { r: Math.round(num(c.r, 0, 0, 255)), g: Math.round(num(c.g, 0, 0, 255)), b: Math.round(num(c.b, 0, 0, 255)) },
     align: o.align === 'center' || o.align === 'right' ? o.align : 'left', bold: o.bold === true, italic: o.italic === true,
-    lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), rendered: textKey(raster),
+    lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' ? 'none' : 'metrics',
+    rendered: textKey(raster),
   };
 }

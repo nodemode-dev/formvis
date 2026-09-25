@@ -1,4 +1,5 @@
-import { TEXT_FONTS, type Engine, type RGB, type TextSpec } from '../../engine';
+import type { Engine, RGB, TextKerning, TextSpec } from '../../engine';
+import { fontFamilies } from '../fonts';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { checkRow } from './controls';
@@ -11,9 +12,17 @@ const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseI
 export class TextDialog extends Dialog {
   private target: { layerId: string } | { x: number; y: number } | null = null;
   private readonly content = el<HTMLTextAreaElement>('<textarea class="cv-input" rows="4" spellcheck="true" placeholder="Type your text"></textarea>');
-  private readonly family = el<HTMLSelectElement>(`<select class="cv-input">${TEXT_FONTS.map((f) => `<option value="${f}">${f}</option>`).join('')}</select>`);
+  // This machine's fonts, as the options bar offers them; built as options, not HTML, since names come from the system.
+  private readonly family = ((): HTMLSelectElement => {
+    const s = el<HTMLSelectElement>('<select class="cv-input"></select>');
+    for (const f of fontFamilies()) s.append(new Option(f, f));
+    return s;
+  })();
   private readonly size = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="2000" step="1">');
   private readonly lineHeight = el<HTMLInputElement>('<input class="cv-input" type="number" min="0.5" max="4" step="0.05">');
+  /** Carried through from the text (the options bar sets them), so editing here keeps them. */
+  private tracking = 0;
+  private kerning: TextKerning = 'metrics';
   private readonly align = el<HTMLSelectElement>('<select class="cv-input"><option value="left">Left</option><option value="center">Centre</option><option value="right">Right</option></select>');
   private readonly colour = el<HTMLInputElement>('<input class="cv-input" type="color">');
   private readonly note = el('<p class="cv-note"></p>');
@@ -63,7 +72,11 @@ export class TextDialog extends Dialog {
 
   private fill(t: TextSpec): void {
     this.content.value = t.content;
-    this.family.value = TEXT_FONTS.includes(t.family) ? t.family : 'Inter';
+    // A font outside the list (a system font, or one from a Photoshop file) is added, not replaced with Inter.
+    if (![...this.family.options].some((o) => o.value === t.family)) this.family.append(new Option(t.family, t.family));
+    this.family.value = t.family;
+    this.tracking = t.tracking;
+    this.kerning = t.kerning;
     this.size.value = String(t.size);
     this.lineHeight.value = String(t.lineHeight);
     this.align.value = t.align;
@@ -81,7 +94,7 @@ export class TextDialog extends Dialog {
       size: Number.isFinite(size) ? Math.min(2000, Math.max(1, size)) : 48,
       lineHeight: Number.isFinite(lineHeight) ? Math.min(4, Math.max(0.5, lineHeight)) : 1.2,
       align: this.align.value === 'center' || this.align.value === 'right' ? this.align.value : 'left',
-      bold: this.bold, italic: this.italic, color: fromHex(this.colour.value),
+      bold: this.bold, italic: this.italic, color: fromHex(this.colour.value), tracking: this.tracking, kerning: this.kerning,
     };
   }
 

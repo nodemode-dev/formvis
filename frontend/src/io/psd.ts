@@ -250,7 +250,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         const col = st.fillColor as Record<string, number> | undefined, just = tx.paragraphStyle?.justification;
         const size = Math.max(1, Math.round((st.fontSize ?? 12) * scale * 100) / 100);
         const spec: TextSpec = { content: tx.text.replace(/\r/g, '\n'), family: face.family, size, color: col && typeof col.r === 'number' ? { r: Math.round(col.r), g: Math.round(col.g), b: Math.round(col.b) } : col && typeof col.fr === 'number' ? { r: Math.round(col.fr * 255), g: Math.round(col.fg * 255), b: Math.round(col.fb * 255) } : { r: 0, g: 0, b: 0 },
-          align: just === 'center' || just === 'right' ? just : 'left', bold: !!st.fauxBold || face.bold, italic: !!st.fauxItalic || face.italic, lineHeight: st.autoLeading === false && st.leading ? Math.round((st.leading * scale / size) * 100) / 100 : 1.2 };
+          align: just === 'center' || just === 'right' ? just : 'left', bold: !!st.fauxBold || face.bold, italic: !!st.fauxItalic || face.italic, lineHeight: st.autoLeading === false && st.leading ? Math.round((st.leading * scale / size) * 100) / 100 : 1.2,
+          tracking: Math.round(Math.min(10000, Math.max(-1000, st.tracking ?? 0))), kerning: st.autoKerning === false ? 'none' : 'metrics' };
         layer.text = { ...spec, rendered: textKey(raster) };
         if ((tx.styleRuns?.length ?? 0) > 1) notes.push(`"${name}" mixes type styles; sonny keeps the first for the whole text.`);
         const warped = !!tx.warp?.style && tx.warp.style !== 'none';
