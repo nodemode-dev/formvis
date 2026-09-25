@@ -2,6 +2,28 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Folder masks on the GPU · _v1.24.0 (src/engine/index.ts, src/gpu/blend-wgsl.ts, src/gpu/display.ts, src/gpu/gl-display.ts; e2e/test_gpu_clip.py)
+
+Engine: `fchains` (one mask chain per parent folder), `GpuLayerSpec.folders`, the refusal for a clipped layer inside a masked folder. Shaders: mode 103. Displays: `DisplayLayer.folders`, `FOLDER_MODE`; each chain's coverage rendered once per frame through the clip input, pool slots from a running counter; folder mode binds the stand-in. Removed:
+
+```ts
+export interface GpuLayerSpec { image: Surface | null; lut?: Uint8Array; lut3?: boolean; mask?: GpuMaskSpec; clip?: GpuClipSpec; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+    const ov = this.overrides(p), layers: GpuLayerSpec[] = [], map = byId(p.doc), clips = new Map<ID, GpuClipSpec | null | 'nested'>();
+      for (const g of ancestors(map, l)) if (g.mask?.enabled && g.mask.raster) return { reason: 'folder masks' };
+          layers.push({ image: null, lut, mask, clip, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+        layers.push({ image: null, lut: lut3, lut3: true, mask, clip, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: o?.opacity ?? l.opacity, blend: o?.blend ?? l.blend, mask, clip });
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; mask?: DisplayMask; clip?: DisplayClip; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+/** The shader mode that renders a clipping base's coverage. */
+      this.layerPass(enc, a, b, l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), l.clip ? clipTex.get(l.clip) ?? null : null, sampler, view, used, buffers);
+    used.add(l.lut ?? (l.image as object));
+    const tex = this.texture(l);
+import { CLIP_MODE, LUT3_MODE, LUT_MODE, type Checker, type DisplayClip, type DisplayLayer } from './display';
+      this.drawLayer(l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), l.clip ? clipOut.get(l.clip) ?? null : null, a.tex, b.fb, view, filter, used, u);
+    used.add(l.lut ?? (l.image as object));
+    gl.bindTexture(gl.TEXTURE_2D, this.texture(l));
+```
+
 ## Clipping groups and folders on the GPU · _v1.23.0 (src/engine/index.ts, src/gpu/blend-wgsl.ts, src/gpu/blender.ts, src/gpu/display.ts, src/gpu/gl-display.ts; e2e/test_gpu_clip.py new)
 
 Engine: `gpuLayers` walks `hierarchy(doc)`; `maskFor`, `clipOf`, `GpuClipSpec`. WGSL: `hasClip`, binding 5, mode 102. Displays: `DisplayClip`, `CLIP_MODE`; the loop bodies moved into `GpuDisplay.layerPass` and `GlDisplay.drawLayer` (mode and clip as parameters), clip coverage rendered first into `clipTarget` pools. Removed:

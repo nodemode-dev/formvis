@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.24.0 · 2026-09-24
+
+### Added
+
+- Folder masks draw on the graphics processor, nested masked folders included. A clipped layer inside a masked folder still draws on the CPU, named in the status bar.
+- 2 more tests (browser): 397 in all.
+
 ## 1.23.0 · 2026-09-24
 
 ### Added
