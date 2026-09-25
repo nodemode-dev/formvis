@@ -1,4 +1,4 @@
-import { gaussianBlur } from './filters';
+import { gaussianBlur, lensDistort } from './filters';
 
 /** Develop: Camera Raw-style tone, colour and detail adjustments, brought over from formnodal's develop core (the
  *  studio in nodemode-ai's sonny extension for NodeMode, the owner's own code). The per-pixel pass below is
@@ -61,7 +61,35 @@ export interface DevelopState {
   color: ColorMixState;
   curves: CurveState;
   detail: DetailState;
+  /** Camera Raw's further panels (the comparison's Develop row): optional, so states saved before them still read, and
+   *  read through gradingOf and the like, whose defaults leave the image unchanged. */
+  grading?: GradingState;
+  optics?: OpticsState;
+  geometry?: GeometryState;
+  calibration?: CalibrationState;
 }
+
+export interface GradeWheel { h: number; s: number }
+/** Colour grading: a hue (0 to 360) and saturation (0 to 100) for shadows, midtones and highlights and for the whole
+ *  image; Blending (0 to 100) widens the overlap of the three ranges, Balance (-100 to 100) moves it toward the highlights. */
+export interface GradingState { shadows: GradeWheel; midtones: GradeWheel; highlights: GradeWheel; global: GradeWheel; blending: number; balance: number }
+/** Optics: Distortion (-100 to 100, as Lens Correction), Chromatic Aberration (-100 to 100, red and blue channels
+ *  scaled apart), Vignetting (-100 to 100, positive brightens the corners) and its Midpoint (0 to 100). */
+export interface OpticsState { distortion: number; chromatic: number; vignetting: number; midpoint: number }
+/** Geometry: Vertical and Horizontal perspective (-100 to 100), Rotate (-10 to 10 degrees), Scale (50 to 150 percent),
+ *  Offset X and Y (-100 to 100, percent of half the image). */
+export interface GeometryState { vertical: number; horizontal: number; rotate: number; scale: number; offsetX: number; offsetY: number }
+/** Calibration: each primary's hue and saturation (-100 to 100) and Shadows Tint (-100 green to 100 magenta). */
+export interface CalibrationState { shadowTint: number; redHue: number; redSat: number; greenHue: number; greenSat: number; blueHue: number; blueSat: number }
+
+export const defaultGrading = (): GradingState => ({ shadows: { h: 0, s: 0 }, midtones: { h: 0, s: 0 }, highlights: { h: 0, s: 0 }, global: { h: 0, s: 0 }, blending: 50, balance: 0 });
+export const defaultOptics = (): OpticsState => ({ distortion: 0, chromatic: 0, vignetting: 0, midpoint: 50 });
+export const defaultGeometry = (): GeometryState => ({ vertical: 0, horizontal: 0, rotate: 0, scale: 100, offsetX: 0, offsetY: 0 });
+export const defaultCalibration = (): CalibrationState => ({ shadowTint: 0, redHue: 0, redSat: 0, greenHue: 0, greenSat: 0, blueHue: 0, blueSat: 0 });
+export const gradingOf = (s: DevelopState): GradingState => ({ ...defaultGrading(), ...s.grading });
+export const opticsOf = (s: DevelopState): OpticsState => ({ ...defaultOptics(), ...s.optics });
+export const geometryOf = (s: DevelopState): GeometryState => ({ ...defaultGeometry(), ...s.geometry });
+export const calibrationOf = (s: DevelopState): CalibrationState => ({ ...defaultCalibration(), ...s.calibration });
 
 const BAND_CENTER: Record<HslBand, number> = {
   reds: 0, yellows: 60, greens: 120, cyans: 180, blues: 240, magentas: 300,
@@ -89,6 +117,7 @@ export function defaultDevelopState(): DevelopState {
       b: [{ x: 0, y: 0 }, { x: 255, y: 255 }],
     },
     detail: { clarity: 0, texture: 0, sharpen: 0 },
+    grading: defaultGrading(), optics: defaultOptics(), geometry: defaultGeometry(), calibration: defaultCalibration(),
   };
 }
 
@@ -121,7 +150,8 @@ export function detailActive(d: DetailState): boolean {
 }
 
 export function stateActive(s: DevelopState): boolean {
-  return toneActive(s.tone) || colorActive(s.color) || curvesActive(s.curves) || detailActive(s.detail);
+  return toneActive(s.tone) || colorActive(s.color) || curvesActive(s.curves) || detailActive(s.detail)
+    || gradingActive(gradingOf(s)) || calibrationActive(calibrationOf(s)) || opticsActive(opticsOf(s)) || geometryActive(geometryOf(s));
 }
 
 // ------------------------------------------------------------ primitives
@@ -505,14 +535,104 @@ export function clarityPass(img: ImageData, amount: number, scale = 1): ImageDat
   return out;
 }
 
-/** The whole Develop filter on `src`, in the develop studio's order: the per-pixel pass, then clarity, texture and
- *  sharpening. `scale` shrinks the detail radii for a scaled preview. */
+const gradingActive = (g: GradingState): boolean => [g.shadows, g.midtones, g.highlights, g.global].some((w) => w.s !== 0);
+const calibrationActive = (c: CalibrationState): boolean => Object.values(c).some((v) => v !== 0);
+const opticsActive = (o: OpticsState): boolean => o.distortion !== 0 || o.chromatic !== 0 || o.vignetting !== 0;
+const geometryActive = (g: GeometryState): boolean => g.vertical !== 0 || g.horizontal !== 0 || g.rotate !== 0 || g.scale !== 100 || g.offsetX !== 0 || g.offsetY !== 0;
+
+/** Calibration, then colour grading, on every pixel. Calibration turns and saturates colours by how much each belongs to
+ *  a primary's hue range and tints the shadows green or magenta; grading adds each range's hue at its saturation where
+ *  the pixel's luminance places it (shadows, midtones, highlights, weighted by Blending and Balance) and to all of it
+ *  (global), keeping the pixel's luminance. */
+function gradePass(img: ImageData, g: GradingState, c: CalibrationState): void {
+  const d = img.data, gOn = gradingActive(g), cOn = calibrationActive(c);
+  const tint = (w: GradeWheel): [number, number, number] => {
+    if (!w.s) return [0, 0, 0];
+    const [r, gg, b] = hslToRgb(w.h, 1, 0.5), k = (w.s / 100) * 0.3;
+    return [(r / 255 - 0.5) * k, (gg / 255 - 0.5) * k, (b / 255 - 0.5) * k];
+  };
+  const ts = tint(g.shadows), tm = tint(g.midtones), th = tint(g.highlights), tg = tint(g.global);
+  const width = 0.15 + (g.blending / 100) * 0.35, pivot = 0.5 - (g.balance / 100) * 0.25;
+  for (let i = 0; i < d.length; i += 4) {
+    let r = d[i], gr = d[i + 1], b = d[i + 2];
+    if (cOn) {
+      const [h, s, l] = rgbToHsl(r, gr, b);
+      const wR = hueWeight(h, 0, 120), wG = hueWeight(h, 120, 120), wB = hueWeight(h, 240, 120);
+      const nh = h + (wR * c.redHue + wG * c.greenHue + wB * c.blueHue) * 0.3;
+      const ns = clamp01(s * (1 + (wR * c.redSat + wG * c.greenSat + wB * c.blueSat) / 100));
+      [r, gr, b] = hslToRgb(nh, ns, l);
+      if (c.shadowTint) { const k = (c.shadowTint / 100) * (1 - l) ** 2 * 20; r += k; b += k; gr -= k; }
+    }
+    if (gOn) {
+      const L = (0.299 * r + 0.587 * gr + 0.114 * b) / 255;
+      const wS = smoothstep(pivot + width, pivot - width, L), wH = smoothstep(pivot - width, pivot + width, L), wM = Math.max(0, 1 - wS - wH);
+      const add = [0, 1, 2].map((k) => (ts[k] * wS + tm[k] * wM + th[k] * wH + tg[k]) * 255);
+      const nr = r + add[0], ng = gr + add[1], nb = b + add[2], L2 = (0.299 * nr + 0.587 * ng + 0.114 * nb) / 255, fix = (L - L2) * 255;
+      r = nr + fix; gr = ng + fix; b = nb + fix;
+    }
+    d[i] = clamp255(r); d[i + 1] = clamp255(gr); d[i + 2] = clamp255(b);
+  }
+}
+
+/** Bilinear sample of one channel at (x, y), or -1 outside the image. */
+function sampleChannel(d: Uint8ClampedArray, w: number, h: number, x: number, y: number, c: number): number {
+  if (x < 0 || y < 0 || x > w - 1 || y > h - 1) return -1;
+  const x0 = Math.floor(x), y0 = Math.floor(y), x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = x - x0, fy = y - y0;
+  const at = (xx: number, yy: number): number => d[(yy * w + xx) * 4 + c];
+  return (at(x0, y0) * (1 - fx) + at(x1, y0) * fx) * (1 - fy) + (at(x0, y1) * (1 - fx) + at(x1, y1) * fx) * fy;
+}
+
+/** Optics after the colour work: Distortion as Lens Correction draws it, then chromatic aberration (the red channel
+ *  scaled about the centre one way and the blue the other) and lens vignetting (corners brightened or darkened, the
+ *  falloff starting at Midpoint). */
+function opticsPass(src: ImageData, o: OpticsState): ImageData {
+  let img = o.distortion ? lensDistort(src, o.distortion) : src;
+  const { width: w, height: h } = img, cx = (w - 1) / 2, cy = (h - 1) / 2, rmax = Math.hypot(cx, cy) || 1;
+  if (o.chromatic || o.vignetting) {
+    const out = new ImageData(new Uint8ClampedArray(img.data), w, h), d = img.data, od = out.data, k = (o.chromatic / 100) * 0.006;
+    const start = (o.midpoint / 100) * 0.9;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (k) for (const [c, f] of [[0, 1 + k], [2, 1 - k]] as const) { const v = sampleChannel(d, w, h, cx + (x - cx) / f, cy + (y - cy) / f, c); if (v >= 0) od[i + c] = v; }
+      if (o.vignetting) {
+        const r = Math.hypot(x - cx, y - cy) / rmax, fall = smoothstep(start, 1, r) * (o.vignetting / 100) * 0.8;
+        for (let c = 0; c < 3; c++) od[i + c] = clamp255(fall > 0 ? od[i + c] + (255 - od[i + c]) * fall : od[i + c] * (1 + fall));
+      }
+    }
+    img = out;
+  }
+  return img;
+}
+
+/** Geometry, last: each output pixel sampled from where the transform (rotate, scale, offset, then vertical and
+ *  horizontal perspective, as keystone) takes it from; outside the image becomes transparent. */
+function geometryPass(src: ImageData, g: GeometryState): ImageData {
+  const { width: w, height: h, data: d } = src, out = new ImageData(w, h), o = out.data, cx = (w - 1) / 2, cy = (h - 1) / 2;
+  const a = (-g.rotate * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), s = 100 / Math.max(1, g.scale);
+  const ox = (g.offsetX / 100) * cx, oy = (g.offsetY / 100) * cy, kv = (g.vertical / 100) * 0.5, kh = (g.horizontal / 100) * 0.5;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let u = (x - cx - ox) * s, v = (y - cy - oy) * s;
+    [u, v] = [u * ca - v * sa, u * sa + v * ca];
+    const pu = u / Math.max(0.1, 1 + kv * (v / cy)), pv = v / Math.max(0.1, 1 + kh * (u / cx));
+    const i = (y * w + x) * 4;
+    for (let c = 0; c < 4; c++) { const val = sampleChannel(d, w, h, cx + pu, cy + pv, c); o[i + c] = val < 0 ? 0 : val; }
+  }
+  return out;
+}
+
+/** The whole Develop filter on `src`, in the develop studio's order: the per-pixel pass, then calibration and colour
+ *  grading, then clarity, texture and sharpening, then optics and geometry. `scale` shrinks the detail radii for a
+ *  scaled preview. Panels at their defaults are skipped, so a state without them renders as before. */
 export function developImage(src: ImageData, state: DevelopState, scale = 1, seed = 7): ImageData {
   let img = new ImageData(src.width, src.height);
   developPass(src.data, img.data, src.width, src.height, state, seed);
+  const grading = gradingOf(state), calibration = calibrationOf(state), optics = opticsOf(state), geometry = geometryOf(state);
+  if (gradingActive(grading) || calibrationActive(calibration)) gradePass(img, grading, calibration);
   const d = state.detail;
   if (d.clarity) img = clarityPass(img, d.clarity, scale);
   if (d.texture) img = detailPass(img, Math.max(0.5, 3 * scale), d.texture / 100, true);
   if (d.sharpen > 0) img = detailPass(img, Math.max(0.5, 1.2 * scale), d.sharpen / 100, false);
+  if (opticsActive(optics)) img = opticsPass(img, optics);
+  if (geometryActive(geometry)) img = geometryPass(img, geometry);
   return img;
 }

@@ -6,6 +6,8 @@ import { checkRow, selectRow, sliderRow, type Row } from './controls';
 import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
+import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, type CalibrationState, type CurveChannel, type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState } from '../../engine/develop';
+import { curveGraph } from './curve-graph';
 
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction'
   | 'radialBlur' | 'surfaceBlur' | 'fieldBlur' | 'irisBlur' | 'tiltShift' | 'pathBlur';
@@ -175,6 +177,58 @@ export class FilterPanel extends Dialog {
       const r = sliderRow(label, min, max, step, (v) => { write(v); this.schedule(); });
       devNodes.push(r.el);
       devSync.push(() => r.set(read()));
+    }
+    // Camera Raw's further panels (the comparison's Develop row). The engine already had the point curve and colour
+    // mixer; this dialog did not show them. Every control reads s.develop when used, so loaded settings are what is edited.
+    const D = (): DevelopState => s.develop;
+    const slide = (label: string, min: number, max: number, step: number, read: () => number, write: (v: number) => void): void => {
+      const r = sliderRow(label, min, max, step, (v) => { write(v); this.schedule(); });
+      devNodes.push(r.el);
+      devSync.push(() => r.set(read()));
+    };
+    let curveCh: CurveChannel = 'rgb';
+    const graph = curveGraph({ points: () => D().curves[curveCh], table: (p) => buildCurveLut(p), changed: () => this.schedule() });
+    const curveSel = selectRow('Channel', [['rgb', 'RGB'], ['r', 'Red'], ['g', 'Green'], ['b', 'Blue']], (v) => { curveCh = v as CurveChannel; graph.draw(); });
+    devNodes.push(el('<p class="cv-note">Point Curve</p>'), curveSel.el, graph.el);
+    devSync.push(() => { curveSel.set(curveCh); graph.draw(); });
+    let band: 'master' | HslBand = 'master';
+    const bandState = (): HslBandState => (band === 'master' ? D().color.master : D().color.bands[band]);
+    const mixH = sliderRow('Hue', -180, 180, 1, (v) => { bandState().h = v; this.schedule(); });
+    const mixS = sliderRow('Saturation', -100, 100, 1, (v) => { bandState().s = v; this.schedule(); });
+    const mixL = sliderRow('Luminance', -100, 100, 1, (v) => { bandState().l = v; this.schedule(); });
+    const syncMix = (): void => { mixH.set(bandState().h); mixS.set(bandState().s); mixL.set(bandState().l); };
+    const mixSel = selectRow('Colours', [['master', 'All colours'], ...HSL_BANDS.map((b) => [b, b[0].toUpperCase() + b.slice(1)] as const)], (v) => { band = v as 'master' | HslBand; syncMix(); });
+    devNodes.push(el('<p class="cv-note">Colour Mixer</p>'), mixSel.el, mixH.el, mixS.el, mixL.el);
+    devSync.push(() => { mixSel.set(band); syncMix(); });
+    let range: 'shadows' | 'midtones' | 'highlights' | 'global' = 'midtones';
+    const grading = (): GradingState => (D().grading ??= defaultGrading());
+    const gH = sliderRow('Hue', 0, 360, 1, (v) => { grading()[range].h = v; this.schedule(); });
+    const gS = sliderRow('Saturation', 0, 100, 1, (v) => { grading()[range].s = v; this.schedule(); });
+    const syncWheel = (): void => { gH.set(grading()[range].h); gS.set(grading()[range].s); };
+    const rangeSel = selectRow('Range', [['shadows', 'Shadows'], ['midtones', 'Midtones'], ['highlights', 'Highlights'], ['global', 'Global']], (v) => { range = v as typeof range; syncWheel(); });
+    devNodes.push(el('<p class="cv-note">Colour Grading</p>'), rangeSel.el, gH.el, gS.el);
+    devSync.push(() => { rangeSel.set(range); syncWheel(); });
+    slide('Blending', 0, 100, 1, () => grading().blending, (v) => { grading().blending = v; });
+    slide('Balance', -100, 100, 1, () => grading().balance, (v) => { grading().balance = v; });
+    const optics = (): OpticsState => (D().optics ??= defaultOptics()), geometry = (): GeometryState => (D().geometry ??= defaultGeometry());
+    const calib = (): CalibrationState => (D().calibration ??= defaultCalibration());
+    devNodes.push(el('<p class="cv-note">Optics</p>'));
+    slide('Distortion', -100, 100, 1, () => optics().distortion, (v) => { optics().distortion = v; });
+    slide('Chromatic Aberration', -100, 100, 1, () => optics().chromatic, (v) => { optics().chromatic = v; });
+    slide('Vignetting', -100, 100, 1, () => optics().vignetting, (v) => { optics().vignetting = v; });
+    slide('Midpoint', 0, 100, 1, () => optics().midpoint, (v) => { optics().midpoint = v; });
+    devNodes.push(el('<p class="cv-note">Geometry</p>'));
+    slide('Vertical', -100, 100, 1, () => geometry().vertical, (v) => { geometry().vertical = v; });
+    slide('Horizontal', -100, 100, 1, () => geometry().horizontal, (v) => { geometry().horizontal = v; });
+    slide('Rotate (\u00b0)', -10, 10, 0.1, () => geometry().rotate, (v) => { geometry().rotate = v; });
+    slide('Scale (%)', 50, 150, 1, () => geometry().scale, (v) => { geometry().scale = v; });
+    slide('Offset X', -100, 100, 1, () => geometry().offsetX, (v) => { geometry().offsetX = v; });
+    slide('Offset Y', -100, 100, 1, () => geometry().offsetY, (v) => { geometry().offsetY = v; });
+    devNodes.push(el('<p class="cv-note">Calibration</p>'));
+    slide('Shadows Tint', -100, 100, 1, () => calib().shadowTint, (v) => { calib().shadowTint = v; });
+    for (const [p, name] of [['red', 'Red'], ['green', 'Green'], ['blue', 'Blue']] as const) {
+      slide(`${name} Primary Hue`, -100, 100, 1, () => calib()[`${p}Hue`], (v) => { calib()[`${p}Hue`] = v; });
+      slide(`${name} Primary Saturation`, -100, 100, 1, () => calib()[`${p}Sat`], (v) => { calib()[`${p}Sat`] = v; });
     }
     this.section('develop', devNodes, () => { for (const f of devSync) f(); });
     this.previewRow = checkRow('Preview', (v) => { this.preview = v; this.schedule(0); });
