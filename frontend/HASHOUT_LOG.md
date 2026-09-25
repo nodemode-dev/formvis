@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Radial, Surface and the Blur Gallery · _v1.31.0 (src/engine/blur-gallery.ts new; src/ui/panels/filter-panel.ts, src/engine/filter-jobs.ts, src/engine/filter-worker.ts, src/app.ts; e2e/test_blur_gallery.py new)
+
+`blur-gallery.ts`: `radialBlur`, `surfaceBlur`, `variableBlur`, `fieldBlur`, `irisBlur`, `tiltShift`, `pathBlur`, `GalleryKind`, `GALLERY_KINDS`, `isGalleryKind`, `GallerySettings`, `runGallery`. Filter panel: six kinds and labels, `gallery` settings, sections, margins. Worker: `runGallery`, and its comment's missing subject restored. Menus: Blur gains Radial and Surface; Blur Gallery. Removed:
+
+```ts
+  const FILTERS: FilterKind[] = ['develop', 'gaussianBlur', 'lensBlur', 'motionBlur', 'addNoise', 'lensCorrection', 'smartSharpen', 'shakeReduction', 'unsharpMask'];
+      { label: 'Blur', items: ['filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur'] },
+export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState; lensRadius: number; lensBrightness: number; lensThreshold: number; smart: SmartSharpenSettings; shake: ShakeSettings }
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction';
+/** runs its filters off the main thread (Core Image on the GPU). sonny's kernels are JavaScript, so the
+  if (job.kind === 'gaussianBlur') out = gaussianBlur(src, s.radius * job.scale);
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction';
+export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen', shakeReduction: 'Shake Reduction' };
+  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : kind === 'lensBlur' ? lensBlurMargin(s.lensRadius) : kind === 'smartSharpen' ? smartSharpenMargin(s.smart) : kind === 'shakeReduction' ? shakeMargin(s.shake) : 0;
+```
+
 ## Shadows/Highlights, HDR Toning and Color Lookup · _v1.30.0 (src/engine/adjust-params.ts, src/engine/lut.ts, src/ui/panels/adjust-panel.ts; e2e/test_adjust_new_kinds.py new)
 
 `adjust-params.ts`: `blurredLum`, `relight`, `LOOKS`, `parseCube`, `cubeSample`; kinds `shadowsHighlights`, `hdrToning`, `colorLookup`; the `text` value kind. `lut.ts`: Color Lookup in `LUT3_KINDS`. `adjust-panel.ts`: the 3D LUT File row. Removed:

@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.31.0 · 2026-09-24
+
+### Added
+
+- Filter > Blur > Radial Blur (Spin and Zoom) and Surface Blur, and a Filter > Blur Gallery with Field Blur, Iris Blur, Tilt-Shift and Path Blur. The gallery's pins, ellipse and path are set with sliders rather than on the canvas.
+- 13 more tests (browser): 434 in all.
+
 ## 1.30.0 · 2026-09-24
 
 ### Added
