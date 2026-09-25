@@ -2,11 +2,14 @@ import { LIMITS, type ImportedImage } from '../engine';
 import { api } from './api';
 
 const NATIVE = /\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)$/i;
+/** Camera RAW (decoded by the engine's LibRaw, then opened into Develop, as Photoshop opens them into Camera Raw). */
+export const RAW_FILE = /\.(dng|cr2|cr3|crw|nef|nrw|arw|srf|sr2|raf|orf|rw2|pef|srw|x3f|3fr|iiq|rwl|mrw|kdc|dcr|erf|mef|mos)$/i;
 const SERVER = /\.(heic|heif|hif|tiff?)$/i;
-export const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,image/*';
+const RAW_ACCEPT = '.dng,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.pef,.srw,.x3f,.3fr,.iiq,.rwl,.mrw,.kdc,.dcr,.erf,.mef,.mos';
+export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,${RAW_ACCEPT},image/*`;
 export const PROJECT_ACCEPT = '.sny,.sonny,.canvasor,.zip,.psd,.psb';
 
-export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name);
+export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name) || RAW_FILE.test(f.name);
 export const isProjectFile = (f: File): boolean => /\.(sny|sonny|canvasor|zip|psd|psb)$/i.test(f.name);
 
 function viaElement(blob: Blob): Promise<HTMLImageElement> {
@@ -28,7 +31,7 @@ async function bitmapOf(blob: Blob): Promise<ImportedImage['source'] & { width: 
 }
 
 export async function decodeImage(file: Blob, name: string): Promise<ImportedImage> {
-  const server = SERVER.test(name) || /image\/(heic|heif|tiff)/.test(file.type);
+  const server = SERVER.test(name) || RAW_FILE.test(name) || /image\/(heic|heif|tiff)/.test(file.type);
   let source: ImportedImage['source'] & { width: number; height: number };
   try { source = await bitmapOf(server ? await api.decode(file, name) : file); } catch (err) {
     if (server) throw err;

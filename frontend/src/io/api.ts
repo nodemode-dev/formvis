@@ -2,7 +2,7 @@ export interface Capabilities {
   name: string;
   version: string;
   desktop: boolean;
-  decode: { heic: boolean; tiff: boolean; engine: string };
+  decode: { heic: boolean; tiff: boolean; engine: string; raw?: boolean; rawEngine?: string };
   removeBackground: { ml: boolean; lite: boolean; default: 'ml' | 'lite' | null; model: string };
   dataDir: string;
 }

@@ -46,7 +46,7 @@ import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, type Capabilities, type OpenedProject } from './io/api';
-import { IMAGE_ACCEPT, decodeImage, isImageFile, isProjectFile } from './io/images';
+import { IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { deserialize, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { applyPrefs, loadPrefs, savePrefs } from './ui/prefs';
@@ -312,6 +312,8 @@ export function startApp(): void {
           try { decoded.push(await decodeImage(f, f.name)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
         }
         engine.insertImages(decoded, at);
+        // A single camera RAW opens into Develop, as Photoshop opens RAW files into Camera Raw.
+        if (decoded.length === 1 && RAW_FILE.test(decoded[0].name)) commands.run('filter-develop');
       });
     }
     if (skipped) toast(skipped === 1 ? 'One file is not an image or a project and was skipped.' : `${skipped} files are not images or projects and were skipped.`);
