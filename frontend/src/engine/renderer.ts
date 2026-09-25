@@ -263,6 +263,19 @@ export class Renderer {
   }
 
   /** Cached effect parts through the view, below or above the layer, each at its own blend times the layer's opacity. */
+  /** The GPU display's view of a layer's styles (Phase 18): the same cached effect parts this renderer draws, as images
+   *  at document coordinates with their alpha and blend mode, below or above the layer; [] for no active styles; null
+   *  where the renderer itself would draw the effects per render instead of from the cache (a live stroke, mask edit or
+   *  transform; clipped layers and folder masks are refused by the caller). */
+  gpuEffectParts(layer: Layer, ov: LayerOverride | undefined, doc: Doc): { image: Surface; matrix: Mat; alpha: number; blend: BlendMode; above: boolean }[] | null {
+    const fx0 = ov && 'effects' in ov ? ov.effects ?? null : layer.effects ?? null, fx = fx0 ? withGlobalLight(fx0, doc.globalLight) : null;
+    if (!effectsActive(fx)) return [];
+    if (ov?.source || ov?.maskSource || ov?.transform || !layer.raster) return null;
+    const t = layer.transform, src = layer.raster.canvas;
+    const parts = this.effectParts(layer, fx as LayerEffects, src, t, this.maskOf(layer, ov, t), ov?.maskPlacement ?? null, doc.width, doc.height);
+    return parts.map((p) => ({ image: p.s, matrix: [1 / p.k, 0, 0, 1 / p.k, p.x, p.y] as Mat, alpha: p.alpha, blend: p.op === 'source-over' ? 'normal' : p.op as BlendMode, above: p.above }));
+  }
+
   private drawParts(ctx: Ctx2D, parts: FxPart[], view: Mat, opacity: number, above: boolean): void {
     for (const p of parts) {
       if (p.above !== above) continue;

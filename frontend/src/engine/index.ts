@@ -593,12 +593,23 @@ export class Engine {
         layers.push({ image: null, lut: lut3, lut3: true, mask, clip, folders, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
         continue;
       }
-      if (effectsActive(o?.effects ?? l.effects)) return { reason: 'layer styles' };
+      // Layer styles: the renderer's own cached effect parts (images at document coordinates), drawn below and above the
+      // layer as the CPU draws them; where the CPU draws effects per render instead, the document stays on the CPU.
+      let fxParts: ReturnType<Renderer['gpuEffectParts']> = [];
+      if (effectsActive(o?.effects ?? l.effects)) {
+        if (clip || folders) return { reason: 'layer styles on a clipped layer or inside a masked folder' };
+        fxParts = this.display.gpuEffectParts(l, o, p.doc);
+        if (!fxParts) return { reason: 'layer styles on a layer being edited' };
+      }
       // Dissolve's pattern is fixed to document pixels; the display composites in screen pixels, so it stays on the CPU.
       if ((o?.blend ?? l.blend) === 'dissolve') return { reason: 'a layer in Dissolve mode' };
       const img = o?.source ?? l.raster?.canvas;
       if (!img || !l.raster) continue;
+      const lop = o?.opacity ?? l.opacity;
+      const part = (q: NonNullable<typeof fxParts>[number]): GpuLayerSpec => ({ image: q.image, version: 0, width: q.image.width, height: q.image.height, matrix: q.matrix, opacity: q.alpha * lop, blend: q.blend });
+      for (const q of fxParts) if (!q.above) layers.push(part(q));
       layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: o?.opacity ?? l.opacity, blend: o?.blend ?? l.blend, mask, clip, folders });
+      for (const q of fxParts) if (q.above) layers.push(part(q));
     }
     return { layers };
   }
