@@ -43,7 +43,7 @@ import { findWires } from './distractions';
 import type { SampledTip } from './abr';
 import { DEFAULT_GLOBAL_LIGHT, type GlobalLight } from './style-extras';
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
-import { noDynamics, pressureOption, type BrushDynamics, type BrushPreset } from './brush-dynamics';
+import { UPRIGHT, defaultShape, noDynamics, pressureOption, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { CUSTOM_SHAPES } from './custom-shapes';
 export { CUSTOM_SHAPES } from './custom-shapes';
@@ -145,6 +145,8 @@ export class Engine {
   }
   /** Pen pressure's effect on the Brush's size and flow; neutral until a preset or the options turn it on. */
   brushDynamics: BrushDynamics = noDynamics();
+  /** Brush Settings (Window > Brush Settings): tip shape, shape dynamics, scattering, texture and dual brush. */
+  brushShape: BrushShape = defaultShape();
   /** The preset last applied, for the options bar; cleared by nothing, since changing a value is Photoshop's way too. */
   brushPresetId: string | null = null;
 
@@ -2254,7 +2256,7 @@ export class Engine {
     return { layer: l, target, raster, local: placement(t, raster.width, raster.height) };
   }
 
-  beginStroke(pt: Pt, shift: boolean, pressure = 1): boolean {
+  beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT): boolean {
     const p = this.current;
     if (!p || this.stroke) return false;
     this.settle();
@@ -2267,10 +2269,12 @@ export class Engine {
     const color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : this.fg;
     const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, flow: this.brushFlow }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
+    // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
+    s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s };
     const last = this.lastBrush;
-    if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p, pressure);
-    s.to(pt, pressure);
+    if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p, pressure, pose);
+    s.to(pt, pressure, pose);
     s.compose();
     this.emit('render', null);
     return true;
@@ -2280,10 +2284,10 @@ export class Engine {
    *  that alone. Off, every stroke frame redraws everything. */
   dirtyRendering = true;
 
-  strokeTo(pt: Pt, pressure = 1): void {
+  strokeTo(pt: Pt, pressure = 1, pose: PenPose = UPRIGHT): void {
     const st = this.stroke;
     if (!st) return;
-    st.s.to(pt, pressure);
+    st.s.to(pt, pressure, pose);
     const f = st.s.compose();
     if (!f) return;
     const l = st.project.layer(st.layerId), r = st.target === 'mask' ? l?.mask?.raster : l?.raster;

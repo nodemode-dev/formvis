@@ -1,6 +1,7 @@
 import type { Engine, Pt, ToolId } from '../engine';
+import type { PenPose } from '../engine/brush-dynamics';
 
-export interface ToolPointer { doc: Pt; screen: Pt; button: number; shift: boolean; alt: boolean; mod: boolean; clicks: number; pressure: number }
+export interface ToolPointer { doc: Pt; screen: Pt; button: number; shift: boolean; alt: boolean; mod: boolean; clicks: number; pressure: number; pose?: PenPose }
 export interface ViewInfo { zoom: number; dpr: number; width: number; height: number; toScreen(p: Pt): Pt; toDoc(p: Pt): Pt }
 export interface Paint { accent: string; handle: string; antsA: string; antsB: string }
 export interface ToolContext { engine: Engine; view(): ViewInfo; paint(): Paint; antsPhase(): number }

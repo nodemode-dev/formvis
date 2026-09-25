@@ -46,6 +46,37 @@ export function computeOption(opt: CurveOptionSpec | null | undefined, info: Pai
 export interface BrushDynamics { size: CurveOptionSpec; flow: CurveOptionSpec }
 export const noDynamics = (): BrushDynamics => ({ size: identityOption(), flow: identityOption() });
 
+/** The pen's pose with a sample: tilt in degrees each way from upright (-90 to 90) and barrel rotation (twist, 0 to
+ *  359), as pointer events report them; a mouse is upright with no twist. */
+export interface PenPose { tiltX: number; tiltY: number; twist: number }
+export const UPRIGHT: PenPose = { tiltX: 0, tiltY: 0, twist: 0 };
+
+/** Photoshop's Brush Settings beyond size, hardness and pressure (the comparison's "Brush and eraser" row): Brush Tip
+ *  Shape's angle, roundness and spacing; Shape Dynamics' jitters and their controls (the stroke's direction, the pen's
+ *  tilt or its rotation); Scattering; Texture (a pattern cutting into each dab's paint); and Dual Brush (a second round
+ *  tip, the main stroke's paint kept only where its marks fall). Percentages are 0 to 100; angles in degrees. */
+export interface BrushShape {
+  angle: number; roundness: number; spacing: number | null;
+  sizeJitter: number; angleJitter: number; roundnessJitter: number; minRoundness: number;
+  angleControl: 'off' | 'direction' | 'tilt' | 'rotation'; roundnessControl: 'off' | 'tilt';
+  scatter: number; bothAxes: boolean; count: number; countJitter: number;
+  texture: { on: boolean; pattern: string; scale: number; depth: number };
+  /** The dual brush's marks are laid with the main dabs, scattered by its own Scatter and Count (no separate spacing). */
+  dual: { on: boolean; diameter: number; scatter: number; count: number };
+}
+export const defaultShape = (): BrushShape => ({
+  angle: 0, roundness: 100, spacing: null, sizeJitter: 0, angleJitter: 0, roundnessJitter: 0, minRoundness: 25,
+  angleControl: 'off', roundnessControl: 'off', scatter: 0, bothAxes: false, count: 1, countJitter: 0,
+  texture: { on: false, pattern: '', scale: 100, depth: 100 }, dual: { on: false, diameter: 20, scatter: 0, count: 1 },
+});
+/** Whether a shape does anything the plain round brush does not; an inactive one leaves strokes exactly as before. */
+export function shapeActive(s: BrushShape | null | undefined): boolean {
+  if (!s) return false;
+  const d = defaultShape();
+  return s.angle !== d.angle || s.roundness !== d.roundness || s.spacing !== null || s.sizeJitter > 0 || s.angleJitter > 0 || s.roundnessJitter > 0
+    || s.angleControl !== 'off' || s.roundnessControl !== 'off' || s.scatter > 0 || s.count > 1 || s.countJitter > 0 || s.texture.on || s.dual.on;
+}
+
 export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics; tip?: SampledTip }
 
 /** Presets made from imported .abr files, kept by the app and listed after the built-ins. */

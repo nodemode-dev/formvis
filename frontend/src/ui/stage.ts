@@ -394,7 +394,8 @@ export class Stage {
     const screen = { x: e.clientX - r.left, y: e.clientY - r.top };
     const v = this.engine.current?.viewport;
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
-    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: pen ? Math.min(1, Math.max(0, (e as PointerEvent).pressure)) : 1 };
+    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: pen ? Math.min(1, Math.max(0, (e as PointerEvent).pressure)) : 1,
+      pose: pen ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
   }
 
   /** Drag out of a ruler to place a guide: the top ruler makes horizontal guides, the left one vertical guides. The
