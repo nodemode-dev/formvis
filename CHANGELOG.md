@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.28.0 · 2026-09-24
+
+### Changed
+
+- The README is accurate again: code size, the 27 blend modes (stated once), 28 tools, 17 adjustment kinds, 10 filters and 10 layer styles are taken from the code; the graphics processor work is described; Status lists only what is not verified yet, and the release history lives here.
+
+### Added
+
+- `./sonny counts` prints the README's code sizes and blend-mode count from the repository; `./sonny counts --check` fails when the README has drifted, and a test runs that check.
+- 1 more test (backend): 408 in all.
+
 ## 1.27.0 · 2026-09-24
 
 ### Added
