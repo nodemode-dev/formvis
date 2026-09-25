@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.35.0 · 2026-09-24
+
+### Added
+
+- Layer > Warp Text: fifteen styles (Arc through Twist), Horizontal or Vertical, with Bend and distortion. The warp stays with the type, so the text remains editable.
+- 19 more tests (browser): 470 in all.
+
 ## 1.34.0 · 2026-09-24
 
 ### Added

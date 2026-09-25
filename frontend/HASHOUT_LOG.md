@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Warp Text · _v1.35.0 (src/engine/types.ts, src/engine/text.ts, src/ui/panels/warp-text-dialog.ts new, src/app.ts; e2e/test_warp_text.py new)
+
+`TextWarp`, `WarpStyle`, `TextSpec.warp`. `text.ts`: `renderPlain` (the former renderer), `WARP_STYLES`, `warpPoint`, `triangle`, `warpRender`, `renderText` (plain, then the warp), `warpFrom`. `WarpTextDialog`; the `warp-text` command in the Layer and context menus. Removed:
+
+```ts
+      'rasterize', 'edit-text', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] }, '-',
+  contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', '-',
+import { clamp, type Layer, type TextSpec } from './types';
+export function renderText(t: TextSpec): TextRender {
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; rendered?: string }
+```
+
 ## Brush Settings · _v1.34.0 (src/engine/brush-dynamics.ts, src/engine/stroke.ts, src/engine/index.ts, src/extensions/registry.ts, src/extensions/tools/brush.ts, src/ui/stage.ts, src/ui/panels/brush-settings.ts new, src/app.ts; e2e/test_brush_dynamics.py new)
 
 `brush-dynamics.ts`: `PenPose`, `UPRIGHT`, `BrushShape`, `defaultShape`, `shapeActive`. `stroke.ts`: `setShape`, `shapedDab`, the seeded `rnd`, the dual and texture shaping in `compose`. Engine: `brushShape`; `beginStroke` and `strokeTo` take a pose. `ToolPointer.pose` from the stage's pointer events. `BrushSettingsDialog` (F5, Window menu). Removed:

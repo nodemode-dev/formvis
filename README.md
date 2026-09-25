@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-1.34.0-f97316" alt="version 1.34.0">
+<img src="https://img.shields.io/badge/version-1.35.0-f97316" alt="version 1.35.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -30,7 +30,7 @@ sonny is a layered image editor: stack photos and paintings as layers, group the
 - **Photoshop files.** Open layered `.psd` and `.psb` files and export to them, keeping layers, folders, masks, clipping, opacity, blend modes, visibility and live adjustment layers.
 - **Layer styles.** Drop Shadow, Outer Glow, Stroke, Inner Shadow, Inner Glow, Satin, Bevel and Emboss, and Color, Gradient and Pattern Overlay for any pixel layer, drawn from its visible pixels and previewed live; copy, paste and clear them across layers. They save in `.sny` projects.
 - **Graphics processor.** The canvas draws through WebGPU (Metal on macOS, Direct3D 12 on Windows) or WebGL2 (as on Linux), with every blend mode but Dissolve, masks, folders, clipping, adjustment layers and layer styles, falling back to the CPU per document with the reason in the status bar; the engine's models run on CUDA, Core ML (Metal) or the CPU (Preferences > Performance); Help > Performance Benchmark times both paths.
-- **Type.** The Type tool adds editable text layers, typed straight onto the canvas, in any font on this machine (in Chromium, the full system list with your permission), with size, line height, tracking, kerning, alignment, bold, italic and colour; painting on type turns it into pixels.
+- **Type.** The Type tool adds editable text layers, typed straight onto the canvas, in any font on this machine (in Chromium, the full system list with your permission), with size, line height, tracking, kerning, alignment, bold, italic and colour, and Warp Text's fifteen styles, kept editable; painting on type turns it into pixels.
 - **Generative Fill, Expand and Upscale (optional).** Edit > Generative Fill paints a selection from a prompt, or removes what it covers with an empty prompt, through FLUX.1 Fill and Erase on fal; Image > Generative Expand grows the canvas and fills the new border; Image > Upscale enlarges 2 or 4 times with Real-ESRGAN. Set `FAL_KEY` or paste a key into the dialog once; the engine keeps it. Filter > Develop adds Camera Raw-style tone, colour and detail controls.
 - **Precise transforms.** Move snaps to the canvas and other layers w/ guides and takes exact X, Y, W, H, Scale and Angle values; several selected layers, or a folder, transform together; drag inside a selection to move or duplicate its pixels; Transform Selection (Alt+Mod+T) floats them w/ handles and merges back, growing the layer past its edges.
 - **Clipboard, selections, canvas.** Cut, Copy, Copy Merged, Paste in place and Layer via Copy; Expand, Contract and Mask's Black Areas; arrow-key nudging, marquee autoscroll, Anti-alias, and the Magic Wand's Sample Size; Canvas Size w/ anchors and Image Size w/ resampling.
