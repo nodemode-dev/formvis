@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.27.0 · 2026-09-24
+
+### Added
+
+- Help > Performance Benchmark: times panning, adjustment layers and painting on the CPU and on each graphics processor path on a temporary document, then closes it; the results can be copied.
+- 2 more tests (browser): 407 in all.
+
 ## 1.26.0 · 2026-09-24
 
 ### Added

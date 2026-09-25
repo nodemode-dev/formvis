@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The performance benchmark · _v1.27.0 (src/gpu/bench.ts new; src/gpu/display.ts, src/gpu/gl-display.ts, src/ui/app-dialogs.ts, src/app.ts, src/styles/dialogs.css; e2e/test_benchmark.py new)
+
+`bench.ts`: `runBenchmark` (a temporary document, pan, pan with adjustments, paint; CPU and each GPU display; the previous document restored), `benchText`. `GpuDisplay.timedFrame` and `GlDisplay.timedFrame` (an offscreen frame, finished before they resolve). `BenchmarkDialog`; the `benchmark` command in the Help menu; `.cv-bench-out`. Removed:
+
+```ts
+import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
+    { label: 'Help', items: ['shortcuts', 'copy-error-log', 'about'] },
+```
+
 ## The engine processor in Preferences · _v1.26.0 (src/ui/prefs.ts, src/ui/app-dialogs.ts, src/io/api.ts, src/app.ts; e2e/test_engine_device.py new)
 
 `Prefs.engineDevice`, `EngineDevice`, `ENGINE_CHOICES`. `SettingsDialog`: `engineRow`, `engineMode`, the Engine section, `setEngine`; the graphics processor note corrected. `api.setCompute`. `syncEngineDevice` in the app, run when the engine answers and on every Preferences change. Removed:
