@@ -28,3 +28,31 @@ export function refineSelection(mask: Float32Array, guide: Float32Array, w: numb
   if (s.shift !== 0) m = one(m, 0, 0, s.shift);
   return m;
 }
+
+/** The Refine Edge brush: where `region` (0 to 1, what the brush has painted) is set, the edge is worked out again from
+ *  the image with a wider matte than Radius alone (twice it, at least 12 document pixels), for hair and fur, and blended
+ *  in by how much the brush covered. */
+export function refineRegion(mask: Float32Array, guide: Float32Array, region: Float32Array, w: number, h: number, radius: number, scale = 1): Float32Array {
+  if (!region.some((v) => v > 0)) return mask;
+  const wide = refineMatte(mask, guide, w, h, { quality: 'advanced', refineEdges: Math.max(12, radius * 2), matteContrast: 0, shiftEdge: 0 }, scale);
+  const out = new Float32Array(mask.length);
+  for (let i = 0; i < mask.length; i++) out[i] = mask[i] * (1 - region[i]) + wide[i] * region[i];
+  return out;
+}
+
+/** Decontaminate Colors: each partly selected pixel takes, by `amount` (0 to 100) and most where it is least selected,
+ *  the colour of the fully selected pixels near it (a blur of colour weighted by mask to the fourth power, so the
+ *  background mixed into an edge is replaced by the subject's own colour). Alpha is left to the mask. */
+export function decontaminate(img: ImageData, mask: Float32Array, amount: number, scale = 1): ImageData {
+  const { width: w, height: h, data: d } = img, n = w * h, wt = new Float32Array(n), ch = [new Float32Array(n), new Float32Array(n), new Float32Array(n)];
+  for (let i = 0; i < n; i++) { const k = mask[i] ** 4; wt[i] = k; for (let c = 0; c < 3; c++) ch[c][i] = d[i * 4 + c] * k; }
+  const r = Math.max(2, 6 * scale), bw = softBlur(wt, w, h, r), bc = ch.map((x) => softBlur(x, w, h, r));
+  const out = new ImageData(new Uint8ClampedArray(d), w, h), o = out.data, k = Math.min(1, Math.max(0, amount / 100));
+  for (let i = 0; i < n; i++) {
+    const a = mask[i];
+    if (a <= 0.01 || a >= 0.99 || bw[i] < 1e-4) continue;
+    const t = k * Math.min(1, (1 - a) * 2);
+    for (let c = 0; c < 3; c++) o[i * 4 + c] = Math.round(d[i * 4 + c] * (1 - t) + (bc[c][i] / bw[i]) * t);
+  }
+  return out;
+}

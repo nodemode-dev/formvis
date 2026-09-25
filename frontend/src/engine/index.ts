@@ -50,6 +50,7 @@ export { CUSTOM_SHAPES } from './custom-shapes';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
+import { decontaminate } from './select-mask';
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
@@ -2079,7 +2080,7 @@ export class Engine {
   /** Select and Mask's OK: the refined selection (`data`, 0 to 255 over the whole canvas) sent to Photoshop's outputs:
    *  the selection itself, a layer mask on the active layer (replacing one it has), a new layer of the selected
    *  pixels, or a new layer (a duplicate) with it as a mask. One step; outputs other than the selection deselect. */
-  applyRefinedSelection(data: Uint8Array, output: 'selection' | 'mask' | 'layer' | 'layerMask'): void {
+  applyRefinedSelection(data: Uint8Array, output: 'selection' | 'mask' | 'layer' | 'layerMask', decontam = 0): void {
     const p0 = this.current;
     if (!p0 || data.length !== p0.doc.width * p0.doc.height) return;
     if (!data.some((v) => v > 0)) { this.notice('Nothing is selected after refining.'); return; }
@@ -2095,6 +2096,20 @@ export class Engine {
         if (l?.mask) p.updateLayer(l.id, { mask: null });
         this.addMask(false);
         if (output === 'layerMask' && original && original !== p.activeLayer?.id) p.updateLayer(original, { visible: false });
+      }
+      // Decontaminate Colors, on a new layer's own pixels (as Photoshop, only for output to a new layer): the refined
+      // mask read in the layer's coordinates, which needs the layer unrotated, unflipped and unscaled.
+      if (decontam > 0 && (output === 'layer' || output === 'layerMask')) {
+        const l = p.activeLayer, r = l?.raster, t = l?.transform;
+        if (l && r && t && !t.rotation && !t.flipX && !t.flipY && Math.abs(t.w - r.width) < 0.5 && Math.abs(t.h - r.height) < 0.5) {
+          const W = p.doc.width, H = p.doc.height, local = new Float32Array(r.width * r.height), ox = Math.round(t.x), oy = Math.round(t.y);
+          for (let y = 0; y < r.height; y++) for (let x = 0; x < r.width; x++) {
+            const dx = ox + x, dy = oy + y;
+            local[y * r.width + x] = dx >= 0 && dy >= 0 && dx < W && dy < H ? data[dy * W + dx] / 255 : 0;
+          }
+          r.ctx.putImageData(decontaminate(r.ctx.getImageData(0, 0, r.width, r.height), local, decontam), 0, 0);
+          r.touch();
+        } else this.notice('Decontaminate Colors needs a layer that is not rotated, flipped or scaled; the colours were left as they are.');
       }
       p.selection = null;
       return true;
