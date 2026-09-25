@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.32.0 · 2026-09-24
+
+### Added
+
+- Filter > Develop gains a Point Curve, a Colour Mixer (both were in the engine but not in the dialog), Colour Grading (shadows, midtones, highlights and global, with Blending and Balance), Optics (distortion, chromatic aberration, lens vignetting), Geometry (perspective, rotate, scale, offset) and Calibration (primaries and shadows tint).
+- 7 more tests (browser): 441 in all.
+
 ## 1.31.0 · 2026-09-24
 
 ### Added

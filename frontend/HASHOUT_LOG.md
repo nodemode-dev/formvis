@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Develop's further panels · _v1.32.0 (src/engine/develop.ts, src/ui/panels/filter-panel.ts, src/ui/panels/curve-graph.ts new; e2e/test_develop_panels.py new)
+
+`develop.ts`: `GradingState`, `OpticsState`, `GeometryState`, `CalibrationState` (optional in `DevelopState`), their defaults and `gradingOf` and the like, `gradePass`, `opticsPass`, `geometryPass`, `sampleChannel`; `developImage` and `stateActive` extended. `curve-graph.ts`: `curveGraph`. The Develop dialog: Point Curve, Colour Mixer, Colour Grading, Optics, Geometry, Calibration. Removed:
+
+```ts
+import { gaussianBlur } from './filters';
+  return toneActive(s.tone) || colorActive(s.color) || curvesActive(s.curves) || detailActive(s.detail);
+/** The whole Develop filter on `src`, in the develop studio's order: the per-pixel pass, then clarity, texture and
+ *  sharpening. `scale` shrinks the detail radii for a scaled preview. */
+```
+
 ## Radial, Surface and the Blur Gallery · _v1.31.0 (src/engine/blur-gallery.ts new; src/ui/panels/filter-panel.ts, src/engine/filter-jobs.ts, src/engine/filter-worker.ts, src/app.ts; e2e/test_blur_gallery.py new)
 
 `blur-gallery.ts`: `radialBlur`, `surfaceBlur`, `variableBlur`, `fieldBlur`, `irisBlur`, `tiltShift`, `pathBlur`, `GalleryKind`, `GALLERY_KINDS`, `isGalleryKind`, `GallerySettings`, `runGallery`. Filter panel: six kinds and labels, `gallery` settings, sections, margins. Worker: `runGallery`, and its comment's missing subject restored. Menus: Blur gains Radial and Surface; Blur Gallery. Removed:
