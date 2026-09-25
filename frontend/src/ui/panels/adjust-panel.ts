@@ -4,7 +4,7 @@ import {
   type AdjustmentKind, type ColorRange, type Engine, type HsvSettings, type ID, type Kernel,
 } from '../../engine';
 import { bandCentered, bandExclude, bandHandles, bandInclude, bandSetHandle, bandWeight, hsvAdjust, hueResponse } from '../../engine/adjust';
-import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramKernel, paramValues, type ParamKind } from '../../engine/adjust-params';
+import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramKernel, paramValues, parseCube, type ParamKind } from '../../engine/adjust-params';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { toast } from '../toast';
@@ -611,6 +611,30 @@ export class AdjustPanel extends Dialog {
       if (s.kind === 'range') { const r = sliderRow(s.label, s.min, s.max, s.step, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(num(pv()[s.key], s.def)) }; }
       if (s.kind === 'check') { const r = checkRow(s.label, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(pv()[s.key] === true) }; }
       if (s.kind === 'select') { const r = selectRow(s.label, s.options, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(String(pv()[s.key] ?? s.def)) }; }
+      if (s.kind === 'text') {
+        // Color Lookup's 3D LUT file: loaded from disk (checked to be a 3D .cube table), named, cleared back to the look.
+        if (s.key !== 'cube') return { s, el: el('<span hidden></span>'), set: () => undefined };
+        const row = el('<div class="cv-field cv-lut-row"><span>3D LUT File</span><span class="cv-note cv-lut-name"></span></div>');
+        const name = row.querySelector('.cv-lut-name') as HTMLElement;
+        const load = el<HTMLButtonElement>('<button class="cv-btn" type="button">Load...</button>'), clear = el<HTMLButtonElement>('<button class="cv-btn" type="button">Clear</button>');
+        load.addEventListener('click', () => {
+          const input = el<HTMLInputElement>('<input type="file" accept=".cube">');
+          input.addEventListener('change', () => {
+            const f = input.files?.[0];
+            if (!f) return;
+            void f.text().then((text) => {
+              if (!parseCube(text)) { toast(`${f.name} is not a 3D LUT in the .cube format.`); return; }
+              this.data.params = { ...pv(), cube: text, cubeName: f.name };
+              this.changed();
+              this.sections.get(kind)?.sync();
+            });
+          });
+          input.click();
+        });
+        clear.addEventListener('click', () => { this.data.params = { ...pv(), cube: '', cubeName: '' }; this.changed(); this.sections.get(kind)?.sync(); });
+        row.append(load, clear);
+        return { s, el: row, set: () => setText(name, String(pv().cubeName ?? '') || 'None (the look above)') };
+      }
       const r = colorRow(s.label, (hex) => put(s.key, { r: parseInt(hex.slice(1, 3), 16), g: parseInt(hex.slice(3, 5), 16), b: parseInt(hex.slice(5, 7), 16) }));
       return { s, el: r.el, set: () => r.set(toHex(pv()[s.key])) };
     });

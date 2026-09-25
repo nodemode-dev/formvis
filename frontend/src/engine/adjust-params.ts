@@ -8,13 +8,15 @@ import type { RGB } from './types';
  *  Colour Balance weights shadows, midtones and highlights by lightness with the usual overlapping ramps; Selective
  *  Colour weights each pixel by how much it belongs to a colour family and moves its ink, relative or absolute. */
 
-export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'develop';
+export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop';
 
 export type ParamSpec =
   | { key: string; label: string; kind: 'range'; min: number; max: number; step: number; def: number; group?: string }
   | { key: string; label: string; kind: 'check'; def: boolean; group?: string }
   | { key: string; label: string; kind: 'color'; def: RGB; group?: string }
-  | { key: string; label: string; kind: 'select'; options: ReadonlyArray<readonly [string, string]>; def: string; group?: string };
+  | { key: string; label: string; kind: 'select'; options: ReadonlyArray<readonly [string, string]>; def: string; group?: string }
+  /** Data the panel does not show as a control (a loaded .cube file's text and name). */
+  | { key: string; label: string; kind: 'text'; def: string; group?: string };
 
 export interface ParamAdjustment { label: string; params: ParamSpec[]; groupBy?: string; kernel: (v: Values) => Kernel }
 export type Values = Record<string, unknown>;
@@ -27,6 +29,7 @@ export function paramValue(spec: ParamSpec, raw: unknown): unknown {
   if (spec.kind === 'range') return typeof raw === 'number' && Number.isFinite(raw) ? Math.min(spec.max, Math.max(spec.min, raw)) : spec.def;
   if (spec.kind === 'check') return typeof raw === 'boolean' ? raw : spec.def;
   if (spec.kind === 'select') return spec.options.some(([v]) => v === raw) ? raw : spec.def;
+  if (spec.kind === 'text') return typeof raw === 'string' ? raw.slice(0, 32_000_000) : spec.def;
   const o = raw && typeof raw === 'object' ? (raw as Record<string, unknown>) : {}, n = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.round(Math.min(255, Math.max(0, v))) : d);
   return { r: n(o.r, spec.def.r), g: n(o.g, spec.def.g), b: n(o.b, spec.def.b) };
 }
@@ -55,6 +58,79 @@ function lut(f: (v: number) => number): Kernel {
 }
 
 const n = (v: Values, k: string): number => v[k] as number;
+
+/** Each pixel's luminance (0 to 1), blurred over about `radius` pixels: three passes of a running-sum box blur each way,
+ *  close to a Gaussian, in time independent of the radius. */
+function blurredLum(px: Uint8ClampedArray, w: number, h: number, radius: number): Float32Array {
+  let a = new Float32Array(w * h), b = new Float32Array(w * h);
+  for (let i = 0, j = 0; i < px.length; i += 4, j++) a[j] = lum(px[i], px[i + 1], px[i + 2]) / 255;
+  const r = Math.max(0, Math.round(radius / 1.7));
+  if (r < 1) return a;
+  const pass = (src: Float32Array, dst: Float32Array, len: number, lines: number, step: number, lineStep: number): void => {
+    for (let l = 0; l < lines; l++) {
+      const o = l * lineStep;
+      let sum = 0;
+      for (let k = -r; k <= r; k++) sum += src[o + Math.min(len - 1, Math.max(0, k)) * step];
+      for (let x = 0; x < len; x++) {
+        dst[o + x * step] = sum / (2 * r + 1);
+        sum += src[o + Math.min(len - 1, x + r + 1) * step] - src[o + Math.max(0, x - r) * step];
+      }
+    }
+  };
+  for (let k = 0; k < 3; k++) { pass(a, b, w, h, 1, w); pass(b, a, h, w, w, 1); }
+  return a;
+}
+
+/** Colour a pixel toward (r, g, b) at luminance `to`, keeping its hue, with saturation scaled by `sat`. */
+function relight(r: number, g: number, b: number, to: number, sat: number): [number, number, number] {
+  const from = Math.max(1e-4, lum(r, g, b)), k = to / from, rr = r * k, gg = g * k, bb = b * k, l = lum(rr, gg, bb);
+  return [l + (rr - l) * sat, l + (gg - l) * sat, l + (bb - l) * sat];
+}
+
+/** Color Lookup's built-in looks: this build's own formulas, as 3D tables are made from them. */
+const LOOKS: Record<string, (r: number, g: number, b: number) => [number, number, number]> = {
+  warm: (r, g, b) => [r * 1.06 + 0.02, g * 1.01, b * 0.88],
+  cool: (r, g, b) => [r * 0.9, g * 0.99, b * 1.08 + 0.02],
+  tealOrange: (r, g, b) => { const l = lum(r, g, b); return [r + (l - 0.5) * 0.18, g + (0.5 - Math.abs(l - 0.5)) * 0.02, b - (l - 0.5) * 0.22]; },
+  bleach: (r, g, b) => { const l = lum(r, g, b), s = (x: number): number => 0.5 + (x - 0.5) * 1.3; return [s(l + (r - l) * 0.45), s(l + (g - l) * 0.45), s(l + (b - l) * 0.45)]; },
+  fade: (r, g, b) => [0.08 + r * 0.86, 0.08 + g * 0.86, 0.1 + b * 0.84],
+  mono: (r, g, b) => { const l = lum(r, g, b); return [l * 1.02, l, l * 0.96]; },
+  cross: (r, g, b) => [r * r * 0.4 + r * 0.66, g * 1.08 - 0.02, b * 0.7 + 0.15],
+  night: (r, g, b) => { const l = lum(r, g, b); return [l * 0.55 + r * 0.1, l * 0.7 + g * 0.1, l * 0.9 + b * 0.25]; },
+};
+
+/** A 3D table read from Adobe's .cube text (LUT_3D_SIZE, then N^3 lines of r g b with red changing fastest), or null
+ *  if it is not one. DOMAIN_MIN and DOMAIN_MAX are honoured; 1D tables are refused. */
+export function parseCube(text: string): { size: number; data: Float32Array; min: number[]; max: number[] } | null {
+  let size = 0, min = [0, 0, 0], max = [1, 1, 1];
+  const values: number[] = [];
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#') || line.startsWith('TITLE')) continue;
+    const parts = line.split(/\s+/);
+    if (parts[0] === 'LUT_3D_SIZE') { size = Number(parts[1]); continue; }
+    if (parts[0] === 'LUT_1D_SIZE') return null;
+    if (parts[0] === 'DOMAIN_MIN') { min = parts.slice(1, 4).map(Number); continue; }
+    if (parts[0] === 'DOMAIN_MAX') { max = parts.slice(1, 4).map(Number); continue; }
+    if (parts.length >= 3 && parts.slice(0, 3).every((p) => Number.isFinite(Number(p)))) values.push(Number(parts[0]), Number(parts[1]), Number(parts[2]));
+  }
+  if (!Number.isInteger(size) || size < 2 || size > 256 || values.length !== size ** 3 * 3) return null;
+  return { size, data: new Float32Array(values), min, max };
+}
+
+/** A .cube table sampled with trilinear interpolation. */
+function cubeSample(c: { size: number; data: Float32Array; min: number[]; max: number[] }, r: number, g: number, b: number): [number, number, number] {
+  const N = c.size, at = (x: number, k: number): number => Math.min(N - 1, Math.max(0, ((x - c.min[k]) / (c.max[k] - c.min[k] || 1)) * (N - 1)));
+  const p = [at(r, 0), at(g, 1), at(b, 2)], i0 = p.map((v) => Math.min(N - 2, Math.floor(v))), f = p.map((v, k) => v - i0[k]);
+  const out: [number, number, number] = [0, 0, 0];
+  for (let k = 0; k < 8; k++) {
+    const o = [k & 1, (k >> 1) & 1, (k >> 2) & 1], wgt = o.reduce((m, oi, a) => m * (oi ? f[a] : 1 - f[a]), 1);
+    if (!wgt) continue;
+    const idx = ((i0[2] + o[2]) * N * N + (i0[1] + o[1]) * N + (i0[0] + o[0])) * 3;
+    out[0] += wgt * c.data[idx]; out[1] += wgt * c.data[idx + 1]; out[2] += wgt * c.data[idx + 2];
+  }
+  return out;
+}
 
 const SELECTIVE = ['reds', 'yellows', 'greens', 'cyans', 'blues', 'magentas', 'whites', 'neutrals', 'blacks'] as const;
 const SELECTIVE_LABELS: Record<(typeof SELECTIVE)[number], string> = { reds: 'Reds', yellows: 'Yellows', greens: 'Greens', cyans: 'Cyans', blues: 'Blues', magentas: 'Magentas', whites: 'Whites', neutrals: 'Neutrals', blacks: 'Blacks' };
@@ -185,6 +261,66 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
         });
         return out;
       });
+    },
+  },
+  shadowsHighlights: {
+    label: 'Shadows/Highlights',
+    // No groups: the panel hides grouped controls unless a groupBy selector names their group; the labels say which is which.
+    params: [range('shadowAmount', 'Shadows Amount', 0, 100, 35), range('shadowTone', 'Shadows Tone', 0, 100, 50), range('shadowRadius', 'Shadows Radius', 0, 2500, 30),
+      range('highlightAmount', 'Highlights Amount', 0, 100, 0), range('highlightTone', 'Highlights Tone', 0, 100, 50), range('highlightRadius', 'Highlights Radius', 0, 2500, 30),
+      range('color', 'Color', -100, 100, 20), range('midtone', 'Midtone', -100, 100, 0)],
+    kernel: (v) => (px, ctx) => {
+      if (!ctx) return;
+      const scale = 1 / Math.max(1e-6, ctx.unitsPerPixel), w = ctx.width, h = ctx.height;
+      const bs = blurredLum(px, w, h, n(v, 'shadowRadius') * scale);
+      const bh = n(v, 'highlightRadius') === n(v, 'shadowRadius') ? bs : blurredLum(px, w, h, n(v, 'highlightRadius') * scale);
+      const aS = n(v, 'shadowAmount') / 100, tS = Math.max(0.02, n(v, 'shadowTone') / 100), aH = n(v, 'highlightAmount') / 100, tH = Math.max(0.02, n(v, 'highlightTone') / 100);
+      const col = n(v, 'color') / 100, mid = n(v, 'midtone') / 100;
+      for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+        const r = px[i] / 255, g = px[i + 1] / 255, b = px[i + 2] / 255, L = lum(r, g, b);
+        // Shadows: where the neighbourhood is darker than the tone width, lift toward it; highlights: where brighter than
+        // its mirror, pull toward it. Strong near black and white, continuous at each boundary.
+        const ws = aS * cl(1 - bs[j] / tS) ** 2, wh = aH * cl((bh[j] - (1 - tH)) / tH) ** 2;
+        let L2 = L < tS ? L + ws * (tS - L) * 0.8 : L;
+        L2 = L2 > 1 - tH ? L2 - wh * (L2 - (1 - tH)) * 0.8 : L2;
+        L2 += mid * 4 * L2 * (1 - L2) * (L2 - 0.5);
+        const [nr, ng, nb] = relight(r, g, b, cl(L2), 1 + col * (ws + wh));
+        px[i] = Math.round(cl(nr) * 255); px[i + 1] = Math.round(cl(ng) * 255); px[i + 2] = Math.round(cl(nb) * 255);
+      }
+    },
+  },
+  hdrToning: {
+    label: 'HDR Toning',
+    params: [range('radius', 'Radius', 1, 500, 15), range('strength', 'Strength', 10, 400, 52),
+      range('gamma', 'Gamma', 10, 200, 100), range('exposure', 'Exposure', -500, 500, 0), range('detail', 'Detail', -100, 300, 30),
+      range('vibrance', 'Vibrance', -100, 100, 0), range('saturation', 'Saturation', -100, 100, 20)],
+    kernel: (v) => (px, ctx) => {
+      if (!ctx) return;
+      // Local adaptation: luminance split into a base (its blur) and detail; the base's range compressed by Strength,
+      // detail raised by Detail, then Exposure (stops, in hundredths) and Gamma, colour kept by relighting.
+      const base = blurredLum(px, ctx.width, ctx.height, n(v, 'radius') / Math.max(1e-6, ctx.unitsPerPixel));
+      const strength = n(v, 'strength') / 100, detail = 1 + n(v, 'detail') / 100, expo = 2 ** (n(v, 'exposure') / 100), gamma = n(v, 'gamma') / 100;
+      const vib = n(v, 'vibrance') / 100, sat = 1 + n(v, 'saturation') / 100;
+      for (let i = 0, j = 0; i < px.length; i += 4, j++) {
+        const r = px[i] / 255, g = px[i + 1] / 255, b = px[i + 2] / 255, L = Math.max(1e-4, lum(r, g, b)), B = Math.max(1e-4, base[j]);
+        const lb = Math.log(B), ld = Math.log(L) - lb, mean = Math.log(0.45);
+        const L2 = cl((Math.exp(mean + (lb - mean) / (1 + strength) + ld * detail) * expo) ** (1 / gamma));
+        const s0 = (Math.max(r, g, b) - Math.min(r, g, b)), s = sat * (1 + vib * (1 - s0));
+        const [nr, ng, nb] = relight(r, g, b, L2, s);
+        px[i] = Math.round(cl(nr) * 255); px[i + 1] = Math.round(cl(ng) * 255); px[i + 2] = Math.round(cl(nb) * 255);
+      }
+    },
+  },
+  colorLookup: {
+    label: 'Color Lookup',
+    params: [{ key: 'look', label: 'Look', kind: 'select', options: [['warm', 'Warm'], ['cool', 'Cool'], ['tealOrange', 'Teal and Orange'], ['bleach', 'Bleach Bypass'], ['fade', 'Faded Film'], ['mono', 'Warm Mono'], ['cross', 'Cross Process'], ['night', 'Night']], def: 'warm' },
+      { key: 'cube', label: '3D LUT file', kind: 'text', def: '' }, { key: 'cubeName', label: 'File', kind: 'text', def: '' }],
+    kernel: (v) => {
+      // A loaded .cube file wins over the built-in look; an unreadable one leaves the image as it is.
+      const text = String(v.cube ?? '');
+      if (text) { const c = parseCube(text); return c ? perPixel((r, g, b) => cubeSample(c, r, g, b)) : () => undefined; }
+      const f = LOOKS[String(v.look)] ?? LOOKS.warm;
+      return perPixel(f);
     },
   },
   develop: {
