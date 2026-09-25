@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.34.0 · 2026-09-24
+
+### Added
+
+- Window > Brush Settings (F5): Brush Tip Shape (angle, roundness, spacing), Shape Dynamics (size, angle and roundness jitter, following the stroke's direction, the pen's tilt or its rotation), Scattering, Texture and Dual Brush. The pen's tilt and rotation now reach the brush.
+- 7 more tests (browser): 451 in all.
+
 ## 1.33.0 · 2026-09-24
 
 ### Added

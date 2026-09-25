@@ -2,6 +2,31 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Brush Settings · _v1.34.0 (src/engine/brush-dynamics.ts, src/engine/stroke.ts, src/engine/index.ts, src/extensions/registry.ts, src/extensions/tools/brush.ts, src/ui/stage.ts, src/ui/panels/brush-settings.ts new, src/app.ts; e2e/test_brush_dynamics.py new)
+
+`brush-dynamics.ts`: `PenPose`, `UPRIGHT`, `BrushShape`, `defaultShape`, `shapeActive`. `stroke.ts`: `setShape`, `shapedDab`, the seeded `rnd`, the dual and texture shaping in `compose`. Engine: `brushShape`; `beginStroke` and `strokeTo` take a pose. `ToolPointer.pose` from the stage's pointer events. `BrushSettingsDialog` (F5, Window menu). Removed:
+
+```ts
+    { label: 'Window', items: [...DOCK_PANELS.map((pn) => `panel-${pn.id}`), '-', 'reset-panels'] },
+import { noDynamics, pressureOption, type BrushDynamics, type BrushPreset } from './brush-dynamics';
+  beginStroke(pt: Pt, shift: boolean, pressure = 1): boolean {
+    if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p, pressure);
+    s.to(pt, pressure);
+  strokeTo(pt: Pt, pressure = 1): void {
+    st.s.to(pt, pressure);
+import { computeOption, type BrushDynamics } from './brush-dynamics';
+  private readonly spacing: number;
+   *  interpolated along the way, so a pen's changes between samples are smooth. */
+  to(p: Pt, pressure = 1): void {
+    if (!from) { this.dab(p, pr); this.last = p; this.carry = 0; this.lastPressure = pr; return; }
+    // Coverage: the paint layer, cut to the selection when there is one.
+      c.drawImage(this.paint, 0, 0);
+export interface ToolPointer { doc: Pt; screen: Pt; button: number; shift: boolean; alt: boolean; mod: boolean; clicks: number; pressure: number }
+  down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; ctx.engine.beginStroke(p.doc, p.shift, p.pressure); } },
+  move(ctx, p) { hoverPt = p.doc; ctx.engine.strokeTo(p.doc, p.pressure); ctx.engine.emit('overlay', null); },
+    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: pen ? Math.min(1, Math.max(0, (e as PointerEvent).pressure)) : 1 };
+```
+
 ## The Refine Edge brush and Decontaminate Colors · _v1.33.0 (src/engine/select-mask.ts, src/engine/index.ts, src/ui/panels/select-mask-dialog.ts; e2e/test_refine_edges.py new)
 
 `select-mask.ts`: `refineRegion`, `decontaminate`. `applyRefinedSelection` takes a decontaminate amount for output to a new layer. The dialog: Onion Skin, Marching Ants and On Layers views, the brush (`region`, `paint`), Decontaminate Colors and Amount. Removed:
