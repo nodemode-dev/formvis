@@ -2,9 +2,10 @@
 import { addNoise, gaussianBlur, lensDistort, motionBlur, unsharpMask } from './filters';
 import { developImage } from './develop';
 import { lensBlur, shakeReduce, smartSharpen } from './filters-more';
+import { isGalleryKind, runGallery } from './blur-gallery';
 import type { FilterJob } from './filter-jobs';
 
-/** runs its filters off the main thread (Core Image on the GPU). sonny's kernels are JavaScript, so the
+/** Filters run here, off the main thread: sonny's kernels are JavaScript, so the
  *  interactive preview runs here instead, leaving the interface responsive while a slider is dragged. The pixels
  *  arrive and leave as transferred buffers, so nothing is copied. */
 onmessage = (e: MessageEvent<FilterJob>) => {
@@ -12,7 +13,8 @@ onmessage = (e: MessageEvent<FilterJob>) => {
   const src = new ImageData(new Uint8ClampedArray(job.pixels), job.width, job.height);
   const s = job.settings;
   let out = src;
-  if (job.kind === 'gaussianBlur') out = gaussianBlur(src, s.radius * job.scale);
+  if (isGalleryKind(job.kind)) out = runGallery(job.kind, s.gallery, src, job.scale);
+  else if (job.kind === 'gaussianBlur') out = gaussianBlur(src, s.radius * job.scale);
   else if (job.kind === 'motionBlur') out = motionBlur(src, s.angle, s.distance * job.scale);
   else if (job.kind === 'addNoise') out = addNoise(src, s.amount, s.gaussian, s.monochromatic, job.seed);
   else if (job.kind === 'lensCorrection') out = lensDistort(src, s.distortion);

@@ -5,9 +5,12 @@ import { toast } from '../toast';
 import { checkRow, selectRow, sliderRow, type Row } from './controls';
 import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
 import { estimateShake } from '../../engine/shake';
+import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 
-export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction';
-export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen', shakeReduction: 'Shake Reduction' };
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction'
+  | 'radialBlur' | 'surfaceBlur' | 'fieldBlur' | 'irisBlur' | 'tiltShift' | 'pathBlur';
+export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen', shakeReduction: 'Shake Reduction',
+  radialBlur: 'Radial Blur', surfaceBlur: 'Surface Blur', fieldBlur: 'Field Blur', irisBlur: 'Iris Blur', tiltShift: 'Tilt-Shift', pathBlur: 'Path Blur' };
 
 export function defaultFilterSettings() {
   return {
@@ -15,6 +18,15 @@ export function defaultFilterSettings() {
     lensRadius: 15, lensBrightness: 0, lensThreshold: 255,
     smart: { amount: 200, radius: 1, noise: 10, remove: 'lens' as SharpenRemove, angle: 0, shadows: 0, highlights: 0 },
     shake: { angle: 0, length: 10, smoothing: 10, amount: 100 } as ShakeSettings,
+    // Radial and Surface Blur, and the Blur Gallery; positions in percent of the image.
+    gallery: {
+      radialAmount: 10, radialMethod: 'spin' as 'spin' | 'zoom', radialQuality: 'good' as 'draft' | 'good' | 'best', radialX: 50, radialY: 50,
+      surfaceRadius: 5, surfaceThreshold: 15,
+      pins: 2, pin1x: 30, pin1y: 50, pin1blur: 0, pin2x: 70, pin2y: 50, pin2blur: 15, pin3x: 50, pin3y: 20, pin3blur: 8, pin4x: 50, pin4y: 80, pin4blur: 8,
+      irisBlur: 15, irisX: 50, irisY: 50, irisRx: 30, irisRy: 30, irisAngle: 0, irisFeather: 50,
+      tiltBlur: 15, tiltY: 50, tiltAngle: 0, tiltFocus: 10, tiltTransition: 20,
+      pathSpeed: 30, pathTaper: 0, pathSx: 20, pathSy: 70, pathBx: 50, pathBy: 30, pathEx: 80, pathEy: 70,
+    } as GallerySettings,
   };
 }
 export type FilterPanelSettings = ReturnType<typeof defaultFilterSettings>;
@@ -32,13 +44,18 @@ export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number
       case 'lensBlur': return lensBlur(src, s.lensRadius * scale, s.lensBrightness, s.lensThreshold);
       case 'smartSharpen': return smartSharpen(src, s.smart, scale);
       case 'shakeReduction': return shakeReduce(src, s.shake, scale);
+      case 'radialBlur': case 'surfaceBlur': case 'fieldBlur': case 'irisBlur': case 'tiltShift': case 'pathBlur': return runGallery(kind, s.gallery, src, scale);
     default: return src;
   }
 }
 
 /** How far a filter's effect reaches past its input, in pixels. */
 export function filterMargin(kind: FilterKind, s: FilterPanelSettings): number {
-  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : kind === 'lensBlur' ? lensBlurMargin(s.lensRadius) : kind === 'smartSharpen' ? smartSharpenMargin(s.smart) : kind === 'shakeReduction' ? shakeMargin(s.shake) : 0;
+  return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : kind === 'lensBlur' ? lensBlurMargin(s.lensRadius) : kind === 'smartSharpen' ? smartSharpenMargin(s.smart) : kind === 'shakeReduction' ? shakeMargin(s.shake)
+    : kind === 'surfaceBlur' ? Math.ceil(s.gallery.surfaceRadius) + 1 : kind === 'pathBlur' ? Math.ceil(s.gallery.pathSpeed) + 2
+    : kind === 'fieldBlur' ? gaussianMargin(Math.max(s.gallery.pin1blur, s.gallery.pin2blur, s.gallery.pin3blur, s.gallery.pin4blur))
+    : kind === 'irisBlur' ? gaussianMargin(s.gallery.irisBlur) : kind === 'tiltShift' ? gaussianMargin(s.gallery.tiltBlur)
+    : kind === 'radialBlur' ? 2000 : 0;
 }
 
 export class FilterPanel extends Dialog {
@@ -76,6 +93,36 @@ export class FilterPanel extends Dialog {
     const lensR = sliderRow('Radius (px)', 1, 100, 1, (v) => { s.lensRadius = v; this.schedule(); });
     const lensB = sliderRow('Specular brightness', 0, 100, 1, (v) => { s.lensBrightness = v; this.schedule(); });
     const lensT = sliderRow('Specular threshold', 0, 255, 1, (v) => { s.lensThreshold = v; this.schedule(); });
+    // Radial and Surface Blur, and the Blur Gallery. Positions are percentages of the image, set here with sliders
+    // (Photoshop places the gallery's pins and handles on the canvas). Every control reads and writes s.gallery when
+    // used, never a copy taken now, so loaded settings are what is edited.
+    type G = FilterPanelSettings['gallery'];
+    const gv = <K extends keyof G>(k: K): G[K] => s.gallery[k];
+    const gset = <K extends keyof G>(k: K, v: G[K]): void => { s.gallery = { ...s.gallery, [k]: v }; this.schedule(); };
+    const gs = (label: string, min: number, max: number, step: number, k: keyof G): { el: HTMLElement; sync: () => void } => {
+      const r = sliderRow(label, min, max, step, (v) => gset(k, v as never));
+      return { el: r.el, sync: () => r.set(gv(k) as number) };
+    };
+    const gsel = (label: string, opts: Array<[string, string]>, k: 'radialMethod' | 'radialQuality'): { el: HTMLElement; sync: () => void } => {
+      const r = selectRow(label, opts, (v) => gset(k, v as never));
+      return { el: r.el, sync: () => r.set(String(gv(k))) };
+    };
+    const group = (kind: FilterKind, rows: Array<{ el: HTMLElement; sync: () => void }>, note?: string): void =>
+      this.section(kind, [...rows.map((r) => r.el), ...(note ? [el(`<p class="cv-note">${note}</p>`)] : [])], () => { for (const r of rows) r.sync(); });
+    group('radialBlur', [gs('Amount', 1, 100, 1, 'radialAmount'), gsel('Blur Method', [['spin', 'Spin'], ['zoom', 'Zoom']], 'radialMethod'),
+      gsel('Quality', [['draft', 'Draft'], ['good', 'Good'], ['best', 'Best']], 'radialQuality'), gs('Center X (%)', 0, 100, 1, 'radialX'), gs('Center Y (%)', 0, 100, 1, 'radialY')]);
+    group('surfaceBlur', [gs('Radius (px)', 1, 100, 1, 'surfaceRadius'), gs('Threshold (levels)', 2, 255, 1, 'surfaceThreshold')]);
+    group('fieldBlur', [gs('Pins', 1, 4, 1, 'pins'),
+      ...([1, 2, 3, 4] as const).flatMap((i) => [gs(`Pin ${i} X (%)`, 0, 100, 1, `pin${i}x`), gs(`Pin ${i} Y (%)`, 0, 100, 1, `pin${i}y`), gs(`Pin ${i} Blur (px)`, 0, 500, 1, `pin${i}blur`)])],
+      'Each pin sets the blur at its place; between pins the blur blends by distance.');
+    group('irisBlur', [gs('Blur (px)', 0, 500, 1, 'irisBlur'), gs('Center X (%)', 0, 100, 1, 'irisX'), gs('Center Y (%)', 0, 100, 1, 'irisY'),
+      gs('Radius X (%)', 1, 100, 1, 'irisRx'), gs('Radius Y (%)', 1, 100, 1, 'irisRy'), gs('Angle (\u00b0)', -90, 90, 1, 'irisAngle'), gs('Sharp area (%)', 0, 99, 1, 'irisFeather')],
+      'Sharp inside the sharp area, rising to the full blur at the ellipse\'s edge.');
+    group('tiltShift', [gs('Blur (px)', 0, 500, 1, 'tiltBlur'), gs('Center Y (%)', 0, 100, 1, 'tiltY'), gs('Angle (\u00b0)', -90, 90, 1, 'tiltAngle'),
+      gs('Focus (% of height)', 0, 50, 1, 'tiltFocus'), gs('Transition (% of height)', 1, 50, 1, 'tiltTransition')]);
+    group('pathBlur', [gs('Speed (px)', 0, 500, 1, 'pathSpeed'), gs('Taper (%)', 0, 100, 1, 'pathTaper'), gs('Start X (%)', 0, 100, 1, 'pathSx'), gs('Start Y (%)', 0, 100, 1, 'pathSy'),
+      gs('Bend X (%)', 0, 100, 1, 'pathBx'), gs('Bend Y (%)', 0, 100, 1, 'pathBy'), gs('End X (%)', 0, 100, 1, 'pathEx'), gs('End Y (%)', 0, 100, 1, 'pathEy')],
+      'Blurs along the path from start through the bend to end, as if moving along it.');
     this.section('lensBlur', [lensR.el, lensB.el, lensT.el, el('<p class="cv-note">An iris-shaped blur in linear light; pixels at or above the threshold bloom into bright discs.</p>')], () => { lensR.set(s.lensRadius); lensB.set(s.lensBrightness); lensT.set(s.lensThreshold); });
     const ss = s.smart;
     const ssAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { ss.amount = v; this.schedule(); });
