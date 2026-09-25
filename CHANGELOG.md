@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.37.0 · 2026-09-24
+
+### Added
+
+- Window > Paragraph Styles: named type styles kept in the document. Make one from a type layer, apply it to others, redefine it to update every layer that uses it, or delete it; each is one undo step.
+- 3 more tests (browser): 480 in all.
+
 ## 1.36.0 · 2026-09-24
 
 ### Added

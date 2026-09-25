@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Paragraph styles · _v1.37.0 (src/engine/types.ts, src/engine/text.ts, src/engine/index.ts, src/io/project-io.ts, src/ui/panels/paragraph-styles.ts new, src/styles/dialogs.css, src/app.ts; e2e/test_paragraph_styles.py new)
+
+`ParagraphStyle`, `Doc.paragraphStyles`, `TextSpec.style`. `text.ts`: `styleOf`, `withStyle`, `paragraphStylesFrom`; `textFromData` reads the link. Engine: `paragraphStyles`, `newParagraphStyle`, `applyParagraphStyle`, `redefineParagraphStyle`, `deleteParagraphStyle`. The manifest writes and reads the styles. `ParagraphStylesDialog` (Window menu). Removed:
+
+```ts
+    { label: 'Window', items: ['brush-settings', '-', ...DOCK_PANELS.map((pn) => `panel-${pn.id}`), '-', 'reset-panels'] },
+import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics, renderText } from './text';
+import { clamp, type Layer, type Pt, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
+    warp: warpFrom(o.warp), onPath: pathFrom(o.onPath),
+export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; globalLight?: GlobalLight }
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; rendered?: string }
+  Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns,
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.globalLight ? { globalLight: { angle: doc.globalLight.angle, altitude: doc.globalLight.altitude } } : {}) };
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}) }, activeId: str(manifest.activeLayerID) };
+```
+
 ## Type on Path · _v1.36.0 (src/engine/types.ts, src/engine/text.ts, src/engine/index.ts, src/ui/panels/type-on-path-dialog.ts new, src/app.ts; e2e/test_type_on_path.py new)
 
 `TextPath`, `TextSpec.onPath`. `text.ts`: `renderPathText`, `pathFrom`; `renderText` sends path type to it. Engine: `createTextOnPath`. `TypeOnPathDialog`; the `type-on-path` command in the Layer menu. Removed:
