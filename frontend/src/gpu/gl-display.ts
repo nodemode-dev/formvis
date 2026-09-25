@@ -1,6 +1,6 @@
 import { invert, mul, type Mat } from '../engine';
 import { blendIndex } from './blend-wgsl';
-import { CLIP_MODE, LUT3_MODE, LUT_MODE, type Checker, type DisplayClip, type DisplayLayer } from './display';
+import { CLIP_MODE, FOLDER_MODE, LUT3_MODE, LUT_MODE, type Checker, type DisplayClip, type DisplayLayer, type DisplayMask } from './display';
 
 /** The display on WebGL2 (Phase 18.4): the GPU path where WebGPU is missing, as in the Linux desktop shell, whose
  *  webview has none. The same passes as the WebGPU display and the same maths as blend-wgsl.ts, in GLSL ES 3.00: layers
@@ -56,6 +56,7 @@ void main() {
   vec4 bd = texelFetch(backdrop, fb, 0);
   float cov = coverage(vec2(gl_FragCoord.x, H - gl_FragCoord.y));
   if (hasClip == 1) cov *= texelFetch(clipTex, fb, 0).a;
+  if (mode == 103) { outColor = vec4(0.0, 0.0, 0.0, cov); return; }
   if (mode == 102) {
     vec3 qb = inv * vec3(gl_FragCoord.x, H - gl_FragCoord.y, 1.0);
     if (qb.x < 0.0 || qb.y < 0.0 || qb.x >= size.x || qb.y >= size.y) { outColor = vec4(0.0); return; }
@@ -193,9 +194,22 @@ export class GlDisplay {
       this.drawLayer({ image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, null, this.blank(), t.fb, view, filter, used, u);
       clipOut.set(c, t.tex);
     }
+    const folderOut = new Map<DisplayMask[], WebGLTexture>();
+    let slot = clipOut.size;
+    for (const l of layers) {
+      if (!l.folders || folderOut.has(l.folders)) continue;
+      let prev: WebGLTexture | null = null;
+      for (const mk of l.folders) {
+        const t = this.clipTarget(slot++, W, H);
+        this.drawLayer({ image: null, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: 1, blend: 'normal', mask: mk }, FOLDER_MODE, prev, this.blank(), t.fb, view, filter, used, u);
+        prev = t.tex;
+      }
+      if (prev) folderOut.set(l.folders, prev);
+    }
     for (const l of layers) {
       if (l.opacity <= 0 || l.width < 1 || l.height < 1) continue;
-      this.drawLayer(l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), l.clip ? clipOut.get(l.clip) ?? null : null, a.tex, b.fb, view, filter, used, u);
+      const cover = l.clip ? clipOut.get(l.clip) ?? null : l.folders ? folderOut.get(l.folders) ?? null : null;
+      this.drawLayer(l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, a.tex, b.fb, view, filter, used, u);
       [a, b] = [b, a];
     }
     gl.useProgram(this.pres);
@@ -231,9 +245,9 @@ export class GlDisplay {
   /** One composite pass: `l` over `backdrop` into framebuffer `fb`, in shader `mode`, clipped by `clip` (a coverage texture). */
   private drawLayer(l: DisplayLayer, mode: number, clip: WebGLTexture | null, backdrop: WebGLTexture, fb: WebGLFramebuffer, view: Mat, filter: number, used: Set<object>, u: (n: string) => WebGLUniformLocation | null): void {
     const gl = this.gl;
-    used.add(l.lut ?? (l.image as object));
+    if (mode !== FOLDER_MODE) used.add(l.lut ?? (l.image as object));
     gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this.texture(l));
+    gl.bindTexture(gl.TEXTURE_2D, mode === FOLDER_MODE ? this.blank() : this.texture(l));
     for (const k of [gl.TEXTURE_MIN_FILTER, gl.TEXTURE_MAG_FILTER]) gl.texParameteri(gl.TEXTURE_2D, k, filter);
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
     gl.uniformMatrix3fv(u('inv'), false, [ia, ib, 0, ic, id, 0, ie, iff, 1]);

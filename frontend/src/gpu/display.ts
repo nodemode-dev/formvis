@@ -8,9 +8,10 @@ const BUF = { MAP_READ: 0x0001, COPY_DST: 0x0008, UNIFORM: 0x0040 } as const;
 export interface DisplayMask { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat }
 /** A clipping base: its coverage (alpha x opacity x its mask) clips every layer that carries this same object. */
 export interface DisplayClip { image: HTMLCanvasElement | OffscreenCanvas; version: number; width: number; height: number; matrix: Mat; opacity: number; mask?: DisplayMask }
-export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; mask?: DisplayMask; clip?: DisplayClip; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
-/** The shader mode that renders a clipping base's coverage. */
+export interface DisplayLayer { image: HTMLCanvasElement | OffscreenCanvas | null; lut?: Uint8Array; lut3?: boolean; mask?: DisplayMask; clip?: DisplayClip; folders?: DisplayMask[]; version: number; width: number; height: number; matrix: Mat; opacity: number; blend: BlendMode }
+/** The shader mode that renders a clipping base's coverage, and a folder mask's coverage (no source image). */
 export const CLIP_MODE = 102;
+export const FOLDER_MODE = 103;
 /** The shader modes for an adjustment's lookup table (Phase 18.5), after the 27 blend modes: per channel, and 3D. */
 export const LUT_MODE = 100;
 export const LUT3_MODE = 101;
@@ -111,9 +112,23 @@ export class GpuDisplay {
       this.layerPass(enc, this.blank(), t, { image: c.image, version: c.version, width: c.width, height: c.height, matrix: c.matrix, opacity: c.opacity, blend: 'normal', mask: c.mask }, CLIP_MODE, null, sampler, view, used, buffers);
       clipTex.set(c, t);
     }
+    // Each folder chain's coverage (one pass per folder mask, each times the chain so far), into the same pool.
+    const folderTex = new Map<DisplayMask[], GPUTexture>();
+    let slot = clipTex.size;
+    for (const l of layers) {
+      if (!l.folders || folderTex.has(l.folders)) continue;
+      let prev: GPUTexture | null = null;
+      for (const mk of l.folders) {
+        const t = this.clipTarget(slot++, W, H);
+        this.layerPass(enc, this.blank(), t, { image: null, version: 0, width: 1, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: 1, blend: 'normal', mask: mk }, FOLDER_MODE, prev, sampler, view, used, buffers);
+        prev = t;
+      }
+      if (prev) folderTex.set(l.folders, prev);
+    }
     for (const l of layers) {
       if (l.opacity <= 0 || l.width < 1 || l.height < 1) continue;
-      this.layerPass(enc, a, b, l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), l.clip ? clipTex.get(l.clip) ?? null : null, sampler, view, used, buffers);
+      const cover = l.clip ? clipTex.get(l.clip) ?? null : l.folders ? folderTex.get(l.folders) ?? null : null;
+      this.layerPass(enc, a, b, l, l.lut ? (l.lut3 ? LUT3_MODE : LUT_MODE) : blendIndex(l.blend), cover, sampler, view, used, buffers);
       [a, b] = [b, a];
     }
     const pu = d.createBuffer({ size: 64, usage: BUF.UNIFORM | BUF.COPY_DST });
@@ -152,8 +167,8 @@ export class GpuDisplay {
   /** One composite pass: `l` over `backdrop` into `target`, in shader `mode`, clipped by `clip` (a coverage texture). */
   private layerPass(enc: GPUCommandEncoder, backdrop: GPUTexture, target: GPUTexture, l: DisplayLayer, mode: number, clip: GPUTexture | null, sampler: GPUSampler, view: Mat, used: Set<object>, buffers: GPUBuffer[]): void {
     const d = this.device;
-    used.add(l.lut ?? (l.image as object));
-    const tex = this.texture(l);
+    if (mode !== FOLDER_MODE) used.add(l.lut ?? (l.image as object));
+    const tex = mode === FOLDER_MODE ? this.blank() : this.texture(l);
     const [ia, ib, ic, id, ie, iff] = invert(mul(view, l.matrix));
     // 128 bytes, WGSL's layout: inv (0), size (48), opacity (56), mode (60), the mask's inverse placement (64), its
     // size (112), whether there is one (120), whether the layer is clipped (124).

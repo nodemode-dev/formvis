@@ -105,6 +105,8 @@ fn dissolveNoise(x: i32, y: i32) -> f32 {
   var cov = coverage(pos.xy);
   // A clipped layer: its clipping base's coverage at this pixel (rendered by mode 102 before the layers).
   if (layer.hasClip == 1u) { cov = cov * textureLoad(clipTex, px, 0).a; }
+  // A folder mask's coverage (mode 103), times the chain so far bound as the clip input: no source image.
+  if (layer.mode == 103u) { return vec4<f32>(0.0, 0.0, 0.0, cov); }
   // A clipping base's coverage (mode 102), as the CPU renderer's clipCoverage draws it: the base's alpha at its opacity
   // through its own mask, nothing outside it.
   if (layer.mode == 102u) {

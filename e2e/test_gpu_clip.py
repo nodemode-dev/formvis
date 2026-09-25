@@ -28,6 +28,15 @@ DOC = """async ([mode]) => {
     e.groupLayers();
     const folder = p.doc.layers.find((l) => l.isGroup);
     if (mode === 'hidden') folder.visible = false;
+    const masked = (g, hx) => {
+      g.mask = { raster: new E.Raster(160, 90), enabled: true, linked: true, placement: null };
+      const mc = g.mask.raster.ctx; mc.fillStyle = '#fff'; mc.fillRect(0, 0, 160, 90); mc.clearRect(hx, 20, 30, 40);
+      const fade = mc.createLinearGradient(80, 0, 150, 0); fade.addColorStop(0, 'rgba(0,0,0,0)'); fade.addColorStop(1, 'rgba(0,0,0,1)');
+      mc.globalCompositeOperation = 'destination-out'; mc.fillStyle = fade; mc.fillRect(80, 0, 80, 90); mc.globalCompositeOperation = 'source-over';
+      g.mask.raster.touch();
+    };
+    if (mode === 'foldermask' || mode === 'nested') masked(folder, 15);
+    if (mode === 'nested') { e.groupLayers(); masked(p.doc.layers.find((l) => l.isGroup && l.id !== folder.id), 50); }
   }
   e.refresh();
 }"""
@@ -55,7 +64,7 @@ FRAME = """async ([mod, cls]) => {
 }"""
 
 
-@pytest.mark.parametrize("mode,layers,clipped", [("clip", 4, 2), ("folder", 2, 0), ("hidden", 1, 0)])
+@pytest.mark.parametrize("mode,layers,clipped", [("clip", 4, 2), ("folder", 2, 0), ("hidden", 1, 0), ("foldermask", 2, 0), ("nested", 2, 0)])
 def test_clipping_groups_and_folders_draw_on_the_gpu_as_the_cpu_draws_them(page, mode, layers, clipped):
     page.evaluate(DOC, [mode])
     for mod, cls in (("/src/gpu/gl-display.ts", "GlDisplay"), ("/src/gpu/display.ts", "GpuDisplay")):
@@ -63,10 +72,15 @@ def test_clipping_groups_and_folders_draw_on_the_gpu_as_the_cpu_draws_them(page,
         assert "error" not in r, (cls, r)
         assert r["layers"] == layers and r["clipped"] == clipped, (cls, r)   # nothing fell back; the hidden folder's layer is gone
         assert r["share"] >= 0.99, (cls, r)
+    if mode in ("foldermask", "nested"):                                     # the chain holds every folder's mask
+        assert page.evaluate("window.sonny.engine.gpuLayers().layers[1].folders.length") == (2 if mode == "nested" else 1)
 
 
-def test_a_folder_with_a_mask_still_draws_on_the_cpu_by_name(page):
-    page.evaluate(DOC, ["folder"])
-    page.evaluate("""(async () => { const E = await import('/src/engine/index.ts'); const f = window.sonny.engine.current.doc.layers.find((l) => l.isGroup);
-      f.mask = { raster: new E.Raster(160, 90), enabled: true, linked: true, placement: null }; })()""")
-    assert page.evaluate("window.sonny.engine.gpuLayers().reason") == "folder masks"
+def test_a_clipped_layer_inside_a_masked_folder_still_draws_on_the_cpu_by_name(page):
+    page.evaluate(DOC, ["clip"])
+    page.evaluate("""(async () => { const E = await import('/src/engine/index.ts'), e = window.sonny.engine, p = e.current;
+      p.doc.layers.forEach((l) => { if (l.clipId) l.parentId = 'f'; });
+      const f = { ...p.doc.layers[0], id: 'f', name: 'F', isGroup: true, raster: null, clipId: null, adjustment: null, parentId: null,
+        mask: { raster: new E.Raster(160, 90), enabled: true, linked: true, placement: null } };
+      p.doc.layers.splice(1, 0, f); })()""")
+    assert page.evaluate("window.sonny.engine.gpuLayers().reason") == "a clipped layer inside a masked folder"
