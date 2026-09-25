@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.39.0 · 2026-09-25
+
+### Added
+
+- Camera RAW import: DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2 and other RAW files are developed by the engine (LibRaw) with the camera's white balance and open into Develop, as Photoshop opens them into Camera Raw.
+- 5 more tests (4 backend, 1 browser): 486 in all.
+
 ## 1.38.0 · 2026-09-25
 
 ### Fixed

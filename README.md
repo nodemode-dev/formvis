@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-1.38.0-f97316" alt="version 1.38.0">
+<img src="https://img.shields.io/badge/version-1.39.0-f97316" alt="version 1.39.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -39,6 +39,7 @@ sonny is a layered image editor: stack photos and paintings as layers, group the
 - **Zero-flash UI.** Keyed DOM patching, a two-canvas stage redrawn synchronously on resize, reveal gated on fonts; each interface change is verified w/ a 6x CPU and slow-network browser run: layout shift 0, no rebuilt rows, no errors.
 - **NodeMode native.** NodeMode tokens and 14 theme profiles, the host theme bridge, the portal ready and init protocol, and a send-to-canvas message.
 - **HEIC and TIFF import.** Decoded server-side w/ Pillow and pillow-heif, falling back to `sips` on macOS.
+- **Camera RAW import.** DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2 and more, developed server-side by LibRaw (via rawpy) w/ the camera's white balance, then opened into Develop.
 
 ## Quick Start
 

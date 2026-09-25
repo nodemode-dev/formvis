@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Camera RAW import · _v1.39.0 (src/io/images.ts, src/io/api.ts, src/io/links.ts, src/app.ts; e2e/test_camera_raw.py new)
+
+`images.ts`: `RAW_FILE`, RAW extensions in `IMAGE_ACCEPT` and `isImageFile`, RAW sent to the engine in `decodeImage`. `api.ts`: the capability report's `raw` and `rawEngine`. `links.ts`: RAW extensions in the desktop picker. `app.ts` `importFiles`: a single RAW import opens Develop. Removed:
+
+```ts
+import { IMAGE_ACCEPT, decodeImage, isImageFile, isProjectFile } from './io/images';
+  decode: { heic: boolean; tiff: boolean; engine: string };
+export const IMAGE_ACCEPT = '.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,image/*';
+export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name);
+  const server = SERVER.test(name) || /image\/(heic|heif|tiff)/.test(file.type);
+      const [h] = await picker({ types: [{ description: 'Images', accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.tif', '.tiff', '.heic', '.psd'] } }] });
+```
+
 ## Licence, sliding layer rows, the GPU blender's name · _v1.38.0 (package.json, package-lock.json, src/ui/layers.ts, src/styles/panels.css, src/gpu/blender.ts renamed, src/gpu/display.ts; e2e/test_gpu_blend.py renamed, e2e/conftest.py)
 
 `package.json` and the lockfile's own entry: Apache-2.0. `layers.ts` `render`: moved rows held by `--flip` and eased (`.is-settling`). `gpu/blender.ts` (`GpuBlender`) is the 1.16.0 GPU module under a new name, moved with git mv; entries above use the new names. Five removed lines are not quoted here, since quoting them would put the removed term back into the tree: the module's description line, the class declaration, `create`'s return type and its constructor call in `blender.ts`, and one comment line in `display.ts`, each the same line with the old term where the new one now stands. The one other removed line:
