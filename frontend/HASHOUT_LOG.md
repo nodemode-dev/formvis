@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Shadows/Highlights, HDR Toning and Color Lookup · _v1.30.0 (src/engine/adjust-params.ts, src/engine/lut.ts, src/ui/panels/adjust-panel.ts; e2e/test_adjust_new_kinds.py new)
+
+`adjust-params.ts`: `blurredLum`, `relight`, `LOOKS`, `parseCube`, `cubeSample`; kinds `shadowsHighlights`, `hdrToning`, `colorLookup`; the `text` value kind. `lut.ts`: Color Lookup in `LUT3_KINDS`. `adjust-panel.ts`: the 3D LUT File row. Removed:
+
+```ts
+export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'develop';
+  | { key: string; label: string; kind: 'select'; options: ReadonlyArray<readonly [string, string]>; def: string; group?: string };
+export const LUT3_KINDS: ReadonlySet<AdjustmentKind> = new Set<AdjustmentKind>(['hsv', 'vibrance', 'colorBalance', 'channelMixer', 'photoFilter', 'blackWhite', 'selectiveColor', 'threshold', 'gradientMap']);
+import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramKernel, paramValues, type ParamKind } from '../../engine/adjust-params';
+```
+
 ## Tracking, kerning and this machine's fonts · _v1.29.0 (src/ui/fonts.ts new; src/engine/types.ts, src/engine/text.ts, src/extensions/tools/type.ts, src/io/psd.ts, src/ui/panels/text-dialog.ts, src/ui/text-editor.ts, src/styles/shell.css; e2e/test_type_spacing.py new)
 
 `TextSpec.tracking`, `TextSpec.kerning`, `TextKerning`. `text.ts`: `trackingPx`, `CANVAS_TRACKING`, `setType`, `lineWidth`; `renderText` measured and drawn with them, per character where the canvas has no letterSpacing. `fonts.ts`: `installed`, `fontFamilies`, `canListSystemFonts`, `loadSystemFonts`. Type options: `fontChoices`, Load system fonts, Tracking, Kerning. The Edit Type dialog keeps a font outside the list. The typing box's `--ls` and `--kern`. Removed:

@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.30.0 · 2026-09-24
+
+### Added
+
+- Shadows/Highlights, HDR Toning and Color Lookup, as adjustment layers and as direct edits (Image > Adjustments). Color Lookup loads 3D LUT files in the .cube format, or uses one of eight built-in looks.
+- 7 more tests (browser): 421 in all.
+
 ## 1.29.0 · 2026-09-24
 
 ### Added
