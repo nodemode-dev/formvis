@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layer styles on the GPU · _v1.25.0 (src/engine/renderer.ts, src/engine/index.ts; e2e/test_gpu_styles.py new)
+
+`Renderer.gpuEffectParts`: the renderer's cached effect parts (images, matrices, alpha, blend, below or above). `gpuLayers` wraps a styled layer in its parts; clipped, masked-folder and live-edited styled layers keep the CPU path by name. Removed:
+
+```ts
+      if (effectsActive(o?.effects ?? l.effects)) return { reason: 'layer styles' };
+```
+
 ## Folder masks on the GPU · _v1.24.0 (src/engine/index.ts, src/gpu/blend-wgsl.ts, src/gpu/display.ts, src/gpu/gl-display.ts; e2e/test_gpu_clip.py)
 
 Engine: `fchains` (one mask chain per parent folder), `GpuLayerSpec.folders`, the refusal for a clipped layer inside a masked folder. Shaders: mode 103. Displays: `DisplayLayer.folders`, `FOLDER_MODE`; each chain's coverage rendered once per frame through the clip input, pool slots from a running counter; folder mode binds the stand-in. Removed:

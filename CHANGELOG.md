@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.25.0 · 2026-09-24
+
+### Added
+
+- Layer styles (drop shadow, glows, stroke, bevel, inner shadow, overlays) draw on the graphics processor, from the same effect images the CPU renders, so they look the same. A styled layer that is clipped, inside a masked folder, or being painted or transformed draws on the CPU until the edit ends.
+- 2 more tests (browser): 399 in all.
+
 ## 1.24.0 · 2026-09-24
 
 ### Added
