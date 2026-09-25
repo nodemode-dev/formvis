@@ -11,6 +11,17 @@ SONNY = "com.nodemode.sonny"
 CANVASOR = "com.nodemode.canvasor"
 SUPPORTED = {SONNY: range(1, 2), CANVASOR: range(1, 2)}
 SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
+# .comp projects, opened so their owners can move their work to sonny (the owner's decision of 2026-09-25; export stays
+# out). They share sonny's manifest and images/ layout and name themselves with a reverse-DNS id ending in ".project"
+# at versions 1 to 7. They are recognised by that shape and then held to the full validation below, not by matching a
+# particular label.
+COMP_LABEL = re.compile(r"^[a-z0-9]+(\.[a-z0-9-]+)+\.project$")
+COMP_VERSIONS = range(1, 8)
+
+
+def is_comp(manifest: dict) -> bool:
+    fmt, version = manifest.get("format"), manifest.get("version")
+    return isinstance(fmt, str) and bool(COMP_LABEL.match(fmt)) and isinstance(version, int) and version in COMP_VERSIONS
 
 
 class ProjectError(Exception):
@@ -25,10 +36,11 @@ def validate(manifest: dict, files: set[str]) -> None:
     if not isinstance(manifest, dict):
         raise ProjectError("The manifest is not a JSON object.")
     fmt, version = manifest.get("format"), manifest.get("version")
-    if fmt not in SUPPORTED:
-        raise ProjectError("This is not a sonny or canvasor project.")
-    if not isinstance(version, int) or version not in SUPPORTED[fmt]:
-        raise ProjectError(f"This project uses format version {version}, which this build cannot read.")
+    if not is_comp(manifest):
+        if fmt not in SUPPORTED:
+            raise ProjectError("This is not a sonny, canvasor or .comp project.")
+        if not isinstance(version, int) or version not in SUPPORTED[fmt]:
+            raise ProjectError(f"This project uses format version {version}, which this build cannot read.")
     width, height = manifest.get("width"), manifest.get("height")
     if not (isinstance(width, int) and isinstance(height, int) and 1 <= width <= config.MAX_SIDE and 1 <= height <= config.MAX_SIDE):
         raise ProjectError("The canvas size is invalid.")
@@ -111,7 +123,7 @@ def read_zip(data: bytes) -> tuple[dict, dict[str, bytes]]:
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
-        raise ProjectError("The file is not a sonny or canvasor package.") from exc
+        raise ProjectError("The file is not a sonny, canvasor or .comp package.") from exc
     with archive:
         infos = [info for info in archive.infolist() if not info.is_dir()]
         entries = [(info.filename, info.file_size, (lambda info=info: archive.read(info))) for info in infos]

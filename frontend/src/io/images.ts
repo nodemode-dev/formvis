@@ -7,10 +7,11 @@ export const RAW_FILE = /\.(dng|cr2|cr3|crw|nef|nrw|arw|srf|sr2|raf|orf|rw2|pef|
 const SERVER = /\.(heic|heif|hif|tiff?)$/i;
 const RAW_ACCEPT = '.dng,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.pef,.srw,.x3f,.3fr,.iiq,.rwl,.mrw,.kdc,.dcr,.erf,.mef,.mos';
 export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,${RAW_ACCEPT},image/*`;
-export const PROJECT_ACCEPT = '.sny,.sonny,.canvasor,.zip,.psd,.psb';
+export const PROJECT_ACCEPT = '.sny,.sonny,.canvasor,.comp,.zip,.psd,.psb';
 
 export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name) || RAW_FILE.test(f.name);
-export const isProjectFile = (f: File): boolean => /\.(sny|sonny|canvasor|zip|psd|psb)$/i.test(f.name);
+/** `.comp` is opened so its owners can move their work to sonny; sonny never writes it (the owner's decision, 2026-09-25). */
+export const isProjectFile = (f: File): boolean => /\.(sny|sonny|canvasor|comp|zip|psd|psb)$/i.test(f.name);
 
 function viaElement(blob: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
