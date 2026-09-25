@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.29.0 · 2026-09-24
+
+### Added
+
+- Type: Tracking (in thousandths of an em, as in Photoshop) and Kerning (Metrics or 0) in the Type tool's options, kept in projects and read from Photoshop files.
+- The font menu offers the fonts found on this machine, and in Chromium browsers "Load system fonts..." lists every installed font (with your permission).
+- 6 more tests (browser): 414 in all.
+
+### Fixed
+
+- Edit Type no longer resets a font outside its short list to Inter.
+
 ## 1.28.0 · 2026-09-24
 
 ### Changed

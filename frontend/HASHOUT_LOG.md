@@ -2,6 +2,32 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Tracking, kerning and this machine's fonts · _v1.29.0 (src/ui/fonts.ts new; src/engine/types.ts, src/engine/text.ts, src/extensions/tools/type.ts, src/io/psd.ts, src/ui/panels/text-dialog.ts, src/ui/text-editor.ts, src/styles/shell.css; e2e/test_type_spacing.py new)
+
+`TextSpec.tracking`, `TextSpec.kerning`, `TextKerning`. `text.ts`: `trackingPx`, `CANVAS_TRACKING`, `setType`, `lineWidth`; `renderText` measured and drawn with them, per character where the canvas has no letterSpacing. `fonts.ts`: `installed`, `fontFamilies`, `canListSystemFonts`, `loadSystemFonts`. Type options: `fontChoices`, Load system fonts, Tracking, Kerning. The Edit Type dialog keeps a font outside the list. The typing box's `--ls` and `--kern`. Removed:
+
+```ts
+  return { content: '', family: 'Inter', size: 48, color: { r: 0, g: 0, b: 0 }, align: 'left', bold: false, italic: false, lineHeight: 1.2 };
+  const font = fontCss(t), lines = t.content.split('\n');
+  probe.font = font;
+  const widest = Math.max(1, ...metrics.map((m) => Math.max(m.width, (m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0))));
+  c.font = font;
+  c.textAlign = t.align;
+  const x = t.align === 'center' ? width / 2 : t.align === 'right' ? width - pad : pad;
+  lines.forEach((line, i) => c.fillText(line, x, pad + ascent + i * advance));
+    lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), rendered: textKey(raster),
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; rendered?: string }
+import { TEXT_FONTS, type Engine, type TextSpec } from '../../engine';
+    { kind: 'select', label: 'Font', choices: TEXT_FONTS.map((f) => ({ id: f, label: f })), get: () => e.textSettings.family, set: (v) => setType(e, { family: v }) },
+          align: just === 'center' || just === 'right' ? just : 'left', bold: !!st.fauxBold || face.bold, italic: !!st.fauxItalic || face.italic, lineHeight: st.autoLeading === false && st.leading ? Math.round((st.leading * scale / size) * 100) / 100 : 1.2 };
+.cv-type-editor { position: absolute; left: var(--x, 0); top: var(--y, 0); width: var(--w, 0); height: var(--h, 0); z-index: var(--z-raised); margin: 0; padding: 0; border: 0; outline: 1px dashed var(--accent-color); background: transparent; color: var(--ink, currentColor); font: var(--font, inherit); line-height: var(--lh, normal); text-align: var(--align, left); white-space: pre; overflow: hidden; resize: none; caret-color: var(--accent-color); }
+import { TEXT_FONTS, type Engine, type RGB, type TextSpec } from '../../engine';
+  private readonly family = el<HTMLSelectElement>(`<select class="cv-input">${TEXT_FONTS.map((f) => `<option value="${f}">${f}</option>`).join('')}</select>`);
+    this.family.value = TEXT_FONTS.includes(t.family) ? t.family : 'Inter';
+      bold: this.bold, italic: this.italic, color: fromHex(this.colour.value),
+    s.spec = { ...s.spec, family: t.family, size: t.size, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight };
+```
+
 ## The performance benchmark · _v1.27.0 (src/gpu/bench.ts new; src/gpu/display.ts, src/gpu/gl-display.ts, src/ui/app-dialogs.ts, src/app.ts, src/styles/dialogs.css; e2e/test_benchmark.py new)
 
 `bench.ts`: `runBenchmark` (a temporary document, pan, pan with adjustments, paint; CPU and each GPU display; the previous document restored), `benchText`. `GpuDisplay.timedFrame` and `GlDisplay.timedFrame` (an offscreen frame, finished before they resolve). `BenchmarkDialog`; the `benchmark` command in the Help menu; `.cv-bench-out`. Removed:
