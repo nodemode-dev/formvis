@@ -2,6 +2,17 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.26.0 · 2026-09-24
+
+### Added
+
+- Preferences > Performance > Engine processor: Automatic, Metal (Core ML), CUDA or CPU for the engine's models (Remove Background now, the local models later). Automatic uses CUDA on an NVIDIA graphics processor, Core ML on a Mac, and the CPU otherwise; the engine says what it uses and why.
+- 6 more tests (5 backend, 1 browser): 405 in all.
+
+### Fixed
+
+- The graphics processor note in Preferences no longer says drawing runs on the CPU; the canvas has drawn on the graphics processor since 1.17.0.
+
 ## 1.25.0 · 2026-09-24
 
 ### Added

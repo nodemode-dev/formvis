@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The engine processor in Preferences · _v1.26.0 (src/ui/prefs.ts, src/ui/app-dialogs.ts, src/io/api.ts, src/app.ts; e2e/test_engine_device.py new)
+
+`Prefs.engineDevice`, `EngineDevice`, `ENGINE_CHOICES`. `SettingsDialog`: `engineRow`, `engineMode`, the Engine section, `setEngine`; the graphics processor note corrected. `api.setCompute`. `syncEngineDevice` in the app, run when the engine answers and on every Preferences change. Removed:
+
+```ts
+    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); }),
+import { RECOVERY_CHOICES, loadPrefs, savePrefs, type Prefs } from './prefs';
+      el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, sonny turns this off and says so. In this version the graphics processor is detected and the choice kept; drawing still runs on the CPU until the GPU renderer that follows it arrives.</p>'));
+export interface Prefs { historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number }
+export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024 };
+```
+
 ## Layer styles on the GPU · _v1.25.0 (src/engine/renderer.ts, src/engine/index.ts; e2e/test_gpu_styles.py new)
 
 `Renderer.gpuEffectParts`: the renderer's cached effect parts (images, matrices, alpha, blend, below or above). `gpuLayers` wraps a styled layer in its parts; clipped, masked-folder and live-edited styled layers keep the CPU path by name. Removed:

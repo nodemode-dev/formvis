@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The engine's compute device · _v1.26.0 (app/services/compute.py new; app/services/background.py, app/routers/system.py; tests/test_compute.py new)
+
+`compute.py`: `DEVICES`, `PROVIDER`, `LABEL`, `available_providers`, `choose` (pure), `current`, `set_preference`. `background.py`: `_session(model, providers)` with the older-rembg fallback, `clear_sessions`, the providers from `compute.current()`. `system.py`: `GET` and `POST /api/compute` (`ComputeChoice`), `compute` in `/api/capabilities`. Removed:
+
+```python
+from fastapi import APIRouter
+from app.services import background, imaging
+def _session(model: str):
+    return new_session(model)
+    mask = remove(image.convert("RGB"), session=_session(model_name()), only_mask=True)
+```
+
 ## The reference app's project format removed · _v1.4.0 (app/services/project_format.py, app/routers/projects.py, app/__init__.py)
 
 `project_format.py` no longer accepts `com.reference.project`: `SUPPORTED` holds `com.nodemode.sonny` and `com.nodemode.canvasor` version 1; the refusals and `write_zip`'s docstring name only sonny's and canvasor's projects. `projects.py` drops `.ref` from `SUFFIXES`. Version 1.4.0. Removed:
