@@ -44,10 +44,11 @@ import { HostLink } from './host';
 import { api, type Capabilities, type OpenedProject } from './io/api';
 import { IMAGE_ACCEPT, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { deserialize, serialize } from './io/project-io';
-import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
+import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { applyPrefs, loadPrefs, savePrefs } from './ui/prefs';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
 import { GpuDisplay, type ScreenDisplay } from './gpu/display';
+import { benchText, runBenchmark } from './gpu/bench';
 import { GlDisplay } from './gpu/gl-display';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
@@ -709,6 +710,7 @@ export function startApp(): void {
     settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); syncEngineDevice(); }),
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
+    benchmark: new BenchmarkDialog(async () => benchText(await runBenchmark(engine), gpuProbed ? detectedName(gpuProbe) ?? 'none found' : 'not detected yet')),
     adjust: new AdjustPanel(engine),
     filter: new FilterPanel(engine),
     canvasSize: new CanvasSizeDialog(engine),
@@ -857,6 +859,7 @@ export function startApp(): void {
     { id: 'transform-controls', label: 'Transform Controls', checked: () => engine.showTransformControls, run: () => engine.update({ showTransformControls: !engine.showTransformControls }) },
     { id: 'shortcuts', label: 'Keyboard Shortcuts', keys: ['Shift+/'], run: () => dialogs.shortcuts.show() },
     { id: 'about', label: 'About sonny', run: () => dialogs.about.show(caps) },
+    { id: 'benchmark', label: 'Performance Benchmark...', run: () => dialogs.benchmark.show() },
     { id: 'copy-error-log', label: 'Copy Error Log', run: () => { void navigator.clipboard?.writeText(errorLog.text()).then(() => toast('Copied the error log.'), () => toast('The clipboard is not available here.', 'error')); } },
   );
 
@@ -991,7 +994,7 @@ export function startApp(): void {
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }] },
     { label: 'Window', items: [...DOCK_PANELS.map((pn) => `panel-${pn.id}`), '-', 'reset-panels'] },
-    { label: 'Help', items: ['shortcuts', 'copy-error-log', 'about'] },
+    { label: 'Help', items: ['shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', '-',

@@ -333,6 +333,36 @@ export class ShortcutsDialog extends Dialog {
   }
 }
 
+/** Help > Performance Benchmark (Phase 18.7): frame times on the CPU and each graphics processor path, to copy. */
+export class BenchmarkDialog extends Dialog {
+  private readonly state = el('<p class="cv-note cv-bench-state">Opens a temporary 2000 x 1500 document, times panning, adjustment layers and painting on the CPU and on each graphics processor path, then closes it. It takes under a minute.</p>');
+  private readonly out = el('<pre class="cv-bench-out" hidden></pre>');
+  private readonly runBtn: HTMLButtonElement;
+
+  constructor(private readonly run: () => Promise<string>) {
+    super('Performance Benchmark', 640);
+    this.body.append(this.state, this.out, el('<p class="cv-note">Numbers from a software graphics processor (as in a test browser) are not representative; run this on the machine you edit on.</p>'));
+    this.button('Copy', 'ghost', () => { void navigator.clipboard?.writeText(this.out.textContent ?? ''); });
+    this.runBtn = this.button('Run', 'primary', () => { void this.start(); });
+  }
+
+  private async start(): Promise<void> {
+    setDisabled(this.runBtn, true);
+    setText(this.state, 'Running...');
+    try {
+      setText(this.out, await this.run());
+      setHidden(this.out, false);
+      setText(this.state, 'Done.');
+    } catch (err) {
+      setText(this.state, `The benchmark stopped: ${String(err)}`);
+    } finally {
+      setDisabled(this.runBtn, false);
+    }
+  }
+
+  show(): void { this.open(); }
+}
+
 export class AboutDialog extends Dialog {
   private readonly engineLine = el('<p class="cv-note"></p>');
 

@@ -146,6 +146,18 @@ export class GpuDisplay {
     for (const [k, e] of this.cache) if (!used.has(k)) { e.tex.destroy(); this.cache.delete(k); }
   }
 
+  /** One frame into an offscreen target, resolved only when the GPU has finished it: the performance benchmark's unit
+   *  (Phase 18.7), timing the drawing itself rather than when the work was queued. */
+  private benchTarget: GPUTexture | null = null;
+  async timedFrame(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker, W: number, H: number): Promise<void> {
+    if (!this.benchTarget || this.benchTarget.width !== W || this.benchTarget.height !== H) {
+      this.benchTarget?.destroy();
+      this.benchTarget = this.device.createTexture({ size: [W, H], format: 'rgba8unorm', usage: TEX.RENDER_ATTACHMENT | TEX.COPY_SRC });
+    }
+    this.render(layers, view, zoom, rect, checker, this.benchTarget);
+    await this.device.queue.onSubmittedWorkDone();
+  }
+
   /** A frame through every display pass into an offscreen texture, read back: how the display's output is checked
    *  against the CPU where presenting to a canvas is not possible (a software adapter). */
   async renderToPixels(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker, W: number, H: number): Promise<Uint8ClampedArray> {

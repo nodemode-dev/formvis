@@ -229,6 +229,20 @@ export class GlDisplay {
     for (const [k, e] of this.cache) if (!used.has(k)) { gl.deleteTexture(e.tex); this.cache.delete(k); }
   }
 
+  /** One frame into an offscreen framebuffer, returned only when the GPU has finished it (a one-pixel read waits for the
+   *  frame): the performance benchmark's unit (Phase 18.7). */
+  private benchTarget: { tex: WebGLTexture; fb: WebGLFramebuffer; w: number; h: number } | null = null;
+  async timedFrame(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker, W: number, H: number): Promise<void> {
+    const gl = this.gl;
+    if (!this.benchTarget || this.benchTarget.w !== W || this.benchTarget.h !== H) {
+      if (this.benchTarget) { gl.deleteTexture(this.benchTarget.tex); gl.deleteFramebuffer(this.benchTarget.fb); }
+      this.benchTarget = { ...this.target(W, H), w: W, h: H };
+    }
+    this.render(layers, view, zoom, rect, checker, { fb: this.benchTarget.fb, W, H });
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.benchTarget.fb);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array(4));
+  }
+
   /** A frame through every pass into an offscreen framebuffer, read back top row first. */
   async renderToPixels(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker, W: number, H: number): Promise<Uint8ClampedArray> {
     const gl = this.gl, t = this.target(W, H);

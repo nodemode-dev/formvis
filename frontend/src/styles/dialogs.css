@@ -20,6 +20,9 @@
 .cv-input { height: var(--ctl-md); min-width: 0; padding: 0 var(--space-2); border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: var(--fs-12); }
 .cv-input:focus { outline: none; border-color: var(--accent-color); }
 .cv-note { color: var(--text-muted); font-size: var(--fs-11); }
+/* Help > Performance Benchmark: the results, as copyable plain text. */
+.cv-bench-out { display: block; margin: 8px 0; padding: 8px 10px; max-height: 50vh; overflow: auto; white-space: pre; font: var(--fs-11)/1.5 var(--font-mono); background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; }
+.cv-bench-out[hidden] { display: none; }
 .cv-list { display: grid; gap: 2px; max-height: 280px; min-height: 120px; overflow-y: auto; padding: var(--space-1); border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-primary); }
 .cv-list-row { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-2); height: var(--ctl); padding: 0 var(--space-2); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-size: var(--fs-12); text-align: left; cursor: pointer; }
 .cv-list-row:hover { background: var(--bg-hover); color: var(--text-primary); }
