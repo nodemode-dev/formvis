@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Licence, sliding layer rows, the GPU blender's name · _v1.38.0 (package.json, package-lock.json, src/ui/layers.ts, src/styles/panels.css, src/gpu/blender.ts renamed, src/gpu/display.ts; e2e/test_gpu_blend.py renamed, e2e/conftest.py)
+
+`package.json` and the lockfile's own entry: Apache-2.0. `layers.ts` `render`: moved rows held by `--flip` and eased (`.is-settling`). `gpu/blender.ts` (`GpuBlender`) is the 1.16.0 GPU module under a new name, moved with git mv; entries above use the new names. Five removed lines are not quoted here, since quoting them would put the removed term back into the tree: the module's description line, the class declaration, `create`'s return type and its constructor call in `blender.ts`, and one comment line in `display.ts`, each the same line with the old term where the new one now stands. The one other removed line:
+
+```css
+.cv-layer { display: grid; grid-template-columns: 28px calc(var(--depth, 0) * 14px) 16px var(--cv-thumb) auto minmax(0, 1fr); align-items: center; column-gap: var(--space-1); height: var(--cv-row-h); padding: 0 var(--space-2) 0 var(--space-1); border-left: 3px solid transparent; color: var(--text-secondary); font-size: var(--fs-12); cursor: default; }
+```
+
 ## Paragraph styles · _v1.37.0 (src/engine/types.ts, src/engine/text.ts, src/engine/index.ts, src/io/project-io.ts, src/ui/panels/paragraph-styles.ts new, src/styles/dialogs.css, src/app.ts; e2e/test_paragraph_styles.py new)
 
 `ParagraphStyle`, `Doc.paragraphStyles`, `TextSpec.style`. `text.ts`: `styleOf`, `withStyle`, `paragraphStylesFrom`; `textFromData` reads the link. Engine: `paragraphStyles`, `newParagraphStyle`, `applyParagraphStyle`, `redefineParagraphStyle`, `deleteParagraphStyle`. The manifest writes and reads the styles. `ParagraphStylesDialog` (Window menu). Removed:

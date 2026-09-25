@@ -2,6 +2,15 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.38.0 · 2026-09-25
+
+### Fixed
+
+- The licence is stated as Apache-2.0 in package.json, the lockfile and Cargo.toml, as in LICENSE; a test keeps them agreeing.
+- Layer rows slide into place when a layer is added or removed, instead of jumping, so a layer arriving after an import or Remove Background no longer shifts the list unexpectedly.
+- The GPU blending module has a plain name of its own (gpu/blender.ts).
+- 1 more test (backend): 481 in all.
+
 ## 1.37.0 · 2026-09-24
 
 ### Added
