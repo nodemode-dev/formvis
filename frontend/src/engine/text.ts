@@ -1,5 +1,5 @@
 import { Raster, createSurface, ctxOf } from './surface';
-import { clamp, type Layer, type Pt, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
+import { clamp, type ID, type Layer, type ParagraphStyle, type Pt, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
 
 /** Type layers: text set in a font, drawn into a layer's pixels and kept editable while those pixels are untouched. */
 
@@ -215,6 +215,29 @@ export function renderText(t: TextSpec): TextRender {
   return warpActive(t.warp) ? warpRender(plain, t.warp) : plain;
 }
 
+/** A type spec's settings as a paragraph style named `name`. */
+export function styleOf(t: TextSpec, id: ID, name: string): ParagraphStyle {
+  return { id, name, family: t.family, size: t.size, color: { ...t.color }, align: t.align, bold: t.bold, italic: t.italic, lineHeight: t.lineHeight, tracking: t.tracking, kerning: t.kerning };
+}
+
+/** A spec taking a paragraph style's settings, keeping its own text, warp and path, and linked to the style. */
+export function withStyle(t: TextSpec, s: ParagraphStyle): TextSpec {
+  return { ...t, family: s.family, size: s.size, color: { ...s.color }, align: s.align, bold: s.bold, italic: s.italic, lineHeight: s.lineHeight, tracking: s.tracking, kerning: s.kerning, style: s.id, rendered: undefined };
+}
+
+/** A document's saved paragraph styles read back: each needs an id and a name; its settings are read as type is. */
+export function paragraphStylesFrom(raw: unknown): ParagraphStyle[] {
+  if (!Array.isArray(raw)) return [];
+  const probe = new Raster(1, 1);
+  return raw.flatMap((r) => {
+    if (!r || typeof r !== 'object') return [];
+    const o = r as Record<string, unknown>;
+    if (typeof o.id !== 'string' || !o.id || typeof o.name !== 'string') return [];
+    const t = textFromData({ ...o, content: 'x' }, probe);
+    return t ? [styleOf(t, o.id, o.name.slice(0, 80) || 'Paragraph Style')] : [];
+  });
+}
+
 /** A saved type path read back: at least two finite points, a finite frame, the offset clamped; anything else is none. */
 function pathFrom(raw: unknown): TextPath | null {
   if (!raw || typeof raw !== 'object') return null;
@@ -246,7 +269,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     size: num(o.size, d.size, 1, 2000), color: { r: Math.round(num(c.r, 0, 0, 255)), g: Math.round(num(c.g, 0, 0, 255)), b: Math.round(num(c.b, 0, 0, 255)) },
     align: o.align === 'center' || o.align === 'right' ? o.align : 'left', bold: o.bold === true, italic: o.italic === true,
     lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' ? 'none' : 'metrics',
-    warp: warpFrom(o.warp), onPath: pathFrom(o.onPath),
+    warp: warpFrom(o.warp), onPath: pathFrom(o.onPath), style: typeof o.style === 'string' && o.style ? o.style : null,
     rendered: textKey(raster),
   };
 }

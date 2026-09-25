@@ -78,7 +78,7 @@ export function artboardFromData(raw: unknown): Artboard | null {
 }
 
 export interface Guide { axis: 'x' | 'y'; at: number }
-export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; globalLight?: GlobalLight }
+export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
 
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'idle';
 
@@ -217,7 +217,10 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
  *  edited the pair breaks and the layer is plain pixels, as painting on type rasterizes it. */
 /** `tracking`: extra space between characters in thousandths of an em, as Photoshop measures it; `kerning`: the font's
  *  own pair kerning ('metrics') or none ('none'). */
-export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; rendered?: string }
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
+/** A paragraph style (Window > Paragraph Styles): a named set of type settings kept in the document; type layers linked
+ *  to it by TextSpec.style take its settings, and redefining it updates every one of them. */
+export interface ParagraphStyle { id: ID; name: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning }
 /** Type on a path: the path's points in the layer's own pixels (a frame around the path, so editing the text never moves
  *  the layer), where the text starts along it (Start Offset, a percentage of its length), and the frame's size. */
 export interface TextPath { points: Pt[]; offset: number; frame: { w: number; h: number } }

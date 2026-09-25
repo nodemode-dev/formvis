@@ -1,7 +1,7 @@
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 export { PATH_OPS, type PathOp } from './paths';
-import { defaultText, liveText, loadTextFont, renderText, textKey } from './text';
+import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
 import { Emitter } from './events';
 import type { Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
@@ -15,7 +15,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { antialiasMask, wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
 import { allPatterns, patternById } from './patterns';
 
 export * from './types';
@@ -65,7 +65,7 @@ export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentDat
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
-export { TEXT_FONTS, defaultText, fontCss, liveText, textFromData, textKey, textMetrics, renderText } from './text';
+export { TEXT_FONTS, defaultText, fontCss, liveText, paragraphStylesFrom, styleOf, textFromData, textKey, textMetrics, renderText, withStyle } from './text';
 export { addPattern, allPatterns, patternById, projectPatterns, type Pattern } from './patterns';
 export { FRAME_DELAYS, captureFrame, frameLayers, timelineData, timelineFrom, type Frame, type FrameLayer, type Timeline } from './timeline';
 export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, pathSetData, pathSetFrom, splitSegment, tracePath, type Anchor, type NamedPath, type PathSet, type SubPath, type VectorPath } from './paths';
@@ -710,6 +710,56 @@ export class Engine {
     this.textSettings = { ...base, content: '', onPath: null };
     this.insertRasterLayer(r.raster, spec.content.trim().slice(0, 40) || 'Type', ox, oy, { text: { ...spec, rendered: textKey(r.raster) } }, 'Type on Path');
     return true;
+  }
+
+  /** Window > Paragraph Styles: the document's styles. */
+  get paragraphStyles(): readonly ParagraphStyle[] { return this.current?.doc.paragraphStyles ?? []; }
+
+  /** New Paragraph Style: the selected type layer's settings as a style, the layer linked to it; one step. */
+  newParagraphStyle(name?: string): ID | null {
+    const p = this.current, l = p?.activeLayer, t = l?.text;
+    if (!p || !l || !liveText(l) || !t) { this.notice('Select a type layer to make a paragraph style from it.'); return null; }
+    const list = p.doc.paragraphStyles ?? [], id = uid(), style = styleOf(t, id, name?.trim() || `Paragraph Style ${list.length + 1}`);
+    this.edit('New Paragraph Style', (pp) => { pp.doc = { ...pp.doc, paragraphStyles: [...list, style] }; pp.updateLayer(l.id, { text: { ...t, style: id } }); });
+    return id;
+  }
+
+  /** Apply a paragraph style to the selected type layer: its settings, the layer's own text, warp and path kept. */
+  async applyParagraphStyle(id: ID): Promise<void> {
+    const p = this.current, l = p?.activeLayer, s = p?.doc.paragraphStyles?.find((x) => x.id === id);
+    if (!p || !l || !liveText(l) || !l.text || !s) { this.notice('Select a type layer and a paragraph style.'); return; }
+    await this.updateTextLayer(l.id, withStyle(l.text, s));
+  }
+
+  /** Redefine a paragraph style from the selected type layer's settings, and re-render every type layer linked to it,
+   *  each keeping its scale and its left edge, centre or right edge, as editing its text does; one step. */
+  async redefineParagraphStyle(id: ID): Promise<void> {
+    const p = this.current, src = p?.activeLayer, old = p?.doc.paragraphStyles?.find((x) => x.id === id);
+    if (!p || !src || !liveText(src) || !src.text || !old) { this.notice('Select a type layer to redefine the style from.'); return; }
+    const style = styleOf(src.text, id, old.name);
+    const linked = p.doc.layers.filter((l) => liveText(l) && l.raster && (l.text?.style === id || l.id === src.id));
+    const specs = linked.map((l) => withStyle(l.text as TextSpec, style));
+    for (const s of specs) await loadTextFont(s);
+    if (this.current !== p) return;
+    this.edit('Redefine Paragraph Style', (pp) => {
+      pp.doc = { ...pp.doc, paragraphStyles: (pp.doc.paragraphStyles ?? []).map((x) => (x.id === id ? style : x)) };
+      linked.forEach((l, i) => {
+        const spec = specs[i], r = renderText(spec), oldR = l.raster as Raster, t = l.transform;
+        const nw = r.raster.width * (t.w / oldR.width), nh = r.raster.height * (t.h / oldR.height);
+        const x = spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
+        pp.updateLayer(l.id, { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, text: { ...spec, rendered: textKey(r.raster) } });
+      });
+    });
+  }
+
+  /** Delete a paragraph style; the type linked to it keeps its look and is simply unlinked; one step. */
+  deleteParagraphStyle(id: ID): void {
+    const p = this.current;
+    if (!p || !p.doc.paragraphStyles?.some((x) => x.id === id)) return;
+    this.edit('Delete Paragraph Style', (pp) => {
+      pp.doc = { ...pp.doc, paragraphStyles: (pp.doc.paragraphStyles ?? []).filter((x) => x.id !== id) };
+      for (const l of pp.doc.layers) if (l.text?.style === id) pp.updateLayer(l.id, { text: { ...l.text, style: null } });
+    });
   }
 
   /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
