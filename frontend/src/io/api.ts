@@ -39,6 +39,12 @@ export const api = {
   async capabilities(): Promise<Capabilities | null> {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
   },
+  /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
+  async setCompute(device: string): Promise<{ device: string; label: string; reason: string } | null> {
+    try {
+      return (await (await request('/compute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device }) })).json()) as { device: string; label: string; reason: string };
+    } catch { return null; }
+  },
   async generativeStatus(): Promise<GenerativeStatus | null> {
     try { return (await (await request('/generative/status')).json()) as GenerativeStatus; } catch { return null; }
   },

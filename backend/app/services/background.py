@@ -34,16 +34,27 @@ def available() -> dict:
 
 
 @lru_cache(maxsize=2)
-def _session(model: str):
+def _session(model: str, providers: tuple[str, ...] = ()):
     from rembg import new_session
 
-    return new_session(model)
+    # The engine's compute device (services/compute.py); an older rembg without the providers argument uses its default.
+    try:
+        return new_session(model, providers=list(providers)) if providers else new_session(model)
+    except TypeError:
+        return new_session(model)
+
+
+def clear_sessions() -> None:
+    """Drop the cached model sessions (the compute device changed)."""
+    _session.cache_clear()
 
 
 def _ml(image: Image.Image) -> Image.Image:
     from rembg import remove
 
-    mask = remove(image.convert("RGB"), session=_session(model_name()), only_mask=True)
+    from app.services import compute
+
+    mask = remove(image.convert("RGB"), session=_session(model_name(), tuple(compute.current()["providers"])), only_mask=True)
     if not isinstance(mask, Image.Image):
         mask = Image.open(io.BytesIO(mask))
     return mask.convert("L")

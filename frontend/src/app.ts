@@ -706,7 +706,7 @@ export function startApp(): void {
     color: new ColorPickerDialog(engine),
     liveMask: new LiveMaskDialog(),
     open: new OpenDialog({ openLibrary, openFiles, openFolder }),
-    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); }),
+    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); syncEngineDevice(); }),
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
     adjust: new AdjustPanel(engine),
@@ -1190,10 +1190,16 @@ export function startApp(): void {
   });
 
   status.setEngine('Engine: checking');
+  // The engine's compute device (Phase 18.6): the preference sent, the engine's report shown in Preferences.
+  function syncEngineDevice(): void {
+    if (!caps) { dialogs.settings.setEngine('Engine: offline, so the engine processor cannot be set.'); return; }
+    void api.setCompute(loadPrefs().engineDevice).then((r) => dialogs.settings.setEngine(r ? `Engine: ${r.label} (${r.reason}).` : 'Engine: could not be reached.'));
+  }
   void api.capabilities().then((c) => {
     caps = c;
     status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop' : ''}` : 'Engine offline');
     if (!c) toast('The sonny engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./sonny boot).');
+    syncEngineDevice();
   });
 
   if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions, animation: dialogs.animation };

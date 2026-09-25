@@ -9,7 +9,7 @@ import { icon } from './icons';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
-import { RECOVERY_CHOICES, loadPrefs, savePrefs, type Prefs } from './prefs';
+import { ENGINE_CHOICES, RECOVERY_CHOICES, loadPrefs, savePrefs, type EngineDevice, type Prefs } from './prefs';
 import { RENDERER_CHOICES, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
 
@@ -189,6 +189,9 @@ export class SettingsDialog extends Dialog {
   private readonly gpuUseRow = checkRow('Use Graphics Processor', (v) => this.change({ useGpu: v }));
   private readonly rendererRow = selectRow('Renderer', RENDERER_CHOICES, (v) => this.change({ renderer: v as GpuRenderer }));
   private readonly gpuMemoryRow = sliderRow('GPU memory (MB)', 128, 16384, 128, (v) => this.change({ gpuMemoryMB: v }));
+  /** The engine's compute device (Phase 18.6): the choice, and what the engine reports it uses and why. */
+  private readonly engineRow = selectRow('Engine processor', ENGINE_CHOICES, (v) => this.change({ engineDevice: v as EngineDevice }));
+  private readonly engineMode = el('<p class="cv-note cv-engine-mode">Engine: not reached yet.</p>');
 
   /** Edit > Preferences (Ctrl+,), laid out as Photoshop's: sections on the left, each section's settings on the right,
    *  kept on this device. `onPrefs` puts a change into effect. */
@@ -217,7 +220,9 @@ export class SettingsDialog extends Dialog {
     add('Performance', this.statesRow.el, this.memoryRow.el, this.redrawRow.el,
       el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
-      el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, sonny turns this off and says so. In this version the graphics processor is detected and the choice kept; drawing still runs on the CPU until the GPU renderer that follows it arrives.</p>'));
+      el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, sonny turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
+      el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
+      el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
     add('File Handling', this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
@@ -244,6 +249,7 @@ export class SettingsDialog extends Dialog {
     this.gpuUseRow.set(this.prefs.useGpu);
     this.rendererRow.set(this.prefs.renderer);
     this.gpuMemoryRow.set(this.prefs.gpuMemoryMB);
+    this.engineRow.set(this.prefs.engineDevice);
     if (section && this.sections.has(section)) this.showSection(section);
     this.sync();
     this.open();
@@ -262,6 +268,11 @@ export class SettingsDialog extends Dialog {
     const box = this.gpuUseRow.el.querySelector('input');
     if (box) setDisabled(box, !name);
     setText(this.gpuMode, `In use: ${mode} (${reason}).`);
+  }
+
+  /** The engine's report on its compute device (or that it is offline). */
+  setEngine(text: string): void {
+    setText(this.engineMode, text);
   }
 
   private showSection(name: string): void {

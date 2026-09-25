@@ -5,9 +5,13 @@ import type { GpuRenderer } from '../gpu/probe';
  *  something real: History States and history memory are the undo limits every project uses; region redraws decide
  *  whether a brush stroke repaints only what it changed; the recovery delay is how soon after a change unsaved work is
  *  kept for crash recovery. The graphics processor settings choose the renderer (Phase 18). */
-export interface Prefs { historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number }
+export interface Prefs { historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice }
 
-export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024 };
+/** The engine's compute device (Phase 18.6), sent to the engine, which reports what it uses. */
+export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'cpu';
+export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['cpu', 'CPU']];
+
+export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto' };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'sonny.prefs';
 
@@ -25,6 +29,7 @@ export function loadPrefs(): Prefs {
       useGpu: typeof r.useGpu === 'boolean' ? r.useGpu : DEFAULT_PREFS.useGpu,
       renderer: r.renderer === 'webgpu' || r.renderer === 'webgl2' || r.renderer === 'cpu' || r.renderer === 'auto' ? r.renderer : DEFAULT_PREFS.renderer,
       gpuMemoryMB: Math.round(num(r.gpuMemoryMB, 128, 16384, DEFAULT_PREFS.gpuMemoryMB)),
+      engineDevice: ENGINE_CHOICES.some(([k]) => k === r.engineDevice) ? r.engineDevice as EngineDevice : DEFAULT_PREFS.engineDevice,
     };
   } catch { return { ...DEFAULT_PREFS }; }
 }
