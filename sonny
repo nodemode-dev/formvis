@@ -19,6 +19,7 @@ usage: ./sonny [command] [options]
   desktop dev|build   run or bundle the desktop app
   doctor              check the toolchain, installs and ports
   test [unit|backend|e2e]  run the tests (all three suites by default)
+  counts [--check]    the README's code sizes and blend-mode count (--check: exit 1 if README.md has drifted)
   clean [--all]       remove build output (--all also venv and node_modules)
   help                this text
 EOF
@@ -45,6 +46,7 @@ case "$cmd" in
     esac ;;
   doctor) exec setup/doctor "$@" ;;
   test) exec setup/test "$@" ;;
+  counts) exec setup/counts "$@" ;;
   clean) exec setup/clean "$@" ;;
   help|-h|--help) usage ;;
   *) printf '[sonny] unknown command: %s\n\n' "$cmd"; usage; exit 2 ;;

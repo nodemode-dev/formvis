@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# The README's code sizes and blend-mode count from the repository (plan item 19.4): prints the Stack sentence, or with
+# --check exits 1 when README.md has drifted from the code. The work is in line_counts.py.
+source "$(dirname "$0")/lib.sh"
+py="$SONNY_ROOT/backend/venv/bin/python"
+[ -x "$py" ] || py="$(cv_python)" || { cv_say "Python 3.12+ is required"; exit 1; }
+exec "$py" "$SONNY_ROOT/setup/line_counts.py" "$@"
