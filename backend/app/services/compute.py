@@ -52,7 +52,8 @@ def set_preference(preference: str) -> dict:
         raise ValueError(f"unknown device: {preference}")
     if preference != _preference:
         _preference = preference
-        from app.services import background
+        from app.services import background, segment
 
         background.clear_sessions()
+        segment.clear()
     return current()

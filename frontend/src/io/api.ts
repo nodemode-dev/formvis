@@ -99,6 +99,20 @@ export const api = {
     const res = await request('/ops/remove-background', { method: 'POST', body: form({ method }, [{ name: 'layer.png', blob: image }], 'file') });
     return { mask: await res.blob(), method: res.headers.get('X-Method') ?? method };
   },
+  /** Click-to-select (SAM 2.1): the object at `points` ([x, y, 1] on it, [x, y, 0] not) in the image under `key`. The image
+   *  is sent only when `withImage` asks for it or the engine answers 409 (it no longer holds the key), then once more
+   *  with it; `image` makes the pixels only when they are needed. */
+  async selectObject(key: string, points: Array<[number, number, 0 | 1]>, image: () => Promise<Blob>, withImage: boolean): Promise<Blob> {
+    const send = async (img: Blob | null): Promise<Blob> => {
+      const body = form({ key, points: JSON.stringify(points) }, img ? [{ name: 'image.png', blob: img }] : [], 'file');
+      return (await request('/ops/select-object', { method: 'POST', body })).blob();
+    };
+    if (withImage) return send(await image());
+    try { return await send(null); } catch (err) {
+      if (err instanceof ApiError && err.status === 409) return send(await image());
+      throw err;
+    }
+  },
   async encode(png: Blob, format: 'tiff' | 'pdf' | 'webp' | 'avif', quality = 90, dpi = 72, icc: Uint8Array | null = null): Promise<Blob> {
     const body = form({ format, quality: String(quality), dpi: String(dpi) }, [{ name: 'image.png', blob: png }], 'file');
     if (icc) body.append('icc', new Blob([icc as Uint8Array<ArrayBuffer>], { type: 'application/vnd.iccprofile' }), 'profile.icc');

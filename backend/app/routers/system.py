@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.core import config
-from app.services import background, compute, imaging
+from app.services import background, compute, imaging, segment
 
 router = APIRouter(tags=["system"])
 
@@ -17,6 +17,14 @@ def version() -> dict:
     return {"name": config.APP_NAME, "version": config.VERSION}
 
 
+def _select_object() -> dict:
+    """Click-to-select (SAM 2.1): available when torch and sam2 are installed, and the torch device it would use."""
+    if not segment.available():
+        return {"available": False, "model": "SAM 2.1 tiny"}
+    device, reason = segment.torch_device()
+    return {"available": True, "model": "SAM 2.1 tiny", "device": device, "reason": reason}
+
+
 @router.get("/capabilities")
 def capabilities() -> dict:
     return {
@@ -25,6 +33,7 @@ def capabilities() -> dict:
         "desktop": config.is_desktop(),
         "decode": imaging.decoders(),
         "removeBackground": background.available(),
+        "selectObject": _select_object(),
         "compute": compute.current(),
         "dataDir": str(config.data_dir()),
     }

@@ -4,8 +4,14 @@ source "$(dirname "$0")/lib.sh"
 cv_venv
 cd "$SONNY_ROOT/backend"
 if [ "$(cv_os)" = macos ]; then pip install -r requirements_ml_macos.txt; else pip install -r requirements_ml.txt; fi
+# Click-to-select: Meta's SAM 2.1 (Apache-2.0) at a pinned commit; its build imports torch, so torch comes first and the
+# build uses this environment; its optional CUDA extension (a post-processing speed-up) is not built.
+pip install -r requirements_sam2.txt
+SAM2_BUILD_CUDA=0 pip install --no-build-isolation "sam-2 @ git+https://github.com/facebookresearch/sam2.git@2b90b9f5ceec907a1c18123530e92e794ad901a4"
 if [ "${SONNY_SKIP_MODEL:-0}" != 1 ]; then
   cv_say "fetching the u2net background model (about 176 MB, stored in ~/.u2net)"
   python -c "from rembg import new_session; new_session('u2net')"
+  cv_say "fetching the SAM 2.1 tiny model for click-to-select (about 156 MB, checked against its SHA-256)"
+  python -c "from app.services.segment import ensure_checkpoint; print(ensure_checkpoint())"
 fi
-cv_say "ML background removal ready"
+cv_say "ML background removal and click-to-select ready"
