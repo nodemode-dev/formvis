@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Sliding document tabs · _v1.41.0 (src/ui/tabs.ts, src/styles/shell.css; e2e/test_no_layout_shift.py new)
+
+`tabs.ts` `render`: tabs and the new-document button held by `--flip-x` and eased (`.is-settling`) whenever the tab count changes. Removed:
+
+```ts
+import { el, patchList, q, setClass, setText, setTitle } from './dom';
+```
+
 ## .comp import · _v1.40.0 (src/io/images.ts; e2e/test_comp_import.py new)
 
 `images.ts`: `.comp` in `PROJECT_ACCEPT` and `isProjectFile` (opened to migrate; sonny never writes it). Removed:

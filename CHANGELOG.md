@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.41.0 · 2026-09-25
+
+### Fixed
+
+- Document tabs and the new-document button slide into place when a document opens or closes, instead of jumping, so a document arriving from a drop or an import no longer shifts the tab bar unexpectedly.
+- 2 more tests (browser), guarding this and the sliding layer rows: 494 in all.
+
 ## 1.40.0 · 2026-09-25
 
 ### Added
