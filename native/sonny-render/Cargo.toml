@@ -1,0 +1,15 @@
+[package]
+name = "sonny-render"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+description = "sonny's native GPU renderer: tiled layers, a GPU brush and compositing on wgpu (Metal, Vulkan, Direct3D 12)"
+publish = false
+
+[dependencies]
+wgpu = "30"
+pollster = "1"
+bytemuck = { version = "1", features = ["derive"] }
+
+[profile.dev]
+debug = 0
