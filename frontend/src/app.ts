@@ -58,6 +58,7 @@ import { GlDisplay } from './gpu/gl-display';
 import { NativeDisplay } from './gpu/native-display';
 import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
+import { PropertiesColumn } from './ui/properties';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
 import { DOCK_PANELS, Dock } from './ui/dock';
@@ -130,6 +131,7 @@ const SHELL = `<div class="cv-app">
 </div></div>
 <div class="cv-drop" hidden></div>
 </main>
+<section class="cv-props-col" aria-label="Properties"></section>
 <div class="cv-resizer" role="separator" aria-orientation="vertical" aria-label="Resize the layers panel"></div>
 <section class="cv-layers" aria-label="Layers"></section>
 </div>
@@ -170,6 +172,11 @@ export function startApp(): void {
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
+  // The Properties column (Phase 21), shown unless hidden from Window > Properties Column (remembered).
+  new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); });
+  const propsShown = (): boolean => stored('sonny.propsCol') !== 'hidden';
+  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !propsShown()); setStyleVar(root, '--cv-props-w', propsShown() ? '284px' : '0px'); };
+  syncPropsCol();
   new NavigatorPanel(q(root, '.cv-layers'), engine);
   new SwatchesPanel(q(root, '.cv-layers'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
@@ -831,6 +838,7 @@ export function startApp(): void {
     ...DOCK_PANELS.map((pn) => ({ id: `panel-${pn.id}`, label: pn.label, checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) })),
     // Paths is a tab of the Layers group (Phase 21): Window > Paths shows the group on its Paths tab.
     { id: 'panel-paths', label: 'Paths', run: () => { if (!dock.isShown('layers')) dock.toggle('layers'); layers.showTab('paths'); } },
+    { id: 'panel-properties-col', label: 'Properties Column', checked: propsShown, run: () => { store('sonny.propsCol', propsShown() ? 'hidden' : 'shown'); syncPropsCol(); } },
     { id: 'reset-panels', label: 'Reset Panels', run: () => dock.reset() },
     { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
@@ -1020,7 +1028,7 @@ export function startApp(): void {
       { label: 'Noise', items: ['filter-addNoise'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }] },
-    { label: 'Window', items: ['brush-settings', 'paragraph-styles', '-', ...DOCK_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', '-', 'reset-panels'] },
+    { label: 'Window', items: ['brush-settings', 'paragraph-styles', '-', ...DOCK_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', '-', 'reset-panels'] },
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);

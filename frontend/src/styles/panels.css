@@ -214,3 +214,51 @@
 .cv-layers-panel .cv-paths { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
 .cv-layers-panel .cv-paths > .cv-panel-head { height: 34px; background: transparent; }
 .cv-layers-panel .cv-paths-toggle { display: none; }
+
+/* ── Phase 21, step 2c: the Properties column (UI_SPEC.md sections 5 and 6, the target's s20). ── */
+.cv-props-col { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; background: #111112; border-left: 1px solid #0b0b0b; }
+.cv-props-col[hidden] { display: none; }
+.cv-props-col > .cv-group { flex: none; }
+.cv-props-head { display: flex; align-items: center; gap: 12px; padding: 8px 4px 12px; border-bottom: 1px solid #36343b; }
+.cv-props-tile { display: inline-grid; place-items: center; width: 36px; height: 36px; border: 1px solid #34333a; border-radius: 8px; background: #1c1c1c; color: var(--text-secondary); }
+.cv-props-name { color: var(--text-primary); font-size: 14px; font-weight: 600; }
+.cv-props-section { display: flex; align-items: center; gap: 6px; width: 100%; margin: 8px 0 6px; padding: 2px 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: 14px; font-weight: 600; cursor: pointer; }
+.cv-props-section[aria-expanded="false"] .icon { transform: rotate(-90deg); }
+.cv-props-section[hidden], .cv-props-transform[hidden], .cv-props-none[hidden] { display: none; }
+.cv-props-transform { display: flex; align-items: center; gap: 8px; }
+.cv-link-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; border: 1px solid #34333a; border-radius: 7px; background: #1c1c1c; color: var(--text-muted); cursor: pointer; }
+.cv-link-btn.is-on { background: #2e2b3a; border-color: #4a4658; color: var(--accent-color); }
+.cv-props-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 8px; flex: 1; min-width: 0; }
+.cv-props-field { display: flex; align-items: center; gap: 6px; color: var(--text-muted); font-size: 12px; }
+.cv-props-field .cv-num { flex: 1; min-width: 0; }
+.cv-props-field .cv-num input, .cv-char-row .cv-num input, .cv-brush-row .cv-num input { width: 100%; }
+.cv-props-none { margin: 6px 2px; color: var(--text-muted); font-size: 12px; }
+.cv-num input:disabled { color: var(--text-muted); }
+/* Brushes */
+.cv-brush-top { display: flex; gap: 10px; }
+.cv-brush-tip { width: 88px; height: 88px; flex: none; border: 1px solid #34333a; border-radius: 6px; background: #151515; }
+.cv-brush-sliders { display: flex; flex-direction: column; justify-content: space-between; flex: 1; min-width: 0; }
+.cv-brush-row-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--text-secondary); font-size: 13px; }
+.cv-brush-row-head .cv-num { width: 90px; }
+.cv-brush-stroke-head { display: flex; justify-content: flex-end; margin: 10px 0 4px; color: var(--text-muted); font-size: 11px; }
+.cv-brush-stroke { display: block; width: 100%; height: 56px; border-radius: 6px; background: #1c1c1c; }
+.cv-brush-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+/* A bordered button with an icon, as the target's ("Load...", "Brush Settings"). */
+.cv-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid #3a3a3a; border-radius: 7px; background: #1c1c1c; color: var(--text-primary); font: inherit; font-size: 13px; cursor: pointer; }
+.cv-btn:hover { background: #242424; }
+/* Paragraph: a segmented bar. */
+.cv-seg { display: flex; gap: 2px; padding: 3px; border: 1px solid #34333a; border-radius: 9px; background: #151515; }
+.cv-seg button { flex: 1; display: inline-grid; place-items: center; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.cv-seg button.is-on { background: #2e2b3a; color: var(--accent-color); }
+/* Character: labels right-aligned against their fields, as the target's forms. */
+.cv-char { display: flex; flex-direction: column; gap: 6px; }
+.cv-char-row { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
+.cv-char-row > span { text-align: right; }
+.cv-char-row .cv-num { width: 110px; }
+/* The Layers panel's one column fits the panel (without it the column grew to its widest row and overflowed), and the
+   Kind row takes the full width, its dropdown shrinking before the icons do. */
+.cv-layers-panel { grid-template-columns: minmax(0, 1fr); }
+.cv-layer-props { min-width: 0; }
+.cv-layer-kind { width: 100%; min-width: 0; }
+.cv-kind { width: auto; flex: 1 1 88px; min-width: 64px; max-width: 110px; }
+.cv-kind-icons { flex: none; }

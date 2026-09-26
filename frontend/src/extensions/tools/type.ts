@@ -13,7 +13,7 @@ function fontChoices(current: string): Array<{ id: string; label: string }> {
 }
 
 /** Changes the Type settings, shows them in the options bar, and restyles text being typed. */
-function setType(e: Engine, patch: Partial<TextSpec>): void {
+export function setType(e: Engine, patch: Partial<TextSpec>): void {
   e.textSettings = { ...e.textSettings, ...patch };
   e.emit('options', null);
   document.dispatchEvent(new CustomEvent('cv:type-settings'));
