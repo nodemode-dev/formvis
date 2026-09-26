@@ -10,7 +10,6 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'navigator', label: 'Navigator', selector: '.cv-navigator' },
   { id: 'swatches', label: 'Swatches', selector: '.cv-swatches' },
   { id: 'layers', label: 'Layers', selector: '.cv-layers-panel' },
-  { id: 'paths', label: 'Paths', selector: '.cv-paths' },
   { id: 'timeline', label: 'Timeline', selector: '.cv-timeline' },
   { id: 'history', label: 'History', selector: '.cv-history' },
 ];
@@ -45,8 +44,8 @@ export class Dock {
       head.classList.add('cv-dock-grip');
       head.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || (e.target as HTMLElement).closest('[data-cmd]')) return;
+        // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
         this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1 };
-        head.setPointerCapture(e.pointerId);
       });
       head.addEventListener('pointermove', (e) => this.move(e));
       head.addEventListener('pointerup', () => this.drop());
@@ -91,6 +90,7 @@ export class Dock {
     const d = this.drag;
     if (!d) return;
     if (!d.moving && Math.abs(e.clientY - d.startY) < 5) return;
+    if (!d.moving) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     d.moving = true;
     const shown = this.state.order.filter((id) => this.isShown(id)).map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
     const box = this.dock.getBoundingClientRect();

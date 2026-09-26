@@ -174,6 +174,7 @@ export function startApp(): void {
   new SwatchesPanel(q(root, '.cv-layers'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   new PathsPanel(q(root, '.cv-layers'), engine);
+  layers.adoptPaths(q(root, '.cv-paths'));
   new TimelinePanel(q(root, '.cv-layers'), engine);
   new HistoryPanel(q(root, '.cv-layers'), engine);
   const dock = new Dock(q(root, '.cv-layers'));
@@ -828,6 +829,8 @@ export function startApp(): void {
     { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
     { id: 'settings', label: 'Preferences...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
     ...DOCK_PANELS.map((pn) => ({ id: `panel-${pn.id}`, label: pn.label, checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) })),
+    // Paths is a tab of the Layers group (Phase 21): Window > Paths shows the group on its Paths tab.
+    { id: 'panel-paths', label: 'Paths', run: () => { if (!dock.isShown('layers')) dock.toggle('layers'); layers.showTab('paths'); } },
     { id: 'reset-panels', label: 'Reset Panels', run: () => dock.reset() },
     { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
@@ -1017,7 +1020,7 @@ export function startApp(): void {
       { label: 'Noise', items: ['filter-addNoise'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }] },
-    { label: 'Window', items: ['brush-settings', 'paragraph-styles', '-', ...DOCK_PANELS.map((pn) => `panel-${pn.id}`), '-', 'reset-panels'] },
+    { label: 'Window', items: ['brush-settings', 'paragraph-styles', '-', ...DOCK_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', '-', 'reset-panels'] },
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);

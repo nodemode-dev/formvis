@@ -5,21 +5,21 @@ EXPANDED = "document.querySelector('.cv-history-toggle').getAttribute('aria-expa
 def test_panels_move_hide_and_reset(page):
     try:
         page.evaluate("window.sonny.engine.newDocument(200, 100, 'D', 'white')")
-        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "paths", "timeline", "history"]
+        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "timeline", "history"]
         before = page.evaluate(EXPANDED)
         h = page.locator(".cv-history .cv-panel-head").bounding_box()
-        p = page.locator(".cv-paths .cv-panel-head").bounding_box()
+        p = page.locator(".cv-timeline .cv-panel-head").bounding_box()
         page.mouse.move(h["x"] + 60, h["y"] + h["height"] / 2); page.mouse.down()
         page.mouse.move(p["x"] + 60, p["y"] + 2, steps=12); page.mouse.up()
-        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history", "paths", "timeline"], page.evaluate(ORDER)
+        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history", "timeline"], page.evaluate(ORDER)
         assert page.evaluate(EXPANDED) == before                       # the drag did not also fold or unfold it
         page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
-        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history", "paths", "timeline"]   # remembered
+        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history", "timeline"]   # remembered
         page.locator(".cv-menu-btn", has_text="Window").click()
         page.locator(".cv-menu:not([hidden]) .cv-menu-item", has_text="Timeline").click()
-        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history", "paths"]
+        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history"]
         assert page.evaluate("window.sonny.commands.run('reset-panels')")
-        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "paths", "timeline", "history"]
+        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "timeline", "history"]
     finally:
         page.evaluate("localStorage.removeItem('sonny.dock')")
         page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")

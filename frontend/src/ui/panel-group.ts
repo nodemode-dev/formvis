@@ -25,7 +25,7 @@ export class PanelGroup {
     this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><div class="cv-group-tabs" role="tablist"></div><span></span><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
     for (const t of list) {
-      const btn = el<HTMLButtonElement>('<button class="cv-group-tab" type="button" role="tab" data-cmd="tab"></button>');
+      const btn = el<HTMLButtonElement>('<button class="cv-group-tab" type="button" role="tab"></button>');
       setText(btn, t.label);
       btn.dataset.tab = t.id;
       btn.addEventListener('click', () => this.show(t.id));

@@ -188,3 +188,29 @@
 .cv-color-page { display: flex; gap: 8px; height: 150px; }
 .cv-color-sv { flex: 1; min-width: 0; height: 100%; border-radius: 6px; cursor: crosshair; }
 .cv-color-hue { width: 14px; height: 100%; border-radius: 4px; cursor: ns-resize; }
+
+/* ── Phase 21, step 2b: the Layers group as the target's (UI_SPEC.md section 6): Layers | Paths tabs, the Kind row,
+   blend and the Opacity field. ── */
+.cv-layer-props { display: block; padding: 6px 8px 2px; }
+.cv-layer-kind { display: flex; align-items: center; gap: 6px; }
+.cv-kind { width: 96px; flex: none; }
+.cv-kind-icons { display: flex; gap: 1px; padding: 2px; border: 1px solid #34333a; border-radius: 8px; }
+.cv-kind-btn { display: inline-grid; place-items: center; width: 26px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.cv-kind-btn:hover { color: var(--text-primary); }
+.cv-kind-btn.is-on { background: #2e2b3a; color: var(--text-primary); box-shadow: inset 0 0 0 1px #4a4658; }
+.cv-layer-blendrow { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.cv-layer-blendrow .cv-blend { flex: 1; min-width: 0; }
+.cv-vsep { width: 1px; height: 18px; background: #34333a; flex: none; }
+.cv-opacity { display: flex; align-items: center; gap: 8px; color: var(--text-secondary); font-size: 13px; }
+/* A numeric field as the target's: dark, rounded, the value right-aligned in the monospace face, the unit dimmed. */
+.cv-num { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 1px solid #303035; border-radius: 6px; background: #222127; }
+.cv-num input { width: 34px; padding: 0; border: 0; outline: 0; background: transparent; color: var(--text-primary); font-family: var(--font-mono); font-size: 13px; text-align: right; }
+.cv-num:focus-within { border-color: var(--accent-color); }
+.cv-unit { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
+/* The Paths tab: only the header and Paths show; Paths' own fold toggle gives way to the tab. */
+.cv-layers-panel.is-paths-tab { grid-template-rows: auto minmax(0, 1fr); }
+.cv-layers-panel.is-paths-tab > .cv-layer-props, .cv-layers-panel.is-paths-tab > .cv-layer-list, .cv-layers-panel.is-paths-tab > .cv-panel-foot { display: none; }
+.cv-layers-panel .cv-paths[hidden] { display: none; }
+.cv-layers-panel .cv-paths { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.cv-layers-panel .cv-paths > .cv-panel-head { height: 34px; background: transparent; }
+.cv-layers-panel .cv-paths-toggle { display: none; }

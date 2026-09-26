@@ -7,6 +7,18 @@ import type { PopupMenu } from './menu';
 const THUMB = 60;
 type Where = 'above' | 'below' | 'inside';
 
+/** The Layers panel's kind filter (Phase 21, as the target's Kind row): pixel, adjustment, type, shape and smart object
+ *  layers, decided from the layer's own fields. Folders always show, so filtered layers keep their place. */
+const KINDS = [
+  { id: 'pixel', label: 'Pixel', icon: 'image' },
+  { id: 'adjustment', label: 'Adjustment', icon: 'halfCircle' },
+  { id: 'type', label: 'Type', icon: 'typeTool' },
+  { id: 'shape', label: 'Shape', icon: 'rectTool' },
+  { id: 'smart', label: 'Smart Object', icon: 'smartObject' },
+] as const;
+type KindId = (typeof KINDS)[number]['id'];
+const kindOf = (l: Layer): KindId => (l.adjustment ? 'adjustment' : l.text ? 'type' : l.vector ? 'shape' : l.smart ? 'smart' : 'pixel');
+
 export class LayersPanel {
   private readonly rows: HTMLElement;
   private readonly list: HTMLElement;
@@ -14,19 +26,24 @@ export class LayersPanel {
   private readonly dropLine: HTMLElement;
   private readonly blend: HTMLSelectElement;
   private readonly opacity: HTMLInputElement;
-  private readonly opacityOut: HTMLElement;
+  private readonly kind: HTMLSelectElement;
+  /** The kinds shown; empty shows every kind. */
+  private kinds = new Set<KindId>();
+  /** The Paths panel's section, shown in this group's Paths tab (adoptPaths). */
+  private paths: HTMLElement | null = null;
   private readonly painted = new WeakMap<HTMLElement, { pixels: string; mask: string }>();
   private frame = 0;
-  private opacityDrag = false;
   private renaming: ID | null = null;
   private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null } | null = null;
   private swipe: { visible: boolean; pointerId: number } | null = null;
 
   constructor(root: HTMLElement, private readonly engine: Engine, private readonly menu: PopupMenu) {
     root.insertAdjacentHTML('beforeend',
-      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><span class="cv-panel-title">${icon('layers', 14)}Layers</span><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
-      `<div class="cv-layer-props"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${BLEND_MODES.map((b) => `<option value="${b.id}">${b.label}</option>`).join('')}</select>` +
-      `<label class="cv-opacity" title="Opacity"><input class="cv-opacity-range" type="range" min="0" max="100" step="1" value="100" aria-label="Opacity"><span class="cv-readout cv-opacity-out">100%</span></label></div>` +
+      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
+      `<div class="cv-layer-props"><div class="cv-layer-kind"><select class="cv-select cv-kind" title="Filter by kind" aria-label="Filter by kind"><option value="all">Kind</option>${KINDS.map((k) => `<option value="${k.id}">${k.label}</option>`).join('')}</select>` +
+      `<div class="cv-kind-icons" role="group" aria-label="Show only">${KINDS.map((k) => `<button class="cv-kind-btn" type="button" data-kind="${k.id}" title="${k.label} layers" aria-label="${k.label} layers" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('')}</div></div>` +
+      `<div class="cv-layer-blendrow"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${BLEND_MODES.map((b) => `<option value="${b.id}">${b.label}</option>`).join('')}</select><span class="cv-vsep"></span>` +
+      `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span></label></div></div>` +
       `<div class="cv-layer-list"><div class="cv-layer-rows" role="listbox" aria-label="Layers"></div><div class="cv-drop-line"></div><div class="cv-layers-empty">No canvas open. Create one or drop images on the stage.</div></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></section>`);
     this.rows = q(root, '.cv-layer-rows');
@@ -34,19 +51,33 @@ export class LayersPanel {
     this.empty = q(root, '.cv-layers-empty');
     this.dropLine = q(root, '.cv-drop-line');
     this.blend = q<HTMLSelectElement>(root, '.cv-blend');
-    this.opacity = q<HTMLInputElement>(root, '.cv-opacity-range');
-    this.opacityOut = q(root, '.cv-opacity-out');
+    this.opacity = q<HTMLInputElement>(root, '.cv-opacity-field');
     this.blend.addEventListener('change', () => engine.setBlend(this.blend.value as Layer['blend']));
-    this.opacity.addEventListener('pointerdown', () => { this.opacityDrag = true; engine.beginOpacityEdit(); });
-    this.opacity.addEventListener('input', () => {
-      const v = Number(this.opacity.value) / 100;
-      setText(this.opacityOut, `${this.opacity.value}%`);
-      if (this.opacityDrag) engine.setOpacityLive(v);
-      else engine.setOpacity(v);
+    // Opacity as the target's numeric field: Enter or leaving it commits (one undo step); arrows step by 1, Shift by 10.
+    const commit = (pct: number): void => {
+      const v = Math.min(100, Math.max(0, Math.round(pct)));
+      this.opacity.value = String(v);
+      if (Math.round((engine.activeLayer?.opacity ?? 1) * 100) !== v) engine.setOpacity(v / 100);
+    };
+    this.opacity.addEventListener('change', () => { const n = parseFloat(this.opacity.value); if (Number.isFinite(n)) commit(n); else this.syncProps(); });
+    this.opacity.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { this.opacity.blur(); return; }
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      commit((parseFloat(this.opacity.value) || 0) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
     });
-    const endOpacity = (): void => { if (!this.opacityDrag) return; this.opacityDrag = false; engine.endOpacityEdit(); };
-    this.opacity.addEventListener('change', endOpacity);
-    this.opacity.addEventListener('pointerup', endOpacity);
+    // The kind filter: the dropdown picks one kind (or all); the icons toggle kinds; the two agree.
+    this.kind = q<HTMLSelectElement>(root, '.cv-kind');
+    this.kind.addEventListener('change', () => { this.kinds = new Set(this.kind.value === 'all' ? [] : [this.kind.value as KindId]); this.syncKinds(); this.render(); });
+    for (const b of root.querySelectorAll<HTMLButtonElement>('.cv-kind-btn')) {
+      b.addEventListener('click', () => {
+        const k = b.dataset.kind as KindId;
+        if (this.kinds.has(k)) this.kinds.delete(k); else this.kinds.add(k);
+        this.syncKinds();
+        this.render();
+      });
+    }
+    for (const t of root.querySelectorAll<HTMLButtonElement>('.cv-layers-panel .cv-group-tab')) t.addEventListener('click', () => this.showTab(t.dataset.tab as 'layers' | 'paths'));
     for (const k of ['doc', 'active', 'projects', 'history'] as const) engine.on(k, () => this.queue());
     this.bindRows();
     this.render();
@@ -64,8 +95,9 @@ export class LayersPanel {
 
   private render(): void {
     const p = this.engine.current;
-    const entries = p ? hierarchy(p.doc, true, p.collapsed) : [];
-    setHidden(this.empty, entries.length > 0);
+    const all = p ? hierarchy(p.doc, true, p.collapsed) : [];
+    const entries = this.kinds.size ? all.filter((e) => e.layer.isGroup || this.kinds.has(kindOf(e.layer))) : all;
+    setHidden(this.empty, all.length > 0);
     // Rows moved by a layer arriving or leaving are held where they were by a transform and then eased into place (FLIP),
     // so a layer that arrives with no click just before it (an import, Remove Background finishing) does not make the
     // list jump; browsers do not count movement by transform as a layout shift.
@@ -166,7 +198,44 @@ export class LayersPanel {
     setDisabled(this.opacity, !pixel);
     setValue(this.blend, pixel ? (l as Layer).blend : 'normal');
     const pct = String(Math.round((pixel ? (l as Layer).opacity : 1) * 100));
-    if (!this.opacityDrag) { setValue(this.opacity, pct); setText(this.opacityOut, `${pct}%`); }
+    if (document.activeElement !== this.opacity) setValue(this.opacity, pct);
+  }
+
+  /** The kind icons and dropdown show the filter. */
+  private syncKinds(): void {
+    for (const b of this.rows.closest('.cv-layers-panel')?.querySelectorAll<HTMLButtonElement>('.cv-kind-btn') ?? []) {
+      const on = this.kinds.has(b.dataset.kind as KindId);
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+    }
+    setValue(this.kind, this.kinds.size === 1 ? [...this.kinds][0] : 'all');
+  }
+
+  /** The Paths panel's section becomes this group's Paths tab, as the target's Layers group (Layers | Paths). */
+  adoptPaths(section: HTMLElement): void {
+    this.paths = section;
+    const panel = this.rows.closest('.cv-layers-panel') as HTMLElement;
+    panel.appendChild(section);
+    const toggle = section.querySelector<HTMLButtonElement>('.cv-paths-toggle'), body = section.querySelector<HTMLElement>('.cv-paths-body');
+    if (toggle) toggle.setAttribute('aria-expanded', 'true');
+    if (body) setHidden(body, false);
+    let tab: 'layers' | 'paths' = 'layers';
+    try { tab = (JSON.parse(localStorage.getItem('sonny.groups') ?? '{}') as Record<string, { tab?: string }>).layers?.tab === 'paths' ? 'paths' : 'layers'; } catch { /* layers */ }
+    this.showTab(tab, false);
+  }
+
+  showTab(tab: 'layers' | 'paths', remember = true): void {
+    const panel = this.rows.closest('.cv-layers-panel') as HTMLElement;
+    panel.classList.toggle('is-paths-tab', tab === 'paths');
+    for (const t of panel.querySelectorAll<HTMLButtonElement>(':scope > .cv-panel-head .cv-group-tab')) {
+      const on = t.dataset.tab === tab;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', String(on));
+    }
+    if (this.paths) setHidden(this.paths, tab !== 'paths');
+    if (remember) {
+      try { const s = JSON.parse(localStorage.getItem('sonny.groups') ?? '{}'); s.layers = { ...s.layers, tab }; localStorage.setItem('sonny.groups', JSON.stringify(s)); } catch { /* this session only */ }
+    }
   }
 
   private rowOf(id: ID): HTMLElement | null {

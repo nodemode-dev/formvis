@@ -92,8 +92,11 @@ export class PopupMenu {
     this.panel.hidden = false;
     this.panel.scrollTop = 0;
     const w = this.panel.offsetWidth, h = this.panel.offsetHeight;
-    const left = Math.max(4, Math.min(x, window.innerWidth - w - 4));
-    const top = Math.max(4, Math.min(y, window.innerHeight - h - 4));
+    // As native menus: below and right of the pointer when it fits, otherwise above or to the left of it, so the
+    // pointer sits at a corner and never over an item (clamping alone could put a submenu under it, opening it).
+    const fitsRight = x + w <= window.innerWidth - 4, fitsBelow = y + h <= window.innerHeight - 4;
+    const left = Math.max(4, Math.min(fitsRight ? x : x - w, window.innerWidth - w - 4));
+    const top = Math.max(4, Math.min(fitsBelow ? y : y - h, window.innerHeight - h - 4));
     this.panel.style.left = `${Math.round(left)}px`;
     this.panel.style.top = `${Math.round(top)}px`;
     this.panel.style.visibility = '';
