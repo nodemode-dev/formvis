@@ -9,6 +9,7 @@ use std::collections::HashMap;
 pub mod budget;
 pub mod composite;
 pub mod display;
+pub mod document;
 
 pub const TILE: u32 = 256;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
