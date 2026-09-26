@@ -22,6 +22,11 @@ export interface ScreenDisplay {
   readonly maxTexture: number;
   onLost: (() => void) | null;
   render(layers: readonly DisplayLayer[], view: Mat, zoom: number, rect: [number, number, number, number], checker: Checker): void;
+  /** The document's size in its pixels, told before render; the native display needs it, the others do not have it. */
+  document?(width: number, height: number): void;
+  /** What of this document the display cannot draw yet, as a reason for the status bar, or null; the stage then draws
+   *  on the CPU, as for its own fallback rules. Only displays with limits of their own (the native one) have it. */
+  unsupported?(layers: readonly DisplayLayer[]): string | null;
   destroy(): void;
 }
 

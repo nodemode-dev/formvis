@@ -55,6 +55,7 @@ import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, m
 import { GpuDisplay, type ScreenDisplay } from './gpu/display';
 import { benchText, runBenchmark } from './gpu/bench';
 import { GlDisplay } from './gpu/gl-display';
+import { NativeDisplay } from './gpu/native-display';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
 import { DOCK_PANELS, Dock } from './ui/dock';
@@ -115,6 +116,7 @@ const SHELL = `<div class="cv-app">
 <main class="cv-stage">
 <canvas class="cv-canvas cv-scene-gpu" hidden></canvas>
 <canvas class="cv-canvas cv-scene-gpu cv-scene-gl" hidden></canvas>
+<canvas class="cv-canvas cv-scene-gpu cv-scene-native" hidden></canvas>
 <canvas class="cv-canvas cv-scene"></canvas>
 <canvas class="cv-canvas cv-overlay-canvas"></canvas>
 <canvas class="cv-ruler cv-ruler-h" hidden></canvas>
@@ -241,11 +243,11 @@ export function startApp(): void {
   let gpuProbe: GpuProbe = { webgpu: null, webgl2: null }, gpuProbed = false;
   // The screen display for the chosen API, on that API's own canvas (a canvas takes one kind of context); a failed
   // start or a lost device is remembered per API, so losing WebGPU does not rule out WebGL2.
-  let gpuDisplay: ScreenDisplay | null = null, gpuKind: 'webgpu' | 'webgl2' | null = null, gpuStarting = false;
-  const gpuFailed = new Set<'webgpu' | 'webgl2'>();
+  let gpuDisplay: ScreenDisplay | null = null, gpuKind: 'webgpu' | 'webgl2' | 'native' | null = null, gpuStarting = false;
+  const gpuFailed = new Set<'webgpu' | 'webgl2' | 'native'>();
   function syncGpu(): void {
     if (!gpuProbed) return;
-    const pr = loadPrefs(), ch = chooseRenderer(gpuProbe, pr.useGpu, pr.renderer), name = ch.adapter ? `${ch.adapter.name}${ch.adapter.software ? ' (software)' : ''}` : '';
+    const pr = loadPrefs(), ch = chooseRenderer(gpuProbe, pr.useGpu, pr.renderer), adapterName = ch.adapter ? `${ch.adapter.name}${ch.adapter.software ? ' (software)' : ''}` : '';
     const want = ch.mode === 'cpu' ? null : ch.mode;
     if (gpuDisplay && gpuKind !== want) { gpuDisplay.destroy(); gpuDisplay = null; gpuKind = null; }
     if (want && !gpuDisplay && !gpuStarting && !gpuFailed.has(want)) {
@@ -257,11 +259,13 @@ export function startApp(): void {
         if (d) { gpuDisplay = d; gpuKind = want; d.onLost = () => { gpuDisplay = null; gpuKind = null; gpuFailed.add(want); syncGpu(); }; } else gpuFailed.add(want);
         syncGpu();
       };
-      if (want === 'webgpu') void GpuDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gpu:not(.cv-scene-gl)')).then(started);
+      if (want === 'webgpu') void GpuDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gpu:not(.cv-scene-gl):not(.cv-scene-native)')).then(started);
+      else if (want === 'native') void NativeDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-native')).then(started);
       else started(GlDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gl')));
     }
     const off = rendererFallback({ mode: ch.mode, chosenReason: ch.reason, displayReady: !!gpuDisplay, displayFailed: !!want && gpuFailed.has(want) });
-    const live = off ? null : gpuDisplay, api = ch.mode === 'webgl2' ? 'WebGL2' : 'WebGPU';
+    const live = off ? null : gpuDisplay, api = ch.mode === 'webgl2' ? 'WebGL2' : ch.mode === 'native' ? 'Native GPU' : 'WebGPU';
+    const name = ch.mode === 'native' && gpuDisplay instanceof NativeDisplay ? gpuDisplay.adapter : adapterName;
     const cpuWhy = off ?? ch.reason;
     stage.setGpu(live, pr.gpuMemoryMB * 1024 * 1024, live ? (reason) => status.setGpu(reason ? 'GPU: CPU' : `GPU: ${api}`, reason ? `${api} is on, but ${reason}, so it draws on the CPU` : `${name}: ${ch.reason}`) : null);
     if (!live) status.setGpu('GPU: CPU', cpuWhy);

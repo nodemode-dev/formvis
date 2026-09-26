@@ -5,13 +5,14 @@
  *  with the high-performance preference, so a machine with integrated and discrete (NVIDIA) GPUs reports the discrete
  *  one. Rendering itself still runs on the CPU until the GPU renderer (Phase 18.2) uses this choice. */
 
-export type GpuRenderer = 'auto' | 'webgpu' | 'webgl2' | 'cpu';
-export type GpuMode = 'webgpu' | 'webgl2' | 'cpu';
+export type GpuRenderer = 'auto' | 'webgpu' | 'webgl2' | 'cpu' | 'native';
+export type GpuMode = 'webgpu' | 'webgl2' | 'cpu' | 'native';
 export interface GpuAdapter { api: 'webgpu' | 'webgl2'; name: string; software: boolean; maxTexture: number }
-export interface GpuProbe { webgpu: GpuAdapter | null; webgl2: GpuAdapter | null }
+/** `native`: running as the desktop app, whose shell can host the native GPU renderer (Phase 20). */
+export interface GpuProbe { webgpu: GpuAdapter | null; webgl2: GpuAdapter | null; native?: boolean }
 export interface GpuChoice { mode: GpuMode; adapter: GpuAdapter | null; reason: string }
 
-export const RENDERER_CHOICES: ReadonlyArray<readonly [GpuRenderer, string]> = [['auto', 'Automatic'], ['webgpu', 'WebGPU'], ['webgl2', 'WebGL2'], ['cpu', 'CPU']];
+export const RENDERER_CHOICES: ReadonlyArray<readonly [GpuRenderer, string]> = [['auto', 'Automatic'], ['webgpu', 'WebGPU'], ['webgl2', 'WebGL2'], ['native', 'Native GPU (desktop app)'], ['cpu', 'CPU']];
 
 /** Software rasterisers: a GPU API on the CPU, slower than drawing on the CPU directly. */
 const SOFTWARE = /swiftshader|llvmpipe|softpipe|lavapipe|software|microsoft basic render/i;
@@ -40,7 +41,7 @@ export async function probeGpu(): Promise<GpuProbe> {
       gl.getExtension('WEBGL_lose_context')?.loseContext();
     }
   } catch { webgl2 = null; }
-  return { webgpu, webgl2 };
+  return { webgpu, webgl2, native: '__TAURI_INTERNALS__' in window };
 }
 
 /** Automatic takes WebGPU, then WebGL2, on a hardware GPU only: a software rasteriser is slower than drawing on the
@@ -49,15 +50,20 @@ export async function probeGpu(): Promise<GpuProbe> {
 export function chooseRenderer(p: GpuProbe, use: boolean, want: GpuRenderer): GpuChoice {
   if (!use) return { mode: 'cpu', adapter: null, reason: 'Use Graphics Processor is off' };
   if (want === 'cpu') return { mode: 'cpu', adapter: null, reason: 'the CPU renderer is chosen in Preferences' };
+  // The native GPU renderer (Phase 20) only when chosen, and only in the desktop app; Automatic never picks it until it
+  // is verified on real hardware.
+  if (want === 'native' && p.native) return { mode: 'native', adapter: null, reason: 'chosen in Preferences' };
   if (want === 'webgpu' && p.webgpu) return { mode: 'webgpu', adapter: p.webgpu, reason: 'chosen in Preferences' };
   if (want === 'webgl2' && p.webgl2) return { mode: 'webgl2', adapter: p.webgl2, reason: 'chosen in Preferences' };
   const order = want === 'webgl2' ? [p.webgl2, p.webgpu] : [p.webgpu, p.webgl2];
   const hardware = order.find((a): a is GpuAdapter => !!a && !a.software);
-  if (hardware) return { mode: hardware.api, adapter: hardware, reason: want === 'auto' ? 'automatic' : `${want === 'webgpu' ? 'WebGPU' : 'WebGL2'} is not available here` };
-  return { mode: 'cpu', adapter: null, reason: p.webgpu || p.webgl2 ? 'only a software GPU was found, which is slower than the CPU renderer' : 'no graphics processor was found' };
+  const unavailable = want === 'native' ? 'the native GPU renderer is only in the desktop app' : `${want === 'webgpu' ? 'WebGPU' : 'WebGL2'} is not available here`;
+  if (hardware) return { mode: hardware.api, adapter: hardware, reason: want === 'auto' ? 'automatic' : unavailable };
+  const why = p.webgpu || p.webgl2 ? 'only a software GPU was found, which is slower than the CPU renderer' : 'no graphics processor was found';
+  return { mode: 'cpu', adapter: null, reason: want === 'native' ? `the native GPU renderer is only in the desktop app, and ${why}` : why };
 }
 
-export const modeLabel = (m: GpuMode): string => (m === 'webgpu' ? 'WebGPU' : m === 'webgl2' ? 'WebGL2' : 'CPU');
+export const modeLabel = (m: GpuMode): string => (m === 'webgpu' ? 'WebGPU' : m === 'webgl2' ? 'WebGL2' : m === 'native' ? 'Native GPU' : 'CPU');
 
 /** The processor named for Preferences: the hardware one first, then any. */
 export function detectedName(p: GpuProbe): string | null {

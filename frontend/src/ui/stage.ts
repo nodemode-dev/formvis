@@ -188,7 +188,7 @@ export class Stage {
     let gpuLayers: DisplayLayer[] | null = null;
     if (this.gpu) {
       const gl = this.engine.gpuLayers();
-      const reason = documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit });
+      const reason = documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
       if (!reason && 'layers' in gl) gpuLayers = gl.layers;
       if (reason !== this.gpuReason) {
         this.gpuReason = reason;
@@ -225,6 +225,7 @@ export class Stage {
       g.fillRect(vis.x, vis.y, vis.w, vis.h);
     }
     if (gpuLayers && this.gpu) {
+      this.gpu.document?.(p.doc.width, p.doc.height);
       this.gpu.render(gpuLayers, [z, 0, 0, z, ox, oy], v.zoom, [vis.x, vis.y, vis.x + vis.w, vis.y + vis.h],
         { a: this.rgb(pal.checkerA), b: this.rgb(pal.checkerB), cell: Math.max(1, Math.round(8 * this.dpr)), origin: [Math.round(ox), Math.round(oy)] });
     } else if (v.zoom >= 2) {
