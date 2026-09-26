@@ -16,6 +16,10 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 
 .cv-tabs { display: flex; align-items: center; gap: var(--space-1); min-width: 0; }
 .cv-tab-strip { display: flex; align-items: center; gap: var(--space-1); min-width: 0; overflow-x: auto; scrollbar-width: none; }
+/* Tabs and the new-document button moved by a tab arriving or leaving ease into place (ui/tabs.ts render). */
+.cv-tab, .cv-tabs > .cv-icon-btn { transform: translateX(var(--flip-x, 0px)); }
+.cv-tab.is-settling, .cv-tabs > .cv-icon-btn.is-settling { transition: transform 160ms ease-out; }
+@media (prefers-reduced-motion: reduce) { .cv-tab.is-settling, .cv-tabs > .cv-icon-btn.is-settling { transition: none; } }
 .cv-tab-strip::-webkit-scrollbar { display: none; }
 .cv-tab { display: grid; grid-template-columns: 6px minmax(0, 1fr) 20px; align-items: center; column-gap: var(--space-2); flex: none; width: 168px; height: var(--ctl-md); padding: 0 var(--space-1) 0 var(--space-2); border: 1px solid transparent; border-radius: var(--radius); background: transparent; color: var(--text-secondary); font-size: var(--fs-12); cursor: default; }
 .cv-tab:hover { background: var(--bg-hover); }

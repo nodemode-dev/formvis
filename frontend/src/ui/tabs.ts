@@ -1,5 +1,5 @@
 import type { Engine, Project } from '../engine';
-import { el, patchList, q, setClass, setText, setTitle } from './dom';
+import { el, patchList, q, setClass, setStyleVar, setText, setTitle } from './dom';
 import { icon } from './icons';
 
 export class Tabs {
@@ -32,6 +32,13 @@ export class Tabs {
 
   private render(): void {
     const current = this.engine.current;
+    // The tabs after one that arrives or leaves, and the new-document button after the strip, are held where they were
+    // by a transform and eased into place (FLIP, as the Layers rows since 1.38.0), so a document that opens with no
+    // click just before it (a drop, an import finishing) does not make the bar jump; browsers do not count movement by
+    // transform as a layout shift.
+    const movers = (): HTMLElement[] => [...(Array.from(this.strip.children) as HTMLElement[]), ...(this.strip.nextElementSibling instanceof HTMLElement ? [this.strip.nextElementSibling] : [])];
+    const count = this.strip.children.length, before = new Map<Element, number>();
+    for (const n of movers()) before.set(n, n.getBoundingClientRect().left);
     patchList(this.strip, this.engine.projects, {
       key: (p) => p.id,
       create: (p) => {
@@ -41,6 +48,20 @@ export class Tabs {
       },
       update: (n, p) => this.update(n, p, current),
     });
+    // From no tabs to one counts too: the new-document button moves along either way.
+    if (this.strip.children.length !== count) {
+      const moved: HTMLElement[] = [];
+      for (const n of movers()) {
+        const was = before.get(n);
+        if (was === undefined) continue;
+        const dx = Math.round(was - n.getBoundingClientRect().left);
+        if (!dx) continue;
+        setClass(n, 'is-settling', false);
+        setStyleVar(n, '--flip-x', `${dx}px`);
+        moved.push(n);
+      }
+      if (moved.length) requestAnimationFrame(() => { for (const n of moved) { setClass(n, 'is-settling', true); setStyleVar(n, '--flip-x', '0px'); } });
+    }
     const id = current?.id ?? null;
     if (id !== this.activeId) {
       this.activeId = id;
