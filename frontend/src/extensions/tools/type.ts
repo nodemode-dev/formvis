@@ -28,7 +28,7 @@ export const typeTool: Tool = {
   cursor: () => 'text',
   options: (e) => [
     { kind: 'title', text: 'Type' },
-    { kind: 'select', label: 'Font', choices: fontChoices(e.textSettings.family), get: () => e.textSettings.family, set: (v) => {
+    { kind: 'select', label: 'Font', choices: fontChoices(e.textSettings.family), live: () => fontChoices(e.textSettings.family), get: () => e.textSettings.family, set: (v) => {
       // "Load system fonts..." asks for the machine's font list (a click is what lets the browser ask), then refreshes.
       if (v === SYSTEM_FONTS) { void loadSystemFonts().then(() => e.emit('options', null)); return; }
       setType(e, { family: v });

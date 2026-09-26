@@ -47,6 +47,7 @@ import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, type Capabilities, type OpenedProject } from './io/api';
 import { IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
+import { loadSystemFonts } from './ui/fonts';
 import { deserialize, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { applyPrefs, loadPrefs, savePrefs } from './ui/prefs';
@@ -1219,6 +1220,9 @@ export function startApp(): void {
     if (!c) toast('The sonny engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./sonny boot).');
     syncEngineDevice();
   });
+  // The desktop app lists the installed fonts from the shell at once (no permission is asked there, as in Photoshop);
+  // a browser keeps "Load system fonts..." in the Type tool, since Local Font Access asks the user first.
+  if ('__TAURI_INTERNALS__' in window) void loadSystemFonts().then((f) => { if (f) engine.emit('options', null); });
 
   if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions, animation: dialogs.animation };
 

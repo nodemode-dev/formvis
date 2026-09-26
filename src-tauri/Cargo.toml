@@ -16,6 +16,11 @@ tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"
 regex = "1"
+# tauri::generate_context! expands to code that uses serde_json, so the app crate must depend on it (Tauri's own
+# template does); without it the shell did not compile, which the first cargo check, in 1.43.0, found.
+serde_json = "1"
+# The installed font families for the Type tool (the desktop web views have no Local Font Access API): pure Rust, MIT.
+fontdb = "0.24"
 
 [profile.release]
 codegen-units = 1

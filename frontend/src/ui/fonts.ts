@@ -3,8 +3,8 @@ import { TEXT_FONTS } from '../engine';
 /** Fonts for the Type tool (Phase 19.1). Two sources: a broad list of common families across macOS, Windows and Linux,
  *  each kept if this machine has it (text measured in it differs from each generic fallback), and, where the browser has
  *  the Local Font Access API (Chromium), the machine's full font list, read with the user's permission on a click. The
- *  desktop shell's webview has no such API; its native font list needs a shell command not built yet, so there the
- *  common families found are what is offered. */
+ *  desktop app's web view has no such API; there the shell's `system_fonts` command (src-tauri, fontdb) lists the
+ *  installed families, at start and without asking. */
 
 const COMMON = ['Arial', 'Arial Black', 'Avenir', 'Avenir Next', 'Baskerville', 'Book Antiqua', 'Calibri', 'Cambria', 'Candara',
   'Century Gothic', 'Charter', 'Comic Sans MS', 'Consolas', 'Constantia', 'Corbel', 'Courier New', 'DejaVu Sans', 'DejaVu Sans Mono',
@@ -35,12 +35,27 @@ export function fontFamilies(): string[] {
   return [...TEXT_FONTS, ...rest];
 }
 
-/** Whether this browser can list the machine's fonts (Local Font Access). */
-export const canListSystemFonts = (): boolean => typeof (window as unknown as { queryLocalFonts?: unknown }).queryLocalFonts === 'function';
+/** Whether sonny runs as the desktop app (the Tauri shell's web view). */
+const inDesktopApp = (): boolean => '__TAURI_INTERNALS__' in window;
 
-/** The machine's font families through Local Font Access, which asks the user's permission (so call it from a click);
- *  null where the API is missing or permission is refused. */
+/** Whether the machine's fonts can be listed: in the desktop app through the shell's `system_fonts` command (the web
+ *  views there have no Local Font Access), in a browser through Local Font Access. */
+export const canListSystemFonts = (): boolean => inDesktopApp() || typeof (window as unknown as { queryLocalFonts?: unknown }).queryLocalFonts === 'function';
+
+/** The machine's font families: in the desktop app from the shell, which reads the system's font folders (no permission
+ *  asked); in a browser through Local Font Access, which asks the user's permission (so call it from a click). Null
+ *  where neither is there or permission is refused. */
 export async function loadSystemFonts(): Promise<string[] | null> {
+  if (inDesktopApp()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const families = await invoke<string[]>('system_fonts');
+      system = [...new Set(families.filter((f) => typeof f === 'string' && f.trim()))];
+      return system;
+    } catch {
+      return null;
+    }
+  }
   const query = (window as unknown as { queryLocalFonts?: () => Promise<Array<{ family: string }>> }).queryLocalFonts;
   if (!query) return null;
   try {
