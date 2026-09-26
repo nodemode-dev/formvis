@@ -12,5 +12,9 @@ pollster = "1"
 bytemuck = { version = "1", features = ["derive"] }
 sysinfo = { version = "0.39", default-features = false, features = ["system"] }
 
+[dev-dependencies]
+# Only for examples/window.rs, which checks the display in a real window; the desktop shell brings its own window.
+winit = "0.30"
+
 [profile.dev]
 debug = 0

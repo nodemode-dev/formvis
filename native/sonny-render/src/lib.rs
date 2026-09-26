@@ -8,6 +8,7 @@ use std::collections::HashMap;
 
 pub mod budget;
 pub mod composite;
+pub mod display;
 
 pub const TILE: u32 = 256;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
@@ -18,6 +19,7 @@ pub struct Gpu {
     pub queue: wgpu::Queue,
     pub info: wgpu::AdapterInfo,
     pub limits: wgpu::Limits,
+    pub adapter: wgpu::Adapter,
     dab: wgpu::RenderPipeline,
     dab_layout: wgpu::BindGroupLayout,
 }
@@ -63,11 +65,25 @@ impl Gpu {
     /// The best adapter there is (high performance first), without a window; None when the machine has no usable GPU
     /// backend at all.
     pub fn new() -> Option<Gpu> {
+        Self::build(None).map(|(g, _)| g)
+    }
+
+    /// A device for drawing into a window, with the window's surface: the adapter is chosen to be able to present to it.
+    pub fn for_window(target: impl Into<wgpu::SurfaceTarget<'static>>) -> Option<(Gpu, wgpu::Surface<'static>)> {
+        let (g, s) = Self::build(Some(target.into()))?;
+        Some((g, s?))
+    }
+
+    fn build(target: Option<wgpu::SurfaceTarget<'static>>) -> Option<(Gpu, Option<wgpu::Surface<'static>>)> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor::new_without_display_handle_from_env());
+        let surface = match target {
+            Some(t) => Some(instance.create_surface(t).ok()?),
+            None => None,
+        };
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             force_fallback_adapter: false,
-            compatible_surface: None,
+            compatible_surface: surface.as_ref(),
             apply_limit_buckets: false,
         }))
         .ok()?;
@@ -110,7 +126,7 @@ impl Gpu {
             multiview_mask: None,
             cache: None,
         });
-        Some(Gpu { device, queue, info, limits, dab, dab_layout })
+        Some((Gpu { device, queue, info, limits, adapter, dab, dab_layout }, surface))
     }
 }
 
