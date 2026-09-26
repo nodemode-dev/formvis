@@ -21,6 +21,9 @@ regex = "1"
 serde_json = "1"
 # The installed font families for the Type tool (the desktop web views have no Local Font Access API): pure Rust, MIT.
 fontdb = "0.24"
+# The native GPU renderer (Phase 20), started only when the app asks for it (native_start).
+sonny-render = { path = "../native/sonny-render" }
+serde = { version = "1", features = ["derive"] }
 
 [profile.release]
 codegen-units = 1

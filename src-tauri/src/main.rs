@@ -8,6 +8,8 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
 
+mod native;
+
 struct Backend(Mutex<Option<CommandChild>>);
 
 const FALLBACK_LOGICAL: (f64, f64) = (1323.0, 860.0);
@@ -94,7 +96,18 @@ mod tests {
 
 fn main() {
     let app = tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![system_fonts])
+        .manage(native::NativeState::default())
+        .invoke_handler(tauri::generate_handler![
+            system_fonts,
+            native::native_start,
+            native::native_stop,
+            native::native_doc,
+            native::native_put,
+            native::native_table,
+            native::native_stack,
+            native::native_remove,
+            native::native_present
+        ])
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
