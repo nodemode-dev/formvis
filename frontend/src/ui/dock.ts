@@ -7,6 +7,8 @@ import { el, setHidden } from './dom';
  *  tabs come later. */
 export interface DockPanel { id: string; label: string; selector: string }
 export const DOCK_PANELS: readonly DockPanel[] = [
+  { id: 'navigator', label: 'Navigator', selector: '.cv-navigator' },
+  { id: 'swatches', label: 'Swatches', selector: '.cv-swatches' },
   { id: 'layers', label: 'Layers', selector: '.cv-layers-panel' },
   { id: 'paths', label: 'Paths', selector: '.cv-paths' },
   { id: 'timeline', label: 'Timeline', selector: '.cv-timeline' },

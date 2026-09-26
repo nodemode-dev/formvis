@@ -152,3 +152,39 @@
 .cv-layer { margin: 3px 8px; border: 1px solid #2a2a2a; border-radius: 8px; background: #1c1c1c; }
 .cv-layer:hover { border-color: #34333a; }
 .cv-layer.is-active { border-color: #3d3a48; background: linear-gradient(90deg, #2b2b2b 0%, #35333d 55%, #413e4b 100%); color: var(--text-primary); }
+
+/* ── Phase 21, step 2a: panel groups, Navigator, Swatches and Color, as the target's (UI_SPEC.md section 6). ── */
+.cv-group { display: flex; flex-direction: column; border-bottom: 1px solid #0b0b0b; }
+.cv-group-head { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 8px; background: #000000; border-bottom: 0; }
+.cv-group-head > span { flex: 1; }
+.cv-group-tabs { display: flex; align-items: center; gap: 4px; }
+.cv-group-tab { height: 28px; padding: 0 11px; border: 1px solid transparent; border-radius: 8px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.cv-group-tab:hover { color: var(--text-primary); }
+.cv-group-tab.is-active { border-color: #3a3a3a; background: #2a2a2a; color: var(--text-primary); font-weight: 500; }
+.cv-group-min { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 50%; background: #1c1c1c; color: var(--text-secondary); cursor: pointer; }
+.cv-group-min:hover { color: var(--text-primary); background: #2a2a2a; }
+.cv-group-body { padding: 6px 10px 8px; }
+.cv-group-body[hidden], .cv-group-page[hidden] { display: none; }
+/* Sliders, as the target's: a dark track, a white round thumb. */
+.cv-slider { -webkit-appearance: none; appearance: none; width: 100%; height: 16px; background: transparent; cursor: pointer; }
+.cv-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #2b2a2f; }
+.cv-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: #ffffff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.cv-slider::-moz-range-track { height: 4px; border-radius: 2px; background: #2b2a2f; }
+.cv-slider::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: #ffffff; }
+/* Navigator */
+.cv-nav-card { position: relative; height: clamp(90px, 13vh, 170px); border-radius: 10px; background: #191919; overflow: hidden; }
+.cv-nav-preview { display: block; width: 100%; height: 100%; cursor: crosshair; }
+.cv-nav-zooms { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; padding: 3px; border: 1px solid #3a3a3a; border-radius: 12px; background: rgba(31, 31, 31, 0.92); }
+.cv-nav-zooms button { height: 24px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #d4d4d4; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.cv-nav-zooms button:hover { background: #2a2a2a; color: #ffffff; }
+.cv-nav-zoom { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; color: var(--text-secondary); font-size: 13px; }
+/* Swatches */
+.cv-swatch-grid { display: grid; grid-template-columns: repeat(auto-fill, 18px); gap: 2px; }
+.cv-sw-tile { width: 18px; height: 18px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 3px; cursor: pointer; }
+.cv-sw-tile:hover { outline: 1px solid #ffffff; outline-offset: 1px; }
+.cv-sw-add { display: inline-grid; place-items: center; background: #1c1c1c; color: var(--text-secondary); }
+.cv-swatch-hint { display: flex; align-items: center; gap: 6px; margin: 10px 0 0; color: var(--text-muted); font-size: 12px; }
+/* Color */
+.cv-color-page { display: flex; gap: 8px; height: 150px; }
+.cv-color-sv { flex: 1; min-width: 0; height: 100%; border-radius: 6px; cursor: crosshair; }
+.cv-color-hue { width: 14px; height: 100%; border-radius: 4px; cursor: ns-resize; }

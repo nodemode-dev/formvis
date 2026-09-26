@@ -56,6 +56,8 @@ import { GpuDisplay, type ScreenDisplay } from './gpu/display';
 import { benchText, runBenchmark } from './gpu/bench';
 import { GlDisplay } from './gpu/gl-display';
 import { NativeDisplay } from './gpu/native-display';
+import { NavigatorPanel } from './ui/navigator';
+import { SwatchesPanel } from './ui/swatches';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
 import { DOCK_PANELS, Dock } from './ui/dock';
@@ -168,6 +170,8 @@ export function startApp(): void {
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
+  new NavigatorPanel(q(root, '.cv-layers'), engine);
+  new SwatchesPanel(q(root, '.cv-layers'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   new PathsPanel(q(root, '.cv-layers'), engine);
   new TimelinePanel(q(root, '.cv-layers'), engine);

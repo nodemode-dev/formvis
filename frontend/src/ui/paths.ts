@@ -15,9 +15,9 @@ export class PathsPanel {
   constructor(root: HTMLElement, private readonly engine: Engine) {
     root.insertAdjacentHTML('beforeend',
       `<section class="cv-paths" aria-label="Paths">` +
-      `<div class="cv-panel-head"><button class="cv-paths-toggle" type="button" aria-expanded="true"><span class="cv-paths-chevron">${icon('chevronDown', 12)}</span>${icon('penTool', 14)}<span>Paths</span></button><span></span>` +
+      `<div class="cv-panel-head"><button class="cv-paths-toggle" type="button" aria-expanded="false"><span class="cv-paths-chevron">${icon('chevronDown', 12)}</span>${icon('penTool', 14)}<span>Paths</span></button><span></span>` +
       `<button class="cv-icon-btn" type="button" data-cmd="new-path" title="New path" aria-label="New path">${icon('add', 16)}</button></div>` +
-      `<div class="cv-paths-body"><div class="cv-path-list"><div class="cv-path-rows" role="listbox" aria-label="Paths"></div><div class="cv-paths-empty">No paths. Draw one with the Pen (P).</div></div>` +
+      `<div class="cv-paths-body" hidden><div class="cv-path-list"><div class="cv-path-rows" role="listbox" aria-label="Paths"></div><div class="cv-paths-empty">No paths. Draw one with the Pen (P).</div></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="path-selection" title="Load path as a selection" aria-label="Load path as a selection">${icon('marquee', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="fill-path" title="Fill path" aria-label="Fill path">${icon('fill', 16)}</button>` +
       `<button class="cv-icon-btn" type="button" data-cmd="new-shape-path" title="New shape layer from path" aria-label="New shape layer from path">${icon('rectTool', 16)}</button>` +
