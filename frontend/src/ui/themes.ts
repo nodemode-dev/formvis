@@ -41,12 +41,16 @@ export const STORAGE_KEY = 'nodemode_ui_settings';
 
 export interface ThemeChoice { theme: string; accentColor: string }
 
+/** The appearance generation: a choice saved before Studio Dark (Phase 21) lacks it and is set aside once, so the
+ *  redesign reaches everyone; anything chosen since is saved with it and kept. index.html's boot script agrees. */
+export const APPEARANCE = 2;
+
 export function readChoice(): ThemeChoice {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
-      const saved = JSON.parse(raw) as Partial<ThemeChoice>;
-      return { theme: saved.theme || DEFAULT_THEME, accentColor: saved.accentColor || DEFAULT_ACCENT };
+      const saved = JSON.parse(raw) as Partial<ThemeChoice> & { appearance?: number };
+      if (saved.appearance === APPEARANCE) return { theme: saved.theme || DEFAULT_THEME, accentColor: saved.accentColor || DEFAULT_ACCENT };
     }
   } catch (e) {
     console.error('[theme] read failed:', e);
@@ -57,7 +61,7 @@ export function readChoice(): ThemeChoice {
 export function saveChoice(choice: ThemeChoice): void {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    const merged = { ...(raw ? JSON.parse(raw) : {}), ...choice };
+    const merged = { ...(raw ? JSON.parse(raw) : {}), ...choice, appearance: APPEARANCE };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(merged));
   } catch (e) {
     console.error('[theme] save failed:', e);

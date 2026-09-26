@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import html from '../../index.html?raw';
-import { DEFAULT_ACCENT, DEFAULT_THEME, THEMES } from './themes';
+import { DEFAULT_ACCENT, DEFAULT_THEME, readChoice, saveChoice, STORAGE_KEY, THEMES } from './themes';
 
 // index.html paints the saved profile before the bundle loads (no flash); themes.ts owns it afterwards. The two must
 // hold the same values, or the first paint and the second differ.
@@ -27,5 +27,21 @@ describe('theme boot', () => {
     expect(html).toContain(`var DEFAULT_THEME = '${DEFAULT_THEME}';`);
     expect(html).toContain(`var DEFAULT_ACCENT = '${DEFAULT_ACCENT}';`);
     expect([DEFAULT_THEME, DEFAULT_ACCENT]).toEqual(['studio', '#aba0d3']);
+  });
+
+  it('sets aside a choice saved before the redesign once, and keeps one made since', () => {
+    const store = new Map<string, string>();
+    const ls = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) };
+    const prev = (globalThis as { localStorage?: unknown }).localStorage;
+    (globalThis as { localStorage?: unknown }).localStorage = ls;
+    try {
+      store.set(STORAGE_KEY, JSON.stringify({ theme: 'nodemode-dark', accentColor: '#f97316' }));   // saved by 1.44.0 or earlier
+      expect(readChoice()).toEqual({ theme: 'studio', accentColor: '#aba0d3' });
+      saveChoice({ theme: 'mono', accentColor: '#ff0000' });                                         // chosen after the redesign
+      expect(readChoice()).toEqual({ theme: 'mono', accentColor: '#ff0000' });
+      expect(html).toContain('if (s.appearance === 2)');                                              // the boot script agrees
+    } finally {
+      (globalThis as { localStorage?: unknown }).localStorage = prev;
+    }
   });
 });

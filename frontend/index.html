@@ -55,7 +55,8 @@
   var theme = DEFAULT_THEME, accent = DEFAULT_ACCENT;
   try {
     var raw = localStorage.getItem(KEY);
-    if (raw) { var s = JSON.parse(raw); if (s.theme && PROFILES[s.theme]) theme = s.theme; if (s.accentColor) accent = s.accentColor; }
+    /* A choice saved before the Studio Dark redesign (no appearance: 2) is set aside once, so everyone sees it. */
+    if (raw) { var s = JSON.parse(raw); if (s.appearance === 2) { if (s.theme && PROFILES[s.theme]) theme = s.theme; if (s.accentColor) accent = s.accentColor; } }
   } catch (e) { /* private mode or blocked storage: defaults are correct */ }
   var p = PROFILES[theme], root = document.documentElement, i;
   for (i = 0; i < NAMES.length; i++) root.style.setProperty(NAMES[i], p[i]);

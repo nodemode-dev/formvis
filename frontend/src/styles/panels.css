@@ -143,3 +143,12 @@
 .cv-history-row.is-snapshot .cv-history-name { font-weight: 500; }
 .cv-history-row.is-snapshot.is-picked { background: var(--bg-tertiary); }
 .cv-history-row.is-snapshot + .cv-history-row:not(.is-snapshot) { border-top: 1px solid var(--border-color); }
+
+/* ── Phase 21, step 1b: panels as the target's (UI_SPEC.md section 6, measured from s20). ── */
+/* The group header: a black strip; the panel's name as a chip (the target's active tab). */
+.cv-panel-head { background: #000000; border-bottom: 0; height: 40px; }
+.cv-panel-title { padding: 5px 11px; border: 1px solid #3a3a3a; border-radius: 8px; background: #2a2a2a; color: var(--text-primary); font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+/* Layer rows as rounded cards with hairline borders; the selected one with the lavender gradient glow. */
+.cv-layer { margin: 3px 8px; border: 1px solid #2a2a2a; border-radius: 8px; background: #1c1c1c; }
+.cv-layer:hover { border-color: #34333a; }
+.cv-layer.is-active { border-color: #3d3a48; background: linear-gradient(90deg, #2b2b2b 0%, #35333d 55%, #413e4b 100%); color: var(--text-primary); }

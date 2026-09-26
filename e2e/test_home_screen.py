@@ -7,7 +7,7 @@ def test_home_screen_shows_hides_and_follows_its_preference(page):
         page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
         assert page.evaluate(HOME)                                                   # no document: Home shows
         assert page.locator(".cv-home-item", has_text="Alpha Project").count() == 1
-        page.locator(".cv-home-action", has_text="New file").click()                 # New file runs File > New
+        page.locator(".cv-home-action", has_text="New document").click()             # New document runs File > New
         assert page.locator(".cv-scrim:not([hidden]) .cv-dialog").count() == 1
         page.keyboard.press("Escape")
         page.evaluate("window.sonny.engine.newDocument(120, 80, 'H', 'white')")
