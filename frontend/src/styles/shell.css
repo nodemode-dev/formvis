@@ -174,3 +174,29 @@ body { font-size: var(--fs-12); line-height: 1.35; }
    behind the upper tool group and at the foot; the active tool in a rounded, lavender-tinted square. ── */
 .cv-rail { background: linear-gradient(to bottom, #181818 0%, #272430 9%, #2b2739 16%, #252127 24%, #1e1d1e 29%, #1e1d1e 70%, #212027 80%, #2b2639 90%, #302a42 100%); border-right-color: #111111; }
 .cv-tool.is-active { background: #2e2b3a; border-color: #4a4658; border-radius: 8px; color: var(--text-primary); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+
+/* ── Phase 21, step 3: title bar, its tools, document tabs and the options bar, as the target's (UI_SPEC.md sections 2
+   and 5, measured from s01 and s20). ── */
+.cv-titlebar { grid-template-columns: auto auto minmax(0, 1fr) auto auto; background: linear-gradient(to bottom, #1c1c1c, #151515); border-bottom: 1px solid #0b0b0b; }
+.cv-title-tools { position: relative; display: flex; align-items: center; gap: 8px; }
+.cv-tt-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid #34333a; border-radius: 7px; background: #161616; color: var(--text-secondary); cursor: pointer; }
+.cv-tt-btn:hover { color: var(--text-primary); background: #1f1f1f; }
+.cv-tt-btn.is-on { border-color: #4a4658; background: #2e2b3a; color: var(--accent-color); }
+.cv-tt-bare { border-color: transparent; background: transparent; }
+.cv-tt-select { width: 154px; height: 28px; padding: 0 8px; border: 1px solid #34333a; border-radius: 8px; background: #141414; color: var(--text-primary); font: inherit; font-size: 13px; }
+.cv-search-pop { position: absolute; top: 36px; right: 0; z-index: var(--z-menu); width: 340px; padding: 8px; border: 1px solid #3a3a3a; border-radius: 12px; background: #1c1c1c; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55); }
+.cv-search-pop[hidden] { display: none; }
+.cv-search-input { width: 100%; height: 32px; padding: 0 10px; border: 1px solid #303035; border-radius: 8px; background: #222127; color: var(--text-primary); font: inherit; font-size: 13px; outline: 0; }
+.cv-search-input:focus { border-color: var(--accent-color); }
+.cv-search-results { display: flex; flex-direction: column; gap: 2px; margin-top: 6px; }
+.cv-search-item { display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 30px; padding: 0 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text-secondary); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.cv-search-item.is-picked, .cv-search-item:hover { background: #2e2b3a; color: var(--text-primary); }
+.cv-search-keys { color: var(--text-muted); font-family: var(--font-mono); font-size: 11px; }
+/* Document tabs: rounded top corners, the active one raised, a circled close button. */
+.cv-tab { border-radius: 8px 8px 0 0; border: 1px solid #2a2a2a; border-bottom-color: transparent; background: #161616; }
+.cv-tab.is-active { background: #343434; border-color: #3a3a3a; border-bottom-color: transparent; }
+.cv-tab-close { border-radius: 50%; background: #2a2a2a; }
+.cv-tab-close:hover { background: #3a3a3a; }
+/* The options bar: its own quiet row; the tool's name as a raised chip. */
+.cv-options { background: #111111; border-bottom-color: #0b0b0b; }
+.cv-opt-title { padding: 4px 10px; border: 1px solid #3a3a3a; border-radius: 8px; background: #1f1f1f; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }

@@ -59,6 +59,7 @@ import { NativeDisplay } from './gpu/native-display';
 import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
 import { PropertiesColumn } from './ui/properties';
+import { TitleTools } from './ui/titlebar-tools';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
 import { DOCK_PANELS, Dock } from './ui/dock';
@@ -185,6 +186,14 @@ export function startApp(): void {
   new TimelinePanel(q(root, '.cv-layers'), engine);
   new HistoryPanel(q(root, '.cv-layers'), engine);
   const dock = new Dock(q(root, '.cv-layers'));
+  // The title bar's tools (Phase 21): theme, command search, workspaces, Lock Workspace.
+  new TitleTools(q(root, '.cv-titlebar'), {
+    commands,
+    arrange: (w) => { dock.arrange(w.order, w.hidden); store('sonny.propsCol', w.propsColumn ? 'shown' : 'hidden'); syncPropsCol(); },
+    locked: () => dock.locked,
+    setLocked: (on) => { dock.locked = on; },
+  });
+  dock.locked = dock.locked;
   new Rail(q(root, '.cv-rail'), engine);
   new OptionsBar(q(root, '.cv-options'), engine);
   const status = new StatusBar(q(root, '.cv-status'), engine);
@@ -1096,7 +1105,7 @@ export function startApp(): void {
 
   const resizer = q(root, '.cv-resizer');
   resizer.addEventListener('pointerdown', (e) => {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || dock.locked) return;   // Lock Workspace holds the panels' widths too
     e.preventDefault();
     resizer.setPointerCapture(e.pointerId);
     resizer.classList.add('is-dragging');

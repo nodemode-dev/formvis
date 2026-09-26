@@ -43,7 +43,7 @@ export class Dock {
       if (!head) continue;
       head.classList.add('cv-dock-grip');
       head.addEventListener('pointerdown', (e) => {
-        if (e.button !== 0 || (e.target as HTMLElement).closest('[data-cmd]')) return;
+        if (e.button !== 0 || this.locked || (e.target as HTMLElement).closest('[data-cmd]')) return;
         // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
         this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1 };
       });
@@ -65,6 +65,19 @@ export class Dock {
 
   /** Window > Reset Panels: the default order, every panel shown. */
   reset(): void { this.state = { order: [...DEFAULT.order], hidden: [] }; this.save(); }
+
+  /** A workspace's arrangement (Phase 21): the panels in this order, these hidden; ids not in the dock are ignored. */
+  arrange(order: readonly string[], hidden: readonly string[]): void {
+    const ids = DOCK_PANELS.map((p) => p.id);
+    const o = order.filter((id) => ids.includes(id));
+    for (const id of ids) if (!o.includes(id)) o.push(id);
+    this.state = { order: o, hidden: hidden.filter((id) => ids.includes(id)) };
+    this.save();
+  }
+
+  /** Lock Workspace (Phase 21, the target's lock button): while locked, panels are not dragged. Remembered. */
+  get locked(): boolean { try { return localStorage.getItem('sonny.lock') === '1'; } catch { return false; } }
+  set locked(on: boolean) { try { localStorage.setItem('sonny.lock', on ? '1' : '0'); } catch { /* this session only */ } this.dock.classList.toggle('is-locked', on); }
 
   private section(id: string): HTMLElement | null {
     const p = DOCK_PANELS.find((x) => x.id === id);
