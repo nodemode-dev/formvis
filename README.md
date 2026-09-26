@@ -13,7 +13,7 @@
 
 sonny is a layered image editor: stack photos and paintings as layers, group them in folders, mask and clip them, blend them, select, paint and export. It saves its own `.sny` projects and opens NodeMode canvasor projects, and it runs standalone in a browser, inside NodeMode as a portal app, or as a desktop app for macOS, Linux and Windows.
 
-**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 26,300 lines of TypeScript, 600 of CSS, 1,300 of Python and 500 of Rust (product code, tests excluded; `./sonny counts` prints this, and `./sonny counts --check` verifies it).
+**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 26,300 lines of TypeScript, 600 of CSS, 1,300 of Python and 1,000 of Rust (product code, tests excluded; `./sonny counts` prints this, and `./sonny counts --check` verifies it).
 
 ## Highlights
 

@@ -31,6 +31,7 @@ sonny is licensed under the Apache License 2.0 (see `LICENSE`). It includes or d
 | omegaconf, portalocker, antlr4-python3-runtime | BSD-3-Clause | engine, optional, the same helpers' dependencies |
 | tqdm | MPL-2.0 AND MIT | engine, optional, progress reporting in SAM 2.1's helpers; used unmodified |
 | wgpu 30 (and its crates), pollster, bytemuck | wgpu: MIT OR Apache-2.0; pollster: Apache-2.0 OR MIT; bytemuck: Zlib OR Apache-2.0 OR MIT. Transitively only permissive licences: MIT, Apache-2.0, Zlib, ISC, BSD-2-Clause (as an option) and Unicode-3.0 (per `cargo metadata`) | native/sonny-render, the native GPU renderer (Metal, Vulkan, Direct3D 12) |
+| sysinfo | MIT | native/sonny-render, the machine's memory for the document budget |
 | rembg, onnxruntime | MIT, MIT | optional ML extra; the u2net model (Apache-2.0) is downloaded at install time, not redistributed |
 
 ## Build tools, not distributed

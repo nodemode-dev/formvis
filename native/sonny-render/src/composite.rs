@@ -1,0 +1,197 @@
+//! Layers blended on the GPU tile by tile, in sonny's 27 blend modes (the same WGSL functions as the web renderer, in
+//! blend.wgsl). Each output tile is built bottom to top between two textures, so the whole image never has to fit one
+//! texture; a layer with no tile there is transparent there and is skipped. The fragment shader follows the web
+//! renderer's layer blend (frontend/src/gpu/blend-wgsl.ts): the source unpremultiplied in float, the per-pixel modes'
+//! 8-bit rounding, Dissolve on the document pixel, Linear Dodge additive, and the source over the backdrop. The result is
+//! straight RGBA8. Transforms, masks and clipping follow in the next parts.
+
+use crate::{read_tile, Gpu, TiledLayer, FORMAT, TILE};
+
+const HEAD: &str = r#"
+struct Comp { tile_origin: vec2<f32>, opacity: f32, mode: u32 };
+@group(0) @binding(0) var backdrop: texture_2d<f32>;
+@group(0) @binding(1) var source: texture_2d<f32>;
+@group(0) @binding(2) var<uniform> comp: Comp;
+
+@vertex fn vs(@builtin(vertex_index) i: u32) -> @builtin(position) vec4<f32> {
+  let p = array<vec2<f32>, 3>(vec2(-1.0, -1.0), vec2(3.0, -1.0), vec2(-1.0, 3.0));
+  return vec4<f32>(p[i], 0.0, 1.0);
+}
+"#;
+
+const FS: &str = r#"
+@fragment fn fs(@builtin(position) pos: vec4<f32>) -> @location(0) vec4<f32> {
+  let px = vec2<i32>(floor(pos.xy));
+  let bd = textureLoad(backdrop, px, 0);
+  let s0 = textureLoad(source, px, 0);
+  var sc = s0;
+  if (s0.a > 0.0) { sc = vec4<f32>(s0.rgb / s0.a, s0.a); }
+  let m = comp.mode;
+  if (m == 1u || m == 5u || m == 6u || m == 11u || (m >= 15u && m <= 18u) || m == 21u || m == 22u) {
+    sc = vec4<f32>(round(sc.rgb * 255.0) / 255.0, sc.a);
+  }
+  let sa = sc.a * comp.opacity;
+  if (sa <= 0.0) { return bd; }
+  let ab = bd.a;
+  if (m == 1u) {
+    let doc = vec2<i32>(comp.tile_origin) + px;
+    if (dissolveNoise(doc.x, doc.y) >= sa) { return bd; }
+    return vec4<f32>(sc.rgb, 1.0);
+  }
+  if (m == 10u) {
+    let lo = min(1.0, sa + ab);
+    let lc = min(vec3<f32>(1.0), sc.rgb * sa + bd.rgb * ab);
+    return vec4<f32>(lc / max(lo, 1e-6), lo);
+  }
+  let ao = sa + ab * (1.0 - sa);
+  if (ao <= 0.0) { return vec4<f32>(0.0); }
+  var r = sc.rgb;
+  if (m != 0u) { r = blend(m, bd.rgb, sc.rgb); }
+  let co = (sa * (1.0 - ab) * sc.rgb + sa * ab * r + (1.0 - sa) * ab * bd.rgb) / ao;
+  return vec4<f32>(co, ao);
+}
+"#;
+
+/// One layer in a stack: its tiles, its blend mode (sonny's index, 0 Normal to 26 Luminosity) and its opacity.
+pub struct Stack<'a> {
+    pub layer: &'a TiledLayer,
+    pub mode: u32,
+    pub opacity: f32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Comp {
+    tile_origin: [f32; 2],
+    opacity: f32,
+    mode: u32,
+}
+
+fn tile_texture(gpu: &Gpu) -> wgpu::Texture {
+    gpu.device.create_texture(&wgpu::TextureDescriptor {
+        label: Some("stack"),
+        size: wgpu::Extent3d { width: TILE, height: TILE, depth_or_array_layers: 1 },
+        mip_level_count: 1,
+        sample_count: 1,
+        dimension: wgpu::TextureDimension::D2,
+        format: FORMAT,
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC | wgpu::TextureUsages::TEXTURE_BINDING,
+        view_formats: &[],
+    })
+}
+
+/// The blend pass, built once and used for every tile.
+pub struct Blender {
+    pipeline: wgpu::RenderPipeline,
+    layout: wgpu::BindGroupLayout,
+}
+
+impl Blender {
+    pub fn new(gpu: &Gpu) -> Blender {
+        let source = format!("{HEAD}{}{FS}", include_str!("blend.wgsl"));
+        let module = gpu.device.create_shader_module(wgpu::ShaderModuleDescriptor { label: Some("blend"), source: wgpu::ShaderSource::Wgsl(source.into()) });
+        let tex_entry = |binding| wgpu::BindGroupLayoutEntry {
+            binding,
+            visibility: wgpu::ShaderStages::FRAGMENT,
+            ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: false }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false },
+            count: None,
+        };
+        let layout = gpu.device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("blend"),
+            entries: &[
+                tex_entry(0),
+                tex_entry(1),
+                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: false, min_binding_size: None }, count: None },
+            ],
+        });
+        let pl = gpu.device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("blend"), bind_group_layouts: &[Some(&layout)], ..Default::default() });
+        let pipeline = gpu.device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+            label: Some("blend"),
+            layout: Some(&pl),
+            vertex: wgpu::VertexState { module: &module, entry_point: Some("vs"), buffers: &[], compilation_options: Default::default() },
+            fragment: Some(wgpu::FragmentState { module: &module, entry_point: Some("fs"), targets: &[Some(wgpu::ColorTargetState { format: FORMAT, blend: None, write_mask: wgpu::ColorWrites::ALL })], compilation_options: Default::default() }),
+            primitive: Default::default(),
+            depth_stencil: None,
+            multisample: Default::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        Blender { pipeline, layout }
+    }
+
+    /// One output tile, the layers blended bottom to top over transparency, left on the GPU (straight RGBA8) for the
+    /// display to draw; submitted, not waited for.
+    pub fn render_tile(&self, gpu: &Gpu, layers: &[Stack], tx: u32, ty: u32) -> wgpu::Texture {
+        let (mut back, mut front) = (tile_texture(gpu), tile_texture(gpu));
+        let mut enc = gpu.device.create_command_encoder(&Default::default());
+        {
+            let view = back.create_view(&Default::default());
+            let _ = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("clear"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &view, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store } })],
+                ..Default::default()
+            });
+        }
+        let mut uniforms = Vec::new();
+        for l in layers {
+            let Some(src) = l.layer.tile_at(tx, ty) else { continue };
+            let u = Comp { tile_origin: [(tx * TILE) as f32, (ty * TILE) as f32], opacity: l.opacity.clamp(0.0, 1.0), mode: l.mode };
+            let buf = crate::uniform_buffer(&gpu.device, bytemuck::bytes_of(&u));
+            let (bv, sv, fv) = (back.create_view(&Default::default()), src.create_view(&Default::default()), front.create_view(&Default::default()));
+            let bind = gpu.device.create_bind_group(&wgpu::BindGroupDescriptor {
+                label: Some("blend"),
+                layout: &self.layout,
+                entries: &[
+                    wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&bv) },
+                    wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&sv) },
+                    wgpu::BindGroupEntry { binding: 2, resource: buf.as_entire_binding() },
+                ],
+            });
+            {
+                let mut pass = enc.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("blend"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: &fv, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(wgpu::Color::TRANSPARENT), store: wgpu::StoreOp::Store } })],
+                    ..Default::default()
+                });
+                pass.set_pipeline(&self.pipeline);
+                pass.set_bind_group(0, &bind, &[]);
+                pass.draw(0..3, 0..1);
+            }
+            uniforms.push(buf);
+            std::mem::swap(&mut back, &mut front);
+        }
+        gpu.queue.submit([enc.finish()]);
+        back
+    }
+
+    /// The layers blended in a rectangle of the document, read back as straight RGBA8 (for tests and export).
+    pub fn blend_region(&self, gpu: &Gpu, layers: &[Stack], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
+        let mut out = vec![0u8; (w * h * 4) as usize];
+        for ty in y / TILE..=(y + h - 1) / TILE {
+            for tx in x / TILE..=(x + w - 1) / TILE {
+                let px = read_tile(gpu, &self.render_tile(gpu, layers, tx, ty));
+                for py in 0..TILE {
+                    let ly = ty * TILE + py;
+                    if ly < y || ly >= y + h {
+                        continue;
+                    }
+                    for qx in 0..TILE {
+                        let lx = tx * TILE + qx;
+                        if lx < x || lx >= x + w {
+                            continue;
+                        }
+                        let s = ((py * TILE + qx) * 4) as usize;
+                        let d = (((ly - y) * w + (lx - x)) * 4) as usize;
+                        out[d..d + 4].copy_from_slice(&px[s..s + 4]);
+                    }
+                }
+            }
+        }
+        out
+    }
+}
+
+/// The layers blended in a rectangle, with a blend pass built for this call (tests and one-off exports).
+pub fn blend_region(gpu: &Gpu, layers: &[Stack], x: u32, y: u32, w: u32, h: u32) -> Vec<u8> {
+    Blender::new(gpu).blend_region(gpu, layers, x, y, w, h)
+}

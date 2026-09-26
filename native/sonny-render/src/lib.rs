@@ -6,6 +6,9 @@
 
 use std::collections::HashMap;
 
+pub mod budget;
+pub mod composite;
+
 pub const TILE: u32 = 256;
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 
@@ -121,6 +124,45 @@ pub struct TiledLayer {
 impl TiledLayer {
     pub fn new(width: u32, height: u32) -> TiledLayer {
         TiledLayer { width, height, tiles: HashMap::new() }
+    }
+
+    pub(crate) fn tile_at(&self, tx: u32, ty: u32) -> Option<&wgpu::Texture> {
+        self.tiles.get(&(tx, ty))
+    }
+
+    /// Puts straight RGBA8 pixels (w by h, rows packed) at (x, y), premultiplied into the tiles they fall in; transparent
+    /// runs allocate nothing new.
+    pub fn write(&mut self, gpu: &Gpu, x: u32, y: u32, w: u32, h: u32, rgba: &[u8]) {
+        assert_eq!(rgba.len(), (w * h * 4) as usize);
+        for ty in y / TILE..=(y + h - 1) / TILE {
+            for tx in x / TILE..=(x + w - 1) / TILE {
+                let (ox, oy) = (tx * TILE, ty * TILE);
+                let (x0, y0, x1, y1) = (x.max(ox), y.max(oy), (x + w).min(ox + TILE), (y + h).min(oy + TILE));
+                let any = (y0..y1).any(|py| (x0..x1).any(|px| rgba[(((py - y) * w + (px - x)) * 4 + 3) as usize] > 0));
+                if !any && !self.tiles.contains_key(&(tx, ty)) {
+                    continue;
+                }
+                let mut tile = if self.tiles.contains_key(&(tx, ty)) { read_tile(gpu, &self.tiles[&(tx, ty)]) } else { vec![0u8; (TILE * TILE * 4) as usize] };
+                for py in y0..y1 {
+                    for px in x0..x1 {
+                        let s = (((py - y) * w + (px - x)) * 4) as usize;
+                        let d = (((py - oy) * TILE + (px - ox)) * 4) as usize;
+                        let a = rgba[s + 3] as u32;
+                        for c in 0..3 {
+                            tile[d + c] = ((rgba[s + c] as u32 * a + 127) / 255) as u8;
+                        }
+                        tile[d + 3] = a as u8;
+                    }
+                }
+                let tex = self.tile(gpu, tx, ty);
+                gpu.queue.write_texture(
+                    tex.as_image_copy(),
+                    &tile,
+                    wgpu::TexelCopyBufferLayout { offset: 0, bytes_per_row: Some(TILE * 4), rows_per_image: Some(TILE) },
+                    wgpu::Extent3d { width: TILE, height: TILE, depth_or_array_layers: 1 },
+                );
+            }
+        }
     }
 
     /// How many tiles hold pixels, and the bytes they take on the GPU.
