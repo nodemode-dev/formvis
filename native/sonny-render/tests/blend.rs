@@ -107,7 +107,7 @@ fn every_deterministic_mode_matches_the_formulas_within_three_levels() {
     let blender = Blender::new(&gpu); // built once, used for all 26 modes, as the display uses it
     let mut worst = (0.0f64, 0u32);
     for mode in (0..27u32).filter(|&m| m != 1) {
-        let out = blender.blend_region(&gpu, &[Stack { layer: &b, mode: 0, opacity: 1.0 }, Stack { layer: &t, mode, opacity: 0.8 }], 224, 224, W, H);
+        let out = blender.blend_region(&gpu, &[Stack::new(&b, 0, 1.0), Stack::new(&t, mode, 0.8)], 224, 224, W, H);
         for i in 0..(W * H) as usize {
             let e = expected(mode, [bottom[i * 4], bottom[i * 4 + 1], bottom[i * 4 + 2]], [top[i * 4], top[i * 4 + 1], top[i * 4 + 2]], top[i * 4 + 3], 0.8);
             for c in 0..4 {
@@ -124,7 +124,7 @@ fn every_deterministic_mode_matches_the_formulas_within_three_levels() {
 fn dissolve_shows_the_source_on_its_share_of_pixels() {
     let gpu = Gpu::new().expect("no GPU backend");
     let (b, t, _, top) = scene(&gpu);
-    let out = blend_region(&gpu, &[Stack { layer: &b, mode: 0, opacity: 1.0 }, Stack { layer: &t, mode: 1, opacity: 0.8 }], 224, 224, W, H);
+    let out = blend_region(&gpu, &[Stack::new(&b, 0, 1.0), Stack::new(&t, 1, 0.8)], 224, 224, W, H);
     let shown = (0..(W * H) as usize).filter(|&i| (0..3).all(|c| (out[i * 4 + c] as i32 - top[i * 4 + c] as i32).abs() <= 2)).count();
     let share = shown as f64 / (W * H) as f64;
     assert!((share - 0.6 * 0.8).abs() < 0.04, "dissolve showed the source on {share:.3} of pixels, expected about 0.48");
@@ -134,6 +134,6 @@ fn dissolve_shows_the_source_on_its_share_of_pixels() {
 fn a_region_with_no_tiles_is_transparent() {
     let gpu = Gpu::new().expect("no GPU backend");
     let (b, t, _, _) = scene(&gpu);
-    let out = blend_region(&gpu, &[Stack { layer: &b, mode: 0, opacity: 1.0 }, Stack { layer: &t, mode: 3, opacity: 1.0 }], 700, 700, 32, 32);
+    let out = blend_region(&gpu, &[Stack::new(&b, 0, 1.0), Stack::new(&t, 3, 1.0)], 700, 700, 32, 32);
     assert!(out.iter().all(|&v| v == 0));
 }

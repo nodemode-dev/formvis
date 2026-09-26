@@ -54,7 +54,7 @@ fn main() {
         }
         carry = len - (d - SPACING);
         last = p;
-        let layers = [Stack { layer: &background, mode: 0, opacity: 1.0 }, Stack { layer: &paint, mode: 0, opacity: 1.0 }];
+        let layers = [Stack::new(&background, 0, 1.0), Stack::new(&paint, 0, 1.0)];
         let rendered: Vec<_> = dirty.iter().map(|&(tx, ty)| blender.render_tile(&gpu, &layers, tx, ty)).collect();
         let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
         drop(rendered);
