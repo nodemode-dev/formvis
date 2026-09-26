@@ -5,7 +5,7 @@
 //! exits. Run: cargo run --example window
 
 use sonny_render::composite::{Affine, Blender, Stack};
-use sonny_render::display::{Display, Presented, View};
+use sonny_render::display::{Checker, Display, Presented, View};
 use sonny_render::{Gpu, TiledLayer};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -43,8 +43,9 @@ impl ApplicationHandler for App {
         let display = Display::new(&gpu, surface, size.width, size.height);
         println!("adapter: {} ({:?}); surface format {:?}", gpu.info.name, gpu.info.backend, display.format());
         let mut halves = TiledLayer::new(DOC.0, DOC.1);
-        let px: Vec<u8> = (0..DOC.1).flat_map(|_| (0..DOC.0).flat_map(|x| if x < DOC.0 / 2 { [220, 30, 30, 255] } else { [30, 60, 220, 255] })).collect();
-        halves.write(&gpu, 0, 0, DOC.0, DOC.1, &px);
+        // Opaque down to y 600; the last 100 rows are left transparent, so the checkerboard shows there.
+        let px: Vec<u8> = (0..600).flat_map(|_| (0..DOC.0).flat_map(|x| if x < DOC.0 / 2 { [220, 30, 30, 255] } else { [30, 60, 220, 255] })).collect();
+        halves.write(&gpu, 0, 0, DOC.0, 600, &px);
         let mut square = TiledLayer::new(200, 200);
         square.write(&gpu, 0, 0, 200, 200, &vec![[40u8, 200, 60, 255]; 200 * 200].concat());
         let blender = Blender::new(&gpu);
@@ -61,7 +62,8 @@ impl ApplicationHandler for App {
                 // The square's centre (100, 100) to the document's centre (500, 350), turned 45 degrees.
                 let place = compose(Affine::translate(400.0, 250.0), Affine::rotate_about(45.0, 100.0, 100.0));
                 let layers = [Stack::new(&s.halves, 0, 1.0), Stack::new(&s.square, 0, 1.0).transformed(place)];
-                if s.display.present(&s.gpu, &s.blender, &layers, DOC.0, DOC.1, View { pan: [50.0, 40.0], zoom: 0.5 }) == Presented::Shown {
+                let checker = Checker { a: [0.8, 0.8, 0.8], b: [0.55, 0.55, 0.55], cell: 8.0 };
+                if s.display.present(&s.gpu, &s.blender, &layers, DOC.0, DOC.1, View { pan: [50.0, 40.0], zoom: 0.5 }, Some(checker)) == Presented::Shown {
                     s.shown += 1;
                     if s.shown == 3 {
                         println!("READY");

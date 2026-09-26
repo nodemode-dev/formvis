@@ -5,7 +5,7 @@
 
 use serde::Deserialize;
 use sonny_render::composite::{Affine, Blender};
-use sonny_render::display::{Display, Presented, View};
+use sonny_render::display::{Checker, Display, Presented, View};
 use sonny_render::document::{Document, LayerSpec};
 use sonny_render::Gpu;
 use std::sync::Mutex;
@@ -127,9 +127,11 @@ pub fn native_remove(id: String, state: tauri::State<NativeState>) -> Result<(),
     Ok(())
 }
 
-/// Draws the document at this pan and zoom, at the window's current size; true when the frame was shown.
+/// Draws the document at this pan and zoom (window pixels), over the checkerboard (colours 0 to 1, cell in window
+/// pixels), at the window's current size; true when the frame was shown.
 #[tauri::command]
-pub fn native_present(pan_x: f32, pan_y: f32, zoom: f32, window: tauri::WebviewWindow, state: tauri::State<NativeState>) -> Result<bool, String> {
+#[allow(clippy::too_many_arguments)]
+pub fn native_present(pan_x: f32, pan_y: f32, zoom: f32, checker_a: [f32; 3], checker_b: [f32; 3], checker_cell: f32, window: tauri::WebviewWindow, state: tauri::State<NativeState>) -> Result<bool, String> {
     let size = window.inner_size().map_err(|e| e.to_string())?;
     let mut s = state.0.lock().map_err(|e| e.to_string())?;
     let n = s.as_mut().ok_or(NOT_STARTED)?;
@@ -138,5 +140,6 @@ pub fn native_present(pan_x: f32, pan_y: f32, zoom: f32, window: tauri::WebviewW
         n.size = (size.width, size.height);
     }
     let layers = n.doc.stack();
-    Ok(n.display.present(&n.gpu, &n.blender, &layers, n.doc.width, n.doc.height, View { pan: [pan_x, pan_y], zoom }) == Presented::Shown)
+    let checker = Checker { a: checker_a, b: checker_b, cell: checker_cell };
+    Ok(n.display.present(&n.gpu, &n.blender, &layers, n.doc.width, n.doc.height, View { pan: [pan_x, pan_y], zoom }, Some(checker)) == Presented::Shown)
 }
