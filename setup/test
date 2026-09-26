@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 source "$(dirname "$0")/lib.sh"
 which="${1:-all}"
-case "$which" in all|unit|backend|e2e) ;; *) cv_say "unknown test suite: $which (use unit, backend, e2e or nothing for all)"; exit 2 ;; esac
+case "$which" in all|unit|backend|e2e|native) ;; *) cv_say "unknown test suite: $which (use unit, backend, e2e, native or nothing for all)"; exit 2 ;; esac
 fail=0
 py="$SONNY_ROOT/backend/venv/bin/python"
 [ -x "$py" ] || py="$(cv_python)" || { cv_say "Python 3.12+ is required"; exit 1; }
@@ -19,6 +19,15 @@ if [ "$which" = all ] || [ "$which" = e2e ]; then
   else
     cv_say "browser tests skipped: run '$py -m pip install pytest playwright && $py -m playwright install chromium' to enable them"
     [ "$which" = e2e ] && fail=1
+  fi
+fi
+if [ "$which" = all ] || [ "$which" = native ]; then
+  # The native GPU renderer (native/sonny-render) on whatever GPU backend this machine has; built outside the repo.
+  if command -v cargo >/dev/null 2>&1; then
+    run "native renderer tests (cargo)" bash -c "cd '$SONNY_ROOT/native/sonny-render' && CARGO_TARGET_DIR='${CARGO_TARGET_DIR:-${TMPDIR:-/tmp}/sonny-render-target}' cargo test --quiet"
+  else
+    cv_say "native renderer tests skipped: install Rust (https://rustup.rs) to run them"
+    [ "$which" = native ] && fail=1
   fi
 fi
 exit "$fail"
