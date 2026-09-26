@@ -13,23 +13,23 @@
    3. Dark is the default. Light is body.theme-light, an override layer. */
 
 :root {
-  /* ── accent (settings-driven in the app; --accent-color-dim is accent + 33 alpha) ── */
-  --accent-color: #f97316;
-  --accent-color-dim: #f9731633;
-  --accent-color-hover: #ea580c;
+  /* ── accent (settings-driven in the app; --accent-color-dim is accent + 33 alpha); the target's lavender ── */
+  --accent-color: #aba0d3;
+  --accent-color-dim: #aba0d333;
+  --accent-color-hover: #c8bafa;
 
-  /* ── surfaces (theme-owned; nodemode-dark profile values) ── */
-  --bg-primary: #0a0a0a;
-  --bg-secondary: #121218;
-  --bg-tertiary: #1a1a24;
-  --bg-node: #121218;
-  --border-color: #2a2a35;
-  --border-light: #3a3a48;
-  --text-primary: #e8e8ee;
-  --text-secondary: #a8a8b8;
-  --text-muted: #6a6a7a;
-  --canvas-bg: #0a0a0a;
-  --grid-color: rgba(255,255,255,0.04);
+  /* ── surfaces (theme-owned; the Studio Dark profile's values, measured from the target: UI_SPEC.md) ── */
+  --bg-primary: #111111;
+  --bg-secondary: #17151b;
+  --bg-tertiary: #222127;
+  --bg-node: #191919;
+  --border-color: #2a2a2a;
+  --border-light: #34333a;
+  --text-primary: #f7f7f7;
+  --text-secondary: #a4a4a4;
+  --text-muted: #717072;
+  --canvas-bg: #1c1b1d;
+  --grid-color: #5e5e60;
   --node-shadow: 0 6px 18px rgba(0,0,0,0.45);
 
   /* ── canvas geometry (the app's defaults) ── */
@@ -84,8 +84,8 @@
   --radius-pill: 999px;
 
   /* ── type ── */
-  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', SFMono-Regular, Menlo, 'JetBrains Mono', monospace;
   --fs-9: 9px;
   --fs-10: 10px;
   --fs-11: 11px;
@@ -203,7 +203,7 @@ body.nm-home .nm-canvas-surface { display: none !important; }
   --cv-row-h: 40px;
   --cv-thumb: 30px;
   --cv-checker-a: #ffffff;
-  --cv-checker-b: #d8d8de;
+  --cv-checker-b: #cccccc;
   --cv-ants-a: #000000;
   --cv-ants-b: #ffffff;
   --cv-pixel-grid: rgba(128, 128, 140, 0.35);

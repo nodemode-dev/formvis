@@ -116,7 +116,7 @@ export class GradientEditor extends Dialog {
     this.stops.forEach((s, i) => {
       const x = s.at * (BW - 1);
       h.fillStyle = typeof s.color === 'object' ? hex(s.color) : '#000';
-      h.strokeStyle = i === this.sel ? '#f97316' : '#888';
+      h.strokeStyle = i === this.sel ? (getComputedStyle(document.documentElement).getPropertyValue('--accent-color').trim() || '#aba0d3') : '#888';
       h.lineWidth = i === this.sel ? 2 : 1;
       h.beginPath(); h.moveTo(x, 1); h.lineTo(x + 6, 8); h.lineTo(x + 6, SH - 1); h.lineTo(x - 6, SH - 1); h.lineTo(x - 6, 8); h.closePath(); h.fill(); h.stroke();
     });
