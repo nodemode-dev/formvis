@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The desktop app's fonts · _v1.43.0 (src/ui/fonts.ts, src/app.ts, src/extensions/tools/type.ts, package.json; src-tauri/src/main.rs, src-tauri/Cargo.toml, src-tauri/Cargo.lock new; e2e/test_desktop_fonts.py new)
+
+`fonts.ts`: `inDesktopApp`, `canListSystemFonts` and `loadSystemFonts` through the shell's `system_fonts` in the desktop app. `app.ts`: the fonts loaded at start there. `type.ts`: the Font menu a `live` list. Shell: `system_fonts` (fontdb) and its test, `invoke_handler`; Cargo.toml adds `serde_json` and `fontdb` (only additions there). Removed:
+
+```ts
+    { kind: 'select', label: 'Font', choices: fontChoices(e.textSettings.family), get: () => e.textSettings.family, set: (v) => {
+ *  desktop shell's webview has no such API; its native font list needs a shell command not built yet, so there the
+ *  common families found are what is offered. */
+/** Whether this browser can list the machine's fonts (Local Font Access). */
+export const canListSystemFonts = (): boolean => typeof (window as unknown as { queryLocalFonts?: unknown }).queryLocalFonts === 'function';
+/** The machine's font families through Local Font Access, which asks the user's permission (so call it from a click);
+ *  null where the API is missing or permission is refused. */
+```
+
 ## Object Selection · _v1.42.0 (src/extensions/tools/object-select.ts new, src/extensions/tools/index.ts, src/engine/types.ts, src/io/api.ts, src/ui/icons.ts; e2e/test_object_select.py new)
 
 `object-select.ts`: `objectSelectTool`, `source`, `keyOf` (FNV-1a over the pixels), `selectAt`. `api.ts`: `selectObject`. `ToolId` gains `objectSelect`; `icons.ts` gains `objectSelect`. Removed:

@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.43.0 · 2026-09-25
+
+### Added
+
+- The desktop app lists the fonts installed on the computer in the Type tool, at start, without asking (the shell reads them; the browser keeps Local Font Access).
+
+### Fixed
+
+- Fonts loaded with "Load system fonts..." now appear in the Type tool's Font menu (they had not since 1.29.0).
+- The desktop shell compiles: it lacked a dependency (serde_json) that Tauri's generated code needs. It is now checked with cargo, and its lock file is committed.
+- 3 more tests (browser), and a unit test in the shell: 502 in all, besides the shell's.
+
 ## 1.42.0 · 2026-09-25
 
 ### Added
