@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.42.0 · 2026-09-25
+
+### Added
+
+- The Object Selection tool (W): click an object to select it, Shift-click to add another, Alt-click to take one away. It runs Meta's SAM 2.1 in the engine, installed with `./sonny install-ml` (optional); the first click on an image takes a few seconds, later clicks about a tenth of a second.
+- 5 more tests (4 backend, 1 browser): 499 in all.
+
 ## 1.41.0 · 2026-09-25
 
 ### Fixed

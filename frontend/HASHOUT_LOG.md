@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Object Selection · _v1.42.0 (src/extensions/tools/object-select.ts new, src/extensions/tools/index.ts, src/engine/types.ts, src/io/api.ts, src/ui/icons.ts; e2e/test_object_select.py new)
+
+`object-select.ts`: `objectSelectTool`, `source`, `keyOf` (FNV-1a over the pixels), `selectAt`. `api.ts`: `selectObject`. `ToolId` gains `objectSelect`; `icons.ts` gains `objectSelect`. Removed:
+
+```ts
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'idle';
+  for (const tool of [moveTool, marqueeTool, lassoTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+```
+
 ## Sliding document tabs · _v1.41.0 (src/ui/tabs.ts, src/styles/shell.css; e2e/test_no_layout_shift.py new)
 
 `tabs.ts` `render`: tabs and the new-document button held by `--flip-x` and eased (`.is-settling`) whenever the tab count changes. Removed:

@@ -2,6 +2,16 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Click-to-select with SAM 2.1 · _v1.42.0 (app/services/segment.py new, app/routers/ops.py, app/routers/system.py, app/services/compute.py, requirements_sam2.txt new; tests/test_select_object.py new)
+
+`segment.py`: `available`, `torch_device`, `ensure_checkpoint` (SHA-256 checked), `encode`, `select`, `clear`, `model_dir` (SONNY_MODELS_DIR). `ops.py`: `select_object`. `system.py`: `_select_object` in capabilities. `compute.set_preference` also clears the SAM model. Removed:
+
+```python
+from app.services import background
+from app.services import background, compute, imaging
+        from app.services import background
+```
+
 ## .comp import · _v1.40.0 (app/services/project_format.py, app/routers/projects.py; tests/test_comp_import.py new)
 
 `project_format.py`: `COMP_LABEL`, `COMP_VERSIONS`, `is_comp` (a .comp recognised by its shape, then fully validated); the refusal messages name .comp. `projects.py`: `.comp` in `SUFFIXES`. Removed:
