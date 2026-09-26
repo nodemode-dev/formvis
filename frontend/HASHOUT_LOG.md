@@ -2,6 +2,41 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The start screen, and the redesign reaching everyone · _v1.46.0 (index.html, src/ui/themes.ts, src/ui/themes.test.ts, src/ui/home.ts, src/styles/shell.css, src/styles/panels.css; e2e/test_home_screen.py)
+
+Phase 21: `APPEARANCE` (2) in `themes.ts` and index.html's boot script, so a choice saved before Studio Dark is set aside once; `HomeScreen` rebuilt to the target's start screen (`recentBox` replaces `empty`); the Home CSS block replaced; panel headers, layer rows and the tool column restyled in appended blocks. Removed:
+
+```text
+        page.locator(".cv-home-action", has_text="New file").click()                 # New file runs File > New
+    if (raw) { var s = JSON.parse(raw); if (s.theme && PROFILES[s.theme]) theme = s.theme; if (s.accentColor) accent = s.accentColor; }
+.cv-home { position: absolute; inset: 0; z-index: var(--z-chrome); display: grid; grid-template-columns: 200px minmax(0, 1fr); gap: var(--space-6); padding: var(--space-6); background: var(--bg-primary); overflow-y: auto; }
+.cv-home-side { display: flex; flex-direction: column; gap: var(--space-2); }
+.cv-home-action { display: inline-flex; align-items: center; gap: var(--space-2); height: var(--ctl-lg, 36px); padding: 0 var(--space-3); border: 1px solid var(--border-light); border-radius: var(--radius-md); background: var(--bg-secondary); color: var(--text-primary); font-size: var(--fs-12); white-space: nowrap; cursor: pointer; }
+.cv-home-action:first-child { background: var(--accent-color); border-color: var(--accent-color); color: var(--text-on-accent); }
+.cv-home-action:hover { border-color: var(--accent-color); }
+.cv-home-main { min-width: 0; }
+.cv-home-title { margin: 0 0 var(--space-3); color: var(--text-primary); font-size: var(--fs-14, 14px); font-weight: 600; }
+.cv-home-item { display: grid; grid-template-columns: 20px minmax(0, 1fr) auto; align-items: center; gap: var(--space-3); height: 40px; padding: 0 var(--space-3); border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-secondary); font-size: var(--fs-12); text-align: left; cursor: pointer; }
+.cv-home-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+.cv-home-date { color: var(--text-muted); font-size: var(--fs-11); }
+.cv-home-empty { color: var(--text-muted); font-size: var(--fs-12); }
+.cv-home-empty[hidden] { display: none; }
+  private readonly empty = el('<p class="cv-home-empty">Projects you save or open appear here.</p>');
+    const side = el('<div class="cv-home-side"></div>');
+    for (const [label, cmd, ic] of [['New file', 'new', 'newFile'], ['Open', 'open', 'folderOpen']] as const) {
+      const b = el<HTMLButtonElement>(`<button class="cv-home-action" type="button">${icon(ic, 16)}<span></span></button>`);
+      setText(b.querySelector('span') as HTMLElement, label);
+      side.appendChild(b);
+    const main = el('<div class="cv-home-main"><h2 class="cv-home-title">Recent</h2></div>');
+    main.append(this.list, this.empty);
+    this.root.append(side, main);
+    setHidden(this.empty, names.length > 0);
+import { DEFAULT_ACCENT, DEFAULT_THEME, THEMES } from './themes';
+      const saved = JSON.parse(raw) as Partial<ThemeChoice>;
+      return { theme: saved.theme || DEFAULT_THEME, accentColor: saved.accentColor || DEFAULT_ACCENT };
+    const merged = { ...(raw ? JSON.parse(raw) : {}), ...choice };
+```
+
 ## The target palette, Studio Dark · _v1.45.0 (index.html, src/ui/themes.ts, src/ui/themes.test.ts new, src/styles/tokens.css, src/styles/shell.css, src/ui/panels/gradient-editor.ts)
 
 Phase 21 step 1 (UI_SPEC.md): the 'studio' profile, measured from the owner's screenshots, the default in `themes.ts` and in index.html's boot script (`DEFAULT_THEME`, `DEFAULT_ACCENT`, `PROFILES`); `tokens.css` defaults to match, the system face and SF Mono first, `--cv-checker-b` #cccccc; the stage's dot grid from `--grid-color`; the gradient editor's selected stop from `--accent-color`. Removed:

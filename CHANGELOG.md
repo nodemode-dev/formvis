@@ -2,6 +2,15 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.46.0 · 2026-09-26
+
+### Changed
+
+- The redesign now reaches everyone: 1.45.0 kept a previously saved appearance, so most users still saw NodeMode Dark in orange. A choice saved before Studio Dark is now set aside once; anything chosen since is kept.
+- A new start screen, as the target's (UI_SPEC.md section 3): the whole window black below the title bar; the name, one line on what to do, a white New document button and a dark Open button with their shortcuts as key caps (sizes and colours as measured: 210 and 190 by 42 px), and a hint that images can be dropped anywhere. Recent projects follow, only when there are any.
+- Panel headers as a black strip with the panel's name as a chip; layer rows as rounded cards, the selected one with a lavender glow in place of the orange bar; the tool column with the target's lavender glows and a rounded active-tool highlight.
+- 1 more unit test: 509 in all.
+
 ## 1.45.0 · 2026-09-26
 
 ### Changed
