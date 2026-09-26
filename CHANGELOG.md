@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.44.0 · 2026-09-26
+
+### Added
+
+- A native GPU renderer for the desktop app (native/sonny-render, Rust on wgpu: Metal on macOS, Vulkan on Linux, Direct3D 12 on Windows): layers stored as tiles, so no texture size limits them; a GPU brush; all 27 blend modes (the web shader's own formulas); masks, clipping, adjustment tables, moved, scaled and rotated layers without seams between tiles; a memory budget from the machine in place of a fixed cap; the checkerboard; drawn into the window's own GPU surface.
+- Preferences > Performance > Renderer: Native GPU (desktop app). Opt-in: Automatic does not choose it yet. Where it cannot draw a document yet (3D tables, folder masks, a mask placed apart from the document) it falls back, with the reason in the status bar.
+- A brush benchmark (cargo run --release --bin brush_bench in native/sonny-render) and a window check (cargo run --release --example window), for real hardware.
+- `./sonny test native` runs the renderer's 21 tests.
+- 4 more browser tests: 506 in all, besides the renderer's 21 and the shell's.
+
+### Not verified yet
+
+- On macOS the native canvas must sit beneath the web view for the interface to show over it; only a Mac can confirm this. Speed on a real GPU is measured by the benchmark above, not claimed.
+
 ## 1.43.0 · 2026-09-25
 
 ### Added

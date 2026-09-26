@@ -2,6 +2,37 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The native GPU renderer · _v1.44.0 (native/sonny-render new; src-tauri/src/native.rs new, src-tauri/src/main.rs, src-tauri/Cargo.toml; src/gpu/native-display.ts new, src/gpu/probe.ts, src/gpu/display.ts, src/ui/stage.ts, src/ui/prefs.ts, src/styles/shell.css, src/app.ts; setup/test, setup/test.bat, setup/line_counts.py; e2e/test_native_display.py new)
+
+native/sonny-render (Rust, wgpu 30): `Gpu` (`new`, `for_window`), `TiledLayer` (`dab`, `write`, `read`), `composite` (`Blender`, `Stack`, `Source`, `Clip`, `Lut`, `Affine`, `blend.wgsl` shared with the web shader), `budget`, `display` (`Display`, `View`, `Checker`), `document` (`Document`, `LayerSpec`), `bin/brush_bench`, `examples/window`. Shell: `native.rs` (`native_start` ... `native_present`), registered in `main.rs`. App: `NativeDisplay`; `ScreenDisplay.unsupported` and `document`; 'native' in `probe.ts` and `prefs.ts`. Removed from frontend/src:
+
+```ts
+  let gpuDisplay: ScreenDisplay | null = null, gpuKind: 'webgpu' | 'webgl2' | null = null, gpuStarting = false;
+  const gpuFailed = new Set<'webgpu' | 'webgl2'>();
+    const pr = loadPrefs(), ch = chooseRenderer(gpuProbe, pr.useGpu, pr.renderer), name = ch.adapter ? `${ch.adapter.name}${ch.adapter.software ? ' (software)' : ''}` : '';
+      if (want === 'webgpu') void GpuDisplay.create(q<HTMLCanvasElement>(root, '.cv-scene-gpu:not(.cv-scene-gl)')).then(started);
+    const live = off ? null : gpuDisplay, api = ch.mode === 'webgl2' ? 'WebGL2' : 'WebGPU';
+export type GpuRenderer = 'auto' | 'webgpu' | 'webgl2' | 'cpu';
+export type GpuMode = 'webgpu' | 'webgl2' | 'cpu';
+export interface GpuProbe { webgpu: GpuAdapter | null; webgl2: GpuAdapter | null }
+export const RENDERER_CHOICES: ReadonlyArray<readonly [GpuRenderer, string]> = [['auto', 'Automatic'], ['webgpu', 'WebGPU'], ['webgl2', 'WebGL2'], ['cpu', 'CPU']];
+  return { webgpu, webgl2 };
+  if (hardware) return { mode: hardware.api, adapter: hardware, reason: want === 'auto' ? 'automatic' : `${want === 'webgpu' ? 'WebGPU' : 'WebGL2'} is not available here` };
+  return { mode: 'cpu', adapter: null, reason: p.webgpu || p.webgl2 ? 'only a software GPU was found, which is slower than the CPU renderer' : 'no graphics processor was found' };
+export const modeLabel = (m: GpuMode): string => (m === 'webgpu' ? 'WebGPU' : m === 'webgl2' ? 'WebGL2' : 'CPU');
+      renderer: r.renderer === 'webgpu' || r.renderer === 'webgl2' || r.renderer === 'cpu' || r.renderer === 'auto' ? r.renderer : DEFAULT_PREFS.renderer,
+      const reason = documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit });
+```
+
+Removed from setup and src-tauri:
+
+```text
+and backend/sonny_engine.py, Rust under src-tauri/src. Figures are rounded to hundreds; a figure passes the check within
+         ("Python", ("backend/app/", "backend/sonny_engine.py"), ".py"), ("Rust", ("src-tauri/src/",), ".rs"))
+case "$which" in all|unit|backend|e2e) ;; *) cv_say "unknown test suite: $which (use unit, backend, e2e or nothing for all)"; exit 2 ;; esac
+        .invoke_handler(tauri::generate_handler![system_fonts])
+```
+
 ## The desktop app's fonts · _v1.43.0 (src/ui/fonts.ts, src/app.ts, src/extensions/tools/type.ts, package.json; src-tauri/src/main.rs, src-tauri/Cargo.toml, src-tauri/Cargo.lock new; e2e/test_desktop_fonts.py new)
 
 `fonts.ts`: `inDesktopApp`, `canListSystemFonts` and `loadSystemFonts` through the shell's `system_fonts` in the desktop app. `app.ts`: the fonts loaded at start there. `type.ts`: the Font menu a `live` list. Shell: `system_fonts` (fontdb) and its test, `invoke_handler`; Cargo.toml adds `serde_json` and `fontdb` (only additions there). Removed:

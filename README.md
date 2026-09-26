@@ -2,7 +2,7 @@
 <h1 align="center">sonny</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-1.43.0-f97316" alt="version 1.43.0">
+<img src="https://img.shields.io/badge/version-1.44.0-f97316" alt="version 1.44.0">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -122,7 +122,7 @@ Branch model: `main` plus short-lived work branches, see `.docs/BRANCHING.md`. D
 Release history, with each version's test counts: `CHANGELOG.md`. What is not verified yet:
 
 - **Desktop app.** The Tauri shell follows a proven sidecar template, with macOS signing and notarization, the hardened runtime, file associations and in-app updates from GitHub Releases wired (setup on the wiki's Releasing page). Since 1.43.0 the shell passes `cargo check` on Linux (WebKitGTK), and its font command's unit test runs there; that first check found, and 1.43.0 fixed, a missing dependency that had kept it from compiling anywhere. Not verified yet: a full build and running the app (they need the frozen engine and a display), and the macOS and Windows builds; the desktop workflow has not run. Treat desktop bundles as untested until the first `desktop.yml` run passes. Opening a clicked file in the running desktop app is not built yet.
-- **The graphics processor on real hardware.** The GPU paths are checked against the CPU in a test browser with a software GPU, where WebGPU cannot present to the screen; on-screen WebGPU, CUDA or Core ML running the engine's models, and Help > Performance Benchmark's numbers on real hardware are still to be run.
+- **The graphics processor on real hardware.** The web GPU paths are checked against the CPU in a test browser with a software GPU, where WebGPU cannot present to the screen; on-screen WebGPU, CUDA or Core ML running the engine's models, and Help > Performance Benchmark's numbers on real hardware are still to be run. The native renderer (1.44.0) is tested on Mesa's software Vulkan (21 tests, and a window screenshotted and measured under Xvfb); on real hardware: in native/sonny-render run `cargo run --release --example window` (a document drawn in a native window) and `cargo run --release --bin brush_bench` (milliseconds per brush update on a 4,000 px document, printed with the GPU's name); in the desktop app choose Preferences > Performance > Renderer > Native GPU and check that the interface shows over the canvas.
 - **ML background removal.** Exercised end to end since 1.42.0: Select Subject's browser tests run on the ML engine (u2net) where the AI extras are installed, and pass; the lightweight GrabCut path is verified too. Click-to-select (SAM 2.1) is tested end to end on the CPU; its speed on CUDA or Apple's MPS is not measured yet.
 - **NodeMode embedding.** Follows the portal protocol; the host-side handling of `plugin:sonny:assign` is not confirmed yet.
 
