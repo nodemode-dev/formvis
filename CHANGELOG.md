@@ -2,6 +2,13 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.45.0 · 2026-09-26
+
+### Changed
+
+- The look of the target design (Phase 21, step 1 of 6; UI_SPEC.md in the planning docs): a new default appearance, Studio Dark, with colours measured from the owner's screenshots (near-black surfaces, neutral greys, a lavender accent in place of orange), the system face (SF Pro on macOS) and SF Mono for numbers, a neutral canvas checkerboard, and a dot grid on the pasteboard. The fourteen earlier appearances remain in Preferences, and a saved choice is kept.
+- 2 more unit tests (the boot script and themes.ts hold the same profiles): 508 in all, besides the renderer's.
+
 ## 1.44.0 · 2026-09-26
 
 ### Added

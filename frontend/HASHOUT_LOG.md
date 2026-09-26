@@ -2,6 +2,38 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The target palette, Studio Dark · _v1.45.0 (index.html, src/ui/themes.ts, src/ui/themes.test.ts new, src/styles/tokens.css, src/styles/shell.css, src/ui/panels/gradient-editor.ts)
+
+Phase 21 step 1 (UI_SPEC.md): the 'studio' profile, measured from the owner's screenshots, the default in `themes.ts` and in index.html's boot script (`DEFAULT_THEME`, `DEFAULT_ACCENT`, `PROFILES`); `tokens.css` defaults to match, the system face and SF Mono first, `--cv-checker-b` #cccccc; the stage's dot grid from `--grid-color`; the gradient editor's selected stop from `--accent-color`. Removed:
+
+```text
+  var DEFAULT_THEME = 'nodemode-dark';
+  var DEFAULT_ACCENT = '#f97316';
+  /* ── accent (settings-driven in the app; --accent-color-dim is accent + 33 alpha) ── */
+  --accent-color: #f97316;
+  --accent-color-dim: #f9731633;
+  --accent-color-hover: #ea580c;
+  /* ── surfaces (theme-owned; nodemode-dark profile values) ── */
+  --bg-primary: #0a0a0a;
+  --bg-secondary: #121218;
+  --bg-tertiary: #1a1a24;
+  --bg-node: #121218;
+  --border-color: #2a2a35;
+  --border-light: #3a3a48;
+  --text-primary: #e8e8ee;
+  --text-secondary: #a8a8b8;
+  --text-muted: #6a6a7a;
+  --canvas-bg: #0a0a0a;
+  --grid-color: rgba(255,255,255,0.04);
+  --font-ui: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --cv-checker-b: #d8d8de;
+      h.strokeStyle = i === this.sel ? '#f97316' : '#888';
+export const DEFAULT_THEME = 'nodemode-dark';
+export const DEFAULT_ACCENT = '#f97316';
+  if (Number.isNaN(n)) return `rgba(249,115,22,${alpha})`;
+```
+
 ## The native GPU renderer · _v1.44.0 (native/sonny-render new; src-tauri/src/native.rs new, src-tauri/src/main.rs, src-tauri/Cargo.toml; src/gpu/native-display.ts new, src/gpu/probe.ts, src/gpu/display.ts, src/ui/stage.ts, src/ui/prefs.ts, src/styles/shell.css, src/app.ts; setup/test, setup/test.bat, setup/line_counts.py; e2e/test_native_display.py new)
 
 native/sonny-render (Rust, wgpu 30): `Gpu` (`new`, `for_window`), `TiledLayer` (`dab`, `write`, `read`), `composite` (`Blender`, `Stack`, `Source`, `Clip`, `Lut`, `Affine`, `blend.wgsl` shared with the web shader), `budget`, `display` (`Display`, `View`, `Checker`), `document` (`Document`, `LayerSpec`), `bin/brush_bench`, `examples/window`. Shell: `native.rs` (`native_start` ... `native_present`), registered in `main.rs`. App: `NativeDisplay`; `ScreenDisplay.unsupported` and `document`; 'native' in `probe.ts` and `prefs.ts`. Removed from frontend/src:
