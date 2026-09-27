@@ -77,7 +77,8 @@ export function shapeActive(s: BrushShape | null | undefined): boolean {
     || s.angleControl !== 'off' || s.roundnessControl !== 'off' || s.scatter > 0 || s.count > 1 || s.countJitter > 0 || s.texture.on || s.dual.on;
 }
 
-export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics; tip?: SampledTip }
+/** A preset's tip shape (angle in degrees, roundness in percent) is optional: absent is a round tip (0, 100). */
+export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics; tip?: SampledTip; angle?: number; roundness?: number }
 
 /** Presets made from imported .abr files, kept by the app and listed after the built-ins. */
 export let importedBrushPresets: BrushPreset[] = [];
@@ -97,6 +98,7 @@ export const BUILTIN_BRUSH_PRESETS: BrushPreset[] = [
   { id: 'ink', name: 'Ink', description: 'Firm liner; light pressure thins the line to a quarter.', diameter: 16, hardness: 0.9, opacity: 1, dynamics: { size: pressureOption(0.25), flow: identityOption() } },
   { id: 'pencil', name: 'Pencil', description: 'Small, slightly soft, translucent; pressure drives size and flow.', diameter: 10, hardness: 0.55, opacity: 0.85, dynamics: { size: pressureOption(0.4), flow: pressureOption(0.4) } },
   { id: 'marker', name: 'Marker', description: 'Wide translucent strokes that do not build up within one stroke.', diameter: 36, hardness: 0.85, opacity: 0.55, dynamics: noDynamics() },
+  { id: 'flat-angled', name: 'Flat angled', description: 'A calligraphic flat tip held at an angle: thick one way, thin the other.', diameter: 36, hardness: 0.9, opacity: 1, dynamics: { size: pressureOption(0.3), flow: identityOption() }, angle: -35, roundness: 14 },
 ];
 
 /** Reads a stored preset list, keeping only well-formed entries with values clamped to the brush's ranges. */

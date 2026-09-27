@@ -177,9 +177,9 @@ export function startApp(): void {
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
   // The Properties column (Phase 21), shown unless hidden from Window > Properties Column (remembered).
-  new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); });
+  new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); }, () => syncPropsCol());
   const propsShown = (): boolean => stored('sonny.propsCol') !== 'hidden';
-  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !propsShown()); setStyleVar(root, '--cv-props-w', propsShown() ? '284px' : '0px'); };
+  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !propsShown()); setStyleVar(root, '--cv-props-w', propsShown() ? (PropertiesColumn.collapsed() ? '46px' : '284px') : '0px'); };
   syncPropsCol();
   new NavigatorPanel(q(root, '.cv-layers'), engine);
   new SwatchesPanel(q(root, '.cv-layers'), engine);

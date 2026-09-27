@@ -36,16 +36,73 @@ export class PropertiesColumn {
   readonly root: HTMLElement;
   private readonly refreshers: Array<() => void> = [];
 
-  constructor(host: HTMLElement, private readonly engine: Engine, run: (cmd: string) => void) {
+  constructor(host: HTMLElement, private readonly engine: Engine, run: (cmd: string) => void, private readonly onLayout: () => void = () => undefined) {
     this.root = host;
     this.properties();
     this.brushes(run);
     this.paragraph();
     this.character();
+    this.collapsible();
     const refresh = (): void => { for (const r of this.refreshers) r(); };
     for (const ev of ['active', 'doc', 'history', 'options', 'projects'] as const) engine.on(ev, refresh);
     document.addEventListener('cv:type-settings', refresh);
     refresh();
+  }
+
+  /** The column collapses to a strip of icons, as the target's (the owner's screenshot): the collapse button in the first
+   *  group's header, the expand button atop the strip, and an icon per group that opens the group as a flyout beside
+   *  the strip (the group's own element moved there and back, so its tab, values and scroll are kept). Remembered. */
+  static readonly COLLAPSED_KEY = 'sonny.propsColCollapsed';
+  static collapsed(): boolean { try { return localStorage.getItem(PropertiesColumn.COLLAPSED_KEY) === '1'; } catch { return false; } }
+  private collapsible(): void {
+    const host = this.root, groups = Array.from(host.querySelectorAll<HTMLElement>(':scope > .cv-group'));
+    const strip = el(`<div class="cv-props-strip"><button class="cv-strip-btn cv-strip-expand" type="button" title="Expand panels" aria-label="Expand panels">${icon('collapseLeft', 16)}</button></div>`);
+    const fly = el('<div class="cv-props-fly" hidden></div>');
+    (document.getElementById('overlay-root') ?? document.body).appendChild(fly);
+    let open: { group: HTMLElement; mark: Comment; btn: HTMLElement } | null = null;
+    const closeFly = (): void => {
+      if (!open) return;
+      open.mark.replaceWith(open.group);
+      open.btn.classList.remove('is-on');
+      open = null;
+      setHidden(fly, true);
+    };
+    const ICONS: Record<string, [string, string]> = { properties: ['panelProps', 'Properties'], brushes: ['tBrush', 'Brushes'], paragraph: ['pilcrow', 'Paragraph'], character: ['charA', 'Character'] };
+    for (const g of groups) {
+      const id = Array.from(g.classList).find((c) => c.startsWith('cv-') && c !== 'cv-group')?.slice(3) ?? '';
+      const [ic, label] = ICONS[id] ?? ['panelProps', id];
+      const b = el<HTMLButtonElement>(`<button class="cv-strip-btn" type="button" title="${label}" aria-label="${label}">${icon(ic, 18)}</button>`);
+      b.dataset.group = id;
+      b.addEventListener('click', () => {
+        if (open?.group === g) { closeFly(); return; }
+        closeFly();
+        const mark = document.createComment(id);
+        g.replaceWith(mark);
+        fly.appendChild(g);
+        setHidden(fly, false);
+        open = { group: g, mark, btn: b };
+        b.classList.add('is-on');
+        const r = b.getBoundingClientRect(), s = strip.getBoundingClientRect();
+        fly.style.right = `${Math.round(window.innerWidth - s.left + 6)}px`;
+        fly.style.top = `${Math.round(Math.max(8, Math.min(r.top, window.innerHeight - fly.offsetHeight - 8)))}px`;
+      });
+      strip.appendChild(b);
+    }
+    host.prepend(strip);
+    document.addEventListener('pointerdown', (e) => { if (open && !fly.contains(e.target as Node) && !strip.contains(e.target as Node)) closeFly(); }, true);
+    document.addEventListener('keydown', (e) => { if (open && e.key === 'Escape') closeFly(); });
+    const set = (on: boolean): void => {
+      closeFly();
+      host.classList.toggle('is-collapsed', on);
+      try { localStorage.setItem(PropertiesColumn.COLLAPSED_KEY, on ? '1' : '0'); } catch { /* this session only */ }
+      this.onLayout();
+    };
+    (strip.querySelector('.cv-strip-expand') as HTMLElement).addEventListener('click', () => set(false));
+    const head = groups[0]?.querySelector('.cv-group-head'), min = head?.querySelector('.cv-group-min');
+    const collapse = el<HTMLButtonElement>(`<button class="cv-group-collapse" type="button" title="Collapse to icons" aria-label="Collapse to icons">${icon('collapseRight', 14)}</button>`);
+    collapse.addEventListener('click', () => set(true));
+    if (min) min.after(collapse); else head?.appendChild(collapse);
+    host.classList.toggle('is-collapsed', PropertiesColumn.collapsed());
   }
 
   private properties(): void {
@@ -153,9 +210,10 @@ export class PropertiesColumn {
         const s = (R * 2) / Math.max(p.tip.w, p.tip.h);
         g.drawImage(t, c.width / 2 - (p.tip.w * s) / 2, c.height / 2 - (p.tip.h * s) / 2, p.tip.w * s, p.tip.h * s);
       } else {
-        const gr = g.createRadialGradient(c.width / 2, c.height / 2, 0, c.width / 2, c.height / 2, R);
+        const gr = g.createRadialGradient(0, 0, 0, 0, 0, R);
         gr.addColorStop(0, 'rgba(240,240,244,1)'); gr.addColorStop(Math.min(0.999, Math.max(0, p.hardness)), 'rgba(240,240,244,1)'); gr.addColorStop(1, 'rgba(240,240,244,0)');
-        g.fillStyle = gr; g.beginPath(); g.arc(c.width / 2, c.height / 2, R, 0, Math.PI * 2); g.fill();
+        g.save(); g.translate(c.width / 2, c.height / 2); g.rotate((-(p.angle ?? 0) * Math.PI) / 180); g.scale(1, Math.max(0.05, (p.roundness ?? 100) / 100));   // its own shape
+        g.fillStyle = gr; g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fill(); g.restore();
       }
       return c;
     };
@@ -194,6 +252,36 @@ export class PropertiesColumn {
       }
       if (!folders.childElementCount) folders.appendChild(el('<p class="cv-brush-none">No brush matches.</p>'));
     };
+    // The tip as an editor, as the target's: drag the right handle to turn it, the top or bottom one to flatten it, or
+    // anywhere else to turn it toward the pointer. It is the brush's own shape that changes.
+    let grab: 'angle' | 'round' | null = null;
+    const local = (ev: PointerEvent): [number, number, number] => { const r = tip.getBoundingClientRect(), dpr = tip.width / Math.max(1, r.width); return [(ev.clientX - r.left) * dpr, (ev.clientY - r.top) * dpr, dpr]; };
+    tip.addEventListener('pointerdown', (ev) => {
+      const [x, y, dpr] = local(ev), cx = tip.width / 2, cy = tip.height / 2, R = tip.width * 0.36;
+      const a = (-e.brushShape.angle * Math.PI) / 180, ry = R * Math.max(0.05, e.brushShape.roundness / 100);
+      const at = (px: number, py: number): [number, number] => [cx + px * Math.cos(a) - py * Math.sin(a), cy + px * Math.sin(a) + py * Math.cos(a)];
+      const near = (p: [number, number]): boolean => Math.hypot(p[0] - x, p[1] - y) < 10 * dpr;
+      grab = near(at(0, -ry)) || near(at(0, ry)) ? 'round' : 'angle';
+      tip.setPointerCapture(ev.pointerId);
+      move(ev);
+    });
+    const move = (ev: PointerEvent): void => {
+      if (!grab) return;
+      const [x, y] = local(ev), cx = tip.width / 2, cy = tip.height / 2, R = tip.width * 0.36;
+      if (grab === 'angle') {
+        let deg = Math.round((Math.atan2(-(y - cy), x - cx) * 180) / Math.PI);
+        if (deg > 180) deg -= 360;
+        e.brushShape = { ...e.brushShape, angle: deg };
+      } else {
+        const a = (-e.brushShape.angle * Math.PI) / 180, d = Math.abs(-(x - cx) * Math.sin(a) + (y - cy) * Math.cos(a));
+        e.brushShape = { ...e.brushShape, roundness: Math.max(1, Math.min(100, Math.round((d / R) * 100))) };
+      }
+      e.emit('options', null);
+    };
+    tip.addEventListener('pointermove', move);
+    const release = (): void => { grab = null; };
+    tip.addEventListener('pointerup', release);
+    tip.addEventListener('pointercancel', release);
     const picker = el<HTMLInputElement>('<input type="file" accept=".abr" hidden>');
     body.appendChild(picker);
     (body.querySelector('[data-act="load"]') as HTMLElement).addEventListener('click', () => picker.click());

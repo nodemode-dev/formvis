@@ -24,7 +24,9 @@ describe('brush dynamics ported from NodeMode sonny', () => {
   });
 
   it('built-in presets are complete and within range', () => {
-    expect(BUILTIN_BRUSH_PRESETS.map((p) => p.id)).toEqual(['hard-round', 'soft-air', 'ink', 'pencil', 'marker']);
+    expect(BUILTIN_BRUSH_PRESETS.map((p) => p.id)).toEqual(['hard-round', 'soft-air', 'ink', 'pencil', 'marker', 'flat-angled']);
+    // A preset's tip shape, where it has one, is within the tip's own ranges.
+    for (const p of BUILTIN_BRUSH_PRESETS) { if (p.angle !== undefined) expect(Math.abs(p.angle)).toBeLessThanOrEqual(180); if (p.roundness !== undefined) { expect(p.roundness).toBeGreaterThanOrEqual(1); expect(p.roundness).toBeLessThanOrEqual(100); } }
     for (const p of BUILTIN_BRUSH_PRESETS) {
       expect(p.diameter).toBeGreaterThan(0);
       expect(p.hardness).toBeGreaterThanOrEqual(0); expect(p.hardness).toBeLessThanOrEqual(1);

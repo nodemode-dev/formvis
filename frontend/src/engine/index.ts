@@ -154,6 +154,8 @@ export class Engine {
   applyBrushPreset(preset: BrushPreset): void {
     this.brushDynamics = structuredClone(preset.dynamics);
     this.brushPresetId = preset.id;
+    // The preset's tip shape, or a round tip: another preset's angle never lingers.
+    this.brushShape = { ...this.brushShape, angle: preset.angle ?? 0, roundness: preset.roundness ?? 100 };
     this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity, tip: preset.tip ?? null });
   }
   brushMode: 'paint' | 'erase' = 'paint';

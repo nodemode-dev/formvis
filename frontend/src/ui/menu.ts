@@ -42,6 +42,8 @@ export class PopupMenu {
     this.rows = [];
     this.subs = [];
     this.seps = [];
+    // A tick column only where a tick can show, as the target's menus (its Filter menu has none; Window's panels do).
+    this.panel.classList.toggle('has-checks', items.some((i) => typeof i === 'string' && i !== '-' && !!this.commands.get(i)?.checked));
     for (const item of items) {
       if (item === '-') { const s = el('<div class="cv-menu-sep"></div>'); this.seps.push(s); this.panel.appendChild(s); continue; }
       if (isSub(item)) {
