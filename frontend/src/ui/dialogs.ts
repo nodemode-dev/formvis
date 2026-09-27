@@ -67,6 +67,42 @@ export class Dialog {
   }
 }
 
+/** Unsaved Changes, as the target's (Phase 21, UI_SPEC.md section 7, s24): the question names the document in bold, a
+ *  line says what is lost, and the three answers: Don't Save alone at the left, Cancel and Save (the primary) at the
+ *  right. Closing it any other way is Cancel, so nothing is ever discarded by accident. */
+class SaveChanges extends Dialog {
+  private readonly question = el('<p class="cv-save-q">Save changes to <strong></strong>?</p>');
+  private readonly saveBtn: HTMLButtonElement;
+  private resolve: ((v: 'save' | 'discard' | 'cancel') => void) | null = null;
+  constructor() {
+    super('Unsaved Changes', 460);
+    q<HTMLElement>(this.scrim, '.cv-dialog').classList.add('cv-savechanges');
+    this.body.append(this.question, el('<p class="cv-note">Your changes will be lost if you don’t save them.</p>'));
+    this.button('Don’t Save', 'ghost', () => this.finish('discard')).classList.add('cv-btn-apart');
+    this.button('Cancel', 'ghost', () => this.finish('cancel'));
+    this.saveBtn = this.button('Save', 'primary', () => this.finish('save'));
+    this.onClose = () => this.finish('cancel');
+  }
+  ask(name: string): Promise<'save' | 'discard' | 'cancel'> {
+    setText(this.question.querySelector('strong') as HTMLElement, name);
+    this.open(this.saveBtn);
+    return new Promise((r) => { this.resolve = r; });
+  }
+  private finish(v: 'save' | 'discard' | 'cancel'): void {
+    const r = this.resolve;
+    this.resolve = null;
+    if (this.isOpen) this.close();
+    r?.(v);
+  }
+}
+
+let saveChangesDialog: SaveChanges | null = null;
+/** Asks whether to save a document's changes before it closes: 'save', 'discard' or 'cancel'. */
+export function askSaveChanges(name: string): Promise<'save' | 'discard' | 'cancel'> {
+  saveChangesDialog ??= new SaveChanges();
+  return saveChangesDialog.ask(name);
+}
+
 class Confirm extends Dialog {
   private readonly text = el('<p class="cv-note"></p>');
   private readonly ok: HTMLButtonElement;

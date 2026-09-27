@@ -122,3 +122,8 @@
 .cv-nd-cards { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .cv-nd-thumb { height: 84px; background: transparent; }
 .cv-nd-summary { margin-top: 4px; }
+/* Unsaved Changes: the question with the name in bold; Don't Save alone at the left (UI_SPEC.md section 7, s24). */
+.cv-save-q { margin: 0 0 6px; color: var(--text-primary); font-size: 17px; }
+.cv-save-q strong { font-weight: 700; }
+.cv-savechanges .cv-note { margin: 0; padding-bottom: 14px; border-bottom: 1px solid #34333a; color: var(--text-secondary); font-size: 14px; }
+.cv-dialog-foot .cv-btn-apart { margin-right: auto; }

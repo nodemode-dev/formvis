@@ -71,7 +71,7 @@ import { BackgroundPanel } from './ui/panels/background-panel';
 import { ColorPickerDialog } from './ui/panels/color-picker';
 import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
 import { Commands } from './ui/commands';
-import { anyDialogOpen, confirmAction, promptName } from './ui/dialogs';
+import { anyDialogOpen, askSaveChanges, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
 import { icon } from './ui/icons';
 import { brandMark } from './ui/brand';
@@ -101,7 +101,6 @@ const SHELL = `<div class="cv-app">
 <header class="cv-titlebar">
 <div class="cv-brand">${icon('paintbrush', 18)}<span class="cv-brand-name">sonny</span></div>
 <nav class="cv-menubar" aria-label="Main menu"></nav>
-<div class="cv-tabs"><div class="cv-tab-strip" role="tablist"></div><button class="cv-icon-btn" type="button" data-cmd="new">${icon('add', 16)}</button></div>
 <div class="cv-zoom">
 <button class="cv-icon-btn" type="button" data-cmd="undo">${icon('undo', 16)}</button>
 <button class="cv-icon-btn" type="button" data-cmd="redo">${icon('redo', 16)}</button>
@@ -117,6 +116,8 @@ const SHELL = `<div class="cv-app">
 <div class="cv-options"></div>
 <div class="cv-main">
 <aside class="cv-rail" aria-label="Tools"><div class="cv-rail-tools"></div><div class="cv-colors"></div></aside>
+<div class="cv-stage-col">
+<div class="cv-doc-tabs"><div class="cv-tabs"><div class="cv-tab-strip" role="tablist"></div><button class="cv-icon-btn" type="button" data-cmd="new">${icon('add', 16)}</button></div></div>
 <main class="cv-stage">
 <canvas class="cv-canvas cv-scene-gpu" hidden></canvas>
 <canvas class="cv-canvas cv-scene-gpu cv-scene-gl" hidden></canvas>
@@ -132,6 +133,7 @@ const SHELL = `<div class="cv-app">
 </div></div>
 <div class="cv-drop" hidden></div>
 </main>
+</div>
 <section class="cv-props-col" aria-label="Properties"></section>
 <div class="cv-resizer" role="separator" aria-orientation="vertical" aria-label="Resize the layers panel"></div>
 <section class="cv-layers" aria-label="Layers"></section>
@@ -682,7 +684,15 @@ export function startApp(): void {
   async function requestClose(id: string): Promise<void> {
     const p = engine.projects.find((x) => x.id === id);
     if (!p) return;
-    if (p.modified && !(await confirmAction('Close without saving?', `${p.name} has changes that are not saved.`, 'Close', true))) return;
+    if (p.modified) {
+      // As the target's Unsaved Changes: Save closes only once the save succeeds; Cancel keeps the document open.
+      const choice = await askSaveChanges(p.name);
+      if (choice === 'cancel') return;
+      if (choice === 'save') {
+        if (engine.current !== p) engine.switchTo(p.id);
+        if (!(await save(false))) return;
+      }
+    }
     engine.closeProject(id);
   }
 

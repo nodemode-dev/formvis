@@ -200,3 +200,18 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 /* The options bar: its own quiet row; the tool's name as a raised chip. */
 .cv-options { background: #111111; border-bottom-color: #0b0b0b; }
 .cv-opt-title { padding: 4px 10px; border: 1px solid #3a3a3a; border-radius: 8px; background: #1f1f1f; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }
+/* The document tabs in their own row above the canvas, as the target's (s20): the name, * when unsaved, the mode dimmed,
+   a circled close; the title bar keeps the brand, menus, zoom and its tools. */
+.cv-titlebar { grid-template-columns: auto minmax(0, 1fr) auto auto; }
+.cv-stage-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.cv-stage-col > .cv-stage { flex: 1; }
+.cv-doc-tabs { display: flex; align-items: flex-end; height: 34px; padding: 0 8px; background: #111111; border-bottom: 1px solid #0b0b0b; }
+.cv-doc-tabs .cv-tabs { display: flex; align-items: flex-end; gap: 2px; min-width: 0; height: 100%; }
+.cv-tab { display: flex; align-items: center; gap: 6px; width: auto; min-width: 110px; max-width: 240px; height: 28px; padding: 0 6px 0 12px; }
+.cv-tab-name { flex: 0 1 auto; min-width: 0; font-size: 13px; }
+.cv-tab-dot { order: 2; width: auto; height: auto; background: none; border-radius: 0; color: var(--text-primary); }
+.cv-tab-dot::after { content: ''; }
+.cv-tab.is-dirty .cv-tab-dot::after { content: '*'; }
+.cv-tab-mode { order: 3; color: var(--text-muted); font-size: 11px; }
+.cv-tab-close { order: 4; margin-left: auto; width: 18px; height: 18px; }
+.cv-tab.is-dirty .cv-tab-dot { width: auto; height: auto; background: none; box-shadow: none; }
