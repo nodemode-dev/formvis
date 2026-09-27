@@ -299,3 +299,8 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-app.is-screen-full { --cv-titlebar-h: 0px; }
 .cv-app.is-screen-full .cv-titlebar { display: none; }
 .cv-app.is-screen-full .cv-stage { background: #000; }
+/* Edit Toolbar's list (the rail's •••). */
+.cv-edit-toolbar { display: flex; flex-direction: column; gap: 2px; max-height: 60vh; overflow-y: auto; margin-top: 8px; }
+.cv-edit-tool { display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 10px; min-height: 30px; padding: 0 8px; border-radius: 7px; font-size: 13px; color: var(--text-primary); cursor: pointer; }
+.cv-edit-tool:hover { background: var(--surface-raised); }
+.cv-edit-tool input { accent-color: var(--accent-color); }

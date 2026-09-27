@@ -4,8 +4,8 @@ FLY = "[...document.querySelectorAll('.cv-flyout:not([hidden]) .cv-flyout-label'
 
 def test_rail_groups_tools_with_flyouts_and_keys(page):
     page.evaluate("window.sonny.engine.newDocument(200, 100, 'R', 'white')")
-    slots = page.evaluate("[...document.querySelectorAll('.cv-rail-tools .cv-tool')].map((b) => [b.getAttribute('aria-label'), b.getBoundingClientRect().bottom <= window.innerHeight])")
-    assert len(slots) == 19 and all(ok for _, ok in slots), slots   # 1.48.1: the History Brush (Y) has its own slot
+    slots = page.evaluate("[...document.querySelectorAll('.cv-rail-tools .cv-tool:not(.cv-rail-more)')].map((b) => [b.getAttribute('aria-label'), b.getBoundingClientRect().bottom <= window.innerHeight])")
+    assert len(slots) == 20 and all(ok for _, ok in slots), slots   # 1.48.1: the History Brush (Y) and the Frame (K) have their own slots
     assert page.evaluate("document.querySelector(\"" + SLOT.format("Spot Healing") + "\").classList.contains('has-group')")
     # right-click opens the group; choosing one switches to it and the slot shows it
     page.locator(SLOT.format("Pen")).click(button="right")

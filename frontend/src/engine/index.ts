@@ -321,6 +321,28 @@ export class Engine {
     this.historySnapshots.set(p, [{ id: uid(), name: p.name, state: { doc: this.copyDoc(p.doc), activeId: p.activeId, selection: p.selection } }]);
   }
 
+  /** Frame layers (the Frame tool, K; not the Timeline's frames), as Photoshop's: a folder named Frame N whose mask is the frame's rectangle or ellipse;
+   *  one undo step; it is selected, so an image imported next goes into it and covers it (insertImages). */
+  frameShape: 'rect' | 'ellipse' = 'rect';
+  newFrameLayer(r: { x: number; y: number; w: number; h: number }, shape: 'rect' | 'ellipse' = this.frameShape): ID | null {
+    let made: ID | null = null;
+    this.edit('New Frame', (p) => {
+      const W = p.doc.width, H = p.doc.height, x = Math.round(r.x), y = Math.round(r.y), w = Math.max(2, Math.round(r.w)), h = Math.max(2, Math.round(r.h));
+      const mask = new Raster(W, H);
+      mask.ctx.fillStyle = '#ffffff';
+      if (shape === 'ellipse') { mask.ctx.beginPath(); mask.ctx.ellipse(x + w / 2, y + h / 2, w / 2, h / 2, 0, 0, Math.PI * 2); mask.ctx.fill(); }
+      else mask.ctx.fillRect(x, y, w, h);
+      let n = p.doc.layers.filter((l) => l.frame).length + 1;
+      while (p.doc.layers.some((l) => l.name === `Frame ${n}`)) n += 1;
+      const layer = newLayer(`Frame ${n}`, p.doc, { isGroup: true, frame: { x, y, w, h, shape }, mask: { raster: mask, enabled: true, linked: true, placement: null } });
+      p.setLayers([...p.doc.layers, layer]);
+      this.focus(p, layer.id);
+      made = layer.id;
+      return true;
+    });
+    return made;
+  }
+
   /** The History Brush's source, as Photoshop's: a snapshot chosen in the History panel, or the document's first. */
   historyBrushSource: ID | null = null;
   setHistoryBrushSource(id: ID): void { this.historyBrushSource = id; this.emit('history', null); }
@@ -3560,9 +3582,13 @@ export class Engine {
         const c = at ?? { x: p.doc.width / 2, y: p.doc.height / 2 };
         const active = p.activeLayer;
         const parentId = active?.isGroup ? active.id : active?.parentId ?? null;
+        // Into a frame, the image covers it, centred, as Photoshop fills a frame; elsewhere it lands at its own size.
+        const fr = parentId ? p.layer(parentId)?.frame : null, cover = fr ? Math.max(fr.w / img.width, fr.h / img.height) : 1;
         const layer = newLayer(stripExt(img.name), p.doc, {
           raster: Raster.from(img.source, img.width, img.height), parentId,
-          transform: { ...docTransform(img.width, img.height), x: Math.floor(c.x - img.width / 2), y: Math.floor(c.y - img.height / 2) },
+          transform: fr
+            ? { ...docTransform(img.width, img.height), x: fr.x + (fr.w - img.width * cover) / 2, y: fr.y + (fr.h - img.height * cover) / 2, w: img.width * cover, h: img.height * cover }
+            : { ...docTransform(img.width, img.height), x: Math.floor(c.x - img.width / 2), y: Math.floor(c.y - img.height / 2) },
         });
         p.setLayers([...p.doc.layers, layer]);
         this.focus(p, layer.id);

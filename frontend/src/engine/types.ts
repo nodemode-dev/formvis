@@ -40,6 +40,7 @@ export type AdjustmentKind = 'hsv' | 'levels' | 'curves' | 'exposure' | 'gradien
 export interface Adjustment { kind: AdjustmentKind; data: Record<string, unknown> }
 /** Photoshop's layer locks (the target's Lock row): transparency (paint only where there are pixels), image pixels
  *  (no painting, filling or filtering), position (no moving or transforming), all (every one of them). */
+export interface FrameSpec { x: number; y: number; w: number; h: number; shape: 'rect' | 'ellipse' }
 export interface LayerLocks { transparency?: boolean; pixels?: boolean; position?: boolean; all?: boolean }
 export interface Layer {
   readonly id: ID;
@@ -66,6 +67,8 @@ export interface Layer {
   fill?: number;
   /** Absent is unlocked. */
   locks?: LayerLocks;
+  /** A frame (the Frame tool, K, as Photoshop's): a folder whose mask is this shape; an image placed in it covers it. */
+  frame?: FrameSpec | null;
   blend: BlendMode;
   mask: Mask | null;
   clipId: ID | null;
@@ -88,7 +91,7 @@ export function artboardFromData(raw: unknown): Artboard | null {
 export interface Guide { axis: 'x' | 'y'; at: number }
 export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
 
-export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'idle';
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'frame' | 'idle';
 
 export const LIMITS = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 } as const;
 

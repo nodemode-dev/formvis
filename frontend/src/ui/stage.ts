@@ -362,6 +362,16 @@ export class Stage {
     const pal = paint();
     const v = p.viewport;
     const sel = p.selection, fl = sel ? null : this.engine.floatingOutline(p);
+    // Empty frames (the Frame tool) show their placeholder, as Photoshop's: the outline and a cross, never exported.
+    for (const f of p.doc.layers) {
+      if (!f.frame || !f.visible || p.doc.layers.some((c) => c.parentId === f.id)) continue;
+      const r = f.frame, a = v.toScreen(r.x, r.y), b = v.toScreen(r.x + r.w, r.y + r.h), d = this.dpr;
+      g.save(); g.setTransform(d, 0, 0, d, 0, 0); g.lineWidth = 1; g.strokeStyle = pal.antsB; g.globalAlpha = 0.7;
+      g.beginPath();
+      if (r.shape === 'ellipse') g.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, (b.x - a.x) / 2, (b.y - a.y) / 2, 0, 0, Math.PI * 2); else g.rect(a.x + 0.5, a.y + 0.5, b.x - a.x, b.y - a.y);
+      g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.moveTo(b.x, a.y); g.lineTo(a.x, b.y);
+      g.stroke(); g.restore();
+    }
     if (this.engine.quickMask) {
       // Quick Mask: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.
       const src = this.quickTint(p);

@@ -1,6 +1,7 @@
 import { hexOf, type Engine, type RGB } from '../engine';
 import type { Tool } from '../extensions/registry';
-import { el, q, setClass, setHtml, setText, setTitle, setValue } from './dom';
+import { el, q, setClass, setHidden, setHtml, setText, setTitle, setValue } from './dom';
+import { Dialog } from './dialogs';
 import { icon } from './icons';
 import { rememberTool, slotTool, toolGroups, type ToolGroup } from './tool-groups';
 
@@ -49,6 +50,12 @@ export class Rail {
       box.appendChild(b);
       this.slots.push({ group, node: b });
     }
+    // Edit Toolbar (the target's •••): tools can be hidden from the rail and stay one click away in this button's list.
+    const more = el<HTMLButtonElement>(`<button class="cv-tool cv-rail-more" type="button" title="More tools and Edit Toolbar" aria-label="More tools">${icon('more3', 18)}</button>`);
+    more.addEventListener('click', () => this.openMore(more));
+    box.appendChild(more);
+    this.box = box;
+    this.applyHidden();
     document.addEventListener('pointerdown', (e) => { if (!this.flyout.hidden && !this.flyout.contains(e.target as Node)) this.closeFlyout(); }, true);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !this.flyout.hidden) { e.preventDefault(); this.closeFlyout(); } }, true);
     const colors = q(root, '.cv-colors');
@@ -76,6 +83,57 @@ export class Rail {
   }
 
   private suppressClick = false;
+
+  private box: HTMLElement | null = null;
+  private hidden = new Set<string>((() => { try { const v = JSON.parse(localStorage.getItem('sonny.railHidden') ?? '[]'); return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []; } catch { return []; } })());
+  private editor: EditToolbar | null = null;
+
+  /** Hidden groups leave the rail; a dash shows only between two shown tools, never leading, trailing or doubled. */
+  private applyHidden(): void {
+    for (const { group, node } of this.slots) setHidden(node, this.hidden.has(group.key));
+    let prevTool = false, pendingSep: HTMLElement | null = null;
+    for (const child of Array.from(this.box?.children ?? []) as HTMLElement[]) {
+      if (child.classList.contains('cv-rail-sep')) { setHidden(child, true); if (prevTool) pendingSep = child; prevTool = false; continue; }
+      if (child.classList.contains('cv-rail-more') || child.hidden) continue;
+      if (pendingSep) { setHidden(pendingSep, false); pendingSep = null; }
+      prevTool = true;
+    }
+  }
+
+  setHiddenGroups(keys: Iterable<string>): void {
+    this.hidden = new Set(keys);
+    try { localStorage.setItem('sonny.railHidden', JSON.stringify([...this.hidden])); } catch { /* this session only */ }
+    this.applyHidden();
+  }
+
+  /** The ••• list: the hidden tools (their modes too), then Edit Toolbar. */
+  private openMore(anchor: HTMLElement): void {
+    this.flyout.textContent = '';
+    const row = (iconName: string, label: string, key: string, pick: () => void): void => {
+      const r = el<HTMLButtonElement>(`<button class="cv-flyout-item" role="menuitem" type="button">${icon(iconName, 18)}<span class="cv-flyout-label"></span><span class="cv-flyout-key"></span></button>`);
+      setText(q(r, '.cv-flyout-label'), label);
+      setText(q(r, '.cv-flyout-key'), key);
+      r.addEventListener('click', () => { this.closeFlyout(); pick(); });
+      this.flyout.appendChild(r);
+    };
+    for (const { group } of this.slots.filter((s) => this.hidden.has(s.group.key))) {
+      for (const t of group.tools) {
+        const vs = t.variants?.(this.engine);
+        if (vs?.length) for (const v of vs) row(v.icon, v.label, group.key, () => { this.engine.setTool(t.id); v.pick(); this.engine.emit('tool', null); });
+        else row(t.icon(this.engine), t.label, group.key, () => this.engine.setTool(t.id));
+      }
+    }
+    if (this.flyout.childElementCount) this.flyout.appendChild(el('<div class="cv-menu-sep"></div>'));
+    row('sliders', 'Edit Toolbar...', '', () => { this.editor ??= new EditToolbar(); this.editor.show(this.slots.map((s) => s.group), this.hidden, (keys) => this.setHiddenGroups(keys)); });
+    this.flyoutFor = null;
+    const r = anchor.getBoundingClientRect();
+    this.flyout.style.visibility = 'hidden';
+    this.flyout.hidden = false;
+    const h = this.flyout.offsetHeight;
+    this.flyout.style.left = `${Math.round(r.right + 4)}px`;
+    this.flyout.style.top = `${Math.round(Math.max(4, Math.min(r.top, window.innerHeight - h - 4)))}px`;
+    this.flyout.style.visibility = '';
+  }
 
   private sync(): void {
     rememberTool(this.engine);
@@ -129,4 +187,30 @@ export class Rail {
 
   private fgRgb(): string { const c = this.engine.fg; return `rgb(${c.r}, ${c.g}, ${c.b})`; }
   private bgRgb(): string { const c = this.engine.bg; return `rgb(${c.r}, ${c.g}, ${c.b})`; }
+}
+
+/** Edit Toolbar, as Photoshop's: which tool groups the rail shows; hidden ones stay in its ••• list. */
+class EditToolbar extends Dialog {
+  private readonly list = el('<div class="cv-edit-toolbar"></div>');
+  private onChange: ((keys: Set<string>) => void) | null = null;
+  constructor() {
+    super('Edit Toolbar', 420);
+    this.body.append(el('<p class="cv-note">Tools you hide stay one click away in the toolbar\'s ••• list.</p>'), this.list);
+    this.button('Done', 'primary', () => this.close());
+  }
+  show(groups: ToolGroup[], hidden: Set<string>, onChange: (keys: Set<string>) => void): void {
+    this.onChange = onChange;
+    this.list.textContent = '';
+    const now = new Set(hidden);
+    for (const g of groups) {
+      const r = el(`<label class="cv-edit-tool"><input type="checkbox"><span class="cv-edit-tool-name"></span><span class="cv-flyout-key"></span></label>`);
+      const box = r.querySelector('input') as HTMLInputElement;
+      box.checked = !now.has(g.key);
+      setText(r.querySelector('.cv-edit-tool-name') as HTMLElement, g.tools.map((t) => t.label).join(', '));
+      setText(r.querySelector('.cv-flyout-key') as HTMLElement, g.key);
+      box.addEventListener('change', () => { if (box.checked) now.delete(g.key); else now.add(g.key); this.onChange?.(new Set(now)); });
+      this.list.appendChild(r);
+    }
+    this.open();
+  }
 }
