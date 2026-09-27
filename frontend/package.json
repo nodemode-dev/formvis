@@ -1,7 +1,7 @@
 {
   "name": "sonny",
   "private": true,
-  "version": "1.49.2",
+  "version": "1.49.3",
   "description": "sonny · layered image editor in the NodeMode style",
   "license": "Apache-2.0",
   "type": "module",
