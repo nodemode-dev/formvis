@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Window chrome only. The app itself talks HTTP to its engine and uses no Tauri IPC.",
+  "description": "The app talks HTTP to its engine; through Tauri it asks the shell for the installed fonts and the native GPU canvas, and on macOS sets its menus in the system menu bar (core:default includes the core menu permissions).",
   "windows": ["splash", "main"],
   "permissions": ["core:default"]
 }

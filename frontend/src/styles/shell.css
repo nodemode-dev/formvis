@@ -215,3 +215,15 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-tab-mode { order: 3; color: var(--text-muted); font-size: 11px; }
 .cv-tab-close { order: 4; margin-left: auto; width: 18px; height: 18px; }
 .cv-tab.is-dirty .cv-tab-dot { width: auto; height: auto; background: none; box-shadow: none; }
+/* Tool groups and flyouts as the target's (UI_SPEC.md section 5, s15, s20): a small dot at the corner of a tool with
+   variants (lavender on the active one); the flyout a rounded card, each variant with its shortcut as a key cap. */
+.cv-tool.has-group::after { right: 4px; bottom: 4px; width: 4px; height: 4px; border: 0; border-radius: 50%; background: #6f6d76; }
+.cv-tool.has-group.is-active::after { background: #c8bafa; }
+.cv-flyout { min-width: 220px; padding: 6px; border: 1px solid #3a3a3a; border-radius: 12px; background: #1c1c1c; box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55); }
+.cv-flyout-item { grid-template-columns: 18px minmax(0, 1fr) auto; column-gap: 10px; height: 34px; padding: 0 6px 0 10px; border-radius: 8px; color: var(--text-secondary); font-size: 14px; }
+.cv-flyout-item:hover { background: #2e2b3a; color: var(--text-primary); }
+.cv-flyout-item.is-active { color: var(--text-primary); }
+.cv-flyout-item.is-active:hover { color: var(--text-primary); }
+.cv-flyout-key { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 6px; background: #2a2a2a; color: var(--text-primary); font-size: 12px; }
+/* With sonny's menus in the macOS menu bar (the desktop app), the in-window menu bar gives way (Phase 21). */
+.has-native-menus .cv-menubar { display: none; }

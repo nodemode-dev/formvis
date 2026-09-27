@@ -60,6 +60,7 @@ import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
 import { PropertiesColumn } from './ui/properties';
 import { TitleTools } from './ui/titlebar-tools';
+import { NativeMenus, wantsNativeMenus } from './ui/native-menu';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
 import { DOCK_PANELS, Dock } from './ui/dock';
@@ -1051,6 +1052,13 @@ export function startApp(): void {
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
+  // The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.
+  if (wantsNativeMenus()) {
+    const native = new NativeMenus(commands, () => menus);
+    void native.build().catch(() => undefined);
+    for (const ev of ['active', 'doc', 'selection', 'history', 'tool'] as const) engine.on(ev, () => native.refresh());
+    engine.on('projects', () => { void native.build().catch(() => undefined); });   // Open Recent and what is enabled
+  }
   contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', 'warp-text', '-',
     { label: 'Smart Objects', items: ['convert-smart', 'rasterize', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] },
