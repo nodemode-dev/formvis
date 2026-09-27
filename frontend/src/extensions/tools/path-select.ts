@@ -28,7 +28,7 @@ export function subpathAt(vp: VectorPath, at: Pt, reach: number): number | null 
  *  points themselves are Direct Selection's. */
 export const pathSelectTool: Tool = {
   id: 'pathSelect', label: 'Path Selection', key: 'A', order: 75.5,
-  icon: () => 'cursor',
+  icon: () => 'tPathSelect',
   hint: () => 'Click a path to select it whole · drag to move it · Alt-drag to copy · Delete removes it · arrows nudge',
   cursor: () => 'default',
   options: (e) => [

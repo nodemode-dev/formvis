@@ -7,7 +7,7 @@ let hover: Pt | null = null;
 
 export const healTool: Tool = {
   id: 'spotHealing', label: 'Spot Healing', key: 'J', order: 55,
-  icon: () => 'sparkle',
+  icon: () => 'tSpotHeal',
   hint: () => 'Paint over a spot; it heals when you release · Content-Aware copies a matching patch nearby · Create Texture fills smoothly with matching grain · Proximity Match prefers the nearest patch · [ ] size',
   cursor: () => 'none',
   down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginRetouchStroke('heal', p.doc, p.shift); },

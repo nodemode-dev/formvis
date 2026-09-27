@@ -20,7 +20,14 @@ export class Rail {
     const box = q(root, '.cv-rail-tools');
     this.flyout = el('<div class="cv-flyout" role="menu" hidden></div>');
     document.getElementById('overlay-root')?.appendChild(this.flyout);
+    // Short dashes between Photoshop's tool families, as the target's column (Phase 21): selection and crop, painting and
+    // retouching, vector and type, then eyedropper and navigation (by the tools' order).
+    const family = (order: number): number => (order <= 45 ? 0 : order <= 72 ? 1 : order <= 79 ? 2 : 3);
+    let lastFamily = -1;
     for (const group of toolGroups()) {
+      const fam = family(group.tools[0].order);
+      if (lastFamily !== -1 && fam !== lastFamily) box.appendChild(el('<span class="cv-rail-sep" aria-hidden="true"></span>'));
+      lastFamily = fam;
       const b = el<HTMLButtonElement>(`<button class="cv-tool${group.tools.length > 1 ? ' has-group' : ''}" type="button" aria-haspopup="${group.tools.length > 1 ? 'menu' : 'false'}"></button>`);
       const pick = (t: Tool): void => { engine.setTool(t.id); if (t.id === 'brush') engine.setBrushMode('paint'); };
       b.addEventListener('click', () => { if (!this.suppressClick) pick(slotTool(group, engine.tool)); this.suppressClick = false; });

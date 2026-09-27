@@ -12,7 +12,7 @@ const HINTS = {
 
 export const smearTool: Tool = {
   id: 'smear', label: 'Smear', key: 'R', order: 65,
-  icon: (e) => (e.retouch.smearMode === 'blur' || e.retouch.smearMode === 'sharpen' ? 'blurTool' : 'smudge'),
+  icon: (e) => (e.retouch.smearMode === 'blur' || e.retouch.smearMode === 'sharpen' ? 'tBlur' : 'tSmudge'),
   hint: (e) => `${HINTS[e.retouch.smearMode]} · [ ] size`,
   cursor: () => 'none',
   down(ctx, p) {

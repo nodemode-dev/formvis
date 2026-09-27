@@ -14,7 +14,7 @@ const reshape = (a: NonNullable<typeof active>, closed: boolean): void => { a.sp
  *  or Escape ends it open; Backspace takes back the last point. */
 export const curvaturePenTool: Tool = {
   id: 'curvaturePen', label: 'Curvature Pen', key: 'P', order: 77.6,
-  icon: () => 'penTool',
+  icon: () => 'tCurvaturePen',
   hint: () => 'Click to place points; the curve runs smoothly through them · Alt-click for a corner · click the first point to close · Enter ends',
   cursor: () => 'crosshair',
   down(ctx, p) {

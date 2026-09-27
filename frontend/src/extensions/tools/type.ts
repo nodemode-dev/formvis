@@ -23,7 +23,7 @@ export function setType(e: Engine, patch: Partial<TextSpec>): void {
  *  baseline begins at the click. The tool announces where; the app's text editor does the typing. */
 export const typeTool: Tool = {
   id: 'type', label: 'Type', key: 'T', order: 78,
-  icon: () => 'typeTool',
+  icon: () => 'tType',
   hint: () => 'Click to add text on a new type layer · Click a type layer to edit its text',
   cursor: () => 'text',
   options: (e) => [

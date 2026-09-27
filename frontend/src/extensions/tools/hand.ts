@@ -5,7 +5,7 @@ let last: Pt | null = null;
 
 export const handTool: Tool = {
   id: 'hand', label: 'Hand', key: 'H', order: 90,
-  icon: () => 'hand',
+  icon: () => 'tHand',
   hint: () => 'Drag to pan · Scroll pans · Cmd or Ctrl with scroll zooms · Hold Space with any tool to pan',
   cursor: () => (last ? 'grabbing' : 'grab'),
   down(_ctx, p) { last = p.screen; },

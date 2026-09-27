@@ -7,7 +7,7 @@ let picking = false;
 
 export const cloneTool: Tool = {
   id: 'cloneStamp', label: 'Clone Stamp', key: 'S', order: 60,
-  icon: () => 'duplicate',
+  icon: () => 'tStamp',
   hint: () => 'Alt-click to set the source, then paint to copy from it · Aligned keeps the offset between strokes · Sample all layers copies what you see · [ ] size',
   cursor: () => 'none',
   down(ctx, p) {

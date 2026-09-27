@@ -8,7 +8,7 @@ let drag: { start: Pt; now: Pt } | null = null;
  *  copy from; on release the selected area takes that area's texture, blended to meet its own edges. */
 export const patchTool: Tool = {
   id: 'patch', label: 'Patch', key: 'J', order: 57,
-  icon: () => 'patchTool',
+  icon: () => 'tPatch',
   hint: (e) => e.retouch.patchFrom === 'destination'
     ? 'Draw around the area to copy, then drag the selection onto the area it should cover · Shift+J cycles the healing tools'
     : 'Draw around the area to fix, then drag the selection onto the area to copy from · Shift+J cycles the healing tools',

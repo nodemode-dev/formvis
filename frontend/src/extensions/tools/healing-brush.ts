@@ -10,7 +10,7 @@ let picking = false;
  *  release they are blended into the painted area's surroundings, texture from the source, tone from around it. */
 export const healingBrushTool: Tool = {
   id: 'healingBrush', label: 'Healing Brush', key: 'J', order: 56,
-  icon: () => 'healBrushTool',
+  icon: () => 'tHealBrush',
   hint: () => 'Alt-click to set the source, then paint; on release the copied texture blends into its surroundings · Aligned keeps the offset between strokes · Shift+J cycles the healing tools · [ ] size',
   cursor: () => 'none',
   down(ctx, p) {

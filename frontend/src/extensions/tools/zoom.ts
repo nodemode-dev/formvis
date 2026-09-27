@@ -5,7 +5,7 @@ let drag: { start: Pt; z0: number; moved: boolean; alt: boolean } | null = null;
 
 export const zoomTool: Tool = {
   id: 'zoom', label: 'Zoom', key: 'Z', order: 95,
-  icon: () => 'zoomIn',
+  icon: () => 'tZoom',
   hint: () => 'Click zooms in · Alt-click zooms out · Drag right or left to zoom smoothly · Space pans',
   cursor: (_ctx, p) => (p?.alt ? 'zoom-out' : 'zoom-in'),
   down(ctx, p) { drag = { start: p.screen, z0: ctx.engine.current?.viewport.zoom ?? 1, moved: false, alt: p.alt }; },

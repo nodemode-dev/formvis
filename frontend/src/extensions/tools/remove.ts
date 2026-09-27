@@ -10,7 +10,7 @@ let hover: Pt | null = null;
  *  is here. */
 export const removeTool: Tool = {
   id: 'remove', label: 'Remove', key: 'J', order: 55.5,
-  icon: () => 'eraser',
+  icon: () => 'tRemove',
   hint: () => 'Paint over what to remove; it is filled from its surroundings when you release · [ ] size',
   cursor: () => 'none',
   down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginRetouchStroke('remove', p.doc, p.shift); },

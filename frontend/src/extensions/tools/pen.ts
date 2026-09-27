@@ -27,7 +27,7 @@ function workPath(ctx: ToolContext): VectorPath {
  *  removes its last point, and Ctrl or Cmd with Enter turns the path into a selection. */
 export const penTool: Tool = {
   id: 'pen', label: 'Pen', key: 'P', order: 77,
-  icon: () => 'penTool',
+  icon: () => 'tPen',
   hint: () => 'Click for corner points, drag for curves · Click the first point to close · Enter ends an open path, Backspace removes the last point · Between paths, click the path to add a point or a point to delete it · Ctrl+Enter makes a selection',
   cursor: () => 'crosshair',
   options: (e) => [

@@ -8,7 +8,7 @@ let hover: Pt | null = null;
  *  stops at edges. Alt-drag takes from the selection. It shares the brush size, so [ and ] size it. */
 export const quickSelectTool: Tool = {
   id: 'quickSelect', label: 'Quick Selection', key: 'W', order: 39,
-  icon: () => 'quickSelect',
+  icon: () => 'tQuickSelect',
   hint: () => 'Drag over an area to select it; the selection grows to similar color and stops at edges \u00b7 Alt-drag subtracts \u00b7 [ ] size',
   cursor: () => 'none',
   down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginQuickSelect(p.doc, p.alt); },

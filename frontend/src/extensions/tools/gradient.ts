@@ -12,7 +12,7 @@ function constrain(a: Pt, b: Pt): Pt {
 
 export const gradientTool: Tool = {
   id: 'gradient', label: 'Gradient', key: 'G', order: 70,
-  icon: () => 'gradient',
+  icon: () => 'tGradient',
   hint: () => 'Drag to draw a gradient · Drag either end to adjust it · Shift snaps to 45 degrees · Enter applies · Escape cancels · Switching tools applies',
   cursor: () => 'crosshair',
   down(ctx, p) {

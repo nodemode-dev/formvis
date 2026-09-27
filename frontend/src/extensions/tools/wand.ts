@@ -3,7 +3,7 @@ import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 export const wandTool: Tool = {
   id: 'wand', label: 'Magic Wand', key: 'W', order: 40,
-  icon: () => 'wandSelect',
+  icon: () => 'tWand',
   hint: () => 'Click to select similar colors · Shift adds · Alt subtracts · Tolerance sets how similar · Arrows nudge the outline',
   cursor: () => 'crosshair',
   down(ctx, p) { if (p.button === 0) ctx.engine.magicWand(p.doc, modeFor(ctx.engine, p)); },

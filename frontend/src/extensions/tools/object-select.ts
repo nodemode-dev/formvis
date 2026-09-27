@@ -61,7 +61,7 @@ async function selectAt(engine: Engine, pt: Pt, mode: SelectionMode): Promise<vo
 
 export const objectSelectTool: Tool = {
   id: 'objectSelect', label: 'Object Selection', key: 'W', order: 35,
-  icon: () => 'objectSelect',
+  icon: () => 'tObjectSelect',
   hint: () => 'Click an object to select it · Shift adds · Alt subtracts · The first click on an image takes a few seconds',
   cursor: () => 'crosshair',
   down(ctx, p) { if (p.button === 0) void selectAt(ctx.engine, p.doc, modeFor(ctx.engine, p)); },

@@ -11,7 +11,7 @@ const CLOSE = 8;
  *  ends near where it began. Each stroke adds a subpath to the selected path, or starts a Work Path. */
 export const freeformPenTool: Tool = {
   id: 'freeformPen', label: 'Freeform Pen', key: 'P', order: 77.5,
-  icon: () => 'paintbrush',
+  icon: () => 'tFreeformPen',
   hint: () => 'Drag to draw a path freehand · end near the start to close it · Curve Fit sets how closely it follows',
   cursor: () => 'crosshair',
   options: () => [

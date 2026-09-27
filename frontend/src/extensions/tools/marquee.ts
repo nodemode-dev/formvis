@@ -72,7 +72,7 @@ function styledRect(e: Engine, d: { anchor: Pt; point: Pt; square: boolean; cent
 
 export const marqueeTool: Tool = {
   id: 'marquee', label: 'Marquee', key: 'M', order: 20,
-  icon: (e) => (e.marqueeKind === 'ellipse' ? 'ellipseSelect' : 'marquee'),
+  icon: (e) => (e.marqueeKind === 'ellipse' ? 'tEllipse' : 'tMarquee'),
   hint: (e) => `Drag ${e.marqueeKind === 'ellipse' ? 'an ellipse' : 'a rectangle'} · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the center · Drag inside to move the outline · Shift+M switches shape · Cmd or Ctrl+D deselects`,
   cursor: (ctx, p) => (p && !p.shift && !p.alt && ctx.engine.selectionMode === 'replace' && inside(ctx, p) ? 'move' : 'crosshair'),
   down(ctx, p) {

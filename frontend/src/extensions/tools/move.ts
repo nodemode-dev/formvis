@@ -84,7 +84,7 @@ let pixelStart: { x: number; y: number } | null = null;
 
 export const moveTool: Tool = {
   id: 'move', label: 'Move', key: 'V', order: 10,
-  icon: () => 'cursor',
+  icon: () => 'tMove',
   hint: (eng) => (eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity'),
   cursor(ctx, p) {
     if (!p) return 'default';

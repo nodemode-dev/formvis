@@ -20,7 +20,7 @@ function pick(anchors: Anchor[], at: Pt, toScreen: (p: Pt) => Pt): { anchor: Anc
  *  a smooth point the opposite handle swings round to stay in line, keeping its own length. */
 export const directSelectTool: Tool = {
   id: 'directSelect', label: 'Direct Selection', key: 'A', order: 76,
-  icon: () => 'directSelectTool',
+  icon: () => 'tDirectSelect',
   hint: () => 'Drag a path point to move it, or a handle to reshape its curve · Draw paths with the Pen (P)',
   cursor: () => 'default',
   down(ctx, p) {

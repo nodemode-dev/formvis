@@ -2,7 +2,7 @@ import type { Tool } from '../registry';
 
 export const bucketTool: Tool = {
   id: 'bucket', label: 'Paint Bucket', key: 'G', order: 71,
-  icon: () => 'bucket',
+  icon: () => 'tBucket',
   hint: () => 'Click to fill the area of similar color with the foreground color \u00b7 Tolerance sets how similar \u00b7 Stays inside the selection',
   cursor: () => 'crosshair',
   down(ctx, p) { if (p.button === 0) ctx.engine.paintBucket(p.doc); },

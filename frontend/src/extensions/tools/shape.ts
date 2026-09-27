@@ -11,7 +11,7 @@ const lineLike = (k: string): boolean => k === 'line' || k === 'arrow';
 
 export const shapeTool: Tool = {
   id: 'shape', label: 'Shape', key: 'U', order: 75,
-  icon: (e) => (e.shapeSettings.kind === 'ellipse' || e.shapeSettings.kind === 'heart' ? 'circleTool' : 'rectTool'),
+  icon: (e) => (e.shapeSettings.kind === 'ellipse' || e.shapeSettings.kind === 'heart' ? 'tEllipseShape' : 'tRect'),
   hint: (e) => lineLike(e.shapeSettings.kind)
     ? `Drag to draw ${NOUN[e.shapeSettings.kind]} in the foreground color on a new shape layer · Shift after starting snaps to 45 degrees · Shift+U switches shape`
     : `Drag to draw ${NOUN[e.shapeSettings.kind]} in the foreground color on a new shape layer · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape`,

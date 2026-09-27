@@ -19,7 +19,7 @@ function finish(ctx: ToolContext): void {
 
 export const eyedropperTool: Tool = {
   id: 'eyedropper', label: 'Eyedropper', key: 'I', order: 80,
-  icon: () => 'eyeDropper',
+  icon: () => 'tEyedropper',
   hint: () => 'Click or drag to sample the foreground color from the visible image · Alt-click samples the background color',
   cursor: () => 'crosshair',
   down(ctx, p) {

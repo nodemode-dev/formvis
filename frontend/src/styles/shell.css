@@ -244,3 +244,12 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-dd-item.is-chosen { color: var(--text-primary); }
 .cv-dd-item.is-chosen .icon { visibility: visible; }
 .cv-dd-item.is-picked, .cv-dd-item:hover { background: #2e2b3a; color: var(--text-primary); }
+/* The tool column's density and icons as the target's (s20): 26 px a tool, 18 px line icons in a light grey, the
+   active tool in a rounded lavender-tinted square, short dashes between the tool families. */
+.cv-rail-tools { gap: 0; align-items: center; }
+.cv-tool { width: 32px; height: 26px; border-radius: 7px; color: #c9c8ce; }
+.cv-tool .icon { width: 18px !important; height: 18px !important; }
+.cv-tool:hover { color: #ffffff; background: #242328; }
+.cv-tool.is-active { width: 32px; height: 28px; margin: 1px 0; color: #ffffff; }
+.cv-rail-sep { display: block; width: 6px; height: 2px; margin: 5px auto; border-radius: 1px; background: #4a4950; }
+.cv-tool.is-active { color: #c8bafa; }

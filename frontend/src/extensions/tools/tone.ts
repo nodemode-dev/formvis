@@ -9,7 +9,7 @@ let hover: Pt | null = null;
 function toneTool(id: 'dodge' | 'burn' | 'sponge', label: string, order: number, hint: string): Tool {
   return {
     id, label, key: 'O', order,
-    icon: () => id,
+    icon: () => ({ dodge: 'tDodge', burn: 'tBurn', sponge: 'tSponge' } as Record<string, string>)[id] ?? id,   // the tool line icons (Phase 21)
     hint: () => `${hint} \u00b7 [ ] size`,
     cursor: () => 'none',
     down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginRetouchStroke(id, p.doc, p.shift); },
