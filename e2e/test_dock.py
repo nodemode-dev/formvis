@@ -5,6 +5,8 @@ EXPANDED = "document.querySelector('.cv-history-toggle').getAttribute('aria-expa
 def test_panels_move_hide_and_reset(page):
     try:
         page.evaluate("window.sonny.engine.newDocument(200, 100, 'D', 'white')")
+        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel"]
+        page.evaluate("window.sonny.commands.run('panel-timeline'); window.sonny.commands.run('panel-history')")   # hidden by default, as the target's Essentials
         assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "timeline", "history"]
         before = page.evaluate(EXPANDED)
         h = page.locator(".cv-history .cv-panel-head").bounding_box()
@@ -19,7 +21,7 @@ def test_panels_move_hide_and_reset(page):
         page.locator(".cv-menu:not([hidden]) .cv-menu-item", has_text="Timeline").click()
         assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history"]
         assert page.evaluate("window.sonny.commands.run('reset-panels')")
-        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "timeline", "history"]
+        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel"]                  # the default again
     finally:
         page.evaluate("localStorage.removeItem('sonny.dock')")
         page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")

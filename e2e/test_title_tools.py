@@ -46,7 +46,8 @@ def test_workspaces_arrange_the_panels_and_the_lock_holds_them(page):
         choose("Photography")
         assert "swatches" not in page.evaluate(ORDER)
         choose("Essentials")
-        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "timeline", "history"]
+        assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel"]                  # Essentials, as the target's
+        page.evaluate("window.sonny.commands.run('panel-timeline'); window.sonny.commands.run('panel-history')")   # hidden by default, as the target's Essentials
         # Locked, a drag does not move a panel; unlocked, it does.
         lock = page.locator(".cv-title-tools button[aria-label='Lock the workspace']")
         lock.click()

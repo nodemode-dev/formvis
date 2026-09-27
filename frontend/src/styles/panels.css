@@ -262,3 +262,7 @@
 .cv-layer-kind { width: 100%; min-width: 0; }
 .cv-kind { width: auto; flex: 1 1 88px; min-width: 64px; max-width: 110px; }
 .cv-kind-icons { flex: none; }
+/* The row under Opacity: the Lock controls at the left (next), Fill at the right, as the target's. */
+.cv-layer-lockrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+.cv-lock-slot { flex: 1; min-width: 0; }
+.cv-layer-lockrow .cv-opacity > span:first-child, .cv-layer-blendrow .cv-opacity > span:first-child { min-width: 50px; text-align: right; }

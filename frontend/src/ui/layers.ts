@@ -42,6 +42,7 @@ export class LayersPanel {
   private readonly dropLine: HTMLElement;
   private readonly blend: HTMLSelectElement;
   private readonly opacity: HTMLInputElement;
+  private readonly fill: HTMLInputElement;
   private readonly kind: HTMLSelectElement;
   /** The kinds shown; empty shows every kind. */
   private kinds = new Set<KindId>();
@@ -59,7 +60,8 @@ export class LayersPanel {
       `<div class="cv-layer-props"><div class="cv-layer-kind"><select class="cv-select cv-kind" title="Filter by kind" aria-label="Filter by kind"><option value="all">Kind</option>${KINDS.map((k) => `<option value="${k.id}">${k.label}</option>`).join('')}</select>` +
       `<div class="cv-kind-icons" role="group" aria-label="Show only">${KINDS.map((k) => `<button class="cv-kind-btn" type="button" data-kind="${k.id}" title="${k.label} layers" aria-label="${k.label} layers" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('')}</div></div>` +
       `<div class="cv-layer-blendrow"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${blendOptions()}</select><span class="cv-vsep"></span>` +
-      `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span></label></div></div>` +
+      `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span></label></div>` +
+      `<div class="cv-layer-lockrow"><span class="cv-lock-slot"></span><span class="cv-vsep"></span><label class="cv-opacity" title="Fill: the layer's pixels, not its styles"><span>Fill</span><span class="cv-num"><input class="cv-fill-field" type="text" inputmode="numeric" value="100" aria-label="Fill"><span class="cv-unit">%</span></span></label></div></div>` +
       `<div class="cv-layer-list"><div class="cv-layer-rows" role="listbox" aria-label="Layers"></div><div class="cv-drop-line"></div><div class="cv-layers-empty">No canvas open. Create one or drop images on the stage.</div></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></section>`);
     this.rows = q(root, '.cv-layer-rows');
@@ -82,6 +84,16 @@ export class LayersPanel {
       if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
       e.preventDefault();
       commit((parseFloat(this.opacity.value) || 0) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
+    });
+    // Fill, as Opacity: its own numeric field, one undo step a commit (the pixels fade, the styles do not).
+    this.fill = q<HTMLInputElement>(root, '.cv-fill-field');
+    const commitFill = (pct: number): void => { const v = Math.min(100, Math.max(0, Math.round(pct))); this.fill.value = String(v); if (Math.round((engine.activeLayer?.fill ?? 1) * 100) !== v) engine.setFill(v / 100); };
+    this.fill.addEventListener('change', () => { const n = parseFloat(this.fill.value); if (Number.isFinite(n)) commitFill(n); else this.syncProps(); });
+    this.fill.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { this.fill.blur(); return; }
+      if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+      e.preventDefault();
+      commitFill((parseFloat(this.fill.value) || 0) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
     });
     // The kind filter: the dropdown picks one kind (or all); the icons toggle kinds; the two agree.
     this.kind = q<HTMLSelectElement>(root, '.cv-kind');
@@ -216,6 +228,8 @@ export class LayersPanel {
     setValue(this.blend, pixel ? (l as Layer).blend : 'normal');
     const pct = String(Math.round((pixel ? (l as Layer).opacity : 1) * 100));
     if (document.activeElement !== this.opacity) setValue(this.opacity, pct);
+    setDisabled(this.fill, !pixel);
+    if (document.activeElement !== this.fill) setValue(this.fill, String(Math.round((pixel ? (l as Layer).fill ?? 1 : 1) * 100)));
   }
 
   /** The kind icons and dropdown show the filter. */

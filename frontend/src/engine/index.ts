@@ -588,12 +588,12 @@ export class Engine {
         // keep the document on the CPU.
         const lut = adjustmentLut(l.adjustment);
         if (lut) {
-          layers.push({ image: null, lut, mask, clip, folders, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+          layers.push({ image: null, lut, mask, clip, folders, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: 'normal' });
           continue;
         }
         const lut3 = adjustmentLut3(l.adjustment);
         if (!lut3) return { reason: `a ${ADJUSTMENT_LABELS[l.adjustment.kind] ?? l.adjustment.kind} adjustment layer` };
-        layers.push({ image: null, lut: lut3, lut3: true, mask, clip, folders, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+        layers.push({ image: null, lut: lut3, lut3: true, mask, clip, folders, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: 'normal' });
         continue;
       }
       // Layer styles: the renderer's own cached effect parts (images at document coordinates), drawn below and above the
@@ -611,7 +611,7 @@ export class Engine {
       const lop = o?.opacity ?? l.opacity;
       const part = (q: NonNullable<typeof fxParts>[number]): GpuLayerSpec => ({ image: q.image, version: 0, width: q.image.width, height: q.image.height, matrix: q.matrix, opacity: q.alpha * lop, blend: q.blend });
       for (const q of fxParts) if (!q.above) layers.push(part(q));
-      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: o?.opacity ?? l.opacity, blend: o?.blend ?? l.blend, mask, clip, folders });
+      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: (o?.opacity ?? l.opacity) * (l.fill ?? 1), blend: o?.blend ?? l.blend, mask, clip, folders });
       for (const q of fxParts) if (q.above) layers.push(part(q));
     }
     return { layers };
@@ -1931,6 +1931,17 @@ export class Engine {
   }
 
   setOpacity(value: number): void { this.beginOpacityEdit(); this.setOpacityLive(value); this.endOpacityEdit(); }
+
+  /** Layers > Fill: the selected layers' fill (their pixels at this share of the opacity, their styles at the full
+   *  opacity), as one undo step; nothing is recorded when no layer changes. */
+  setFill(value: number): void {
+    const v = clamp(value, 0, 1);
+    this.edit('Layer Fill', (p) => {
+      let changed = false;
+      for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.isGroup && (l.fill ?? 1) !== v) { p.updateLayer(id, { fill: v }); changed = true; } }
+      return changed;
+    });
+  }
 
   setBlend(mode: BlendMode): void {
     this.edit('Layer Blend Mode', (p) => {

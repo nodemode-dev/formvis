@@ -70,6 +70,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.isGroup) r.isGroup = true;
     if (l.isGroup && !l.parentId && l.artboard) r.artboard = { x: l.artboard.x, y: l.artboard.y, w: l.artboard.w, h: l.artboard.h, background: l.artboard.background };
     if (l.opacity !== 1) r.opacity = l.opacity;
+    if (l.fill !== undefined && l.fill !== 1) r.fill = l.fill;
     if (l.blend !== 'normal') r.blendMode = blendLabel(l.blend);
   if (effectsActive(l.effects)) r.effects = structuredClone(l.effects);
   if (liveText(l) && l.text) { const { rendered: _rendered, ...text } = l.text; r.text = text; }
@@ -162,6 +163,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     return {
       id: str(r.id) ?? uid(), name: str(r.name) ?? 'Layer', raster, transform: transformFrom(r.transform, raster?.width ?? width, raster?.height ?? height),
       visible: r.isVisible !== false, parentId: str(r.parentID), isGroup: r.isGroup === true, opacity: clamp(num(r.opacity, 1), 0, 1),
+      ...(r.fill !== undefined ? { fill: clamp(num(r.fill, 1), 0, 1) } : {}),
       blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
     };

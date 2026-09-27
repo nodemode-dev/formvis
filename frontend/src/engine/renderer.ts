@@ -152,11 +152,13 @@ export class Renderer {
       if (ov?.hidden) continue;
       const opacity = ov?.opacity ?? layer.opacity;
       if (opacity <= 0) continue;
+      // Fill: the pixels at opacity times fill; the effects (drawn from the layer's silhouette) at the opacity.
+      const pix = opacity * (layer.fill ?? 1);
       const t = ov?.transform ?? layer.transform;
       const folders = job.ignoreFolderMasks ? [] : this.folderMasks(map, layer);
       const own = this.maskOf(layer, ov, t);
       const base = layer.clipId ? map.get(layer.clipId) ?? null : null;
-      if (layer.adjustment) { this.adjust(job, ctx, layer, own, folders, base, map, clipCache, W, H, opacity); continue; }
+      if (layer.adjustment) { this.adjust(job, ctx, layer, own, folders, base, map, clipCache, W, H, pix); continue; }
       const src = ov?.source ?? layer.raster?.canvas;
       if (!src || !layer.raster) continue;
       const m = mul(job.view, placement(t, src.width, src.height));
@@ -168,7 +170,7 @@ export class Renderer {
       const parts = styled && !base && !folders.length && !ov?.source && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height) : null;
       if (parts) this.drawParts(ctx, parts, job.view, opacity, false);
       if (!own && !folders.length && !base && !pixelBlend && (!styled || parts)) {
-        this.draw(ctx, src, m, t.sampling, opacity, op, job.quality);
+        this.draw(ctx, src, m, t.sampling, pix, op, job.quality);
         if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
         continue;
       }
@@ -189,11 +191,11 @@ export class Renderer {
       }
       const placed = styled && !parts ? boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]) : null;
       if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'below');
-      if (pixelBlend) this.pixelBlend(ctx, a, mode, opacity, m, src, job.view, W, H);
+      if (pixelBlend) this.pixelBlend(ctx, a, mode, pix, m, src, job.view, W, H);
       else {
         ctx.save();
         ctx.setTransform(1, 0, 0, 1, 0, 0);
-        ctx.globalAlpha = opacity;
+        ctx.globalAlpha = pix;
         ctx.globalCompositeOperation = op;
         ctx.drawImage(a.s, 0, 0);
         ctx.restore();

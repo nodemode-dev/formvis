@@ -58,6 +58,9 @@ export interface Layer {
   parentId: ID | null;
   isGroup: boolean;
   opacity: number;
+  /** Fill (Photoshop's): the layer's own pixels at this share of its opacity, its layer styles at the full opacity;
+   *  absent is 1. On an adjustment layer it acts as opacity does. */
+  fill?: number;
   blend: BlendMode;
   mask: Mask | null;
   clipId: ID | null;

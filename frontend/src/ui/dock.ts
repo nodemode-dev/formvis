@@ -15,7 +15,8 @@ export const DOCK_PANELS: readonly DockPanel[] = [
 ];
 interface DockState { order: string[]; hidden: string[] }
 const KEY = 'sonny.dock';
-const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: [] };
+/** As the target's Essentials (and Photoshop's): Navigator, Swatches and Layers shown; Timeline and History in Window. */
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history'] };
 
 function load(): DockState {
   try {
@@ -24,7 +25,7 @@ function load(): DockState {
     const order = Array.isArray(r.order) ? r.order.filter((id): id is string => ids.includes(id as string)) : [];
     // A panel missing from a saved arrangement (one saved before it could move) takes its default place, not the end.
     for (const id of ids) if (!order.includes(id)) order.splice(Math.min(ids.indexOf(id), order.length), 0, id);
-    const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [];
+    const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT.hidden];
     return { order, hidden };
   } catch { return { ...DEFAULT, order: [...DEFAULT.order] }; }
 }
@@ -64,7 +65,7 @@ export class Dock {
   }
 
   /** Window > Reset Panels: the default order, every panel shown. */
-  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [] }; this.save(); }
+  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [...DEFAULT.hidden] }; this.save(); }
 
   /** A workspace's arrangement (Phase 21): the panels in this order, these hidden; ids not in the dock are ignored. */
   arrange(order: readonly string[], hidden: readonly string[]): void {

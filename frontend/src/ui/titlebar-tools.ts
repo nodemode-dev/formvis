@@ -9,7 +9,7 @@ import { enhanceSelect } from './dropdown';
  *  each workspace an arrangement of the panels for a kind of work; and Lock Workspace. */
 export interface Workspace { id: string; label: string; order: string[]; hidden: string[]; propsColumn: boolean }
 export const WORKSPACES: readonly Workspace[] = [
-  { id: 'essentials', label: 'Essentials', order: ['navigator', 'swatches', 'layers', 'timeline', 'history'], hidden: [], propsColumn: true },
+  { id: 'essentials', label: 'Essentials', order: ['navigator', 'swatches', 'layers', 'timeline', 'history'], hidden: ['timeline', 'history'], propsColumn: true },
   { id: 'photography', label: 'Photography', order: ['navigator', 'layers', 'history', 'swatches', 'timeline'], hidden: ['swatches', 'timeline'], propsColumn: true },
   { id: 'painting', label: 'Painting', order: ['swatches', 'navigator', 'layers', 'history', 'timeline'], hidden: ['timeline'], propsColumn: true },
   { id: 'graphic', label: 'Graphic and Web', order: ['layers', 'swatches', 'navigator', 'history', 'timeline'], hidden: ['navigator', 'timeline'], propsColumn: true },
