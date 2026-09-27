@@ -20,8 +20,14 @@ export type OptionSpec = (
   when?: () => boolean;
 };
 
+/** A mode of one tool listed as its own entry in the toolbar's flyout, as Photoshop lists its sub-tools (the Elliptical
+ *  Marquee, the Polygonal Lasso): its name and icon, whether it is the one in use, and how to pick it. */
+export interface ToolVariant { id: string; label: string; icon: string; active(): boolean; pick(): void }
+
 export interface Tool {
   id: ToolId;
+  /** The tool's modes as flyout entries (the owner's walkthrough: the marquee's ellipse, the lasso's kinds...). */
+  variants?(engine: Engine): readonly ToolVariant[];
   label: string;
   key: string;
   order: number;

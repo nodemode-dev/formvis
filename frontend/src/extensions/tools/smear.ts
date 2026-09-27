@@ -2,6 +2,10 @@ import type { Pt } from '../../engine';
 import type { Tool } from '../registry';
 import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
 
+/** The modes as Photoshop names them, each with its own icon in the toolbar and its flyout. */
+const SMEAR_ICONS: Record<string, string> = { blur: 'tBlur', sharpen: 'tSharpen', smudge: 'tSmudge', liquify: 'tLiquify' };
+const SMEAR_NAMES = { blur: 'Blur', sharpen: 'Sharpen', smudge: 'Smudge', liquify: 'Liquify Brush' } as const;
+
 let hover: Pt | null = null;
 const HINTS = {
   liquify: 'Drag to push pixels along with the brush, most at its center · Strength sets how far they move',
@@ -12,7 +16,8 @@ const HINTS = {
 
 export const smearTool: Tool = {
   id: 'smear', label: 'Smear', key: 'R', order: 65,
-  icon: (e) => (e.retouch.smearMode === 'blur' || e.retouch.smearMode === 'sharpen' ? 'tBlur' : 'tSmudge'),
+  icon: (e) => SMEAR_ICONS[e.retouch.smearMode] ?? 'tSmudge',
+  variants: (e) => (['blur', 'sharpen', 'smudge', 'liquify'] as const).map((m) => ({ id: m, label: SMEAR_NAMES[m], icon: SMEAR_ICONS[m], active: () => e.retouch.smearMode === m, pick: () => { e.retouch.smearMode = m; e.emit('options', null); } })),
   hint: (e) => `${HINTS[e.retouch.smearMode]} · [ ] size`,
   cursor: () => 'none',
   down(ctx, p) {

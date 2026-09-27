@@ -7,6 +7,10 @@ let hoverPt: Pt | null = null;
 export const brushTool: Tool = {
   id: 'brush', label: 'Brush', key: 'B', order: 50,
   icon: (e) => (e.brushMode === 'erase' ? 'tEraser' : 'tBrush'),
+  variants: (e) => [
+    { id: 'paint', label: 'Brush', icon: 'tBrush', active: () => e.brushMode !== 'erase', pick: () => e.setBrushMode('paint') },
+    { id: 'erase', label: 'Eraser', icon: 'tEraser', active: () => e.brushMode === 'erase', pick: () => e.setBrushMode('erase') },
+  ],
   hint: (e) => `${e.brushMode === 'erase' ? 'Drag to erase' : 'Drag to paint'} · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans`,
   cursor: () => 'none',
   down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose); } },

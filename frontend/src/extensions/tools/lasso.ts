@@ -29,6 +29,10 @@ function commit(ctx: ToolContext): void {
 export const lassoTool: Tool = {
   id: 'lasso', label: 'Lasso', key: 'L', order: 30,
   icon: (e) => (e.lassoKind === 'polygonal' ? 'tPolyLasso' : 'tLasso'),
+  variants: (e) => [
+    { id: 'freehand', label: 'Lasso', icon: 'tLasso', active: () => e.lassoKind !== 'polygonal', pick: () => e.update({ lassoKind: 'freehand' }) },
+    { id: 'polygonal', label: 'Polygonal Lasso', icon: 'tPolyLasso', active: () => e.lassoKind === 'polygonal', pick: () => e.update({ lassoKind: 'polygonal' }) },
+  ],
   hint: (e) => (e.lassoKind === 'polygonal'
     ? 'Click corners · Click the start, double-click or press Enter to close · Backspace removes the last corner · Escape cancels · Shift+L switches mode'
     : 'Drag around an area · Shift adds · Alt subtracts · Shift+L switches to polygonal'),

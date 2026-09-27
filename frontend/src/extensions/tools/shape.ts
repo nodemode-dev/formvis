@@ -7,11 +7,15 @@ let draft: { anchor: Pt; point: Pt; shiftAtPress: boolean; altAtPress: boolean; 
 
 const NOUN: Record<string, string> = { rectangle: 'a rectangle', ellipse: 'an ellipse', polygon: 'a polygon', star: 'a star', heart: 'a heart', line: 'a line', arrow: 'an arrow', custom: 'a custom shape' };
 const KINDS = ['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'heart', 'custom'] as const;
+/** Each kind as a flyout entry with its own icon, named as Photoshop's shape tools. */
+const SHAPE_ICONS: Record<string, string> = { rectangle: 'tRect', ellipse: 'tEllipseShape', polygon: 'tPolygon', star: 'tStar', line: 'tLine', arrow: 'tArrow', heart: 'tHeart', custom: 'tCustomShape' };
+const SHAPE_NAMES: Record<(typeof KINDS)[number], string> = { rectangle: 'Rectangle', ellipse: 'Ellipse', polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', custom: 'Custom Shape' };
 const lineLike = (k: string): boolean => k === 'line' || k === 'arrow';
 
 export const shapeTool: Tool = {
   id: 'shape', label: 'Shape', key: 'U', order: 75,
-  icon: (e) => (e.shapeSettings.kind === 'ellipse' || e.shapeSettings.kind === 'heart' ? 'tEllipseShape' : 'tRect'),
+  icon: (e) => SHAPE_ICONS[e.shapeSettings.kind] ?? 'tRect',
+  variants: (e) => KINDS.map((k) => ({ id: k, label: SHAPE_NAMES[k], icon: SHAPE_ICONS[k], active: () => e.shapeSettings.kind === k, pick: () => { e.shapeSettings.kind = k; e.emit('options', null); } })),
   hint: (e) => lineLike(e.shapeSettings.kind)
     ? `Drag to draw ${NOUN[e.shapeSettings.kind]} in the foreground color on a new shape layer · Shift after starting snaps to 45 degrees · Shift+U switches shape`
     : `Drag to draw ${NOUN[e.shapeSettings.kind]} in the foreground color on a new shape layer · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape`,
