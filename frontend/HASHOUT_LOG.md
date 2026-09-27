@@ -2,6 +2,83 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Panels reworked · _v1.49.2 (ui/layers.ts, ui/panel-group.ts, ui/dock.ts, ui/channels.ts, ui/icons.ts, app.ts; styles)
+
+`LayersPanel` builds a `PanelGroup` (layers-panel; the page `.cv-layers-page`; `adoptPaths`, `adoptChannels` through `addTab`; `showTab` finds the group holding the tab); `PanelGroup.addTab`, `has`, `size`, `labelOf`, `remove`, `onDetach`, `onGapHint`, the grip; `Dock.gapAt`, `showGap`, `hideGap`, `insertPanel`, `removePanel`, `registerPanel`, `unregisterPanel`, the ghost and labelled marker; groups made by detaching (sonny.customGroups). Removed from frontend:
+
+```text
+import { ALL_PANELS, Dock } from './ui/dock';
+const TAB_HOMES: Record<string, string> = { navigator: 'navigator', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
+  PanelGroup.onMoved = () => { dock.refresh(); props.relayout(); };
+      dock.reset(); PanelGroup.resetHomes(TAB_HOMES); PanelGroup.resetStates(); layers.showTab('layers');
+.cv-layers-panel { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+.cv-layers-panel.is-paths-tab, .cv-layers-panel.is-channels-tab { grid-template-rows: auto minmax(0, 1fr); }
+.cv-layers-panel.is-paths-tab > .cv-layer-props, .cv-layers-panel.is-paths-tab > .cv-layer-list, .cv-layers-panel.is-paths-tab > .cv-panel-foot,
+.cv-layers-panel.is-channels-tab > .cv-layer-props, .cv-layers-panel.is-channels-tab > .cv-layer-list, .cv-layers-panel.is-channels-tab > .cv-panel-foot { display: none; }
+.cv-layers-panel .cv-paths[hidden] { display: none; }
+.cv-layers-panel .cv-paths { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.cv-layers-panel .cv-paths > .cv-panel-head { height: 34px; background: transparent; }
+.cv-layers-panel .cv-paths-toggle { display: none; }
+.cv-layers-panel { grid-template-columns: minmax(0, 1fr); }
+    if (this.root.hidden || this.timer) return;
+export const ALL_PANELS: readonly DockPanel[] = [...DOCK_PANELS, ...SIDE_PANELS];
+    // The column under the pointer: the side column's when over it (and open), else the dock's.
+    const col: 'dock' | 'side' = sr && e.clientX >= sr.left && e.clientX <= sr.right ? 'side' : 'dock';
+    const ids = (col === 'side' ? this.state.side : this.dockIds()).filter((id) => this.present(id));
+    const shown = ids.map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
+    let best = 0, bestDist = Infinity, y = box.top + 2;
+    for (let i = 0; i <= shown.length; i++) {
+      if (!shown.length) break;
+      const dist = Math.abs(e.clientY - gap);
+      if (dist < bestDist) { bestDist = dist; best = i; y = gap; }
+    d.target = best;
+    d.col = col;
+    if (this.marker.parentElement !== host) host.appendChild(this.marker);
+    this.marker.style.top = `${Math.round(y - box.top + host.scrollTop - 1)}px`;
+/** The group's tab as last left (remembered with the other groups). */
+function savedTab(): LayersTab {
+  try { const t = (JSON.parse(localStorage.getItem('sonny.groups') ?? '{}') as Record<string, { tab?: string }>).layers?.tab; return t === 'paths' || t === 'channels' ? t : 'layers'; } catch { return 'layers'; }
+}
+      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="channels">Channels</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-group-more cv-layers-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu">${icon('more3', 16)}</button></div>` +
+      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></section>`);
+    for (const t of root.querySelectorAll<HTMLButtonElement>('.cv-layers-panel .cv-group-tab')) t.addEventListener('click', () => this.showTab(t.dataset.tab as LayersTab));
+    // The panel menu, by tab: the Layers panel's commands, or the Paths panel's.
+    const more = q<HTMLButtonElement>(root, '.cv-layers-more');
+    more.addEventListener('click', () => {
+      const panel = this.rows.closest('.cv-layers-panel') as HTMLElement;
+      const ids = panel.classList.contains('is-paths-tab') ? ['new-path', 'delete-path', '-', 'fill-path-dialog', 'stroke-path-dialog'] : panel.classList.contains('is-channels-tab') ? [] : ['new-layer', 'duplicate-dialog', 'delete-layer', '-', 'new-folder', 'group', '-', 'merge', '-', 'layer-style', 'convert-smart', 'rasterize'];
+      if (ids.length) PanelGroup.menuHost?.(more, ids);
+    });
+    for (const b of this.rows.closest('.cv-layers-panel')?.querySelectorAll<HTMLButtonElement>('.cv-lock-btn') ?? []) {
+    for (const b of this.rows.closest('.cv-layers-panel')?.querySelectorAll<HTMLButtonElement>('.cv-kind-btn') ?? []) {
+  /** The Paths panel's section becomes this group's Paths tab, as the target's Layers group (Layers | Paths). */
+    const panel = this.rows.closest('.cv-layers-panel') as HTMLElement;
+    panel.appendChild(section);
+    this.showTab(savedTab(), false);
+  /** The Channels tab (Phase 21): its panel shown in this group, as Paths is. */
+    (this.rows.closest('.cv-layers-panel') as HTMLElement).appendChild(panel.root);
+    this.showTab(savedTab(), false);
+  showTab(tab: LayersTab, remember = true): void {
+    const panel = this.rows.closest('.cv-layers-panel') as HTMLElement;
+    panel.classList.toggle('is-paths-tab', tab === 'paths');
+    panel.classList.toggle('is-channels-tab', tab === 'channels');
+    this.channels?.setVisible(tab === 'channels');
+    for (const t of panel.querySelectorAll<HTMLButtonElement>(':scope > .cv-panel-head .cv-group-tab')) {
+      const on = t.dataset.tab === tab;
+      t.classList.toggle('is-active', on);
+      t.setAttribute('aria-selected', String(on));
+    }
+    if (this.paths) setHidden(this.paths, tab !== 'paths');
+    if (remember) {
+      try { const s = JSON.parse(localStorage.getItem('sonny.groups') ?? '{}'); s.layers = { ...s.layers, tab }; localStorage.setItem('sonny.groups', JSON.stringify(s)); } catch { /* this session only */ }
+    }
+    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><div class="cv-group-tabs" role="tablist"></div><span></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
+    this.show(saved.tab && this.tabs.has(saved.tab) ? saved.tab : list[0].id, false);
+    const up = (): void => {
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Fixes from the owner's walkthrough of 1.49.0 · _v1.49.1 (ui/icons.ts, ui/app-dialogs.ts, ui/panel-group.ts, ui/properties.ts, app.ts; styles)
 
 `tStamp`, `tHistoryBrush`, `tEyedropper` redrawn; `NewCanvasDialog` previews by aspect ratio, Color Mode and bit depth enabled; `PanelGroup.resetStates`; `PropertiesColumn.resetLayout`; Reset Panels restores the whole layout; denser glass. Removed from frontend:

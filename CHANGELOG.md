@@ -2,6 +2,19 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.2 · 2026-09-27
+
+### Changed: panels, from your walkthrough of 1.49.0
+
+- Every panel groups with every other: the Layers group (Layers, Channels, Paths) is now built like the rest, so its tabs move out and any tab moves in.
+- A tab dragged into empty space in either column, or between two groups, becomes its own group there; such groups are remembered, go away when emptied, and Reset Panels returns their tabs home.
+- Moving is plain: a grip on every header; a ghost of what you drag; a bold marker saying what a release does (Move here, New group); a header saying Add as tab. Drag a tab to move the tab; drag a header's empty part or its grip to move the group.
+
+### Next
+
+- 1.49.3: paths (Path and Direct Selection, Stroke Path and Fill Path options).
+- 1.49.4: Magnetic Lasso and the other selection tools.
+
 ## 1.49.1 · 2026-09-27
 
 ### Fixed: from your walkthrough of 1.49.0
