@@ -1,4 +1,5 @@
 import { createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type Engine, type Pt, type Rect, type Surface } from '../engine';
+import type { Project } from '../engine/project';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
 import { isMac, q, setHidden } from './dom';
 import { paint, type StagePaint } from './palette';
@@ -328,6 +329,28 @@ export class Stage {
     }
   }
 
+  private tint: { key: unknown; canvas: HTMLCanvasElement } | null = null;
+  /** The Quick Mask tint: red at half strength less the selection's coverage (or the live stroke's), cached by source. */
+  private quickTint(p: Project): HTMLCanvasElement | null {
+    const live = this.engine.quickMaskLive, sel = p.selection;
+    if (!live && !sel) return null;   // nothing selected yet: all is, so no tint
+    const key = live ? null : sel;
+    if (key && this.tint?.key === key) return this.tint.canvas;
+    const W = p.doc.width, H = p.doc.height, prev = this.tint?.canvas ?? null;
+    const c = prev && prev.width === W && prev.height === H ? prev : document.createElement('canvas');
+    c.width = W; c.height = H;
+    const t = c.getContext('2d') as CanvasRenderingContext2D;
+    t.globalCompositeOperation = 'source-over';
+    t.fillStyle = 'rgba(255, 0, 0, 0.5)';
+    t.fillRect(0, 0, W, H);
+    t.globalCompositeOperation = 'destination-out';
+    if (live) t.drawImage(live as CanvasImageSource, 0, 0);
+    else if (sel) { const m = new ImageData(sel.w, sel.h); for (let i = 0; i < sel.data.length; i++) m.data[i * 4 + 3] = sel.data[i]; const tmp = document.createElement('canvas'); tmp.width = sel.w; tmp.height = sel.h; (tmp.getContext('2d') as CanvasRenderingContext2D).putImageData(m, 0, 0); t.drawImage(tmp, sel.x, sel.y); }
+    t.globalCompositeOperation = 'source-over';
+    this.tint = { key, canvas: c };
+    return c;
+  }
+
   private renderOverlay(): void {
     this.wantOverlay = false;
     const g = this.octx;
@@ -339,7 +362,11 @@ export class Stage {
     const pal = paint();
     const v = p.viewport;
     const sel = p.selection, fl = sel ? null : this.engine.floatingOutline(p);
-    if (sel || fl) {
+    if (this.engine.quickMask) {
+      // Quick Mask: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.
+      const src = this.quickTint(p);
+      if (src) { const d = this.dpr; g.setTransform(v.zoom * d, 0, 0, v.zoom * d, v.panX * d, v.panY * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(src, 0, 0); g.setTransform(1, 0, 0, 1, 0, 0); }
+    } else if (sel || fl) {
       const shift = this.engine.outlineShift(p);
       const d = this.dpr;
       const view = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + (shift?.dy ?? 0) * v.zoom) * d]);

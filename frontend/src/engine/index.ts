@@ -188,7 +188,43 @@ export class Engine {
   private viewSize = { w: 800, h: 600 };
   private readonly display = new Renderer();
   private readonly work = new Renderer();
-  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt } | null = null;
+  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt; quick?: Raster } | null = null;
+
+  /** Quick Mask (Q), as Photoshop's: the Brush and Eraser paint the selection itself, white adding to it and black
+   *  taking away (the Eraser the other way), shown as a red tint where nothing is selected. Each stroke becomes the new
+   *  selection in its own history step, so undo gives back the one before. No selection means all is selected, as
+   *  Photoshop's, so painting black begins one. */
+  quickMask = false;
+  toggleQuickMask(): void {
+    if (this.stroke || !this.current) return;
+    this.quickMask = !this.quickMask;
+    this.emit('options', null);
+    this.emit('selection', null);
+  }
+  /** The Quick Mask stroke in progress (the selection as painted so far), for the tint to follow it live. */
+  get quickMaskLive(): Surface | null { return this.stroke?.quick ? this.stroke.s.working : null; }
+
+  private beginQuickMaskStroke(p: Project, pt: Pt, pressure: number, pose: PenPose): boolean {
+    const { width: W, height: H } = p.doc, sel = p.selection, r = new Raster(W, H);
+    p.history.begin('Quick Mask', p.snapshot());
+    const img = new ImageData(W, H), d = img.data;
+    if (!sel) d.fill(255);
+    else for (let y = 0; y < sel.h; y++) {
+      const Y = sel.y + y;
+      if (Y < 0 || Y >= H) continue;
+      for (let x = 0; x < sel.w; x++) { const X = sel.x + x; if (X < 0 || X >= W) continue; const i = (Y * W + X) * 4; d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = sel.data[y * sel.w + x]; }
+    }
+    ctxOf(r.canvas).putImageData(img, 0, 0);
+    const white = luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
+    const s = new PixelStroke(r, [1, 0, 0, 1, 0, 0], { ...this.brush, color: { r: 255, g: 255, b: 255 }, flow: this.brushFlow }, white ? 'source-over' : 'destination-out', null);
+    s.dynamics = structuredClone(this.brushDynamics);
+    s.setShape(this.brushShape, null);
+    this.stroke = { project: p, layerId: p.activeId ?? '', target: 'pixels', s, quick: r };
+    s.to(pt, pressure, pose);
+    s.compose();
+    this.emit('selection', null);
+    return true;
+  }
   private lastBrush: { layerId: ID; target: Target; p: Pt } | null = null;
   private opacityOpen: Project | null = null;
   private swipeOpen: Project | null = null;
@@ -2375,6 +2411,7 @@ export class Engine {
     const p = this.current;
     if (!p || this.stroke) return false;
     this.settle();
+    if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to paint on.'); return false; }
     if (this.smartLocked(p)) return false;
     p.history.begin(this.brushMode === 'erase' ? 'Eraser' : 'Brush', p.snapshot());
@@ -2408,6 +2445,7 @@ export class Engine {
     st.s.to(pt, pressure, pose);
     const f = st.s.compose();
     if (!f) return;
+    if (st.quick) { this.emit('selection', null); return; }   // Quick Mask: the tint follows the stroke; no layer repaints
     const l = st.project.layer(st.layerId), r = st.target === 'mask' ? l?.mask?.raster : l?.raster;
     const t = st.target === 'mask' ? l?.mask?.placement ?? l?.transform : l?.transform;
     // Styled layers' effects are cached at document resolution, so a region repaint shows them whole; the layer being
@@ -2422,6 +2460,18 @@ export class Engine {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
+    if (st.quick) {
+      // Quick Mask: the painted coverage is the new selection, in this stroke's history step (the raster was temporary).
+      st.s.commit();
+      const W = st.quick.width, H = st.quick.height, d = ctxOf(st.quick.canvas).getImageData(0, 0, W, H).data, a = new Uint8Array(W * H);
+      for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
+      st.project.selection = SelectionMask.cropped(0, 0, W, H, a);
+      st.project.history.end(st.project.snapshot());
+      st.s.release();
+      this.emit('selection', null);
+      this.refresh();
+      return;
+    }
     const patch = st.heal === 'remove' ? this.removePatch(st.s) : st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });

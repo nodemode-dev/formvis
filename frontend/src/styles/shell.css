@@ -278,3 +278,24 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-tool .icon { width: 20px !important; height: 20px !important; }
 .cv-tool svg { stroke-width: 1.75; }
 .cv-tool { width: 34px; height: 28px; }
+
+/* The rail's extras (the target's): the » toggle at its top, Quick Mask and Screen Mode below the colours; two columns. */
+.cv-rail-toggle { display: grid; place-items: center; width: 30px; height: 20px; margin: 0 auto 2px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.cv-rail-toggle:hover { color: var(--text-primary); background: var(--surface-raised); }
+.cv-rail.is-double .cv-rail-toggle .icon { transform: rotate(180deg); }
+.cv-rail-modes { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 0 4px; }
+.cv-mode-btn.is-on { color: var(--accent-ink); background: var(--accent-soft); }
+.cv-rail.is-double { --cv-rail-w: 84px; }
+.cv-app:has(.cv-rail.is-double) { --cv-rail-w: 84px; }
+.cv-rail.is-double .cv-rail-tools { display: grid; grid-template-columns: 1fr 1fr; justify-items: center; }
+.cv-rail.is-double .cv-rail-sep { grid-column: 1 / -1; }
+/* Screen modes and hidden panels (Photoshop's F and Tab). */
+.cv-app.is-panels-hidden .cv-rail, .cv-app.is-panels-hidden .cv-options, .cv-app.is-panels-hidden .cv-props-col,
+.cv-app.is-panels-hidden .cv-resizer, .cv-app.is-panels-hidden .cv-layers { display: none !important; }
+.cv-app.is-panels-hidden .cv-main { grid-template-columns: 0 minmax(0, 1fr) 0 0 0 !important; grid-template-rows: 0 minmax(0, 1fr) !important; }
+.cv-app.is-screen-menu .cv-doc-tabs, .cv-app.is-screen-full .cv-doc-tabs { display: none; }
+.cv-app.is-screen-menu, .cv-app.is-screen-full { --cv-status-h: 0px; }
+.cv-app.is-screen-menu .cv-status, .cv-app.is-screen-full .cv-status { display: none; }
+.cv-app.is-screen-full { --cv-titlebar-h: 0px; }
+.cv-app.is-screen-full .cv-titlebar { display: none; }
+.cv-app.is-screen-full .cv-stage { background: #000; }
