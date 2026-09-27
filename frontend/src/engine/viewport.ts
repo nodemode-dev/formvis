@@ -10,6 +10,11 @@ export class Viewport {
   width = 800;
   height = 600;
   fitted = true;
+  /** The width the open side column covers at the view's right (it lies over the canvas, the owner's walkthrough):
+   *  fitting and centring use only the visible part. Shared by every document's view; set by the app. */
+  static insetRight = 0;
+  /** The visible part's centre. */
+  get centerX(): number { return (this.width - Viewport.insetRight) / 2; }
 
   get matrix(): Mat { return [this.zoom, 0, 0, this.zoom, this.panX, this.panY]; }
   toDoc(sx: number, sy: number): Pt { return { x: (sx - this.panX) / this.zoom, y: (sy - this.panY) / this.zoom }; }
@@ -23,9 +28,10 @@ export class Viewport {
   }
 
   fit(dw: number, dh: number, margin = 32): void {
-    const z = Math.min((this.width - margin * 2) / dw, (this.height - margin * 2) / dh);
+    const w = this.width - Viewport.insetRight;
+    const z = Math.min((w - margin * 2) / dw, (this.height - margin * 2) / dh);
     this.zoom = clamp(Number.isFinite(z) && z > 0 ? z : Viewport.MIN, Viewport.MIN, Viewport.MAX);
-    this.panX = Math.round((this.width - dw * this.zoom) / 2);
+    this.panX = Math.round((w - dw * this.zoom) / 2);
     this.panY = Math.round((this.height - dh * this.zoom) / 2);
     this.fitted = true;
   }

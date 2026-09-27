@@ -65,6 +65,10 @@ export class PropertiesColumn {
    *  the strip (the group's own element moved there and back, so its tab, values and scroll are kept). Remembered. */
   static readonly COLLAPSED_KEY = 'sonny.propsColCollapsed';
   static collapsed(): boolean { try { return localStorage.getItem(PropertiesColumn.COLLAPSED_KEY) === '1'; } catch { return false; } }
+  /** As shown now: the saved choice, or the strip while the window is too narrow for the canvas beside the open column. */
+  static showingCollapsed = false;
+  /** Below this much canvas beside the open column, the column shows as its strip until the window widens again. */
+  static readonly MIN_CANVAS = 420;
   private collapsible(): void {
     const host = this.root, groups = Array.from(host.querySelectorAll<HTMLElement>(':scope > .cv-group'));
     const strip = el(`<div class="cv-props-strip"><button class="cv-strip-btn cv-strip-expand" type="button" title="Expand panels" aria-label="Expand panels">${icon('collapseLeft', 16)}</button></div>`);
@@ -102,18 +106,32 @@ export class PropertiesColumn {
     host.prepend(strip);
     document.addEventListener('pointerdown', (e) => { if (open && !fly.contains(e.target as Node) && !strip.contains(e.target as Node)) closeFly(); }, true);
     document.addEventListener('keydown', (e) => { if (open && e.key === 'Escape') closeFly(); });
+    // The choice is saved; what shows also depends on room: too narrow a window shows the strip, the choice kept.
+    let narrow = false;
+    const show = (): void => {
+      const on = PropertiesColumn.collapsed() || narrow;
+      if (on !== PropertiesColumn.showingCollapsed || host.classList.contains('is-collapsed') !== on) { closeFly(); host.classList.toggle('is-collapsed', on); PropertiesColumn.showingCollapsed = on; this.onLayout(); }
+    };
+    const measure = (): void => {
+      const col = host.parentElement?.querySelector<HTMLElement>(':scope > .cv-stage-col');
+      const openW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cv-props-open-w')) || 284;
+      narrow = !!col && col.clientWidth - (openW - 46) < PropertiesColumn.MIN_CANVAS;
+      show();
+    };
+    window.addEventListener('resize', measure);
+    requestAnimationFrame(measure);
     const set = (on: boolean): void => {
-      closeFly();
-      host.classList.toggle('is-collapsed', on);
       try { localStorage.setItem(PropertiesColumn.COLLAPSED_KEY, on ? '1' : '0'); } catch { /* this session only */ }
-      this.onLayout();
+      if (!on) narrow = false;   // expanding by hand is honoured, narrow or not
+      show();
     };
     (strip.querySelector('.cv-strip-expand') as HTMLElement).addEventListener('click', () => set(false));
     const head = groups[0]?.querySelector('.cv-group-head'), min = head?.querySelector('.cv-group-min');
     const collapse = el<HTMLButtonElement>(`<button class="cv-group-collapse" type="button" title="Collapse to icons" aria-label="Collapse to icons">${icon('collapseRight', 14)}</button>`);
     collapse.addEventListener('click', () => set(true));
     if (min) min.after(collapse); else head?.appendChild(collapse);
-    host.classList.toggle('is-collapsed', PropertiesColumn.collapsed());
+    PropertiesColumn.showingCollapsed = PropertiesColumn.collapsed();
+    host.classList.toggle('is-collapsed', PropertiesColumn.showingCollapsed);
   }
 
   private properties(): void {

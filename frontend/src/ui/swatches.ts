@@ -42,8 +42,11 @@ export class SwatchesPanel {
     this.grid = swatches.querySelector('.cv-swatch-grid') as HTMLElement;
     const hint = swatches.querySelector('.cv-swatch-hint') as HTMLElement;
     hint.innerHTML = `${icon('plus', 12)}<span>Alt-click sets the background. Right-click removes.</span>`;
+    hint.title = 'Click sets the foreground, Alt-click the background; right-click removes a swatch; + adds the foreground.';
     const color = el('<div class="cv-color-page"><canvas class="cv-color-sv" aria-label="Saturation and brightness"></canvas><canvas class="cv-color-hue" aria-label="Hue"></canvas></div>');
     this.sv = color.querySelector('.cv-color-sv') as HTMLCanvasElement;
+    // Repainted whenever it gains a size: shown while minimised or before layout, it used to stay blank.
+    new ResizeObserver(() => { if (this.sv.clientWidth) this.paintColor(); }).observe(this.sv);
     this.hue = color.querySelector('.cv-color-hue') as HTMLCanvasElement;
     this.group = new PanelGroup(host, 'swatches', [{ id: 'swatches', label: 'Swatches', body: swatches }, { id: 'color', label: 'Color', body: color }], 'Swatches and Color');
     this.group.onTab = () => requestAnimationFrame(() => this.paintColor());

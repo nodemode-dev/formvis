@@ -40,7 +40,7 @@ export class NavigatorPanel {
       const p = engine.current, r = this.canvas.getBoundingClientRect();
       if (!p) return;
       const x = (e.clientX - r.left - this.place.ox) / this.place.s, y = (e.clientY - r.top - this.place.oy) / this.place.s, v = p.viewport;
-      engine.pan(v.width / 2 - x * v.zoom - v.panX, v.height / 2 - y * v.zoom - v.panY);
+      engine.pan(v.centerX - x * v.zoom - v.panX, v.height / 2 - y * v.zoom - v.panY);
     };
     this.canvas.addEventListener('pointerdown', (e) => { dragging = true; this.canvas.setPointerCapture(e.pointerId); move(e); });
     this.canvas.addEventListener('pointermove', (e) => { if (dragging) move(e); });

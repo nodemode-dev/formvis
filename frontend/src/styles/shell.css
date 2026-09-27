@@ -260,3 +260,17 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-opt-icon:hover { background: var(--surface-raised); color: var(--text-primary); }
 .cv-opt-sep { display: inline-block; width: 1px; height: 20px; margin: 0 6px; background: var(--line-2); vertical-align: middle; }
 .cv-resizer.is-inert { visibility: hidden; pointer-events: none; }
+
+/* The columns reach the title bar (the owner's screenshots of the gap): the options bar spans only the rail and the
+   canvas, in the main grid's first row; the side column, its resizer and the dock span both rows. */
+.cv-app { grid-template-rows: var(--cv-titlebar-h) minmax(0, 1fr) var(--cv-status-h); }
+.cv-main {
+  grid-template-rows: var(--cv-options-h) minmax(0, 1fr);
+  grid-template-areas: "opts opts props rsz dock" "rail stage props rsz dock";
+}
+.cv-main > .cv-options { grid-area: opts; min-width: 0; }
+.cv-main > .cv-rail { grid-area: rail; }
+.cv-main > .cv-stage-col { grid-area: stage; }
+.cv-main > .cv-props-col { grid-area: props; }
+.cv-main > .cv-resizer { grid-area: rsz; }
+.cv-main > .cv-layers { grid-area: dock; }

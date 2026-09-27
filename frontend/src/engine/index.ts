@@ -555,7 +555,7 @@ export class Engine {
   zoomTo(z: number, at?: Pt): void {
     const v = this.current?.viewport;
     if (!v) return;
-    const a = at ?? { x: v.width / 2, y: v.height / 2 };
+    const a = at ?? { x: v.centerX, y: v.height / 2 };
     v.zoomAt(z, a.x, a.y);
     this.emit('viewport', null);
     this.emit('render', null);

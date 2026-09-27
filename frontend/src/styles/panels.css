@@ -360,3 +360,26 @@
 .cv-layers.is-collapsed > .cv-dock-strip { display: flex; }
 .cv-dock-fly { width: 288px; }
 .cv-dock-fly > section { display: flex !important; flex-direction: column; max-height: calc(100vh - 40px); }
+
+/* The side column over the canvas, not beside it (the owner's walkthrough): its track is the strip's 46 px; expanded,
+   it widens leftward over the canvas, above it, so collapsing or expanding never resizes the canvas. */
+.cv-props-col { --cv-props-open-w: 284px; }
+.cv-props-col:not(.is-collapsed) {
+  justify-self: end; width: var(--cv-props-open-w); position: relative; z-index: 4;
+  box-shadow: -16px 0 36px rgba(0, 0, 0, 0.32); border-left: 1px solid var(--line-0);
+}
+
+/* Overlap and overflow (the owner's walkthrough): the Layers panel keeps room for its controls and rows, and a dock with
+   more open than fits scrolls (its scrollbar hidden) instead of stacking panels over each other; the swatch hint on
+   one line; toasts over the canvas, bottom centre, never over the panels. */
+.cv-layers { overflow-y: auto; overflow-x: hidden; }
+.cv-layers > .cv-layers-panel { min-height: 230px; flex-shrink: 0; flex-grow: 1; }
+.cv-layers > section { min-width: 0; }
+.cv-layers > section:not(.cv-layers-panel):not(.is-sized) { overflow: hidden; }
+.cv-swatch-hint { white-space: nowrap; min-width: 0; }
+.cv-swatch-hint span { overflow: hidden; text-overflow: ellipsis; }
+#toast-root { right: auto !important; left: 50%; transform: translateX(-50%); align-items: center; }
+/* The options bar ends at the open column's edge, so no control lies hidden under it. */
+:root { --cv-props-open-w: 284px; }
+/* (A window too narrow for this shows the column as its strip: PropertiesColumn.MIN_CANVAS.) */
+.cv-main:has(> .cv-props-col:not(.is-collapsed):not([hidden])) > .cv-options { margin-right: calc(var(--cv-props-open-w) - 46px); }

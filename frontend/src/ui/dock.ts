@@ -56,6 +56,8 @@ export class Dock {
       // A drag ends with a click on the header; it must not also fold or unfold the panel.
       head.addEventListener('click', (e) => { if (this.suppressClick) { e.stopPropagation(); e.preventDefault(); this.suppressClick = false; } }, true);
     }
+    // A release anywhere ends a drag begun on a header (released off the header, it used to stay armed).
+    window.addEventListener('pointerup', () => { if (this.drag) this.drop(); });
     this.apply();
   }
 
@@ -225,6 +227,8 @@ export class Dock {
   private move(e: PointerEvent): void {
     const d = this.drag;
     if (!d) return;
+    // A drag whose button was let go elsewhere is over: hovering a header must not revive it (the stray marker).
+    if ((e.buttons & 1) === 0) { this.drag = null; setHidden(this.marker, true); return; }
     if (!d.moving && Math.abs(e.clientY - d.startY) < 5) return;
     if (!d.moving) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     d.moving = true;

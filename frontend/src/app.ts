@@ -60,6 +60,7 @@ import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
 import { PropertiesColumn } from './ui/properties';
 import { TitleTools } from './ui/titlebar-tools';
+import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
 import { PanelGroup } from './ui/panel-group';
 import { ChannelsPanel } from './ui/channels';
@@ -117,8 +118,8 @@ const SHELL = `<div class="cv-app">
 <button class="cv-icon-btn" type="button" data-cmd="settings">${icon('settings', 16)}</button>
 </div>
 </header>
-<div class="cv-options"></div>
 <div class="cv-main">
+<div class="cv-options"></div>
 <aside class="cv-rail" aria-label="Tools"><div class="cv-rail-tools"></div><div class="cv-colors"></div></aside>
 <div class="cv-stage-col">
 <div class="cv-doc-tabs"><div class="cv-tabs"><div class="cv-tab-strip" role="tablist"></div><button class="cv-icon-btn" type="button" data-cmd="new">${icon('add', 16)}</button></div></div>
@@ -185,7 +186,7 @@ export function startApp(): void {
   // The Properties column (Phase 21), shown unless hidden from Window > Properties Column (remembered).
   new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); }, () => syncPropsCol());
   const propsShown = (): boolean => stored('sonny.propsCol') !== 'hidden';
-  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !propsShown()); setStyleVar(root, '--cv-props-w', propsShown() ? (PropertiesColumn.collapsed() ? '46px' : '284px') : '0px'); };
+  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !propsShown()); setStyleVar(root, '--cv-props-w', propsShown() ? '46px' : '0px'); Viewport.insetRight = propsShown() && !PropertiesColumn.showingCollapsed ? 284 - 46 : 0; };   // the strip's track only: expanded, the column lies over the canvas (the owner's walkthrough), and fitting leaves it out
   syncPropsCol();
   new NavigatorPanel(q(root, '.cv-layers'), engine);
   const swatches = new SwatchesPanel(q(root, '.cv-layers'), engine);

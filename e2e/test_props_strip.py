@@ -5,8 +5,10 @@ def test_the_column_collapses_to_icons_opens_a_flyout_and_expands(page):
     try:
         page.evaluate("window.sonny.engine.newDocument(300, 200, 'S', 'white')")
         assert page.evaluate(WIDTH) == 284
+        stage = page.evaluate("Math.round(document.querySelector('.cv-stage').getBoundingClientRect().width)")
         page.locator(".cv-props-col .cv-group-collapse").click()
         page.wait_for_function(f"{WIDTH} === 46")
+        assert page.evaluate("Math.round(document.querySelector('.cv-stage').getBoundingClientRect().width)") == stage   # the canvas does not move
         assert page.locator(".cv-props-strip").is_visible() and not page.locator(".cv-props-col > .cv-brushes").is_visible()
         page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
         page.evaluate("window.sonny.engine.newDocument(300, 200, 'S2', 'white')")
