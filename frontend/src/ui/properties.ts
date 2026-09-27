@@ -5,6 +5,8 @@ import { el, setHidden, setText } from './dom';
 import { fontFamilies } from './fonts';
 import { icon } from './icons';
 import { PanelGroup } from './panel-group';
+import { allBrushPresets, importedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
+import { importAbr } from '../io/brush-library';
 
 /** The Properties column (Phase 21, UI_SPEC.md sections 5 and 6, the target's s20): Properties (the active layer's
  *  placement: W, X, H, Y, with a link that keeps the aspect), Brushes (the tip, Size and Hardness, a stroke preview, and
@@ -94,31 +96,114 @@ export class PropertiesColumn {
     });
   }
 
+  /** Brushes as the target's (s20): the tip and Size and Hardness; a search and a grid or list of the presets in
+   *  folders (sonny's own, and those loaded from .abr files), each drawn with its size, the chosen one marked; the stroke
+   *  preview; Load... (Photoshop .abr brushes) and Brush Settings. A Brush Settings tab holds the tip's spacing, angle
+   *  and roundness, the units of the full dialog. */
   private brushes(run: (cmd: string) => void): void {
     const e = this.engine;
     const body = el(`<div class="cv-brushes">
       <div class="cv-brush-top"><canvas class="cv-brush-tip" aria-label="Brush tip"></canvas><div class="cv-brush-sliders"></div></div>
-      <div class="cv-brush-stroke-head"><span>Stroke preview</span></div><canvas class="cv-brush-stroke" aria-label="Stroke preview"></canvas>
-      <div class="cv-brush-actions"><button class="cv-btn" type="button" data-run="brush-settings">${icon('sliders', 14)}<span>Brush Settings</span></button></div>
+      <div class="cv-brush-find"><label class="cv-brush-search">${icon('search', 14)}<input type="search" placeholder="Search brushes" aria-label="Search brushes"></label>
+        <div class="cv-brush-views" role="group" aria-label="View"><button type="button" data-view="grid" title="Grid" aria-label="Grid">${icon('viewGrid', 15)}</button><button type="button" data-view="list" title="List" aria-label="List">${icon('viewList', 15)}</button></div></div>
+      <div class="cv-brush-folders"></div>
+      <div class="cv-brush-stroke-head"><span>Custom brush</span><span>Stroke preview</span></div><canvas class="cv-brush-stroke" aria-label="Stroke preview"></canvas>
+      <div class="cv-brush-actions"><button class="cv-btn" type="button" data-act="load">${icon('folderOpen', 14)}<span>Load...</span></button><button class="cv-btn" type="button" data-act="settings">${icon('sliders', 14)}<span>Brush Settings</span></button></div>
     </div>`);
-    const sliders = body.querySelector('.cv-brush-sliders') as HTMLElement;
+    const sliders = body.querySelector('.cv-brush-sliders') as HTMLElement, folders = body.querySelector('.cv-brush-folders') as HTMLElement;
     const tip = body.querySelector('.cv-brush-tip') as HTMLCanvasElement, stroke = body.querySelector('.cv-brush-stroke') as HTMLCanvasElement;
+    const search = body.querySelector('.cv-brush-find input') as HTMLInputElement;
     const LOG = Math.log(1000);
-    const rows = [
-      { label: 'Size', unit: 'px', min: 1, max: 1000, step: 1, get: () => e.brush.diameter, put: (v: number) => e.setBrush({ diameter: Math.round(v) }), toS: (v: number) => (Math.log(v) / LOG) * 1000, fromS: (s: number) => Math.exp((s / 1000) * LOG) },
-      { label: 'Hardness', unit: '%', min: 0, max: 100, step: 1, get: () => e.brush.hardness * 100, put: (v: number) => e.setBrush({ hardness: v / 100 }), toS: (v: number) => v * 10, fromS: (s: number) => s / 10 },
-    ];
     const setters: Array<() => void> = [];
-    for (const r of rows) {
-      const row = el(`<div class="cv-brush-row"><div class="cv-brush-row-head"><span>${r.label}:</span></div><input class="cv-slider" type="range" min="0" max="1000" step="1" aria-label="${r.label}"></div>`);
-      const field = numField(r.unit, r.label, r.min, r.max, r.step, r.put), slider = row.querySelector('input') as HTMLInputElement;
+    const sliderRow = (label: string, unit: string, min: number, max: number, get: () => number, put: (v: number) => void, toS: (v: number) => number, fromS: (s: number) => number, host: HTMLElement): void => {
+      const row = el(`<div class="cv-brush-row"><div class="cv-brush-row-head"><span>${label}:</span></div><input class="cv-slider" type="range" min="0" max="1000" step="1" aria-label="${label}"></div>`);
+      const field = numField(unit, label, min, max, 1, put), slider = row.querySelector('input') as HTMLInputElement;
       (row.querySelector('.cv-brush-row-head') as HTMLElement).appendChild(field.root);
-      slider.addEventListener('input', () => r.put(Math.min(r.max, Math.max(r.min, r.fromS(Number(slider.value))))));
-      setters.push(() => { field.set(r.get()); if (document.activeElement !== slider) slider.value = String(Math.round(r.toS(Math.max(r.min, r.get())))); });
-      sliders.appendChild(row);
-    }
-    (body.querySelector('[data-run]') as HTMLElement).addEventListener('click', () => run('brush-settings'));
-    new PanelGroup(this.root, 'brushes', [{ id: 'brushes', label: 'Brushes', body }], 'Brushes');
+      slider.addEventListener('input', () => put(Math.min(max, Math.max(min, fromS(Number(slider.value))))));
+      setters.push(() => { field.set(get()); if (document.activeElement !== slider) slider.value = String(Math.round(toS(Math.max(min, get())))); });
+      host.appendChild(row);
+    };
+    sliderRow('Size', 'px', 1, 1000, () => e.brush.diameter, (v) => e.setBrush({ diameter: Math.round(v) }), (v) => (Math.log(v) / LOG) * 1000, (s) => Math.exp((s / 1000) * LOG), sliders);
+    sliderRow('Hardness', '%', 0, 100, () => e.brush.hardness * 100, (v) => e.setBrush({ hardness: v / 100 }), (v) => v * 10, (s) => s / 10, sliders);
+    // The tab of the tip's own settings, in the full dialog's units.
+    const settings = el('<div class="cv-brushes cv-brush-shape"></div>');
+    const shape = (patch: Partial<typeof e.brushShape>): void => { e.brushShape = { ...e.brushShape, ...patch }; e.emit('options', null); };
+    sliderRow('Spacing', '%', 1, 1000, () => e.brushShape.spacing ?? 25, (v) => shape({ spacing: Math.round(v) }), (v) => (Math.log(v) / LOG) * 1000, (s) => Math.exp((s / 1000) * LOG), settings);
+    sliderRow('Angle', '°', -180, 180, () => e.brushShape.angle, (v) => shape({ angle: Math.round(v) }), (v) => ((v + 180) / 360) * 1000, (s) => (s / 1000) * 360 - 180, settings);
+    sliderRow('Roundness', '%', 1, 100, () => e.brushShape.roundness, (v) => shape({ roundness: Math.round(v) }), (v) => v * 10, (s) => s / 10, settings);
+    const more = el<HTMLButtonElement>(`<button class="cv-btn cv-brush-more" type="button">${icon('sliders', 14)}<span>All brush settings...</span></button>`);
+    more.addEventListener('click', () => run('brush-settings'));
+    settings.appendChild(more);
+    new PanelGroup(this.root, 'brushes', [{ id: 'brushes', label: 'Brushes', body }, { id: 'brush-settings', label: 'Brush Settings', body: settings }], 'Brushes');
+
+    let view: 'grid' | 'list' = 'grid';
+    try { view = localStorage.getItem('sonny.brushView') === 'list' ? 'list' : 'grid'; } catch { /* grid */ }
+    const shut = new Set<string>();
+    for (const b of body.querySelectorAll<HTMLButtonElement>('[data-view]')) b.addEventListener('click', () => { view = b.dataset.view as 'grid' | 'list'; try { localStorage.setItem('sonny.brushView', view); } catch { /* session */ } key = ''; fill(); });
+    search.addEventListener('input', () => { key = ''; fill(); });
+    const thumb = (p: BrushPreset, w: number, h: number): HTMLCanvasElement => {
+      const dpr = window.devicePixelRatio || 1, c = document.createElement('canvas');
+      c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.width = `${w}px`; c.style.height = `${h}px`;
+      const g = c.getContext('2d') as CanvasRenderingContext2D, R = Math.min(c.height * 0.42, Math.max(3 * dpr, (Math.log(p.diameter + 1) / Math.log(1001)) * c.height * 0.9));
+      if (p.tip) {
+        const t = document.createElement('canvas'); t.width = p.tip.w; t.height = p.tip.h;
+        const img = new ImageData(p.tip.w, p.tip.h);
+        for (let i = 0; i < p.tip.data.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 240; img.data[i * 4 + 3] = p.tip.data[i]; }
+        t.getContext('2d')?.putImageData(img, 0, 0);
+        const s = (R * 2) / Math.max(p.tip.w, p.tip.h);
+        g.drawImage(t, c.width / 2 - (p.tip.w * s) / 2, c.height / 2 - (p.tip.h * s) / 2, p.tip.w * s, p.tip.h * s);
+      } else {
+        const gr = g.createRadialGradient(c.width / 2, c.height / 2, 0, c.width / 2, c.height / 2, R);
+        gr.addColorStop(0, 'rgba(240,240,244,1)'); gr.addColorStop(Math.min(0.999, Math.max(0, p.hardness)), 'rgba(240,240,244,1)'); gr.addColorStop(1, 'rgba(240,240,244,0)');
+        g.fillStyle = gr; g.beginPath(); g.arc(c.width / 2, c.height / 2, R, 0, Math.PI * 2); g.fill();
+      }
+      return c;
+    };
+    let key = '';
+    const fill = (): void => {
+      const q0 = search.value.trim().toLowerCase(), imported = new Set(importedBrushPresets.map((p) => p.id));
+      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => p.id).join(',')].join('|');
+      if (k === key) return;
+      key = k;
+      for (const b of body.querySelectorAll<HTMLElement>('[data-view]')) b.classList.toggle('is-on', b.dataset.view === view);
+      folders.textContent = '';
+      const groups = [{ id: 'general', name: 'General Brushes', list: allBrushPresets().filter((p) => !imported.has(p.id)) }, { id: 'imported', name: 'Imported Brushes', list: allBrushPresets().filter((p) => imported.has(p.id)) }];
+      for (const grp of groups) {
+        const list = grp.list.filter((p) => !q0 || p.name.toLowerCase().includes(q0));
+        if (!list.length) continue;
+        const open = !shut.has(grp.id) || !!q0;
+        const head = el<HTMLButtonElement>(`<button class="cv-brush-folder" type="button" aria-expanded="${open}">${icon('chevronDown', 12)}${icon('folder', 15)}<span class="cv-bf-name"></span><em></em></button>`);
+        setText(head.querySelector('.cv-bf-name') as HTMLElement, grp.name);
+        setText(head.querySelector('em') as HTMLElement, String(list.length));
+        head.addEventListener('click', () => { if (shut.has(grp.id)) shut.delete(grp.id); else shut.add(grp.id); key = ''; fill(); });
+        folders.appendChild(head);
+        if (!open) continue;
+        const box = el(`<div class="cv-brush-${view}"></div>`);
+        for (const p of list) {
+          const tile = el<HTMLButtonElement>(`<button class="cv-brush-tile" type="button"><span class="cv-brush-name"></span><span class="cv-brush-size"></span></button>`);
+          tile.prepend(thumb(p, view === 'grid' ? 40 : 30, view === 'grid' ? 30 : 22));
+          setText(tile.querySelector('.cv-brush-name') as HTMLElement, p.name);
+          setText(tile.querySelector('.cv-brush-size') as HTMLElement, `${p.diameter} px`);
+          tile.title = `${p.name} · ${p.diameter} px`;
+          tile.setAttribute('aria-label', p.name);
+          tile.classList.toggle('is-on', e.brushPresetId === p.id);
+          tile.addEventListener('click', () => { e.applyBrushPreset(p); key = ''; fill(); });
+          box.appendChild(tile);
+        }
+        folders.appendChild(box);
+      }
+      if (!folders.childElementCount) folders.appendChild(el('<p class="cv-brush-none">No brush matches.</p>'));
+    };
+    const picker = el<HTMLInputElement>('<input type="file" accept=".abr" hidden>');
+    body.appendChild(picker);
+    (body.querySelector('[data-act="load"]') as HTMLElement).addEventListener('click', () => picker.click());
+    picker.addEventListener('change', () => {
+      const f = picker.files?.[0];
+      picker.value = '';
+      if (!f) return;
+      void importAbr(e, f).then((r) => { e.notice(r.added ? `Loaded ${r.added} brush${r.added === 1 ? '' : 'es'} from ${f.name}.` : `${f.name} holds no brushes sonny can read.`); key = ''; fill(); }).catch((err) => e.notice(`Could not load ${f.name}: ${err instanceof Error ? err.message : String(err)}`, 'error'));
+    });
+    (body.querySelector('[data-act="settings"]') as HTMLElement).addEventListener('click', () => run('brush-settings'));
     const dab = (g: CanvasRenderingContext2D, x: number, y: number, r: number, hard: number): void => {
       const grad = g.createRadialGradient(x, y, 0, x, y, r);
       grad.addColorStop(0, 'rgba(236,236,240,1)'); grad.addColorStop(Math.min(0.999, Math.max(0, hard)), 'rgba(236,236,240,1)'); grad.addColorStop(1, 'rgba(236,236,240,0)');
@@ -127,13 +212,16 @@ export class PropertiesColumn {
     const paint = (): void => {
       const dpr = window.devicePixelRatio || 1;
       for (const c of [tip, stroke]) { const w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr); if (w && h && (c.width !== w || c.height !== h)) { c.width = w; c.height = h; } }
-      const hard = e.brush.hardness;
-      const tg = tip.getContext('2d') as CanvasRenderingContext2D;
+      const hard = e.brush.hardness, tg = tip.getContext('2d') as CanvasRenderingContext2D;
       tg.clearRect(0, 0, tip.width, tip.height);
       if (tip.width) {
         const R = tip.width * 0.36, cx = tip.width / 2, cy = tip.height / 2;
         tg.strokeStyle = 'rgba(255,255,255,0.18)'; tg.lineWidth = dpr; tg.beginPath(); tg.moveTo(cx - R * 1.2, cy); tg.lineTo(cx + R * 1.2, cy); tg.moveTo(cx, cy - R * 1.2); tg.lineTo(cx, cy + R * 1.2); tg.stroke();
-        dab(tg, cx, cy, R, hard);
+        // The tip as the target's shape editor: its outline at the tip's angle and roundness, a crosshair and three handles.
+        const a = (-e.brushShape.angle * Math.PI) / 180, ry = R * Math.max(0.05, e.brushShape.roundness / 100);
+        tg.strokeStyle = '#f0f0f4'; tg.lineWidth = 1.5 * dpr; tg.beginPath(); tg.ellipse(cx, cy, R, ry, a, 0, Math.PI * 2); tg.stroke();
+        tg.fillStyle = '#ffffff';
+        for (const [px, py] of [[R, 0], [0, -ry], [0, ry]]) { const x = cx + px * Math.cos(a) - py * Math.sin(a), y = cy + px * Math.sin(a) + py * Math.cos(a); tg.beginPath(); tg.arc(x, y, 3.2 * dpr, 0, Math.PI * 2); tg.fill(); }
       }
       const sg = stroke.getContext('2d') as CanvasRenderingContext2D;
       sg.clearRect(0, 0, stroke.width, stroke.height);
@@ -142,7 +230,7 @@ export class PropertiesColumn {
         for (let i = 0; i <= 120; i++) { const t = i / 120; dab(sg, W * 0.12 + t * W * 0.76, H / 2 - Math.sin(t * Math.PI * 2) * H * 0.18, r, hard); }
       }
     };
-    this.refreshers.push(() => { for (const s of setters) s(); requestAnimationFrame(paint); });
+    this.refreshers.push(() => { for (const s of setters) s(); fill(); requestAnimationFrame(paint); });
   }
 
   private paragraph(): void {

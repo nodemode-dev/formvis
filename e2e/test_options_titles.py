@@ -7,7 +7,8 @@ def test_every_tool_options_bar_is_titled_with_the_tool(page):
         await new Promise((r) => requestAnimationFrame(() => r()));
         const g = document.querySelector('.cv-opt-group:not([hidden])'), title = g && g.querySelector('.cv-opt-title');
         const first = g && g.firstElementChild;
-        if (!title || title.textContent.trim() !== t.label || first !== title) out.push([t.id, title ? title.textContent.trim() : null]);
+        // The title is the tool's icon chip (1.48.0, the target's bar), named by its label and tooltip.
+        if (!title || title.getAttribute('aria-label') !== t.label || title.title !== t.label || !title.querySelector('svg') || first !== title) out.push([t.id, title ? title.getAttribute('aria-label') : null]);
       }
       return out;
     }""")
