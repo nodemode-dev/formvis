@@ -421,3 +421,7 @@
 .cv-panel-head:not(.cv-group-head):has(> .cv-group-grip) { grid-template-columns: auto 1fr auto; }
 .cv-group.is-tab-full > .cv-group-head { position: relative; box-shadow: inset 0 0 0 2px var(--text-muted); }
 .cv-group.is-tab-full > .cv-group-head::after { content: 'Full: 7 tabs'; position: absolute; right: 44px; top: 50%; transform: translateY(-50%); padding: 2px 8px; border-radius: 6px; background: var(--surface-raised); color: var(--text-secondary); font-size: 11px; font-weight: 600; }
+/* A tab's name never wraps (Brush Settings did, in the side column): one line, shortened when it must be, the whole
+   name in its tooltip. */
+.cv-group-tabs { min-width: 0; overflow: hidden; flex-wrap: nowrap; }
+.cv-group-tab { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; max-width: 100%; }

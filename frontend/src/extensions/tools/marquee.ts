@@ -72,10 +72,12 @@ function styledRect(e: Engine, d: { anchor: Pt; point: Pt; square: boolean; cent
 
 export const marqueeTool: Tool = {
   id: 'marquee', label: 'Marquee', key: 'M', order: 20,
-  icon: (e) => (e.marqueeKind === 'ellipse' ? 'tEllipse' : 'tMarquee'),
+  icon: (e) => (e.marqueeKind === 'ellipse' ? 'tEllipse' : e.marqueeKind === 'row' ? 'tRowMarquee' : e.marqueeKind === 'column' ? 'tColMarquee' : 'tMarquee'),
   variants: (e) => [
-    { id: 'rectangle', label: 'Rectangular Marquee', icon: 'tMarquee', active: () => e.marqueeKind !== 'ellipse', pick: () => e.update({ marqueeKind: 'rectangle' }) },
+    { id: 'rectangle', label: 'Rectangular Marquee', icon: 'tMarquee', active: () => e.marqueeKind === 'rectangle', pick: () => e.update({ marqueeKind: 'rectangle' }) },
     { id: 'ellipse', label: 'Elliptical Marquee', icon: 'tEllipse', active: () => e.marqueeKind === 'ellipse', pick: () => e.update({ marqueeKind: 'ellipse' }) },
+    { id: 'row', label: 'Single Row Marquee', icon: 'tRowMarquee', active: () => e.marqueeKind === 'row', pick: () => e.update({ marqueeKind: 'row' }) },
+    { id: 'column', label: 'Single Column Marquee', icon: 'tColMarquee', active: () => e.marqueeKind === 'column', pick: () => e.update({ marqueeKind: 'column' }) },
   ],
   hint: (e) => `Drag ${e.marqueeKind === 'ellipse' ? 'an ellipse' : 'a rectangle'} · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the center · Drag inside to move the outline · Shift+M switches shape · Cmd or Ctrl+D deselects`,
   cursor: (ctx, p) => (p && !p.shift && !p.alt && ctx.engine.selectionMode === 'replace' && inside(ctx, p) ? 'move' : 'crosshair'),
@@ -83,6 +85,15 @@ export const marqueeTool: Tool = {
     const e = ctx.engine;
     if (!e.current || p.button !== 0) return;
     const mode = modeFor(e, p);
+    // Single Row and Single Column Marquee (the owner's tool list), as Photoshop's: a click selects the one-pixel row or
+    // column across the document, Shift adding and Alt taking away.
+    if (e.marqueeKind === 'row' || e.marqueeKind === 'column') {
+      const W = e.current.doc.width, H = e.current.doc.height, row = e.marqueeKind === 'row';
+      const at = Math.max(0, Math.min((row ? H : W) - 1, Math.floor(row ? p.doc.y : p.doc.x)));
+      const mask = row ? SelectionMask.cropped(0, at, W, 1, new Uint8Array(W).fill(255)) : SelectionMask.cropped(at, 0, 1, H, new Uint8Array(H).fill(255));
+      e.applySelection(mask, mode, row ? 'Single Row Marquee' : 'Single Column Marquee');
+      return;
+    }
     if (mode === 'replace' && inside(ctx, p)) { moving = p.doc; e.beginSelectionShift(); return; }
     draft = { anchor: p.doc, point: p.doc, mode, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
   },
@@ -131,7 +142,7 @@ export const marqueeTool: Tool = {
   },
   options: (e) => [
     { kind: 'title', text: 'Marquee' },
-    { kind: 'segment', label: 'Shape', choices: [{ id: 'rectangle', label: 'Rectangle' }, { id: 'ellipse', label: 'Ellipse' }], get: () => e.marqueeKind, set: (v) => e.update({ marqueeKind: v as 'rectangle' | 'ellipse' }) },
+    { kind: 'segment', label: 'Shape', choices: [{ id: 'rectangle', label: 'Rectangle' }, { id: 'ellipse', label: 'Ellipse' }, { id: 'row', label: 'Row' }, { id: 'column', label: 'Column' }], get: () => e.marqueeKind, set: (v) => e.update({ marqueeKind: v as 'rectangle' | 'ellipse' | 'row' | 'column' }) },
     { kind: 'range', label: 'Feather', min: 0, max: 250, unit: 'px', get: () => e.marqueeFeather, set: (v: number) => { e.marqueeFeather = Math.max(0, Math.min(250, v)); e.emit('options', null); } },
     { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); }, when: () => e.marqueeKind === 'ellipse' },
     { kind: 'select', label: 'Style', choices: [{ id: 'normal', label: 'Normal' }, { id: 'ratio', label: 'Fixed Ratio' }, { id: 'size', label: 'Fixed Size' }], get: () => e.marqueeStyle, set: (v: string) => { e.marqueeStyle = v === 'ratio' || v === 'size' ? v : 'normal'; e.emit('options', null); } },

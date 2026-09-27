@@ -76,6 +76,7 @@ export class PanelGroup {
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
     const btn = el<HTMLButtonElement>('<button class="cv-group-tab" type="button" role="tab"></button>');
     setText(btn, label);
+    btn.title = label;   // the whole name, if the tab is shortened
     btn.dataset.tab = tid;
     btn.addEventListener('click', (e) => { if (PanelGroup.justDragged) { e.preventDefault(); PanelGroup.justDragged = false; return; } this.show(tid); });
     btn.addEventListener('pointerdown', (e) => this.tabDrag(e, tid, btn));

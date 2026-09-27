@@ -380,8 +380,8 @@ export class Stage {
       g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.moveTo(b.x, a.y); g.lineTo(a.x, b.y);
       g.stroke(); g.restore();
     }
-    if (this.engine.quickMask) {
-      // Quick Mask: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.
+    if (this.engine.quickMask || this.engine.quickMaskLive) {
+      // Quick Mask, or a Selection Brush stroke in progress: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.
       const src = this.quickTint(p);
       if (src) { const d = this.dpr; g.setTransform(v.zoom * d, 0, 0, v.zoom * d, v.panX * d, v.panY * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(src, 0, 0); g.setTransform(1, 0, 0, 1, 0, 0); }
     } else if (sel || fl) {

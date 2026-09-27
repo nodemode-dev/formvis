@@ -162,7 +162,7 @@ export class Engine {
   fg: RGB = { r: 0, g: 0, b: 0 };
   bg: RGB = { r: 255, g: 255, b: 255 };
   selectionMode: SelectionMode = 'replace';
-  marqueeKind: 'rectangle' | 'ellipse' = 'rectangle';
+  marqueeKind: 'rectangle' | 'ellipse' | 'row' | 'column' = 'rectangle';
   /** The Marquee's Feather (pixels) and Style, as Photoshop's options bar has them: Normal, Fixed Ratio (width to
    *  height) or Fixed Size (pixels). */
   marqueeFeather = 0;
@@ -171,7 +171,7 @@ export class Engine {
   marqueeSize = { w: 64, h: 64 };
   /** The Lasso's Feather (pixels), kept apart from the Marquee's as Photoshop keeps each tool's. */
   lassoFeather = 0;
-  lassoKind: 'freehand' | 'polygonal' = 'freehand';
+  lassoKind: 'freehand' | 'polygonal' | 'magnetic' = 'freehand';
   wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0, antialias: true };
   /** smooth Lasso and elliptical Marquee edges (rectangles snap to whole pixels and
    *  the Magic Wand's edges follow pixels exactly, so neither changes). On by default. */
@@ -204,18 +204,27 @@ export class Engine {
   /** The Quick Mask stroke in progress (the selection as painted so far), for the tint to follow it live. */
   get quickMaskLive(): Surface | null { return this.stroke?.quick ? this.stroke.s.working : null; }
 
-  private beginQuickMaskStroke(p: Project, pt: Pt, pressure: number, pose: PenPose): boolean {
+  /** The Selection Brush (W; 1.49.4, the owner's tool list): paints the selection itself, adding, or taking away with
+   *  Alt, whether or not Quick Mask is on; with no selection it starts from nothing selected. One step per stroke. */
+  beginSelectionBrushStroke(pt: Pt, subtract: boolean, pressure = 1, pose: PenPose = UPRIGHT): boolean {
+    const p = this.current;
+    if (!p || this.stroke) return false;
+    this.settle();
+    return this.beginQuickMaskStroke(p, pt, pressure, pose, subtract ? 'subtract' : 'add');
+  }
+
+  private beginQuickMaskStroke(p: Project, pt: Pt, pressure: number, pose: PenPose, force?: 'add' | 'subtract'): boolean {
     const { width: W, height: H } = p.doc, sel = p.selection, r = new Raster(W, H);
-    p.history.begin('Quick Mask', p.snapshot());
+    p.history.begin(force ? 'Selection Brush' : 'Quick Mask', p.snapshot());
     const img = new ImageData(W, H), d = img.data;
-    if (!sel) d.fill(255);
-    else for (let y = 0; y < sel.h; y++) {
+    if (!sel && !force) d.fill(255);   // Quick Mask: no selection is all selected; the Selection Brush starts from none
+    else if (sel) for (let y = 0; y < sel.h; y++) {
       const Y = sel.y + y;
       if (Y < 0 || Y >= H) continue;
       for (let x = 0; x < sel.w; x++) { const X = sel.x + x; if (X < 0 || X >= W) continue; const i = (Y * W + X) * 4; d[i] = d[i + 1] = d[i + 2] = 255; d[i + 3] = sel.data[y * sel.w + x]; }
     }
     ctxOf(r.canvas).putImageData(img, 0, 0);
-    const white = luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
+    const white = force ? force === 'add' : luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
     const s = new PixelStroke(r, [1, 0, 0, 1, 0, 0], { ...this.brush, color: { r: 255, g: 255, b: 255 }, flow: this.brushFlow }, white ? 'source-over' : 'destination-out', null);
     s.dynamics = structuredClone(this.brushDynamics);
     s.setShape(this.brushShape, null);
