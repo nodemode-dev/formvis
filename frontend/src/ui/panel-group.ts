@@ -15,7 +15,13 @@ function saveState(id: string, patch: { tab?: string; min?: boolean }): void {
   try { const s = loadState(); s[id] = { ...s[id], ...patch }; localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* this session only */ }
 }
 
+const HOMES = 'sonny.tabHomes';
+
 export class PanelGroup {
+  /** Every group by id: a tab dragged onto another group's header moves there (the owner's walkthrough). */
+  static readonly all = new Map<string, PanelGroup>();
+  /** Called after tabs move (the app re-lays out the columns). */
+  static onMoved: (() => void) | null = null;
   readonly root: HTMLElement;
   private readonly tabs = new Map<string, { btn: HTMLButtonElement; body: HTMLElement }>();
   private active = '';
@@ -30,16 +36,9 @@ export class PanelGroup {
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
     const more = this.root.querySelector('.cv-group-more') as HTMLElement;
     more.addEventListener('click', () => { const ids = this.menu?.() ?? []; if (ids.length) PanelGroup.menuHost?.(more, ids); });
-    for (const t of list) {
-      const btn = el<HTMLButtonElement>('<button class="cv-group-tab" type="button" role="tab"></button>');
-      setText(btn, t.label);
-      btn.dataset.tab = t.id;
-      btn.addEventListener('click', () => this.show(t.id));
-      strip.appendChild(btn);
-      t.body.classList.add('cv-group-page');
-      body.appendChild(t.body);
-      this.tabs.set(t.id, { btn, body: t.body });
-    }
+    this.root.dataset.group = id;
+    PanelGroup.all.set(id, this);
+    for (const t of list) { t.body.classList.add('cv-group-page'); this.attach(t.id, t.label, t.body); }
     const saved = loadState()[id] ?? {};
     this.show(saved.tab && this.tabs.has(saved.tab) ? saved.tab : list[0].id, false);
     this.setMinimised(!!saved.min, false);
@@ -48,6 +47,87 @@ export class PanelGroup {
   }
 
   get current(): string { return this.active; }
+
+  /** A tab's button and page in this group: its click shows it here; dragged onto another group's header, it moves. */
+  private attach(tid: string, label: string, page: HTMLElement): void {
+    const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
+    const btn = el<HTMLButtonElement>('<button class="cv-group-tab" type="button" role="tab"></button>');
+    setText(btn, label);
+    btn.dataset.tab = tid;
+    btn.addEventListener('click', (e) => { if (PanelGroup.justDragged) { e.preventDefault(); PanelGroup.justDragged = false; return; } this.show(tid); });
+    btn.addEventListener('pointerdown', (e) => this.tabDrag(e, tid, btn));
+    strip.appendChild(btn);
+    body.appendChild(page);
+    this.tabs.set(tid, { btn, body: page });
+    this.root.classList.remove('is-empty');
+  }
+
+  private static justDragged = false;
+  /** Dragging a tab (in a group of several: a single tab's group moves whole, by the dock) onto another group's header. */
+  private tabDrag(e: PointerEvent, tid: string, btn: HTMLButtonElement): void {
+    if (e.button !== 0 || this.tabs.size < 2) return;
+    const x0 = e.clientX, y0 = e.clientY;
+    let ghost: HTMLElement | null = null, target: PanelGroup | null = null;
+    const over = (ev: PointerEvent): PanelGroup | null => {
+      const head = (document.elementFromPoint(ev.clientX, ev.clientY) as HTMLElement | null)?.closest('.cv-group-head');
+      const g = head ? PanelGroup.all.get((head.closest('.cv-group') as HTMLElement | null)?.dataset.group ?? '') ?? null : null;
+      return g && g !== this ? g : null;
+    };
+    const move = (ev: PointerEvent): void => {
+      if (!ghost && Math.hypot(ev.clientX - x0, ev.clientY - y0) < 6) return;
+      if (!ghost) { ghost = el('<div class="cv-tab-ghost"></div>'); setText(ghost, btn.textContent ?? ''); document.body.appendChild(ghost); }
+      ghost.style.left = `${ev.clientX + 8}px`; ghost.style.top = `${ev.clientY + 8}px`;
+      const t = over(ev);
+      if (t !== target) { target?.root.classList.remove('is-tab-target'); target = t; target?.root.classList.add('is-tab-target'); }
+    };
+    const up = (): void => {
+      document.removeEventListener('pointermove', move, true);
+      document.removeEventListener('pointerup', up, true);
+      ghost?.remove();
+      target?.root.classList.remove('is-tab-target');
+      if (ghost) PanelGroup.justDragged = true;
+      if (ghost && target) { PanelGroup.moveTab(tid, this, target); PanelGroup.saveHomes(); }
+    };
+    document.addEventListener('pointermove', move, true);
+    document.addEventListener('pointerup', up, true);
+  }
+
+  /** Moves a tab (its page, kept as it is) from one group to another; an emptied group is hidden. */
+  static moveTab(tid: string, from: PanelGroup, to: PanelGroup): void {
+    const t = from.tabs.get(tid);
+    if (!t || from === to) return;
+    const label = t.btn.textContent ?? tid;
+    t.btn.remove();
+    from.tabs.delete(tid);
+    to.attach(tid, label, t.body);
+    to.show(tid);
+    if (from.tabs.size === 0) from.root.classList.add('is-empty');
+    else if (from.active === tid) from.show(from.tabs.keys().next().value as string);
+    PanelGroup.onMoved?.();
+  }
+
+  /** Where each tab lives, remembered; restored once every group exists. */
+  static saveHomes(): void {
+    const homes: Record<string, string> = {};
+    for (const [gid, g] of PanelGroup.all) for (const tid of g.tabs.keys()) homes[tid] = gid;
+    try { localStorage.setItem(HOMES, JSON.stringify(homes)); } catch { /* this session only */ }
+  }
+  static restoreHomes(): void {
+    let homes: Record<string, string> = {};
+    try { homes = JSON.parse(localStorage.getItem(HOMES) ?? '{}') as Record<string, string>; } catch { return; }
+    for (const [tid, gid] of Object.entries(homes)) {
+      const to = PanelGroup.all.get(gid), from = [...PanelGroup.all.values()].find((g) => g.tabs.has(tid));
+      if (to && from && from !== to) PanelGroup.moveTab(tid, from, to);
+    }
+  }
+  /** Window > Reset Panels: every tab back in the group it began in. */
+  static resetHomes(defaults: Record<string, string>): void {
+    try { localStorage.removeItem(HOMES); } catch { /* nothing kept */ }
+    for (const [tid, gid] of Object.entries(defaults)) {
+      const to = PanelGroup.all.get(gid), from = [...PanelGroup.all.values()].find((g) => g.tabs.has(tid));
+      if (to && from && from !== to) PanelGroup.moveTab(tid, from, to);
+    }
+  }
 
   show(id: string, remember = true): void {
     if (!this.tabs.has(id)) return;

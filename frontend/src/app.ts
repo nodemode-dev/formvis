@@ -91,6 +91,8 @@ import { StatusBar } from './ui/status';
 import { Tabs } from './ui/tabs';
 import { toast } from './ui/toast';
 
+/** Each tab's own group, where Reset Panels returns it. */
+const TAB_HOMES: Record<string, string> = { navigator: 'navigator', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
 const LAYERS_W_KEY = 'sonny_layers_w';
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
@@ -229,6 +231,9 @@ export function startApp(): void {
   dock.onChange = () => { syncPropsCol(); props.relayout(); };
   syncPropsCol();
   props.relayout();
+  // Tabs moved between groups (dragged onto another group's header) are restored, and re-lay out the columns.
+  PanelGroup.onMoved = () => { dock.refresh(); props.relayout(); };
+  PanelGroup.restoreHomes();
   // Collapsed, the column is its strip of icons; expanded, the width chosen by dragging (or the target's 288).
   const syncDockWidth = (on: boolean): void => { const w = Number(stored(LAYERS_W_KEY)); setStyleVar(root, '--cv-layers-w', on ? '46px' : `${w >= 200 && w <= 480 ? w : 288}px`); q(root, '.cv-resizer').classList.toggle('is-inert', on); };   // kept in the grid (hiding it would move the dock into its column)
   dock.onCollapse = syncDockWidth;
@@ -910,7 +915,7 @@ export function startApp(): void {
     // Paths is a tab of the Layers group (Phase 21): Window > Paths shows the group on its Paths tab.
     { id: 'panel-paths', label: 'Paths', run: () => { if (!dock.isShown('layers')) dock.toggle('layers'); layers.showTab('paths'); } },
     { id: 'panel-properties-col', label: 'Properties Column', checked: propsShown, run: () => { store('sonny.propsCol', propsShown() ? 'hidden' : 'shown'); syncPropsCol(); } },
-    { id: 'reset-panels', label: 'Reset Panels', run: () => dock.reset() },
+    { id: 'reset-panels', label: 'Reset Panels', run: () => { dock.reset(); PanelGroup.resetHomes(TAB_HOMES); } },
     { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },

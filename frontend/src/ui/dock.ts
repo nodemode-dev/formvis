@@ -63,8 +63,12 @@ export class Dock {
       head.classList.add('cv-dock-grip');
       head.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || this.locked || (e.target as HTMLElement).closest('[data-cmd]')) return;
+        // A tab in a panel group of several drags itself (PanelGroup); the Layers group's tabs cannot yet, so it moves whole.
+        if (section?.classList.contains('cv-group') && (e.target as HTMLElement).closest('.cv-group-tab') && section.querySelectorAll('.cv-group-tab').length > 1) return;
         // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
         this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1, col: 'dock' };
+        // Movement is followed on the whole document until release: a quick flick leaves the header at once.
+        document.addEventListener('pointermove', this.docMove, true);
       });
       head.addEventListener('pointermove', (e) => this.move(e));
       head.addEventListener('pointerup', () => this.drop());
@@ -78,6 +82,10 @@ export class Dock {
   }
 
   isShown(id: string): boolean { return !this.state.hidden.includes(id); }
+  /** Shown and holding a tab (a group whose tabs all moved away is absent). */
+  private present(id: string): boolean { return this.isShown(id) && !this.section(id)?.classList.contains('is-empty'); }
+  /** Re-lays out the columns (tabs moved between groups). */
+  refresh(): void { this.apply(); this.onChange?.(); }
 
   toggle(id: string): void {
     this.state.hidden = this.isShown(id) ? [...this.state.hidden, id] : this.state.hidden.filter((h) => h !== id);
@@ -92,7 +100,7 @@ export class Dock {
   /** The side column's panels, in order. */
   sideIds(): string[] { return [...this.state.side]; }
   /** How many panels the side column shows (none: the app hides the column). */
-  sideShown(): number { return this.state.side.filter((id) => this.isShown(id)).length; }
+  sideShown(): number { return this.state.side.filter((id) => this.present(id)).length; }
   /** Window > Merge Panel Columns: the side column's panels join the dock, below its own; the side column goes. */
   merge(): void { this.state = { ...this.state, order: [...this.dockIds(), ...this.state.side], side: [] }; this.save(); }
   /** Window > Separate Panel Columns: the side column's own panels return to it. */
@@ -163,7 +171,7 @@ export class Dock {
     expand.addEventListener('click', () => this.setCollapsed(false));
     strip.appendChild(expand);
     const ICONS: Record<string, string> = { navigator: 'panelNav', swatches: 'swatchGrid', layers: 'layers', timeline: 'film', history: 'history' };
-    for (const id of this.dockIds().filter((x) => this.isShown(x))) {
+    for (const id of this.dockIds().filter((x) => this.present(x))) {
       const s = this.section(id), label = DOCK_PANELS.find((p) => p.id === id)?.label ?? id;
       if (!s) continue;
       const b = el<HTMLButtonElement>(`<button class="cv-strip-btn" type="button" title="${label}" aria-label="${label}">${icon(ICONS[id] ?? 'panelProps', 18)}</button>`);
@@ -190,7 +198,7 @@ export class Dock {
       this.collapseBtn = el<HTMLButtonElement>(`<button class="cv-group-collapse cv-dock-collapse" type="button" title="Collapse to icons" aria-label="Collapse to icons">${icon('collapseRight', 14)}</button>`);
       this.collapseBtn.addEventListener('click', () => this.setCollapsed(true));
     }
-    const first = this.dockIds().find((x) => this.isShown(x)), head = first ? this.section(first)?.querySelector(':scope > .cv-panel-head') : null;
+    const first = this.dockIds().find((x) => this.present(x)), head = first ? this.section(first)?.querySelector(':scope > .cv-panel-head') : null;
     if (head && this.collapseBtn.parentElement !== head) head.appendChild(this.collapseBtn);
   }
 
@@ -206,7 +214,7 @@ export class Dock {
       if (sideWant.some((s, i) => sideNow[i] !== s)) for (const s of sideWant) this.side.appendChild(s);
       for (const s of sideWant) { s.classList.remove('is-sized'); s.style.height = ''; }   // sizes are the dock's
     }
-    for (const p of ALL_PANELS) { const s = this.section(p.id); if (s) setHidden(s, !this.isShown(p.id)); }
+    for (const p of ALL_PANELS) { const s = this.section(p.id); if (s) setHidden(s, !this.present(p.id)); }
     this.splitters();
     this.placeCollapse();
     this.dock.classList.toggle('is-collapsed', this.collapsed);
@@ -216,7 +224,7 @@ export class Dock {
   /** A splitter between each pair of shown groups: dragging it sizes the group above, or the one below when the one
    *  above is Layers (which takes what is left); a double-click returns that group to its own height. */
   private shownGroups(): Array<{ id: string; s: HTMLElement }> {
-    return this.dockIds().filter((id) => this.isShown(id)).map((id) => ({ id, s: this.section(id) })).filter((x): x is { id: string; s: HTMLElement } => !!x.s);
+    return this.dockIds().filter((id) => this.present(id)).map((id) => ({ id, s: this.section(id) })).filter((x): x is { id: string; s: HTMLElement } => !!x.s);
   }
 
   /** Each shown group at its set height, or its own; Layers always takes what is left. */
@@ -266,13 +274,12 @@ export class Dock {
     // A drag whose button was let go elsewhere is over: hovering a header must not revive it (the stray marker).
     if ((e.buttons & 1) === 0) { this.drag = null; setHidden(this.marker, true); return; }
     if (!d.moving && Math.abs(e.clientY - d.startY) < 5) return;
-    if (!d.moving) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     d.moving = true;
     // The column under the pointer: the side column's when over it (and open), else the dock's.
     const sr = this.side && !this.side.hidden && !this.side.classList.contains('is-collapsed') ? this.side.getBoundingClientRect() : null;
     const col: 'dock' | 'side' = sr && e.clientX >= sr.left && e.clientX <= sr.right ? 'side' : 'dock';
     const host = col === 'side' ? this.side as HTMLElement : this.dock;
-    const ids = (col === 'side' ? this.state.side : this.dockIds()).filter((id) => this.isShown(id));
+    const ids = (col === 'side' ? this.state.side : this.dockIds()).filter((id) => this.present(id));
     const shown = ids.map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
     const box = host.getBoundingClientRect();
     let best = 0, bestDist = Infinity, y = box.top + 2;
@@ -289,15 +296,18 @@ export class Dock {
     setHidden(this.marker, false);
   }
 
+  private readonly docMove = (e: PointerEvent): void => { if (this.drag) this.move(e); else document.removeEventListener('pointermove', this.docMove, true); };
+
   private drop(): void {
     const d = this.drag;
     this.drag = null;
+    document.removeEventListener('pointermove', this.docMove, true);
     setHidden(this.marker, true);
     if (!d || !d.moving || d.target < 0) return;
     this.suppressClick = true;
     // Into the column it was dropped in, before the panel it was dropped above (or at the end).
     const list = d.col === 'side' ? this.state.side : this.dockIds();
-    const shown = list.filter((id) => this.isShown(id));
+    const shown = list.filter((id) => this.present(id));
     const before = shown[d.target] ?? null;
     if (before === d.id) return;
     const side = this.state.side.filter((id) => id !== d.id), order = this.state.order.filter((id) => id !== d.id);

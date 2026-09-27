@@ -3,8 +3,8 @@ RESET = "localStorage.removeItem('sonny.dock'); localStorage.removeItem('sonny.p
 
 
 def drag_head(page, sel, to_x, to_y):
-    h = page.locator(f"{sel} > .cv-panel-head").bounding_box()
-    page.mouse.move(h["x"] + 40, h["y"] + h["height"] / 2); page.mouse.down()
+    h = page.locator(f"{sel} > .cv-panel-head > span").first.bounding_box()                # the header's empty part: the whole group
+    page.mouse.move(h["x"] + h["width"] / 2, h["y"] + h["height"] / 2); page.mouse.down()
     page.mouse.move(to_x, to_y, steps=12); page.mouse.up()
 
 
@@ -50,3 +50,24 @@ def test_the_side_column_is_as_wide_as_dragged(page):
         assert abs(page.locator(".cv-props-col").bounding_box()["width"] - w1) <= 3               # remembered
     finally:
         page.evaluate(RESET); page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+
+
+TABS = "(sel) => [...document.querySelectorAll(sel + ' > .cv-group-head .cv-group-tab')].map((t) => t.textContent)"
+
+
+def test_a_tab_moves_to_another_group_stays_and_resets(page):
+    try:
+        page.evaluate("window.sonny.engine.newDocument(300, 200, 'T', 'white')")
+        tab = page.locator("section.cv-swatches .cv-group-tab", has_text="Color").bounding_box()
+        nav = page.locator("section.cv-navigator > .cv-group-head").bounding_box()
+        page.mouse.move(tab["x"] + 10, tab["y"] + 10); page.mouse.down()
+        page.mouse.move(nav["x"] + nav["width"] / 2, nav["y"] + nav["height"] / 2, steps=12); page.mouse.up()
+        assert page.evaluate(TABS, "section.cv-navigator") == ["Navigator", "Color"]
+        assert page.evaluate(TABS, "section.cv-swatches") == ["Swatches"]
+        assert page.locator("section.cv-navigator .cv-color-sv").is_visible()                  # its page came along, shown
+        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        assert page.evaluate(TABS, "section.cv-navigator") == ["Navigator", "Color"]             # remembered
+        page.evaluate("window.sonny.commands.run('reset-panels')")
+        assert page.evaluate(TABS, "section.cv-swatches") == ["Swatches", "Color"] and page.evaluate(TABS, "section.cv-navigator") == ["Navigator"]
+    finally:
+        page.evaluate(RESET + "; localStorage.removeItem('sonny.tabHomes')"); page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
