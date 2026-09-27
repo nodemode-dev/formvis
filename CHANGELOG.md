@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.4 · 2026-09-27
+
+### Added: selection tools from your list
+
+- Magnetic Lasso (in the Lasso group): click an edge and move along it; the line follows the strongest edge nearby and fastens points as it goes; click to fasten one; close by clicking near the start, double-clicking or Enter; Backspace removes the last point. Width, Contrast and Frequency, as Photoshop's.
+- Single Row Marquee and Single Column Marquee (in the Marquee group): a click selects the one-pixel row or column across the document; Shift adds, Alt takes away.
+- Selection Brush (in the Object Selection group, W): paint the selection with the brush's size and hardness, Alt to take away; tinted while painting, one step per stroke.
+
+### Fixed
+
+- A tab's name never wraps (Brush Settings did); shortened if it must be, the whole name on hover.
+
 ## 1.49.3 · 2026-09-27
 
 ### Changed: paths, and your notes on 1.49.2

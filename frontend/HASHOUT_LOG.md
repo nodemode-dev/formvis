@@ -2,6 +2,38 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Selection tools · _v1.49.4 (engine/livewire.ts new, engine/index.ts, engine/types.ts; extensions/tools/lasso.ts, marquee.ts, selection-brush.ts new, index.ts; ui/stage.ts, ui/panel-group.ts, ui/icons.ts; styles)
+
+`EdgeMap`, `liveWire`, `snapToEdge`; the Magnetic Lasso (`lassoKind` 'magnetic', `trace`, `traceSoon`, fastening, closing near the start); Single Row and Single Column Marquee (`marqueeKind` 'row', 'column'); `selectionBrushTool`, `Engine.beginSelectionBrushStroke` (the Quick Mask stroke with a forced add or subtract); tabs on one line. Removed from frontend:
+
+```text
+  marqueeKind: 'rectangle' | 'ellipse' = 'rectangle';
+  lassoKind: 'freehand' | 'polygonal' = 'freehand';
+  private beginQuickMaskStroke(p: Project, pt: Pt, pressure: number, pose: PenPose): boolean {
+    p.history.begin('Quick Mask', p.snapshot());
+    if (!sel) d.fill(255);
+    else for (let y = 0; y < sel.h; y++) {
+    const white = luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'frame' | 'convertPoint' | 'idle';
+  for (const tool of [historyBrushTool, frameTool, convertPointTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+function reset(ctx: ToolContext): void { pts = []; active = false; ctx.engine.emit('overlay', null); }
+  const poly = pts;
+  e.applySelection(mask, mode, e.lassoKind === 'polygonal' ? 'Polygonal Lasso' : 'Lasso');
+  icon: (e) => (e.lassoKind === 'polygonal' ? 'tPolyLasso' : 'tLasso'),
+  hint: (e) => (e.lassoKind === 'polygonal'
+    if (p.clicks >= 2 || Math.hypot(first.x - p.screen.x, first.y - p.screen.y) <= 6) { commit(ctx); return; }
+  hover(ctx, p) { hover = p?.doc ?? null; if (active) ctx.engine.emit('overlay', null); },
+    if (!active || ctx.engine.lassoKind !== 'polygonal') return nudgeSelectionKey(ctx, e);
+    { kind: 'segment', label: 'Kind', choices: [{ id: 'freehand', label: 'Freehand' }, { id: 'polygonal', label: 'Polygonal' }], get: () => e.lassoKind, set: (v) => e.update({ lassoKind: v as 'freehand' | 'polygonal' }) },
+  icon: (e) => (e.marqueeKind === 'ellipse' ? 'tEllipse' : 'tMarquee'),
+    { id: 'rectangle', label: 'Rectangular Marquee', icon: 'tMarquee', active: () => e.marqueeKind !== 'ellipse', pick: () => e.update({ marqueeKind: 'rectangle' }) },
+    { kind: 'segment', label: 'Shape', choices: [{ id: 'rectangle', label: 'Rectangle' }, { id: 'ellipse', label: 'Ellipse' }], get: () => e.marqueeKind, set: (v) => e.update({ marqueeKind: v as 'rectangle' | 'ellipse' }) },
+    if (this.engine.quickMask) {
+      // Quick Mask: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Paths, the grip and seven tabs · _v1.49.3 (extensions/tools/direct-select.ts, convert-point.ts and path-actions.ts new, path-select.ts, registry.ts, index.ts; engine/history.ts, engine/index.ts, engine/types.ts; ui/panels/stroke-path-dialog.ts, ui/paths.ts, ui/panel-group.ts, ui/icons.ts, app.ts; styles)
 
 `directSelectTool` with a point selection, box select, group moves, pulled and broken handles, nudging; `convertPointTool`; `pathActions`, `toolHost`; `StrokePathDialog` width and colour; the Paths footer's dialogs; `Snapshot.paths`, work-path edits undoable (`beginPathEdit`, `endPathEdit`, `restore`, `History.end`); `PanelGroup.MAX_TABS`, `full`; the grip pinned. Removed from frontend:
