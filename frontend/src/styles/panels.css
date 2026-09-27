@@ -425,3 +425,8 @@
    name in its tooltip. */
 .cv-group-tabs { min-width: 0; overflow: hidden; flex-wrap: nowrap; }
 .cv-group-tab { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; flex-shrink: 1; max-width: 100%; }
+/* Tabs fit rather than being cut (1.49.4 shortened both Brushes and Brush Settings): tighter padding; the active tab is
+   never shortened; only an inactive one gives way, and only when there is truly no room. */
+.cv-group-tab { padding-left: 10px !important; padding-right: 10px !important; }
+.cv-group-tab.is-active { flex-shrink: 0; overflow: visible; text-overflow: clip; }
+.cv-group-tabs { gap: 2px; }

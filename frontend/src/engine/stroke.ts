@@ -14,7 +14,8 @@ import type { SampledTip } from './abr';
 
 /** `flow` (0 to 1, default 1) is Photoshop's Flow: how much paint each dab lays down, so paint builds within a stroke as
  *  dabs overlap, up to the stroke's `opacity`, which caps the stroke as a whole. */
-export interface StrokeStyle { diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
+/** aliased (the Pencil): dabs are pixel-exact circles, every pixel painted fully or not at all. */
+export interface StrokeStyle { aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
 
 /** A sampled tip (from an .abr file) as the brush's colour with the tip's greys as alpha, its longer side `sizePx`. */
 function sampledTip(sizePx: number, tip: SampledTip, color: RGB): Surface {
@@ -192,6 +193,7 @@ export class PixelStroke {
   }
 
   private dab(p: Pt, pressure = 1): void {
+    if (this.style.aliased) { this.aliasedDab(p, pressure); return; }
     if (this.shape) { this.shapedDab(p, pressure); return; }
     const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1);
     setMat(this.paintCtx, this.toLocal);
@@ -202,6 +204,28 @@ export class PixelStroke {
     const corners = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([ox, oy]) => applyMat(this.toLocal, p.x + ox, p.y + oy));
     const box = integral(boundsOf(corners));
     const hit = intersectRect({ x: box.x - 1, y: box.y - 1, w: box.w + 2, h: box.h + 2 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
+    if (!hit) return;
+    this.pending = unionRect(this.pending, hit);
+    this.touched = unionRect(this.touched, hit);
+  }
+
+  /** The Pencil's dab: a circle of whole pixels in the raster's own grid (no smoothing), filled row by row. */
+  private aliasedDab(p: Pt, pressure: number): void {
+    const d = this.dynamics, info = { pressure }, c = applyMat(this.toLocal, p.x, p.y);
+    const r = Math.max(0.5, this.radius * matScale(this.toLocal) * (d ? Math.max(0.01, computeOption(d.size, info)) : 1));
+    const ctx = this.paintCtx, col = this.style.color;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.fillStyle = `rgb(${col.r}, ${col.g}, ${col.b})`;
+    const cx = Math.floor(c.x) + 0.5, cy = Math.floor(c.y) + 0.5, rr = r <= 0.75 ? 0.5 : r;
+    for (let y = Math.floor(cy - rr); y <= Math.ceil(cy + rr); y++) {
+      const dy = y + 0.5 - cy, half = rr * rr - dy * dy;
+      if (half < 0) continue;
+      const w = Math.sqrt(half), x0 = Math.round(cx - w), x1 = Math.round(cx + w);
+      if (x1 > x0) ctx.fillRect(x0, y, x1 - x0, 1);
+      else if (rr <= 0.5) ctx.fillRect(Math.floor(cx), y, 1, 1);
+    }
+    const box = { x: Math.floor(cx - rr) - 1, y: Math.floor(cy - rr) - 1, w: Math.ceil(rr * 2) + 3, h: Math.ceil(rr * 2) + 3 };
+    const hit = intersectRect(box, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
     if (!hit) return;
     this.pending = unionRect(this.pending, hit);
     this.touched = unionRect(this.touched, hit);

@@ -125,6 +125,9 @@ export function cornerRadiiOf(style: Record<string, unknown>): number[] | null {
   return Array.isArray(r) && r.length === 4 && r.every((v) => typeof v === 'number' && Number.isFinite(v) && v >= 0) ? (r as number[]).slice() : null;
 }
 
+/** The Background Eraser's settings (Photoshop's): Tolerance, Sampling, Limits (contiguous or not), Protect Foreground. */
+export interface BgEraseOpts { tolerance: number; sampling: 'continuous' | 'once'; contiguous: boolean; protectForeground: boolean }
+
 export class Engine {
   readonly events = new Emitter<EngineEvents>();
   readonly projects: Project[] = [];
@@ -325,6 +328,8 @@ export class Engine {
   /** Photoshop's Automatically Create First Snapshot: each document keeps itself as opened, the History Brush's first
    *  source, within the snapshots' memory budget (past it, none is taken and the brush says so). */
   autoFirstSnapshot = true;
+  /** The Pattern Stamp's pattern (null: the first). */
+  patternStampPattern: ID | null = null;
   /** Preferences > Cursors: how painting tools show where they will paint (drawn by brush-common's drawBrushCursor). */
   cursorPrefs: { paint: 'tip' | 'precise' | 'standard'; crosshair: boolean } = { paint: 'tip', crosshair: false };
   private openingSnapshot(p: Project): void {
@@ -2462,25 +2467,32 @@ export class Engine {
     return { layer: l, target, raster, local: placement(t, raster.width, raster.height) };
   }
 
-  beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT): boolean {
+  /** opts (1.49.5, the owner's tool list): aliased paints hard pixel-exact dabs (the Pencil); autoErase paints the
+   *  background colour when the stroke starts on the foreground colour (Photoshop's Pencil); name names the step. */
+  beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; autoErase?: boolean; name?: string } = {}): boolean {
     const p = this.current;
     if (!p || this.stroke) return false;
     this.settle();
     if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to paint on.'); return false; }
     if (this.smartLocked(p)) return false;
-    p.history.begin(this.brushMode === 'erase' ? 'Eraser' : 'Brush', p.snapshot());
+    p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : 'Brush'), p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = pick.target === 'mask' && luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
     // colour, as Photoshop's does, since it may not make pixels transparent.
     const keepAlpha = pick.target !== 'mask' && !!p.activeLayer?.locks?.transparency;
     const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : keepAlpha ? 'source-atop' : this.brushMode === 'erase' ? 'destination-out' : 'source-over';
-    const color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : keepAlpha && this.brushMode === 'erase' ? this.bg : this.fg;
-    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, flow: this.brushFlow }, op, p.selection);
+    let color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : keepAlpha && this.brushMode === 'erase' ? this.bg : this.fg;
+    if (opts.autoErase && pick.target !== 'mask' && this.brushMode !== 'erase') {
+      // Auto Erase: starting on the foreground colour, the stroke paints the background colour.
+      const q = applyMat(invert(pick.local) ?? [1, 0, 0, 1, 0, 0], pt.x, pt.y), px = pick.raster.ctx.getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data;
+      if (px[3] > 0 && px[0] === this.fg.r && px[1] === this.fg.g && px[2] === this.fg.b) color = this.bg;
+    }
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, flow: this.brushFlow, aliased: !!opts.aliased }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
-    s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
+    if (!opts.aliased) s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s };
     const last = this.lastBrush;
     if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p, pressure, pose);
@@ -2706,6 +2718,112 @@ export class Engine {
       } else c.drawImage(this.tint(rect, rgbCss(color), cover), rect.x, rect.y);
       c.restore();
     });
+  }
+
+  /** The Background Eraser (E; 1.49.5, the owner's tool list), as Photoshop's: erases, within the brush, the pixels of
+   *  the active layer whose colour is within Tolerance of the colour sampled under the brush's centre (at every dab, or
+   *  once at the start), feathered by the brush's hardness; Contiguous keeps to the matching pixels joined to the centre;
+   *  Protect Foreground Color keeps the foreground's; the selection bounds it. The whole stroke is one step. */
+  private bgErase: { p: Project; raster: Raster; local: Mat; full: ImageData; touched: Rect | null; sample: RGB | null; last: Pt; opts: BgEraseOpts } | null = null;
+  beginBackgroundErase(pt: Pt, opts: BgEraseOpts): boolean {
+    const p = this.current;
+    if (!p || this.stroke || this.bgErase) return false;
+    this.settle();
+    if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return false; }
+    if (this.smartLocked(p)) return false;
+    const pick = this.target(p);
+    if (!pick || pick.target !== 'pixels') { this.notice('The Background Eraser works on a layer\'s pixels, not its mask.'); return false; }
+    p.history.begin('Background Eraser', p.snapshot());
+    this.bgErase = { p, raster: pick.raster, local: pick.local, full: pick.raster.ctx.getImageData(0, 0, pick.raster.width, pick.raster.height), touched: null, sample: null, last: pt, opts };
+    this.bgDab(pt);
+    return true;
+  }
+  backgroundEraseTo(pt: Pt): void {
+    const b = this.bgErase;
+    if (!b) return;
+    const d = Math.hypot(pt.x - b.last.x, pt.y - b.last.y), step = Math.max(1, this.brush.diameter / 6), n = Math.max(1, Math.ceil(d / step));
+    for (let i = 1; i <= n; i++) this.bgDab({ x: b.last.x + ((pt.x - b.last.x) * i) / n, y: b.last.y + ((pt.y - b.last.y) * i) / n });
+    b.last = pt;
+    this.emit('render', null);
+    this.refresh();
+  }
+  endBackgroundErase(cancel = false): void {
+    const b = this.bgErase;
+    if (!b) return;
+    this.bgErase = null;
+    const r = b.touched;
+    if (r) {
+      const before = new ImageData(r.w, r.h);
+      for (let y = 0; y < r.h; y++) before.data.set(b.full.data.subarray(((r.y + y) * b.full.width + r.x) * 4, ((r.y + y) * b.full.width + r.x + r.w) * 4), y * r.w * 4);
+      if (cancel) { b.raster.ctx.putImageData(before, r.x, r.y); b.raster.touch(); }
+      else b.p.history.addPatch({ raster: b.raster, x: r.x, y: r.y, before, after: b.raster.read(r.x, r.y, r.w, r.h) });
+    }
+    b.p.history.end(b.p.snapshot());
+    this.refresh();
+  }
+  private bgDab(pt: Pt): void {
+    const b = this.bgErase as NonNullable<Engine['bgErase']>, raster = b.raster, W = raster.width, H = raster.height;
+    const inv = invert(b.local) ?? [1, 0, 0, 1, 0, 0], c = applyMat(inv, pt.x, pt.y), r = Math.max(0.5, this.brush.diameter / 2);
+    const x0 = Math.max(0, Math.floor(c.x - r)), y0 = Math.max(0, Math.floor(c.y - r)), x1 = Math.min(W, Math.ceil(c.x + r) + 1), y1 = Math.min(H, Math.ceil(c.y + r) + 1);
+    if (x1 <= x0 || y1 <= y0) return;
+    const w = x1 - x0, h = y1 - y0, img = raster.ctx.getImageData(x0, y0, w, h), d = img.data;
+    const cx = Math.min(w - 1, Math.max(0, Math.floor(c.x) - x0)), cy = Math.min(h - 1, Math.max(0, Math.floor(c.y) - y0)), ci = (cy * w + cx) * 4;
+    if (b.opts.sampling === 'continuous' || !b.sample) { if (d[ci + 3] === 0 && b.sample) { /* keep the last colour over erased pixels */ } else b.sample = { r: d[ci], g: d[ci + 1], b: d[ci + 2] }; }
+    const s = b.sample, tol = b.opts.tolerance, fg = this.fg, hard = Math.max(0, Math.min(1, this.brush.hardness)), sel = b.p.selection;
+    const matches = (i: number): boolean => d[i + 3] > 0 && Math.max(Math.abs(d[i] - s.r), Math.abs(d[i + 1] - s.g), Math.abs(d[i + 2] - s.b)) <= tol
+      && !(b.opts.protectForeground && Math.max(Math.abs(d[i] - fg.r), Math.abs(d[i + 1] - fg.g), Math.abs(d[i + 2] - fg.b)) <= tol);
+    // Which pixels the dab may reach: every match in the circle, or (Contiguous) those joined to the centre.
+    const reach = new Uint8Array(w * h);
+    const inCircle = (x: number, y: number): boolean => Math.hypot(x + x0 + 0.5 - c.x, y + y0 + 0.5 - c.y) <= r;
+    if (b.opts.contiguous) {
+      if (matches(ci) && inCircle(cx, cy)) {
+        const stack = [cy * w + cx]; reach[cy * w + cx] = 1;
+        while (stack.length) {
+          const k = stack.pop() as number, x = k % w, y = (k - x) / w;
+          for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+            if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+            const nk = ny * w + nx;
+            if (!reach[nk] && inCircle(nx, ny) && matches(nk * 4)) { reach[nk] = 1; stack.push(nk); }
+          }
+        }
+      }
+    } else for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (inCircle(x, y) && matches((y * w + x) * 4)) reach[y * w + x] = 1;
+    let any = false;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+      if (!reach[y * w + x]) continue;
+      const dist = Math.hypot(x + x0 + 0.5 - c.x, y + y0 + 0.5 - c.y) / r;
+      let k = dist <= hard ? 1 : Math.max(0, (1 - dist) / Math.max(1e-6, 1 - hard));
+      if (sel) { const q = applyMat(b.local, x + x0 + 0.5, y + y0 + 0.5), sx = Math.floor(q.x) - sel.x, sy = Math.floor(q.y) - sel.y; k *= sx < 0 || sy < 0 || sx >= sel.w || sy >= sel.h ? 0 : sel.data[sy * sel.w + sx] / 255; }
+      if (k <= 0) continue;
+      const i = (y * w + x) * 4;
+      d[i + 3] = Math.round(d[i + 3] * (1 - k));
+      any = true;
+    }
+    if (!any) return;
+    raster.ctx.putImageData(img, x0, y0);
+    raster.touch();
+    b.touched = unionRect(b.touched, { x: x0, y: y0, w, h });
+  }
+
+  /** The Magic Eraser (E; 1.49.5, the owner's tool list), as Photoshop's: the area the Magic Wand would select at a
+   *  point (with the eraser's own Tolerance, Contiguous and Sample All Layers) made transparent on the active layer, the
+   *  selection left as it was; one step. */
+  magicErase(pt: Pt, settings: { tolerance: number; contiguous: boolean; sampleAll: boolean }): void {
+    const p = this.current;
+    if (!p || !this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to erase.'); return; }
+    const before = p.selection, wand = this.wand;
+    p.history.begin('Magic Eraser', p.snapshot());
+    this.wand = { ...wand, ...settings };
+    try {
+      this.magicWand(pt, 'replace');
+      if (p.selection && p.selection !== before) this.clearPixels();
+    } finally {
+      this.wand = wand;
+      p.selection = before;
+      p.history.end(p.snapshot());
+      this.emit('selection', null);
+      this.refresh();
+    }
   }
 
   clearPixels(): void {
@@ -4581,7 +4699,7 @@ export class Engine {
     return s;
   }
 
-  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush', pt: Pt, shift: boolean): boolean {
+  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush' | 'patternStamp', pt: Pt, shift: boolean): boolean {
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
@@ -4614,6 +4732,15 @@ export class Engine {
       ctxOf(out).putImageData(sharpenSample(ctxOf(src).getImageData(0, 0, W, H), clamp(this.brush.diameter / 40, 0.8, 4)), 0, 0);
       texture = { surface: out, dx: 0, dy: 0 };
     } else if (kind === 'dodge' || kind === 'burn' || kind === 'sponge') texture = { surface: this.toned(this.layerSample(p, l0), kind), dx: 0, dy: 0 };
+    else if (kind === 'patternStamp') {
+      // The Pattern Stamp (1.49.5, the owner's tool list): the pattern tiled across the document, anchored to it, so
+      // strokes line up (Photoshop's Aligned).
+      const pat = patternById(this.patternStampPattern) ?? allPatterns()[0];
+      if (!pat) { this.notice('No pattern to paint with.'); return false; }
+      const W = p.doc.width, H = p.doc.height, tile = createSurface(W, H), c = ctxOf(tile), fill = c.createPattern(pat.surface as CanvasImageSource, 'repeat');
+      if (fill) { c.fillStyle = fill; c.fillRect(0, 0, W, H); }
+      texture = { surface: tile, dx: 0, dy: 0 };
+    }
     else if (kind === 'historyBrush') {
       // The History Brush paints this layer back from the source snapshot's own copy of it, in document space.
       const id = this.historyBrushSourceId, snap = id ? this.historySnapshots.get(p)?.find((x) => x.id === id) : undefined;
@@ -4622,7 +4749,7 @@ export class Engine {
       if (!src?.raster) { this.notice(`${snap.name} has no layer matching this one, so the History Brush cannot paint it back; choose another source in the History panel.`); return false; }
       texture = { surface: this.layerSample(p, src), dx: 0, dy: 0 };
     }
-    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush' }[kind], p.snapshot());
+    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', patternStamp: 'Pattern Stamp' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };

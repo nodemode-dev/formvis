@@ -30,7 +30,12 @@ import { historyBrushTool } from './history-brush';
 import { frameTool } from './frame';
 import { convertPointTool } from './convert-point';
 import { selectionBrushTool } from './selection-brush';
+import { pencilTool } from './pencil';
+import { eraserTool } from './eraser';
+import { magicEraserTool } from './magic-eraser';
+import { patternStampTool } from './pattern-stamp';
+import { backgroundEraserTool } from './background-eraser';
 
 export function registerBuiltinTools(): void {
-  for (const tool of [historyBrushTool, frameTool, convertPointTool, selectionBrushTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+  for (const tool of [historyBrushTool, frameTool, convertPointTool, selectionBrushTool, pencilTool, eraserTool, magicEraserTool, patternStampTool, backgroundEraserTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 }

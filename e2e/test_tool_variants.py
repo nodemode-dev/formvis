@@ -10,8 +10,7 @@ def test_marquee_lasso_shape_smear_and_brush_list_their_modes(page):
     cases = [("marquee", ["Rectangular Marquee", "Elliptical Marquee", "Single Row Marquee", "Single Column Marquee"], "Elliptical Marquee", "window.sonny.engine.marqueeKind", "ellipse"),
              ("lasso", ["Lasso", "Polygonal Lasso", "Magnetic Lasso"], "Polygonal Lasso", "window.sonny.engine.lassoKind", "polygonal"),
              ("shape", ["Rectangle", "Ellipse", "Polygon", "Star", "Line", "Arrow", "Heart", "Custom Shape"], "Star", "window.sonny.engine.shapeSettings.kind", "star"),
-             ("smear", ["Blur", "Sharpen", "Smudge", "Liquify Brush"], "Sharpen", "window.sonny.engine.retouch.smearMode", "sharpen"),
-             ("brush", ["Brush", "Eraser"], "Eraser", "window.sonny.engine.brushMode", "erase")]
+             ("smear", ["Blur", "Sharpen", "Smudge", "Liquify Brush"], "Sharpen", "window.sonny.engine.retouch.smearMode", "sharpen")]
     for tool, names, pick, read, want in cases:
         fly = open_group_of(page, tool)
         labels = fly.locator(".cv-flyout-label").all_inner_texts()

@@ -1270,10 +1270,9 @@ export function startApp(): void {
     if (!k) return;
     if (k === 'X') engine.swapColors();
     else if (k === 'D') engine.defaultColors();
-    else if (k === 'E') { engine.setTool('brush'); engine.setBrushMode('erase'); }
-    else if (k === 'B') { engine.setTool('brush'); engine.setBrushMode('paint'); }
+    // E and B pick their groups' tools like any letter (1.49.5: the Eraser is its own tool, the Pencil beside the Brush).
     else if (k === 'M' && e.shiftKey) { engine.setTool('marquee'); engine.update({ marqueeKind: engine.marqueeKind === 'rectangle' ? 'ellipse' : 'rectangle' }); }
-    else if (k === 'L' && e.shiftKey) { engine.setTool('lasso'); engine.update({ lassoKind: engine.lassoKind === 'freehand' ? 'polygonal' : 'freehand' }); }
+    else if (k === 'L' && e.shiftKey) { engine.setTool('lasso'); engine.update({ lassoKind: engine.lassoKind === 'freehand' ? 'polygonal' : engine.lassoKind === 'polygonal' ? 'magnetic' : 'freehand' }); }
     else if (toolForKey(k)) {
       // A letter picks its slot's tool (the one last chosen from its group, as Photoshop's does), keeping one already
       // chosen from the same group; Shift with it cycles the group.
