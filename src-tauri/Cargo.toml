@@ -1,6 +1,6 @@
 [package]
 name = "sonny"
-version = "1.46.0"
+version = "1.47.0"
 description = "sonny desktop shell"
 authors = ["nodemode-ai"]
 license = "Apache-2.0"
