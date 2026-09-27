@@ -20,6 +20,9 @@ const HOMES = 'sonny.tabHomes';
 export class PanelGroup {
   /** Every group by id: a tab dragged onto another group's header moves there (the owner's walkthrough). */
   static readonly all = new Map<string, PanelGroup>();
+  /** A group holds at most this many tabs (the owner's rule); a full one refuses more. */
+  static readonly MAX_TABS = 7;
+  get full(): boolean { return this.tabs.size >= PanelGroup.MAX_TABS; }
   /** Called after tabs move (the app re-lays out the columns). */
   static onMoved: (() => void) | null = null;
   /** A tab released over a column's gap, not a header: the app makes it a new group there (true if it did). */
@@ -98,7 +101,8 @@ export class PanelGroup {
       if (!ghost) { ghost = el('<div class="cv-tab-ghost"></div>'); setText(ghost, btn.textContent ?? ''); document.body.appendChild(ghost); }
       ghost.style.left = `${ev.clientX + 8}px`; ghost.style.top = `${ev.clientY + 8}px`;
       const t = over(ev);
-      if (t !== target) { target?.root.classList.remove('is-tab-target'); target = t; target?.root.classList.add('is-tab-target'); }
+      // A full group (7 tabs) says so and takes nothing.
+      if (t !== target) { target?.root.classList.remove('is-tab-target', 'is-tab-full'); target = t; target?.root.classList.add(t?.full ? 'is-tab-full' : 'is-tab-target'); }
       PanelGroup.onGapHint?.(t ? null : ev.clientX, ev.clientY);   // over a gap: New group here
     };
     const up = (ev: PointerEvent): void => {
@@ -106,9 +110,9 @@ export class PanelGroup {
       document.removeEventListener('pointermove', move, true);
       document.removeEventListener('pointerup', up, true);
       ghost?.remove();
-      target?.root.classList.remove('is-tab-target');
+      target?.root.classList.remove('is-tab-target', 'is-tab-full');
       if (ghost) PanelGroup.justDragged = true;
-      if (ghost && target) { PanelGroup.moveTab(tid, this, target); PanelGroup.saveHomes(); }
+      if (ghost && target) { if (!target.full) { PanelGroup.moveTab(tid, this, target); PanelGroup.saveHomes(); } }
       else if (ghost && PanelGroup.onDetach?.(tid, this, ev.clientX, ev.clientY)) PanelGroup.saveHomes();
     };
     document.addEventListener('pointermove', move, true);
@@ -118,7 +122,7 @@ export class PanelGroup {
   /** Moves a tab (its page, kept as it is) from one group to another; an emptied group is hidden. */
   static moveTab(tid: string, from: PanelGroup, to: PanelGroup): void {
     const t = from.tabs.get(tid);
-    if (!t || from === to) return;
+    if (!t || from === to || to.full) return;   // never past seven tabs, dragged or restored
     const label = t.btn.textContent ?? tid;
     t.btn.remove();
     from.tabs.delete(tid);

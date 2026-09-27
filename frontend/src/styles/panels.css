@@ -410,3 +410,14 @@
 .cv-dock-marker::after { content: attr(data-label); position: absolute; right: 8px; top: -11px; padding: 2px 8px; border-radius: 6px; background: var(--accent-color); color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
 .cv-group.is-tab-target > .cv-group-head { position: relative; }
 .cv-group.is-tab-target > .cv-group-head::after { content: 'Add as tab'; position: absolute; right: 44px; top: 50%; transform: translateY(-50%); padding: 2px 8px; border-radius: 6px; background: var(--accent-color); color: #fff; font-size: 11px; font-weight: 600; }
+/* The grip keeps its own size (the header's spacer rule, span { flex: 1 }, caught it too and pushed the tabs inward). */
+.cv-group-head > .cv-group-grip { flex: none; }
+/* Older grid headers (Timeline, History) give the grip a leading column of its own. */
+.cv-panel-head:not(.cv-group-head):has(> .cv-group-grip) { grid-template-columns: auto auto 1fr auto; }
+/* The grip in one place on every header, as the Navigator's (the owner's note): pinned at the left edge in a fixed 18 px
+   zone, with little padding, never moved by how many tabs a group has or what else its header holds. */
+.cv-group-head, .cv-panel-head:has(> .cv-group-grip) { position: relative; padding-left: 22px !important; }
+.cv-group-head > .cv-group-grip, .cv-panel-head > .cv-group-grip { position: absolute; left: 4px; top: 50%; transform: translateY(-50%); width: 14px; height: 20px; margin: 0; }
+.cv-panel-head:not(.cv-group-head):has(> .cv-group-grip) { grid-template-columns: auto 1fr auto; }
+.cv-group.is-tab-full > .cv-group-head { position: relative; box-shadow: inset 0 0 0 2px var(--text-muted); }
+.cv-group.is-tab-full > .cv-group-head::after { content: 'Full: 7 tabs'; position: absolute; right: 44px; top: 50%; transform: translateY(-50%); padding: 2px 8px; border-radius: 6px; background: var(--surface-raised); color: var(--text-secondary); font-size: 11px; font-weight: 600; }

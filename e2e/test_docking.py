@@ -126,3 +126,25 @@ def test_moving_a_group_shows_a_ghost_and_says_move_here(page):
     assert page.evaluate("document.querySelector('.cv-dock-marker').dataset.label") == "Move here"
     page.keyboard.press("Escape"); page.mouse.up()
     page.evaluate("localStorage.removeItem('sonny.dock')"); page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+
+
+def test_the_grip_sits_in_one_place_and_a_group_holds_seven_tabs_at_most(page):
+    try:
+        page.evaluate("window.sonny.engine.newDocument(300, 200, 'S', 'white'); window.sonny.commands.run('panel-timeline')")
+        offs = page.evaluate("[...document.querySelectorAll('.cv-group-grip')].filter((g) => g.offsetParent).map((g) => Math.round(g.getBoundingClientRect().left - g.parentElement.getBoundingClientRect().left))")
+        assert len(offs) >= 8 and len(set(offs)) == 1, offs                                     # the same place in every header
+        # Fill the Navigator's group to seven tabs, then drag an eighth at it.
+        page.evaluate("""(async () => { const { PanelGroup } = await import('/src/ui/panel-group.ts'), nav = PanelGroup.all.get('navigator');
+          for (const [tid, from] of [['color', 'swatches'], ['brush-settings', 'brushes'], ['channels', 'layers-panel'], ['paths', 'layers-panel'], ['paragraph', 'paragraph'], ['character', 'character']]) PanelGroup.moveTab(tid, PanelGroup.all.get(from), nav); })()""")
+        assert page.evaluate(TABS, "section.cv-navigator") == ["Navigator", "Color", "Brush Settings", "Channels", "Paths", "Paragraph", "Character"]
+        # Brushes alone would move its whole group; with Swatches beside it, its tab drags itself.
+        page.evaluate("(async () => { const { PanelGroup } = await import('/src/ui/panel-group.ts'); PanelGroup.moveTab('swatches', PanelGroup.all.get('swatches'), PanelGroup.all.get('brushes')); })()")
+        t = page.locator("section.cv-brushes .cv-group-tab", has_text="Brushes").bounding_box()
+        nav = page.locator("section.cv-navigator > .cv-group-head").bounding_box()
+        page.mouse.move(t["x"] + 10, t["y"] + 10); page.mouse.down()
+        page.mouse.move(nav["x"] + nav["width"] / 2, nav["y"] + nav["height"] / 2, steps=12)
+        assert "is-tab-full" in page.locator("section.cv-navigator").get_attribute("class")          # it says it is full
+        page.mouse.up()
+        assert len(page.evaluate(TABS, "section.cv-navigator")) == 7 and "Brushes" in page.evaluate(TABS, "section.cv-brushes")   # refused
+    finally:
+        page.evaluate(RESET + "; localStorage.removeItem('sonny.tabHomes'); localStorage.removeItem('sonny.customGroups')"); page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
