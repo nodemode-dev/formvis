@@ -208,8 +208,9 @@
 .cv-num:focus-within { border-color: var(--accent-color); }
 .cv-unit { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
 /* The Paths tab: only the header and Paths show; Paths' own fold toggle gives way to the tab. */
-.cv-layers-panel.is-paths-tab { grid-template-rows: auto minmax(0, 1fr); }
-.cv-layers-panel.is-paths-tab > .cv-layer-props, .cv-layers-panel.is-paths-tab > .cv-layer-list, .cv-layers-panel.is-paths-tab > .cv-panel-foot { display: none; }
+.cv-layers-panel.is-paths-tab, .cv-layers-panel.is-channels-tab { grid-template-rows: auto minmax(0, 1fr); }
+.cv-layers-panel.is-paths-tab > .cv-layer-props, .cv-layers-panel.is-paths-tab > .cv-layer-list, .cv-layers-panel.is-paths-tab > .cv-panel-foot,
+.cv-layers-panel.is-channels-tab > .cv-layer-props, .cv-layers-panel.is-channels-tab > .cv-layer-list, .cv-layers-panel.is-channels-tab > .cv-panel-foot { display: none; }
 .cv-layers-panel .cv-paths[hidden] { display: none; }
 .cv-layers-panel .cv-paths { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
 .cv-layers-panel .cv-paths > .cv-panel-head { height: 34px; background: transparent; }
@@ -326,3 +327,26 @@
 .cv-group-collapse:hover { background: #242328; color: var(--text-primary); }
 .cv-props-fly { position: fixed; z-index: var(--z-context); width: 284px; max-height: calc(100vh - 24px); overflow-y: auto; border: 1px solid #3a3a3a; border-radius: 12px; background: #111112; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6); }
 .cv-props-fly[hidden] { display: none; }
+
+/* Resizable dock groups (the target's): a splitter between groups; a sized group lays out as a column whose body scrolls;
+   a sized Navigator's preview fills it. */
+.cv-dock-split { flex: none; position: relative; z-index: 2; height: 6px; margin: -3px 0; cursor: row-resize; touch-action: none; }
+.cv-dock-split::after { content: ''; position: absolute; left: 42%; right: 42%; top: 2px; height: 2px; border-radius: 1px; background: transparent; }
+.cv-dock-split:hover::after { background: #5a5960; }
+.cv-layers > section.is-sized { display: flex; flex-direction: column; overflow: hidden; }
+.cv-layers > section.is-sized > .cv-group-body { flex: 1; min-height: 0; overflow: auto; }
+.cv-navigator.is-sized > .cv-group-body { display: flex; flex-direction: column; overflow: hidden; }
+.cv-navigator.is-sized .cv-nav { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+.cv-navigator.is-sized .cv-nav-card { flex: 1; height: auto; min-height: 60px; }
+
+/* Channels (the target's tab): a row per channel, eye, thumbnail, name; the viewed one raised; the view as a filter. */
+.cv-channels { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; padding: 8px; }
+.cv-channels[hidden] { display: none; }
+.cv-ch-rows { display: flex; flex-direction: column; gap: 4px; }
+.cv-ch-row { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px 0 6px; border: 1px solid #2a2a2a; border-radius: 8px; background: #1c1c1c; color: var(--text-primary); font-size: 13px; cursor: pointer; }
+.cv-ch-row.is-on { border-color: #4a4658; background: linear-gradient(90deg, #26242d, #413e4b); }
+.cv-ch-eye { display: inline-grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
+.cv-ch-eye.is-off { opacity: 0.25; }
+.cv-ch-thumb { width: 44px; height: 30px; border-radius: 4px; background: #2a2a2a; }
+.cv-ch-note { margin: 10px 2px 0; color: var(--text-muted); font-size: 12px; }
+.cv-stage.has-channel-view .cv-scene, .cv-stage.has-channel-view .cv-scene-gpu { filter: url(#cv-channel-view); }

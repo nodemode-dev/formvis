@@ -60,6 +60,7 @@ import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
 import { PropertiesColumn } from './ui/properties';
 import { TitleTools } from './ui/titlebar-tools';
+import { ChannelsPanel } from './ui/channels';
 import { NativeMenus, wantsNativeMenus } from './ui/native-menu';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
@@ -186,6 +187,7 @@ export function startApp(): void {
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   new PathsPanel(q(root, '.cv-layers'), engine);
   layers.adoptPaths(q(root, '.cv-paths'));
+  layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage')));   // the Channels tab (Phase 21)
   new TimelinePanel(q(root, '.cv-layers'), engine);
   new HistoryPanel(q(root, '.cv-layers'), engine);
   const dock = new Dock(q(root, '.cv-layers'));

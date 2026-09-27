@@ -15,6 +15,7 @@ export const DOCK_PANELS: readonly DockPanel[] = [
 ];
 interface DockState { order: string[]; hidden: string[] }
 const KEY = 'sonny.dock';
+const HEIGHTS_KEY = 'sonny.dock.heights';
 /** As the target's Essentials (and Photoshop's): Navigator, Swatches and Layers shown; Timeline and History in Window. */
 const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history'] };
 
@@ -65,7 +66,12 @@ export class Dock {
   }
 
   /** Window > Reset Panels: the default order, every panel shown. */
-  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [...DEFAULT.hidden] }; this.save(); }
+  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [...DEFAULT.hidden] }; this.heights = {}; this.saveHeights(); this.save(); }
+
+  /** Group heights set by dragging a splitter (Phase 21, the target's resizable groups); Layers takes what is left. */
+  private heights: Record<string, number> = (() => { try { const h = JSON.parse(localStorage.getItem(HEIGHTS_KEY) ?? '{}') as Record<string, unknown>; return Object.fromEntries(Object.entries(h).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))) as Record<string, number>; } catch { return {}; } })();
+  private saveHeights(): void { try { localStorage.setItem(HEIGHTS_KEY, JSON.stringify(this.heights)); } catch { /* this session only */ } }
+
 
   /** A workspace's arrangement (Phase 21): the panels in this order, these hidden; ids not in the dock are ignored. */
   arrange(order: readonly string[], hidden: readonly string[]): void {
@@ -91,6 +97,47 @@ export class Dock {
     const current = Array.from(this.dock.children).filter((c) => want.includes(c as HTMLElement));
     if (want.some((s, i) => current[i] !== s)) for (const s of want) this.dock.insertBefore(s, this.marker);
     for (const id of this.state.order) { const s = this.section(id); if (s) setHidden(s, !this.isShown(id)); }
+    this.splitters();
+  }
+
+  /** A splitter between each pair of shown groups: dragging it sizes the group above, or the one below when the one
+   *  above is Layers (which takes what is left); a double-click returns that group to its own height. */
+  private shownGroups(): Array<{ id: string; s: HTMLElement }> {
+    return this.state.order.filter((id) => this.isShown(id)).map((id) => ({ id, s: this.section(id) })).filter((x): x is { id: string; s: HTMLElement } => !!x.s);
+  }
+
+  /** Each shown group at its set height, or its own; Layers always takes what is left. */
+  private sizeGroups(): void {
+    for (const { id, s } of this.shownGroups()) {
+      const h = this.heights[id];
+      const sized = id !== 'layers' && typeof h === 'number';
+      s.classList.toggle('is-sized', sized);
+      s.style.height = sized ? `${Math.round(h)}px` : '';
+    }
+  }
+
+  private splitters(): void {
+    for (const old of Array.from(this.dock.querySelectorAll(':scope > .cv-dock-split'))) old.remove();
+    const shown = this.shownGroups();
+    this.sizeGroups();
+    for (let i = 0; i < shown.length - 1; i++) {
+      const above = shown[i], below = shown[i + 1], target = above.id === 'layers' ? below : above, sign = above.id === 'layers' ? -1 : 1;
+      const split = el(`<div class="cv-dock-split" role="separator" aria-orientation="horizontal" aria-label="Resize ${target.id}"></div>`);
+      split.dataset.target = target.id;
+      above.s.after(split);
+      split.addEventListener('dblclick', () => { delete this.heights[target.id]; this.saveHeights(); this.sizeGroups(); });
+      split.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || this.locked) return;
+        e.preventDefault();
+        split.setPointerCapture(e.pointerId);
+        const y0 = e.clientY, h0 = target.s.getBoundingClientRect().height, head = target.s.querySelector('.cv-panel-head')?.getBoundingClientRect().height ?? 40;
+        const layers = this.section('layers'), room = layers ? layers.getBoundingClientRect().height - 150 : 200;
+        // Only the sizes change while dragging: rebuilding the splitters would drop this one and its pointer capture.
+        const move = (ev: PointerEvent): void => { this.heights[target.id] = Math.max(head + 24, Math.min(h0 + Math.max(0, room), h0 + sign * (ev.clientY - y0))); this.sizeGroups(); };
+        const up = (): void => { split.removeEventListener('pointermove', move); split.removeEventListener('pointerup', up); split.removeEventListener('pointercancel', up); this.saveHeights(); };
+        split.addEventListener('pointermove', move); split.addEventListener('pointerup', up); split.addEventListener('pointercancel', up);
+      });
+    }
   }
 
   private save(): void {
