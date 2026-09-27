@@ -2,6 +2,103 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The target's layout and experience · _v1.47.0 (Phase 21 steps 2 to 6: ui/panel-group.ts, ui/navigator.ts, ui/swatches.ts, ui/properties.ts, ui/titlebar-tools.ts, ui/native-menu.ts, ui/dropdown.ts new; ui/layers.ts, ui/dock.ts, ui/menu.ts, ui/dialogs.ts, ui/app-dialogs.ts, ui/tabs.ts, ui/icons.ts, app.ts, engine/index.ts, engine/renderer.ts, engine/types.ts, io/project-io.ts, io/psd.ts, extensions/tools/type.ts, styles; src-tauri/capabilities/default.json)
+
+`PanelGroup`; `NavigatorPanel`; `SwatchesPanel`; `PropertiesColumn`; `TitleTools` (`WORKSPACES`); `NativeMenus` (`accelerator`, `wantsNativeMenus`); `enhanceSelect`; `LayersPanel` (`KINDS`, `kindOf`, `LOCKS`, `BLEND_GROUPS`, `adoptPaths`, `showTab`); `Dock.arrange`, `Dock.locked`; `askSaveChanges`; `NewCanvasDialog` rebuilt (`PRESET_GROUPS`); `Engine.setFill`, `Engine.setLocks`, `Layer.fill`, `Layer.locks`, `newDocument`'s resolution; `setType` exported. Removed from frontend:
+
+```text
+import { anyDialogOpen, confirmAction, promptName } from './ui/dialogs';
+<div class="cv-tabs"><div class="cv-tab-strip" role="tablist"></div><button class="cv-icon-btn" type="button" data-cmd="new">${icon('add', 16)}</button></div>
+    if (p.modified && !(await confirmAction('Close without saving?', `${p.name} has changes that are not saved.`, 'Close', true))) return;
+    { label: 'Window', items: ['brush-settings', 'paragraph-styles', '-', ...DOCK_PANELS.map((pn) => `panel-${pn.id}`), '-', 'reset-panels'] },
+    if (e.button !== 0) return;
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+  notice(text: string, kind: Notice['kind'] = 'info'): void { this.emit('notice', { kind, text }); }
+  newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent'): Project | null {
+    const base: Doc = { id: uid(), width, height, resolution: 72, layers: [] };
+          layers.push({ image: null, lut, mask, clip, folders, version: 0, width: 256, height: 1, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+        layers.push({ image: null, lut: lut3, lut3: true, mask, clip, folders, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: o?.opacity ?? l.opacity, blend: 'normal' });
+      layers.push({ image: img, version: o?.source ? -1 : l.raster.version, width: img.width, height: img.height, matrix: placement(o?.transform ?? l.transform, img.width, img.height), opacity: o?.opacity ?? l.opacity, blend: o?.blend ?? l.blend, mask, clip, folders });
+  private paintable(l: Layer | null): l is Layer { return !!l && !l.isGroup && !l.adjustment; }
+    const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : this.brushMode === 'erase' ? 'destination-out' : 'source-over';
+    const color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : this.fg;
+    const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture, pick.target === 'mask');
+      if (layer.adjustment) { this.adjust(job, ctx, layer, own, folders, base, map, clipCache, W, H, opacity); continue; }
+        this.draw(ctx, src, m, t.sampling, opacity, op, job.quality);
+      if (pixelBlend) this.pixelBlend(ctx, a, mode, opacity, m, src, job.view, W, H);
+        ctx.globalAlpha = opacity;
+function setType(e: Engine, patch: Partial<TextSpec>): void {
+      const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend })
+        : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: pl.left ?? 0, y: pl.top ?? 0 }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend });
+      const out: PsdLayer = { name: l.name, opacity: l.opacity, hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment };
+    const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId };
+.cv-main { display: grid; grid-template-columns: var(--cv-rail-w) minmax(0, 1fr) 6px var(--cv-layers-w); min-height: 0; }
+  --cv-layers-w: 264px;
+const PRESETS: ReadonlyArray<[string, number, number]> = [
+  ['HD 1920 \u00d7 1080', 1920, 1080], ['4K 3840 \u00d7 2160', 3840, 2160], ['Square 2048', 2048, 2048],
+  ['Portrait 1080 \u00d7 1350', 1080, 1350], ['A4 at 300 ppi', 2480, 3508], ['Letter at 300 ppi', 2550, 3300],
+  private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" value="Untitled" spellcheck="false">');
+  private readonly preset = el<HTMLSelectElement>(`<select class="cv-input"><option value="">Custom</option>${PRESETS.map(([label], i) => `<option value="${i}">${label}</option>`).join('')}</select>`);
+  private readonly width = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="30000" step="1" value="1920">');
+  private readonly height = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="30000" step="1" value="1080">');
+  private readonly fill = el<HTMLSelectElement>('<select class="cv-input"><option value="transparent">Transparent</option><option value="white">White</option><option value="background">Background color</option></select>');
+    super('New Canvas', 420);
+    this.field('Name', this.name);
+    this.field('Preset', this.preset);
+    this.field('Width (px)', this.width);
+    this.field('Height (px)', this.height);
+    this.field('Contents', this.fill);
+    this.body.appendChild(el('<p class="cv-note">Each side 1 to 30,000 px, 100 megapixels at most.</p>'));
+    this.preset.addEventListener('change', () => {
+      const p = PRESETS[Number(this.preset.value)];
+      if (!this.preset.value || !p) return;
+      this.width.value = String(p[1]);
+      this.height.value = String(p[2]);
+    });
+    for (const i of [this.width, this.height]) i.addEventListener('input', () => { this.preset.value = ''; });
+    for (const i of [this.name, this.width, this.height]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.create(); } });
+    this.open(this.width);
+    this.width.select();
+    const w = Number(this.width.value), h = Number(this.height.value);
+    if (this.engine.newDocument(w, h, this.name.value.trim() || 'Untitled', fill)) this.close();
+  { id: 'paths', label: 'Paths', selector: '.cv-paths' },
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: [] };
+    const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [];
+        if (e.button !== 0 || (e.target as HTMLElement).closest('[data-cmd]')) return;
+        head.setPointerCapture(e.pointerId);
+  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [] }; this.save(); }
+  private readonly opacityOut: HTMLElement;
+  private opacityDrag = false;
+      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><span class="cv-panel-title">${icon('layers', 14)}Layers</span><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
+      `<div class="cv-layer-props"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${BLEND_MODES.map((b) => `<option value="${b.id}">${b.label}</option>`).join('')}</select>` +
+      `<label class="cv-opacity" title="Opacity"><input class="cv-opacity-range" type="range" min="0" max="100" step="1" value="100" aria-label="Opacity"><span class="cv-readout cv-opacity-out">100%</span></label></div>` +
+    this.opacity = q<HTMLInputElement>(root, '.cv-opacity-range');
+    this.opacityOut = q(root, '.cv-opacity-out');
+    this.opacity.addEventListener('pointerdown', () => { this.opacityDrag = true; engine.beginOpacityEdit(); });
+    this.opacity.addEventListener('input', () => {
+      const v = Number(this.opacity.value) / 100;
+      setText(this.opacityOut, `${this.opacity.value}%`);
+      if (this.opacityDrag) engine.setOpacityLive(v);
+      else engine.setOpacity(v);
+    const endOpacity = (): void => { if (!this.opacityDrag) return; this.opacityDrag = false; engine.endOpacityEdit(); };
+    this.opacity.addEventListener('change', endOpacity);
+    this.opacity.addEventListener('pointerup', endOpacity);
+    const entries = p ? hierarchy(p.doc, true, p.collapsed) : [];
+    setHidden(this.empty, entries.length > 0);
+    if (!this.opacityDrag) { setValue(this.opacity, pct); setText(this.opacityOut, `${pct}%`); }
+    const left = Math.max(4, Math.min(x, window.innerWidth - w - 4));
+    const top = Math.max(4, Math.min(y, window.innerHeight - h - 4));
+      `<div class="cv-panel-head"><button class="cv-paths-toggle" type="button" aria-expanded="true"><span class="cv-paths-chevron">${icon('chevronDown', 12)}</span>${icon('penTool', 14)}<span>Paths</span></button><span></span>` +
+      `<div class="cv-paths-body"><div class="cv-path-list"><div class="cv-path-rows" role="listbox" aria-label="Paths"></div><div class="cv-paths-empty">No paths. Draw one with the Pen (P).</div></div>` +
+        const n = el(`<div class="cv-tab" role="tab"><span class="cv-tab-dot"></span><span class="cv-tab-name"></span><button class="cv-tab-close" type="button" aria-label="Close tab">${icon('close', 12)}</button></div>`);
+```
+
+Removed from src-tauri:
+
+```text
+  "description": "Window chrome only. The app itself talks HTTP to its engine and uses no Tauri IPC.",
+```
+
 ## The start screen, and the redesign reaching everyone · _v1.46.0 (index.html, src/ui/themes.ts, src/ui/themes.test.ts, src/ui/home.ts, src/styles/shell.css, src/styles/panels.css; e2e/test_home_screen.py)
 
 Phase 21: `APPEARANCE` (2) in `themes.ts` and index.html's boot script, so a choice saved before Studio Dark is set aside once; `HomeScreen` rebuilt to the target's start screen (`recentBox` replaces `empty`); the Home CSS block replaced; panel headers, layer rows and the tool column restyled in appended blocks. Removed:

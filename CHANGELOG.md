@@ -2,6 +2,28 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.47.0 · 2026-09-26
+
+### Changed: the target's layout and experience (Phase 21, UI_SPEC.md)
+
+- Panels as the target's: groups with chip tabs and a minimise button; the right column Navigator (a live preview, the view in red, Fit and zoom presets, a Zoom slider), Swatches and Color (the target's 47 swatches; click, Alt-click, right-click, +; a saturation square and hue strip), and Layers with Paths as a tab, a Kind filter row, a grouped and searchable blend mode list, and Opacity and Fill fields. History and Timeline start hidden, as the target's Essentials (Window shows them). The Layers panel's default width is 288 px.
+- A Properties column between the canvas and the panels: the active layer's W, X, H, Y with a link; Brushes (tip, Size, Hardness, a stroke preview, Brush Settings); Paragraph; Character.
+- The title bar's tools: a theme toggle, a command search (type a command's name, Enter runs it), the workspace list (Essentials, Photography, Painting, Graphic and Web, Motion) and Lock Workspace. Document tabs in their own row above the canvas (name, * when unsaved, RGB/8, a circled close). The options bar and tool flyouts restyled; tools with variants show a dot.
+- New Document as the target's: categories, preset cards shaped as their documents, a search over every preset, units and resolution (now kept with the document), orientation, Artboards, and a live size and memory summary.
+- Dialogs blur the app behind them; the one primary action is white. Closing a document with unsaved changes offers Don't Save, Cancel and Save (Save closes only once saved).
+- In the desktop app on macOS, the menus are in the system menu bar.
+- Context menus near the window's foot open upward, so no item sits under the pointer.
+
+### Added
+
+- Layer Fill, as Photoshop's: the pixels fade, the layer styles do not; kept in projects and PSD.
+- Layer locks, as Photoshop's: transparency, image pixels, position, all, honoured by the tools; kept in projects and PSD.
+- 25 more browser tests and 2 unit tests: 533 in all, besides the native renderer's.
+
+### Not verified yet
+
+- The menus in macOS's menu bar and the Native GPU canvas beneath the interface are tested with the desktop shell stood in for; only a Mac shows them for real.
+
 ## 1.46.0 · 2026-09-26
 
 ### Changed
