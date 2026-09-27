@@ -14,41 +14,57 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'timeline', label: 'Timeline', selector: '.cv-timeline' },
   { id: 'history', label: 'History', selector: '.cv-history' },
 ];
-interface DockState { order: string[]; hidden: string[] }
+/** The side column's panel groups (Phase 21), movable like the dock's: any panel may live in either column. */
+export const SIDE_PANELS: readonly DockPanel[] = [
+  { id: 'properties', label: 'Properties', selector: 'section.cv-properties' },
+  { id: 'brushes', label: 'Brushes', selector: 'section.cv-brushes' },
+  { id: 'paragraph', label: 'Paragraph', selector: 'section.cv-paragraph' },
+  { id: 'character', label: 'Character', selector: 'section.cv-character' },
+];
+export const ALL_PANELS: readonly DockPanel[] = [...DOCK_PANELS, ...SIDE_PANELS];
+const DEFAULT_SIDE = SIDE_PANELS.map((p) => p.id);
+/** order: the dock's panels, top to bottom; side: the side column's; hidden: those not shown, wherever they live. */
+interface DockState { order: string[]; hidden: string[]; side: string[] }
 const KEY = 'sonny.dock';
 const HEIGHTS_KEY = 'sonny.dock.heights';
 /** As the target's Essentials (and Photoshop's): Navigator, Swatches and Layers shown; Timeline and History in Window. */
-const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history'] };
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history'], side: [...DEFAULT_SIDE] };
 
 function load(): DockState {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<DockState>;
-    const ids = DOCK_PANELS.map((p) => p.id);
-    const order = Array.isArray(r.order) ? r.order.filter((id): id is string => ids.includes(id as string)) : [];
-    // A panel missing from a saved arrangement (one saved before it could move) takes its default place, not the end.
-    for (const id of ids) if (!order.includes(id)) order.splice(Math.min(ids.indexOf(id), order.length), 0, id);
+    const ids = ALL_PANELS.map((p) => p.id), dockIds = DOCK_PANELS.map((p) => p.id);
+    // The side column's panels as saved (a saved arrangement from before panels could move has none: the default).
+    const side = Array.isArray(r.side) ? r.side.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT_SIDE];
+    const order = Array.isArray(r.order) ? r.order.filter((id): id is string => ids.includes(id as string) && !side.includes(id as string)) : [];
+    // A panel missing from both takes its default column and place, not the end.
+    for (const id of ids) if (!order.includes(id) && !side.includes(id)) {
+      if (DEFAULT_SIDE.includes(id) && !Array.isArray(r.side)) side.push(id);
+      else order.splice(Math.min(Math.max(0, dockIds.indexOf(id)), order.length), 0, id);
+    }
     const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT.hidden];
-    return { order, hidden };
-  } catch { return { ...DEFAULT, order: [...DEFAULT.order] }; }
+    return { order, hidden, side };
+  } catch { return { ...DEFAULT, order: [...DEFAULT.order], side: [...DEFAULT_SIDE] }; }
 }
 
 export class Dock {
   private state = load();
   private readonly marker = el('<div class="cv-dock-marker" hidden></div>');
-  private drag: { id: string; startY: number; moving: boolean; target: number } | null = null;
+  private drag: { id: string; startY: number; moving: boolean; target: number; col: 'dock' | 'side' } | null = null;
   private suppressClick = false;
   onChange: (() => void) | null = null;
 
-  constructor(private readonly dock: HTMLElement) {
+  /** The side column (its panels move to and from the dock), set by the app. */
+  constructor(private readonly dock: HTMLElement, private readonly side: HTMLElement | null = null) {
     dock.appendChild(this.marker);
-    for (const p of DOCK_PANELS) {
+    for (const p of ALL_PANELS) {
       const section = this.section(p.id), head = section?.querySelector<HTMLElement>('.cv-panel-head');
       if (!head) continue;
       head.classList.add('cv-dock-grip');
       head.addEventListener('pointerdown', (e) => {
         if (e.button !== 0 || this.locked || (e.target as HTMLElement).closest('[data-cmd]')) return;
         // The pointer is captured only once the drag moves (move), so a plain click still reaches a tab in the header.
-        this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1 };
+        this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1, col: 'dock' };
       });
       head.addEventListener('pointermove', (e) => this.move(e));
       head.addEventListener('pointerup', () => this.drop());
@@ -69,7 +85,19 @@ export class Dock {
   }
 
   /** Window > Reset Panels: the default order, every panel shown. */
-  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [...DEFAULT.hidden] }; this.heights = {}; this.saveHeights(); this.save(); }
+  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [...DEFAULT.hidden], side: [...DEFAULT_SIDE] }; this.heights = {}; this.saveHeights(); this.save(); }
+
+  /** The panels living in the dock, in order (everything not in the side column). */
+  private dockIds(): string[] { return this.state.order.filter((id) => !this.state.side.includes(id)); }
+  /** The side column's panels, in order. */
+  sideIds(): string[] { return [...this.state.side]; }
+  /** How many panels the side column shows (none: the app hides the column). */
+  sideShown(): number { return this.state.side.filter((id) => this.isShown(id)).length; }
+  /** Window > Merge Panel Columns: the side column's panels join the dock, below its own; the side column goes. */
+  merge(): void { this.state = { ...this.state, order: [...this.dockIds(), ...this.state.side], side: [] }; this.save(); }
+  /** Window > Separate Panel Columns: the side column's own panels return to it. */
+  separate(): void { this.state = { ...this.state, order: this.dockIds().filter((id) => !DEFAULT_SIDE.includes(id)), side: [...DEFAULT_SIDE] }; this.save(); }
+  get merged(): boolean { return this.state.side.length === 0; }
 
   /** Group heights set by dragging a splitter (Phase 21, the target's resizable groups); Layers takes what is left. */
   private heights: Record<string, number> = (() => { try { const h = JSON.parse(localStorage.getItem(HEIGHTS_KEY) ?? '{}') as Record<string, unknown>; return Object.fromEntries(Object.entries(h).filter(([, v]) => typeof v === 'number' && Number.isFinite(v))) as Record<string, number>; } catch { return {}; } })();
@@ -81,7 +109,7 @@ export class Dock {
     const ids = DOCK_PANELS.map((p) => p.id);
     const o = order.filter((id) => ids.includes(id));
     for (const id of ids) if (!o.includes(id)) o.push(id);
-    this.state = { order: o, hidden: hidden.filter((id) => ids.includes(id)) };
+    this.state = { order: o, hidden: hidden.filter((id) => ALL_PANELS.some((p) => p.id === id)), side: [...DEFAULT_SIDE] };
     this.save();
   }
 
@@ -89,9 +117,10 @@ export class Dock {
   get locked(): boolean { try { return localStorage.getItem('sonny.lock') === '1'; } catch { return false; } }
   set locked(on: boolean) { try { localStorage.setItem('sonny.lock', on ? '1' : '0'); } catch { /* this session only */ } this.dock.classList.toggle('is-locked', on); }
 
+  /** A panel's element, wherever it is (either column, or opened from a strip). */
   private section(id: string): HTMLElement | null {
-    const p = DOCK_PANELS.find((x) => x.id === id);
-    return p ? this.dock.querySelector<HTMLElement>(p.selector) : null;
+    const p = ALL_PANELS.find((x) => x.id === id);
+    return p ? document.querySelector<HTMLElement>(p.selector) : null;
   }
 
   /** Sections moved into the saved order only when it differs (moved, never rebuilt), and shown or hidden. */
@@ -134,7 +163,7 @@ export class Dock {
     expand.addEventListener('click', () => this.setCollapsed(false));
     strip.appendChild(expand);
     const ICONS: Record<string, string> = { navigator: 'panelNav', swatches: 'swatchGrid', layers: 'layers', timeline: 'film', history: 'history' };
-    for (const id of this.state.order.filter((x) => this.isShown(x))) {
+    for (const id of this.dockIds().filter((x) => this.isShown(x))) {
       const s = this.section(id), label = DOCK_PANELS.find((p) => p.id === id)?.label ?? id;
       if (!s) continue;
       const b = el<HTMLButtonElement>(`<button class="cv-strip-btn" type="button" title="${label}" aria-label="${label}">${icon(ICONS[id] ?? 'panelProps', 18)}</button>`);
@@ -161,16 +190,23 @@ export class Dock {
       this.collapseBtn = el<HTMLButtonElement>(`<button class="cv-group-collapse cv-dock-collapse" type="button" title="Collapse to icons" aria-label="Collapse to icons">${icon('collapseRight', 14)}</button>`);
       this.collapseBtn.addEventListener('click', () => this.setCollapsed(true));
     }
-    const first = this.state.order.find((x) => this.isShown(x)), head = first ? this.section(first)?.querySelector(':scope > .cv-panel-head') : null;
+    const first = this.dockIds().find((x) => this.isShown(x)), head = first ? this.section(first)?.querySelector(':scope > .cv-panel-head') : null;
     if (head && this.collapseBtn.parentElement !== head) head.appendChild(this.collapseBtn);
   }
 
   private apply(): void {
     this.closeFly();
-    const want = this.state.order.map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
+    // Each panel in its column, in order; moved only when the order differs, never rebuilt.
+    const want = this.dockIds().map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
     const current = Array.from(this.dock.children).filter((c) => want.includes(c as HTMLElement));
     if (want.some((s, i) => current[i] !== s)) for (const s of want) this.dock.insertBefore(s, this.marker);
-    for (const id of this.state.order) { const s = this.section(id); if (s) setHidden(s, !this.isShown(id)); }
+    if (this.side) {
+      const sideWant = this.state.side.map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
+      const sideNow = Array.from(this.side.children).filter((c) => sideWant.includes(c as HTMLElement));
+      if (sideWant.some((s, i) => sideNow[i] !== s)) for (const s of sideWant) this.side.appendChild(s);
+      for (const s of sideWant) { s.classList.remove('is-sized'); s.style.height = ''; }   // sizes are the dock's
+    }
+    for (const p of ALL_PANELS) { const s = this.section(p.id); if (s) setHidden(s, !this.isShown(p.id)); }
     this.splitters();
     this.placeCollapse();
     this.dock.classList.toggle('is-collapsed', this.collapsed);
@@ -180,7 +216,7 @@ export class Dock {
   /** A splitter between each pair of shown groups: dragging it sizes the group above, or the one below when the one
    *  above is Layers (which takes what is left); a double-click returns that group to its own height. */
   private shownGroups(): Array<{ id: string; s: HTMLElement }> {
-    return this.state.order.filter((id) => this.isShown(id)).map((id) => ({ id, s: this.section(id) })).filter((x): x is { id: string; s: HTMLElement } => !!x.s);
+    return this.dockIds().filter((id) => this.isShown(id)).map((id) => ({ id, s: this.section(id) })).filter((x): x is { id: string; s: HTMLElement } => !!x.s);
   }
 
   /** Each shown group at its set height, or its own; Layers always takes what is left. */
@@ -232,16 +268,24 @@ export class Dock {
     if (!d.moving && Math.abs(e.clientY - d.startY) < 5) return;
     if (!d.moving) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     d.moving = true;
-    const shown = this.state.order.filter((id) => this.isShown(id)).map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
-    const box = this.dock.getBoundingClientRect();
-    let best = 0, bestDist = Infinity, y = 0;
+    // The column under the pointer: the side column's when over it (and open), else the dock's.
+    const sr = this.side && !this.side.hidden && !this.side.classList.contains('is-collapsed') ? this.side.getBoundingClientRect() : null;
+    const col: 'dock' | 'side' = sr && e.clientX >= sr.left && e.clientX <= sr.right ? 'side' : 'dock';
+    const host = col === 'side' ? this.side as HTMLElement : this.dock;
+    const ids = (col === 'side' ? this.state.side : this.dockIds()).filter((id) => this.isShown(id));
+    const shown = ids.map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
+    const box = host.getBoundingClientRect();
+    let best = 0, bestDist = Infinity, y = box.top + 2;
     for (let i = 0; i <= shown.length; i++) {
+      if (!shown.length) break;
       const gap = i < shown.length ? shown[i].getBoundingClientRect().top : shown[shown.length - 1].getBoundingClientRect().bottom;
       const dist = Math.abs(e.clientY - gap);
       if (dist < bestDist) { bestDist = dist; best = i; y = gap; }
     }
     d.target = best;
-    this.marker.style.top = `${Math.round(y - box.top - 1)}px`;
+    d.col = col;
+    if (this.marker.parentElement !== host) host.appendChild(this.marker);
+    this.marker.style.top = `${Math.round(y - box.top + host.scrollTop - 1)}px`;
     setHidden(this.marker, false);
   }
 
@@ -251,12 +295,17 @@ export class Dock {
     setHidden(this.marker, true);
     if (!d || !d.moving || d.target < 0) return;
     this.suppressClick = true;
-    const shown = this.state.order.filter((id) => this.isShown(id));
+    // Into the column it was dropped in, before the panel it was dropped above (or at the end).
+    const list = d.col === 'side' ? this.state.side : this.dockIds();
+    const shown = list.filter((id) => this.isShown(id));
     const before = shown[d.target] ?? null;
-    const rest = this.state.order.filter((id) => id !== d.id);
-    const at = before && before !== d.id ? rest.indexOf(before) : before === d.id ? this.state.order.indexOf(d.id) : rest.length;
-    rest.splice(at, 0, d.id);
-    this.state.order = rest;
+    if (before === d.id) return;
+    const side = this.state.side.filter((id) => id !== d.id), order = this.state.order.filter((id) => id !== d.id);
+    const into = d.col === 'side' ? side : order;
+    const at = before ? into.indexOf(before) : into.length;
+    into.splice(at < 0 ? into.length : at, 0, d.id);
+    this.state = { ...this.state, side, order };
+    if (this.marker.parentElement !== this.dock) this.dock.appendChild(this.marker);
     this.save();
   }
 }

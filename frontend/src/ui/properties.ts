@@ -69,8 +69,14 @@ export class PropertiesColumn {
   static showingCollapsed = false;
   /** Below this much canvas beside the open column, the column shows as its strip until the window widens again. */
   static readonly MIN_CANVAS = 420;
+  /** The open column's width: dragged by its left edge, 220 to 560 px, remembered (the owner's walkthrough). */
+  static openWidth(): number { try { const w = Number(localStorage.getItem('sonny.propsOpenW')); return w >= 220 && w <= 560 ? w : 284; } catch { return 284; } }
+  private relayoutStrip: () => void = () => undefined;
+  /** Panels moved in or out (the Dock): the strip and the collapse button follow. */
+  relayout(): void { this.relayoutStrip(); }
+
   private collapsible(): void {
-    const host = this.root, groups = Array.from(host.querySelectorAll<HTMLElement>(':scope > .cv-group'));
+    const host = this.root;
     const strip = el(`<div class="cv-props-strip"><button class="cv-strip-btn cv-strip-expand" type="button" title="Expand panels" aria-label="Expand panels">${icon('collapseLeft', 16)}</button></div>`);
     const fly = el('<div class="cv-props-fly" hidden></div>');
     (document.getElementById('overlay-root') ?? document.body).appendChild(fly);
@@ -82,27 +88,38 @@ export class PropertiesColumn {
       open = null;
       setHidden(fly, true);
     };
-    const ICONS: Record<string, [string, string]> = { properties: ['panelProps', 'Properties'], brushes: ['tBrush', 'Brushes'], paragraph: ['pilcrow', 'Paragraph'], character: ['charA', 'Character'] };
-    for (const g of groups) {
-      const id = Array.from(g.classList).find((c) => c.startsWith('cv-') && c !== 'cv-group')?.slice(3) ?? '';
-      const [ic, label] = ICONS[id] ?? ['panelProps', id];
-      const b = el<HTMLButtonElement>(`<button class="cv-strip-btn" type="button" title="${label}" aria-label="${label}">${icon(ic, 18)}</button>`);
-      b.dataset.group = id;
-      b.addEventListener('click', () => {
-        if (open?.group === g) { closeFly(); return; }
-        closeFly();
-        const mark = document.createComment(id);
-        g.replaceWith(mark);
-        fly.appendChild(g);
-        setHidden(fly, false);
-        open = { group: g, mark, btn: b };
-        b.classList.add('is-on');
-        const r = b.getBoundingClientRect(), s = strip.getBoundingClientRect();
-        fly.style.right = `${Math.round(window.innerWidth - s.left + 6)}px`;
-        fly.style.top = `${Math.round(Math.max(8, Math.min(r.top, window.innerHeight - fly.offsetHeight - 8)))}px`;
-      });
-      strip.appendChild(b);
-    }
+    // The strip lists what the column holds now: its own groups, and any dock panel moved in (Dock); relayout() rebuilds it.
+    const ICONS: Record<string, [string, string]> = { properties: ['panelProps', 'Properties'], brushes: ['tBrush', 'Brushes'], paragraph: ['pilcrow', 'Paragraph'], character: ['charA', 'Character'],
+      navigator: ['panelNav', 'Navigator'], swatches: ['swatchGrid', 'Swatches'], 'layers-panel': ['layers', 'Layers'], timeline: ['film', 'Timeline'], history: ['history', 'History'] };
+    const collapse = el<HTMLButtonElement>(`<button class="cv-group-collapse" type="button" title="Collapse to icons" aria-label="Collapse to icons">${icon('collapseRight', 14)}</button>`);
+    this.relayoutStrip = (): void => {
+      closeFly();
+      for (const b of Array.from(strip.querySelectorAll('.cv-strip-btn:not(.cv-strip-expand)'))) b.remove();
+      const sections = Array.from(host.querySelectorAll<HTMLElement>(':scope > section')).filter((g) => !g.hidden);
+      for (const g of sections) {
+        const id = Array.from(g.classList).find((c) => c.startsWith('cv-') && c !== 'cv-group')?.slice(3) ?? '';
+        const [ic, label] = ICONS[id] ?? ['panelProps', id];
+        const b = el<HTMLButtonElement>(`<button class="cv-strip-btn" type="button" title="${label}" aria-label="${label}">${icon(ic, 18)}</button>`);
+        b.dataset.group = id === 'layers-panel' ? 'layers' : id;
+        b.addEventListener('click', () => {
+          if (open?.group === g) { closeFly(); return; }
+          closeFly();
+          const mark = document.createComment(id);
+          g.replaceWith(mark);
+          fly.appendChild(g);
+          setHidden(fly, false);
+          open = { group: g, mark, btn: b };
+          b.classList.add('is-on');
+          const r = b.getBoundingClientRect(), st = strip.getBoundingClientRect();
+          fly.style.right = `${Math.round(window.innerWidth - st.left + 6)}px`;
+          fly.style.top = `${Math.round(Math.max(8, Math.min(r.top, window.innerHeight - fly.offsetHeight - 8)))}px`;
+        });
+        strip.appendChild(b);
+      }
+      // The collapse button on the first panel's header, whichever it is now.
+      const head = sections[0]?.querySelector<HTMLElement>(':scope > .cv-panel-head');
+      if (head && collapse.parentElement !== head) { const min = head.querySelector('.cv-group-min'); if (min) min.after(collapse); else head.appendChild(collapse); }
+    };
     host.prepend(strip);
     document.addEventListener('pointerdown', (e) => { if (open && !fly.contains(e.target as Node) && !strip.contains(e.target as Node)) closeFly(); }, true);
     document.addEventListener('keydown', (e) => { if (open && e.key === 'Escape') closeFly(); });
@@ -126,10 +143,26 @@ export class PropertiesColumn {
       show();
     };
     (strip.querySelector('.cv-strip-expand') as HTMLElement).addEventListener('click', () => set(false));
-    const head = groups[0]?.querySelector('.cv-group-head'), min = head?.querySelector('.cv-group-min');
-    const collapse = el<HTMLButtonElement>(`<button class="cv-group-collapse" type="button" title="Collapse to icons" aria-label="Collapse to icons">${icon('collapseRight', 14)}</button>`);
     collapse.addEventListener('click', () => set(true));
-    if (min) min.after(collapse); else head?.appendChild(collapse);
+    this.relayoutStrip();
+    // The width: a handle on the open column's left edge.
+    document.documentElement.style.setProperty('--cv-props-open-w', `${PropertiesColumn.openWidth()}px`);
+    const grip = el('<div class="cv-props-resize" role="separator" aria-orientation="vertical" aria-label="Resize the panel column"></div>');
+    host.appendChild(grip);
+    grip.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      grip.setPointerCapture(e.pointerId);
+      const x0 = e.clientX, w0 = PropertiesColumn.openWidth();
+      const move = (ev: PointerEvent): void => {
+        const w = Math.round(Math.min(560, Math.max(220, w0 + (x0 - ev.clientX))));
+        document.documentElement.style.setProperty('--cv-props-open-w', `${w}px`);
+        try { localStorage.setItem('sonny.propsOpenW', String(w)); } catch { /* this session only */ }
+        this.onLayout();
+      };
+      const up = (): void => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); };
+      grip.addEventListener('pointermove', move); grip.addEventListener('pointerup', up);
+    });
     PropertiesColumn.showingCollapsed = PropertiesColumn.collapsed();
     host.classList.toggle('is-collapsed', PropertiesColumn.showingCollapsed);
   }

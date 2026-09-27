@@ -67,7 +67,7 @@ import { ChannelsPanel } from './ui/channels';
 import { NativeMenus, wantsNativeMenus } from './ui/native-menu';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
-import { DOCK_PANELS, Dock } from './ui/dock';
+import { ALL_PANELS, Dock } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
@@ -210,9 +210,11 @@ export function startApp(): void {
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
   // The Properties column (Phase 21), shown unless hidden from Window > Properties Column (remembered).
-  new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); }, () => syncPropsCol());
+  const props = new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); }, () => syncPropsCol());
+  let dockRef: Dock | null = null;   // the side column shows only while it holds a shown panel (panels move: the Dock)
   const propsShown = (): boolean => stored('sonny.propsCol') !== 'hidden';
-  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !propsShown()); setStyleVar(root, '--cv-props-w', propsShown() ? '46px' : '0px'); Viewport.insetRight = propsShown() && !PropertiesColumn.showingCollapsed ? 284 - 46 : 0; };   // the strip's track only: expanded, the column lies over the canvas (the owner's walkthrough), and fitting leaves it out
+  const sideOpen = (): boolean => propsShown() && (dockRef ? dockRef.sideShown() > 0 : true);
+  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !sideOpen()); setStyleVar(root, '--cv-props-w', sideOpen() ? '46px' : '0px'); Viewport.insetRight = sideOpen() && !PropertiesColumn.showingCollapsed ? PropertiesColumn.openWidth() - 46 : 0; };   // the strip's track only: expanded, the column lies over the canvas (the owner's walkthrough), and fitting leaves it out
   syncPropsCol();
   new NavigatorPanel(q(root, '.cv-layers'), engine);
   const swatches = new SwatchesPanel(q(root, '.cv-layers'), engine);
@@ -222,7 +224,11 @@ export function startApp(): void {
   layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage')));   // the Channels tab (Phase 21)
   new TimelinePanel(q(root, '.cv-layers'), engine);
   new HistoryPanel(q(root, '.cv-layers'), engine);
-  const dock = new Dock(q(root, '.cv-layers'));
+  const dock = new Dock(q(root, '.cv-layers'), q(root, '.cv-props-col'));
+  dockRef = dock;
+  dock.onChange = () => { syncPropsCol(); props.relayout(); };
+  syncPropsCol();
+  props.relayout();
   // Collapsed, the column is its strip of icons; expanded, the width chosen by dragging (or the target's 288).
   const syncDockWidth = (on: boolean): void => { const w = Number(stored(LAYERS_W_KEY)); setStyleVar(root, '--cv-layers-w', on ? '46px' : `${w >= 200 && w <= 480 ? w : 288}px`); q(root, '.cv-resizer').classList.toggle('is-inert', on); };   // kept in the grid (hiding it would move the dock into its column)
   dock.onCollapse = syncDockWidth;
@@ -899,7 +905,8 @@ export function startApp(): void {
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
     { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
     { id: 'settings', label: 'Preferences...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
-    ...DOCK_PANELS.map((pn) => ({ id: `panel-${pn.id}`, label: pn.label, checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) })),
+    ...ALL_PANELS.map((pn) => ({ id: `panel-${pn.id}`, label: pn.label, checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) })),
+    { id: 'merge-columns', label: 'Merge Panel Columns', checked: () => dock.merged, run: () => { if (dock.merged) dock.separate(); else dock.merge(); } },
     // Paths is a tab of the Layers group (Phase 21): Window > Paths shows the group on its Paths tab.
     { id: 'panel-paths', label: 'Paths', run: () => { if (!dock.isShown('layers')) dock.toggle('layers'); layers.showTab('paths'); } },
     { id: 'panel-properties-col', label: 'Properties Column', checked: propsShown, run: () => { store('sonny.propsCol', propsShown() ? 'hidden' : 'shown'); syncPropsCol(); } },
@@ -1093,7 +1100,7 @@ export function startApp(): void {
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
-    { label: 'Window', items: ['brush-settings', 'paragraph-styles', '-', ...DOCK_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', '-', 'reset-panels'] },
+    { label: 'Window', items: ['brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
     { label: 'Help', items: ['shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
