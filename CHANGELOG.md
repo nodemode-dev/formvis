@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.3 · 2026-09-27
+
+### Changed: paths, and your notes on 1.49.2
+
+- The grip (⋮⋮) sits in one place on every header, at the left edge like the Navigator's, with less padding, whatever the tabs.
+- A panel group holds at most 7 tabs; dragging an eighth over a full one shows "Full: 7 tabs" and it stays where it was.
+- Path Selection and Direct Selection offer the path's actions in their bar: Make Selection, Fill Path..., Stroke Path..., New Shape Layer. The Paths panel's Fill and Stroke buttons open their dialogs.
+- Stroke Path has Width and Colour (starting at your brush size and foreground colour, left as they were) with Tool and Simulate Pressure.
+- Direct Selection: click a point to select it (Shift adds), or drag a box; drag to move the selected points together; Alt-drag a point to pull out handles; Alt-drag a handle to break it; arrows nudge (Shift for 10). Selected points show filled.
+- Convert Point (in the Pen group): a click makes a smooth point a corner; a drag pulls out smooth handles; a handle drags alone.
+
+### Fixed
+
+- Editing a work path (the Pen's) is undoable, each drag or nudge one step; it never was.
+
 ## 1.49.2 · 2026-09-27
 
 ### Changed: panels, from your walkthrough of 1.49.0

@@ -2,6 +2,48 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Paths, the grip and seven tabs · _v1.49.3 (extensions/tools/direct-select.ts, convert-point.ts and path-actions.ts new, path-select.ts, registry.ts, index.ts; engine/history.ts, engine/index.ts, engine/types.ts; ui/panels/stroke-path-dialog.ts, ui/paths.ts, ui/panel-group.ts, ui/icons.ts, app.ts; styles)
+
+`directSelectTool` with a point selection, box select, group moves, pulled and broken handles, nudging; `convertPointTool`; `pathActions`, `toolHost`; `StrokePathDialog` width and colour; the Paths footer's dialogs; `Snapshot.paths`, work-path edits undoable (`beginPathEdit`, `endPathEdit`, `restore`, `History.end`); `PanelGroup.MAX_TABS`, `full`; the grip pinned. Removed from frontend:
+
+```text
+export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionMask | null }
+    if (!p.patches.length && p.before.doc === snap.doc && p.before.selection === snap.selection) return false;
+    const p = this.current;
+    if (!p || this.pathGesture || !this.selectedPath(p)?.shape) return;
+    p.history.begin('Edit Shape Path', p.snapshot());
+    p.history.end(p.snapshot());
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'frame' | 'idle';
+import type { Tool } from '../registry';
+type Grab = { anchor: Anchor; part: 'anchor' | 'in' | 'out'; from: Pt; start: Anchor };
+function pick(anchors: Anchor[], at: Pt, toScreen: (p: Pt) => Pt): { anchor: Anchor; part: 'anchor' | 'in' | 'out' } | null {
+/** Direct Selection (A): drag a Work Path anchor to move it with its handles, or drag a handle to reshape the curve; on
+ *  a smooth point the opposite handle swings round to stay in line, keeping its own length. */
+  hint: () => 'Drag a path point to move it, or a handle to reshape its curve · Draw paths with the Pen (P)',
+    const v = ctx.view(), hit = pick(vp.subpaths.flatMap((s) => s.anchors), v.toScreen(p.doc), (q) => v.toScreen(q));
+    grab = hit ? { ...hit, from: p.doc, start: { ...hit.anchor } } : null;
+    if (grab) ctx.engine.beginPathEdit();
+    const dx = p.doc.x - g.from.x, dy = p.doc.y - g.from.y, a = g.anchor, s = g.start;
+    if (g.part === 'anchor') {
+      a.x = s.x + dx; a.y = s.y + dy; a.inX = s.inX + dx; a.inY = s.inY + dy; a.outX = s.outX + dx; a.outY = s.outY + dy;
+      const smooth = Math.abs((s.outX - s.x) * (s.inY - s.y) - (s.outY - s.y) * (s.inX - s.x)) < 1e-6 && (s.inX !== s.x || s.inY !== s.y) && (s.outX !== s.x || s.outY !== s.y);
+  up(ctx) { grab = null; ctx.engine.endPathEdit(); },
+    if (g) { Object.assign(g.anchor, g.start); ctx.engine.setWorkPath(ctx.engine.workPath); }
+      gx.fillStyle = pal.handle;
+  for (const tool of [historyBrushTool, frameTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+      if (t !== target) { target?.root.classList.remove('is-tab-target'); target = t; target?.root.classList.add('is-tab-target'); }
+      target?.root.classList.remove('is-tab-target');
+      if (ghost && target) { PanelGroup.moveTab(tid, this, target); PanelGroup.saveHomes(); }
+    if (!t || from === to) return;
+import { checkRow, selectRow } from './controls';
+    this.body.append(this.toolRow.el, this.pressureRow.el, el('<p class="cv-note">The stroke uses the tool\'s current size, hardness and opacity; Clone Stamp needs its source set first.</p>'));
+    this.engine.strokePathWith(this.tool, this.pressure);
+      `<button class="cv-icon-btn" type="button" data-cmd="fill-path" title="Fill path" aria-label="Fill path">${icon('fill', 16)}</button>` +
+      `<button class="cv-icon-btn" type="button" data-cmd="stroke-path" title="Stroke path" aria-label="Stroke path">${icon('paintbrush', 16)}</button>` +
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Panels reworked · _v1.49.2 (ui/layers.ts, ui/panel-group.ts, ui/dock.ts, ui/channels.ts, ui/icons.ts, app.ts; styles)
 
 `LayersPanel` builds a `PanelGroup` (layers-panel; the page `.cv-layers-page`; `adoptPaths`, `adoptChannels` through `addTab`; `showTab` finds the group holding the tab); `PanelGroup.addTab`, `has`, `size`, `labelOf`, `remove`, `onDetach`, `onGapHint`, the grip; `Dock.gapAt`, `showGap`, `hideGap`, `insertPanel`, `removePanel`, `registerPanel`, `unregisterPanel`, the ghost and labelled marker; groups made by detaching (sonny.customGroups). Removed from frontend:
