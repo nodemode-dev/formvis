@@ -1,4 +1,5 @@
 import { BLEND_MODES, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Raster, effectsActive } from '../engine';
+import { enhanceSelect } from './dropdown';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
 import { icon } from './icons';
 import { paint } from './palette';
@@ -18,6 +19,21 @@ const KINDS = [
 ] as const;
 type KindId = (typeof KINDS)[number]['id'];
 const kindOf = (l: Layer): KindId => (l.adjustment ? 'adjustment' : l.text ? 'type' : l.vector ? 'shape' : l.smart ? 'smart' : 'pixel');
+
+/** The blend modes in Photoshop's groups (the target's list, s21), as <optgroup>s; any mode not named falls in Other. */
+const BLEND_GROUPS: ReadonlyArray<[string, readonly string[]]> = [
+  ['Basic', ['normal', 'dissolve']],
+  ['Darken', ['darken', 'multiply', 'color-burn', 'linear-burn', 'darker-color']],
+  ['Lighten', ['lighten', 'screen', 'color-dodge', 'linear-dodge', 'lighter-color']],
+  ['Contrast', ['overlay', 'soft-light', 'hard-light', 'vivid-light', 'linear-light', 'pin-light', 'hard-mix']],
+  ['Inversion', ['difference', 'exclusion', 'subtract', 'divide']],
+  ['Component', ['hue', 'saturation', 'color', 'luminosity']],
+];
+function blendOptions(): string {
+  const opt = (id: string): string => { const b = BLEND_MODES.find((m) => m.id === id); return b ? `<option value="${b.id}">${b.label}</option>` : ''; };
+  const named = new Set(BLEND_GROUPS.flatMap(([, ids]) => ids)), rest = BLEND_MODES.filter((m) => !named.has(m.id));
+  return BLEND_GROUPS.map(([g, ids]) => `<optgroup label="${g}">${ids.map(opt).join('')}</optgroup>`).join('') + (rest.length ? `<optgroup label="Other">${rest.map((m) => opt(m.id)).join('')}</optgroup>` : '');
+}
 
 export class LayersPanel {
   private readonly rows: HTMLElement;
@@ -42,7 +58,7 @@ export class LayersPanel {
       `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
       `<div class="cv-layer-props"><div class="cv-layer-kind"><select class="cv-select cv-kind" title="Filter by kind" aria-label="Filter by kind"><option value="all">Kind</option>${KINDS.map((k) => `<option value="${k.id}">${k.label}</option>`).join('')}</select>` +
       `<div class="cv-kind-icons" role="group" aria-label="Show only">${KINDS.map((k) => `<button class="cv-kind-btn" type="button" data-kind="${k.id}" title="${k.label} layers" aria-label="${k.label} layers" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('')}</div></div>` +
-      `<div class="cv-layer-blendrow"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${BLEND_MODES.map((b) => `<option value="${b.id}">${b.label}</option>`).join('')}</select><span class="cv-vsep"></span>` +
+      `<div class="cv-layer-blendrow"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${blendOptions()}</select><span class="cv-vsep"></span>` +
       `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span></label></div></div>` +
       `<div class="cv-layer-list"><div class="cv-layer-rows" role="listbox" aria-label="Layers"></div><div class="cv-drop-line"></div><div class="cv-layers-empty">No canvas open. Create one or drop images on the stage.</div></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></section>`);
@@ -53,6 +69,7 @@ export class LayersPanel {
     this.blend = q<HTMLSelectElement>(root, '.cv-blend');
     this.opacity = q<HTMLInputElement>(root, '.cv-opacity-field');
     this.blend.addEventListener('change', () => engine.setBlend(this.blend.value as Layer['blend']));
+    enhanceSelect(this.blend, { search: 'Search blend modes...' });   // shown as the target's grouped list (s21)
     // Opacity as the target's numeric field: Enter or leaving it commits (one undo step); arrows step by 1, Shift by 10.
     const commit = (pct: number): void => {
       const v = Math.min(100, Math.max(0, Math.round(pct)));

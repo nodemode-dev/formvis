@@ -2,6 +2,7 @@ import type { Commands } from './commands';
 import { el, setHidden, setText } from './dom';
 import { icon } from './icons';
 import { readChoice, setTheme } from './themes';
+import { enhanceSelect } from './dropdown';
 
 /** The title bar's right-hand tools, as the target's (Phase 21, UI_SPEC.md section 2): a theme toggle (Studio Dark and
  *  Light); a search that finds and runs any enabled command by name, with its shortcut shown; the workspace dropdown,
@@ -9,10 +10,13 @@ import { readChoice, setTheme } from './themes';
 export interface Workspace { id: string; label: string; order: string[]; hidden: string[]; propsColumn: boolean }
 export const WORKSPACES: readonly Workspace[] = [
   { id: 'essentials', label: 'Essentials', order: ['navigator', 'swatches', 'layers', 'timeline', 'history'], hidden: [], propsColumn: true },
-  { id: 'painting', label: 'Painting', order: ['swatches', 'navigator', 'layers', 'history', 'timeline'], hidden: ['timeline'], propsColumn: true },
   { id: 'photography', label: 'Photography', order: ['navigator', 'layers', 'history', 'swatches', 'timeline'], hidden: ['swatches', 'timeline'], propsColumn: true },
-  { id: 'typography', label: 'Typography', order: ['layers', 'swatches', 'navigator', 'history', 'timeline'], hidden: ['navigator', 'timeline'], propsColumn: true },
+  { id: 'painting', label: 'Painting', order: ['swatches', 'navigator', 'layers', 'history', 'timeline'], hidden: ['timeline'], propsColumn: true },
+  { id: 'graphic', label: 'Graphic and Web', order: ['layers', 'swatches', 'navigator', 'history', 'timeline'], hidden: ['navigator', 'timeline'], propsColumn: true },
+  { id: 'motion', label: 'Motion', order: ['layers', 'timeline', 'navigator', 'swatches', 'history'], hidden: ['swatches'], propsColumn: true },
 ];
+/** A workspace saved under an earlier name. */
+const RENAMED: Record<string, string> = { typography: 'graphic' };
 
 export interface TitleToolsDeps {
   commands: Commands;
@@ -30,12 +34,12 @@ export class TitleTools {
   constructor(host: HTMLElement, private readonly d: TitleToolsDeps) {
     const theme = el<HTMLButtonElement>('<button class="cv-tt-btn cv-tt-bare" type="button" title="Light or dark" aria-label="Light or dark"></button>');
     const search = el<HTMLButtonElement>(`<button class="cv-tt-btn" type="button" title="Search commands" aria-label="Search commands">${icon('search', 16)}</button>`);
-    const ws = el<HTMLSelectElement>(`<select class="cv-tt-select" aria-label="Workspace">${WORKSPACES.map((w) => `<option value="${w.id}">${w.label}</option>`).join('')}</select>`);
+    const ws = el<HTMLSelectElement>(`<select class="cv-tt-select" aria-label="Workspace"><optgroup label="Built-in">${WORKSPACES.map((w) => `<option value="${w.id}">${w.label}</option>`).join('')}</optgroup></select>`);
     const lock = el<HTMLButtonElement>('<button class="cv-tt-btn" type="button"></button>');
     const syncTheme = (): void => { const light = readChoice().theme === 'light'; theme.innerHTML = icon(light ? 'moon' : 'sun', 17); theme.setAttribute('aria-pressed', String(light)); };
     theme.addEventListener('click', () => { setTheme(readChoice().theme === 'light' ? 'studio' : 'light'); syncTheme(); });
     syncTheme();
-    try { ws.value = localStorage.getItem('sonny.workspace') ?? 'essentials'; } catch { /* essentials */ }
+    try { const saved = localStorage.getItem('sonny.workspace') ?? 'essentials'; ws.value = RENAMED[saved] ?? saved; } catch { /* essentials */ }
     ws.addEventListener('change', () => {
       const w = WORKSPACES.find((x) => x.id === ws.value);
       if (!w) return;
@@ -64,6 +68,7 @@ export class TitleTools {
     });
     document.addEventListener('pointerdown', (e) => { if (!this.pop.hidden && !this.pop.contains(e.target as Node) && !search.contains(e.target as Node)) this.close(); });
     this.root.append(theme, search, ws, lock, this.pop);
+    enhanceSelect(ws);   // shown as the target's list (s23)
     host.appendChild(this.root);
   }
 
