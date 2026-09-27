@@ -9,9 +9,9 @@ def test_the_layers_panel_moves_and_keeps_the_space(page):
         page.evaluate("window.sonny.commands.run('panel-timeline'); window.sonny.commands.run('panel-history')")   # hidden by default, as the target's Essentials
         page.wait_for_timeout(100)
         space = page.evaluate(LIST_H)
-        h = page.locator(".cv-layers-panel > .cv-panel-head").bounding_box()
+        h = page.locator(".cv-layers-panel > .cv-panel-head > span").first.bounding_box()   # the header's empty part moves the group; its tabs drag tabs (1.49.2)
         last = page.locator(".cv-history").bounding_box()
-        page.mouse.move(h["x"] + 40, h["y"] + h["height"] / 2); page.mouse.down()
+        page.mouse.move(h["x"] + h["width"] / 2, h["y"] + h["height"] / 2); page.mouse.down()
         page.mouse.move(last["x"] + 40, last["y"] + last["height"] + 4, steps=12); page.mouse.up()
         assert page.evaluate(ORDER) == ["navigator", "swatches", "timeline", "history", "layers-panel"], page.evaluate(ORDER)
         assert page.evaluate(LIST_H) >= space - 2               # at the bottom it still takes the space left

@@ -45,6 +45,8 @@ export class ChannelsPanel {
       document.body.appendChild(el('<svg id="cv-channel-view-svg" width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="cv-channel-view" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter></svg>'));
     }
     for (const ev of ['history', 'doc', 'active', 'projects'] as const) engine.on(ev, () => this.schedule());
+    // Thumbnails whenever the tab is shown, in whichever group it is (tabs move between groups).
+    new ResizeObserver(() => { if (this.root.clientWidth) this.schedule(); }).observe(this.root);
     this.apply();
   }
 
@@ -52,7 +54,7 @@ export class ChannelsPanel {
   setVisible(on: boolean): void { setHidden(this.root, !on); if (on) this.schedule(); }
 
   private schedule(): void {
-    if (this.root.hidden || this.timer) return;
+    if (!this.root.clientWidth || this.timer) return;
     this.timer = window.setTimeout(() => { this.timer = 0; this.drawThumbs(); }, 250);
   }
 

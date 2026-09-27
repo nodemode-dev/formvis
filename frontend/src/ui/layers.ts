@@ -22,10 +22,6 @@ const KINDS = [
 ] as const;
 type KindId = (typeof KINDS)[number]['id'];
 type LayersTab = 'layers' | 'channels' | 'paths';
-/** The group's tab as last left (remembered with the other groups). */
-function savedTab(): LayersTab {
-  try { const t = (JSON.parse(localStorage.getItem('sonny.groups') ?? '{}') as Record<string, { tab?: string }>).layers?.tab; return t === 'paths' || t === 'channels' ? t : 'layers'; } catch { return 'layers'; }
-}
 /** The Lock row's toggles (Photoshop's order). */
 const LOCKS = [
   { id: 'transparency', title: 'transparent pixels', icon: 'canvasGrid' },
@@ -71,14 +67,18 @@ export class LayersPanel {
 
   constructor(root: HTMLElement, private readonly engine: Engine, private readonly menu: PopupMenu) {
     root.insertAdjacentHTML('beforeend',
-      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="channels">Channels</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-group-more cv-layers-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu">${icon('more3', 16)}</button></div>` +
+      `<div class="cv-layers-page">` +
       `<div class="cv-layer-props"><div class="cv-layer-kind"><select class="cv-select cv-kind" title="Filter by kind" aria-label="Filter by kind"><option value="all">Kind</option>${KINDS.map((k) => `<option value="${k.id}">${k.label}</option>`).join('')}</select>` +
       `<div class="cv-kind-icons" role="group" aria-label="Show only">${KINDS.map((k) => `<button class="cv-kind-btn" type="button" data-kind="${k.id}" title="${k.label} layers" aria-label="${k.label} layers" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('')}</div></div>` +
       `<div class="cv-layer-blendrow"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${blendOptions()}</select><span class="cv-vsep"></span>` +
       `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span></label></div>` +
       `<div class="cv-layer-lockrow"><span class="cv-lock-slot"></span><span class="cv-vsep"></span><label class="cv-opacity" title="Fill: the layer's pixels, not its styles"><span>Fill</span><span class="cv-num"><input class="cv-fill-field" type="text" inputmode="numeric" value="100" aria-label="Fill"><span class="cv-unit">%</span></span></label></div></div>` +
       `<div class="cv-layer-list"><div class="cv-layer-rows" role="listbox" aria-label="Layers"></div><div class="cv-drop-line"></div><div class="cv-layers-empty">No canvas open. Create one or drop images on the stage.</div></div>` +
-      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></section>`);
+      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></div>`);
+    // The Layers group is a panel group (1.49.2, the owner's walkthrough: every panel groups with any other): its Layers
+    // tab is this page, Channels and Paths are adopted as tabs, and any of them can move to another group.
+    this.page = root.lastElementChild as HTMLElement;
+    this.group = new PanelGroup(root, 'layers-panel', [{ id: 'layers', label: 'Layers', body: this.page }], 'Layers');
     this.rows = q(root, '.cv-layer-rows');
     this.list = q(root, '.cv-layer-list');
     this.empty = q(root, '.cv-layers-empty');
@@ -127,14 +127,8 @@ export class LayersPanel {
         this.render();
       });
     }
-    for (const t of root.querySelectorAll<HTMLButtonElement>('.cv-layers-panel .cv-group-tab')) t.addEventListener('click', () => this.showTab(t.dataset.tab as LayersTab));
-    // The panel menu, by tab: the Layers panel's commands, or the Paths panel's.
-    const more = q<HTMLButtonElement>(root, '.cv-layers-more');
-    more.addEventListener('click', () => {
-      const panel = this.rows.closest('.cv-layers-panel') as HTMLElement;
-      const ids = panel.classList.contains('is-paths-tab') ? ['new-path', 'delete-path', '-', 'fill-path-dialog', 'stroke-path-dialog'] : panel.classList.contains('is-channels-tab') ? [] : ['new-layer', 'duplicate-dialog', 'delete-layer', '-', 'new-folder', 'group', '-', 'merge', '-', 'layer-style', 'convert-smart', 'rasterize'];
-      if (ids.length) PanelGroup.menuHost?.(more, ids);
-    });
+    // The panel menu, by the tab shown: the Layers panel's commands, or the Paths panel's.
+    this.group.setMenu(() => this.group.current === 'paths' ? ['new-path', 'delete-path', '-', 'fill-path-dialog', 'stroke-path-dialog'] : this.group.current === 'channels' ? [] : ['new-layer', 'duplicate-dialog', 'delete-layer', '-', 'new-folder', 'group', '-', 'merge', '-', 'layer-style', 'convert-smart', 'rasterize']);
     for (const k of ['doc', 'active', 'projects', 'history'] as const) engine.on(k, () => this.queue());
     this.bindRows();
     this.render();
@@ -257,7 +251,7 @@ export class LayersPanel {
     const pct = String(Math.round((pixel ? (l as Layer).opacity : 1) * 100));
     if (document.activeElement !== this.opacity) setValue(this.opacity, pct);
     setDisabled(this.fill, !pixel);
-    for (const b of this.rows.closest('.cv-layers-panel')?.querySelectorAll<HTMLButtonElement>('.cv-lock-btn') ?? []) {
+    for (const b of this.page.querySelectorAll<HTMLButtonElement>('.cv-lock-btn')) {
       const on = !!l?.locks?.[b.dataset.lock as keyof LayerLocks];
       b.classList.toggle('is-on', on);
       b.setAttribute('aria-pressed', String(on));
@@ -268,7 +262,7 @@ export class LayersPanel {
 
   /** The kind icons and dropdown show the filter. */
   private syncKinds(): void {
-    for (const b of this.rows.closest('.cv-layers-panel')?.querySelectorAll<HTMLButtonElement>('.cv-kind-btn') ?? []) {
+    for (const b of this.page.querySelectorAll<HTMLButtonElement>('.cv-kind-btn')) {
       const on = this.kinds.has(b.dataset.kind as KindId);
       b.classList.toggle('is-on', on);
       b.setAttribute('aria-pressed', String(on));
@@ -276,39 +270,28 @@ export class LayersPanel {
     setValue(this.kind, this.kinds.size === 1 ? [...this.kinds][0] : 'all');
   }
 
-  /** The Paths panel's section becomes this group's Paths tab, as the target's Layers group (Layers | Paths). */
+  /** The Paths panel's section becomes the group's Paths tab (Layers | Channels | Paths, as Photoshop's). */
   adoptPaths(section: HTMLElement): void {
     this.paths = section;
-    const panel = this.rows.closest('.cv-layers-panel') as HTMLElement;
-    panel.appendChild(section);
     const toggle = section.querySelector<HTMLButtonElement>('.cv-paths-toggle'), body = section.querySelector<HTMLElement>('.cv-paths-body');
     if (toggle) toggle.setAttribute('aria-expanded', 'true');
     if (body) setHidden(body, false);
-    this.showTab(savedTab(), false);
+    this.group.addTab('paths', 'Paths', section);
   }
 
-  /** The Channels tab (Phase 21): its panel shown in this group, as Paths is. */
+  /** The Channels panel becomes the group's Channels tab, before Paths. */
   adoptChannels(panel: ChannelsPanel): void {
     this.channels = panel;
-    (this.rows.closest('.cv-layers-panel') as HTMLElement).appendChild(panel.root);
-    this.showTab(savedTab(), false);
+    this.group.addTab('channels', 'Channels', panel.root, 'paths');
   }
   private channels: ChannelsPanel | null = null;
+  readonly group: PanelGroup;
+  private readonly page: HTMLElement;
 
-  showTab(tab: LayersTab, remember = true): void {
-    const panel = this.rows.closest('.cv-layers-panel') as HTMLElement;
-    panel.classList.toggle('is-paths-tab', tab === 'paths');
-    panel.classList.toggle('is-channels-tab', tab === 'channels');
-    this.channels?.setVisible(tab === 'channels');
-    for (const t of panel.querySelectorAll<HTMLButtonElement>(':scope > .cv-panel-head .cv-group-tab')) {
-      const on = t.dataset.tab === tab;
-      t.classList.toggle('is-active', on);
-      t.setAttribute('aria-selected', String(on));
-    }
-    if (this.paths) setHidden(this.paths, tab !== 'paths');
-    if (remember) {
-      try { const s = JSON.parse(localStorage.getItem('sonny.groups') ?? '{}'); s.layers = { ...s.layers, tab }; localStorage.setItem('sonny.groups', JSON.stringify(s)); } catch { /* this session only */ }
-    }
+  /** Shows a tab of this group, or of whichever group it has moved to. */
+  showTab(tab: LayersTab): void {
+    const holder = [...PanelGroup.all.values()].find((g) => g.has(tab));
+    holder?.show(tab);
   }
 
   private rowOf(id: ID): HTMLElement | null {

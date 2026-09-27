@@ -31,11 +31,11 @@ def test_navigator_and_swatches_menus_run_their_commands(page):
 def test_the_layers_menu_follows_its_tab_and_groups_without_commands_have_none(page):
     page.evaluate("window.sonny.engine.newDocument(200, 100, 'L', 'white')")
     n = page.evaluate("window.sonny.engine.current.doc.layers.length")
-    page.locator(".cv-layers-more").click()
+    page.locator(".cv-layers-panel > .cv-panel-head .cv-group-more").click()
     choose(page, "New Layer")
     assert page.evaluate("window.sonny.engine.current.doc.layers.length") == n + 1
     page.locator(".cv-layers-panel .cv-group-tab[data-tab='paths']").click()
-    page.locator(".cv-layers-more").click()
+    page.locator(".cv-layers-panel > .cv-panel-head .cv-group-more").click()
     assert "New Path" in items(page) and "New Layer" not in items(page)
     page.keyboard.press("Escape")
     page.locator(".cv-layers-panel .cv-group-tab[data-tab='layers']").click()

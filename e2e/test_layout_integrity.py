@@ -12,7 +12,7 @@ def test_the_columns_reach_the_title_bar_and_nothing_overlaps(page):
     assert all(b[0] >= a[1] - 1 for a, b in zip(sections, sections[1:])), sections                     # stacked, not overlapping
     assert page.evaluate(BOX, ".cv-options")["r"] <= page.evaluate(BOX, ".cv-props-col")["l"] + 1           # nothing under the column
     assert page.locator(".cv-layers-panel > .cv-panel-head [data-cmd='new-folder']").count() == 0
-    assert page.locator(".cv-layers-panel > .cv-panel-foot [data-cmd='new-folder']").count() == 1
+    assert page.locator(".cv-layers-page > .cv-panel-foot [data-cmd='new-folder']").count() == 1           # the Layers page's footer (1.49.2)
     page.evaluate("window.sonny.commands.run('panel-timeline'); window.sonny.commands.run('panel-history')")
 
 

@@ -1,7 +1,12 @@
 .cv-layers { display: flex; flex-direction: column; min-height: 0; background: var(--bg-secondary); position: relative; }
 /* The Layers panel is one section like the others; wherever it sits in the dock it takes the space that is left, and its
    list scrolls within it. The other panels keep their own height. */
-.cv-layers-panel { flex: 1 1 auto; min-height: 0; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto; }
+/* The Layers group is a panel group (1.49.2): its Layers page keeps its rows (controls, list, footer) wherever it is. */
+.cv-layers-panel { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.cv-layers-panel > .cv-group-body { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.cv-layers-page { flex: 1; min-height: 0; display: grid; grid-template-rows: auto minmax(0, 1fr) auto; grid-template-columns: minmax(0, 1fr); }
+.cv-layers-page[hidden] { display: none; }
+.cv-group-body > .cv-layers-page { min-height: 240px; }
 .cv-layers-panel[hidden] { display: none; }
 .cv-layers > section:not(.cv-layers-panel) { flex: none; }
 /* Moving panels in the dock: the header is the grip; the line shows where a dragged panel will land. */
@@ -208,13 +213,10 @@
 .cv-num:focus-within { border-color: var(--accent-color); }
 .cv-unit { color: var(--text-muted); font-family: var(--font-mono); font-size: 12px; }
 /* The Paths tab: only the header and Paths show; Paths' own fold toggle gives way to the tab. */
-.cv-layers-panel.is-paths-tab, .cv-layers-panel.is-channels-tab { grid-template-rows: auto minmax(0, 1fr); }
-.cv-layers-panel.is-paths-tab > .cv-layer-props, .cv-layers-panel.is-paths-tab > .cv-layer-list, .cv-layers-panel.is-paths-tab > .cv-panel-foot,
-.cv-layers-panel.is-channels-tab > .cv-layer-props, .cv-layers-panel.is-channels-tab > .cv-layer-list, .cv-layers-panel.is-channels-tab > .cv-panel-foot { display: none; }
-.cv-layers-panel .cv-paths[hidden] { display: none; }
-.cv-layers-panel .cv-paths { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
-.cv-layers-panel .cv-paths > .cv-panel-head { height: 34px; background: transparent; }
-.cv-layers-panel .cv-paths-toggle { display: none; }
+.cv-group-body > .cv-paths[hidden] { display: none; }
+.cv-group-body > .cv-paths { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; }
+.cv-group-body > .cv-paths > .cv-panel-head { height: 34px; background: transparent; }
+.cv-group-body > .cv-paths .cv-paths-toggle { display: none; }
 
 /* ── Phase 21, step 2c: the Properties column (UI_SPEC.md sections 5 and 6, the target's s20). ── */
 .cv-props-col { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; background: var(--surface-0); border-left: 1px solid var(--line-0); }
@@ -258,7 +260,7 @@
 .cv-char-row .cv-num { width: 110px; }
 /* The Layers panel's one column fits the panel (without it the column grew to its widest row and overflowed), and the
    Kind row takes the full width, its dropdown shrinking before the icons do. */
-.cv-layers-panel { grid-template-columns: minmax(0, 1fr); }
+/* (the Layers page's single column: .cv-layers-page) */
 .cv-layer-props { min-width: 0; }
 .cv-layer-kind { width: 100%; min-width: 0; }
 .cv-kind { width: auto; flex: 1 1 88px; min-width: 64px; max-width: 110px; }

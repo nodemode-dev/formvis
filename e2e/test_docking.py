@@ -71,3 +71,20 @@ def test_a_tab_moves_to_another_group_stays_and_resets(page):
         assert page.evaluate(TABS, "section.cv-swatches") == ["Swatches", "Color"] and page.evaluate(TABS, "section.cv-navigator") == ["Navigator"]
     finally:
         page.evaluate(RESET + "; localStorage.removeItem('sonny.tabHomes')"); page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+
+
+def test_the_layers_groups_tabs_move_both_ways(page):
+    try:
+        page.evaluate("window.sonny.engine.newDocument(300, 200, 'X', 'white')")
+        def drag_tab(tab_sel, text, to_sel):
+            t = page.locator(tab_sel, has_text=text).first.bounding_box(); h = page.locator(f"{to_sel} > .cv-group-head").bounding_box()
+            page.mouse.move(t["x"] + 10, t["y"] + 10); page.mouse.down()
+            page.mouse.move(h["x"] + h["width"] / 2, h["y"] + h["height"] / 2, steps=12); page.mouse.up()
+        drag_tab("section.cv-layers-panel .cv-group-tab", "Channels", "section.cv-navigator")            # out of the Layers group
+        assert page.evaluate(TABS, "section.cv-navigator") == ["Navigator", "Channels"]
+        page.wait_for_timeout(400)
+        assert page.evaluate("document.querySelector('section.cv-navigator .cv-ch-thumb').getContext('2d').getImageData(20, 15, 1, 1).data[3]") > 0   # it works there
+        drag_tab("section.cv-swatches .cv-group-tab", "Color", "section.cv-layers-panel")                  # into it
+        assert page.evaluate(TABS, "section.cv-layers-panel") == ["Layers", "Paths", "Color"]
+    finally:
+        page.evaluate(RESET + "; localStorage.removeItem('sonny.tabHomes')"); page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")

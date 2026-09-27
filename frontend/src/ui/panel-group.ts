@@ -49,6 +49,17 @@ export class PanelGroup {
   get current(): string { return this.active; }
 
   /** A tab's button and page in this group: its click shows it here; dragged onto another group's header, it moves. */
+  /** Adds a tab (its page as it is), before the tab named, or last (the Layers group's Channels and Paths). */
+  addTab(tid: string, label: string, page: HTMLElement, before?: string): void {
+    page.classList.add('cv-group-page');
+    this.attach(tid, label, page);
+    const b = before ? this.tabs.get(before)?.btn : null, t = this.tabs.get(tid);
+    if (b && t) b.before(t.btn);
+    setHidden(page, this.active !== tid);
+    if (!this.active || loadState()[this.id]?.tab === tid) this.show(tid, false);   // the tab last left, even added late
+  }
+  has(tid: string): boolean { return this.tabs.has(tid); }
+
   private attach(tid: string, label: string, page: HTMLElement): void {
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
     const btn = el<HTMLButtonElement>('<button class="cv-group-tab" type="button" role="tab"></button>');

@@ -92,7 +92,7 @@ import { Tabs } from './ui/tabs';
 import { toast } from './ui/toast';
 
 /** Each tab's own group, where Reset Panels returns it. */
-const TAB_HOMES: Record<string, string> = { navigator: 'navigator', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
+const TAB_HOMES: Record<string, string> = { layers: 'layers-panel', channels: 'layers-panel', paths: 'layers-panel', navigator: 'navigator', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
 const LAYERS_W_KEY = 'sonny_layers_w';
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
