@@ -3,7 +3,7 @@ SCROLL = "document.querySelector('.cv-options').scrollLeft"
 
 
 def test_an_overflowing_options_bar_can_be_scrolled_to_its_last_setting(page):
-    page.set_viewport_size({"width": 1000, "height": 700})
+    page.set_viewport_size({"width": 640, "height": 700})   # the Move bar, the target's shorter one (1.48.0), overflows here
     page.evaluate("(() => { const e = window.sonny.engine; e.newDocument(200, 100, 'O', 'white'); e.setTool('move'); })()")
     page.wait_for_timeout(200)
     assert page.evaluate(EDGES) == [False, True]              # settings lie past the right end only

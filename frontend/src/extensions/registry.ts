@@ -14,7 +14,7 @@ export type OptionSpec = (
   | { kind: 'select'; label: string; choices: ReadonlyArray<{ id: string; label: string }>; get: () => string; set: (id: string) => void; live?: () => ReadonlyArray<{ id: string; label: string }> }
   | { kind: 'readout'; label: string; get: () => string }
   | { kind: 'number'; label: string; min?: number; max?: number; step?: number; unit?: string; get: () => number | null; set: (v: number) => void }
-  | { kind: 'button'; label: string; icon?: string; run: () => void }
+  | { kind: 'button'; label: string; icon?: string; run: () => void; /** Icon only, the label as its tooltip (the target's align buttons). */ compact?: boolean }
 ) & {
   /** Shown only while this holds (checked on each sync); the row is built once either way. */
   when?: () => boolean;

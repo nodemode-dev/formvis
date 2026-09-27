@@ -80,7 +80,7 @@ export interface EngineEvents {
 export interface BrushSettings { diameter: number; hardness: number; opacity: number; tip?: SampledTip | null }
 export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string }
 type Target = 'pixels' | 'mask';
-type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'lockRatio'>;
+type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'autoSelectTarget' | 'lockRatio'>;
 
 export const luminance = (c: RGB): number => (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
 export const rgbCss = (c: RGB, a = 1): string => `rgba(${c.r},${c.g},${c.b},${a})`;
@@ -177,6 +177,8 @@ export class Engine {
   showPixelGrid = true;
   showTransformControls = true;
   autoSelect = false;
+  /** Auto-Select's target, as Photoshop's: the layer under the pointer, or the top-most folder holding it. */
+  autoSelectTarget: 'layer' | 'group' = 'layer';
   lockRatio = true;
   transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean; group: { box: Transform; originals: Map<ID, Transform> } | null } | null = null;
   selectionShift: { project: Project; dx: number; dy: number } | null = null;

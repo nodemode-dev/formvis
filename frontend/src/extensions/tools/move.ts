@@ -1,6 +1,6 @@
 import { HANDLES, contains, corners, unitPoint, type DragMode, type Transform } from '../../engine';
 import { meshSurfacePoint, type P2 } from '../../engine/mesh-warp';
-import { digitOf, type Tool, type ToolContext, type ToolPointer } from '../registry';
+import { digitOf, type OptionSpec, type Tool, type ToolContext, type ToolPointer } from '../registry';
 
 const HANDLE_PX = 7;
 const ROTATE_PX = 24;
@@ -82,6 +82,8 @@ const fmt = (n: number): string => (Math.round(n * 10) / 10).toString();
 
 let pixelStart: { x: number; y: number } | null = null;
 
+const ALIGN_NAMES = { left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges' } as const;
+
 export const moveTool: Tool = {
   id: 'move', label: 'Move', key: 'V', order: 10,
   icon: () => 'tMove',
@@ -108,7 +110,12 @@ export const moveTool: Tool = {
     if (e.distortEdit) return;
     const sel = e.current?.selection;
     if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && e.beginPixelMove(p.alt)) { pixelStart = p.doc; return; }
-    if (p.mod || e.autoSelect) { const id = e.layerAt(p.doc); if (id) e.selectLayer(id); }
+    if (p.mod || e.autoSelect) {
+      // Auto-Select Target Group selects the top-most folder holding the layer, as Photoshop's.
+      let id = e.layerAt(p.doc);
+      if (id && e.autoSelectTarget === 'group') { const doc = e.current?.doc; let l = doc?.layers.find((x) => x.id === id); while (l?.parentId) { const up = doc?.layers.find((x) => x.id === l?.parentId); if (!up) break; l = up; } if (l) id = l.id; }
+      if (id) e.selectLayer(id);
+    }
     const m = hit(ctx, p);
     if (m) e.beginTransform(m, p.doc);
   },
@@ -250,21 +257,27 @@ export const moveTool: Tool = {
   },
   options(e) {
     const t = (): Transform | null => { const l = e.activeLayer; return l && !l.isGroup && l.raster ? e.transformEdit?.draft ?? l.transform : null; };
+    const editing = (): boolean => !!e.transformEdit;
     return [
       { kind: 'title', text: 'Move' },
-      { kind: 'toggle', label: 'Auto-select', get: () => e.autoSelect, set: (v) => e.update({ autoSelect: v }) },
-      { kind: 'toggle', label: 'Transform controls', get: () => e.showTransformControls, set: (v) => e.update({ showTransformControls: v }) },
-      { kind: 'toggle', label: 'Keep proportions', get: () => e.lockRatio, set: (v) => e.update({ lockRatio: v }) },
-      { kind: 'number', label: 'X', get: () => t()?.x ?? null, set: (v) => e.setLayerTransform({ x: v }, 'Move Layer') },
-      { kind: 'number', label: 'Y', get: () => t()?.y ?? null, set: (v) => e.setLayerTransform({ y: v }, 'Move Layer') },
-      { kind: 'number', label: 'W', min: 1, get: () => t()?.w ?? null, set: (v) => e.resizeLayerTo(v, true) },
-      { kind: 'number', label: 'H', min: 1, get: () => t()?.h ?? null, set: (v) => e.resizeLayerTo(v, false) },
-      { kind: 'number', label: 'Scale', unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v) },
-      { kind: 'number', label: 'Angle', unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransform({ rotation: v }, 'Rotate Layer') },
-      { kind: 'segment', label: 'Sampling', choices: [{ id: 'nearest', label: 'Nearest' }, { id: 'smooth', label: 'Smooth' }, { id: 'high', label: 'High quality' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }, 'Layer Sampling') },
+      // As the target's Move bar (Phase 21, s20): Auto-Select and its target, Show Transform Controls, Snap, then
+      // align and distribute; the transform's own fields show only while a transform is being edited, as Photoshop's.
+      { kind: 'toggle', label: 'Auto-Select', get: () => e.autoSelect, set: (v) => e.update({ autoSelect: v }) },
+      { kind: 'select', label: 'Auto-Select Target', choices: [{ id: 'layer', label: 'Layer' }, { id: 'group', label: 'Group' }], get: () => e.autoSelectTarget, set: (v) => e.update({ autoSelectTarget: v as 'layer' | 'group' }) },
+      { kind: 'toggle', label: 'Show Transform Controls', get: () => e.showTransformControls, set: (v) => e.update({ showTransformControls: v }) },
       { kind: 'toggle', label: 'Snap', get: () => e.snapping, set: (v) => { e.snapping = v; e.emit('options', null); } },
-      { kind: 'button', label: 'Flip horizontal', icon: 'flipH', run: () => e.flipLayers(true) },
-      { kind: 'button', label: 'Flip vertical', icon: 'flipV', run: () => e.flipLayers(false) },
+      ...(['left', 'hcenter', 'right', 'top', 'vcenter', 'bottom'] as const).map((k): OptionSpec => ({ kind: 'button', label: `Align ${ALIGN_NAMES[k]}`, icon: `align${k[0].toUpperCase()}${k.slice(1)}Edge`, run: () => e.alignLayers(k), when: () => !editing(), compact: true })),
+      ...(['hspace', 'vspace'] as const).map((k): OptionSpec => ({ kind: 'button', label: k === 'hspace' ? 'Distribute Horizontal Spacing' : 'Distribute Vertical Spacing', icon: k === 'hspace' ? 'distributeH' : 'distributeV', run: () => e.distributeLayers(k), when: () => !editing(), compact: true })),
+      { kind: 'toggle', label: 'Keep proportions', get: () => e.lockRatio, set: (v) => e.update({ lockRatio: v }), when: editing },
+      { kind: 'number', label: 'X', get: () => t()?.x ?? null, set: (v) => e.setLayerTransform({ x: v }, 'Move Layer'), when: editing },
+      { kind: 'number', label: 'Y', get: () => t()?.y ?? null, set: (v) => e.setLayerTransform({ y: v }, 'Move Layer'), when: editing },
+      { kind: 'number', label: 'W', min: 1, get: () => t()?.w ?? null, set: (v) => e.resizeLayerTo(v, true), when: editing },
+      { kind: 'number', label: 'H', min: 1, get: () => t()?.h ?? null, set: (v) => e.resizeLayerTo(v, false), when: editing },
+      { kind: 'number', label: 'Scale', unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v), when: editing },
+      { kind: 'number', label: 'Angle', unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransform({ rotation: v }, 'Rotate Layer'), when: editing },
+      { kind: 'segment', label: 'Sampling', choices: [{ id: 'nearest', label: 'Nearest' }, { id: 'smooth', label: 'Smooth' }, { id: 'high', label: 'High quality' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }), when: editing },
+      { kind: 'button', label: 'Flip horizontal', icon: 'flipH', run: () => e.flipLayers(true), when: editing },
+      { kind: 'button', label: 'Flip vertical', icon: 'flipV', run: () => e.flipLayers(false), when: editing },
     ];
   },
 };

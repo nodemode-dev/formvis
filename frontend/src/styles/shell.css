@@ -253,3 +253,9 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-tool.is-active { width: 32px; height: 28px; margin: 1px 0; color: #ffffff; }
 .cv-rail-sep { display: block; width: 6px; height: 2px; margin: 5px auto; border-radius: 1px; background: #4a4950; }
 .cv-tool.is-active { color: #c8bafa; }
+/* The bar's tool chip: the tool's icon, raised, as the target's (s20). */
+.cv-opt-tool { display: inline-grid; place-items: center; width: 34px; height: 28px; padding: 0; color: var(--text-primary); }
+/* Icon-only option buttons and the thin divider before them (the target's align group). */
+.cv-opt-icon { display: inline-grid; place-items: center; width: 30px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #c9c8ce; cursor: pointer; }
+.cv-opt-icon:hover { background: #242328; color: #ffffff; }
+.cv-opt-sep { display: inline-block; width: 1px; height: 20px; margin: 0 6px; background: #34333a; vertical-align: middle; }

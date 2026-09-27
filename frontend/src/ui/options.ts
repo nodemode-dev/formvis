@@ -47,8 +47,14 @@ export class OptionsBar {
     for (const spec of t.options?.(this.engine) ?? [{ kind: 'title', text: t.label } as OptionSpec]) {
       const before = node.children.length;
       if (spec.kind === 'title') {
-        const n = el('<span class="cv-opt-title"></span>');
-        setText(n, spec.text);
+        // The tool's own icon in a raised chip, as the target's bar begins (Phase 21); its name as the label and tooltip.
+        const n = el('<span class="cv-opt-title cv-opt-tool" role="img"></span>');
+        n.setAttribute('aria-label', spec.text);
+        n.title = spec.text;
+        let shown = '';
+        const paint = (): void => { const name = t.icon(this.engine); if (name !== shown) { shown = name; n.innerHTML = icon(name, 18); } };
+        paint();
+        sync.push(paint);
         node.appendChild(n);
       } else if (spec.kind === 'segment') {
         const n = el('<div class="cv-opt"><span class="cv-opt-label"></span><div class="cv-seg" role="group"></div></div>');
@@ -125,6 +131,15 @@ export class OptionsBar {
         setText(q(n, 'span'), spec.label);
         const out = q(n, '.cv-readout');
         sync.push(() => setText(out, spec.get()));
+        node.appendChild(n);
+      } else if (spec.compact && spec.icon) {
+        // Icon only, as the target's align buttons; a thin divider begins each run of them.
+        const prev = node.lastElementChild;
+        if (!prev?.classList.contains('cv-opt-icon')) node.appendChild(el('<span class="cv-opt-sep" aria-hidden="true"></span>'));
+        const n = el<HTMLButtonElement>(`<button class="cv-opt-icon" type="button">${icon(spec.icon, 18)}</button>`);
+        n.title = spec.label;
+        n.setAttribute('aria-label', spec.label);
+        n.addEventListener('click', () => spec.run());
         node.appendChild(n);
       } else {
         const n = el<HTMLButtonElement>(`<button class="cv-btn cv-btn-ghost" type="button">${spec.icon ? icon(spec.icon, 14) : ''}<span class="cv-btn-label"></span></button>`);
