@@ -2,6 +2,27 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Fixes from the owner's walkthrough of 1.49.0 · _v1.49.1 (ui/icons.ts, ui/app-dialogs.ts, ui/panel-group.ts, ui/properties.ts, app.ts; styles)
+
+`tStamp`, `tHistoryBrush`, `tEyedropper` redrawn; `NewCanvasDialog` previews by aspect ratio, Color Mode and bit depth enabled; `PanelGroup.resetStates`; `PropertiesColumn.resetLayout`; Reset Panels restores the whole layout; denser glass. Removed from frontend:
+
+```text
+    { id: 'reset-panels', label: 'Reset Panels', run: () => { dock.reset(); PanelGroup.resetHomes(TAB_HOMES); } },
+.cv-menu { padding: 6px; border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent); border-radius: 12px; background: rgba(40, 39, 44, 0.86); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55); }
+  --glass-bg: color-mix(in srgb, var(--surface-2) 58%, transparent);
+  --glass-filter: blur(30px) saturate(1.9);
+    const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode" disabled><option>RGB Color</option></select>');
+    const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth" disabled><option>8 bit</option></select>');
+      const page = card.querySelector('.cv-nd-page') as HTMLElement, s = Math.min(150 / p.w, 76 / p.h);
+      page.style.width = `${Math.max(8, Math.round(p.w * s))}px`;
+      page.style.height = `${Math.max(8, Math.round(p.h * s))}px`;
+  tEyedropper: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4.6a2.4 2.4 0 0 1 3.4 0l1.5 1.5a2.4 2.4 0 0 1 0 3.4l-2 2-4.9-4.9z"/><path d="m12.2 7-7.7 7.7-1 4.8 4.8-1 7.7-7.7"/><path d="M11 9.5 14.5 13"/></svg>`,
+  tStamp: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9.5 13.5V11a2.5 2.5 0 1 0-5 0" transform="translate(5 -3)"/><path d="M9.6 10.5h4.8v3H9.6z"/><path d="M5 13.5h14a1 1 0 0 1 1 1V17H4v-2.5a1 1 0 0 1 1-1z"/><path d="M6 20h12"/><circle cx="12" cy="6" r="2.6"/></svg>`,
+  tHistoryBrush: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20.5 3.5c-3.4 1.2-7.2 4.8-9.2 7.7l1.6 1.6c2.9-2 6.4-5.8 7.6-9.3z"/><path d="M10.4 12.1c-2 0-3.3 1.4-3.3 3.1 0 1.2-.7 2.1-1.7 2.4 1.1 1 2.9 1.2 4.3.8 2-.6 2.8-2.4 2.1-4.2"/><path d="M3.5 9.5a6 6 0 0 1 6.2-6"/><path d="M3.2 6.3l.3 3.2 3.1-.6"/></svg>`,
+```
+
+Nothing removed from src-tauri or backend.
+
 ## The owner's walkthrough of 1.48.0 · _v1.49.0 (ui/channels.ts earlier; extensions/tools/history-brush.ts, frame.ts new; engine/index.ts, engine/types.ts, engine/viewport.ts, io/project-io.ts; ui/dock.ts, ui/panel-group.ts, ui/properties.ts, ui/rail.ts, ui/stage.ts, ui/menu.ts, ui/dropdown.ts, ui/themes.ts, ui/prefs.ts, ui/app-dialogs.ts, ui/history.ts, ui/swatches.ts, ui/layers.ts, app.ts, index.html; extensions/tools/*.ts; styles)
 
 Semantic tokens (surfaces, lines, accent tints, glass) and `--accent-intensity`, `setIntensity`, appearance 3; `enhanceAllSelects`; the main grid's areas; `Viewport.insetRight`, `centerX`; `PropertiesColumn.showingCollapsed`, `openWidth`, `relayout`; `ToolVariant`; `Engine.quickMask`, `toggleQuickMask`, `quickMaskLive`; screen modes, `toggle-panels`, `rail-columns`; `historyBrushTool`, `Engine.historyBrushSource`, `autoFirstSnapshot`, `openingSnapshot`; `frameTool`, `Layer.frame`, `Engine.newFrameLayer`; Edit Toolbar; `Dock` with `side`, `merge`, `separate`, `present`; `PanelGroup.moveTab`, tab homes; `Stage.prefs`; Preferences' new sections. Removed from frontend:

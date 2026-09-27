@@ -2,6 +2,23 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.1 · 2026-09-27
+
+### Fixed: from your walkthrough of 1.49.0
+
+- New Document: wide presets' previews (Facebook Post, X Post, LinkedIn Banner) no longer spill past their cards.
+- New Document: Color Mode and bit depth open like any dropdown (they showed a stray line and could not open).
+- The Clone Stamp, History Brush and Eyedropper icons are redrawn: the stamp whole, the brush with its arrow, the eyedropper a dropper.
+- Reset Panels restores the whole layout: panel order and columns, tabs, groups open on their first tab, Layers on its own tab, both columns expanded at their default widths.
+- Menus and dropdowns are denser glass, so nothing behind them reads through.
+- The README lists all thirty-one tools.
+
+### Next
+
+- 1.49.2: panels rework (any panel groups with any other, tabs detach into their own group, clearer moving).
+- 1.49.3: paths (Path and Direct Selection, Stroke Path and Fill Path options).
+- 1.49.4: Magnetic Lasso and the other selection tools; then your tool list, a group per build.
+
 ## 1.49.0 · 2026-09-27
 
 ### Changed: your walkthrough of 1.48.0
