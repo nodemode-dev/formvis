@@ -38,6 +38,9 @@ export interface Transform { x: number; y: number; w: number; h: number; rotatio
 export interface Mask { raster: Raster | null; enabled: boolean; linked: boolean; placement: Transform | null }
 export type AdjustmentKind = 'hsv' | 'levels' | 'curves' | 'exposure' | 'gradientMap' | 'grain' | import('./adjust-params').ParamKind;
 export interface Adjustment { kind: AdjustmentKind; data: Record<string, unknown> }
+/** Photoshop's layer locks (the target's Lock row): transparency (paint only where there are pixels), image pixels
+ *  (no painting, filling or filtering), position (no moving or transforming), all (every one of them). */
+export interface LayerLocks { transparency?: boolean; pixels?: boolean; position?: boolean; all?: boolean }
 export interface Layer {
   readonly id: ID;
   /** Layer styles drawn beneath the layer; absent or null for none. */
@@ -61,6 +64,8 @@ export interface Layer {
   /** Fill (Photoshop's): the layer's own pixels at this share of its opacity, its layer styles at the full opacity;
    *  absent is 1. On an adjustment layer it acts as opacity does. */
   fill?: number;
+  /** Absent is unlocked. */
+  locks?: LayerLocks;
   blend: BlendMode;
   mask: Mask | null;
   clipId: ID | null;

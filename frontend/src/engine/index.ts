@@ -15,7 +15,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { antialiasMask, wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
 import { allPatterns, patternById } from './patterns';
 
 export * from './types';
@@ -192,7 +192,35 @@ export class Engine {
 
   on<K extends keyof EngineEvents>(key: K, fn: (p: EngineEvents[K]) => void): () => void { return this.events.on(key, fn); }
   emit<K extends keyof EngineEvents>(key: K, payload: EngineEvents[K]): void { this.events.emit(key, payload); }
-  notice(text: string, kind: Notice['kind'] = 'info'): void { this.emit('notice', { kind, text }); }
+  notice(text: string, kind: Notice['kind'] = 'info'): void {
+    // A lock's reason stands alone: the generic 'Select a pixel layer' that a refused operation adds just after it is not
+    // shown, since the layer is a pixel layer, only locked.
+    if (this.lockedAt && performance.now() - this.lockedAt < 50 && !text.startsWith('The layer')) return;
+    this.emit('notice', { kind, text });
+  }
+  private lockedAt = 0;
+  /** Whether a lock stops this edit to the layer, saying so once when it does. */
+  private locked(l: Layer | null | undefined, what: 'pixels' | 'position'): boolean {
+    const k = l?.locks;
+    if (!k || !(k.all || k[what])) return false;
+    this.notice(what === 'pixels' ? 'The layer’s pixels are locked. Unlock them in the Layers panel.' : 'The layer’s position is locked. Unlock it in the Layers panel.');
+    this.lockedAt = performance.now();
+    return true;
+  }
+
+  /** Layers > Lock: the selected layers' locks, as one undo step (Layer Locks). */
+  setLocks(patch: LayerLocks): void {
+    this.edit('Layer Locks', (p) => {
+      let changed = false;
+      for (const id of p.selectedIds) {
+        const l = p.layer(id);
+        if (!l) continue;
+        const next = { ...(l.locks ?? {}), ...patch }, clean = Object.fromEntries(Object.entries(next).filter(([, v]) => v)) as LayerLocks;
+        if (JSON.stringify(clean) !== JSON.stringify(l.locks ?? {})) { p.updateLayer(id, { locks: Object.keys(clean).length ? clean : undefined }); changed = true; }
+      }
+      return changed;
+    });
+  }
   get current(): Project | null { return this.projects.find((p) => p.id === this.currentId) ?? null; }
   get activeLayer(): Layer | null { return this.current?.activeLayer ?? null; }
   get stroking(): boolean { return this.stroke !== null; }
@@ -2288,7 +2316,7 @@ export class Engine {
     });
   }
 
-  private paintable(l: Layer | null): l is Layer { return !!l && !l.isGroup && !l.adjustment; }
+  private paintable(l: Layer | null): l is Layer { return !!l && !l.isGroup && !l.adjustment && !this.locked(l, 'pixels'); }
 
   private ensurePixels(p: Project, layer: Layer): Raster {
     const { width: W, height: H } = p.doc;
@@ -2348,8 +2376,11 @@ export class Engine {
     p.history.begin(this.brushMode === 'erase' ? 'Eraser' : 'Brush', p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = pick.target === 'mask' && luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
-    const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : this.brushMode === 'erase' ? 'destination-out' : 'source-over';
-    const color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : this.fg;
+    // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
+    // colour, as Photoshop's does, since it may not make pixels transparent.
+    const keepAlpha = pick.target !== 'mask' && !!p.activeLayer?.locks?.transparency;
+    const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : keepAlpha ? 'source-atop' : this.brushMode === 'erase' ? 'destination-out' : 'source-over';
+    const color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : keepAlpha && this.brushMode === 'erase' ? this.bg : this.fg;
     const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, flow: this.brushFlow }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
@@ -2919,6 +2950,7 @@ export class Engine {
     const p = this.current;
     const l = p?.activeLayer;
     if (!p || !l || this.stroke) return false;
+    if (this.locked(l, 'position')) return false;
     const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
     if (box) {
       this.settle();
@@ -3303,6 +3335,7 @@ export class Engine {
   cancelTransform(): void { this.snapGuides = null; if (this.transformEdit) { this.transformEdit = null; this.emit('render', null); this.emit('options', null); } }
 
   nudge(dx: number, dy: number): void {
+    if (this.locked(this.activeLayer, 'position')) return;
     this.edit('Nudge', (p) => {
       let moved = false;
       for (const id of p.selectedIds) {
@@ -4472,7 +4505,7 @@ export class Engine {
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
-    const s = new PixelStroke(pick.raster, pick.local, style, 'source-over', p.selection, texture, pick.target === 'mask');
+    const s = new PixelStroke(pick.raster, pick.local, style, pick.target !== 'mask' && l0.locks?.transparency ? 'source-atop' : 'source-over', p.selection, texture, pick.target === 'mask');   // Lock Transparency
     // The Healing Brush heals from the same offset at release, in the layer's own pixels.
     let healFrom: Pt | undefined;
     if (kind === 'healBrush' && texture) {
@@ -5049,6 +5082,7 @@ export class Engine {
   }
 
   setLayerTransform(patch: Partial<Transform>, name = 'Transform Layer'): void {
+    if (this.locked(this.activeLayer, 'position')) return;
     const fs = this.floatSel, cur = this.current;
     if (fs && cur === fs.project && cur.activeId === fs.floatingId) {
       const l = cur.activeLayer, next: Transform | null = l ? { ...l.transform, ...patch } : null;

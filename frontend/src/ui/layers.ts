@@ -1,4 +1,5 @@
 import { BLEND_MODES, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Raster, effectsActive } from '../engine';
+import type { LayerLocks } from '../engine/types';
 import { enhanceSelect } from './dropdown';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
 import { icon } from './icons';
@@ -18,6 +19,13 @@ const KINDS = [
   { id: 'smart', label: 'Smart Object', icon: 'smartObject' },
 ] as const;
 type KindId = (typeof KINDS)[number]['id'];
+/** The Lock row's toggles (Photoshop's order). */
+const LOCKS = [
+  { id: 'transparency', title: 'transparent pixels', icon: 'canvasGrid' },
+  { id: 'pixels', title: 'image pixels', icon: 'paintbrush' },
+  { id: 'position', title: 'position', icon: 'moveSel' },
+  { id: 'all', title: 'all', icon: 'lock' },
+] as const;
 const kindOf = (l: Layer): KindId => (l.adjustment ? 'adjustment' : l.text ? 'type' : l.vector ? 'shape' : l.smart ? 'smart' : 'pixel');
 
 /** The blend modes in Photoshop's groups (the target's list, s21), as <optgroup>s; any mode not named falls in Other. */
@@ -95,6 +103,12 @@ export class LayersPanel {
       e.preventDefault();
       commitFill((parseFloat(this.fill.value) || 0) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
     });
+    // The Lock row, as the target's: transparency, image pixels, position, all; each click one undo step.
+    const slot = q(root, '.cv-lock-slot');
+    slot.innerHTML = `<span class="cv-lock-label">Lock:</span>` + LOCKS.map((k) => `<button class="cv-lock-btn" type="button" data-lock="${k.id}" title="Lock ${k.title}" aria-label="Lock ${k.title}" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('');
+    for (const b of slot.querySelectorAll<HTMLButtonElement>('.cv-lock-btn')) {
+      b.addEventListener('click', () => { const id = b.dataset.lock as keyof LayerLocks; engine.setLocks({ [id]: !engine.activeLayer?.locks?.[id] }); });
+    }
     // The kind filter: the dropdown picks one kind (or all); the icons toggle kinds; the two agree.
     this.kind = q<HTMLSelectElement>(root, '.cv-kind');
     this.kind.addEventListener('change', () => { this.kinds = new Set(this.kind.value === 'all' ? [] : [this.kind.value as KindId]); this.syncKinds(); this.render(); });
@@ -229,6 +243,12 @@ export class LayersPanel {
     const pct = String(Math.round((pixel ? (l as Layer).opacity : 1) * 100));
     if (document.activeElement !== this.opacity) setValue(this.opacity, pct);
     setDisabled(this.fill, !pixel);
+    for (const b of this.rows.closest('.cv-layers-panel')?.querySelectorAll<HTMLButtonElement>('.cv-lock-btn') ?? []) {
+      const on = !!l?.locks?.[b.dataset.lock as keyof LayerLocks];
+      b.classList.toggle('is-on', on);
+      b.setAttribute('aria-pressed', String(on));
+      setDisabled(b, !l);
+    }
     if (document.activeElement !== this.fill) setValue(this.fill, String(Math.round((pixel ? (l as Layer).fill ?? 1 : 1) * 100)));
   }
 
