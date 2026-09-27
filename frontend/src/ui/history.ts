@@ -38,6 +38,8 @@ export class HistoryPanel {
     this.rows.addEventListener('click', (e) => {
       const row = (e.target as HTMLElement).closest<HTMLElement>('.cv-history-row');
       if (!row) return;
+      // The brush column, as Photoshop's: sets the History Brush's source without reverting to the snapshot.
+      if ((e.target as HTMLElement).closest('.cv-hb-source') && row.dataset.snap) { this.engine.setHistoryBrushSource(row.dataset.snap); return; }
       if (row.dataset.snap) { this.picked = row.dataset.snap; this.engine.revertToSnapshot(row.dataset.snap); this.sync(); return; }
       this.engine.jumpHistory(Number(row.dataset.index));
     });
@@ -56,7 +58,7 @@ export class HistoryPanel {
     patchList<Row>(this.rows, list, {
       key: (r) => r.key,
       create: (r) => {
-        const row = el(`<div class="cv-history-row" role="option"><span class="cv-history-icon">${icon(r.snap ? 'camera' : r.index === 0 ? 'image' : 'history', 12)}</span><span class="cv-history-name"></span></div>`);
+        const row = el(`<div class="cv-history-row" role="option"><span class="cv-history-icon">${icon(r.snap ? 'camera' : r.index === 0 ? 'image' : 'history', 12)}</span><span class="cv-history-name"></span>${r.snap ? `<button class="cv-hb-source" type="button" title="Paint from this snapshot with the History Brush" aria-label="History Brush source">${icon('tHistoryBrush', 13)}</button>` : ''}</div>`);
         this.fill(row, r, current);
         return row;
       },
@@ -77,6 +79,7 @@ export class HistoryPanel {
     row.title = r.snap ? `${r.name}: keeps ${Math.ceil((r.bytes ?? 0) / 1048576)} MB` : '';
     row.classList.toggle('is-snapshot', !!r.snap);
     row.classList.toggle('is-picked', !!r.snap && r.snap === this.picked);
+    row.querySelector('.cv-hb-source')?.classList.toggle('is-on', !!r.snap && r.snap === this.engine.historyBrushSourceId);
     setText(q(row, '.cv-history-name'), r.name);
     row.classList.toggle('is-current', !r.snap && r.index === current);
     row.classList.toggle('is-undone', !r.snap && r.index > current);

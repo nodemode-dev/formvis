@@ -308,8 +308,25 @@ export class Engine {
     p.activeId = activeId && doc.layers.some((l) => l.id === activeId) ? activeId : doc.layers[doc.layers.length - 1]?.id ?? null;
     if (p.activeId) p.selectedIds = new Set([p.activeId]);
     this.projects.push(p);
+    this.openingSnapshot(p);
     this.switchTo(p.id);
     return p;
+  }
+
+  /** Photoshop's Automatically Create First Snapshot: each document keeps itself as opened, the History Brush's first
+   *  source, within the snapshots' memory budget (past it, none is taken and the brush says so). */
+  autoFirstSnapshot = true;
+  private openingSnapshot(p: Project): void {
+    if (!this.autoFirstSnapshot || this.docBytes(p.doc) > this.snapshotByteLimit) return;
+    this.historySnapshots.set(p, [{ id: uid(), name: p.name, state: { doc: this.copyDoc(p.doc), activeId: p.activeId, selection: p.selection } }]);
+  }
+
+  /** The History Brush's source, as Photoshop's: a snapshot chosen in the History panel, or the document's first. */
+  historyBrushSource: ID | null = null;
+  setHistoryBrushSource(id: ID): void { this.historyBrushSource = id; this.emit('history', null); }
+  get historyBrushSourceId(): ID | null {
+    const p = this.current, list = p ? this.historySnapshots.get(p) ?? [] : [];
+    return (list.find((x) => x.id === this.historyBrushSource) ?? list[0])?.id ?? null;
   }
 
   switchTo(id: string): void {
@@ -446,7 +463,8 @@ export class Engine {
     this.settle();
     const list = this.historySnapshots.get(p) ?? [], need = this.docBytes(p.doc), used = list.reduce((a, x) => a + this.docBytes(x.state.doc), 0), mb = (b: number): number => Math.ceil(b / 1048576);
     if (used + need > this.snapshotByteLimit) { this.notice(`A snapshot of this document needs ${mb(need)} MB, and snapshots already keep ${mb(used)} MB of the ${mb(this.snapshotByteLimit)} MB they may use. Delete one first.`); return; }
-    let n = list.length + 1;
+    // Numbered as Photoshop's: the opening snapshot bears the document's name, so the first taken is Snapshot 1.
+    let n = list.filter((x) => /^Snapshot \d+$/.test(x.name)).length + 1;
     while (list.some((x) => x.name === `Snapshot ${n}`)) n += 1;
     list.push({ id: uid(), name: `Snapshot ${n}`, state: { doc: this.copyDoc(p.doc), activeId: p.activeId, selection: p.selection } });
     this.historySnapshots.set(p, list);
@@ -4522,7 +4540,7 @@ export class Engine {
     return s;
   }
 
-  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge', pt: Pt, shift: boolean): boolean {
+  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush', pt: Pt, shift: boolean): boolean {
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
@@ -4555,7 +4573,15 @@ export class Engine {
       ctxOf(out).putImageData(sharpenSample(ctxOf(src).getImageData(0, 0, W, H), clamp(this.brush.diameter / 40, 0.8, 4)), 0, 0);
       texture = { surface: out, dx: 0, dy: 0 };
     } else if (kind === 'dodge' || kind === 'burn' || kind === 'sponge') texture = { surface: this.toned(this.layerSample(p, l0), kind), dx: 0, dy: 0 };
-    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }[kind], p.snapshot());
+    else if (kind === 'historyBrush') {
+      // The History Brush paints this layer back from the source snapshot's own copy of it, in document space.
+      const id = this.historyBrushSourceId, snap = id ? this.historySnapshots.get(p)?.find((x) => x.id === id) : undefined;
+      const src = snap?.state.doc.layers.find((l) => l.id === l0.id);
+      if (!snap) { this.notice('The History Brush paints from a snapshot: take one in the History panel (New Snapshot).'); return false; }
+      if (!src?.raster) { this.notice(`${snap.name} has no layer matching this one, so the History Brush cannot paint it back; choose another source in the History panel.`); return false; }
+      texture = { surface: this.layerSample(p, src), dx: 0, dy: 0 };
+    }
+    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
