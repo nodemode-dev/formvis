@@ -2,6 +2,24 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.48.0 · 2026-09-27
+
+### Changed: from your walkthrough of 1.47.0 and your two screenshots
+
+- Tool icons redrawn as Photoshop's pictures in thin lines (a four-way Move arrow, a lasso loop, a bandage, a stamp, a drop, a lollipop, a pen nib), the column at the target's density with dashes between tool families, the active tool lavender.
+- The options bar starts with the tool's icon; the Move bar is the target's: Auto-Select, Auto-Select Target (Layer or Group), Show Transform Controls, Snap and icon-only align and distribute buttons. Its transform fields appear while you transform, as Photoshop's.
+- Menus have a tick column only where a tick can show, and the target's translucent look.
+- Brushes: the tip is an editor (drag its handles to turn or flatten it); presets in folders with a search, grid or list, each drawn with its shape and size; Load... reads Photoshop .abr brushes; a Brush Settings tab. A Flat angled preset.
+- Both side columns collapse to a strip of icons («); an icon opens its panel beside the strip.
+- Panel groups resize by dragging between them; Layers takes what is left.
+- Channels is a working tab: view one channel or hide some, Cmd-click one to load it as a selection.
+- Each group has its panel menu (•••) of its own commands.
+
+### Not verified yet
+
+- Channel viewing with the Native GPU renderer is not possible (it draws outside the page); the panel says so.
+- Only the Move tool's options bar is in the target screenshots; the other tools' bars share its style but are not matched item by item.
+
 ## 1.47.0 · 2026-09-26
 
 ### Changed: the target's layout and experience (Phase 21, UI_SPEC.md)

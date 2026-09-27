@@ -2,6 +2,96 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The owner's walkthrough corrections · _v1.48.0 (ui/channels.ts new; extensions/tools/*.ts icon lines, move.ts, tone.ts; extensions/registry.ts; ui/icons.ts, ui/rail.ts, ui/options.ts, ui/menu.ts, ui/properties.ts, ui/dock.ts, ui/layers.ts, ui/panel-group.ts, ui/navigator.ts, ui/swatches.ts, app.ts; engine/index.ts, engine/brush-dynamics.ts; styles)
+
+Tool icons (`tMove` ... `tZoom`) and the rail's family dashes; the options bar's tool chip, compact buttons and the Move bar (`autoSelectTarget`); `PopupMenu` `has-checks`; the Brushes group (presets in folders, search, grid or list, Load, the tip editor, a Brush Settings tab), `BrushPreset.angle`/`roundness`, the Flat angled preset; `PropertiesColumn.collapsible`; `Dock` splitters, `sizeGroups`, `setCollapsed`; `ChannelsPanel`; `PanelGroup.setMenu`, `menuHost`; `SwatchesPanel.addForeground`, `reset`; commands `load-brushes`, `swatch-add`, `swatches-reset`. Removed from frontend:
+
+```text
+  new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); });
+  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !propsShown()); setStyleVar(root, '--cv-props-w', propsShown() ? '284px' : '0px'); };
+  new SwatchesPanel(q(root, '.cv-layers'), engine);
+export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics; tip?: SampledTip }
+type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'lockRatio'>;
+  | { kind: 'button'; label: string; icon?: string; run: () => void }
+  icon: (e) => (e.brushMode === 'erase' ? 'eraser' : 'brush'),
+  icon: () => 'bucket',
+  icon: () => 'duplicate',
+  icon: () => 'crop',
+  icon: () => 'penTool',
+  icon: () => 'directSelectTool',
+  icon: () => 'eyeDropper',
+  icon: () => 'paintbrush',
+  icon: () => 'gradient',
+  icon: () => 'hand',
+  icon: () => 'sparkle',
+  icon: () => 'healBrushTool',
+  icon: (e) => (e.lassoKind === 'polygonal' ? 'lassoSelect' : 'lasso'),
+  icon: (e) => (e.marqueeKind === 'ellipse' ? 'ellipseSelect' : 'marquee'),
+import { digitOf, type Tool, type ToolContext, type ToolPointer } from '../registry';
+  icon: () => 'cursor',
+    if (p.mod || e.autoSelect) { const id = e.layerAt(p.doc); if (id) e.selectLayer(id); }
+      { kind: 'toggle', label: 'Auto-select', get: () => e.autoSelect, set: (v) => e.update({ autoSelect: v }) },
+      { kind: 'toggle', label: 'Transform controls', get: () => e.showTransformControls, set: (v) => e.update({ showTransformControls: v }) },
+      { kind: 'toggle', label: 'Keep proportions', get: () => e.lockRatio, set: (v) => e.update({ lockRatio: v }) },
+      { kind: 'number', label: 'X', get: () => t()?.x ?? null, set: (v) => e.setLayerTransform({ x: v }, 'Move Layer') },
+      { kind: 'number', label: 'Y', get: () => t()?.y ?? null, set: (v) => e.setLayerTransform({ y: v }, 'Move Layer') },
+      { kind: 'number', label: 'W', min: 1, get: () => t()?.w ?? null, set: (v) => e.resizeLayerTo(v, true) },
+      { kind: 'number', label: 'H', min: 1, get: () => t()?.h ?? null, set: (v) => e.resizeLayerTo(v, false) },
+      { kind: 'number', label: 'Scale', unit: '%', min: 1, get: () => { const l = e.activeLayer, tt = t(); return l?.raster && tt ? (tt.w / l.raster.width) * 100 : null; }, set: (v) => e.scaleLayerTo(v) },
+      { kind: 'number', label: 'Angle', unit: '\u00b0', get: () => t()?.rotation ?? null, set: (v) => e.setLayerTransform({ rotation: v }, 'Rotate Layer') },
+      { kind: 'segment', label: 'Sampling', choices: [{ id: 'nearest', label: 'Nearest' }, { id: 'smooth', label: 'Smooth' }, { id: 'high', label: 'High quality' }], get: () => t()?.sampling ?? 'high', set: (v) => e.setLayerTransform({ sampling: v as Transform['sampling'] }, 'Layer Sampling') },
+      { kind: 'button', label: 'Flip horizontal', icon: 'flipH', run: () => e.flipLayers(true) },
+      { kind: 'button', label: 'Flip vertical', icon: 'flipV', run: () => e.flipLayers(false) },
+  icon: () => 'objectSelect',
+  icon: () => 'patchTool',
+  icon: () => 'cursor',
+  icon: () => 'penTool',
+  icon: () => 'quickSelect',
+  icon: () => 'eraser',
+  icon: (e) => (e.shapeSettings.kind === 'ellipse' || e.shapeSettings.kind === 'heart' ? 'circleTool' : 'rectTool'),
+  icon: (e) => (e.retouch.smearMode === 'blur' || e.retouch.smearMode === 'sharpen' ? 'blurTool' : 'smudge'),
+    icon: () => id,
+  icon: () => 'typeTool',
+  icon: () => 'wandSelect',
+  icon: () => 'zoomIn',
+.cv-layers-panel.is-paths-tab { grid-template-rows: auto minmax(0, 1fr); }
+.cv-layers-panel.is-paths-tab > .cv-layer-props, .cv-layers-panel.is-paths-tab > .cv-layer-list, .cv-layers-panel.is-paths-tab > .cv-panel-foot { display: none; }
+  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [...DEFAULT.hidden] }; this.save(); }
+      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
+    for (const t of root.querySelectorAll<HTMLButtonElement>('.cv-layers-panel .cv-group-tab')) t.addEventListener('click', () => this.showTab(t.dataset.tab as 'layers' | 'paths'));
+    let tab: 'layers' | 'paths' = 'layers';
+    try { tab = (JSON.parse(localStorage.getItem('sonny.groups') ?? '{}') as Record<string, { tab?: string }>).layers?.tab === 'paths' ? 'paths' : 'layers'; } catch { /* layers */ }
+    this.showTab(tab, false);
+  showTab(tab: 'layers' | 'paths', remember = true): void {
+        const n = el('<span class="cv-opt-title"></span>');
+        setText(n, spec.text);
+    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><div class="cv-group-tabs" role="tablist"></div><span></span><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
+  constructor(host: HTMLElement, private readonly engine: Engine, run: (cmd: string) => void) {
+      <div class="cv-brush-stroke-head"><span>Stroke preview</span></div><canvas class="cv-brush-stroke" aria-label="Stroke preview"></canvas>
+      <div class="cv-brush-actions"><button class="cv-btn" type="button" data-run="brush-settings">${icon('sliders', 14)}<span>Brush Settings</span></button></div>
+    const sliders = body.querySelector('.cv-brush-sliders') as HTMLElement;
+    const rows = [
+      { label: 'Size', unit: 'px', min: 1, max: 1000, step: 1, get: () => e.brush.diameter, put: (v: number) => e.setBrush({ diameter: Math.round(v) }), toS: (v: number) => (Math.log(v) / LOG) * 1000, fromS: (s: number) => Math.exp((s / 1000) * LOG) },
+      { label: 'Hardness', unit: '%', min: 0, max: 100, step: 1, get: () => e.brush.hardness * 100, put: (v: number) => e.setBrush({ hardness: v / 100 }), toS: (v: number) => v * 10, fromS: (s: number) => s / 10 },
+    ];
+    for (const r of rows) {
+      const row = el(`<div class="cv-brush-row"><div class="cv-brush-row-head"><span>${r.label}:</span></div><input class="cv-slider" type="range" min="0" max="1000" step="1" aria-label="${r.label}"></div>`);
+      const field = numField(r.unit, r.label, r.min, r.max, r.step, r.put), slider = row.querySelector('input') as HTMLInputElement;
+      slider.addEventListener('input', () => r.put(Math.min(r.max, Math.max(r.min, r.fromS(Number(slider.value))))));
+      setters.push(() => { field.set(r.get()); if (document.activeElement !== slider) slider.value = String(Math.round(r.toS(Math.max(r.min, r.get())))); });
+      sliders.appendChild(row);
+    }
+    (body.querySelector('[data-run]') as HTMLElement).addEventListener('click', () => run('brush-settings'));
+    new PanelGroup(this.root, 'brushes', [{ id: 'brushes', label: 'Brushes', body }], 'Brushes');
+      const hard = e.brush.hardness;
+      const tg = tip.getContext('2d') as CanvasRenderingContext2D;
+        dab(tg, cx, cy, R, hard);
+    this.refreshers.push(() => { for (const s of setters) s(); requestAnimationFrame(paint); });
+    add.addEventListener('click', () => { const c = hex(this.engine.fg); if (!this.list.includes(c)) { this.list.push(c); this.save(); this.renderGrid(); } });
+```
+
+Nothing removed from src-tauri or backend.
+
 ## The target's layout and experience · _v1.47.0 (Phase 21 steps 2 to 6: ui/panel-group.ts, ui/navigator.ts, ui/swatches.ts, ui/properties.ts, ui/titlebar-tools.ts, ui/native-menu.ts, ui/dropdown.ts new; ui/layers.ts, ui/dock.ts, ui/menu.ts, ui/dialogs.ts, ui/app-dialogs.ts, ui/tabs.ts, ui/icons.ts, app.ts, engine/index.ts, engine/renderer.ts, engine/types.ts, io/project-io.ts, io/psd.ts, extensions/tools/type.ts, styles; src-tauri/capabilities/default.json)
 
 `PanelGroup`; `NavigatorPanel`; `SwatchesPanel`; `PropertiesColumn`; `TitleTools` (`WORKSPACES`); `NativeMenus` (`accelerator`, `wantsNativeMenus`); `enhanceSelect`; `LayersPanel` (`KINDS`, `kindOf`, `LOCKS`, `BLEND_GROUPS`, `adoptPaths`, `showTab`); `Dock.arrange`, `Dock.locked`; `askSaveChanges`; `NewCanvasDialog` rebuilt (`PRESET_GROUPS`); `Engine.setFill`, `Engine.setLocks`, `Layer.fill`, `Layer.locks`, `newDocument`'s resolution; `setType` exported. Removed from frontend:
