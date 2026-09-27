@@ -9,7 +9,7 @@ def test_rail_groups_tools_with_flyouts_and_keys(page):
     assert page.evaluate("document.querySelector(\"" + SLOT.format("Spot Healing") + "\").classList.contains('has-group')")
     # right-click opens the group; choosing one switches to it and the slot shows it
     page.locator(SLOT.format("Pen")).click(button="right")
-    assert page.evaluate(FLY) == ["Pen", "Freeform Pen", "Curvature Pen"]
+    assert page.evaluate(FLY) == ["Pen", "Freeform Pen", "Curvature Pen", "Convert Point"]
     page.locator(".cv-flyout-item", has_text="Curvature Pen").click()
     assert page.evaluate("window.sonny.engine.tool") == "curvaturePen"
     assert page.evaluate("document.querySelectorAll('.cv-flyout:not([hidden])').length") == 0
@@ -19,7 +19,9 @@ def test_rail_groups_tools_with_flyouts_and_keys(page):
     page.keyboard.press("p")
     assert page.evaluate("window.sonny.engine.tool") == "curvaturePen"
     page.keyboard.press("Shift+P")
-    assert page.evaluate("window.sonny.engine.tool") == "pen"
+    assert page.evaluate("window.sonny.engine.tool") == "convertPoint"   # 1.49.3: Convert Point follows Curvature Pen in the group
+    page.keyboard.press("Shift+P")
+    assert page.evaluate("window.sonny.engine.tool") == "pen"            # and the cycle comes round
     # press and hold opens the flyout without choosing the slot's tool
     before = page.evaluate("window.sonny.engine.tool")
     box = page.locator(SLOT.format("Gradient")).bounding_box()

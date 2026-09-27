@@ -76,3 +76,6 @@ export function dashed(ctx: ToolContext, g: CanvasRenderingContext2D, trace: () 
   g.stroke();
   g.restore();
 }
+
+/** Commands a tool's options bar can run (dialogs live with the app): the app connects it. */
+export const toolHost = { run: (id: string): void => { void id; } };

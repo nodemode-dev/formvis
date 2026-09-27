@@ -1,3 +1,4 @@
+import { pathActions } from './path-actions';
 import { PATH_OPS, tracePath, type Anchor, type PathOp, type Pt, type SubPath, type VectorPath } from '../../engine';
 import type { Tool } from '../registry';
 
@@ -46,6 +47,7 @@ export const pathSelectTool: Tool = {
         e.emit('options', null);
       },
     },
+    ...pathActions(),
   ],
   down(ctx, p) {
     const vp = ctx.engine.workPath;

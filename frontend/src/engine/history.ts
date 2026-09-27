@@ -2,7 +2,9 @@ import type { Doc, ID } from './types';
 import type { Raster } from './surface';
 import type { SelectionMask } from './selection';
 
-export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionMask | null }
+/** paths: a copy of the document's paths, carried only by path edits' steps (their undo and redo restore it; other
+ *  steps leave paths as they are, since drawing with the Pen is not itself a step). */
+export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionMask | null; paths?: unknown }
 export interface PixelPatch { raster: Raster; x: number; y: number; before: ImageData; after: ImageData }
 export interface HistoryEntry { name: string; before: Snapshot; after: Snapshot; patches: PixelPatch[]; beforeRev: number; afterRev: number }
 
@@ -43,7 +45,9 @@ export class History {
     if (this.depth > 0 || !this.pending) return false;
     const p = this.pending;
     this.pending = null;
-    if (!p.patches.length && p.before.doc === snap.doc && p.before.selection === snap.selection) return false;
+    // A step that changed nothing is dropped; a path edit's step (it carries the paths) counts when the paths changed.
+    const pathsSame = !p.before.paths || JSON.stringify(p.before.paths) === JSON.stringify(snap.paths);
+    if (!p.patches.length && p.before.doc === snap.doc && p.before.selection === snap.selection && pathsSame) return false;
     const beforeRev = this.revision;
     this.counter += 1;
     this.revision = this.counter;

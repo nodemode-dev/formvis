@@ -551,6 +551,7 @@ export class Engine {
   private restore(p: Project, s: Snapshot): void {
     p.doc = s.doc;
     p.selection = s.selection;
+    if (s.paths) { this.pathSets.set(p, structuredClone(s.paths) as PathSet); this.pathsChanged(p); }   // a path edit's step
     this.focus(p, s.activeId && s.doc.layers.some((l) => l.id === s.activeId) ? s.activeId : null);
     this.refresh();
   }
@@ -1387,18 +1388,21 @@ export class Engine {
 
   /** Brackets a pointer gesture on the selected path, so a gesture on a Shape Path is one undo step. */
   beginPathEdit(): void {
-    const p = this.current;
-    if (!p || this.pathGesture || !this.selectedPath(p)?.shape) return;
+    const p = this.current, entry = p ? this.selectedPath(p) : null;
+    if (!p || this.pathGesture || !entry) return;
     this.settle();
-    p.history.begin('Edit Shape Path', p.snapshot());
+    // A work path's edits are undoable too (1.49.3: they never were): the step carries the paths before and after.
+    this.pathGestureWork = !entry.shape;
+    p.history.begin(entry.shape ? 'Edit Shape Path' : 'Edit Path', entry.shape ? p.snapshot() : { ...p.snapshot(), paths: structuredClone(this.pathSet(p)) });
     this.pathGesture = p;
   }
+  private pathGestureWork = false;
 
   endPathEdit(): void {
     const p = this.pathGesture;
     if (!p) return;
     this.pathGesture = null;
-    p.history.end(p.snapshot());
+    p.history.end(this.pathGestureWork ? { ...p.snapshot(), paths: structuredClone(this.pathSet(p)) } : p.snapshot());
     this.refresh();
   }
 

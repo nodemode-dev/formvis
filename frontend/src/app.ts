@@ -60,6 +60,7 @@ import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
 import { PropertiesColumn } from './ui/properties';
 import { TitleTools } from './ui/titlebar-tools';
+import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
 import { PanelGroup } from './ui/panel-group';
@@ -181,6 +182,7 @@ export function startApp(): void {
   const contextMenu = new PopupMenu(commands, null, true);
   // Panel menus (the target's •••): each group's own commands, opened below its button.
   const panelMenu = new PopupMenu(commands, null, true);
+  toolHost.run = (id) => { commands.run(id); };   // a tool's bar runs commands (the path actions)
   PanelGroup.menuHost = (anchor, ids) => { panelMenu.setItems(ids); const r = anchor.getBoundingClientRect(); panelMenu.openAt(r.right, r.bottom + 4); };
   // Screen modes and panels, as Photoshop's (the owner's walkthrough): Standard, Full Screen with Menu Bar (no tabs or
   // status bar), Full Screen (the canvas alone, on black; Esc leaves it); F cycles them; Tab shows or hides the panels.
