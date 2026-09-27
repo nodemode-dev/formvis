@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.5 · 2026-09-27
+
+### Added: painting tools from your list
+
+- Pencil (B, beside the Brush): hard, pixel-exact lines; Auto Erase paints the background colour when a stroke starts on the foreground colour.
+- The Eraser is its own tool (E), with Brush or Pencil mode; the Brush's own mode is left as it was.
+- Background Eraser (E): erases the colour under the brush's centre, within Tolerance; Sampling continuous or once; Limits contiguous or discontiguous; Protect Foreground Color. One step per stroke.
+- Magic Eraser (E): a click erases the area of similar colour to transparency, with its own Tolerance, Contiguous and Sample All Layers.
+- Pattern Stamp (S, beside the Clone Stamp): paints a chosen pattern, tiled across the document so strokes line up.
+
+### Fixed
+
+- Tabs fit instead of being shortened (1.49.4 cut both Brushes and Brush Settings); the active tab is never cut.
+- E and B pick their groups' tools like any letter (they forced the Brush); Shift+L includes the Magnetic Lasso.
+
 ## 1.49.4 · 2026-09-27
 
 ### Added: selection tools from your list

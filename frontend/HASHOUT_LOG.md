@@ -2,6 +2,32 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Painting tools · _v1.49.5 (extensions/tools/pencil.ts, eraser.ts, magic-eraser.ts, pattern-stamp.ts, background-eraser.ts new, brush.ts, index.ts; engine/index.ts, engine/stroke.ts, engine/types.ts; ui/icons.ts; app.ts; styles)
+
+`pencilTool` (`StrokeStyle.aliased`, `PixelStroke.aliasedDab`, `beginStroke` opts: aliased, autoErase, name); `eraserTool` (E, its own tool); `magicEraserTool` (`Engine.magicErase`); `patternStampTool` (the retouch kind 'patternStamp', `patternStampPattern`); `backgroundEraserTool` (`beginBackgroundErase`, `backgroundEraseTo`, `endBackgroundErase`, `bgDab`, `BgEraseOpts`); the Brush's flyout without the Eraser; E and B keys by their groups, Shift+L through three lasso kinds; tabs fit. Removed from frontend:
+
+```text
+    else if (k === 'E') { engine.setTool('brush'); engine.setBrushMode('erase'); }
+    else if (k === 'B') { engine.setTool('brush'); engine.setBrushMode('paint'); }
+    else if (k === 'L' && e.shiftKey) { engine.setTool('lasso'); engine.update({ lassoKind: engine.lassoKind === 'freehand' ? 'polygonal' : 'freehand' }); }
+  beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT): boolean {
+    p.history.begin(this.brushMode === 'erase' ? 'Eraser' : 'Brush', p.snapshot());
+    const color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : keepAlpha && this.brushMode === 'erase' ? this.bg : this.fg;
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, flow: this.brushFlow }, op, p.selection);
+    s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
+  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush', pt: Pt, shift: boolean): boolean {
+    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush' }[kind], p.snapshot());
+export interface StrokeStyle { diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'frame' | 'convertPoint' | 'selectionBrush' | 'idle';
+  variants: (e) => [
+    { id: 'paint', label: 'Brush', icon: 'tBrush', active: () => e.brushMode !== 'erase', pick: () => e.setBrushMode('paint') },
+    { id: 'erase', label: 'Eraser', icon: 'tEraser', active: () => e.brushMode === 'erase', pick: () => e.setBrushMode('erase') },
+  ],
+  for (const tool of [historyBrushTool, frameTool, convertPointTool, selectionBrushTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Selection tools · _v1.49.4 (engine/livewire.ts new, engine/index.ts, engine/types.ts; extensions/tools/lasso.ts, marquee.ts, selection-brush.ts new, index.ts; ui/stage.ts, ui/panel-group.ts, ui/icons.ts; styles)
 
 `EdgeMap`, `liveWire`, `snapToEdge`; the Magnetic Lasso (`lassoKind` 'magnetic', `trace`, `traceSoon`, fastening, closing near the start); Single Row and Single Column Marquee (`marqueeKind` 'row', 'column'); `selectionBrushTool`, `Engine.beginSelectionBrushStroke` (the Quick Mask stroke with a forced add or subtract); tabs on one line. Removed from frontend:
