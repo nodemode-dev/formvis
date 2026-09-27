@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.0 · 2026-09-27
+
+### Changed: your walkthrough of 1.48.0
+
+- The accent drives every highlight, defaults to orange, and has an intensity (Preferences > Interface); no colour is hardcoded, so light themes are usable. Menus, dropdowns and flyouts are liquid glass; every dropdown opens as the glass list. Scrollbars are hidden; scrolling works.
+- The panel columns reach the title bar; the side column lies over the canvas (collapsing or expanding never moves it; fitting leaves it out) and shows as icons in a narrow window. No panel covers another; notifications sit over the canvas; the Color tab always paints.
+- The toolbar: sub-tools in the flyouts (Elliptical Marquee, Polygonal Lasso, Sharpen, Liquify Brush, the eight shapes, Eraser); icons at the target's weight; Quick Mask (Q); screen modes (F) and Tab to hide panels; two columns (»); the History Brush (Y), painting back the document as opened or a chosen snapshot; the Frame tool (K), which an imported image fills; Edit Toolbar (•••).
+- Docking: panels move between the two columns and tabs between groups; the columns merge and separate (Window); the side column's width is dragged by its edge.
+- Preferences in Photoshop's sections: General, Interface, Workspace, Tools, History & Cache, File Handling, Performance, Cursors, Transparency & Gamut, Units & Rulers, Guides & Grid, each setting acting on something real.
+
+### Not verified yet
+
+- The Layers group's tabs (Layers, Channels, Paths) do not move between groups yet; the group moves whole.
+- Channel viewing is not possible with the Native GPU renderer, which draws outside the page; the panel says so.
+
 ## 1.48.0 · 2026-09-27
 
 ### Changed: from your walkthrough of 1.47.0 and your two screenshots

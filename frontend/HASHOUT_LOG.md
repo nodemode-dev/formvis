@@ -2,6 +2,300 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The owner's walkthrough of 1.48.0 · _v1.49.0 (ui/channels.ts earlier; extensions/tools/history-brush.ts, frame.ts new; engine/index.ts, engine/types.ts, engine/viewport.ts, io/project-io.ts; ui/dock.ts, ui/panel-group.ts, ui/properties.ts, ui/rail.ts, ui/stage.ts, ui/menu.ts, ui/dropdown.ts, ui/themes.ts, ui/prefs.ts, ui/app-dialogs.ts, ui/history.ts, ui/swatches.ts, ui/layers.ts, app.ts, index.html; extensions/tools/*.ts; styles)
+
+Semantic tokens (surfaces, lines, accent tints, glass) and `--accent-intensity`, `setIntensity`, appearance 3; `enhanceAllSelects`; the main grid's areas; `Viewport.insetRight`, `centerX`; `PropertiesColumn.showingCollapsed`, `openWidth`, `relayout`; `ToolVariant`; `Engine.quickMask`, `toggleQuickMask`, `quickMaskLive`; screen modes, `toggle-panels`, `rail-columns`; `historyBrushTool`, `Engine.historyBrushSource`, `autoFirstSnapshot`, `openingSnapshot`; `frameTool`, `Layer.frame`, `Engine.newFrameLayer`; Edit Toolbar; `Dock` with `side`, `merge`, `separate`, `present`; `PanelGroup.moveTab`, tab homes; `Stage.prefs`; Preferences' new sections. Removed from frontend:
+
+```text
+  var DEFAULT_ACCENT = '#aba0d3';
+  var theme = DEFAULT_THEME, accent = DEFAULT_ACCENT;
+    /* A choice saved before the Studio Dark redesign (no appearance: 2) is set aside once, so everyone sees it. */
+    if (raw) { var s = JSON.parse(raw); if (s.appearance === 2) { if (s.theme && PROFILES[s.theme]) theme = s.theme; if (s.accentColor) accent = s.accentColor; } }
+import { applyPrefs, loadPrefs, savePrefs } from './ui/prefs';
+import { DOCK_PANELS, Dock } from './ui/dock';
+<div class="cv-options"></div>
+<aside class="cv-rail" aria-label="Tools"><div class="cv-rail-tools"></div><div class="cv-colors"></div></aside>
+  new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); }, () => syncPropsCol());
+  const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !propsShown()); setStyleVar(root, '--cv-props-w', propsShown() ? (PropertiesColumn.collapsed() ? '46px' : '284px') : '0px'); };
+  const dock = new Dock(q(root, '.cv-layers'));
+    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); syncEngineDevice(); }),
+    ...DOCK_PANELS.map((pn) => ({ id: `panel-${pn.id}`, label: pn.label, checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) })),
+    { id: 'reset-panels', label: 'Reset Panels', run: () => dock.reset() },
+      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, '-', 'path-selection', 'delete-path'] },
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }] },
+    { label: 'Window', items: ['brush-settings', 'paragraph-styles', '-', ...DOCK_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', '-', 'reset-panels'] },
+  private stroke: { project: Project; layerId: ID; target: Target; s: PixelStroke; heal?: HealMode | 'remove'; healFrom?: Pt } | null = null;
+    let n = list.length + 1;
+    const a = at ?? { x: v.width / 2, y: v.height / 2 };
+          transform: { ...docTransform(img.width, img.height), x: Math.floor(c.x - img.width / 2), y: Math.floor(c.y - img.height / 2) },
+  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge', pt: Pt, shift: boolean): boolean {
+    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge' }[kind], p.snapshot());
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'idle';
+    const z = Math.min((this.width - margin * 2) / dw, (this.height - margin * 2) / dh);
+    this.panX = Math.round((this.width - dw * this.zoom) / 2);
+  const r = Math.max(0.5, (ctx.engine.brush.diameter * v.zoom) / 2);
+  g.strokeStyle = pal.antsA;
+  g.beginPath(); g.arc(c.x, c.y, r, 0, Math.PI * 2); g.stroke();
+  g.strokeStyle = pal.antsB;
+  g.beginPath(); g.arc(c.x, c.y, r + 1, 0, Math.PI * 2); g.stroke();
+  for (const tool of [moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+  icon: (e) => (e.shapeSettings.kind === 'ellipse' || e.shapeSettings.kind === 'heart' ? 'tEllipseShape' : 'tRect'),
+  icon: (e) => (e.retouch.smearMode === 'blur' || e.retouch.smearMode === 'sharpen' ? 'tBlur' : 'tSmudge'),
+.cv-dialog { border: 1px solid #3a3a3a; border-radius: 14px; background: #1c1c1c; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.6); }
+.cv-dialog-head [data-close] { border-radius: 50%; background: #2a2a2a; }
+.cv-dialog-foot .cv-btn-primary { border: 1px solid #ebebeb; background: #ffffff; color: #000000; }
+.cv-dialog-foot .cv-btn-primary:hover { background: #f2f2f2; color: #000000; }
+.cv-dialog-foot .cv-btn-ghost { border: 1px solid #3a3a3a; background: #1c1c1c; color: var(--text-primary); }
+.cv-nd-cats { display: flex; flex-direction: column; gap: 2px; padding: 12px 8px; background: #161616; border-right: 1px solid #242424; }
+.cv-nd-cat.is-on { background: #2a2a2a; color: var(--text-primary); }
+.cv-nd-searchbox { display: flex; align-items: center; gap: 8px; height: 38px; padding: 0 12px; border: 1px solid #34333a; border-radius: 10px; background: #222127; color: var(--text-muted); }
+.cv-nd-card { display: flex; flex-direction: column; gap: 4px; padding: 6px 6px 8px; border: 1px solid #2e2e2e; border-radius: 12px; background: #1c1c1c; color: var(--text-primary); font: inherit; text-align: left; cursor: pointer; min-width: 0; }
+.cv-nd-card:hover { border-color: #3a3a3a; }
+.cv-nd-card.is-on { border-color: transparent; background: linear-gradient(#1f1d24, #1f1d24) padding-box, linear-gradient(135deg, #aba0d3, #d99ac5) border-box; box-shadow: 0 0 18px rgba(171, 160, 211, 0.18); }
+.cv-nd-thumb { display: grid; place-items: center; height: 78px; border-radius: 8px; background: #151515; }
+.cv-nd-side { display: flex; flex-direction: column; gap: 12px; padding: 12px 16px; border-left: 1px solid #242424; overflow-y: auto; }
+.cv-nd-input { width: 100%; min-width: 0; height: 36px; padding: 0 10px; border: 1px solid #303035; border-radius: 9px; background: #222127; color: var(--text-primary); font: inherit; font-size: 14px; }
+.cv-nd-link { width: 30px; height: 30px; margin-bottom: 3px; border: 1px solid #34333a; border-radius: 8px; background: #1c1c1c; color: var(--text-muted); cursor: pointer; }
+.cv-nd-link.is-on { background: #2e2b3a; border-color: #4a4658; color: var(--accent-color); }
+.cv-nd-seg { display: flex; gap: 2px; width: 100%; padding: 3px; border: 1px solid #303035; border-radius: 9px; background: #1a1a1a; }
+.cv-nd-seg button.is-on { background: #3a3a3a; }
+.cv-nd-summary { margin-top: auto; padding-top: 12px; border-top: 1px solid #34333a; }
+.cv-savechanges .cv-note { margin: 0; padding-bottom: 14px; border-bottom: 1px solid #34333a; color: var(--text-secondary); font-size: 14px; }
+.cv-panel-head { background: #000000; border-bottom: 0; height: 40px; }
+.cv-panel-title { padding: 5px 11px; border: 1px solid #3a3a3a; border-radius: 8px; background: #2a2a2a; color: var(--text-primary); font-size: 13px; font-weight: 500; text-transform: none; letter-spacing: 0; }
+.cv-layer { margin: 3px 8px; border: 1px solid #2a2a2a; border-radius: 8px; background: #1c1c1c; }
+.cv-layer:hover { border-color: #34333a; }
+.cv-layer.is-active { border-color: #3d3a48; background: linear-gradient(90deg, #2b2b2b 0%, #35333d 55%, #413e4b 100%); color: var(--text-primary); }
+.cv-group { display: flex; flex-direction: column; border-bottom: 1px solid #0b0b0b; }
+.cv-group-head { display: flex; align-items: center; gap: 6px; height: 40px; padding: 0 8px; background: #000000; border-bottom: 0; }
+.cv-group-tab.is-active { border-color: #3a3a3a; background: #2a2a2a; color: var(--text-primary); font-weight: 500; }
+.cv-group-min { display: inline-grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 50%; background: #1c1c1c; color: var(--text-secondary); cursor: pointer; }
+.cv-group-min:hover { color: var(--text-primary); background: #2a2a2a; }
+.cv-slider::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: #2b2a2f; }
+.cv-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 16px; height: 16px; margin-top: -6px; border-radius: 50%; background: #ffffff; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5); }
+.cv-slider::-moz-range-track { height: 4px; border-radius: 2px; background: #2b2a2f; }
+.cv-slider::-moz-range-thumb { width: 16px; height: 16px; border: 0; border-radius: 50%; background: #ffffff; }
+.cv-nav-card { position: relative; height: clamp(90px, 13vh, 170px); border-radius: 10px; background: #191919; overflow: hidden; }
+.cv-nav-zooms { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); display: flex; padding: 3px; border: 1px solid #3a3a3a; border-radius: 12px; background: rgba(31, 31, 31, 0.92); }
+.cv-nav-zooms button { height: 24px; padding: 0 10px; border: 0; border-radius: 8px; background: transparent; color: #d4d4d4; font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.cv-nav-zooms button:hover { background: #2a2a2a; color: #ffffff; }
+.cv-sw-tile { width: 18px; height: 18px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.06); border-radius: 3px; cursor: pointer; }
+.cv-sw-tile:hover { outline: 1px solid #ffffff; outline-offset: 1px; }
+.cv-sw-add { display: inline-grid; place-items: center; background: #1c1c1c; color: var(--text-secondary); }
+.cv-kind-icons { display: flex; gap: 1px; padding: 2px; border: 1px solid #34333a; border-radius: 8px; }
+.cv-kind-btn.is-on { background: #2e2b3a; color: var(--text-primary); box-shadow: inset 0 0 0 1px #4a4658; }
+.cv-vsep { width: 1px; height: 18px; background: #34333a; flex: none; }
+.cv-num { display: flex; align-items: center; gap: 4px; height: 28px; padding: 0 8px; border: 1px solid #303035; border-radius: 6px; background: #222127; }
+.cv-props-col { display: flex; flex-direction: column; min-height: 0; overflow-y: auto; background: #111112; border-left: 1px solid #0b0b0b; }
+.cv-props-head { display: flex; align-items: center; gap: 12px; padding: 8px 4px 12px; border-bottom: 1px solid #36343b; }
+.cv-props-tile { display: inline-grid; place-items: center; width: 36px; height: 36px; border: 1px solid #34333a; border-radius: 8px; background: #1c1c1c; color: var(--text-secondary); }
+.cv-link-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; flex: none; border: 1px solid #34333a; border-radius: 7px; background: #1c1c1c; color: var(--text-muted); cursor: pointer; }
+.cv-link-btn.is-on { background: #2e2b3a; border-color: #4a4658; color: var(--accent-color); }
+.cv-brush-tip { width: 88px; height: 88px; flex: none; border: 1px solid #34333a; border-radius: 6px; background: #151515; }
+.cv-brush-stroke { display: block; width: 100%; height: 56px; border-radius: 6px; background: #1c1c1c; }
+.cv-btn { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid #3a3a3a; border-radius: 7px; background: #1c1c1c; color: var(--text-primary); font: inherit; font-size: 13px; cursor: pointer; }
+.cv-btn:hover { background: #242424; }
+.cv-seg { display: flex; gap: 2px; padding: 3px; border: 1px solid #34333a; border-radius: 9px; background: #151515; }
+.cv-seg button.is-on { background: #2e2b3a; color: var(--accent-color); }
+.cv-lock-btn.is-on { background: #2e2b3a; color: var(--accent-color); box-shadow: inset 0 0 0 1px #4a4658; }
+.cv-brush-find { display: flex; align-items: center; gap: 8px; margin: 10px 0 8px; padding-top: 10px; border-top: 1px solid #34333a; }
+.cv-brush-search { display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0; height: 30px; padding: 0 10px; border: 1px solid #303035; border-radius: 8px; background: #1c1c1c; color: var(--text-muted); }
+.cv-brush-views button.is-on { border-color: #3a3a3a; background: #2a2a2a; color: var(--text-primary); }
+.cv-brush-folder { display: flex; align-items: center; gap: 8px; width: 100%; height: 32px; padding: 0 8px; border: 0; border-radius: 7px; background: #1c1c1c; color: var(--text-primary); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.cv-brush-tile:hover { background: #1f1e24; }
+.cv-brush-tile.is-on { border-color: #4a4658; background: #2e2b3a; color: var(--text-primary); }
+.cv-menu { padding: 6px; border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 12px; background: rgba(40, 39, 44, 0.86); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55); }
+.cv-menu-item:hover:not(:disabled), .cv-menu-item.is-focus:not(:disabled) { background: rgba(255, 255, 255, 0.1); color: var(--text-primary); }
+.cv-menu-sep { height: 1px; margin: 6px 10px; background: rgba(255, 255, 255, 0.12); }
+.cv-strip-btn:hover, .cv-strip-btn.is-on { border-color: #34333a; background: #1f1e24; color: var(--text-primary); }
+.cv-group-collapse:hover { background: #242328; color: var(--text-primary); }
+.cv-props-fly { position: fixed; z-index: var(--z-context); width: 284px; max-height: calc(100vh - 24px); overflow-y: auto; border: 1px solid #3a3a3a; border-radius: 12px; background: #111112; box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6); }
+.cv-dock-split:hover::after { background: #5a5960; }
+.cv-ch-row { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px 0 6px; border: 1px solid #2a2a2a; border-radius: 8px; background: #1c1c1c; color: var(--text-primary); font-size: 13px; cursor: pointer; }
+.cv-ch-row.is-on { border-color: #4a4658; background: linear-gradient(90deg, #26242d, #413e4b); }
+.cv-ch-thumb { width: 44px; height: 30px; border-radius: 4px; background: #2a2a2a; }
+.cv-group-more:hover { background: #242328; color: var(--text-primary); }
+.cv-home { position: fixed; top: var(--cv-titlebar-h); left: 0; right: 0; bottom: 0; z-index: calc(var(--z-menu) - 1); display: grid; place-items: center; background: #000000; overflow-y: auto; }
+.cv-home-brand { display: flex; align-items: baseline; gap: 10px; margin: 0; color: #ffffff; font-size: 38px; font-weight: 400; letter-spacing: -0.015em; }
+.cv-home-action { display: flex; align-items: center; gap: 8px; height: 42px; padding: 0 8px 0 12px; border: 1px solid #2a2a2a; border-radius: 6px; background: #111111; color: var(--text-primary); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; }
+.cv-home-action:first-child { width: 210px; border-color: #ebebeb; background: #ffffff; color: #000000; box-shadow: 0 0 22px rgba(255, 255, 255, 0.09); }
+.cv-key { display: inline-grid; place-items: center; width: 26px; height: 26px; border-radius: 5px; background: #1a1a1a; color: var(--text-primary); font: inherit; font-size: 12px; }
+.cv-home-action:first-child .cv-key { background: #f0f0f0; color: #000000; }
+.cv-home-item:hover { border-color: #2a2a2a; background: #111111; color: var(--text-primary); }
+.cv-rail { background: linear-gradient(to bottom, #181818 0%, #272430 9%, #2b2739 16%, #252127 24%, #1e1d1e 29%, #1e1d1e 70%, #212027 80%, #2b2639 90%, #302a42 100%); border-right-color: #111111; }
+.cv-tool.is-active { background: #2e2b3a; border-color: #4a4658; border-radius: 8px; color: var(--text-primary); box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06); }
+.cv-titlebar { grid-template-columns: auto auto minmax(0, 1fr) auto auto; background: linear-gradient(to bottom, #1c1c1c, #151515); border-bottom: 1px solid #0b0b0b; }
+.cv-tt-btn { display: inline-grid; place-items: center; width: 28px; height: 28px; padding: 0; border: 1px solid #34333a; border-radius: 7px; background: #161616; color: var(--text-secondary); cursor: pointer; }
+.cv-tt-btn:hover { color: var(--text-primary); background: #1f1f1f; }
+.cv-tt-btn.is-on { border-color: #4a4658; background: #2e2b3a; color: var(--accent-color); }
+.cv-tt-select { width: 154px; height: 28px; padding: 0 8px; border: 1px solid #34333a; border-radius: 8px; background: #141414; color: var(--text-primary); font: inherit; font-size: 13px; }
+.cv-search-pop { position: absolute; top: 36px; right: 0; z-index: var(--z-menu); width: 340px; padding: 8px; border: 1px solid #3a3a3a; border-radius: 12px; background: #1c1c1c; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55); }
+.cv-search-input { width: 100%; height: 32px; padding: 0 10px; border: 1px solid #303035; border-radius: 8px; background: #222127; color: var(--text-primary); font: inherit; font-size: 13px; outline: 0; }
+.cv-search-item.is-picked, .cv-search-item:hover { background: #2e2b3a; color: var(--text-primary); }
+.cv-tab { border-radius: 8px 8px 0 0; border: 1px solid #2a2a2a; border-bottom-color: transparent; background: #161616; }
+.cv-tab.is-active { background: #343434; border-color: #3a3a3a; border-bottom-color: transparent; }
+.cv-tab-close { border-radius: 50%; background: #2a2a2a; }
+.cv-tab-close:hover { background: #3a3a3a; }
+.cv-options { background: #111111; border-bottom-color: #0b0b0b; }
+.cv-opt-title { padding: 4px 10px; border: 1px solid #3a3a3a; border-radius: 8px; background: #1f1f1f; box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05); }
+.cv-doc-tabs { display: flex; align-items: flex-end; height: 34px; padding: 0 8px; background: #111111; border-bottom: 1px solid #0b0b0b; }
+.cv-tool.has-group::after { right: 4px; bottom: 4px; width: 4px; height: 4px; border: 0; border-radius: 50%; background: #6f6d76; }
+.cv-tool.has-group.is-active::after { background: #c8bafa; }
+.cv-flyout { min-width: 220px; padding: 6px; border: 1px solid #3a3a3a; border-radius: 12px; background: #1c1c1c; box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55); }
+.cv-flyout-item:hover { background: #2e2b3a; color: var(--text-primary); }
+.cv-flyout-key { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 6px; background: #2a2a2a; color: var(--text-primary); font-size: 12px; }
+.cv-dd-btn { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; height: 28px; padding: 0 8px 0 10px; border: 1px solid #34333a; border-radius: 8px; background: #1c1c1c; color: var(--text-primary); font: inherit; font-size: 13px; cursor: pointer; }
+.cv-title-tools .cv-dd-btn { width: 154px; background: #141414; }
+.cv-dd-pop { position: fixed; z-index: var(--z-context); max-height: 60vh; overflow-y: auto; padding: 6px; border: 1px solid #3a3a3a; border-radius: 12px; background: #1c1c1c; box-shadow: 0 18px 44px rgba(0, 0, 0, 0.55); }
+.cv-dd-search { width: 100%; height: 30px; margin-bottom: 6px; padding: 0 10px; border: 1px solid #303035; border-radius: 8px; background: #222127; color: var(--text-primary); font: inherit; font-size: 13px; outline: 0; }
+.cv-dd-item.is-picked, .cv-dd-item:hover { background: #2e2b3a; color: var(--text-primary); }
+.cv-tool { width: 32px; height: 26px; border-radius: 7px; color: #c9c8ce; }
+.cv-tool:hover { color: #ffffff; background: #242328; }
+.cv-tool.is-active { width: 32px; height: 28px; margin: 1px 0; color: #ffffff; }
+.cv-rail-sep { display: block; width: 6px; height: 2px; margin: 5px auto; border-radius: 1px; background: #4a4950; }
+.cv-tool.is-active { color: #c8bafa; }
+.cv-opt-icon { display: inline-grid; place-items: center; width: 30px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #c9c8ce; cursor: pointer; }
+.cv-opt-icon:hover { background: #242328; color: #ffffff; }
+.cv-opt-sep { display: inline-block; width: 1px; height: 20px; margin: 0 6px; background: #34333a; vertical-align: middle; }
+  --accent-color: #aba0d3;
+  --accent-color-dim: #aba0d333;
+  --accent-color-hover: #c8bafa;
+  --accent-tint: rgba(249, 115, 22, 0.06);
+  --accent-tint-strong: rgba(249, 115, 22, 0.10);
+import { THEMES, readChoice, setAccent, setTheme, themeSwatchesHtml } from './themes';
+import { ENGINE_CHOICES, RECOVERY_CHOICES, loadPrefs, savePrefs, type EngineDevice, type Prefs } from './prefs';
+    add('General', this.homeRow.el, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
+    add('Interface', row, accentRow, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device.</p>'));
+    add('Performance', this.statesRow.el, this.memoryRow.el, this.redrawRow.el,
+      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
+interface DockState { order: string[]; hidden: string[] }
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history'] };
+    const ids = DOCK_PANELS.map((p) => p.id);
+    const order = Array.isArray(r.order) ? r.order.filter((id): id is string => ids.includes(id as string)) : [];
+    // A panel missing from a saved arrangement (one saved before it could move) takes its default place, not the end.
+    for (const id of ids) if (!order.includes(id)) order.splice(Math.min(ids.indexOf(id), order.length), 0, id);
+    return { order, hidden };
+  } catch { return { ...DEFAULT, order: [...DEFAULT.order] }; }
+  private drag: { id: string; startY: number; moving: boolean; target: number } | null = null;
+  constructor(private readonly dock: HTMLElement) {
+    for (const p of DOCK_PANELS) {
+        this.drag = { id: p.id, startY: e.clientY, moving: false, target: -1 };
+  reset(): void { this.state = { order: [...DEFAULT.order], hidden: [...DEFAULT.hidden] }; this.heights = {}; this.saveHeights(); this.save(); }
+    this.state = { order: o, hidden: hidden.filter((id) => ids.includes(id)) };
+    const p = DOCK_PANELS.find((x) => x.id === id);
+    return p ? this.dock.querySelector<HTMLElement>(p.selector) : null;
+    for (const id of this.state.order.filter((x) => this.isShown(x))) {
+    const first = this.state.order.find((x) => this.isShown(x)), head = first ? this.section(first)?.querySelector(':scope > .cv-panel-head') : null;
+    const want = this.state.order.map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
+    for (const id of this.state.order) { const s = this.section(id); if (s) setHidden(s, !this.isShown(id)); }
+    return this.state.order.filter((id) => this.isShown(id)).map((id) => ({ id, s: this.section(id) })).filter((x): x is { id: string; s: HTMLElement } => !!x.s);
+    if (!d.moving) (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    const shown = this.state.order.filter((id) => this.isShown(id)).map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
+    const box = this.dock.getBoundingClientRect();
+    let best = 0, bestDist = Infinity, y = 0;
+    this.marker.style.top = `${Math.round(y - box.top - 1)}px`;
+    const shown = this.state.order.filter((id) => this.isShown(id));
+    const rest = this.state.order.filter((id) => id !== d.id);
+    const at = before && before !== d.id ? rest.indexOf(before) : before === d.id ? this.state.order.indexOf(d.id) : rest.length;
+    rest.splice(at, 0, d.id);
+    this.state.order = rest;
+  document.getElementById('overlay-root')?.appendChild(pop) ?? document.body.appendChild(pop);
+        const row = el(`<div class="cv-history-row" role="option"><span class="cv-history-icon">${icon(r.snap ? 'camera' : r.index === 0 ? 'image' : 'history', 12)}</span><span class="cv-history-name"></span></div>`);
+      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="channels">Channels</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-group-more cv-layers-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu">${icon('more3', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
+      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></section>`);
+      engine.pan(v.width / 2 - x * v.zoom - v.panX, v.height / 2 - y * v.zoom - v.panY);
+    for (const t of list) {
+      const btn = el<HTMLButtonElement>('<button class="cv-group-tab" type="button" role="tab"></button>');
+      setText(btn, t.label);
+      btn.dataset.tab = t.id;
+      btn.addEventListener('click', () => this.show(t.id));
+      strip.appendChild(btn);
+      t.body.classList.add('cv-group-page');
+      body.appendChild(t.body);
+      this.tabs.set(t.id, { btn, body: t.body });
+    }
+export interface Prefs { historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice }
+export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto' };
+    const host = this.root, groups = Array.from(host.querySelectorAll<HTMLElement>(':scope > .cv-group'));
+    const ICONS: Record<string, [string, string]> = { properties: ['panelProps', 'Properties'], brushes: ['tBrush', 'Brushes'], paragraph: ['pilcrow', 'Paragraph'], character: ['charA', 'Character'] };
+    for (const g of groups) {
+      const id = Array.from(g.classList).find((c) => c.startsWith('cv-') && c !== 'cv-group')?.slice(3) ?? '';
+      const [ic, label] = ICONS[id] ?? ['panelProps', id];
+      const b = el<HTMLButtonElement>(`<button class="cv-strip-btn" type="button" title="${label}" aria-label="${label}">${icon(ic, 18)}</button>`);
+      b.dataset.group = id;
+      b.addEventListener('click', () => {
+        if (open?.group === g) { closeFly(); return; }
+        closeFly();
+        const mark = document.createComment(id);
+        g.replaceWith(mark);
+        fly.appendChild(g);
+        setHidden(fly, false);
+        open = { group: g, mark, btn: b };
+        b.classList.add('is-on');
+        const r = b.getBoundingClientRect(), s = strip.getBoundingClientRect();
+        fly.style.right = `${Math.round(window.innerWidth - s.left + 6)}px`;
+        fly.style.top = `${Math.round(Math.max(8, Math.min(r.top, window.innerHeight - fly.offsetHeight - 8)))}px`;
+      });
+      strip.appendChild(b);
+    }
+      closeFly();
+      host.classList.toggle('is-collapsed', on);
+      this.onLayout();
+    const head = groups[0]?.querySelector('.cv-group-head'), min = head?.querySelector('.cv-group-min');
+    const collapse = el<HTMLButtonElement>(`<button class="cv-group-collapse" type="button" title="Collapse to icons" aria-label="Collapse to icons">${icon('collapseRight', 14)}</button>`);
+    if (min) min.after(collapse); else head?.appendChild(collapse);
+    host.classList.toggle('is-collapsed', PropertiesColumn.collapsed());
+        for (let i = 0; i < p.tip.data.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 240; img.data[i * 4 + 3] = p.tip.data[i]; }
+        gr.addColorStop(0, 'rgba(240,240,244,1)'); gr.addColorStop(Math.min(0.999, Math.max(0, p.hardness)), 'rgba(240,240,244,1)'); gr.addColorStop(1, 'rgba(240,240,244,0)');
+      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => p.id).join(',')].join('|');
+      grad.addColorStop(0, 'rgba(236,236,240,1)'); grad.addColorStop(Math.min(0.999, Math.max(0, hard)), 'rgba(236,236,240,1)'); grad.addColorStop(1, 'rgba(236,236,240,0)');
+        tg.strokeStyle = 'rgba(255,255,255,0.18)'; tg.lineWidth = dpr; tg.beginPath(); tg.moveTo(cx - R * 1.2, cy); tg.lineTo(cx + R * 1.2, cy); tg.moveTo(cx, cy - R * 1.2); tg.lineTo(cx, cy + R * 1.2); tg.stroke();
+        tg.strokeStyle = '#f0f0f4'; tg.lineWidth = 1.5 * dpr; tg.beginPath(); tg.ellipse(cx, cy, R, ry, a, 0, Math.PI * 2); tg.stroke();
+        tg.fillStyle = '#ffffff';
+import { el, q, setClass, setHtml, setText, setTitle, setValue } from './dom';
+      const b = el<HTMLButtonElement>(`<button class="cv-tool${group.tools.length > 1 ? ' has-group' : ''}" type="button" aria-haspopup="${group.tools.length > 1 ? 'menu' : 'false'}"></button>`);
+      if (group.tools.length > 1) {
+      setTitle(node, t.id === 'brush' ? 'Brush (B) · Eraser (E)' : group.tools.length > 1 ? `${t.label} (${group.key}) · hold or right-click for ${group.tools.length} tools · Shift+${group.key} cycles` : `${t.label} (${group.key})`);
+    if (this.flyoutFor !== group) {
+      this.flyout.textContent = '';
+      for (const t of group.tools) {
+        const row = el<HTMLButtonElement>(`<button class="cv-flyout-item" role="menuitem" type="button">${icon(t.icon(this.engine), 16)}<span class="cv-flyout-label"></span><span class="cv-flyout-key"></span></button>`);
+        setText(q(row, '.cv-flyout-label'), t.label);
+        setText(q(row, '.cv-flyout-key'), group.key);
+        row.dataset.tool = t.id;
+        row.addEventListener('click', () => { this.closeFlyout(); this.engine.setTool(t.id); if (t.id === 'brush') this.engine.setBrushMode('paint'); });
+        this.flyout.appendChild(row);
+      }
+      this.flyoutFor = group;
+    for (const row of Array.from(this.flyout.children) as HTMLElement[]) setClass(row, 'is-active', row.dataset.tool === this.engine.tool);
+    const key = `${this.dpr}|${pal.checkerA}|${pal.checkerB}`;
+    const cell = Math.max(1, Math.round(8 * this.dpr));
+        { a: this.rgb(pal.checkerA), b: this.rgb(pal.checkerB), cell: Math.max(1, Math.round(8 * this.dpr)), origin: [Math.round(ox), Math.round(oy)] });
+        g.strokeStyle = pal.grid;
+      g.strokeStyle = pal.accent;
+    const v = (this.engine.current as NonNullable<Engine['current']>).viewport, pal = paint(), d = this.dpr, step = Stage.rulerStep(v.zoom);
+    const minor = step * v.zoom >= 150 ? step / 10 : step / 5;
+      const first = Math.floor(-pan / v.zoom / minor) * minor;
+      for (let t = first; t * v.zoom + pan <= len; t += minor) {
+        const s = Math.round(t * v.zoom + pan) + 0.5, isMajor = Math.abs(t / step - Math.round(t / step)) < 1e-6, tick = isMajor ? RULER : RULER / 3;
+    if (sel || fl) {
+      if (e.ctrlKey || e.metaKey) {
+  it('starts from the same default theme and accent: Studio Dark, lavender', () => {
+    expect([DEFAULT_THEME, DEFAULT_ACCENT]).toEqual(['studio', '#aba0d3']);
+      expect(readChoice()).toEqual({ theme: 'studio', accentColor: '#aba0d3' });
+      saveChoice({ theme: 'mono', accentColor: '#ff0000' });                                         // chosen after the redesign
+      expect(readChoice()).toEqual({ theme: 'mono', accentColor: '#ff0000' });
+      expect(html).toContain('if (s.appearance === 2)');                                              // the boot script agrees
+export const DEFAULT_ACCENT = '#aba0d3';
+export interface ThemeChoice { theme: string; accentColor: string }
+ *  redesign reaches everyone; anything chosen since is saved with it and kept. index.html's boot script agrees. */
+export const APPEARANCE = 2;
+      if (saved.appearance === APPEARANCE) return { theme: saved.theme || DEFAULT_THEME, accentColor: saved.accentColor || DEFAULT_ACCENT };
+  return { theme: DEFAULT_THEME, accentColor: DEFAULT_ACCENT };
+```
+
+Nothing removed from src-tauri or backend.
+
 ## The owner's walkthrough corrections · _v1.48.0 (ui/channels.ts new; extensions/tools/*.ts icon lines, move.ts, tone.ts; extensions/registry.ts; ui/icons.ts, ui/rail.ts, ui/options.ts, ui/menu.ts, ui/properties.ts, ui/dock.ts, ui/layers.ts, ui/panel-group.ts, ui/navigator.ts, ui/swatches.ts, app.ts; engine/index.ts, engine/brush-dynamics.ts; styles)
 
 Tool icons (`tMove` ... `tZoom`) and the rail's family dashes; the options bar's tool chip, compact buttons and the Move bar (`autoSelectTarget`); `PopupMenu` `has-checks`; the Brushes group (presets in folders, search, grid or list, Load, the tip editor, a Brush Settings tab), `BrushPreset.angle`/`roundness`, the Flat angled preset; `PropertiesColumn.collapsible`; `Dock` splitters, `sizeGroups`, `setCollapsed`; `ChannelsPanel`; `PanelGroup.setMenu`, `menuHost`; `SwatchesPanel.addForeground`, `reset`; commands `load-brushes`, `swatch-add`, `swatches-reset`. Removed from frontend:
