@@ -11,10 +11,15 @@ export function enhanceSelect(select: HTMLSelectElement, opts: { search?: string
   const list = pop.querySelector('.cv-dd-list') as HTMLElement, search = pop.querySelector('.cv-dd-search') as HTMLInputElement | null;
   if (search) { search.placeholder = opts.search as string; search.setAttribute('aria-label', opts.search as string); }
   btn.setAttribute('aria-label', select.getAttribute('aria-label') ?? '');
+  // The select's own classes size the button as they sized the select.
+  for (const c of Array.from(select.classList)) if (c !== 'cv-dd-native') btn.classList.add(c);
+  // Options replaced in code (a live list) show on the button too.
+  new MutationObserver(() => label()).observe(select, { childList: true, subtree: true });
   btn.title = select.title;
   select.classList.add('cv-dd-native');
   select.after(btn);
-  document.getElementById('overlay-root')?.appendChild(pop) ?? document.body.appendChild(pop);
+  const host = document.getElementById('overlay-root');
+  if (host) host.appendChild(pop); else document.body.appendChild(pop);
   let picked = 0;
   const label = (): void => { setText(btn.querySelector('.cv-dd-label') as HTMLElement, select.selectedOptions[0]?.textContent ?? ''); btn.disabled = select.disabled; };
   // Values set in code (not only by the user) show on the button.
@@ -70,4 +75,21 @@ export function enhanceSelect(select: HTMLSelectElement, opts: { search?: string
   });
   document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !pop.contains(e.target as Node) && !btn.contains(e.target as Node)) close(); }, true);
   label();
+}
+
+/** Every select in the app shown as the glass list (the owner's walkthrough: native menus cannot be glass, the system
+ *  draws them): those present now and any added later (dialogs and bars build theirs as they open). A select can opt
+ *  out with data-native; multiple and list-box selects are left as they are. */
+export function enhanceAllSelects(root: ParentNode = document): void {
+  const pick = (n: ParentNode): void => {
+    for (const s of Array.from(n.querySelectorAll<HTMLSelectElement>('select:not(.cv-dd-native):not([multiple]):not([size]):not([data-native])'))) enhanceSelect(s);
+  };
+  pick(root);
+  new MutationObserver((records) => {
+    for (const r of records) for (const node of Array.from(r.addedNodes)) {
+      if (!(node instanceof HTMLElement)) continue;
+      if (node instanceof HTMLSelectElement) { if (!node.classList.contains('cv-dd-native') && !node.multiple && !node.hasAttribute('size') && !node.hasAttribute('data-native')) enhanceSelect(node); }
+      else pick(node);
+    }
+  }).observe(document.body, { childList: true, subtree: true });
 }

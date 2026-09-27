@@ -35,27 +35,33 @@ export const THEMES: Record<string, ThemeProfile> = {
   'contrast': { label: 'High Contrast', vars: { '--bg-primary': '#000000', '--bg-secondary': '#0a0a0a', '--bg-tertiary': '#161616', '--border-color': '#555555', '--border-light': '#777777', '--text-primary': '#ffffff', '--text-secondary': '#d8d8d8', '--text-muted': '#9a9a9a', '--canvas-bg': '#000000', '--grid-color': 'rgba(255,255,255,0.10)', '--node-shadow': '0 0 0 1px #666' } },};
 
 export const DEFAULT_THEME = 'studio';
-export const DEFAULT_ACCENT = '#aba0d3';
+export const DEFAULT_ACCENT = '#f97316';
+/** The redesign's first default accent, moved to orange by appearance 3 unless it was chosen on purpose. */
+export const OLD_DEFAULT_ACCENT = '#aba0d3';
+export const DEFAULT_INTENSITY = 1;
 // the app persists UI settings under this key as JSON {theme, accentColor, ...}
 export const STORAGE_KEY = 'nodemode_ui_settings';
 
-export interface ThemeChoice { theme: string; accentColor: string }
+export interface ThemeChoice { theme: string; accentColor: string; intensity?: number }
 
 /** The appearance generation: a choice saved before Studio Dark (Phase 21) lacks it and is set aside once, so the
- *  redesign reaches everyone; anything chosen since is saved with it and kept. index.html's boot script agrees. */
-export const APPEARANCE = 2;
+ *  redesign reaches everyone. Generation 3 (1.48.1): the accent defaults to orange; a generation-2 choice keeps its
+ *  theme and any accent chosen on purpose, the old lavender default becoming orange. index.html's boot script agrees. */
+export const APPEARANCE = 3;
+const clampIntensity = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(1.5, Math.max(0, v)) : DEFAULT_INTENSITY);
 
 export function readChoice(): ThemeChoice {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (raw) {
       const saved = JSON.parse(raw) as Partial<ThemeChoice> & { appearance?: number };
-      if (saved.appearance === APPEARANCE) return { theme: saved.theme || DEFAULT_THEME, accentColor: saved.accentColor || DEFAULT_ACCENT };
+      if (saved.appearance === APPEARANCE) return { theme: saved.theme || DEFAULT_THEME, accentColor: saved.accentColor || DEFAULT_ACCENT, intensity: clampIntensity(saved.intensity) };
+      if (saved.appearance === 2) return { theme: saved.theme || DEFAULT_THEME, accentColor: !saved.accentColor || saved.accentColor === OLD_DEFAULT_ACCENT ? DEFAULT_ACCENT : saved.accentColor, intensity: DEFAULT_INTENSITY };
     }
   } catch (e) {
     console.error('[theme] read failed:', e);
   }
-  return { theme: DEFAULT_THEME, accentColor: DEFAULT_ACCENT };
+  return { theme: DEFAULT_THEME, accentColor: DEFAULT_ACCENT, intensity: DEFAULT_INTENSITY };
 }
 
 export function saveChoice(choice: ThemeChoice): void {
@@ -84,6 +90,8 @@ export function applyTheme(choice: ThemeChoice = readChoice()): void {
     : '0 8px 32px rgba(0, 0, 0, 0.5)');
   root.style.setProperty('--accent-color', choice.accentColor);
   root.style.setProperty('--accent-color-dim', choice.accentColor + '33');
+  root.style.setProperty('--accent-color-hover', `color-mix(in srgb, ${choice.accentColor} 82%, #ffffff)`);
+  root.style.setProperty('--accent-intensity', String(clampIntensity(choice.intensity)));
   root.style.setProperty('--accent-tint', hexToRgba(choice.accentColor, 0.06));
   root.style.setProperty('--accent-tint-strong', hexToRgba(choice.accentColor, 0.10));
 }
@@ -95,6 +103,13 @@ export function setTheme(theme: string): void {
   document.dispatchEvent(new CustomEvent('nm:ui-settings-changed', { detail: { key: 'theme' } }));
 }
 
+/** Preferences > Interface: how strongly the accent tints what it marks (0 to 1.5; 1 is the design's). */
+export function setIntensity(intensity: number): void {
+  const choice = { ...readChoice(), intensity: clampIntensity(intensity) };
+  saveChoice(choice);
+  applyTheme(choice);
+  document.dispatchEvent(new CustomEvent('nm:ui-settings-changed', { detail: { key: 'intensity' } }));
+}
 export function setAccent(accentColor: string): void {
   const choice = { ...readChoice(), accentColor };
   saveChoice(choice);

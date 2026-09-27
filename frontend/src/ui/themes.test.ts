@@ -23,10 +23,10 @@ describe('theme boot', () => {
     }
   });
 
-  it('starts from the same default theme and accent: Studio Dark, lavender', () => {
+  it('starts from the same default theme and accent: Studio Dark, orange', () => {
     expect(html).toContain(`var DEFAULT_THEME = '${DEFAULT_THEME}';`);
     expect(html).toContain(`var DEFAULT_ACCENT = '${DEFAULT_ACCENT}';`);
-    expect([DEFAULT_THEME, DEFAULT_ACCENT]).toEqual(['studio', '#aba0d3']);
+    expect([DEFAULT_THEME, DEFAULT_ACCENT]).toEqual(['studio', '#f97316']);
   });
 
   it('sets aside a choice saved before the redesign once, and keeps one made since', () => {
@@ -36,10 +36,14 @@ describe('theme boot', () => {
     (globalThis as { localStorage?: unknown }).localStorage = ls;
     try {
       store.set(STORAGE_KEY, JSON.stringify({ theme: 'nodemode-dark', accentColor: '#f97316' }));   // saved by 1.44.0 or earlier
-      expect(readChoice()).toEqual({ theme: 'studio', accentColor: '#aba0d3' });
-      saveChoice({ theme: 'mono', accentColor: '#ff0000' });                                         // chosen after the redesign
-      expect(readChoice()).toEqual({ theme: 'mono', accentColor: '#ff0000' });
-      expect(html).toContain('if (s.appearance === 2)');                                              // the boot script agrees
+      expect(readChoice()).toEqual({ theme: 'studio', accentColor: '#f97316', intensity: 1 });
+      store.set(STORAGE_KEY, JSON.stringify({ theme: 'mono', accentColor: '#aba0d3', appearance: 2 })); // the old lavender default
+      expect(readChoice()).toEqual({ theme: 'mono', accentColor: '#f97316', intensity: 1 });
+      store.set(STORAGE_KEY, JSON.stringify({ theme: 'mono', accentColor: '#22c55e', appearance: 2 })); // chosen on purpose
+      expect(readChoice().accentColor).toBe('#22c55e');
+      saveChoice({ theme: 'mono', accentColor: '#ff0000', intensity: 0.4 });                         // chosen after 1.48.1
+      expect(readChoice()).toEqual({ theme: 'mono', accentColor: '#ff0000', intensity: 0.4 });
+      expect(html).toContain('s.appearance === 3 || s.appearance === 2');                            // the boot script agrees
     } finally {
       (globalThis as { localStorage?: unknown }).localStorage = prev;
     }

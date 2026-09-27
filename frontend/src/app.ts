@@ -60,6 +60,7 @@ import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
 import { PropertiesColumn } from './ui/properties';
 import { TitleTools } from './ui/titlebar-tools';
+import { enhanceAllSelects } from './ui/dropdown';
 import { PanelGroup } from './ui/panel-group';
 import { ChannelsPanel } from './ui/channels';
 import { NativeMenus, wantsNativeMenus } from './ui/native-menu';
@@ -200,6 +201,7 @@ export function startApp(): void {
   dock.onCollapse = syncDockWidth;
   if (dock.collapsed) syncDockWidth(true);
   // The title bar's tools (Phase 21): theme, command search, workspaces, Lock Workspace.
+  enhanceAllSelects();   // every dropdown as the glass list (the owner's walkthrough)
   new TitleTools(q(root, '.cv-titlebar'), {
     commands,
     arrange: (w) => { dock.arrange(w.order, w.hidden); store('sonny.propsCol', w.propsColumn ? 'shown' : 'hidden'); syncPropsCol(); },

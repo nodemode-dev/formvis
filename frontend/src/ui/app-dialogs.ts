@@ -7,7 +7,7 @@ import { Dialog, confirmAction } from './dialogs';
 import { el, patchList, q, setClass, setDisabled, setHidden, setText, setValue } from './dom';
 import { icon } from './icons';
 import { brandMark } from './brand';
-import { THEMES, readChoice, setAccent, setTheme, themeSwatchesHtml } from './themes';
+import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
 import { ENGINE_CHOICES, RECOVERY_CHOICES, loadPrefs, savePrefs, type EngineDevice, type Prefs } from './prefs';
 import { RENDERER_CHOICES, type GpuRenderer } from '../gpu/probe';
@@ -292,6 +292,8 @@ export class SettingsDialog extends Dialog {
   private readonly nav = el('<div class="cv-prefs-nav" role="tablist"></div>');
   private readonly sections = new Map<string, HTMLElement>();
   private prefs: Prefs = loadPrefs();
+  /** How strongly the accent tints what it marks: selections, active tools and tabs (the owner's walkthrough). */
+  private readonly intensityRow = sliderRow('Accent intensity (%)', 0, 150, 5, (v) => setIntensity(v / 100));
   private readonly statesRow = sliderRow('History States', 1, 1000, 1, (v) => this.change({ historyStates: v }));
   private readonly memoryRow = sliderRow('History memory (MB)', 16, 4096, 16, (v) => this.change({ historyMB: v }));
   private readonly redrawRow = checkRow('Redraw only what a brush stroke changed', (v) => this.change({ regionRedraws: v }));
@@ -331,7 +333,8 @@ export class SettingsDialog extends Dialog {
     const accentRow = el('<label class="cv-field"><span>Accent</span></label>');
     accentRow.appendChild(this.accent);
     add('General', this.homeRow.el, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
-    add('Interface', row, accentRow, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device.</p>'));
+    this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
+    add('Interface', row, accentRow, this.intensityRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.</p>'));
     add('Performance', this.statesRow.el, this.memoryRow.el, this.redrawRow.el,
       el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,

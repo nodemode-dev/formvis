@@ -32,7 +32,7 @@
 (function () {
   var KEY = 'nodemode_ui_settings';
   var DEFAULT_THEME = 'studio';
-  var DEFAULT_ACCENT = '#aba0d3';
+  var DEFAULT_ACCENT = '#f97316';
   var LIGHT = { 'light': 1, 'sand': 1 };
   var PROFILES = {
     'studio':        ['#111111', '#17151b', '#222127', '#2a2a2a', '#34333a', '#f7f7f7', '#a4a4a4', '#717072', '#1c1b1d', '#5e5e60', '#191919'],
@@ -52,11 +52,12 @@
     'contrast':      ['#000000', '#0a0a0a', '#161616', '#555555', '#777777', '#ffffff', '#d8d8d8', '#9a9a9a', '#000000', 'rgba(255,255,255,0.10)']
   };
   var NAMES = ['--bg-primary', '--bg-secondary', '--bg-tertiary', '--border-color', '--border-light', '--text-primary', '--text-secondary', '--text-muted', '--canvas-bg', '--grid-color'];
-  var theme = DEFAULT_THEME, accent = DEFAULT_ACCENT;
+  var theme = DEFAULT_THEME, accent = DEFAULT_ACCENT, intensity = 1;
   try {
     var raw = localStorage.getItem(KEY);
-    /* A choice saved before the Studio Dark redesign (no appearance: 2) is set aside once, so everyone sees it. */
-    if (raw) { var s = JSON.parse(raw); if (s.appearance === 2) { if (s.theme && PROFILES[s.theme]) theme = s.theme; if (s.accentColor) accent = s.accentColor; } }
+    /* A choice saved before the Studio Dark redesign is set aside once; from generation 2, the theme and any accent chosen
+       on purpose are kept, the old lavender default becoming orange (generation 3); themes.ts agrees. */
+    if (raw) { var s = JSON.parse(raw); if (s.appearance === 3 || s.appearance === 2) { if (s.theme && PROFILES[s.theme]) theme = s.theme; if (s.accentColor && !(s.appearance === 2 && s.accentColor === '#aba0d3')) accent = s.accentColor; if (s.appearance === 3 && typeof s.intensity === 'number') intensity = Math.min(1.5, Math.max(0, s.intensity)); } }
   } catch (e) { /* private mode or blocked storage: defaults are correct */ }
   var p = PROFILES[theme], root = document.documentElement, i;
   for (i = 0; i < NAMES.length; i++) root.style.setProperty(NAMES[i], p[i]);
@@ -64,6 +65,8 @@
   root.style.setProperty('--shadow-lg', LIGHT[theme] ? '0 4px 14px rgba(96, 90, 70, 0.16)' : '0 8px 32px rgba(0, 0, 0, 0.5)');
   root.style.setProperty('--accent-color', accent);
   root.style.setProperty('--accent-color-dim', accent + '33');
+  root.style.setProperty('--accent-color-hover', 'color-mix(in srgb, ' + accent + ' 82%, #ffffff)');
+  root.style.setProperty('--accent-intensity', String(intensity));
   /* the critical inline style paints html with the profile background */
   root.style.background = p[0];
   if (LIGHT[theme]) {

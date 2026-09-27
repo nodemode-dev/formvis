@@ -14,13 +14,13 @@ def test_the_kind_filter_shows_only_the_chosen_kinds(page):
     page.locator(".cv-kind-btn[data-kind='adjustment']").click()
     shown = page.evaluate(ROWS)
     assert len(shown) == 1 and "Tone" in shown[0], shown
-    assert page.locator(".cv-kind").input_value() == "adjustment"                  # the dropdown agrees
+    assert page.locator("select.cv-kind").input_value() == "adjustment"                  # the dropdown agrees
     page.locator(".cv-kind-btn[data-kind='pixel']").click()                         # two kinds at once
     assert len(page.evaluate(ROWS)) == len(everyone)
-    assert page.locator(".cv-kind").input_value() == "all"
-    page.locator(".cv-kind").select_option("pixel")                                 # the dropdown picks one kind
+    assert page.locator("select.cv-kind").input_value() == "all"
+    page.locator("select.cv-kind").select_option("pixel")                                 # the dropdown picks one kind
     assert all("Tone" not in r for r in page.evaluate(ROWS))
-    page.locator(".cv-kind").select_option("all")
+    page.locator("select.cv-kind").select_option("all")
     assert len(page.evaluate(ROWS)) == len(everyone)
 
 

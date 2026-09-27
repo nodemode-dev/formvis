@@ -32,6 +32,16 @@ function numField(unit: string, label: string, min: number, max: number, step: n
 
 const kindIcon = (l: Layer): string => (l.isGroup ? 'folder' : l.adjustment ? 'halfCircle' : l.text ? 'typeTool' : l.vector ? 'rectTool' : l.smart ? 'smartObject' : 'image');
 
+/** The theme's text colour as r, g, b, for what is painted on canvases (brush tips, previews): near white in the dark
+ *  themes, near black in the light ones, so nothing painted disappears into its background. */
+function ink(): [number, number, number] {
+  const g = document.createElement('canvas').getContext('2d') as CanvasRenderingContext2D;
+  g.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--text-primary').trim() || '#f0f0f4';
+  const m = /^#([0-9a-f]{6})$/i.exec(String(g.fillStyle));
+  return m ? [parseInt(m[1].slice(0, 2), 16), parseInt(m[1].slice(2, 4), 16), parseInt(m[1].slice(4, 6), 16)] : [240, 240, 244];
+}
+const inkA = (a: number): string => { const [r, g, b] = ink(); return `rgba(${r},${g},${b},${a})`; };
+
 export class PropertiesColumn {
   readonly root: HTMLElement;
   private readonly refreshers: Array<() => void> = [];
@@ -46,6 +56,7 @@ export class PropertiesColumn {
     const refresh = (): void => { for (const r of this.refreshers) r(); };
     for (const ev of ['active', 'doc', 'history', 'options', 'projects'] as const) engine.on(ev, refresh);
     document.addEventListener('cv:type-settings', refresh);
+    document.addEventListener('nm:ui-settings-changed', refresh);   // canvases repaint in the new theme's ink
     refresh();
   }
 
@@ -203,15 +214,16 @@ export class PropertiesColumn {
       c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); c.style.width = `${w}px`; c.style.height = `${h}px`;
       const g = c.getContext('2d') as CanvasRenderingContext2D, R = Math.min(c.height * 0.42, Math.max(3 * dpr, (Math.log(p.diameter + 1) / Math.log(1001)) * c.height * 0.9));
       if (p.tip) {
+        const INK = ink();
         const t = document.createElement('canvas'); t.width = p.tip.w; t.height = p.tip.h;
         const img = new ImageData(p.tip.w, p.tip.h);
-        for (let i = 0; i < p.tip.data.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = 240; img.data[i * 4 + 3] = p.tip.data[i]; }
+        for (let i = 0; i < p.tip.data.length; i++) { const [ir, ig, ib] = INK; img.data[i * 4] = ir; img.data[i * 4 + 1] = ig; img.data[i * 4 + 2] = ib; img.data[i * 4 + 3] = p.tip.data[i]; }
         t.getContext('2d')?.putImageData(img, 0, 0);
         const s = (R * 2) / Math.max(p.tip.w, p.tip.h);
         g.drawImage(t, c.width / 2 - (p.tip.w * s) / 2, c.height / 2 - (p.tip.h * s) / 2, p.tip.w * s, p.tip.h * s);
       } else {
         const gr = g.createRadialGradient(0, 0, 0, 0, 0, R);
-        gr.addColorStop(0, 'rgba(240,240,244,1)'); gr.addColorStop(Math.min(0.999, Math.max(0, p.hardness)), 'rgba(240,240,244,1)'); gr.addColorStop(1, 'rgba(240,240,244,0)');
+        gr.addColorStop(0, inkA(1)); gr.addColorStop(Math.min(0.999, Math.max(0, p.hardness)), inkA(1)); gr.addColorStop(1, inkA(0));
         g.save(); g.translate(c.width / 2, c.height / 2); g.rotate((-(p.angle ?? 0) * Math.PI) / 180); g.scale(1, Math.max(0.05, (p.roundness ?? 100) / 100));   // its own shape
         g.fillStyle = gr; g.beginPath(); g.arc(0, 0, R, 0, Math.PI * 2); g.fill(); g.restore();
       }
@@ -220,7 +232,7 @@ export class PropertiesColumn {
     let key = '';
     const fill = (): void => {
       const q0 = search.value.trim().toLowerCase(), imported = new Set(importedBrushPresets.map((p) => p.id));
-      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => p.id).join(',')].join('|');
+      const k = [view, q0, e.brushPresetId, [...shut].join(','), allBrushPresets().map((p) => p.id).join(','), ink().join(',')].join('|');   // the theme's ink too
       if (k === key) return;
       key = k;
       for (const b of body.querySelectorAll<HTMLElement>('[data-view]')) b.classList.toggle('is-on', b.dataset.view === view);
@@ -294,7 +306,7 @@ export class PropertiesColumn {
     (body.querySelector('[data-act="settings"]') as HTMLElement).addEventListener('click', () => run('brush-settings'));
     const dab = (g: CanvasRenderingContext2D, x: number, y: number, r: number, hard: number): void => {
       const grad = g.createRadialGradient(x, y, 0, x, y, r);
-      grad.addColorStop(0, 'rgba(236,236,240,1)'); grad.addColorStop(Math.min(0.999, Math.max(0, hard)), 'rgba(236,236,240,1)'); grad.addColorStop(1, 'rgba(236,236,240,0)');
+      grad.addColorStop(0, inkA(1)); grad.addColorStop(Math.min(0.999, Math.max(0, hard)), inkA(1)); grad.addColorStop(1, inkA(0));
       g.fillStyle = grad; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
     };
     const paint = (): void => {
@@ -304,11 +316,11 @@ export class PropertiesColumn {
       tg.clearRect(0, 0, tip.width, tip.height);
       if (tip.width) {
         const R = tip.width * 0.36, cx = tip.width / 2, cy = tip.height / 2;
-        tg.strokeStyle = 'rgba(255,255,255,0.18)'; tg.lineWidth = dpr; tg.beginPath(); tg.moveTo(cx - R * 1.2, cy); tg.lineTo(cx + R * 1.2, cy); tg.moveTo(cx, cy - R * 1.2); tg.lineTo(cx, cy + R * 1.2); tg.stroke();
+        tg.strokeStyle = inkA(0.18); tg.lineWidth = dpr; tg.beginPath(); tg.moveTo(cx - R * 1.2, cy); tg.lineTo(cx + R * 1.2, cy); tg.moveTo(cx, cy - R * 1.2); tg.lineTo(cx, cy + R * 1.2); tg.stroke();
         // The tip as the target's shape editor: its outline at the tip's angle and roundness, a crosshair and three handles.
         const a = (-e.brushShape.angle * Math.PI) / 180, ry = R * Math.max(0.05, e.brushShape.roundness / 100);
-        tg.strokeStyle = '#f0f0f4'; tg.lineWidth = 1.5 * dpr; tg.beginPath(); tg.ellipse(cx, cy, R, ry, a, 0, Math.PI * 2); tg.stroke();
-        tg.fillStyle = '#ffffff';
+        tg.strokeStyle = inkA(1); tg.lineWidth = 1.5 * dpr; tg.beginPath(); tg.ellipse(cx, cy, R, ry, a, 0, Math.PI * 2); tg.stroke();
+        tg.fillStyle = inkA(1);
         for (const [px, py] of [[R, 0], [0, -ry], [0, ry]]) { const x = cx + px * Math.cos(a) - py * Math.sin(a), y = cy + px * Math.sin(a) + py * Math.cos(a); tg.beginPath(); tg.arc(x, y, 3.2 * dpr, 0, Math.PI * 2); tg.fill(); }
       }
       const sg = stroke.getContext('2d') as CanvasRenderingContext2D;
