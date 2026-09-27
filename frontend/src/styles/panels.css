@@ -350,3 +350,13 @@
 .cv-ch-thumb { width: 44px; height: 30px; border-radius: 4px; background: #2a2a2a; }
 .cv-ch-note { margin: 10px 2px 0; color: var(--text-muted); font-size: 12px; }
 .cv-stage.has-channel-view .cv-scene, .cv-stage.has-channel-view .cv-scene-gpu { filter: url(#cv-channel-view); }
+/* The panel menu button (the target's •••), before the minimise button. */
+.cv-group-more { display: inline-grid; place-items: center; width: 26px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.cv-group-more[hidden] { display: none; }
+.cv-group-more:hover { background: #242328; color: var(--text-primary); }
+/* The right column collapsed to its strip (the target's «). */
+.cv-dock-strip { display: none; flex-direction: column; align-items: center; gap: 6px; padding: 8px 0; }
+.cv-layers.is-collapsed > section, .cv-layers.is-collapsed > .cv-dock-split { display: none !important; }
+.cv-layers.is-collapsed > .cv-dock-strip { display: flex; }
+.cv-dock-fly { width: 288px; }
+.cv-dock-fly > section { display: flex !important; flex-direction: column; max-height: calc(100vh - 40px); }

@@ -20,10 +20,16 @@ export class PanelGroup {
   private readonly tabs = new Map<string, { btn: HTMLButtonElement; body: HTMLElement }>();
   private active = '';
   onTab: ((id: string) => void) | null = null;
+  /** The panel menu (the target's •••): the app opens it with these command ids (PanelGroup.menuHost). */
+  static menuHost: ((anchor: HTMLElement, ids: string[]) => void) | null = null;
+  private menu: (() => string[]) | null = null;
+  setMenu(items: () => string[]): void { this.menu = items; setHidden(this.root.querySelector('.cv-group-more') as HTMLElement, false); }
 
   constructor(host: HTMLElement, readonly id: string, list: readonly GroupTab[], label: string) {
-    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><div class="cv-group-tabs" role="tablist"></div><span></span><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
+    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><div class="cv-group-tabs" role="tablist"></div><span></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
+    const more = this.root.querySelector('.cv-group-more') as HTMLElement;
+    more.addEventListener('click', () => { const ids = this.menu?.() ?? []; if (ids.length) PanelGroup.menuHost?.(more, ids); });
     for (const t of list) {
       const btn = el<HTMLButtonElement>('<button class="cv-group-tab" type="button" role="tab"></button>');
       setText(btn, t.label);

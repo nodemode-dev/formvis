@@ -5,7 +5,7 @@ def test_the_column_collapses_to_icons_opens_a_flyout_and_expands(page):
     try:
         page.evaluate("window.sonny.engine.newDocument(300, 200, 'S', 'white')")
         assert page.evaluate(WIDTH) == 284
-        page.locator(".cv-group-collapse").click()
+        page.locator(".cv-props-col .cv-group-collapse").click()
         page.wait_for_function(f"{WIDTH} === 46")
         assert page.locator(".cv-props-strip").is_visible() and not page.locator(".cv-props-col > .cv-brushes").is_visible()
         page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")

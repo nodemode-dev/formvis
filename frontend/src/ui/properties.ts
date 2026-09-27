@@ -191,7 +191,7 @@ export class PropertiesColumn {
     const more = el<HTMLButtonElement>(`<button class="cv-btn cv-brush-more" type="button">${icon('sliders', 14)}<span>All brush settings...</span></button>`);
     more.addEventListener('click', () => run('brush-settings'));
     settings.appendChild(more);
-    new PanelGroup(this.root, 'brushes', [{ id: 'brushes', label: 'Brushes', body }, { id: 'brush-settings', label: 'Brush Settings', body: settings }], 'Brushes');
+    new PanelGroup(this.root, 'brushes', [{ id: 'brushes', label: 'Brushes', body }, { id: 'brush-settings', label: 'Brush Settings', body: settings }], 'Brushes').setMenu(() => ['load-brushes', 'brush-settings']);
 
     let view: 'grid' | 'list' = 'grid';
     try { view = localStorage.getItem('sonny.brushView') === 'list' ? 'list' : 'grid'; } catch { /* grid */ }

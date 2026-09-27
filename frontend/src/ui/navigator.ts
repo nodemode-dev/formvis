@@ -30,6 +30,7 @@ export class NavigatorPanel {
     this.canvas = body.querySelector('.cv-nav-preview') as HTMLCanvasElement;
     this.slider = body.querySelector('input') as HTMLInputElement;
     this.group = new PanelGroup(host, 'navigator', [{ id: 'navigator', label: 'Navigator', body }], 'Navigator');
+    this.group.setMenu(() => ['zoom-in', 'zoom-out', 'fit', 'actual']);
     for (const b of body.querySelectorAll<HTMLButtonElement>('[data-zoom]')) {
       b.addEventListener('click', () => { const z = b.dataset.zoom as string; if (z === 'fit') engine.fit(); else engine.zoomTo(Number(z)); });
     }

@@ -60,6 +60,7 @@ import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
 import { PropertiesColumn } from './ui/properties';
 import { TitleTools } from './ui/titlebar-tools';
+import { PanelGroup } from './ui/panel-group';
 import { ChannelsPanel } from './ui/channels';
 import { NativeMenus, wantsNativeMenus } from './ui/native-menu';
 import { rendererFallback } from './gpu/fallback';
@@ -174,6 +175,9 @@ export function startApp(): void {
   errorLog.install();
   const commands = new Commands();
   const contextMenu = new PopupMenu(commands, null, true);
+  // Panel menus (the target's •••): each group's own commands, opened below its button.
+  const panelMenu = new PopupMenu(commands, null, true);
+  PanelGroup.menuHost = (anchor, ids) => { panelMenu.setItems(ids); const r = anchor.getBoundingClientRect(); panelMenu.openAt(r.right, r.bottom + 4); };
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
@@ -183,7 +187,7 @@ export function startApp(): void {
   const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !propsShown()); setStyleVar(root, '--cv-props-w', propsShown() ? (PropertiesColumn.collapsed() ? '46px' : '284px') : '0px'); };
   syncPropsCol();
   new NavigatorPanel(q(root, '.cv-layers'), engine);
-  new SwatchesPanel(q(root, '.cv-layers'), engine);
+  const swatches = new SwatchesPanel(q(root, '.cv-layers'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   new PathsPanel(q(root, '.cv-layers'), engine);
   layers.adoptPaths(q(root, '.cv-paths'));
@@ -191,6 +195,10 @@ export function startApp(): void {
   new TimelinePanel(q(root, '.cv-layers'), engine);
   new HistoryPanel(q(root, '.cv-layers'), engine);
   const dock = new Dock(q(root, '.cv-layers'));
+  // Collapsed, the column is its strip of icons; expanded, the width chosen by dragging (or the target's 288).
+  const syncDockWidth = (on: boolean): void => { const w = Number(stored(LAYERS_W_KEY)); setStyleVar(root, '--cv-layers-w', on ? '46px' : `${w >= 200 && w <= 480 ? w : 288}px`); q(root, '.cv-resizer').classList.toggle('is-inert', on); };   // kept in the grid (hiding it would move the dock into its column)
+  dock.onCollapse = syncDockWidth;
+  if (dock.collapsed) syncDockWidth(true);
   // The title bar's tools (Phase 21): theme, command search, workspaces, Lock Workspace.
   new TitleTools(q(root, '.cv-titlebar'), {
     commands,
@@ -784,6 +792,11 @@ export function startApp(): void {
   void loadImportedBrushes().then(() => engine.emit('options', null));
   const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr" data-role="import-brushes" hidden>');
   document.body.appendChild(abrInput);
+  commands.add(
+    { id: 'load-brushes', label: 'Load Brushes...', run: () => abrInput.click() },
+    { id: 'swatch-add', label: 'Add Foreground Color to Swatches', run: () => swatches.addForeground() },
+    { id: 'swatches-reset', label: 'Reset Swatches', run: () => swatches.reset() },
+  );
   abrInput.addEventListener('change', () => {
     const f = abrInput.files?.[0];
     abrInput.value = '';

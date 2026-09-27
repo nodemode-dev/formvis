@@ -1,4 +1,5 @@
 import { el, setHidden } from './dom';
+import { icon } from './icons';
 
 /** The side dock's panels, arranged as Photoshop's: drag a panel by its header to move it up or down the dock (a line
  *  shows where it will land), show or hide panels from the Window menu, and have the arrangement remembered on this
@@ -92,12 +93,86 @@ export class Dock {
   }
 
   /** Sections moved into the saved order only when it differs (moved, never rebuilt), and shown or hidden. */
+  /** The column collapsed to a strip of icons, as the target's (its « button): the collapse button on the first shown
+   *  group's header, the expand button atop the strip, an icon per shown group opening it as a flyout beside the strip
+   *  (its element moved there and back). Remembered; the app sets the column's width (onCollapse). */
+  onCollapse: ((on: boolean) => void) | null = null;
+  get collapsed(): boolean { try { return localStorage.getItem('sonny.dockCollapsed') === '1'; } catch { return false; } }
+  setCollapsed(on: boolean): void {
+    this.closeFly();
+    try { localStorage.setItem('sonny.dockCollapsed', on ? '1' : '0'); } catch { /* this session only */ }
+    this.dock.classList.toggle('is-collapsed', on);
+    this.renderStrip();
+    this.onCollapse?.(on);
+  }
+  private strip: HTMLElement | null = null;
+  private fly: HTMLElement | null = null;
+  private flyOpen: { s: HTMLElement; mark: Comment; btn: HTMLElement } | null = null;
+  private collapseBtn: HTMLElement | null = null;
+  private closeFly(): void {
+    const o = this.flyOpen;
+    if (!o) return;
+    o.mark.replaceWith(o.s);
+    o.btn.classList.remove('is-on');
+    this.flyOpen = null;
+    if (this.fly) setHidden(this.fly, true);
+  }
+  private renderStrip(): void {
+    if (!this.strip) {
+      this.strip = el('<div class="cv-dock-strip"></div>');
+      this.dock.prepend(this.strip);
+      this.fly = el('<div class="cv-props-fly cv-dock-fly" hidden></div>');
+      (document.getElementById('overlay-root') ?? document.body).appendChild(this.fly);
+      document.addEventListener('pointerdown', (e) => { if (this.flyOpen && !this.fly?.contains(e.target as Node) && !this.strip?.contains(e.target as Node)) this.closeFly(); }, true);
+      document.addEventListener('keydown', (e) => { if (this.flyOpen && e.key === 'Escape') this.closeFly(); });
+    }
+    const strip = this.strip;
+    strip.textContent = '';
+    const expand = el<HTMLButtonElement>(`<button class="cv-strip-btn cv-strip-expand" type="button" title="Expand panels" aria-label="Expand panels">${icon('collapseLeft', 16)}</button>`);
+    expand.addEventListener('click', () => this.setCollapsed(false));
+    strip.appendChild(expand);
+    const ICONS: Record<string, string> = { navigator: 'panelNav', swatches: 'swatchGrid', layers: 'layers', timeline: 'film', history: 'history' };
+    for (const id of this.state.order.filter((x) => this.isShown(x))) {
+      const s = this.section(id), label = DOCK_PANELS.find((p) => p.id === id)?.label ?? id;
+      if (!s) continue;
+      const b = el<HTMLButtonElement>(`<button class="cv-strip-btn" type="button" title="${label}" aria-label="${label}">${icon(ICONS[id] ?? 'panelProps', 18)}</button>`);
+      b.dataset.group = id;
+      b.addEventListener('click', () => {
+        if (this.flyOpen?.s === s) { this.closeFly(); return; }
+        this.closeFly();
+        const fly = this.fly as HTMLElement, mark = document.createComment(id);
+        s.replaceWith(mark);
+        fly.appendChild(s);
+        setHidden(fly, false);
+        this.flyOpen = { s, mark, btn: b };
+        b.classList.add('is-on');
+        const r = b.getBoundingClientRect(), st = strip.getBoundingClientRect();
+        fly.style.right = `${Math.round(window.innerWidth - st.left + 6)}px`;
+        fly.style.top = `${Math.round(Math.max(8, Math.min(r.top, window.innerHeight - fly.offsetHeight - 8)))}px`;
+      });
+      strip.appendChild(b);
+    }
+  }
+  /** The collapse button sits on whichever shown group is first. */
+  private placeCollapse(): void {
+    if (!this.collapseBtn) {
+      this.collapseBtn = el<HTMLButtonElement>(`<button class="cv-group-collapse cv-dock-collapse" type="button" title="Collapse to icons" aria-label="Collapse to icons">${icon('collapseRight', 14)}</button>`);
+      this.collapseBtn.addEventListener('click', () => this.setCollapsed(true));
+    }
+    const first = this.state.order.find((x) => this.isShown(x)), head = first ? this.section(first)?.querySelector(':scope > .cv-panel-head') : null;
+    if (head && this.collapseBtn.parentElement !== head) head.appendChild(this.collapseBtn);
+  }
+
   private apply(): void {
+    this.closeFly();
     const want = this.state.order.map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
     const current = Array.from(this.dock.children).filter((c) => want.includes(c as HTMLElement));
     if (want.some((s, i) => current[i] !== s)) for (const s of want) this.dock.insertBefore(s, this.marker);
     for (const id of this.state.order) { const s = this.section(id); if (s) setHidden(s, !this.isShown(id)); }
     this.splitters();
+    this.placeCollapse();
+    this.dock.classList.toggle('is-collapsed', this.collapsed);
+    if (this.collapsed) this.renderStrip();
   }
 
   /** A splitter between each pair of shown groups: dragging it sizes the group above, or the one below when the one

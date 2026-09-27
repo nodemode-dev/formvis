@@ -47,6 +47,7 @@ export class SwatchesPanel {
     this.hue = color.querySelector('.cv-color-hue') as HTMLCanvasElement;
     this.group = new PanelGroup(host, 'swatches', [{ id: 'swatches', label: 'Swatches', body: swatches }, { id: 'color', label: 'Color', body: color }], 'Swatches and Color');
     this.group.onTab = () => requestAnimationFrame(() => this.paintColor());
+    this.group.setMenu(() => ['swatch-add', 'swatches-reset']);
     this.renderGrid();
     this.bindColor();
     engine.on('colors', () => { this.hsv = toHsv(engine.fg); this.paintColor(); });
@@ -54,6 +55,11 @@ export class SwatchesPanel {
   }
 
   private save(): void { try { localStorage.setItem(KEY, JSON.stringify(this.list)); } catch { /* this session only */ } }
+
+  /** Adds the foreground colour, as the + tile does (the panel menu's Add Foreground Color). */
+  addForeground(): void { const c = hex(this.engine.fg); if (!this.list.includes(c)) { this.list.push(c); this.save(); this.renderGrid(); } }
+  /** The target's swatches again (the panel menu's Reset Swatches). */
+  reset(): void { this.list = [...DEFAULTS]; this.save(); this.renderGrid(); }
 
   private renderGrid(): void {
     this.grid.textContent = '';
@@ -67,7 +73,7 @@ export class SwatchesPanel {
       this.grid.appendChild(b);
     });
     const add = el<HTMLButtonElement>(`<button class="cv-sw-tile cv-sw-add" type="button" title="Add the foreground colour" aria-label="Add the foreground colour">${icon('plus', 12)}</button>`);
-    add.addEventListener('click', () => { const c = hex(this.engine.fg); if (!this.list.includes(c)) { this.list.push(c); this.save(); this.renderGrid(); } });
+    add.addEventListener('click', () => this.addForeground());
     this.grid.appendChild(add);
   }
 

@@ -259,3 +259,4 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-opt-icon { display: inline-grid; place-items: center; width: 30px; height: 28px; padding: 0; border: 0; border-radius: 7px; background: transparent; color: #c9c8ce; cursor: pointer; }
 .cv-opt-icon:hover { background: #242328; color: #ffffff; }
 .cv-opt-sep { display: inline-block; width: 1px; height: 20px; margin: 0 6px; background: #34333a; vertical-align: middle; }
+.cv-resizer.is-inert { visibility: hidden; pointer-events: none; }

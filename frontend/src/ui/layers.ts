@@ -1,4 +1,5 @@
 import { BLEND_MODES, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Raster, effectsActive } from '../engine';
+import { PanelGroup } from './panel-group';
 import type { ChannelsPanel } from './channels';
 import type { LayerLocks } from '../engine/types';
 import { enhanceSelect } from './dropdown';
@@ -70,7 +71,7 @@ export class LayersPanel {
 
   constructor(root: HTMLElement, private readonly engine: Engine, private readonly menu: PopupMenu) {
     root.insertAdjacentHTML('beforeend',
-      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="channels">Channels</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
+      `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="channels">Channels</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-group-more cv-layers-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu">${icon('more3', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
       `<div class="cv-layer-props"><div class="cv-layer-kind"><select class="cv-select cv-kind" title="Filter by kind" aria-label="Filter by kind"><option value="all">Kind</option>${KINDS.map((k) => `<option value="${k.id}">${k.label}</option>`).join('')}</select>` +
       `<div class="cv-kind-icons" role="group" aria-label="Show only">${KINDS.map((k) => `<button class="cv-kind-btn" type="button" data-kind="${k.id}" title="${k.label} layers" aria-label="${k.label} layers" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('')}</div></div>` +
       `<div class="cv-layer-blendrow"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${blendOptions()}</select><span class="cv-vsep"></span>` +
@@ -127,6 +128,13 @@ export class LayersPanel {
       });
     }
     for (const t of root.querySelectorAll<HTMLButtonElement>('.cv-layers-panel .cv-group-tab')) t.addEventListener('click', () => this.showTab(t.dataset.tab as LayersTab));
+    // The panel menu, by tab: the Layers panel's commands, or the Paths panel's.
+    const more = q<HTMLButtonElement>(root, '.cv-layers-more');
+    more.addEventListener('click', () => {
+      const panel = this.rows.closest('.cv-layers-panel') as HTMLElement;
+      const ids = panel.classList.contains('is-paths-tab') ? ['new-path', 'delete-path', '-', 'fill-path-dialog', 'stroke-path-dialog'] : panel.classList.contains('is-channels-tab') ? [] : ['new-layer', 'duplicate-dialog', 'delete-layer', '-', 'new-folder', 'group', '-', 'merge', '-', 'layer-style', 'convert-smart', 'rasterize'];
+      if (ids.length) PanelGroup.menuHost?.(more, ids);
+    });
     for (const k of ['doc', 'active', 'projects', 'history'] as const) engine.on(k, () => this.queue());
     this.bindRows();
     this.render();
