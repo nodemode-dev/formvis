@@ -67,7 +67,7 @@ import { ChannelsPanel } from './ui/channels';
 import { NativeMenus, wantsNativeMenus } from './ui/native-menu';
 import { rendererFallback } from './gpu/fallback';
 import { HomeScreen } from './ui/home';
-import { ALL_PANELS, Dock } from './ui/dock';
+import { ALL_PANELS, Dock, registerPanel, unregisterPanel } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
@@ -238,13 +238,36 @@ export function startApp(): void {
   layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage')));   // the Channels tab (Phase 21)
   new TimelinePanel(q(root, '.cv-layers'), engine);
   new HistoryPanel(q(root, '.cv-layers'), engine);
+  // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
+  // arrangement, filled when the tabs' homes are restored.
+  const CUSTOM = 'sonny.customGroups';
+  const customGroups = (): Array<{ id: string; label: string }> => { try { const v = JSON.parse(stored(CUSTOM) ?? '[]'); return Array.isArray(v) ? v.filter((g) => g && typeof g.id === 'string' && /^g[0-9a-z]+$/.test(g.id) && typeof g.label === 'string') : []; } catch { return []; } };
+  for (const g of customGroups()) { new PanelGroup(q(root, '.cv-layers'), g.id, [], g.label); registerPanel({ id: g.id, label: g.label, selector: `section.cv-${g.id}` }); }
   const dock = new Dock(q(root, '.cv-layers'), q(root, '.cv-props-col'));
   dockRef = dock;
   dock.onChange = () => { syncPropsCol(); props.relayout(); };
   syncPropsCol();
   props.relayout();
   // Tabs moved between groups (dragged onto another group's header) are restored, and re-lay out the columns.
-  PanelGroup.onMoved = () => { dock.refresh(); props.relayout(); };
+  // A group made by detaching a tab goes once empty (built-in groups only hide).
+  const dropEmptyGroups = (): void => {
+    const keep = customGroups().filter((g) => { const pg = PanelGroup.all.get(g.id); if (pg && pg.size > 0) return true; pg?.remove(); dock.removePanel(g.id); unregisterPanel(g.id); return false; });
+    store(CUSTOM, JSON.stringify(keep));
+  };
+  PanelGroup.onMoved = () => { dropEmptyGroups(); dock.refresh(); props.relayout(); };
+  // A tab released over a column's gap becomes a new group there, as Photoshop's; the marker says so while dragging.
+  PanelGroup.onGapHint = (x, y) => { if (x === null) dock.hideGap(); else dock.showGap(x, y, 'New group'); };
+  PanelGroup.onDetach = (tid, from, x, y) => {
+    const at = dock.gapAt(x, y);
+    if (!at || from.size < 2) return false;
+    const id = `g${Date.now().toString(36)}`, label = from.labelOf(tid);
+    const g = new PanelGroup(at.host, id, [], label);
+    registerPanel({ id, label, selector: `section.cv-${id}` });
+    store(CUSTOM, JSON.stringify([...customGroups(), { id, label }]));
+    dock.insertPanel(id, at.col, at.index);
+    PanelGroup.moveTab(tid, from, g);
+    return true;
+  };
   PanelGroup.restoreHomes();
   // Collapsed, the column is its strip of icons; expanded, the width chosen by dragging (or the target's 288).
   const syncDockWidth = (on: boolean): void => { const w = Number(stored(LAYERS_W_KEY)); setStyleVar(root, '--cv-layers-w', on ? '46px' : `${w >= 200 && w <= 480 ? w : 288}px`); q(root, '.cv-resizer').classList.toggle('is-inert', on); };   // kept in the grid (hiding it would move the dock into its column)
@@ -931,7 +954,7 @@ export function startApp(): void {
     { id: 'reset-panels', label: 'Reset Panels', run: () => {
       // The whole panel layout as sonny comes (the owner's walkthrough: Reset Panels left collapsed columns, widths,
       // minimised groups and chosen tabs as they were), live, the documents untouched.
-      dock.reset(); PanelGroup.resetHomes(TAB_HOMES); PanelGroup.resetStates(); layers.showTab('layers');
+      dock.reset(); PanelGroup.resetHomes(TAB_HOMES); dropEmptyGroups(); PanelGroup.resetStates(); layers.showTab('layers');
       if (dock.collapsed) dock.setCollapsed(false);
       store(LAYERS_W_KEY, ''); setStyleVar(root, '--cv-layers-w', '288px');
       store('sonny.propsCol', 'shown'); props.resetLayout(); syncPropsCol(); props.relayout();

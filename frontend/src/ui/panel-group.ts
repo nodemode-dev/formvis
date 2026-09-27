@@ -22,6 +22,14 @@ export class PanelGroup {
   static readonly all = new Map<string, PanelGroup>();
   /** Called after tabs move (the app re-lays out the columns). */
   static onMoved: (() => void) | null = null;
+  /** A tab released over a column's gap, not a header: the app makes it a new group there (true if it did). */
+  static onDetach: ((tid: string, from: PanelGroup, x: number, y: number) => boolean) | null = null;
+  /** While a tab is dragged over a column's gap: where a new group would go (null: nowhere). */
+  static onGapHint: ((x: number | null, y: number) => void) | null = null;
+  get size(): number { return this.tabs.size; }
+  labelOf(tid: string): string { return this.tabs.get(tid)?.btn.textContent ?? tid; }
+  /** A group made by detaching, gone once empty. */
+  remove(): void { PanelGroup.all.delete(this.id); this.root.remove(); }
   readonly root: HTMLElement;
   private readonly tabs = new Map<string, { btn: HTMLButtonElement; body: HTMLElement }>();
   private active = '';
@@ -32,7 +40,7 @@ export class PanelGroup {
   setMenu(items: () => string[]): void { this.menu = items; setHidden(this.root.querySelector('.cv-group-more') as HTMLElement, false); }
 
   constructor(host: HTMLElement, readonly id: string, list: readonly GroupTab[], label: string) {
-    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><div class="cv-group-tabs" role="tablist"></div><span></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
+    this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span><div class="cv-group-tabs" role="tablist"></div><span></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
     const more = this.root.querySelector('.cv-group-more') as HTMLElement;
     more.addEventListener('click', () => { const ids = this.menu?.() ?? []; if (ids.length) PanelGroup.menuHost?.(more, ids); });
@@ -40,7 +48,8 @@ export class PanelGroup {
     PanelGroup.all.set(id, this);
     for (const t of list) { t.body.classList.add('cv-group-page'); this.attach(t.id, t.label, t.body); }
     const saved = loadState()[id] ?? {};
-    this.show(saved.tab && this.tabs.has(saved.tab) ? saved.tab : list[0].id, false);
+    if (list.length) this.show(saved.tab && this.tabs.has(saved.tab) ? saved.tab : list[0].id, false);
+    else this.root.classList.add('is-empty');   // a group made by detaching a tab, until its tab arrives
     this.setMinimised(!!saved.min, false);
     (this.root.querySelector('.cv-group-min') as HTMLElement).addEventListener('click', () => this.setMinimised(!this.root.classList.contains('is-min')));
     host.appendChild(this.root);
@@ -90,14 +99,17 @@ export class PanelGroup {
       ghost.style.left = `${ev.clientX + 8}px`; ghost.style.top = `${ev.clientY + 8}px`;
       const t = over(ev);
       if (t !== target) { target?.root.classList.remove('is-tab-target'); target = t; target?.root.classList.add('is-tab-target'); }
+      PanelGroup.onGapHint?.(t ? null : ev.clientX, ev.clientY);   // over a gap: New group here
     };
-    const up = (): void => {
+    const up = (ev: PointerEvent): void => {
+      PanelGroup.onGapHint?.(null, 0);
       document.removeEventListener('pointermove', move, true);
       document.removeEventListener('pointerup', up, true);
       ghost?.remove();
       target?.root.classList.remove('is-tab-target');
       if (ghost) PanelGroup.justDragged = true;
       if (ghost && target) { PanelGroup.moveTab(tid, this, target); PanelGroup.saveHomes(); }
+      else if (ghost && PanelGroup.onDetach?.(tid, this, ev.clientX, ev.clientY)) PanelGroup.saveHomes();
     };
     document.addEventListener('pointermove', move, true);
     document.addEventListener('pointerup', up, true);

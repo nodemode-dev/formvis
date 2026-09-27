@@ -398,3 +398,15 @@
 .cv-tab-ghost { position: fixed; z-index: var(--z-context); padding: 5px 12px; border: 1px solid var(--accent-line); border-radius: 8px; background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); color: var(--text-primary); font-size: 13px; pointer-events: none; }
 .cv-group.is-tab-target > .cv-group-head { box-shadow: inset 0 0 0 2px var(--accent-color); }
 .cv-group.is-empty { display: none !important; }
+
+/* Moving panels, made plain (1.49.2, the owner's walkthrough): a grip on every header; a ghost of what is dragged;
+   a bold drop marker saying what a release does (Move here, New group); a header outlined saying Add as tab. */
+.cv-group-grip { display: inline-grid; place-items: center; width: 16px; margin-right: 2px; color: var(--text-muted); opacity: 0.55; cursor: grab; flex: none; }
+.cv-panel-head:hover .cv-group-grip { opacity: 1; }
+.cv-panel-head { cursor: grab; }
+.cv-panel-head button, .cv-panel-head select, .cv-panel-head input { cursor: pointer; }
+.cv-drag-ghost { position: fixed; z-index: var(--z-context); padding: 6px 12px; border: 1px solid var(--accent-line); border-radius: 9px; background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); color: var(--text-primary); font-size: 13px; font-weight: 600; pointer-events: none; box-shadow: var(--glass-shadow); }
+.cv-dock-marker { height: 4px !important; border-radius: 2px; box-shadow: 0 0 12px var(--accent-color); }
+.cv-dock-marker::after { content: attr(data-label); position: absolute; right: 8px; top: -11px; padding: 2px 8px; border-radius: 6px; background: var(--accent-color); color: #fff; font-size: 11px; font-weight: 600; white-space: nowrap; }
+.cv-group.is-tab-target > .cv-group-head { position: relative; }
+.cv-group.is-tab-target > .cv-group-head::after { content: 'Add as tab'; position: absolute; right: 44px; top: 50%; transform: translateY(-50%); padding: 2px 8px; border-radius: 6px; background: var(--accent-color); color: #fff; font-size: 11px; font-weight: 600; }

@@ -88,3 +88,41 @@ def test_the_layers_groups_tabs_move_both_ways(page):
         assert page.evaluate(TABS, "section.cv-layers-panel") == ["Layers", "Paths", "Color"]
     finally:
         page.evaluate(RESET + "; localStorage.removeItem('sonny.tabHomes')"); page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+
+
+def test_a_tab_detaches_into_a_new_group_that_stays_and_goes_when_emptied(page):
+    try:
+        page.evaluate("window.sonny.engine.newDocument(300, 200, 'N', 'white')")
+        t = page.locator("section.cv-swatches .cv-group-tab", has_text="Color").bounding_box()
+        lay = page.locator("section.cv-layers-panel").bounding_box()
+        page.mouse.move(t["x"] + 10, t["y"] + 10); page.mouse.down()
+        page.mouse.move(lay["x"] + 100, lay["y"] - 8, steps=12)                               # over the Swatches body, above Layers
+        assert page.evaluate("document.querySelector('.cv-dock-marker').dataset.label") == "New group"   # said while dragging
+        page.mouse.up()
+        new = page.evaluate("[...document.querySelectorAll('.cv-layers > section')].filter((s) => /^cv-g[0-9a-z]+$/.test(s.className.split(' ')[0])).map((s) => s.className.split(' ')[0])")
+        assert len(new) == 1, new
+        assert page.evaluate(TABS, f"section.{new[0]}") == ["Color"] and page.evaluate(TABS, "section.cv-swatches") == ["Swatches"]
+        order = page.evaluate("[...document.querySelectorAll('.cv-layers > section')].filter((s) => !s.hidden && getComputedStyle(s).display !== 'none').map((s) => s.className.split(' ')[0])")
+        assert order.index(new[0]) == order.index("cv-layers-panel") - 1, order                 # where it was dropped
+        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        assert page.evaluate(TABS, f"section.{new[0]}") == ["Color"]                             # kept
+        t = page.locator(f"section.{new[0]} .cv-group-tab", has_text="Color").bounding_box()
+        sw = page.locator("section.cv-swatches > .cv-group-head").bounding_box()
+        # a single-tab group moves whole by its tab, so drag it back by moving the tab into Swatches from the other side:
+        page.evaluate(f"(async () => {{ const {{ PanelGroup }} = await import('/src/ui/panel-group.ts'); PanelGroup.moveTab('color', PanelGroup.all.get('{new[0][3:]}'), PanelGroup.all.get('swatches')); PanelGroup.saveHomes(); }})()")
+        page.wait_for_timeout(200)
+        assert page.locator(f"section.{new[0]}").count() == 0 and page.evaluate("localStorage.getItem('sonny.customGroups')") == "[]"   # gone when emptied
+    finally:
+        page.evaluate(RESET + "; localStorage.removeItem('sonny.tabHomes'); localStorage.removeItem('sonny.customGroups')"); page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+
+
+def test_moving_a_group_shows_a_ghost_and_says_move_here(page):
+    page.evaluate("window.sonny.engine.newDocument(300, 200, 'G', 'white')")
+    h = page.locator("section.cv-navigator > .cv-panel-head > span").first.bounding_box()
+    lay = page.locator("section.cv-layers-panel").bounding_box()
+    page.mouse.move(h["x"] + h["width"] / 2, h["y"] + h["height"] / 2); page.mouse.down()
+    page.mouse.move(lay["x"] + 80, lay["y"] + lay["height"] / 2, steps=10)
+    assert page.locator(".cv-drag-ghost").inner_text() == "Navigator"
+    assert page.evaluate("document.querySelector('.cv-dock-marker').dataset.label") == "Move here"
+    page.keyboard.press("Escape"); page.mouse.up()
+    page.evaluate("localStorage.removeItem('sonny.dock')"); page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")

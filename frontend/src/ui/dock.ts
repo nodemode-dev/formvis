@@ -21,7 +21,10 @@ export const SIDE_PANELS: readonly DockPanel[] = [
   { id: 'paragraph', label: 'Paragraph', selector: 'section.cv-paragraph' },
   { id: 'character', label: 'Character', selector: 'section.cv-character' },
 ];
-export const ALL_PANELS: readonly DockPanel[] = [...DOCK_PANELS, ...SIDE_PANELS];
+export const ALL_PANELS: DockPanel[] = [...DOCK_PANELS, ...SIDE_PANELS];
+/** Groups made by detaching a tab (1.49.2) join the panels the dock arranges, and leave once empty. */
+export function registerPanel(p: DockPanel): void { if (!ALL_PANELS.some((x) => x.id === p.id)) ALL_PANELS.push(p); }
+export function unregisterPanel(id: string): void { const i = ALL_PANELS.findIndex((x) => x.id === id); if (i >= 0 && !DOCK_PANELS.some((x) => x.id === id) && !SIDE_PANELS.some((x) => x.id === id)) ALL_PANELS.splice(i, 1); }
 const DEFAULT_SIDE = SIDE_PANELS.map((p) => p.id);
 /** order: the dock's panels, top to bottom; side: the side column's; hidden: those not shown, wherever they live. */
 interface DockState { order: string[]; hidden: string[]; side: string[] }
@@ -58,6 +61,9 @@ export class Dock {
   constructor(private readonly dock: HTMLElement, private readonly side: HTMLElement | null = null) {
     dock.appendChild(this.marker);
     for (const p of ALL_PANELS) {
+      // Every header shows where to grab: the dock's own non-group panels (Timeline, History) get the groups' grip.
+      const sec = document.querySelector<HTMLElement>(p.selector), hd = sec?.querySelector<HTMLElement>(':scope > .cv-panel-head');
+      if (hd && !hd.querySelector('.cv-group-grip')) hd.prepend(el(`<span class="cv-group-grip" title="Drag to move the group" aria-hidden="true">${icon('grip', 14)}</span>`));
       const section = this.section(p.id), head = section?.querySelector<HTMLElement>('.cv-panel-head');
       if (!head) continue;
       head.classList.add('cv-dock-grip');
@@ -275,32 +281,64 @@ export class Dock {
     if ((e.buttons & 1) === 0) { this.drag = null; setHidden(this.marker, true); return; }
     if (!d.moving && Math.abs(e.clientY - d.startY) < 5) return;
     d.moving = true;
-    // The column under the pointer: the side column's when over it (and open), else the dock's.
-    const sr = this.side && !this.side.hidden && !this.side.classList.contains('is-collapsed') ? this.side.getBoundingClientRect() : null;
-    const col: 'dock' | 'side' = sr && e.clientX >= sr.left && e.clientX <= sr.right ? 'side' : 'dock';
-    const host = col === 'side' ? this.side as HTMLElement : this.dock;
-    const ids = (col === 'side' ? this.state.side : this.dockIds()).filter((id) => this.present(id));
-    const shown = ids.map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
-    const box = host.getBoundingClientRect();
-    let best = 0, bestDist = Infinity, y = box.top + 2;
-    for (let i = 0; i <= shown.length; i++) {
-      if (!shown.length) break;
-      const gap = i < shown.length ? shown[i].getBoundingClientRect().top : shown[shown.length - 1].getBoundingClientRect().bottom;
-      const dist = Math.abs(e.clientY - gap);
-      if (dist < bestDist) { bestDist = dist; best = i; y = gap; }
-    }
+    const at = this.gapAt(e.clientX, e.clientY);
+    if (!at) return;
+    const { col, index: best } = at;
+    // What is dragged, following the pointer; the marker says what a release does.
+    if (!this.ghost) { this.ghost = el('<div class="cv-drag-ghost"></div>'); this.ghost.textContent = ALL_PANELS.find((p) => p.id === d.id)?.label ?? d.id; document.body.appendChild(this.ghost); }
+    this.ghost.style.left = `${e.clientX + 12}px`; this.ghost.style.top = `${e.clientY + 10}px`;
     d.target = best;
     d.col = col;
-    if (this.marker.parentElement !== host) host.appendChild(this.marker);
-    this.marker.style.top = `${Math.round(y - box.top + host.scrollTop - 1)}px`;
+    this.placeMarker(at, 'Move here');
+  }
+
+  private ghost: HTMLElement | null = null;
+  /** The column and the gap among its shown panels nearest a point: the side column's when over it (and open), else the
+   *  dock's; null outside both. Group drags and tab drags (a new group) use the same. */
+  gapAt(x: number, y: number): { col: 'dock' | 'side'; index: number; host: HTMLElement; y: number } | null {
+    const sr = this.side && !this.side.hidden && !this.side.classList.contains('is-collapsed') ? this.side.getBoundingClientRect() : null;
+    const dr = this.dock.getBoundingClientRect();
+    const col: 'dock' | 'side' | null = sr && x >= sr.left && x <= sr.right ? 'side' : x >= dr.left && x <= dr.right ? 'dock' : null;
+    if (!col) return null;
+    const host = col === 'side' ? this.side as HTMLElement : this.dock;
+    const shown = (col === 'side' ? this.state.side : this.dockIds()).filter((id) => this.present(id)).map((id) => this.section(id)).filter((s): s is HTMLElement => !!s);
+    const box = host.getBoundingClientRect();
+    let best = 0, bestDist = Infinity, gy = box.top + 2;
+    for (let i = 0; i <= shown.length && shown.length; i++) {
+      const gap = i < shown.length ? shown[i].getBoundingClientRect().top : shown[shown.length - 1].getBoundingClientRect().bottom;
+      const dist = Math.abs(y - gap);
+      if (dist < bestDist) { bestDist = dist; best = i; gy = gap; }
+    }
+    return { col, index: best, host, y: gy };
+  }
+  private placeMarker(at: { host: HTMLElement; y: number }, label: string): void {
+    if (this.marker.parentElement !== at.host) at.host.appendChild(this.marker);
+    this.marker.dataset.label = label;
+    this.marker.style.top = `${Math.round(at.y - at.host.getBoundingClientRect().top + at.host.scrollTop - 1)}px`;
     setHidden(this.marker, false);
   }
+  /** A tab dragged over a gap: where a new group would go. */
+  showGap(x: number, y: number, label: string): void { const at = this.gapAt(x, y); if (at) this.placeMarker(at, label); else setHidden(this.marker, true); }
+  hideGap(): void { if (!this.drag) setHidden(this.marker, true); }
+  /** A new group into a column at a gap (index among the shown panels). */
+  insertPanel(id: string, col: 'dock' | 'side', index: number): void {
+    const list = col === 'side' ? this.state.side : this.dockIds();
+    const before = list.filter((x) => this.present(x))[index] ?? null;
+    const side = this.state.side.filter((x) => x !== id), order = this.state.order.filter((x) => x !== id);
+    const into = col === 'side' ? side : order, at = before ? into.indexOf(before) : into.length;
+    into.splice(at < 0 ? into.length : at, 0, id);
+    this.state = { ...this.state, side, order };
+    this.save();
+  }
+  removePanel(id: string): void { this.state = { ...this.state, side: this.state.side.filter((x) => x !== id), order: this.state.order.filter((x) => x !== id), hidden: this.state.hidden.filter((x) => x !== id) }; this.save(); }
 
   private readonly docMove = (e: PointerEvent): void => { if (this.drag) this.move(e); else document.removeEventListener('pointermove', this.docMove, true); };
 
   private drop(): void {
     const d = this.drag;
     this.drag = null;
+    this.ghost?.remove();
+    this.ghost = null;
     document.removeEventListener('pointermove', this.docMove, true);
     setHidden(this.marker, true);
     if (!d || !d.moving || d.target < 0) return;
