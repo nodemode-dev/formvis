@@ -9,7 +9,7 @@ import { icon } from './icons';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
-import { ENGINE_CHOICES, RECOVERY_CHOICES, loadPrefs, savePrefs, type EngineDevice, type Prefs } from './prefs';
+import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, RECOVERY_CHOICES, RULER_UNITS, loadPrefs, savePrefs, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type RulerUnits } from './prefs';
 import { RENDERER_CHOICES, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
 
@@ -299,6 +299,30 @@ export class SettingsDialog extends Dialog {
   private readonly redrawRow = checkRow('Redraw only what a brush stroke changed', (v) => this.change({ regionRedraws: v }));
   private readonly recoveryRow = selectRow('Keep recovery information after changes, within', RECOVERY_CHOICES, (v) => this.change({ recoverySeconds: Number(v) }));
   private readonly homeRow = checkRow('Auto show the Home Screen', (v) => this.change({ autoShowHome: v }));
+  /* Photoshop's other sections (the owner's walkthrough), each acting on something real. */
+  private readonly wheelRow = checkRow('Zoom with Scroll Wheel', (v) => this.change({ zoomWheel: v }));
+  private readonly firstSnapRow = checkRow('Automatically Create First Snapshot', (v) => this.change({ autoFirstSnapshot: v }));
+  private readonly snapMemRow = sliderRow('Snapshot memory (MB)', 64, 8192, 64, (v) => this.change({ snapshotMB: v }));
+  private readonly narrowRow = checkRow('Show the side column as icons in a narrow window', (v) => this.change({ narrowCollapse: v }));
+  private readonly lockRow = checkRow('Lock Workspace', (v) => this.workspaceLock?.set(v));
+  private readonly cursorRow = selectRow('Painting Cursors', PAINT_CURSORS, (v) => this.change({ paintCursor: v as PaintCursor }));
+  private readonly crossRow = checkRow('Show Crosshair in Brush Tip', (v) => this.change({ cursorCrosshair: v }));
+  private readonly checkerSizeRow = selectRow('Grid Size', CHECKER_SIZES, (v) => this.change({ checkerSize: v as CheckerSize }));
+  private readonly checkerColorsRow = selectRow('Grid Colors', CHECKER_COLORS, (v) => this.change({ checkerColors: v as CheckerColors }));
+  private readonly rulerRow = selectRow('Rulers', RULER_UNITS, (v) => this.change({ rulerUnits: v as RulerUnits }));
+  private readonly gridEveryRow = sliderRow('Gridline Every (px)', 2, 1000, 1, (v) => this.change({ gridSpacing: v }));
+  private readonly subdivRow = sliderRow('Subdivisions', 1, 32, 1, (v) => this.change({ gridSubdivisions: v }));
+  private readonly guideColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Guide color">');
+  private readonly gridColor = el<HTMLInputElement>('<input class="cv-input" type="color" aria-label="Grid color">');
+  /** Lock Workspace lives with the dock; the app connects it. */
+  workspaceLock: { get(): boolean; set(on: boolean): void } | null = null;
+  private colorRow(label: string, input: HTMLInputElement, key: 'guideColor' | 'gridColor'): HTMLElement {
+    const row = el(`<label class="cv-field"><span>${label}</span></label>`), theme = el<HTMLButtonElement>('<button class="cv-btn" type="button">Theme colour</button>');
+    input.addEventListener('input', () => this.change({ [key]: input.value } as Partial<Prefs>));
+    theme.addEventListener('click', () => this.change({ [key]: '' } as Partial<Prefs>));
+    row.append(input, theme);
+    return row;
+  }
   /** Graphics Processor Settings (Phase 18.1): the detected processor, Use Graphics Processor, the renderer and the GPU
    *  memory limit, with the mode in use and why. */
   private readonly gpuName = el('<span class="cv-gpu-name">Detecting...</span>');
@@ -332,16 +356,25 @@ export class SettingsDialog extends Dialog {
     };
     const accentRow = el('<label class="cv-field"><span>Accent</span></label>');
     accentRow.appendChild(this.accent);
-    add('General', this.homeRow.el, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
+    const reset = el<HTMLButtonElement>('<button class="cv-btn" type="button">Reset All Preferences...</button>');
+    reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how sonny comes; your documents and library are kept. sonny reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('sonny.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
+    add('General', this.homeRow.el, reset, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, accentRow, this.intensityRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.</p>'));
-    add('Performance', this.statesRow.el, this.memoryRow.el, this.redrawRow.el,
-      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
+    add('Performance', this.redrawRow.el,
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, sonny turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
+    add('Workspace', this.lockRow.el, this.narrowRow.el, el('<p class="cv-note">Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
+    add('Tools', this.wheelRow.el, el('<p class="cv-note">On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round.</p>'));
+    add('History & Cache', this.statesRow.el, this.memoryRow.el, el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
+      this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
     add('File Handling', this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
+    add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
+    add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el('<p class="cv-note">The checkerboard shown behind transparent pixels. None shows it plain.</p>'));
+    add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
+    add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridEveryRow.el, this.subdivRow.el);
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
     this.body.appendChild(wrap);
@@ -368,6 +401,21 @@ export class SettingsDialog extends Dialog {
     this.rendererRow.set(this.prefs.renderer);
     this.gpuMemoryRow.set(this.prefs.gpuMemoryMB);
     this.engineRow.set(this.prefs.engineDevice);
+    this.wheelRow.set(this.prefs.zoomWheel);
+    this.firstSnapRow.set(this.prefs.autoFirstSnapshot);
+    this.snapMemRow.set(this.prefs.snapshotMB);
+    this.narrowRow.set(this.prefs.narrowCollapse);
+    this.lockRow.set(this.workspaceLock?.get() ?? false);
+    this.cursorRow.set(this.prefs.paintCursor);
+    this.crossRow.set(this.prefs.cursorCrosshair);
+    this.checkerSizeRow.set(this.prefs.checkerSize);
+    this.checkerColorsRow.set(this.prefs.checkerColors);
+    this.rulerRow.set(this.prefs.rulerUnits);
+    this.gridEveryRow.set(this.prefs.gridSpacing);
+    this.subdivRow.set(this.prefs.gridSubdivisions);
+    const css = getComputedStyle(document.documentElement);
+    this.guideColor.value = this.prefs.guideColor || (css.getPropertyValue('--accent-color').trim() || '#f97316');
+    this.gridColor.value = this.prefs.gridColor || '#808080';
     if (section && this.sections.has(section)) this.showSection(section);
     this.sync();
     this.open();

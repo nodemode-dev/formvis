@@ -160,9 +160,9 @@ export class Stage {
   }
 
   private checkerPattern(pal: StagePaint): CanvasPattern | null {
-    const key = `${this.dpr}|${pal.checkerA}|${pal.checkerB}`;
+    const key = `${this.dpr}|${pal.checkerA}|${pal.checkerB}|${Stage.prefs.cell}`;
     if (this.checker?.key === key) return this.checker.pattern;
-    const cell = Math.max(1, Math.round(8 * this.dpr));
+    const cell = Math.max(1, Math.round(Stage.prefs.cell * this.dpr));
     const tile = createSurface(cell * 2, cell * 2);
     const c = tile.getContext('2d') as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
     c.fillStyle = pal.checkerA;
@@ -228,7 +228,7 @@ export class Stage {
     if (gpuLayers && this.gpu) {
       this.gpu.document?.(p.doc.width, p.doc.height);
       this.gpu.render(gpuLayers, [z, 0, 0, z, ox, oy], v.zoom, [vis.x, vis.y, vis.x + vis.w, vis.y + vis.h],
-        { a: this.rgb(pal.checkerA), b: this.rgb(pal.checkerB), cell: Math.max(1, Math.round(8 * this.dpr)), origin: [Math.round(ox), Math.round(oy)] });
+        { a: this.rgb(pal.checkerA), b: this.rgb(pal.checkerB), cell: Math.max(1, Math.round(Stage.prefs.cell * this.dpr)), origin: [Math.round(ox), Math.round(oy)] });
     } else if (v.zoom >= 2) {
       const d = intersectRect(integral({ x: (vis.x - ox) / z, y: (vis.y - oy) / z, w: vis.w / z, h: vis.h / z }), { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
       if (d) {
@@ -267,7 +267,7 @@ export class Stage {
       for (const [step, alpha] of [[sub, 0.35], [major, 0.9]] as const) {
         if (step * v.zoom < 4) continue;
         g.globalAlpha = alpha;
-        g.strokeStyle = pal.grid;
+        g.strokeStyle = Stage.prefs.gridColor || pal.grid;
         g.beginPath();
         for (let x = step; x < W; x += step) { const sx = Math.round(x0 + x * v.zoom) + 0.5; g.moveTo(sx, y0); g.lineTo(sx, y1); }
         for (let y = step; y < H; y += step) { const sy = Math.round(y0 + y * v.zoom) + 0.5; g.moveTo(x0, sy); g.lineTo(x1, sy); }
@@ -277,7 +277,7 @@ export class Stage {
     }
     const draft = this.engine.guideDraft, guides = (p.doc.guides ?? []).map((x, i) => (draft && draft.index === i ? null : x));
     if (vw.guides || draft) {
-      g.strokeStyle = pal.accent;
+      g.strokeStyle = Stage.prefs.guideColor || pal.accent;
       g.beginPath();
       for (const x of [...guides, draft].filter((q): q is NonNullable<typeof q> => !!q && (vw.guides || q === draft))) {
         if (x.axis === 'x') { const sx = Math.round(v.panX + x.at * v.zoom) + 0.5; g.moveTo(sx, 0); g.lineTo(sx, this.cssH); }
@@ -289,6 +289,10 @@ export class Stage {
   }
 
   /** A major tick step in document pixels at least 60 screen pixels apart, from 1, 2, 5 and their powers of ten. */
+  /** Preferences the stage draws with (set by the app from Preferences): the checkerboard's cell, what the wheel does,
+   *  the rulers' units, and the grid's and guides' colours ('' is the theme's). */
+  static prefs: { cell: number; zoomWheel: boolean; rulerUnits: 'px' | 'in' | 'cm' | 'mm' | '%'; gridColor: string; guideColor: string } = { cell: 8, zoomWheel: false, rulerUnits: 'px', gridColor: '', guideColor: '' };
+
   static rulerStep(zoom: number): number {
     for (let k = 0; k < 8; k++) for (const m of [1, 2, 5]) { const s = m * 10 ** k; if (s * zoom >= 60) return s; }
     return 1e8;
@@ -300,9 +304,13 @@ export class Stage {
     setHidden(this.rulerH, !show);
     setHidden(this.rulerV, !show);
     if (!show) return;
-    const v = (this.engine.current as NonNullable<Engine['current']>).viewport, pal = paint(), d = this.dpr, step = Stage.rulerStep(v.zoom);
-    const minor = step * v.zoom >= 150 ? step / 10 : step / 5;
+    const p = this.engine.current as NonNullable<Engine['current']>, v = p.viewport, pal = paint(), d = this.dpr;
+    // Preferences > Units & Rulers: each ruler in the chosen unit (the document's resolution; percent of its side), its
+    // ticks at round steps of that unit, as Photoshop's.
+    const res = p.doc.resolution || 72, u = Stage.prefs.rulerUnits;
     for (const [c, horiz] of [[this.rulerH, true], [this.rulerV, false]] as const) {
+      const k = u === 'in' ? res : u === 'cm' ? res / 2.54 : u === 'mm' ? res / 25.4 : u === '%' ? (horiz ? p.doc.width : p.doc.height) / 100 : 1;
+      const zk = v.zoom * k, step = Stage.rulerStep(zk), minor = step * zk >= 150 ? step / 10 : step / 5;
       const g = c.getContext('2d');
       if (!g) continue;
       const len = horiz ? this.cssW : this.cssH, pan = horiz ? v.panX : v.panY;
@@ -315,9 +323,9 @@ export class Stage {
       g.lineWidth = 1;
       g.beginPath();
       if (horiz) { g.moveTo(0, RULER - 0.5); g.lineTo(len, RULER - 0.5); } else { g.moveTo(RULER - 0.5, 0); g.lineTo(RULER - 0.5, len); }
-      const first = Math.floor(-pan / v.zoom / minor) * minor;
-      for (let t = first; t * v.zoom + pan <= len; t += minor) {
-        const s = Math.round(t * v.zoom + pan) + 0.5, isMajor = Math.abs(t / step - Math.round(t / step)) < 1e-6, tick = isMajor ? RULER : RULER / 3;
+      const first = Math.floor(-pan / zk / minor) * minor;
+      for (let t = first; t * zk + pan <= len; t += minor) {
+        const s = Math.round(t * zk + pan) + 0.5, isMajor = Math.abs(t / step - Math.round(t / step)) < 1e-6, tick = isMajor ? RULER : RULER / 3;
         if (horiz) { g.moveTo(s, RULER - tick); g.lineTo(s, RULER); } else { g.moveTo(RULER - tick, s); g.lineTo(RULER, s); }
         if (isMajor) {
           const label = String(Math.round(t));
@@ -595,7 +603,8 @@ export class Stage {
       const v = this.engine.current?.viewport;
       if (!v) return;
       const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? this.cssH : 1;
-      if (e.ctrlKey || e.metaKey) {
+      // Preferences > Tools > Zoom with Scroll Wheel swaps the two: the wheel zooms and Ctrl or Cmd with it scrolls.
+      if ((e.ctrlKey || e.metaKey) !== Stage.prefs.zoomWheel) {
         this.engine.zoomTo(v.zoom * Math.exp(-e.deltaY * unit * 0.0025), this.pointer(e).screen);
         return;
       }

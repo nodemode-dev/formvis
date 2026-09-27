@@ -316,6 +316,8 @@ export class Engine {
   /** Photoshop's Automatically Create First Snapshot: each document keeps itself as opened, the History Brush's first
    *  source, within the snapshots' memory budget (past it, none is taken and the brush says so). */
   autoFirstSnapshot = true;
+  /** Preferences > Cursors: how painting tools show where they will paint (drawn by brush-common's drawBrushCursor). */
+  cursorPrefs: { paint: 'tip' | 'precise' | 'standard'; crosshair: boolean } = { paint: 'tip', crosshair: false };
   private openingSnapshot(p: Project): void {
     if (!this.autoFirstSnapshot || this.docBytes(p.doc) > this.snapshotByteLimit) return;
     this.historySnapshots.set(p, [{ id: uid(), name: p.name, state: { doc: this.copyDoc(p.doc), activeId: p.activeId, selection: p.selection } }]);

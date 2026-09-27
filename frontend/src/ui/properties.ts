@@ -69,6 +69,8 @@ export class PropertiesColumn {
   static showingCollapsed = false;
   /** Below this much canvas beside the open column, the column shows as its strip until the window widens again. */
   static readonly MIN_CANVAS = 420;
+  /** Preferences > Workspace: whether a narrow window shows the column as its icons. */
+  static narrowCollapse = true;
   /** The open column's width: dragged by its left edge, 220 to 560 px, remembered (the owner's walkthrough). */
   static openWidth(): number { try { const w = Number(localStorage.getItem('sonny.propsOpenW')); return w >= 220 && w <= 560 ? w : 284; } catch { return 284; } }
   private relayoutStrip: () => void = () => undefined;
@@ -132,7 +134,7 @@ export class PropertiesColumn {
     const measure = (): void => {
       const col = host.parentElement?.querySelector<HTMLElement>(':scope > .cv-stage-col');
       const openW = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--cv-props-open-w')) || 284;
-      narrow = !!col && col.clientWidth - (openW - 46) < PropertiesColumn.MIN_CANVAS;
+      narrow = PropertiesColumn.narrowCollapse && !!col && col.clientWidth - (openW - 46) < PropertiesColumn.MIN_CANVAS;
       show();
     };
     window.addEventListener('resize', measure);

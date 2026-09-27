@@ -50,7 +50,7 @@ import { IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from 
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
-import { applyPrefs, loadPrefs, savePrefs } from './ui/prefs';
+import { CHECKER_CELL, CHECKER_PAIR, applyPrefs, loadPrefs, savePrefs, type Prefs } from './ui/prefs';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
 import { GpuDisplay, type ScreenDisplay } from './gpu/display';
 import { benchText, runBenchmark } from './gpu/bench';
@@ -210,6 +210,18 @@ export function startApp(): void {
   applyRail();
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
+  // Preferences the interface draws with (the engine's are applyPrefs'): the stage's checkerboard, wheel, rulers, grid
+  // and guides, and the side column's narrow-window icons.
+  const applyUiPrefs = (pr: Prefs): void => {
+    Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor };
+    const [a, b] = CHECKER_PAIR[pr.checkerColors];
+    document.documentElement.style.setProperty('--cv-checker-a', a);
+    document.documentElement.style.setProperty('--cv-checker-b', pr.checkerSize === 'none' ? a : b);
+    PropertiesColumn.narrowCollapse = pr.narrowCollapse;
+    stage.restyle();
+    window.dispatchEvent(new Event('resize'));
+  };
+  applyUiPrefs(loadPrefs());
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
   // The Properties column (Phase 21), shown unless hidden from Window > Properties Column (remembered).
   const props = new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); }, () => syncPropsCol());
@@ -800,7 +812,7 @@ export function startApp(): void {
     color: new ColorPickerDialog(engine),
     liveMask: new LiveMaskDialog(),
     open: new OpenDialog({ openLibrary, openFiles, openFolder }),
-    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); syncEngineDevice(); }),
+    settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); applyUiPrefs(pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); syncEngineDevice(); }),
     shortcuts: new ShortcutsDialog(commands),
     about: new AboutDialog(),
     brushSettings: new BrushSettingsDialog(engine),
@@ -832,6 +844,7 @@ export function startApp(): void {
   void loadImportedBrushes().then(() => engine.emit('options', null));
   const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr" data-role="import-brushes" hidden>');
   document.body.appendChild(abrInput);
+  dialogs.settings.workspaceLock = { get: () => dock.locked, set: (on) => { dock.locked = on; } };   // Preferences > Workspace
   commands.add(
     { id: 'load-brushes', label: 'Load Brushes...', run: () => abrInput.click() },
     { id: 'swatch-add', label: 'Add Foreground Color to Swatches', run: () => swatches.addForeground() },
