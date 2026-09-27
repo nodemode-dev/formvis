@@ -13,6 +13,8 @@
    3. Dark is the default. Light is body.theme-light, an override layer. */
 
 :root {
+  /* Native controls (checkboxes, dropdowns, scrollbars) in the dark, as the target's; the light profiles set light. */
+  color-scheme: dark;
   /* ── accent (settings-driven in the app; --accent-color-dim is accent + 33 alpha); the target's lavender ── */
   --accent-color: #aba0d3;
   --accent-color-dim: #aba0d333;
@@ -211,3 +213,5 @@ body.nm-home .nm-canvas-surface { display: none !important; }
   --cv-doc-edge: rgba(0, 0, 0, 0.55);
   --z-toast: 3000;
 }
+
+body.theme-light { color-scheme: light; }

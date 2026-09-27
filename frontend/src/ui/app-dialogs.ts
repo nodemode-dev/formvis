@@ -13,47 +13,162 @@ import { ENGINE_CHOICES, RECOVERY_CHOICES, loadPrefs, savePrefs, type EngineDevi
 import { RENDERER_CHOICES, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
 
-const PRESETS: ReadonlyArray<[string, number, number]> = [
-  ['HD 1920 \u00d7 1080', 1920, 1080], ['4K 3840 \u00d7 2160', 3840, 2160], ['Square 2048', 2048, 2048],
-  ['Portrait 1080 \u00d7 1350', 1080, 1350], ['A4 at 300 ppi', 2480, 3508], ['Letter at 300 ppi', 2550, 3300],
+/** New Document presets by category (Phase 21, UI_SPEC.md section 4, the target's s02 to s14): name, width, height in
+ *  pixels and resolution in ppi; common sizes for each kind of work (the Web set as the target lists it). */
+interface DocPreset { name: string; w: number; h: number; ppi: number }
+const PRESET_GROUPS: ReadonlyArray<{ id: string; label: string; presets: DocPreset[] }> = [
+  { id: 'photo', label: 'Photo', presets: [
+    { name: 'Landscape 4 × 6', w: 1800, h: 1200, ppi: 300 }, { name: 'Portrait 4 × 6', w: 1200, h: 1800, ppi: 300 }, { name: 'Landscape 5 × 7', w: 2100, h: 1500, ppi: 300 }, { name: 'Portrait 5 × 7', w: 1500, h: 2100, ppi: 300 },
+    { name: 'Landscape 8 × 10', w: 3000, h: 2400, ppi: 300 }, { name: 'Portrait 8 × 10', w: 2400, h: 3000, ppi: 300 }, { name: 'Square 12 × 12', w: 3600, h: 3600, ppi: 300 }] },
+  { id: 'print', label: 'Print', presets: [
+    { name: 'Letter', w: 2550, h: 3300, ppi: 300 }, { name: 'Legal', w: 2550, h: 4200, ppi: 300 }, { name: 'Tabloid', w: 3300, h: 5100, ppi: 300 }, { name: 'A5', w: 1748, h: 2480, ppi: 300 },
+    { name: 'A4', w: 2480, h: 3508, ppi: 300 }, { name: 'A3', w: 3508, h: 4961, ppi: 300 }, { name: 'Postcard', w: 1800, h: 1200, ppi: 300 }, { name: 'Business Card', w: 1050, h: 600, ppi: 300 }] },
+  { id: 'art', label: 'Art & Illustration', presets: [
+    { name: 'Poster 18 × 24', w: 5400, h: 7200, ppi: 300 }, { name: 'Canvas 16 × 20', w: 4800, h: 6000, ppi: 300 }, { name: 'Square 2048', w: 2048, h: 2048, ppi: 72 }, { name: 'Square 4096', w: 4096, h: 4096, ppi: 72 },
+    { name: 'Sketch 1920 × 1080', w: 1920, h: 1080, ppi: 72 }, { name: 'Comic Page', w: 1988, h: 3075, ppi: 300 }] },
+  { id: 'web', label: 'Web', presets: [
+    { name: 'Web Large 1920 × 1080', w: 1920, h: 1080, ppi: 72 }, { name: 'Web Medium 1440 × 900', w: 1440, h: 900, ppi: 72 }, { name: 'Web Small 1366 × 768', w: 1366, h: 768, ppi: 72 }, { name: 'Web 1280 × 800', w: 1280, h: 800, ppi: 72 },
+    { name: 'MacBook Pro 16"', w: 3072, h: 1920, ppi: 144 }, { name: 'iMac 27"', w: 2560, h: 1440, ppi: 144 }, { name: 'QHD 2560 × 1440', w: 2560, h: 1440, ppi: 72 }, { name: 'UHD 3840 × 2160', w: 3840, h: 2160, ppi: 72 }] },
+  { id: 'mobile', label: 'Mobile', presets: [
+    { name: 'iPhone 15 Pro', w: 1179, h: 2556, ppi: 460 }, { name: 'iPhone 15 Pro Max', w: 1290, h: 2796, ppi: 460 }, { name: 'iPhone SE', w: 750, h: 1334, ppi: 326 }, { name: 'Pixel 8', w: 1080, h: 2400, ppi: 428 },
+    { name: 'iPad Pro 12.9"', w: 2048, h: 2732, ppi: 264 }, { name: 'iPad 10.9"', w: 1640, h: 2360, ppi: 264 }, { name: 'Apple Watch 45 mm', w: 396, h: 484, ppi: 326 }] },
+  { id: 'film', label: 'Film & Video', presets: [
+    { name: 'HDTV 1080p', w: 1920, h: 1080, ppi: 72 }, { name: 'HDTV 720p', w: 1280, h: 720, ppi: 72 }, { name: 'UHD 4K', w: 3840, h: 2160, ppi: 72 }, { name: 'DCI 4K', w: 4096, h: 2160, ppi: 72 },
+    { name: 'UHD 8K', w: 7680, h: 4320, ppi: 72 }, { name: 'Vertical 1080 × 1920', w: 1080, h: 1920, ppi: 72 }] },
+  { id: 'social', label: 'Social', presets: [
+    { name: 'Instagram Square', w: 1080, h: 1080, ppi: 72 }, { name: 'Instagram Portrait', w: 1080, h: 1350, ppi: 72 }, { name: 'Instagram Story', w: 1080, h: 1920, ppi: 72 }, { name: 'Facebook Post', w: 1200, h: 630, ppi: 72 },
+    { name: 'X Post', w: 1600, h: 900, ppi: 72 }, { name: 'YouTube Thumbnail', w: 1280, h: 720, ppi: 72 }, { name: 'LinkedIn Banner', w: 1584, h: 396, ppi: 72 }, { name: 'Pinterest Pin', w: 1000, h: 1500, ppi: 72 }] },
 ];
+type Unit = 'px' | 'in' | 'cm' | 'mm';
+const PER_INCH: Record<Unit, number> = { px: 0, in: 1, cm: 2.54, mm: 25.4 };
 
+/** New Document as the target's (Phase 21, UI_SPEC.md section 4): categories at the left; a search over every preset and
+ *  the presets as cards, each preview shaped as its document; at the right Name (pre-selected), Width, a link, Height and
+ *  Unit, Resolution, Orientation, Color Mode (sonny's documents are RGB, 8 bit), Background Contents and Artboards; a
+ *  live summary of the size and its memory (3 bytes a pixel, as Photoshop counts RGB); Cancel at the left, Create at the
+ *  right. Every value is what the document is made with. */
 export class NewCanvasDialog extends Dialog {
-  private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" value="Untitled" spellcheck="false">');
-  private readonly preset = el<HTMLSelectElement>(`<select class="cv-input"><option value="">Custom</option>${PRESETS.map(([label], i) => `<option value="${i}">${label}</option>`).join('')}</select>`);
-  private readonly width = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="30000" step="1" value="1920">');
-  private readonly height = el<HTMLInputElement>('<input class="cv-input" type="number" min="1" max="30000" step="1" value="1080">');
-  private readonly fill = el<HTMLSelectElement>('<select class="cv-input"><option value="transparent">Transparent</option><option value="white">White</option><option value="background">Background color</option></select>');
+  private readonly name = el<HTMLInputElement>('<input class="cv-nd-input" type="text" value="Untitled-1" spellcheck="false" aria-label="Name">');
+  private readonly wIn = el<HTMLInputElement>('<input class="cv-nd-input cv-nd-mono" type="text" inputmode="decimal" aria-label="Width">');
+  private readonly hIn = el<HTMLInputElement>('<input class="cv-nd-input cv-nd-mono" type="text" inputmode="decimal" aria-label="Height">');
+  private readonly unit = el<HTMLSelectElement>('<select class="cv-nd-input cv-nd-mono" aria-label="Unit"><option value="px">px</option><option value="in">in</option><option value="cm">cm</option><option value="mm">mm</option></select>');
+  private readonly res = el<HTMLInputElement>('<input class="cv-nd-input cv-nd-mono" type="text" inputmode="decimal" value="72" aria-label="Resolution">');
+  private readonly fill = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Background Contents"><option value="white">White</option><option value="background">Background Color</option><option value="transparent">Transparent</option></select>');
+  private readonly artboards = el<HTMLInputElement>('<input type="checkbox" aria-label="Artboards">');
+  private readonly link = el<HTMLButtonElement>(`<button class="cv-nd-link is-on" type="button" title="Keep the proportions" aria-pressed="true">${icon('link', 14)}</button>`);
+  private readonly cards = el('<div class="cv-nd-cards"></div>');
+  private readonly search = el<HTMLInputElement>('<input class="cv-nd-search" type="search" placeholder="Search all presets..." aria-label="Search all presets">');
+  private readonly summary = el('<div class="cv-nd-summary"><div class="cv-nd-size"></div><div class="cv-nd-meta"></div></div>');
+  private readonly orient: HTMLButtonElement[];
+  private category = 'web';
+  private picked: DocPreset | null = null;
+  private px = { w: 1920, h: 1080 };
 
   constructor(private readonly engine: Engine) {
-    super('New Canvas', 420);
-    this.field('Name', this.name);
-    this.field('Preset', this.preset);
-    this.field('Width (px)', this.width);
-    this.field('Height (px)', this.height);
-    this.field('Contents', this.fill);
-    this.body.appendChild(el('<p class="cv-note">Each side 1 to 30,000 px, 100 megapixels at most.</p>'));
+    super('New Document', 1000);
+    q<HTMLElement>(this.scrim, '.cv-dialog').classList.add('cv-newdoc');
+    const cats = el('<nav class="cv-nd-cats" aria-label="Categories"></nav>');
+    for (const g of PRESET_GROUPS) {
+      const b = el<HTMLButtonElement>('<button class="cv-nd-cat" type="button"></button>');
+      setText(b, g.label);
+      b.dataset.cat = g.id;
+      b.addEventListener('click', () => { this.category = g.id; this.search.value = ''; this.renderCards(); });
+      cats.appendChild(b);
+    }
+    const mid = el('<div class="cv-nd-mid"><label class="cv-nd-searchbox"></label></div>');
+    (mid.querySelector('.cv-nd-searchbox') as HTMLElement).append(el(`<span>${icon('search', 15)}</span>`), this.search);
+    mid.appendChild(this.cards);
+    this.search.addEventListener('input', () => this.renderCards());
+    const side = el('<div class="cv-nd-side"></div>');
+    const label = (t: string, ...c: HTMLElement[]): HTMLElement => { const f = el(`<div class="cv-nd-field"><span class="cv-nd-label">${t}</span><div class="cv-nd-row"></div></div>`); (f.querySelector('.cv-nd-row') as HTMLElement).append(...c); return f; };
+    const pair = (a: HTMLElement, b: HTMLElement): HTMLElement => { const r = el('<div class="cv-nd-pair"></div>'); r.append(a, b); return r; };
+    this.orient = (['portrait', 'landscape'] as const).map((o) => {
+      const b = el<HTMLButtonElement>(`<button type="button" data-orient="${o}" title="${o === 'portrait' ? 'Portrait' : 'Landscape'}" aria-label="${o === 'portrait' ? 'Portrait' : 'Landscape'}"><span class="cv-nd-orient-${o}"></span></button>`);
+      b.addEventListener('click', () => { const portrait = o === 'portrait'; if ((this.px.h > this.px.w) !== portrait && this.px.w !== this.px.h) { this.px = { w: this.px.h, h: this.px.w }; this.picked = null; this.sync(); } });
+      return b;
+    });
+    const seg = el('<div class="cv-nd-seg"></div>');
+    seg.append(...this.orient);
+    const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode" disabled><option>RGB Color</option></select>');
+    const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth" disabled><option>8 bit</option></select>');
+    const ab = el('<label class="cv-nd-check"></label>');
+    ab.append(this.artboards, el('<span>Artboards</span>'));
+    const wBox = label('Width', this.wIn), hBox = label('Height', this.hIn), uBox = label('Unit', this.unit);
+    const sizeRow = el('<div class="cv-nd-sizes"></div>');
+    sizeRow.append(wBox, this.link, hBox, uBox);
+    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), label('Background Contents', this.fill), ab, this.summary);
+    const grid = el('<div class="cv-nd-grid"></div>');
+    grid.append(cats, mid, side);
+    this.body.appendChild(grid);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Create', 'primary', () => this.create());
-    this.preset.addEventListener('change', () => {
-      const p = PRESETS[Number(this.preset.value)];
-      if (!this.preset.value || !p) return;
-      this.width.value = String(p[1]);
-      this.height.value = String(p[2]);
-    });
-    for (const i of [this.width, this.height]) i.addEventListener('input', () => { this.preset.value = ''; });
-    for (const i of [this.name, this.width, this.height]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.create(); } });
+    this.link.addEventListener('click', () => { const on = !this.link.classList.contains('is-on'); this.link.classList.toggle('is-on', on); this.link.setAttribute('aria-pressed', String(on)); });
+    const fromUnit = (v: number): number => { const u = this.unit.value as Unit, r = this.ppi(); return Math.max(1, Math.round(u === 'px' ? v : (v / PER_INCH[u]) * r)); };
+    this.wIn.addEventListener('change', () => { const n = parseFloat(this.wIn.value); if (!Number.isFinite(n)) return this.sync(); const w = fromUnit(n); this.px = { w, h: this.linked() ? Math.max(1, Math.round((w * this.px.h) / this.px.w)) : this.px.h }; this.picked = null; this.sync(); });
+    this.hIn.addEventListener('change', () => { const n = parseFloat(this.hIn.value); if (!Number.isFinite(n)) return this.sync(); const h = fromUnit(n); this.px = { h, w: this.linked() ? Math.max(1, Math.round((h * this.px.w) / this.px.h)) : this.px.w }; this.picked = null; this.sync(); });
+    this.unit.addEventListener('change', () => this.sync());
+    this.res.addEventListener('change', () => this.sync());
+    for (const i of [this.name, this.wIn, this.hIn, this.res]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); this.create(); } });
+    this.pick(PRESET_GROUPS[3].presets[0]);
+  }
+
+  private linked(): boolean { return this.link.classList.contains('is-on'); }
+  private ppi(): number { const r = parseFloat(this.res.value); return Number.isFinite(r) && r >= 1 && r <= 10000 ? r : 72; }
+
+  private pick(p: DocPreset): void {
+    this.picked = p;
+    this.px = { w: p.w, h: p.h };
+    this.res.value = String(p.ppi);
+    this.unit.value = 'px';
+    this.sync();
+  }
+
+  private renderCards(): void {
+    for (const b of this.scrim.querySelectorAll<HTMLElement>('.cv-nd-cat')) b.classList.toggle('is-on', !this.search.value.trim() && b.dataset.cat === this.category);
+    const q0 = this.search.value.trim().toLowerCase();
+    const list = q0 ? PRESET_GROUPS.flatMap((g) => g.presets).filter((p) => p.name.toLowerCase().includes(q0)) : PRESET_GROUPS.find((g) => g.id === this.category)?.presets ?? [];
+    this.cards.textContent = '';
+    for (const p of list) {
+      const card = el<HTMLButtonElement>('<button class="cv-nd-card" type="button"><span class="cv-nd-thumb"><span class="cv-nd-page"></span></span><span class="cv-nd-name"></span><span class="cv-nd-spec"></span></button>');
+      const page = card.querySelector('.cv-nd-page') as HTMLElement, s = Math.min(150 / p.w, 76 / p.h);
+      page.style.width = `${Math.max(8, Math.round(p.w * s))}px`;
+      page.style.height = `${Math.max(8, Math.round(p.h * s))}px`;
+      setText(card.querySelector('.cv-nd-name') as HTMLElement, p.name);
+      setText(card.querySelector('.cv-nd-spec') as HTMLElement, `${p.w} × ${p.h} px · ${p.ppi} ppi`);
+      card.title = p.name;
+      card.classList.toggle('is-on', this.picked === p);
+      card.addEventListener('click', () => { this.pick(p); this.renderCards(); });
+      card.addEventListener('dblclick', () => { this.pick(p); this.create(); });
+      this.cards.appendChild(card);
+    }
+    if (!list.length) this.cards.appendChild(el('<p class="cv-nd-none">No preset matches.</p>'));
+  }
+
+  private sync(): void {
+    const u = this.unit.value as Unit, r = this.ppi();
+    const show = (px: number): string => (u === 'px' ? String(px) : String(Math.round((px / r) * PER_INCH[u] * 100) / 100));
+    if (document.activeElement !== this.wIn) this.wIn.value = show(this.px.w);
+    if (document.activeElement !== this.hIn) this.hIn.value = show(this.px.h);
+    for (const b of this.orient) b.classList.toggle('is-on', b.dataset.orient === (this.px.h > this.px.w ? 'portrait' : 'landscape'));
+    const mb = (this.px.w * this.px.h * 3) / (1024 * 1024);
+    (this.summary.querySelector('.cv-nd-size') as HTMLElement).innerHTML = `${this.px.w} × ${this.px.h} <span>px</span>`;
+    setText(this.summary.querySelector('.cv-nd-meta') as HTMLElement, `RGB Color · 8 bit · ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`}`);
+    this.renderCards();
   }
 
   show(): void {
-    this.open(this.width);
-    this.width.select();
+    this.name.value = `Untitled-${this.engine.projects.length + 1}`;
+    this.renderCards();
+    this.open(this.name);
+    this.name.select();
   }
 
   private create(): void {
-    const w = Number(this.width.value), h = Number(this.height.value);
     const fill = this.fill.value as 'transparent' | 'white' | 'background';
-    if (this.engine.newDocument(w, h, this.name.value.trim() || 'Untitled', fill)) this.close();
+    const p = this.engine.newDocument(this.px.w, this.px.h, this.name.value.trim() || 'Untitled', fill, this.ppi());
+    if (!p) return;
+    if (this.artboards.checked) this.engine.newArtboard({ x: 0, y: 0, w: this.px.w, h: this.px.h }, fill === 'transparent' ? null : { r: 255, g: 255, b: 255 });
+    this.close();
   }
 }
 

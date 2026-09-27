@@ -274,12 +274,12 @@ export class Engine {
     this.emit('history', null);
   }
 
-  newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent'): Project | null {
+  newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels) {
       this.notice('Canvas sides must be 1 to 30,000 px, and the canvas at most 100 megapixels.', 'error');
       return null;
     }
-    const base: Doc = { id: uid(), width, height, resolution: 72, layers: [] };
+    const base: Doc = { id: uid(), width, height, resolution: Number.isFinite(resolution) && resolution >= 1 && resolution <= 10000 ? resolution : 72, layers: [] };
     let layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', base);
     if (fill !== 'transparent') layer = { ...layer, raster: Raster.filled(width, height, fill === 'white' ? '#ffffff' : rgbCss(this.bg)) };
     return this.addProject({ ...base, layers: [layer] }, name, layer.id);
