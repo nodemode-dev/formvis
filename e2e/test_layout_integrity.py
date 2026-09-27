@@ -58,3 +58,27 @@ def test_a_narrow_window_shows_the_column_as_its_strip_and_keeps_the_choice(page
         page.wait_for_function("!document.querySelector('.cv-props-col').classList.contains('is-collapsed')")
     finally:
         page.set_viewport_size({"width": 1400, "height": 900})
+
+
+def test_reset_panels_restores_the_whole_layout(page):
+    try:
+        page.evaluate("window.sonny.engine.newDocument(300, 200, 'R', 'white')")
+        # Disarrange: minimise Swatches on its Color tab, Layers on Paths, the side column collapsed and wider, the dock collapsed.
+        page.locator("section.cv-swatches .cv-group-tab", has_text="Color").click()
+        page.locator("section.cv-swatches .cv-group-min").click()
+        page.locator(".cv-layers-panel .cv-group-tab[data-tab='paths']").click()
+        page.evaluate("localStorage.setItem('sonny.propsOpenW', '400'); document.documentElement.style.setProperty('--cv-props-open-w', '400px')")
+        page.locator(".cv-props-col .cv-group-collapse").click()
+        page.locator(".cv-dock-collapse").click()
+        page.evaluate("window.sonny.commands.run('reset-panels')")
+        page.wait_for_timeout(300)
+        assert not page.evaluate("document.querySelector('.cv-props-col').classList.contains('is-collapsed')")
+        assert abs(page.locator(".cv-props-col").bounding_box()["width"] - 284) <= 1
+        assert not page.evaluate("document.querySelector('.cv-layers').classList.contains('is-collapsed')")
+        assert abs(page.locator(".cv-layers").bounding_box()["width"] - 288) <= 1
+        assert not page.evaluate("document.querySelector('section.cv-swatches').classList.contains('is-min')")
+        assert page.locator("section.cv-swatches .cv-group-tab.is-active").inner_text() == "Swatches"
+        assert page.locator(".cv-layers-panel .cv-group-tab.is-active").inner_text() == "Layers"
+    finally:
+        page.evaluate("for (const k of Object.keys(localStorage)) if (k.startsWith('sonny.')) localStorage.removeItem(k)")
+        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")

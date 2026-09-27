@@ -50,3 +50,13 @@ def test_create_makes_the_document_with_its_resolution_and_an_artboard(page):
     got = page.evaluate("(() => { const p = window.sonny.engine.current; return { w: p.doc.width, h: p.doc.height, r: p.doc.resolution, boards: window.sonny.engine.artboards().length }; })()")
     assert got == {"w": 1748, "h": 2480, "r": 300, "boards": 1}, got
     assert not page.locator(DLG).count()
+
+
+def test_previews_fit_their_cards_and_color_mode_opens(page):
+    d = open_dialog(page)
+    d.locator(".cv-nd-cat", has_text="Social").click()
+    assert page.evaluate("[...document.querySelectorAll('.cv-nd-card')].every((c) => { const a = c.getBoundingClientRect(), b = c.querySelector('.cv-nd-page').getBoundingClientRect(); return b.left >= a.left - 0.5 && b.right <= a.right + 0.5; })")
+    assert page.evaluate("[...document.querySelectorAll('.cv-newdoc select.cv-dd-native')].every((s) => getComputedStyle(s).opacity === '0')")   # no stray line
+    d.locator(".cv-dd-btn[aria-label='Color Mode']").click()
+    assert page.locator(".cv-dd-pop:not([hidden]) .cv-dd-item", has_text="RGB Color").is_visible()
+    page.keyboard.press("Escape"); page.keyboard.press("Escape")

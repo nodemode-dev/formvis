@@ -76,6 +76,13 @@ export class PropertiesColumn {
   private relayoutStrip: () => void = () => undefined;
   /** Panels moved in or out (the Dock): the strip and the collapse button follow. */
   relayout(): void { this.relayoutStrip(); }
+  /** Window > Reset Panels: open, at the default width. */
+  resetLayout(): void {
+    try { localStorage.removeItem(PropertiesColumn.COLLAPSED_KEY); localStorage.removeItem('sonny.propsOpenW'); } catch { /* nothing kept */ }
+    document.documentElement.style.setProperty('--cv-props-open-w', '284px');
+    this.expand();
+  }
+  private expand: () => void = () => undefined;
 
   private collapsible(): void {
     const host = this.root;
@@ -145,6 +152,7 @@ export class PropertiesColumn {
       show();
     };
     (strip.querySelector('.cv-strip-expand') as HTMLElement).addEventListener('click', () => set(false));
+    this.expand = () => set(false);
     collapse.addEventListener('click', () => set(true));
     this.relayoutStrip();
     // The width: a handle on the open column's left edge.

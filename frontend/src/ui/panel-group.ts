@@ -120,6 +120,12 @@ export class PanelGroup {
       if (to && from && from !== to) PanelGroup.moveTab(tid, from, to);
     }
   }
+  /** Window > Reset Panels: each group on its first tab and open. */
+  static resetStates(): void {
+    try { localStorage.removeItem(KEY); } catch { /* nothing kept */ }
+    for (const g of PanelGroup.all.values()) { const first = g.tabs.keys().next().value as string | undefined; if (first) g.show(first, false); g.setMinimised(false, false); }
+  }
+
   /** Window > Reset Panels: every tab back in the group it began in. */
   static resetHomes(defaults: Record<string, string>): void {
     try { localStorage.removeItem(HOMES); } catch { /* nothing kept */ }

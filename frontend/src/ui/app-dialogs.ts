@@ -89,8 +89,9 @@ export class NewCanvasDialog extends Dialog {
     });
     const seg = el('<div class="cv-nd-seg"></div>');
     seg.append(...this.orient);
-    const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode" disabled><option>RGB Color</option></select>');
-    const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth" disabled><option>8 bit</option></select>');
+    // What sonny's documents are, as dropdowns that open like any other (disabled, they looked broken: the owner's walkthrough).
+    const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode"><option>RGB Color</option></select>');
+    const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth"><option>8 bit</option></select>');
     const ab = el('<label class="cv-nd-check"></label>');
     ab.append(this.artboards, el('<span>Artboards</span>'));
     const wBox = label('Width', this.wIn), hBox = label('Height', this.hIn), uBox = label('Unit', this.unit);
@@ -130,9 +131,12 @@ export class NewCanvasDialog extends Dialog {
     this.cards.textContent = '';
     for (const p of list) {
       const card = el<HTMLButtonElement>('<button class="cv-nd-card" type="button"><span class="cv-nd-thumb"><span class="cv-nd-page"></span></span><span class="cv-nd-name"></span><span class="cv-nd-spec"></span></button>');
-      const page = card.querySelector('.cv-nd-page') as HTMLElement, s = Math.min(150 / p.w, 76 / p.h);
-      page.style.width = `${Math.max(8, Math.round(p.w * s))}px`;
-      page.style.height = `${Math.max(8, Math.round(p.h * s))}px`;
+      // The document's own proportions, never wider than the card nor taller than the preview area (wide presets used to
+      // spill past the card: the owner's screenshot).
+      const page = card.querySelector('.cv-nd-page') as HTMLElement;
+      page.style.aspectRatio = `${p.w} / ${p.h}`;
+      page.style.width = `min(100%, ${Math.round((76 * p.w) / p.h)}px)`;
+      page.style.height = 'auto';
       setText(card.querySelector('.cv-nd-name') as HTMLElement, p.name);
       setText(card.querySelector('.cv-nd-spec') as HTMLElement, `${p.w} × ${p.h} px · ${p.ppi} ppi`);
       card.title = p.name;

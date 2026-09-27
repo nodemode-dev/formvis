@@ -928,7 +928,14 @@ export function startApp(): void {
     // Paths is a tab of the Layers group (Phase 21): Window > Paths shows the group on its Paths tab.
     { id: 'panel-paths', label: 'Paths', run: () => { if (!dock.isShown('layers')) dock.toggle('layers'); layers.showTab('paths'); } },
     { id: 'panel-properties-col', label: 'Properties Column', checked: propsShown, run: () => { store('sonny.propsCol', propsShown() ? 'hidden' : 'shown'); syncPropsCol(); } },
-    { id: 'reset-panels', label: 'Reset Panels', run: () => { dock.reset(); PanelGroup.resetHomes(TAB_HOMES); } },
+    { id: 'reset-panels', label: 'Reset Panels', run: () => {
+      // The whole panel layout as sonny comes (the owner's walkthrough: Reset Panels left collapsed columns, widths,
+      // minimised groups and chosen tabs as they were), live, the documents untouched.
+      dock.reset(); PanelGroup.resetHomes(TAB_HOMES); PanelGroup.resetStates(); layers.showTab('layers');
+      if (dock.collapsed) dock.setCollapsed(false);
+      store(LAYERS_W_KEY, ''); setStyleVar(root, '--cv-layers-w', '288px');
+      store('sonny.propsCol', 'shown'); props.resetLayout(); syncPropsCol(); props.relayout();
+    } },
     { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },

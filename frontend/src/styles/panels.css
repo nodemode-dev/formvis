@@ -304,7 +304,7 @@
 
 /* Menus as the target's (the owner's Filter menu screenshot): a translucent blurred card; no tick column unless a tick
    can show in that menu; hover a soft highlight; shortcuts grey at the right; a chevron for submenus. */
-.cv-menu { padding: 6px; border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent); border-radius: 12px; background: rgba(40, 39, 44, 0.86); backdrop-filter: blur(24px) saturate(1.4); -webkit-backdrop-filter: blur(24px) saturate(1.4); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55); }
+.cv-menu { padding: 6px; border: 1px solid color-mix(in srgb, var(--text-primary) 12%, transparent); border-radius: 12px; background: rgba(40, 39, 44, 0.86); backdrop-filter: var(--glass-filter); -webkit-backdrop-filter: var(--glass-filter); box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55); }
 .cv-menu-item { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; height: 30px; padding: 0 10px 0 12px; border-radius: 7px; font-size: 14px; color: var(--text-primary); }
 .cv-menu-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cv-menu.has-checks .cv-menu-item { grid-template-columns: 16px minmax(0, 1fr) auto; column-gap: 8px; padding-left: 8px; }
