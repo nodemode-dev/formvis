@@ -67,7 +67,7 @@ def test_brush_settings_opens_with_its_sections_and_edits_the_brush(page):
     assert page.evaluate("window.sonny.commands.run('brush-settings')")
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     heads = dlg.locator("h3").all_inner_texts()
-    assert heads == ["Brush Tip Shape", "Shape Dynamics", "Scattering", "Texture", "Dual Brush"], heads
+    assert heads == ["Brush Tip Shape", "Shape Dynamics", "Scattering", "Texture", "Dual Brush", "Color Dynamics", "Transfer", "Noise and Wet Edges"], heads
     slider = dlg.locator(".cv-field").filter(has=page.get_by_text("Roundness (%)", exact=True)).locator("input[type=range]")
     slider.evaluate("(i) => { i.value = '30'; i.dispatchEvent(new Event('input', { bubbles: true })); }")
     assert page.evaluate("window.sonny.engine.brushShape.roundness") == 30

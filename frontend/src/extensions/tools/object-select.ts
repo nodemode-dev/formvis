@@ -85,7 +85,14 @@ function showHover(engine: Engine, at: Pt): void {
       const data = await request(engine, [[x, y, 1]], null);
       if (!data || engine.tool !== 'objectSelect' || draft) { highlight = null; return; }
       const W = p.doc.width, H = p.doc.height, c = createSurface(W, H), g = ctxOf(c), img = g.createImageData(W, H);
-      for (let i = 0; i < data.length; i++) if (data[i] >= 128) { img.data[i * 4] = 249; img.data[i * 4 + 1] = 115; img.data[i * 4 + 2] = 22; img.data[i * 4 + 3] = 90; }
+      // A light wash with the object's outline, as Photoshop marks it (an orange tint turned a blue object grey, 1.49.10).
+      const on = (x: number, y: number): boolean => x >= 0 && y >= 0 && x < W && y < H && data[y * W + x] >= 128;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (!on(x, y)) continue;
+        const i = (y * W + x) * 4, edge = !on(x - 1, y) || !on(x + 1, y) || !on(x, y - 1) || !on(x, y + 1) || !on(x - 2, y) || !on(x + 2, y) || !on(x, y - 2) || !on(x, y + 2);
+        if (edge) { img.data[i] = 249; img.data[i + 1] = 115; img.data[i + 2] = 22; img.data[i + 3] = 255; }
+        else { img.data[i] = 255; img.data[i + 1] = 255; img.data[i + 2] = 255; img.data[i + 3] = 46; }
+      }
       g.putImageData(img, 0, 0);
       highlight = { mask: c, at };
     } catch { highlight = null; } finally { hoverBusy = false; engine.emit('overlay', null); }

@@ -15,7 +15,7 @@ import type { SampledTip } from './abr';
 /** `flow` (0 to 1, default 1) is Photoshop's Flow: how much paint each dab lays down, so paint builds within a stroke as
  *  dabs overlap, up to the stroke's `opacity`, which caps the stroke as a whole. */
 /** aliased (the Pencil): dabs are pixel-exact circles, every pixel painted fully or not at all. */
-export interface StrokeStyle { aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
+export interface StrokeStyle { bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
 
 /** A sampled tip (from an .abr file) as the brush's colour with the tip's greys as alpha, its longer side `sizePx`. */
 function sampledTip(sizePx: number, tip: SampledTip, color: RGB): Surface {
@@ -109,7 +109,7 @@ export class PixelStroke {
   private readonly paintCtx: Ctx2D;
   private readonly masked: Surface | null;
   private textured: Surface | null = null;
-  private readonly tip: Surface;
+  private tip: Surface;
   private readonly toLocal: Mat;
   private readonly radius: number;
   private spacing: number;
@@ -157,6 +157,12 @@ export class PixelStroke {
   /** Installs a Brush Settings shape: its spacing (a percentage of the diameter, where set), the dual brush's round tip,
    *  and the texture as a tile whose alpha is what it cuts from the paint (darker pattern, more; scaled by Depth). */
   setShape(shape: BrushShape | null, pattern: Surface | null): void {
+    // Color Dynamics, Transfer, Noise and Wet Edges (1.50.1) apply to every brush, a plain round one too.
+    if (shape) {
+      this.colorDyn = shape.color?.on ? { ...shape.color } : null;
+      this.transfer = shape.transfer?.on ? { ...shape.transfer } : null;
+      if (shape.noise || shape.wetEdges) this.tip = shapedTip(this.tip, !!shape.noise, !!shape.wetEdges);
+    }
     if (!shapeActive(shape) || !shape) return;
     this.shape = structuredClone(shape);
     if (shape.spacing !== null) this.spacing = Math.max(0.5, this.style.diameter * (shape.spacing / 100));
@@ -195,11 +201,11 @@ export class PixelStroke {
   private dab(p: Pt, pressure = 1): void {
     if (this.style.aliased) { this.aliasedDab(p, pressure); return; }
     if (this.shape) { this.shapedDab(p, pressure); return; }
-    const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1);
+    const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1) * this.transferAlpha(pressure);
     setMat(this.paintCtx, this.toLocal);
     if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
     const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
-    this.paintCtx.drawImage(this.tip, p.x - rx, p.y - ry, rx * 2, ry * 2);
+    this.paintCtx.drawImage(this.dabTip(), p.x - rx, p.y - ry, rx * 2, ry * 2);
     if (flow < 1) this.paintCtx.globalAlpha = 1;
     const corners = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([ox, oy]) => applyMat(this.toLocal, p.x + ox, p.y + oy));
     const box = integral(boundsOf(corners));
@@ -207,6 +213,42 @@ export class PixelStroke {
     if (!hit) return;
     this.pending = unionRect(this.pending, hit);
     this.touched = unionRect(this.touched, hit);
+  }
+
+  private colorDyn: BrushShape['color'] | null = null;
+  private transfer: BrushShape['transfer'] | null = null;
+  private recolor: Surface | null = null;
+
+  /** Transfer: this dab's share of opacity and flow (jitters, or pen pressure). */
+  private transferAlpha(pressure: number): number {
+    const t = this.transfer;
+    if (!t) return 1;
+    let k = (1 - Math.random() * (t.opacity / 100)) * (1 - Math.random() * (t.flow / 100));
+    if (t.control === 'pressure') k *= Math.max(0, Math.min(1, pressure));
+    return Math.max(0, k);
+  }
+
+  /** The tip for this dab: coloured by Color Dynamics (towards the background, hue, saturation and brightness varied),
+   *  else the stroke's own. */
+  private dabTip(): Surface {
+    const cd = this.colorDyn;
+    if (!cd) return this.tip;
+    const fg = this.style.color, bg = this.style.bg ?? fg, t = Math.random() * (cd.fgBg / 100);
+    let [h, sat, v] = toHsv(fg.r + (bg.r - fg.r) * t, fg.g + (bg.g - fg.g) * t, fg.b + (bg.b - fg.b) * t);
+    h = (h + (Math.random() * 2 - 1) * (cd.hue / 100) * 0.5 + 1) % 1;
+    sat = Math.max(0, Math.min(1, sat + (Math.random() * 2 - 1) * (cd.saturation / 100)));
+    v = Math.max(0, Math.min(1, v + (Math.random() * 2 - 1) * (cd.brightness / 100)));
+    const [r, g, b] = fromHsv(h, sat, v);
+    const w = this.tip.width, ht = this.tip.height;
+    if (!this.recolor || this.recolor.width !== w || this.recolor.height !== ht) this.recolor = createSurface(w, ht);
+    const c = ctxOf(this.recolor);
+    c.globalCompositeOperation = 'copy';
+    c.drawImage(this.tip as CanvasImageSource, 0, 0);
+    c.globalCompositeOperation = 'source-in';
+    c.fillStyle = `rgb(${Math.round(r)},${Math.round(g)},${Math.round(b)})`;
+    c.fillRect(0, 0, w, ht);
+    c.globalCompositeOperation = 'source-over';
+    return this.recolor;
   }
 
   /** The Pencil's dab: a circle of whole pixels in the raster's own grid (no smoothing), filled row by row. */
@@ -236,7 +278,7 @@ export class PixelStroke {
    *  diameter; with Dual Brush on, the second tip's marks laid at the same places, scattered by its own Scatter. */
   private shapedDab(p: Pt, pressure: number): void {
     const sh = this.shape as BrushShape, d = this.dynamics, info = { pressure }, rnd = this.rnd, pose = this.pose;
-    const base = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1);
+    const base = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1) * this.transferAlpha(pressure);
     const tilt = Math.min(90, Math.hypot(pose.tiltX, pose.tiltY)), count = Math.max(1, Math.round(sh.count * (1 - (sh.countJitter / 100) * rnd())));
     const across = ((this.dir + 90) * Math.PI) / 180, varied = sh.roundnessJitter > 0 || sh.roundnessControl !== 'off';
     for (let k = 0; k < count; k++) {
@@ -261,7 +303,7 @@ export class PixelStroke {
       setMat(this.paintCtx, mul(place, [1, 0, 0, round, 0, 0]));
       if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
       const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
-      this.paintCtx.drawImage(this.tip, -rx, -ry, rx * 2, ry * 2);
+      this.paintCtx.drawImage(this.dabTip(), -rx, -ry, rx * 2, ry * 2);
       if (flow < 1) this.paintCtx.globalAlpha = 1;
       if (this.dualPaint && this.dualTip) {
         const dc = ctxOf(this.dualPaint), dr = Math.max(0.5, sh.dual.diameter / 2), ds = (sh.dual.scatter / 100) * dr * 2;
@@ -392,4 +434,37 @@ export class PixelStroke {
     this.raster.touch();
     return { raster: this.raster, x: area.x, y: area.y, before, after: this.raster.read(area.x, area.y, area.w, area.h) };
   }
+}
+
+/** The tip with Noise (its soft edge roughened) and Wet Edges (its centre lighter than its rim), as Photoshop's. */
+function shapedTip(tip: Surface, noise: boolean, wet: boolean): Surface {
+  const w = tip.width, h = tip.height, out = createSurface(w, h), c = ctxOf(out);
+  c.drawImage(tip as CanvasImageSource, 0, 0);
+  const img = c.getImageData(0, 0, w, h), d = img.data, cx = w / 2, cy = h / 2, R = Math.max(1, Math.min(cx, cy));
+  let seed = 7;
+  const rnd = (): number => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * 4 + 3;
+    let a = d[i];
+    if (!a) continue;
+    if (wet) { const r = Math.min(1, Math.hypot(x + 0.5 - cx, y + 0.5 - cy) / R); a *= 0.45 + 0.55 * r * r; }
+    if (noise && d[i] < 250) a *= 0.35 + 0.65 * rnd();
+    d[i] = Math.round(a);
+  }
+  c.putImageData(img, 0, 0);
+  return out;
+}
+
+function toHsv(r: number, g: number, b: number): [number, number, number] {
+  r /= 255; g /= 255; b /= 255;
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), dd = mx - mn;
+  let h = 0;
+  if (dd) h = mx === r ? ((g - b) / dd) % 6 : mx === g ? (b - r) / dd + 2 : (r - g) / dd + 4;
+  return [((h / 6) + 1) % 1, mx ? dd / mx : 0, mx];
+}
+
+function fromHsv(h: number, s: number, v: number): [number, number, number] {
+  const i = Math.floor(h * 6), f = h * 6 - i, p = v * (1 - s), q = v * (1 - f * s), t = v * (1 - (1 - f) * s);
+  const [r, g, b] = [[v, t, p], [q, v, p], [p, v, t], [p, q, v], [t, p, v], [v, p, q]][((i % 6) + 6) % 6];
+  return [r * 255, g * 255, b * 255];
 }

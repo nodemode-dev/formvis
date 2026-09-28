@@ -7,7 +7,7 @@ import { checkRow, selectRow, sliderRow } from './controls';
 type Row = { el: HTMLElement; sync: () => void };
 
 /** Window > Brush Settings (F5), Photoshop's panel for the Brush's tip and its dynamics: Brush Tip Shape, Shape
- *  Dynamics, Scattering, Texture and Dual Brush. It edits the engine's brush shape live, so the next stroke uses it;
+ *  Dynamics, Scattering, Texture, Dual Brush, Color Dynamics, Transfer, Noise and Wet Edges. It edits the engine's brush shape live, so the next stroke uses it;
  *  each change replaces the shape, so a stroke already under way keeps what it started with. Reset puts every setting
  *  back to the plain round brush. */
 export class BrushSettingsDialog extends Dialog {
@@ -66,6 +66,26 @@ export class BrushSettingsDialog extends Dialog {
     slide('Size (px)', 1, 1000, 1, () => s().dual.diameter, (v) => put({ dual: { ...s().dual, diameter: v } }));
     slide('Scatter (%)', 0, 1000, 1, () => s().dual.scatter, (v) => put({ dual: { ...s().dual, scatter: v } }));
     slide('Count', 1, 16, 1, () => s().dual.count, (v) => put({ dual: { ...s().dual, count: v } }));
+
+    // Color Dynamics, Transfer, Noise and Wet Edges (1.50.1, the owner's list), in Photoshop's order; a shape saved
+    // before them reads their defaults.
+    const cd = (): BrushShape['color'] => s().color ?? defaultShape().color, tr = (): BrushShape['transfer'] => s().transfer ?? defaultShape().transfer;
+    heading('Color Dynamics');
+    check('Color Dynamics', () => cd().on, (v) => put({ color: { ...cd(), on: v } }));
+    slide('Foreground/Background Jitter (%)', 0, 100, 1, () => cd().fgBg, (v) => put({ color: { ...cd(), fgBg: v } }));
+    slide('Hue Jitter (%)', 0, 100, 1, () => cd().hue, (v) => put({ color: { ...cd(), hue: v } }));
+    slide('Saturation Jitter (%)', 0, 100, 1, () => cd().saturation, (v) => put({ color: { ...cd(), saturation: v } }));
+    slide('Brightness Jitter (%)', 0, 100, 1, () => cd().brightness, (v) => put({ color: { ...cd(), brightness: v } }));
+
+    heading('Transfer');
+    check('Transfer', () => tr().on, (v) => put({ transfer: { ...tr(), on: v } }));
+    slide('Opacity Jitter (%)', 0, 100, 1, () => tr().opacity, (v) => put({ transfer: { ...tr(), opacity: v } }));
+    slide('Flow Jitter (%)', 0, 100, 1, () => tr().flow, (v) => put({ transfer: { ...tr(), flow: v } }));
+    pick('Control', [['off', 'Off'], ['pressure', 'Pen Pressure']], () => tr().control, (v) => put({ transfer: { ...tr(), control: v === 'pressure' ? 'pressure' : 'off' } }));
+
+    heading('Noise and Wet Edges');
+    check('Noise', () => !!s().noise, (v) => put({ noise: v }));
+    check('Wet Edges', () => !!s().wetEdges, (v) => put({ wetEdges: v }));
 
     this.button('Reset', 'ghost', () => { this.engine.brushShape = defaultShape(); this.sync(); });
     this.button('Done', 'primary', () => this.close());

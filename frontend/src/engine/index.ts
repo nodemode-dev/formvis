@@ -2572,7 +2572,7 @@ export class Engine {
       const q = applyMat(invert(pick.local) ?? [1, 0, 0, 1, 0, 0], pt.x, pt.y), px = pick.raster.ctx.getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data;
       if (px[3] > 0 && px[0] === this.fg.r && px[1] === this.fg.g && px[2] === this.fg.b) color = this.bg;
     }
-    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, flow: this.brushFlow, aliased: !!opts.aliased }, op, p.selection);
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
     if (!opts.aliased) s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);

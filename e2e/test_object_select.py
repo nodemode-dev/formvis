@@ -45,8 +45,10 @@ def test_a_box_selects_the_object_in_it_and_resting_shows_the_object_first(page)
     x0, y0, z = page.evaluate(SCREEN)
     # Resting over the square shows it, tinted, before any click: no selection is made.
     page.mouse.move(x0 + 240 * z, y0 + 120 * z); page.mouse.move(x0 + 241 * z, y0 + 121 * z)
-    page.wait_for_function("""(() => { const o = document.querySelector('.cv-overlay-canvas'), g = o.getContext('2d'), v = window.sonny.engine.current.viewport, d = o.width / o.clientWidth, q = v.toScreen(250, 100);
-      const p = g.getImageData(Math.round(q.x * d), Math.round(q.y * d), 1, 1).data; return p[3] > 30 && p[0] > p[2]; })()""", timeout=60000)
+    # The object's outline in the accent (its edge) and a light wash inside, as Photoshop marks it (1.50.1).
+    page.wait_for_function("""(() => { const o = document.querySelector('.cv-overlay-canvas'), g = o.getContext('2d'), v = window.sonny.engine.current.viewport, d = o.width / o.clientWidth;
+      const at = (x, y) => { const q = v.toScreen(x, y); return g.getImageData(Math.round(q.x * d), Math.round(q.y * d), 1, 1).data; };
+      const edge = at(196, 120), inside = at(240, 120); return edge[3] > 200 && edge[0] > edge[2] + 80 && inside[3] > 20 && inside[3] < 90; })()""", timeout=60000)
     assert page.evaluate("window.sonny.engine.current.selection") is None                # shown, not selected
     # A box round the circle selects it.
     page.mouse.move(x0 + 20 * z, y0 + 60 * z); page.mouse.down(); page.mouse.move(x0 + 140 * z, y0 + 180 * z, steps=8); page.mouse.up()

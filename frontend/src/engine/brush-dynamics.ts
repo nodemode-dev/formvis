@@ -63,11 +63,19 @@ export interface BrushShape {
   texture: { on: boolean; pattern: string; scale: number; depth: number };
   /** The dual brush's marks are laid with the main dabs, scattered by its own Scatter and Count (no separate spacing). */
   dual: { on: boolean; diameter: number; scatter: number; count: number };
+  /** Color Dynamics (1.50.1, the owner's list), as Photoshop's: each dab's colour from the foreground towards the
+   *  background, and its hue, saturation and brightness varied (jitters, 0-100). */
+  color: { on: boolean; fgBg: number; hue: number; saturation: number; brightness: number };
+  /** Transfer: each dab's opacity and flow varied (jitters, 0-100), or following pen pressure. */
+  transfer: { on: boolean; opacity: number; flow: number; control: 'off' | 'pressure' };
+  /** Noise roughens the tip's soft edge; Wet Edges makes its centre lighter than its rim (watercolour). */
+  noise: boolean; wetEdges: boolean;
 }
 export const defaultShape = (): BrushShape => ({
   angle: 0, roundness: 100, spacing: null, sizeJitter: 0, angleJitter: 0, roundnessJitter: 0, minRoundness: 25,
   angleControl: 'off', roundnessControl: 'off', scatter: 0, bothAxes: false, count: 1, countJitter: 0,
   texture: { on: false, pattern: '', scale: 100, depth: 100 }, dual: { on: false, diameter: 20, scatter: 0, count: 1 },
+  color: { on: false, fgBg: 0, hue: 0, saturation: 0, brightness: 0 }, transfer: { on: false, opacity: 0, flow: 0, control: 'off' }, noise: false, wetEdges: false,
 });
 /** Whether a shape does anything the plain round brush does not; an inactive one leaves strokes exactly as before. */
 export function shapeActive(s: BrushShape | null | undefined): boolean {
