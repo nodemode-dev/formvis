@@ -2,6 +2,36 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Shape modes, fill and stroke · _v1.49.8 (engine/shape-paths.ts, engine/index.ts; extensions/tools/shape.ts; ui/properties.ts, ui/icons.ts)
+
+`PathShapeKind` 'triangle'; `boxedShapePath` for triangle, rectangle (`roundRectPath`) and ellipse (`ellipsePath`); `shapeSettings.mode`, `fill`, `stroke`, `strokeWidth`; `Engine.drawShape` (shape layer, work path, or pixels), `createVectorShape` (fill and stroke), `createShape` with a colour, `paintPath` with a given path; the shape bar's Mode, Fill, Stroke and Width; Justify in the Paragraph panel; a type mask clipped to the canvas. Removed from frontend:
+
+```text
+    const d = r.raster.ctx.getImageData(0, 0, w, h).data, a = new Uint8Array(w * h);
+    this.applySelection(SelectionMask.cropped(x, y, w, h, a), 'replace', spec.direction === 'vertical' ? 'Vertical Type Mask' : 'Horizontal Type Mask');
+    const name = kind === 'custom' ? CUSTOM_SHAPES.find((s) => s.id === st.custom)?.label ?? 'Custom Shape' : { polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart' }[kind];
+  private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D, vp: VectorPath) => void): void {
+    const vp = this.workPath;
+  shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number } & PathShapeOptions = { kind: 'rectangle', cornerRadius: 0, ...DEFAULT_PATH_SHAPE };
+  createShape(rect: Rect): void {
+    const style = { kind, red: this.fg.r / 255, green: this.fg.g / 255, blue: this.fg.b / 255, cornerRadius: st.kind === 'rectangle' ? st.cornerRadius : 0 };
+export type PathShapeKind = 'polygon' | 'star' | 'line' | 'arrow' | 'heart' | 'custom';
+export function boxedShapePath(kind: 'polygon' | 'star' | 'heart' | 'custom', box: Rect, o: PathShapeOptions): VectorPath {
+const NOUN: Record<string, string> = { rectangle: 'a rectangle', ellipse: 'an ellipse', polygon: 'a polygon', star: 'a star', heart: 'a heart', line: 'a line', arrow: 'an arrow', custom: 'a custom shape' };
+const KINDS = ['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'heart', 'custom'] as const;
+const SHAPE_ICONS: Record<string, string> = { rectangle: 'tRect', ellipse: 'tEllipseShape', polygon: 'tPolygon', star: 'tStar', line: 'tLine', arrow: 'tArrow', heart: 'tHeart', custom: 'tCustomShape' };
+const SHAPE_NAMES: Record<(typeof KINDS)[number], string> = { rectangle: 'Rectangle', ellipse: 'Ellipse', polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', custom: 'Custom Shape' };
+    ? `Drag to draw ${NOUN[e.shapeSettings.kind]} in the foreground color on a new shape layer · Shift after starting snaps to 45 degrees · Shift+U switches shape`
+    : `Drag to draw ${NOUN[e.shapeSettings.kind]} in the foreground color on a new shape layer · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape`,
+    const kind = ctx.engine.shapeSettings.kind;
+    if (lineLike(kind)) { ctx.engine.createPathShape(d.anchor, snapped(d)); return; }
+    if (kind === 'rectangle' || kind === 'ellipse') { if (r.w >= 1 && r.h >= 1) ctx.engine.createShape(r); }
+    else ctx.engine.createPathShape({ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y + r.h });
+    const body = el(`<div class="cv-para"><div class="cv-seg" role="group" aria-label="Alignment">${(['left', 'center', 'right'] as const).map((a) => `<button type="button" data-align="${a}" title="Align ${a}" aria-label="Align ${a}">${icon(a === 'left' ? 'alignLeft' : a === 'center' ? 'alignCenter' : 'alignRight', 16)}</button>`).join('')}</div></div>`);
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Type tools · _v1.49.7 (engine/text.ts, engine/types.ts, engine/index.ts, io/psd.ts; extensions/tools/type.ts; ui/text-editor.ts, ui/icons.ts; app.ts; styles)
 
 `TextSpec.box`, `direction`, align 'justify'; `renderPlain` wraps (`wrapLines`), clips and justifies in a box; `renderVertical`; placement of box and vertical text (`createTextLayer`, `updateTextLayer`); `Engine.typeMask`, `createTextSelection`; the Type tool's four kinds, click or drag; the editor's box, vertical and mask modes; the PSD export's justify-left, box and vertical orientation; reading them back. Removed from frontend:

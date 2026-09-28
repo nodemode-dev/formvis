@@ -2,6 +2,19 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.8 · 2026-09-27
+
+### Added: vector tools from your list
+
+- Triangle shape (in the Shape group).
+- Mode in the shape tools' bar, as Photoshop's: Shape (a layer), Path (adds the outline to the work path), or Pixels (paints it into the active layer).
+- Fill and Stroke in the bar: each the foreground, the background or none, and the stroke's width; stroked rectangles and ellipses are vector layers.
+
+### Fixed
+
+- A type mask's selection stays within the canvas.
+- The Paragraph panel has Justify.
+
 ## 1.49.7 · 2026-09-27
 
 ### Added: type tools from your list
