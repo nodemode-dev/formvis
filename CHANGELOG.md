@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.50.7 · 2026-09-28
+
+### Changed: tools against Photoshop's bars (audit, part 4)
+
+- Dodge and Burn: Protect Tones, on by default as Photoshop's: brightness changes and the colour is kept, where it washed toward white.
+- Sponge: Vibrance, on by default: vivid colours are kept from clipping as they saturate.
+- Eyedropper: Sample (Current Layer, Current & Below, All Layers).
+- Zoom: 100% and Fill Screen in the bar.
+- Still to come: Blur, Sharpen and Smudge (Mode, Sample All Layers, Protect Detail, Finger Painting); the Pen's Shape and Path modes and Auto Add/Delete.
+
 ## 1.50.6 · 2026-09-28
 
 ### Changed: tools against Photoshop's bars (audit, part 3)

@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The tool audit, part 4 · _v1.50.7 (engine/index.ts, engine/viewport.ts; extensions/tools/tone.ts, eyedropper.ts, zoom.ts)
+
+`tone.protectTones` (Dodge and Burn move brightness with the hue kept, easing toward grey only as far as keeps a colour from clipping) and `tone.vibrance` (the Sponge saturates the least saturated most), both on by default as Photoshop's; `Engine.eyedropperSample` (Current Layer, Current & Below through `belowOverrides`, All Layers) in `sampleColor`; `Viewport.fill`, `Engine.fillScreen`; the Zoom bar's 100% and Fill Screen. Removed from frontend:
+
+```text
+  tone: { range: 'shadows' | 'midtones' | 'highlights'; exposure: number; spongeMode: 'desaturate' | 'saturate'; flow: number } = { range: 'midtones', exposure: 0.5, spongeMode: 'desaturate', flow: 0.5 };
+      if (kind === 'sponge') { const k = t.spongeMode === 'saturate' ? -t.flow : t.flow; f = (v) => v + (l - v) * k; }
+      else {
+        f = kind === 'dodge' ? (v) => v + (1 - v) * a : (v) => v * (1 - a);
+    this.work.render({ doc: p.doc, target: s, view: translation(-(Math.floor(pt.x) - half), -(Math.floor(pt.y) - half)) });
+```
+
+Nothing removed from src-tauri or backend.
+
 ## The tool audit, part 3 · _v1.50.6 (engine/index.ts; extensions/tools/clone.ts, gradient.ts)
 
 The Clone Stamp's `retouch.cloneSample` (Current Layer, Current & Below, All Layers, through `healSampleSurface` and the new shared `belowOverrides`, in the stroke, the preview and the overlay), `cloneBlend` and `cloneFlow` in its stroke; the Gradient's `transparency` and `method` (`gradientMethod`: Classic in sRGB, Linear in linear light, Perceptual in OKLab, each segment divided into 24 steps). Removed from frontend:
