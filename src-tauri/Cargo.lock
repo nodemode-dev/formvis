@@ -3668,7 +3668,7 @@ dependencies = [
 
 [[package]]
 name = "sonny"
-version = "1.50.3"
+version = "1.50.4"
 dependencies = [
  "fontdb",
  "regex",
