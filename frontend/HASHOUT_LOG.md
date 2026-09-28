@@ -2,6 +2,55 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Object Selection, Quick Selection and the Paint Bucket · _v1.49.10 (extensions/tools/object-select.ts, quick-select.ts, bucket.ts; io/api.ts; engine/index.ts; backend/app/routers/ops.py, backend/app/services/segment.py)
+
+Object Selection's `request` and `selectWith` (points or a box), box mode and the hover highlight (`showHover`, Highlight on Hover); `api.selectObject` with a box; the engine's `select` taking a box (a box alone will do) and the route's box field; Quick Selection's New, Add and Subtract (`beginQuickSelect` fresh); the Paint Bucket's source, pattern and mode (`patternTint`, `compositeOp`). Removed from frontend:
+
+```text
+  bucket = { tolerance: 32, contiguous: true, sampleAll: false, opacity: 1, antiAlias: true };
+      } else c.drawImage(this.tint(rect, rgbCss(color), cover), rect.x, rect.y);
+  beginQuickSelect(pt: Pt, subtract: boolean): void {
+  hint: () => 'Click to fill the area of similar color with the foreground color \u00b7 Tolerance sets how similar \u00b7 Stays inside the selection',
+import type { Tool } from '../registry';
+async function selectAt(engine: Engine, pt: Pt, mode: SelectionMode): Promise<void> {
+  if (!p || !src) return;
+  const W = p.doc.width, H = p.doc.height, x = Math.floor(pt.x), y = Math.floor(pt.y);
+  if (x < 0 || y < 0 || x >= W || y >= H) return;
+  const key = keyOf(p.id, src);
+      const blob = await api.selectObject(key, [[x, y, 1]], () => toBlob(src), key !== sentKey);
+      sentKey = key;
+      const bitmap = await createImageBitmap(blob), m = createSurface(W, H), c = ctxOf(m);
+      c.drawImage(bitmap, 0, 0, W, H);
+      bitmap.close();
+      const px = c.getImageData(0, 0, W, H).data, data = new Uint8Array(W * H);
+      for (let i = 0; i < data.length; i++) data[i] = px[i * 4];
+      if (engine.current !== p) return;
+      if (!data.some((v) => v >= 128)) { engine.notice('No object was found there.'); return; }
+      engine.applySelection(SelectionMask.cropped(0, 0, W, H, data), mode, 'Object Selection');
+  hint: () => 'Click an object to select it · Shift adds · Alt subtracts · The first click on an image takes a few seconds',
+  down(ctx, p) { if (p.button === 0) void selectAt(ctx.engine, p.doc, modeFor(ctx.engine, p)); },
+  down(ctx, p) { if (p.button !== 0) return; hover = p.doc; ctx.engine.beginQuickSelect(p.doc, p.alt); },
+  async selectObject(key: string, points: Array<[number, number, 0 | 1]>, image: () => Promise<Blob>, withImage: boolean): Promise<Blob> {
+      const body = form({ key, points: JSON.stringify(points) }, img ? [{ name: 'image.png', blob: img }] : [], 'file');
+```
+
+Removed from backend:
+
+```text
+def select_object(key: str = Form(...), points: str = Form(...), file: UploadFile | None = File(None)) -> Response:
+        png = segment.select(key, pts)
+def select(key: str, points: list[tuple[float, float, int]]) -> bytes:
+    """The object at the clicked points of the image encoded under `key`, as a grey PNG mask: each point (x, y, 1) is on
+    the object and (x, y, 0) not on it; of SAM's three proposals the one it scores highest."""
+    if not points:
+        raise SegmentError("Click on the object to select.")
+        coords = np.array([[x, y] for x, y, _ in points], dtype=np.float32)
+        labels = np.array([1 if on else 0 for _, _, on in points], dtype=np.int32)
+            masks, scores, _ = pred.predict(point_coords=coords, point_labels=labels, multimask_output=len(points) == 1)
+```
+
+Nothing removed from src-tauri.
+
 ## Retouching and Rotate View · _v1.49.9 (extensions/tools/content-aware-move.ts, red-eye.ts, rotate-view.ts new, smear.ts, index.ts, registry.ts; engine/index.ts, engine/viewport.ts, engine/types.ts; ui/stage.ts, ui/text-editor.ts, ui/tool-groups.ts, ui/rail.ts, ui/icons.ts)
 
 `Engine.contentAwareMove` (move or extend, the hole filled by `contentFill`, the selection moved); `Engine.redEye`, `redEyeArea` (no step when nothing red); `Viewport.rotation`, `Engine.setViewRotation`, `Stage.unturn`, `Stage.turn` (the surfaces turned by CSS, pointers and wheel panning turned back), the text editor turned with the view; `Tool.group` (Rotate View's R in the Hand's slot); Smear without a shortcut; rail titles by each tool's key. Removed from frontend:

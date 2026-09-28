@@ -2,6 +2,14 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.10 · 2026-09-27
+
+### Added: selection and fill gaps from your list
+
+- Object Selection: drag a box to select the object in it; rest the pointer to see the object it finds, tinted, before clicking (Highlight on Hover can be turned off).
+- Quick Selection: New, Add and Subtract in the bar; New turns to Add after its first stroke, as Photoshop's; Shift adds and Alt subtracts from any of them.
+- Paint Bucket: fill with a pattern as well as the foreground colour, and a blend Mode.
+
 ## 1.49.9 · 2026-09-27
 
 ### Added: retouching and navigation from your list
