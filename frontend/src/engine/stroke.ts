@@ -181,6 +181,9 @@ export class PixelStroke {
   /** Extends the stroke to `p` (document units): the first point lays a dab, later ones lay dabs every `spacing` along
    *  the way, the distance since the last dab carried into the next move. `pressure` (0 to 1, 1 for a mouse) is
    *  interpolated along the way, so a pen's changes between samples are smooth; `pose` is the pen's tilt and rotation. */
+  /** The Airbrush (1.50.4): a dab where the stroke is, so paint builds while the pointer rests. */
+  stamp(pressure = 1): void { if (this.last) this.dab(this.last, Math.min(1, Math.max(0, pressure))); }
+
   to(p: Pt, pressure = 1, pose: PenPose = UPRIGHT): void {
     const from = this.last, pr = Math.min(1, Math.max(0, pressure));
     this.pose = pose;

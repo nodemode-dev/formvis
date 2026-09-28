@@ -275,7 +275,17 @@ function renderPathText(t: TextSpec, tp: TextPath): TextRender {
 export function renderText(t: TextSpec): TextRender {
   if (t.onPath) return renderPathText(t, t.onPath);
   const plain = renderPlain(t);
-  return warpActive(t.warp) ? warpRender(plain, t.warp) : plain;
+  return antialiased(warpActive(t.warp) ? warpRender(plain, t.warp) : plain, t.antialias);
+}
+
+/** The anti-aliasing method on the rendered edges: None thresholds them at half; Sharp steepens them. */
+function antialiased(r: TextRender, how: TextSpec['antialias']): TextRender {
+  if (!how || how === 'smooth') return r;
+  const c = r.raster.ctx, img = c.getImageData(0, 0, r.raster.width, r.raster.height), d = img.data;
+  for (let i = 3; i < d.length; i += 4) { const a = d[i]; if (a === 0 || a === 255) continue; d[i] = how === 'none' ? (a >= 128 ? 255 : 0) : Math.max(0, Math.min(255, Math.round((a - 128) * 2 + 128))); }
+  c.putImageData(img, 0, 0);
+  r.raster.touch();
+  return r;
 }
 
 /** A type spec's settings as a paragraph style named `name`. */
@@ -333,6 +343,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     align: o.align === 'center' || o.align === 'right' || o.align === 'justify' ? o.align : 'left', bold: o.bold === true, italic: o.italic === true,
     ...(o.box && typeof o.box === 'object' ? (() => { const b = o.box as Record<string, unknown>; const w = num(b.w, 0, 0, 30000), h = num(b.h, 0, 0, 30000); return w >= 1 && h >= 1 ? { box: { w, h } } : {}; })() : {}),
     ...(o.direction === 'vertical' ? { direction: 'vertical' as const } : {}),
+    ...(o.antialias === 'none' || o.antialias === 'sharp' ? { antialias: o.antialias } : {}),
     lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' ? 'none' : 'metrics',
     warp: warpFrom(o.warp), onPath: pathFrom(o.onPath), style: typeof o.style === 'string' && o.style ? o.style : null,
     rendered: textKey(raster),

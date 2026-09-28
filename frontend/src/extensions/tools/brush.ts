@@ -5,7 +5,7 @@ import { digitOf, type Tool } from '../registry';
 
 let hoverPt: Pt | null = null;
 
-let smoothing = 0, steady: { x: number; y: number } | null = null, last: import('../registry').ToolPointer | null = null;
+let airbrush = false, airTimer = 0, smoothing = 0, steady: { x: number; y: number } | null = null, last: import('../registry').ToolPointer | null = null;
 
 export const brushTool: Tool = {
   id: 'brush', label: 'Brush', key: 'B', order: 50,
@@ -14,7 +14,12 @@ export const brushTool: Tool = {
   cursor: () => 'none',
   // Smoothing (1.50.3, the tool audit), as Photoshop's: the stroke follows a steadied point that trails the pointer, and
   // catches up to where it is released.
-  down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; steady = { ...p.doc }; last = p; ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose); } },
+  // Airbrush (1.50.4): while the button is held, paint keeps building where the pointer rests (every 60 ms).
+  down(ctx, p) {
+    if (p.button !== 0) return;
+    hoverPt = p.doc; steady = { ...p.doc }; last = p;
+    if (ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose) && airbrush) { clearInterval(airTimer); airTimer = window.setInterval(() => ctx.engine.airbrushTick(last?.pressure ?? 1), 60); }
+  },
   move(ctx, p) {
     hoverPt = p.doc; last = p;
     const k = 1 - Math.min(0.95, smoothing / 100);
@@ -22,9 +27,9 @@ export const brushTool: Tool = {
     else ctx.engine.strokeTo(p.doc, p.pressure, p.pose);
     ctx.engine.emit('overlay', null);
   },
-  up(ctx) { if (steady && last && smoothing > 0) ctx.engine.strokeTo(last.doc, last.pressure, last.pose); steady = null; last = null; ctx.engine.endStroke(); },
+  up(ctx) { clearInterval(airTimer); if (steady && last && smoothing > 0) ctx.engine.strokeTo(last.doc, last.pressure, last.pose); steady = null; last = null; ctx.engine.endStroke(); },
   hover(ctx, p) { hoverPt = p ? p.doc : null; ctx.engine.emit('overlay', null); },
-  cancel(ctx) { ctx.engine.cancelStroke(); },
+  cancel(ctx) { clearInterval(airTimer); ctx.engine.cancelStroke(); },
   keydown(ctx, e) {
     const eng = ctx.engine;
     if (e.metaKey || e.ctrlKey || e.altKey) return false;
@@ -70,6 +75,7 @@ export const brushTool: Tool = {
   },
   options: (e) => [
     { kind: 'title', text: 'Brush' },
+    { kind: 'toggle', label: 'Airbrush', get: () => airbrush, set: (v) => { airbrush = v; e.emit('options', null); } },
     { kind: 'range', label: 'Smoothing', min: 0, max: 100, unit: '%', get: () => smoothing, set: (v: number) => { smoothing = Math.max(0, Math.min(100, Math.round(v))); e.emit('options', null); } },
     { kind: 'range', label: 'Angle', min: -180, max: 180, unit: '\u00b0', get: () => Math.round(e.brushShape.angle), set: (v: number) => { e.brushShape = { ...e.brushShape, angle: Math.max(-180, Math.min(180, Math.round(v))) }; e.emit('options', null); } },
     // Photoshop's Mode: Normal, Behind, Clear and the blend modes the canvas truly draws (Paint/Erase was sonny's own;

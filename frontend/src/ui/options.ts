@@ -105,6 +105,14 @@ export class OptionsBar {
         box.addEventListener('change', () => spec.set(box.checked));
         sync.push(() => setChecked(box, spec.get()));
         node.appendChild(n);
+      } else if (spec.kind === 'color') {
+        const n = el('<label class="cv-opt cv-opt-color"><span></span><input type="color"></label>');
+        setText(q(n, 'span'), spec.label);
+        const inp = q<HTMLInputElement>(n, 'input'), hex = (c: { r: number; g: number; b: number }): string => '#' + [c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
+        inp.setAttribute('aria-label', spec.label);
+        inp.addEventListener('input', () => { const v = inp.value; spec.set({ r: parseInt(v.slice(1, 3), 16), g: parseInt(v.slice(3, 5), 16), b: parseInt(v.slice(5, 7), 16) }); });
+        sync.push(() => { const want = hex(spec.get()); if (inp.value !== want) inp.value = want; });
+        node.appendChild(n);
       } else if (spec.kind === 'number') {
         const n = el(`<label class="cv-opt"><span></span><input class="cv-num" type="number" step="${spec.step ?? 1}"${spec.min !== undefined ? ` min="${spec.min}"` : ''}${spec.max !== undefined ? ` max="${spec.max}"` : ''}><span class="cv-opt-unit"></span></label>`);
         setText(q(n, 'span'), spec.label);

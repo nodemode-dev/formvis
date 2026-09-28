@@ -1,3 +1,4 @@
+import type { RGB } from '../engine';
 import type { Engine, Pt, ToolId } from '../engine';
 import type { PenPose } from '../engine/brush-dynamics';
 
@@ -13,6 +14,8 @@ export type OptionSpec = (
   | { kind: 'toggle'; label: string; get: () => boolean; set: (v: boolean) => void }
   | { kind: 'select'; label: string; choices: ReadonlyArray<{ id: string; label: string }>; get: () => string; set: (id: string) => void; live?: () => ReadonlyArray<{ id: string; label: string }> }
   | { kind: 'readout'; label: string; get: () => string }
+  /** A colour (Type's swatch, 1.50.4): the system picker, as a swatch in the bar. */
+  | { kind: 'color'; label: string; get: () => RGB; set: (c: RGB) => void }
   | { kind: 'number'; label: string; min?: number; max?: number; step?: number; unit?: string; get: () => number | null; set: (v: number) => void }
   | { kind: 'button'; label: string; icon?: string; run: () => void; /** Icon only, the label as its tooltip (the target's align buttons). */ compact?: boolean }
 ) & {

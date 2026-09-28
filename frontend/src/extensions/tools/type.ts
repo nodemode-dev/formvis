@@ -15,10 +15,17 @@ function fontChoices(current: string): Array<{ id: string; label: string }> {
 }
 
 /** Changes the Type settings, shows them in the options bar, and restyles text being typed. */
+const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning'] as const;
+
 export function setType(e: Engine, patch: Partial<TextSpec>): void {
   e.textSettings = { ...e.textSettings, ...patch };
   e.emit('options', null);
   document.dispatchEvent(new CustomEvent('cv:type-settings'));
+  // As Photoshop's bar (1.50.4, the tool audit): the selected type layer takes the style too, when the Type tool is in
+  // use and no text is being typed (the editor restyles what is being typed); orientation and mask never pass over.
+  const l = e.activeLayer, typing = !!document.querySelector('.cv-type-editor:not([hidden])');
+  const style = Object.fromEntries(Object.entries(patch).filter(([k]) => (STYLE_KEYS as readonly string[]).includes(k)));
+  if (e.tool === 'type' && !typing && l?.text && Object.keys(style).length) void e.updateTextLayer(l.id, { ...l.text, ...style });
 }
 
 /** Type (T): click a type layer to edit its text on the canvas, or anywhere else to start new text whose first
@@ -49,6 +56,10 @@ export const typeTool: Tool = {
     // Photoshop's units: tracking in thousandths of an em; kerning the font's own (Metrics) or none (0).
     { kind: 'number', label: 'Tracking', min: -1000, max: 10000, step: 10, unit: '', get: () => e.textSettings.tracking, set: (v) => setType(e, { tracking: Math.round(Math.min(10000, Math.max(-1000, v))) }) },
     { kind: 'select', label: 'Kerning', choices: [{ id: 'metrics', label: 'Metrics' }, { id: 'none', label: '0' }], get: () => e.textSettings.kerning, set: (v) => setType(e, { kerning: v === 'none' ? 'none' : 'metrics' }) },
+    // Anti-aliasing and the Color swatch (1.50.4, the tool audit), as Photoshop's bar; the swatch recolours the selected
+    // type layer as well as setting the colour new text takes.
+    { kind: 'select', label: 'Anti-aliasing', choices: [{ id: 'none', label: 'None' }, { id: 'sharp', label: 'Sharp' }, { id: 'smooth', label: 'Smooth' }], get: () => e.textSettings.antialias ?? 'smooth', set: (v: string) => setType(e, { antialias: v === 'none' || v === 'sharp' ? v : 'smooth' }) },
+    { kind: 'color', label: 'Color', get: () => e.fg, set: (c) => { e.fg = c; e.emit('options', null); const l = e.activeLayer; if (l?.text) void e.updateTextLayer(l.id, { ...l.text, color: e.fg }); } },
     { kind: 'button', label: 'Warp Text...', run: () => toolHost.run('warp-text') },
   ],
   // A click starts point text (or edits the type layer under it); a drag draws a box for paragraph text (1.49.7).

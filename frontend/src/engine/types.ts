@@ -235,7 +235,9 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
  *  own pair kerning ('metrics') or none ('none'). */
 /** box: paragraph text's box, wrapped to its width and clipped at its height (absent: point text); direction: vertical
  *  type stacks upright characters top to bottom in columns from right to left (1.49.7, the owner's tool list). */
-export interface TextSpec { box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
+/** antialias (1.50.4, the tool audit): Photoshop's method, of those sonny renders truly: None (every edge pixel on or
+ *  off), Sharp (steeper edges) or Smooth (absent). */
+export interface TextSpec { antialias?: 'none' | 'sharp' | 'smooth'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
 /** A paragraph style (Window > Paragraph Styles): a named set of type settings kept in the document; type layers linked
  *  to it by TextSpec.style take its settings, and redefining it updates every one of them. */
 export interface ParagraphStyle { id: ID; name: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning }

@@ -335,7 +335,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
       out.text = { text: t.content.replace(/\n/g, '\r'), transform: [pm[0] / k * (l.raster.width / r.raster.width), pm[1] / k * (l.raster.width / r.raster.width), pm[2] / k * (l.raster.height / r.raster.height), pm[3] / k * (l.raster.height / r.raster.height), at.x, at.y],
         style: { font: { name: PS_FONT[t.family] ?? t.family.replace(/\s+/g, '') }, fontSize: t.size * k, fauxBold: t.bold, fauxItalic: t.italic, fillColor: t.color, autoLeading: false, leading: t.size * t.lineHeight * k },
         // Justify is Photoshop's justify-left (every line but a paragraph's last spread; that one left); a box is area text.
-        paragraphStyle: { justification: t.align === 'justify' ? 'justify-left' : t.align }, shapeType: t.box ? 'box' : 'point', ...(t.box ? { boxBounds: [0, 0, t.box.w * k, t.box.h * k] } : {}), ...(t.direction === 'vertical' ? { orientation: 'vertical' } : {}) };
+        antiAlias: t.antialias ?? 'smooth', paragraphStyle: { justification: t.align === 'justify' ? 'justify-left' : t.align }, shapeType: t.box ? 'box' : 'point', ...(t.box ? { boxBounds: [0, 0, t.box.w * k, t.box.h * k] } : {}), ...(t.direction === 'vertical' ? { orientation: 'vertical' } : {}) };
     }
     const embed = l.smart ? sources.get(l.id) : undefined;
     if (l.smart && embed && l.raster) {

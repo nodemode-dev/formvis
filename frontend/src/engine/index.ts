@@ -2640,6 +2640,21 @@ export class Engine {
     const st = this.stroke;
     if (!st) return;
     st.s.to(pt, pressure, pose);
+    this.strokeShow();
+  }
+
+  /** The Airbrush's tick (1.50.4, the tool audit), as Photoshop's: another dab where the pointer rests, building up. */
+  airbrushTick(pressure = 1): void {
+    const st = this.stroke;
+    if (!st) return;
+    st.s.stamp(pressure);
+    this.strokeShow();
+  }
+
+  /** Composes what the stroke laid since last time and repaints that much. */
+  private strokeShow(): void {
+    const st = this.stroke;
+    if (!st) return;
     const f = st.s.compose();
     if (!f) return;
     if (st.quick) { this.emit('selection', null); return; }   // Quick Mask: the tint follows the stroke; no layer repaints
