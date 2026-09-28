@@ -26,6 +26,8 @@ export interface ToolVariant { id: string; label: string; icon: string; active()
 
 export interface Tool {
   id: ToolId;
+  /** The slot it shares, when not its key's (Rotate View, R, sits with the Hand, as Photoshop's). */
+  group?: string;
   /** The tool's modes as flyout entries (the owner's walkthrough: the marquee's ellipse, the lasso's kinds...). */
   variants?(engine: Engine): readonly ToolVariant[];
   label: string;

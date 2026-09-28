@@ -10,6 +10,8 @@ export class Viewport {
   width = 800;
   height = 600;
   fitted = true;
+  /** Rotate View (1.49.9): the view turned by this many degrees about the stage's centre; the image is not. */
+  rotation = 0;
   /** The width the open side column covers at the view's right (it lies over the canvas, the owner's walkthrough):
    *  fitting and centring use only the visible part. Shared by every document's view; set by the app. */
   static insetRight = 0;

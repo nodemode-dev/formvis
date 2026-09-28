@@ -15,7 +15,7 @@ const HINTS = {
 };
 
 export const smearTool: Tool = {
-  id: 'smear', label: 'Smear', key: 'R', order: 65,
+  id: 'smear', label: 'Smear', key: '', order: 65,   // no shortcut, as Photoshop's Blur, Sharpen and Smudge; R is Rotate View's
   icon: (e) => SMEAR_ICONS[e.retouch.smearMode] ?? 'tSmudge',
   variants: (e) => (['blur', 'sharpen', 'smudge', 'liquify'] as const).map((m) => ({ id: m, label: SMEAR_NAMES[m], icon: SMEAR_ICONS[m], active: () => e.retouch.smearMode === m, pick: () => { e.retouch.smearMode = m; e.emit('options', null); } })),
   hint: (e) => `${HINTS[e.retouch.smearMode]} · [ ] size`,

@@ -67,7 +67,7 @@ export class Stage {
     new ResizeObserver(() => this.resize()).observe(host);
     window.addEventListener('resize', () => this.resize());
     engine.on('render', (region) => this.queue(true, true, region));
-    for (const k of ['viewport', 'active'] as const) engine.on(k, () => this.queue(true, true));
+    for (const k of ['viewport', 'active', 'projects'] as const) engine.on(k, () => { this.turn(); this.queue(true, true); });
     for (const k of ['overlay', 'options'] as const) engine.on(k, () => this.queue(false, true));
     engine.on('projects', () => { this.queue(true, true); this.syncAnts(); this.syncWelcome(); this.updateCursor(); });
     engine.on('selection', () => { this.queue(false, true); this.syncAnts(); });
@@ -293,6 +293,19 @@ export class Stage {
    *  the rulers' units, and the grid's and guides' colours ('' is the theme's). */
   static prefs: { cell: number; zoomWheel: boolean; rulerUnits: 'px' | 'in' | 'cm' | 'mm' | '%'; gridColor: string; guideColor: string } = { cell: 8, zoomWheel: false, rulerUnits: 'px', gridColor: '', guideColor: '' };
 
+  static unturn(x: number, y: number, w: number, h: number, deg: number): { x: number; y: number } {
+    if (!deg) return { x, y };
+    const a = (-deg * Math.PI) / 180, cx = w / 2, cy = h / 2, dx = x - cx, dy = y - cy;
+    return { x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a) };
+  }
+
+  /** The drawing surfaces turned as the view is (CSS, about the stage's centre); every renderer draws as it always has. */
+  private turn(): void {
+    const deg = this.engine.current?.viewport.rotation ?? 0, t = deg ? `rotate(${deg}deg)` : '';
+    for (const c of Array.from(this.host.querySelectorAll<HTMLElement>(':scope > canvas'))) if (c.style.transform !== t) c.style.transform = t;
+    this.host.classList.toggle('is-turned', !!deg);
+  }
+
   static rulerStep(zoom: number): number {
     for (let k = 0; k < 8; k++) for (const m of [1, 2, 5]) { const s = m * 10 ** k; if (s * zoom >= 60) return s; }
     return 1e8;
@@ -457,8 +470,10 @@ export class Stage {
 
   private pointer(e: MouseEvent, clicks = 0): ToolPointer {
     const r = this.rect ?? this.host.getBoundingClientRect();
-    const screen = { x: e.clientX - r.left, y: e.clientY - r.top };
     const v = this.engine.current?.viewport;
+    // Rotate View turns the drawing surfaces about the stage's centre; a pointer is turned back into their space, so
+    // every tool lands where it points at any angle.
+    const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0);
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
     return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: pen ? Math.min(1, Math.max(0, (e as PointerEvent).pressure)) : 1,
       pose: pen ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
@@ -629,7 +644,9 @@ export class Stage {
         return;
       }
       const horizontal = e.shiftKey && !e.deltaX;
-      this.engine.pan(-(horizontal ? e.deltaY : e.deltaX) * unit, -(horizontal ? 0 : e.deltaY) * unit);
+      // Scrolling moves the image the way the pointer sees it, the view turned or not.
+      const px = -(horizontal ? e.deltaY : e.deltaX) * unit, py = -(horizontal ? 0 : e.deltaY) * unit, ra = (-v.rotation * Math.PI) / 180;
+      this.engine.pan(px * Math.cos(ra) - py * Math.sin(ra), px * Math.sin(ra) + py * Math.cos(ra));
     }, { passive: false });
     // WebKit (Safari and the macOS desktop WebView) reports a trackpad pinch as gesture events, not Ctrl+wheel. Like
     // the magnify, it zooms about the pointer, here by the gesture's scale since it began.

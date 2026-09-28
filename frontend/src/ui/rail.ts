@@ -141,7 +141,8 @@ export class Rail {
       const t = slotTool(group, this.engine.tool), key = t.icon(this.engine);
       setHtml(node, icon(key, 20), `${t.id}:${key}`);
       node.setAttribute('aria-label', t.label);
-      setTitle(node, t.id === 'brush' ? 'Brush (B) · Eraser (E)' : entries(group) > 1 ? `${t.label} (${group.key}) · hold or right-click for ${group.tools.length} tools · Shift+${group.key} cycles` : `${t.label} (${group.key})`);
+      const own = t.key ? ` (${t.key})` : '';   // each tool its own key (Rotate View's R in the Hand's slot; Smear has none)
+      setTitle(node, entries(group) > 1 ? `${t.label}${own} · hold or right-click for more tools${group.key ? ` · Shift+${group.key} cycles` : ''}` : `${t.label}${own}`);
       setClass(node, 'is-active', group.tools.some((x) => x.id === this.engine.tool));
     }
   }

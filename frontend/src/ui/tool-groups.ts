@@ -11,8 +11,8 @@ const STORE = 'sonny.toolGroups.last';
 export function toolGroups(): ToolGroup[] {
   const out: ToolGroup[] = [];
   for (const t of toolList()) {
-    const g = out.find((x) => x.key === t.key);
-    if (g) g.tools.push(t); else out.push({ key: t.key, tools: [t] });
+    const k = t.group ?? t.key, g = out.find((x) => x.key === k);
+    if (g) g.tools.push(t); else out.push({ key: k, tools: [t] });
   }
   return out;
 }

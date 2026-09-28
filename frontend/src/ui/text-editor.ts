@@ -82,7 +82,17 @@ export class TextEditor {
   }
 
   /** Sets the box's font, colour and size to its text at the current zoom, then puts its first baseline on the anchor. */
+  /** Placed on the drawing surfaces' space, then turned with the view about the stage's centre (Rotate View). */
   private place(): void {
+    this.placeFlat();
+    const v = this.engine.current?.viewport, box = this.box, deg = v?.rotation ?? 0;
+    if (!deg) { box.style.transform = ''; return; }
+    const host = box.parentElement as HTMLElement, x = parseFloat(box.style.getPropertyValue('--x')) || 0, y = parseFloat(box.style.getPropertyValue('--y')) || 0;
+    box.style.transformOrigin = `${host.clientWidth / 2 - x}px ${host.clientHeight / 2 - y}px`;
+    box.style.transform = `rotate(${deg}deg)`;
+  }
+
+  private placeFlat(): void {
     const s = this.session, v = this.engine.current?.viewport;
     if (!s || !v) return;
     const size = s.spec.size * v.zoom * s.scale, screen: TextSpec = { ...s.spec, size }, m = textMetrics(screen), line = size * s.spec.lineHeight;

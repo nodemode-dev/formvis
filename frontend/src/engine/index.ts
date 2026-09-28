@@ -328,6 +328,17 @@ export class Engine {
   /** Photoshop's Automatically Create First Snapshot: each document keeps itself as opened, the History Brush's first
    *  source, within the snapshots' memory budget (past it, none is taken and the brush says so). */
   autoFirstSnapshot = true;
+  /** Rotate View (R; 1.49.9, the owner's tool list): turns the view, not the image, normalised to -180..180. */
+  setViewRotation(deg: number): void {
+    const v = this.current?.viewport;
+    if (!v) return;
+    let d = ((deg % 360) + 360) % 360;
+    if (d > 180) d -= 360;
+    if (Math.abs(d) < 1e-6) d = 0;
+    if (d === v.rotation) return;
+    v.rotation = d;
+    this.emit('viewport', null);
+  }
   /** Measuring (1.49.6, the owner's tool list): per document, the Color Sampler's points (ten at most) and the Ruler's
    *  line, shown on the canvas and in the Info panel; not part of the document's pixels. */
   private measures = new WeakMap<Project, { samplers: Pt[]; ruler: { a: Pt; b: Pt } | null }>();
@@ -5316,6 +5327,87 @@ export class Engine {
     const name = `${undoName}: ${prompt.trim() || emptyName}`;
     this.insertRasterLayer(layer, name.length > 60 ? `${name.slice(0, 57)}...` : name, x0, y0, { mask: { raster: cover, enabled: true, linked: true, placement: null } }, undoName);
     return true;
+  }
+
+  /** Content-Aware Move (J; 1.49.9, the owner's tool list), as Photoshop's: the selected pixels (their soft edges kept)
+   *  placed dx, dy away; in Move mode the hole they leave filled from around it (the Content-Aware Fill's fill), in
+   *  Extend mode the original kept; the selection goes with them. One step. */
+  contentAwareMove(dx: number, dy: number, mode: 'move' | 'extend' = 'move'): void {
+    const p0 = this.current;
+    if (!p0?.selection) { this.notice('Make a selection, then drag it where it should go.'); return; }
+    if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
+    if (p0.maskTarget && p0.activeLayer?.mask) { this.notice('Content-Aware Move works on layer pixels. Click the layer thumbnail to target them.'); return; }
+    const sel0 = p0.selection;
+    this.regionEdit('Content-Aware Move', ({ raster }) => {
+      const p = this.current as Project, l = p.activeLayer as Layer, W = raster.width, H = raster.height;
+      const cov = this.coverageFor(p, l, 'pixels', W, H);
+      if (!cov) return;
+      const sx = W / Math.max(1e-6, l.transform.w), sy = H / Math.max(1e-6, l.transform.h), ox = Math.round(dx * sx), oy = Math.round(dy * sy);
+      const src = raster.read(), out = new ImageData(new Uint8ClampedArray(src.data), W, H);
+      if (mode === 'move') {
+        const pm = premultiply(src.data), hole = new Uint8Array(W * H);
+        for (let i = 0; i < hole.length; i++) hole[i] = cov[i * 4 + 3] ? 1 : 0;
+        if (contentFill(pm, hole, W, H)) unpremultiply(pm, out.data);
+      }
+      // The moved pixels over what is there, by the selection's coverage.
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        const i = y * W + x, a = cov[i * 4 + 3] / 255;
+        if (!a) continue;
+        const tx = x + ox, ty = y + oy;
+        if (tx < 0 || ty < 0 || tx >= W || ty >= H) continue;
+        const s4 = i * 4, d4 = (ty * W + tx) * 4, sa = (src.data[s4 + 3] / 255) * a, da = out.data[d4 + 3] / 255, oa = sa + da * (1 - sa);
+        for (let k = 0; k < 3; k++) out.data[d4 + k] = oa ? Math.round((src.data[s4 + k] * sa + out.data[d4 + k] * da * (1 - sa)) / oa) : 0;
+        out.data[d4 + 3] = Math.round(oa * 255);
+      }
+      raster.ctx.putImageData(out, 0, 0);
+    }, null);
+    if (this.current === p0 && p0.selection === sel0) { p0.selection = SelectionMask.cropped(sel0.x + dx, sel0.y + dy, sel0.w, sel0.h, sel0.data); this.emit('selection', null); }
+  }
+
+  /** Red Eye (J; 1.49.9, the owner's tool list), as Photoshop's: at a click near a red pupil, the red area joined to it
+   *  (reached from the nearest red pixel within a few pixels, and no wider than Pupil Size allows) darkened to a
+   *  neutral by Darken Amount. One step; nothing red near the click leaves the image as it was. */
+  redEye(pt: Pt, pupil = 50, darken = 50): void {
+    const p0 = this.current, l0 = p0?.activeLayer ?? null;
+    if (!p0 || !this.paintable(l0) || !l0?.raster) { this.notice('Select a pixel layer first.'); return; }
+    // Found first, so a click with nothing red near it records no step.
+    if (!this.redEyeArea(l0.raster, l0.transform, pt, pupil)) { this.notice('No red pupil near the click: click the red part of the eye.'); return; }
+    this.regionEdit('Red Eye', ({ raster }) => {
+      const l = (this.current as Project).activeLayer as Layer, area = this.redEyeArea(raster, l.transform, pt, pupil);
+      if (!area) return;
+      const { x0, y0, w, h, inside } = area, img = raster.ctx.getImageData(x0, y0, w, h), d = img.data;
+      const f = 1 - (Math.max(1, Math.min(100, darken)) / 100) * 0.75;
+      for (let k = 0; k < inside.length; k++) {
+        if (!inside[k]) continue;
+        const v = Math.round(((d[k * 4 + 1] + d[k * 4 + 2]) / 2) * f);
+        d[k * 4] = v; d[k * 4 + 1] = v; d[k * 4 + 2] = v;
+      }
+      raster.ctx.putImageData(img, x0, y0);
+    }, null);
+  }
+
+  /** The red area joined to a click (from the nearest red pixel within 6), no further than Pupil Size allows. */
+  private redEyeArea(raster: Raster, t: Transform, pt: Pt, pupil: number): { x0: number; y0: number; w: number; h: number; inside: Uint8Array } | null {
+    const W = raster.width, H = raster.height;
+    const q = applyMat(invert(placement(t, W, H)) ?? [1, 0, 0, 1, 0, 0], pt.x, pt.y), cx = Math.floor(q.x), cy = Math.floor(q.y);
+    const reach = Math.round(8 + pupil * 1.2), x0 = Math.max(0, cx - reach), y0 = Math.max(0, cy - reach), x1 = Math.min(W, cx + reach + 1), y1 = Math.min(H, cy + reach + 1);
+    if (x1 <= x0 || y1 <= y0) return null;
+    const w = x1 - x0, h = y1 - y0, d = raster.ctx.getImageData(x0, y0, w, h).data;
+    const red = (k: number): boolean => d[k * 4 + 3] > 0 && d[k * 4] > 60 && d[k * 4] > 1.5 * Math.max(d[k * 4 + 1], d[k * 4 + 2]);
+    let seed = -1, best = Infinity;
+    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const k = y * w + x, dd = Math.hypot(x + x0 - cx, y + y0 - cy); if (dd <= 6 && red(k) && dd < best) { best = dd; seed = k; } }
+    if (seed < 0) return null;
+    const inside = new Uint8Array(w * h), stack = [seed];
+    inside[seed] = 1;
+    while (stack.length) {
+      const k = stack.pop() as number, x = k % w, y = (k - x) / w;
+      for (const [nx, ny] of [[x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]]) {
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        const nk = ny * w + nx;
+        if (!inside[nk] && red(nk) && Math.hypot(nx + x0 - cx, ny + y0 - cy) <= reach) { inside[nk] = 1; stack.push(nk); }
+      }
+    }
+    return { x0, y0, w, h, inside };
   }
 
   contentAwareFill(): void {
