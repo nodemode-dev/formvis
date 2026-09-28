@@ -2,6 +2,20 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.6 · 2026-09-27
+
+### Added: measuring tools from your list
+
+- Info panel (Window > Info): the colour and position under the pointer, the selection's size, the Ruler's angle and length, and each sampler's colour.
+- Color Sampler (I): up to ten samplers; drag to move, Alt-click to remove, Clear All.
+- Ruler (I): drag to measure (Shift for 45-degree steps), drag an end to adjust; X, Y, W, H, angle and length in the bar; Straighten Layer; Clear.
+- Note (I): click to pin a note and write it; click to edit, drag to move, Alt-click to delete; saved with the document.
+- Count (I): click to count, Alt-click to remove a mark, Clear; saved with the document.
+
+### Fixed
+
+- Tabs fit in steps (smaller lettering first) before any name is shortened; none is cut at 1280, 1440 or 1680 pixels wide.
+
 ## 1.49.5 · 2026-09-27
 
 ### Added: painting tools from your list

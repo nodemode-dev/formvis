@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Measuring · _v1.49.6 (ui/info.ts, ui/panels/note-dialog.ts, extensions/tools/color-sampler.ts, ruler.ts, note.ts, count.ts new; engine/index.ts, engine/types.ts, io/project-io.ts; ui/panel-group.ts, ui/dock.ts, ui/stage.ts, ui/icons.ts, app.ts; styles)
+
+`InfoPanel`; `Engine.measure`, `measureChanged`; `colorSamplerTool`, `drawSamplers`; `rulerTool` (Straighten Layer); `noteTool`, `NoteDialog`, `Engine.activeNote`, `addNote`, `setNote`, `removeNote`, `Doc.notes`; `countTool`, `addCount`, `removeCount`, `clearCounts`, `Doc.counts`; notes and counts in the project file; `PanelGroup.fitTabs`; a panel newer than a saved arrangement starts as it comes. Removed from frontend:
+
+```text
+const TAB_HOMES: Record<string, string> = { layers: 'layers-panel', channels: 'layers-panel', paths: 'layers-panel', navigator: 'navigator', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
+export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'idle';
+  for (const tool of [historyBrushTool, frameTool, convertPointTool, selectionBrushTool, pencilTool, eraserTool, magicEraserTool, patternStampTool, backgroundEraserTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.globalLight ? { globalLight: { angle: doc.globalLight.angle, altitude: doc.globalLight.altitude } } : {}), ...(doc.paragraphStyles?.length ? { paragraphStyles: doc.paragraphStyles.map((s) => ({ ...s, color: { ...s.color } })) } : {}) };
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history'], side: [...DEFAULT_SIDE] };
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Painting tools · _v1.49.5 (extensions/tools/pencil.ts, eraser.ts, magic-eraser.ts, pattern-stamp.ts, background-eraser.ts new, brush.ts, index.ts; engine/index.ts, engine/stroke.ts, engine/types.ts; ui/icons.ts; app.ts; styles)
 
 `pencilTool` (`StrokeStyle.aliased`, `PixelStroke.aliasedDab`, `beginStroke` opts: aliased, autoErase, name); `eraserTool` (E, its own tool); `magicEraserTool` (`Engine.magicErase`); `patternStampTool` (the retouch kind 'patternStamp', `patternStampPattern`); `backgroundEraserTool` (`beginBackgroundErase`, `backgroundEraseTo`, `endBackgroundErase`, `bgDab`, `BgEraseOpts`); the Brush's flyout without the Eraser; E and B keys by their groups, Shift+L through three lasso kinds; tabs fit. Removed from frontend:
