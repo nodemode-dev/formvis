@@ -26,7 +26,7 @@ def select_object(key: str = Form(...), points: str = Form(...), box: str | None
     key and points ([x, y, 1] on the object, [x, y, 0] not on it). A key the engine no longer holds answers 409, and the
     client sends the image again."""
     if not segment.available():
-        raise HTTPException(status_code=501, detail="Click-to-select needs the engine's AI extras (./sonny install-ml).")
+        raise HTTPException(status_code=501, detail="Click-to-select needs the engine's AI extras (./formvis install-ml).")
     try:
         raw = json.loads(points)
         pts = [(float(p[0]), float(p[1]), 1 if int(p[2]) else 0) for p in raw][:32]

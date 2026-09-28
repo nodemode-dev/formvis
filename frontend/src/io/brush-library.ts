@@ -5,7 +5,7 @@ import { importedBrushPresets, presetFromTip, setImportedBrushPresets, type Brus
 /** Imported brushes: .abr files read for their sampled tips, each tip a preset in the Brush tool's list, kept in
  *  IndexedDB (tips can run to megabytes, past what localStorage holds) so they survive a reload. */
 
-const DB = 'sonny-brushes', STORE = 'presets', KEY = 'imported';
+const DB = 'formvis-brushes', STORE = 'presets', KEY = 'imported';
 
 function open(): Promise<IDBDatabase | null> {
   return new Promise((resolve) => {

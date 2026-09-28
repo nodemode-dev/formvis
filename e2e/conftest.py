@@ -1,6 +1,6 @@
-"""Browser tests against the dev build (`./sonny dev` or `npx vite` on 5190), which exposes window.sonny.
+"""Browser tests against the dev build (`./formvis dev` or `npx vite` on 5190), which exposes window.formvis.
 
-SONNY_E2E_URL overrides the address; SONNY_E2E_CHROME points at a Chromium binary when Playwright's own is not
+FORMVIS_E2E_URL overrides the address; FORMVIS_E2E_CHROME points at a Chromium binary when Playwright's own is not
 installed. Every test gets a fresh browser context, so storage (and crash recovery) starts empty.
 """
 import os
@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 from playwright.sync_api import sync_playwright
 
-URL = os.environ.get("SONNY_E2E_URL", "http://127.0.0.1:5190/")
+URL = os.environ.get("FORMVIS_E2E_URL", "http://127.0.0.1:5190/")
 FRONTEND = Path(__file__).resolve().parent.parent / "frontend"
 
 
@@ -46,9 +46,9 @@ def dev_server():
 @pytest.fixture(scope="session")
 def browser(dev_server):
     with sync_playwright() as p:
-        exe = os.environ.get("SONNY_E2E_CHROME") or None
+        exe = os.environ.get("FORMVIS_E2E_CHROME") or None
         # WebGPU on SwiftShader, a software adapter, so the GPU blender's shaders can be checked here (Phase 18.2);
-        # sonny's Automatic renderer still falls back to the CPU on a software GPU, as the GPU tests expect.
+        # formvis's Automatic renderer still falls back to the CPU on a software GPU, as the GPU tests expect.
         b = p.chromium.launch(executable_path=exe, args=["--no-sandbox", "--enable-unsafe-webgpu", "--enable-unsafe-swiftshader", "--use-webgpu-adapter=swiftshader"])
         yield b
         b.close()
@@ -65,7 +65,7 @@ def open_app(page):
     errors: list[str] = []
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(URL)
-    page.wait_for_function("window.sonny && window.sonny.engine", timeout=60000)
+    page.wait_for_function("window.formvis && window.formvis.engine", timeout=60000)
     return errors
 
 

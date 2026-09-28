@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-SONNY_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-export SONNY_ROOT
-cv_say() { printf '[sonny] %s\n' "$*"; }
-cv_die() { printf '[sonny] error: %s\n' "$*" >&2; exit 1; }
+FORMVIS_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+export FORMVIS_ROOT
+cv_say() { printf '[formvis] %s\n' "$*"; }
+cv_die() { printf '[formvis] error: %s\n' "$*" >&2; exit 1; }
 cv_os() {
   case "$(uname -s 2>/dev/null)" in
     Darwin) echo macos ;;
@@ -22,12 +22,12 @@ cv_python() {
   return 1
 }
 cv_venv() {
-  [ -f "$SONNY_ROOT/backend/venv/bin/activate" ] || cv_die "backend venv missing, run ./sonny install"
+  [ -f "$FORMVIS_ROOT/backend/venv/bin/activate" ] || cv_die "backend venv missing, run ./formvis install"
   # shellcheck disable=SC1091
-  source "$SONNY_ROOT/backend/venv/bin/activate"
+  source "$FORMVIS_ROOT/backend/venv/bin/activate"
 }
 cv_target_triple() {
-  if [ -n "${SONNY_TARGET:-}" ]; then echo "$SONNY_TARGET"; return 0; fi
+  if [ -n "${FORMVIS_TARGET:-}" ]; then echo "$FORMVIS_TARGET"; return 0; fi
   command -v rustc >/dev/null 2>&1 || return 1
   rustc -vV | awk '/^host:/ {print $2}'
 }

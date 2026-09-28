@@ -1,4 +1,4 @@
-/** Embedding an ICC profile in the files the browser encodes (sonny's other formats get theirs from the engine).
+/** Embedding an ICC profile in the files the browser encodes (formvis's other formats get theirs from the engine).
  *  PNG: an iCCP chunk right after IHDR, the profile zlib-compressed, and any sRGB, iCCP, gAMA or cHRM chunk dropped, as
  *  the PNG specification says they conflict with it. JPEG: an APP2 ICC_PROFILE segment after SOI and any JFIF APP0,
  *  split across segments of at most 65,519 bytes as the ICC specification describes, any existing ICC_PROFILE

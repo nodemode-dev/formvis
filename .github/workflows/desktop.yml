@@ -43,8 +43,8 @@ jobs:
       - name: Install both sides and the desktop toolchain
         shell: bash
         run: |
-          ./sonny install --lite
-          ./sonny install-desktop
+          ./formvis install --lite
+          ./formvis install-desktop
       - name: Build the desktop bundle
         shell: bash
         env:
@@ -61,14 +61,14 @@ jobs:
           [ -n "$APPLE_CERTIFICATE" ] || unset APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY
           [ -n "$APPLE_ID" ] || unset APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID
           if [ -n "$TAURI_SIGNING_PRIVATE_KEY" ]; then
-            ./sonny desktop build --config '{"bundle":{"createUpdaterArtifacts":true}}'
+            ./formvis desktop build --config '{"bundle":{"createUpdaterArtifacts":true}}'
           else
             unset TAURI_SIGNING_PRIVATE_KEY TAURI_SIGNING_PRIVATE_KEY_PASSWORD
-            ./sonny desktop build
+            ./formvis desktop build
           fi
       - uses: actions/upload-artifact@v4
         with:
-          name: sonny-${{ matrix.name }}
+          name: formvis-${{ matrix.name }}
           if-no-files-found: error
           path: |
             src-tauri/target/release/bundle/dmg/*.dmg
@@ -104,7 +104,7 @@ jobs:
                       platforms[key] = {'signature': open(f + '.sig').read().strip(), 'url': base + os.path.basename(f)}
                       break
           if platforms:
-              feed = {'version': tag.lstrip('v'), 'notes': f'sonny {tag}', 'platforms': platforms,
+              feed = {'version': tag.lstrip('v'), 'notes': f'formvis {tag}', 'platforms': platforms,
                       'pub_date': datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%dT%H:%M:%SZ')}
               json.dump(feed, open('bundles/latest.json', 'w'), indent=2)
               print('latest.json written for', ', '.join(platforms))

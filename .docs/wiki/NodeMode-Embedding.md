@@ -1,12 +1,12 @@
 # NodeMode Embedding
 
-Inside NodeMode, sonny runs as a full-screen extension portal panel. It follows the portal protocol and the host theme bridge.
+Inside NodeMode, formvis runs as a full-screen extension portal panel. It follows the portal protocol and the host theme bridge.
 
 | Message | Direction | Meaning |
 | --- | --- | --- |
-| `ready` | sonny to host | Posted after the message listener is attached |
-| `init` | host to sonny | Carries `pluginId`, `panelId` and optional state |
-| `plugin:<pluginId>:assign` | sonny to host | File, Send to NodeMode Canvas: `payload.files` holds `name`, `mime`, `width`, `height`, `dataUrl` |
+| `ready` | formvis to host | Posted after the message listener is attached |
+| `init` | host to formvis | Carries `pluginId`, `panelId` and optional state |
+| `plugin:<pluginId>:assign` | formvis to host | File, Send to NodeMode Canvas: `payload.files` holds `name`, `mime`, `width`, `height`, `dataUrl` |
 | `close` | both | Close the panel |
 
 | Source path | What lives there |

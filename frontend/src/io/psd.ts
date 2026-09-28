@@ -10,7 +10,7 @@ import { maskEdgeTone } from '../engine/distort';
 
 /** Layered PSD files, read and written with ag-psd (MIT). Pixel layers keep their position, opacity, blend mode and
  *  visibility, folders become groups and back, layer masks and clipping carry across, and the flattened image goes in
- *  as the composite for readers that ignore layers. What PSD stores in forms sonny does not write yet, layer styles,
+ *  as the composite for readers that ignore layers. What PSD stores in forms formvis does not write yet, layer styles,
  *  adjustment layers and editable type, is reported in the notes. The library loads on first use, keeping it out of
  *  the start-up bundle. */
 
@@ -27,7 +27,7 @@ export const isPsdFile = (f: File): boolean => /\.ps[db]$/i.test(f.name) || f.ty
 
 const canvas = (w: number, h: number): HTMLCanvasElement => { const c = document.createElement('canvas'); c.width = Math.max(1, w); c.height = Math.max(1, h); return c; };
 
-/** A PSD's layers as a sonny document, bottom to top as in the file, with notes on anything left out. */
+/** A PSD's layers as a formvis document, bottom to top as in the file, with notes on anything left out. */
 /** A GUID, which Photoshop requires for a placed layer's id. */
 function guid(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
@@ -62,7 +62,7 @@ async function decodeLinked(data: Uint8Array, readPsd: typeof import('ag-psd').r
 
 const BEVEL_TO: Record<LayerEffects['bevel']['style'], 'inner bevel' | 'outer bevel' | 'emboss' | 'pillow emboss'> = { inner: 'inner bevel', outer: 'outer bevel', emboss: 'emboss', pillow: 'pillow emboss' };
 
-/** A sonny layer style as Photoshop layer effects: each enabled effect in Photoshop's own terms. A pattern used by
+/** A formvis layer style as Photoshop layer effects: each enabled effect in Photoshop's own terms. A pattern used by
  *  Pattern Overlay travels in the PSD's patterns, under a GUID. */
 function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsInfo | null {
   const px = (value: number): UnitsValue => ({ units: 'Pixels', value }), bm = (m: BlendMode): PsdBlend => TO_PSD[m] ?? 'normal', on = { enabled: true, present: true, showInDialog: true };
@@ -75,17 +75,17 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
   if (k.enabled) e.stroke = [{ ...on, position: 'outside', fillType: 'color', color: k.color, opacity: k.opacity, blendMode: 'normal', size: px(k.size) }];
   if (co.enabled) e.solidFill = [{ ...on, color: co.color, opacity: co.opacity, blendMode: bm(co.blend) }];
   if (go.enabled) e.gradientOverlay = [{ ...on, opacity: go.opacity, blendMode: bm(go.blend), type: go.style, angle: go.angle, scale: go.scale, reverse: go.reverse, align: true,
-    gradient: { name: 'sonny', type: 'solid', colorStops: [{ color: go.from, location: 0, midpoint: 0.5 }, { color: go.to, location: 1, midpoint: 0.5 }], opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] } }];
+    gradient: { name: 'formvis', type: 'solid', colorStops: [{ color: go.from, location: 0, midpoint: 0.5 }, { color: go.to, location: 1, midpoint: 0.5 }], opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] } }];
   if (sa.enabled) e.satin = { ...on, color: sa.color, opacity: sa.opacity, blendMode: bm(sa.blend), angle: sa.angle, distance: px(sa.distance), size: px(sa.size), invert: sa.invert };
   if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: false,
     highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend) };
   const pat = po.enabled ? patternById(po.pattern) : null;
   if (pat) {
-    let info = patterns.find((x) => x.name === pat.name && (x as PatternInfo & { sonny?: string }).sonny === pat.id);
+    let info = patterns.find((x) => x.name === pat.name && (x as PatternInfo & { formvis?: string }).formvis === pat.id);
     if (!info) {
       const w = pat.surface.width, h = pat.surface.height, rgba = ctxOf(pat.surface).getImageData(0, 0, w, h).data;
       info = { name: pat.name, id: guid(), x: 0, y: 0, bounds: { x: 0, y: 0, w, h }, data: new Uint8Array(rgba) };
-      (info as PatternInfo & { sonny?: string }).sonny = pat.id;
+      (info as PatternInfo & { formvis?: string }).formvis = pat.id;
       patterns.push(info);
     }
     e.patternOverlay = { ...on, opacity: po.opacity, blendMode: bm(po.blend), scale: po.scale, pattern: { name: info.name, id: info.id }, align: true };
@@ -93,7 +93,7 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
   return Object.keys(e).length ? e : null;
 }
 
-/** Photoshop layer effects as a sonny layer style, noting what sonny does not have. */
+/** Photoshop layer effects as a formvis layer style, noting what formvis does not have. */
 function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefined, name: string, notes: string[]): LayerEffects | null {
   const fx = defaultEffects(), px = (u: UnitsValue | undefined, d: number): number => (u && typeof u.value === 'number' ? u.value : d);
   const col = (c: unknown, d: { r: number; g: number; b: number }): { r: number; g: number; b: number } => {
@@ -105,7 +105,7 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
   const bm = (m: string | undefined, d: BlendMode): BlendMode => (m && FROM_PSD.get(m as PsdBlend)) || d, op = (v: number | undefined, d: number): number => (typeof v === 'number' ? Math.max(0, Math.min(1, v)) : d);
   const first = <T extends { enabled?: boolean }>(list: T[] | undefined, what: string): T | null => {
     if (!list?.length) return null;
-    if (list.length > 1) notes.push(`"${name}" has more than one ${what}; sonny kept the first.`);
+    if (list.length > 1) notes.push(`"${name}" has more than one ${what}; formvis kept the first.`);
     return list[0];
   };
   const on = (x: { enabled?: boolean } | null | undefined): boolean => !!x && x.enabled !== false;
@@ -120,7 +120,7 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
   const k = first(info.stroke, 'Stroke');
   if (k) {
     fx.stroke = { enabled: on(k), color: col(k.color, fx.stroke.color), opacity: op(k.opacity, 1), size: px(k.size, 3) };
-    if ((k.position && k.position !== 'outside') || (k.fillType && k.fillType !== 'color')) notes.push(`"${name}" has a Photoshop stroke sonny draws as an outside colour stroke.`);
+    if ((k.position && k.position !== 'outside') || (k.fillType && k.fillType !== 'color')) notes.push(`"${name}" has a Photoshop stroke formvis draws as an outside colour stroke.`);
   }
   const co = first(info.solidFill, 'Color Overlay');
   if (co) fx.colorOverlay = { enabled: on(co), color: col(co.color, fx.colorOverlay.color), opacity: op(co.opacity, 1), blend: bm(co.blendMode, 'normal') };
@@ -129,7 +129,7 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
     const stops = go.gradient && 'colorStops' in go.gradient ? go.gradient.colorStops : [];
     fx.gradientOverlay = { enabled: on(go), from: col(stops[0]?.color, fx.gradientOverlay.from), to: col(stops[stops.length - 1]?.color, fx.gradientOverlay.to), opacity: op(go.opacity, 1), blend: bm(go.blendMode, 'normal'),
       angle: go.angle ?? 90, style: go.type === 'radial' ? 'radial' : 'linear', scale: Math.max(0.1, Math.min(1.5, go.scale ?? 1)), reverse: !!go.reverse };
-    if (stops.length > 2 || (go.type && go.type !== 'linear' && go.type !== 'radial')) notes.push(`"${name}" has a Photoshop gradient sonny simplifies to two colours, linear or radial.`);
+    if (stops.length > 2 || (go.type && go.type !== 'linear' && go.type !== 'radial')) notes.push(`"${name}" has a Photoshop gradient formvis simplifies to two colours, linear or radial.`);
   }
   const sa = info.satin;
   if (sa) fx.satin = { enabled: on(sa), color: col(sa.color, fx.satin.color), opacity: op(sa.opacity, 0.5), blend: bm(sa.blendMode, 'multiply'), angle: sa.angle ?? 19, distance: px(sa.distance, 11), size: px(sa.size, 14), invert: sa.invert !== false };
@@ -138,7 +138,7 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
     const style = bv.style === 'outer bevel' ? 'outer' : bv.style === 'emboss' ? 'emboss' : bv.style === 'pillow emboss' ? 'pillow' : 'inner';
     fx.bevel = { enabled: on(bv), style, depth: Math.max(1, Math.min(1000, Math.round((bv.strength ?? 1) * 100))), down: bv.direction === 'down', size: px(bv.size, 5), soften: px(bv.soften, 0), angle: bv.angle ?? 120, altitude: bv.altitude ?? 30,
       highlight: col(bv.highlightColor, fx.bevel.highlight), highlightOpacity: op(bv.highlightOpacity, 0.75), highlightBlend: bm(bv.highlightBlendMode, 'screen'), shadow: col(bv.shadowColor, fx.bevel.shadow), shadowOpacity: op(bv.shadowOpacity, 0.75), shadowBlend: bm(bv.shadowBlendMode, 'multiply') };
-    if ((bv.technique && bv.technique !== 'smooth') || bv.style === 'stroke emboss') notes.push(`"${name}" has a Photoshop bevel sonny draws with its smooth technique.`);
+    if ((bv.technique && bv.technique !== 'smooth') || bv.style === 'stroke emboss') notes.push(`"${name}" has a Photoshop bevel formvis draws with its smooth technique.`);
   }
   const po = info.patternOverlay;
   if (po) {
@@ -150,17 +150,17 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
       ctxOf(surface).putImageData(img, 0, 0);
       id = `psd-${src.id}`;
       if (!patternById(id)) { addPattern(src.name || 'Pattern', surface, id); projectPatterns.add(id); }
-    } else notes.push(`"${name}" uses a Photoshop pattern the file does not include; sonny shows Checker in its place.`);
+    } else notes.push(`"${name}" uses a Photoshop pattern the file does not include; formvis shows Checker in its place.`);
     fx.patternOverlay = { enabled: on(po), pattern: id, opacity: op(po.opacity, 1), blend: bm(po.blendMode, 'normal'), scale: Math.max(0.1, Math.min(10, po.scale ?? 1)) };
   }
-  if (info.disabled) { notes.push(`"${name}" has its Photoshop layer style switched off; sonny opened it switched off.`); return null; }
+  if (info.disabled) { notes.push(`"${name}" has its Photoshop layer style switched off; formvis opened it switched off.`); return null; }
   return effectsActive(fx) ? fx : null;
 }
 
-/** Photoshop's PostScript names for sonny's type families; bold and italic travel as Photoshop's faux styles. */
+/** Photoshop's PostScript names for formvis's type families; bold and italic travel as Photoshop's faux styles. */
 const PS_FONT: Record<string, string> = { Inter: 'Inter-Regular', Arial: 'ArialMT', Helvetica: 'Helvetica', Georgia: 'Georgia', 'Times New Roman': 'TimesNewRomanPSMT', 'Courier New': 'CourierNewPSMT', Verdana: 'Verdana', 'Trebuchet MS': 'TrebuchetMS', Impact: 'Impact', serif: 'TimesNewRomanPSMT', 'sans-serif': 'ArialMT', monospace: 'CourierNewPSMT' };
 
-/** The sonny family a Photoshop font name belongs to, by its PostScript name or its family part. */
+/** The formvis family a Photoshop font name belongs to, by its PostScript name or its family part. */
 function familyOf(psName: string): { family: string; bold: boolean; italic: boolean } {
   const known = Object.entries(PS_FONT).find(([fam, ps]) => ps === psName && fam !== 'serif' && fam !== 'sans-serif' && fam !== 'monospace');
   const bare = psName.replace(/-(Bold|Italic|BoldItalic|Regular|Oblique|BoldOblique)?(MT|PSMT)?$/i, '').replace(/(PSMT|MT)$/, '');
@@ -184,16 +184,16 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
       if (pl.children) {
         const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1 });
         walk(pl.children, group.id);
-        layers.push(group); // after its children, where sonny keeps a folder's entry
+        layers.push(group); // after its children, where formvis keeps a folder's entry
         base = null;
         continue;
       }
-      if (pl.blendMode && !FROM_PSD.has(pl.blendMode) && pl.blendMode !== 'pass through') notes.push(`"${name}" uses ${pl.blendMode}, which sonny does not have; it opened as Normal.`);
+      if (pl.blendMode && !FROM_PSD.has(pl.blendMode) && pl.blendMode !== 'pass through') notes.push(`"${name}" uses ${pl.blendMode}, which formvis does not have; it opened as Normal.`);
       const adj = pl.adjustment ? fromPsdAdjustment(pl.adjustment) : null;
-      if (pl.adjustment && !adj) { notes.push(`"${name}" is a ${pl.adjustment.type} adjustment, which sonny does not have; sonny left it out.`); continue; }
+      if (pl.adjustment && !adj) { notes.push(`"${name}" is a ${pl.adjustment.type} adjustment, which formvis does not have; formvis left it out.`); continue; }
       if (!adj && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
       const w = pl.canvas?.width ?? 0, h = pl.canvas?.height ?? 0, raster = adj || !pl.canvas ? null : Raster.from(pl.canvas, w, h);
-      // An adjustment layer opens as sonny's own, live, with its mask, opacity, blend and clipping.
+      // An adjustment layer opens as formvis's own, live, with its mask, opacity, blend and clipping.
       const pr = pl.protected, all = !!(pr?.transparency && pr?.composite && pr?.position);
       const lk = pr && (pr.transparency || pr.composite || pr.position) ? { locks: all ? { all: true } : { ...(pr.transparency ? { transparency: true } : {}), ...(pr.composite ? { pixels: true } : {}), ...(pr.position ? { position: true } : {}) } } : {};
       const fill = { ...(pl.fillOpacity !== undefined && pl.fillOpacity !== 1 ? { fill: Math.min(1, Math.max(0, pl.fillOpacity)) } : {}), ...lk };
@@ -201,7 +201,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: pl.left ?? 0, y: pl.top ?? 0 }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill });
       const mk = pl.mask;
       if (mk?.canvas && mk.canvas.width && mk.canvas.height) {
-        // PSD masks are grey; sonny's are white with the level in alpha.
+        // PSD masks are grey; formvis's are white with the level in alpha.
         const mw = mk.canvas.width, mh = mk.canvas.height, grey = mk.canvas.getContext('2d')?.getImageData(0, 0, mw, mh);
         if (grey) {
           const img = new ImageData(mw, mh);
@@ -213,7 +213,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
       }
       const vm = pl.vectorMask, vf = pl.vectorFill, vs = pl.vectorStroke;
       if (vm?.paths?.length && (vf?.type === 'color' || vs?.strokeEnabled)) {
-        // A Photoshop shape opens as a sonny shape layer: its pixels as saved, its outline editable again.
+        // A Photoshop shape opens as a formvis shape layer: its pixels as saved, its outline editable again.
         const col = (c: unknown): { r: number; g: number; b: number } | null => {
           const o = c as Record<string, number> | null;
           if (!o) return null;
@@ -222,7 +222,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
           return null;
         };
         const path = { subpaths: vm.paths.map((bp) => ({ closed: !bp.open, anchors: bp.knots.map((k) => ({ inX: k.points[0], inY: k.points[1], x: k.points[2], y: k.points[3], outX: k.points[4], outY: k.points[5] })) })).filter((sp) => sp.anchors.length) };
-        // A subtract outline cuts a hole: wound against the combined ones, as the nonzero rule sonny fills by needs.
+        // A subtract outline cuts a hole: wound against the combined ones, as the nonzero rule formvis fills by needs.
         const ops = vm.paths.filter((bp) => bp.knots.length).map((bp) => bp.operation ?? 'combine');
         const mainArea = path.subpaths.reduce((m, sp, i) => (ops[i] !== 'subtract' && sp.closed && Math.abs(windingArea(sp.anchors)) > Math.abs(m) ? windingArea(sp.anchors) : m), 0);
         path.subpaths.forEach((sp, i) => {
@@ -233,22 +233,22 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         const sc = vs?.strokeEnabled && vs.content?.type === 'color' ? col(vs.content.color) : null;
         const stroke = sc ? { color: sc, width: vs?.lineWidth?.value ?? 1 } : null;
         if (path.subpaths.length && (fill || stroke)) layer.vector = { path, fill, stroke, origin: { x: pl.left ?? 0, y: pl.top ?? 0 } };
-        // Photoshop's path operations kept as sonny's (subtract outlines were also wound against the rest above).
+        // Photoshop's path operations kept as formvis's (subtract outlines were also wound against the rest above).
         path.subpaths.forEach((sp, i) => { const op = ops[i]; if (op === 'subtract' || op === 'intersect' || op === 'exclude') (sp as SubPath).op = op; });
       }
       const plc = pl.placedLayer;
       if (plc) {
-        // A Photoshop smart object opens as a sonny one: its contents the source, its corners the warp, its pixels as
+        // A Photoshop smart object opens as a formvis one: its contents the source, its corners the warp, its pixels as
         // Photoshop saved them until it is next re-rendered.
         const source = contents.get(plc.id) ?? null, t8 = plc.nonAffineTransform ?? plc.transform;
         if (source && t8?.length === 8 && t8.every((v) => Number.isFinite(v))) {
           layer.smart = { source, filters: [], warp: [0, 2, 4, 6].map((k) => ({ x: t8[k], y: t8[k + 1] })), warpAt: layer.transform };
           if (plc.filter) notes.push(`"${name}" has Photoshop smart filters; they stay applied in its pixels and are not editable here.`);
-        } else notes.push(`"${name}" is a smart object whose contents sonny cannot read; it opened as pixels.`);
+        } else notes.push(`"${name}" is a smart object whose contents formvis cannot read; it opened as pixels.`);
       }
       const tx = pl.text;
       if (tx && typeof tx.text === 'string' && raster) {
-        // Photoshop type opens as editable sonny type: Photoshop's pixels until it is edited, then sonny's.
+        // Photoshop type opens as editable formvis type: Photoshop's pixels until it is edited, then formvis's.
         const st = tx.style ?? {}, m = tx.transform ?? [1, 0, 0, 1, 0, 0], scale = Math.hypot(m[2] ?? 0, m[3] ?? 1) || 1, face = familyOf(st.font?.name ?? 'ArialMT');
         const col = st.fillColor as Record<string, number> | undefined, just = tx.paragraphStyle?.justification;
         const size = Math.max(1, Math.round((st.fontSize ?? 12) * scale * 100) / 100);
@@ -256,9 +256,9 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
           align: just === 'center' || just === 'right' ? just : 'left', bold: !!st.fauxBold || face.bold, italic: !!st.fauxItalic || face.italic, lineHeight: st.autoLeading === false && st.leading ? Math.round((st.leading * scale / size) * 100) / 100 : 1.2,
           tracking: Math.round(Math.min(10000, Math.max(-1000, st.tracking ?? 0))), kerning: st.autoKerning === false ? 'none' : 'metrics' };
         layer.text = { ...spec, rendered: textKey(raster) };
-        if ((tx.styleRuns?.length ?? 0) > 1) notes.push(`"${name}" mixes type styles; sonny keeps the first for the whole text.`);
+        if ((tx.styleRuns?.length ?? 0) > 1) notes.push(`"${name}" mixes type styles; formvis keeps the first for the whole text.`);
         const warped = !!tx.warp?.style && tx.warp.style !== 'none';
-        if (tx.shapeType === 'box' || warped) notes.push(`"${name}" is ${warped ? 'warped' : 'paragraph'} type in Photoshop; sonny edits it as plain point type.`);
+        if (tx.shapeType === 'box' || warped) notes.push(`"${name}" is ${warped ? 'warped' : 'paragraph'} type in Photoshop; formvis edits it as plain point type.`);
       }
       if (pl.effects) { const fx = fromPsdEffects(pl.effects, psd.patterns, name, notes); if (fx) layer.effects = fx; }
       if (pl.clipping && base) layer.clipId = base.id;
@@ -314,7 +314,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
       // An adjustment layer goes as Photoshop's, live, with its mask, opacity, blend and clipping.
       const adjustment = toPsdAdjustment(l.adjustment);
       if (!adjustment) { notes.push(`"${l.name}" is a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment, which Photoshop has no adjustment layer for; it is left out of the PSD.`); return null; }
-      if (l.adjustment.kind === 'hsv' && (l.adjustment.data as { colorize?: unknown }).colorize === true) notes.push(`"${l.name}" uses Colorize, which the PSD's Hue/Saturation layer does not carry from sonny.`);
+      if (l.adjustment.kind === 'hsv' && (l.adjustment.data as { colorize?: unknown }).colorize === true) notes.push(`"${l.name}" uses Colorize, which the PSD's Hue/Saturation layer does not carry from formvis.`);
       const out: PsdLayer = { name: l.name, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment };
       maskOnto(l, out);
       return out;
@@ -327,7 +327,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId };
     if (effectsActive(l.effects)) { const e = toPsdEffects(l.effects, psdPatterns); if (e) out.effects = e; }
     if (liveText(l) && l.text && l.raster) {
-      // Live type goes as Photoshop point type: anchored where sonny anchors it, on the first line's baseline, the
+      // Live type goes as Photoshop point type: anchored where formvis anchors it, on the first line's baseline, the
       // layer's placement carried into the text transform so moved, scaled or rotated type lands the same.
       const t = l.text, r = renderText(t), pm = placement(l.transform, l.raster.width, l.raster.height);
       const ax = t.align === 'center' ? r.raster.width / 2 : t.align === 'right' ? r.raster.width - r.pad : r.pad, at = applyMat(pm, ax * (l.raster.width / r.raster.width), r.baseline * (l.raster.height / r.raster.height));
@@ -352,7 +352,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
       const moved = t.rotation === 0 && !t.flipX && !t.flipY && Math.abs(t.w - l.raster.width) < 1e-6 && Math.abs(t.h - l.raster.height) < 1e-6;
       if (moved) {
         const dx = t.x - v.origin.x, dy = t.y - v.origin.y, rgb = (c: { r: number; g: number; b: number }) => ({ r: c.r, g: c.g, b: c.b });
-        // sonny fills by the nonzero rule, so an outline wound against the largest one is a hole; Photoshop says so with
+        // formvis fills by the nonzero rule, so an outline wound against the largest one is a hole; Photoshop says so with
         // the subtract operation.
         const live = v.path.subpaths.filter((sp) => sp.anchors.length), areas = live.map((sp) => (sp.closed ? windingArea(sp.anchors) : 0));
         const main = areas.reduce((m, a) => (Math.abs(a) > Math.abs(m) ? a : m), 0);

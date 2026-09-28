@@ -5,7 +5,7 @@
   python3 setup/line_counts.py --check    exit 1 if README.md's figures have drifted from the code
 
 Counted: product code tracked by git, tests excluded: TypeScript and CSS under frontend/src, Python under backend/app
-and backend/sonny_engine.py, Rust under src-tauri/src and native (the native renderer, from 1.44.0). Figures are rounded to hundreds; a figure passes the check within
+and backend/formvis_engine.py, Rust under src-tauri/src and native (the native renderer, from 1.44.0). Figures are rounded to hundreds; a figure passes the check within
 3 percent or 100 lines of the count. The number of blend modes must be stated exactly once, as "N blend modes", and
 equal the entries of BLEND_MODES in frontend/src/engine/types.ts.
 """
@@ -19,7 +19,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 KINDS = (("TypeScript", ("frontend/src/",), ".ts"), ("CSS", ("frontend/src/",), ".css"),
-         ("Python", ("backend/app/", "backend/sonny_engine.py"), ".py"), ("Rust", ("src-tauri/src/", "native/"), ".rs"))
+         ("Python", ("backend/app/", "backend/formvis_engine.py"), ".py"), ("Rust", ("src-tauri/src/", "native/"), ".rs"))
 
 
 def counts(root: Path = ROOT) -> dict[str, int]:

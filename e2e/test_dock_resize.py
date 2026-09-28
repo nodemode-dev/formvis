@@ -10,7 +10,7 @@ def drag(page, target, dy):
 
 def test_groups_resize_by_their_splitters_and_keep_their_size(page):
     try:
-        page.evaluate("window.sonny.engine.newDocument(300, 200, 'R', 'white')")
+        page.evaluate("window.formvis.engine.newDocument(300, 200, 'R', 'white')")
         nav0, card0, lay0 = page.evaluate(H, "navigator"), page.evaluate(CARD), page.evaluate(H, "layers-panel")
         drag(page, "navigator", 80)                                                            # a taller Navigator
         nav1 = page.evaluate(H, "navigator")
@@ -19,11 +19,11 @@ def test_groups_resize_by_their_splitters_and_keep_their_size(page):
         assert page.evaluate(H, "layers-panel") < lay0                                         # Layers takes what is left
         drag(page, "swatches", -40)                                                            # a shorter Swatches
         sw = page.evaluate(H, "swatches")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
-        page.evaluate("window.sonny.engine.newDocument(300, 200, 'R2', 'white')")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
+        page.evaluate("window.formvis.engine.newDocument(300, 200, 'R2', 'white')")
         assert abs(page.evaluate(H, "navigator") - nav1) <= 2 and abs(page.evaluate(H, "swatches") - sw) <= 2   # remembered
         page.locator(".cv-dock-split[data-target='navigator']").dblclick()                    # its own height again
         assert abs(page.evaluate(H, "navigator") - nav0) <= 2
     finally:
-        page.evaluate("localStorage.removeItem('sonny.dock.heights')")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate("localStorage.removeItem('formvis.dock.heights')")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")

@@ -6,7 +6,7 @@ import type { Pt, Rect, RGB } from './types';
 import { UPRIGHT, computeOption, shapeActive, type BrushDynamics, type BrushShape, type PenPose } from './brush-dynamics';
 import type { SampledTip } from './abr';
 
-/** Painting strokes for sonny. Dabs of a round brush tip are laid along the pointer's path into a separate paint
+/** Painting strokes for formvis. Dabs of a round brush tip are laid along the pointer's path into a separate paint
  *  layer, evenly spaced and carried over between moves; composing lays that layer onto a working copy of the pixels at
  *  the stroke's opacity, so overlapping dabs within one stroke never build past it. A selection limits where paint
  *  lands, a texture (Clone Stamp's source) can stand in for the brush colour, and on an alpha-coded mask the value

@@ -1,5 +1,5 @@
 CLONE = """(opts) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(220, 110, 'C', 'white');
   const l = e.current.activeLayer, c = l.raster.ctx;
   c.fillStyle = '#ff0000'; c.fillRect(20, 20, 20, 10);

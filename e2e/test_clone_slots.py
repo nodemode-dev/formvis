@@ -1,9 +1,9 @@
-SETUP = """() => { const e = window.sonny.engine; e.newDocument(200, 100, 'C', 'white');
+SETUP = """() => { const e = window.formvis.engine; e.newDocument(200, 100, 'C', 'white');
   const l = e.current.activeLayer, c = l.raster.canvas.getContext('2d'); c.fillStyle = '#ff0000'; c.fillRect(0, 0, 100, 100);
   e.emit('render', null); e.setTool('cloneStamp'); e.brush.diameter = 20;
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }"""
 BAR = ".cv-opt-group:not([hidden])"
-SLOT = "(() => { const e = window.sonny.engine; return [e.cloneSlot, e.cloneSource && [Math.round(e.cloneSource.x), Math.round(e.cloneSource.y)], e.retouch.cloneScale]; })()"
+SLOT = "(() => { const e = window.formvis.engine; return [e.cloneSlot, e.cloneSource && [Math.round(e.cloneSource.x), Math.round(e.cloneSource.y)], e.retouch.cloneScale]; })()"
 PIXEL = """([x, y]) => { const cv = document.querySelector('.cv-overlay-canvas'), r = cv.getBoundingClientRect(), k = cv.width / r.width;
   return Array.from(cv.getContext('2d').getImageData(Math.round((x - r.left) * k), Math.round((y - r.top) * k), 1, 1).data); }"""
 
@@ -18,7 +18,7 @@ def test_five_clone_sources_and_the_overlay(page):
     page.locator(BAR).get_by_role("button", name="2", exact=True).click()
     assert page.evaluate(SLOT) == [1, None, 100]                              # an empty slot has no source yet
     alt_click(150, 50)
-    page.evaluate("(() => { const e = window.sonny.engine; e.retouch.cloneScale = 50; e.emit('options', null); })()")
+    page.evaluate("(() => { const e = window.formvis.engine; e.retouch.cloneScale = 50; e.emit('options', null); })()")
     page.locator(BAR).get_by_role("button", name="1", exact=True).click()
     assert page.evaluate(SLOT) == [0, [20, 50], 100]                          # slot 1: its point, its scale
     page.locator(BAR).get_by_role("button", name="2", exact=True).click()

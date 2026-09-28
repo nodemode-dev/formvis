@@ -19,7 +19,7 @@ export class HomeScreen {
   readonly root = el('<section class="cv-home" aria-label="Home" hidden></section>');
   private readonly list = el('<div class="cv-home-list"></div>');
   /** Recent projects, a quiet list under the hint, shown only when there are any (the target has none; kept since
-   *  sonny's recent projects are useful and removing them would be a step back). */
+   *  formvis's recent projects are useful and removing them would be a step back). */
   private readonly recentBox = el('<div class="cv-home-main" hidden><h2 class="cv-home-title">Recent</h2></div>');
   private forced = false;
   private lastCount = 0;
@@ -31,7 +31,7 @@ export class HomeScreen {
   constructor(host: HTMLElement, private readonly d: HomeDeps) {
     const mod = /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl';
     const center = el(`<div class="cv-home-center">
-      <h1 class="cv-home-brand">sonny<span class="cv-home-by">by NodeMode</span></h1>
+      <h1 class="cv-home-brand">formvis<span class="cv-home-by">by NodeMode</span></h1>
       <p class="cv-home-sub">Create a new document or open an existing file.</p>
       <div class="cv-home-actions"></div>
       <p class="cv-home-hint">${icon('image', 14)}<span>Drop a supported image file anywhere to open it.</span></p>

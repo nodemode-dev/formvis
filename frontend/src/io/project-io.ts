@@ -5,7 +5,7 @@ import { artboardFromData } from '../engine/types';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS } from '../engine/adjust-params';
 import type { FilePart } from './api';
 
-export const FORMAT = 'com.nodemode.sonny';
+export const FORMAT = 'com.nodemode.formvis';
 export const FORMAT_VERSION = 1;
 
 type Json = Record<string, unknown>;

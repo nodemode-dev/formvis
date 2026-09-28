@@ -1,8 +1,8 @@
-SETUP = """async () => { const e = window.sonny.engine, E = await import('/src/engine/index.ts'); e.newDocument(120, 100, 'W', 'white');
+SETUP = """async () => { const e = window.formvis.engine, E = await import('/src/engine/index.ts'); e.newDocument(120, 100, 'W', 'white');
   e.fg = { r: 220, g: 20, b: 20 }; e.applySelection(E.SelectionMask.cropped(30, 30, 40, 30, new Uint8Array(1200).fill(255)), 'replace', 's'); e.fill('fg'); e.deselect();
   e.setTool('wand'); if (e.tool !== 'wand') throw new Error('tool');
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }"""
-AT = "([x, y]) => window.sonny.engine.current.selection.valueAt(x, y)"
+AT = "([x, y]) => window.formvis.engine.current.selection.valueAt(x, y)"
 
 
 def test_magic_wand_anti_alias_softens_the_edge(page):

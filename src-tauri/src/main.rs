@@ -48,7 +48,7 @@ fn check_for_updates(handle: tauri::AppHandle) {
         let Ok(Some(update)) = updater.check().await else { return };
         let install = handle
             .dialog()
-            .message(format!("sonny {} is available. Install it and restart?", update.version))
+            .message(format!("formvis {} is available. Install it and restart?", update.version))
             .title("Update available")
             .buttons(MessageDialogButtons::OkCancel)
             .blocking_show();
@@ -78,7 +78,7 @@ fn system_fonts() -> Vec<String> {
 
 #[cfg(test)]
 mod tests {
-    /// Runs against the fonts really installed where the tests run; set SONNY_EXPECT_FONT to a family that machine has
+    /// Runs against the fonts really installed where the tests run; set FORMVIS_EXPECT_FONT to a family that machine has
     /// (DejaVu Sans on the Linux used for 1.43.0) to require it by name.
     #[test]
     fn system_fonts_lists_installed_families_sorted_without_duplicates() {
@@ -88,7 +88,7 @@ mod tests {
             assert!(pair[0].to_lowercase() < pair[1].to_lowercase(), "not sorted or duplicated: {:?}", pair);
         }
         assert!(fonts.iter().all(|f| !f.starts_with('.')), "a hidden system font was listed");
-        if let Ok(expected) = std::env::var("SONNY_EXPECT_FONT") {
+        if let Ok(expected) = std::env::var("FORMVIS_EXPECT_FONT") {
             assert!(fonts.iter().any(|f| f == &expected), "{expected} not among {} families", fonts.len());
         }
     }
@@ -116,11 +116,11 @@ fn main() {
             let handle = app.handle().clone();
             let (mut rx, child) = app
                 .shell()
-                .sidecar("sonny-engine")
+                .sidecar("formvis-engine")
                 .expect("sidecar binary is bundled")
-                .env("SONNY_PORT", "0")
+                .env("FORMVIS_PORT", "0")
                 .spawn()
-                .expect("the sonny engine failed to spawn");
+                .expect("the formvis engine failed to spawn");
             app.state::<Backend>().0.lock().unwrap().replace(child);
 
             tauri::async_runtime::spawn(async move {
@@ -160,7 +160,7 @@ fn main() {
                             })
                             .unwrap_or(FALLBACK_LOGICAL);
                         let _ = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url))
-                            .title("sonny")
+                            .title("formvis")
                             .inner_size(width, height)
                             .min_inner_size(MIN_LOGICAL.0, MIN_LOGICAL.1)
                             .center()
@@ -172,7 +172,7 @@ fn main() {
                         close_splash(&handle);
                         handle
                             .dialog()
-                            .message("The sonny engine failed to start. Please relaunch the app.")
+                            .message("The formvis engine failed to start. Please relaunch the app.")
                             .blocking_show();
                         kill_backend(&handle);
                         std::process::exit(1);

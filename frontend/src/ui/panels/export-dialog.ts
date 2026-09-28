@@ -6,7 +6,7 @@ import { toast } from '../toast';
 import { selectRow, sliderRow, type Row } from './controls';
 import type { SpaceId } from '../../engine/icc';
 
-const KEY = 'sonny.exportPresets';
+const KEY = 'formvis.exportPresets';
 
 /** File > Export As (Alt+Shift+Mod+W, as in Photoshop): format, quality, scale and the resulting size and file
  *  name, with presets. Built-in presets cover common cases; Save Preset keeps the current settings under a name in

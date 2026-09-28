@@ -1,4 +1,4 @@
-/** Shake Reduction's estimate of the blur trace, written for sonny. Photoshop estimates a free-form trace; here a
+/** Shake Reduction's estimate of the blur trace, written for formvis. Photoshop estimates a free-form trace; here a
  *  straight one, in two classic steps (after Yitzhaky and Kopeika, 1998). The angle is where the image changes least:
  *  motion blur smooths along its direction, so the mean absolute directional derivative is lowest there. The length is
  *  where, along that angle, the derivative's autocorrelation dips lowest: a box blur's derivative is a pair of

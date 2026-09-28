@@ -1,6 +1,6 @@
 SETUP = """async () => {
   const E = await import('/src/engine/index.ts');
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 100, 'P', 'white');
   const l = e.current.activeLayer, c = l.raster.ctx;
   c.fillStyle = 'rgb(128,128,128)'; c.fillRect(0, 0, 200, 100);
@@ -9,9 +9,9 @@ SETUP = """async () => {
   window.__pat = E.addPattern('Test Red', s).id;
   window.__sel = (x, y, w, h) => E.SelectionMask.cropped(x, y, w, h, new Uint8Array(w * h).fill(255));
 }"""
-CENTRE = "(() => { const d = window.sonny.engine.current.activeLayer.raster.read(0, 0, 200, 100).data, i = (50 * 200 + 40) * 4; return [d[i], d[i + 1], d[i + 2]]; })()"
+CENTRE = "(() => { const d = window.formvis.engine.current.activeLayer.raster.read(0, 0, 200, 100).data, i = (50 * 200 + 40) * 4; return [d[i], d[i + 1], d[i + 2]]; })()"
 HEAL = """(diffusion) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.cloneSource = null;
   e.setTool('healingBrush');
   Object.assign(e.brush, { diameter: 50, hardness: 1, opacity: 1 });
@@ -22,7 +22,7 @@ HEAL = """(diffusion) => {
   return began;
 }"""
 PATCH = """(diffusion) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   Object.assign(e.retouch, { patchMode: 'normal', patchPattern: window.__pat, patchDiffusion: diffusion });
   e.applySelection(window.__sel(20, 30, 40, 40), 'replace', 'Sel');
   e.patchWithPattern();
@@ -53,15 +53,15 @@ def test_patch_use_pattern_heals_the_selection_from_the_pattern(page):
 
 def test_the_bars_offer_the_pattern_and_use_pattern_applies(page):
     page.evaluate(SETUP)
-    page.evaluate("window.sonny.engine.setTool('healingBrush')")
+    page.evaluate("window.formvis.engine.setTool('healingBrush')")
     bar = page.locator(".cv-opt-group:not([hidden])")
     bar.get_by_role("button", name="Pattern", exact=True).click()
     bar.locator(".cv-opt:not([hidden])", has_text="Pattern").locator("select").first.wait_for()   # the bar's next frame
-    assert page.evaluate("window.sonny.engine.retouch.healSource") == "pattern"
+    assert page.evaluate("window.formvis.engine.retouch.healSource") == "pattern"
     bar.get_by_role("button", name="Sampled", exact=True).click()
-    page.evaluate("(() => { const e = window.sonny.engine; e.setTool('patch'); Object.assign(e.retouch, { patchMode: 'normal', patchPattern: window.__pat, patchDiffusion: 1 }); e.applySelection(window.__sel(20, 30, 40, 40), 'replace', 'Sel'); e.emit('options', null); })()")
+    page.evaluate("(() => { const e = window.formvis.engine; e.setTool('patch'); Object.assign(e.retouch, { patchMode: 'normal', patchPattern: window.__pat, patchDiffusion: 1 }); e.applySelection(window.__sel(20, 30, 40, 40), 'replace', 'Sel'); e.emit('options', null); })()")
     button = bar.get_by_role("button", name="Use Pattern")
     button.wait_for()
     button.click()
     assert RED(page.evaluate(CENTRE)), page.evaluate(CENTRE)
-    page.evaluate("window.sonny.engine.retouch.patchDiffusion = 7")
+    page.evaluate("window.formvis.engine.retouch.patchDiffusion = 7")

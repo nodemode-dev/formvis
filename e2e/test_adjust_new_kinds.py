@@ -48,22 +48,22 @@ def test_color_lookup_applies_a_cube_file_exactly_and_the_built_in_looks(page):
 def test_each_is_an_adjustment_layer_from_the_menu_with_its_controls_showing(page, kind, visible):
     shown = """[...document.querySelectorAll('.cv-panel-section .cv-field')].filter((n) => n.offsetParent !== null
       && (n.querySelector('input[type=range]') || n.querySelector('select') || n.classList.contains('cv-lut-row'))).length"""
-    page.evaluate("window.sonny.engine.newDocument(80, 60, 'A', 'white')")
+    page.evaluate("window.formvis.engine.newDocument(80, 60, 'A', 'white')")
     # Layer > New Adjustment Layer: a live adjustment layer of this kind, its dialog showing every control.
-    assert page.evaluate(f"window.sonny.commands.run('new-adj-{kind}')")
-    assert page.evaluate("window.sonny.engine.current.activeLayer.adjustment.kind") == kind
+    assert page.evaluate(f"window.formvis.commands.run('new-adj-{kind}')")
+    assert page.evaluate("window.formvis.engine.current.activeLayer.adjustment.kind") == kind
     assert page.evaluate(shown) >= visible                            # none hidden by a stray group
     page.keyboard.press("Escape")
     # Image > Adjustments: the same controls as a direct edit of the background's pixels.
-    page.evaluate("(() => { const p = window.sonny.engine.current; p.activeId = p.doc.layers[0].id; })()")
-    assert page.evaluate(f"window.sonny.commands.run('adj-{kind}')")
+    page.evaluate("(() => { const p = window.formvis.engine.current; p.activeId = p.doc.layers[0].id; })()")
+    assert page.evaluate(f"window.formvis.commands.run('adj-{kind}')")
     assert page.evaluate(shown) >= visible
     page.keyboard.press("Escape")
 
 
 def test_the_settings_and_the_cube_file_survive_saving_and_reopening(page):
     r = page.evaluate("""async (cube) => {
-      const S = await import('/src/io/project-io.ts'), e = window.sonny.engine;
+      const S = await import('/src/io/project-io.ts'), e = window.formvis.engine;
       e.newDocument(40, 30, 'A', 'white'); e.addAdjustmentLayer('colorLookup');
       const l = e.current.activeLayer; l.adjustment.data.params = { look: 'night', cube, cubeName: 'invert.cube' };
       e.addAdjustmentLayer('shadowsHighlights'); e.current.activeLayer.adjustment.data.params = { shadowAmount: 70, highlightRadius: 120 };

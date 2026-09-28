@@ -1,7 +1,7 @@
 import type { Anchor, SubPath, VectorPath } from './paths';
 import type { Rect } from './types';
 
-/** Custom shapes for the Shape tool, as Photoshop's Custom Shape tool offers a library; these are sonny's own simple
+/** Custom shapes for the Shape tool, as Photoshop's Custom Shape tool offers a library; these are formvis's own simple
  *  designs, not Adobe's. Each is drawn in a 100 x 100 box as absolute SVG path commands (M, L, C and Z) and fitted to
  *  the dragged box, so it stays an editable vector layer. Shapes are filled by the nonzero rule, so an outline wound
  *  the other way inside another cuts a hole (the ring, the tag's eyelet) and overlapping outlines wound alike join

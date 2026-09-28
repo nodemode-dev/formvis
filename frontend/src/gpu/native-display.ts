@@ -2,7 +2,7 @@ import type { Mat } from '../engine/geometry';
 import { BLEND_IDS } from './blend-wgsl';
 import type { Checker, DisplayLayer, ScreenDisplay } from './display';
 
-/** The native GPU renderer (Phase 20) as a screen display, for the desktop app: the shell's sonny-render draws the
+/** The native GPU renderer (Phase 20) as a screen display, for the desktop app: the shell's formvis-render draws the
  *  document into the window's own GPU surface (Metal, Vulkan, Direct3D 12) beneath the web view, and this display keeps
  *  its mirror of the document up to date. Each image, mask and table gets a stable id and is sent again only when its
  *  version changes, as raw bytes; then the stack and the view. Draw requests while one is in flight are coalesced to the
@@ -15,7 +15,7 @@ type Img = HTMLCanvasElement | OffscreenCanvas;
 interface Frame { layers: readonly DisplayLayer[]; view: Mat; checker: Checker; doc: { width: number; height: number } }
 
 const isIdentity = (m: Mat): boolean => m[0] === 1 && m[1] === 0 && m[2] === 0 && m[3] === 1 && m[4] === 0 && m[5] === 0;
-/** sonny's canvas matrix [a, b, c, d, e, f] (x' = a x + c y + e) as the renderer's [a, b, c, d, e, f] (x' = a x + b y + c). */
+/** formvis's canvas matrix [a, b, c, d, e, f] (x' = a x + c y + e) as the renderer's [a, b, c, d, e, f] (x' = a x + b y + c). */
 const affine = (m: Mat): number[] | null => (isIdentity(m) ? null : [m[0], m[2], m[4], m[1], m[3], m[5]]);
 
 export class NativeDisplay implements ScreenDisplay {

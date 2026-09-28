@@ -1,11 +1,11 @@
-SETUP = """async () => { const e = window.sonny.engine, E = await import('/src/engine/index.ts'); e.newDocument(60, 40, 'E', 'transparent');
+SETUP = """async () => { const e = window.formvis.engine, E = await import('/src/engine/index.ts'); e.newDocument(60, 40, 'E', 'transparent');
   const W = 60, H = 40, red = new Uint8Array(W * H);
   for (let y = 0; y < 40; y++) for (let x = 0; x < 40; x++) if (((x >> 1) + (y >> 1)) % 2 === 0) red[y * W + x] = 255;   // 2 px red squares
   e.fg = { r: 20, g: 40, b: 220 }; e.applySelection(E.SelectionMask.cropped(0, 0, 40, 40, new Uint8Array(1600).fill(255)), 'replace', 's'); e.fill('fg');
   e.fg = { r: 220, g: 20, b: 20 }; e.applySelection(E.SelectionMask.cropped(0, 0, W, H, red), 'replace', 's'); e.fill('fg'); e.deselect();
   e.setTool('eyedropper'); if (e.tool !== 'eyedropper') throw new Error('tool');
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }"""
-FG = "(() => { const c = window.sonny.engine.fg; return [c.r, c.g, c.b]; })()"
+FG = "(() => { const c = window.formvis.engine.fg; return [c.r, c.g, c.b]; })()"
 
 
 def test_eyedropper_sample_size_averages_a_square(page):

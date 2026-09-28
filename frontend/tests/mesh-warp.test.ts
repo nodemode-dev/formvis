@@ -10,7 +10,7 @@ const source = (): ImageData => {
 };
 const at = (img: ImageData, x: number, y: number): number[] => Array.from(img.data.slice((y * img.width + x) * 4, (y * img.width + x) * 4 + 4));
 
-describe('mesh warp ported from NodeMode sonny', () => {
+describe('mesh warp ported from NodeMode formvis', () => {
   it('inverse bilinear recovers the cell coordinates', () => {
     const out: P2 = [0, 0];
     expect(invBilinear([0, 0], [10, 0], [0, 10], [10, 10], 2.5, 7.5, out)).toBe(true);

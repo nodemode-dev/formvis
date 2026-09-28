@@ -2,7 +2,7 @@ import { applyMat, invert, mul, placement, radians, sameTransform, unitPoint } f
 import type { Mat } from './geometry';
 import type { Pt, Transform } from './types';
 
-/** Free Transform for sonny: dragging a box's body, its eight handles or outside it to rotate, and turning any
+/** Free Transform for formvis: dragging a box's body, its eight handles or outside it to rotate, and turning any
  *  affine placement of the unit square back into a box (centre, width, height, rotation and flips). */
 
 /** The eight handles in unit coordinates, clockwise from the top-left corner. */

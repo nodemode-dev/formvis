@@ -9,7 +9,7 @@ BLENDS = ["normal", "dissolve", "darken", "multiply", "color-burn", "linear-burn
 
 DOC = """async ([mode, w, h]) => {
   const E = await import('/src/engine/index.ts');
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(w, h, 'G', 'white');
   const p = e.current, bg = p.activeLayer, c = bg.raster.ctx;
   const g1 = c.createLinearGradient(0, 0, w, 0); g1.addColorStop(0, 'rgb(10,200,60)'); g1.addColorStop(1, 'rgb(240,30,180)');
@@ -23,7 +23,7 @@ DOC = """async ([mode, w, h]) => {
 # Every blend mode: the WebGL2 display at 100% over the whole document, against the CPU renderer.
 MODES = """async () => {
   const E = await import('/src/engine/index.ts'), R = await import('/src/engine/renderer.ts'), G = await import('/src/gpu/gl-display.ts');
-  const e = window.sonny.engine, p = e.current;
+  const e = window.formvis.engine, p = e.current;
   const cpu = E.ctxOf(R.renderDoc(new R.Renderer(), p.doc, null)).getImageData(0, 0, 64, 32).data;
   const d = G.GlDisplay.create(document.createElement('canvas'));
   if (!d) return { error: 'no WebGL2' };
@@ -40,7 +40,7 @@ MODES = """async () => {
 # The display frame through the view, against the stage's CPU path (checkerboard, then the document).
 FRAME = """async ([zoom, ox, oy]) => {
   const E = await import('/src/engine/index.ts'), G = await import('/src/gpu/gl-display.ts');
-  const e = window.sonny.engine, W = 240, H = 160, dw = 160, dh = 90;
+  const e = window.formvis.engine, W = 240, H = 160, dw = 160, dh = 90;
   const x0 = Math.max(0, Math.floor(ox)), y0 = Math.max(0, Math.floor(oy)), x1 = Math.min(W, Math.ceil(ox + dw * zoom)), y1 = Math.min(H, Math.ceil(oy + dh * zoom));
   const A = [204, 204, 204], B = [255, 255, 255], cell = 8;
   const d = G.GlDisplay.create(document.createElement('canvas'));
@@ -78,13 +78,13 @@ def test_the_webgl2_frame_matches_the_cpu_path(page, zoom, ox, oy):
 
 
 def test_the_canvas_drawn_by_webgl2_matches_the_cpu_on_screen(page):
-    box = """() => { const v = window.sonny.engine.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect();
+    box = """() => { const v = window.formvis.engine.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect();
       return { x: b.left + v.panX, y: b.top + v.panY, width: 160, height: 90 }; }"""
     def shot(renderer):
-        page.evaluate(f"localStorage.setItem('sonny.prefs', JSON.stringify({{ renderer: '{renderer}' }}))")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate(f"localStorage.setItem('formvis.prefs', JSON.stringify({{ renderer: '{renderer}' }}))")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
         page.evaluate(DOC, ["multiply", 160, 90])
-        page.evaluate("window.sonny.engine.zoomTo(1)")
+        page.evaluate("window.formvis.engine.zoomTo(1)")
         page.wait_for_function(f"document.querySelector('.cv-st-gpu').textContent === '{'GPU: WebGL2' if renderer == 'webgl2' else 'GPU: CPU'}'")
         page.wait_for_timeout(400)
         return Image.open(io.BytesIO(page.screenshot(clip=page.evaluate(box)))).convert("RGB")
@@ -95,5 +95,5 @@ def test_the_canvas_drawn_by_webgl2_matches_the_cpu_on_screen(page):
         worst = max(hi for _, hi in ImageChops.difference(gl, cpu).getextrema())
         assert worst <= 4, worst
     finally:
-        page.evaluate("localStorage.removeItem('sonny.prefs')")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate("localStorage.removeItem('formvis.prefs')")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")

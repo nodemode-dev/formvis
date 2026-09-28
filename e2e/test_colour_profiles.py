@@ -4,7 +4,7 @@ import io
 from PIL import Image, ImageCms
 
 SCENE = """async () => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(60, 40, 'Colour', 'white');
   const c = e.current.activeLayer.raster.ctx;
   c.fillStyle = 'rgb(204,77,51)'; c.fillRect(0, 0, 30, 40); c.fillStyle = 'rgb(20,200,90)'; c.fillRect(30, 0, 30, 40);
@@ -18,7 +18,7 @@ EXPORT = """async ([format, profile]) => {
       fetch(this.href).then((r) => r.arrayBuffer()).then((buf) => { let s = ''; new Uint8Array(buf).forEach((b) => { s += String.fromCharCode(b); }); resolve({ name: this.download, b64: btoa(s) }); });
     };
   });
-  if (!window.sonny.commands.run('export-as')) throw new Error('export-as');
+  if (!window.formvis.commands.run('export-as')) throw new Error('export-as');
   const field = (label) => { const f = [...document.querySelectorAll('.cv-scrim:not([hidden]) .cv-field')].find((x) => x.textContent.trim().startsWith(label)); if (!f) throw new Error('missing ' + label); return f.querySelector('select'); };
   const pick = (label, v) => { const s = field(label); s.value = v; s.dispatchEvent(new Event('change', { bubbles: true })); };
   pick('Format', format); pick('Colour profile', profile);

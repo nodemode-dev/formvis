@@ -4,7 +4,7 @@ SCROLL = "document.querySelector('.cv-options').scrollLeft"
 
 def test_an_overflowing_options_bar_can_be_scrolled_to_its_last_setting(page):
     page.set_viewport_size({"width": 640, "height": 700})   # the Move bar, the target's shorter one (1.48.0), overflows here
-    page.evaluate("(() => { const e = window.sonny.engine; e.newDocument(200, 100, 'O', 'white'); e.setTool('move'); })()")
+    page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(200, 100, 'O', 'white'); e.setTool('move'); })()")
     page.wait_for_timeout(200)
     assert page.evaluate(EDGES) == [False, True]              # settings lie past the right end only
     page.locator(".cv-options-edge.is-end").click()
@@ -19,6 +19,6 @@ def test_an_overflowing_options_bar_can_be_scrolled_to_its_last_setting(page):
     last = page.evaluate("(() => { const g = document.querySelector('.cv-opt-group:not([hidden])'), k = g.lastElementChild.getBoundingClientRect(); return k.right <= window.innerWidth; })()")
     assert last
     # a tool whose settings fit shows no chevrons
-    page.evaluate("window.sonny.engine.setTool('hand')")
+    page.evaluate("window.formvis.engine.setTool('hand')")
     page.wait_for_timeout(200)
     assert page.evaluate(EDGES) == [False, False]

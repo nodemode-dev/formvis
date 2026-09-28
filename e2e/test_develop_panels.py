@@ -75,8 +75,8 @@ def test_the_point_curve_and_colour_mixer_now_reached_from_develop_work(page):
 
 
 def test_the_develop_dialog_shows_every_panel(page):
-    page.evaluate("window.sonny.engine.newDocument(80, 60, 'D', 'white')")
-    assert page.evaluate("window.sonny.commands.run('filter-develop')")
+    page.evaluate("window.formvis.engine.newDocument(80, 60, 'D', 'white')")
+    assert page.evaluate("window.formvis.commands.run('filter-develop')")
     notes = page.evaluate("[...document.querySelectorAll('.cv-scrim:not([hidden]) .cv-note')].filter((n) => n.offsetParent !== null).map((n) => n.textContent)")
     for heading in ("Point Curve", "Colour Mixer", "Colour Grading", "Optics", "Geometry", "Calibration"):
         assert heading in notes, (heading, notes)

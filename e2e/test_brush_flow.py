@@ -1,7 +1,7 @@
-SETUP = """() => { const e = window.sonny.engine; e.newDocument(300, 160, 'F', 'white'); e.fg = { r: 0, g: 0, b: 0 };
+SETUP = """() => { const e = window.formvis.engine; e.newDocument(300, 160, 'F', 'white'); e.fg = { r: 0, g: 0, b: 0 };
   e.setTool('brush'); e.setBrushMode('paint'); e.setBrush({ diameter: 20, hardness: 1, opacity: 1 }); e.brushFlow = 1;
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }"""
-PX = "([x, y]) => window.sonny.engine.flattened().getContext('2d').getImageData(x, y, 1, 1).data[0]"
+PX = "([x, y]) => window.formvis.engine.flattened().getContext('2d').getImageData(x, y, 1, 1).data[0]"
 
 
 def set_opt(page, label, v):
@@ -34,8 +34,8 @@ def test_flow_builds_within_a_stroke_and_opacity_caps_it(page):
     # paint stalls near 85% of full, 147 here, however many passes: the paint layer is 8 bit, so a 2% dab's step rounds
     # to nothing once the gap is small. A known limitation, recorded in BUILD_NOTES.)
     set_opt(page, "Flow", 20)
-    page.evaluate("window.sonny.engine.newDocument(300, 160, 'F2', 'white')")
-    s = page.evaluate("(() => { const e = window.sonny.engine, v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; })()")
+    page.evaluate("window.formvis.engine.newDocument(300, 160, 'F2', 'white')")
+    s = page.evaluate("(() => { const e = window.formvis.engine, v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; })()")
     set_opt(page, "Opacity", 50); scrub(page, s, 80, 9)
     capped = page.evaluate(PX, [150, 80])
     assert 122 <= capped <= 135, capped

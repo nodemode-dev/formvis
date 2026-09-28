@@ -1,6 +1,6 @@
 import type { LayerEffects } from './types';
 
-/** Layer style depth, written for sonny after Photoshop's Layer Style dialog. A contour reshapes how an effect's
+/** Layer style depth, written for formvis after Photoshop's Layer Style dialog. A contour reshapes how an effect's
  *  strength falls off across its width: the effect's coverage (0 to 1) is passed through the curve, so Linear leaves it
  *  alone, Cone makes a ring, Ring Double two rings, and so on. Global Light is the document's one light: effects
  *  marked Use Global Light take its angle (and Bevel its altitude) instead of their own, so they all move together. */

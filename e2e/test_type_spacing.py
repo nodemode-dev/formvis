@@ -35,22 +35,22 @@ def test_the_font_menu_offers_this_machines_fonts_and_the_system_list(page):
 
 
 def test_the_type_options_show_tracking_and_kerning(page):
-    page.evaluate("window.sonny.engine.newDocument(200, 120, 'T', 'white'); window.sonny.engine.setTool('type')")
+    page.evaluate("window.formvis.engine.newDocument(200, 120, 'T', 'white'); window.formvis.engine.setTool('type')")
     bar = page.locator(".cv-opt-group:not([hidden])")
     for label in ("Font", "Tracking", "Kerning"):
         assert bar.get_by_text(label, exact=True).count() >= 1, label
-    page.evaluate("window.sonny.engine.textSettings = { ...window.sonny.engine.textSettings, tracking: 0 }")
+    page.evaluate("window.formvis.engine.textSettings = { ...window.formvis.engine.textSettings, tracking: 0 }")
 
 
 def test_edit_type_keeps_a_font_outside_the_list_and_the_spacing(page):
     # Before 1.29.0 the dialog reset any font outside its fixed list to Inter each time it opened.
-    page.evaluate("""async () => { const T = await import('/src/engine/text.ts'), e = window.sonny.engine;
+    page.evaluate("""async () => { const T = await import('/src/engine/text.ts'), e = window.formvis.engine;
       e.newDocument(300, 160, 'T', 'white');
       await e.createTextLayer({ x: 20, y: 80 }, { ...T.defaultText(), content: 'Kept', family: 'DejaVu Serif', size: 40, tracking: 150, kerning: 'none' }); }""")
-    assert page.evaluate("window.sonny.commands.run('edit-text')")
+    assert page.evaluate("window.formvis.commands.run('edit-text')")
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     assert dlg.locator("select").first.input_value() == "DejaVu Serif"
     dlg.locator(".cv-dialog-foot button", has_text="OK").click()
     page.wait_for_function("!document.querySelector('.cv-scrim:not([hidden]) .cv-dialog')")
-    t = page.evaluate("(() => { const t = window.sonny.engine.current.activeLayer.text; return { family: t.family, tracking: t.tracking, kerning: t.kerning }; })()")
+    t = page.evaluate("(() => { const t = window.formvis.engine.current.activeLayer.text; return { family: t.family, tracking: t.tracking, kerning: t.kerning }; })()")
     assert t == {"family": "DejaVu Serif", "tracking": 150, "kerning": "none"}, t

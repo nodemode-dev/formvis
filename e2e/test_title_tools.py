@@ -12,19 +12,19 @@ def test_the_theme_toggle_switches_light_and_back(page):
         assert page.evaluate(THEME) == "studio"
     finally:
         page.evaluate("localStorage.removeItem('nodemode_ui_settings')")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
 
 
 def test_search_finds_and_runs_a_command(page):
-    page.evaluate("window.sonny.engine.newDocument(800, 600, 'S', 'white')")
-    page.evaluate("window.sonny.engine.zoomTo(2)")
+    page.evaluate("window.formvis.engine.newDocument(800, 600, 'S', 'white')")
+    page.evaluate("window.formvis.engine.zoomTo(2)")
     page.locator(".cv-title-tools button[aria-label='Search commands']").click()
     field = page.locator(".cv-search-input")
     assert field.is_visible()
     field.fill("fit on")
     assert page.locator(".cv-search-item.is-picked").inner_text().startswith("Fit on Screen")
     field.press("Enter")
-    assert page.evaluate("window.sonny.engine.current.viewport.fitted") is True        # it ran
+    assert page.evaluate("window.formvis.engine.current.viewport.fitted") is True        # it ran
     assert not field.is_visible()                                                      # and closed
     page.locator(".cv-title-tools button[aria-label='Search commands']").click()
     page.keyboard.press("Escape")
@@ -33,7 +33,7 @@ def test_search_finds_and_runs_a_command(page):
 
 def test_workspaces_arrange_the_panels_and_the_lock_holds_them(page):
     try:
-        page.evaluate("window.sonny.engine.newDocument(200, 100, 'W', 'white')")
+        page.evaluate("window.formvis.engine.newDocument(200, 100, 'W', 'white')")
         def choose(label):                                                           # through the target's menu, as a user
             page.locator(".cv-title-tools .cv-dd-btn").click()
             page.locator(".cv-dd-pop:not([hidden]) .cv-dd-item", has_text=label).click()
@@ -47,7 +47,7 @@ def test_workspaces_arrange_the_panels_and_the_lock_holds_them(page):
         assert "swatches" not in page.evaluate(ORDER)
         choose("Essentials")
         assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel"]                  # Essentials, as the target's
-        page.evaluate("window.sonny.commands.run('panel-timeline'); window.sonny.commands.run('panel-history')")   # hidden by default, as the target's Essentials
+        page.evaluate("window.formvis.commands.run('panel-timeline'); window.formvis.commands.run('panel-history')")   # hidden by default, as the target's Essentials
         # Locked, a drag does not move a panel; unlocked, it does.
         lock = page.locator(".cv-title-tools button[aria-label='Lock the workspace']")
         lock.click()
@@ -64,17 +64,17 @@ def test_workspaces_arrange_the_panels_and_the_lock_holds_them(page):
         drag_history_up()
         assert page.evaluate(ORDER)[-2:] == ["history", "timeline"]                   # moved
     finally:
-        page.evaluate("localStorage.removeItem('sonny.dock'); localStorage.removeItem('sonny.lock'); localStorage.removeItem('sonny.workspace')")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate("localStorage.removeItem('formvis.dock'); localStorage.removeItem('formvis.lock'); localStorage.removeItem('formvis.workspace')")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
 
 
 def test_the_blend_list_is_grouped_searchable_and_sets_the_mode(page):
-    page.evaluate("window.sonny.engine.newDocument(200, 100, 'B', 'white'); window.sonny.engine.addLayer()")
+    page.evaluate("window.formvis.engine.newDocument(200, 100, 'B', 'white'); window.formvis.engine.addLayer()")
     page.locator(".cv-layer-blendrow .cv-dd-btn").click()
     pop = page.locator(".cv-dd-pop:not([hidden])")
     assert pop.locator(".cv-dd-head").all_inner_texts() == ["BASIC", "DARKEN", "LIGHTEN", "CONTRAST", "INVERSION", "COMPONENT"]   # small capitals, as shown
     assert pop.locator(".cv-dd-item.is-chosen").inner_text() == "Normal"
     page.keyboard.type("multi")
     page.keyboard.press("Enter")
-    assert page.evaluate("window.sonny.engine.activeLayer.blend") == "multiply"
+    assert page.evaluate("window.formvis.engine.activeLayer.blend") == "multiply"
     assert page.locator(".cv-layer-blendrow .cv-dd-btn").inner_text() == "Multiply"

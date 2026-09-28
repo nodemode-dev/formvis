@@ -1,4 +1,4 @@
-/** Colour spaces for export, written for sonny. sonny works in sRGB (browser canvases are sRGB); an export can be
+/** Colour spaces for export, written for formvis. formvis works in sRGB (browser canvases are sRGB); an export can be
  *  converted to Display P3 or Adobe RGB (1998) and carry that space's ICC profile, which this module also writes: a
  *  version 2 display profile with the space's primaries adapted to the D50 connection space by Bradford, as ICC
  *  requires, its D65 white point, and its tone curve (sRGB's piecewise curve as a 1024-entry table, Adobe RGB's pure

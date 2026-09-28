@@ -24,7 +24,7 @@ export class HostLink {
   }
 
   private post(message: Record<string, unknown>): void { if (this.embedded) window.parent.postMessage(message, '*'); }
-  assign(files: AssignFile[]): void { this.post({ type: `plugin:${this.pluginId ?? 'sonny'}:assign`, payload: { files } }); }
+  assign(files: AssignFile[]): void { this.post({ type: `plugin:${this.pluginId ?? 'formvis'}:assign`, payload: { files } }); }
   save(state: unknown): void { this.post({ type: 'save', state }); }
   close(): void { this.post({ type: 'close' }); }
 }

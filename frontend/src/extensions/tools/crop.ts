@@ -14,7 +14,7 @@ let ratioId = 'free';
 type SizeUnit = 'px' | 'in' | 'cm';
 const size: { w: number; h: number; unit: SizeUnit; res: number } = { w: 0, h: 0, unit: 'px', res: 72 };
 interface CropPreset { id: string; w: number; h: number; unit: SizeUnit; res: number }
-const PRESETS_KEY = 'sonny.cropPresets';
+const PRESETS_KEY = 'formvis.cropPresets';
 let presetId = '';
 const toPx = (v: number): number => (size.unit === 'in' ? v * size.res : size.unit === 'cm' ? (v * size.res) / 2.54 : v);
 function sizePx(): { w: number; h: number } | null {

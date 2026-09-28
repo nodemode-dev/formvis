@@ -2,7 +2,7 @@ DLG = ".cv-scrim:not([hidden]) .cv-dialog"
 
 
 def test_the_benchmark_dialog_opens_from_help(page):
-    assert page.evaluate("window.sonny.commands.run('benchmark')")
+    assert page.evaluate("window.formvis.commands.run('benchmark')")
     assert page.locator(DLG + " .cv-dialog-head").inner_text().startswith("Performance Benchmark")
     for name in ("Run", "Copy"):
         assert page.locator(DLG + " .cv-dialog-foot button", has_text=name).count() == 1
@@ -11,7 +11,7 @@ def test_the_benchmark_dialog_opens_from_help(page):
 
 def test_the_benchmark_times_every_test_and_restores_the_document(page):
     r = page.evaluate("""async () => {
-      const B = await import('/src/gpu/bench.ts'), e = window.sonny.engine;
+      const B = await import('/src/gpu/bench.ts'), e = window.formvis.engine;
       e.newDocument(300, 200, 'Mine', 'white'); const mine = e.current.id, count = e.projects.length;
       const res = await B.runBenchmark(e, 1, 0);
       return { rows: res.rows.map((x) => x.test + ' | ' + x.path), restored: e.current.id === mine, closed: e.projects.length === count,

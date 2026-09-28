@@ -1,4 +1,4 @@
-/** Lens Blur and Smart Sharpen, written for sonny from standard methods.
+/** Lens Blur and Smart Sharpen, written for formvis from standard methods.
  *
  *  Lens Blur averages over a disc (an iris) rather than a Gaussian, in linear light, after lifting pixels brighter
  *  than a threshold so they bloom into bright discs as specular highlights do through a lens. The disc sum runs as

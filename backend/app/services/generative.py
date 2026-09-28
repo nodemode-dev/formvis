@@ -1,6 +1,6 @@
 """Generative Fill and Upscale through fal. FLUX.1 Fill [pro] fills the masked area from a prompt; with no prompt,
 FLUX.1 Erase [pro] removes what the mask covers; Real-ESRGAN upscales 2 or 4 times. The fal key comes from FAL_KEY (or FAL_API_KEY) in the environment, or from a
-settings file in the sonny data folder that only this user can read; it is never sent back to the app. Requests go
+settings file in the formvis data folder that only this user can read; it is never sent back to the app. Requests go
 to fal's synchronous endpoint with the image and mask inline as PNG data URIs, so nothing is uploaded elsewhere first.
 """
 
@@ -36,7 +36,7 @@ def _settings_path() -> Path:
 
 
 def _base_url() -> str:
-    return os.environ.get("SONNY_FAL_BASE", "https://fal.run").rstrip("/")
+    return os.environ.get("FORMVIS_FAL_BASE", "https://fal.run").rstrip("/")
 
 
 def _key() -> tuple[str | None, str | None]:
@@ -172,4 +172,4 @@ def _result_png(result: dict) -> bytes:
             im.convert("RGBA").save(out, "PNG")
             return out.getvalue()
     except Exception as exc:  # noqa: BLE001 - any decode failure is a bad result
-        raise GenerativeError("fal returned an image sonny could not read.", 502) from exc
+        raise GenerativeError("fal returned an image formvis could not read.", 502) from exc

@@ -225,7 +225,7 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-flyout-item.is-active { color: var(--text-primary); }
 .cv-flyout-item.is-active:hover { color: var(--text-primary); }
 .cv-flyout-key { display: inline-grid; place-items: center; min-width: 24px; height: 24px; padding: 0 6px; border-radius: 6px; background: var(--surface-raised); color: var(--text-primary); font-size: 12px; }
-/* With sonny's menus in the macOS menu bar (the desktop app), the in-window menu bar gives way (Phase 21). */
+/* With formvis's menus in the macOS menu bar (the desktop app), the in-window menu bar gives way (Phase 21). */
 .has-native-menus .cv-menubar { display: none; }
 /* A select shown as the target's menu (ui/dropdown.ts; s21, s23): the button, a rounded list, grey headings, a tick. */
 .cv-dd-native { position: absolute !important; width: 1px !important; height: 1px !important; opacity: 0; pointer-events: none; }
@@ -274,7 +274,7 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-main > .cv-props-col { grid-area: props; }
 .cv-main > .cv-resizer { grid-area: rsz; }
 .cv-main > .cv-layers { grid-area: dock; }
-/* The rail's icons at the target's weight (measured at 2x: glyphs about 29 px wide against sonny's 25): 20 px, 1.75 strokes. */
+/* The rail's icons at the target's weight (measured at 2x: glyphs about 29 px wide against formvis's 25): 20 px, 1.75 strokes. */
 .cv-tool .icon { width: 20px !important; height: 20px !important; }
 .cv-tool svg { stroke-width: 1.75; }
 .cv-tool { width: 34px; height: 28px; }

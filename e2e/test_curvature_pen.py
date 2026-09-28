@@ -1,6 +1,6 @@
-SETUP = """() => { const e = window.sonny.engine; e.newDocument(300, 200, 'C', 'white'); e.setTool('curvaturePen'); if (e.tool !== 'curvaturePen') throw new Error('tool');
+SETUP = """() => { const e = window.formvis.engine; e.newDocument(300, 200, 'C', 'white'); e.setTool('curvaturePen'); if (e.tool !== 'curvaturePen') throw new Error('tool');
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }"""
-STATE = """(() => { const sp = window.sonny.engine.workPath.subpaths; return sp.map((s) => ({ closed: s.closed, pts: s.anchors.map((a) => [Math.round(a.x), Math.round(a.y)]),
+STATE = """(() => { const sp = window.formvis.engine.workPath.subpaths; return sp.map((s) => ({ closed: s.closed, pts: s.anchors.map((a) => [Math.round(a.x), Math.round(a.y)]),
   smooth: s.anchors.map((a) => a.outX !== a.x || a.outY !== a.y) })); })()"""
 
 

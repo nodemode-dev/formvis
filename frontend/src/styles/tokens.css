@@ -224,7 +224,7 @@ body.animations-disabled * { transition: none !important; animation: none !impor
 /* ── view gate (app/_variables.css): body-mounted canvas surfaces hide on the home view ── */
 body.nm-home .nm-canvas-surface { display: none !important; }
 
-/* sonny · app tokens appended to the NodeMode base: layout sizes, the
+/* formvis · app tokens appended to the NodeMode base: layout sizes, the
    canvas paint colors the stage reads per draw, and the toast band. */
 :root {
   --cv-titlebar-h: 40px;

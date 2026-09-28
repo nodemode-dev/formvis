@@ -2,7 +2,7 @@ import pytest
 
 DOC = """async ([mode]) => {
   const E = await import('/src/engine/index.ts');
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(160, 90, 'M', 'white');
   const p = e.current, bg = p.activeLayer, c = bg.raster.ctx;
   const g1 = c.createLinearGradient(0, 0, 160, 0); g1.addColorStop(0, 'rgb(10,200,60)'); g1.addColorStop(1, 'rgb(240,30,180)');
@@ -12,7 +12,7 @@ DOC = """async ([mode]) => {
   t.fillStyle = g2; t.fillRect(0, 0, 160, 90); top.raster.touch();
   top.blend = 'multiply'; top.opacity = 0.9;
   if (mode === 'adjust') { e.addAdjustmentLayer('levels'); p.activeLayer.adjustment.data.levels.ranges[0] = { black: 30, gamma: 1.4, white: 220, outputBlack: 10, outputWhite: 245 }; }
-  window.sonny.commands.run('add-mask');
+  window.formvis.commands.run('add-mask');
   const m = p.activeLayer.mask;
   if (!m.raster) { m.raster = new E.Raster(160, 90); const r0 = m.raster.ctx; r0.fillStyle = '#fff'; r0.fillRect(0, 0, 160, 90); }   // reveal all
   const mc = m.raster.ctx, W = m.raster.width, H = m.raster.height;
@@ -28,7 +28,7 @@ DOC = """async ([mode]) => {
 
 FRAME = """async ([mod, cls]) => {
   const E = await import('/src/engine/index.ts'), D = await import(mod);
-  const e = window.sonny.engine, W = 200, H = 130, ox = 20, oy = 20, dw = 160, dh = 90;
+  const e = window.formvis.engine, W = 200, H = 130, ox = 20, oy = 20, dw = 160, dh = 90;
   const A = [204, 204, 204], B = [255, 255, 255], cell = 8, rect = [ox, oy, ox + dw, oy + dh];
   const gl = e.gpuLayers();
   if (!('layers' in gl)) return { error: gl.reason };

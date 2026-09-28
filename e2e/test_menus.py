@@ -2,7 +2,7 @@ OPEN = "[...document.querySelectorAll('.cv-menu')].filter((m) => !m.hidden).leng
 
 
 def test_submenus_open_beside_and_run_their_commands(page):
-    page.evaluate("window.sonny.engine.newDocument(200, 100, 'M', 'white')")
+    page.evaluate("window.formvis.engine.newDocument(200, 100, 'M', 'white')")
     page.locator(".cv-menu-btn", has_text="Layer").click()
     menu = page.locator(".cv-menu:not([hidden])").first
     menu.locator(".cv-menu-sub", has_text="New Adjustment Layer").hover()
@@ -11,7 +11,7 @@ def test_submenus_open_beside_and_run_their_commands(page):
     assert rects[1] > rects[0]                                  # the submenu opens to the right of its menu
     page.locator(".cv-menu:not([hidden]) .cv-menu-item", has_text="New Levels Layer").click()
     assert page.evaluate(OPEN) == 0                             # choosing closes the whole chain
-    assert page.evaluate("window.sonny.engine.current.activeLayer.adjustment.kind") == "levels"
+    assert page.evaluate("window.formvis.engine.current.activeLayer.adjustment.kind") == "levels"
     # the command opens its settings dialog, as its ellipsis says; cancel it before going on
     page.locator(".cv-scrim:not([hidden]) .cv-dialog-foot button", has_text="Cancel").click()
     # hovering a plain row closes an open submenu
@@ -26,7 +26,7 @@ def test_submenus_open_beside_and_run_their_commands(page):
 
 def test_a_tall_menu_scrolls_within_a_short_window(page):
     page.set_viewport_size({"width": 1000, "height": 420})
-    page.evaluate("window.sonny.engine.newDocument(200, 100, 'M', 'white')")
+    page.evaluate("window.formvis.engine.newDocument(200, 100, 'M', 'white')")
     page.locator(".cv-menu-btn", has_text="Layer").click()
     m = page.evaluate("(() => { const m = [...document.querySelectorAll('.cv-menu')].find((x) => !x.hidden), r = m.getBoundingClientRect(); return { bottom: r.bottom, h: window.innerHeight, scroll: m.scrollHeight > m.clientHeight, bar: getComputedStyle(m).scrollbarWidth }; })()")
     assert m["bottom"] <= m["h"] and m["scroll"] and m["bar"] == "none", m
@@ -37,7 +37,7 @@ def test_a_tall_menu_scrolls_within_a_short_window(page):
 
 
 def test_the_layer_context_menu_closes_on_a_click_outside(page):
-    page.evaluate("window.sonny.engine.newDocument(200, 100, 'M', 'white')")
+    page.evaluate("window.formvis.engine.newDocument(200, 100, 'M', 'white')")
     page.locator(".cv-layer").first.click(button="right")
     assert page.evaluate(OPEN) == 1
     page.mouse.click(600, 400)

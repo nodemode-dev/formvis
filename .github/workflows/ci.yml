@@ -57,8 +57,8 @@ jobs:
           cache: pip
           cache-dependency-path: backend/requirements.txt
       - run: pip install -r requirements.txt
-      - run: python -m compileall -q app sonny_engine.py
-      - run: python sonny_engine.py --selfcheck
+      - run: python -m compileall -q app formvis_engine.py
+      - run: python formvis_engine.py --selfcheck
       - run: pip install pytest httpx
       - run: python -m pytest -q tests
       - name: Boot the engine and probe it
@@ -73,7 +73,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Shell syntax
         run: |
-          for f in sonny sonny_oc_install backend/oc_install backend/boot_backend frontend/oc_install frontend/boot_frontend setup/*; do
+          for f in formvis formvis_oc_install backend/oc_install backend/boot_backend frontend/oc_install frontend/boot_frontend setup/*; do
             case "$f" in *.bat) continue ;; esac
             bash -n "$f"
           done

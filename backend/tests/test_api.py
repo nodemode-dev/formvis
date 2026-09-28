@@ -4,6 +4,7 @@ import json
 from PIL import Image
 
 from app import __version__
+from app.core import legacy
 from tests.conftest import manifest, png_bytes
 
 
@@ -76,7 +77,7 @@ def test_project_save_list_open_delete_round_trip(client):
     assert client.get("/api/projects").json() == []
 
 
-def test_projects_save_as_sny_and_older_sonny_files_still_work(client):
+def test_projects_save_as_fmv_and_older_files_still_work(client):   # the former extension from app.core.legacy
     from app.core import config
     import shutil
 
@@ -84,21 +85,21 @@ def test_projects_save_as_sny_and_older_sonny_files_still_work(client):
     body = {"name": "Old", "manifest": json.dumps(manifest(layers=layers))}
     img = [("files", ("L1.png", png_bytes(), "image/png"))]
     r = client.post("/api/projects/save", data=body, files=img)
-    assert r.status_code == 200 and r.json()["path"].endswith("Old.sny"), r.text
+    assert r.status_code == 200 and r.json()["path"].endswith("Old.fmv"), r.text
     lib = config.projects_dir()
     # an older project, as saved before 0.90.0
-    shutil.move(str(lib / "Old.sny"), str(lib / "Old.sonny"))
+    shutil.move(str(lib / "Old.fmv"), str(lib / f"Old{legacy.PROJECT_EXTENSIONS[-1]}"))
     assert [p["name"] for p in client.get("/api/projects").json()] == ["Old"]
     assert client.get("/api/projects/library/Old").status_code == 200
-    # saving it again writes .sny and leaves one entry
+    # saving it again writes .fmv and leaves one entry
     assert client.post("/api/projects/save", data=body, files=img).status_code == 200
-    assert sorted(p.name for p in lib.iterdir() if p.stem == "Old") == ["Old.sny"]
+    assert sorted(p.name for p in lib.iterdir() if p.stem == "Old") == ["Old.fmv"]
     assert [p["name"] for p in client.get("/api/projects").json()] == ["Old"]
     # delete removes either
-    shutil.copy(str(lib / "Old.sny"), str(lib / "Old.sonny"))
+    shutil.copy(str(lib / "Old.fmv"), str(lib / f"Old{legacy.PROJECT_EXTENSIONS[-1]}"))
     assert client.delete("/api/projects/library/Old").status_code == 200
     assert client.get("/api/projects").json() == []
-    assert client.post("/api/io/export", files={"file": ("f", b"1", "application/zip")}, data={"name": "x.sny"}).status_code == 200
+    assert client.post("/api/io/export", files={"file": ("f", b"1", "application/zip")}, data={"name": "x.fmv"}).status_code == 200
 
 
 def test_encode_embeds_an_icc_profile(client):

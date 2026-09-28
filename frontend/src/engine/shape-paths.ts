@@ -2,7 +2,7 @@ import { cornerAt, type VectorPath } from './paths';
 import { customShapePath } from './custom-shapes';
 import type { Pt, Rect } from './types';
 
-/** Parametric shapes for the Shape tool, ported from NodeMode's sonny studio (`studio/pixel/shapes.ts`, the owner's
+/** Parametric shapes for the Shape tool, ported from NodeMode's formvis studio (`studio/pixel/shapes.ts`, the owner's
  *  own build, MIT): regular polygons, stars, arrows and the parametric heart. There they fill a tile store; here
  *  they become corner anchors of a closed `VectorPath`, so the shape stays an editable vector layer. Each generator
  *  is fitted to the dragged box, as Photoshop's Polygon and custom shapes are. Lines are arrows without heads. */

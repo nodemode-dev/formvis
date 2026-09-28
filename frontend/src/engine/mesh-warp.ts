@@ -1,4 +1,4 @@
-/** Mesh warp, ported from NodeMode's sonny studio (`studio/pixel/transform.ts`: meshWarpLifted, meshSurfacePoint,
+/** Mesh warp, ported from NodeMode's formvis studio (`studio/pixel/transform.ts`: meshWarpLifted, meshSurfacePoint,
  *  invSmooth, meshWarpSmooth, invBilinear, convexQuad; nodemode_dev v8.73.1, the owner's build, MIT). There it
  *  deposits a lifted float buffer into a tile store; here it resamples an ImageData into a new one, so the engine can
  *  use it as it uses its other warps. A grid of gw x gh control points, row-major, gives where each point of a uniform

@@ -3,7 +3,7 @@ VISIBLE = """[...document.querySelector('.cv-rail-tools').children].filter((c) =
 
 def test_edit_toolbar_hides_a_tool_that_stays_in_the_more_list(page):
     try:
-        page.evaluate("window.sonny.engine.newDocument(200, 100, 'T', 'white')")
+        page.evaluate("window.formvis.engine.newDocument(200, 100, 'T', 'white')")
         page.locator(".cv-rail-more").click()
         page.locator(".cv-flyout:not([hidden]) .cv-flyout-item", has_text="Edit Toolbar").click()
         page.locator(".cv-edit-tool", has_text="Frame").locator("input").uncheck()
@@ -12,14 +12,14 @@ def test_edit_toolbar_hides_a_tool_that_stays_in_the_more_list(page):
         assert "Frame" not in seen and seen[0] != "-" and all(not (a == "-" and b == "-") for a, b in zip(seen, seen[1:])), seen
         page.locator(".cv-rail-more").click()
         page.locator(".cv-flyout:not([hidden]) .cv-flyout-item", has_text="Elliptical Frame").click()
-        assert page.evaluate("[window.sonny.engine.tool, window.sonny.engine.frameShape]") == ["frame", "ellipse"]
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        assert page.evaluate("[window.formvis.engine.tool, window.formvis.engine.frameShape]") == ["frame", "ellipse"]
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
         assert "Frame" not in page.evaluate(VISIBLE)                                            # remembered
-        page.evaluate("window.sonny.engine.newDocument(200, 100, 'T2', 'white')")
+        page.evaluate("window.formvis.engine.newDocument(200, 100, 'T2', 'white')")
         page.locator(".cv-rail-more").click()
         page.locator(".cv-flyout:not([hidden]) .cv-flyout-item", has_text="Edit Toolbar").click()
         page.locator(".cv-edit-tool", has_text="Frame").locator("input").check()
         page.locator(".cv-scrim:not([hidden]) .cv-dialog-foot button", has_text="Done").click()
         assert any(x in ("Frame", "Elliptical Frame") or "Frame" in x for x in page.evaluate(VISIBLE))
     finally:
-        page.evaluate("localStorage.removeItem('sonny.railHidden'); window.sonny.engine.frameShape = 'rect'")
+        page.evaluate("localStorage.removeItem('formvis.railHidden'); window.formvis.engine.frameShape = 'rect'")

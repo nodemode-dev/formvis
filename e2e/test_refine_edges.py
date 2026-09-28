@@ -20,7 +20,7 @@ def test_the_refine_edge_brush_changes_the_edge_only_where_painted(page):
 
 def test_decontaminate_colors_replaces_an_edge_fringe_with_the_subjects_colour(page):
     got = page.evaluate("""async () => {
-      const e = window.sonny.engine, W = 60, H = 40, run = (amount) => {
+      const e = window.formvis.engine, W = 60, H = 40, run = (amount) => {
         e.newDocument(W, H, 'D', 'white');
         const c = e.current.activeLayer.raster.ctx;
         for (let x = 0; x < W; x++) { c.fillStyle = x < 30 ? 'rgb(220,30,30)' : x === 30 ? 'rgb(125,30,125)' : 'rgb(30,30,220)'; c.fillRect(x, 0, 1, H); }
@@ -41,8 +41,8 @@ def test_decontaminate_colors_replaces_an_edge_fringe_with_the_subjects_colour(p
 def test_the_dialog_views_brush_and_decontaminate(page):
     errors = []
     page.on("pageerror", lambda e: errors.append(str(e)))
-    page.evaluate("window.sonny.engine.newDocument(120, 80, 'M', 'white'); window.sonny.engine.selectAll()")
-    assert page.evaluate("window.sonny.commands.run('select-and-mask')")
+    page.evaluate("window.formvis.engine.newDocument(120, 80, 'M', 'white'); window.formvis.engine.selectAll()")
+    assert page.evaluate("window.formvis.commands.run('select-and-mask')")
     views = page.locator(DLG + " .cv-field", has_text="View").locator("select")
     values = views.evaluate("(s) => [...s.options].map((o) => o.value)")
     assert values == ["onionSkin", "marchingAnts", "overlay", "onBlack", "onWhite", "blackWhite", "onLayers"], values

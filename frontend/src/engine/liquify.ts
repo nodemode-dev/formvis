@@ -1,4 +1,4 @@
-/** Liquify, after NodeMode's sonny studio (`studio/pixel/liquify.ts`, nodemode_dev v8.73.1, the owner's build, MIT):
+/** Liquify, after NodeMode's formvis studio (`studio/pixel/liquify.ts`, nodemode_dev v8.73.1, the owner's build, MIT):
  *  a coarse displacement field over the image, and the image always resampled from its original pixels through the
  *  accumulated field, shown(q) = original(q - D(q)), so strokes never compound resampling blur and cancelling is
  *  exact. The field lives on a cell grid (4 px by default) and is read bilinearly. NodeMode has the push; the other

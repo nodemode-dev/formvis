@@ -44,7 +44,7 @@ const PER_INCH: Record<Unit, number> = { px: 0, in: 1, cm: 2.54, mm: 25.4 };
 
 /** New Document as the target's (Phase 21, UI_SPEC.md section 4): categories at the left; a search over every preset and
  *  the presets as cards, each preview shaped as its document; at the right Name (pre-selected), Width, a link, Height and
- *  Unit, Resolution, Orientation, Color Mode (sonny's documents are RGB, 8 bit), Background Contents and Artboards; a
+ *  Unit, Resolution, Orientation, Color Mode (formvis's documents are RGB, 8 bit), Background Contents and Artboards; a
  *  live summary of the size and its memory (3 bytes a pixel, as Photoshop counts RGB); Cancel at the left, Create at the
  *  right. Every value is what the document is made with. */
 export class NewCanvasDialog extends Dialog {
@@ -89,8 +89,8 @@ export class NewCanvasDialog extends Dialog {
     });
     const seg = el('<div class="cv-nd-seg"></div>');
     seg.append(...this.orient);
-    // What sonny's documents are, as dropdowns that open like any other (disabled, they looked broken: the owner's walkthrough).
-    // Color Mode as Photoshop's New Document offers what sonny can truly make (1.50.2): RGB, Grayscale and Bitmap; the bit
+    // What formvis's documents are, as dropdowns that open like any other (disabled, they looked broken: the owner's walkthrough).
+    // Color Mode as Photoshop's New Document offers what formvis can truly make (1.50.2): RGB, Grayscale and Bitmap; the bit
     // depth follows the mode. 16 and 32 bit, CMYK and Lab need a new pixel engine, and the dialog says so.
     const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode"><option value="rgb">RGB Color</option><option value="grayscale">Grayscale</option><option value="bitmap">Bitmap</option></select>');
     const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth"><option>8 bit</option></select>');
@@ -197,7 +197,7 @@ export interface OpenActions {
 export class OpenDialog extends Dialog {
   private readonly list = el('<div class="cv-list" role="listbox" aria-label="Saved projects"></div>');
   private readonly empty = el('<div class="cv-list-empty" hidden>No saved projects yet.</div>');
-  private readonly status = el('<p class="cv-note">Projects saved in the sonny library.</p>');
+  private readonly status = el('<p class="cv-note">Projects saved in the formvis library.</p>');
   private readonly fileInput = el<HTMLInputElement>(`<input type="file" accept="${PROJECT_ACCEPT}" hidden>`);
   private readonly folderInput = el<HTMLInputElement>('<input type="file" hidden>');
   private readonly openBtn: HTMLButtonElement;
@@ -250,7 +250,7 @@ export class OpenDialog extends Dialog {
   private async reload(): Promise<void> {
     try {
       this.items = await api.library();
-      setText(this.status, 'Projects saved in the sonny library.');
+      setText(this.status, 'Projects saved in the formvis library.');
     } catch (err) {
       this.items = [];
       setText(this.status, err instanceof Error ? err.message : String(err));
@@ -373,18 +373,18 @@ export class SettingsDialog extends Dialog {
     const accentRow = el('<label class="cv-field"><span>Accent</span></label>');
     accentRow.appendChild(this.accent);
     const reset = el<HTMLButtonElement>('<button class="cv-btn" type="button">Reset All Preferences...</button>');
-    reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how sonny comes; your documents and library are kept. sonny reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('sonny.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
+    reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how formvis comes; your documents and library are kept. formvis reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('formvis.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
     add('General', this.homeRow.el, reset, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, accentRow, this.intensityRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.</p>'));
     add('Performance', this.redrawRow.el,
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
-      el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, sonny turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
+      el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
     add('Workspace', this.lockRow.el, this.narrowRow.el, el('<p class="cv-note">Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
     add('Tools', this.wheelRow.el, el('<p class="cv-note">On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round.</p>'));
-    add('History & Cache', this.statesRow.el, this.memoryRow.el, el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
+    add('History & Cache', this.statesRow.el, this.memoryRow.el, el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
     add('File Handling', this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
@@ -549,8 +549,8 @@ export class AboutDialog extends Dialog {
   private readonly engineLine = el('<p class="cv-note"></p>');
 
   constructor() {
-    super('About sonny', 420);
-    this.body.appendChild(el(`<div class="cv-welcome-title">${brandMark(28)}sonny ${VERSION}</div>`));
+    super('About formvis', 420);
+    this.body.appendChild(el(`<div class="cv-welcome-title">${brandMark(28)}formvis ${VERSION}</div>`));
     this.body.appendChild(el('<p class="cv-note">A layered image editor for the web and the desktop, in the NodeMode design system.</p>'));
     this.body.appendChild(this.engineLine);
     this.body.appendChild(el('<p class="cv-note">Apache License 2.0. Copyright 2026 nodemode-ai.</p>'));
@@ -560,7 +560,7 @@ export class AboutDialog extends Dialog {
   show(caps: Capabilities | null): void {
     setText(this.engineLine, caps
       ? `Engine ${caps.version}${caps.desktop ? ' (desktop)' : ''} · decoders ${caps.decode.engine} · background removal ${caps.removeBackground.ml ? 'ML and lightweight' : caps.removeBackground.lite ? 'lightweight' : 'unavailable'} · data in ${caps.dataDir}`
-      : 'Engine offline. Start it with ./sonny boot.');
+      : 'Engine offline. Start it with ./formvis boot.');
     this.open();
   }
 }

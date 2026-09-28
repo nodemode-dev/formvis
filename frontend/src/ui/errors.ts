@@ -31,6 +31,6 @@ export class ErrorLog {
   text(): string {
     const all = [...this.entries, ...this.extra()].sort((a, b) => a.at - b.at);
     const lines = all.map((x) => `${new Date(x.at).toISOString()} · ${x.what} · ${x.message}`);
-    return [`sonny ${VERSION} · ${navigator.userAgent}`, ...(lines.length ? lines : ['No errors recorded this session.'])].join('\n');
+    return [`formvis ${VERSION} · ${navigator.userAgent}`, ...(lines.length ? lines : ['No errors recorded this session.'])].join('\n');
   }
 }

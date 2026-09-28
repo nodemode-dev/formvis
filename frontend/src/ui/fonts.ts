@@ -35,7 +35,7 @@ export function fontFamilies(): string[] {
   return [...TEXT_FONTS, ...rest];
 }
 
-/** Whether sonny runs as the desktop app (the Tauri shell's web view). */
+/** Whether formvis runs as the desktop app (the Tauri shell's web view). */
 const inDesktopApp = (): boolean => '__TAURI_INTERNALS__' in window;
 
 /** Whether the machine's fonts can be listed: in the desktop app through the shell's `system_fonts` command (the web

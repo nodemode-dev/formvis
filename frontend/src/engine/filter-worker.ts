@@ -5,7 +5,7 @@ import { lensBlur, shakeReduce, smartSharpen } from './filters-more';
 import { isGalleryKind, runGallery } from './blur-gallery';
 import type { FilterJob } from './filter-jobs';
 
-/** Filters run here, off the main thread: sonny's kernels are JavaScript, so the
+/** Filters run here, off the main thread: formvis's kernels are JavaScript, so the
  *  interactive preview runs here instead, leaving the interface responsive while a slider is dragged. The pixels
  *  arrive and leave as transferred buffers, so nothing is copied. */
 onmessage = (e: MessageEvent<FilterJob>) => {

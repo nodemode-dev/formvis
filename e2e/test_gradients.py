@@ -1,5 +1,5 @@
 DRAW = """([shape, pts]) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 200, 'G', 'white');
   Object.assign(e.gradientSettings, { shape, style: 'black-white', reversed: false, opacity: 1 });
   e.beginGradient({ x: 100, y: 100 }); e.updateGradient({ x: 100, y: 100 }, { x: 150, y: 100 }); e.commitGradient();
@@ -26,5 +26,5 @@ def test_radial_angle_and_diamond(page):
 
 def test_gradient_is_one_step_and_undoes(page):
     page.evaluate(DRAW, ["diamond", [[0, 0]]])
-    r = page.evaluate("(() => { const e = window.sonny.engine; const n = e.historySteps.names.slice(-1)[0]; e.undo(); return [n, e.flattened().getContext('2d').getImageData(100, 100, 1, 1).data[0]]; })()")
+    r = page.evaluate("(() => { const e = window.formvis.engine; const n = e.historySteps.names.slice(-1)[0]; e.undo(); return [n, e.flattened().getContext('2d').getImageData(100, 100, 1, 1).data[0]]; })()")
     assert r == ["Gradient", 255]

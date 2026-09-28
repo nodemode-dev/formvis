@@ -1,10 +1,12 @@
 import os
+
+from app.core import legacy
 import tempfile
 from pathlib import Path
 
 from app import __version__
 
-APP_NAME = "sonny"
+APP_NAME = "formvis"
 VERSION = __version__
 FRONTEND_PORT = 5190
 BACKEND_PORT = 8190
@@ -42,8 +44,12 @@ def _ensure(path: Path) -> Path:
 
 
 def data_dir() -> Path:
-    raw = os.environ.get("SONNY_DATA_DIR")
-    return _ensure(Path(raw).expanduser() if raw else Path.home() / "Sonny")
+    raw = os.environ.get("FORMVIS_DATA_DIR")
+    if raw:
+        return _ensure(Path(raw).expanduser())
+    path = Path.home() / "Formvis"
+    legacy.carry_over_library(path)   # the library saved before the rename moves here (core/legacy.py)
+    return _ensure(path)
 
 
 def projects_dir() -> Path:
@@ -55,21 +61,21 @@ def exports_dir() -> Path:
 
 
 def sessions_dir() -> Path:
-    return _ensure(Path(tempfile.gettempdir()) / "sonny-sessions")
+    return _ensure(Path(tempfile.gettempdir()) / "formvis-sessions")
 
 
 def dist_dir() -> Path | None:
-    raw = os.environ.get("SONNY_DIST")
+    raw = os.environ.get("FORMVIS_DIST")
     candidate = Path(raw) if raw else REPO_DIR / "frontend" / "dist"
     return candidate if (candidate / "index.html").is_file() else None
 
 
 def is_desktop() -> bool:
-    return os.environ.get("SONNY_DESKTOP") == "1"
+    return os.environ.get("FORMVIS_DESKTOP") == "1"
 
 
 def cors_origins() -> list[str]:
-    raw = os.environ.get("SONNY_CORS_ORIGINS")
+    raw = os.environ.get("FORMVIS_CORS_ORIGINS")
     if raw:
         return [origin.strip() for origin in raw.split(",") if origin.strip()]
     return [f"http://localhost:{FRONTEND_PORT}", f"http://127.0.0.1:{FRONTEND_PORT}"]

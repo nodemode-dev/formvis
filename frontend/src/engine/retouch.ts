@@ -1,6 +1,6 @@
 import { clamp, type Pt, type Rect } from './types';
 
-/** Retouching for sonny, written from published methods. Spot Healing picks a source patch whose surrounding ring
+/** Retouching for formvis, written from published methods. Spot Healing picks a source patch whose surrounding ring
  *  best matches the spot's own ring (least squared difference), then heals it as in Poisson image editing (Perez,
  *  Gangnet and Blake, 2003): the source's texture is kept, and a harmonic correction, solved coarse to fine, makes it
  *  meet the spot's edge without a seam. Create Texture instead fills the spot with the harmonic interpolation of its

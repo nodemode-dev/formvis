@@ -1,5 +1,5 @@
 FLOW = """async () => {
-  const e = window.sonny.engine, L = await import('/src/io/links.ts');
+  const e = window.formvis.engine, L = await import('/src/io/links.ts');
   const png = async (rgb) => { const c = new OffscreenCanvas(40, 30), g = c.getContext('2d'); g.fillStyle = rgb; g.fillRect(0, 0, 40, 30); return c.convertToBlob({ type: 'image/png' }); };
   e.newDocument(200, 100, 'L', 'white');
   let file = new File([await png('rgb(220,30,30)')], 'art.png', { type: 'image/png', lastModified: 1000 });
@@ -18,7 +18,7 @@ FLOW = """async () => {
   const d = (await io.deserialize(manifest, (n) => Promise.resolve(m.get(n)))).doc;
   out.saved = d.layers[d.layers.length - 1].smart.link;
   e.undo(); await new Promise((r) => setTimeout(r, 50)); out.undone = px();
-  e.redo(); window.sonny.commands.run('embed-linked'); out.embedded = l().smart.link; out.stillBlue = px();
+  e.redo(); window.formvis.commands.run('embed-linked'); out.embedded = l().smart.link; out.stillBlue = px();
   return out;
 }"""
 
@@ -37,7 +37,7 @@ def test_place_linked_update_modified_content_save_and_embed(page):
 
 def test_a_link_whose_source_is_gone_is_reported(page):
     r = page.evaluate("""async () => {
-      const e = window.sonny.engine, L = await import('/src/io/links.ts'), E = await import('/src/engine/index.ts');
+      const e = window.formvis.engine, L = await import('/src/io/links.ts'), E = await import('/src/engine/index.ts');
       e.newDocument(100, 60, 'M', 'white');
       const r = new E.Raster(10, 10); r.ctx.fillStyle = '#0f0'; r.ctx.fillRect(0, 0, 10, 10);
       e.placeLinked(r, { id: 'nowhere-' + Math.random(), name: 'gone.png', size: 5, lastModified: 1 }, 'gone');

@@ -41,7 +41,7 @@ def test_a_comp_project_opens_with_its_layers(client):
 
 
 def test_a_comp_package_folder_opens(client):
-    # On macOS a .comp is a folder (a package); dropped on sonny it arrives as files with their paths.
+    # On macOS a .comp is a folder (a package); dropped on formvis it arrives as files with their paths.
     _, m = _comp()
     files = [("files", ("manifest.json", json.dumps(m).encode(), "application/json")), ("files", ("A.png", png_bytes(), "image/png"))]
     r = client.post("/api/projects/import", files=files, data={"paths": ["Old Work.comp/manifest.json", "Old Work.comp/images/A.png"]})

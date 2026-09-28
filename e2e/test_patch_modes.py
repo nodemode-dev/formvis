@@ -1,5 +1,5 @@
 PATCH = """(opts) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 100, 'P', 'white');
   const l = e.current.activeLayer, c = l.raster.ctx;
   c.fillStyle = 'rgb(128,128,128)'; c.fillRect(0, 0, 200, 100);
@@ -43,4 +43,4 @@ def test_transparent_keeps_what_was_underneath(page):
 def test_content_aware_patch_runs_as_one_step(page):
     r = run(page, {"patchMode": "contentAware"})
     assert r["step"] == "Patch" and r["texA"] > 10, r
-    assert page.evaluate("window.sonny.engine.historySteps.names.filter((n) => n === 'Patch').length") == 1
+    assert page.evaluate("window.formvis.engine.historySteps.names.filter((n) => n === 'Patch').length") == 1

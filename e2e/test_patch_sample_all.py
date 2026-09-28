@@ -1,6 +1,6 @@
 PATCH = """async (sampleAll) => {
   const E = await import('/src/engine/index.ts');
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 100, 'P', 'white');
   const p = e.current, bg = p.activeLayer, c = bg.raster.ctx;
   c.fillStyle = 'rgb(128,128,128)'; c.fillRect(0, 0, 200, 100);
@@ -24,7 +24,7 @@ def test_patch_sample_all_layers_patches_onto_an_empty_layer(page):
 
 
 def test_the_option_shows_in_content_aware_mode(page):
-    page.evaluate("(() => { const e = window.sonny.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('patch'); })()")
+    page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('patch'); })()")
     bar = page.locator(".cv-opt-group:not([hidden])")
     bar.get_by_role("button", name="Content-Aware", exact=True).click()
     bar.locator(".cv-opt:not([hidden])", has_text="Sample All Layers").first.wait_for()   # the bar updates on its next frame

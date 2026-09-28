@@ -5,15 +5,15 @@ The desktop app is a thin Tauri 2 shell around the same engine, frozen with PyIn
 | Source path | What lives there |
 | --- | --- |
 | `src-tauri/src/main.rs` | Sidecar spawn, port handshake, window sizing, failure dialog, shutdown |
-| `src-tauri/tauri.conf.json` | Identity `ai.nodemode.sonny`, splash window, bundle targets, `externalBin` |
+| `src-tauri/tauri.conf.json` | Identity `ai.nodemode.formvis`, splash window, bundle targets, `externalBin` |
 | `src-tauri/capabilities/default.json` | Window permissions; the app uses no Tauri IPC |
-| `setup/freeze_backend` | PyInstaller one-file build, named `sonny-engine-<target triple>` |
+| `setup/freeze_backend` | PyInstaller one-file build, named `formvis-engine-<target triple>` |
 | `setup/desktop_build`, `setup/desktop_dev` | Bundle and dev flows |
 | `.github/workflows/desktop.yml` | macOS arm64, Linux x64 and Windows x64 bundles, draft release on tags |
 
 ## Contract
 
-- The sidecar name in `externalBin` and in `main.rs` stays `sonny-engine`.
+- The sidecar name in `externalBin` and in `main.rs` stays `formvis-engine`.
 - The engine prints `http://127.0.0.1:<port>` on start; the shell depends on that line.
 - Nothing GPL goes into the frozen engine.
 - Signing identities are not configured yet; bundles are unsigned.

@@ -18,7 +18,7 @@ export class ApiError extends Error {
 async function request(path: string, init?: RequestInit): Promise<Response> {
   let res: Response;
   try { res = await fetch(`/api${path}`, init); } catch {
-    throw new ApiError('The sonny engine is not reachable. Start it with ./sonny boot.', 0);
+    throw new ApiError('The formvis engine is not reachable. Start it with ./formvis boot.', 0);
   }
   if (!res.ok) {
     let detail = res.statusText || `Request failed (${res.status})`;

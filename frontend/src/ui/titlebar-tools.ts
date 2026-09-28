@@ -39,11 +39,11 @@ export class TitleTools {
     const syncTheme = (): void => { const light = readChoice().theme === 'light'; theme.innerHTML = icon(light ? 'moon' : 'sun', 17); theme.setAttribute('aria-pressed', String(light)); };
     theme.addEventListener('click', () => { setTheme(readChoice().theme === 'light' ? 'studio' : 'light'); syncTheme(); });
     syncTheme();
-    try { const saved = localStorage.getItem('sonny.workspace') ?? 'essentials'; ws.value = RENAMED[saved] ?? saved; } catch { /* essentials */ }
+    try { const saved = localStorage.getItem('formvis.workspace') ?? 'essentials'; ws.value = RENAMED[saved] ?? saved; } catch { /* essentials */ }
     ws.addEventListener('change', () => {
       const w = WORKSPACES.find((x) => x.id === ws.value);
       if (!w) return;
-      try { localStorage.setItem('sonny.workspace', w.id); } catch { /* this session only */ }
+      try { localStorage.setItem('formvis.workspace', w.id); } catch { /* this session only */ }
       d.arrange(w);
     });
     const syncLock = (): void => {

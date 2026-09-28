@@ -1,8 +1,8 @@
 import { gaussianBlur, lensDistort } from './filters';
 
 /** Develop: Camera Raw-style tone, colour and detail adjustments, brought over from formnodal's develop core (the
- *  studio in nodemode-ai's sonny extension for NodeMode, the owner's own code). The per-pixel pass below is
- *  formnodal's as written; clarity, texture and sharpening at the end keep its formulas but blur with sonny's own
+ *  studio in nodemode-ai's formvis extension for NodeMode, the owner's own code). The per-pixel pass below is
+ *  formnodal's as written; clarity, texture and sharpening at the end keep its formulas but blur with formvis's own
  *  Gaussian, so the whole filter runs in the preview worker. formnodal is also nodemode-ai's own build; the owner
  *  confirmed no further notice is needed for it. */
 
@@ -495,7 +495,7 @@ export function developPass(src: Uint8ClampedArray, dst: Uint8ClampedArray,
 // ------------------------------------------------------------ detail passes
 // These operate on a canvas (they need a blurred sibling); the engine calls
 
-// ------------------------------------------------------------ detail passes (sonny's worker-safe versions)
+// ------------------------------------------------------------ detail passes (formvis's worker-safe versions)
 
 /** Blur-difference detail on `img`: `amount` above zero adds detail, below zero softens (at most 80%); `midtoneOnly`
  *  keeps the effect away from deep shadows and highlights. `radius` is the blur's standard deviation in pixels. */

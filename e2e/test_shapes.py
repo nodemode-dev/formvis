@@ -1,5 +1,5 @@
 MAKE = """([kind, opts]) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(300, 200, 'S', 'white');
   e.fg = { r: 200, g: 30, b: 60 };
   Object.assign(e.shapeSettings, { kind }, opts);
@@ -23,17 +23,17 @@ def test_polygon_star_and_heart_fill_their_box(page):
 def test_line_and_arrow_follow_the_drag(page):
     r = page.evaluate(MAKE, ["line", {"weight": 10}])
     assert r["name"] == "Line 1" and r["centre"] == RED
-    probe = page.evaluate("(() => { const c = window.sonny.engine.flattened().getContext('2d'); return [c.getImageData(150, 97, 1, 1).data[1], c.getImageData(150, 108, 1, 1).data[1]]; })()")
+    probe = page.evaluate("(() => { const c = window.formvis.engine.flattened().getContext('2d'); return [c.getImageData(150, 97, 1, 1).data[1], c.getImageData(150, 108, 1, 1).data[1]]; })()")
     assert probe == [30, 255]
     r = page.evaluate(MAKE, ["arrow", {"weight": 6, "headLength": 40, "headWidth": 50}])
-    head = page.evaluate("(() => { const c = window.sonny.engine.flattened().getContext('2d'); return [c.getImageData(225, 118, 1, 1).data[1], c.getImageData(100, 118, 1, 1).data[1]]; })()")
+    head = page.evaluate("(() => { const c = window.formvis.engine.flattened().getContext('2d'); return [c.getImageData(225, 118, 1, 1).data[1], c.getImageData(100, 118, 1, 1).data[1]]; })()")
     assert r["name"] == "Arrow 1" and head == [30, 255]
 
 
 def test_path_shapes_recolor_and_undo(page):
     page.evaluate(MAKE, ["polygon", {"sides": 8}])
     r = page.evaluate("""(() => {
-      const e = window.sonny.engine;
+      const e = window.formvis.engine;
       e.fg = { r: 10, g: 200, b: 90 }; e.recolorShape();
       const c = () => Array.from(e.flattened().getContext('2d').getImageData(150, 100, 1, 1).data).slice(0, 3);
       const green = c(); e.undo(); const red = c(); e.undo(); const none = c();

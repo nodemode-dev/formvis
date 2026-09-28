@@ -1,11 +1,11 @@
 import type { SampledTip } from './abr';
 
-/** Brush dynamics and presets, ported from NodeMode's sonny studio (`studio/paint/dynamics.ts` and `preset.ts`,
+/** Brush dynamics and presets, ported from NodeMode's formvis studio (`studio/paint/dynamics.ts` and `preset.ts`,
  *  nodemode_dev v8.73.1, the owner's build, MIT). A brush parameter is modulated by sensors, each mapped through a
  *  sampled response curve, combined, then scaled into the option's range by its strength; a disabled option is 1.
- *  sonny's strokes carry pen pressure, so pressure is the sensor wired here; the others in the source (speed,
+ *  formvis's strokes carry pen pressure, so pressure is the sensor wired here; the others in the source (speed,
  *  distance, time, fuzzy) keep their place in the model for later. Presets are data, as there, trimmed to what
- *  sonny's brush has: size, hardness, opacity, and pressure driving size and flow. */
+ *  formvis's brush has: size, hardness, opacity, and pressure driving size and flow. */
 
 export type SensorId = 'pressure';
 export interface SensorSpec { id: SensorId; curve?: number[]; reversed?: boolean }
@@ -98,7 +98,7 @@ export function presetFromTip(id: string, name: string, tip: SampledTip): BrushP
   return { id, name, description: `Imported sampled tip, ${tip.w} x ${tip.h} px.`, diameter: Math.min(1000, Math.max(tip.w, tip.h)), hardness: 1, opacity: 1, dynamics: { size: pressureOption(0.15), flow: identityOption() }, tip };
 }
 
-/** NodeMode's built-in painting presets, as sonny's brush can hold them (Ink's speed sensor, Pencil's tilted tip and
+/** NodeMode's built-in painting presets, as formvis's brush can hold them (Ink's speed sensor, Pencil's tilted tip and
  *  scatter, Marker's chisel and Blender's smudge have no counterpart here yet and are left out of those presets). */
 export const BUILTIN_BRUSH_PRESETS: BrushPreset[] = [
   { id: 'hard-round', name: 'Hard round', description: 'Crisp opaque round brush; pressure drives size.', diameter: 28, hardness: 0.95, opacity: 1, dynamics: { size: pressureOption(0.15), flow: identityOption() } },

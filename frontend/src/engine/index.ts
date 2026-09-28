@@ -3559,7 +3559,7 @@ export class Engine {
   }
 
   /** Edit > Transform > Warp: a 4 x 4 control grid over the active layer's corners, pending until applied (Enter) or
-   *  cancelled (Escape). The warp is the smooth one (engine/mesh-warp.ts, ported from NodeMode's sonny): the surface
+   *  cancelled (Escape). The warp is the smooth one (engine/mesh-warp.ts, ported from NodeMode's formvis): the surface
    *  curves through the points. A linked mask without a placement of its own warps with the pixels. */
   meshWarpEdit: { project: Project; layerId: ID; gw: number; gh: number; points: P2[]; source: ImageData; mask: ImageData | null; preview: Warped | null } | null = null;
   private meshFrame = 0;

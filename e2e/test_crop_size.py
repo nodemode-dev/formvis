@@ -1,7 +1,7 @@
-SETUP = """() => { const e = window.sonny.engine; e.newDocument(400, 300, 'S', 'white'); e.setTool('crop');
+SETUP = """() => { const e = window.formvis.engine; e.newDocument(400, 300, 'S', 'white'); e.setTool('crop');
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }"""
 BAR = ".cv-opt-group:not([hidden])"
-DOC = "(() => { const d = window.sonny.engine.current.doc; return [d.width, d.height, d.resolution]; })()"
+DOC = "(() => { const d = window.formvis.engine.current.doc; return [d.width, d.height, d.resolution]; })()"
 
 
 def num(page, label, v):
@@ -21,7 +21,7 @@ def test_crop_to_width_height_resolution_with_presets(page):
         page.mouse.move(*at(0, 0)); page.mouse.down(); page.mouse.move(*at(400, 300), steps=6); page.mouse.up()
         page.keyboard.press("Enter")
         assert page.evaluate(DOC) == [200, 100, 100], page.evaluate(DOC)       # 2 by 1 in at 100 ppi
-        page.evaluate("window.sonny.engine.undo()")
+        page.evaluate("window.formvis.engine.undo()")
         assert page.evaluate(DOC) == [400, 300, 72], page.evaluate(DOC)        # one undo step
         # save the size as a preset, change it, choose the preset back, then delete it
         page.locator(BAR).get_by_role("button", name="New Crop Preset").click()
@@ -33,4 +33,4 @@ def test_crop_to_width_height_resolution_with_presets(page):
         page.locator(BAR).get_by_role("button", name="Delete Crop Preset").click()
         page.wait_for_function("![...document.querySelectorAll('.cv-opt-group:not([hidden]) select option')].some((o) => o.textContent === '2 × 1 in at 100 ppi')")
     finally:
-        page.evaluate("localStorage.removeItem('sonny.cropPresets')")
+        page.evaluate("localStorage.removeItem('formvis.cropPresets')")

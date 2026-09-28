@@ -2,7 +2,7 @@ import { applyMat, invert, placement, unitPoint } from './geometry';
 import { Raster } from './surface';
 import type { Pt, Rect, Transform } from './types';
 
-/** Four-corner (perspective) distortion for sonny: the projective map taking the unit square to a convex
+/** Four-corner (perspective) distortion for formvis: the projective map taking the unit square to a convex
  *  quadrilateral, solved from its four corner correspondences as eight linear equations (the direct linear
  *  transform), and resampling through its inverse with premultiplied bilinear filtering. */
 

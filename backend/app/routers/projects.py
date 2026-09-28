@@ -7,15 +7,16 @@ from pathlib import Path
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, Response
 
-from app.core import config
+from app.core import config, legacy
 from app.services import project_format as pf
 from app.services import sessions
 
 router = APIRouter(tags=["projects"])
 NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,120}$")
-SUFFIXES = (".sny", ".sonny", ".canvasor", ".comp", ".zip")
-#: The library writes .sny; .sonny (the extension before 0.90.0) is still read, listed, opened and deleted.
-EXT, OLD_EXT = ".sny", ".sonny"
+#: The library writes .fmv; projects with the extensions from before the rename (core/legacy.py) are still read, listed,
+#: opened and deleted, and saving one again writes .fmv in its place.
+EXT, OLD_EXTS = ".fmv", legacy.PROJECT_EXTENSIONS
+SUFFIXES = (EXT, *OLD_EXTS, ".canvasor", ".comp", ".zip")
 
 
 def _library_path(name: str) -> Path:
@@ -26,10 +27,11 @@ def _library_path(name: str) -> Path:
 
 
 def _existing(name: str) -> Path:
-    """The library file for `name`: the .sny one, or else an older .sonny one."""
+    """The library file for `name`: the .fmv one, or else one saved before the rename."""
     path = _library_path(name)
-    old = path.with_suffix(OLD_EXT)
-    return path if path.is_file() or not old.is_file() else old
+    if path.is_file():
+        return path
+    return next((o for o in (path.with_suffix(x) for x in OLD_EXTS) if o.is_file()), path)
 
 
 def _project_name(raw: str) -> str:
@@ -76,7 +78,7 @@ def _validated(manifest: dict, assets: dict[str, bytes]) -> None:
 @router.get("")
 def library() -> list[dict]:
     items: dict[str, dict] = {}
-    for suffix in (OLD_EXT, EXT):
+    for suffix in (*OLD_EXTS, EXT):
         for path in config.projects_dir().glob(f"*{suffix}"):
             stat = path.stat()
             items[path.stem] = {"name": path.stem, "modified": stat.st_mtime, "size": stat.st_size}
@@ -93,7 +95,8 @@ def save(name: str = Form(...), manifest: str = Form(...), files: list[UploadFil
     with os.fdopen(fd, "wb") as handle:
         handle.write(blob)
     os.replace(tmp, target)
-    target.with_suffix(OLD_EXT).unlink(missing_ok=True)
+    for x in OLD_EXTS:
+        target.with_suffix(x).unlink(missing_ok=True)
     return {"name": target.stem, "path": str(target), "size": len(blob)}
 
 
@@ -123,7 +126,8 @@ def open_library(name: str) -> dict:
 def delete_library(name: str) -> dict:
     path = _library_path(name)
     path.unlink(missing_ok=True)
-    path.with_suffix(OLD_EXT).unlink(missing_ok=True)
+    for x in OLD_EXTS:
+        path.with_suffix(x).unlink(missing_ok=True)
     return {"deleted": name}
 
 

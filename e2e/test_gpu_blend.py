@@ -8,7 +8,7 @@ COMPARE = """async (mode) => {
   const E = await import('/src/engine/index.ts');
   const R = await import('/src/engine/renderer.ts');
   const G = await import('/src/gpu/blender.ts');
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(64, 32, 'G', 'white');
   const p = e.current, bg = p.activeLayer, c = bg.raster.ctx;
   const g1 = c.createLinearGradient(0, 0, 64, 0); g1.addColorStop(0, 'rgb(10,200,60)'); g1.addColorStop(1, 'rgb(240,30,180)');

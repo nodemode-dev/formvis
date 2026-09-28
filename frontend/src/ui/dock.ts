@@ -29,8 +29,8 @@ export function unregisterPanel(id: string): void { const i = ALL_PANELS.findInd
 const DEFAULT_SIDE = SIDE_PANELS.map((p) => p.id);
 /** order: the dock's panels, top to bottom; side: the side column's; hidden: those not shown, wherever they live. */
 interface DockState { order: string[]; hidden: string[]; side: string[] }
-const KEY = 'sonny.dock';
-const HEIGHTS_KEY = 'sonny.dock.heights';
+const KEY = 'formvis.dock';
+const HEIGHTS_KEY = 'formvis.dock.heights';
 /** As the target's Essentials (and Photoshop's): Navigator, Swatches and Layers shown; Timeline and History in Window. */
 const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history', 'info'], side: [...DEFAULT_SIDE] };
 
@@ -134,8 +134,8 @@ export class Dock {
   }
 
   /** Lock Workspace (Phase 21, the target's lock button): while locked, panels are not dragged. Remembered. */
-  get locked(): boolean { try { return localStorage.getItem('sonny.lock') === '1'; } catch { return false; } }
-  set locked(on: boolean) { try { localStorage.setItem('sonny.lock', on ? '1' : '0'); } catch { /* this session only */ } this.dock.classList.toggle('is-locked', on); }
+  get locked(): boolean { try { return localStorage.getItem('formvis.lock') === '1'; } catch { return false; } }
+  set locked(on: boolean) { try { localStorage.setItem('formvis.lock', on ? '1' : '0'); } catch { /* this session only */ } this.dock.classList.toggle('is-locked', on); }
 
   /** A panel's element, wherever it is (either column, or opened from a strip). */
   private section(id: string): HTMLElement | null {
@@ -148,10 +148,10 @@ export class Dock {
    *  group's header, the expand button atop the strip, an icon per shown group opening it as a flyout beside the strip
    *  (its element moved there and back). Remembered; the app sets the column's width (onCollapse). */
   onCollapse: ((on: boolean) => void) | null = null;
-  get collapsed(): boolean { try { return localStorage.getItem('sonny.dockCollapsed') === '1'; } catch { return false; } }
+  get collapsed(): boolean { try { return localStorage.getItem('formvis.dockCollapsed') === '1'; } catch { return false; } }
   setCollapsed(on: boolean): void {
     this.closeFly();
-    try { localStorage.setItem('sonny.dockCollapsed', on ? '1' : '0'); } catch { /* this session only */ }
+    try { localStorage.setItem('formvis.dockCollapsed', on ? '1' : '0'); } catch { /* this session only */ }
     this.dock.classList.toggle('is-collapsed', on);
     this.renderStrip();
     this.onCollapse?.(on);

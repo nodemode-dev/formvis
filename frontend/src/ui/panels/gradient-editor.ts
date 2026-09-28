@@ -5,7 +5,7 @@ import { el } from '../dom';
 import { toast } from '../toast';
 import { colorRow, selectRow, sliderRow, type Row } from './controls';
 
-const KEY = 'sonny.gradients', BW = 560, BH = 28, SH = 18;
+const KEY = 'formvis.gradients', BW = 560, BH = 28, SH = 18;
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 
 /** Loads saved gradients into the registry; safe when storage is unavailable. */

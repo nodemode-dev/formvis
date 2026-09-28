@@ -12,7 +12,7 @@ const HINTS: Record<Mode, string> = {
   upscale: 'Real-ESRGAN on fal enlarges what the document shows and opens it as a new document, for a fraction of a cent per image.',
 };
 
-/** Generative Fill, Generative Expand and Upscale, sent by the sonny engine to fal: FLUX.1 Fill [pro] with a
+/** Generative Fill, Generative Expand and Upscale, sent by the formvis engine to fal: FLUX.1 Fill [pro] with a
  *  prompt, FLUX.1 Erase [pro] without one, Real-ESRGAN to upscale. Until a key is saved the dialog asks for one; the
  *  engine keeps it in its data folder and never hands it back to the page. */
 export class GenerativeDialog extends Dialog {
@@ -40,7 +40,7 @@ export class GenerativeDialog extends Dialog {
       this.marginRows.appendChild(row);
     }
     this.body.appendChild(this.hint);
-    this.keyRow.append(this.key, el('<p class="cv-note">Get a key at fal.ai. The sonny engine keeps it in its data folder on this computer.</p>'));
+    this.keyRow.append(this.key, el('<p class="cv-note">Get a key at fal.ai. The formvis engine keeps it in its data folder on this computer.</p>'));
     this.body.appendChild(this.keyRow);
     this.body.appendChild(this.state);
     this.forget = this.button('Forget key', 'ghost', () => void this.forgetKey());
@@ -71,8 +71,8 @@ export class GenerativeDialog extends Dialog {
     const s = this.status;
     setHidden(this.keyRow, !s || s.configured);
     setHidden(this.forget, s?.source !== 'settings');
-    setText(this.state, !s ? 'The sonny engine is offline. Start it with ./sonny boot.'
-      : s.configured ? `fal key set ${s.source === 'environment' ? 'by FAL_KEY in the environment' : 'in sonny'}.` : 'Add a fal API key to generate.');
+    setText(this.state, !s ? 'The formvis engine is offline. Start it with ./formvis boot.'
+      : s.configured ? `fal key set ${s.source === 'environment' ? 'by FAL_KEY in the environment' : 'in formvis'}.` : 'Add a fal API key to generate.');
   }
 
   private async forgetKey(): Promise<void> {

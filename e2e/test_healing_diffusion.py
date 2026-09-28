@@ -1,5 +1,5 @@
 HEAL = """(diffusion) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 100, 'H', 'white');
   const l = e.current.activeLayer, c = l.raster.ctx;
   c.fillStyle = 'rgb(128,128,128)'; c.fillRect(0, 0, 200, 100);
@@ -28,11 +28,11 @@ def test_healing_brush_diffusion_fades_the_colour_correction(page):
 
 
 def test_the_healing_brush_bar_sets_diffusion(page):
-    page.evaluate("(() => { const e = window.sonny.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('healingBrush'); })()")
+    page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('healingBrush'); })()")
     bar = page.locator(".cv-opt-group:not([hidden])")
     row = bar.locator(".cv-opt:not([hidden])", has_text="Diffusion").first
     row.wait_for()                                  # the bar updates on its next frame
     box = row.locator("input[type=number]")
     box.fill("2"); box.press("Tab")
-    assert page.evaluate("window.sonny.engine.retouch.healDiffusion") == 2
-    page.evaluate("window.sonny.engine.retouch.healDiffusion = 7")
+    assert page.evaluate("window.formvis.engine.retouch.healDiffusion") == 2
+    page.evaluate("window.formvis.engine.retouch.healDiffusion = 7")

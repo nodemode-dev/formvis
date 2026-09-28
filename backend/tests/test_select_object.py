@@ -8,14 +8,14 @@ from PIL import Image, ImageDraw
 
 from app.services import segment
 
-needs_sam = pytest.mark.skipif(not segment.available(), reason="SAM 2.1 is optional: ./sonny install-ml installs torch and sam2")
+needs_sam = pytest.mark.skipif(not segment.available(), reason="SAM 2.1 is optional: ./formvis install-ml installs torch and sam2")
 U = "/api/ops/select-object"
 
 
 @pytest.fixture(autouse=True)
 def shared_models(monkeypatch):
     # One verified checkpoint for every test run, not one per temporary data folder.
-    monkeypatch.setenv("SONNY_MODELS_DIR", os.environ.get("SONNY_MODELS_DIR") or str(Path.home() / ".cache" / "sonny-models"))
+    monkeypatch.setenv("FORMVIS_MODELS_DIR", os.environ.get("FORMVIS_MODELS_DIR") or str(Path.home() / ".cache" / "formvis-models"))
 
 
 def _scene() -> tuple[bytes, object, object]:

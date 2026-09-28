@@ -1,4 +1,4 @@
-/** Remove Background's refining, written for sonny. The model's subject mask is pulled onto the image's own edges
+/** Remove Background's refining, written for formvis. The model's subject mask is pulled onto the image's own edges
  *  with He, Sun and Tang's guided filter (2010), which recovers hair and fur a segmentation cuts straight through;
  *  Shift Edge grows or shrinks it through a Gaussian blur and a steep threshold; Contrast pushes its greys apart.
  *  Masks and guides hold 0 to 1 per pixel, row by row. Radii are in layer pixels; `scale` shrinks them for a scaled

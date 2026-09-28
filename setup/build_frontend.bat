@@ -3,4 +3,4 @@ setlocal
 cd /d "%~dp0..\frontend"
 if not exist node_modules call npm install
 call npm run build || exit /b 1
-echo [sonny] built frontend\dist
+echo [formvis] built frontend\dist

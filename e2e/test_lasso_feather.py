@@ -1,6 +1,6 @@
-SETUP = """() => { const e = window.sonny.engine; e.newDocument(200, 160, 'L', 'white'); e.setTool('lasso'); if (e.tool !== 'lasso') throw new Error('tool'); e.update({ lassoKind: 'polygonal' });
+SETUP = """() => { const e = window.formvis.engine; e.newDocument(200, 160, 'L', 'white'); e.setTool('lasso'); if (e.tool !== 'lasso') throw new Error('tool'); e.update({ lassoKind: 'polygonal' });
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }"""
-AT = "([x, y]) => window.sonny.engine.current.selection.valueAt(x, y)"
+AT = "([x, y]) => window.formvis.engine.current.selection.valueAt(x, y)"
 
 
 def square(page, s):
@@ -16,7 +16,7 @@ def test_lasso_feather_softens_the_selection(page):
     square(page, s)
     mid, edge, out = page.evaluate(AT, [100, 80]), page.evaluate(AT, [50, 80]), page.evaluate(AT, [45, 80])
     assert mid == 255 and 60 < edge < 200 and 0 < out < 90, (mid, edge, out)
-    page.evaluate("window.sonny.engine.deselect()")
+    page.evaluate("window.formvis.engine.deselect()")
     f.fill("0"); f.press("Tab")
     square(page, s)
     assert page.evaluate(AT, [45, 80]) == 0 and page.evaluate(AT, [100, 80]) == 255

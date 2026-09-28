@@ -1,13 +1,13 @@
-//! The native canvas in the desktop window (Phase 20): the shell hosts sonny-render and relays the app's document to
+//! The native canvas in the desktop window (Phase 20): the shell hosts formvis-render and relays the app's document to
 //! its mirror. Opt-in: nothing is created until the app calls native_start (the native renderer chosen in Preferences),
 //! so the desktop app is unchanged otherwise. Not yet verified on macOS: there the renderer's Metal layer must sit
 //! beneath the web view for the interface to show over it, which only the owner's Mac can confirm.
 
 use serde::Deserialize;
-use sonny_render::composite::{Affine, Blender};
-use sonny_render::display::{Checker, Display, Presented, View};
-use sonny_render::document::{Document, LayerSpec};
-use sonny_render::Gpu;
+use formvis_render::composite::{Affine, Blender};
+use formvis_render::display::{Checker, Display, Presented, View};
+use formvis_render::document::{Document, LayerSpec};
+use formvis_render::Gpu;
 use std::sync::Mutex;
 
 pub struct Native {

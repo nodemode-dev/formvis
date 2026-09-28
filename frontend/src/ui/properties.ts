@@ -11,7 +11,7 @@ import { importAbr } from '../io/brush-library';
 /** The Properties column (Phase 21, UI_SPEC.md sections 5 and 6, the target's s20): Properties (the active layer's
  *  placement: W, X, H, Y, with a link that keeps the aspect), Brushes (the tip, Size and Hardness, a stroke preview, and
  *  Brush Settings), Paragraph (alignment) and Character (font, style, size, leading, tracking, kerning), each bound to
- *  the engine: a committed field is one undo step. Only what sonny's engine does is shown: no dead controls. */
+ *  the engine: a committed field is one undo step. Only what formvis's engine does is shown: no dead controls. */
 
 /** A numeric field as the target's: Enter or leaving commits; arrows step by `step`, Shift by ten times it; clamped;
  *  not overwritten while it has focus. */
@@ -63,7 +63,7 @@ export class PropertiesColumn {
   /** The column collapses to a strip of icons, as the target's (the owner's screenshot): the collapse button in the first
    *  group's header, the expand button atop the strip, and an icon per group that opens the group as a flyout beside
    *  the strip (the group's own element moved there and back, so its tab, values and scroll are kept). Remembered. */
-  static readonly COLLAPSED_KEY = 'sonny.propsColCollapsed';
+  static readonly COLLAPSED_KEY = 'formvis.propsColCollapsed';
   static collapsed(): boolean { try { return localStorage.getItem(PropertiesColumn.COLLAPSED_KEY) === '1'; } catch { return false; } }
   /** As shown now: the saved choice, or the strip while the window is too narrow for the canvas beside the open column. */
   static showingCollapsed = false;
@@ -72,13 +72,13 @@ export class PropertiesColumn {
   /** Preferences > Workspace: whether a narrow window shows the column as its icons. */
   static narrowCollapse = true;
   /** The open column's width: dragged by its left edge, 220 to 560 px, remembered (the owner's walkthrough). */
-  static openWidth(): number { try { const w = Number(localStorage.getItem('sonny.propsOpenW')); return w >= 220 && w <= 560 ? w : 284; } catch { return 284; } }
+  static openWidth(): number { try { const w = Number(localStorage.getItem('formvis.propsOpenW')); return w >= 220 && w <= 560 ? w : 284; } catch { return 284; } }
   private relayoutStrip: () => void = () => undefined;
   /** Panels moved in or out (the Dock): the strip and the collapse button follow. */
   relayout(): void { this.relayoutStrip(); }
   /** Window > Reset Panels: open, at the default width. */
   resetLayout(): void {
-    try { localStorage.removeItem(PropertiesColumn.COLLAPSED_KEY); localStorage.removeItem('sonny.propsOpenW'); } catch { /* nothing kept */ }
+    try { localStorage.removeItem(PropertiesColumn.COLLAPSED_KEY); localStorage.removeItem('formvis.propsOpenW'); } catch { /* nothing kept */ }
     document.documentElement.style.setProperty('--cv-props-open-w', '284px');
     this.expand();
   }
@@ -167,7 +167,7 @@ export class PropertiesColumn {
       const move = (ev: PointerEvent): void => {
         const w = Math.round(Math.min(560, Math.max(220, w0 + (x0 - ev.clientX))));
         document.documentElement.style.setProperty('--cv-props-open-w', `${w}px`);
-        try { localStorage.setItem('sonny.propsOpenW', String(w)); } catch { /* this session only */ }
+        try { localStorage.setItem('formvis.propsOpenW', String(w)); } catch { /* this session only */ }
         this.onLayout();
       };
       const up = (): void => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); };
@@ -228,7 +228,7 @@ export class PropertiesColumn {
   }
 
   /** Brushes as the target's (s20): the tip and Size and Hardness; a search and a grid or list of the presets in
-   *  folders (sonny's own, and those loaded from .abr files), each drawn with its size, the chosen one marked; the stroke
+   *  folders (formvis's own, and those loaded from .abr files), each drawn with its size, the chosen one marked; the stroke
    *  preview; Load... (Photoshop .abr brushes) and Brush Settings. A Brush Settings tab holds the tip's spacing, angle
    *  and roundness, the units of the full dialog. */
   private brushes(run: (cmd: string) => void): void {
@@ -268,9 +268,9 @@ export class PropertiesColumn {
     new PanelGroup(this.root, 'brushes', [{ id: 'brushes', label: 'Brushes', body }, { id: 'brush-settings', label: 'Brush Settings', body: settings }], 'Brushes').setMenu(() => ['load-brushes', 'brush-settings']);
 
     let view: 'grid' | 'list' = 'grid';
-    try { view = localStorage.getItem('sonny.brushView') === 'list' ? 'list' : 'grid'; } catch { /* grid */ }
+    try { view = localStorage.getItem('formvis.brushView') === 'list' ? 'list' : 'grid'; } catch { /* grid */ }
     const shut = new Set<string>();
-    for (const b of body.querySelectorAll<HTMLButtonElement>('[data-view]')) b.addEventListener('click', () => { view = b.dataset.view as 'grid' | 'list'; try { localStorage.setItem('sonny.brushView', view); } catch { /* session */ } key = ''; fill(); });
+    for (const b of body.querySelectorAll<HTMLButtonElement>('[data-view]')) b.addEventListener('click', () => { view = b.dataset.view as 'grid' | 'list'; try { localStorage.setItem('formvis.brushView', view); } catch { /* session */ } key = ''; fill(); });
     search.addEventListener('input', () => { key = ''; fill(); });
     const thumb = (p: BrushPreset, w: number, h: number): HTMLCanvasElement => {
       const dpr = window.devicePixelRatio || 1, c = document.createElement('canvas');
@@ -364,7 +364,7 @@ export class PropertiesColumn {
       const f = picker.files?.[0];
       picker.value = '';
       if (!f) return;
-      void importAbr(e, f).then((r) => { e.notice(r.added ? `Loaded ${r.added} brush${r.added === 1 ? '' : 'es'} from ${f.name}.` : `${f.name} holds no brushes sonny can read.`); key = ''; fill(); }).catch((err) => e.notice(`Could not load ${f.name}: ${err instanceof Error ? err.message : String(err)}`, 'error'));
+      void importAbr(e, f).then((r) => { e.notice(r.added ? `Loaded ${r.added} brush${r.added === 1 ? '' : 'es'} from ${f.name}.` : `${f.name} holds no brushes formvis can read.`); key = ''; fill(); }).catch((err) => e.notice(`Could not load ${f.name}: ${err instanceof Error ? err.message : String(err)}`, 'error'));
     });
     (body.querySelector('[data-act="settings"]') as HTMLElement).addEventListener('click', () => run('brush-settings'));
     const dab = (g: CanvasRenderingContext2D, x: number, y: number, r: number, hard: number): void => {

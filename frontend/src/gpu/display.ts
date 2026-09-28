@@ -65,7 +65,7 @@ export class GpuDisplay {
     void device.lost.then((info) => {
       // destroy() also resolves this promise, with reason 'destroyed': switching renderers, not a failure.
       if (info.reason === 'destroyed') return;
-      console.warn(`sonny: the GPU device was lost (${info.reason}): ${info.message}`);
+      console.warn(`formvis: the GPU device was lost (${info.reason}): ${info.message}`);
       this.onLost?.();
     });
   }
@@ -74,10 +74,10 @@ export class GpuDisplay {
     try {
       const gpu = (navigator as unknown as { gpu?: GPU }).gpu;
       const adapter = gpu ? await gpu.requestAdapter({ powerPreference: 'high-performance' }) : null;
-      if (!gpu || !adapter) { console.warn('sonny: WebGPU has no adapter here'); return null; }
+      if (!gpu || !adapter) { console.warn('formvis: WebGPU has no adapter here'); return null; }
       const device = await adapter.requestDevice();
       const ctx = canvas.getContext('webgpu') as GPUCanvasContext | null;
-      if (!ctx) { console.warn('sonny: the display canvas gives no WebGPU context'); return null; }
+      if (!ctx) { console.warn('formvis: the display canvas gives no WebGPU context'); return null; }
       const format = gpu.getPreferredCanvasFormat();
       ctx.configure({ device, format, alphaMode: 'premultiplied' });
       const cm = device.createShaderModule({ code: COMPOSITE_WGSL }), pm = device.createShaderModule({ code: PRESENT_WGSL });
@@ -87,7 +87,7 @@ export class GpuDisplay {
       const edge = { addressModeU: 'clamp-to-edge', addressModeV: 'clamp-to-edge' } as const;
       return new GpuDisplay(canvas, device, ctx, composite, present, presentOff, device.createSampler({ ...edge, magFilter: 'linear', minFilter: 'linear' }), device.createSampler({ ...edge, magFilter: 'nearest', minFilter: 'nearest' }));
     } catch (err) {
-      console.warn('sonny: WebGPU could not start:', err);
+      console.warn('formvis: WebGPU could not start:', err);
       return null;
     }
   }

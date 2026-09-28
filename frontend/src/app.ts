@@ -97,7 +97,7 @@ import { toast } from './ui/toast';
 
 /** Each tab's own group, where Reset Panels returns it. */
 const TAB_HOMES: Record<string, string> = { info: 'info', layers: 'layers-panel', channels: 'layers-panel', paths: 'layers-panel', navigator: 'navigator', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
-const LAYERS_W_KEY = 'sonny_layers_w';
+const LAYERS_W_KEY = 'formvis_layers_w';
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
 function stored(key: string): string | null {
@@ -110,7 +110,7 @@ function store(key: string, value: string): void {
 
 const SHELL = `<div class="cv-app">
 <header class="cv-titlebar">
-<div class="cv-brand">${icon('paintbrush', 18)}<span class="cv-brand-name">sonny</span></div>
+<div class="cv-brand">${icon('paintbrush', 18)}<span class="cv-brand-name">formvis</span></div>
 <nav class="cv-menubar" aria-label="Main menu"></nav>
 <div class="cv-zoom">
 <button class="cv-icon-btn" type="button" data-cmd="undo">${icon('undo', 16)}</button>
@@ -138,7 +138,7 @@ const SHELL = `<div class="cv-app">
 <canvas class="cv-ruler cv-ruler-h" hidden></canvas>
 <canvas class="cv-ruler cv-ruler-v" hidden></canvas>
 <div class="cv-welcome"><div class="cv-welcome-card">
-<div class="cv-welcome-title">${brandMark(28)}sonny</div>
+<div class="cv-welcome-title">${brandMark(28)}formvis</div>
 <div class="cv-welcome-sub">Layered image compositing. Start a canvas, open a project, or drop images anywhere on this stage.</div>
 <div class="cv-welcome-actions"><button class="cv-btn cv-btn-primary" type="button" data-cmd="new">${icon('newFile', 14)}New Canvas</button><button class="cv-btn" type="button" data-cmd="open">${icon('load', 14)}Open Project</button><button class="cv-btn" type="button" data-cmd="import">${icon('image', 14)}Import Images</button></div>
 </div></div>
@@ -199,7 +199,7 @@ export function startApp(): void {
     window.dispatchEvent(new Event('resize'));
   };
   const setScreen = (s: Screen): void => { screen = s; applyScreen(); };
-  const railDouble = (): boolean => stored('sonny.railDouble') === '1';
+  const railDouble = (): boolean => stored('formvis.railDouble') === '1';
   const applyRail = (): void => { q(root, '.cv-rail').classList.toggle('is-double', railDouble()); window.dispatchEvent(new Event('resize')); };
   commands.add(
     { id: 'quick-mask', label: 'Edit in Quick Mask Mode', keys: ['Q'], checked: () => engine.quickMask, enabled: () => !!engine.current, run: () => engine.toggleQuickMask() },
@@ -208,7 +208,7 @@ export function startApp(): void {
     { id: 'screen-full', label: 'Full Screen Mode', checked: () => screen === 'full', run: () => setScreen('full') },
     { id: 'screen-next', label: 'Change Screen Mode', keys: ['F'], run: () => setScreen(screen === 'standard' ? 'menu' : screen === 'menu' ? 'full' : 'standard') },
     { id: 'toggle-panels', label: 'Show or Hide Panels', keys: ['Tab'], checked: () => !panelsHidden, run: () => { panelsHidden = !panelsHidden; applyScreen(); } },
-    { id: 'rail-columns', label: 'Tools in Two Columns', checked: railDouble, run: () => { store('sonny.railDouble', railDouble() ? '0' : '1'); applyRail(); } },
+    { id: 'rail-columns', label: 'Tools in Two Columns', checked: railDouble, run: () => { store('formvis.railDouble', railDouble() ? '0' : '1'); applyRail(); } },
   );
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && screen === 'full') { setScreen('standard'); e.preventDefault(); } }, true);
   engine.on('options', () => q(root, '.cv-rail [data-cmd="quick-mask"]').classList.toggle('is-on', engine.quickMask));
@@ -231,7 +231,7 @@ export function startApp(): void {
   // The Properties column (Phase 21), shown unless hidden from Window > Properties Column (remembered).
   const props = new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); }, () => syncPropsCol());
   let dockRef: Dock | null = null;   // the side column shows only while it holds a shown panel (panels move: the Dock)
-  const propsShown = (): boolean => stored('sonny.propsCol') !== 'hidden';
+  const propsShown = (): boolean => stored('formvis.propsCol') !== 'hidden';
   const sideOpen = (): boolean => propsShown() && (dockRef ? dockRef.sideShown() > 0 : true);
   const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !sideOpen()); setStyleVar(root, '--cv-props-w', sideOpen() ? '46px' : '0px'); Viewport.insetRight = sideOpen() && !PropertiesColumn.showingCollapsed ? PropertiesColumn.openWidth() - 46 : 0; };   // the strip's track only: expanded, the column lies over the canvas (the owner's walkthrough), and fitting leaves it out
   syncPropsCol();
@@ -245,7 +245,7 @@ export function startApp(): void {
   new HistoryPanel(q(root, '.cv-layers'), engine);
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
   // arrangement, filled when the tabs' homes are restored.
-  const CUSTOM = 'sonny.customGroups';
+  const CUSTOM = 'formvis.customGroups';
   const customGroups = (): Array<{ id: string; label: string }> => { try { const v = JSON.parse(stored(CUSTOM) ?? '[]'); return Array.isArray(v) ? v.filter((g) => g && typeof g.id === 'string' && /^g[0-9a-z]+$/.test(g.id) && typeof g.label === 'string') : []; } catch { return []; } };
   for (const g of customGroups()) { new PanelGroup(q(root, '.cv-layers'), g.id, [], g.label); registerPanel({ id: g.id, label: g.label, selector: `section.cv-${g.id}` }); }
   new InfoPanel(q(root, '.cv-layers'), engine, q(root, '.cv-stage'));   // Window > Info (1.49.6)
@@ -283,7 +283,7 @@ export function startApp(): void {
   enhanceAllSelects();   // every dropdown as the glass list (the owner's walkthrough)
   new TitleTools(q(root, '.cv-titlebar'), {
     commands,
-    arrange: (w) => { dock.arrange(w.order, w.hidden); store('sonny.propsCol', w.propsColumn ? 'shown' : 'hidden'); syncPropsCol(); },
+    arrange: (w) => { dock.arrange(w.order, w.hidden); store('formvis.propsCol', w.propsColumn ? 'shown' : 'hidden'); syncPropsCol(); },
     locked: () => dock.locked,
     setLocked: (on) => { dock.locked = on; },
   });
@@ -320,7 +320,7 @@ export function startApp(): void {
 
   /** the Open Recent (the system's recent documents, noted on every save and open): the ten library projects
    *  most recently saved or opened in this app, newest first, kept in this browser or desktop app's storage. */
-  const RECENT_KEY = 'sonny.recent';
+  const RECENT_KEY = 'formvis.recent';
   let recent: string[] = [];
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
@@ -484,7 +484,7 @@ export function startApp(): void {
     await engine.task(async () => {
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        await deliver(await api.package(manifest, files), `${p.name}.sny`);
+        await deliver(await api.package(manifest, files), `${p.name}.fmv`);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -515,7 +515,7 @@ export function startApp(): void {
         x.imageSmoothingQuality = 'high';
         x.drawImage(bmp, 0, 0, z.w, z.h);
         bmp.close();
-        // Colour: sonny works in sRGB; another profile converts the pixels, and every format but PDF carries the
+        // Colour: formvis works in sRGB; another profile converts the pixels, and every format but PDF carries the
         // profile (WebP through the engine when it is not sRGB, as the browser's WebP encoder cannot embed one).
         const space = s.profile ?? 'srgb', icc = iccProfile(space);
         if (space !== 'srgb') { const img = x.getImageData(0, 0, z.w, z.h); convertPixels(img.data, 'srgb', space); x.putImageData(img, 0, 0); }
@@ -637,7 +637,7 @@ export function startApp(): void {
   }
 
   /** The pattern library: patterns defined here, kept in this browser as PNG data. */
-  const PATTERN_KEY = 'sonny.patterns';
+  const PATTERN_KEY = 'formvis.patterns';
   async function loadPatterns(): Promise<void> {
     let list: Array<{ id: string; name: string; png: string }> = [];
     try { list = JSON.parse(localStorage.getItem(PATTERN_KEY) ?? '[]'); } catch { list = []; }
@@ -961,14 +961,14 @@ export function startApp(): void {
     { id: 'merge-columns', label: 'Merge Panel Columns', checked: () => dock.merged, run: () => { if (dock.merged) dock.separate(); else dock.merge(); } },
     // Paths is a tab of the Layers group (Phase 21): Window > Paths shows the group on its Paths tab.
     { id: 'panel-paths', label: 'Paths', run: () => { if (!dock.isShown('layers')) dock.toggle('layers'); layers.showTab('paths'); } },
-    { id: 'panel-properties-col', label: 'Properties Column', checked: propsShown, run: () => { store('sonny.propsCol', propsShown() ? 'hidden' : 'shown'); syncPropsCol(); } },
+    { id: 'panel-properties-col', label: 'Properties Column', checked: propsShown, run: () => { store('formvis.propsCol', propsShown() ? 'hidden' : 'shown'); syncPropsCol(); } },
     { id: 'reset-panels', label: 'Reset Panels', run: () => {
-      // The whole panel layout as sonny comes (the owner's walkthrough: Reset Panels left collapsed columns, widths,
+      // The whole panel layout as formvis comes (the owner's walkthrough: Reset Panels left collapsed columns, widths,
       // minimised groups and chosen tabs as they were), live, the documents untouched.
       dock.reset(); PanelGroup.resetHomes(TAB_HOMES); dropEmptyGroups(); PanelGroup.resetStates(); layers.showTab('layers');
       if (dock.collapsed) dock.setCollapsed(false);
       store(LAYERS_W_KEY, ''); setStyleVar(root, '--cv-layers-w', '288px');
-      store('sonny.propsCol', 'shown'); props.resetLayout(); syncPropsCol(); props.relayout();
+      store('formvis.propsCol', 'shown'); props.resetLayout(); syncPropsCol(); props.relayout();
     } },
     { id: 'invert', label: 'Invert', keys: ['Mod+I'], enabled: pixel, run: () => engine.invertPixels() },
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
@@ -1018,7 +1018,7 @@ export function startApp(): void {
     { id: 'pixel-grid', label: 'Pixel Grid', checked: () => engine.showPixelGrid, run: () => engine.update({ showPixelGrid: !engine.showPixelGrid }) },
     { id: 'transform-controls', label: 'Transform Controls', checked: () => engine.showTransformControls, run: () => engine.update({ showTransformControls: !engine.showTransformControls }) },
     { id: 'shortcuts', label: 'Keyboard Shortcuts', keys: ['Shift+/'], run: () => dialogs.shortcuts.show() },
-    { id: 'about', label: 'About sonny', run: () => dialogs.about.show(caps) },
+    { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
     { id: 'brush-settings', label: 'Brush Settings...', keys: ['F5'], run: () => dialogs.brushSettings.show() },
     { id: 'paragraph-styles', label: 'Paragraph Styles...', run: () => dialogs.paragraphStyles.show() },
     { id: 'warp-text', label: 'Warp Text...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => dialogs.warpText.show() },
@@ -1031,7 +1031,7 @@ export function startApp(): void {
     const cb = engine.clipboard;
     if (!cb || typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) return;
     try {
-      const item = new ClipboardItem({ 'image/png': toBlob(cb.surface), 'text/plain': new Blob([`sonny:${cb.stamp}`], { type: 'text/plain' }) });
+      const item = new ClipboardItem({ 'image/png': toBlob(cb.surface), 'text/plain': new Blob([`formvis:${cb.stamp}`], { type: 'text/plain' }) });
       void navigator.clipboard.write([item]).catch(() => undefined);
     } catch { return; }
   }
@@ -1051,7 +1051,7 @@ export function startApp(): void {
       for (const item of await navigator.clipboard.read()) {
         if (item.types.includes('text/plain') && engine.clipboard) {
           const text = await (await item.getType('text/plain')).text();
-          if (text === `sonny:${engine.clipboard.stamp}`) { engine.pasteClipboard(); return; }
+          if (text === `formvis:${engine.clipboard.stamp}`) { engine.pasteClipboard(); return; }
         }
         const type = item.types.find((t) => t.startsWith('image/'));
         if (type) { await pasteExternal(new File([await item.getType(type)], 'Pasted.png', { type })); return; }
@@ -1308,7 +1308,7 @@ export function startApp(): void {
     if (anyDialogOpen() || target?.closest('input, textarea, [contenteditable="true"]')) return;
     const files = Array.from(e.clipboardData?.files ?? []).filter(isImageFile);
     const marker = e.clipboardData?.getData('text/plain') ?? '';
-    if (engine.clipboard && (marker === `sonny:${engine.clipboard.stamp}` || !files.length)) { e.preventDefault(); engine.pasteClipboard(); return; }
+    if (engine.clipboard && (marker === `formvis:${engine.clipboard.stamp}` || !files.length)) { e.preventDefault(); engine.pasteClipboard(); return; }
     if (!files.length) return;
     e.preventDefault();
     if (files.length === 1) { void pasteExternal(files[0]); return; }
@@ -1381,14 +1381,14 @@ export function startApp(): void {
   void api.capabilities().then((c) => {
     caps = c;
     status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop' : ''}` : 'Engine offline');
-    if (!c) toast('The sonny engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./sonny boot).');
+    if (!c) toast('The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).');
     syncEngineDevice();
   });
   // The desktop app lists the installed fonts from the shell at once (no permission is asked there, as in Photoshop);
   // a browser keeps "Load system fonts..." in the Type tool, since Local Font Access asks the user first.
   if ('__TAURI_INTERNALS__' in window) void loadSystemFonts().then((f) => { if (f) engine.emit('options', null); });
 
-  if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions, animation: dialogs.animation };
+  if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation };
 
   const keptAt = new Map<string, number>();
   let keepTimer = 0;
@@ -1411,7 +1411,7 @@ export function startApp(): void {
     const found = await recovery.list();
     if (!found.length) return;
     const names = found.map((r) => r.name).join(', ');
-    if (!(await confirmAction('Recover unsaved work?', `sonny closed with unsaved changes in ${names}. Open them again?`, 'Recover'))) { await recovery.clear(); return; }
+    if (!(await confirmAction('Recover unsaved work?', `formvis closed with unsaved changes in ${names}. Open them again?`, 'Recover'))) { await recovery.clear(); return; }
     for (const r of found) {
       try {
         const byName = new Map(r.files.map((f) => [f.name, f.blob]));
@@ -1425,7 +1425,7 @@ export function startApp(): void {
     }
     await recovery.clear();
   }
-  if (import.meta.env.DEV) Object.assign((window as unknown as { sonny: object }).sonny, { errorLog, keepModified, offerRecovery, setRecoveryDelay: (ms: number) => { recoveryDelay = ms; } });
+  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { errorLog, keepModified, offerRecovery, setRecoveryDelay: (ms: number) => { recoveryDelay = ms; } });
 
   const faces = Promise.all(['400', '500', '600'].map((w) => document.fonts.load(`${w} 12px Inter`))).catch(() => undefined);
   void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => { revealApp(); void offerRecovery(); }));

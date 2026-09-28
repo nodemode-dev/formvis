@@ -24,7 +24,7 @@ def _has(module: str) -> bool:
 
 
 def model_name() -> str:
-    return os.environ.get("SONNY_REMBG_MODEL", "u2net")
+    return os.environ.get("FORMVIS_REMBG_MODEL", "u2net")
 
 
 def available() -> dict:
@@ -85,7 +85,7 @@ def remove(data: bytes, method: str = "auto") -> tuple[bytes, str]:
     caps = available()
     chosen = caps["default"] if method == "auto" else method
     if chosen not in ("ml", "lite") or not caps.get(chosen):
-        raise Unavailable("This background engine is not installed. Run ./sonny install-ml for the ML engine; the lightweight engine ships with the base install.")
+        raise Unavailable("This background engine is not installed. Run ./formvis install-ml for the ML engine; the lightweight engine ships with the base install.")
     try:
         with Image.open(io.BytesIO(data)) as image:
             image.load()

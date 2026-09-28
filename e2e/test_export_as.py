@@ -1,5 +1,5 @@
 CAPTURE = """async ([preset, transparent]) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(120, 80, 'Shot', transparent ? 'transparent' : 'white');
   if (!transparent) { e.fg = { r: 200, g: 100, b: 50 }; e.fill('fg'); }
   const got = new Promise((resolve) => {
@@ -13,7 +13,7 @@ CAPTURE = """async ([preset, transparent]) => {
       });
     };
   });
-  window.sonny.commands.run('export-as');
+  window.formvis.commands.run('export-as');
   await new Promise((r) => setTimeout(r, 200));
   const dlg = document.querySelector('.cv-scrim:not([hidden]) .cv-dialog'), sel = dlg.querySelector('select');
   sel.value = preset; sel.dispatchEvent(new Event('change', { bubbles: true }));
@@ -36,8 +36,8 @@ def test_jpeg_is_flattened_on_white(page):
 
 def test_save_and_delete_a_preset(page):
     r = page.evaluate("""async () => {
-      window.sonny.engine.newDocument(50, 50, 'P', 'white');
-      window.sonny.commands.run('export-as');
+      window.formvis.engine.newDocument(50, 50, 'P', 'white');
+      window.formvis.commands.run('export-as');
       await new Promise((r) => setTimeout(r, 200));
       const dlg = document.querySelector('.cv-scrim:not([hidden]) .cv-dialog'), selects = dlg.querySelectorAll('select');
       selects[1].value = 'avif'; selects[1].dispatchEvent(new Event('change', { bubbles: true }));
@@ -45,11 +45,11 @@ def test_save_and_delete_a_preset(page):
       const btn = (t) => [...dlg.querySelectorAll('button')].find((b) => b.textContent === t);
       const qualityDisabledForPng = (() => { selects[1].value = 'png'; selects[1].dispatchEvent(new Event('change', { bubbles: true })); const d = dlg.querySelector('input[type=range]').disabled; selects[1].value = 'avif'; selects[1].dispatchEvent(new Event('change', { bubbles: true })); return d; })();
       btn('Save Preset').click();
-      const stored = JSON.parse(localStorage.getItem('sonny.exportPresets'));
+      const stored = JSON.parse(localStorage.getItem('formvis.exportPresets'));
       const listed = [...selects[0].options].some((o) => o.textContent === 'My AVIF');
       const deleteOn = !btn('Delete Preset').disabled;
       btn('Delete Preset').click();
-      return { stored: stored.map((p) => [p.name, p.format]), listed, deleteOn, after: JSON.parse(localStorage.getItem('sonny.exportPresets')).length, qualityDisabledForPng,
+      return { stored: stored.map((p) => [p.name, p.format]), listed, deleteOn, after: JSON.parse(localStorage.getItem('formvis.exportPresets')).length, qualityDisabledForPng,
                gone: ![...selects[0].options].some((o) => o.textContent === 'My AVIF') };
     }""")
     assert r == {"stored": [["My AVIF", "avif"]], "listed": True, "deleteOn": True, "after": 0, "qualityDisabledForPng": True, "gone": True}, r

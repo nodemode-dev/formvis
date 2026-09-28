@@ -4,9 +4,9 @@ LIST_H = "document.querySelector('.cv-layer-list').getBoundingClientRect().heigh
 
 def test_the_layers_panel_moves_and_keeps_the_space(page):
     try:
-        page.evaluate("window.sonny.engine.newDocument(200, 100, 'L', 'white')")
+        page.evaluate("window.formvis.engine.newDocument(200, 100, 'L', 'white')")
         assert page.evaluate(LIST_H) > 150                                               # the default arrangement
-        page.evaluate("window.sonny.commands.run('panel-timeline'); window.sonny.commands.run('panel-history')")   # hidden by default, as the target's Essentials
+        page.evaluate("window.formvis.commands.run('panel-timeline'); window.formvis.commands.run('panel-history')")   # hidden by default, as the target's Essentials
         page.wait_for_timeout(100)
         space = page.evaluate(LIST_H)
         h = page.locator(".cv-layers-panel > .cv-panel-head > span").first.bounding_box()   # the header's empty part moves the group; its tabs drag tabs (1.49.2)
@@ -16,9 +16,9 @@ def test_the_layers_panel_moves_and_keeps_the_space(page):
         assert page.evaluate(ORDER) == ["navigator", "swatches", "timeline", "history", "layers-panel"], page.evaluate(ORDER)
         assert page.evaluate(LIST_H) >= space - 2               # at the bottom it still takes the space left
         # an arrangement saved before the Layers panel could move keeps it first
-        page.evaluate("localStorage.setItem('sonny.dock', JSON.stringify({ order: ['history', 'paths', 'timeline'], hidden: [] }))")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate("localStorage.setItem('formvis.dock', JSON.stringify({ order: ['history', 'paths', 'timeline'], hidden: [] }))")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
         assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history", "timeline"]   # the retired paths id is ignored
     finally:
-        page.evaluate("localStorage.removeItem('sonny.dock')")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate("localStorage.removeItem('formvis.dock')")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")

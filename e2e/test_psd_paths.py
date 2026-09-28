@@ -7,7 +7,7 @@ psd_tools = pytest.importorskip("psd_tools", reason="psd-tools reads the exporte
 from psd_tools.psd.vector import Path  # noqa: E402
 
 SCENE = """async () => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 100, 'Paths', 'white');
   const c = (x, y) => ({ x, y, inX: x, inY: y, outX: x, outY: y });
   e.setPathsOf(e.current, { list: [
@@ -23,7 +23,7 @@ CAPTURE = """async () => {
       fetch(this.href).then((r) => r.arrayBuffer()).then((buf) => { let s = ''; new Uint8Array(buf).forEach((b) => { s += String.fromCharCode(b); }); resolve(btoa(s)); });
     };
   });
-  if (!window.sonny.commands.run('export-psd')) throw new Error('export-psd');
+  if (!window.formvis.commands.run('export-psd')) throw new Error('export-psd');
   return await Promise.race([got, new Promise((r) => setTimeout(() => r(null), 15000))]);
 }"""
 
@@ -43,8 +43,8 @@ def test_paths_panel_goes_to_psd_and_comes_back(page, tmp_path):
     assert knots(ir[1025]) == ("OpenPath", [(0.5, 0.05), (0.7, 0.3)])
     f = tmp_path / "Paths.psd"
     f.write_bytes(data)
-    n = page.evaluate("window.sonny.engine.projects.length")
+    n = page.evaluate("window.formvis.engine.projects.length")
     page.set_input_files("input[type=file][accept*='.psd']:not([data-role])", str(f))
-    page.wait_for_function(f"window.sonny.engine.projects.length > {n}", timeout=15000)
-    back = page.evaluate("""(() => { const e = window.sonny.engine; return e.pathsOf(e.current).list.map((p) => [p.name, p.work, p.path.subpaths[0].anchors.map((a) => [Math.round(a.x), Math.round(a.y)])]); })()""")
+    page.wait_for_function(f"window.formvis.engine.projects.length > {n}", timeout=15000)
+    back = page.evaluate("""(() => { const e = window.formvis.engine; return e.pathsOf(e.current).list.map((p) => [p.name, p.work, p.path.subpaths[0].anchors.map((a) => [Math.round(a.x), Math.round(a.y)])]); })()""")
     assert back == [["Outline", False, [[20, 20], [180, 20], [100, 90]]], ["Work Path", True, [[10, 50], [60, 70]]]], back

@@ -24,7 +24,7 @@ export const RECORDABLE: ReadonlySet<string> = new Set([
   'paste-layer-style', 'clear-layer-style', 'convert-smart', 'rasterize', 'new-shape-path', 'shape-color', 'reveal-all', 'duplicate', 'merge-down', 'merge-visible', 'flatten',
 ]);
 
-const KEY = 'sonny.actions';
+const KEY = 'formvis.actions';
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 
 /** A step read from storage or a file, checked field by field; null when unusable. */

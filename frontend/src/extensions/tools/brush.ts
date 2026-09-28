@@ -78,7 +78,7 @@ export const brushTool: Tool = {
     { kind: 'toggle', label: 'Airbrush', get: () => airbrush, set: (v) => { airbrush = v; e.emit('options', null); } },
     { kind: 'range', label: 'Smoothing', min: 0, max: 100, unit: '%', get: () => smoothing, set: (v: number) => { smoothing = Math.max(0, Math.min(100, Math.round(v))); e.emit('options', null); } },
     { kind: 'range', label: 'Angle', min: -180, max: 180, unit: '\u00b0', get: () => Math.round(e.brushShape.angle), set: (v: number) => { e.brushShape = { ...e.brushShape, angle: Math.max(-180, Math.min(180, Math.round(v))) }; e.emit('options', null); } },
-    // Photoshop's Mode: Normal, Behind, Clear and the blend modes the canvas truly draws (Paint/Erase was sonny's own;
+    // Photoshop's Mode: Normal, Behind, Clear and the blend modes the canvas truly draws (Paint/Erase was formvis's own;
     // erasing is the Eraser's).
     { kind: 'select', label: 'Mode', choices: [{ id: 'normal', label: 'Normal' }, { id: 'behind', label: 'Behind' }, { id: 'clear', label: 'Clear' }, ...BLEND_MODES.filter((m) => m.id !== 'normal' && canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label }))], get: () => e.brushBlend, set: (v: string) => e.setBrushBlend(v as typeof e.brushBlend) },
     { kind: 'range', label: 'Size', min: 1, max: 1000, unit: 'px', get: () => e.brush.diameter, set: (v) => e.setBrush({ diameter: v }) },

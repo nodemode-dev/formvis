@@ -1,6 +1,6 @@
 def test_history_fill_restores_the_opening_pixels_inside_the_selection(page):
     r = page.evaluate("""async () => {
-      const e = window.sonny.engine, E = await import('/src/engine/index.ts'), sel = (x, y, w, h) => E.SelectionMask.cropped(x, y, w, h, new Uint8Array(w * h).fill(255));
+      const e = window.formvis.engine, E = await import('/src/engine/index.ts'), sel = (x, y, w, h) => E.SelectionMask.cropped(x, y, w, h, new Uint8Array(w * h).fill(255));
       e.newDocument(120, 80, 'H', 'white');
       e.fg = { r: 220, g: 30, b: 30 }; e.fill('fg');
       e.fg = { r: 30, g: 30, b: 220 }; e.applySelection(sel(0, 0, 60, 80), 'replace', 's'); e.fill('fg');
@@ -13,7 +13,7 @@ def test_history_fill_restores_the_opening_pixels_inside_the_selection(page):
 
 
 def test_gradient_editor_adds_a_stop_and_saves(page):
-    page.evaluate("(() => { const e = window.sonny.engine; e.newDocument(200, 100, 'G', 'white'); e.fg = { r: 0, g: 0, b: 0 }; e.bg = { r: 255, g: 255, b: 255 }; e.gradientSettings.style = 'background'; e.setTool('gradient'); if (e.tool !== 'gradient') throw new Error('tool'); })()")
+    page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(200, 100, 'G', 'white'); e.fg = { r: 0, g: 0, b: 0 }; e.bg = { r: 255, g: 255, b: 255 }; e.gradientSettings.style = 'background'; e.setTool('gradient'); if (e.tool !== 'gradient') throw new Error('tool'); })()")
     page.locator(".cv-opt-group:not([hidden]) button", has_text="Edit").first.click()
     d = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     d.locator(".cv-grad-strip").wait_for(state="visible")
@@ -22,10 +22,10 @@ def test_gradient_editor_adds_a_stop_and_saves(page):
     d.locator(".cv-field", has_text="Stop colour").locator("input[type=color]").evaluate("(i) => { i.value = '#ff0000'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }")
     d.locator("input[type=text]").fill("Black red white")
     d.locator("button", has_text="New").click()
-    stored = page.evaluate("JSON.parse(localStorage.getItem('sonny.gradients')).map((g) => [g.label, g.stops.length])")
+    stored = page.evaluate("JSON.parse(localStorage.getItem('formvis.gradients')).map((g) => [g.label, g.stops.length])")
     assert stored == [["Black red white", 3]], stored
     d.locator(".cv-dialog-foot button", has_text="OK").click()
     page.wait_for_timeout(200)
-    mid = page.evaluate("""(() => { const e = window.sonny.engine; e.beginGradient({ x: 0, y: 50 }); e.updateGradient({ x: 0, y: 50 }, { x: 200, y: 50 }); e.commitGradient();
+    mid = page.evaluate("""(() => { const e = window.formvis.engine; e.beginGradient({ x: 0, y: 50 }); e.updateGradient({ x: 0, y: 50 }, { x: 200, y: 50 }); e.commitGradient();
       return Array.from(e.flattened().getContext('2d').getImageData(100, 50, 1, 1).data).slice(0, 3); })()""")
     assert mid[0] > 200 and mid[1] < 60 and mid[2] < 60, mid

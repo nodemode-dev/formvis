@@ -1,11 +1,11 @@
 import { clamp, type Adjustment } from './types';
 import { isParamKind, paramKernel } from './adjust-params';
 
-/** Pixel kernels for adjustment layers and the Magic Wand, written for sonny from standard methods: Levels as a
+/** Pixel kernels for adjustment layers and the Magic Wand, written for formvis from standard methods: Levels as a
  *  clipped power curve between black and white points, Curves as monotone piecewise-cubic interpolation (Fritsch
  *  and Butland's harmonic-mean tangents), Exposure in linear light through the IEC 61966-2-1 sRGB transfer, a
  *  Rec. 709 luminance gradient map, and Heckbert's segment seed fill (Graphics Gems, 1990). Settings keep the field
- *  names and meanings sonny's project files use. */
+ *  names and meanings formvis's project files use. */
 
 export interface KernelContext { width: number; height: number; originX: number; originY: number; unitsPerPixel: number }
 export type Kernel = (data: Uint8ClampedArray, ctx?: KernelContext) => void;

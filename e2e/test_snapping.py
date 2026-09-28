@@ -1,5 +1,5 @@
 SCENE = """async ([guide, grid, snapping]) => {
-  const e = window.sonny.engine, E = await import('/src/engine/index.ts');
+  const e = window.formvis.engine, E = await import('/src/engine/index.ts');
   e.newDocument(400, 300, 'S', 'white');
   e.addLayer(); e.fg = { r: 0, g: 0, b: 0 };
   e.applySelection(E.SelectionMask.cropped(20, 20, 40, 40, new Uint8Array(1600).fill(255)), 'replace', 's'); e.fill('fg'); e.deselect();
@@ -10,7 +10,7 @@ SCENE = """async ([guide, grid, snapping]) => {
   const v = e.current.viewport, r = document.querySelector('.cv-stage').getBoundingClientRect();
   return { from: [r.left + v.panX + 40 * v.zoom, r.top + v.panY + 40 * v.zoom], zoom: v.zoom };
 }"""
-LEFT = "(() => { const l = window.sonny.engine.current.activeLayer, d = l.raster.read(0, 0, l.raster.width, l.raster.height).data; for (let x = 0; x < l.raster.width; x++) for (let y = 0; y < l.raster.height; y++) if (d[(y * l.raster.width + x) * 4 + 3]) return x + l.transform.x; })()"
+LEFT = "(() => { const l = window.formvis.engine.current.activeLayer, d = l.raster.read(0, 0, l.raster.width, l.raster.height).data; for (let x = 0; x < l.raster.width; x++) for (let y = 0; y < l.raster.height; y++) if (d[(y * l.raster.width + x) * 4 + 3]) return x + l.transform.x; })()"
 
 
 def drag(page, opts, doc_dx):

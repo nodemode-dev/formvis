@@ -1,12 +1,12 @@
 SETUP = """() => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 160, 'P', 'white');
   const c = (x, y) => ({ x, y, inX: x, inY: y, outX: x, outY: y }), sq = (x, y) => ({ closed: true, anchors: [c(x, y), c(x + 40, y), c(x + 40, y + 40), c(x, y + 40)] });
   e.setWorkPath({ subpaths: [sq(20, 20), sq(100, 20)] });
   e.setTool('pathSelect'); if (e.tool !== 'pathSelect') throw new Error('tool');
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom];
 }"""
-FIRSTS = "window.sonny.engine.workPath.subpaths.map((s) => [Math.round(s.anchors[0].x), Math.round(s.anchors[0].y)])"
+FIRSTS = "window.formvis.engine.workPath.subpaths.map((s) => [Math.round(s.anchors[0].x), Math.round(s.anchors[0].y)])"
 
 
 def test_path_selection_moves_copies_nudges_and_deletes_whole_subpaths(page):
@@ -31,4 +31,4 @@ def test_path_selection_moves_copies_nudges_and_deletes_whole_subpaths(page):
     page.mouse.click(*at(80, 140))
     page.keyboard.press("Delete")
     assert page.evaluate(FIRSTS) == [[20, 20], [120, 30]]
-    assert page.evaluate("window.sonny.engine.current.doc.layers.length") == 1
+    assert page.evaluate("window.formvis.engine.current.doc.layers.length") == 1

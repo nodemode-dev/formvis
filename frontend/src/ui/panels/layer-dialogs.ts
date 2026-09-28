@@ -6,7 +6,7 @@ import { checkRow, selectRow, sliderRow } from './controls';
 const enterTo = (input: HTMLInputElement, run: () => void): void => input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
 
 /** Layer > New > Layer (Shift+Ctrl+N): Name, Mode and Opacity, as Photoshop's New Layer dialog has them (sourced in
- *  WORKSPACE_RESEARCH.md). Photoshop's Color row labels the layer in the panel; sonny's layers have no colour labels
+ *  WORKSPACE_RESEARCH.md). Photoshop's Color row labels the layer in the panel; formvis's layers have no colour labels
  *  yet, so it is not shown. The Layers panel's New Layer button still makes a layer at once. */
 export class NewLayerDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
@@ -20,7 +20,7 @@ export class NewLayerDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('New Layer', 380);
     this.field('Name', this.name);
-    this.body.append(this.clipRow.el, this.modeRow.el, this.opacityRow.el, el('<p class="cv-note">Photoshop\'s Color label and Fill With Mode-Neutral Color are not in sonny yet.</p>'));
+    this.body.append(this.clipRow.el, this.modeRow.el, this.opacityRow.el, el('<p class="cv-note">Photoshop\'s Color label and Fill With Mode-Neutral Color are not in formvis yet.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
@@ -50,7 +50,7 @@ export class NewLayerDialog extends Dialog {
 }
 
 /** Layer > New > Group: a name for the group, as Photoshop's dialog asks (Adobe's "Create layers and groups"; sourced
- *  in WORKSPACE_RESEARCH.md from Adobe alone). Photoshop's dialog also sets a group's Color, Mode and Opacity; sonny's
+ *  in WORKSPACE_RESEARCH.md from Adobe alone). Photoshop's dialog also sets a group's Color, Mode and Opacity; formvis's
  *  folders do not render a blend mode or opacity yet, so the dialog says so rather than offer settings that do nothing. */
 export class NewGroupDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
@@ -58,7 +58,7 @@ export class NewGroupDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('New Group', 360);
     this.field('Name', this.name);
-    this.body.append(el('<p class="cv-note">Photoshop also sets a group\'s Color, Mode and Opacity; sonny\'s folders do not have these yet.</p>'));
+    this.body.append(el('<p class="cv-note">Photoshop also sets a group\'s Color, Mode and Opacity; formvis\'s folders do not have these yet.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
@@ -91,7 +91,7 @@ export class DuplicateLayerDialog extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Duplicate Layer', 360);
     this.field('As', this.name);
-    this.body.append(this.note, el('<p class="cv-note">The duplicate goes in this document; choosing another open document is not in sonny yet.</p>'));
+    this.body.append(this.note, el('<p class="cv-note">The duplicate goes in this document; choosing another open document is not in formvis yet.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());

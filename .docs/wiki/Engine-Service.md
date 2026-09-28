@@ -13,7 +13,7 @@ The Python engine does what a browser cannot: decode HEIC and TIFF, keep the pro
 | `backend/app/services/project_format.py` | Manifest validation, zip and folder reading, zip writing |
 | `backend/app/services/background.py` | rembg (ML) and OpenCV GrabCut (lightweight) |
 | `backend/app/services/imaging.py`, `sessions.py` | Decoding w/ Pillow and pillow-heif, opened-project sessions |
-| `backend/sonny_engine.py` | Frozen sidecar entry, `--selfcheck` |
+| `backend/formvis_engine.py` | Frozen sidecar entry, `--selfcheck` |
 
 ## Contract
 

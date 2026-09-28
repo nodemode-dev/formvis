@@ -34,11 +34,11 @@ class SegmentError(Exception):
 
 
 def model_dir() -> Path:
-    """Where the checkpoint is kept: SONNY_MODELS_DIR if set (so tests and several data folders share one download),
+    """Where the checkpoint is kept: FORMVIS_MODELS_DIR if set (so tests and several data folders share one download),
     else Models/sam2 in the data folder."""
     import os
 
-    raw = os.environ.get("SONNY_MODELS_DIR")
+    raw = os.environ.get("FORMVIS_MODELS_DIR")
     path = (Path(raw).expanduser() if raw else config.data_dir() / "Models") / "sam2"
     path.mkdir(parents=True, exist_ok=True)
     return path
@@ -129,7 +129,7 @@ def has(key: str) -> bool:
 def encode(key: str, data: bytes) -> tuple[int, int]:
     """Encodes the image under `key` (a layer and its revision); returns its size."""
     if not available():
-        raise SegmentError("Click-to-select needs the engine's AI extras (./sonny install-ml).")
+        raise SegmentError("Click-to-select needs the engine's AI extras (./formvis install-ml).")
     import numpy as np
     import torch
 

@@ -4,7 +4,7 @@ Living log for the engine service side, _v0.1.0. Read the map and the TOC first;
 
 ## Click-to-select with SAM 2.1 · _v1.42.0 (app/services/segment.py new, app/routers/ops.py, app/routers/system.py, app/services/compute.py, requirements_sam2.txt new; tests/test_select_object.py new)
 
-`segment.py`: `available`, `torch_device`, `ensure_checkpoint` (SHA-256 checked), `encode`, `select`, `clear`, `model_dir` (SONNY_MODELS_DIR). `ops.py`: `select_object`. `system.py`: `_select_object` in capabilities. `compute.set_preference` also clears the SAM model. Removed:
+`segment.py`: `available`, `torch_device`, `ensure_checkpoint` (SHA-256 checked), `encode`, `select`, `clear`, `model_dir` (FORMVIS_MODELS_DIR). `ops.py`: `select_object`. `system.py`: `_select_object` in capabilities. `compute.set_preference` also clears the SAM model. Removed:
 
 ```python
 from app.services import background
@@ -17,12 +17,12 @@ from app.services import background, compute, imaging
 `project_format.py`: `COMP_LABEL`, `COMP_VERSIONS`, `is_comp` (a .comp recognised by its shape, then fully validated); the refusal messages name .comp. `projects.py`: `.comp` in `SUFFIXES`. Removed:
 
 ```python
-SUFFIXES = (".sny", ".sonny", ".canvasor", ".zip")
+SUFFIXES = (".fmv", ".formvis", ".canvasor", ".zip")
     if fmt not in SUPPORTED:
-        raise ProjectError("This is not a sonny or canvasor project.")
+        raise ProjectError("This is not a formvis or canvasor project.")
     if not isinstance(version, int) or version not in SUPPORTED[fmt]:
         raise ProjectError(f"This project uses format version {version}, which this build cannot read.")
-        raise ProjectError("The file is not a sonny or canvasor package.") from exc
+        raise ProjectError("The file is not a formvis or canvasor package.") from exc
 ```
 
 ## Camera RAW decoding · _v1.39.0 (app/services/imaging.py, requirements.txt, requirements_macos.txt; tests/test_raw.py and tests/fixtures/ new)
@@ -47,17 +47,17 @@ def _session(model: str):
 
 ## The reference app's project format removed · _v1.4.0 (app/services/project_format.py, app/routers/projects.py, app/__init__.py)
 
-`project_format.py` no longer accepts `com.reference.project`: `SUPPORTED` holds `com.nodemode.sonny` and `com.nodemode.canvasor` version 1; the refusals and `write_zip`'s docstring name only sonny's and canvasor's projects. `projects.py` drops `.ref` from `SUFFIXES`. Version 1.4.0. Removed:
+`project_format.py` no longer accepts `com.reference.project`: `SUPPORTED` holds `com.nodemode.formvis` and `com.nodemode.canvasor` version 1; the refusals and `write_zip`'s docstring name only formvis's and canvasor's projects. `projects.py` drops `.ref` from `SUFFIXES`. Version 1.4.0. Removed:
 
 ```py
 __version__ = "1.3.0"
-SUFFIXES = (".sny", ".sonny", ".ref", ".canvasor", ".zip")
+SUFFIXES = (".fmv", ".formvis", ".ref", ".canvasor", ".zip")
 REFERENCE = "com.reference.project"
 # NodeMode canvasor's projects: the same manifest and images/ layout as .ref (bottom-to-top layers, each transform an
 # origin and a displayed size), under their own id. Version 1 is the one seen; later versions are rejected, not guessed.
-SUPPORTED = {REFERENCE: range(1, 8), SONNY: range(1, 2), CANVASOR: range(1, 2)}
-        raise ProjectError("This is not a sonny, .ref or canvasor project.")
-        raise ProjectError("The file is not a sonny, .ref or canvasor package.") from exc
+SUPPORTED = {REFERENCE: range(1, 8), FORMVIS: range(1, 2), CANVASOR: range(1, 2)}
+        raise ProjectError("This is not a formvis, .ref or canvasor project.")
+        raise ProjectError("The file is not a formvis, .ref or canvasor package.") from exc
     """The project as a zip: manifest.json and images/. With `root`, everything sits inside that one folder, so
     unzipping a .ref export yields a `Name.ref` package."""
 ```
@@ -67,10 +67,10 @@ SUPPORTED = {REFERENCE: range(1, 8), SONNY: range(1, 2), CANVASOR: range(1, 2)}
 `project_format.py`: `CANVASOR = "com.nodemode.canvasor"`, accepted at version 1 in `SUPPORTED` (later versions refused); the refusals name canvasor. `projects.py`: `SUFFIXES` strips `.canvasor` from project names. Removed:
 
 ```py
-SUFFIXES = (".sny", ".sonny", ".ref", ".zip")
-SUPPORTED = {REFERENCE: range(1, 8), SONNY: range(1, 2)}
-        raise ProjectError("This is not a sonny or .ref project.")
-        raise ProjectError("The file is not a sonny or .ref package.") from exc
+SUFFIXES = (".fmv", ".formvis", ".ref", ".zip")
+SUPPORTED = {REFERENCE: range(1, 8), FORMVIS: range(1, 2)}
+        raise ProjectError("This is not a formvis or .ref project.")
+        raise ProjectError("The file is not a formvis or .ref package.") from exc
 ```
 
 ## Colour profiles in the encoder · _v0.92.0 (app/services/imaging.py, app/routers/io.py, tests/test_api.py)
@@ -88,16 +88,16 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72) -> bytes:
         rgba.save(out, "AVIF", quality=q)
 ```
 
-## .sny projects · _v0.90.0 (app/routers/projects.py, app/routers/io.py, tests/test_api.py)
+## .fmv projects · _v0.90.0 (app/routers/projects.py, app/routers/io.py, tests/test_api.py)
 
-`projects.py`: `EXT` (.sny) and `OLD_EXT` (.sonny); `_library_path` names `.sny`; `_existing` finds either for opening; the library lists both, `.sny` preferred; save removes an older `.sonny` of the same name; delete removes either; `SUFFIXES` strips `.sny` from imported names. `io.py`: the export rule takes `.sny`. One test added. Removed:
+`projects.py`: `EXT` (.fmv) and `OLD_EXT` (.formvis); `_library_path` names `.fmv`; `_existing` finds either for opening; the library lists both, `.fmv` preferred; save removes an older `.formvis` of the same name; delete removes either; `SUFFIXES` strips `.fmv` from imported names. `io.py`: the export rule takes `.fmv`. One test added. Removed:
 
 ```python
-EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|sonny|webp|tif|tiff|pdf|avif)$", re.IGNORECASE)
-SUFFIXES = (".sonny", ".ref", ".zip")
-    return config.projects_dir() / f"{clean}.sonny"
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|formvis|webp|tif|tiff|pdf|avif)$", re.IGNORECASE)
+SUFFIXES = (".formvis", ".ref", ".zip")
+    return config.projects_dir() / f"{clean}.formvis"
     items = []
-    for path in config.projects_dir().glob("*.sonny"):
+    for path in config.projects_dir().glob("*.formvis"):
         stat = path.stat()
         items.append({"name": path.stem, "modified": stat.st_mtime, "size": stat.st_size})
     return sorted(items, key=lambda item: item["modified"], reverse=True)
@@ -110,14 +110,14 @@ SUFFIXES = (".sonny", ".ref", ".zip")
 `imaging.encode` re-encodes the editor's PNG as TIFF (LZW, alpha kept), PDF (one page at the given dpi, flattened on white), WebP or AVIF (quality, alpha kept), refusing other formats and unreadable input with `DecodeError`; `ENCODINGS` maps each to its media type. `POST /api/io/encode` serves it (415 on refusal). `EXPORT_NAME` accepts .webp, .tif, .tiff, .pdf and .avif. Two tests added. Removed from `app/routers/io.py`:
 
 ```python
-EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|sonny)$", re.IGNORECASE)
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|formvis)$", re.IGNORECASE)
 ```
 
 ## tests/
 
 ### tests/__init__.py, conftest.py, test_api.py · new · _v0.67.0
 
-The backend suite, run by `python -m pytest -q tests` from `backend/`. `conftest.py` points `SONNY_DATA_DIR` at a fresh temporary folder per test and yields a FastAPI `TestClient`, plus `png_bytes` and `manifest` helpers; `test_api.py` covers health, version, capabilities, decode, export naming, the project library and its validation, packaging and the background engine's 501 answer, 9 tests. Nothing was removed.
+The backend suite, run by `python -m pytest -q tests` from `backend/`. `conftest.py` points `FORMVIS_DATA_DIR` at a fresh temporary folder per test and yields a FastAPI `TestClient`, plus `png_bytes` and `manifest` helpers; `test_api.py` covers health, version, capabilities, decode, export naming, the project library and its validation, packaging and the background engine's 501 answer, 9 tests. Nothing was removed.
 
 ## app/routers/generative.py
 
@@ -133,7 +133,7 @@ The backend suite, run by `python -m pytest -q tests` from `backend/`. `conftest
 
 ### app/services/generative.py · new · _v0.37.0
 
-fal client for FLUX.1 Fill [pro] and Erase [pro]: key from FAL_KEY, FAL_API_KEY or `generative.json` (mode 600) in the data folder, never returned; inline PNG data URIs; fal's errors mapped to clear messages; `SONNY_FAL_BASE` points it elsewhere for testing. Nothing was removed.
+fal client for FLUX.1 Fill [pro] and Erase [pro]: key from FAL_KEY, FAL_API_KEY or `generative.json` (mode 600) in the data folder, never returned; inline PNG data URIs; fal's errors mapped to clear messages; `FORMVIS_FAL_BASE` points it elsewhere for testing. Nothing was removed.
 
 ### app/services/generative.py · upscale, _result_png · _v0.38.0
 
@@ -152,7 +152,7 @@ Real-ESRGAN upscaling; result parsing shared by Fill, Erase and Upscale. Removed
             im.convert("RGBA").save(out, "PNG")
             return out.getvalue()
     except Exception as exc:  # noqa: BLE001 - any decode failure is a bad result
-        raise GenerativeError("fal returned an image sonny could not read.", 502) from exc
+        raise GenerativeError("fal returned an image formvis could not read.", 502) from exc
 ```
 
 ## Org-navi-map
@@ -180,7 +180,7 @@ app/
         sessions.py  · opened-project sessions
 boot_backend  · start the engine (unix)
 boot_backend.bat  · start the engine (windows)
-sonny_engine.py  · PyInstaller sidecar entry
+formvis_engine.py  · PyInstaller sidecar entry
 oc_install  · install this side (unix)
 oc_install.bat  · install this side (windows)
 requirements.txt  · pinned base
@@ -210,7 +210,7 @@ requirements_ml_macos.txt  · unpinned ML extra
 - [app/services/sessions.py](#appservicessessionspy)
 - [boot_backend](#boot_backend)
 - [boot_backend.bat](#boot_backendbat)
-- [sonny_engine.py](#sonny_enginepy)
+- [formvis_engine.py](#formvis_enginepy)
 - [oc_install](#oc_install)
 - [oc_install.bat](#oc_installbat)
 - [requirements.txt](#requirementstxt)
@@ -318,7 +318,7 @@ rembg is the default when installed; OpenCV GrabCut is always available. Both re
 
 ### app/services/project_format.py · validate · _v0.1.0
 
-Accepts `com.reference.project` 1 to 7 and `com.nodemode.sonny` 1; checks sizes, ids, folder parents, clip links, depth 64 and clip chains 256 before anything touches disk. Verified live: a version 9 manifest is rejected with 422.
+Accepts `com.reference.project` 1 to 7 and `com.nodemode.formvis` 1; checks sizes, ids, folder parents, clip links, depth 64 and clip chains 256 before anything touches disk. Verified live: a version 9 manifest is rejected with 422.
 
 ### app/services/project_format.py · write_zip · root folder · _v0.28.0
 
@@ -351,11 +351,11 @@ Created in _v0.1.0.
 
 Created in _v0.1.0.
 
-## sonny_engine.py
+## formvis_engine.py
 
-### sonny_engine.py · main · _v0.1.0
+### formvis_engine.py · main · _v0.1.0
 
-Serves the bundled `frontend_dist`; with `SONNY_PORT=0` uvicorn prints `http://127.0.0.1:PORT`, which the Tauri shell parses. Verified live. `--selfcheck` prints dependency versions as JSON.
+Serves the bundled `frontend_dist`; with `FORMVIS_PORT=0` uvicorn prints `http://127.0.0.1:PORT`, which the Tauri shell parses. Verified live. `--selfcheck` prints dependency versions as JSON.
 
 ## oc_install
 

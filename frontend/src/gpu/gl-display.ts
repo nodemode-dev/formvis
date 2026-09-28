@@ -136,16 +136,16 @@ export class GlDisplay {
   onLost: (() => void) | null = null;
 
   private constructor(readonly canvas: HTMLCanvasElement, private readonly gl: GL, private readonly comp: WebGLProgram, private readonly pres: WebGLProgram) {
-    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('sonny: the WebGL2 context was lost'); this.onLost?.(); });
+    canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); console.warn('formvis: the WebGL2 context was lost'); this.onLost?.(); });
   }
 
   static create(canvas: HTMLCanvasElement): GlDisplay | null {
     try {
       const gl = canvas.getContext('webgl2', { powerPreference: 'high-performance', premultipliedAlpha: true, antialias: false, alpha: true });
-      if (!gl) { console.warn('sonny: the display canvas gives no WebGL2 context'); return null; }
+      if (!gl) { console.warn('formvis: the display canvas gives no WebGL2 context'); return null; }
       return new GlDisplay(canvas, gl, program(gl, COMPOSITE_FS), program(gl, PRESENT_FS));
     } catch (err) {
-      console.warn('sonny: WebGL2 could not start:', err);
+      console.warn('formvis: WebGL2 could not start:', err);
       return null;
     }
   }

@@ -3,7 +3,7 @@ import json
 # One stroke (or a single dab when `to` is null) with `shape` on a fresh transparent layer; the paint's bounding box
 # (pixels over half coverage) and its total coverage.
 PAINT = """async ([shape, from, to, pose]) => {
-  const E = await import('/src/engine/index.ts'), B = await import('/src/engine/brush-dynamics.ts'), e = window.sonny.engine;
+  const E = await import('/src/engine/index.ts'), B = await import('/src/engine/brush-dynamics.ts'), e = window.formvis.engine;
   e.newDocument(200, 200, 'B', 'white'); e.addLayer(); const l = e.current.activeLayer; l.raster = new E.Raster(200, 200);
   e.brush = { diameter: 40, hardness: 1, opacity: 1 }; e.brushFlow = 1; e.brushDynamics = B.noDynamics();
   e.fg = { r: 0, g: 0, b: 0 };
@@ -64,13 +64,13 @@ def test_a_jittered_stroke_is_laid_the_same_way_each_time(page):
 
 
 def test_brush_settings_opens_with_its_sections_and_edits_the_brush(page):
-    assert page.evaluate("window.sonny.commands.run('brush-settings')")
+    assert page.evaluate("window.formvis.commands.run('brush-settings')")
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     heads = dlg.locator("h3").all_inner_texts()
     assert heads == ["Brush Tip Shape", "Shape Dynamics", "Scattering", "Texture", "Dual Brush", "Color Dynamics", "Transfer", "Noise and Wet Edges"], heads
     slider = dlg.locator(".cv-field").filter(has=page.get_by_text("Roundness (%)", exact=True)).locator("input[type=range]")
     slider.evaluate("(i) => { i.value = '30'; i.dispatchEvent(new Event('input', { bubbles: true })); }")
-    assert page.evaluate("window.sonny.engine.brushShape.roundness") == 30
+    assert page.evaluate("window.formvis.engine.brushShape.roundness") == 30
     dlg.locator(".cv-dialog-foot button", has_text="Reset").click()
-    assert page.evaluate("window.sonny.engine.brushShape.roundness") == 100
+    assert page.evaluate("window.formvis.engine.brushShape.roundness") == 100
     page.keyboard.press("Escape")

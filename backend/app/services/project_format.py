@@ -1,3 +1,4 @@
+from app.core import legacy
 import io
 import json
 import re
@@ -5,14 +6,14 @@ import zipfile
 
 from app.core import config
 
-SONNY = "com.nodemode.sonny"
-# NodeMode canvasor's projects: the same manifest and images/ layout as sonny's own (bottom-to-top layers, each
+FORMVIS = "com.nodemode.formvis"
+# NodeMode canvasor's projects: the same manifest and images/ layout as formvis's own (bottom-to-top layers, each
 # transform an origin and a displayed size), under their own id. Version 1 is the one seen; later versions are rejected.
 CANVASOR = "com.nodemode.canvasor"
-SUPPORTED = {SONNY: range(1, 2), CANVASOR: range(1, 2)}
+SUPPORTED = {FORMVIS: range(1, 2), legacy.FORMAT: range(1, 2), CANVASOR: range(1, 2)}   # the former identifier is read (core/legacy.py)
 SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
-# .comp projects, opened so their owners can move their work to sonny (the owner's decision of 2026-09-25; export stays
-# out). They share sonny's manifest and images/ layout and name themselves with a reverse-DNS id ending in ".project"
+# .comp projects, opened so their owners can move their work to formvis (the owner's decision of 2026-09-25; export stays
+# out). They share formvis's manifest and images/ layout and name themselves with a reverse-DNS id ending in ".project"
 # at versions 1 to 7. They are recognised by that shape and then held to the full validation below, not by matching a
 # particular label.
 COMP_LABEL = re.compile(r"^[a-z0-9]+(\.[a-z0-9-]+)+\.project$")
@@ -38,7 +39,7 @@ def validate(manifest: dict, files: set[str]) -> None:
     fmt, version = manifest.get("format"), manifest.get("version")
     if not is_comp(manifest):
         if fmt not in SUPPORTED:
-            raise ProjectError("This is not a sonny, canvasor or .comp project.")
+            raise ProjectError("This is not a formvis, canvasor or .comp project.")
         if not isinstance(version, int) or version not in SUPPORTED[fmt]:
             raise ProjectError(f"This project uses format version {version}, which this build cannot read.")
     width, height = manifest.get("width"), manifest.get("height")
@@ -123,7 +124,7 @@ def read_zip(data: bytes) -> tuple[dict, dict[str, bytes]]:
     try:
         archive = zipfile.ZipFile(io.BytesIO(data))
     except zipfile.BadZipFile as exc:
-        raise ProjectError("The file is not a sonny, canvasor or .comp package.") from exc
+        raise ProjectError("The file is not a formvis, canvasor or .comp package.") from exc
     with archive:
         infos = [info for info in archive.infolist() if not info.is_dir()]
         entries = [(info.filename, info.file_size, (lambda info=info: archive.read(info))) for info in infos]

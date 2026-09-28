@@ -2,11 +2,11 @@ import { clamp, type AdjustmentKind } from './types';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS, isParamKind, paramValues, type ParamKind } from './adjust-params';
 import type { Kernel, KernelContext } from './kernels';
 
-/** Hue/Saturation and Grain adjustment layers, written for sonny. Hue/Saturation works in HSL: seven colour
+/** Hue/Saturation and Grain adjustment layers, written for formvis. Hue/Saturation works in HSL: seven colour
  *  ranges (Master and six hue bands, each a trapezoid on the colour wheel with soft shoulders) shift hue, scale
  *  saturation and pull lightness toward white or black; the result is baked into a 33-point colour cube read by
  *  trilinear interpolation. Grain is smoothed lattice noise mixed with per-pixel noise, strongest in the midtones.
- *  Settings keep the field names and layouts sonny's project files use, including dictionaries stored as alternating
+ *  Settings keep the field names and layouts formvis's project files use, including dictionaries stored as alternating
  *  key and value arrays. */
 
 export const ADJUSTMENT_LABELS: Record<AdjustmentKind, string> = {

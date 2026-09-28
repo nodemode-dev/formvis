@@ -77,8 +77,8 @@ def test_the_worker_gives_the_dialogs_result(page):
 
 @pytest.mark.parametrize("kind", ["radialBlur", "surfaceBlur", "fieldBlur", "irisBlur", "tiltShift", "pathBlur"])
 def test_each_opens_from_its_menu_with_its_controls(page, kind):
-    page.evaluate("window.sonny.engine.newDocument(80, 60, 'B', 'white')")
-    assert page.evaluate(f"window.sonny.commands.run('filter-{kind}')")
+    page.evaluate("window.formvis.engine.newDocument(80, 60, 'B', 'white')")
+    assert page.evaluate(f"window.formvis.commands.run('filter-{kind}')")
     shown = page.evaluate("[...document.querySelectorAll('.cv-scrim:not([hidden]) .cv-field')].filter((n) => n.offsetParent !== null && (n.querySelector('input[type=range]') || n.querySelector('select'))).length")
     assert shown >= 2, shown
     page.keyboard.press("Escape")

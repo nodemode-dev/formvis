@@ -2,7 +2,7 @@ import type { FilePart } from './api';
 
 export interface RecoveryRecord { id: string; name: string; savedAt: number; manifest: Record<string, unknown>; files: FilePart[] }
 
-const DB_NAME = 'sonny-recovery';
+const DB_NAME = 'formvis-recovery';
 const STORE = 'docs';
 
 function openDb(): Promise<IDBDatabase | null> {

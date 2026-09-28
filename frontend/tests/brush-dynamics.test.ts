@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { BUILTIN_BRUSH_PRESETS, computeOption, identityOption, noDynamics, pressureOption, presetsFromJson, type CurveOptionSpec } from '../src/engine/brush-dynamics';
 
-describe('brush dynamics ported from NodeMode sonny', () => {
+describe('brush dynamics ported from NodeMode formvis', () => {
   it('a disabled or missing option is neutral', () => {
     expect(computeOption(identityOption(), { pressure: 0.1 })).toBe(1);
     expect(computeOption(null, { pressure: 0.1 })).toBe(1);

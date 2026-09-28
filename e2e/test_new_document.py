@@ -2,7 +2,7 @@ DLG = ".cv-scrim:not([hidden]) .cv-newdoc"
 
 
 def open_dialog(page):
-    page.evaluate("window.sonny.commands.run('new')")
+    page.evaluate("window.formvis.commands.run('new')")
     page.wait_for_selector(DLG)
     return page.locator(DLG)
 
@@ -47,7 +47,7 @@ def test_create_makes_the_document_with_its_resolution_and_an_artboard(page):
     d.locator("input[aria-label='Name']").fill("Flyer")
     d.locator("input[aria-label='Artboards']").check()
     d.locator(".cv-dialog-foot button", has_text="Create").click()
-    got = page.evaluate("(() => { const p = window.sonny.engine.current; return { w: p.doc.width, h: p.doc.height, r: p.doc.resolution, boards: window.sonny.engine.artboards().length }; })()")
+    got = page.evaluate("(() => { const p = window.formvis.engine.current; return { w: p.doc.width, h: p.doc.height, r: p.doc.resolution, boards: window.formvis.engine.artboards().length }; })()")
     assert got == {"w": 1748, "h": 2480, "r": 300, "boards": 1}, got
     assert not page.locator(DLG).count()
 

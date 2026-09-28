@@ -3,7 +3,7 @@ FLY = "[...document.querySelectorAll('.cv-flyout:not([hidden]) .cv-flyout-label'
 
 
 def test_rail_groups_tools_with_flyouts_and_keys(page):
-    page.evaluate("window.sonny.engine.newDocument(200, 100, 'R', 'white')")
+    page.evaluate("window.formvis.engine.newDocument(200, 100, 'R', 'white')")
     slots = page.evaluate("[...document.querySelectorAll('.cv-rail-tools .cv-tool:not(.cv-rail-more)')].map((b) => [b.getAttribute('aria-label'), b.getBoundingClientRect().bottom <= window.innerHeight])")
     assert len(slots) == 21 and all(ok for _, ok in slots), slots   # the History Brush (Y), the Frame (K), and the Eraser (E, 1.49.5) have their own slots
     assert page.evaluate("document.querySelector(\"" + SLOT.format("Spot Healing") + "\").classList.contains('has-group')")
@@ -11,33 +11,33 @@ def test_rail_groups_tools_with_flyouts_and_keys(page):
     page.locator(SLOT.format("Pen")).click(button="right")
     assert page.evaluate(FLY) == ["Pen", "Freeform Pen", "Curvature Pen", "Convert Point"]
     page.locator(".cv-flyout-item", has_text="Curvature Pen").click()
-    assert page.evaluate("window.sonny.engine.tool") == "curvaturePen"
+    assert page.evaluate("window.formvis.engine.tool") == "curvaturePen"
     assert page.evaluate("document.querySelectorAll('.cv-flyout:not([hidden])').length") == 0
     assert page.locator(SLOT.format("Curvature Pen")).count() == 1
     # the key picks the slot's last tool; Shift with it cycles the group
     page.keyboard.press("b")
     page.keyboard.press("p")
-    assert page.evaluate("window.sonny.engine.tool") == "curvaturePen"
+    assert page.evaluate("window.formvis.engine.tool") == "curvaturePen"
     page.keyboard.press("Shift+P")
-    assert page.evaluate("window.sonny.engine.tool") == "convertPoint"   # 1.49.3: Convert Point follows Curvature Pen in the group
+    assert page.evaluate("window.formvis.engine.tool") == "convertPoint"   # 1.49.3: Convert Point follows Curvature Pen in the group
     page.keyboard.press("Shift+P")
-    assert page.evaluate("window.sonny.engine.tool") == "pen"            # and the cycle comes round
+    assert page.evaluate("window.formvis.engine.tool") == "pen"            # and the cycle comes round
     # press and hold opens the flyout without choosing the slot's tool
-    before = page.evaluate("window.sonny.engine.tool")
+    before = page.evaluate("window.formvis.engine.tool")
     box = page.locator(SLOT.format("Gradient")).bounding_box()
     page.mouse.move(box["x"] + 10, box["y"] + 10); page.mouse.down(); page.wait_for_timeout(500); page.mouse.up()
     assert page.evaluate(FLY) == ["Gradient", "Paint Bucket"]
-    assert page.evaluate("window.sonny.engine.tool") == before
+    assert page.evaluate("window.formvis.engine.tool") == before
     page.keyboard.press("Escape")
     assert page.evaluate("document.querySelectorAll('.cv-flyout:not([hidden])').length") == 0
     # the choice is kept: after a reload the Pen slot still shows the Pen chosen last
     page.reload()
-    page.wait_for_function("window.sonny && window.sonny.engine")
+    page.wait_for_function("window.formvis && window.formvis.engine")
     assert page.locator(SLOT.format("Pen")).count() == 1
 
 
 def test_the_rail_scrolls_in_a_short_window(page):
     page.set_viewport_size({"width": 1000, "height": 460})
-    page.evaluate("window.sonny.engine.newDocument(200, 100, 'R', 'white')")
+    page.evaluate("window.formvis.engine.newDocument(200, 100, 'R', 'white')")
     r = page.evaluate("(() => { const b = document.querySelector('.cv-rail-tools'); return [b.scrollHeight > b.clientHeight, getComputedStyle(b).scrollbarWidth, b.getBoundingClientRect().bottom <= window.innerHeight]; })()")
     assert r == [True, "none", True], r

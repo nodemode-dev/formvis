@@ -1,6 +1,6 @@
 SETUP = """async () => {
   const E = await import('/src/engine/index.ts');
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 100, 'S', 'white');
   const p = e.current, bg = p.activeLayer, c = bg.raster.ctx;
   c.fillStyle = 'rgb(128,128,128)'; c.fillRect(0, 0, 200, 100);
@@ -14,7 +14,7 @@ SETUP = """async () => {
   window.__work = work;
 }"""
 HEAL = """(sample) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.setTool('healingBrush');
   Object.assign(e.brush, { diameter: 40, hardness: 1, opacity: 1 });
   Object.assign(e.retouch, { healDiffusion: 1, healBlendMode: 'normal', healSample: sample });
@@ -25,7 +25,7 @@ HEAL = """(sample) => {
   return [d[i], d[i + 1], d[i + 2], d[i + 3]];
 }"""
 SPOT = """(all) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.setTool('spotHealing');
   Object.assign(e.brush, { diameter: 16, hardness: 1, opacity: 1 });
   e.retouch.spotSampleAll = all;

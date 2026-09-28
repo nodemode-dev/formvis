@@ -1,5 +1,5 @@
 PATCH = """(opts) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 100, 'P', 'white');
   const l = e.current.activeLayer, c = l.raster.ctx;
   c.fillStyle = 'rgb(128,128,128)'; c.fillRect(0, 0, 200, 100);
@@ -34,7 +34,7 @@ def test_color_scales_the_blend_and_structure_the_rebuilt_edge(page):
 
 
 def test_the_bar_shows_each_mode_its_own_settings(page):
-    page.evaluate("(() => { const e = window.sonny.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('patch'); })()")
+    page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('patch'); })()")
     bar = page.locator(".cv-opt-group:not([hidden])")
     shown = lambda label: bar.locator(".cv-opt:not([hidden])", has_text=label).count() > 0
     bar.get_by_role("button", name="Normal", exact=True).click()
@@ -42,8 +42,8 @@ def test_the_bar_shows_each_mode_its_own_settings(page):
     assert shown("Diffusion") and not shown("Structure") and not shown("Color")
     box = bar.locator(".cv-opt", has_text="Diffusion").locator("input[type=number]")
     box.fill("3"); box.press("Tab")
-    assert page.evaluate("window.sonny.engine.retouch.patchDiffusion") == 3
+    assert page.evaluate("window.formvis.engine.retouch.patchDiffusion") == 3
     bar.get_by_role("button", name="Content-Aware", exact=True).click()
     bar.locator(".cv-opt:not([hidden])", has_text="Structure").first.wait_for()
     assert shown("Structure") and shown("Color") and not shown("Diffusion")
-    page.evaluate("Object.assign(window.sonny.engine.retouch, { patchMode: 'normal', patchDiffusion: 7 })")
+    page.evaluate("Object.assign(window.formvis.engine.retouch, { patchMode: 'normal', patchDiffusion: 7 })")

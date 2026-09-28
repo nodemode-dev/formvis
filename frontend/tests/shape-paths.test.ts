@@ -6,7 +6,7 @@ const bounds = (pts: Array<{ x: number; y: number }>): number[] => {
   return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 };
 
-describe('shape generators ported from NodeMode sonny', () => {
+describe('shape generators ported from NodeMode formvis', () => {
   it('a regular polygon has n vertices on the circle, the first at the top', () => {
     const pts = ngonPoints(10, 20, 5, 6);
     expect(pts).toHaveLength(6);

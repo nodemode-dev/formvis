@@ -42,20 +42,20 @@ def test_a_saved_warp_reads_back_and_a_bad_one_is_none(page):
 
 
 def test_warp_text_from_the_menu_is_one_step_and_survives_editing(page):
-    page.evaluate("""async () => { const T = await import('/src/engine/text.ts'), e = window.sonny.engine;
+    page.evaluate("""async () => { const T = await import('/src/engine/text.ts'), e = window.formvis.engine;
       e.newDocument(400, 200, 'W', 'white');
       await e.createTextLayer({ x: 40, y: 110 }, { ...T.defaultText(), content: 'Warp me', size: 48, family: 'sans-serif' }); }""")
-    before = page.evaluate("window.sonny.engine.current.activeLayer.raster.width")
-    assert page.evaluate("window.sonny.commands.run('warp-text')")
+    before = page.evaluate("window.formvis.engine.current.activeLayer.raster.width")
+    assert page.evaluate("window.formvis.commands.run('warp-text')")
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     dlg.locator(".cv-field", has_text="Style").locator("select").select_option("arch")
     dlg.locator(".cv-dialog-foot button", has_text="OK").click()
-    page.wait_for_function("window.sonny.engine.current.activeLayer.text.warp?.style === 'arch'")
-    assert page.evaluate("window.sonny.engine.current.activeLayer.raster.height") > 0
+    page.wait_for_function("window.formvis.engine.current.activeLayer.text.warp?.style === 'arch'")
+    assert page.evaluate("window.formvis.engine.current.activeLayer.raster.height") > 0
     # Editing the text keeps the warp.
-    page.evaluate("""async () => { const e = window.sonny.engine, l = e.current.activeLayer; await e.updateTextLayer(l.id, { ...l.text, content: 'Still warped' }); }""")
-    assert page.evaluate("window.sonny.engine.current.activeLayer.text.warp.style") == "arch"
-    page.evaluate("window.sonny.engine.undo()")                                  # the edit
-    page.evaluate("window.sonny.engine.undo()")                                  # the warp, in one step
-    assert page.evaluate("window.sonny.engine.current.activeLayer.text.warp ?? null") is None
-    assert page.evaluate("window.sonny.engine.current.activeLayer.raster.width") == before
+    page.evaluate("""async () => { const e = window.formvis.engine, l = e.current.activeLayer; await e.updateTextLayer(l.id, { ...l.text, content: 'Still warped' }); }""")
+    assert page.evaluate("window.formvis.engine.current.activeLayer.text.warp.style") == "arch"
+    page.evaluate("window.formvis.engine.undo()")                                  # the edit
+    page.evaluate("window.formvis.engine.undo()")                                  # the warp, in one step
+    assert page.evaluate("window.formvis.engine.current.activeLayer.text.warp ?? null") is None
+    assert page.evaluate("window.formvis.engine.current.activeLayer.raster.width") == before

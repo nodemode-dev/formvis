@@ -3,7 +3,7 @@ import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { sliderRow } from './controls';
 
-const KEY = 'sonny.jpegQuality';
+const KEY = 'formvis.jpegQuality';
 const BOX_W = 432, BOX_H = 280;
 
 const size = (bytes: number): string => (bytes >= 1048576 ? `${(bytes / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(bytes / 1024))} KB`);

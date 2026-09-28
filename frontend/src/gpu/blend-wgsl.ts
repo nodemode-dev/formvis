@@ -1,6 +1,6 @@
 import type { BlendMode } from '../engine';
 
-/** The 27 blend modes as a WGSL shader, matching sonny's CPU renderer exactly (Phase 18.2): the modes the canvas
+/** The 27 blend modes as a WGSL shader, matching formvis's CPU renderer exactly (Phase 18.2): the modes the canvas
  *  composites natively follow the W3C Compositing and Blending formulas, as browsers implement them; Linear Dodge is the
  *  canvas's additive 'lighter' operation, as the CPU renderer uses it; the ten per-pixel modes follow engine/blend.ts,
  *  Dissolve on the same stable per-pixel pattern. Colours are unpremultiplied, 0 to 1. The result is the source over the

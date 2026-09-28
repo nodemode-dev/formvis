@@ -4,12 +4,12 @@ source "$(dirname "$0")/lib.sh"
 lite=0
 for arg in "$@"; do [ "$arg" = "--lite" ] && lite=1; done
 cv_say "installing backend"
-( cd "$SONNY_ROOT/backend" && ./oc_install )
+( cd "$FORMVIS_ROOT/backend" && ./oc_install )
 if [ "$lite" = 1 ]; then
   cv_say "skipping the ML extra (--lite): Remove Background uses the lightweight GrabCut engine"
 else
-  "$SONNY_ROOT/setup/install_ml" || cv_say "ML extra did not install; the lightweight engine still works. Retry with ./sonny install-ml"
+  "$FORMVIS_ROOT/setup/install_ml" || cv_say "ML extra did not install; the lightweight engine still works. Retry with ./formvis install-ml"
 fi
 cv_say "installing frontend"
-( cd "$SONNY_ROOT/frontend" && ./oc_install )
-cv_say "done. Boot with ./sonny"
+( cd "$FORMVIS_ROOT/frontend" && ./oc_install )
+cv_say "done. Boot with ./formvis"

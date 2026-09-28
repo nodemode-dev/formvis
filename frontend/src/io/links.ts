@@ -8,7 +8,7 @@ import { decodeImage } from './images';
 export interface LinkSource { name: string; live: boolean; getFile(): Promise<File> }
 
 const sources = new Map<string, LinkSource>();
-const DB = 'sonny-links', STORE = 'handles';
+const DB = 'formvis-links', STORE = 'handles';
 
 type Handle = { name: string; getFile(): Promise<File>; queryPermission?(o: { mode: string }): Promise<string>; requestPermission?(o: { mode: string }): Promise<string> };
 

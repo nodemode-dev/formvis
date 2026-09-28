@@ -135,5 +135,5 @@ export function benchText(r: BenchResult, adapter: string): string {
   const head = ['Test', 'Path', 'Median ms', 'P90 ms', 'Frames'], body = r.rows.map((x) => [x.test, x.path, x.medianMs.toFixed(2), x.p90Ms.toFixed(2), String(x.frames)]);
   const w = head.map((h, i) => Math.max(h.length, ...body.map((b) => b[i].length)));
   const line = (c: string[]): string => c.map((x, i) => x.padEnd(w[i])).join('  ');
-  return [`sonny performance benchmark`, `Graphics processor: ${adapter}`, `Document: ${r.doc}`, `View: ${r.view}`, '', line(head), ...body.map(line), ...(r.notes.length ? ['', ...r.notes] : [])].join('\n');
+  return [`formvis performance benchmark`, `Graphics processor: ${adapter}`, `Document: ${r.doc}`, `View: ${r.view}`, '', line(head), ...body.map(line), ...(r.notes.length ? ['', ...r.notes] : [])].join('\n');
 }

@@ -4,9 +4,9 @@ import json
 import zipfile
 
 # A document with a folder, a Multiply layer at half opacity with a mask, a hidden clipped layer and an active layer,
-# written by sonny's own serializer (the .comp layout is the one sonny's format shares), then labelled as a .comp.
+# written by formvis's own serializer (the .comp layout is the one formvis's format shares), then labelled as a .comp.
 BUILD = """async () => {
-  const S = await import('/src/io/project-io.ts'), e = window.sonny.engine;
+  const S = await import('/src/io/project-io.ts'), e = window.formvis.engine;
   e.newDocument(60, 40, 'Src', 'white');
   const p = e.current, base = p.activeId;
   e.addLayer(); const top = p.activeId;
@@ -36,8 +36,8 @@ def test_a_dropped_comp_project_opens_with_every_property(page):
       const t = document.querySelector('.cv-stage') || document.body, r = t.getBoundingClientRect();
       for (const type of ['dragenter', 'dragover', 'drop']) t.dispatchEvent(new DragEvent(type, { bubbles: true, cancelable: true, dataTransfer: dt, clientX: r.left + 10, clientY: r.top + 10 }));
     }""", base64.b64encode(buf.getvalue()).decode())
-    page.wait_for_function("window.sonny.engine.current?.name === 'Old Work'", timeout=15000)
-    got = page.evaluate("""() => { const p = window.sonny.engine.current;
+    page.wait_for_function("window.formvis.engine.current?.name === 'Old Work'", timeout=15000)
+    got = page.evaluate("""() => { const p = window.formvis.engine.current;
       return { layers: p.doc.layers.map((l) => ({ id: l.id, name: l.name, blend: l.blend, opacity: l.opacity, visible: l.visible, clip: l.clipId ?? null, parent: l.parentId ?? null, group: !!l.isGroup })),
         active: p.activeId, size: [p.doc.width, p.doc.height] }; }""")
     assert got["layers"] == src["layers"], (got["layers"], src["layers"])      # every layer and property, as written

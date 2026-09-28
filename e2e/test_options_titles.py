@@ -1,7 +1,7 @@
 def test_every_tool_options_bar_is_titled_with_the_tool(page):
-    page.evaluate("window.sonny.engine.newDocument(200, 100, 'T', 'white')")
+    page.evaluate("window.formvis.engine.newDocument(200, 100, 'T', 'white')")
     wrong = page.evaluate("""async () => {
-      const { toolList } = await import('/src/extensions/registry.ts'), e = window.sonny.engine, out = [];
+      const { toolList } = await import('/src/extensions/registry.ts'), e = window.formvis.engine, out = [];
       // A copy of the registry with no tools in it (a hot-reloaded server gives the test its own) would pass vacuously.
       if (toolList().length < 25) return [['tools seen', toolList().length]];
       for (const t of toolList()) {

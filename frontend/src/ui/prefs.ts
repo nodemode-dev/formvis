@@ -1,7 +1,7 @@
 import type { Engine } from '../engine';
 import type { GpuRenderer } from '../gpu/probe';
 
-/** Preferences that change how sonny works, kept on this device, as Photoshop's Preferences are. Every one acts on
+/** Preferences that change how formvis works, kept on this device, as Photoshop's Preferences are. Every one acts on
  *  something real: History States and history memory are the undo limits every project uses; region redraws decide
  *  whether a brush stroke repaints only what it changed; the recovery delay is how soon after a change unsaved work is
  *  kept for crash recovery. The graphics processor settings choose the renderer (Phase 18). */
@@ -31,7 +31,7 @@ export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, region
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'light', rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4 };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
-const KEY = 'sonny.prefs';
+const KEY = 'formvis.prefs';
 
 const num = (v: unknown, lo: number, hi: number, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
 

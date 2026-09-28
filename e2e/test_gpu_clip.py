@@ -2,7 +2,7 @@ import pytest
 
 DOC = """async ([mode]) => {
   const E = await import('/src/engine/index.ts');
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(160, 90, 'C', 'white');
   const p = e.current, bg = p.activeLayer, c = bg.raster.ctx;
   const g1 = c.createLinearGradient(0, 0, 160, 0); g1.addColorStop(0, 'rgb(10,200,60)'); g1.addColorStop(1, 'rgb(240,30,180)');
@@ -43,7 +43,7 @@ DOC = """async ([mode]) => {
 
 FRAME = """async ([mod, cls]) => {
   const E = await import('/src/engine/index.ts'), D = await import(mod);
-  const e = window.sonny.engine, W = 200, H = 130, ox = 20, oy = 20, dw = 160, dh = 90;
+  const e = window.formvis.engine, W = 200, H = 130, ox = 20, oy = 20, dw = 160, dh = 90;
   const A = [204, 204, 204], B = [255, 255, 255], cell = 8, rect = [ox, oy, ox + dw, oy + dh];
   const gl = e.gpuLayers();
   if (!('layers' in gl)) return { error: gl.reason };
@@ -73,14 +73,14 @@ def test_clipping_groups_and_folders_draw_on_the_gpu_as_the_cpu_draws_them(page,
         assert r["layers"] == layers and r["clipped"] == clipped, (cls, r)   # nothing fell back; the hidden folder's layer is gone
         assert r["share"] >= 0.99, (cls, r)
     if mode in ("foldermask", "nested"):                                     # the chain holds every folder's mask
-        assert page.evaluate("window.sonny.engine.gpuLayers().layers[1].folders.length") == (2 if mode == "nested" else 1)
+        assert page.evaluate("window.formvis.engine.gpuLayers().layers[1].folders.length") == (2 if mode == "nested" else 1)
 
 
 def test_a_clipped_layer_inside_a_masked_folder_still_draws_on_the_cpu_by_name(page):
     page.evaluate(DOC, ["clip"])
-    page.evaluate("""(async () => { const E = await import('/src/engine/index.ts'), e = window.sonny.engine, p = e.current;
+    page.evaluate("""(async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine, p = e.current;
       p.doc.layers.forEach((l) => { if (l.clipId) l.parentId = 'f'; });
       const f = { ...p.doc.layers[0], id: 'f', name: 'F', isGroup: true, raster: null, clipId: null, adjustment: null, parentId: null,
         mask: { raster: new E.Raster(160, 90), enabled: true, linked: true, placement: null } };
       p.doc.layers.splice(1, 0, f); })()""")
-    assert page.evaluate("window.sonny.engine.gpuLayers().reason") == "a clipped layer inside a masked folder"
+    assert page.evaluate("window.formvis.engine.gpuLayers().reason") == "a clipped layer inside a masked folder"

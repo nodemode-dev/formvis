@@ -1,6 +1,6 @@
 import { clamp } from './types';
 
-/** Image filters, written for sonny from standard methods: a Gaussian blur approximated by three successive box
+/** Image filters, written for formvis from standard methods: a Gaussian blur approximated by three successive box
  *  blurs (widths from Kovesi's formula), a motion blur as a bilinear line integral, seeded noise, a radial lens
  *  distortion model, alpha-weighted histograms, and selection growing and shrinking through Felzenszwalb and
  *  Huttenlocher's squared-distance transform. Colour filtering runs on premultiplied values, so transparent pixels

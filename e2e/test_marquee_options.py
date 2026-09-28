@@ -1,7 +1,7 @@
-SETUP = """() => { const e = window.sonny.engine; e.newDocument(200, 160, 'M', 'white'); e.setTool('marquee'); if (e.tool !== 'marquee') throw new Error('tool');
+SETUP = """() => { const e = window.formvis.engine; e.newDocument(200, 160, 'M', 'white'); e.setTool('marquee'); if (e.tool !== 'marquee') throw new Error('tool');
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }"""
-AT = "([x, y]) => window.sonny.engine.current.selection ? window.sonny.engine.current.selection.valueAt(x, y) : null"
-BOUNDS = "(() => { const s = window.sonny.engine.current.selection; return [s.x, s.y, s.w, s.h]; })()"
+AT = "([x, y]) => window.formvis.engine.current.selection ? window.formvis.engine.current.selection.valueAt(x, y) : null"
+BOUNDS = "(() => { const s = window.formvis.engine.current.selection; return [s.x, s.y, s.w, s.h]; })()"
 
 
 def drag(page, s, a, b):
@@ -16,9 +16,9 @@ def opt(page, label):
 def test_marquee_feather_style_and_anti_alias(page):
     s = page.evaluate(SETUP)
     assert not opt(page, "Anti-alias").is_visible()                       # rectangles only: no Anti-alias, as Photoshop
-    page.evaluate("window.sonny.engine.update({ marqueeKind: 'ellipse' })")
+    page.evaluate("window.formvis.engine.update({ marqueeKind: 'ellipse' })")
     assert opt(page, "Anti-alias").is_visible()
-    page.evaluate("window.sonny.engine.update({ marqueeKind: 'rectangle' })")
+    page.evaluate("window.formvis.engine.update({ marqueeKind: 'rectangle' })")
     # Feather 10: full in the middle, about half on the edge, some just outside
     f = opt(page, "Feather").locator("input[type=number]"); f.fill("10"); f.press("Tab")
     drag(page, s, (50, 40), (150, 120))

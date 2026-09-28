@@ -13,7 +13,7 @@ const DEFAULTS = [
   '#a9fcca', '#a9fcfe', '#99c5fa', '#8c8cf8', '#be8ff8', '#f092f9', '#f092c4', '#ea3323', '#ef8733', '#ffff55', '#a1fc4e', '#75fb4c', '#75fb8e', '#75fbfd', '#377ef7', '#0000f5',
   '#7514f5', '#ea33f7', '#ea3380', '#80170e', '#834a18', '#8c8c2a', '#588b27', '#3d8a26', '#3d8a4d', '#3d8a8b', '#1b4587', '#000086', '#400787', '#801787', '#801746',
 ];
-const KEY = 'sonny.swatches';
+const KEY = 'formvis.swatches';
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('')}`;
 const rgb = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
 

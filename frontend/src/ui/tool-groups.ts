@@ -6,7 +6,7 @@ import { toolList, type Tool } from '../extensions/registry';
  *  its key also picks; the choice is kept with the preferences. */
 
 export interface ToolGroup { key: string; tools: Tool[] }
-const STORE = 'sonny.toolGroups.last';
+const STORE = 'formvis.toolGroups.last';
 
 export function toolGroups(): ToolGroup[] {
   const out: ToolGroup[] = [];

@@ -1,10 +1,10 @@
-SETUP = """(shape) => { const e = window.sonny.engine; e.newDocument(300, 120, 'B', 'transparent'); e.addLayer(); e.setTool('brush'); e.setBrushMode('paint');
+SETUP = """(shape) => { const e = window.formvis.engine; e.newDocument(300, 120, 'B', 'transparent'); e.addLayer(); e.setTool('brush'); e.setBrushMode('paint');
   e.fg = { r: 220, g: 20, b: 20 }; e.bg = { r: 20, g: 40, b: 220 };
   e.brushShape = { ...e.brushShape, spacing: null, ...shape }; }"""
-STROKE = """([a, b, size, hardness]) => { const e = window.sonny.engine; e.setBrush({ diameter: size, hardness, opacity: 1 });
+STROKE = """([a, b, size, hardness]) => { const e = window.formvis.engine; e.setBrush({ diameter: size, hardness, opacity: 1 });
   e.beginStroke({ x: a[0], y: a[1] }, false, 1); for (let i = 1; i <= 30; i++) e.strokeTo({ x: a[0] + (b[0] - a[0]) * i / 30, y: a[1] + (b[1] - a[1]) * i / 30 }, 1); e.endStroke(); }"""
-DAB = """([x, y, size, hardness]) => { const e = window.sonny.engine; e.setBrush({ diameter: size, hardness, opacity: 1 }); e.beginStroke({ x, y }, false, 1); e.endStroke(); }"""
-ROW = "([y, x0, x1]) => { const d = window.sonny.engine.activeLayer.raster.ctx.getImageData(x0, y, x1 - x0, 1).data, out = []; for (let i = 0; i < d.length; i += 4) out.push([d[i], d[i + 1], d[i + 2], d[i + 3]]); return out; }"
+DAB = """([x, y, size, hardness]) => { const e = window.formvis.engine; e.setBrush({ diameter: size, hardness, opacity: 1 }); e.beginStroke({ x, y }, false, 1); e.endStroke(); }"""
+ROW = "([y, x0, x1]) => { const d = window.formvis.engine.activeLayer.raster.ctx.getImageData(x0, y, x1 - x0, 1).data, out = []; for (let i = 0; i < d.length; i += 4) out.push([d[i], d[i + 1], d[i + 2], d[i + 3]]); return out; }"
 OFF = "{ color: { on: false, fgBg: 0, hue: 0, saturation: 0, brightness: 0 }, transfer: { on: false, opacity: 0, flow: 0, control: 'off' }, noise: false, wetEdges: false }"
 
 
@@ -38,7 +38,7 @@ def test_wet_edges_lighten_the_middle_and_noise_roughens_the_edge(page):
 
 def test_with_everything_off_a_stroke_is_as_before(page):
     page.evaluate(SETUP, {**{}, "spacing": None})
-    page.evaluate("(off) => { const e = window.sonny.engine; e.brushShape = { ...e.brushShape, ...off }; }", {"color": {"on": False, "fgBg": 0, "hue": 0, "saturation": 0, "brightness": 0}, "transfer": {"on": False, "opacity": 0, "flow": 0, "control": "off"}, "noise": False, "wetEdges": False})
+    page.evaluate("(off) => { const e = window.formvis.engine; e.brushShape = { ...e.brushShape, ...off }; }", {"color": {"on": False, "fgBg": 0, "hue": 0, "saturation": 0, "brightness": 0}, "transfer": {"on": False, "opacity": 0, "flow": 0, "control": "off"}, "noise": False, "wetEdges": False})
     page.evaluate(STROKE, [[20, 60], [280, 60], 20, 1])
     core = page.evaluate(ROW, [60, 40, 260])
     # Solid foreground, as before this build (compositing rounds a channel by one: 220, 19, 19).
@@ -46,8 +46,8 @@ def test_with_everything_off_a_stroke_is_as_before(page):
 
 
 def test_the_panel_shows_the_new_sections(page):
-    page.evaluate("window.sonny.engine.newDocument(100, 60, 'P', 'white'); window.sonny.engine.setTool('brush')")
-    page.evaluate("window.sonny.commands.run('brush-settings')")
+    page.evaluate("window.formvis.engine.newDocument(100, 60, 'P', 'white'); window.formvis.engine.setTool('brush')")
+    page.evaluate("window.formvis.commands.run('brush-settings')")
     heads = page.locator(".cv-scrim:not([hidden]) .cv-prefs-sub").all_inner_texts()
     for h in ["Color Dynamics", "Transfer", "Noise and Wet Edges"]:
         assert h in heads, heads

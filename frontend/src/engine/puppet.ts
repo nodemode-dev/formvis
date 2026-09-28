@@ -1,5 +1,5 @@
 /** Puppet Warp by rigid moving-least-squares deformation (Schaefer, McPhail and Warren, "Image Deformation Using
- *  Moving Least Squares", SIGGRAPH 2006), written for sonny. Each point v moves by the rotation and translation that
+ *  Moving Least Squares", SIGGRAPH 2006), written for formvis. Each point v moves by the rotation and translation that
  *  best carry the pins p to their new places q, weighting each pin by 1 / |p - v|^2: pins are hit exactly, the space
  *  between them bends without shearing, and a single pin translates. In two dimensions the rigid solution is the
  *  similarity solution's rotation: with p*, q* the weighted centroids and mu = sum w conj(p - p*)(q - q*) as complex

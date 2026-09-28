@@ -7,7 +7,7 @@ SHELL = """window.__TAURI_INTERNALS__ = {
   transformCallback: () => 0, metadata: { currentWindow: { label: 'main' }, currentWebview: { label: 'main' } },
 };"""
 # The Type tool's Font menu, as the user sees it (the app's own copy of the font module fills it).
-MENU = """() => { window.sonny.engine.setTool('type'); const s = [...document.querySelectorAll('select')].find((n) => [...n.options].some((o) => o.text === 'Inter'));
+MENU = """() => { window.formvis.engine.setTool('type'); const s = [...document.querySelectorAll('select')].find((n) => [...n.options].some((o) => o.text === 'Inter'));
   return s ? [...s.options].map((o) => o.text) : []; }"""
 
 

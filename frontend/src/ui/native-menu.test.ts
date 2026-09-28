@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { accelerator } from './native-menu';
 
 describe('native menu shortcuts', () => {
-  it('turn sonny key combos into Tauri accelerators', () => {
+  it('turn formvis key combos into Tauri accelerators', () => {
     expect(accelerator('Mod+S')).toBe('CmdOrCtrl+S');
     expect(accelerator('Alt+Mod+W')).toBe('Alt+CmdOrCtrl+W');
     expect(accelerator('Shift+Mod+z')).toBe('Shift+CmdOrCtrl+Z');

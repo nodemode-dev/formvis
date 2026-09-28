@@ -1,6 +1,6 @@
 # Third-party notices
 
-sonny is licensed under the Apache License 2.0 (see `LICENSE`). It includes or depends on the following works.
+formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or depends on the following works.
 
 ## Included in this repository
 
@@ -24,14 +24,14 @@ sonny is licensed under the Apache License 2.0 (see `LICENSE`). It includes or d
 | opencv-python-headless | Apache-2.0 (OpenCV), MIT (packaging) | engine; its wheels carry LGPL FFmpeg as separate shared libraries, kept separable in the frozen engine |
 | pillow-heif | BSD-3-Clause; bundles LGPL libheif and GPL x265 | server-side engine only; excluded from the frozen desktop engine |
 | rawpy, with LibRaw | MIT (rawpy); LibRaw is LGPL-2.1 or CDDL-1.0, at the recipient's choice | engine, camera RAW decoding; LibRaw ships in rawpy's wheels as a separate shared library, kept separable and replaceable in the frozen engine |
-| SAM 2.1 (Meta, facebookresearch/sam2 at commit 2b90b9f) and its tiny checkpoint | Apache-2.0 (the repository's cctorch component is BSD-3-Clause and is not built) | engine, optional (`./sonny install-ml`), click-to-select; the checkpoint is downloaded from Meta and checked against its SHA-256 |
+| SAM 2.1 (Meta, facebookresearch/sam2 at commit 2b90b9f) and its tiny checkpoint | Apache-2.0 (the repository's cctorch component is BSD-3-Clause and is not built) | engine, optional (`./formvis install-ml`), click-to-select; the checkpoint is downloaded from Meta and checked against its SHA-256 |
 | PyTorch | Apache-2.0 AND Apache-2.0 WITH LLVM-exception AND BSD-2-Clause AND BSD-3-Clause AND BSL-1.0 AND MIT (its package metadata) | engine, optional, SAM 2.1's runtime |
 | torchvision | BSD-3-Clause | engine, optional, SAM 2.1's runtime |
 | hydra-core, iopath | MIT | engine, optional, SAM 2.1's configuration and file helpers |
 | omegaconf, portalocker, antlr4-python3-runtime | BSD-3-Clause | engine, optional, the same helpers' dependencies |
 | tqdm | MPL-2.0 AND MIT | engine, optional, progress reporting in SAM 2.1's helpers; used unmodified |
-| wgpu 30 (and its crates), pollster, bytemuck | wgpu: MIT OR Apache-2.0; pollster: Apache-2.0 OR MIT; bytemuck: Zlib OR Apache-2.0 OR MIT. Transitively only permissive licences: MIT, Apache-2.0, Zlib, ISC, BSD-2-Clause (as an option) and Unicode-3.0 (per `cargo metadata`) | native/sonny-render, the native GPU renderer (Metal, Vulkan, Direct3D 12) |
-| sysinfo | MIT | native/sonny-render, the machine's memory for the document budget |
+| wgpu 30 (and its crates), pollster, bytemuck | wgpu: MIT OR Apache-2.0; pollster: Apache-2.0 OR MIT; bytemuck: Zlib OR Apache-2.0 OR MIT. Transitively only permissive licences: MIT, Apache-2.0, Zlib, ISC, BSD-2-Clause (as an option) and Unicode-3.0 (per `cargo metadata`) | native/formvis-render, the native GPU renderer (Metal, Vulkan, Direct3D 12) |
+| sysinfo | MIT | native/formvis-render, the machine's memory for the document budget |
 | rembg, onnxruntime | MIT, MIT | optional ML extra; the u2net model (Apache-2.0) is downloaded at install time, not redistributed |
 
 ## Build tools, not distributed

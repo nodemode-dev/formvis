@@ -1,5 +1,5 @@
 STROKE = """([pressures, sizeMin]) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 100, 'B', 'white');
   e.addLayer();
   e.fg = { r: 0, g: 0, b: 0 }; e.setBrush({ diameter: 40, hardness: 1, opacity: 1 });
@@ -30,7 +30,7 @@ def test_mouse_strokes_are_unchanged(page):
 
 def test_presets_set_the_brush(page):
     r = page.evaluate("""(() => {
-      const e = window.sonny.engine;
+      const e = window.formvis.engine;
       e.commands ? 0 : 0;
       e.setTool('brush');
       if (e.tool !== 'brush') return ['tool not switched'];

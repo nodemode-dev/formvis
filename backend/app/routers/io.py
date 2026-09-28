@@ -8,7 +8,7 @@ from app.core import config
 from app.services import imaging
 
 router = APIRouter(tags=["io"])
-EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|sny|sonny|webp|tif|tiff|pdf|avif)$", re.IGNORECASE)
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif)$", re.IGNORECASE)
 
 
 @router.post("/encode")

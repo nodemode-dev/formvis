@@ -1,10 +1,10 @@
 SCENE = """async () => {
-  const e = window.sonny.engine, E = await import('/src/engine/index.ts');
+  const e = window.formvis.engine, E = await import('/src/engine/index.ts');
   e.newDocument(200, 140, 'M', 'white');
   const l = e.current.activeLayer, c = l.raster.ctx;
   c.fillStyle = '#222'; c.fillRect(60, 30, 80, 80); l.raster.touch(); e.refresh();
   e.applySelection(E.SelectionMask.cropped(60, 30, 80, 80, new Uint8Array(6400).fill(255)), 'replace', 's');
-  window.sonny.commands.run('select-and-mask');
+  window.formvis.commands.run('select-and-mask');
 }"""
 
 
@@ -25,7 +25,7 @@ def test_output_selection_feathered(page):
     set_slider(d, "Feather", 10)
     d.locator(".cv-dialog-foot button", has_text="OK").click()
     page.wait_for_timeout(400)
-    r = page.evaluate("(() => { const s = window.sonny.engine.current.selection; return [s.valueAt(60, 70), s.valueAt(100, 70), s.valueAt(45, 70), window.sonny.engine.historySteps.names.slice(-1)[0]]; })()")
+    r = page.evaluate("(() => { const s = window.formvis.engine.current.selection; return [s.valueAt(60, 70), s.valueAt(100, 70), s.valueAt(45, 70), window.formvis.engine.historySteps.names.slice(-1)[0]]; })()")
     assert 60 < r[0] < 200 and r[1] > 240 and r[2] < r[0] and r[3] == "Select and Mask", r
 
 
@@ -35,14 +35,14 @@ def test_output_layer_mask_and_new_layer_with_mask(page):
     d.locator(".cv-field", has_text="Output To").locator("select").select_option("mask")
     d.locator(".cv-dialog-foot button", has_text="OK").click()
     page.wait_for_timeout(400)
-    r = page.evaluate("(() => { const e = window.sonny.engine, l = e.current.activeLayer; return [!!l.mask, e.current.selection === null, e.historySteps.names.slice(-1)[0], e.current.doc.layers.length]; })()")
+    r = page.evaluate("(() => { const e = window.formvis.engine, l = e.current.activeLayer; return [!!l.mask, e.current.selection === null, e.historySteps.names.slice(-1)[0], e.current.doc.layers.length]; })()")
     assert r == [True, True, "Select and Mask", 1], r
-    page.evaluate("window.sonny.engine.undo()")
-    assert page.evaluate("!!window.sonny.engine.current.activeLayer.mask") is False
+    page.evaluate("window.formvis.engine.undo()")
+    assert page.evaluate("!!window.formvis.engine.current.activeLayer.mask") is False
     page.evaluate(SCENE)
     d = dialog(page)
     d.locator(".cv-field", has_text="Output To").locator("select").select_option("layerMask")
     d.locator(".cv-dialog-foot button", has_text="OK").click()
     page.wait_for_timeout(400)
-    r = page.evaluate("(() => { const e = window.sonny.engine, ls = e.current.doc.layers; return [ls.length, !!e.current.activeLayer.mask, ls.filter((l) => !l.visible).length]; })()")
+    r = page.evaluate("(() => { const e = window.formvis.engine, ls = e.current.doc.layers; return [ls.length, !!e.current.activeLayer.mask, ls.filter((l) => !l.visible).length]; })()")
     assert r == [2, True, 1], r

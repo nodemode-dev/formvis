@@ -1,5 +1,5 @@
 HEAL = """([mode, hardness]) => {
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(200, 100, 'H', 'white');
   const l = e.current.activeLayer, c = l.raster.ctx;
   c.fillStyle = 'rgb(128,128,128)'; c.fillRect(0, 0, 200, 100);
@@ -40,15 +40,15 @@ def test_replace_never_averages_at_a_soft_edge(page):
 
 
 def test_both_bars_offer_the_mode(page):
-    page.evaluate("(() => { const e = window.sonny.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('healingBrush'); })()")
+    page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(100, 60, 'B', 'white'); e.setTool('healingBrush'); })()")
     bar = page.locator(".cv-opt-group:not([hidden])")
     row = bar.locator(".cv-opt:not([hidden])", has_text="Mode").first
     row.wait_for()
     row.locator("select").select_option(label="Replace")
-    assert page.evaluate("window.sonny.engine.retouch.healBlendMode") == "replace"
-    page.evaluate("window.sonny.engine.setTool('spotHealing')")
+    assert page.evaluate("window.formvis.engine.retouch.healBlendMode") == "replace"
+    page.evaluate("window.formvis.engine.setTool('spotHealing')")
     row = bar.locator(".cv-opt:not([hidden])", has_text="Mode").first
     page.wait_for_function("[...document.querySelectorAll('.cv-opt-group:not([hidden]) .cv-opt:not([hidden])')].some((o) => o.textContent.includes('Proximity Match'))")
     row.locator("select").select_option(label="Lighten")
-    assert page.evaluate("window.sonny.engine.retouch.spotBlendMode") == "lighten"
-    page.evaluate("Object.assign(window.sonny.engine.retouch, { healBlendMode: 'normal', spotBlendMode: 'normal' })")
+    assert page.evaluate("window.formvis.engine.retouch.spotBlendMode") == "lighten"
+    page.evaluate("Object.assign(window.formvis.engine.retouch, { healBlendMode: 'normal', spotBlendMode: 'normal' })")

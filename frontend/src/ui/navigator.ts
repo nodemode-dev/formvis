@@ -5,7 +5,7 @@ import { PanelGroup } from './panel-group';
 
 /** The Navigator (Phase 21, UI_SPEC.md section 6, the target's s20): the whole document in a rounded card with the
  *  visible area outlined in red; a click or drag there moves the view to that point; Fit, 100%, 150% and 200% as a pill
- *  segmented control; and a Zoom slider on a logarithmic scale over sonny's range (1% to 6400%). The preview is redrawn
+ *  segmented control; and a Zoom slider on a logarithmic scale over formvis's range (1% to 6400%). The preview is redrawn
  *  at most every 120 ms, so painting on a large document stays smooth. */
 const LOG_MIN = Math.log(Viewport.MIN), LOG_MAX = Math.log(Viewport.MAX);
 const toSlider = (z: number): number => Math.round(((Math.log(z) - LOG_MIN) / (LOG_MAX - LOG_MIN)) * 1000);

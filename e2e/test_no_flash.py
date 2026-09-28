@@ -11,26 +11,26 @@ def removed(page, action):
 
 
 def test_common_actions_rebuild_nothing(page):
-    page.evaluate("window.sonny.engine.newDocument(600, 400, 'A', 'white'); window.sonny.engine.addLayer(); window.sonny.engine.newDocument(500, 300, 'B', 'white')")
+    page.evaluate("window.formvis.engine.newDocument(600, 400, 'A', 'white'); window.formvis.engine.addLayer(); window.formvis.engine.newDocument(500, 300, 'B', 'white')")
     page.wait_for_timeout(400)
     tools = page.locator(".cv-rail-tools .cv-tool")
     r = page.locator(".cv-stage").bounding_box()
 
     def stroke():
-        page.evaluate("window.sonny.engine.setTool('brush')")
+        page.evaluate("window.formvis.engine.setTool('brush')")
         page.mouse.move(r["x"] + 300, r["y"] + 300); page.mouse.down(); page.mouse.move(r["x"] + 500, r["y"] + 350, steps=10); page.mouse.up()
 
     actions = {
         "rail: brush": lambda: tools.nth(6).click(),
         "rail: marquee": lambda: tools.nth(1).click(),
         "tab switch": lambda: page.locator(".cv-tab").nth(0).click(),
-        "open Preferences": lambda: page.evaluate("window.sonny.commands.run('settings')"),
+        "open Preferences": lambda: page.evaluate("window.formvis.commands.run('settings')"),
         "close dialog": lambda: page.keyboard.press("Escape"),
         "open Filter menu": lambda: page.locator(".cv-menu-btn", has_text="Filter").click(),
         "close menu": lambda: page.keyboard.press("Escape"),
         "paint a stroke": stroke,
         "select a layer": lambda: page.locator(".cv-layer").nth(1).click(),
-        "brush size": lambda: page.evaluate("window.sonny.engine.setBrush({ diameter: 60 })"),
+        "brush size": lambda: page.evaluate("window.formvis.engine.setBrush({ diameter: 60 })"),
     }
     found = {name: removed(page, act) for name, act in actions.items()}
     assert all(not v for v in found.values()), {k: v for k, v in found.items() if v}

@@ -19,7 +19,7 @@ def test_the_readme_matches_the_code():
 
 
 def test_every_manifest_states_the_licence_in_licence_file():
-    # sonny is Apache-2.0 (LICENSE, README); package.json, the lockfile's own entry and Cargo.toml said MIT until 1.38.0.
+    # formvis is Apache-2.0 (LICENSE, README); package.json, the lockfile's own entry and Cargo.toml said MIT until 1.38.0.
     import json
     import re
 

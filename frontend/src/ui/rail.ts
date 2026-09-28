@@ -85,7 +85,7 @@ export class Rail {
   private suppressClick = false;
 
   private box: HTMLElement | null = null;
-  private hidden = new Set<string>((() => { try { const v = JSON.parse(localStorage.getItem('sonny.railHidden') ?? '[]'); return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []; } catch { return []; } })());
+  private hidden = new Set<string>((() => { try { const v = JSON.parse(localStorage.getItem('formvis.railHidden') ?? '[]'); return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []; } catch { return []; } })());
   private editor: EditToolbar | null = null;
 
   /** Hidden groups leave the rail; a dash shows only between two shown tools, never leading, trailing or doubled. */
@@ -102,7 +102,7 @@ export class Rail {
 
   setHiddenGroups(keys: Iterable<string>): void {
     this.hidden = new Set(keys);
-    try { localStorage.setItem('sonny.railHidden', JSON.stringify([...this.hidden])); } catch { /* this session only */ }
+    try { localStorage.setItem('formvis.railHidden', JSON.stringify([...this.hidden])); } catch { /* this session only */ }
     this.applyHidden();
   }
 

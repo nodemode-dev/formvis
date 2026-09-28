@@ -1,5 +1,5 @@
 SQUARE = """(fx) => {
-  const e = window.sonny.engine, d = JSON.parse(JSON.stringify(fx));
+  const e = window.formvis.engine, d = JSON.parse(JSON.stringify(fx));
   e.newDocument(200, 100, 'S', 'white');
   e.addLayer();
   return import('/src/engine/index.ts').then((E) => {
@@ -10,7 +10,7 @@ SQUARE = """(fx) => {
     e.setLayerEffects(e.current.activeLayer.id, base);
   });
 }"""
-PX = "([x, y]) => Array.from(window.sonny.engine.flattened().getContext('2d').getImageData(x, y, 1, 1).data).slice(0, 3)"
+PX = "([x, y]) => Array.from(window.formvis.engine.flattened().getContext('2d').getImageData(x, y, 1, 1).data).slice(0, 3)"
 black = lambda p: max(p) < 60
 red = lambda p: p[0] > 180 and p[1] < 80
 white = lambda p: min(p) > 220
@@ -27,14 +27,14 @@ def test_stroke_positions(page):
 def test_global_light_moves_a_shadow_that_uses_it(page):
     page.evaluate(SQUARE, {"dropShadow": {"enabled": True, "opacity": 1, "distance": 12, "size": 0, "angle": 180, "useGlobal": True}})
     # own angle 180 would cast to the right; the default global light (120) casts down and to the right
-    page.evaluate("window.sonny.engine.applyStyleAndLight(window.sonny.engine.current.activeLayer.id, window.sonny.engine.current.activeLayer.effects, { angle: 0, altitude: 30 })")
+    page.evaluate("window.formvis.engine.applyStyleAndLight(window.formvis.engine.current.activeLayer.id, window.formvis.engine.current.activeLayer.effects, { angle: 0, altitude: 30 })")
     # light from the right (0) casts the shadow to the left
     left, right = page.evaluate(PX, [72, 50]), page.evaluate(PX, [128, 50])
     assert max(left) < 120 and white(right), (left, right)
-    assert page.evaluate("window.sonny.engine.historySteps.names.slice(-1)[0]") == "Layer Style"
-    page.evaluate("window.sonny.engine.undo()")
-    assert page.evaluate("window.sonny.engine.current.doc.globalLight") is None
-    rt = page.evaluate("""async () => { const e = window.sonny.engine; e.redo(); const io = await import('/src/io/project-io.ts');
+    assert page.evaluate("window.formvis.engine.historySteps.names.slice(-1)[0]") == "Layer Style"
+    page.evaluate("window.formvis.engine.undo()")
+    assert page.evaluate("window.formvis.engine.current.doc.globalLight") is None
+    rt = page.evaluate("""async () => { const e = window.formvis.engine; e.redo(); const io = await import('/src/io/project-io.ts');
       const { manifest, files } = await io.serialize(e.current.doc, e.current.activeId), m = new Map(files.map((f) => [f.name, f.blob]));
       const d = (await io.deserialize(manifest, (n) => Promise.resolve(m.get(n)))).doc, l = d.layers[d.layers.length - 1];
       return [d.globalLight, l.effects.dropShadow.useGlobal]; }""")

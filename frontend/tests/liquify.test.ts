@@ -10,7 +10,7 @@ const bar = (): ImageData => {
 };
 const centre = (img: ImageData, y: number): number => { const xs: number[] = []; for (let x = 0; x < img.width; x++) if (img.data[(y * img.width + x) * 4] < 128) xs.push(x); return (xs[0] + xs[xs.length - 1] + 1) / 2; };
 
-describe('liquify ported from NodeMode sonny', () => {
+describe('liquify ported from NodeMode formvis', () => {
   it('an empty field reproduces the image', () => {
     const src = bar(), out = liquifyImage(src, makeField(W, H));
     expect(Array.from(out.data)).toEqual(Array.from(src.data));

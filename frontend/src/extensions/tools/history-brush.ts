@@ -6,7 +6,7 @@ let hover: Pt | null = null;
 
 /** The History Brush (Y), as Photoshop's: paints the active layer back as it was in the source snapshot (the document
  *  as opened, or one chosen in the History panel), with the Brush's size, hardness and dynamics. The owner's
- *  walkthrough: the target's toolbar has it; sonny had none. */
+ *  walkthrough: the target's toolbar has it; formvis had none. */
 export const historyBrushTool: Tool = {
   id: 'historyBrush', label: 'History Brush', key: 'Y', order: 61,
   icon: () => 'tHistoryBrush',

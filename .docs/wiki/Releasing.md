@@ -22,7 +22,7 @@ Add these under Settings, Secrets and variables, Actions. Builds work without th
 Generate it on your own machine, never in a shared environment, and keep the private key out of the repository:
 
 ```bash
-cd frontend && npx tauri signer generate -w ~/.tauri/sonny.key
+cd frontend && npx tauri signer generate -w ~/.tauri/formvis.key
 ```
 
 Put the private key file's contents in `TAURI_SIGNING_PRIVATE_KEY` and paste the printed public key into `plugins.updater.pubkey` in `src-tauri/tauri.conf.json`, then commit that one line. Until the public key is there, the app skips update checks entirely.
@@ -37,4 +37,4 @@ Put the private key file's contents in `TAURI_SIGNING_PRIVATE_KEY` and paste the
 
 - The macOS bundle runs with the hardened runtime; `src-tauri/entitlements.plist` lets the PyInstaller engine sidecar load the libraries it unpacks at launch.
 - Windows builds are unsigned until a code-signing certificate is available, so SmartScreen warns on first run.
-- `.sny` and `.sonny` (older projects) files are associated with the app; opening a clicked file in the running app is not built yet.
+- `.fmv` and `.formvis` (older projects) files are associated with the app; opening a clicked file in the running app is not built yet.

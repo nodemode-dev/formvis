@@ -29,18 +29,18 @@ def canvasor(path):
         z.writestr("images/TOP.png", _png((5, 5), (20, 40, 220, 255)))
 
 
-PX = "([x, y]) => Array.from(window.sonny.engine.flattened().getContext('2d').getImageData(x, y, 1, 1).data).slice(0, 3)"
+PX = "([x, y]) => Array.from(window.formvis.engine.flattened().getContext('2d').getImageData(x, y, 1, 1).data).slice(0, 3)"
 
 
 def test_a_canvasor_project_opens_as_it_was_composed(page, tmp_path):
     f = tmp_path / "Night Scene.canvasor"
     canvasor(f)
-    page.evaluate("window.sonny.commands.run('open')")
+    page.evaluate("window.formvis.commands.run('open')")
     inp = page.locator(".cv-scrim:not([hidden]) input[type=file]").first
     assert ".canvasor" in inp.get_attribute("accept")                  # the picker offers .canvasor files
     inp.set_input_files(str(f))
-    page.wait_for_function("window.sonny.engine.projects.length === 1")
-    got = page.evaluate("""(() => { const p = window.sonny.engine.current; return { name: p.name, size: [p.doc.width, p.doc.height],
+    page.wait_for_function("window.formvis.engine.projects.length === 1")
+    got = page.evaluate("""(() => { const p = window.formvis.engine.current; return { name: p.name, size: [p.doc.width, p.doc.height],
       layers: p.doc.layers.map((l) => [l.name, !!l.raster]), active: p.activeLayer.name }; })()""")
     assert got == {"name": "Night Scene", "size": [200, 100], "layers": [["Base", True], ["Half", True], ["Empty", False], ["Top", True]], "active": "Half"}, got
     assert page.evaluate(PX, [5, 5]) == [220, 20, 20]                   # the 4 by 2 base fills the canvas at its shown size

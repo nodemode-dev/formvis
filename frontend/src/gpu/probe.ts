@@ -73,7 +73,7 @@ export function detectedName(p: GpuProbe): string | null {
 
 /** A start that never finished: set before the GPU is touched, cleared once it answers. Found set at the next launch,
  *  it means the last start crashed or hung, and Use Graphics Processor is turned off, as Photoshop does. */
-const STARTING = 'sonny.gpu.starting';
+const STARTING = 'formvis.gpu.starting';
 export function gpuStartFailedLastTime(): boolean { try { return localStorage.getItem(STARTING) === '1'; } catch { return false; } }
 export function markGpuStarting(): void { try { localStorage.setItem(STARTING, '1'); } catch { /* no storage, no marker */ } }
 export function markGpuStarted(): void { try { localStorage.removeItem(STARTING); } catch { /* no storage, no marker */ } }

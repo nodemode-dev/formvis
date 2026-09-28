@@ -2,7 +2,7 @@ import pytest
 
 DOC = """async ([kind]) => {
   const E = await import('/src/engine/index.ts');
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(160, 90, 'A', 'white');
   const p = e.current, bg = p.activeLayer, c = bg.raster.ctx;
   const g1 = c.createLinearGradient(0, 0, 160, 0); g1.addColorStop(0, 'rgb(10,200,60)'); g1.addColorStop(1, 'rgb(240,30,180)');
@@ -26,7 +26,7 @@ DOC = """async ([kind]) => {
 
 FRAME = """async ([mod, cls]) => {
   const E = await import('/src/engine/index.ts'), D = await import(mod);
-  const e = window.sonny.engine, W = 200, H = 130, ox = 20, oy = 20, dw = 160, dh = 90;
+  const e = window.formvis.engine, W = 200, H = 130, ox = 20, oy = 20, dw = 160, dh = 90;
   const A = [204, 204, 204], B = [255, 255, 255], cell = 8, rect = [ox, oy, ox + dw, oy + dh];
   const gl = e.gpuLayers();
   if (!('layers' in gl)) return { error: gl.reason };
@@ -84,18 +84,18 @@ def test_a_per_channel_adjustment_draws_on_the_gpu_as_the_cpu_does(page, kind):
 
 def test_a_discontinuous_adjustment_keeps_the_document_on_the_cpu_by_name(page):
     page.evaluate(DOC, ["threshold"])
-    assert page.evaluate("window.sonny.engine.gpuLayers().reason") == "a Threshold adjustment layer"
+    assert page.evaluate("window.formvis.engine.gpuLayers().reason") == "a Threshold adjustment layer"
 
 
 def test_on_screen_webgl2_draws_a_levels_document(page):
     try:
-        page.evaluate("localStorage.setItem('sonny.prefs', JSON.stringify({ renderer: 'webgl2' }))")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate("localStorage.setItem('formvis.prefs', JSON.stringify({ renderer: 'webgl2' }))")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
         page.evaluate(DOC, ["levels"])
         page.wait_for_function("document.querySelector('.cv-st-gpu').textContent === 'GPU: WebGL2'")
         page.wait_for_timeout(300)
         assert page.evaluate("!document.querySelector('.cv-scene-gl').hidden")
         assert page.evaluate("document.querySelector('.cv-st-gpu').textContent") == "GPU: WebGL2"   # not sent back to the CPU
     finally:
-        page.evaluate("localStorage.removeItem('sonny.prefs')")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate("localStorage.removeItem('formvis.prefs')")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")

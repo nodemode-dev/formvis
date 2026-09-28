@@ -2,7 +2,7 @@ import pytest
 
 SETUP = """async () => {
   const E = await import('/src/engine/index.ts');
-  const e = window.sonny.engine;
+  const e = window.formvis.engine;
   e.newDocument(160, 90, 'D', 'white');
   const p = e.current, bg = p.activeLayer, c = bg.raster.ctx;
   const g1 = c.createLinearGradient(0, 0, 160, 0); g1.addColorStop(0, 'rgb(10,200,60)'); g1.addColorStop(1, 'rgb(240,30,180)');
@@ -18,7 +18,7 @@ SETUP = """async () => {
 FRAME = """async ([zoom, ox, oy]) => {
   const E = await import('/src/engine/index.ts');
   const D = await import('/src/gpu/display.ts');
-  const e = window.sonny.engine, W = 240, H = 160, dw = 160, dh = 90;
+  const e = window.formvis.engine, W = 240, H = 160, dw = 160, dh = 90;
   const disp = await D.GpuDisplay.create(document.createElement('canvas'));
   if (!disp) return { error: 'no WebGPU display' };
   const x0 = Math.max(0, Math.floor(ox)), y0 = Math.max(0, Math.floor(oy)), x1 = Math.min(W, Math.ceil(ox + dw * zoom)), y1 = Math.min(H, Math.ceil(oy + dh * zoom));
@@ -56,8 +56,8 @@ def test_the_display_frame_matches_the_cpu_path(page, zoom, ox, oy):
 
 def test_choosing_webgpu_always_ends_with_a_drawn_canvas_and_a_true_status(page):
     try:
-        page.evaluate("localStorage.setItem('sonny.prefs', JSON.stringify({ renderer: 'webgpu' }))")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate("localStorage.setItem('formvis.prefs', JSON.stringify({ renderer: 'webgpu' }))")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
         page.evaluate(SETUP)
         # Either the GPU draws it, or (as on a software adapter, which cannot present to a canvas) the device is lost and
         # the CPU draws it, saying so; never a blank canvas or a status that claims the GPU.
@@ -72,24 +72,24 @@ def test_choosing_webgpu_always_ends_with_a_drawn_canvas_and_a_true_status(page)
         on_gpu = page.evaluate("document.querySelector('.cv-st-gpu').textContent === 'GPU: WebGPU'")
         assert page.evaluate("document.querySelector('.cv-scene-gpu').hidden") is (not on_gpu)
         if not on_gpu:
-            # After a GPU reset the browser restores the 2D canvases blank; sonny redraws on contextrestored.
-            page.wait_for_function("""(() => { const v = window.sonny.engine.current.viewport, c = document.querySelector('.cv-scene'),
+            # After a GPU reset the browser restores the 2D canvases blank; formvis redraws on contextrestored.
+            page.wait_for_function("""(() => { const v = window.formvis.engine.current.viewport, c = document.querySelector('.cv-scene'),
               k = c.width / c.getBoundingClientRect().width, d = c.getContext('2d').getImageData(Math.round((v.panX + 5) * k), Math.round((v.panY + 45) * k), 1, 1).data;
               return d[3] === 255 && d[1] > 120; })()""", timeout=8000)   # the background gradient's green end, drawn by the CPU
     finally:
-        page.evaluate("localStorage.removeItem('sonny.prefs')")
-        page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+        page.evaluate("localStorage.removeItem('formvis.prefs')")
+        page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
 
 
 def test_the_engine_names_what_the_gpu_cannot_draw_yet(page):
     page.evaluate(SETUP)
-    assert len(page.evaluate("window.sonny.engine.gpuLayers().layers")) == 2
-    assert page.evaluate("window.sonny.commands.run('add-mask')")
-    assert page.evaluate("'layers' in window.sonny.engine.gpuLayers()")               # masks draw on the GPU since 1.22.0
-    page.evaluate("window.sonny.engine.undo()")
-    assert len(page.evaluate("window.sonny.engine.gpuLayers().layers")) == 2
-    page.evaluate("window.sonny.engine.current.activeLayer.blend = 'dissolve'")
-    assert page.evaluate("window.sonny.engine.gpuLayers().reason") == "a layer in Dissolve mode"
+    assert len(page.evaluate("window.formvis.engine.gpuLayers().layers")) == 2
+    assert page.evaluate("window.formvis.commands.run('add-mask')")
+    assert page.evaluate("'layers' in window.formvis.engine.gpuLayers()")               # masks draw on the GPU since 1.22.0
+    page.evaluate("window.formvis.engine.undo()")
+    assert len(page.evaluate("window.formvis.engine.gpuLayers().layers")) == 2
+    page.evaluate("window.formvis.engine.current.activeLayer.blend = 'dissolve'")
+    assert page.evaluate("window.formvis.engine.gpuLayers().reason") == "a layer in Dissolve mode"
 
 
 def test_destroying_a_display_on_purpose_is_not_a_lost_device(page):

@@ -2,10 +2,10 @@
 set -e
 source "$(dirname "$0")/lib.sh"
 cv_venv
-cd "$SONNY_ROOT/backend"
+cd "$FORMVIS_ROOT/backend"
 if [ "$(cv_os)" = macos ]; then pip install -r requirements_desktop_macos.txt; else pip install -r requirements_desktop.txt; fi
 if ! command -v cargo >/dev/null 2>&1; then
-  cv_say "Rust is not installed. Install it from https://rustup.rs then rerun ./sonny install-desktop"
+  cv_say "Rust is not installed. Install it from https://rustup.rs then rerun ./formvis install-desktop"
   exit 1
 fi
 if [ "$(cv_os)" = linux ] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; then
@@ -13,5 +13,5 @@ if [ "$(cv_os)" = linux ] && ! pkg-config --exists webkit2gtk-4.1 2>/dev/null; t
   cv_say "sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev patchelf"
   exit 1
 fi
-[ -x "$SONNY_ROOT/frontend/node_modules/.bin/tauri" ] || ( cd "$SONNY_ROOT/frontend" && npm install )
+[ -x "$FORMVIS_ROOT/frontend/node_modules/.bin/tauri" ] || ( cd "$FORMVIS_ROOT/frontend" && npm install )
 cv_say "desktop toolchain ready: rustc $(rustc --version | awk '{print $2}')"

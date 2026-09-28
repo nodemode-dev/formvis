@@ -184,7 +184,7 @@ export class ActionsDialog extends Dialog {
     if (!f) return;
     try {
       const more = actionsFrom(JSON.parse(await f.text()));
-      if (!more.length) { setText(this.note, `${f.name} holds no actions sonny can play.`); return; }
+      if (!more.length) { setText(this.note, `${f.name} holds no actions formvis can play.`); return; }
       this.store.add(more);
       this.pick.value = String(this.store.list.length - 1);
       this.sync();

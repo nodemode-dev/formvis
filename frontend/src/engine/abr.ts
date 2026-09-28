@@ -1,4 +1,4 @@
-/** Photoshop brush files (.abr), read for their sampled tips, written for sonny with GIMP's and Krita's readers as the
+/** Photoshop brush files (.abr), read for their sampled tips, written for formvis with GIMP's and Krita's readers as the
  *  reference for the layout. Two families exist. Versions 1 and 2: a count, then each brush's type and size; sampled
  *  brushes (type 2) carry spacing, a name (version 2), bounds, depth and pixels, raw or PackBits-compressed by row.
  *  Versions 6 to 10: a subversion, then 8BIM sections; 'samp' holds the sampled tips, each a length, a key and header

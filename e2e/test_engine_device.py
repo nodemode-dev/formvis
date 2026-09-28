@@ -3,9 +3,9 @@ MODE = DLG + " .cv-engine-mode"
 
 
 def reset(page):
-    page.evaluate("localStorage.removeItem('sonny.prefs')")
+    page.evaluate("localStorage.removeItem('formvis.prefs')")
     page.evaluate("fetch('http://127.0.0.1:8190/api/compute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device: 'auto' }) })")
-    page.reload(); page.wait_for_function("window.sonny && window.sonny.engine")
+    page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
 
 
 def test_the_engine_processor_is_chosen_and_the_engine_says_what_it_uses(page):

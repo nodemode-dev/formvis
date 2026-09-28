@@ -1,7 +1,7 @@
 import type { Commands } from './commands';
 import type { MenuDef, MenuItem as MenuSpec } from './menu';
 
-/** sonny's menus in the macOS menu bar when it runs as the desktop app (Phase 21, UI_SPEC.md section 2: the target's
+/** formvis's menus in the macOS menu bar when it runs as the desktop app (Phase 21, UI_SPEC.md section 2: the target's
  *  menus are the system's). Built from the same MenuDef list and command registry as the in-window menu bar, so the two
  *  never differ: labels, order, submenus, separators and shortcuts (Mod as CmdOrCtrl). An application menu comes first,
  *  as macOS expects (About, Preferences, Quit). Enabled states follow the app; the menu is rebuilt when documents open or
@@ -9,7 +9,7 @@ import type { MenuDef, MenuItem as MenuSpec } from './menu';
  *  the in-window menu bar stays. A shortcut Tauri cannot express is left off its item rather than failing the menu. */
 export const wantsNativeMenus = (): boolean => '__TAURI_INTERNALS__' in window && /Mac/.test(navigator.platform);
 
-/** sonny's key combo ('Mod+Shift+S') as a Tauri accelerator ('CmdOrCtrl+Shift+S'); null for what Tauri has no name for. */
+/** formvis's key combo ('Mod+Shift+S') as a Tauri accelerator ('CmdOrCtrl+Shift+S'); null for what Tauri has no name for. */
 export function accelerator(combo: string | undefined): string | null {
   if (!combo) return null;
   const parts = combo.endsWith('++') ? [...combo.slice(0, -2).split('+'), 'Plus'] : combo.split('+');
@@ -54,8 +54,8 @@ export class NativeMenus {
         return item;
       };
       const top = [];
-      top.push(await api.Submenu.new({ text: 'sonny', items: [
-        await api.PredefinedMenuItem.new({ item: { About: { name: 'sonny' } } }),
+      top.push(await api.Submenu.new({ text: 'formvis', items: [
+        await api.PredefinedMenuItem.new({ item: { About: { name: 'formvis' } } }),
         await api.PredefinedMenuItem.new({ item: 'Separator' }),
         ...(this.commands.get('settings') ? [await make('settings')] : []),
         await api.PredefinedMenuItem.new({ item: 'Separator' }),

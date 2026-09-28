@@ -1,5 +1,5 @@
 MAKE = """async ([from, to, content, offset]) => {
-  const T = await import('/src/engine/text.ts'), P = await import('/src/engine/paths.ts'), e = window.sonny.engine;
+  const T = await import('/src/engine/text.ts'), P = await import('/src/engine/paths.ts'), e = window.formvis.engine;
   e.newDocument(400, 300, 'P', 'white');
   e.textSettings = { ...T.defaultText(), size: 32, family: 'sans-serif' };
   e.setWorkPath({ subpaths: [{ anchors: [P.cornerAt(from), P.cornerAt(to)], closed: false }] });
@@ -39,9 +39,9 @@ def test_type_past_the_path_end_is_not_drawn(page):
 
 def test_edit_type_keeps_the_type_on_its_path(page):
     make(page, {"x": 50, "y": 150}, {"x": 350, "y": 150})
-    before = page.evaluate("(() => { const t = window.sonny.engine.current.activeLayer.transform; return [t.x, t.y]; })()")
-    page.evaluate("""async () => { const e = window.sonny.engine, l = e.current.activeLayer; await e.updateTextLayer(l.id, { ...l.text, content: 'EDITED' }); }""")
-    after = page.evaluate("(() => { const l = window.sonny.engine.current.activeLayer; return [l.transform.x, l.transform.y, !!l.text.onPath, l.text.content]; })()")
+    before = page.evaluate("(() => { const t = window.formvis.engine.current.activeLayer.transform; return [t.x, t.y]; })()")
+    page.evaluate("""async () => { const e = window.formvis.engine, l = e.current.activeLayer; await e.updateTextLayer(l.id, { ...l.text, content: 'EDITED' }); }""")
+    after = page.evaluate("(() => { const l = window.formvis.engine.current.activeLayer; return [l.transform.x, l.transform.y, !!l.text.onPath, l.text.content]; })()")
     assert after[:2] == before and after[2] and after[3] == "EDITED", (before, after)
 
 
@@ -55,12 +55,12 @@ def test_a_saved_path_reads_back_and_a_bad_one_is_none(page):
 
 
 def test_type_on_path_from_the_menu(page):
-    page.evaluate("window.sonny.engine.newDocument(400, 300, 'P', 'white'); window.sonny.engine.setWorkPath(null)")
-    assert page.evaluate("window.sonny.commands.run('type-on-path')") is False           # no path, nothing to set type on
+    page.evaluate("window.formvis.engine.newDocument(400, 300, 'P', 'white'); window.formvis.engine.setWorkPath(null)")
+    assert page.evaluate("window.formvis.commands.run('type-on-path')") is False           # no path, nothing to set type on
     page.evaluate("""async () => { const P = await import('/src/engine/paths.ts');
-      window.sonny.engine.setWorkPath({ subpaths: [{ anchors: [P.cornerAt({ x: 60, y: 200 }), P.cornerAt({ x: 340, y: 120 })], closed: false }] }); }""")
-    assert page.evaluate("window.sonny.commands.run('type-on-path')")
+      window.formvis.engine.setWorkPath({ subpaths: [{ anchors: [P.cornerAt({ x: 60, y: 200 }), P.cornerAt({ x: 340, y: 120 })], closed: false }] }); }""")
+    assert page.evaluate("window.formvis.commands.run('type-on-path')")
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     dlg.locator("input[type=text]").fill("Along the line")
     dlg.locator(".cv-dialog-foot button", has_text="OK").click()
-    page.wait_for_function("window.sonny.engine.current.activeLayer?.text?.onPath && window.sonny.engine.current.activeLayer.text.content === 'Along the line'")
+    page.wait_for_function("window.formvis.engine.current.activeLayer?.text?.onPath && window.formvis.engine.current.activeLayer.text.content === 'Along the line'")

@@ -193,7 +193,7 @@ export class Stage {
       if (!reason && 'layers' in gl) gpuLayers = gl.layers;
       if (reason !== this.gpuReason) {
         this.gpuReason = reason;
-        console.info(reason ? `sonny: drawing on the CPU, because ${reason}` : 'sonny: drawing on the GPU (WebGPU)');
+        console.info(reason ? `formvis: drawing on the CPU, because ${reason}` : 'formvis: drawing on the GPU (WebGPU)');
         this.gpuState?.(reason);
       }
       if (gpuLayers) region = null;
