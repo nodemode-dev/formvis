@@ -7,7 +7,7 @@ import type { Pt, Rect } from './types';
  *  they become corner anchors of a closed `VectorPath`, so the shape stays an editable vector layer. Each generator
  *  is fitted to the dragged box, as Photoshop's Polygon and custom shapes are. Lines are arrows without heads. */
 
-export type PathShapeKind = 'polygon' | 'star' | 'line' | 'arrow' | 'heart' | 'custom';
+export type PathShapeKind = 'polygon' | 'star' | 'line' | 'arrow' | 'heart' | 'custom' | 'triangle';
 export interface PathShapeOptions { sides: number; starInset: number; weight: number; headLength: number; headWidth: number; custom: string }
 export const DEFAULT_PATH_SHAPE: PathShapeOptions = { sides: 5, starInset: 50, weight: 4, headLength: 24, headWidth: 24, custom: 'check' };
 
@@ -51,8 +51,13 @@ function fit(pts: Pt[], box: Rect): Pt[] {
 const closed = (pts: Pt[]): VectorPath => ({ subpaths: [{ anchors: pts.map(cornerAt), closed: true }] });
 
 /** The closed path for a boxed shape (polygon, star, heart, or a custom shape from the library) fitted to `box`. */
-export function boxedShapePath(kind: 'polygon' | 'star' | 'heart' | 'custom', box: Rect, o: PathShapeOptions): VectorPath {
+export function boxedShapePath(kind: 'polygon' | 'star' | 'heart' | 'custom' | 'triangle' | 'rectangle' | 'ellipse', box: Rect, o: PathShapeOptions & { cornerRadius?: number }): VectorPath {
   if (kind === 'custom') return customShapePath(o.custom, box);
+  // The Triangle (1.49.8, the owner's tool list): its apex at the top centre, its base along the bottom.
+  if (kind === 'triangle') return closed([{ x: box.x + box.w / 2, y: box.y }, { x: box.x + box.w, y: box.y + box.h }, { x: box.x, y: box.y + box.h }]);
+  // Rectangles and ellipses as paths (Path and Pixels modes, or a stroke): a rounded rectangle when it has a radius;
+  // an ellipse as four arcs.
+  if (kind === 'rectangle' || kind === 'ellipse') return kind === 'ellipse' ? ellipsePath(box) : roundRectPath(box, Math.max(0, Math.min(o.cornerRadius ?? 0, box.w / 2, box.h / 2)));
   const n = Math.max(3, Math.min(100, Math.round(o.sides)));
   const pts = kind === 'polygon' ? ngonPoints(0, 0, 1, n) : kind === 'star' ? starPoints(0, 0, 1, Math.max(0.01, 1 - Math.min(99, Math.max(1, o.starInset)) / 100), n) : heartPoints(0, 0, 1);
   return closed(fit(pts, box));
@@ -62,4 +67,27 @@ export function boxedShapePath(kind: 'polygon' | 'star' | 'heart' | 'custom', bo
 export function linePath(kind: 'line' | 'arrow', a: Pt, b: Pt, o: PathShapeOptions): VectorPath {
   const w = Math.max(1, o.weight);
   return closed(arrowPoints(a, b, kind === 'arrow' ? Math.max(1, o.headLength) : 0, kind === 'arrow' ? Math.max(w, o.headWidth) : 0, w));
+}
+
+const KAPPA = 0.5523;
+const anchor = (x: number, y: number, inX = x, inY = y, outX = x, outY = y): VectorPath['subpaths'][number]['anchors'][number] => ({ x, y, inX, inY, outX, outY });
+
+function ellipsePath(b: Rect): VectorPath {
+  const cx = b.x + b.w / 2, cy = b.y + b.h / 2, rx = b.w / 2, ry = b.h / 2, kx = rx * KAPPA, ky = ry * KAPPA;
+  return { subpaths: [{ closed: true, anchors: [
+    anchor(cx, b.y, cx - kx, b.y, cx + kx, b.y), anchor(b.x + b.w, cy, b.x + b.w, cy - ky, b.x + b.w, cy + ky),
+    anchor(cx, b.y + b.h, cx + kx, b.y + b.h, cx - kx, b.y + b.h), anchor(b.x, cy, b.x, cy + ky, b.x, cy - ky),
+  ] }] };
+}
+
+function roundRectPath(b: Rect, r: number): VectorPath {
+  const { x, y, w, h } = b;
+  if (r <= 0) return closed([{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }]);
+  const k = r * KAPPA;
+  return { subpaths: [{ closed: true, anchors: [
+    anchor(x + r, y, x + r - k, y), anchor(x + w - r, y, x + w - r, y, x + w - r + k, y),
+    anchor(x + w, y + r, x + w, y + r - k), anchor(x + w, y + h - r, x + w, y + h - r, x + w, y + h - r + k),
+    anchor(x + w - r, y + h, x + w - r + k, y + h), anchor(x + r, y + h, x + r, y + h, x + r - k, y + h),
+    anchor(x, y + h - r, x, y + h - r + k), anchor(x, y + r, x, y + r, x, y + r - k),
+  ] }] };
 }

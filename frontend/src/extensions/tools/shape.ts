@@ -5,11 +5,11 @@ import { dragRect } from './marquee';
 
 let draft: { anchor: Pt; point: Pt; shiftAtPress: boolean; altAtPress: boolean; square: boolean; center: boolean } | null = null;
 
-const NOUN: Record<string, string> = { rectangle: 'a rectangle', ellipse: 'an ellipse', polygon: 'a polygon', star: 'a star', heart: 'a heart', line: 'a line', arrow: 'an arrow', custom: 'a custom shape' };
-const KINDS = ['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'heart', 'custom'] as const;
+const NOUN: Record<string, string> = { triangle: 'a triangle', rectangle: 'a rectangle', ellipse: 'an ellipse', polygon: 'a polygon', star: 'a star', heart: 'a heart', line: 'a line', arrow: 'an arrow', custom: 'a custom shape' };
+const KINDS = ['rectangle', 'ellipse', 'triangle', 'polygon', 'star', 'line', 'arrow', 'heart', 'custom'] as const;
 /** Each kind as a flyout entry with its own icon, named as Photoshop's shape tools. */
-const SHAPE_ICONS: Record<string, string> = { rectangle: 'tRect', ellipse: 'tEllipseShape', polygon: 'tPolygon', star: 'tStar', line: 'tLine', arrow: 'tArrow', heart: 'tHeart', custom: 'tCustomShape' };
-const SHAPE_NAMES: Record<(typeof KINDS)[number], string> = { rectangle: 'Rectangle', ellipse: 'Ellipse', polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', custom: 'Custom Shape' };
+const SHAPE_ICONS: Record<string, string> = { triangle: 'tTriangle', rectangle: 'tRect', ellipse: 'tEllipseShape', polygon: 'tPolygon', star: 'tStar', line: 'tLine', arrow: 'tArrow', heart: 'tHeart', custom: 'tCustomShape' };
+const SHAPE_NAMES: Record<(typeof KINDS)[number], string> = { triangle: 'Triangle', rectangle: 'Rectangle', ellipse: 'Ellipse', polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', custom: 'Custom Shape' };
 const lineLike = (k: string): boolean => k === 'line' || k === 'arrow';
 
 export const shapeTool: Tool = {
@@ -17,8 +17,8 @@ export const shapeTool: Tool = {
   icon: (e) => SHAPE_ICONS[e.shapeSettings.kind] ?? 'tRect',
   variants: (e) => KINDS.map((k) => ({ id: k, label: SHAPE_NAMES[k], icon: SHAPE_ICONS[k], active: () => e.shapeSettings.kind === k, pick: () => { e.shapeSettings.kind = k; e.emit('options', null); } })),
   hint: (e) => lineLike(e.shapeSettings.kind)
-    ? `Drag to draw ${NOUN[e.shapeSettings.kind]} in the foreground color on a new shape layer · Shift after starting snaps to 45 degrees · Shift+U switches shape`
-    : `Drag to draw ${NOUN[e.shapeSettings.kind]} in the foreground color on a new shape layer · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape`,
+    ? `Drag to draw ${NOUN[e.shapeSettings.kind]} (${e.shapeSettings.mode === 'path' ? 'as a path' : e.shapeSettings.mode === 'pixels' ? 'in pixels on the active layer' : 'on a new shape layer'}) · Shift after starting snaps to 45 degrees · Shift+U switches shape`
+    : `Drag to draw ${NOUN[e.shapeSettings.kind]} (${e.shapeSettings.mode === 'path' ? 'as a path' : e.shapeSettings.mode === 'pixels' ? 'in pixels on the active layer' : 'on a new shape layer'}) · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape`,
   cursor: () => 'crosshair',
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
@@ -36,11 +36,9 @@ export const shapeTool: Tool = {
     draft = null;
     ctx.engine.emit('overlay', null);
     if (!d) return;
-    const kind = ctx.engine.shapeSettings.kind;
-    if (lineLike(kind)) { ctx.engine.createPathShape(d.anchor, snapped(d)); return; }
+    // One entry by mode (a shape layer, the work path, or pixels) with the bar's fill and stroke (1.49.8).
     const r = dragRect(d.anchor, d.point, d.square, d.center);
-    if (kind === 'rectangle' || kind === 'ellipse') { if (r.w >= 1 && r.h >= 1) ctx.engine.createShape(r); }
-    else ctx.engine.createPathShape({ x: r.x, y: r.y }, { x: r.x + r.w, y: r.y + r.h });
+    ctx.engine.drawShape(d.anchor, lineLike(ctx.engine.shapeSettings.kind) ? snapped(d) : d.point, r);
   },
   keydown(ctx, e) {
     if (!(e.shiftKey && e.code === 'KeyU' && !e.metaKey && !e.ctrlKey && !e.altKey)) return false;
@@ -85,6 +83,12 @@ export const shapeTool: Tool = {
     const s = e.shapeSettings, set = (patch: Partial<typeof s>): void => { Object.assign(s, patch); e.emit('options', null); };
     return [
       { kind: 'title', text: 'Shape' },
+      // Photoshop's Mode, Fill and Stroke (the owner's tool list): a shape layer, a path, or pixels; each colour the
+      // foreground, the background or none; the stroke's width.
+      { kind: 'segment', label: 'Mode', choices: [{ id: 'shape', label: 'Shape' }, { id: 'path', label: 'Path' }, { id: 'pixels', label: 'Pixels' }], get: () => s.mode, set: (v) => set({ mode: v as 'shape' | 'path' | 'pixels' }) },
+      { kind: 'segment', label: 'Fill', choices: [{ id: 'fg', label: 'Foreground' }, { id: 'bg', label: 'Background' }, { id: 'none', label: 'None' }], get: () => s.fill, set: (v) => set({ fill: v as 'fg' | 'bg' | 'none' }), when: () => s.mode !== 'path' },
+      { kind: 'segment', label: 'Stroke', choices: [{ id: 'none', label: 'None' }, { id: 'fg', label: 'Foreground' }, { id: 'bg', label: 'Background' }], get: () => s.stroke, set: (v) => set({ stroke: v as 'fg' | 'bg' | 'none' }), when: () => s.mode !== 'path' },
+      { kind: 'range', label: 'Width', min: 0.5, max: 200, unit: 'px', get: () => s.strokeWidth, set: (v: number) => set({ strokeWidth: Math.max(0.5, Math.min(200, v)) }), when: () => s.mode !== 'path' && s.stroke !== 'none' },
       { kind: 'segment', label: 'Shape', choices: KINDS.map((k) => ({ id: k, label: k[0].toUpperCase() + k.slice(1) })), get: () => s.kind, set: (v) => { s.kind = v as typeof s.kind; e.emit('options', null); e.emit('tool', null); } },
       // Each kind's own settings: built once with the bar, shown while that kind is chosen.
       { kind: 'range', label: 'Corner radius', min: 0, max: 500, unit: 'px', get: () => s.cornerRadius, set: (v: number) => set({ cornerRadius: v }), when: () => s.kind === 'rectangle' },

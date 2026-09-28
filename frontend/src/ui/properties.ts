@@ -396,7 +396,7 @@ export class PropertiesColumn {
 
   private paragraph(): void {
     const e = this.engine;
-    const body = el(`<div class="cv-para"><div class="cv-seg" role="group" aria-label="Alignment">${(['left', 'center', 'right'] as const).map((a) => `<button type="button" data-align="${a}" title="Align ${a}" aria-label="Align ${a}">${icon(a === 'left' ? 'alignLeft' : a === 'center' ? 'alignCenter' : 'alignRight', 16)}</button>`).join('')}</div></div>`);
+    const body = el(`<div class="cv-para"><div class="cv-seg" role="group" aria-label="Alignment">${(['left', 'center', 'right', 'justify'] as const).map((a) => `<button type="button" data-align="${a}" title="${a === 'justify' ? 'Justify' : `Align ${a}`}" aria-label="${a === 'justify' ? 'Justify' : `Align ${a}`}">${icon(a === 'left' ? 'alignLeft' : a === 'center' ? 'alignCenter' : a === 'right' ? 'alignRight' : 'alignJustify', 16)}</button>`).join('')}</div></div>`);
     const btns = Array.from(body.querySelectorAll<HTMLButtonElement>('[data-align]'));
     for (const b of btns) b.addEventListener('click', () => setType(e, { align: b.dataset.align as TextSpec['align'] }));
     new PanelGroup(this.root, 'paragraph', [{ id: 'paragraph', label: 'Paragraph', body }], 'Paragraph');

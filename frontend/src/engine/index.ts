@@ -848,9 +848,12 @@ export class Engine {
     const r = renderText(spec), w = r.raster.width, h = r.raster.height, colW = spec.size * spec.lineHeight;
     const x = Math.round(spec.box ? at.x : spec.direction === 'vertical' ? at.x - (w - r.pad - colW / 2) : at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad));
     const y = Math.round(spec.box ? at.y : spec.direction === 'vertical' ? at.y - r.pad : at.y - r.baseline);
-    const d = r.raster.ctx.getImageData(0, 0, w, h).data, a = new Uint8Array(w * h);
+    // Only what lies on the canvas is selected, as Photoshop keeps a selection within it (1.49.7 let it run past).
+    const x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(p.doc.width, x + w), y1 = Math.min(p.doc.height, y + h);
+    if (x1 <= x0 || y1 <= y0) { this.notice('The type lies outside the canvas.'); return; }
+    const cw = x1 - x0, ch = y1 - y0, d = r.raster.ctx.getImageData(x0 - x, y0 - y, cw, ch).data, a = new Uint8Array(cw * ch);
     for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
-    this.applySelection(SelectionMask.cropped(x, y, w, h, a), 'replace', spec.direction === 'vertical' ? 'Vertical Type Mask' : 'Horizontal Type Mask');
+    this.applySelection(SelectionMask.cropped(x0, y0, cw, ch, a), 'replace', spec.direction === 'vertical' ? 'Vertical Type Mask' : 'Horizontal Type Mask');
   }
 
   async createTextLayer(at: Pt, spec: TextSpec): Promise<void> {
@@ -1499,10 +1502,22 @@ export class Engine {
     const path = line ? linePath(kind, a, b, st) : boxedShapePath(kind, { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }, st);
     const look: ShapeStyle = { fill: { ...this.fg }, stroke: null }, r = this.renderShape(path, look);
     if (!r) return;
-    const name = kind === 'custom' ? CUSTOM_SHAPES.find((s) => s.id === st.custom)?.label ?? 'Custom Shape' : { polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart' }[kind];
+    const name = kind === 'custom' ? CUSTOM_SHAPES.find((s) => s.id === st.custom)?.label ?? 'Custom Shape' : { polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', triangle: 'Triangle' }[kind];
     let n = 1;
     while (p.doc.layers.some((l) => l.name === `${name} ${n}`)) n++;
     this.insertRasterLayer(r.raster, `${name} ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: null, origin: { x: r.x, y: r.y } } }, `New ${name}`);
+  }
+
+  /** A vector shape layer from a path, with its fill and stroke (drawShape's; createPathShape always had no stroke). */
+  private createVectorShape(path: VectorPath, look: ShapeStyle, name: string): void {
+    const p = this.current;
+    if (!p) return;
+    const r = this.renderShape(path, look);
+    if (!r) return;
+    const st = this.shapeSettings, label = st.kind === 'custom' ? CUSTOM_SHAPES.find((c) => c.id === st.custom)?.label ?? name : name;
+    let n = 1;
+    while (p.doc.layers.some((l) => l.name === `${label} ${n}`)) n++;
+    this.insertRasterLayer(r.raster, `${label} ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, `New ${label}`);
   }
 
   /** Layer > Shape Color from Foreground: the active shape layer refilled in the foreground colour. */
@@ -1673,8 +1688,8 @@ export class Engine {
     this.refresh();
   }
 
-  private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D, vp: VectorPath) => void): void {
-    const vp = this.workPath;
+  private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D, vp: VectorPath) => void, given?: VectorPath): void {
+    const vp = given ?? this.workPath;
     if (!vp || !pathBounds(vp)) { this.notice('Draw a path with the Pen tool first.'); return; }
     const shape = tracePath(vp);
     this.regionEdit(name, ({ raster, target, rect, cover }) => {
@@ -3796,7 +3811,44 @@ export class Engine {
   gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false };
   /** Dialogs a tool's options can open; the app fills these in, since tools only see the engine. */
   uiHooks: { gradientEditor?: () => void; importBrushes?: () => void } = {};
-  shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number } & PathShapeOptions = { kind: 'rectangle', cornerRadius: 0, ...DEFAULT_PATH_SHAPE };
+  /** The shape tools' settings. mode (1.49.8, the owner's tool list), as Photoshop's: a shape layer, the work path, or
+   *  pixels on the active layer; fill and stroke each the foreground, the background or none, and the stroke's width. */
+  shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number } & PathShapeOptions =
+    { kind: 'rectangle', cornerRadius: 0, mode: 'shape', fill: 'fg', stroke: 'none', strokeWidth: 3, ...DEFAULT_PATH_SHAPE };
+
+  /** The shape tools' drag, by mode: a shape layer (a filled rectangle or ellipse without a stroke stays a live shape;
+   *  anything else a vector layer with the fill and stroke), the outline added to the work path, or painted pixels. */
+  drawShape(a: Pt, b: Pt, rect: Rect): void {
+    const p = this.current, st = this.shapeSettings, kind = st.kind;
+    if (!p) return;
+    const line = kind === 'line' || kind === 'arrow';
+    if (line ? Math.hypot(b.x - a.x, b.y - a.y) < 2 : rect.w < 1 || rect.h < 1) return;
+    const colour = (c: 'fg' | 'bg' | 'none'): RGB | null => (c === 'fg' ? { ...this.fg } : c === 'bg' ? { ...this.bg } : null);
+    const fill = line ? colour(st.fill === 'none' ? 'fg' : st.fill) : colour(st.fill), strokeC = colour(st.stroke);
+    const look: ShapeStyle = { fill, stroke: strokeC ? { color: strokeC, width: Math.max(0.5, st.strokeWidth) } : null };
+    if (!look.fill && !look.stroke) { this.notice('Choose a fill or a stroke for the shape.'); return; }
+    const path = line ? linePath(kind as 'line' | 'arrow', a, b, st) : boxedShapePath(kind as 'polygon' | 'star' | 'heart' | 'custom' | 'triangle' | 'rectangle' | 'ellipse', rect, st);
+    const name = { rectangle: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', custom: 'Custom Shape' }[kind];
+    if (st.mode === 'path') {
+      // Path: the outline joins the work path (one undoable edit when there is one), as Photoshop's.
+      const vp = this.workPath;
+      this.beginPathEdit();
+      this.setWorkPath({ subpaths: [...(vp?.subpaths ?? []), ...path.subpaths] });
+      this.endPathEdit();
+      return;
+    }
+    if (st.mode === 'pixels') {
+      // Pixels: painted into the active layer, fill then stroke, in one step.
+      this.paintPath(name, (c, shape) => {
+        if (look.fill) { c.fillStyle = rgbCss(look.fill); c.fill(shape); }
+        if (look.stroke) { c.strokeStyle = rgbCss(look.stroke.color); c.lineWidth = look.stroke.width; c.lineJoin = 'miter'; c.stroke(shape); }
+      }, path);
+      return;
+    }
+    if ((kind === 'rectangle' || kind === 'ellipse') && look.fill && !look.stroke) { this.createShape(rect, look.fill); return; }
+    this.createVectorShape(path, look, name);
+  }
+
   clipboard: { surface: Surface; x: number; y: number; w: number; h: number; stamp: string } | null = null;
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };
 
@@ -4590,12 +4642,12 @@ export class Engine {
     return r;
   }
 
-  createShape(rect: Rect): void {
+  createShape(rect: Rect, color: RGB = this.fg): void {
     const r = integral(rect);
     if (r.w < 1 || r.h < 1 || !this.current) return;
     const st = this.shapeSettings;
     const kind = st.kind === 'ellipse' ? 'Ellipse' : 'Rectangle';
-    const style = { kind, red: this.fg.r / 255, green: this.fg.g / 255, blue: this.fg.b / 255, cornerRadius: st.kind === 'rectangle' ? st.cornerRadius : 0 };
+    const style = { kind, red: color.r / 255, green: color.g / 255, blue: color.b / 255, cornerRadius: st.kind === 'rectangle' ? st.cornerRadius : 0 };
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
