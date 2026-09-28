@@ -2,6 +2,49 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The tool audit, flashes and New Document · _v1.50.3 (engine/index.ts, engine/stroke.ts; extensions/tools/brush.ts, eraser.ts, bucket.ts, type.ts, marquee.ts, lasso.ts, quick-select.ts, object-select.ts; ui/app-dialogs.ts, ui/properties.ts; backend/app/services/segment.py)
+
+New Document's note and its size by mode; the Properties icon written only when it changes; `Engine.brushBlend`, `setBrushBlend` (Photoshop's Mode: Normal, Behind, Clear and the modes the canvas draws), the bucket's modes filtered alike; the Brush's Smoothing and Angle; `StrokeStyle.square` and the Eraser's Block, Flow and Erase to History; Type's Font Style and Warp Text; Select and Mask on the selection tools; `segment.available` without importing torch. Removed from frontend:
+
+```text
+  beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; autoErase?: boolean; name?: string } = {}): boolean {
+    const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : keepAlpha ? 'source-atop' : this.brushMode === 'erase' ? 'destination-out' : 'source-over';
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased }, op, p.selection);
+export interface StrokeStyle { bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
+    for (let y = Math.floor(cy - rr); y <= Math.ceil(cy + rr); y++) {
+  down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose); } },
+  move(ctx, p) { hoverPt = p.doc; ctx.engine.strokeTo(p.doc, p.pressure, p.pose); ctx.engine.emit('overlay', null); },
+  up(ctx) { ctx.engine.endStroke(); },
+    { kind: 'segment', label: 'Mode', choices: [{ id: 'paint', label: 'Paint' }, { id: 'erase', label: 'Erase' }], get: () => e.brushMode, set: (v) => e.setBrushMode(v as 'paint' | 'erase') },
+import { BLEND_MODES, allPatterns } from '../../engine';
+    { kind: 'select', label: 'Mode', choices: BLEND_MODES.map((m) => ({ id: m.id, label: m.label })), get: () => e.bucket.mode, set: (v: string) => e.setBucket({ mode: v as typeof e.bucket.mode }) },
+let hover: Pt | null = null, mode: 'brush' | 'pencil' = 'brush', before: 'paint' | 'erase' = 'paint';
+    before = ctx.engine.brushMode;
+    ctx.engine.setBrushMode('erase');
+    if (!ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose, { aliased: mode === 'pencil', name: 'Eraser' })) ctx.engine.setBrushMode(before);
+  up(ctx) { ctx.engine.endStroke(); ctx.engine.setBrushMode(before); },
+  cancel(ctx) { ctx.engine.cancelStroke(); ctx.engine.setBrushMode(before); },
+    { kind: 'segment', label: 'Mode', choices: [{ id: 'brush', label: 'Brush' }, { id: 'pencil', label: 'Pencil' }], get: () => mode, set: (v) => { mode = v as 'brush' | 'pencil'; e.emit('options', null); } },
+import { dashed, type Tool } from '../registry';
+    { kind: 'toggle', label: 'Bold', get: () => e.textSettings.bold, set: (v) => setType(e, { bold: v }) },
+    { kind: 'toggle', label: 'Italic', get: () => e.textSettings.italic, set: (v) => setType(e, { italic: v }) },
+    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), label('Background Contents', this.fill), ab, this.summary);
+    const mb = (this.px.w * this.px.h * 3) / (1024 * 1024);
+      tile.innerHTML = a ? icon(kindIcon(a), 18) : '';
+```
+
+Removed from backend:
+
+```text
+    try:
+        import sam2  # noqa: F401
+        import torch  # noqa: F401
+        return True
+    except Exception:
+```
+
+Nothing removed from src-tauri.
+
 ## Paint targets, scrollbars, colour modes and Wet Edges · _v1.50.2 (engine/index.ts, engine/types.ts, engine/stroke.ts; io/project-io.ts; ui/app-dialogs.ts, ui/tabs.ts; app.ts; styles/scrollbars.css)
 
 `Engine.paintable` as Photoshop decides (a group says so; an adjustment layer paints its mask through `target`; type, shape and smart-object layers ask `askRasterize`); empty layers read as transparent by the Paint Bucket, Quick Selection and the Magic Wand; `scrollbars.css` hides every scrollbar; `DocMode`, `Doc.mode`, `Doc.palette`; `Engine.convertMode` (Grayscale keeping type, shapes and vectors editable; Bitmap by threshold or dither; Indexed exact or adaptive, `paletteFor`), `flattenImage`, `setDocumentMode`, `inMode` with the foreground and background as accessors; `ModeDialog`; New Document's modes; the tab's mode; the project file's mode and palette; Wet Edges on the whole stroke (`wetInner`, `wetMark`). Removed from frontend:

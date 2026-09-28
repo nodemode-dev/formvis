@@ -2,6 +2,24 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.50.3 · 2026-09-28
+
+### Fixed: faults found in 1.50.2
+
+- New Document shows its note that 16 and 32 bit, CMYK and Lab are not available yet (1.50.2 said it did and did not).
+- New Document's size follows the mode (Bitmap was reckoned as RGB).
+- The AI tests no longer skip on a freshly started engine: it finds its AI extras without loading them.
+- The Properties icon was rebuilt on nearly every action (a flash); a test now watches ten common actions for any rebuild.
+
+### Changed: tools against Photoshop's bars (audit, part 1)
+
+- Brush: Mode is Photoshop's (Normal, Behind, Clear and the blend modes), no longer Paint/Erase; Smoothing; Angle.
+- Only blend modes that truly draw are offered, in the Brush and the Paint Bucket (1.49.10's bucket list offered some that painted as Normal).
+- Eraser: Block mode, Flow, and Erase to History.
+- Type: Font Style (Regular, Italic, Bold, Bold Italic) and Warp Text in the bar.
+- Marquee, Lasso, Quick Selection and Object Selection: Select and Mask in the bar.
+- Still to come from the audit: the Brush's Airbrush, and Type's anti-aliasing method and colour swatch.
+
 ## 1.50.2 · 2026-09-28
 
 ### Fixed: tools refused layers Photoshop's take
