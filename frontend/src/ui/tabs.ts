@@ -72,6 +72,11 @@ export class Tabs {
 
   private update(n: HTMLElement, p: Project, current: Project | null): void {
     setText(q(n, '.cv-tab-name'), p.name);
+    // The document's real mode (1.50.2): RGB/8, Gray/8, Bitmap/1 or Index.
+    const md = p.doc.mode ?? 'rgb', mEl = q(n, '.cv-tab-mode');
+    setText(mEl, { rgb: 'RGB/8', grayscale: 'Gray/8', bitmap: 'Bitmap/1', indexed: 'Index' }[md]);
+    const tip = { rgb: 'RGB, 8 bits a channel', grayscale: 'Grayscale, 8 bits', bitmap: 'Bitmap, 1 bit', indexed: `Indexed Color, ${p.doc.palette?.length ?? 0} colours` }[md];
+    if (mEl.getAttribute('title') !== tip) mEl.setAttribute('title', tip);
     setClass(n, 'is-active', p === current);
     setClass(n, 'is-dirty', p.modified);
     n.setAttribute('aria-selected', String(p === current));

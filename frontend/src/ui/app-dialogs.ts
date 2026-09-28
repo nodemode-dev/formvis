@@ -90,8 +90,12 @@ export class NewCanvasDialog extends Dialog {
     const seg = el('<div class="cv-nd-seg"></div>');
     seg.append(...this.orient);
     // What sonny's documents are, as dropdowns that open like any other (disabled, they looked broken: the owner's walkthrough).
-    const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode"><option>RGB Color</option></select>');
+    // Color Mode as Photoshop's New Document offers what sonny can truly make (1.50.2): RGB, Grayscale and Bitmap; the bit
+    // depth follows the mode. 16 and 32 bit, CMYK and Lab need a new pixel engine, and the dialog says so.
+    const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode"><option value="rgb">RGB Color</option><option value="grayscale">Grayscale</option><option value="bitmap">Bitmap</option></select>');
     const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth"><option>8 bit</option></select>');
+    this.mode = mode;
+    mode.addEventListener('change', () => { depth.innerHTML = mode.value === 'bitmap' ? '<option>1 bit</option>' : '<option>8 bit</option>'; this.sync(); });
     const ab = el('<label class="cv-nd-check"></label>');
     ab.append(this.artboards, el('<span>Artboards</span>'));
     const wBox = label('Width', this.wIn), hBox = label('Height', this.hIn), uBox = label('Unit', this.unit);
@@ -156,7 +160,7 @@ export class NewCanvasDialog extends Dialog {
     for (const b of this.orient) b.classList.toggle('is-on', b.dataset.orient === (this.px.h > this.px.w ? 'portrait' : 'landscape'));
     const mb = (this.px.w * this.px.h * 3) / (1024 * 1024);
     (this.summary.querySelector('.cv-nd-size') as HTMLElement).innerHTML = `${this.px.w} × ${this.px.h} <span>px</span>`;
-    setText(this.summary.querySelector('.cv-nd-meta') as HTMLElement, `RGB Color · 8 bit · ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`}`);
+    setText(this.summary.querySelector('.cv-nd-meta') as HTMLElement, `${{ rgb: 'RGB Color · 8 bit', grayscale: 'Grayscale · 8 bit', bitmap: 'Bitmap · 1 bit' }[this.mode?.value as 'rgb' ?? 'rgb'] ?? 'RGB Color · 8 bit'} · ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`}`);
     this.renderCards();
   }
 
@@ -167,10 +171,13 @@ export class NewCanvasDialog extends Dialog {
     this.name.select();
   }
 
+  private mode!: HTMLSelectElement;
+
   private create(): void {
     const fill = this.fill.value as 'transparent' | 'white' | 'background';
     const p = this.engine.newDocument(this.px.w, this.px.h, this.name.value.trim() || 'Untitled', fill, this.ppi());
     if (!p) return;
+    if (this.mode.value !== 'rgb') this.engine.setDocumentMode(this.mode.value as 'grayscale' | 'bitmap');
     if (this.artboards.checked) this.engine.newArtboard({ x: 0, y: 0, w: this.px.w, h: this.px.h }, fill === 'transparent' ? null : { r: 255, g: 255, b: 255 });
     this.close();
   }
@@ -551,4 +558,37 @@ export class AboutDialog extends Dialog {
       : 'Engine offline. Start it with ./sonny boot.');
     this.open();
   }
+}
+
+/** Image > Mode > Bitmap... and Indexed Color... (1.50.2): Photoshop's choices for the conversion. */
+export class ModeDialog extends Dialog {
+  private readonly method = el<HTMLSelectElement>('<select class="cv-input" aria-label="Method"><option value="threshold">50% Threshold</option><option value="dither">Diffusion Dither</option></select>');
+  private readonly colors = el<HTMLInputElement>('<input class="cv-input" type="number" min="2" max="256" value="256" aria-label="Colors">');
+  private readonly dither = el<HTMLInputElement>('<input type="checkbox" aria-label="Dither">');
+  private kind: 'bitmap' | 'indexed' = 'bitmap';
+
+  constructor(private readonly engine: Engine) {
+    super('Mode', 340);
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => {
+      const ok = this.kind === 'bitmap'
+        ? this.engine.convertMode('bitmap', { dither: this.method.value === 'dither' })
+        : this.engine.convertMode('indexed', { colors: Math.max(2, Math.min(256, Math.round(Number(this.colors.value) || 256))), dither: this.dither.checked });
+      if (ok || !this.engine.current) this.close();
+    });
+  }
+
+  show(kind: 'bitmap' | 'indexed'): void {
+    this.kind = kind;
+    this.setTitle(kind === 'bitmap' ? 'Bitmap' : 'Indexed Color');
+    this.body.replaceChildren(el(`<p class="cv-dialog-note">${kind === 'bitmap' ? 'The image is flattened, then made black and white.' : 'The image is flattened, then made of a palette of at most 256 colours: every colour when there are that few, else the ones that best represent it.'}</p>`),
+      kind === 'bitmap' ? rowOf('Method', this.method) : rowOf('Colors', this.colors), ...(kind === 'indexed' ? [rowOf('Dither', this.dither)] : []));
+    this.open();
+  }
+}
+
+function rowOf(label: string, control: HTMLElement): HTMLElement {
+  const r = el(`<label class="cv-dialog-row"><span>${label}</span></label>`);
+  r.append(control);
+  return r;
 }

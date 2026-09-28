@@ -15,7 +15,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { antialiasMask, wandMask } from './kernels';
 import { Project } from './project';
-import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
 import { allPatterns, patternById } from './patterns';
 
 export * from './types';
@@ -162,8 +162,26 @@ export class Engine {
     this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity, tip: preset.tip ?? null });
   }
   brushMode: 'paint' | 'erase' = 'paint';
-  fg: RGB = { r: 0, g: 0, b: 0 };
-  bg: RGB = { r: 255, g: 255, b: 255 };
+  /** The foreground and background, kept to the document's mode (greys, black and white, or the palette), as
+   *  Photoshop's pickers are. */
+  private fgc: RGB = { r: 0, g: 0, b: 0 };
+  private bgc: RGB = { r: 255, g: 255, b: 255 };
+  get fg(): RGB { return this.fgc; }
+  set fg(c: RGB) { this.fgc = this.inMode(c); }
+  get bg(): RGB { return this.bgc; }
+  set bg(c: RGB) { this.bgc = this.inMode(c); }
+  /** A colour as the current document's mode allows it. */
+  inMode(c: RGB, doc = this.current?.doc): RGB {
+    const m = doc?.mode ?? 'rgb';
+    if (m === 'rgb') return { r: c.r, g: c.g, b: c.b };
+    const v = Math.round(0.299 * c.r + 0.587 * c.g + 0.114 * c.b);
+    if (m === 'grayscale') return { r: v, g: v, b: v };
+    if (m === 'bitmap') { const k = v < 128 ? 0 : 255; return { r: k, g: k, b: k }; }
+    const pal = doc?.palette ?? [];
+    let best = pal[0] ?? c, bd = Infinity;
+    for (const q of pal) { const d = (q.r - c.r) ** 2 + (q.g - c.g) ** 2 + (q.b - c.b) ** 2; if (d < bd) { bd = d; best = q; } }
+    return { r: best.r, g: best.g, b: best.b };
+  }
   selectionMode: SelectionMode = 'replace';
   marqueeKind: 'rectangle' | 'ellipse' | 'row' | 'column' = 'rectangle';
   /** The Marquee's Feather (pixels) and Style, as Photoshop's options bar has them: Normal, Fixed Ratio (width to
@@ -2499,7 +2517,30 @@ export class Engine {
     });
   }
 
-  private paintable(l: Layer | null): l is Layer { return !!l && !l.isGroup && !l.adjustment && !this.locked(l, 'pixels'); }
+  /** Whether a layer can take paint, as Photoshop decides (1.50.2, the owner's walkthrough: tools refused layers
+   *  Photoshop paints): a group says so; a locked layer says why; an adjustment layer paints its mask; a type, shape or
+   *  smart-object layer asks to be rasterized first (and is, on OK, so the next action paints). A refusal's own message
+   *  stands alone: the caller's generic one is held back (lockedAt). */
+  private paintable(l: Layer | null): l is Layer {
+    if (!l) return false;
+    if (l.isGroup) { this.notice(`"${l.name}" is a group: choose a layer inside it.`); this.lockedAt = performance.now(); return false; }
+    if (this.locked(l, 'pixels')) return false;
+    if (l.adjustment) return true;
+    const kind = liveText(l) ? 'type layer' : l.smart ? 'Smart Object' : l.vector || l.shape ? 'shape layer' : null;
+    if (kind) {
+      this.lockedAt = performance.now();
+      if (!this.asking && this.askRasterize) {
+        this.asking = true;
+        const id = l.id;
+        void this.askRasterize(l.name, kind).then((ok) => { this.asking = false; if (ok && this.current?.activeLayer?.id === id) this.rasterizeLayer(); });
+      }
+      return false;
+    }
+    return true;
+  }
+  /** Asks to rasterize a layer before painting on it (the app shows Photoshop's question); resolves true on OK. */
+  askRasterize: ((name: string, kind: string) => Promise<boolean>) | null = null;
+  private asking = false;
 
   private ensurePixels(p: Project, layer: Layer): Raster {
     const { width: W, height: H } = p.doc;
@@ -2543,8 +2584,10 @@ export class Engine {
   private target(p: Project): { layer: Layer; target: Target; raster: Raster; local: Mat } | null {
     const l0 = p.activeLayer;
     if (!this.paintable(l0)) return null;
-    const target: Target = p.maskTarget && l0.mask ? 'mask' : 'pixels';
-    const raster = target === 'mask' ? this.ensureMask(p, l0) : this.ensurePixels(p, l0);
+    // An adjustment layer paints its mask, as Photoshop's (made, revealing all, when it has none).
+    if (l0.adjustment && !l0.mask) p.updateLayer(l0.id, { mask: { raster: null, enabled: true, linked: true, placement: null } });
+    const la = p.layer(l0.id) as Layer, target: Target = la.adjustment || (p.maskTarget && la.mask) ? 'mask' : 'pixels';
+    const raster = target === 'mask' ? this.ensureMask(p, la) : this.ensurePixels(p, la);
     const l = p.layer(l0.id) as Layer;
     const t = target === 'mask' ? l.mask?.placement ?? l.transform : l.transform;
     return { layer: l, target, raster, local: placement(t, raster.width, raster.height) };
@@ -2998,11 +3041,13 @@ export class Engine {
     if (this.bucket.sampleAll) surface = renderDoc(this.work, p.doc);
     else {
       const l = p.activeLayer;
-      if (!l?.raster) { this.notice('Select a pixel layer first.'); return; }
-      surface = createSurface(W, H);
-      const c = ctxOf(surface);
-      setMat(c, placement(l.transform, l.raster.width, l.raster.height));
-      c.drawImage(l.raster.canvas, 0, 0);
+      if (!l) { this.notice('Select a layer first.'); return; }
+      surface = createSurface(W, H);   // an empty layer is transparent, and fills (1.50.2)
+      if (l.raster) {
+        const c = ctxOf(surface);
+        setMat(c, placement(l.transform, l.raster.width, l.raster.height));
+        c.drawImage(l.raster.canvas, 0, 0);
+      }
     }
     const data = ctxOf(surface).getImageData(0, 0, W, H).data;
     let mask = wandMask(data, W, H, x, y, this.bucket.tolerance, this.bucket.contiguous, 0);
@@ -3116,11 +3161,13 @@ export class Engine {
     if (this.quick.sampleAll) surface = renderDoc(this.work, p.doc);
     else {
       const l = p.activeLayer;
-      if (!l?.raster) { this.notice('Quick Selection samples the active pixel layer; turn on Sample all layers to use the whole image.'); return; }
-      surface = createSurface(W, H);
-      const c = ctxOf(surface);
-      setMat(c, placement(l.transform, l.raster.width, l.raster.height));
-      c.drawImage(l.raster.canvas, 0, 0);
+      if (!l) { this.notice('Select a layer first.'); return; }
+      surface = createSurface(W, H);   // an empty layer is transparent (1.50.2), as Photoshop's
+      if (l.raster) {
+        const c = ctxOf(surface);
+        setMat(c, placement(l.transform, l.raster.width, l.raster.height));
+        c.drawImage(l.raster.canvas, 0, 0);
+      }
     }
     this.quickState = { project: p, data: ctxOf(surface).getImageData(0, 0, W, H).data, W, H, base: p.selection, grown: new Uint8Array(W * H), box: null, subtract, last: null };
     if (fresh && !subtract) this.quickState.base = null;
@@ -3202,11 +3249,13 @@ export class Engine {
     if (this.wand.sampleAll) surface = renderDoc(this.work, p.doc);
     else {
       const l = p.activeLayer;
-      if (!l?.raster) { this.notice('Magic Wand samples the active pixel layer; turn on Sample all layers to use the whole image.'); return; }
-      surface = createSurface(W, H);
-      const c = ctxOf(surface);
-      setMat(c, placement(l.transform, l.raster.width, l.raster.height));
-      c.drawImage(l.raster.canvas, 0, 0);
+      if (!l) { this.notice('Select a layer first.'); return; }
+      surface = createSurface(W, H);   // an empty layer is transparent (1.50.2), as Photoshop's
+      if (l.raster) {
+        const c = ctxOf(surface);
+        setMat(c, placement(l.transform, l.raster.width, l.raster.height));
+        c.drawImage(l.raster.canvas, 0, 0);
+      }
     }
     const data = ctxOf(surface).getImageData(0, 0, W, H).data;
     const hard = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous, this.wand.sampleSize);
@@ -5888,6 +5937,109 @@ export class Engine {
 
   flattened(): Surface | null { const p = this.current; return p ? renderDoc(this.work, p.doc) : null; }
 
+  /** A new document's mode (New Document's Color Mode): set, not converted, as its pixels are only the background. */
+  setDocumentMode(mode: DocMode): void {
+    const p = this.current;
+    if (!p) return;
+    p.doc = { ...p.doc, mode, palette: undefined };
+    this.fg = this.fgc; this.bg = this.bgc;
+    this.emit('projects', null); this.emit('options', null);
+  }
+
+  /** Layer > Flatten Image, as Photoshop's: the visible image as one Background layer (hidden layers are discarded).
+   *  One step. */
+  flattenImage(): boolean {
+    const p = this.current, flat = this.flattened();
+    if (!p || !flat) return false;
+    return this.edit('Flatten Image', (pp) => {
+      const r = new Raster(pp.doc.width, pp.doc.height);
+      r.ctx.drawImage(flat as CanvasImageSource, 0, 0);
+      r.touch();
+      const l = newLayer('Background', pp.doc, { raster: r });
+      pp.doc = { ...pp.doc, layers: [l] };
+      pp.activeId = l.id;
+      return true;
+    });
+  }
+
+  /** Image > Mode (1.50.2, the owner's walkthrough), as Photoshop's: RGB; Grayscale (each layer to its luminance, type,
+   *  shapes and vectors kept editable with their colours made grey); Bitmap (flattened, then black and white by a 50
+   *  percent threshold or diffusion dither); Indexed Color (flattened, then to a palette: exact at 256 colours or fewer,
+   *  else adaptive by median cut, optionally dithered). New pixels throughout, so one undo restores the old ones. */
+  convertMode(mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean {
+    const p = this.current;
+    if (!p || (p.doc.mode ?? 'rgb') === mode) return false;
+    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color' }[mode];
+    const flat = mode === 'bitmap' || mode === 'indexed' ? this.flattened() : null;
+    const ok = this.edit(label, (pp) => {
+      const W = pp.doc.width, H = pp.doc.height;
+      if (mode === 'rgb') { pp.doc = { ...pp.doc, mode: 'rgb', palette: undefined }; return true; }
+      if (mode === 'grayscale') {
+        const gray = (c: RGB): RGB => { const v = Math.round(0.299 * c.r + 0.587 * c.g + 0.114 * c.b); return { r: v, g: v, b: v }; };
+        const layers = pp.doc.layers.map((l) => {
+          if (!l.raster || l.isGroup) return l;
+          const r = l.raster.clone(), d = r.ctx.getImageData(0, 0, r.width, r.height);
+          for (let i = 0; i < d.data.length; i += 4) { const v = Math.round(0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2]); d.data[i] = d.data[i + 1] = d.data[i + 2] = v; }
+          r.ctx.putImageData(d, 0, 0);
+          r.touch();
+          const patch: Partial<Layer> = { raster: r };
+          if (l.text && liveText(l)) patch.text = { ...l.text, color: gray(l.text.color), rendered: textKey(r) };
+          if (l.vector) patch.vector = { ...l.vector, fill: l.vector.fill ? gray(l.vector.fill) : null, stroke: l.vector.stroke ? { ...l.vector.stroke, color: gray(l.vector.stroke.color) } : null };
+          if (l.shape) { const sh = l.shape as Record<string, unknown>, v = 0.299 * Number(sh.red) + 0.587 * Number(sh.green) + 0.114 * Number(sh.blue); patch.shape = { ...l.shape, red: v, green: v, blue: v }; }
+          return { ...l, ...patch };
+        });
+        pp.doc = { ...pp.doc, layers, mode: 'grayscale', palette: undefined };
+        return true;
+      }
+      if (!flat) return false;
+      const src = ctxOf(flat).getImageData(0, 0, W, H), d = src.data, out = new ImageData(W, H), o = out.data;
+      let palette: RGB[] | undefined;
+      if (mode === 'bitmap') {
+        // Over white, as grey, then black or white: at 50 percent, or diffusing each pixel's error (Floyd-Steinberg).
+        const g = new Float32Array(W * H);
+        for (let i = 0; i < g.length; i++) { const a = d[i * 4 + 3] / 255; g[i] = (0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]) * a + 255 * (1 - a); }
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = y * W + x, v = g[i] < 128 ? 0 : 255, e = g[i] - v;
+          o[i * 4] = o[i * 4 + 1] = o[i * 4 + 2] = v; o[i * 4 + 3] = 255;
+          if (opts.dither) {
+            if (x + 1 < W) g[i + 1] += (e * 7) / 16;
+            if (y + 1 < H) { if (x > 0) g[i + W - 1] += (e * 3) / 16; g[i + W] += (e * 5) / 16; if (x + 1 < W) g[i + W + 1] += e / 16; }
+          }
+        }
+      } else {
+        palette = paletteFor(d, Math.max(2, Math.min(256, opts.colors ?? 256)));
+        const cache = new Map<number, RGB>(), near = (r: number, gg: number, b: number): RGB => {
+          const k = ((r >> 3) << 10) | ((gg >> 3) << 5) | (b >> 3);
+          let q = cache.get(k);
+          if (!q) { let bd = Infinity; for (const c of palette as RGB[]) { const dd = (c.r - r) ** 2 + (c.g - gg) ** 2 + (c.b - b) ** 2; if (dd < bd) { bd = dd; q = c; } } cache.set(k, q as RGB); }
+          return q as RGB;
+        };
+        const f = new Float32Array(d.length);
+        for (let i = 0; i < d.length; i++) f[i] = d[i];
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const i = (y * W + x) * 4;
+          if (d[i + 3] < 128) { o[i + 3] = 0; continue; }
+          const r = Math.max(0, Math.min(255, f[i])), gg = Math.max(0, Math.min(255, f[i + 1])), b = Math.max(0, Math.min(255, f[i + 2])), q = near(r, gg, b);
+          o[i] = q.r; o[i + 1] = q.g; o[i + 2] = q.b; o[i + 3] = 255;
+          if (opts.dither) for (let k = 0; k < 3; k++) {
+            const e = [r - q.r, gg - q.g, b - q.b][k];
+            if (x + 1 < W) f[i + 4 + k] += (e * 7) / 16;
+            if (y + 1 < H) { if (x > 0) f[i + (W - 1) * 4 + k] += (e * 3) / 16; f[i + W * 4 + k] += (e * 5) / 16; if (x + 1 < W) f[i + (W + 1) * 4 + k] += e / 16; }
+          }
+        }
+      }
+      const r = new Raster(W, H);
+      r.ctx.putImageData(out, 0, 0);
+      r.touch();
+      const l = newLayer(mode === 'bitmap' ? 'Background' : 'Index', pp.doc, { raster: r });
+      pp.doc = { ...pp.doc, layers: [l], mode, palette };
+      pp.activeId = l.id;
+      return true;
+    });
+    if (ok) { this.fg = this.fgc; this.bg = this.bgc; this.emit('options', null); this.emit('projects', null); }   // the colours kept to the new mode; the tab's label
+    return ok;
+  }
+
   /** One artboard as its own image: only it and what it holds, rendered and cut to its rectangle. */
   artboardImage(id: ID): Surface | null {
     const p = this.current, a = p?.layer(id);
@@ -5899,4 +6051,23 @@ export class Engine {
     ctxOf(out).drawImage(full, r.x - pad.x, r.y - pad.y, r.w, r.h, 0, 0, r.w, r.h);
     return out;
   }
+}
+
+/** A palette of at most `n` colours for RGBA pixels: every colour when there are that few (Exact), else median cut over
+ *  a sample (Adaptive), as Photoshop's Indexed Color chooses. */
+function paletteFor(d: Uint8ClampedArray, n: number): RGB[] {
+  const seen = new Map<number, RGB>();
+  for (let i = 0; i < d.length && seen.size <= n; i += 4) if (d[i + 3] >= 128) { const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2]; if (!seen.has(k)) seen.set(k, { r: d[i], g: d[i + 1], b: d[i + 2] }); }
+  if (seen.size <= n) return [...seen.values()];
+  const step = Math.max(1, Math.floor(d.length / 4 / 200000)), pts: number[][] = [];
+  for (let i = 0; i < d.length; i += 4 * step) if (d[i + 3] >= 128) pts.push([d[i], d[i + 1], d[i + 2]]);
+  let boxes: number[][][] = [pts];
+  while (boxes.length < n) {
+    let bi = -1, bestRange = -1, axis = 0;
+    boxes.forEach((b, i) => { if (b.length < 2) return; for (let a = 0; a < 3; a++) { let lo = 255, hi = 0; for (const p of b) { if (p[a] < lo) lo = p[a]; if (p[a] > hi) hi = p[a]; } if (hi - lo > bestRange) { bestRange = hi - lo; bi = i; axis = a; } } });
+    if (bi < 0 || bestRange <= 0) break;
+    const b = boxes[bi].sort((p, q) => p[axis] - q[axis]), mid = b.length >> 1;
+    boxes = [...boxes.slice(0, bi), b.slice(0, mid), b.slice(mid), ...boxes.slice(bi + 1)];
+  }
+  return boxes.filter((b) => b.length).map((b) => { let r = 0, g = 0, bl = 0; for (const p of b) { r += p[0]; g += p[1]; bl += p[2]; } return { r: Math.round(r / b.length), g: Math.round(g / b.length), b: Math.round(bl / b.length) }; });
 }

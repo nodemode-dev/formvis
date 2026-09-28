@@ -161,7 +161,9 @@ export class PixelStroke {
     if (shape) {
       this.colorDyn = shape.color?.on ? { ...shape.color } : null;
       this.transfer = shape.transfer?.on ? { ...shape.transfer } : null;
-      if (shape.noise || shape.wetEdges) this.tip = shapedTip(this.tip, !!shape.noise, !!shape.wetEdges);
+      if (shape.noise) this.tip = shapedTip(this.tip, true, false);
+      // Wet Edges is the stroke's, not each dab's: overlapping dabs would fill a lighter centre back in (1.50.1's fault).
+      if (shape.wetEdges) this.wetInner = takeSurface(this.raster.width, this.raster.height);
     }
     if (!shapeActive(shape) || !shape) return;
     this.shape = structuredClone(shape);
@@ -206,6 +208,7 @@ export class PixelStroke {
     if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
     const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
     this.paintCtx.drawImage(this.dabTip(), p.x - rx, p.y - ry, rx * 2, ry * 2);
+    this.wetMark(this.toLocal, p.x, p.y, rx, ry);
     if (flow < 1) this.paintCtx.globalAlpha = 1;
     const corners = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([ox, oy]) => applyMat(this.toLocal, p.x + ox, p.y + oy));
     const box = integral(boundsOf(corners));
@@ -216,6 +219,15 @@ export class PixelStroke {
   }
 
   private colorDyn: BrushShape['color'] | null = null;
+  /** Wet Edges: each dab's inside (55 percent of it, hard), gathered over the stroke; compose lightens the stroke there. */
+  private wetInner: Surface | null = null;
+  private wetMark(m: Mat, cx: number, cy: number, rx: number, ry: number): void {
+    if (!this.wetInner) return;
+    const c = ctxOf(this.wetInner);
+    setMat(c, m);
+    c.fillStyle = '#000';
+    c.beginPath(); c.ellipse(cx, cy, Math.max(0.1, rx * 0.55), Math.max(0.1, ry * 0.55), 0, 0, Math.PI * 2); c.fill();
+  }
   private transfer: BrushShape['transfer'] | null = null;
   private recolor: Surface | null = null;
 
@@ -304,6 +316,7 @@ export class PixelStroke {
       if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
       const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
       this.paintCtx.drawImage(this.dabTip(), -rx, -ry, rx * 2, ry * 2);
+      this.wetMark(mul(place, [1, 0, 0, round, 0, 0]), 0, 0, rx, ry);
       if (flow < 1) this.paintCtx.globalAlpha = 1;
       if (this.dualPaint && this.dualTip) {
         const dc = ctxOf(this.dualPaint), dr = Math.max(0.5, sh.dual.diameter / 2), ds = (sh.dual.scatter / 100) * dr * 2;
@@ -328,7 +341,7 @@ export class PixelStroke {
     // Coverage: the paint layer, shaped by the dual brush (kept only where its marks fell) and the texture (its tile's
     // alpha cut out, tiled at Scale in document space), then cut to the selection when there is one.
     let coverage: Surface = this.paint;
-    if (this.dualPaint || this.textureTile) {
+    if (this.dualPaint || this.textureTile || this.wetInner) {
       this.shaped ??= takeSurface(this.raster.width, this.raster.height);
       const c = ctxOf(this.shaped);
       openFrame(c, area);
@@ -344,6 +357,7 @@ export class PixelStroke {
           c.fillRect(area.x, area.y, area.w, area.h);
         }
       }
+      if (this.wetInner) { c.globalCompositeOperation = 'destination-out'; c.globalAlpha = 0.45; c.drawImage(this.wetInner, 0, 0); c.globalAlpha = 1; }   // the middle lighter, the rim full
       c.restore();
       coverage = this.shaped;
     }
@@ -414,6 +428,8 @@ export class PixelStroke {
     this.textured = null;
     giveSurface(this.dualPaint);
     giveSurface(this.shaped);
+    giveSurface(this.wetInner);
+    this.wetInner = null;
     this.dualPaint = null;
     this.shaped = null;
   }
