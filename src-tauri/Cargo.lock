@@ -3667,14 +3667,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "sonny"
-version = "1.50.4"
+name = "formvis"
+version = "1.50.5"
 dependencies = [
  "fontdb",
  "regex",
  "serde",
  "serde_json",
- "sonny-render",
+ "formvis-render",
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
@@ -3683,7 +3683,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "sonny-render"
+name = "formvis-render"
 version = "0.1.0"
 dependencies = [
  "bytemuck",

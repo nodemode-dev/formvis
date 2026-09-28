@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "sonny",
- "version": "1.50.4",
-  "identifier": "ai.nodemode.sonny",
+  "productName": "formvis",
+ "version": "1.50.5",
+  "identifier": "ai.nodemode.formvis",
   "build": {
     "frontendDist": "../frontend/dist"
   },
@@ -10,7 +10,7 @@
     "windows": [
       {
         "label": "splash",
-        "title": "sonny",
+        "title": "formvis",
         "url": "splash.html",
         "width": 360,
         "height": 180,
@@ -28,9 +28,9 @@
     "targets": "all",
     "category": "GraphicsAndDesign",
     "shortDescription": "Layered image editor",
- "longDescription": "sonny is a layered image editor in the NodeMode design system: layers, folders, masks, clipping, blend modes, selections, painting, and its own .sny project files.",
+ "longDescription": "formvis is a layered image editor in the NodeMode design system: layers, folders, masks, clipping, blend modes, selections, painting, and its own .fmv project files.",
  "copyright": "Copyright 2026 nodemode-ai.",
-    "externalBin": ["binaries/sonny-engine"],
+    "externalBin": ["binaries/formvis-engine"],
     "icon": ["icons/32x32.png", "icons/128x128.png", "icons/128x128@2x.png", "icons/icon.icns", "icons/icon.ico"],
     "macOS": {
       "minimumSystemVersion": "12.0",
@@ -38,14 +38,14 @@
       "entitlements": "entitlements.plist"
     },
     "fileAssociations": [
-      { "ext": ["sny", "sonny"], "name": "sonny Project", "description": "sonny layered image project", "role": "Editor", "mimeType": "application/x-sonny" }
+      { "ext": ["fmv", "formvis"], "name": "formvis Project", "description": "formvis layered image project", "role": "Editor", "mimeType": "application/x-formvis" }
     ],
     "createUpdaterArtifacts": false
   },
   "plugins": {
     "updater": {
       "pubkey": "",
-      "endpoints": ["https://github.com/nodemode-ai/sonny/releases/latest/download/latest.json"]
+      "endpoints": ["https://github.com/nodemode-ai/formvis/releases/latest/download/latest.json"]
     }
   }
 }
