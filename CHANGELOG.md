@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.7 · 2026-09-27
+
+### Added: type tools from your list
+
+- Paragraph text: drag a box with the Type tool; the text wraps inside it as you type and is clipped at its bottom, as Photoshop's.
+- Justify: spreads every wrapped line to the box's width; a paragraph's last line stays left.
+- Vertical Type (in the Type group): upright characters stacked top to bottom, each line a column from right to left; typed in a vertical editor.
+- Horizontal Type Mask and Vertical Type Mask: type, then Ctrl or Cmd+Enter: the text becomes a selection, with no layer; a red tint while typing.
+- Photoshop files keep paragraph boxes, justification and vertical type.
+
 ## 1.49.6 · 2026-09-27
 
 ### Added: measuring tools from your list

@@ -2,6 +2,43 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Type tools · _v1.49.7 (engine/text.ts, engine/types.ts, engine/index.ts, io/psd.ts; extensions/tools/type.ts; ui/text-editor.ts, ui/icons.ts; app.ts; styles)
+
+`TextSpec.box`, `direction`, align 'justify'; `renderPlain` wraps (`wrapLines`), clips and justifies in a box; `renderVertical`; placement of box and vertical text (`createTextLayer`, `updateTextLayer`); `Engine.typeMask`, `createTextSelection`; the Type tool's four kinds, click or drag; the editor's box, vertical and mask modes; the PSD export's justify-left, box and vertical orientation; reading them back. Removed from frontend:
+
+```text
+    const d = (e as CustomEvent<{ layerId?: string; x?: number; y?: number }>).detail;
+    else if (typeof d?.x === 'number' && typeof d?.y === 'number') typing.begin({ x: d.x, y: d.y });
+    const x = at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad);
+    this.insertRasterLayer(r.raster, name, Math.round(x), Math.round(at.y - r.baseline), { text: { ...spec, rendered: textKey(r.raster) } }, 'Type');
+        const x = spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
+    const x = spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
+  const lines = t.content.split('\n');
+  const metrics = lines.map((line) => probe.measureText(line || ' '));
+  const widths = lines.map((line) => lineWidth(probe, t, line || ' '));
+  const advance = t.size * t.lineHeight, pad = Math.ceil(t.size * 0.1) + 2;
+  const width = Math.ceil(widest) + pad * 2, height = Math.ceil(ascent + descent + advance * (lines.length - 1)) + pad * 2;
+  c.textAlign = perChar ? 'left' : t.align;
+    if (!perChar) { c.fillText(line, t.align === 'center' ? width / 2 : t.align === 'right' ? width - pad : pad, y); return; }
+    let x = t.align === 'center' ? (width - widths[i]) / 2 : t.align === 'right' ? width - pad - widths[i] : pad;
+    for (const ch of line) { c.fillText(ch, x, y); x += c.measureText(ch).width + trackingPx(t); }
+    align: o.align === 'center' || o.align === 'right' ? o.align : 'left', bold: o.bold === true, italic: o.italic === true,
+export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
+export interface ParagraphStyle { id: ID; name: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning }
+import type { Tool } from '../registry';
+  icon: () => 'tType',
+  hint: () => 'Click to add text on a new type layer · Click a type layer to edit its text',
+    { kind: 'segment', label: 'Align', choices: [{ id: 'left', label: 'Left' }, { id: 'center', label: 'Centre' }, { id: 'right', label: 'Right' }], get: () => e.textSettings.align, set: (v) => setType(e, { align: v === 'center' || v === 'right' ? v : 'left' }) },
+    const hit = ctx.engine.textLayerAt(p.doc);
+    document.dispatchEvent(new CustomEvent('cv:type', { detail: hit ? { layerId: hit } : { x: p.doc.x, y: p.doc.y } }));
+        paragraphStyle: { justification: t.align }, shapeType: 'point' };
+  private session: { project: Project; at: Pt; layerId: ID | null; spec: TextSpec; scale: number } | null = null;
+  begin(target: { x: number; y: number } | { layerId: ID }): void {
+      this.session = { project: p, at: { x: target.x, y: target.y }, layerId: null, spec: { ...e.textSettings, content: '', color: e.fg, rendered: undefined }, scale: 1 };
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Measuring · _v1.49.6 (ui/info.ts, ui/panels/note-dialog.ts, extensions/tools/color-sampler.ts, ruler.ts, note.ts, count.ts new; engine/index.ts, engine/types.ts, io/project-io.ts; ui/panel-group.ts, ui/dock.ts, ui/stage.ts, ui/icons.ts, app.ts; styles)
 
 `InfoPanel`; `Engine.measure`, `measureChanged`; `colorSamplerTool`, `drawSamplers`; `rulerTool` (Straighten Layer); `noteTool`, `NoteDialog`, `Engine.activeNote`, `addNote`, `setNote`, `removeNote`, `Doc.notes`; `countTool`, `addCount`, `removeCount`, `clearCounts`, `Doc.counts`; notes and counts in the project file; `PanelGroup.fitTabs`; a panel newer than a saved arrangement starts as it comes. Removed from frontend:
