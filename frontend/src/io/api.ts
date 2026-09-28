@@ -40,6 +40,17 @@ export const api = {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
   },
   /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
+  /** Send to NodeMode (1.50.8): whether NodeMode answers at `target` and has formvis's receiver. */
+  async nodemodeStatus(target: string): Promise<{ running: boolean; receiver: boolean; detail?: string } | null> {
+    try { return (await (await request(`/nodemode/status?target=${encodeURIComponent(target)}`)).json()) as { running: boolean; receiver: boolean; detail?: string }; } catch { return null; }
+  },
+
+  /** Uploads `parts` to NodeMode through the engine and announces them; throws ApiError with NodeMode's reason. */
+  async sendToNodeMode(target: string, title: string, items: unknown[], parts: FilePart[]): Promise<{ placed: boolean; detail?: string; files: Array<{ url: string }> }> {
+    const res = await request('/nodemode/send', { method: 'POST', body: form({ target, title, items: JSON.stringify(items) }, parts) });
+    return (await res.json()) as { placed: boolean; detail?: string; files: Array<{ url: string }> };
+  },
+
   async setCompute(device: string): Promise<{ device: string; label: string; reason: string } | null> {
     try {
       return (await (await request('/compute', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ device }) })).json()) as { device: string; label: string; reason: string };

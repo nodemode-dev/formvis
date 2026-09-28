@@ -63,6 +63,7 @@ import { TitleTools } from './ui/titlebar-tools';
 import { InfoPanel } from './ui/info';
 import { NoteDialog } from './ui/panels/note-dialog';
 import { ModeDialog } from './ui/app-dialogs';
+import { SendToNodeModeDialog } from './ui/panels/send-nodemode';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -878,6 +879,7 @@ export function startApp(): void {
   engine.askRasterize = (name, kind) => confirmAction(`Rasterize this ${kind}?`, `"${name}" must be rasterized before it can be painted on. Its ${kind === 'type layer' ? 'text' : kind === 'Smart Object' ? 'contents' : 'shape'} will no longer be editable.`, 'Rasterize');
   const noteDialog = new NoteDialog(engine);
   const modeDialog = new ModeDialog(engine);
+  const sendNodeMode = new SendToNodeModeDialog(engine, (t) => toast(t));
   commands.add({ id: 'edit-note', label: 'Edit Note...', enabled: () => !!engine.activeNote, run: () => noteDialog.show() });   // the Note tool (1.49.6)
   commands.add(
     { id: 'load-brushes', label: 'Load Brushes...', run: () => abrInput.click() },
@@ -940,6 +942,8 @@ export function startApp(): void {
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
+    // Standalone (1.50.8): the engine sends to the NodeMode at the address in Preferences > Plugins.
+    { id: 'send-nodemode', label: 'Send to NodeMode...', enabled: has, run: () => sendNodeMode.show() },
     // the File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
     // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W too.
     { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W', 'Alt+Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
@@ -1135,7 +1139,7 @@ export function startApp(): void {
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', '-', 'export-artboards'] },
-      { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'settings'] },

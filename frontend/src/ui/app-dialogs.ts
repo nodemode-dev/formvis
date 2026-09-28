@@ -391,6 +391,12 @@ export class SettingsDialog extends Dialog {
     add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el('<p class="cv-note">The checkerboard shown behind transparent pixels. None shows it plain.</p>'));
     add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
     add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridEveryRow.el, this.subdivRow.el);
+    // Plugins (1.50.8): the other apps formvis sends to, as Photoshop's Plugins section; NodeMode first.
+    this.nodemodeCheck.addEventListener('click', () => void this.checkNodeMode());
+    this.nodemodeUrl.addEventListener('change', () => { const v = this.nodemodeUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ nodemodeUrl: v }); void this.checkNodeMode(); } else setText(this.nodemodeNote, 'An address starts with http:// or https://, such as http://localhost:8000.'); });
+    const nm = el('<label class="cv-dialog-row"><span>NodeMode address</span></label>');
+    nm.append(this.nodemodeUrl, this.nodemodeCheck);
+    add('Plugins', nm, this.nodemodeNote);
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
     this.body.appendChild(wrap);
@@ -462,6 +468,17 @@ export class SettingsDialog extends Dialog {
     for (const tab of Array.from(this.nav.children) as HTMLElement[]) { const on = tab.textContent === name; setClass(tab, 'is-active', on); tab.setAttribute('aria-selected', String(on)); }
   }
 
+  private readonly nodemodeUrl = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="NodeMode address" spellcheck="false">');
+  private readonly nodemodeCheck = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Check</button>');
+  private readonly nodemodeNote = el('<p class="cv-note" role="status">File > Send to NodeMode sends here. Embedded in NodeMode, formvis sends to the NodeMode around it.</p>');
+
+  private async checkNodeMode(): Promise<void> {
+    const target = this.nodemodeUrl.value.trim();
+    setText(this.nodemodeNote, `Checking ${target}...`);
+    const s = await api.nodemodeStatus(target);
+    setText(this.nodemodeNote, !s ? 'The formvis engine is offline: sending to NodeMode needs it.' : !s.running ? `NodeMode is not answering at ${target}.` : s.receiver ? `NodeMode is running at ${target}.` : `NodeMode is running at ${target}, but cannot place images on its canvas yet.`);
+  }
+
   private change(patch: Partial<Prefs>): void {
     this.prefs = { ...this.prefs, ...patch };
     savePrefs(this.prefs);
@@ -469,6 +486,7 @@ export class SettingsDialog extends Dialog {
   }
 
   private sync(): void {
+    if (document.activeElement !== this.nodemodeUrl) setValue(this.nodemodeUrl, this.prefs.nodemodeUrl);
     const c = readChoice();
     setValue(this.accent, c.accentColor);
     for (const b of Array.from(this.grid.querySelectorAll<HTMLElement>('[data-theme-id]'))) {
