@@ -2,6 +2,28 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The rename to formvis · _v1.50.5 (every file; frontend/src/io/legacy.ts and backend/app/core/legacy.py new)
+
+The app is formvis, its projects `.fmv`, at the owner's word; git history is untouched (its commits and tags keep the former name), and 32 files moved by `git mv` keep their histories. This log, like the changelog, now reads with the new name throughout, quotes before this entry included. Of the 243 lines git reports removed since v1.50.4 in frontend/src, backend/app and src-tauri, 228 differ only by the name and are not quoted (quoting them would put the former name back thousands of times; git holds them); the rest are quoted in full below, with the new name. `legacy.ts` and `legacy.py`, the only places the former name remains, carry what was saved under it across: settings and the browser databases (merged, never overwriting; each move bounded so the app always starts), the library folder, the former project extensions and format identifier.
+
+```text
+    return _ensure(Path(raw).expanduser() if raw else Path.home() / "Formvis")
+from app.core import config
+SUFFIXES = (".fmv", ".formvis", ".canvasor", ".comp", ".zip")
+#: The library writes .fmv; .formvis (the extension before 0.90.0) is still read, listed, opened and deleted.
+EXT, OLD_EXT = ".fmv", ".formvis"
+    """The library file for `name`: the .fmv one, or else an older .formvis one."""
+    old = path.with_suffix(OLD_EXT)
+    return path if path.is_file() or not old.is_file() else old
+    for suffix in (OLD_EXT, EXT):
+    target.with_suffix(OLD_EXT).unlink(missing_ok=True)
+    path.with_suffix(OLD_EXT).unlink(missing_ok=True)
+SUPPORTED = {FORMVIS: range(1, 2), CANVASOR: range(1, 2)}
+export const PROJECT_ACCEPT = '.fmv,.formvis,.canvasor,.comp,.zip,.psd,.psb';
+export const isProjectFile = (f: File): boolean => /\.(fmv|formvis|canvasor|comp|zip|psd|psb)$/i.test(f.name);
+startApp();
+```
+
 ## The tool audit, part 2 · _v1.50.4 (engine/stroke.ts, engine/index.ts, engine/text.ts, engine/types.ts; io/psd.ts; extensions/registry.ts, extensions/tools/brush.ts, type.ts, wand.ts; ui/options.ts; styles)
 
 `PixelStroke.stamp`, `Engine.airbrushTick`, `strokeShow` (the Brush's Airbrush); `TextSpec.antialias` (None, Sharp, Smooth; `antialiased`), read back and written to PSD; the options bar's `color` control; Type's Anti-aliasing and Color; `setType` restyling the selected type layer (style keys only); the Magic Wand's sample sizes to 101 by 101, Select Subject and Select and Mask. Removed from frontend:
@@ -377,7 +399,7 @@ Nothing removed from src-tauri or backend.
 
 ## Panels reworked · _v1.49.2 (ui/layers.ts, ui/panel-group.ts, ui/dock.ts, ui/channels.ts, ui/icons.ts, app.ts; styles)
 
-`LayersPanel` builds a `PanelGroup` (layers-panel; the page `.cv-layers-page`; `adoptPaths`, `adoptChannels` through `addTab`; `showTab` finds the group holding the tab); `PanelGroup.addTab`, `has`, `size`, `labelOf`, `remove`, `onDetach`, `onGapHint`, the grip; `Dock.gapAt`, `showGap`, `hideGap`, `insertPanel`, `removePanel`, `registerPanel`, `unregisterPanel`, the ghost and labelled marker; groups made by detaching (sonny.customGroups). Removed from frontend:
+`LayersPanel` builds a `PanelGroup` (layers-panel; the page `.cv-layers-page`; `adoptPaths`, `adoptChannels` through `addTab`; `showTab` finds the group holding the tab); `PanelGroup.addTab`, `has`, `size`, `labelOf`, `remove`, `onDetach`, `onGapHint`, the grip; `Dock.gapAt`, `showGap`, `hideGap`, `insertPanel`, `removePanel`, `registerPanel`, `unregisterPanel`, the ghost and labelled marker; groups made by detaching (formvis.customGroups). Removed from frontend:
 
 ```text
 import { ALL_PANELS, Dock } from './ui/dock';
@@ -410,7 +432,7 @@ export const ALL_PANELS: readonly DockPanel[] = [...DOCK_PANELS, ...SIDE_PANELS]
     this.marker.style.top = `${Math.round(y - box.top + host.scrollTop - 1)}px`;
 /** The group's tab as last left (remembered with the other groups). */
 function savedTab(): LayersTab {
-  try { const t = (JSON.parse(localStorage.getItem('sonny.groups') ?? '{}') as Record<string, { tab?: string }>).layers?.tab; return t === 'paths' || t === 'channels' ? t : 'layers'; } catch { return 'layers'; }
+  try { const t = (JSON.parse(localStorage.getItem('formvis.groups') ?? '{}') as Record<string, { tab?: string }>).layers?.tab; return t === 'paths' || t === 'channels' ? t : 'layers'; } catch { return 'layers'; }
 }
       `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="channels">Channels</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-group-more cv-layers-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu">${icon('more3', 16)}</button></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></section>`);
@@ -443,7 +465,7 @@ function savedTab(): LayersTab {
     }
     if (this.paths) setHidden(this.paths, tab !== 'paths');
     if (remember) {
-      try { const s = JSON.parse(localStorage.getItem('sonny.groups') ?? '{}'); s.layers = { ...s.layers, tab }; localStorage.setItem('sonny.groups', JSON.stringify(s)); } catch { /* this session only */ }
+      try { const s = JSON.parse(localStorage.getItem('formvis.groups') ?? '{}'); s.layers = { ...s.layers, tab }; localStorage.setItem('formvis.groups', JSON.stringify(s)); } catch { /* this session only */ }
     }
     this.root = el(`<section class="cv-${id} cv-group" aria-label="${label}"><div class="cv-panel-head cv-group-head"><div class="cv-group-tabs" role="tablist"></div><span></span><button class="cv-group-more" type="button" data-cmd="panel-menu" title="Panel menu" aria-label="Panel menu" hidden>${icon('more3', 16)}</button><button class="cv-group-min" type="button" data-cmd="minimise" title="Minimise" aria-label="Minimise">${icon('minus', 12)}</button></div><div class="cv-group-body"></div></section>`);
     this.show(saved.tab && this.tabs.has(saved.tab) ? saved.tab : list[0].id, false);
@@ -638,7 +660,7 @@ import { ENGINE_CHOICES, RECOVERY_CHOICES, loadPrefs, savePrefs, type EngineDevi
     add('General', this.homeRow.el, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
     add('Interface', row, accentRow, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device.</p>'));
     add('Performance', this.statesRow.el, this.memoryRow.el, this.redrawRow.el,
-      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
+      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
 interface DockState { order: string[]; hidden: string[] }
 const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history'] };
     const ids = DOCK_PANELS.map((p) => p.id);
@@ -825,7 +847,7 @@ import { digitOf, type Tool, type ToolContext, type ToolPointer } from '../regis
       `<section class="cv-layers-panel" aria-label="Layers"><div class="cv-panel-head"><div class="cv-group-tabs" role="tablist"><button class="cv-group-tab is-active" type="button" role="tab" data-tab="layers">Layers</button><button class="cv-group-tab" type="button" role="tab" data-tab="paths">Paths</button></div><span></span><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button></div>` +
     for (const t of root.querySelectorAll<HTMLButtonElement>('.cv-layers-panel .cv-group-tab')) t.addEventListener('click', () => this.showTab(t.dataset.tab as 'layers' | 'paths'));
     let tab: 'layers' | 'paths' = 'layers';
-    try { tab = (JSON.parse(localStorage.getItem('sonny.groups') ?? '{}') as Record<string, { tab?: string }>).layers?.tab === 'paths' ? 'paths' : 'layers'; } catch { /* layers */ }
+    try { tab = (JSON.parse(localStorage.getItem('formvis.groups') ?? '{}') as Record<string, { tab?: string }>).layers?.tab === 'paths' ? 'paths' : 'layers'; } catch { /* layers */ }
     this.showTab(tab, false);
   showTab(tab: 'layers' | 'paths', remember = true): void {
         const n = el('<span class="cv-opt-title"></span>');
@@ -1021,9 +1043,9 @@ export const DEFAULT_ACCENT = '#f97316';
   if (Number.isNaN(n)) return `rgba(249,115,22,${alpha})`;
 ```
 
-## The native GPU renderer · _v1.44.0 (native/sonny-render new; src-tauri/src/native.rs new, src-tauri/src/main.rs, src-tauri/Cargo.toml; src/gpu/native-display.ts new, src/gpu/probe.ts, src/gpu/display.ts, src/ui/stage.ts, src/ui/prefs.ts, src/styles/shell.css, src/app.ts; setup/test, setup/test.bat, setup/line_counts.py; e2e/test_native_display.py new)
+## The native GPU renderer · _v1.44.0 (native/formvis-render new; src-tauri/src/native.rs new, src-tauri/src/main.rs, src-tauri/Cargo.toml; src/gpu/native-display.ts new, src/gpu/probe.ts, src/gpu/display.ts, src/ui/stage.ts, src/ui/prefs.ts, src/styles/shell.css, src/app.ts; setup/test, setup/test.bat, setup/line_counts.py; e2e/test_native_display.py new)
 
-native/sonny-render (Rust, wgpu 30): `Gpu` (`new`, `for_window`), `TiledLayer` (`dab`, `write`, `read`), `composite` (`Blender`, `Stack`, `Source`, `Clip`, `Lut`, `Affine`, `blend.wgsl` shared with the web shader), `budget`, `display` (`Display`, `View`, `Checker`), `document` (`Document`, `LayerSpec`), `bin/brush_bench`, `examples/window`. Shell: `native.rs` (`native_start` ... `native_present`), registered in `main.rs`. App: `NativeDisplay`; `ScreenDisplay.unsupported` and `document`; 'native' in `probe.ts` and `prefs.ts`. Removed from frontend/src:
+native/formvis-render (Rust, wgpu 30): `Gpu` (`new`, `for_window`), `TiledLayer` (`dab`, `write`, `read`), `composite` (`Blender`, `Stack`, `Source`, `Clip`, `Lut`, `Affine`, `blend.wgsl` shared with the web shader), `budget`, `display` (`Display`, `View`, `Checker`), `document` (`Document`, `LayerSpec`), `bin/brush_bench`, `examples/window`. Shell: `native.rs` (`native_start` ... `native_present`), registered in `main.rs`. App: `NativeDisplay`; `ScreenDisplay.unsupported` and `document`; 'native' in `probe.ts` and `prefs.ts`. Removed from frontend/src:
 
 ```ts
   let gpuDisplay: ScreenDisplay | null = null, gpuKind: 'webgpu' | 'webgl2' | null = null, gpuStarting = false;
@@ -1046,8 +1068,8 @@ export const modeLabel = (m: GpuMode): string => (m === 'webgpu' ? 'WebGPU' : m 
 Removed from setup and src-tauri:
 
 ```text
-and backend/sonny_engine.py, Rust under src-tauri/src. Figures are rounded to hundreds; a figure passes the check within
-         ("Python", ("backend/app/", "backend/sonny_engine.py"), ".py"), ("Rust", ("src-tauri/src/",), ".rs"))
+and backend/formvis_engine.py, Rust under src-tauri/src. Figures are rounded to hundreds; a figure passes the check within
+         ("Python", ("backend/app/", "backend/formvis_engine.py"), ".py"), ("Rust", ("src-tauri/src/",), ".rs"))
 case "$which" in all|unit|backend|e2e) ;; *) cv_say "unknown test suite: $which (use unit, backend, e2e or nothing for all)"; exit 2 ;; esac
         .invoke_handler(tauri::generate_handler![system_fonts])
 ```
@@ -1085,11 +1107,11 @@ import { el, patchList, q, setClass, setText, setTitle } from './dom';
 
 ## .comp import · _v1.40.0 (src/io/images.ts; e2e/test_comp_import.py new)
 
-`images.ts`: `.comp` in `PROJECT_ACCEPT` and `isProjectFile` (opened to migrate; sonny never writes it). Removed:
+`images.ts`: `.comp` in `PROJECT_ACCEPT` and `isProjectFile` (opened to migrate; formvis never writes it). Removed:
 
 ```ts
-export const PROJECT_ACCEPT = '.sny,.sonny,.canvasor,.zip,.psd,.psb';
-export const isProjectFile = (f: File): boolean => /\.(sny|sonny|canvasor|zip|psd|psb)$/i.test(f.name);
+export const PROJECT_ACCEPT = '.fmv,.formvis,.canvasor,.zip,.psd,.psb';
+export const isProjectFile = (f: File): boolean => /\.(fmv|formvis|canvasor|zip|psd|psb)$/i.test(f.name);
 ```
 
 ## Camera RAW import · _v1.39.0 (src/io/images.ts, src/io/api.ts, src/io/links.ts, src/app.ts; e2e/test_camera_raw.py new)
@@ -1217,7 +1239,7 @@ import { gaussianBlur } from './filters';
       { label: 'Blur', items: ['filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur'] },
 export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState; lensRadius: number; lensBrightness: number; lensThreshold: number; smart: SmartSharpenSettings; shake: ShakeSettings }
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction';
-/** runs its filters off the main thread (Core Image on the GPU). sonny's kernels are JavaScript, so the
+/** runs its filters off the main thread (Core Image on the GPU). formvis's kernels are JavaScript, so the
   if (job.kind === 'gaussianBlur') out = gaussianBlur(src, s.radius * job.scale);
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction';
 export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen', shakeReduction: 'Shake Reduction' };
@@ -1277,7 +1299,7 @@ import { AboutDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDial
 ```ts
     settings: new SettingsDialog((pr) => { applyPrefs(engine, pr); recoveryDelay = pr.recoverySeconds * 1000; home.sync(); syncGpu(); }),
 import { RECOVERY_CHOICES, loadPrefs, savePrefs, type Prefs } from './prefs';
-      el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, sonny turns this off and says so. In this version the graphics processor is detected and the choice kept; drawing still runs on the CPU until the GPU renderer that follows it arrives.</p>'));
+      el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. In this version the graphics processor is detected and the choice kept; drawing still runs on the CPU until the GPU renderer that follows it arrives.</p>'));
 export interface Prefs { historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number }
 export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024 };
 ```
@@ -1553,7 +1575,7 @@ import { applyPrefs, loadPrefs } from './ui/prefs';
 ```
 
 ```ts
-      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part sonny controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'));
+      el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'));
  *  kept for crash recovery. */
 export interface Prefs { historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean }
 export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true };
@@ -1698,7 +1720,7 @@ Engine: `cropToSize` (crop, then `resampleImage`, in one history step). Crop too
 
 ## The reference app's project format and notice removed · _v1.4.0 (src/app.ts, src/io/project-io.ts, src/io/images.ts, src/engine/types.ts, src/engine/adjust.ts, src/engine/kernels.ts, src/ui/app-dialogs.ts, src/ui/icons.ts, src/styles/dialogs.css, src/version.ts; src/ui/notices.ts deleted)
 
-`project-io.ts` loses `serializeRefProject` and its helpers; `app.ts` its command and menu entry; `types.ts` and `project-io.ts` the constants only it used; `images.ts` the `.ref` extension. `notices.ts` is deleted, and About sonny no longer shows the notice; its style rule goes. The Open dialog's folder button reads Project folder. The unused `renderer` icon goes. Comments describe sonny's own project file. Version 1.4.0. Removed:
+`project-io.ts` loses `serializeRefProject` and its helpers; `app.ts` its command and menu entry; `types.ts` and `project-io.ts` the constants only it used; `images.ts` the `.ref` extension. `notices.ts` is deleted, and About formvis no longer shows the notice; its style rule goes. The Open dialog's folder button reads Project folder. The unused `renderer` icon goes. Comments describe formvis's own project file. Version 1.4.0. Removed:
 
 ```ts
 import { deserialize, serialize, serializeRefProject } from './io/project-io';
@@ -1722,8 +1744,8 @@ import { deserialize, serialize, serializeRefProject } from './io/project-io';
  *  names and meanings `.ref` projects use. */
 /** The modes a `.ref` project can hold; others export as Normal. */
 export const REF_BLEND_MODES: ReadonlySet<BlendMode> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'color-burn', 'hue', 'saturation', 'color', 'luminosity']);
-export const PROJECT_ACCEPT = '.sny,.sonny,.ref,.canvasor,.zip,.psd,.psb';
-export const isProjectFile = (f: File): boolean => /\.(sny|sonny|ref|canvasor|zip|psd|psb)$/i.test(f.name);
+export const PROJECT_ACCEPT = '.fmv,.formvis,.ref,.canvasor,.zip,.psd,.psb';
+export const isProjectFile = (f: File): boolean => /\.(fmv|formvis|ref|canvasor|zip|psd|psb)$/i.test(f.name);
   BLEND_MODES, REF_BLEND_MODES, Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns,
 const REF_KINDS: ReadonlySet<string> = new Set(['Hue/Saturation', 'Levels', 'Curves', 'Exposure', 'Gradient Map', 'Grain']);
 const REF_BLEND_LABELS: ReadonlySet<string> = new Set(BLEND_MODES.filter((b) => REF_BLEND_MODES.has(b.id)).map((b) => b.label));
@@ -1737,7 +1759,7 @@ const asUuid = (v: unknown, map: Map<string, string>): string | null => {
 };
 /** The document as a project (format `com.reference.project`, version 7), for `Name.ref/`: the same
  *  manifest and files as `serialize`, reshaped to what `ProjectStore.validate` accepts: UUID ids (regenerated where
- * sonny fell back to counters), image files named after them, folders without opacity or blend (the
+ * formvis fell back to counters), image files named after them, folders without opacity or blend (the
  *  folders carry neither), adjustment layers without pixels, non-empty names and a resolution of 1 to 9600. Anything
  * changed is listed in `notes` so the person knows what will see differently. */
 export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null): Promise<{ manifest: Json; files: FilePart[]; notes: string[] }> {
@@ -1797,12 +1819,12 @@ export async function serializeRefProject(doc: Doc, activeId: ID | null, paths: 
 .cv-notice { height: 132px; margin: 0; overflow-y: auto; padding: var(--space-2); border: 1px solid var(--border-color); border-radius: var(--radius-md); background: var(--bg-primary); color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-11); line-height: 1.45; white-space: pre-wrap; }
 import { REFERENCE_NOTICE } from './notices';
     const row = el(`<div class="cv-welcome-actions"><button class="cv-btn" type="button" data-from="file">${icon('upload', 14)}From disk</button><button class="cv-btn" type="button" data-from="folder">${icon('folderOpen', 14)}.ref folder</button></div>`);
-    this.body.appendChild(el('<p class="cv-note">sonny began as a port of the reference app by its authors. Parts derived from it are used under the MIT License:</p>'));
+    this.body.appendChild(el('<p class="cv-note">formvis began as a port of the reference app by its authors. Parts derived from it are used under the MIT License:</p>'));
     const notice = el('<pre class="cv-notice"></pre>');
     setText(notice, REFERENCE_NOTICE);
     this.body.appendChild(notice);
   renderer: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M22 16V4c0-1.1-.9-2-2-2H8c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2zm-11-4l2.03 2.71L16 11l4 5H8l3-4zM2 6v14c0 1.1.9 2 2 2h14v-2H4V6H2z"/></svg>`,
-/** the reference app's MIT License notice, shown in About sonny. sonny began as a port of the reference app by its authors
+/** the reference app's MIT License notice, shown in About formvis. formvis began as a port of the reference app by its authors
  *  and the license asks for this notice in every copy, the built web and desktop apps included. The same text is
  *  in `.docs/REFERENCE_NOTICE.md`. */
 export const REFERENCE_NOTICE = `MIT License
@@ -1892,8 +1914,8 @@ Engine: `eyedropperSize`; `sampleColor` averages the Sample Size square, weighte
 `PROJECT_ACCEPT` and `isProjectFile` take `.canvasor`, so the picker offers NodeMode canvasor projects and a dropped one opens as a project; the backend reads it (see the backend log). Removed:
 
 ```ts
-export const PROJECT_ACCEPT = '.sny,.sonny,.ref,.zip,.psd,.psb';
-export const isProjectFile = (f: File): boolean => /\.(sny|sonny|ref|zip|psd|psb)$/i.test(f.name);
+export const PROJECT_ACCEPT = '.fmv,.formvis,.ref,.zip,.psd,.psb';
+export const isProjectFile = (f: File): boolean => /\.(fmv|formvis|ref|zip|psd|psb)$/i.test(f.name);
 ```
 
 ## The interface: menus, rail, options bar; settings dialogs; tool options · _v0.96.0 (src/ui/menu.ts, src/ui/rail.ts, src/ui/options.ts, src/ui/toast.ts, src/ui/panels/fill-dialog.ts, src/app.ts, src/engine/index.ts, src/engine/paths.ts, src/engine/kernels.ts, src/extensions/tools/{marquee,lasso,wand,gradient,healing-brush,pen,freeform-pen,type,remove}.ts, src/styles/{panels,shell}.css; src/ui/tool-groups.ts, src/ui/panels/stroke-path-dialog.ts and src/ui/panels/layer-dialogs.ts new; tests/antialias-mask.test.ts and fourteen browser test files new)
@@ -1998,7 +2020,7 @@ export type ToolId = 'move' | 'marquee' | 'lasso' | 'wand' | 'crop' | 'brush' | 
   for (const tool of [moveTool, marqueeTool, lassoTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, directSelectTool, penTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
 export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string[]; activeId: ID | null }> {
   const psd = readPsd(await file.arrayBuffer(), { skipThumbnail: true });
-        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine' && bp.operation !== 'subtract')) notes.push(`"${name}" combines shapes in ways sonny does not (intersect or exclude); its outline may differ once edited.`);
+        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine' && bp.operation !== 'subtract')) notes.push(`"${name}" combines shapes in ways formvis does not (intersect or exclude); its outline may differ once edited.`);
   return { doc: { ...doc, layers }, notes, activeId: layers.at(-1)?.id ?? null };
 export async function writePsdFile(doc: Doc, composite: Surface, psb = false): Promise<{ bytes: ArrayBuffer; notes: string[] }> {
           open: !sp.closed, operation: sp.closed && main && Math.sign(areas[i]) === -Math.sign(main) ? 'subtract' as const : 'combine' as const, fillRule: 'non-zero' as const,
@@ -2034,7 +2056,7 @@ const KINDS = ['rectangle', 'ellipse', 'polygon', 'star', 'line', 'arrow', 'hear
       ...(s.kind === 'star' ? [{ kind: 'range' as const, label: 'Indent', min: 1, max: 99, unit: '%', get: () => s.starInset, set: (v: number) => set({ starInset: v }) }] : []),
       ...(lineLike(s.kind) ? [{ kind: 'range' as const, label: 'Weight', min: 1, max: 1000, unit: 'px', get: () => s.weight, set: (v: number) => set({ weight: v }) }] : []),
       ...(s.kind === 'arrow' ? [{ kind: 'range' as const, label: 'Head length', min: 1, max: 1000, unit: 'px', get: () => s.headLength, set: (v: number) => set({ headLength: v }) }, { kind: 'range' as const, label: 'Head width', min: 1, max: 1000, unit: 'px', get: () => s.headWidth, set: (v: number) => set({ headWidth: v }) }] : []),
-        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine')) notes.push(`"${name}" combines shapes in ways sonny does not; its outline may differ once edited.`);
+        if (vm.paths.some((bp) => bp.operation && bp.operation !== 'combine')) notes.push(`"${name}" combines shapes in ways formvis does not; its outline may differ once edited.`);
         out.vectorMask = { paths: v.path.subpaths.filter((sp) => sp.anchors.length).map((sp) => ({
           open: !sp.closed, operation: 'combine' as const, fillRule: 'non-zero' as const,
 ```
@@ -2077,12 +2099,12 @@ export interface ExportSettings { format: ExportFormat; quality: number; scale: 
         const { bytes, notes } = await writePsdFile(p.doc, flat);
         await deliver(new Blob([bytes], { type: 'image/vnd.adobe.photoshop' }), `${p.name}.psd`);
     { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-as', 'export-png', 'export-jpg', 'export-psd', 'export-webp', 'export-tiff', 'export-pdf', 'export-avif', 'export-gif', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
-export const PROJECT_ACCEPT = '.sny,.sonny,.ref,.zip,.psd';
-export const isProjectFile = (f: File): boolean => /\.(sny|sonny|ref|zip|psd)$/i.test(f.name);
+export const PROJECT_ACCEPT = '.fmv,.formvis,.ref,.zip,.psd';
+export const isProjectFile = (f: File): boolean => /\.(fmv|formvis|ref|zip|psd)$/i.test(f.name);
   Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec,
 export const isPsdFile = (f: File): boolean => /\.psd$/i.test(f.name) || f.type === 'image/vnd.adobe.photoshop';
       if (!pl.canvas || !pl.canvas.width || !pl.canvas.height) {
-        if (pl.adjustment) notes.push(`"${name}" is an adjustment layer; sonny left it out.`);
+        if (pl.adjustment) notes.push(`"${name}" is an adjustment layer; formvis left it out.`);
         continue;
       }
       const w = pl.canvas.width, h = pl.canvas.height, raster = Raster.from(pl.canvas, w, h);
@@ -2110,12 +2132,12 @@ In `.github/workflows/ci.yml`. Removed:
       - run: pip install pytest playwright
 ```
 
-## .abr brush import, live option lists, .sny projects · _v0.90.0 (src/engine/abr.ts and src/io/brush-library.ts new, src/engine/stroke.ts, src/engine/brush-dynamics.ts, src/engine/index.ts, src/extensions/registry.ts, src/ui/options.ts, src/extensions/tools/brush.ts, src/extensions/tools/gradient.ts, src/io/images.ts, src/app.ts; tests/abr.test.ts, e2e/test_abr_import.py and e2e/test_sny_projects.py new)
+## .abr brush import, live option lists, .fmv projects · _v0.90.0 (src/engine/abr.ts and src/io/brush-library.ts new, src/engine/stroke.ts, src/engine/brush-dynamics.ts, src/engine/index.ts, src/extensions/registry.ts, src/ui/options.ts, src/extensions/tools/brush.ts, src/extensions/tools/gradient.ts, src/io/images.ts, src/app.ts; tests/abr.test.ts, e2e/test_abr_import.py and e2e/test_sny_projects.py new)
 
-`abr.ts`: `parseAbr` for versions 1, 2 and 6 to 10, `SampledTip`, `AbrBrush`. `stroke.ts`: `sampledTip`, a tip in the style, `tipAspect`, spacing a quarter of a sampled tip. `brush-dynamics.ts`: `tip` on presets, `importedBrushPresets`, `setImportedBrushPresets`, `allBrushPresets`, `presetFromTip`. In the engine, `tip` on brush settings (kept by `setBrush`, set by presets) and `uiHooks.importBrushes`. `brush-library.ts`: IndexedDB keeping and `importAbr`. The select option spec takes a `live` list, patched in place by the options bar; the Brush Preset and Gradient Colors lists use it. Projects download as `.sny`; `.sny` and `.sonny` are accepted. Removed:
+`abr.ts`: `parseAbr` for versions 1, 2 and 6 to 10, `SampledTip`, `AbrBrush`. `stroke.ts`: `sampledTip`, a tip in the style, `tipAspect`, spacing a quarter of a sampled tip. `brush-dynamics.ts`: `tip` on presets, `importedBrushPresets`, `setImportedBrushPresets`, `allBrushPresets`, `presetFromTip`. In the engine, `tip` on brush settings (kept by `setBrush`, set by presets) and `uiHooks.importBrushes`. `brush-library.ts`: IndexedDB keeping and `importAbr`. The select option spec takes a `live` list, patched in place by the options bar; the Brush Preset and Gradient Colors lists use it. Projects download as `.fmv`; `.fmv` and `.formvis` are accepted. Removed:
 
 ```ts
-        await deliver(await api.package(manifest, files), `${p.name}.sonny`);
+        await deliver(await api.package(manifest, files), `${p.name}.formvis`);
 export interface BrushPreset { id: string; name: string; description: string; diameter: number; hardness: number; opacity: number; dynamics: BrushDynamics }
 export interface BrushSettings { diameter: number; hardness: number; opacity: number }
     this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity });
@@ -2129,15 +2151,15 @@ export interface StrokeStyle { diameter: number; hardness: number; opacity: numb
 import { BUILTIN_BRUSH_PRESETS, identityOption, pressureOption } from '../../engine/brush-dynamics';
     { kind: 'select', label: 'Preset', choices: [{ id: '', label: 'Custom' }, ...BUILTIN_BRUSH_PRESETS.map((b) => ({ id: b.id, label: b.name }))], get: () => e.brushPresetId ?? '', set: (id) => { const b = BUILTIN_BRUSH_PRESETS.find((x) => x.id === id); if (b) e.applyBrushPreset(b); else { e.brushPresetId = null; e.emit('options', null); } } },
       { kind: 'select', label: 'Colors', choices: allGradients().map((p) => ({ id: p.id, label: p.label })), get: () => e.gradientSettings.style, set: (v) => set(() => { e.gradientSettings.style = v; }) },
-export const PROJECT_ACCEPT = '.sonny,.ref,.zip,.psd';
-export const isProjectFile = (f: File): boolean => /\.(sonny|ref|zip|psd)$/i.test(f.name);
+export const PROJECT_ACCEPT = '.formvis,.ref,.zip,.psd';
+export const isProjectFile = (f: File): boolean => /\.(formvis|ref|zip|psd)$/i.test(f.name);
         sync.push(() => { const v = spec.get(); if (box.value !== v) box.value = v; });
 ```
 
-In `src-tauri/tauri.conf.json` the association takes `.sny` beside `.sonny`. Removed:
+In `src-tauri/tauri.conf.json` the association takes `.fmv` beside `.formvis`. Removed:
 
 ```json
-      { "ext": ["sonny"], "name": "sonny Project", "description": "sonny layered image project", "role": "Editor", "mimeType": "application/x-sonny" },
+      { "ext": ["formvis"], "name": "formvis Project", "description": "formvis layered image project", "role": "Editor", "mimeType": "application/x-formvis" },
 ```
 
 ## Shake Reduction · _v0.89.0 (src/engine/shake.ts new, src/engine/filters-more.ts, src/engine/filter-jobs.ts, src/engine/filter-worker.ts, src/ui/panels/filter-panel.ts, src/app.ts; tests/shake.test.ts and e2e/test_shake_reduction.py new)
@@ -2303,7 +2325,7 @@ In the engine, `straightenCrop` (every layer turned about the frame's centre, th
 
 ## Puppet Warp · _v0.81.0 (src/engine/puppet.ts new, src/engine/index.ts, src/extensions/tools/move.ts, src/app.ts; tests/puppet.test.ts and e2e/test_puppet.py new)
 
-`puppet.ts` is rigid moving least squares (Schaefer, McPhail and Warren, 2006), written for sonny: `mlsRigid` and `puppetImage` (the backward map on an 8 px grid, interpolated). In the engine, `puppetEdit` with `beginPuppetWarp`, `addPuppetPin`, `movePuppetPin`, `removePuppetPin`, `schedulePuppet`, `puppetRender`, `applyPuppetWarp`, `cancelPuppetWarp` and `dropPuppet`, and the preview in the layer overrides. The Move tool places, drags and Alt-removes pins (`pinDrag`, `puppetPin`), applies on Enter, cancels on Escape and draws the pins. `app.ts` adds `puppet-warp` to the Edit menu. Removed:
+`puppet.ts` is rigid moving least squares (Schaefer, McPhail and Warren, 2006), written for formvis: `mlsRigid` and `puppetImage` (the backward map on an 8 px grid, interpolated). In the engine, `puppetEdit` with `beginPuppetWarp`, `addPuppetPin`, `movePuppetPin`, `removePuppetPin`, `schedulePuppet`, `puppetRender`, `applyPuppetWarp`, `cancelPuppetWarp` and `dropPuppet`, and the preview in the layer overrides. The Move tool places, drags and Alt-removes pins (`pinDrag`, `puppetPin`), applies on Enter, cancels on Escape and draws the pins. `app.ts` adds `puppet-warp` to the Edit menu. Removed:
 
 ```ts
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', 'transform-warp', '-', 'settings'] },
@@ -2320,7 +2342,7 @@ In the engine, `straightenCrop` (every layer turned about the frame's centre, th
 
 ## Mesh warp and Edit > Warp · _v0.79.0 (src/engine/mesh-warp.ts new, src/engine/index.ts, src/extensions/tools/move.ts, src/app.ts; tests/mesh-warp.test.ts and e2e/test_warp.py new)
 
-`mesh-warp.ts` is ported from NodeMode's sonny studio (`studio/pixel/transform.ts`, nodemode_dev v8.73.1, the owner's build, MIT): `convexQuad`, `invBilinear`, `meshSurfacePoint`, a private `invSmooth`, `meshWarpImage` (plain or smooth, on ImageData instead of a tile store) and `uniformGrid`. In the engine, `meshWarpEdit` with `beginMeshWarp`, `moveMeshWarpPoint` (folding moves ignored, preview once per frame), `meshWarped`, `applyMeshWarp` (one Warp step, trimmed), `cancelMeshWarp` and `dropMeshWarp`, and the pending warp's preview in the layer overrides. The Move tool drags control points (`warpDrag`, `warpPoint`), applies on Enter, cancels on Escape and draws the grid as the surface's curves. `app.ts` adds `transform-warp` to the Edit menu. Removed:
+`mesh-warp.ts` is ported from NodeMode's formvis studio (`studio/pixel/transform.ts`, nodemode_dev v8.73.1, the owner's build, MIT): `convexQuad`, `invBilinear`, `meshSurfacePoint`, a private `invSmooth`, `meshWarpImage` (plain or smooth, on ImageData instead of a tile store) and `uniformGrid`. In the engine, `meshWarpEdit` with `beginMeshWarp`, `moveMeshWarpPoint` (folding moves ignored, preview once per frame), `meshWarped`, `applyMeshWarp` (one Warp step, trimmed), `cancelMeshWarp` and `dropMeshWarp`, and the pending warp's preview in the layer overrides. The Move tool drags control points (`warpDrag`, `warpPoint`), applies on Enter, cancels on Escape and draws the grid as the surface's curves. `app.ts` adds `transform-warp` to the Edit menu. Removed:
 
 ```ts
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', '-', 'fill-dialog', 'fill-fg', 'fill-bg', 'define-pattern', 'clear', 'content-fill', 'generative-fill', 'fill-path', 'stroke-path', '-', 'transform', '-', 'settings'] },
@@ -2427,7 +2449,7 @@ The dialog, the `fill-dialog` command (Shift+F5) and its Edit menu place. Remove
 
 ### src/engine/brush-dynamics.ts · new
 
-Ported from NodeMode's sonny studio (`studio/paint/dynamics.ts` and `preset.ts`, nodemode_dev v8.73.1, the owner's build, MIT): `computeOption` with sampled curves, reversal, combine modes and strength; `identityOption`, `pressureOption`; five built-in presets trimmed to sonny's brush; `presetsFromJson` for stored presets. Nothing was removed.
+Ported from NodeMode's formvis studio (`studio/paint/dynamics.ts` and `preset.ts`, nodemode_dev v8.73.1, the owner's build, MIT): `computeOption` with sampled curves, reversal, combine modes and strength; `identityOption`, `pressureOption`; five built-in presets trimmed to formvis's brush; `presetsFromJson` for stored presets. Nothing was removed.
 
 ### src/engine/stroke.ts · PixelStroke pressure
 
@@ -2470,7 +2492,7 @@ export interface ToolPointer { doc: Pt; screen: Pt; button: number; shift: boole
 
 ### src/engine/shape-paths.ts · new · _v0.69.0
 
-Ported from NodeMode's sonny studio, `studio/pixel/shapes.ts` (nodemode_dev v8.73.1, the owner's build, MIT): `ngonPoints`, `starPoints`, `arrowPoints` and `heartPoints`, moved from `[x, y]` tuples to `Pt` and from a tile-store scanline fill to closed corner-anchor `VectorPath`s through `boxedShapePath` (fitted to the dragged box) and `linePath` (a line is an arrow with no head). Nothing was removed.
+Ported from NodeMode's formvis studio, `studio/pixel/shapes.ts` (nodemode_dev v8.73.1, the owner's build, MIT): `ngonPoints`, `starPoints`, `arrowPoints` and `heartPoints`, moved from `[x, y]` tuples to `Pt` and from a tile-store scanline fill to closed corner-anchor `VectorPath`s through `boxedShapePath` (fitted to the dragged box) and `linePath` (a line is an arrow with no head). Nothing was removed.
 
 ### tests/shape-paths.test.ts · new · _v0.69.0
 
@@ -2516,7 +2538,7 @@ The ten blend modes Canvas 2D lacks, composited per pixel by the W3C source-over
 
 ### src/io/recovery.ts · new · _v0.66.0
 
-The IndexedDB store for crash-recovery copies (`sonny-recovery`, store `docs`, keyed by project id). Every call resolves, to null or an empty list when storage is unavailable, so recovery can never break editing. Nothing was removed.
+The IndexedDB store for crash-recovery copies (`formvis-recovery`, store `docs`, keyed by project id). Every call resolves, to null or an empty list when storage is unavailable, so recovery can never break editing. Nothing was removed.
 
 ## src/ui/errors.ts
 
@@ -3067,7 +3089,7 @@ import { api, type GenerativeStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 
-/** Edit > Generative Fill: a prompt for what to paint into the selection, sent by the sonny engine to fal (FLUX.1
+/** Edit > Generative Fill: a prompt for what to paint into the selection, sent by the formvis engine to fal (FLUX.1
  *  Fill [pro]); an empty prompt removes what the selection covers (FLUX.1 Erase [pro]). Until a key is saved the dialog
  *  asks for one; the engine keeps it in its data folder and never hands it back to the page. */
 export class GenerativeDialog extends Dialog {
@@ -3082,7 +3104,7 @@ export class GenerativeDialog extends Dialog {
     super('Generative Fill', 440);
     this.body.appendChild(this.prompt);
     this.body.appendChild(el('<p class="cv-note">The result arrives as a new layer masked to the selection. fal charges about $0.05 per megapixel of the area sent.</p>'));
-    this.keyRow.append(this.key, el('<p class="cv-note">Get a key at fal.ai. The sonny engine keeps it in its data folder on this computer.</p>'));
+    this.keyRow.append(this.key, el('<p class="cv-note">Get a key at fal.ai. The formvis engine keeps it in its data folder on this computer.</p>'));
     this.body.appendChild(this.keyRow);
     this.body.appendChild(this.state);
     this.forget = this.button('Forget key', 'ghost', () => void this.forgetKey());
@@ -3102,8 +3124,8 @@ export class GenerativeDialog extends Dialog {
     const s = this.status;
     setHidden(this.keyRow, !s || s.configured);
     setHidden(this.forget, s?.source !== 'settings');
-    setText(this.state, !s ? 'The sonny engine is offline. Start it with ./sonny boot.'
-      : s.configured ? `fal key set ${s.source === 'environment' ? 'by FAL_KEY in the environment' : 'in sonny'}.` : 'Add a fal API key to generate.');
+    setText(this.state, !s ? 'The formvis engine is offline. Start it with ./formvis boot.'
+      : s.configured ? `fal key set ${s.source === 'environment' ? 'by FAL_KEY in the environment' : 'in formvis'}.` : 'Add a fal API key to generate.');
   }
 
   private async forgetKey(): Promise<void> {
@@ -3199,7 +3221,7 @@ src/
         panels.css  · layers panel, menus, toasts
         scrollbars.css  · scrollbars, loaded last
         shell.css  · app grid, titlebar, rail, stage, status
-        tokens.css  · NodeMode tokens plus the sonny block
+        tokens.css  · NodeMode tokens plus the formvis block
     ui/
         app-dialogs.ts  · new canvas, open, settings, shortcuts, about
  brand.ts · the inline app mark
@@ -3399,7 +3421,7 @@ Every menu item, button and shortcut is a command in the `commands.add(...)` blo
 
 ### src/app.ts · startApp · v0.2.0 commands and clipboard · _v0.2.0
 
-Adds the clipboard, selection-modify, Image adjustment, New Adjustment Layer, Canvas Size, Image Size and filter commands, and a Filter menu that now holds Remove Background. Copy writes PNG plus a `sonny:` marker to the system clipboard; Mod+V is let through to the native paste event, which pastes in-app copies in place and external images centered above the active layer. Double-clicked adjustment rows open their editor through `cv:edit-adjustment`.
+Adds the clipboard, selection-modify, Image adjustment, New Adjustment Layer, Canvas Size, Image Size and filter commands, and a Filter menu that now holds Remove Background. Copy writes PNG plus a `formvis:` marker to the system clipboard; Mod+V is let through to the native paste event, which pastes in-app copies in place and external images centered above the active layer. Double-clicked adjustment rows open their editor through `cv:edit-adjustment`.
 
 ### src/app.ts · startApp · Content-Aware Fill · _v0.3.0
 
@@ -3508,7 +3530,7 @@ Export JPEG takes the Alt+Shift+Mod+S, the one gap the shortcut audit found. Rem
 The welcome title shows the app mark at 28 px. Removed:
 
 ```ts
-<div class="cv-welcome-title">${icon('paintbrush', 20)}sonny</div>
+<div class="cv-welcome-title">${icon('paintbrush', 20)}formvis</div>
 ```
 
 ### src/app.ts · Unsharp Mask; repair of the 0.31.0 sweep · _v0.33.0
@@ -3598,7 +3620,7 @@ Recording hooks, playback, batch to zip, File menu entries; the image-import inp
 ```ts
   const imageInput = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" hidden>`);
     { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
-  if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands };
+  if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands };
 ```
 
 ### src/app.ts · smart objects · _v0.45.0
@@ -3666,7 +3688,7 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, stripExt, toBlob, 
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p));
         const { manifest, files, notes } = await serializeRefProject(p.doc, p.activeId, engine.pathsOf(p));
     { label: 'File', items: () => ['new', 'open', 'import', ...(recent.length ? ['-', 'recent-heading', ...recent.map((_, i) => `recent-${i}`), 'clear-recent'] : []), '-', 'save', 'save-as', 'download-project', 'export-ref', '-', 'export-png', 'export-jpg', 'export-psd', '-', 'actions', 'action-stop', 'batch', ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
-  if (import.meta.env.DEV) (window as unknown as { sonny: unknown }).sonny = { engine, commands, actions };
+  if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions };
 ```
 
 ### src/app.ts · tween · _v0.50.0
@@ -4170,7 +4192,7 @@ Returns the unpremultiplied RGB of the original pixel under a document point fro
 
 ### src/engine/index.ts · applySubjectMask · _v0.9.0
 
-Lays a refined subject mask on a layer as one Remove Background step, stored as sonny masks are (white with the level in alpha), multiplied into an existing same-size unplaced mask as the `subjectMask` does. Nothing was removed; `setMaskFromImage` stays for other callers.
+Lays a refined subject mask on a layer as one Remove Background step, stored as formvis masks are (white with the level in alpha), multiplied into an existing same-size unplaced mask as the `subjectMask` does. Nothing was removed; `setMaskFromImage` stays for other callers.
 
 ### src/engine/index.ts · sampleRing, setSampleRing · _v0.11.0
 
@@ -4685,7 +4707,7 @@ Lens Blur and Smart Sharpen on the Filter menu. Removed:
 
 ### src/engine/develop.ts · new · _v0.36.0
 
-formnodal's develop core from the owner's sonny extension for NodeMode: the per-pixel pass as written, en and em dashes in comments normalised; `detailPass`, `clarityPass` and `developImage` keep formnodal's detail formulas with sonny's Gaussian in place of a canvas blur filter. Nothing was removed.
+formnodal's develop core from the owner's formvis extension for NodeMode: the per-pixel pass as written, en and em dashes in comments normalised; `detailPass`, `clarityPass` and `developImage` keep formnodal's detail formulas with formvis's Gaussian in place of a canvas blur filter. Nothing was removed.
 
 ### src/engine/develop.ts · header · _v0.38.0
 
@@ -4693,7 +4715,7 @@ The owner confirmed formnodal is their own build. Removed:
 
 ```ts
  *  Gaussian, so the whole filter runs in the preview worker. formnodal's LICENSES.md names the MIT-licensed reference
- *  its adjustment algorithms derive from; that project's notice belongs in sonny's NOTICE. */
+ *  its adjustment algorithms derive from; that project's notice belongs in formvis's NOTICE. */
 ```
 
 ## src/engine/kernels.ts
@@ -5478,8 +5500,8 @@ Created in _v0.1.0.
 `.psd` opens like a project. Removed:
 
 ```ts
-export const PROJECT_ACCEPT = '.sonny,.ref,.zip';
-export const isProjectFile = (f: File): boolean => /\.(sonny|ref|zip)$/i.test(f.name);
+export const PROJECT_ACCEPT = '.formvis,.ref,.zip';
+export const isProjectFile = (f: File): boolean => /\.(formvis|ref|zip)$/i.test(f.name);
 ```
 
 ## src/io/project-io.ts
@@ -5498,7 +5520,7 @@ Blend modes outside `REF_BLEND_MODES` export to `.ref` as Normal, with a note. N
 
 ### src/io/project-io.ts · effects · _v0.39.0
 
-Effects save in `.sonny` and read back through `effectsFromData`; `.ref` export drops them with a note. Removed:
+Effects save in `.formvis` and read back through `effectsFromData`; `.ref` export drops them with a note. Removed:
 
 ```ts
   type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform,
@@ -5507,7 +5529,7 @@ Effects save in `.sonny` and read back through `effectsFromData`; `.ref` export 
 
 ### src/io/project-io.ts · type in files · _v0.40.0
 
-Live type saves in `.sonny` and reopens editable; `.ref` export notes it becomes pixels. Removed:
+Live type saves in `.formvis` and reopens editable; `.ref` export notes it becomes pixels. Removed:
 
 ```ts
   type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData,
@@ -5750,7 +5772,7 @@ Styles for the options-bar select and the canvas text box. Nothing was removed.
 
 ## src/styles/tokens.css
 
-### src/styles/tokens.css · NodeMode tokens plus the sonny block · _v0.1.0
+### src/styles/tokens.css · NodeMode tokens plus the formvis block · _v0.1.0
 
 Created in _v0.1.0.
 
@@ -5769,12 +5791,12 @@ Removed: a copyright line that did not match `LICENSE`.
 The About title shows the app mark at 28 px. Removed:
 
 ```ts
-    this.body.appendChild(el(`<div class="cv-welcome-title">${icon('paintbrush', 20)}sonny ${VERSION}</div>`));
+    this.body.appendChild(el(`<div class="cv-welcome-title">${icon('paintbrush', 20)}formvis ${VERSION}</div>`));
 ```
 
 ### src/ui/app-dialogs.ts · the reference app notice in About · _v0.37.0
 
-About sonny says sonny began as a port of the reference app and shows the MIT notice from `ui/notices.ts` in a fixed-height box. Nothing was removed.
+About formvis says formvis began as a port of the reference app and shows the MIT notice from `ui/notices.ts` in a fixed-height box. Nothing was removed.
 
 ## src/ui/brand.ts
 
@@ -6220,7 +6242,7 @@ export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussi
 
 ### src/ui/panels/jpeg-dialog.ts · JpegDialog · _v0.6.0
 
-Ported from the `JPEGExportSheet.swift`. Quality starts from the last export, remembered in localStorage under `sonny.jpegQuality`, and from 85% the first time; the sheet shows the image size and sRGB and previews the actually encoded JPEG, debounced 120 ms, with its encoded size. The preview canvas keeps one size (432 by 280) with the image fitted inside, so the sheet never changes height, and the preview is decoded with `createImageBitmap` rather than shown through a blob URL, which the desktop CSP may refuse. Export stores the quality and hands it back to the caller.
+Ported from the `JPEGExportSheet.swift`. Quality starts from the last export, remembered in localStorage under `formvis.jpegQuality`, and from 85% the first time; the sheet shows the image size and sRGB and previews the actually encoded JPEG, debounced 120 ms, with its encoded size. The preview canvas keeps one size (432 by 280) with the image fitted inside, so the sheet never changes height, and the preview is decoded with `createImageBitmap` rather than shown through a blob URL, which the desktop CSP may refuse. Export stores the quality and hands it back to the caller.
 
 ## src/ui/panels/live-mask-dialog.ts
 

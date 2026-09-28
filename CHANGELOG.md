@@ -1,6 +1,17 @@
 # Changelog
 
-Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
+Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number runs 1 to 9, then the middle one rises (1.50.9, then 1.51.x).
+
+The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
+
+## 1.50.5 · 2026-09-28
+
+### Changed: formvis
+
+- The app is formvis: its window, menus, command line (`./formvis`), desktop app, engine and settings all carry the name.
+- Projects save as `.fmv`. Projects saved before the rename still open, and saving one again writes `.fmv` in its place.
+- What you saved before carries across on the first start: your settings, imported brushes, file links, recovery data and project library. Nothing is lost or duplicated.
+- The git history is untouched; renamed files keep their histories.
 
 ## 1.50.4 · 2026-09-28
 
@@ -272,10 +283,10 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- A native GPU renderer for the desktop app (native/sonny-render, Rust on wgpu: Metal on macOS, Vulkan on Linux, Direct3D 12 on Windows): layers stored as tiles, so no texture size limits them; a GPU brush; all 27 blend modes (the web shader's own formulas); masks, clipping, adjustment tables, moved, scaled and rotated layers without seams between tiles; a memory budget from the machine in place of a fixed cap; the checkerboard; drawn into the window's own GPU surface.
+- A native GPU renderer for the desktop app (native/formvis-render, Rust on wgpu: Metal on macOS, Vulkan on Linux, Direct3D 12 on Windows): layers stored as tiles, so no texture size limits them; a GPU brush; all 27 blend modes (the web shader's own formulas); masks, clipping, adjustment tables, moved, scaled and rotated layers without seams between tiles; a memory budget from the machine in place of a fixed cap; the checkerboard; drawn into the window's own GPU surface.
 - Preferences > Performance > Renderer: Native GPU (desktop app). Opt-in: Automatic does not choose it yet. Where it cannot draw a document yet (3D tables, folder masks, a mask placed apart from the document) it falls back, with the reason in the status bar.
-- A brush benchmark (cargo run --release --bin brush_bench in native/sonny-render) and a window check (cargo run --release --example window), for real hardware.
-- `./sonny test native` runs the renderer's 21 tests.
+- A brush benchmark (cargo run --release --bin brush_bench in native/formvis-render) and a window check (cargo run --release --example window), for real hardware.
+- `./formvis test native` runs the renderer's 21 tests.
 - 4 more browser tests: 506 in all, besides the renderer's 21 and the shell's.
 
 ### Not verified yet
@@ -298,7 +309,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- The Object Selection tool (W): click an object to select it, Shift-click to add another, Alt-click to take one away. It runs Meta's SAM 2.1 in the engine, installed with `./sonny install-ml` (optional); the first click on an image takes a few seconds, later clicks about a tenth of a second.
+- The Object Selection tool (W): click an object to select it, Shift-click to add another, Alt-click to take one away. It runs Meta's SAM 2.1 in the engine, installed with `./formvis install-ml` (optional); the first click on an image takes a few seconds, later clicks about a tenth of a second.
 - 5 more tests (4 backend, 1 browser): 499 in all.
 
 ## 1.41.0 · 2026-09-25
@@ -312,7 +323,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Open `.comp` projects (as `Name.comp`, `Name.comp.zip` or the package folder), so they can be moved to sonny: layers, folders, masks, clipping, blend modes, opacity and visibility come across, and saving writes a `.sny`. sonny opens `.comp` but never writes it.
+- Open `.comp` projects (as `Name.comp`, `Name.comp.zip` or the package folder), so they can be moved to formvis: layers, folders, masks, clipping, blend modes, opacity and visibility come across, and saving writes a `.fmv`. formvis opens `.comp` but never writes it.
 - 6 more tests (5 backend, 1 browser): 492 in all.
 
 ## 1.39.0 · 2026-09-25
@@ -407,7 +418,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- `./sonny counts` prints the README's code sizes and blend-mode count from the repository; `./sonny counts --check` fails when the README has drifted, and a test runs that check.
+- `./formvis counts` prints the README's code sizes and blend-mode count from the repository; `./formvis counts --check` fails when the README has drifted, and a test runs that check.
 - 1 more test (backend): 408 in all.
 
 ## 1.27.0 · 2026-09-24
@@ -464,14 +475,14 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Hue/Saturation, Photo Filter, Black & White, Channel Mixer, Vibrance, Color Balance and Selective Color adjustment layers now draw on the graphics processor, through a 3D colour table made by sonny's own CPU code and checked to within 1 level of it. Threshold, a hard cut, still draws on the CPU.
+- Hue/Saturation, Photo Filter, Black & White, Channel Mixer, Vibrance, Color Balance and Selective Color adjustment layers now draw on the graphics processor, through a 3D colour table made by formvis's own CPU code and checked to within 1 level of it. Threshold, a hard cut, still draws on the CPU.
 - 3 more tests (browser): 386 in all.
 
 ## 1.20.0 · 2026-09-24
 
 ### Added
 
-- Levels, Curves, Exposure, Invert, Posterize and Brightness/Contrast adjustment layers now draw on the graphics processor (WebGPU or WebGL2) instead of sending the document back to the CPU. Each is applied through a table made by sonny's own CPU code and checked against it, so the result is the CPU's. Other adjustment kinds still draw on the CPU, named in the status bar.
+- Levels, Curves, Exposure, Invert, Posterize and Brightness/Contrast adjustment layers now draw on the graphics processor (WebGPU or WebGL2) instead of sending the document back to the CPU. Each is applied through a table made by formvis's own CPU code and checked against it, so the result is the CPU's. Other adjustment kinds still draw on the CPU, named in the status bar.
 - 8 more tests (browser): 383 in all.
 
 ## 1.19.0 · 2026-09-24
@@ -519,7 +530,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Preferences > Performance > Graphics Processor Settings: the detected graphics processor, Use Graphics Processor, Renderer (Automatic, WebGPU, WebGL2 or CPU) and a GPU memory limit; the GPU mode in use shows in the status bar. If the graphics processor fails to start, sonny turns it off and says so. Drawing still runs on the CPU; the GPU renderer comes next.
+- Preferences > Performance > Graphics Processor Settings: the detected graphics processor, Use Graphics Processor, Renderer (Automatic, WebGPU, WebGL2 or CPU) and a GPU memory limit; the GPU mode in use shows in the status bar. If the graphics processor fails to start, formvis turns it off and says so. Drawing still runs on the CPU; the GPU renderer comes next.
 - 9 more tests (7 unit, 2 browser): 308 in all.
 
 ### Changed
@@ -614,8 +625,8 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Removed
 
-- Reading and writing another application's project format, with its menu command and file association; sonny's own `.sny` projects and NodeMode canvasor projects are unaffected.
-- A third-party notice from About sonny and the documentation.
+- Reading and writing another application's project format, with its menu command and file association; formvis's own `.fmv` projects and NodeMode canvasor projects are unaffected.
+- A third-party notice from About formvis and the documentation.
 
 ## 1.3.0 · 2026-09-24
 
@@ -628,7 +639,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Preferences (Ctrl+,), with sections as in Photoshop: Interface (theme, accent), Performance (History States, the memory undo may hold, region redraws while painting) and File Handling (how soon unsaved work is kept for recovery). Every setting acts on sonny, is kept on this device and takes effect at once.
+- Preferences (Ctrl+,), with sections as in Photoshop: Interface (theme, accent), Performance (History States, the memory undo may hold, region redraws while painting) and File Handling (how soon unsaved work is kept for recovery). Every setting acts on formvis, is kept on this device and takes effect at once.
 - 1 more test (browser): 275 in all.
 
 ### Changed
@@ -675,7 +686,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- NodeMode canvasor projects (`.canvasor`, format `com.nodemode.canvasor` version 1) open in sonny, from File > Open, the file picker, or a drop; later versions are refused rather than guessed. They save as `.sny`.
+- NodeMode canvasor projects (`.canvasor`, format `com.nodemode.canvasor` version 1) open in formvis, from File > Open, the file picker, or a drop; later versions are refused rather than guessed. They save as `.fmv`.
 - 3 more tests (1 backend, 2 browser): 266 in all.
 
 ## 0.96.0 · 2026-09-23
@@ -714,7 +725,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 ### Added
 
 - Layer > Corner Radii: a drawn rectangle's corners set afterwards, linked or each on its own.
-- Custom shapes in the Shape tool: thirteen of sonny's own (check mark, cross, plus, lightning, speech bubble, drop, ring, crescent, tag, shield, cloud, house, block arrow), with holes where they have them.
+- Custom shapes in the Shape tool: thirteen of formvis's own (check mark, cross, plus, lightning, speech bubble, drop, ring, crescent, tag, shield, cloud, house, block arrow), with holes where they have them.
 - Shapes with holes keep them in PSD files, both ways.
 - 7 more tests (4 unit, 3 browser): 228 in all.
 
@@ -726,7 +737,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Artboards: Layer > New Artboard, Artboard from Layers and Artboard Options (position, size, background). Contents show only inside the artboard, over its background; the artboard moves with its contents and follows Canvas Size, crops, Image Size and Flip Canvas. File > Export Artboards to Files writes each as a PNG, together in a zip. Saved in .sny projects.
+- Artboards: Layer > New Artboard, Artboard from Layers and Artboard Options (position, size, background). Contents show only inside the artboard, over its background; the artboard moves with its contents and follows Canvas Size, crops, Image Size and Flip Canvas. File > Export Artboards to Files writes each as a PNG, together in a zip. Saved in .fmv projects.
 - 4 more tests (2 unit, 2 browser): 221 in all.
 
 ## 0.92.0 · 2026-09-23
@@ -744,7 +755,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Adjustment layers go into PSD files as live Photoshop adjustment layers (fifteen kinds, with masks, opacity, blend and clipping), and Photoshop adjustment layers open as live sonny ones. Grain and Develop, which Photoshop has no layer for, are reported and left out.
+- Adjustment layers go into PSD files as live Photoshop adjustment layers (fifteen kinds, with masks, opacity, blend and clipping), and Photoshop adjustment layers open as live formvis ones. Grain and Develop, which Photoshop has no layer for, are reported and left out.
 - File > Export PSB (Large Document); .psb files open.
 - 16 more tests (15 unit, 1 browser): 211 in all.
 
@@ -757,7 +768,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Changed
 
-- Projects are saved as `.sny`. Older `.sonny` projects still open, and saving one again writes `.sny`.
+- Projects are saved as `.fmv`. Older `.formvis` projects still open, and saving one again writes `.fmv`.
 
 ### Fixed
 
@@ -790,7 +801,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 ### Added
 
 - Layer > Replace Contents: a new image for a smart object, at the same scale and centre, its filters re-run.
-- Smart filter masks: add from the selection (or white), disable, enable and delete; saved with .sonny projects.
+- Smart filter masks: add from the selection (or white), disable, enable and delete; saved with .formvis projects.
 - Linked smart objects: File > Place Linked, Layer > Update Modified Content, Relink to File and Embed Linked. In Chrome and Edge a link re-reads its file when it changes on disk and survives a reload; other browsers keep the link but cannot see later changes.
 - 4 more browser tests: 167 in all.
 
@@ -847,14 +858,14 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Filter > Liquify (Shift+Mod+X): Forward Warp, Reconstruct, Twirl Clockwise and Counterclockwise, Pucker and Bloat in a preview, with brush size and pressure and Restore All; OK applies as one step, Cancel changes nothing. The displacement field is ported from NodeMode's sonny studio.
+- Filter > Liquify (Shift+Mod+X): Forward Warp, Reconstruct, Twirl Clockwise and Counterclockwise, Pucker and Bloat in a preview, with brush size and pressure and Restore All; OK applies as one step, Cancel changes nothing. The displacement field is ported from NodeMode's formvis studio.
 - 7 more tests (5 unit, 2 browser): 133 in all.
 
 ## 0.79.0 · 2026-09-23
 
 ### Added
 
-- Edit > Warp: drag the points of a 4 x 4 grid to bend a layer smoothly; Enter applies, Escape cancels. The warp is ported from NodeMode's sonny studio.
+- Edit > Warp: drag the points of a 4 x 4 grid to bend a layer smoothly; Enter applies, Escape cancels. The warp is ported from NodeMode's formvis studio.
 - 9 more tests (7 unit, 2 browser): 126 in all.
 
 ## 0.78.0 · 2026-09-23
@@ -873,7 +884,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 ### Added
 
 - Rulers (View > Show Rulers, Mod+R) along the top and left of the canvas.
-- Guides: drag them out of the rulers, move them with the Move tool, drop them on a ruler to delete; View > Show Guides (Mod+;), Lock Guides (Alt+Mod+;), Clear Guides and New Guide. Guides are undoable and save with .sonny projects.
+- Guides: drag them out of the rulers, move them with the Move tool, drop them on a ruler to delete; View > Show Guides (Mod+;), Lock Guides (Alt+Mod+;), Clear Guides and New Guide. Guides are undoable and save with .formvis projects.
 - A layout grid (View > Show Grid, Mod+') every 100 px with four subdivisions.
 - 3 more browser tests: 114 in all.
 
@@ -926,14 +937,14 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 ### Added
 
 - Pen pressure for the Brush: size and flow can follow pressure, each with a minimum; a mouse paints as before.
-- Brush presets: Hard round, Soft airbrush, Ink, Pencil and Marker, from the Brush options. The dynamics model and the presets are ported from NodeMode's sonny studio.
+- Brush presets: Hard round, Soft airbrush, Ink, Pencil and Marker, from the Brush options. The dynamics model and the presets are ported from NodeMode's formvis studio.
 - 8 more tests (5 unit, 3 browser): 76 in all.
 
 ## 0.69.0 · 2026-09-22
 
 ### Added
 
-- The Shape tool (U) draws Polygon (3 to 100 sides), Star (points and indent), Line (weight), Arrow (head length and width) and Heart, beside Rectangle and Ellipse, each as an editable shape layer; Shift+U cycles all seven. The generators are ported from NodeMode's sonny studio.
+- The Shape tool (U) draws Polygon (3 to 100 sides), Star (points and indent), Line (weight), Arrow (head length and width) and Heart, beside Rectangle and Ellipse, each as an editable shape layer; Shift+U cycles all seven. The generators are ported from NodeMode's formvis studio.
 - 9 more tests (6 unit, 3 browser): 68 in all.
 
 ## 0.68.0 · 2026-09-22
@@ -954,7 +965,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 ### Added
 
 - Automated tests: 31 unit tests for the engine (vitest), 9 for the engine service (pytest) and 7 in the browser against the dev build (Playwright), 47 in all.
-- `./sonny test` (and `sonny.bat test`) runs all three suites, or `unit`, `backend` or `e2e` alone.
+- `./formvis test` (and `formvis.bat test`) runs all three suites, or `unit`, `backend` or `e2e` alone.
 - CI runs every suite on each push and pull request, the browser tests in their own job.
 
 ## 0.66.0 · 2026-09-22
@@ -991,13 +1002,13 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Editable type travels to and from Photoshop: PSD export writes type layers as Photoshop type, and PSD import opens Photoshop type as editable sonny type.
+- Editable type travels to and from Photoshop: PSD export writes type layers as Photoshop type, and PSD import opens Photoshop type as editable formvis type.
 
 ## 0.62.0 · 2026-09-21
 
 ### Added
 
-- Layer styles travel to and from Photoshop: PSD export writes them as editable Photoshop layer effects, patterns included, and PSD import turns Photoshop's effects into editable sonny styles.
+- Layer styles travel to and from Photoshop: PSD export writes them as editable Photoshop layer effects, patterns included, and PSD import turns Photoshop's effects into editable formvis styles.
 
 ## 0.61.0 · 2026-09-21
 
@@ -1136,7 +1147,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Paths save with `.sonny` projects and come back when they open.
+- Paths save with `.formvis` projects and come back when they open.
 - The Pen adds a point where you click on a path and deletes a point you click, keeping curves exact.
 - Layer > Edit Contents opens a smart object's original pixels as their own document; saving it updates the smart object.
 
@@ -1197,7 +1208,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Added
 
-- Layer > Layer Style (also on the Layers panel's right-click menu): Drop Shadow, Outer Glow and an outside Stroke, shown live as you adjust them, kept in `.sonny` projects.
+- Layer > Layer Style (also on the Layers panel's right-click menu): Drop Shadow, Outer Glow and an outside Stroke, shown live as you adjust them, kept in `.formvis` projects.
 
 ## 0.38.0 · 2026-09-21
 
@@ -1254,7 +1265,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Changed
 
-- New app icon everywhere sonny shows its mark: the desktop apps (macOS, Windows and Linux icons), the browser tab (with an `.ico` fallback and an Apple touch icon), the welcome card, the About dialog, and the desktop splash window shown while the engine starts.
+- New app icon everywhere formvis shows its mark: the desktop apps (macOS, Windows and Linux icons), the browser tab (with an `.ico` fallback and an Apple touch icon), the welcome card, the About dialog, and the desktop splash window shown while the engine starts.
 
 ## 0.31.1 · 2026-09-20
 
@@ -1266,7 +1277,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 ### Changed
 
 - Licensed under the Apache License 2.0, Copyright 2026 nodemode-ai.
-- Documentation, comments and interface text now describe sonny's own behaviour.
+- Documentation, comments and interface text now describe formvis's own behaviour.
 
 ## 0.30.0 · 2026-09-20
 
@@ -1277,7 +1288,7 @@ Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
 
 ### Verified
 
-- Every one of the 33 menu shortcuts was compared with sonny's; all match, apart from Close (Cmd/Ctrl-W in the desktop app, Alt+Cmd/Ctrl+W on the web where browsers reserve it) and the macOS-only Hide Others.
+- Every one of the 33 menu shortcuts was compared with formvis's; all match, apart from Close (Cmd/Ctrl-W in the desktop app, Alt+Cmd/Ctrl+W on the web where browsers reserve it) and the macOS-only Hide Others.
 
 ### Known gaps
 
@@ -1300,7 +1311,7 @@ The desktop shell has not been compiled (first CI run pending), and the desktop-
 
 ### Note
 
-- The export was checked against the own validation rules and reopened in sonny; it has not yet been opened itself, which runs only on macOS.
+- The export was checked against the own validation rules and reopened in formvis; it has not yet been opened itself, which runs only on macOS.
 
 ### Known gaps
 
@@ -1329,7 +1340,7 @@ Painting speed on very large canvases; the desktop shell has not been compiled (
 
 ### Corrected
 
-- Clone Stamp was recorded as missing a "brush-sized sample ring". marks its source with a crosshair, which sonny already draws. The real difference is that previews inside the brush circle what a click would stamp, which sonny does not do yet.
+- Clone Stamp was recorded as missing a "brush-sized sample ring". marks its source with a crosshair, which formvis already draws. The real difference is that previews inside the brush circle what a click would stamp, which formvis does not do yet.
 
 ### Known gaps
 
@@ -1423,11 +1434,11 @@ Free distort; the desktop shell has not been compiled (first CI run pending).
 
 ### Added
 
-- Deleting a layer that other layers are clipped to now asks: Bake and Delete keeps their clipped look in their own pixels; Remove Links and Delete unclips them and shows all their pixels. Either can be undone. Before, sonny unlinked them without asking.
+- Deleting a layer that other layers are clipped to now asks: Bake and Delete keeps their clipped look in their own pixels; Remove Links and Delete unclips them and shows all their pixels. Either can be undone. Before, formvis unlinked them without asking.
 
 ### Corrected
 
-- 0.18.0 listed "live masks" as not built. In a live mask is a clipping mask, which sonny has had all along; only this deletion choice was missing.
+- 0.18.0 listed "live masks" as not built. In a live mask is a clipping mask, which formvis has had all along; only this deletion choice was missing.
 
 ### Known gaps
 
@@ -1508,7 +1519,7 @@ Free distort; Smear's Blur on masks; ants that follow a floating selection; open
 ### Added
 
 - Layer via Copy (Cmd-J with a selection): the selected pixels become a new layer in place; without a selection Cmd-J still duplicates the layer, and the menu names whichever it will do.
-- Desktop releases: macOS signing and notarization from repository secrets, the hardened runtime, `.sonny` file associations, and in-app updates from GitHub Releases once the updater key exists. See the wiki's Releasing page.
+- Desktop releases: macOS signing and notarization from repository secrets, the hardened runtime, `.formvis` file associations, and in-app updates from GitHub Releases once the updater key exists. See the wiki's Releasing page.
 
 ### Fixed
 
@@ -1660,7 +1671,7 @@ Spot Healing, Clone Stamp, the Blur tool, Content-Aware Fill, the Remove Backgro
 
 - Engine: layers with pass-through folders, 13 blend modes, raster and folder masks, clipping chains, Levels, Curves, Exposure and Gradient Map adjustments on open, selections with marching ants, brush strokes, transforms, 100-step history.
 - Tools: Move with transform handles, Marquee, Lasso, Magic Wand, Brush and Eraser, Eyedropper, Hand, Zoom.
-- Files: new canvas, image import (drop, paste, picker; HEIC and TIFF through the engine), project library save and open, `.sonny` download, PNG and JPEG export.
+- Files: new canvas, image import (drop, paste, picker; HEIC and TIFF through the engine), project library save and open, `.formvis` download, PNG and JPEG export.
 - Remove Background with rembg (ML) or OpenCV GrabCut (lightweight), producing a layer mask.
 - NodeMode styling, 14 themes, the portal protocol and send to canvas.
 - Engine service, setup scripts with Windows twins, Tauri 2 desktop shell, CI, wiki publishing and desktop release workflows, wiki, project skill pack.
