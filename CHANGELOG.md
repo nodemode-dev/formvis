@@ -2,6 +2,16 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.50.4 · 2026-09-28
+
+### Changed: tools against Photoshop's bars (audit, parts 1 and 2)
+
+- Brush: Airbrush, so paint builds while the pointer rests.
+- Type: Anti-aliasing (None, Sharp, Smooth) and a Color swatch; the bar's font, size, style, alignment, anti-aliasing, leading, tracking and kerning now restyle the selected type layer, as Photoshop's (they changed only text being typed).
+- Magic Wand: sample sizes to 101 by 101; Select Subject and Select and Mask in the bar.
+- Audited and matching Photoshop: Paint Bucket, Move, Crop, Spot Healing, Healing Brush.
+- Still to come: the Clone Stamp's Mode, Flow and three-way Sample; the Gradient's Transparency and Method.
+
 ## 1.50.3 · 2026-09-28
 
 ### Fixed: faults found in 1.50.2

@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The tool audit, part 2 · _v1.50.4 (engine/stroke.ts, engine/index.ts, engine/text.ts, engine/types.ts; io/psd.ts; extensions/registry.ts, extensions/tools/brush.ts, type.ts, wand.ts; ui/options.ts; styles)
+
+`PixelStroke.stamp`, `Engine.airbrushTick`, `strokeShow` (the Brush's Airbrush); `TextSpec.antialias` (None, Sharp, Smooth; `antialiased`), read back and written to PSD; the options bar's `color` control; Type's Anti-aliasing and Color; `setType` restyling the selected type layer (style keys only); the Magic Wand's sample sizes to 101 by 101, Select Subject and Select and Mask. Removed from frontend:
+
+```text
+  return warpActive(t.warp) ? warpRender(plain, t.warp) : plain;
+export interface TextSpec { box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
+let smoothing = 0, steady: { x: number; y: number } | null = null, last: import('../registry').ToolPointer | null = null;
+  down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; steady = { ...p.doc }; last = p; ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose); } },
+  up(ctx) { if (steady && last && smoothing > 0) ctx.engine.strokeTo(last.doc, last.pressure, last.pose); steady = null; last = null; ctx.engine.endStroke(); },
+  cancel(ctx) { ctx.engine.cancelStroke(); },
+    { kind: 'segment', label: 'Sample Size', choices: [{ id: '0', label: 'Point' }, { id: '1', label: '3 by 3' }, { id: '2', label: '5 by 5' }], get: () => String(e.wand.sampleSize), set: (v) => e.setWand({ sampleSize: Number(v) }) },
+        paragraphStyle: { justification: t.align === 'justify' ? 'justify-left' : t.align }, shapeType: t.box ? 'box' : 'point', ...(t.box ? { boxBounds: [0, 0, t.box.w * k, t.box.h * k] } : {}), ...(t.direction === 'vertical' ? { orientation: 'vertical' } : {}) };
+```
+
+Nothing removed from src-tauri or backend.
+
 ## The tool audit, flashes and New Document · _v1.50.3 (engine/index.ts, engine/stroke.ts; extensions/tools/brush.ts, eraser.ts, bucket.ts, type.ts, marquee.ts, lasso.ts, quick-select.ts, object-select.ts; ui/app-dialogs.ts, ui/properties.ts; backend/app/services/segment.py)
 
 New Document's note and its size by mode; the Properties icon written only when it changes; `Engine.brushBlend`, `setBrushBlend` (Photoshop's Mode: Normal, Behind, Clear and the modes the canvas draws), the bucket's modes filtered alike; the Brush's Smoothing and Angle; `StrokeStyle.square` and the Eraser's Block, Flow and Erase to History; Type's Font Style and Warp Text; Select and Mask on the selection tools; `segment.available` without importing torch. Removed from frontend:
