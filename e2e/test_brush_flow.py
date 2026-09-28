@@ -35,6 +35,10 @@ def test_flow_builds_within_a_stroke_and_opacity_caps_it(page):
     # to nothing once the gap is small. A known limitation, recorded in BUILD_NOTES.)
     set_opt(page, "Flow", 20)
     page.evaluate("window.formvis.engine.newDocument(300, 160, 'F2', 'white')")
+    # Aim only once the new document's view is fitted to the window (the next frame): read earlier, the stroke could land
+    # elsewhere (1.50.8, an intermittent failure).
+    page.wait_for_function("(() => { const v = window.formvis.engine.current.viewport; return v.fitted && v.width > 0 && v.zoom > 0; })()")
+    page.wait_for_timeout(50)
     s = page.evaluate("(() => { const e = window.formvis.engine, v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; })()")
     set_opt(page, "Opacity", 50); scrub(page, s, 80, 9)
     capped = page.evaluate(PX, [150, 80])

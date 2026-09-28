@@ -9,16 +9,20 @@ CAPTURE = """async (kind) => {
   const e = window.formvis.engine;
   e.newDocument(40, 30, 'Out', 'white'); e.fg = { r: 200, g: 100, b: 50 }; e.fill('fg');
   const got = new Promise((resolve) => {
-    const orig = HTMLAnchorElement.prototype.click;
+    // The file itself, caught as it is made (the app frees its address right after the click, so fetching the address
+    // afterwards could lose the race and hang; 1.50.8).
+    const make = URL.createObjectURL, click = HTMLAnchorElement.prototype.click; let made = null;
+    URL.createObjectURL = function (b) { made = b; return make.call(URL, b); };
     HTMLAnchorElement.prototype.click = function () {
-      HTMLAnchorElement.prototype.click = orig;
-      fetch(this.href).then((r) => r.arrayBuffer()).then((buf) => {
-        let s = ''; new Uint8Array(buf).forEach((b) => { s += String.fromCharCode(b); });
-        resolve({ name: this.download, b64: btoa(s) });
-      });
+      URL.createObjectURL = make; HTMLAnchorElement.prototype.click = click;
+      const name = this.download, blob = made;
+      if (!blob) { resolve(null); return; }
+      blob.arrayBuffer().then((buf) => { let s = ''; new Uint8Array(buf).forEach((c) => { s += String.fromCharCode(c); }); resolve({ name, b64: btoa(s) }); }, () => resolve(null));
     };
   });
-  window.formvis.commands.run('export-' + kind);
+  // Engine exports are enabled once the app has found the engine, just after it starts; run the command when it is
+  // (1.50.8: fired too early, it did nothing, and the wait timed out).
+  for (let i = 0; i < 100 && !window.formvis.commands.run('export-' + kind); i++) await new Promise((r) => setTimeout(r, 100));
   return await Promise.race([got, new Promise((r) => setTimeout(() => r(null), 20000))]);
 }"""
 
