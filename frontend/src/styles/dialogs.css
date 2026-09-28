@@ -133,3 +133,5 @@
 .cv-nd-page { max-width: 100%; max-height: 76px; }
 .cv-dd-native { opacity: 0 !important; }
 .cv-note-text { width: 100%; min-height: 120px; resize: vertical; font: 13px/1.45 var(--font-ui, Inter, system-ui, sans-serif); padding: 8px 10px; }
+/* New Document's note on the modes not offered (1.50.3). */
+.cv-nd-note { margin: -2px 0 4px; font-size: 11.5px; line-height: 1.4; color: var(--text-muted); }

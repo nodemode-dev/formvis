@@ -8,7 +8,8 @@ from e2e.conftest import URL
 
 def _engine_up() -> bool:
     try:
-        with urllib.request.urlopen(URL + "api/capabilities", timeout=3) as r:
+        # A cold engine may take a while to answer; only an engine that does not answer at all is skipped.
+        with urllib.request.urlopen(URL + "api/capabilities", timeout=30) as r:
             return bool(json.load(r).get("removeBackground", {}).get("default"))
     except (OSError, ValueError):
         return False

@@ -1,17 +1,28 @@
+import { BLEND_MODES, canvasBlend } from '../../engine';
 import { clamp, type Pt } from '../../engine';
 import { allBrushPresets, identityOption, pressureOption } from '../../engine/brush-dynamics';
 import { digitOf, type Tool } from '../registry';
 
 let hoverPt: Pt | null = null;
 
+let smoothing = 0, steady: { x: number; y: number } | null = null, last: import('../registry').ToolPointer | null = null;
+
 export const brushTool: Tool = {
   id: 'brush', label: 'Brush', key: 'B', order: 50,
   icon: (e) => (e.brushMode === 'erase' ? 'tEraser' : 'tBrush'),
   hint: (e) => `${e.brushMode === 'erase' ? 'Drag to erase' : 'Drag to paint'} · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans`,
   cursor: () => 'none',
-  down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose); } },
-  move(ctx, p) { hoverPt = p.doc; ctx.engine.strokeTo(p.doc, p.pressure, p.pose); ctx.engine.emit('overlay', null); },
-  up(ctx) { ctx.engine.endStroke(); },
+  // Smoothing (1.50.3, the tool audit), as Photoshop's: the stroke follows a steadied point that trails the pointer, and
+  // catches up to where it is released.
+  down(ctx, p) { if (p.button === 0) { hoverPt = p.doc; steady = { ...p.doc }; last = p; ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose); } },
+  move(ctx, p) {
+    hoverPt = p.doc; last = p;
+    const k = 1 - Math.min(0.95, smoothing / 100);
+    if (steady && smoothing > 0) { steady = { x: steady.x + (p.doc.x - steady.x) * k, y: steady.y + (p.doc.y - steady.y) * k }; ctx.engine.strokeTo(steady, p.pressure, p.pose); }
+    else ctx.engine.strokeTo(p.doc, p.pressure, p.pose);
+    ctx.engine.emit('overlay', null);
+  },
+  up(ctx) { if (steady && last && smoothing > 0) ctx.engine.strokeTo(last.doc, last.pressure, last.pose); steady = null; last = null; ctx.engine.endStroke(); },
   hover(ctx, p) { hoverPt = p ? p.doc : null; ctx.engine.emit('overlay', null); },
   cancel(ctx) { ctx.engine.cancelStroke(); },
   keydown(ctx, e) {
@@ -59,7 +70,11 @@ export const brushTool: Tool = {
   },
   options: (e) => [
     { kind: 'title', text: 'Brush' },
-    { kind: 'segment', label: 'Mode', choices: [{ id: 'paint', label: 'Paint' }, { id: 'erase', label: 'Erase' }], get: () => e.brushMode, set: (v) => e.setBrushMode(v as 'paint' | 'erase') },
+    { kind: 'range', label: 'Smoothing', min: 0, max: 100, unit: '%', get: () => smoothing, set: (v: number) => { smoothing = Math.max(0, Math.min(100, Math.round(v))); e.emit('options', null); } },
+    { kind: 'range', label: 'Angle', min: -180, max: 180, unit: '\u00b0', get: () => Math.round(e.brushShape.angle), set: (v: number) => { e.brushShape = { ...e.brushShape, angle: Math.max(-180, Math.min(180, Math.round(v))) }; e.emit('options', null); } },
+    // Photoshop's Mode: Normal, Behind, Clear and the blend modes the canvas truly draws (Paint/Erase was sonny's own;
+    // erasing is the Eraser's).
+    { kind: 'select', label: 'Mode', choices: [{ id: 'normal', label: 'Normal' }, { id: 'behind', label: 'Behind' }, { id: 'clear', label: 'Clear' }, ...BLEND_MODES.filter((m) => m.id !== 'normal' && canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label }))], get: () => e.brushBlend, set: (v: string) => e.setBrushBlend(v as typeof e.brushBlend) },
     { kind: 'range', label: 'Size', min: 1, max: 1000, unit: 'px', get: () => e.brush.diameter, set: (v) => e.setBrush({ diameter: v }) },
     { kind: 'range', label: 'Hardness', min: 0, max: 100, unit: '%', get: () => Math.round(e.brush.hardness * 100), set: (v) => e.setBrush({ hardness: v / 100 }) },
     { kind: 'range', label: 'Opacity', min: 1, max: 100, unit: '%', get: () => Math.round(e.brush.opacity * 100), set: (v) => e.setBrush({ opacity: v / 100 }) },

@@ -1,7 +1,7 @@
 import type { Engine, TextSpec } from '../../engine';
 import { canListSystemFonts, fontFamilies, loadSystemFonts } from '../../ui/fonts';
 import type { Pt } from '../../engine';
-import { dashed, type Tool } from '../registry';
+import { dashed, toolHost, type Tool } from '../registry';
 
 const SYSTEM_FONTS = '__system-fonts';
 let draft: { from: Pt; to: Pt } | null = null;
@@ -41,12 +41,15 @@ export const typeTool: Tool = {
     } },
     { kind: 'number', label: 'Size', min: 1, max: 2000, unit: 'px', get: () => e.textSettings.size, set: (v) => setType(e, { size: Math.min(2000, Math.max(1, v)) }) },
     { kind: 'segment', label: 'Align', choices: [{ id: 'left', label: 'Left' }, { id: 'center', label: 'Centre' }, { id: 'right', label: 'Right' }, { id: 'justify', label: 'Justify' }], get: () => e.textSettings.align, set: (v) => setType(e, { align: v === 'justify' ? 'justify' : v === 'center' || v === 'right' ? v : 'left' }) },
-    { kind: 'toggle', label: 'Bold', get: () => e.textSettings.bold, set: (v) => setType(e, { bold: v }) },
-    { kind: 'toggle', label: 'Italic', get: () => e.textSettings.italic, set: (v) => setType(e, { italic: v }) },
+    // Font Style and Warp Text as Photoshop's bar (1.50.3, the tool audit; Bold and Italic were two toggles).
+    { kind: 'select', label: 'Font Style', choices: [{ id: 'regular', label: 'Regular' }, { id: 'italic', label: 'Italic' }, { id: 'bold', label: 'Bold' }, { id: 'bold-italic', label: 'Bold Italic' }],
+      get: () => (e.textSettings.bold ? (e.textSettings.italic ? 'bold-italic' : 'bold') : e.textSettings.italic ? 'italic' : 'regular'),
+      set: (v: string) => setType(e, { bold: v.startsWith('bold'), italic: v.endsWith('italic') }) },
     { kind: 'number', label: 'Leading', min: 0.5, max: 4, step: 0.05, unit: 'x', get: () => e.textSettings.lineHeight, set: (v) => setType(e, { lineHeight: Math.min(4, Math.max(0.5, v)) }) },
     // Photoshop's units: tracking in thousandths of an em; kerning the font's own (Metrics) or none (0).
     { kind: 'number', label: 'Tracking', min: -1000, max: 10000, step: 10, unit: '', get: () => e.textSettings.tracking, set: (v) => setType(e, { tracking: Math.round(Math.min(10000, Math.max(-1000, v))) }) },
     { kind: 'select', label: 'Kerning', choices: [{ id: 'metrics', label: 'Metrics' }, { id: 'none', label: '0' }], get: () => e.textSettings.kerning, set: (v) => setType(e, { kerning: v === 'none' ? 'none' : 'metrics' }) },
+    { kind: 'button', label: 'Warp Text...', run: () => toolHost.run('warp-text') },
   ],
   // A click starts point text (or edits the type layer under it); a drag draws a box for paragraph text (1.49.7).
   down(ctx, p) {

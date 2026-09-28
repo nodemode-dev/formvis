@@ -15,7 +15,7 @@ import type { SampledTip } from './abr';
 /** `flow` (0 to 1, default 1) is Photoshop's Flow: how much paint each dab lays down, so paint builds within a stroke as
  *  dabs overlap, up to the stroke's `opacity`, which caps the stroke as a whole. */
 /** aliased (the Pencil): dabs are pixel-exact circles, every pixel painted fully or not at all. */
-export interface StrokeStyle { bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
+export interface StrokeStyle { square?: boolean; bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
 
 /** A sampled tip (from an .abr file) as the brush's colour with the tip's greys as alpha, its longer side `sizePx`. */
 function sampledTip(sizePx: number, tip: SampledTip, color: RGB): Surface {
@@ -271,7 +271,10 @@ export class PixelStroke {
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = `rgb(${col.r}, ${col.g}, ${col.b})`;
     const cx = Math.floor(c.x) + 0.5, cy = Math.floor(c.y) + 0.5, rr = r <= 0.75 ? 0.5 : r;
-    for (let y = Math.floor(cy - rr); y <= Math.ceil(cy + rr); y++) {
+    // The Eraser's Block (1.50.3, the tool audit): a pixel-exact square.
+    // (In place of the circle, not returning early: the lines after it record the area the dab touched.)
+    if (this.style.square) { const side = Math.max(1, Math.round(rr * 2)); ctx.fillRect(Math.round(cx - side / 2), Math.round(cy - side / 2), side, side); }
+    else for (let y = Math.floor(cy - rr); y <= Math.ceil(cy + rr); y++) {
       const dy = y + 0.5 - cy, half = rr * rr - dy * dy;
       if (half < 0) continue;
       const w = Math.sqrt(half), x0 = Math.round(cx - w), x1 = Math.round(cx + w);

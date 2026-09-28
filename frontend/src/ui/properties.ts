@@ -214,7 +214,9 @@ export class PropertiesColumn {
     new PanelGroup(this.root, 'properties', [{ id: 'properties', label: 'Properties', body }], 'Properties');
     this.refreshers.push(() => {
       const a = e.activeLayer, l = layer();
-      tile.innerHTML = a ? icon(kindIcon(a), 18) : '';
+      // Written only when the kind changes (1.50.3): rewriting it on every refresh rebuilt the icon, a flash.
+      const want = a ? kindIcon(a) : '';
+      if (tile.dataset.icon !== want) { tile.dataset.icon = want; tile.innerHTML = want ? icon(want, 18) : ''; }
       setText(name, a ? `${a.name} Properties` : 'No layer selected');
       // The section keeps its place whatever is selected (its fields disabled when there is nothing to place), so the
       // groups beneath never jump when a document opens or the selection changes; only the fold changes its height.

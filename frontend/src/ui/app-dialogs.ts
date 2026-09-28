@@ -95,13 +95,16 @@ export class NewCanvasDialog extends Dialog {
     const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode"><option value="rgb">RGB Color</option><option value="grayscale">Grayscale</option><option value="bitmap">Bitmap</option></select>');
     const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth"><option>8 bit</option></select>');
     this.mode = mode;
+    // What is not offered, said plainly (1.50.2 claimed this note and did not show it).
+    const modeNote = el('<p class="cv-nd-note">16 and 32 bit, CMYK and Lab are not available yet: they need a new pixel engine.</p>');
+    this.modeNote = modeNote;
     mode.addEventListener('change', () => { depth.innerHTML = mode.value === 'bitmap' ? '<option>1 bit</option>' : '<option>8 bit</option>'; this.sync(); });
     const ab = el('<label class="cv-nd-check"></label>');
     ab.append(this.artboards, el('<span>Artboards</span>'));
     const wBox = label('Width', this.wIn), hBox = label('Height', this.hIn), uBox = label('Unit', this.unit);
     const sizeRow = el('<div class="cv-nd-sizes"></div>');
     sizeRow.append(wBox, this.link, hBox, uBox);
-    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), label('Background Contents', this.fill), ab, this.summary);
+    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), this.modeNote, label('Background Contents', this.fill), ab, this.summary);
     const grid = el('<div class="cv-nd-grid"></div>');
     grid.append(cats, mid, side);
     this.body.appendChild(grid);
@@ -158,7 +161,8 @@ export class NewCanvasDialog extends Dialog {
     if (document.activeElement !== this.wIn) this.wIn.value = show(this.px.w);
     if (document.activeElement !== this.hIn) this.hIn.value = show(this.px.h);
     for (const b of this.orient) b.classList.toggle('is-on', b.dataset.orient === (this.px.h > this.px.w ? 'portrait' : 'landscape'));
-    const mb = (this.px.w * this.px.h * 3) / (1024 * 1024);
+    // The size by the mode's bytes a pixel (1.50.3): RGB three, Grayscale one, Bitmap an eighth (one bit).
+    const perPixel = this.mode?.value === 'bitmap' ? 1 / 8 : this.mode?.value === 'grayscale' ? 1 : 3, mb = (this.px.w * this.px.h * perPixel) / (1024 * 1024);
     (this.summary.querySelector('.cv-nd-size') as HTMLElement).innerHTML = `${this.px.w} × ${this.px.h} <span>px</span>`;
     setText(this.summary.querySelector('.cv-nd-meta') as HTMLElement, `${{ rgb: 'RGB Color · 8 bit', grayscale: 'Grayscale · 8 bit', bitmap: 'Bitmap · 1 bit' }[this.mode?.value as 'rgb' ?? 'rgb'] ?? 'RGB Color · 8 bit'} · ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`}`);
     this.renderCards();
@@ -172,6 +176,7 @@ export class NewCanvasDialog extends Dialog {
   }
 
   private mode!: HTMLSelectElement;
+  private modeNote!: HTMLElement;
 
   private create(): void {
     const fill = this.fill.value as 'transparent' | 'white' | 'background';

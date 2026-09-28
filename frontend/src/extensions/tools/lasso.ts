@@ -1,4 +1,5 @@
 import { SelectionMask, boundsOf, type Pt, type SelectionMode } from '../../engine';
+import { toolHost } from '../registry';
 import { dashed, type Tool, type ToolContext } from '../registry';
 import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 import { EdgeMap, liveWire, snapToEdge } from '../../engine/livewire';
@@ -137,5 +138,6 @@ export const lassoTool: Tool = {
     ] : []),
     { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     modeSegment(e),
+    { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
   ],
 };

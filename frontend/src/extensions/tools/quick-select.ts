@@ -1,4 +1,5 @@
 import type { Pt } from '../../engine';
+import { toolHost } from '../registry';
 import type { Tool } from '../registry';
 import { brushKeys, drawBrushCursor } from './brush-common';
 
@@ -33,5 +34,6 @@ export const quickSelectTool: Tool = {
     { kind: 'segment', label: 'Selection', choices: [{ id: 'new', label: 'New' }, { id: 'add', label: 'Add' }, { id: 'subtract', label: 'Subtract' }], get: () => qsMode, set: (v) => { qsMode = v as 'new' | 'add' | 'subtract'; e.emit('options', null); } },
     { kind: 'range', label: 'Size', min: 1, max: 500, get: () => Math.round(e.brush.diameter), set: (v) => e.setBrush({ diameter: v }) },
     { kind: 'toggle', label: 'Sample all layers', get: () => e.quick.sampleAll, set: (v) => e.setQuick({ sampleAll: v }) },
+    { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
   ],
 };

@@ -1,5 +1,6 @@
 import { SelectionMask, createSurface, ctxOf, toBlob, type Engine, type Pt, type SelectionMode } from '../../engine';
 import { api } from '../../io/api';
+import { toolHost } from '../registry';
 import { dashed, type Tool } from '../registry';
 import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
@@ -140,5 +141,6 @@ export const objectSelectTool: Tool = {
     { kind: 'toggle', label: 'Sample All Layers', get: () => sampleAll, set: (v) => { sampleAll = v; } },
     { kind: 'toggle', label: 'Highlight on Hover', get: () => hoverOn, set: (v) => { hoverOn = v; if (!v) { highlight = null; clearTimeout(hoverTimer); } } },
     modeSegment(e),
+    { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
   ],
 };

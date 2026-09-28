@@ -45,12 +45,13 @@ def model_dir() -> Path:
 
 
 def available() -> bool:
-    try:
-        import sam2  # noqa: F401
-        import torch  # noqa: F401
+    """Whether torch and sam2 are installed: found without importing them (1.50.3), so the capability report answers at
+    once; importing torch took seconds on a cold engine, and a caller's short timeout read that as unavailable."""
+    import importlib.util
 
-        return True
-    except Exception:
+    try:
+        return importlib.util.find_spec("sam2") is not None and importlib.util.find_spec("torch") is not None
+    except (ImportError, ValueError):
         return False
 
 

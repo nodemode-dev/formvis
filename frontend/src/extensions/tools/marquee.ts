@@ -1,4 +1,5 @@
 import { SelectionMask, type Engine, type Pt, type Rect, type SelectionMode } from '../../engine';
+import { toolHost } from '../registry';
 import { dashed, type Tool, type ToolContext, type ToolPointer } from '../registry';
 import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
@@ -151,5 +152,6 @@ export const marqueeTool: Tool = {
     { kind: 'number', label: 'Width', min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.w, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, w: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
     { kind: 'number', label: 'Height', min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.h, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, h: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
     modeSegment(e),
+    { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
   ],
 };

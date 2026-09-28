@@ -77,3 +77,18 @@ def test_wet_edges_keep_a_whole_strokes_rim(page):
     col = page.evaluate("(() => { const d = window.sonny.engine.activeLayer.raster.ctx.getImageData(150, 40, 1, 40).data, a = []; for (let i = 3; i < d.length; i += 4) a.push(d[i]); return a; })()")
     middle, rim = col[20], max(col[0:6])
     assert middle < rim - 60, col                                                              # the middle lighter along the stroke
+
+
+def test_new_document_says_what_is_not_offered_and_sizes_by_mode(page):
+    # 1.50.2 claimed this note and did not show it; the size was reckoned as RGB for every mode.
+    page.evaluate("window.sonny.commands.run('new')")
+    note = page.locator(".cv-scrim:not([hidden]) .cv-nd-note")
+    assert note.is_visible() and "CMYK" in note.inner_text() and "32 bit" in note.inner_text()
+    page.locator(".cv-scrim:not([hidden]) input[aria-label='Width']").fill("1920")
+    page.locator(".cv-scrim:not([hidden]) input[aria-label='Height']").fill("1080")
+    sizes = {}
+    for m in ["rgb", "grayscale", "bitmap"]:
+        page.locator("select[aria-label='Color Mode']").select_option(m)
+        sizes[m] = page.locator(".cv-scrim:not([hidden]) .cv-nd-meta").inner_text()
+    assert "5.9 MB" in sizes["rgb"] and "2.0 MB" in sizes["grayscale"] and "0.2 MB" in sizes["bitmap"], sizes
+    page.keyboard.press("Escape")

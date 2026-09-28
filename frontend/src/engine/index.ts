@@ -162,6 +162,10 @@ export class Engine {
     this.setBrush({ diameter: preset.diameter, hardness: preset.hardness, opacity: preset.opacity, tip: preset.tip ?? null });
   }
   brushMode: 'paint' | 'erase' = 'paint';
+  /** The Brush's Mode, as Photoshop's (1.50.3, the tool audit): a blend mode, or Behind (only where the layer is empty)
+   *  or Clear (the paint erases). Only the modes the canvas truly draws are offered (canvasBlend). */
+  brushBlend: BlendMode | 'behind' | 'clear' = 'normal';
+  setBrushBlend(m: BlendMode | 'behind' | 'clear'): void { this.brushBlend = m; this.emit('options', null); }
   /** The foreground and background, kept to the document's mode (greys, black and white, or the palette), as
    *  Photoshop's pickers are. */
   private fgc: RGB = { r: 0, g: 0, b: 0 };
@@ -2595,7 +2599,7 @@ export class Engine {
 
   /** opts (1.49.5, the owner's tool list): aliased paints hard pixel-exact dabs (the Pencil); autoErase paints the
    *  background colour when the stroke starts on the foreground colour (Photoshop's Pencil); name names the step. */
-  beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; autoErase?: boolean; name?: string } = {}): boolean {
+  beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; square?: boolean; autoErase?: boolean; name?: string } = {}): boolean {
     const p = this.current;
     if (!p || this.stroke) return false;
     this.settle();
@@ -2608,14 +2612,14 @@ export class Engine {
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
     // colour, as Photoshop's does, since it may not make pixels transparent.
     const keepAlpha = pick.target !== 'mask' && !!p.activeLayer?.locks?.transparency;
-    const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : keepAlpha ? 'source-atop' : this.brushMode === 'erase' ? 'destination-out' : 'source-over';
+    const op: GlobalCompositeOperation = pick.target === 'mask' ? (white ? 'source-over' : 'destination-out') : keepAlpha ? 'source-atop' : this.brushMode === 'erase' ? 'destination-out' : this.brushBlend === 'behind' ? 'destination-over' : this.brushBlend === 'clear' ? 'destination-out' : compositeOp(this.brushBlend);
     let color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : keepAlpha && this.brushMode === 'erase' ? this.bg : this.fg;
     if (opts.autoErase && pick.target !== 'mask' && this.brushMode !== 'erase') {
       // Auto Erase: starting on the foreground colour, the stroke paints the background colour.
       const q = applyMat(invert(pick.local) ?? [1, 0, 0, 1, 0, 0], pt.x, pt.y), px = pick.raster.ctx.getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data;
       if (px[3] > 0 && px[0] === this.fg.r && px[1] === this.fg.g && px[2] === this.fg.b) color = this.bg;
     }
-    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased }, op, p.selection);
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
     if (!opts.aliased) s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
