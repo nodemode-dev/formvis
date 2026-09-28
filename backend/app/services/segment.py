@@ -148,14 +148,14 @@ def encode(key: str, data: bytes) -> tuple[int, int]:
     return rgb.shape[1], rgb.shape[0]
 
 
-def select(key: str, points: list[tuple[float, float, int]]) -> bytes:
-    """The object at the clicked points of the image encoded under `key`, as a grey PNG mask: each point (x, y, 1) is on
-    the object and (x, y, 0) not on it; of SAM's three proposals the one it scores highest."""
+def select(key: str, points: list[tuple[float, float, int]], box: tuple[float, float, float, float] | None = None) -> bytes:
+    """The object at the clicked points of the image encoded under `key`, and within `box` (x0, y0, x1, y1) when given, as a
+    grey PNG mask: each point (x, y, 1) is on the object and (x, y, 0) not on it; of SAM's proposals the one it scores highest."""
     import numpy as np
     import torch
 
-    if not points:
-        raise SegmentError("Click on the object to select.")
+    if not points and box is None:   # a box alone will do (Object Selection's box mode)
+        raise SegmentError("Click on the object to select, or drag a box round it.")
     with _lock:
         entry = _embeddings.get(key)
         if entry is None:
@@ -163,10 +163,12 @@ def select(key: str, points: list[tuple[float, float, int]]) -> bytes:
         _embeddings.move_to_end(key)
         pred = _get_predictor()
         pred._features, pred._orig_hw, pred._is_image_set = entry["features"], entry["orig_hw"], True
-        coords = np.array([[x, y] for x, y, _ in points], dtype=np.float32)
-        labels = np.array([1 if on else 0 for _, _, on in points], dtype=np.int32)
+        # Points, a box (Object Selection's box mode, 1.49.10), or both, as SAM takes them.
+        coords = np.array([[x, y] for x, y, _ in points], dtype=np.float32) if points else None
+        labels = np.array([1 if on else 0 for _, _, on in points], dtype=np.int32) if points else None
+        rect = np.array(box, dtype=np.float32) if box is not None else None
         with torch.inference_mode():
-            masks, scores, _ = pred.predict(point_coords=coords, point_labels=labels, multimask_output=len(points) == 1)
+            masks, scores, _ = pred.predict(point_coords=coords, point_labels=labels, box=rect, multimask_output=len(points) == 1 and rect is None)
     mask = masks[int(np.argmax(scores))] > 0
     out = io.BytesIO()
     Image.fromarray((mask * 255).astype("uint8"), "L").save(out, "PNG")

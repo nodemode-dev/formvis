@@ -69,3 +69,17 @@ def test_without_the_extras_the_engine_says_so(client, monkeypatch):
     r = client.post(U, data={"key": "k", "points": json.dumps([[1, 1, 1]])})
     assert r.status_code == 501 and "install-ml" in r.json()["detail"]
     assert client.get("/api/capabilities").json()["selectObject"]["available"] is False
+
+
+@needs_sam
+def test_a_box_selects_the_object_inside_it(client):
+    # Object Selection's box mode (1.49.10): a box round the square, no points.
+    png, circle, square = _scene()
+    r = client.post(U, data={"key": "doc:box", "points": "[]", "box": json.dumps([185, 65, 295, 175])}, files={"file": ("l.png", png, "image/png")})
+    assert r.status_code == 200
+    m = _mask(r)
+    assert m[square].mean() > 0.95 and m[circle].mean() < 0.02
+    bad = client.post(U, data={"key": "doc:box", "points": "[]", "box": json.dumps([200, 60, 100, 170])})
+    assert bad.status_code == 422                                                   # a backwards box
+    none = client.post(U, data={"key": "doc:box", "points": "[]"})
+    assert none.status_code == 422                                                  # neither points nor a box

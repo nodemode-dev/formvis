@@ -1,6 +1,6 @@
 import { SelectionMask, createSurface, ctxOf, toBlob, type Engine, type Pt, type SelectionMode } from '../../engine';
 import { api } from '../../io/api';
-import type { Tool } from '../registry';
+import { dashed, type Tool } from '../registry';
 import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 
 /** The Object Selection tool (Photoshop's, W): click an object to select it, Shift-click to add another, Alt-click to
@@ -35,40 +35,103 @@ function keyOf(id: string, s: HTMLCanvasElement | OffscreenCanvas): string {
   return `${id}:${s.width}x${s.height}:${h.toString(16)}`;
 }
 
-async function selectAt(engine: Engine, pt: Pt, mode: SelectionMode): Promise<void> {
+/** SAM's mask for points or a box, at document size (null when nothing was found); the image sent only when it changed. */
+async function request(engine: Engine, points: Array<[number, number, 0 | 1]>, box: [number, number, number, number] | null): Promise<Uint8Array | null> {
   const p = engine.current, src = p ? source(engine) : null;
-  if (!p || !src) return;
-  const W = p.doc.width, H = p.doc.height, x = Math.floor(pt.x), y = Math.floor(pt.y);
-  if (x < 0 || y < 0 || x >= W || y >= H) return;
-  const key = keyOf(p.id, src);
+  if (!p || !src) return null;
+  const W = p.doc.width, H = p.doc.height, key = keyOf(p.id, src);
+  const blob = await api.selectObject(key, points, () => toBlob(src), key !== sentKey, box);
+  sentKey = key;
+  const bitmap = await createImageBitmap(blob), m = createSurface(W, H), c = ctxOf(m);
+  c.drawImage(bitmap, 0, 0, W, H);
+  bitmap.close();
+  const px = c.getImageData(0, 0, W, H).data, data = new Uint8Array(W * H);
+  for (let i = 0; i < data.length; i++) data[i] = px[i * 4];
+  if (engine.current !== p || !data.some((v) => v >= 128)) return null;
+  return data;
+}
+
+async function selectWith(engine: Engine, points: Array<[number, number, 0 | 1]>, box: [number, number, number, number] | null, mode: SelectionMode): Promise<void> {
+  const p = engine.current;
+  if (!p) return;
+  highlight = null;
   await engine.task(async () => {
     try {
-      const blob = await api.selectObject(key, [[x, y, 1]], () => toBlob(src), key !== sentKey);
-      sentKey = key;
-      const bitmap = await createImageBitmap(blob), m = createSurface(W, H), c = ctxOf(m);
-      c.drawImage(bitmap, 0, 0, W, H);
-      bitmap.close();
-      const px = c.getImageData(0, 0, W, H).data, data = new Uint8Array(W * H);
-      for (let i = 0; i < data.length; i++) data[i] = px[i * 4];
-      if (engine.current !== p) return;
-      if (!data.some((v) => v >= 128)) { engine.notice('No object was found there.'); return; }
-      engine.applySelection(SelectionMask.cropped(0, 0, W, H, data), mode, 'Object Selection');
+      const data = await request(engine, points, box);
+      if (!data) { engine.notice(box ? 'No object was found in the box.' : 'No object was found there.'); return; }
+      engine.applySelection(SelectionMask.cropped(0, 0, p.doc.width, p.doc.height, data), mode, 'Object Selection');
     } catch (err) {
       engine.notice(err instanceof Error ? err.message : String(err));
     }
   });
 }
 
+/* Box mode and the hover highlight (1.49.10, the owner's tool list), as Photoshop's: a drag draws a box and selects the
+   object in it; resting the pointer shows the object under it, tinted, before any click. */
+let draft: { from: Pt; to: Pt; mode: SelectionMode } | null = null;
+let highlight: { mask: HTMLCanvasElement | OffscreenCanvas; at: Pt } | null = null;
+let hoverTimer = 0, hoverBusy = false, hoverOn = true;
+
+function showHover(engine: Engine, at: Pt): void {
+  clearTimeout(hoverTimer);
+  if (!hoverOn || draft) return;
+  hoverTimer = window.setTimeout(async () => {
+    const p = engine.current;
+    if (!p || hoverBusy || engine.tool !== 'objectSelect') return;
+    const x = Math.floor(at.x), y = Math.floor(at.y);
+    if (x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height) return;
+    hoverBusy = true;
+    try {
+      const data = await request(engine, [[x, y, 1]], null);
+      if (!data || engine.tool !== 'objectSelect' || draft) { highlight = null; return; }
+      const W = p.doc.width, H = p.doc.height, c = createSurface(W, H), g = ctxOf(c), img = g.createImageData(W, H);
+      for (let i = 0; i < data.length; i++) if (data[i] >= 128) { img.data[i * 4] = 249; img.data[i * 4 + 1] = 115; img.data[i * 4 + 2] = 22; img.data[i * 4 + 3] = 90; }
+      g.putImageData(img, 0, 0);
+      highlight = { mask: c, at };
+    } catch { highlight = null; } finally { hoverBusy = false; engine.emit('overlay', null); }
+  }, 350);
+}
+
+async function selectAt(engine: Engine, pt: Pt, mode: SelectionMode): Promise<void> {
+  const p = engine.current;
+  if (!p) return;
+  const x = Math.floor(pt.x), y = Math.floor(pt.y);
+  if (x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height) return;
+  await selectWith(engine, [[x, y, 1]], null, mode);
+}
+
 export const objectSelectTool: Tool = {
   id: 'objectSelect', label: 'Object Selection', key: 'W', order: 35,
   icon: () => 'tObjectSelect',
-  hint: () => 'Click an object to select it · Shift adds · Alt subtracts · The first click on an image takes a few seconds',
+  hint: () => 'Click an object, or drag a box round it · Shift adds · Alt subtracts · Rest the pointer to see the object it finds · The first use on an image takes a few seconds',
   cursor: () => 'crosshair',
-  down(ctx, p) { if (p.button === 0) void selectAt(ctx.engine, p.doc, modeFor(ctx.engine, p)); },
+  down(ctx, p) { if (p.button !== 0) return; clearTimeout(hoverTimer); highlight = null; draft = { from: p.doc, to: p.doc, mode: modeFor(ctx.engine, p) }; ctx.engine.emit('overlay', null); },
+  move(ctx, p) { if (!draft) return; draft.to = p.doc; ctx.engine.emit('overlay', null); },
+  up(ctx) {
+    const d = draft;
+    draft = null;
+    ctx.engine.emit('overlay', null);
+    if (!d) return;
+    const v = ctx.view(), a = v.toScreen(d.from), b = v.toScreen(d.to);
+    if (Math.abs(b.x - a.x) < 6 && Math.abs(b.y - a.y) < 6) { void selectAt(ctx.engine, d.from, d.mode); return; }
+    void selectWith(ctx.engine, [], [Math.min(d.from.x, d.to.x), Math.min(d.from.y, d.to.y), Math.max(d.from.x, d.to.x), Math.max(d.from.y, d.to.y)], d.mode);
+  },
+  hover(ctx, p) {
+    if (!p) { clearTimeout(hoverTimer); if (highlight) { highlight = null; ctx.engine.emit('overlay', null); } return; }
+    if (highlight && Math.hypot(p.doc.x - highlight.at.x, p.doc.y - highlight.at.y) * ctx.view().zoom > 12) { highlight = null; ctx.engine.emit('overlay', null); }
+    showHover(ctx.engine, p.doc);
+  },
+  cancel(ctx) { draft = null; highlight = null; clearTimeout(hoverTimer); ctx.engine.emit('overlay', null); },
+  overlay(ctx, g) {
+    const v = ctx.view();
+    if (highlight && !draft) { const o = v.toScreen({ x: 0, y: 0 }), p = ctx.engine.current; if (p) g.drawImage(highlight.mask as CanvasImageSource, o.x, o.y, p.doc.width * v.zoom, p.doc.height * v.zoom); }
+    if (draft) { const a = v.toScreen(draft.from), b = v.toScreen(draft.to); dashed(ctx, g, () => { g.rect(Math.min(a.x, b.x) + 0.5, Math.min(a.y, b.y) + 0.5, Math.abs(b.x - a.x), Math.abs(b.y - a.y)); }); }
+  },
   keydown(ctx, e) { return nudgeSelectionKey(ctx, e); },
   options: (e) => [
     { kind: 'title', text: 'Object Selection' },
     { kind: 'toggle', label: 'Sample All Layers', get: () => sampleAll, set: (v) => { sampleAll = v; } },
+    { kind: 'toggle', label: 'Highlight on Hover', get: () => hoverOn, set: (v) => { hoverOn = v; if (!v) { highlight = null; clearTimeout(hoverTimer); } } },
     modeSegment(e),
   ],
 };

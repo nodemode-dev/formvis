@@ -677,7 +677,10 @@ export class Engine {
   setBrushMode(mode: 'paint' | 'erase'): void { this.brushMode = mode; this.emit('options', null); this.emit('tool', null); }
   setWand(patch: Partial<Engine['wand']>): void { this.wand = { ...this.wand, ...patch }; this.emit('options', null); }
   /** Paint Bucket: fills the area of similar colour clicked with the foreground colour. */
-  bucket = { tolerance: 32, contiguous: true, sampleAll: false, opacity: 1, antiAlias: true };
+  /** The Paint Bucket's settings; source and pattern and mode (1.49.10, the owner's tool list): the foreground or a
+   *  pattern (tiled from the layer's corner, as Edit > Fill's), in a blend mode. */
+  bucket: { tolerance: number; contiguous: boolean; sampleAll: boolean; opacity: number; antiAlias: boolean; source: 'fg' | 'pattern'; pattern: ID | null; mode: BlendMode } =
+    { tolerance: 32, contiguous: true, sampleAll: false, opacity: 1, antiAlias: true, source: 'fg', pattern: null, mode: 'normal' };
   setBucket(patch: Partial<Engine['bucket']>): void { this.bucket = { ...this.bucket, ...patch }; this.emit('options', null); }
   /** Dodge and Burn lighten and darken, weighted to a tonal range by Exposure; Sponge moves colour away from or toward
    *  its own grey by Flow. */
@@ -2668,6 +2671,14 @@ export class Engine {
     });
   }
 
+  /** A pattern tiled from the raster's corner over `rect`, kept to `cover` (the Paint Bucket's Pattern source). */
+  private patternTint(rect: Rect, tile: Surface, cover: Surface | null): Surface {
+    const s = createSurface(rect.w, rect.h), c = ctxOf(s), fill = c.createPattern(tile as CanvasImageSource, 'repeat');
+    if (fill) { c.translate(-rect.x, -rect.y); c.fillStyle = fill; c.fillRect(rect.x, rect.y, rect.w, rect.h); c.setTransform(1, 0, 0, 1, 0, 0); }
+    if (cover) { c.globalCompositeOperation = 'destination-in'; c.drawImage(cover, 0, 0); }
+    return s;
+  }
+
   private tint(rect: Rect, style: string, cover: Surface | null): Surface {
     const s = createSurface(rect.w, rect.h);
     const c = ctxOf(s);
@@ -3021,7 +3032,11 @@ export class Engine {
         c.globalCompositeOperation = 'destination-out';
         c.drawImage(t, rect.x, rect.y);
         if (v > 0) { c.globalCompositeOperation = 'lighter'; c.globalAlpha = alpha * v; c.drawImage(t, rect.x, rect.y); }
-      } else c.drawImage(this.tint(rect, rgbCss(color), cover), rect.x, rect.y);
+      } else {
+        const pat = this.bucket.source === 'pattern' ? patternById(this.bucket.pattern) ?? allPatterns()[0] ?? null : null;
+        c.globalCompositeOperation = compositeOp(this.bucket.mode);
+        c.drawImage(pat ? this.patternTint(rect, pat.surface, cover) : this.tint(rect, rgbCss(color), cover), rect.x, rect.y);
+      }
       c.restore();
     }, region);
   }
@@ -3091,7 +3106,8 @@ export class Engine {
   private quickState: { project: Project; data: Uint8ClampedArray; W: number; H: number; base: SelectionMask | null; grown: Uint8Array; box: Rect | null; subtract: boolean; last: Pt | null } | null = null;
   get quickSelecting(): boolean { return !!this.quickState; }
 
-  beginQuickSelect(pt: Pt, subtract: boolean): void {
+  /** fresh: Quick Selection's New (starting from no selection within this step, so one undo covers it). */
+  beginQuickSelect(pt: Pt, subtract: boolean, fresh = false): void {
     const p = this.current;
     if (!p || this.quickState) return;
     this.settle();
@@ -3107,6 +3123,7 @@ export class Engine {
       c.drawImage(l.raster.canvas, 0, 0);
     }
     this.quickState = { project: p, data: ctxOf(surface).getImageData(0, 0, W, H).data, W, H, base: p.selection, grown: new Uint8Array(W * H), box: null, subtract, last: null };
+    if (fresh && !subtract) this.quickState.base = null;
     this.quickTo(pt);
   }
 

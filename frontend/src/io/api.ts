@@ -102,9 +102,9 @@ export const api = {
   /** Click-to-select (SAM 2.1): the object at `points` ([x, y, 1] on it, [x, y, 0] not) in the image under `key`. The image
    *  is sent only when `withImage` asks for it or the engine answers 409 (it no longer holds the key), then once more
    *  with it; `image` makes the pixels only when they are needed. */
-  async selectObject(key: string, points: Array<[number, number, 0 | 1]>, image: () => Promise<Blob>, withImage: boolean): Promise<Blob> {
+  async selectObject(key: string, points: Array<[number, number, 0 | 1]>, image: () => Promise<Blob>, withImage: boolean, box: [number, number, number, number] | null = null): Promise<Blob> {
     const send = async (img: Blob | null): Promise<Blob> => {
-      const body = form({ key, points: JSON.stringify(points) }, img ? [{ name: 'image.png', blob: img }] : [], 'file');
+      const body = form({ key, points: JSON.stringify(points), ...(box ? { box: JSON.stringify(box) } : {}) }, img ? [{ name: 'image.png', blob: img }] : [], 'file');
       return (await request('/ops/select-object', { method: 'POST', body })).blob();
     };
     if (withImage) return send(await image());

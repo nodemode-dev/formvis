@@ -35,3 +35,21 @@ def test_clicking_selects_the_object_and_shift_adds_another(page):
     page.evaluate("window.sonny.engine.undo()")
     c = page.evaluate(COVER)
     assert c["circle"] > 0.95 and c["square"] < 0.02, c                  # one undo takes the square back off
+
+
+def test_a_box_selects_the_object_in_it_and_resting_shows_the_object_first(page):
+    # Box mode and the hover highlight (1.49.10), against the real model.
+    if not available(page):
+        pytest.skip("SAM 2.1 is optional: ./sonny install-ml installs torch and sam2")
+    page.evaluate(SCENE)
+    x0, y0, z = page.evaluate(SCREEN)
+    # Resting over the square shows it, tinted, before any click: no selection is made.
+    page.mouse.move(x0 + 240 * z, y0 + 120 * z); page.mouse.move(x0 + 241 * z, y0 + 121 * z)
+    page.wait_for_function("""(() => { const o = document.querySelector('.cv-overlay-canvas'), g = o.getContext('2d'), v = window.sonny.engine.current.viewport, d = o.width / o.clientWidth, q = v.toScreen(250, 100);
+      const p = g.getImageData(Math.round(q.x * d), Math.round(q.y * d), 1, 1).data; return p[3] > 30 && p[0] > p[2]; })()""", timeout=60000)
+    assert page.evaluate("window.sonny.engine.current.selection") is None                # shown, not selected
+    # A box round the circle selects it.
+    page.mouse.move(x0 + 20 * z, y0 + 60 * z); page.mouse.down(); page.mouse.move(x0 + 140 * z, y0 + 180 * z, steps=8); page.mouse.up()
+    page.wait_for_function("!!window.sonny.engine.current.selection", timeout=60000)
+    c = page.evaluate(COVER)
+    assert c["circle"] > 0.95 and c["square"] < 0.02, c

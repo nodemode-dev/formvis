@@ -21,7 +21,7 @@ def remove_background(file: UploadFile = File(...), method: str = Form("auto")) 
 
 
 @router.post("/select-object")
-def select_object(key: str = Form(...), points: str = Form(...), file: UploadFile | None = File(None)) -> Response:
+def select_object(key: str = Form(...), points: str = Form(...), box: str | None = Form(None), file: UploadFile | None = File(None)) -> Response:
     """Click-to-select with SAM 2.1: the image is sent once per key (a layer and its revision) and encoded; clicks send the
     key and points ([x, y, 1] on the object, [x, y, 0] not on it). A key the engine no longer holds answers 409, and the
     client sends the image again."""
@@ -30,6 +30,11 @@ def select_object(key: str = Form(...), points: str = Form(...), file: UploadFil
     try:
         raw = json.loads(points)
         pts = [(float(p[0]), float(p[1]), 1 if int(p[2]) else 0) for p in raw][:32]
+        rect = tuple(float(v) for v in json.loads(box))[:4] if box else None   # a box: x0, y0, x1, y1
+        if rect is not None and (len(rect) != 4 or rect[2] <= rect[0] or rect[3] <= rect[1]):
+            raise ValueError('box')
+        if not pts and rect is None:
+            raise ValueError('nothing')
     except Exception as exc:
         raise HTTPException(status_code=422, detail="The points could not be read.") from exc
     try:
@@ -37,7 +42,7 @@ def select_object(key: str = Form(...), points: str = Form(...), file: UploadFil
             segment.encode(key, file.file.read())
         elif not segment.has(key):
             raise HTTPException(status_code=409, detail="encode")
-        png = segment.select(key, pts)
+        png = segment.select(key, pts, rect)
     except KeyError as exc:
         raise HTTPException(status_code=409, detail="encode") from exc
     except segment.SegmentError as exc:
