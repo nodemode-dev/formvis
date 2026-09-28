@@ -706,12 +706,19 @@ export class Engine {
   setBucket(patch: Partial<Engine['bucket']>): void { this.bucket = { ...this.bucket, ...patch }; this.emit('options', null); }
   /** Dodge and Burn lighten and darken, weighted to a tonal range by Exposure; Sponge moves colour away from or toward
    *  its own grey by Flow. */
-  tone: { range: 'shadows' | 'midtones' | 'highlights'; exposure: number; spongeMode: 'desaturate' | 'saturate'; flow: number } = { range: 'midtones', exposure: 0.5, spongeMode: 'desaturate', flow: 0.5 };
+  /** protectTones and vibrance (1.50.7, the tool audit), on by default as Photoshop's: Dodge and Burn change brightness
+   *  and keep the colour, easing it toward grey only as far as keeps it from clipping; the Sponge saturates the least
+   *  saturated most, so nothing clips. */
+  tone: { range: 'shadows' | 'midtones' | 'highlights'; exposure: number; spongeMode: 'desaturate' | 'saturate'; flow: number; protectTones: boolean; vibrance: boolean } = { range: 'midtones', exposure: 0.5, spongeMode: 'desaturate', flow: 0.5, protectTones: true, vibrance: true };
+  /** The Eyedropper's Sample (1.50.7), as Photoshop's: the active layer, it and those below, or everything shown. */
+  eyedropperSample: HealSample = 'all';
   setTone(patch: Partial<Engine['tone']>): void { this.tone = { ...this.tone, ...patch }; this.emit('options', null); }
   setColors(fg?: RGB, bg?: RGB): void { if (fg) this.fg = fg; if (bg) this.bg = bg; this.emit('colors', null); this.emit('options', null); }
   swapColors(): void { this.setColors(this.bg, this.fg); }
   defaultColors(): void { this.setColors({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 }); }
 
+  /** View > Fill Screen (1.50.7, the Zoom tool's bar): the image covering the visible area, centred. */
+  fillScreen(): void { const p = this.current; if (!p) return; p.viewport.fill(p.doc.width, p.doc.height); this.emit('viewport', null); this.emit('render', null); }
   fit(): void { const p = this.current; if (!p) return; p.viewport.fit(p.doc.width, p.doc.height); this.emit('viewport', null); this.emit('render', null); }
   zoomTo(z: number, at?: Pt): void {
     const v = this.current?.viewport;
@@ -3112,10 +3119,23 @@ export class Engine {
       if (d[i + 3] === 0) continue;
       const r = d[i] / 255, g = d[i + 1] / 255, b = d[i + 2] / 255, l = 0.299 * r + 0.587 * g + 0.114 * b;
       let f: (v: number) => number;
-      if (kind === 'sponge') { const k = t.spongeMode === 'saturate' ? -t.flow : t.flow; f = (v) => v + (l - v) * k; }
-      else {
+      if (kind === 'sponge') {
+        const sat = Math.max(r, g, b) - Math.min(r, g, b), k = t.spongeMode === 'saturate' ? -t.flow * (t.vibrance ? 1 - sat : 1) : t.flow;
+        f = (v) => v + (l - v) * k;
+      } else {
         const w = t.range === 'shadows' ? (1 - l) * (1 - l) : t.range === 'highlights' ? l * l : 1 - (2 * l - 1) * (2 * l - 1), a = t.exposure * w;
-        f = kind === 'dodge' ? (v) => v + (1 - v) * a : (v) => v * (1 - a);
+        const g1 = kind === 'dodge' ? (v: number): number => v + (1 - v) * a : (v: number): number => v * (1 - a);
+        if (t.protectTones) {
+          // The brightness moves as the channels would, every channel by the same amount (the hue kept); a colour that
+          // would then clip is eased toward its grey just far enough to fit.
+          const nl = g1(l), shift = nl - l, ch = [r + shift, g + shift, b + shift];
+          let s = 1;
+          for (const c of ch) { if (c > 1) s = Math.min(s, (1 - nl) / Math.max(1e-6, c - nl)); if (c < 0) s = Math.min(s, nl / Math.max(1e-6, nl - c)); }
+          const out = ch.map((c) => nl + (c - nl) * Math.max(0, s));
+          d[i] = Math.round(Math.min(1, Math.max(0, out[0])) * 255); d[i + 1] = Math.round(Math.min(1, Math.max(0, out[1])) * 255); d[i + 2] = Math.round(Math.min(1, Math.max(0, out[2])) * 255);
+          continue;
+        }
+        f = g1;
       }
       d[i] = Math.round(Math.min(1, Math.max(0, f(r))) * 255); d[i + 1] = Math.round(Math.min(1, Math.max(0, f(g))) * 255); d[i + 2] = Math.round(Math.min(1, Math.max(0, f(b))) * 255);
     }
@@ -3851,7 +3871,9 @@ export class Engine {
     if (!p || pt.x < 0 || pt.y < 0 || pt.x >= p.doc.width || pt.y >= p.doc.height) return null;
     const n = Math.max(1, Math.min(101, Math.round(this.eyedropperSize))), half = Math.floor(n / 2);
     const s = createSurface(n, n);
-    this.work.render({ doc: p.doc, target: s, view: translation(-(Math.floor(pt.x) - half), -(Math.floor(pt.y) - half)) });
+    const view = translation(-(Math.floor(pt.x) - half), -(Math.floor(pt.y) - half)), l = p.activeLayer, sample = l ? this.eyedropperSample : 'all';
+    if (sample === 'current' && l) { if (l.raster) { const c = ctxOf(s); setMat(c, mul(view, placement(l.transform, l.raster.width, l.raster.height))); c.drawImage(l.raster.canvas, 0, 0); } }
+    else this.work.render({ doc: p.doc, target: s, view, ...(sample === 'below' && l ? { overrides: this.belowOverrides(p, l) } : {}) });
     const d = ctxOf(s).getImageData(0, 0, n, n).data;
     let r = 0, g = 0, b = 0, a = 0;
     for (let i = 0; i < n * n; i++) {

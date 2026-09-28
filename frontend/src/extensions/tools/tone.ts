@@ -25,10 +25,12 @@ function toneTool(id: 'dodge' | 'burn' | 'sponge', label: string, order: number,
         ? [
             { kind: 'segment', label: 'Mode', choices: [{ id: 'desaturate', label: 'Desaturate' }, { id: 'saturate', label: 'Saturate' }], get: () => e.tone.spongeMode, set: (v: string) => e.setTone({ spongeMode: v === 'saturate' ? 'saturate' : 'desaturate' }) },
             { kind: 'range', label: 'Flow', min: 1, max: 100, get: () => Math.round(e.tone.flow * 100), set: (v: number) => e.setTone({ flow: v / 100 }) },
+            { kind: 'toggle', label: 'Vibrance', get: () => e.tone.vibrance, set: (v: boolean) => e.setTone({ vibrance: v }) },   // 1.50.7, the tool audit
           ] as OptionSpec[]
         : [
             { kind: 'segment', label: 'Range', choices: [{ id: 'shadows', label: 'Shadows' }, { id: 'midtones', label: 'Midtones' }, { id: 'highlights', label: 'Highlights' }], get: () => e.tone.range, set: (v: string) => e.setTone({ range: v === 'shadows' || v === 'highlights' ? v : 'midtones' }) },
             { kind: 'range', label: 'Exposure', min: 1, max: 100, get: () => Math.round(e.tone.exposure * 100), set: (v: number) => e.setTone({ exposure: v / 100 }) },
+            { kind: 'toggle', label: 'Protect Tones', get: () => e.tone.protectTones, set: (v: boolean) => e.setTone({ protectTones: v }) },   // 1.50.7
           ] as OptionSpec[]),
       ...brushOptions(e, 'Strength'),
     ],

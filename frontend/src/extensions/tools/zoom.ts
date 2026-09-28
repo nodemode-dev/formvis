@@ -25,6 +25,8 @@ export const zoomTool: Tool = {
     { kind: 'title', text: 'Zoom' },
     { kind: 'button', label: 'Zoom in', icon: 'zoomIn', run: () => e.zoomStep(true) },
     { kind: 'button', label: 'Zoom out', icon: 'zoomOut', run: () => e.zoomStep(false) },
+    { kind: 'button', label: '100%', run: () => e.zoomTo(1) },
     { kind: 'button', label: 'Fit', icon: 'fitView', run: () => e.fit() },
+    { kind: 'button', label: 'Fill Screen', run: () => e.fillScreen() },
   ],
 };

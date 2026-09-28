@@ -26,6 +26,10 @@ def test_each_operation_fills_as_photoshop_does(page, op):
     s = page.evaluate(SETUP)
     page.mouse.click(s[0] + 140 * s[2], s[1] + 80 * s[2])      # choose the second square
     page.locator(".cv-opt-group:not([hidden])").get_by_role("button", name=op, exact=True).click()
+    # Wait for the operation to be on the path before filling (1.50.7: under load the fill could run first, and every
+    # region filled as if nothing had been chosen).
+    if op != "Combine":
+        page.wait_for_function("(op) => (window.formvis.engine.workPath?.subpaths ?? []).some((s) => s.op === op)", arg=op.lower(), timeout=5000)
     page.evaluate("window.formvis.engine.fillPath()")
     assert [page.evaluate(DARK, [x, 80]) for x in (60, 100, 140)] == CASES[op], op
 

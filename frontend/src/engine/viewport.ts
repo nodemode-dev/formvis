@@ -38,6 +38,16 @@ export class Viewport {
     this.fitted = true;
   }
 
+  /** Fill Screen: the zoom at which the image covers the visible area, centred, no margin. */
+  fill(dw: number, dh: number): void {
+    const w = this.width - Viewport.insetRight;
+    const z = Math.max(w / dw, this.height / dh);
+    this.zoom = clamp(Number.isFinite(z) && z > 0 ? z : Viewport.MIN, Viewport.MIN, Viewport.MAX);
+    this.panX = Math.round((w - dw * this.zoom) / 2);
+    this.panY = Math.round((this.height - dh * this.zoom) / 2);
+    this.fitted = false;
+  }
+
   zoomAt(z: number, sx: number, sy: number): void {
     const p = this.toDoc(sx, sy);
     this.zoom = clamp(z, Viewport.MIN, Viewport.MAX);
