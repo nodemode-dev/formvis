@@ -2,6 +2,18 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.49.9 · 2026-09-27
+
+### Added: retouching and navigation from your list
+
+- Content-Aware Move (J): select, then drag; Move fills the hole from around it, Extend keeps the original; the selection goes with it.
+- Red Eye (J): click a red pupil to darken it to a neutral; Pupil Size and Darken Amount.
+- Rotate View (R, in the Hand's slot): drag to turn the view, Shift for 15-degree steps; double-click, Escape or Reset View straightens it; tools, typing and wheel scrolling follow the turned view; the image itself never turns.
+
+### Changed
+
+- Blur, Sharpen and Smudge have no shortcut (as Photoshop's): R is Rotate View's.
+
 ## 1.49.8 · 2026-09-27
 
 ### Added: vector tools from your list

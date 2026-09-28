@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Retouching and Rotate View · _v1.49.9 (extensions/tools/content-aware-move.ts, red-eye.ts, rotate-view.ts new, smear.ts, index.ts, registry.ts; engine/index.ts, engine/viewport.ts, engine/types.ts; ui/stage.ts, ui/text-editor.ts, ui/tool-groups.ts, ui/rail.ts, ui/icons.ts)
+
+`Engine.contentAwareMove` (move or extend, the hole filled by `contentFill`, the selection moved); `Engine.redEye`, `redEyeArea` (no step when nothing red); `Viewport.rotation`, `Engine.setViewRotation`, `Stage.unturn`, `Stage.turn` (the surfaces turned by CSS, pointers and wheel panning turned back), the text editor turned with the view; `Tool.group` (Rotate View's R in the Hand's slot); Smear without a shortcut; rail titles by each tool's key. Removed from frontend:
+
+```text
+export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'count' | 'idle';
+  for (const tool of [historyBrushTool, frameTool, convertPointTool, selectionBrushTool, pencilTool, eraserTool, magicEraserTool, patternStampTool, backgroundEraserTool, colorSamplerTool, rulerTool, noteTool, countTool, moveTool, marqueeTool, lassoTool, objectSelectTool, quickSelectTool, wandTool, cropTool, brushTool, healTool, removeTool, healingBrushTool, patchTool, cloneTool, smearTool, dodgeTool, burnTool, spongeTool, gradientTool, bucketTool, shapeTool, pathSelectTool, directSelectTool, penTool, freeformPenTool, curvaturePenTool, typeTool, eyedropperTool, handTool, zoomTool]) registerTool(tool);
+  id: 'smear', label: 'Smear', key: 'R', order: 65,
+      setTitle(node, t.id === 'brush' ? 'Brush (B) · Eraser (E)' : entries(group) > 1 ? `${t.label} (${group.key}) · hold or right-click for ${group.tools.length} tools · Shift+${group.key} cycles` : `${t.label} (${group.key})`);
+    for (const k of ['viewport', 'active'] as const) engine.on(k, () => this.queue(true, true));
+    const screen = { x: e.clientX - r.left, y: e.clientY - r.top };
+      this.engine.pan(-(horizontal ? e.deltaY : e.deltaX) * unit, -(horizontal ? 0 : e.deltaY) * unit);
+    const g = out.find((x) => x.key === t.key);
+    if (g) g.tools.push(t); else out.push({ key: t.key, tools: [t] });
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Shape modes, fill and stroke · _v1.49.8 (engine/shape-paths.ts, engine/index.ts; extensions/tools/shape.ts; ui/properties.ts, ui/icons.ts)
 
 `PathShapeKind` 'triangle'; `boxedShapePath` for triangle, rectangle (`roundRectPath`) and ellipse (`ellipsePath`); `shapeSettings.mode`, `fill`, `stroke`, `strokeWidth`; `Engine.drawShape` (shape layer, work path, or pixels), `createVectorShape` (fill and stroke), `createShape` with a colour, `paintPath` with a given path; the shape bar's Mode, Fill, Stroke and Width; Justify in the Paragraph panel; a type mask clipped to the canvas. Removed from frontend:
