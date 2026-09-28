@@ -1,8 +1,10 @@
 import type { Engine, TextSpec } from '../../engine';
 import { canListSystemFonts, fontFamilies, loadSystemFonts } from '../../ui/fonts';
-import type { Tool } from '../registry';
+import type { Pt } from '../../engine';
+import { dashed, type Tool } from '../registry';
 
 const SYSTEM_FONTS = '__system-fonts';
+let draft: { from: Pt; to: Pt } | null = null;
 
 /** The font menu: this machine's families (the current one kept if it came from elsewhere, as a Photoshop file), and
  *  "Load system fonts..." where the browser can list them. */
@@ -23,8 +25,12 @@ export function setType(e: Engine, patch: Partial<TextSpec>): void {
  *  baseline begins at the click. The tool announces where; the app's text editor does the typing. */
 export const typeTool: Tool = {
   id: 'type', label: 'Type', key: 'T', order: 78,
-  icon: () => 'tType',
-  hint: () => 'Click to add text on a new type layer · Click a type layer to edit its text',
+  icon: (e) => (e.typeMask ? (e.textSettings.direction === 'vertical' ? 'tTypeMaskV' : 'tTypeMask') : e.textSettings.direction === 'vertical' ? 'tTypeV' : 'tType'),
+  // Photoshop's four: Horizontal and Vertical Type, and their masks (which make a selection instead of a layer).
+  variants: (e) => ([['h', 'Horizontal Type', 'tType', false, 'horizontal'], ['v', 'Vertical Type', 'tTypeV', false, 'vertical'], ['hm', 'Horizontal Type Mask', 'tTypeMask', true, 'horizontal'], ['vm', 'Vertical Type Mask', 'tTypeMaskV', true, 'vertical']] as const).map(([id, label, icon, mask, dir]) => ({
+    id, label, icon, active: () => e.typeMask === mask && (e.textSettings.direction ?? 'horizontal') === dir, pick: () => { e.typeMask = mask; setType(e, { direction: dir }); },
+  })),
+  hint: (e) => (e.typeMask ? 'Click or drag a box, type, then click away: the text becomes a selection' : 'Click to add point text · Drag a box for paragraph text · Click a type layer to edit its text'),
   cursor: () => 'text',
   options: (e) => [
     { kind: 'title', text: 'Type' },
@@ -34,7 +40,7 @@ export const typeTool: Tool = {
       setType(e, { family: v });
     } },
     { kind: 'number', label: 'Size', min: 1, max: 2000, unit: 'px', get: () => e.textSettings.size, set: (v) => setType(e, { size: Math.min(2000, Math.max(1, v)) }) },
-    { kind: 'segment', label: 'Align', choices: [{ id: 'left', label: 'Left' }, { id: 'center', label: 'Centre' }, { id: 'right', label: 'Right' }], get: () => e.textSettings.align, set: (v) => setType(e, { align: v === 'center' || v === 'right' ? v : 'left' }) },
+    { kind: 'segment', label: 'Align', choices: [{ id: 'left', label: 'Left' }, { id: 'center', label: 'Centre' }, { id: 'right', label: 'Right' }, { id: 'justify', label: 'Justify' }], get: () => e.textSettings.align, set: (v) => setType(e, { align: v === 'justify' ? 'justify' : v === 'center' || v === 'right' ? v : 'left' }) },
     { kind: 'toggle', label: 'Bold', get: () => e.textSettings.bold, set: (v) => setType(e, { bold: v }) },
     { kind: 'toggle', label: 'Italic', get: () => e.textSettings.italic, set: (v) => setType(e, { italic: v }) },
     { kind: 'number', label: 'Leading', min: 0.5, max: 4, step: 0.05, unit: 'x', get: () => e.textSettings.lineHeight, set: (v) => setType(e, { lineHeight: Math.min(4, Math.max(0.5, v)) }) },
@@ -42,9 +48,28 @@ export const typeTool: Tool = {
     { kind: 'number', label: 'Tracking', min: -1000, max: 10000, step: 10, unit: '', get: () => e.textSettings.tracking, set: (v) => setType(e, { tracking: Math.round(Math.min(10000, Math.max(-1000, v))) }) },
     { kind: 'select', label: 'Kerning', choices: [{ id: 'metrics', label: 'Metrics' }, { id: 'none', label: '0' }], get: () => e.textSettings.kerning, set: (v) => setType(e, { kerning: v === 'none' ? 'none' : 'metrics' }) },
   ],
+  // A click starts point text (or edits the type layer under it); a drag draws a box for paragraph text (1.49.7).
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
-    const hit = ctx.engine.textLayerAt(p.doc);
-    document.dispatchEvent(new CustomEvent('cv:type', { detail: hit ? { layerId: hit } : { x: p.doc.x, y: p.doc.y } }));
+    const hit = ctx.engine.typeMask ? null : ctx.engine.textLayerAt(p.doc);
+    if (hit) { document.dispatchEvent(new CustomEvent('cv:type', { detail: { layerId: hit } })); return; }
+    draft = { from: p.doc, to: p.doc };
+  },
+  move(ctx, p) { if (!draft) return; draft.to = p.doc; ctx.engine.emit('overlay', null); },
+  up(ctx) {
+    const d = draft;
+    draft = null;
+    ctx.engine.emit('overlay', null);
+    if (!d) return;
+    const v = ctx.view(), a = v.toScreen(d.from), b = v.toScreen(d.to);
+    if (Math.abs(b.x - a.x) < 8 || Math.abs(b.y - a.y) < 8) { document.dispatchEvent(new CustomEvent('cv:type', { detail: { x: d.from.x, y: d.from.y } })); return; }
+    const x = Math.min(d.from.x, d.to.x), y = Math.min(d.from.y, d.to.y);
+    document.dispatchEvent(new CustomEvent('cv:type', { detail: { x, y, box: { w: Math.abs(d.to.x - d.from.x), h: Math.abs(d.to.y - d.from.y) } } }));
+  },
+  cancel(ctx) { draft = null; ctx.engine.emit('overlay', null); },
+  overlay(ctx, g) {
+    if (!draft) return;
+    const v = ctx.view(), a = v.toScreen(draft.from), b = v.toScreen(draft.to);
+    dashed(ctx, g, () => { g.rect(Math.min(a.x, b.x) + 0.5, Math.min(a.y, b.y) + 0.5, Math.abs(b.x - a.x), Math.abs(b.y - a.y)); });
   },
 };

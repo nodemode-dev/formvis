@@ -65,26 +65,89 @@ export interface TextRender { raster: Raster; baseline: number; pad: number }
  *  and descent so every line sits the same distance apart, padding for overhangs such as italics, and `baseline`, the
  *  first baseline's distance from the top. */
 export function renderPlain(t: TextSpec): TextRender {
-  const lines = t.content.split('\n');
+  if (t.direction === 'vertical') return renderVertical(t);
   const probe = ctxOf(createSurface(1, 1));
   setType(probe, t);
-  const metrics = lines.map((line) => probe.measureText(line || ' '));
-  const widths = lines.map((line) => lineWidth(probe, t, line || ' '));
+  const pad = Math.ceil(t.size * 0.1) + 2, box = t.box && t.box.w > 0 && t.box.h > 0 ? t.box : null;
+  // Paragraph text wraps to its box (a word longer than the line breaks by characters); point text breaks only at
+  // line breaks. `last` marks a paragraph's last line, which Justify leaves as it is.
+  const lines: Array<{ text: string; last: boolean }> = box ? wrapLines(probe, t, t.content, Math.max(1, box.w - pad * 2)) : t.content.split('\n').map((text) => ({ text, last: true }));
+  const metrics = lines.map((line) => probe.measureText(line.text || ' '));
+  const widths = lines.map((line) => lineWidth(probe, t, line.text || ' '));
   const ascent = metrics[0].fontBoundingBoxAscent || t.size * 0.8, descent = metrics[0].fontBoundingBoxDescent || t.size * 0.25;
-  const advance = t.size * t.lineHeight, pad = Math.ceil(t.size * 0.1) + 2;
+  const advance = t.size * t.lineHeight;
   const widest = Math.max(1, ...metrics.map((m, i) => Math.max(widths[i], (m.actualBoundingBoxLeft || 0) + (m.actualBoundingBoxRight || 0))));
-  const width = Math.ceil(widest) + pad * 2, height = Math.ceil(ascent + descent + advance * (lines.length - 1)) + pad * 2;
+  const width = box ? Math.max(1, Math.round(box.w)) : Math.ceil(widest) + pad * 2;
+  const height = box ? Math.max(1, Math.round(box.h)) : Math.ceil(ascent + descent + advance * (lines.length - 1)) + pad * 2;
   const raster = new Raster(width, height), c = raster.ctx;
   setType(c, t);
   c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
   c.textBaseline = 'alphabetic';
   const perChar = !CANVAS_TRACKING && t.tracking !== 0;
-  c.textAlign = perChar ? 'left' : t.align;
+  const run = (text: string, x: number, y: number): void => {   // a run of text from x, tracked as it will measure
+    if (!perChar) { c.fillText(text, x, y); return; }
+    for (const ch of text) { c.fillText(ch, x, y); x += c.measureText(ch).width + trackingPx(t); }
+  };
+  c.textAlign = 'left';
   lines.forEach((line, i) => {
     const y = pad + ascent + i * advance;
-    if (!perChar) { c.fillText(line, t.align === 'center' ? width / 2 : t.align === 'right' ? width - pad : pad, y); return; }
-    let x = t.align === 'center' ? (width - widths[i]) / 2 : t.align === 'right' ? width - pad - widths[i] : pad;
-    for (const ch of line) { c.fillText(ch, x, y); x += c.measureText(ch).width + trackingPx(t); }
+    if (box && y + descent > height) return;                       // past the box: clipped, as Photoshop's
+    const inner = width - pad * 2;
+    const words = line.text.split(' ');
+    if (t.align === 'justify' && box && !line.last && words.length > 1) {
+      const ws = words.map((w) => lineWidth(c, t, w)), gap = (inner - ws.reduce((a, b) => a + b, 0)) / (words.length - 1);
+      let x = pad;
+      words.forEach((w, k) => { run(w, x, y); x += ws[k] + gap; });
+      return;
+    }
+    const lw = widths[i], x = t.align === 'center' ? (width - lw) / 2 : t.align === 'right' ? width - pad - lw : pad;
+    run(line.text, x, y);
+  });
+  raster.touch();
+  return { raster, baseline: pad + ascent, pad };
+}
+
+/** Words to lines no wider than `max`, each paragraph (a line break) on its own, its last line marked. */
+function wrapLines(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D, t: TextSpec, content: string, max: number): Array<{ text: string; last: boolean }> {
+  const out: Array<{ text: string; last: boolean }> = [];
+  for (const para of content.split('\n')) {
+    let cur = '';
+    for (let w of para.split(' ')) {
+      const trial = cur ? `${cur} ${w}` : w;
+      if (lineWidth(c, t, trial) <= max) { cur = trial; continue; }
+      if (cur) { out.push({ text: cur, last: false }); cur = ''; }
+      while (w.length > 1 && lineWidth(c, t, w) > max) {
+        let k = w.length - 1;
+        while (k > 1 && lineWidth(c, t, w.slice(0, k)) > max) k -= 1;
+        out.push({ text: w.slice(0, k), last: false });
+        w = w.slice(k);
+      }
+      cur = w;
+    }
+    out.push({ text: cur, last: true });
+  }
+  return out;
+}
+
+/** Vertical type: each line a column, from right to left, its characters upright and stacked top to bottom, one em
+ *  apart plus the tracking; columns Leading apart. `baseline` is the top padding plus the ascent, as for point text. */
+function renderVertical(t: TextSpec): TextRender {
+  const cols = t.content.split('\n').map((l) => [...l]);
+  const probe = ctxOf(createSurface(1, 1));
+  setType(probe, t);
+  const m = probe.measureText('Ag'), ascent = m.fontBoundingBoxAscent || t.size * 0.8;
+  const pad = Math.ceil(t.size * 0.1) + 2, step = t.size + trackingPx(t), colW = t.size * t.lineHeight;
+  const rows = Math.max(1, ...cols.map((c) => c.length));
+  const width = Math.ceil(colW * cols.length) + pad * 2, height = Math.ceil(step * rows) + pad * 2;
+  const raster = new Raster(width, height), c = raster.ctx;
+  setType(c, t);
+  if ('letterSpacing' in c) (c as unknown as { letterSpacing: string }).letterSpacing = '0px';
+  c.fillStyle = `rgb(${t.color.r},${t.color.g},${t.color.b})`;
+  c.textAlign = 'center';
+  c.textBaseline = 'top';
+  cols.forEach((col, i) => {
+    const x = width - pad - colW * (i + 0.5);
+    col.forEach((ch, j) => c.fillText(ch, x, pad + j * step));
   });
   raster.touch();
   return { raster, baseline: pad + ascent, pad };
@@ -267,7 +330,9 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
   return {
     content: o.content.slice(0, 20000), family: typeof o.family === 'string' && o.family.trim() ? o.family.slice(0, 80) : d.family,
     size: num(o.size, d.size, 1, 2000), color: { r: Math.round(num(c.r, 0, 0, 255)), g: Math.round(num(c.g, 0, 0, 255)), b: Math.round(num(c.b, 0, 0, 255)) },
-    align: o.align === 'center' || o.align === 'right' ? o.align : 'left', bold: o.bold === true, italic: o.italic === true,
+    align: o.align === 'center' || o.align === 'right' || o.align === 'justify' ? o.align : 'left', bold: o.bold === true, italic: o.italic === true,
+    ...(o.box && typeof o.box === 'object' ? (() => { const b = o.box as Record<string, unknown>; const w = num(b.w, 0, 0, 30000), h = num(b.h, 0, 0, 30000); return w >= 1 && h >= 1 ? { box: { w, h } } : {}; })() : {}),
+    ...(o.direction === 'vertical' ? { direction: 'vertical' as const } : {}),
     lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' ? 'none' : 'metrics',
     warp: warpFrom(o.warp), onPath: pathFrom(o.onPath), style: typeof o.style === 'string' && o.style ? o.style : null,
     rendered: textKey(raster),

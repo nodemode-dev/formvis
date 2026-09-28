@@ -8,7 +8,7 @@ import { el, setHidden, setStyleVar } from './dom';
  *  Type tool, or a change of tool commits; Escape cancels. The Type tool's options restyle it as you type. */
 export class TextEditor {
   private readonly box = el<HTMLTextAreaElement>('<textarea class="cv-type-editor" wrap="off" spellcheck="false" aria-label="Text" hidden></textarea>');
-  private session: { project: Project; at: Pt; layerId: ID | null; spec: TextSpec; scale: number } | null = null;
+  private session: { project: Project; at: Pt; layerId: ID | null; spec: TextSpec; scale: number; mask?: boolean } | null = null;
 
   constructor(host: HTMLElement, private readonly engine: Engine) {
     host.appendChild(this.box);
@@ -28,7 +28,7 @@ export class TextEditor {
 
   /** Starts typing new text whose first baseline begins at (x, y), or edits type layer `layerId`; a session already
    *  open is committed first. */
-  begin(target: { x: number; y: number } | { layerId: ID }): void {
+  begin(target: { x: number; y: number; box?: { w: number; h: number } } | { layerId: ID }): void {
     void this.commit();
     const e = this.engine, p = e.current;
     if (!p) return;
@@ -43,7 +43,8 @@ export class TextEditor {
       e.setTextEditing(l.id);
       this.box.value = l.text.content;
     } else {
-      this.session = { project: p, at: { x: target.x, y: target.y }, layerId: null, spec: { ...e.textSettings, content: '', color: e.fg, rendered: undefined }, scale: 1 };
+      // A dragged box makes paragraph text; the tool's kind makes it vertical, or a mask (a selection, not a layer).
+      this.session = { project: p, at: { x: target.x, y: target.y }, layerId: null, spec: { ...e.textSettings, content: '', color: e.fg, rendered: undefined, box: target.box ?? null }, scale: 1, mask: e.typeMask };
       this.box.value = '';
     }
     setHidden(this.box, false);
@@ -60,6 +61,7 @@ export class TextEditor {
     this.end();
     if (this.engine.current !== s.project || !spec.content.trim()) return;
     if (s.layerId) await this.engine.updateTextLayer(s.layerId, spec);
+    else if (s.mask) await this.engine.createTextSelection(s.at, spec);
     else await this.engine.createTextLayer(s.at, spec);
   }
 
@@ -92,12 +94,26 @@ export class TextEditor {
     // Tracking at the on-screen size, and kerning, so typed text is spaced as it will render.
     setStyleVar(box, '--ls', `${(s.spec.tracking / 1000) * size}px`);
     setStyleVar(box, '--kern', s.spec.kerning === 'none' ? 'none' : 'normal');
+    const vertical = s.spec.direction === 'vertical', area = s.spec.box;
+    box.classList.toggle('is-box', !!area);
+    box.classList.toggle('is-vertical', vertical);
+    box.classList.toggle('is-mask', !!s.mask);
+    box.setAttribute('wrap', area ? 'soft' : 'off');
+    if (area) {   // paragraph text: the box itself, wrapping as typed
+      setStyleVar(box, '--x', `${v.panX + s.at.x * v.zoom}px`); setStyleVar(box, '--y', `${v.panY + s.at.y * v.zoom}px`);
+      setStyleVar(box, '--w', `${area.w * v.zoom}px`); setStyleVar(box, '--h', `${area.h * v.zoom}px`);
+      return;
+    }
     setStyleVar(box, '--w', '0px');
     setStyleVar(box, '--h', '0px');
     const w = Math.max(size * 0.6, box.scrollWidth + 2), h = Math.max(line, box.scrollHeight);
     setStyleVar(box, '--w', `${w}px`);
     setStyleVar(box, '--h', `${h}px`);
     const ax = v.panX + s.at.x * v.zoom, ay = v.panY + s.at.y * v.zoom, first = (line - (m.ascent + m.descent)) / 2 + m.ascent;
+    if (vertical) {   // vertical type: its first column centred on the click, reading down
+      setStyleVar(box, '--x', `${ax - w + line / 2}px`); setStyleVar(box, '--y', `${ay}px`);
+      return;
+    }
     setStyleVar(box, '--x', `${s.spec.align === 'center' ? ax - w / 2 : s.spec.align === 'right' ? ax - w : ax}px`);
     setStyleVar(box, '--y', `${ay - first}px`);
   }

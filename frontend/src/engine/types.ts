@@ -230,10 +230,12 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
  *  edited the pair breaks and the layer is plain pixels, as painting on type rasterizes it. */
 /** `tracking`: extra space between characters in thousandths of an em, as Photoshop measures it; `kerning`: the font's
  *  own pair kerning ('metrics') or none ('none'). */
-export interface TextSpec { content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
+/** box: paragraph text's box, wrapped to its width and clipped at its height (absent: point text); direction: vertical
+ *  type stacks upright characters top to bottom in columns from right to left (1.49.7, the owner's tool list). */
+export interface TextSpec { box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
 /** A paragraph style (Window > Paragraph Styles): a named set of type settings kept in the document; type layers linked
  *  to it by TextSpec.style take its settings, and redefining it updates every one of them. */
-export interface ParagraphStyle { id: ID; name: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning }
+export interface ParagraphStyle { id: ID; name: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning }
 /** Type on a path: the path's points in the layer's own pixels (a frame around the path, so editing the text never moves
  *  the layer), where the text starts along it (Start Offset, a percentage of its length), and the frame's size. */
 export interface TextPath { points: Pt[]; offset: number; frame: { w: number; h: number } }

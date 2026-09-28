@@ -1219,9 +1219,9 @@ export function startApp(): void {
   };
   engine.smartFilterRunner = (kind, settings, src) => runFilter(kind as FilterKind, { ...defaultFilterSettings(), ...(settings as Partial<FilterPanelSettings>) }, typeof settings.seed === 'number' ? settings.seed : 0, src, 1);
   document.addEventListener('cv:type', (e) => {
-    const d = (e as CustomEvent<{ layerId?: string; x?: number; y?: number }>).detail;
+    const d = (e as CustomEvent<{ layerId?: string; x?: number; y?: number; box?: { w: number; h: number } }>).detail;
     if (d?.layerId) typing.begin({ layerId: d.layerId });
-    else if (typeof d?.x === 'number' && typeof d?.y === 'number') typing.begin({ x: d.x, y: d.y });
+    else if (typeof d?.x === 'number' && typeof d?.y === 'number') typing.begin({ x: d.x, y: d.y, box: d.box });   // a box: paragraph text
   });
   root.addEventListener('cv:edit-adjustment', (e) => {
     const id = (e as CustomEvent<string>).detail;

@@ -837,14 +837,34 @@ export class Engine {
 
   /** A new type layer: the click point `at` is where the first line's baseline starts (its centre or end when the text
    *  is centred or right-aligned), as with Photoshop's point type. */
+  /** The Type tool's mask kinds (Horizontal and Vertical Type Mask): typing makes a selection, not a layer. */
+  typeMask = false;
+  /** Type Mask, as Photoshop's: the text rendered and placed as a layer would be, its coverage made the selection; one
+   *  step, no layer. */
+  async createTextSelection(at: Pt, spec: TextSpec): Promise<void> {
+    const p = this.current;
+    if (!p || !spec.content.trim()) return;
+    await loadTextFont(spec);
+    const r = renderText(spec), w = r.raster.width, h = r.raster.height, colW = spec.size * spec.lineHeight;
+    const x = Math.round(spec.box ? at.x : spec.direction === 'vertical' ? at.x - (w - r.pad - colW / 2) : at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad));
+    const y = Math.round(spec.box ? at.y : spec.direction === 'vertical' ? at.y - r.pad : at.y - r.baseline);
+    const d = r.raster.ctx.getImageData(0, 0, w, h).data, a = new Uint8Array(w * h);
+    for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
+    this.applySelection(SelectionMask.cropped(x, y, w, h, a), 'replace', spec.direction === 'vertical' ? 'Vertical Type Mask' : 'Horizontal Type Mask');
+  }
+
   async createTextLayer(at: Pt, spec: TextSpec): Promise<void> {
     if (!this.current || !spec.content.trim()) return;
     await loadTextFont(spec);
     const r = renderText(spec), w = r.raster.width;
-    const x = at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad);
+    // Paragraph text's box starts where it was dragged; vertical type's first column (the right one) is centred on the
+    // click, its first character just below it; point text keeps its first baseline at the click, by its alignment.
+    const colW = spec.size * spec.lineHeight;
+    const x = spec.box ? at.x : spec.direction === 'vertical' ? at.x - (w - r.pad - colW / 2) : at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad);
     this.textSettings = { ...spec, content: '', rendered: undefined };
     const name = spec.content.split('\n')[0].trim().slice(0, 40) || 'Type';
-    this.insertRasterLayer(r.raster, name, Math.round(x), Math.round(at.y - r.baseline), { text: { ...spec, rendered: textKey(r.raster) } }, 'Type');
+    const y = spec.box ? at.y : spec.direction === 'vertical' ? at.y - r.pad : at.y - r.baseline;
+    this.insertRasterLayer(r.raster, name, Math.round(x), Math.round(y), { text: { ...spec, rendered: textKey(r.raster) } }, 'Type');
   }
 
   /** Layer > Type on Path: `content` set along the active path's first subpath of two or more anchors, in the current
@@ -903,7 +923,8 @@ export class Engine {
       linked.forEach((l, i) => {
         const spec = specs[i], r = renderText(spec), oldR = l.raster as Raster, t = l.transform;
         const nw = r.raster.width * (t.w / oldR.width), nh = r.raster.height * (t.h / oldR.height);
-        const x = spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
+        // Vertical type keeps its right edge (its first column); paragraph text its box's corner; point text its alignment.
+    const x = spec.box ? t.x : spec.direction === 'vertical' ? t.x + t.w - nw : spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
         pp.updateLayer(l.id, { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, text: { ...spec, rendered: textKey(r.raster) } });
       });
     });
@@ -929,7 +950,8 @@ export class Engine {
     if (this.current !== p || !liveText(p.layer(id))) return;
     const r = renderText(spec), old = l.raster, t = l.transform, before = l.text;
     const nw = r.raster.width * (t.w / old.width), nh = r.raster.height * (t.h / old.height);
-    const x = spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
+    // Vertical type keeps its right edge (its first column); paragraph text its box's corner; point text its alignment.
+    const x = spec.box ? t.x : spec.direction === 'vertical' ? t.x + t.w - nw : spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
     const autoName = before.content.split('\n')[0].trim().slice(0, 40) || 'Type';
     const name = l.name === autoName ? spec.content.split('\n')[0].trim().slice(0, 40) || 'Type' : l.name;
     this.textSettings = { ...spec, content: '', rendered: undefined };
