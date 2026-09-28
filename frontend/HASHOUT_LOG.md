@@ -14,9 +14,12 @@ export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'c
   const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.globalLight ? { globalLight: { angle: doc.globalLight.angle, altitude: doc.globalLight.altitude } } : {}), ...(doc.paragraphStyles?.length ? { paragraphStyles: doc.paragraphStyles.map((s) => ({ ...s, color: { ...s.color } })) } : {}) };
   return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
 const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history'], side: [...DEFAULT_SIDE] };
+    this.state = { order: o, hidden: hidden.filter((id) => ALL_PANELS.some((p) => p.id === id)), side: [...DEFAULT_SIDE] };
 ```
 
 Nothing removed from src-tauri or backend.
+
+Correction: the last line above (ui/dock.ts, `Dock.arrange`, replaced by the workspace fix) was missed when this section was first written, and the release's docs commit wrongly said the last two fixes removed nothing; added here. As in every section, the version line itself is not quoted.
 
 ## Painting tools · _v1.49.5 (extensions/tools/pencil.ts, eraser.ts, magic-eraser.ts, pattern-stamp.ts, background-eraser.ts new, brush.ts, index.ts; engine/index.ts, engine/stroke.ts, engine/types.ts; ui/icons.ts; app.ts; styles)
 
