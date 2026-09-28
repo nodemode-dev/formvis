@@ -2,6 +2,29 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The tool audit, part 3 · _v1.50.6 (engine/index.ts; extensions/tools/clone.ts, gradient.ts)
+
+The Clone Stamp's `retouch.cloneSample` (Current Layer, Current & Below, All Layers, through `healSampleSurface` and the new shared `belowOverrides`, in the stroke, the preview and the overlay), `cloneBlend` and `cloneFlow` in its stroke; the Gradient's `transparency` and `method` (`gradientMethod`: Classic in sRGB, Linear in linear light, Perceptual in OKLab, each segment divided into 24 steps). Removed from frontend:
+
+```text
+  gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false };
+    const stops = resolveStops(presetById(st.style), fg, bg, st.reversed);
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
+    const all = this.retouch.cloneSampleAll, key = [all, l.id, p.history.revision, p.id].join('|');
+      const image = all ? renderDoc(this.work, p.doc, null) : l.raster ? l.raster.canvas : null;
+    const r0 = this.retouch, key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, r0.cloneSampleAll, l.id, p.history.revision, r0.cloneScale, r0.cloneAngle, r0.cloneFlipH, r0.cloneFlipV].join('|');
+    if (this.retouch.cloneSampleAll) this.work.render({ doc: p.doc, target: s, view, quality: 'medium' });
+      texture = { surface: pattern ?? (kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0)), dx: off.x, dy: off.y };
+    const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
+    const s = new PixelStroke(pick.raster, pick.local, style, pick.target !== 'mask' && l0.locks?.transparency ? 'source-atop' : 'source-over', p.selection, texture, pick.target === 'mask');   // Lock Transparency
+    const s = createSurface(p.doc.width, p.doc.height);
+    this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
+    return s;
+    { kind: 'toggle', label: 'Sample all layers', get: () => e.retouch.cloneSampleAll, set: (v) => { e.retouch.cloneSampleAll = v; e.emit('options', null); } },
+```
+
+Nothing removed from src-tauri or backend.
+
 ## The rename to formvis · _v1.50.5 (every file; frontend/src/io/legacy.ts and backend/app/core/legacy.py new)
 
 The app is formvis, its projects `.fmv`, at the owner's word; git history is untouched (its commits and tags keep the former name), and 32 files moved by `git mv` keep their histories. This log, like the changelog, now reads with the new name throughout, quotes before this entry included. Of the 243 lines git reports removed since v1.50.4 in frontend/src, backend/app and src-tauri, 228 differ only by the name and are not quoted (quoting them would put the former name back thousands of times; git holds them); the rest are quoted in full below, with the new name. `legacy.ts` and `legacy.py`, the only places the former name remains, carry what was saved under it across: settings and the browser databases (merged, never overwriting; each move bounded so the app always starts), the library folder, the former project extensions and format identifier.

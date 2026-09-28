@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.50.6 · 2026-09-28
+
+### Changed: tools against Photoshop's bars (audit, part 3)
+
+- Clone Stamp: Sample is Current Layer, Current & Below or All Layers (it was an all-layers switch), as the Healing Brush's; Mode and Flow in the bar.
+- Gradient: Transparency (the stops' own transparency honoured, or every stop opaque) and Method (Perceptual, Linear or Classic, the colours blended as Photoshop blends them); Classic stays the default, so gradients are as they were.
+- Still to come from the audit: Pen, the Shape tools, Dodge, Burn and Sponge, Blur, Sharpen and Smudge, the Eyedropper and Zoom.
+
 ## 1.50.5 · 2026-09-28
 
 ### Changed: formvis
