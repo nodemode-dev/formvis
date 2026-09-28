@@ -56,6 +56,20 @@ export class PanelGroup {
     this.setMinimised(!!saved.min, false);
     (this.root.querySelector('.cv-group-min') as HTMLElement).addEventListener('click', () => this.setMinimised(!this.root.classList.contains('is-min')));
     host.appendChild(this.root);
+    // Tabs fit in steps (1.49.6, the owner's walkthrough: tabs were shortened to Chann..., Pa...): normal, then compact,
+    // then tight lettering, and only then are inactive tabs shortened; again whenever the width or the tabs change.
+    new ResizeObserver(() => this.fitTabs()).observe(strip);
+  }
+
+  fitTabs(): void {
+    const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement;
+    if (!strip.clientWidth) return;
+    for (const step of ['', 'is-compact', 'is-tight']) {
+      strip.classList.remove('is-compact', 'is-tight');
+      if (step) strip.classList.add(step);
+      const need = [...strip.children].reduce((w, c) => w + (c as HTMLElement).scrollWidth, 0) + Math.max(0, strip.children.length - 1) * 2;
+      if (need <= strip.clientWidth + 0.5) return;
+    }
   }
 
   get current(): string { return this.active; }
@@ -84,6 +98,7 @@ export class PanelGroup {
     body.appendChild(page);
     this.tabs.set(tid, { btn, body: page });
     this.root.classList.remove('is-empty');
+    requestAnimationFrame(() => this.fitTabs());
   }
 
   private static justDragged = false;
@@ -127,6 +142,7 @@ export class PanelGroup {
     const label = t.btn.textContent ?? tid;
     t.btn.remove();
     from.tabs.delete(tid);
+    requestAnimationFrame(() => from.fitTabs());
     to.attach(tid, label, t.body);
     to.show(tid);
     if (from.tabs.size === 0) from.root.classList.add('is-empty');

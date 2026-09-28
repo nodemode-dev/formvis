@@ -328,6 +328,38 @@ export class Engine {
   /** Photoshop's Automatically Create First Snapshot: each document keeps itself as opened, the History Brush's first
    *  source, within the snapshots' memory budget (past it, none is taken and the brush says so). */
   autoFirstSnapshot = true;
+  /** Measuring (1.49.6, the owner's tool list): per document, the Color Sampler's points (ten at most) and the Ruler's
+   *  line, shown on the canvas and in the Info panel; not part of the document's pixels. */
+  private measures = new WeakMap<Project, { samplers: Pt[]; ruler: { a: Pt; b: Pt } | null }>();
+  get measure(): { samplers: Pt[]; ruler: { a: Pt; b: Pt } | null } | null {
+    const p = this.current;
+    if (!p) return null;
+    let m = this.measures.get(p);
+    if (!m) { m = { samplers: [], ruler: null }; this.measures.set(p, m); }
+    return m;
+  }
+  measureChanged(): void { this.emit('overlay', null); this.emit('options', null); }
+
+  /** Notes (the Note tool; 1.49.6, the owner's tool list): pinned to the document, saved with it; each change one step. */
+  activeNote: ID | null = null;
+  addNote(pt: Pt): ID | null {
+    let id: ID | null = null;
+    this.edit('New Note', (p) => { const n = { id: uid(), x: pt.x, y: pt.y, text: '' }; p.doc = { ...p.doc, notes: [...(p.doc.notes ?? []), n] }; id = n.id; return true; });
+    this.activeNote = id;
+    return id;
+  }
+  setNote(id: ID, patch: { text?: string; x?: number; y?: number }, name = 'Edit Note'): void {
+    this.edit(name, (p) => { const list = p.doc.notes ?? [], n = list.find((x) => x.id === id); if (!n) return false; p.doc = { ...p.doc, notes: list.map((x) => (x.id === id ? { ...x, ...patch } : x)) }; return true; });
+  }
+  removeNote(id: ID): void {
+    this.edit('Delete Note', (p) => { const list = p.doc.notes ?? []; if (!list.some((x) => x.id === id)) return false; p.doc = { ...p.doc, notes: list.filter((x) => x.id !== id) }; return true; });
+    if (this.activeNote === id) this.activeNote = null;
+  }
+
+  /** Counting (the Count tool): numbered marks on the document, saved with it; each change one step. */
+  addCount(pt: Pt): void { this.edit('Count', (p) => { p.doc = { ...p.doc, counts: [...(p.doc.counts ?? []), { x: pt.x, y: pt.y }] }; return true; }); }
+  removeCount(i: number): void { this.edit('Remove Count', (p) => { const c = p.doc.counts ?? []; if (i < 0 || i >= c.length) return false; p.doc = { ...p.doc, counts: c.filter((_, k) => k !== i) }; return true; }); }
+  clearCounts(): void { this.edit('Clear Count', (p) => { if (!p.doc.counts?.length) return false; p.doc = { ...p.doc, counts: [] }; return true; }); }
   /** The Pattern Stamp's pattern (null: the first). */
   patternStampPattern: ID | null = null;
   /** Preferences > Cursors: how painting tools show where they will paint (drawn by brush-common's drawBrushCursor). */

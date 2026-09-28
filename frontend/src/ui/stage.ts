@@ -370,6 +370,26 @@ export class Stage {
     const pal = paint();
     const v = p.viewport;
     const sel = p.selection, fl = sel ? null : this.engine.floatingOutline(p);
+    // Notes and counts (1.49.6), shown whatever the tool, as Photoshop's: a note as a small sticky square (the one open
+    // highlighted), a count as its number by a dot, dark over light so they read on any image.
+    {
+      const d = this.dpr;
+      g.save(); g.setTransform(d, 0, 0, d, 0, 0);
+      for (const n of p.doc.notes ?? []) {
+        const q = v.toScreen(n.x, n.y), on = n.id === this.engine.activeNote;
+        g.fillStyle = on ? pal.accent : '#f5c542'; g.strokeStyle = pal.antsB; g.lineWidth = 1;
+        g.beginPath(); g.moveTo(q.x, q.y); g.lineTo(q.x + 16, q.y); g.lineTo(q.x + 16, q.y + 11); g.lineTo(q.x + 11, q.y + 16); g.lineTo(q.x, q.y + 16); g.closePath(); g.fill(); g.stroke();
+        g.beginPath(); g.moveTo(q.x + 4, q.y + 5); g.lineTo(q.x + 12, q.y + 5); g.moveTo(q.x + 4, q.y + 9); g.lineTo(q.x + 10, q.y + 9); g.strokeStyle = 'rgba(0,0,0,0.55)'; g.stroke();
+      }
+      g.font = '600 12px Inter, system-ui, sans-serif';
+      (p.doc.counts ?? []).forEach((c, i) => {
+        const q = v.toScreen(c.x, c.y);
+        g.fillStyle = pal.accent; g.beginPath(); g.arc(q.x, q.y, 3, 0, Math.PI * 2); g.fill();
+        g.lineWidth = 3; g.strokeStyle = pal.antsB; g.strokeText(String(i + 1), q.x + 5, q.y - 5);
+        g.fillStyle = pal.antsA; g.fillText(String(i + 1), q.x + 5, q.y - 5);
+      });
+      g.restore();
+    }
     // Empty frames (the Frame tool) show their placeholder, as Photoshop's: the outline and a cross, never exported.
     for (const f of p.doc.layers) {
       if (!f.frame || !f.visible || p.doc.layers.some((c) => c.parentId === f.id)) continue;

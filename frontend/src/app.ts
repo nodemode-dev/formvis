@@ -60,6 +60,8 @@ import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
 import { PropertiesColumn } from './ui/properties';
 import { TitleTools } from './ui/titlebar-tools';
+import { InfoPanel } from './ui/info';
+import { NoteDialog } from './ui/panels/note-dialog';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -93,7 +95,7 @@ import { Tabs } from './ui/tabs';
 import { toast } from './ui/toast';
 
 /** Each tab's own group, where Reset Panels returns it. */
-const TAB_HOMES: Record<string, string> = { layers: 'layers-panel', channels: 'layers-panel', paths: 'layers-panel', navigator: 'navigator', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
+const TAB_HOMES: Record<string, string> = { info: 'info', layers: 'layers-panel', channels: 'layers-panel', paths: 'layers-panel', navigator: 'navigator', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
 const LAYERS_W_KEY = 'sonny_layers_w';
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
@@ -245,6 +247,7 @@ export function startApp(): void {
   const CUSTOM = 'sonny.customGroups';
   const customGroups = (): Array<{ id: string; label: string }> => { try { const v = JSON.parse(stored(CUSTOM) ?? '[]'); return Array.isArray(v) ? v.filter((g) => g && typeof g.id === 'string' && /^g[0-9a-z]+$/.test(g.id) && typeof g.label === 'string') : []; } catch { return []; } };
   for (const g of customGroups()) { new PanelGroup(q(root, '.cv-layers'), g.id, [], g.label); registerPanel({ id: g.id, label: g.label, selector: `section.cv-${g.id}` }); }
+  new InfoPanel(q(root, '.cv-layers'), engine, q(root, '.cv-stage'));   // Window > Info (1.49.6)
   const dock = new Dock(q(root, '.cv-layers'), q(root, '.cv-props-col'));
   dockRef = dock;
   dock.onChange = () => { syncPropsCol(); props.relayout(); };
@@ -870,6 +873,8 @@ export function startApp(): void {
   const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr" data-role="import-brushes" hidden>');
   document.body.appendChild(abrInput);
   dialogs.settings.workspaceLock = { get: () => dock.locked, set: (on) => { dock.locked = on; } };   // Preferences > Workspace
+  const noteDialog = new NoteDialog(engine);
+  commands.add({ id: 'edit-note', label: 'Edit Note...', enabled: () => !!engine.activeNote, run: () => noteDialog.show() });   // the Note tool (1.49.6)
   commands.add(
     { id: 'load-brushes', label: 'Load Brushes...', run: () => abrInput.click() },
     { id: 'swatch-add', label: 'Add Foreground Color to Swatches', run: () => swatches.addForeground() },

@@ -430,3 +430,14 @@
 .cv-group-tab { padding-left: 10px !important; padding-right: 10px !important; }
 .cv-group-tab.is-active { flex-shrink: 0; overflow: visible; text-overflow: clip; }
 .cv-group-tabs { gap: 2px; }
+/* The tab steps (PanelGroup.fitTabs): compact, then tight lettering, before any shortening. */
+.cv-group-tabs.is-compact .cv-group-tab { font-size: 12px; padding-left: 7px !important; padding-right: 7px !important; }
+.cv-group-tabs.is-tight .cv-group-tab { font-size: 11px; padding-left: 5px !important; padding-right: 5px !important; letter-spacing: -0.1px; }
+/* The Info panel's readouts. */
+.cv-info-body { display: flex; flex-direction: column; gap: 3px; padding: 8px 12px 10px; font-size: 12px; }
+.cv-info-row { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 8px; }
+.cv-info-key { color: var(--text-muted); }
+.cv-info-val { color: var(--text-primary); font-variant-numeric: tabular-nums; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* A hidden panel group takes no room (found by the Info panel, hidden by default: groups set display: flex, which
+   overrode the hidden attribute, so any group hidden from the Window menu still took its space). */
+.cv-group[hidden] { display: none !important; }

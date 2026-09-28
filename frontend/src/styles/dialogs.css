@@ -132,3 +132,4 @@
 .cv-nd-thumb { overflow: hidden; padding: 4px; }
 .cv-nd-page { max-width: 100%; max-height: 76px; }
 .cv-dd-native { opacity: 0 !important; }
+.cv-note-text { width: 100%; min-height: 120px; resize: vertical; font: 13px/1.45 var(--font-ui, Inter, system-ui, sans-serif); padding: 8px 10px; }

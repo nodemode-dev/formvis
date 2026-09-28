@@ -13,6 +13,7 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'layers', label: 'Layers', selector: '.cv-layers-panel' },
   { id: 'timeline', label: 'Timeline', selector: '.cv-timeline' },
   { id: 'history', label: 'History', selector: '.cv-history' },
+  { id: 'info', label: 'Info', selector: 'section.cv-info' },
 ];
 /** The side column's panel groups (Phase 21), movable like the dock's: any panel may live in either column. */
 export const SIDE_PANELS: readonly DockPanel[] = [
@@ -31,7 +32,7 @@ interface DockState { order: string[]; hidden: string[]; side: string[] }
 const KEY = 'sonny.dock';
 const HEIGHTS_KEY = 'sonny.dock.heights';
 /** As the target's Essentials (and Photoshop's): Navigator, Swatches and Layers shown; Timeline and History in Window. */
-const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history'], side: [...DEFAULT_SIDE] };
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history', 'info'], side: [...DEFAULT_SIDE] };
 
 function load(): DockState {
   try {
@@ -46,6 +47,9 @@ function load(): DockState {
       else order.splice(Math.min(Math.max(0, dockIds.indexOf(id)), order.length), 0, id);
     }
     const hidden = Array.isArray(r.hidden) ? r.hidden.filter((id): id is string => ids.includes(id as string)) : [...DEFAULT.hidden];
+    // A panel newer than the saved arrangement (the Info panel, 1.49.6) starts as it comes: hidden if it comes hidden.
+    const known = new Set([...(Array.isArray(r.order) ? r.order : []), ...(Array.isArray(r.side) ? r.side : [])]);
+    if (Array.isArray(r.hidden)) for (const id of DEFAULT.hidden) if (!known.has(id) && !hidden.includes(id)) hidden.push(id);
     return { order, hidden, side };
   } catch { return { ...DEFAULT, order: [...DEFAULT.order], side: [...DEFAULT_SIDE] }; }
 }
@@ -123,7 +127,9 @@ export class Dock {
     const ids = DOCK_PANELS.map((p) => p.id);
     const o = order.filter((id) => ids.includes(id));
     for (const id of ids) if (!o.includes(id)) o.push(id);
-    this.state = { order: o, hidden: hidden.filter((id) => ALL_PANELS.some((p) => p.id === id)), side: [...DEFAULT_SIDE] };
+    // A panel the workspace does not name (the Info panel, newer than the workspaces) keeps its default: hidden if it comes hidden.
+    const named = new Set([...order, ...hidden]), extra = DEFAULT.hidden.filter((id) => !named.has(id));
+    this.state = { order: o, hidden: [...hidden, ...extra].filter((id) => ALL_PANELS.some((p) => p.id === id)), side: [...DEFAULT_SIDE] };
     this.save();
   }
 
