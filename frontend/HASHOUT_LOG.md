@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Brush Settings and the hover highlight · _v1.50.1 (engine/brush-dynamics.ts, engine/stroke.ts, engine/index.ts; ui/panels/brush-settings.ts; extensions/tools/object-select.ts)
+
+`BrushShape.color`, `transfer`, `noise`, `wetEdges`; `PixelStroke.dabTip` (Color Dynamics), `transferAlpha`, `shapedTip` (Noise, Wet Edges), `toHsv`, `fromHsv`; `StrokeStyle.bg`; the panel's Color Dynamics, Transfer, and Noise and Wet Edges; Object Selection's hover as a wash and an outline. Removed from frontend:
+
+```text
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, flow: this.brushFlow, aliased: !!opts.aliased }, op, p.selection);
+export interface StrokeStyle { aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
+  private readonly tip: Surface;
+    const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1);
+    this.paintCtx.drawImage(this.tip, p.x - rx, p.y - ry, rx * 2, ry * 2);
+    const base = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1);
+      this.paintCtx.drawImage(this.tip, -rx, -ry, rx * 2, ry * 2);
+      for (let i = 0; i < data.length; i++) if (data[i] >= 128) { img.data[i * 4] = 249; img.data[i * 4 + 1] = 115; img.data[i * 4 + 2] = 22; img.data[i * 4 + 3] = 90; }
+ *  Dynamics, Scattering, Texture and Dual Brush. It edits the engine's brush shape live, so the next stroke uses it;
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Object Selection, Quick Selection and the Paint Bucket · _v1.49.10 (extensions/tools/object-select.ts, quick-select.ts, bucket.ts; io/api.ts; engine/index.ts; backend/app/routers/ops.py, backend/app/services/segment.py)
 
 Object Selection's `request` and `selectWith` (points or a box), box mode and the hover highlight (`showHover`, Highlight on Hover); `api.selectObject` with a box; the engine's `select` taking a box (a box alone will do) and the route's box field; Quick Selection's New, Add and Subtract (`beginQuickSelect` fresh); the Paint Bucket's source, pattern and mode (`patternTint`, `compositeOp`). Removed from frontend:

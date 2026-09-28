@@ -2,6 +2,21 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.50.1 · 2026-09-27
+
+Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).
+
+### Added: Brush Settings from your list
+
+- Color Dynamics: each dab's colour towards the background, and its hue, saturation and brightness varied.
+- Transfer: each dab's opacity and flow varied, randomly or by pen pressure.
+- Noise (a rough soft edge) and Wet Edges (a lighter centre, as watercolour).
+- All are off by default; brushes and saved brush settings are as they were.
+
+### Fixed
+
+- Object Selection's hover shows a light wash and an outline, as Photoshop's (the orange tint turned a blue object grey).
+
 ## 1.49.10 · 2026-09-27
 
 ### Added: selection and fill gaps from your list
