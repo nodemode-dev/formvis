@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Send to NodeMode, standalone · _v1.50.8 (backend/app/routers/nodemode.py new, backend/app/main.py; frontend/src/ui/panels/send-nodemode.ts new, io/api.ts, ui/prefs.ts, ui/app-dialogs.ts, app.ts)
+
+The engine's `GET /api/nodemode/status` and `POST /api/nodemode/send` (each image through NodeMode's upload, then one announcement to `/api/formvis/receive` saying which image is the mask of which; a NodeMode without the receiver still gets the uploads, and the reply says so); `api.nodemodeStatus`, `sendToNodeMode`; `SendToNodeModeDialog` (the flattened image, the active layer, the selection with its mask, or every layer); `Prefs.nodemodeUrl` and Preferences' Plugins section; File > Send to NodeMode when not embedded. NodeMode's receiving half is a patch in the planning docs. Removed from frontend:
+
+```text
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : []), '-', 'close-tab'] },
+export interface Prefs { historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
+export const DEFAULT_PREFS: Prefs = { historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
+```
+
+Removed from backend:
+
+```text
+from app.routers import generative, io, ops, projects, system
+```
+
+Nothing removed from src-tauri.
+
 ## The tool audit, part 4 · _v1.50.7 (engine/index.ts, engine/viewport.ts; extensions/tools/tone.ts, eyedropper.ts, zoom.ts)
 
 `tone.protectTones` (Dodge and Burn move brightness with the hue kept, easing toward grey only as far as keeps a colour from clipping) and `tone.vibrance` (the Sponge saturates the least saturated most), both on by default as Photoshop's; `Engine.eyedropperSample` (Current Layer, Current & Below through `belowOverrides`, All Layers) in `sampleColor`; `Viewport.fill`, `Engine.fillScreen`; the Zoom bar's 100% and Fill Screen. Removed from frontend:

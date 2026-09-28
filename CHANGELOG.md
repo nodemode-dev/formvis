@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.50.8 · 2026-09-28
+
+### Added: Send to NodeMode, from anywhere
+
+- File > Send to NodeMode sends the flattened image, the active layer, the selection (its image and its mask) or every layer to NodeMode, from the desktop app or formvis in its own tab (it could send only when embedded in NodeMode, which still works as before).
+- The dialog says whether NodeMode is running, and whether it can place what arrives on its canvas; if NodeMode is not answering, it says so.
+- Preferences > Plugins holds NodeMode's address (http://localhost:8000 by default), with Check.
+- NodeMode needs a small addition to place what arrives on its canvas; until then the images go to its uploads, and formvis says so.
+
 ## 1.50.7 · 2026-09-28
 
 ### Changed: tools against Photoshop's bars (audit, part 4)
