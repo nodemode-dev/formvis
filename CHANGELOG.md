@@ -2,6 +2,29 @@
 
 Versions follow `v*.*.*` with dots. Dates are UTC. From 1.0.0 each release raises the middle number: 1.1.0, 1.2.0 and on, with 1.10.0 after 1.9.0.
 
+## 1.50.2 · 2026-09-28
+
+### Fixed: tools refused layers Photoshop's take
+
+- The Paint Bucket fills a new empty layer (it said "Select a pixel layer first"); the Magic Wand and Quick Selection treat an empty layer as transparent.
+- Type, shape and smart-object layers ask "Rasterize this layer?" before being painted, as Photoshop's (they were painted over silently, losing their editability).
+- An adjustment layer paints its mask, as Photoshop's (it was refused); a group says it is a group.
+
+### Fixed: no scrollbars anywhere
+
+- A stylesheet drew scrollbars across the app; none is drawn now, in either engine, and everything still scrolls. A test checks every scrollable element.
+
+### Added: colour modes
+
+- New Document: RGB Color, Grayscale and Bitmap, the bit depth following the mode.
+- Image > Mode: RGB Color, Grayscale (type and shapes stay editable), Bitmap (50% threshold or diffusion dither) and Indexed Color (exact, or adaptive to the colours chosen, with dither); the pickers keep to the mode; saved with the project; the tab shows the mode.
+- Layer > Flatten Image.
+- Not yet: 16 and 32 bit, CMYK and Lab, which need a new pixel engine; New Document says so.
+
+### Fixed
+
+- Wet Edges shows along a whole stroke (1.50.1 lightened each dab, and overlapping dabs filled the middle back in).
+
 ## 1.50.1 · 2026-09-27
 
 Versions now run 1.50.1 to 1.50.9, then 1.51.x (1.49.10 would have been 1.50.0).

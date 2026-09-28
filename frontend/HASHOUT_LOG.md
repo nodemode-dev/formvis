@@ -2,6 +2,48 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Paint targets, scrollbars, colour modes and Wet Edges · _v1.50.2 (engine/index.ts, engine/types.ts, engine/stroke.ts; io/project-io.ts; ui/app-dialogs.ts, ui/tabs.ts; app.ts; styles/scrollbars.css)
+
+`Engine.paintable` as Photoshop decides (a group says so; an adjustment layer paints its mask through `target`; type, shape and smart-object layers ask `askRasterize`); empty layers read as transparent by the Paint Bucket, Quick Selection and the Magic Wand; `scrollbars.css` hides every scrollbar; `DocMode`, `Doc.mode`, `Doc.palette`; `Engine.convertMode` (Grayscale keeping type, shapes and vectors editable; Bitmap by threshold or dither; Indexed exact or adaptive, `paletteFor`), `flattenImage`, `setDocumentMode`, `inMode` with the foreground and background as accessors; `ModeDialog`; New Document's modes; the tab's mode; the project file's mode and palette; Wet Edges on the whole stroke (`wetInner`, `wetMark`). Removed from frontend:
+
+```text
+import { BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+  fg: RGB = { r: 0, g: 0, b: 0 };
+  bg: RGB = { r: 255, g: 255, b: 255 };
+  private paintable(l: Layer | null): l is Layer { return !!l && !l.isGroup && !l.adjustment && !this.locked(l, 'pixels'); }
+    const target: Target = p.maskTarget && l0.mask ? 'mask' : 'pixels';
+    const raster = target === 'mask' ? this.ensureMask(p, l0) : this.ensurePixels(p, l0);
+      if (!l?.raster) { this.notice('Select a pixel layer first.'); return; }
+      surface = createSurface(W, H);
+      const c = ctxOf(surface);
+      setMat(c, placement(l.transform, l.raster.width, l.raster.height));
+      c.drawImage(l.raster.canvas, 0, 0);
+      if (!l?.raster) { this.notice('Quick Selection samples the active pixel layer; turn on Sample all layers to use the whole image.'); return; }
+      surface = createSurface(W, H);
+      const c = ctxOf(surface);
+      setMat(c, placement(l.transform, l.raster.width, l.raster.height));
+      c.drawImage(l.raster.canvas, 0, 0);
+      if (!l?.raster) { this.notice('Magic Wand samples the active pixel layer; turn on Sample all layers to use the whole image.'); return; }
+      surface = createSurface(W, H);
+      const c = ctxOf(surface);
+      setMat(c, placement(l.transform, l.raster.width, l.raster.height));
+      c.drawImage(l.raster.canvas, 0, 0);
+      if (shape.noise || shape.wetEdges) this.tip = shapedTip(this.tip, !!shape.noise, !!shape.wetEdges);
+    if (this.dualPaint || this.textureTile) {
+export interface Doc { readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.notes?.length ? { notes: doc.notes.map((n) => ({ id: n.id, x: n.x, y: n.y, text: n.text })) } : {}), ...(doc.counts?.length ? { counts: doc.counts.map((c) => ({ x: c.x, y: c.y })) } : {}), ...(doc.globalLight ? { globalLight: { angle: doc.globalLight.angle, altitude: doc.globalLight.altitude } } : {}), ...(doc.paragraphStyles?.length ? { paragraphStyles: doc.paragraphStyles.map((s) => ({ ...s, color: { ...s.color } })) } : {}) };
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
+* { scrollbar-width: thin; scrollbar-color: var(--border-light) transparent; }
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-light); border-radius: var(--radius-pill); }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+    const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode"><option>RGB Color</option></select>');
+    setText(this.summary.querySelector('.cv-nd-meta') as HTMLElement, `RGB Color · 8 bit · ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`}`);
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Brush Settings and the hover highlight · _v1.50.1 (engine/brush-dynamics.ts, engine/stroke.ts, engine/index.ts; ui/panels/brush-settings.ts; extensions/tools/object-select.ts)
 
 `BrushShape.color`, `transfer`, `noise`, `wetEdges`; `PixelStroke.dabTip` (Color Dynamics), `transferAlpha`, `shapedTip` (Noise, Wet Edges), `toHsv`, `fromHsv`; `StrokeStyle.bg`; the panel's Color Dynamics, Transfer, and Noise and Wet Edges; Object Selection's hover as a wash and an outline. Removed from frontend:
