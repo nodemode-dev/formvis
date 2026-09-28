@@ -1,3 +1,4 @@
+import { BLEND_MODES, canvasBlend } from '../../engine';
 import { mul, setMat, type Pt } from '../../engine';
 import type { Tool } from '../registry';
 import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
@@ -63,7 +64,10 @@ export const cloneTool: Tool = {
     { kind: 'title', text: 'Clone Stamp' },
     { kind: 'segment', label: 'Source', choices: [0, 1, 2, 3, 4].map((i) => ({ id: String(i), label: String(i + 1) })), get: () => String(e.cloneSlot), set: (v: string) => e.selectCloneSlot(Number(v)) },
     { kind: 'toggle', label: 'Aligned', get: () => e.retouch.cloneAligned, set: (v) => { e.retouch.cloneAligned = v; e.cloneOffset = null; e.emit('options', null); } },
-    { kind: 'toggle', label: 'Sample all layers', get: () => e.retouch.cloneSampleAll, set: (v) => { e.retouch.cloneSampleAll = v; e.emit('options', null); } },
+    // Photoshop's Mode, Flow and Sample (1.50.6, the tool audit; Sample was an all-layers toggle).
+    { kind: 'select', label: 'Mode', choices: BLEND_MODES.filter((m) => canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label })), get: () => e.retouch.cloneBlend, set: (v: string) => { e.retouch.cloneBlend = v as typeof e.retouch.cloneBlend; e.emit('options', null); } },
+    { kind: 'range', label: 'Flow', min: 1, max: 100, unit: '%', get: () => Math.round(e.retouch.cloneFlow * 100), set: (v: number) => { e.retouch.cloneFlow = Math.max(0.01, Math.min(1, v / 100)); e.emit('options', null); } },
+    { kind: 'select', label: 'Sample', choices: [{ id: 'current', label: 'Current Layer' }, { id: 'below', label: 'Current & Below' }, { id: 'all', label: 'All Layers' }], get: () => e.retouch.cloneSample, set: (v: string) => { e.retouch.cloneSample = v as typeof e.retouch.cloneSample; e.emit('options', null); } },
     { kind: 'range', label: 'Source scale', min: 1, max: 1000, unit: '%', get: () => e.retouch.cloneScale, set: (v) => { e.retouch.cloneScale = v; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'range', label: 'Source angle', min: -180, max: 180, unit: '\u00b0', get: () => e.retouch.cloneAngle, set: (v) => { e.retouch.cloneAngle = v; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'toggle', label: 'Flip horizontal', get: () => e.retouch.cloneFlipH, set: (v) => { e.retouch.cloneFlipH = v; e.emit('options', null); e.emit('overlay', null); } },

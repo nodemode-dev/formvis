@@ -71,6 +71,9 @@ export const gradientTool: Tool = {
       { kind: 'button', label: 'Edit', icon: 'gradient', run: () => e.uiHooks.gradientEditor?.() },
       { kind: 'toggle', label: 'Reverse', get: () => e.gradientSettings.reversed, set: (v) => set(() => { e.gradientSettings.reversed = v; }) },
       { kind: 'toggle', label: 'Dither', get: () => e.gradientSettings.dither, set: (v) => set(() => { e.gradientSettings.dither = v; }) },
+      // Transparency and Method (1.50.6, the tool audit), as Photoshop's bar.
+      { kind: 'toggle', label: 'Transparency', get: () => e.gradientSettings.transparency, set: (v) => set(() => { e.gradientSettings.transparency = v; }) },
+      { kind: 'select', label: 'Method', choices: [{ id: 'perceptual', label: 'Perceptual' }, { id: 'linear', label: 'Linear' }, { id: 'classic', label: 'Classic' }], get: () => e.gradientSettings.method, set: (v: string) => set(() => { e.gradientSettings.method = v as 'classic' | 'linear' | 'perceptual'; }) },
       { kind: 'select', label: 'Mode', choices: BLEND_MODES.filter((m) => canvasBlend(m.id)).map((m) => ({ id: m.id, label: m.label })), get: () => e.gradientSettings.blend, set: (v) => set(() => { e.gradientSettings.blend = v as BlendMode; }) },
       { kind: 'range', label: 'Opacity', min: 1, max: 100, unit: '%', get: () => Math.round(e.gradientSettings.opacity * 100), set: (v) => set(() => { e.gradientSettings.opacity = v / 100; }) },
     ];

@@ -3904,7 +3904,9 @@ export class Engine {
   gradient: { project: Project; layerId: ID; target: Target; start: Pt; end: Pt; raster: Raster; local: Mat; surface: Surface } | null = null;
   /** The Gradient tool's settings: Shape, Colors (style), Reverse, Opacity, and Mode and Dither as Photoshop's options
    *  bar has them (Dither off by default here: no source fetched gives Photoshop's default). */
-  gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false };
+  /** transparency and method (1.50.6, the tool audit), as Photoshop's: the stops' own transparency honoured or not;
+   *  the colours blended in sRGB (Classic, as before), linear light (Linear) or OKLab (Perceptual). */
+  gradientSettings: { shape: GradientType; style: string; reversed: boolean; opacity: number; blend: BlendMode; dither: boolean; transparency: boolean; method: 'classic' | 'linear' | 'perceptual' } = { shape: 'linear', style: 'transparent', reversed: false, opacity: 1, blend: 'normal', dither: false, transparency: true, method: 'classic' };
   /** Dialogs a tool's options can open; the app fills these in, since tools only see the engine. */
   uiHooks: { gradientEditor?: () => void; importBrushes?: () => void } = {};
   /** The shape tools' settings. mode (1.49.8, the owner's tool list), as Photoshop's: a shape layer, the work path, or
@@ -4621,7 +4623,7 @@ export class Engine {
     const st = this.gradientSettings;
     const tone = (col: RGB): RGB => { const v = Math.round(luminance(col) * 255); return { r: v, g: v, b: v }; };
     const fg = mask ? tone(this.fg) : this.fg, bg = mask ? tone(this.bg) : this.bg;
-    const stops = resolveStops(presetById(st.style), fg, bg, st.reversed);
+    const stops = gradientMethod(resolveStops(presetById(st.style), fg, bg, st.reversed).map((x) => (st.transparency ? x : { ...x, alpha: 1 })), st.method);
     const a = g.start, b = g.end;
     const len = Math.max(0.5, Math.hypot(b.x - a.x, b.y - a.y));
     const bb = boundsOf([applyMat(local, 0, 0), applyMat(local, w, 0), applyMat(local, w, h), applyMat(local, 0, h)]);
@@ -4747,7 +4749,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSampleAll: boolean; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSampleAll: false, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -4809,9 +4811,10 @@ export class Engine {
   cloneOverlayImage(at: Pt): { image: Surface; m: Mat } | null {
     const p = this.current, l = p?.activeLayer, sp = this.clonePoint(at);
     if (!p || !l || !sp) return null;
-    const all = this.retouch.cloneSampleAll, key = [all, l.id, p.history.revision, p.id].join('|');
+    // Current Layer, Current & Below or All Layers (1.50.6, the tool audit), as the Healing Brush's Sample.
+    const all = this.retouch.cloneSample !== 'current', key = [this.retouch.cloneSample, l.id, p.history.revision, p.id].join('|');
     if (this.cloneFullCache?.key !== key) {
-      const image = all ? renderDoc(this.work, p.doc, null) : l.raster ? l.raster.canvas : null;
+      const image = all ? this.healSampleSurface(p, l, this.retouch.cloneSample) : l.raster ? l.raster.canvas : null;
       if (!image) return null;
       this.cloneFullCache = { key, image };
     }
@@ -4836,11 +4839,11 @@ export class Engine {
     const p = this.current, l = p?.activeLayer, sp = this.clonePoint(at);
     if (!p || !l || !sp || this.stroke) return null;
     const d = this.brush.diameter, side = Math.min(1024, Math.max(1, Math.ceil(d * scale)));
-    const r0 = this.retouch, key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, r0.cloneSampleAll, l.id, p.history.revision, r0.cloneScale, r0.cloneAngle, r0.cloneFlipH, r0.cloneFlipV].join('|');
+    const r0 = this.retouch, key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, r0.cloneSample, l.id, p.history.revision, r0.cloneScale, r0.cloneAngle, r0.cloneFlipH, r0.cloneFlipV].join('|');
     if (this.clonePreviewCache?.key === key) return this.clonePreviewCache.surface;
     const s = createSurface(side, side), c = ctxOf(s), per = side / d, tm = this.cloneTransform(sp);
     const view = mul(mul(scaling(per, per), translation(d / 2 - sp.x, d / 2 - sp.y)), tm ?? [1, 0, 0, 1, 0, 0]);
-    if (this.retouch.cloneSampleAll) this.work.render({ doc: p.doc, target: s, view, quality: 'medium' });
+    if (this.retouch.cloneSample !== 'current') this.work.render({ doc: p.doc, target: s, view, quality: 'medium', ...(this.retouch.cloneSample === 'below' ? { overrides: this.belowOverrides(p, l) } : {}) });
     else if (l.raster) { setMat(c, mul(view, placement(l.transform, l.raster.width, l.raster.height))); c.drawImage(l.raster.canvas, 0, 0); c.setTransform(1, 0, 0, 1, 0, 0); }
     const r = side / 2, tip = c.createRadialGradient(r, r, r * Math.min(0.999, Math.max(0, this.brush.hardness)), r, r, r);
     tip.addColorStop(0, 'rgba(0,0,0,1)');
@@ -4917,7 +4920,7 @@ export class Engine {
       const off = pattern ? { x: 0, y: 0 } : this.cloneStrokeOffset(pt);
       if (!off) { this.notice(`Alt-click to set where ${kind === 'clone' ? 'Clone Stamp' : 'the Healing Brush'} copies from.`); return false; }
       if (!pattern) this.cloneOffset = off;
-      texture = { surface: pattern ?? (kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.retouch.cloneSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0)), dx: off.x, dy: off.y };
+      texture = { surface: pattern ?? (kind === 'healBrush' ? this.healSampleSurface(p, l0, this.retouch.healSample) : this.healSampleSurface(p, l0, this.retouch.cloneSample)), dx: off.x, dy: off.y };
       const m = kind === 'clone' && this.cloneSource ? this.cloneTransform(this.cloneSource) : null;
       if (m) {
         const t = createSurface(texture.surface.width, texture.surface.height), tc = ctxOf(t);
@@ -4954,8 +4957,10 @@ export class Engine {
     p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', patternStamp: 'Pattern Stamp' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
-    const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : { ...this.brush, color: white };
-    const s = new PixelStroke(pick.raster, pick.local, style, pick.target !== 'mask' && l0.locks?.transparency ? 'source-atop' : 'source-over', p.selection, texture, pick.target === 'mask');   // Lock Transparency
+    // The Clone Stamp's Flow and Mode (1.50.6, the tool audit), as Photoshop's bar; Lock Transparency keeps precedence.
+    const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : kind === 'clone' ? { ...this.brush, color: white, flow: this.retouch.cloneFlow } : { ...this.brush, color: white };
+    const op: GlobalCompositeOperation = pick.target !== 'mask' && l0.locks?.transparency ? 'source-atop' : kind === 'clone' && pick.target !== 'mask' ? compositeOp(this.retouch.cloneBlend) : 'source-over';
+    const s = new PixelStroke(pick.raster, pick.local, style, op, p.selection, texture, pick.target === 'mask');
     // The Healing Brush heals from the same offset at release, in the layer's own pixels.
     let healFrom: Pt | undefined;
     if (kind === 'healBrush' && texture) {
@@ -5019,13 +5024,18 @@ export class Engine {
   private healSampleSurface(p: Project, l: Layer, sample: HealSample): Surface {
     if (sample === 'current') return this.layerSample(p, l);
     if (sample === 'all') return renderDoc(this.work, p.doc);
+    const s = createSurface(p.doc.width, p.doc.height);
+    this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides: this.belowOverrides(p, l), quality: 'high' });
+    return s;
+  }
+
+  /** Current & Below: every layer above `l` hidden, but for the groups holding it. */
+  private belowOverrides(p: Project, l: Layer): Map<ID, LayerOverride> {
     const layers = p.doc.layers, at = layers.findIndex((x) => x.id === l.id), ancestors = new Set<ID>();
     for (let a = l.parentId; a; a = layers.find((x) => x.id === a)?.parentId ?? null) ancestors.add(a);
     const overrides = new Map<ID, LayerOverride>();
     layers.forEach((x, i) => { if (i > at && !ancestors.has(x.id)) overrides.set(x.id, { hidden: true }); });
-    const s = createSurface(p.doc.width, p.doc.height);
-    this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
-    return s;
+    return overrides;
   }
 
   /** A document-space image in the layer's own pixel space. */
@@ -6089,4 +6099,33 @@ function paletteFor(d: Uint8ClampedArray, n: number): RGB[] {
     boxes = [...boxes.slice(0, bi), b.slice(0, mid), b.slice(mid), ...boxes.slice(bi + 1)];
   }
   return boxes.filter((b) => b.length).map((b) => { let r = 0, g = 0, bl = 0; for (const p of b) { r += p[0]; g += p[1]; bl += p[2]; } return { r: Math.round(r / b.length), g: Math.round(g / b.length), b: Math.round(bl / b.length) }; });
+}
+
+/** A gradient's stops blended in Photoshop's Method: Classic as they are (sRGB); Linear in linear light; Perceptual in
+ *  OKLab. The canvas blends in sRGB only, so each segment is divided into 24 steps worked out in the chosen space. */
+function gradientMethod<T extends { at: number; rgb: RGB; alpha: number }>(stops: T[], method: 'classic' | 'linear' | 'perceptual'): T[] {
+  if (method === 'classic' || stops.length < 2) return stops;
+  const lin = (v: number): number => { v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; };
+  const enc = (v: number): number => Math.round(255 * Math.max(0, Math.min(1, v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055)));
+  const toLab = (c: RGB): [number, number, number] => {
+    const r = lin(c.r), g = lin(c.g), b = lin(c.b);
+    const l = Math.cbrt(0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b), m = Math.cbrt(0.2119034982 * r + 0.6806995451 * g + 0.1073969566 * b), s = Math.cbrt(0.0883024619 * r + 0.2817188376 * g + 0.6299787005 * b);
+    return [0.2104542553 * l + 0.793617785 * m - 0.0040720468 * s, 1.9779984951 * l - 2.428592205 * m + 0.4505937099 * s, 0.0259040371 * l + 0.7827717662 * m - 0.808675766 * s];
+  };
+  const fromLab = ([L, A, B]: [number, number, number]): RGB => {
+    const l = (L + 0.3963377774 * A + 0.2158037573 * B) ** 3, m = (L - 0.1055613458 * A - 0.0638541728 * B) ** 3, s = (L - 0.0894841775 * A - 1.291485548 * B) ** 3;
+    return { r: enc(4.0767416621 * l - 3.3077115913 * m + 0.2309699292 * s), g: enc(-1.2684380046 * l + 2.6097574011 * m - 0.3413193965 * s), b: enc(-0.0041960863 * l - 0.7034186147 * m + 1.707614701 * s) };
+  };
+  const mix = (a: RGB, b: RGB, t: number): RGB => {
+    if (method === 'linear') return { r: enc(lin(a.r) + (lin(b.r) - lin(a.r)) * t), g: enc(lin(a.g) + (lin(b.g) - lin(a.g)) * t), b: enc(lin(a.b) + (lin(b.b) - lin(a.b)) * t) };
+    const x = toLab(a), y = toLab(b);
+    return fromLab([x[0] + (y[0] - x[0]) * t, x[1] + (y[1] - x[1]) * t, x[2] + (y[2] - x[2]) * t]);
+  };
+  const out: T[] = [];
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i], b = stops[i + 1];
+    for (let k = 0; k < 24; k++) { const t = k / 24; out.push({ ...a, at: a.at + (b.at - a.at) * t, rgb: mix(a.rgb, b.rgb, t), alpha: a.alpha + (b.alpha - a.alpha) * t }); }
+  }
+  out.push(stops[stops.length - 1]);
+  return out;
 }
