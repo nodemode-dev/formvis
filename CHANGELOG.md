@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.51.7 · 2026-09-28
+
+### Added: OpenRaster files
+
+- File > Open reads OpenRaster (.ora) files, the layered format of Krita, GIMP and MyPaint: layers and groups, their positions, opacity, visibility and blend modes. A blend mode formvis does not have opens as Normal, and it says which.
+- File > Export > OpenRaster writes them. Text, shapes, smart objects, masked or transformed layers go as they look; adjustment layers have no OpenRaster form and are left out, said so.
+- SVG files were already placed as layers (File > Place); a test now keeps it so.
+
 ## 1.51.6 · 2026-09-28
 
 ### Added: film looks

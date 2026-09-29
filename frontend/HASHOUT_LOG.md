@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## OpenRaster · _v1.51.7 (frontend/src/io/ora.ts new, io/zip.ts, io/images.ts, engine/index.ts, app.ts)
+
+`unzip` (the central directory; stored and deflated entries through DecompressionStream); `writeOra` (mimetype first and stored, stack.xml topmost first with groups as isolation=auto stacks, a PNG per layer, plain pixels as they are and anything else drawn alone, adjustment layers left out and said so, mergedimage.png and a thumbnail) and `readOraFile` (the mimetype checked, stack.xml walked bottom first with groups after their children, blend modes mapped, the unknown reported, the merged image when there are no layers); `Engine.renderLayerAlone`; Open accepts .ora; File > Export > OpenRaster. SVG files were already placed as layers; a test now confirms it. Removed from frontend:
+
+```text
+          if (isPsdFile(f)) {
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', '-', 'export-artboards'] },
+export const PROJECT_ACCEPT = ['.fmv', ...FORMER_PROJECT_EXTENSIONS, '.canvasor', '.comp', '.zip', '.psd', '.psb'].join(',');
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Film looks · _v1.51.6 (engine/adjust-params.ts, engine/index.ts; ui/panels/adjust-panel.ts; ui/panels/film-layer.ts new; app.ts)
 
 Three parameter adjustments: `splitToning` (shadow and highlight hues and strengths about a balance, each pixel's brightness kept), `halation` and `glow` (`bloom`: the highlights above a threshold blurred by `boxBlur` three times, sized in document pixels, tinted red-orange or in their own colour, screened back); the Grain adjustment's Preset row (ISO 100 to 3200), following its sliders; `Engine.addFilmLayer` (a light leak in Screen blend; a frame: film edge, white border or thin line) and `FilmLayerDialog`, Layer > New Film Layer. Bleach bypass, cross process and faded film were already Color Lookup looks, and a vignette already in Develop. Removed from frontend:
