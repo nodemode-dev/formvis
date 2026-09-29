@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.51.6 · 2026-09-28
+
+### Added: film looks
+
+- Three new adjustment layers: Split Toning (tint shadows and highlights separately, keeping brightness), Halation (the red-orange bloom film gives bright areas) and Glow (a soft bloom in the highlights' own colour).
+- The Grain adjustment has presets by film speed, ISO 100 to ISO 3200; moving a slider shows Custom.
+- Layer > New Film Layer > Light Leak (warm light from an edge or corner, in Screen blend) and Frame (a film edge, a white border or a thin line), as layers you can move, scale, erase or mask.
+- Bleach bypass, cross processing and faded film were already looks in Color Lookup, and a vignette in Develop.
+
 ## 1.51.5 · 2026-09-28
 
 ### Added: Improve Prompt

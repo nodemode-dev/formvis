@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Film looks · _v1.51.6 (engine/adjust-params.ts, engine/index.ts; ui/panels/adjust-panel.ts; ui/panels/film-layer.ts new; app.ts)
+
+Three parameter adjustments: `splitToning` (shadow and highlight hues and strengths about a balance, each pixel's brightness kept), `halation` and `glow` (`bloom`: the highlights above a threshold blurred by `boxBlur` three times, sized in document pixels, tinted red-orange or in their own colour, screened back); the Grain adjustment's Preset row (ISO 100 to 3200), following its sliders; `Engine.addFilmLayer` (a light leak in Screen blend; a frame: film edge, white border or thin line) and `FilmLayerDialog`, Layer > New Film Layer. Bleach bypass, cross process and faded film were already Color Lookup looks, and a vignette already in Develop. Removed from frontend:
+
+```text
+      { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', 'color-match', '-',
+export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop';
+    const amount = sliderRow('Amount', 0, 100, 1, (v) => { gr().amount = v; this.changed(); });
+    const size = sliderRow('Size', 0.5, 20, 0.1, (v) => { gr().size = v; this.changed(); });
+    const rough = sliderRow('Roughness', 0, 100, 1, (v) => { gr().roughness = v; this.changed(); });
+    node.append(amount.el, size.el, rough.el, reseed);
+    return { node, sync: () => { amount.set(gr().amount); size.set(gr().size); rough.set(gr().roughness); } };
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Improve Prompt · _v1.51.5 (backend/app/services/llm.py and routers/llm.py new, main.py; frontend/src/io/prompt-templates.ts and ui/panels/prompt-improver.ts new, io/api.ts, ui/app-dialogs.ts, ui/panels/generative-dialog.ts, generate-image.ts, comfyui-run.ts)
 
 The engine's language model settings (`llm.save`, kept in llm.json readable only by the user; the key never returned), `models`, `improve` (the template as the system instruction with the reply rule; quotes and a Prompt: prefix stripped), and `/api/llm/status`, `/settings`, `/models`, `/improve`; the prompt templates (`STARTERS`, `templates`, `saveTemplates`); `PromptImprover` in Generative Fill, Generate Image and Run Workflow; Preferences > Plugins' language model and template editor. Removed from frontend:
