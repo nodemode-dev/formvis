@@ -2,6 +2,25 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Export sizes and the AI label · _v1.51.8 (frontend/src/io/ai-label.ts new, io/export-presets.ts, ui/panels/export-dialog.ts, app.ts)
+
+`ExportSettings.size` (Scale, Fit Within, Frame), `boxW`, `boxH`, `aiLabel`; `exportLayout` (the image's size and the rectangle the picture goes in, a frame's picture centred); `xmpPacket` (IPTC's Digital Source Type: trainedAlgorithmicMedia or compositeWithTrainedAlgorithmicMedia) written by `labelPng` (an iTXt chunk after IHDR), `labelJpeg` (an APP1 segment after SOI) and `labelWebp` (an XMP chunk, a simple file made extended with VP8X and its XMP flag), through `withAiLabel`; Export As's Size, Width x Height and AI label rows, saved with presets, the note saying AVIF, TIFF and PDF do not carry the label. Removed from frontend:
+
+```text
+import { ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
+        const bmp = await createImageBitmap(base), z = exportSize(bmp.width, bmp.height, s.scale), c = createSurface(z.w, z.h), x = ctxOf(c);
+        x.drawImage(bmp, 0, 0, z.w, z.h);
+        await deliver(blob, exportName(p.name, s));
+export interface ExportSettings { format: ExportFormat; quality: number; scale: number; profile?: SpaceId }
+    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale), profile: o.profile as SpaceId | undefined });
+import { BUILTIN_EXPORT_PRESETS, EXPORT_FORMATS, LOSSY, clampSettings, exportName, exportSize, presetsFromStorage, type ExportFormat, type ExportPreset, type ExportSettings } from '../../io/export-presets';
+    this.body.append(this.presetRow.el, this.formatRow.el, this.qualityRow.el, this.scaleRow.el, this.profileRow.el, this.sizeNote, manage);
+    try { localStorage.setItem(KEY, JSON.stringify(this.saved.map(({ id, name, format, quality, scale, profile }) => ({ id, name, format, quality, scale, ...(profile ? { profile } : {}) })))); } catch { toast('Presets cannot be saved in this browser.', 'error'); }
+    if (doc) { const z = exportSize(doc.width, doc.height, s.scale); setText(this.sizeNote, `${z.w} x ${z.h} px · ${exportName(this.engine.current?.name ?? 'Untitled', s)}${s.format === 'pdf' && s.profile ? ' · converted; PDF carries no profile' : ''}`); }
+```
+
+Nothing removed from src-tauri or backend.
+
 ## OpenRaster · _v1.51.7 (frontend/src/io/ora.ts new, io/zip.ts, io/images.ts, engine/index.ts, app.ts)
 
 `unzip` (the central directory; stored and deflated entries through DecompressionStream); `writeOra` (mimetype first and stored, stack.xml topmost first with groups as isolation=auto stacks, a PNG per layer, plain pixels as they are and anything else drawn alone, adjustment layers left out and said so, mergedimage.png and a thumbnail) and `readOraFile` (the mimetype checked, stack.xml walked bottom first with groups after their children, blend modes mapped, the unknown reported, the merged image when there are no layers); `Engine.renderLayerAlone`; Open accepts .ora; File > Export > OpenRaster. SVG files were already placed as layers; a test now confirms it. Removed from frontend:

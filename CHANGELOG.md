@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.51.8 · 2026-09-28
+
+### Added: export into a frame, and the AI label
+
+- File > Export As has a Size: Scale (%) as before, Fit Within a width and height (keeping the shape), or a Frame of exactly that size with the picture centred (transparent margins, white in JPEG).
+- An AI label: None, Made with AI or Edited with AI, written into PNG, JPEG and WebP as IPTC's Digital Source Type, the machine-readable marking of AI content. AVIF, TIFF and PDF do not carry it yet, and the dialog says so.
+- Both are saved with Export As presets.
+
 ## 1.51.7 · 2026-09-28
 
 ### Added: OpenRaster files
