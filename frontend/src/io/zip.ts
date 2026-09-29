@@ -26,3 +26,29 @@ export async function zipFiles(files: ReadonlyArray<{ name: string; blob: Blob }
   end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true); end.setUint32(12, size, true); end.setUint32(16, offset, true);
   return new Blob([...parts, ...central, end.buffer], { type: 'application/zip' });
 }
+
+/** The files in a ZIP archive (1.51.7, for OpenRaster), by name: stored and deflated entries, read from the central
+ *  directory; deflate through the browser's own DecompressionStream. Throws on anything malformed. */
+export async function unzip(data: ArrayBuffer): Promise<Map<string, Uint8Array>> {
+  const v = new DataView(data), out = new Map<string, Uint8Array>(), dec = new TextDecoder();
+  let end = -1;
+  for (let i = data.byteLength - 22; i >= Math.max(0, data.byteLength - 65557); i--) if (v.getUint32(i, true) === 0x06054b50) { end = i; break; }
+  if (end < 0) throw new Error('not a ZIP archive');
+  const count = v.getUint16(end + 10, true);
+  let at = v.getUint32(end + 16, true);
+  for (let k = 0; k < count; k++) {
+    if (at + 46 > data.byteLength || v.getUint32(at, true) !== 0x02014b50) throw new Error('a damaged ZIP directory');
+    const method = v.getUint16(at + 10, true), packed = v.getUint32(at + 20, true), nameLen = v.getUint16(at + 28, true), extra = v.getUint16(at + 30, true), note = v.getUint16(at + 32, true), local = v.getUint32(at + 42, true);
+    const name = dec.decode(new Uint8Array(data, at + 46, nameLen));
+    at += 46 + nameLen + extra + note;
+    if (local + 30 > data.byteLength || v.getUint32(local, true) !== 0x04034b50) throw new Error('a damaged ZIP entry');
+    const start = local + 30 + v.getUint16(local + 26, true) + v.getUint16(local + 28, true);
+    if (start + packed > data.byteLength) throw new Error('a truncated ZIP entry');
+    const raw = new Uint8Array(data, start, packed);
+    if (name.endsWith('/')) continue;
+    if (method === 0) out.set(name, raw.slice());
+    else if (method === 8) out.set(name, new Uint8Array(await new Response(new Blob([raw]).stream().pipeThrough(new DecompressionStream('deflate-raw'))).arrayBuffer()));
+    else throw new Error(`${name} is packed in a way this reader does not know`);
+  }
+  return out;
+}

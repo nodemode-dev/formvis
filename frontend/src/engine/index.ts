@@ -4326,6 +4326,20 @@ export class Engine {
     return true;
   }
 
+  /** One layer drawn by itself at the document's size (1.51.7, for OpenRaster): its mask and effects applied, everything
+   *  else hidden, at full opacity and Normal blend, as the file keeps those separately. */
+  renderLayerAlone(id: ID): Surface {
+    const p = this.current, s = createSurface(p?.doc.width ?? 1, p?.doc.height ?? 1);
+    const l = p?.layer(id);
+    if (!p || !l) return s;
+    const keep = new Set<ID>([id]);
+    for (let a = l.parentId; a; a = p.layer(a)?.parentId ?? null) keep.add(a);
+    const overrides = new Map<ID, LayerOverride>();
+    for (const x of p.doc.layers) overrides.set(x.id, keep.has(x.id) ? { hidden: false, opacity: 1, ...(x.id === id ? { blend: 'normal' as BlendMode } : {}) } : { hidden: true });
+    this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
+    return s;
+  }
+
   addAdjustmentLayer(kind: AdjustmentKind): ID | null {
     let created: ID | null = null;
     this.edit(`New ${ADJUSTMENT_LABELS[kind]} Layer`, (p) => {

@@ -33,6 +33,7 @@ import { Actions, RECORDABLE, type Action, type ActionStep } from './ui/actions'
 import { ActionsDialog, BatchDialog } from './ui/panels/actions-dialogs';
 import { zipFiles } from './io/zip';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
+import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { BrushSettingsDialog } from './ui/panels/brush-settings';
@@ -408,7 +409,11 @@ export function startApp(): void {
     await engine.task(async () => {
       for (const f of files) {
         try {
-          if (isPsdFile(f)) {
+          if (isOraFile(f)) {   // OpenRaster (1.51.7)
+            const { doc, notes } = await readOraFile(f);
+            engine.addProject(doc, f.name.replace(/\.ora$/i, ''), null);
+            if (notes.length) toast(notes.join(' '), 'info');
+          } else if (isPsdFile(f)) {
             const { doc, notes, activeId, paths } = await readPsdFile(f);
             const opened = engine.addProject(doc, f.name.replace(/\.ps[db]$/i, ''), activeId);
             if (paths) engine.setPathsOf(opened, paths);
@@ -707,6 +712,23 @@ export function startApp(): void {
     });
   }
 
+  /** File > Export > OpenRaster (1.51.7): layers, groups, positions, opacity, visibility and blend modes, for Krita,
+   *  GIMP and MyPaint. */
+  async function exportOra(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const composite = engine.flattened();
+        if (!composite) return;
+        const { blob, notes } = await writeOra(p.doc, composite, (l) => engine.renderLayerAlone(l.id));
+        await deliver(blob, `${p.name}.ora`);
+        if (notes.length) toast(notes.join(' '), 'info');
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function exportPsd(psb = false): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -934,6 +956,7 @@ export function startApp(): void {
     { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
     { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
+    { id: 'export-ora', label: 'Export OpenRaster...', enabled: has, run: () => void exportOra() },   // 1.51.7
     { id: 'export-psb', label: 'Export PSB (Large Document)...', enabled: has, run: () => void exportPsd(true) },
     { id: 'export-webp', label: 'Export WebP', enabled: has, run: () => void exportImage('webp', 0.9) },
     { id: 'export-tiff', label: 'Export TIFF', enabled: () => has() && !!caps, run: () => void exportImage('tiff', 0.9) },
@@ -1153,7 +1176,7 @@ export function startApp(): void {
 
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
-      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', '-', 'export-artboards'] },
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', 'export-ora', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
