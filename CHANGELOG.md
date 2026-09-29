@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.52.7 · 2026-09-29
+
+### Added: very large pictures
+
+- A picture larger than formvis edits in one piece (over 30,000 pixels a side or 100 megapixels, up to 65,535 a side) no longer fails: its size is read from the file before anything is decoded, and it opens as a reduced copy that fits, a region at full size, or tiles at full size, each tile its own document that remembers its place. The dialog says how much memory opening it needs.
+- File > Export > Assemble Tiles puts the edited tiles back together as one full-size PNG, written by the engine a strip at a time so the whole picture is never held at once, downloaded straight to disk and kept in the data folder's exports.
+- Opening still decodes the picture once, about 4 bytes a pixel. Tiles closed before assembling lose their places.
+
+### Changed: Ask the manual finds the right section more often
+
+- Help's Ask matches your words to the manual's by stem ("written" finds "writes") and weighs rarer words more, so a question about the AI label goes to Exporting rather than wherever "written" happens to appear.
+
 ## 1.52.6 · 2026-09-29
 
 ### Added: plugins

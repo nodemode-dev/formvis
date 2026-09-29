@@ -2,6 +2,33 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Very large pictures · _v1.52.7 (backend/app/services/large.py and routers/large.py new, main.py; frontend/src/io/image-size.ts and ui/panels/large-picture.ts new, io/images.ts, io/api.ts, engine/project.ts, app.ts; docs/MANUAL.md)
+
+`headerSize` (PNG, JPEG, WebP, GIF, BMP, nothing decoded) and `LargePictureError` in `decodeImage`; `LargePictureDialog` (a reduced copy, a region, tiles; the memory needed shown); `Project.tile`; the engine's `large.keep`, `reduced`, `region`, `tiles`, `forget` (Pillow's limit raised only while working, one picture kept decoded) and `assemble` (the tiles' coverage checked, one band decoded at a time, the PNG compressed and written as it goes) with `/api/large` and `/api/large/exports`; File > Export > Assemble Tiles; `relevant` in help/markdown.ts matching question words by stem and weighting them by rarity (the manual's new text had sent an AI-label question to the wrong section). Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import { IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
+          try { decoded.push(await decodeImage(f, f.name)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', 'export-ora', '-', 'export-artboards'] },
+/** The sections most about `question`: its words (three letters or more, common words left out) counted in each. */
+  const words = question.toLowerCase().match(/[a-z0-9]{3,}/g)?.filter((w) => !common.has(w)) ?? [];
+  const score = (s: Section): number => { const t = `${s.title} ${s.title} ${s.body}`.toLowerCase(); return words.reduce((n2, w) => n2 + (t.split(w).length - 1), 0); };
+  return all.map((s) => ({ s, k: score(s) })).filter((x) => x.k > 0).sort((a, b) => b.k - a.k).slice(0, n).map((x) => x.s);
+export const VERSION = '1.52.6';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.52.6"
+from app.routers import comfyui, generative, io, llm, mcp, ops, plugins, projects, system, nodemode
+version = "1.52.6"
+version = "1.52.6"
+ "version": "1.52.6",
+```
+
+Nothing removed from src-tauri.
+
 ## Plugins · _v1.52.6 (backend/app/routers/plugins.py new, main.py; frontend/src/plugins/host.ts and ui/panels/plugins-dialog.ts new, ui/commands.ts, engine/index.ts, io/api.ts, app.ts, styles/dialogs.css; docs/MANUAL.md)
 
 The engine's plugins folder (`/api/plugins`: list, read, add, remove; plain `.js` names only, 512 KB, UTF-8); `PluginHost` (each enabled plugin in a frame sandboxed to scripts alone, without same-origin; the RUNTIME's `formvis.register`, `call`, `getPixels`, `putPixels`; messages taken only from a plugin's own frame; pixels checked to be the document's size); `Engine.replaceLayerPixels`; `Commands.remove`; `PluginsDialog` and the Plugins menu. Removed from frontend (taken after the version edit, so the version line is here too):
