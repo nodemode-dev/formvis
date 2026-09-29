@@ -71,6 +71,8 @@ import { GenerateImageDialog } from './ui/panels/generate-image';
 import { ColorMatchDialog } from './ui/panels/color-match';
 import { FilmLayerDialog } from './ui/panels/film-layer';
 import { Model3DDialog } from './ui/panels/model3d';
+import { AgentConfirmDialog } from './ui/panels/agent-confirm';
+import { AgentBridge } from './automation/agent-bridge';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -916,6 +918,11 @@ export function startApp(): void {
   const colorMatch = new ColorMatchDialog(engine);
   const filmLayer = new FilmLayerDialog(engine);
   const model3d = new Model3DDialog(engine, (t) => toast(t));
+  // Outside agents over MCP (1.52.1): the window runs their calls while Preferences > Plugins allows it.
+  const agentConfirm = new AgentConfirmDialog();
+  const agents = new AgentBridge(engine, { ask: (title, text) => agentConfirm.ask(title, text), note: () => {} });
+  agents.setEnabled(loadPrefs().agentsAllowed);
+  window.addEventListener('formvis:agents', (ev) => agents.setEnabled((ev as CustomEvent<boolean>).detail === true));
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
   model3dInput.addEventListener('change', () => { const f = model3dInput.files?.[0]; model3dInput.value = ''; if (f) void model3d.load(f); });
   document.body.appendChild(model3dInput);
