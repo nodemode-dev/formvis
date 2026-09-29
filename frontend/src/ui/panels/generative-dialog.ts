@@ -5,6 +5,7 @@ import { el, setHidden, setText } from '../dom';
 import { addRecipe, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
+import { PromptImprover } from './prompt-improver';
 
 type Mode = 'fill' | 'expand' | 'upscale';
 
@@ -34,6 +35,7 @@ export class GenerativeDialog extends Dialog {
   private readonly model = el<HTMLSelectElement>('<select class="cv-input" aria-label="Model"></select>');
   private readonly modelRow = el('<label class="cv-dialog-row"><span>Model</span></label>');
   private readonly refs: ReferencePicker;
+  private readonly improver: PromptImprover;
   private readonly addFile = el<HTMLInputElement>('<input type="file" accept=".json,application/json" aria-label="Add ComfyUI workflow" hidden>');
 
   constructor(private readonly engine: Engine) {
@@ -49,6 +51,8 @@ export class GenerativeDialog extends Dialog {
     this.refs = new ReferencePicker(engine);
     this.body.appendChild(this.refs.el);
     this.body.appendChild(this.prompt);
+    this.improver = new PromptImprover(this.prompt, 'Fill a selection');
+    this.body.appendChild(this.improver.el);
     this.marginRows = el('<div class="cv-panel-section"></div>');
     this.body.appendChild(this.marginRows);
     for (const [label, input] of [['Left (px)', this.margin.left], ['Top (px)', this.margin.top], ['Right (px)', this.margin.right], ['Bottom (px)', this.margin.bottom]] as const) {
@@ -83,6 +87,8 @@ export class GenerativeDialog extends Dialog {
     this.fillModels();
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
     setHidden(this.refs.el, mode === 'upscale');
+    setHidden(this.improver.el, mode === 'upscale');
+    this.improver.refresh();
     this.status = await api.generativeStatus();
     this.sync();
     this.open();

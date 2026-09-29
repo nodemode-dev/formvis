@@ -5,6 +5,7 @@ import { el, setText } from '../dom';
 import { loadPrefs } from '../prefs';
 import { imagesFor, toPng } from './send-to';
 import { ReferencePicker } from './references';
+import { PromptImprover } from './prompt-improver';
 
 const KEPT = 'formvis.comfyui.workflow';
 
@@ -21,6 +22,7 @@ export class RunWorkflowDialog extends Dialog {
   private workflow: { name: string; json: string } | null = null;
   private job: string | null = null;
   private readonly refs: ReferencePicker;
+  private readonly improver: PromptImprover;
   private timer = 0;
 
   constructor(private readonly engine: Engine, private readonly toast: (text: string) => void) {
@@ -29,7 +31,8 @@ export class RunWorkflowDialog extends Dialog {
     this.pick.addEventListener('click', () => this.file.click());
     this.file.addEventListener('change', () => void this.choose());
     this.refs = new ReferencePicker(engine);
-    this.body.append(row('Workflow', this.pick, this.chosen, this.file), row('Input', this.input), row('Prompt', this.prompt), this.refs.el, this.status);
+    this.improver = new PromptImprover(this.prompt, 'Richer detail');
+    this.body.append(row('Workflow', this.pick, this.chosen, this.file), row('Input', this.input), row('Prompt', this.prompt), this.improver.el, this.refs.el, this.status);
     this.button('Cancel', 'ghost', () => void this.stop());
     this.button('Run', 'primary', () => void this.run());
     try { const k = JSON.parse(localStorage.getItem(KEPT) ?? 'null') as { name: string; json: string } | null; if (k?.json) this.workflow = k; } catch { /* none kept */ }
@@ -43,6 +46,7 @@ export class RunWorkflowDialog extends Dialog {
     setText(this.chosen, this.workflow ? this.workflow.name : 'None chosen: in ComfyUI, save it with Export (API).');
     setText(this.status, '');
     this.refs.refresh(false);
+    this.improver.refresh();
     this.open();
   }
 

@@ -1,5 +1,6 @@
 import type { Engine } from '../engine';
 import { api, type Capabilities, type LibraryItem } from '../io/api';
+import { saveTemplates, templates } from '../io/prompt-templates';
 import { PROJECT_ACCEPT } from '../io/images';
 import { VERSION } from '../version';
 import type { Commands } from './commands';
@@ -400,7 +401,26 @@ export class SettingsDialog extends Dialog {
     this.comfyuiUrl.addEventListener('change', () => { const v = this.comfyuiUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ comfyuiUrl: v }); void this.checkComfyUI(); } else setText(this.comfyuiNote, 'An address starts with http:// or https://, such as http://127.0.0.1:8188.'); });
     const cu = el('<label class="cv-dialog-row"><span>ComfyUI address</span></label>');
     cu.append(this.comfyuiUrl, this.comfyuiCheck);
-    add('Plugins', nm, this.nodemodeNote, cu, this.comfyuiNote);
+    // The language model for Improve Prompt, and the prompt templates (1.51.5).
+    const lm = el('<div class="cv-panel-section cv-llm"><span class="cv-refs-title">Language model (Improve Prompt)</span></div>');
+    const lmRow = (label: string, ...c: HTMLElement[]): HTMLElement => { const r = el(`<label class="cv-dialog-row"><span>${label}</span></label>`); r.append(...c); return r; };
+    const lmButtons = el('<div class="cv-improve"></div>');
+    const save = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Save</button>'), check = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Check</button>'), forget = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Forget key</button>');
+    lmButtons.append(save, check, forget);
+    save.addEventListener('click', () => void this.saveLlm(false));
+    forget.addEventListener('click', () => void this.saveLlm(true));
+    check.addEventListener('click', () => void this.checkLlm());
+    lm.append(lmRow('Address', this.llmUrl), lmRow('Model', this.llmModel, this.llmModels), lmRow('API key', this.llmKey), lmButtons, this.llmNote);
+    const tp = el('<div class="cv-panel-section cv-templates"><span class="cv-refs-title">Prompt templates</span></div>');
+    const tButtons = el('<div class="cv-improve"></div>');
+    const tNew = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">New</button>'), tSave = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Save</button>'), tDel = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Delete</button>');
+    tButtons.append(tNew, tSave, tDel);
+    this.tplPick.addEventListener('change', () => this.showTemplate());
+    tNew.addEventListener('click', () => { const list = templates(); let n = 1; while (list.some((t) => t.name === `Template ${n}`)) n++; list.push({ name: `Template ${n}`, text: '' }); saveTemplates(list); this.fillTemplates(`Template ${n}`); });
+    tSave.addEventListener('click', () => { const list = templates(), i = list.findIndex((t) => t.name === this.tplPick.value), name = this.tplName.value.trim() || this.tplPick.value; if (i >= 0) list[i] = { name, text: this.tplText.value }; saveTemplates(list); this.fillTemplates(name); setText(this.tplNote, 'Saved.'); });
+    tDel.addEventListener('click', () => { const list = templates().filter((t) => t.name !== this.tplPick.value); saveTemplates(list.length ? list : templates()); this.fillTemplates(); });
+    tp.append(lmRow('Template', this.tplPick), lmRow('Name', this.tplName), this.tplText, tButtons, this.tplNote);
+    add('Plugins', nm, this.nodemodeNote, cu, this.comfyuiNote, lm, tp);
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
     this.body.appendChild(wrap);
@@ -480,6 +500,55 @@ export class SettingsDialog extends Dialog {
   private readonly comfyuiCheck = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Check</button>');
   private readonly comfyuiNote = el('<p class="cv-note" role="status">File > Send to ComfyUI sends here, into its input folder.</p>');
 
+  private readonly llmUrl = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="Language model address" spellcheck="false" placeholder="http://localhost:11434/v1">');
+  private readonly llmModel = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Language model" spellcheck="false" list="cv-llm-models" placeholder="llama3.2">');
+  private readonly llmModels = el('<datalist id="cv-llm-models"></datalist>');
+  private readonly llmKey = el<HTMLInputElement>('<input class="cv-input" type="password" aria-label="Language model key" autocomplete="off" spellcheck="false">');
+  private readonly llmNote = el('<p class="cv-note cv-llm-note" role="status">Any service with the OpenAI-compatible API: Ollama (http://localhost:11434/v1) or LM Studio (http://localhost:1234/v1) on this computer, or OpenAI, OpenRouter and others with a key. The engine keeps the key and never shows it.</p>');
+  private readonly tplPick = el<HTMLSelectElement>('<select class="cv-input" aria-label="Prompt template"></select>');
+  private readonly tplName = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Template name" maxlength="80">');
+  private readonly tplText = el<HTMLTextAreaElement>('<textarea class="cv-input" rows="4" aria-label="Template text"></textarea>');
+  private readonly tplNote = el('<p class="cv-note" role="status"></p>');
+
+  private async loadLlm(): Promise<void> {
+    const s = await api.llmStatus();
+    if (!s) { setText(this.llmNote, 'The formvis engine is offline: Improve Prompt needs it.'); return; }
+    if (document.activeElement !== this.llmUrl) this.llmUrl.value = s.baseUrl;
+    if (document.activeElement !== this.llmModel) this.llmModel.value = s.model;
+    this.llmKey.value = '';
+    this.llmKey.placeholder = s.hasKey ? 'Saved (type to replace)' : 'Optional for a service on this computer';
+  }
+
+  private async saveLlm(forgetKey: boolean): Promise<void> {
+    try {
+      const s = await api.llmSave(this.llmUrl.value.trim(), this.llmModel.value.trim(), forgetKey ? null : this.llmKey.value.trim() || null, forgetKey);
+      this.llmKey.value = '';
+      this.llmKey.placeholder = s.hasKey ? 'Saved (type to replace)' : 'Optional for a service on this computer';
+      setText(this.llmNote, forgetKey ? 'Key forgotten.' : `Saved: ${s.model} at ${s.baseUrl}.`);
+    } catch (err) { setText(this.llmNote, err instanceof Error ? err.message : 'Could not save.'); }
+  }
+
+  private async checkLlm(): Promise<void> {
+    await this.saveLlm(false);
+    try {
+      const models = await api.llmModels();
+      this.llmModels.replaceChildren(...models.map((m) => { const o = document.createElement('option'); o.value = m; return o; }));
+      setText(this.llmNote, `Answering, with ${models.length} model${models.length === 1 ? '' : 's'}${models.length ? `: ${models.slice(0, 4).join(', ')}${models.length > 4 ? '...' : ''}` : ''}.`);
+    } catch (err) { setText(this.llmNote, err instanceof Error ? err.message : 'Could not reach the service.'); }
+  }
+
+  private fillTemplates(choose?: string): void {
+    const list = templates(), was = choose ?? this.tplPick.value;
+    this.tplPick.replaceChildren(...list.map((t) => { const o = document.createElement('option'); o.value = t.name; o.textContent = t.name; return o; }));
+    this.tplPick.value = list.some((t) => t.name === was) ? was : list[0]?.name ?? '';
+    this.showTemplate();
+  }
+
+  private showTemplate(): void {
+    const t = templates().find((x) => x.name === this.tplPick.value);
+    this.tplName.value = t?.name ?? ''; this.tplText.value = t?.text ?? ''; setText(this.tplNote, '');
+  }
+
   private async checkComfyUI(): Promise<void> {
     const target = this.comfyuiUrl.value.trim();
     setText(this.comfyuiNote, `Checking ${target}...`);
@@ -503,6 +572,8 @@ export class SettingsDialog extends Dialog {
   private sync(): void {
     if (document.activeElement !== this.nodemodeUrl) setValue(this.nodemodeUrl, this.prefs.nodemodeUrl);
     if (document.activeElement !== this.comfyuiUrl) setValue(this.comfyuiUrl, this.prefs.comfyuiUrl);
+    void this.loadLlm();
+    if (!this.tplPick.options.length) this.fillTemplates();
     const c = readChoice();
     setValue(this.accent, c.accentColor);
     for (const b of Array.from(this.grid.querySelectorAll<HTMLElement>('[data-theme-id]'))) {

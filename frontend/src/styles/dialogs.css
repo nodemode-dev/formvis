@@ -140,3 +140,7 @@
 .cv-refs-title { font-size: 12px; color: var(--text-muted); }
 .cv-refs-list { display: flex; flex-direction: column; gap: 2px; max-height: 120px; overflow-y: auto; }
 .cv-refs-row { display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+/* Improve Prompt (1.51.5). */
+.cv-improve { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 2px 0 6px; }
+.cv-improve select { max-width: 160px; }
+.cv-improve-note { font-size: 12px; }

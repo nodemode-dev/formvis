@@ -40,6 +40,18 @@ export const api = {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
   },
   /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
+  /** Prompt improvement (1.51.5): the language model's settings (never its key), its models, and a rewrite. */
+  async llmStatus(): Promise<{ configured: boolean; baseUrl: string; model: string; hasKey: boolean } | null> {
+    try { return (await (await request('/llm/status')).json()) as { configured: boolean; baseUrl: string; model: string; hasKey: boolean }; } catch { return null; }
+  },
+  async llmSave(baseUrl: string, model: string, key: string | null, forgetKey = false): Promise<{ configured: boolean; baseUrl: string; model: string; hasKey: boolean }> {
+    return (await (await request('/llm/settings', { method: 'POST', body: form({ base_url: baseUrl, model, ...(key ? { key } : {}), ...(forgetKey ? { forget_key: 'true' } : {}) }) })).json()) as { configured: boolean; baseUrl: string; model: string; hasKey: boolean };
+  },
+  async llmModels(): Promise<string[]> { return ((await (await request('/llm/models')).json()) as { models: string[] }).models; },
+  async improvePrompt(prompt: string, instructions: string): Promise<string> {
+    return ((await (await request('/llm/improve', { method: 'POST', body: form({ prompt, instructions }) })).json()) as { prompt: string }).prompt;
+  },
+
   /** Edit > Generate Image (1.51.2): a picture from a prompt alone through fal, near the document's shape. */
   async generateImage(prompt: string, width: number, height: number): Promise<Blob> {
     return (await request('/generative/generate', { method: 'POST', body: form({ prompt, width: String(width), height: String(height) }) })).blob();

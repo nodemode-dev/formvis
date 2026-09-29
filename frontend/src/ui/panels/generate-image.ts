@@ -5,6 +5,7 @@ import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
+import { PromptImprover } from './prompt-improver';
 
 /** Edit > Generate Image (1.51.2), as Photoshop's: a picture from a prompt alone, as a new layer at the document's size
  *  (a new 1024 by 1024 document when none is open), with FLUX1.1 [pro] on fal or a kept ComfyUI workflow. */
@@ -14,6 +15,7 @@ export class GenerateImageDialog extends Dialog {
   private readonly status = el('<p class="cv-note cv-gen-status" role="status"></p>');
   private busy = false;
   private readonly refs: ReferencePicker;
+  private readonly improver: PromptImprover;
   private stopped = false;
 
   constructor(private readonly engine: Engine, private readonly toast: (text: string) => void) {
@@ -22,7 +24,8 @@ export class GenerateImageDialog extends Dialog {
     row.append(this.model);
     this.refs = new ReferencePicker(engine);
     this.model.addEventListener('change', () => this.refs.forFal(this.model.value === 'fal'));
-    this.body.append(this.prompt, row, this.refs.el, this.status);
+    this.improver = new PromptImprover(this.prompt, 'Richer detail');
+    this.body.append(this.prompt, this.improver.el, row, this.refs.el, this.status);
     this.button('Cancel', 'ghost', () => { this.stopped = true; this.close(); });
     this.button('Generate', 'primary', () => void this.generate());
   }
@@ -32,6 +35,7 @@ export class GenerateImageDialog extends Dialog {
     this.model.replaceChildren(el('<option value="fal">FLUX1.1 [pro] (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = r.name; o.textContent = `${r.name} (ComfyUI)`; return o; }));
     if ([...this.model.options].some((o) => o.value === was)) this.model.value = was;
     this.refs.refresh(this.model.value === 'fal');
+    this.improver.refresh();
     setText(this.status, 'Your ComfyUI workflows are added in Edit > Generative Fill.');
     this.stopped = false;
     this.open();
