@@ -2,7 +2,7 @@
 <h1 align="center">formvis</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-1.51.4-f97316" alt="version 1.51.4">
+<img src="https://img.shields.io/badge/version-1.51.5-f97316" alt="version 1.51.5">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -13,7 +13,7 @@
 
 formvis is a layered image editor: stack photos and paintings as layers, group them in folders, mask and clip them, blend them, select, paint and export. It saves its own `.fmv` projects and opens NodeMode canvasor projects, and it runs standalone in a browser, inside NodeMode as a portal app, or as a desktop app for macOS, Linux and Windows.
 
-**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 31,900 lines of TypeScript, 1,200 of CSS, 1,700 of Python and 2,200 of Rust (product code, tests excluded; `./formvis counts` prints this, and `./formvis counts --check` verifies it).
+**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 32,300 lines of TypeScript, 1,200 of CSS, 1,900 of Python and 2,200 of Rust (product code, tests excluded; `./formvis counts` prints this, and `./formvis counts --check` verifies it).
 
 ## Highlights
 

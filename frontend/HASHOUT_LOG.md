@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Improve Prompt · _v1.51.5 (backend/app/services/llm.py and routers/llm.py new, main.py; frontend/src/io/prompt-templates.ts and ui/panels/prompt-improver.ts new, io/api.ts, ui/app-dialogs.ts, ui/panels/generative-dialog.ts, generate-image.ts, comfyui-run.ts)
+
+The engine's language model settings (`llm.save`, kept in llm.json readable only by the user; the key never returned), `models`, `improve` (the template as the system instruction with the reply rule; quotes and a Prompt: prefix stripped), and `/api/llm/status`, `/settings`, `/models`, `/improve`; the prompt templates (`STARTERS`, `templates`, `saveTemplates`); `PromptImprover` in Generative Fill, Generate Image and Run Workflow; Preferences > Plugins' language model and template editor. Removed from frontend:
+
+```text
+    add('Plugins', nm, this.nodemodeNote, cu, this.comfyuiNote);
+    this.body.append(row('Workflow', this.pick, this.chosen, this.file), row('Input', this.input), row('Prompt', this.prompt), this.refs.el, this.status);
+    this.body.append(this.prompt, row, this.refs.el, this.status);
+```
+
+Removed from backend:
+
+```text
+from app.routers import comfyui, generative, io, ops, projects, system, nodemode
+```
+
+Nothing removed from src-tauri.
+
 ## Blur, Sharpen and Smudge's options; reference layers · _v1.51.4 (engine/index.ts; extensions/tools/smear.ts; ui/panels/references.ts new, generative-dialog.ts, generate-image.ts, comfyui-run.ts; io/comfy.ts, io/api.ts; backend/app/routers/comfyui.py)
 
 `retouch.smearBlend`, `smearSampleAll`, `protectDetail`, `fingerPainting`: Blur and Sharpen's Mode as their stroke's compositing and Sample All Layers (`blurred` of the composite), Sharpen's Protect Detail (`withinNeighbours`), Smudge's Sample All Layers (an empty layer now takes it) and Finger Painting; the Smear bar's tool choice labelled Tool. `ReferencePicker`; references through `comfyGenerator`, Generate Image and Run Workflow; the engine's `_title`, `REFERENCE_TITLE`, `_fill` filling titled reference nodes in order and never taking one as the picture, the reply's references count. Removed from frontend:

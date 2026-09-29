@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.51.5 · 2026-09-28
+
+### Added: Improve Prompt
+
+- Improve, beside the prompt in Generative Fill, Generate Image and Run ComfyUI Workflow, rewrites the prompt through a language model following a template you choose; Restore puts your original back.
+- The model is any service with the OpenAI-compatible API: Ollama or LM Studio on this computer, or OpenAI, OpenRouter and others with a key. Set its address, model and key in Preferences > Plugins; Check lists the models it offers. The engine keeps the key and never shows it.
+- Prompt templates: three to start (Richer detail, Fill a selection, Short and plain), edited, added to and removed in Preferences > Plugins.
+
 ## 1.51.4 · 2026-09-28
 
 ### Changed: Blur, Sharpen and Smudge against Photoshop's bars
