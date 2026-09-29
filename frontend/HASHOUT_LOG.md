@@ -2,6 +2,45 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Blur, Sharpen and Smudge's options; reference layers · _v1.51.4 (engine/index.ts; extensions/tools/smear.ts; ui/panels/references.ts new, generative-dialog.ts, generate-image.ts, comfyui-run.ts; io/comfy.ts, io/api.ts; backend/app/routers/comfyui.py)
+
+`retouch.smearBlend`, `smearSampleAll`, `protectDetail`, `fingerPainting`: Blur and Sharpen's Mode as their stroke's compositing and Sample All Layers (`blurred` of the composite), Sharpen's Protect Detail (`withinNeighbours`), Smudge's Sample All Layers (an empty layer now takes it) and Finger Painting; the Smear bar's tool choice labelled Tool. `ReferencePicker`; references through `comfyGenerator`, Generate Image and Run Workflow; the engine's `_title`, `REFERENCE_TITLE`, `_fill` filling titled reference nodes in order and never taking one as the picture, the reply's references count. Removed from frontend:
+
+```text
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
+      const sigma = clamp(this.brush.diameter / 10, 1.5, 30);
+      texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };
+      const src = this.layerSample(p, l0), W = src.width, H = src.height, out = createSurface(W, H);
+      ctxOf(out).putImageData(sharpenSample(ctxOf(src).getImageData(0, 0, W, H), clamp(this.brush.diameter / 40, 0.8, 4)), 0, 0);
+    const op: GlobalCompositeOperation = pick.target !== 'mask' && l0.locks?.transparency ? 'source-atop' : kind === 'clone' && pick.target !== 'mask' ? compositeOp(this.retouch.cloneBlend) : 'source-over';
+    if (!this.paintable(l0) || !l0.raster) { this.notice('Select a layer with pixels first.'); return false; }
+    const surface = this.layerSample(p, pick.layer);
+    { kind: 'segment', label: 'Mode', choices: [{ id: 'liquify', label: 'Liquify' }, { id: 'blur', label: 'Blur' }, { id: 'sharpen', label: 'Sharpen' }, { id: 'smudge', label: 'Smudge' }], get: () => e.retouch.smearMode, set: (v) => { e.retouch.smearMode = v as 'blur' | 'sharpen' | 'smudge' | 'liquify'; e.emit('options', null); e.emit('tool', null); } },
+  async comfyuiRun(target: string, workflow: string, items: unknown[], parts: FilePart[], prompt: string | null): Promise<{ job: string; image: string | null; mask: string | null; prompt: boolean }> {
+    return (await res.json()) as { job: string; image: string | null; mask: string | null; prompt: boolean };
+export function comfyGenerator(target: string, recipe: Recipe, prompt: string): (image: Blob, mask: Blob) => Promise<Blob> {
+  return async (image, mask) => (await runToResults(target, recipe.json, [{ name: 'formvis fill', kind: 'image' }, { name: 'formvis fill mask', kind: 'mask', maskOf: 0 }],
+    [{ name: 'image.png', blob: image }, { name: 'mask.png', blob: mask }], prompt))[0];
+    this.body.append(row('Workflow', this.pick, this.chosen, this.file), row('Input', this.input), row('Prompt', this.prompt), this.status);
+      const parts = await Promise.all(imgs.map(async (x, i) => ({ name: `${i}.png`, blob: await toPng(x.surface) })));
+      const r = await api.comfyuiRun(target, w.json, imgs.map((x) => x.item), parts, this.prompt.value.trim() ? this.prompt.value.trim() : null);
+    this.body.append(this.prompt, row, this.status);
+        blob = (await runToResults(loadPrefs().comfyuiUrl, recipe.json, [], [], prompt, (t) => setText(this.status, t), () => this.stopped))[0];
+      const fill = comfyGenerator(target, recipe, prompt);
+```
+
+Removed from backend:
+
+```text
+def _fill(workflow: dict, image: str | None, mask: str | None, prompt: str | None) -> dict:
+    loads = [n for _, n in nodes if n["class_type"] == "LoadImage"]
+    image = next((f["name"] for f in uploaded["files"] if f["kind"] != "mask"), None)
+    flow = _fill(flow, image, mask, prompt)
+    return {"job": job, "image": image, "mask": mask if mask and any(n["class_type"] == "LoadImageMask" for n in flow.values()) else None,
+```
+
+Nothing removed from src-tauri.
+
 ## Color Match · _v1.51.3 (engine/index.ts; ui/panels/color-match.ts new; app.ts)
 
 `Engine.colorMatch` (the layer's opaque pixels against the picture without it and what is above it, beneath the layer or in a 24-pixel band around its edge; each of red, green and blue a line mapping mean and spread, the scale kept within a quarter and four; a Curves layer clipped to it, its opacity the amount, updated when run again; one step); `ColorMatchDialog` and Layer > Color Match. Removed from frontend:

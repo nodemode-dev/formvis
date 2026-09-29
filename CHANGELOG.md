@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.51.4 · 2026-09-28
+
+### Changed: Blur, Sharpen and Smudge against Photoshop's bars
+
+- Blur and Sharpen: Mode (Normal, Darken, Lighten, Hue, Saturation, Color, Luminosity) and Sample All Layers.
+- Sharpen: Protect Detail, on by default: edges sharpen without halos or speckle.
+- Smudge: Sample All Layers (onto an empty layer too) and Finger Painting (the foreground colour dragged from where the stroke starts).
+- The Smear tool's choice of Liquify, Blur, Sharpen or Smudge is labelled Tool; Mode is the blend, as in Photoshop.
+
+### Added: reference layers for ComfyUI workflows
+
+- Generative Fill, Generate Image and Run ComfyUI Workflow can send up to four layers as references, to Load Image nodes you title "formvis reference" (then 1, 2 and on); those nodes never take the picture.
+- fal's models take no references; the dialogs say so when one is chosen.
+
 ## 1.51.3 · 2026-09-28
 
 ### Added: Color Match
