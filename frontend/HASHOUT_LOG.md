@@ -2,6 +2,36 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Session restore · _v1.52.4 (frontend/src/app.ts, io/recovery.ts, ui/prefs.ts, ui/app-dialogs.ts; docs/MANUAL.md)
+
+`Prefs.restoreSession` (on unless turned off) and its File Handling row; `RecoveryRecord.modified` and `libraryName`; `keepModified` keeping every open document when on (a copy rewritten when its revision, saved state, library entry or name changes) and the tab order and active tab in localStorage (`formvis.session`); `reopen`; `offerRecovery` reopening silently in order when on, fresh copies written before the last session's are removed, and asking for unsaved work only when off. The manual's Getting started says so. Removed from frontend:
+
+```text
+import { recovery } from './io/recovery';
+  const keptAt = new Map<string, number>();
+      if (!p.modified) { if (keptAt.delete(p.id)) await recovery.drop(p.id); continue; }
+      if (keptAt.get(p.id) === p.history.revision) continue;
+        if (await recovery.keep({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files })) keptAt.set(p.id, p.history.revision);
+    const names = found.map((r) => r.name).join(', ');
+    if (!(await confirmAction('Recover unsaved work?', `formvis closed with unsaved changes in ${names}. Open them again?`, 'Recover'))) { await recovery.clear(); return; }
+    for (const r of found) {
+      try {
+        const byName = new Map(r.files.map((f) => [f.name, f.blob]));
+        const { doc, activeId, paths, timeline } = await deserialize(r.manifest, (n) => { const b = byName.get(n); return b ? Promise.resolve(b) : Promise.reject(new Error(`${n} is missing.`)); });
+        const p = engine.addProject(doc, `${r.name} (recovered)`, activeId);
+        if (paths) engine.setPathsOf(p, paths);
+        if (timeline) engine.setTimelineFor(p, timeline);
+        p.history.markUnsaved();
+        engine.emit('projects', null);
+      } catch (err) { toast(`${r.name}: ${message(err)}`, 'error'); }
+export interface RecoveryRecord { id: string; name: string; savedAt: number; manifest: Record<string, unknown>; files: FilePart[] }
+    add('File Handling', this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
+export interface Prefs { agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
+export const DEFAULT_PREFS: Prefs = { agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
+```
+
+Nothing removed from src-tauri or backend.
+
 ## formvis Help · _v1.52.3 (docs/MANUAL.md new; frontend/src/help/markdown.ts and ui/panels/help.ts new, io/api.ts, app.ts, styles/dialogs.css, vite.config.ts)
 
 The manual, written fresh, one section per area, naming only shortcuts checked in the code; `sections`, `render` (elements and text nodes only, never innerHTML) and `relevant` (the sections most about a question); `HelpDialog` (Help > formvis Help, F1: contents, search, Ask with the top sections sent to the language model without tools); `api.assistantStep` taking whether to send tools; the dev server allowed to read ../docs. Removed from frontend:

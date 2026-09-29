@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.52.4 · 2026-09-29
+
+### Added: session restore
+
+- The documents open when formvis closes reopen at the next start, saved or not, in their tab order, with the same one active and their names as they were. Unsaved changes stay marked unsaved; a document saved to the library saves back to it.
+- On by default; Preferences > File Handling turns it off, and then formvis keeps only unsaved work and asks after a crash, as before.
+- Every open document is kept on this device (as unsaved work was), rewritten after changes within the recovery interval set there.
+
 ## 1.52.3 · 2026-09-29
 
 ### Added: formvis Help
