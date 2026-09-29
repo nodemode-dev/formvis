@@ -66,12 +66,20 @@ def open_app(page):
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.goto(URL)
     page.wait_for_function("window.formvis && window.formvis.engine", timeout=60000)
+    # After the app has loaded, any navigation of the page and its warnings are recorded, so an unexpected reload shows
+    # where it went and what the page said first (1.52.1: one intermittent "execution context was destroyed").
+    page.navigations = []
+    page.warnings = []
+    page.on("framenavigated", lambda f: page.navigations.append(f.url) if f == page.main_frame else None)
+    page.on("console", lambda m: page.warnings.append(f"{m.type}: {m.text}"[:300]) if m.type in ("warning", "error") else None)
     return errors
 
 
 @pytest.fixture()
-def page(context):
+def page(context, request):
     pg = context.new_page()
     pg.errors = open_app(pg)
     yield pg
+    if pg.navigations:
+        print(f"\n[navigated after load] {request.node.nodeid}: {pg.navigations} warnings: {pg.warnings[-8:]}")
     assert not [e for e in pg.errors if "deliberate" not in e], pg.errors
