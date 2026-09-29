@@ -167,3 +167,19 @@ def test_canvasor_projects_open_and_unknown_versions_are_refused(client):
     assert later.status_code == 422 and "format version 2" in later.json()["detail"]
     other = client.post("/api/projects/import", files=[("files", ("x.canvasor", _canvasor_zip(fmt="com.example.other"), "application/zip"))])
     assert other.status_code == 422 and "canvasor" in other.json()["detail"]
+
+
+def test_generation_sizes_keep_the_shape_within_what_fal_takes():
+    from app.services.generative import generation_size
+    assert generation_size(1920, 1080) == (1440, 800)          # the longer side at most 1440, multiples of 32
+    assert generation_size(100, 50) == (512, 256)              # the shorter side at least 256
+    assert generation_size(1024, 1024) == (1024, 1024)
+    assert generation_size(4000, 200) == (1440, 256)           # a thin strip: both limits hold
+
+
+def test_generate_image_asks_for_a_key_and_a_prompt(client, monkeypatch):
+    from app.services import generative
+    monkeypatch.setattr(generative, "_key", lambda: (None, None))
+    assert client.post("/api/generative/generate", data={"prompt": "a lighthouse"}).status_code == 428
+    monkeypatch.setattr(generative, "_key", lambda: ("k", "env"))
+    assert client.post("/api/generative/generate", data={"prompt": "  "}).status_code == 400

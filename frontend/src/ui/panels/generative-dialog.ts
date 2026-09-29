@@ -2,6 +2,8 @@ import type { Engine } from '../../engine';
 import { api, type GenerativeStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
+import { addRecipe, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
+import { loadPrefs } from '../prefs';
 
 type Mode = 'fill' | 'expand' | 'upscale';
 
@@ -27,9 +29,21 @@ export class GenerativeDialog extends Dialog {
   private readonly state = el('<p class="cv-note"></p>');
   private readonly forget: HTMLButtonElement;
   private status: GenerativeStatus | null = null;
+  // The model (1.51.2): FLUX.1 Fill on fal, or one of your ComfyUI workflows, added here and kept.
+  private readonly model = el<HTMLSelectElement>('<select class="cv-input" aria-label="Model"></select>');
+  private readonly modelRow = el('<label class="cv-dialog-row"><span>Model</span></label>');
+  private readonly addFile = el<HTMLInputElement>('<input type="file" accept=".json,application/json" aria-label="Add ComfyUI workflow" hidden>');
 
   constructor(private readonly engine: Engine) {
     super('Generative Fill', 440);
+    const add = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost" title="Add a workflow saved from ComfyUI with Export (API)">Add workflow...</button>');
+    const remove = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Remove</button>');
+    add.addEventListener('click', () => this.addFile.click());
+    this.addFile.addEventListener('change', () => void this.addWorkflow());
+    remove.addEventListener('click', () => { const v = this.model.value; if (v.startsWith('comfy:')) { removeRecipe(v.slice(6)); this.fillModels(); this.sync(); } });
+    this.model.addEventListener('change', () => this.sync());
+    this.modelRow.append(this.model, add, remove, this.addFile);
+    this.body.appendChild(this.modelRow);
     this.body.appendChild(this.prompt);
     this.marginRows = el('<div class="cv-panel-section"></div>');
     this.body.appendChild(this.marginRows);
@@ -61,14 +75,41 @@ export class GenerativeDialog extends Dialog {
     setHidden(this.prompt, mode === 'upscale');
     setHidden(this.marginRows, mode !== 'expand');
     setText(this.hint, HINTS[mode]);
+    setHidden(this.modelRow, mode === 'upscale');   // Upscale stays Real-ESRGAN on fal
+    this.fillModels();
     this.status = await api.generativeStatus();
     this.sync();
     this.open();
     if (mode !== 'upscale') { this.prompt.focus(); this.prompt.select(); }
   }
 
+  /** FLUX.1 Fill on fal, then the kept ComfyUI workflows; the choice kept when it still exists. */
+  private fillModels(): void {
+    const was = this.model.value;
+    this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }));
+    if ([...this.model.options].some((o) => o.value === was)) this.model.value = was;
+  }
+
+  private async addWorkflow(): Promise<void> {
+    const f = this.addFile.files?.[0];
+    this.addFile.value = '';
+    if (!f) return;
+    const problem = addRecipe(f.name.replace(/\.json$/i, ''), await f.text());
+    if (problem) { setText(this.state, problem); return; }
+    this.fillModels();
+    this.model.value = `comfy:${f.name.replace(/\.json$/i, '')}`;
+    this.sync();
+  }
+
+  private get comfy(): boolean { return this.mode !== 'upscale' && this.model.value.startsWith('comfy:'); }
+
   private sync(): void {
     const s = this.status;
+    if (this.comfy) {   // a workflow needs no fal key
+      setHidden(this.keyRow, true); setHidden(this.forget, true);
+      setText(this.state, `Runs on ComfyUI at ${loadPrefs().comfyuiUrl}: its first Load Image takes the area, Load Image (as Mask) the mask, and a text node titled formvis prompt the prompt.`);
+      return;
+    }
     setHidden(this.keyRow, !s || s.configured);
     setHidden(this.forget, s?.source !== 'settings');
     setText(this.state, !s ? 'The formvis engine is offline. Start it with ./formvis boot.'
@@ -81,6 +122,17 @@ export class GenerativeDialog extends Dialog {
   }
 
   private async generate(): Promise<void> {
+    if (this.comfy) {
+      const recipe = recipes().find((r) => `comfy:${r.name}` === this.model.value);
+      if (!recipe) { setText(this.state, 'That workflow is no longer kept: add it again.'); return; }
+      const prompt = this.prompt.value, mode = this.mode, e = this.engine, target = loadPrefs().comfyuiUrl;
+      const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
+      this.close();
+      const fill = comfyGenerator(target, recipe, prompt);
+      if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
+      else await e.task(() => e.generativeFill(prompt, fill));
+      return;
+    }
     if (!this.status) return;
     if (!this.status.configured) {
       const key = this.key.value.trim();

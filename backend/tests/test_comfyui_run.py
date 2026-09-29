@@ -86,3 +86,10 @@ def test_a_text_to_image_workflow_runs_on_the_prompt_alone(client, comfy):
     flow = {k: v for k, v in FLOW.items() if k not in ("10", "11")}
     r = _run(client, base, flow)
     assert r.status_code == 200 and r.json()["image"] is None and seen["prompts"][0]["prompt"]["6"]["inputs"]["text"] == "a red kite"
+
+
+def test_a_text_to_image_run_needs_no_files(client, comfy):
+    base, seen = comfy
+    flow = {k: v for k, v in FLOW.items() if k not in ("10", "11")}
+    r = client.post("/api/comfyui/run", data={"target": base, "workflow": json.dumps(flow), "prompt": "a lighthouse"})
+    assert r.status_code == 200 and r.json()["image"] is None and seen["prompts"][-1]["prompt"]["6"]["inputs"]["text"] == "a lighthouse"

@@ -86,7 +86,7 @@ def _fill(workflow: dict, image: str | None, mask: str | None, prompt: str | Non
 
 
 @router.post("/run")
-async def run(target: str = Form(...), workflow: str = Form(...), items: str = Form(...), prompt: str | None = Form(None), files: list[UploadFile] = File(...)) -> dict:
+async def run(target: str = Form(...), workflow: str = Form(...), items: str = Form("[]"), prompt: str | None = Form(None), files: list[UploadFile] | None = File(None)) -> dict:
     """Uploads the inputs, fills the workflow and queues it. Replies with the job's id and what was filled."""
     base = _base(target)
     try:
@@ -95,7 +95,7 @@ async def run(target: str = Form(...), workflow: str = Form(...), items: str = F
         raise HTTPException(status_code=422, detail="That file is not a ComfyUI workflow (it is not JSON).")
     _fill(json.loads(workflow), None, None, None)   # its format checked before anything is uploaded
     takes_image = any(n.get("class_type") == "LoadImage" for n in flow.values())
-    uploaded = await send(target=target, items=items, files=files) if takes_image else {"files": []}
+    uploaded = await send(target=target, items=items, files=files) if takes_image and files else {"files": []}   # text to image sends nothing
     image = next((f["name"] for f in uploaded["files"] if f["kind"] != "mask"), None)
     mask = next((f["name"] for f in uploaded["files"] if f["kind"] == "mask"), None)
     flow = _fill(flow, image, mask, prompt)

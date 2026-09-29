@@ -43,6 +43,16 @@ async def fill(image: UploadFile = File(...), mask: UploadFile = File(...), prom
     return Response(png, media_type="image/png")
 
 
+@router.post("/generate")
+async def generate(prompt: str = Form(""), width: int = Form(1024), height: int = Form(1024)) -> Response:
+    """Generate Image (1.51.2): a picture from a prompt alone, as PNG."""
+    try:
+        png = await run_in_threadpool(generative.generate, prompt, width, height)
+    except generative.GenerativeError as exc:
+        raise HTTPException(exc.status, str(exc)) from exc
+    return Response(png, media_type="image/png")
+
+
 @router.post("/upscale")
 async def upscale(image: UploadFile = File(...), scale: int = Form(2)) -> Response:
     image_bytes = await image.read(MAX_BYTES + 1)

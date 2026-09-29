@@ -21,6 +21,8 @@ from app.core import config
 FILL_MODEL = "fal-ai/flux-pro/v1/fill"
 ERASE_MODEL = "fal-ai/flux-pro/v1/erase"
 UPSCALE_MODEL = "fal-ai/esrgan"
+#: Generate Image (1.51.2): a picture from a prompt alone.
+IMAGE_MODEL = "fal-ai/flux-pro/v1.1"
 
 
 class GenerativeError(Exception):
@@ -144,6 +146,31 @@ def fill(image_png: bytes, mask_png: bytes, prompt: str) -> bytes:
     else:
         result = _post(ERASE_MODEL, {"image_url": _data_uri(image_png), "mask_url": _data_uri(mask_png)}, key)
     return _result_png(result)
+
+
+def generation_size(width: int, height: int) -> tuple[int, int]:
+    """The size to ask fal for: the document's shape, its longer side at most 1440 and its shorter at least 256, both
+    multiples of 32 (the result is scaled to the document afterwards)."""
+    w, h = max(1, int(width)), max(1, int(height))
+    k = min(1.0, 1440 / max(w, h))
+    w, h = w * k, h * k
+    if min(w, h) < 256:
+        k = 256 / min(w, h)
+        w, h = min(1440, w * k), min(1440, h * k)
+    return max(256, round(w / 32) * 32), max(256, round(h / 32) * 32)
+
+
+def generate(prompt: str, width: int, height: int) -> bytes:
+    """A picture from `prompt` alone with FLUX1.1 [pro], as PNG, at generation_size(width, height)."""
+    key, _ = _key()
+    if not key:
+        raise GenerativeError("Add a fal API key to generate an image.", 428)
+    prompt = prompt.strip()
+    if not prompt:
+        raise GenerativeError("Describe the image to generate.", 400)
+    w, h = generation_size(width, height)
+    body = {"prompt": prompt[:2000], "image_size": {"width": w, "height": h}, "num_images": 1, "output_format": "png", "sync_mode": True, "safety_tolerance": "2"}
+    return _result_png(_post(IMAGE_MODEL, body, key))
 
 
 def upscale(image_png: bytes, scale: int) -> bytes:

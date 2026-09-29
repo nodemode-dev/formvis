@@ -40,6 +40,11 @@ export const api = {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
   },
   /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
+  /** Edit > Generate Image (1.51.2): a picture from a prompt alone through fal, near the document's shape. */
+  async generateImage(prompt: string, width: number, height: number): Promise<Blob> {
+    return (await request('/generative/generate', { method: 'POST', body: form({ prompt, width: String(width), height: String(height) }) })).blob();
+  },
+
   /** Run ComfyUI Workflow (1.51.1): uploads the inputs, fills the workflow and queues it. */
   async comfyuiRun(target: string, workflow: string, items: unknown[], parts: FilePart[], prompt: string | null): Promise<{ job: string; image: string | null; mask: string | null; prompt: boolean }> {
     const res = await request('/comfyui/run', { method: 'POST', body: form({ target, workflow, items: JSON.stringify(items), ...(prompt !== null ? { prompt } : {}) }, parts) });

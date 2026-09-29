@@ -65,6 +65,7 @@ import { NoteDialog } from './ui/panels/note-dialog';
 import { ModeDialog } from './ui/app-dialogs';
 import { SendDialog } from './ui/panels/send-to';
 import { RunWorkflowDialog } from './ui/panels/comfyui-run';
+import { GenerateImageDialog } from './ui/panels/generate-image';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -883,6 +884,7 @@ export function startApp(): void {
   const sendNodeMode = new SendDialog(engine, (t) => toast(t));
   const sendComfyUI = new SendDialog(engine, (t) => toast(t), 'comfyui');
   const runWorkflow = new RunWorkflowDialog(engine, (t) => toast(t));
+  const generateImage = new GenerateImageDialog(engine, (t) => toast(t));
   commands.add({ id: 'edit-note', label: 'Edit Note...', enabled: () => !!engine.activeNote, run: () => noteDialog.show() });   // the Note tool (1.49.6)
   commands.add(
     { id: 'load-brushes', label: 'Load Brushes...', run: () => abrInput.click() },
@@ -1088,6 +1090,7 @@ export function startApp(): void {
     { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Alt+Mod+T', 'Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
     { id: 'content-fill', label: 'Quick Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
     { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: () => void dialogs.generative.show() },
+    { id: 'generate-image', label: 'Generate Image...', enabled: () => true, run: () => void generateImage.show() },   // 1.51.2, as Photoshop's Edit menu
     { id: 'path-selection', label: 'Make Selection from Path', keys: ['Mod+Enter'], enabled: () => !!engine.workPath, run: () => engine.pathToSelection() },
     { id: 'fill-path', label: 'Fill Path', enabled: () => !!engine.workPath && pixel(), run: () => engine.fillPath() },
     { id: 'fill-path-dialog', label: 'Fill Path...', enabled: () => !!engine.workPath && pixel(), run: () => dialogs.fill.show('path') },
@@ -1146,7 +1149,7 @@ export function startApp(): void {
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
-      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'remove-wires', '-',
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'settings'] },
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
