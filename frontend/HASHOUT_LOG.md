@@ -2,6 +2,33 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Upscale on this computer · _v1.53.1 (backend/app/localgen/ai_upscale.py new, localgen/model_manager.py, main.py; frontend/src/io/local-gen.ts, ui/panels/generative-dialog.ts, ui/panels/local-models.ts; NOTICE.md; docs/MANUAL.md)
+
+formcut's upscaler for still pictures (`upscale_rgb` gaining an optional `report`, `upscale_image` passing tile options) and formvis's `POST /api/upscale/local` as a job; `_lock` and `_downloading` taken from formcut into the model manager (their absence broke listing and every install); the window's `followJob` shared by generation and upscaling, `localUpscale`, `upscalerReady`; Upscale's Model row with Real-ESRGAN on fal or this computer; the Real-ESRGAN card with Download. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import { localFill, localModels, type LocalModel } from '../../io/local-gen';
+  upscale: 'Real-ESRGAN on fal enlarges what the document shows and opens it as a new document, for a fraction of a cent per image.',
+    setHidden(this.modelRow, mode === 'upscale');   // Upscale stays Real-ESRGAN on fal
+    this.locals = (await localModels()).filter((m) => m.fromPicture);   // local models that start from a picture (1.52.9)
+    this.fillModels();
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.krea, this.klein, this.library);
+    try { await Promise.all([this.showKrea(), this.showKlein(), this.showLibrary()]); }
+export const VERSION = '1.52.9';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.52.9"
+for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router):
+version = "1.52.9"
+version = "1.52.9"
+ "version": "1.52.9",
+```
+
+Nothing removed from src-tauri.
+
 ## Local image generation from formcut · _v1.52.9 (backend/app/localgen/ new: formcut's jobs, durable, processes, krea2, klein, local_runner, loras, checkpoints, content_filter, local_models, local_diffusion, prompt_data and generate, with model_manager built from formcut's; paths, media, orchestration and providers standing in for formcut's; main.py; frontend/src/io/local-gen.ts and ui/panels/local-models.ts new, generative-dialog.ts, generate-image.ts, app-dialogs.ts, app.ts, styles/dialogs.css; NOTICE.md; docs/MANUAL.md; requirements.txt)
 
 formcut's local generation adapted: its folders pointed at formvis's; its media library replaced by pictures kept, fetched and removed (`media.ingest_path`, `/api/generate/pictures`); `_source_image` taking the picture the window sends; the video and sound generators and the preview-cache release left out; fal declared as a provider (formcut declares none); the event channel a no-op. The window: `localModels`, `runLocal`, `localFill`; Krea 2 in Generative Fill and Expand with Influence; local models in Generate Image; the notice and warning shown; `LocalModelsSection`. Removed lines taken after the version edit. Removed from frontend:

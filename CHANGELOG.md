@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.53.1 · 2026-09-29
+
+### Added: Upscale on this computer
+
+- Image > Upscale offers Real-ESRGAN on this computer beside fal: no key, no cost, the picture enlarged two or four times in tiles (each read with a margin of context, so no seams show), its transparency kept, with progress. Download the model (about 67 MB, BSD-3-Clause, pinned to its SHA-256) in Preferences > Plugins > Local models; Upscale then chooses it.
+- From formcut's upscaler, with its tests.
+
+### Fixed
+
+- 1.52.9's model manager left out two of formcut's module variables, so listing the local models and installing Krea 2, Klein or any model would have failed; its tests had stood in for the install request. Every name its code uses is now checked against what it defines, and the real Real-ESRGAN download exercises it.
+
 ## 1.52.9 · 2026-09-29
 
 ### Added: local image generation, from formcut
