@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Outside agents over MCP · _v1.52.1 (backend/app/routers/mcp.py new, main.py; setup/mcp_stdio.py new, formvis; frontend/src/automation/agent-bridge.ts and ui/panels/agent-confirm.ts new, ui/prefs.ts, ui/app-dialogs.ts, app.ts)
+
+The engine's MCP endpoint (`/mcp`, Streamable HTTP in stateless JSON mode, the 2026-07-28 specification with `server/discover`, still answering 2025-11-25's `initialize`; the Origin checked; batches and unknown versions refused) and its `TOOLS` catalogue (14, each with a schema and hints); the window bridge (`/api/mcp/bridge/next`, a long poll that checks the window is still connected before and after taking a request and returns it to the front if not; `/result`; `/stop`, which refuses at once and answers what was queued); `setup/mcp_stdio.py` behind `./formvis mcp`. `AgentBridge` runs each tool through the engine's undoable calls, asking before the generative ones (`AgentConfirmDialog`); `Prefs.agentsAllowed`, off by default, and its Preferences > Plugins row. Removed from frontend:
+
+```text
+    add('Plugins', nm, this.nodemodeNote, cu, this.comfyuiNote, lm, tp);
+export interface Prefs { comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
+export const DEFAULT_PREFS: Prefs = { comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
+```
+
+Removed from backend:
+
+```text
+from app.routers import comfyui, generative, io, llm, ops, projects, system, nodemode
+```
+
+Nothing removed from src-tauri.
+
 ## Place 3D Model · _v1.51.9 (frontend/src/ui/panels/model3d.ts new, app.ts, styles/dialogs.css; package.json: three 0.186.1, MIT, and @types/three)
 
 `Model3DDialog`: a .glb or .gltf read with three.js's GLTFLoader (loaded only when first used), centred and scaled to a unit box; Turn, Tilt, Size, Light direction, Light height, Light strength, Ambient and Light colour in a live preview (one renderer kept for the app's life); Place renders at the document's size (within the graphics card's largest texture, scaled up beyond it) on transparency into a new layer, its renderer released. File > Place 3D Model. Removed from frontend:

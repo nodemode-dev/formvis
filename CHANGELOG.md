@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.52.1 · 2026-09-29
+
+### Added: outside agents over MCP
+
+- Claude Code, Claude Desktop or any MCP client can work in the open document: read it and its layers, see it, make a new document, select, add, change and delete layers, fill, add adjustments, place images, undo and redo, and run Generative Fill and Generate Image (14 tools).
+- Off unless you turn on Allow outside agents in Preferences > Plugins, which also says how to connect: Claude Code with `claude mcp add --transport http formvis http://127.0.0.1:8190/mcp`, Claude Desktop with `./formvis mcp` as the server's command.
+- Every change an agent makes is an ordinary undoable step. Anything that costs money asks you in formvis first, with the prompt; agents never see your keys. Only this computer can connect.
+- Follows the 2026-07-28 MCP specification (stateless, with server/discover), and still answers clients of the one before.
+
 ## 1.51.9 · 2026-09-28
 
 ### Added: Place 3D Model
