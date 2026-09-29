@@ -4223,6 +4223,67 @@ export class Engine {
     return active?.isGroup ? active.id : active?.parentId ?? null;
   }
 
+  /** Layer > Color Match (1.51.3, the capability plan): a layer's colours matched to the picture beneath it, or to a band
+   *  around its edge, without touching its pixels: a Curves adjustment clipped to it, each of red, green and blue a line
+   *  mapping the layer's mean and spread onto the reference's (the scale kept within a quarter and four). The
+   *  adjustment's opacity is the amount; run again on the same layer, it updates its match. One step. */
+  colorMatch(layerId: ID, to: 'beneath' | 'around', amount = 1): boolean {
+    const p = this.current, l = p?.layer(layerId);
+    if (!p || !l?.raster || l.isGroup || l.adjustment) { this.notice('Color Match needs a pixel layer.'); return false; }
+    const W = p.doc.width, H = p.doc.height;
+    const layerImg = createSurface(W, H), lc = ctxOf(layerImg);
+    setMat(lc, placement(l.transform, l.raster.width, l.raster.height));
+    lc.drawImage(l.raster.canvas, 0, 0);
+    const ld = lc.getImageData(0, 0, W, H).data;
+    // The picture without this layer and what is above it.
+    const at = p.doc.layers.findIndex((x) => x.id === l.id), hidden = new Map<ID, LayerOverride>();
+    p.doc.layers.forEach((x, i) => { if (i >= at && x.id !== l.parentId) hidden.set(x.id, { hidden: true }); });
+    const ref = createSurface(W, H);
+    this.work.render({ doc: p.doc, target: ref, view: [1, 0, 0, 1, 0, 0], overrides: hidden, quality: 'high' });
+    const rd = ctxOf(ref).getImageData(0, 0, W, H).data;
+    const inside = new Uint8Array(W * H);
+    for (let i = 0; i < inside.length; i++) inside[i] = ld[i * 4 + 3] > 128 ? 1 : 0;
+    let where = inside;
+    if (to === 'around') {   // a 24-pixel band outside the layer's edge
+      const band = new Uint8Array(W * H), R = 24;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (!inside[y * W + x]) continue;
+        const edge = (x > 0 && !inside[y * W + x - 1]) || (x < W - 1 && !inside[y * W + x + 1]) || (y > 0 && !inside[(y - 1) * W + x]) || (y < H - 1 && !inside[(y + 1) * W + x]);
+        if (!edge) continue;
+        for (let dy = -R; dy <= R; dy += 2) for (let dx = -R; dx <= R; dx += 2) { const X = x + dx, Y = y + dy; if (X >= 0 && Y >= 0 && X < W && Y < H && !inside[Y * W + X] && dx * dx + dy * dy <= R * R) band[Y * W + X] = 1; }
+      }
+      where = band;
+    }
+    const stats = (d: Uint8ClampedArray, m: Uint8Array): { mean: number[]; sd: number[]; n: number } => {
+      const sum = [0, 0, 0], sq = [0, 0, 0];
+      let n = 0;
+      for (let i = 0; i < m.length; i++) { if (!m[i] || d[i * 4 + 3] < 8) continue; n++; for (let k = 0; k < 3; k++) { const v = d[i * 4 + k]; sum[k] += v; sq[k] += v * v; } }
+      const mean = sum.map((v) => v / Math.max(1, n));
+      return { mean, sd: sq.map((v, k) => Math.sqrt(Math.max(0, v / Math.max(1, n) - mean[k] * mean[k]))), n };
+    };
+    const a = stats(ld, inside), b = stats(rd, where);
+    if (a.n < 16 || b.n < 16) { this.notice(to === 'around' ? 'There is too little around the layer to match to.' : 'There is too little beneath the layer to match to.'); return false; }
+    const line = (k: number): Array<{ x: number; y: number }> => {
+      const scale = Math.max(0.25, Math.min(4, b.sd[k] / Math.max(1, a.sd[k]))), off = b.mean[k] - scale * a.mean[k], f = (x: number): number => scale * x + off;
+      const x0 = f(0) < 0 ? -off / scale : 0, x1 = f(255) > 255 ? (255 - off) / scale : 255;
+      const c = (v: number): number => Math.round(Math.max(0, Math.min(255, v)));
+      return [{ x: c(x0), y: c(f(x0)) }, { x: c(Math.max(x1, x0 + 1)), y: c(f(Math.max(x1, x0 + 1))) }];
+    };
+    const data = defaultAdjustmentData('curves') as { curves: { channel: string; channels: Array<Array<{ x: number; y: number }>> } };
+    data.curves.channels = [data.curves.channels[0], line(0), line(1), line(2)];   // red, green and blue; the composite left straight
+    const opacity = Math.max(0, Math.min(1, amount));
+    return this.edit('Color Match', (pp) => {
+      const existing = pp.doc.layers.find((x) => x.clipId === l.id && x.adjustment?.kind === 'curves' && x.name === 'Color Match');
+      if (existing) { pp.updateLayer(existing.id, { adjustment: { kind: 'curves', data }, opacity }); pp.activeId = existing.id; return true; }
+      const layer = newLayer('Color Match', pp.doc, { adjustment: { kind: 'curves', data }, clipId: l.id, opacity, parentId: l.parentId });
+      const layers = [...pp.doc.layers], i = layers.findIndex((x) => x.id === l.id);
+      layers.splice(i + 1, 0, layer);
+      pp.setLayers(layers);
+      pp.activeId = layer.id;
+      return true;
+    });
+  }
+
   addAdjustmentLayer(kind: AdjustmentKind): ID | null {
     let created: ID | null = null;
     this.edit(`New ${ADJUSTMENT_LABELS[kind]} Layer`, (p) => {

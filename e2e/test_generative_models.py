@@ -59,7 +59,8 @@ def test_a_workflow_as_generative_fills_model(page, comfy, tmp_path):
     page.locator(DLG, has_text="Generative Fill").wait_for()
     wf = tmp_path / "Inpaint.json"; wf.write_text(json.dumps(INPAINT))
     page.locator(f"{DLG} input[type=file][aria-label='Add ComfyUI workflow']").set_input_files(str(wf))
-    assert page.locator(f"{DLG} select[aria-label='Model']").input_value() == "comfy:Inpaint"
+    # Adding reads the file first (asynchronously): wait for the dialog to choose it (1.51.3, a race under load).
+    page.wait_for_function("() => document.querySelector('.cv-scrim:not([hidden]) select[aria-label=Model]').value === 'comfy:Inpaint'")
     page.locator(f"{DLG} input.cv-input[type=text]").first.fill("a green kite")
     page.locator(f"{DLG} .cv-dialog-foot button", has_text="Generate").click()
     page.wait_for_function("() => window.formvis.engine.current.doc.layers.length === 2", timeout=15000)
