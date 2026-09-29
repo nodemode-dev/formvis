@@ -2,6 +2,51 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Send to ComfyUI · _v1.50.9 (backend/app/routers/comfyui.py and services/outbound.py new, routers/nodemode.py, main.py; frontend/src/ui/panels/send-to.ts (was send-nodemode.ts), io/api.ts, ui/prefs.ts, ui/app-dialogs.ts, app.ts)
+
+The engine's `GET /api/comfyui/status` (ComfyUI's /system_stats, with its version) and `POST /api/comfyui/send` (each image through ComfyUI's /upload/image into the input folder's formvis subfolder, overwriting; the names its Load Image lists); `services/outbound.py`, the outbound helpers shared with the NodeMode router (address check, requests, multipart); `SendDialog` (was SendToNodeModeDialog) for both apps, a selection going to ComfyUI whole with a whole-picture mask; `Prefs.comfyuiUrl`; ComfyUI's address in Preferences > Plugins; File > Send to ComfyUI. Removed from frontend:
+
+```text
+import { SendToNodeModeDialog } from './ui/panels/send-nodemode';
+  const sendNodeMode = new SendToNodeModeDialog(engine, (t) => toast(t));
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), '-', 'close-tab'] },
+    add('Plugins', nm, this.nodemodeNote);
+/** File > Send to NodeMode (1.50.8, the owner's priority): the flattened image, the active layer, the selection (its
+ *  image and its mask) or every layer, sent to the NodeMode at the address in Preferences > Plugins. The status line
+ *  says whether NodeMode answers and whether it can place what arrives on its canvas. */
+export class SendToNodeModeDialog extends Dialog {
+  constructor(private readonly engine: Engine, private readonly toast: (text: string) => void) {
+    super('Send to NodeMode', 380);
+    const target = loadPrefs().nodemodeUrl;
+    setText(this.status, `Sending ${imgs.length === 1 ? 'the image' : `${imgs.length} images`} to NodeMode...`);
+      const r = await api.sendToNodeMode(loadPrefs().nodemodeUrl, this.name.value.trim() || 'formvis', imgs.map((x) => x.item), parts);
+      setText(this.status, err instanceof ApiError ? err.message : 'Sending to NodeMode failed: the formvis engine is offline (./formvis boot).');
+export interface Prefs { nodemodeUrl: string; historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
+export const DEFAULT_PREFS: Prefs = { nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
+```
+
+Removed from backend:
+
+```text
+from app.routers import generative, io, ops, projects, system, nodemode
+import urllib.parse
+import urllib.request
+import uuid
+    """NodeMode's address, as given: http or https with a host, nothing else."""
+    parsed = urllib.parse.urlparse(target.strip())
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise HTTPException(status_code=422, detail="NodeMode's address must be an http:// or https:// address, such as http://localhost:8000.")
+    return f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
+    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
+    return urllib.request.urlopen(req, timeout=timeout)
+    return HTTPException(status_code=502, detail=f"NodeMode is not answering at {base}. Start NodeMode, or set its address in Preferences > Plugins. ({exc.__class__.__name__})")
+    boundary = uuid.uuid4().hex
+    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\nContent-Type: image/png\r\n\r\n").encode() + blob + f"\r\n--{boundary}--\r\n".encode()
+    with _request(base + "/api/upload", body, {"Content-Type": f"multipart/form-data; boundary={boundary}"}, "POST") as r:
+```
+
+Nothing removed from src-tauri.
+
 ## Send to NodeMode, standalone · _v1.50.8 (backend/app/routers/nodemode.py new, backend/app/main.py; frontend/src/ui/panels/send-nodemode.ts new, io/api.ts, ui/prefs.ts, ui/app-dialogs.ts, app.ts)
 
 The engine's `GET /api/nodemode/status` and `POST /api/nodemode/send` (each image through NodeMode's upload, then one announcement to `/api/formvis/receive` saying which image is the mask of which; a NodeMode without the receiver still gets the uploads, and the reply says so); `api.nodemodeStatus`, `sendToNodeMode`; `SendToNodeModeDialog` (the flattened image, the active layer, the selection with its mask, or every layer); `Prefs.nodemodeUrl` and Preferences' Plugins section; File > Send to NodeMode when not embedded. NodeMode's receiving half is a patch in the planning docs. Removed from frontend:

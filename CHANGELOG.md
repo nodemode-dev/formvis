@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.50.9 · 2026-09-28
+
+### Added: Send to ComfyUI
+
+- File > Send to ComfyUI sends the flattened image, the active layer, the selection or every layer into ComfyUI's input folder (under formvis), where its Load Image node lists them; sending the same name again replaces it.
+- A selection goes whole, with a whole-picture mask (white where selected), as inpainting needs the picture around it: pick the image in Load Image and the mask in Load Image (as Mask).
+- The dialog says whether ComfyUI is running, and its version; if it is not answering, it says so.
+- Preferences > Plugins holds ComfyUI's address (http://127.0.0.1:8188 by default), with Check.
+
 ## 1.50.8 · 2026-09-28
 
 ### Added: Send to NodeMode, from anywhere
