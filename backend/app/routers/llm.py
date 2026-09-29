@@ -1,6 +1,6 @@
 """Prompt improvement (1.51.5): the language model's settings, its models, and improving a prompt."""
 
-from fastapi import APIRouter, Form, HTTPException
+from fastapi import APIRouter, Form, HTTPException, Request
 from starlette.concurrency import run_in_threadpool
 
 from app.services import llm
@@ -28,6 +28,16 @@ def settings(base_url: str = Form(...), model: str = Form(...), key: str | None 
 @router.get("/models")
 async def models() -> dict:
     return {"models": await run_in_threadpool(_run, llm.models)}
+
+
+@router.post("/chat")
+async def chat(request: Request) -> dict:
+    """The assistant's step: the conversation in, the model's message out, with formvis's tools (the MCP catalogue, as
+    functions) attached here so there is one catalogue."""
+    from app.routers.mcp import TOOLS
+    body = await request.json()
+    tools = [{"type": "function", "function": {"name": t["name"], "description": t["description"], "parameters": t["inputSchema"]}} for t in TOOLS] if body.get("tools", True) else []
+    return await run_in_threadpool(_run, llm.chat, body.get("messages"), tools)
 
 
 @router.post("/improve")

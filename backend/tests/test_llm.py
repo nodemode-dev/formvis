@@ -62,3 +62,16 @@ def test_clear_messages_when_something_is_wrong(client, service):
     assert "Nothing answers" in client.post("/api/llm/improve", data={"prompt": "x"}).json()["detail"]
     assert client.post("/api/llm/improve", data={"prompt": "  "}).status_code == 400
     assert client.post("/api/llm/settings", data={"base_url": "file:///etc", "model": "m"}).status_code == 422
+
+
+def test_the_assistants_step_carries_the_tools_and_returns_the_calls(client, service):
+    base, seen = service
+    client.post("/api/llm/settings", data={"base_url": base, "model": "llama3.2", "key": "sk-test"})
+    r = client.post("/api/llm/chat", json={"messages": [{"role": "system", "content": "You edit pictures."}, {"role": "user", "content": "Add a layer called Sky."}]})
+    assert r.status_code == 200 and r.json()["content"]                                                 # the stand-in answers with text
+    body = seen["bodies"][-1]
+    names = [t["function"]["name"] for t in body["tools"]]
+    assert "add_layer" in names and "get_document" in names and body["tool_choice"] == "auto"            # the MCP catalogue, as functions
+    assert body["tools"][0]["function"]["parameters"]["type"] == "object" and seen["auth"][-1] == "Bearer sk-test"
+    assert body["messages"][1] == {"role": "user", "content": "Add a layer called Sky."}
+    assert client.post("/api/llm/chat", json={"messages": []}).status_code == 400

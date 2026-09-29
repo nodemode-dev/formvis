@@ -87,6 +87,20 @@ def _call(path: str, body: dict | None = None, timeout: float = 120) -> dict:
         raise LlmError("The model's service did not answer in the expected form.", 502)
 
 
+def chat(messages: list, tools: list) -> dict:
+    """The assistant (1.52.2): one step of a conversation with tools, as the OpenAI-compatible chat API takes it; the
+    model's message (its text and any tool calls). The key stays here."""
+    if not isinstance(messages, list) or not 0 < len(messages) <= 200:
+        raise LlmError("The conversation is empty or too long.", 400)
+    body = {"model": _settings().get("model"), "messages": messages, "temperature": 0.3, "max_tokens": 1200,
+            **({"tools": tools, "tool_choice": "auto"} if tools else {})}
+    choices = _call("/chat/completions", body, timeout=180).get("choices") or []
+    message = (choices[0] if choices else {}).get("message") or {}
+    calls = [c for c in (message.get("tool_calls") or []) if isinstance(c, dict) and isinstance(c.get("function"), dict)]
+    return {"content": message.get("content") or "", "tool_calls": [{"id": str(c.get("id") or f"call_{i}"), "name": str(c["function"].get("name") or ""),
+            "arguments": str(c["function"].get("arguments") or "{}")} for i, c in enumerate(calls)]}
+
+
 def models() -> list[str]:
     """The model ids the service offers (how Check proves the connection)."""
     data = _call("/models", timeout=10).get("data", [])
