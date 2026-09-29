@@ -2,6 +2,54 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Run ComfyUI Workflow · _v1.51.1 (backend/app/routers/comfyui.py; frontend/src/ui/panels/comfyui-run.ts new, ui/panels/send-to.ts, io/api.ts, app.ts)
+
+The engine's `POST /api/comfyui/run` (the workflow checked to be in API format before anything is uploaded; `_fill`: the first LoadImage takes the image, the first LoadImageMask the mask, text nodes titled formvis prompt the prompt; a workflow with no LoadImage runs on the prompt alone; queued with /prompt), `GET /api/comfyui/job/{id}` (/history, then /queue: queued with how many ahead, running, done with the output images, failed), `GET /api/comfyui/image` (/view, output folder only), `POST /api/comfyui/cancel/{id}` (out of the queue, then /interrupt); `RunWorkflowDialog` (the last workflow kept; results as layers scaled to the document and masked to a sent selection, one step each; closing cancels a running job); `imagesFor` and `toPng` shared with the Send dialog. Removed from frontend:
+
+```text
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', '-', 'close-tab'] },
+type What = 'flattened' | 'layer' | 'selection' | 'layers';
+  /** The chosen images, document-sized (a selection is its bounds), each with what NodeMode is told about it. */
+  private images(what: What): Array<{ surface: Surface; item: Record<string, unknown> }> {
+    const e = this.engine, p = e.current;
+    const W = p.doc.width, H = p.doc.height, name = this.name.value.trim() || p.name;
+    if (this.to === 'comfyui') {
+  }
+  private async send(): Promise<void> {
+    if (this.sending) return;
+    const imgs = this.images(this.what.value as What);
+    if (!imgs.length) { setText(this.status, 'There is nothing to send: choose another option.'); return; }
+    this.sending = true;
+    setText(this.status, `Sending ${imgs.length === 1 ? 'the image' : `${imgs.length} images`} to ${this.to === 'comfyui' ? 'ComfyUI' : 'NodeMode'}...`);
+    try {
+      const parts = await Promise.all(imgs.map(async (x, i) => ({ name: `${i}.png`, blob: await toPng(x.surface) })));
+      if (this.to === 'comfyui') {
+        const c = await api.sendToComfyUI(this.target, imgs.map((x) => x.item), parts);
+        this.close();
+        this.toast(`Sent to ComfyUI: ${c.files.map((f) => f.name).join(', ')}. Pick ${c.files.length === 1 ? 'it' : 'them'} in Load Image${c.files.some((f) => f.kind === 'mask') ? ' (the mask in Load Image (as Mask))' : ''}.`);
+        return;
+      }
+      const r = await api.sendToNodeMode(this.target, this.name.value.trim() || 'formvis', imgs.map((x) => x.item), parts);
+      this.close();
+      this.toast(r.placed ? `Sent to NodeMode: ${imgs.length === 1 ? 'one image' : `${imgs.length} images`} on its canvas.` : r.detail ?? 'Uploaded to NodeMode.');
+    } catch (err) {
+      setText(this.status, err instanceof ApiError ? err.message : `Sending to ${this.to === 'comfyui' ? 'ComfyUI' : 'NodeMode'} failed: the formvis engine is offline (./formvis boot).`);
+    } finally { this.sending = false; }
+  }
+}
+async function toPng(s: Surface): Promise<Blob> {
+  if ('convertToBlob' in s) return (s as OffscreenCanvas).convertToBlob({ type: 'image/png' });
+  return new Promise((ok, no) => (s as HTMLCanvasElement).toBlob((b) => (b ? ok(b) : no(new Error('png'))), 'image/png'));
+```
+
+Removed from backend:
+
+```text
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+```
+
+Nothing removed from src-tauri.
+
 ## Send to ComfyUI · _v1.50.9 (backend/app/routers/comfyui.py and services/outbound.py new, routers/nodemode.py, main.py; frontend/src/ui/panels/send-to.ts (was send-nodemode.ts), io/api.ts, ui/prefs.ts, ui/app-dialogs.ts, app.ts)
 
 The engine's `GET /api/comfyui/status` (ComfyUI's /system_stats, with its version) and `POST /api/comfyui/send` (each image through ComfyUI's /upload/image into the input folder's formvis subfolder, overwriting; the names its Load Image lists); `services/outbound.py`, the outbound helpers shared with the NodeMode router (address check, requests, multipart); `SendDialog` (was SendToNodeModeDialog) for both apps, a selection going to ComfyUI whole with a whole-picture mask; `Prefs.comfyuiUrl`; ComfyUI's address in Preferences > Plugins; File > Send to ComfyUI. Removed from frontend:

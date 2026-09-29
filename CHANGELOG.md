@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.51.1 · 2026-09-28
+
+### Added: Run ComfyUI Workflow
+
+- File > Run ComfyUI Workflow runs a workflow saved from ComfyUI with Export (API) on your picture: its first Load Image takes the image, its first Load Image (as Mask) the selection's mask, and a text node you title "formvis prompt" the prompt you type.
+- Results come back as layers, scaled to the document if their size differs, and masked to the selection when you sent one, so only the selection changes; one undo each.
+- The dialog shows the job queued (and how many are ahead), running or done; Cancel, or closing the dialog, stops it in ComfyUI.
+- A workflow with no Load Image (text to image) runs on the prompt alone. A workflow saved in ComfyUI's editor format is refused when chosen, with how to export it.
+- The last workflow is remembered.
+
 ## 1.50.9 · 2026-09-28
 
 ### Added: Send to ComfyUI
