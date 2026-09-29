@@ -2,6 +2,46 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## API keys in the password store · _v1.52.5 (backend/app/services/secrets.py new, services/generative.py, services/llm.py, requirements.txt; setup/freeze_backend and .bat; frontend/src/ui/app-dialogs.ts, io/api.ts; NOTICE.md; docs/MANUAL.md)
+
+`secrets.get`, `put`, `delete` and `where` through keyring 25.7.0 (the system's password store; the owner-only file where there is none or it fails; a file copy moved on first read and removed once read back); the fal key (`_file_key`, `_file_write`, `_file_clear`) and the language model's key (`llm._key`) through it, their statuses naming the store; the desktop build collecting keyring's stores; Preferences > Plugins saying where keys are kept. Removed from frontend:
+
+```text
+  async llmStatus(): Promise<{ configured: boolean; baseUrl: string; model: string; hasKey: boolean } | null> {
+    try { return (await (await request('/llm/status')).json()) as { configured: boolean; baseUrl: string; model: string; hasKey: boolean }; } catch { return null; }
+    add('Plugins', nm, this.nodemodeNote, cu, this.comfyuiNote, lm, tp, ag, agNote);
+```
+
+Removed from backend:
+
+```text
+    try:
+        value = str(json.loads(_settings_path().read_text()).get("falKey", "")).strip()
+        if value:
+            return value, "settings"
+    except (OSError, ValueError, AttributeError):
+        pass
+    return None, None
+def status() -> dict:
+    _, source = _key()
+    return {"configured": source is not None, "source": source, "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
+def save_key(key: str) -> dict:
+    key = key.strip()
+    if not key or len(key) > 512 or any(c.isspace() for c in key):
+        raise GenerativeError("That does not look like a fal API key.", 400)
+    return status()
+def forget_key() -> dict:
+    return {"configured": bool(s.get("baseUrl") and s.get("model")), "baseUrl": s.get("baseUrl", ""), "model": s.get("model", ""), "hasKey": bool(s.get("key"))}
+        s.pop("key", None)
+        if len(key.strip()) > 512 or any(c.isspace() for c in key.strip()):
+            raise LlmError("That does not look like an API key.", 422)
+        s["key"] = key.strip()
+    _write(s)
+    headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {s['key']}"} if s.get("key") else {})}
+```
+
+Nothing removed from src-tauri.
+
 ## Session restore · _v1.52.4 (frontend/src/app.ts, io/recovery.ts, ui/prefs.ts, ui/app-dialogs.ts; docs/MANUAL.md)
 
 `Prefs.restoreSession` (on unless turned off) and its File Handling row; `RecoveryRecord.modified` and `libraryName`; `keepModified` keeping every open document when on (a copy rewritten when its revision, saved state, library entry or name changes) and the tab order and active tab in localStorage (`formvis.session`); `reopen`; `offerRecovery` reopening silently in order when on, fresh copies written before the last session's are removed, and asking for unsaved work only when off. The manual's Getting started says so. Removed from frontend:

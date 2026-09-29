@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.52.5 · 2026-09-29
+
+### Changed: API keys in the system's password store
+
+- fal's key and the language model's key are kept in your system's password store: Keychain on a Mac, Credential Manager on Windows, the Secret Service on Linux.
+- Keys saved before move there the first time they are used, and their file copies are removed.
+- Where there is no password store, or it fails, keys stay in a file on this computer only you can read, as before. Preferences > Plugins says which is in use.
+
 ## 1.52.4 · 2026-09-29
 
 ### Added: session restore
