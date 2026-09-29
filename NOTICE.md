@@ -20,6 +20,7 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | three.js | MIT | Place 3D Model (.glb and .gltf), loaded on first use |
 | tauri, tauri-plugin-shell, tauri-plugin-dialog, regex | Apache-2.0 or MIT | desktop shell |
 | fastapi, uvicorn, python-multipart | MIT, BSD-3-Clause, Apache-2.0 | engine |
+| keyring, with jaraco.classes, jaraco.context, jaraco.functools, more-itertools, jeepney and SecretStorage | MIT (SecretStorage: BSD-3-Clause) | API keys in the system's password store |
 | Pillow | MIT-CMU | engine |
 | numpy | BSD-3-Clause | engine |
 | opencv-python-headless | Apache-2.0 (OpenCV), MIT (packaging) | engine; its wheels carry LGPL FFmpeg as separate shared libraries, kept separable in the frozen engine |

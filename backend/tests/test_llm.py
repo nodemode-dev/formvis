@@ -40,7 +40,7 @@ def service():
 def test_improving_sends_the_template_and_returns_the_prompt_alone(client, service):
     base, seen = service
     s = client.post("/api/llm/settings", data={"base_url": base, "model": "llama3.2", "key": "sk-test"}).json()
-    assert s == {"configured": True, "baseUrl": base, "model": "llama3.2", "hasKey": True}                 # never the key
+    assert s == {"configured": True, "baseUrl": base, "model": "llama3.2", "hasKey": True, "store": "file"}   # never the key; no password store here
     assert stat.S_IMODE(os.stat(config.data_dir() / "llm.json").st_mode) == 0o600
     assert client.get("/api/llm/models").json() == {"models": ["llama3.2", "qwen2.5"]}
     r = client.post("/api/llm/improve", data={"prompt": "a kite", "instructions": "Add weather and light."})

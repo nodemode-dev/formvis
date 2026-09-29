@@ -428,7 +428,7 @@ export class SettingsDialog extends Dialog {
     const ag = el('<label class="cv-dialog-row"><span>Allow outside agents (MCP)</span></label>');
     ag.append(this.agents);
     const agNote = el('<p class="cv-note">Lets Claude Code, Claude Desktop or another MCP client work in the open document; each change is an undoable step, and anything that costs money asks you first. Claude Code: <code>claude mcp add --transport http formvis http://127.0.0.1:8190/mcp</code>. Claude Desktop: a server whose command is <code>./formvis mcp</code> in the formvis folder.</p>');
-    add('Plugins', nm, this.nodemodeNote, cu, this.comfyuiNote, lm, tp, ag, agNote);
+    add('Plugins', this.keysNote, nm, this.nodemodeNote, cu, this.comfyuiNote, lm, tp, ag, agNote);
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
     this.body.appendChild(wrap);
@@ -511,6 +511,7 @@ export class SettingsDialog extends Dialog {
 
   private readonly restoreBox = el<HTMLInputElement>('<input type="checkbox" aria-label="Reopen documents at start">');
   private readonly agents = el<HTMLInputElement>('<input type="checkbox" aria-label="Allow outside agents">');
+  private readonly keysNote = el('<p class="cv-note cv-keys-note" role="status"></p>');   // where API keys are kept (1.52.5)
   private readonly llmUrl = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="Language model address" spellcheck="false" placeholder="http://localhost:11434/v1">');
   private readonly llmModel = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Language model" spellcheck="false" list="cv-llm-models" placeholder="llama3.2">');
   private readonly llmModels = el('<datalist id="cv-llm-models"></datalist>');
@@ -524,6 +525,7 @@ export class SettingsDialog extends Dialog {
   private async loadLlm(): Promise<void> {
     const s = await api.llmStatus();
     if (!s) { setText(this.llmNote, 'The formvis engine is offline: Improve Prompt needs it.'); return; }
+    setText(this.keysNote, s.store === 'system' ? 'API keys (fal, the language model) are kept in your system\'s password store.' : 'API keys (fal, the language model) are kept in a file on this computer only you can read: no system password store was found.');
     if (document.activeElement !== this.llmUrl) this.llmUrl.value = s.baseUrl;
     if (document.activeElement !== this.llmModel) this.llmModel.value = s.model;
     this.llmKey.value = '';

@@ -46,8 +46,8 @@ export const api = {
   },
 
   /** Prompt improvement (1.51.5): the language model's settings (never its key), its models, and a rewrite. */
-  async llmStatus(): Promise<{ configured: boolean; baseUrl: string; model: string; hasKey: boolean } | null> {
-    try { return (await (await request('/llm/status')).json()) as { configured: boolean; baseUrl: string; model: string; hasKey: boolean }; } catch { return null; }
+  async llmStatus(): Promise<{ configured: boolean; baseUrl: string; model: string; hasKey: boolean; store: 'system' | 'file' } | null> {
+    try { return (await (await request('/llm/status')).json()) as { configured: boolean; baseUrl: string; model: string; hasKey: boolean; store: 'system' | 'file' }; } catch { return null; }
   },
   async llmSave(baseUrl: string, model: string, key: string | null, forgetKey = false): Promise<{ configured: boolean; baseUrl: string; model: string; hasKey: boolean }> {
     return (await (await request('/llm/settings', { method: 'POST', body: form({ base_url: baseUrl, model, ...(key ? { key } : {}), ...(forgetKey ? { forget_key: 'true' } : {}) }) })).json()) as { configured: boolean; baseUrl: string; model: string; hasKey: boolean };

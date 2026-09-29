@@ -10,6 +10,7 @@ import urllib.request
 from pathlib import Path
 
 from app.core import config
+from app.services import secrets
 
 RULE = "Reply with the rewritten prompt only: no preamble, no quotes, no explanation."
 
@@ -42,9 +43,31 @@ def _write(s: dict) -> None:
     os.chmod(path, 0o600)
 
 
+def _file_key() -> str | None:
+    return _settings().get("key") or None
+
+
+def _file_clear() -> None:
+    s = _settings()
+    if "key" in s:
+        s.pop("key")
+        _write(s)
+
+
+def _file_write(key: str) -> None:
+    s = _settings()
+    s["key"] = key
+    _write(s)
+
+
+def _key() -> str | None:
+    """The key: from the password store, a file copy moved there first (1.52.5); or the file where there is none."""
+    return secrets.get("llm", _file_key, _file_clear)
+
+
 def status() -> dict:
     s = _settings()
-    return {"configured": bool(s.get("baseUrl") and s.get("model")), "baseUrl": s.get("baseUrl", ""), "model": s.get("model", ""), "hasKey": bool(s.get("key"))}
+    return {"configured": bool(s.get("baseUrl") and s.get("model")), "baseUrl": s.get("baseUrl", ""), "model": s.get("model", ""), "hasKey": bool(_key()), "store": secrets.where()["store"]}
 
 
 def save(base_url: str, model: str, key: str | None = None, forget_key: bool = False) -> dict:
@@ -56,13 +79,13 @@ def save(base_url: str, model: str, key: str | None = None, forget_key: bool = F
         raise LlmError("Name the model to use.", 422)
     s = _settings()
     s["baseUrl"], s["model"] = base_url.strip().rstrip("/"), model
-    if forget_key:
-        s.pop("key", None)
-    elif key is not None and key.strip():
-        if len(key.strip()) > 512 or any(c.isspace() for c in key.strip()):
-            raise LlmError("That does not look like an API key.", 422)
-        s["key"] = key.strip()
+    if key is not None and key.strip() and not forget_key and (len(key.strip()) > 512 or any(c.isspace() for c in key.strip())):
+        raise LlmError("That does not look like an API key.", 422)
     _write(s)
+    if forget_key:
+        secrets.delete("llm", _file_clear)
+    elif key is not None and key.strip():
+        secrets.put("llm", key.strip(), _file_write, _file_clear)
     return status()
 
 
@@ -70,7 +93,8 @@ def _call(path: str, body: dict | None = None, timeout: float = 120) -> dict:
     s = _settings()
     if not s.get("baseUrl") or not s.get("model"):
         raise LlmError("Set a language model first, in Preferences > Plugins.", 428)
-    headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {s['key']}"} if s.get("key") else {})}
+    key = _key()
+    headers = {"Content-Type": "application/json", **({"Authorization": f"Bearer {key}"} if key else {})}
     req = urllib.request.Request(s["baseUrl"] + path, data=json.dumps(body).encode() if body is not None else None, headers=headers, method="POST" if body is not None else "GET")
     try:
         with urllib.request.urlopen(req, timeout=timeout) as r:

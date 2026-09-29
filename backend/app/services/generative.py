@@ -17,6 +17,7 @@ from pathlib import Path
 from PIL import Image
 
 from app.core import config
+from app.services import secrets
 
 FILL_MODEL = "fal-ai/flux-pro/v1/fill"
 ERASE_MODEL = "fal-ai/flux-pro/v1/erase"
@@ -47,24 +48,18 @@ def _key() -> tuple[str | None, str | None]:
         value = os.environ.get(name, "").strip()
         if value:
             return value, "environment"
+    value = secrets.get("fal", _file_key, _file_clear)   # the password store, or the file (1.52.5)
+    return (value, "settings") if value else (None, None)
+
+
+def _file_key() -> str | None:
     try:
-        value = str(json.loads(_settings_path().read_text()).get("falKey", "")).strip()
-        if value:
-            return value, "settings"
+        return str(json.loads(_settings_path().read_text()).get("falKey", "")).strip() or None
     except (OSError, ValueError, AttributeError):
-        pass
-    return None, None
+        return None
 
 
-def status() -> dict:
-    _, source = _key()
-    return {"configured": source is not None, "source": source, "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
-
-
-def save_key(key: str) -> dict:
-    key = key.strip()
-    if not key or len(key) > 512 or any(c.isspace() for c in key):
-        raise GenerativeError("That does not look like a fal API key.", 400)
+def _file_write(key: str) -> None:
     path = _settings_path()
     temp = path.with_suffix(".tmp")
     fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
@@ -72,14 +67,30 @@ def save_key(key: str) -> dict:
         json.dump({"falKey": key}, f)
     os.replace(temp, path)
     os.chmod(path, 0o600)
-    return status()
 
 
-def forget_key() -> dict:
+def _file_clear() -> None:
     try:
         _settings_path().unlink()
     except FileNotFoundError:
         pass
+
+
+def status() -> dict:
+    _, source = _key()
+    return {"configured": source is not None, "source": source, "store": secrets.where()["store"], "fillModel": FILL_MODEL, "eraseModel": ERASE_MODEL, "upscaleModel": UPSCALE_MODEL}
+
+
+def save_key(key: str) -> dict:
+    key = key.strip()
+    if not key or len(key) > 512 or any(c.isspace() for c in key):
+        raise GenerativeError("That does not look like a fal API key.", 400)
+    secrets.put("fal", key, _file_write, _file_clear)
+    return status()
+
+
+def forget_key() -> dict:
+    secrets.delete("fal", _file_clear)
     return status()
 
 

@@ -85,8 +85,11 @@ ask it questions.
   Expand grows the canvas and fills the new border; Image > Upscale enlarges two or four times. The result is a new
   layer, masked to the selection.
 - Edit > Generate Image makes a picture from a prompt alone, as a new layer at the document's size.
-- The model: FLUX on fal (paste a fal key into the dialog once; the engine keeps it), or one of your ComfyUI
-  workflows (see ComfyUI below). A workflow needs no fal key.
+- The model: FLUX on fal (paste a fal key into the dialog once), or one of your ComfyUI workflows (see ComfyUI
+  below). A workflow needs no fal key.
+- API keys (fal's, and the language model's) are kept in your system's password store: Keychain on a Mac,
+  Credential Manager on Windows, the Secret Service on Linux. Where there is none, in a file only you can read.
+  Preferences > Plugins says which.
 - References: up to four layers can be sent to a ComfyUI workflow as references.
 - Improve, beside the prompt, rewrites it through a language model following a prompt template; Restore puts yours
   back. Set the model, and edit the templates, in Preferences > Plugins.
