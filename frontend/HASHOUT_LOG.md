@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Plugins · _v1.52.6 (backend/app/routers/plugins.py new, main.py; frontend/src/plugins/host.ts and ui/panels/plugins-dialog.ts new, ui/commands.ts, engine/index.ts, io/api.ts, app.ts, styles/dialogs.css; docs/MANUAL.md)
+
+The engine's plugins folder (`/api/plugins`: list, read, add, remove; plain `.js` names only, 512 KB, UTF-8); `PluginHost` (each enabled plugin in a frame sandboxed to scripts alone, without same-origin; the RUNTIME's `formvis.register`, `call`, `getPixels`, `putPixels`; messages taken only from a plugin's own frame; pixels checked to be the document's size); `Engine.replaceLayerPixels`; `Commands.remove`; `PluginsDialog` and the Plugins menu. Removed from frontend (taken after the version edit, so the version line is here too):
+
+```text
+export const VERSION = '1.52.5';
+```
+
+A correction: the sections for 1.50.6 to 1.52.5 were taken before each release's version edit, so each leaves out the one line `frontend/src/version.ts` loses (`export const VERSION = '<the previous version>';`). From 1.52.6 the removed lines are taken after the version edit and match git exactly.
+
+Removed from backend:
+
+```text
+from app.routers import comfyui, generative, io, llm, mcp, ops, projects, system, nodemode
+```
+
+Nothing removed from src-tauri.
+
 ## API keys in the password store · _v1.52.5 (backend/app/services/secrets.py new, services/generative.py, services/llm.py, requirements.txt; setup/freeze_backend and .bat; frontend/src/ui/app-dialogs.ts, io/api.ts; NOTICE.md; docs/MANUAL.md)
 
 `secrets.get`, `put`, `delete` and `where` through keyring 25.7.0 (the system's password store; the owner-only file where there is none or it fails; a file copy moved on first read and removed once read back); the fal key (`_file_key`, `_file_write`, `_file_clear`) and the language model's key (`llm._key`) through it, their statuses naming the store; the desktop build collecting keyring's stores; Preferences > Plugins saying where keys are kept. Removed from frontend:

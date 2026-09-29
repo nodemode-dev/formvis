@@ -2,7 +2,7 @@
 <h1 align="center">formvis</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-1.52.5-f97316" alt="version 1.52.5">
+<img src="https://img.shields.io/badge/version-1.52.6-f97316" alt="version 1.52.6">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -27,6 +27,7 @@ formvis is a layered image editor: stack photos and paintings as layers, group t
 - **Outside agents (MCP).** Claude Code, Claude Desktop or any MCP client can work in the open document through 14 tools, once Allow outside agents is on in Preferences > Plugins: each change an undoable step, anything that costs money asked first. Claude Code: `claude mcp add --transport http formvis http://127.0.0.1:8190/mcp`; Claude Desktop: `./formvis mcp`.
 - **The assistant.** Window > Assistant is a chat beside the canvas that edits the open document through the same tools, on the language model set in Preferences > Plugins; each tool call is a card, and Undo This Turn takes back everything since your last message.
 - **Help in the app.** Help > formvis Help (F1) is the manual ([docs/MANUAL.md](docs/MANUAL.md)) with its contents, a search, and questions answered from it by the language model set in Preferences > Plugins.
+- **Plugins.** JavaScript plugins (Plugins > Manage Plugins) add commands to the Plugins menu; each runs in a sandbox, changing the document only through formvis's tools, undoable, and never seeing your keys or files.
 - **Smart objects.** Keep a layer's original pixels, with filters on it that stay editable, can be hidden or removed, and re-render from the original. Edit Contents opens the original as its own document; saving it updates the object. Distort and Perspective stay editable on them. They travel to and from Photoshop as smart objects.
 - **Animation.** A Timeline of frames, each keeping layer visibility, opacity and position with a delay, tweened, reordered by dragging, played in a preview and exported as an animated GIF.
 - **History.** A History panel lists every step kept; clicking one goes back or forward to it. Snapshots keep states to return to at any time.

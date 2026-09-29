@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.52.6 · 2026-09-29
+
+### Added: plugins
+
+- Plugins > Manage Plugins adds JavaScript plugins, turns them on and off, and removes them; their commands appear in the Plugins menu. They are kept in the plugins folder of formvis's data folder.
+- Each plugin runs in a sandbox: it changes the open document only through formvis's tools (each change undoable; anything that costs money still asks you) and can read and write the active layer's pixels; it cannot see your keys, your files or the rest of formvis. Adding one says so first.
+- Writing a plugin: the manual's Plugins section lists the four calls (register, call, getPixels, putPixels).
+- Tested in the browser; in the desktop app, the window's security policy may keep plugins from running, which is not yet checked.
+
 ## 1.52.5 · 2026-09-29
 
 ### Changed: API keys in the system's password store
