@@ -7,6 +7,8 @@ export default defineConfig({
   root: '.',
   publicDir: 'public',
   server: {
+    // The manual lives in ../docs (one copy for the repository and the app, 1.52.3): the dev server may read the repository.
+    fs: { allow: ['..'] },
     port: FRONTEND_PORT,
     host: false,
     strictPort: true,

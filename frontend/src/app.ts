@@ -74,6 +74,7 @@ import { Model3DDialog } from './ui/panels/model3d';
 import { AgentConfirmDialog } from './ui/panels/agent-confirm';
 import { AgentBridge } from './automation/agent-bridge';
 import { AssistantPanel } from './ui/panels/assistant';
+import { HelpDialog } from './ui/panels/help';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -926,6 +927,7 @@ export function startApp(): void {
   window.addEventListener('formvis:agents', (ev) => agents.setEnabled((ev as CustomEvent<boolean>).detail === true));
   // The assistant (1.52.2) acts through the same bridge, whether or not outside agents are allowed.
   const assistant = new AssistantPanel(engine, agents);
+  const help = new HelpDialog();
   document.body.appendChild(assistant.el);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
   model3dInput.addEventListener('change', () => { const f = model3dInput.files?.[0]; model3dInput.value = ''; if (f) void model3d.load(f); });
@@ -976,6 +978,7 @@ export function startApp(): void {
     { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
     { id: 'assistant', label: 'Assistant', run: () => assistant.toggle() },   // 1.52.2
+    { id: 'help', label: 'formvis Help', keys: ['F1'], run: () => help.show() },   // 1.52.3, as Photoshop's F1
     { id: 'place-3d', label: 'Place 3D Model...', enabled: has, run: () => model3dInput.click() },   // 1.51.9
     { id: 'export-ora', label: 'Export OpenRaster...', enabled: has, run: () => void exportOra() },   // 1.51.7
     { id: 'export-psb', label: 'Export PSB (Large Document)...', enabled: has, run: () => void exportPsd(true) },
@@ -1231,7 +1234,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Window', items: ['assistant', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
-    { label: 'Help', items: ['shortcuts', 'copy-error-log', 'benchmark', 'about'] },
+    { label: 'Help', items: ['help', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   // The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.

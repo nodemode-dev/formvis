@@ -41,8 +41,8 @@ export const api = {
   },
   /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
   /** The assistant (1.52.2): one step of the conversation; the model's text and its tool calls. */
-  async assistantStep(messages: unknown[]): Promise<{ content: string; tool_calls: Array<{ id: string; name: string; arguments: string }> }> {
-    return (await (await request('/llm/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }) })).json()) as { content: string; tool_calls: Array<{ id: string; name: string; arguments: string }> };
+  async assistantStep(messages: unknown[], tools = true): Promise<{ content: string; tool_calls: Array<{ id: string; name: string; arguments: string }> }> {
+    return (await (await request('/llm/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages, tools }) })).json()) as { content: string; tool_calls: Array<{ id: string; name: string; arguments: string }> };
   },
 
   /** Prompt improvement (1.51.5): the language model's settings (never its key), its models, and a rewrite. */
