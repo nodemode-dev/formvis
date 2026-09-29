@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Place 3D Model · _v1.51.9 (frontend/src/ui/panels/model3d.ts new, app.ts, styles/dialogs.css; package.json: three 0.186.1, MIT, and @types/three)
+
+`Model3DDialog`: a .glb or .gltf read with three.js's GLTFLoader (loaded only when first used), centred and scaled to a unit box; Turn, Tilt, Size, Light direction, Light height, Light strength, Ambient and Light colour in a live preview (one renderer kept for the app's life); Place renders at the document's size (within the graphics card's largest texture, scaled up beyond it) on transparency into a new layer, its renderer released. File > Place 3D Model. Removed from frontend:
+
+```text
+    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Export sizes and the AI label · _v1.51.8 (frontend/src/io/ai-label.ts new, io/export-presets.ts, ui/panels/export-dialog.ts, app.ts)
 
 `ExportSettings.size` (Scale, Fit Within, Frame), `boxW`, `boxH`, `aiLabel`; `exportLayout` (the image's size and the rectangle the picture goes in, a frame's picture centred); `xmpPacket` (IPTC's Digital Source Type: trainedAlgorithmicMedia or compositeWithTrainedAlgorithmicMedia) written by `labelPng` (an iTXt chunk after IHDR), `labelJpeg` (an APP1 segment after SOI) and `labelWebp` (an XMP chunk, a simple file made extended with VP8X and its XMP flag), through `withAiLabel`; Export As's Size, Width x Height and AI label rows, saved with presets, the note saying AVIF, TIFF and PDF do not carry the label. Removed from frontend:

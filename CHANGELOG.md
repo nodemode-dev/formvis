@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.51.9 · 2026-09-28
+
+### Added: Place 3D Model
+
+- File > Place 3D Model places a .glb or .gltf model into the picture: turn, tilt and size it, and set its light (direction, height, strength and colour) and the ambient light, in a live preview.
+- Place renders it at the document's size on transparency, as a new layer you can mask, blend and edit.
+- The model is centred and scaled to fit, whatever units it was made in. The 3D drawing uses three.js (MIT), loaded only when first used.
+
 ## 1.51.8 · 2026-09-28
 
 ### Added: export into a frame, and the AI label
