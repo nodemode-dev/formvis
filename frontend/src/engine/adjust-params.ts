@@ -8,7 +8,7 @@ import type { RGB } from './types';
  *  Colour Balance weights shadows, midtones and highlights by lightness with the usual overlapping ramps; Selective
  *  Colour weights each pixel by how much it belongs to a colour family and moves its ink, relative or absolute. */
 
-export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop';
+export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop' | 'splitToning' | 'halation' | 'glow';
 
 export type ParamSpec =
   | { key: string; label: string; kind: 'range'; min: number; max: number; step: number; def: number; group?: string }
@@ -340,8 +340,72 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
       };
     },
   },
+  // Film looks (1.51.6, the capability plan), each an adjustment layer: split toning; halation (the brightest areas
+  // bloom red-orange, as film's anti-halation layer lets through); glow (the same bloom in the highlights' own colour).
+  splitToning: {
+    label: 'Split Toning',
+    params: [range('shadowHue', 'Shadow hue', 0, 360, 200), range('shadowSat', 'Shadow saturation', 0, 100, 25), range('highlightHue', 'Highlight hue', 0, 360, 40), range('highlightSat', 'Highlight saturation', 0, 100, 25), range('balance', 'Balance', -100, 100, 0)],
+    kernel: (v) => {
+      const tint = (hue: number): [number, number, number] => { const h = (((hue % 360) + 360) % 360) / 60, x = 1 - Math.abs((h % 2) - 1), c: [number, number, number] = h < 1 ? [1, x, 0] : h < 2 ? [x, 1, 0] : h < 3 ? [0, 1, x] : h < 4 ? [0, x, 1] : h < 5 ? [x, 0, 1] : [1, 0, x]; const l = lum(...c); return [c[0] - l, c[1] - l, c[2] - l]; };
+      const sh = tint(n(v, 'shadowHue')), hi = tint(n(v, 'highlightHue')), ss = n(v, 'shadowSat') / 100 * 0.5, hs = n(v, 'highlightSat') / 100 * 0.5, mid = 0.5 + n(v, 'balance') / 200;
+      return (px) => {
+        for (let i = 0; i < px.length; i += 4) {
+          const r = px[i] / 255, g = px[i + 1] / 255, b = px[i + 2] / 255, l = lum(r, g, b);
+          const w = Math.min(1, Math.max(0, (l - mid) * 4 + 0.5)), ks = (1 - w) * ss, kh = w * hs;   // shadows below the balance, highlights above
+          px[i] = Math.round(cl(r + sh[0] * ks + hi[0] * kh) * 255); px[i + 1] = Math.round(cl(g + sh[1] * ks + hi[1] * kh) * 255); px[i + 2] = Math.round(cl(b + sh[2] * ks + hi[2] * kh) * 255);
+        }
+      };
+    },
+  },
+  halation: {
+    label: 'Halation',
+    params: [range('amount', 'Amount', 0, 100, 40), range('radius', 'Radius', 1, 200, 18), range('threshold', 'Threshold', 0, 100, 70)],
+    kernel: (v) => bloom(n(v, 'amount') / 100, n(v, 'radius'), n(v, 'threshold') / 100, [1, 0.32, 0.12]),
+  },
+  glow: {
+    label: 'Glow',
+    params: [range('amount', 'Amount', 0, 100, 35), range('radius', 'Radius', 1, 200, 24), range('threshold', 'Threshold', 0, 100, 60)],
+    kernel: (v) => bloom(n(v, 'amount') / 100, n(v, 'radius'), n(v, 'threshold') / 100, null),
+  },
+
 };
 
 export const PARAM_KINDS = Object.keys(PARAM_ADJUSTMENTS) as ParamKind[];
 export const isParamKind = (k: string): k is ParamKind => k in PARAM_ADJUSTMENTS;
 export const paramKernel = (kind: ParamKind, raw: unknown): Kernel => PARAM_ADJUSTMENTS[kind].kernel(paramValues(kind, raw));
+
+/** Halation and Glow: what is brighter than `threshold` blurred by `radius` document pixels (three box passes, close to
+ *  a Gaussian), tinted (Halation) or in its own colour (Glow), and screened back over the picture by `amount`. */
+function bloom(amount: number, radius: number, threshold: number, tint: [number, number, number] | null): Kernel {
+  return (px, ctx) => {
+    if (!ctx || amount <= 0) return;
+    const W = ctx.width, H = ctx.height, r = Math.max(1, Math.round(radius / Math.max(1e-6, ctx.unitsPerPixel) / 2));
+    const ch = [new Float32Array(W * H), new Float32Array(W * H), new Float32Array(W * H)];
+    for (let i = 0, j = 0; j < W * H; i += 4, j++) {
+      const R = px[i] / 255, G = px[i + 1] / 255, B = px[i + 2] / 255, over = Math.max(0, lum(R, G, B) - threshold) / Math.max(1e-3, 1 - threshold);
+      if (tint) { ch[0][j] = over * tint[0]; ch[1][j] = over * tint[1]; ch[2][j] = over * tint[2]; } else { ch[0][j] = R * over; ch[1][j] = G * over; ch[2][j] = B * over; }
+    }
+    for (const c of ch) for (let pass = 0; pass < 3; pass++) boxBlur(c, W, H, r);
+    for (let i = 0, j = 0; j < W * H; i += 4, j++) for (let k = 0; k < 3; k++) {
+      const base = px[i + k] / 255, add = Math.min(1, ch[k][j] * amount * 1.6);
+      px[i + k] = Math.round((1 - (1 - base) * (1 - add)) * 255);   // screen
+    }
+  };
+}
+
+/** One box blur pass of radius `r`, horizontally then vertically, in place. */
+function boxBlur(a: Float32Array, W: number, H: number, r: number): void {
+  const tmp = new Float32Array(Math.max(W, H)), span = 2 * r + 1;
+  for (let y = 0; y < H; y++) {
+    let sum = 0;
+    for (let x = -r; x <= r; x++) sum += a[y * W + Math.min(W - 1, Math.max(0, x))];
+    for (let x = 0; x < W; x++) { tmp[x] = sum / span; sum += a[y * W + Math.min(W - 1, x + r + 1)] - a[y * W + Math.max(0, x - r)]; }
+    a.set(tmp.subarray(0, W), y * W);
+  }
+  for (let x = 0; x < W; x++) {
+    let sum = 0;
+    for (let y = -r; y <= r; y++) sum += a[Math.min(H - 1, Math.max(0, y)) * W + x];
+    for (let y = 0; y < H; y++) { tmp[y] = sum / span; sum += a[Math.min(H - 1, y + r + 1) * W + x] - a[Math.max(0, y - r) * W + x]; }
+    for (let y = 0; y < H; y++) a[y * W + x] = tmp[y];
+  }
+}

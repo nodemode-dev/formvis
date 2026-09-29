@@ -4284,6 +4284,48 @@ export class Engine {
     });
   }
 
+  /** Layer > New Film Layer (1.51.6, film looks): a light leak (warm light entering from an edge, in Screen blend, so it
+   *  only brightens) or a frame (a black film edge with rounded corners, a white print border, or a thin line), each a
+   *  pixel layer at the document's size that can be moved, scaled, erased, masked or re-blended. One step. */
+  addFilmLayer(o: { kind: 'leak'; color: 'amber' | 'red' | 'magenta' | 'gold'; from: 'left' | 'right' | 'top' | 'bottom' | 'corner'; size: number } | { kind: 'frame'; style: 'film' | 'white' | 'line'; width: number }): boolean {
+    const p = this.current;
+    if (!p) return false;
+    const W = p.doc.width, H = p.doc.height, r = new Raster(W, H), c = r.ctx;
+    if (o.kind === 'leak') {
+      const hue = { amber: [255, 140, 40], red: [255, 60, 30], magenta: [255, 60, 150], gold: [255, 200, 80] }[o.color];
+      const at = { left: [0, H * 0.45], right: [W, H * 0.55], top: [W * 0.55, 0], bottom: [W * 0.45, H], corner: [W, 0] }[o.from];
+      const R = Math.max(W, H) * Math.max(0.1, Math.min(1.5, o.size / 100));
+      const blob = (x: number, y: number, rad: number, rgb: number[], a: number): void => {
+        const g = c.createRadialGradient(x, y, 0, x, y, rad);
+        g.addColorStop(0, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a})`); g.addColorStop(0.45, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${a * 0.45})`); g.addColorStop(1, `rgba(${rgb[0]},${rgb[1]},${rgb[2]},0)`);
+        c.fillStyle = g; c.fillRect(0, 0, W, H);
+      };
+      c.globalCompositeOperation = 'lighter';
+      blob(at[0], at[1], R, hue, 0.85);
+      blob(at[0], at[1], R * 0.35, [255, 240, 200], 0.7);   // the hotter core
+      const dx = W / 2 - at[0], dy = H / 2 - at[1], len = Math.hypot(dx, dy) || 1, s = c.createLinearGradient(at[0], at[1], at[0] + (dx / len) * R, at[1] + (dy / len) * R);
+      s.addColorStop(0, `rgba(${hue[0]},${hue[1]},${hue[2]},0.35)`); s.addColorStop(1, `rgba(${hue[0]},${hue[1]},${hue[2]},0)`);
+      c.fillStyle = s; c.fillRect(0, 0, W, H);   // a soft streak toward the middle
+      c.globalCompositeOperation = 'source-over';
+    } else {
+      const w = Math.max(1, Math.round(Math.min(W, H) * Math.max(0.2, Math.min(25, o.width)) / 100));
+      if (o.style === 'line') { c.strokeStyle = '#000000'; c.lineWidth = Math.max(1, Math.round(w / 4)); c.strokeRect(w, w, W - 2 * w, H - 2 * w); }
+      else {
+        c.fillStyle = o.style === 'white' ? '#ffffff' : '#000000';
+        c.fillRect(0, 0, W, H);
+        c.globalCompositeOperation = 'destination-out';
+        c.beginPath();
+        const rad = o.style === 'film' ? w * 0.6 : 0, x = w, y = w, iw = W - 2 * w, ih = H - 2 * w;
+        c.moveTo(x + rad, y); c.arcTo(x + iw, y, x + iw, y + ih, rad); c.arcTo(x + iw, y + ih, x, y + ih, rad); c.arcTo(x, y + ih, x, y, rad); c.arcTo(x, y, x + iw, y, rad); c.closePath();
+        c.fill();
+        c.globalCompositeOperation = 'source-over';
+      }
+    }
+    r.touch();
+    this.insertRasterLayer(r, o.kind === 'leak' ? 'Light Leak' : 'Frame', 0, 0, o.kind === 'leak' ? { blend: 'screen' } : {}, o.kind === 'leak' ? 'New Light Leak' : 'New Frame');
+    return true;
+  }
+
   addAdjustmentLayer(kind: AdjustmentKind): ID | null {
     let created: ID | null = null;
     this.edit(`New ${ADJUSTMENT_LABELS[kind]} Layer`, (p) => {

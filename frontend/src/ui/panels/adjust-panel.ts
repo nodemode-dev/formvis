@@ -591,13 +591,20 @@ export class AdjustPanel extends Dialog {
   private buildGrain(): Section {
     const node = el('<div class="cv-panel-section"></div>');
     const gr = (): Record<string, number> => this.data.grainSettings as Record<string, number>;
-    const amount = sliderRow('Amount', 0, 100, 1, (v) => { gr().amount = v; this.changed(); });
-    const size = sliderRow('Size', 0.5, 20, 0.1, (v) => { gr().size = v; this.changed(); });
-    const rough = sliderRow('Roughness', 0, 100, 1, (v) => { gr().roughness = v; this.changed(); });
+    const amount = sliderRow('Amount', 0, 100, 1, (v) => { gr().amount = v; this.changed(); preset.value = which(); });
+    const size = sliderRow('Size', 0.5, 20, 0.1, (v) => { gr().size = v; this.changed(); preset.value = which(); });
+    const rough = sliderRow('Roughness', 0, 100, 1, (v) => { gr().roughness = v; this.changed(); preset.value = which(); });   // the Preset row follows the sliders
     const reseed = el<HTMLButtonElement>('<button class="cv-btn" type="button">New grain pattern</button>');
     reseed.addEventListener('click', () => { gr().seed = randomSeed(); this.changed(); });
-    node.append(amount.el, size.el, rough.el, reseed);
-    return { node, sync: () => { amount.set(gr().amount); size.set(gr().size); rough.set(gr().roughness); } };
+    // Presets by film speed (1.51.6, film looks): each sets Amount, Size and Roughness; Custom once a slider moves.
+    const PRESETS: ReadonlyArray<readonly [string, string, number, number, number]> = [['iso100', 'ISO 100 (fine)', 12, 0.8, 30], ['iso400', 'ISO 400 (classic)', 25, 1.5, 50], ['iso800', 'ISO 800', 35, 2, 60], ['iso1600', 'ISO 1600 (pushed)', 50, 2.8, 70], ['iso3200', 'ISO 3200 (coarse)', 65, 3.6, 80]];
+    const preset = el<HTMLSelectElement>(`<select class="cv-input" aria-label="Grain preset"><option value="custom">Custom</option>${PRESETS.map(([id, label]) => `<option value="${id}">${label}</option>`).join('')}</select>`);
+    const presetRow = el('<label class="cv-dialog-row"><span>Preset</span></label>');
+    presetRow.append(preset);
+    preset.addEventListener('change', () => { const p = PRESETS.find((x) => x[0] === preset.value); if (!p) return; Object.assign(gr(), { amount: p[2], size: p[3], roughness: p[4] }); this.changed(); amount.set(p[2]); size.set(p[3]); rough.set(p[4]); });
+    const which = (): string => PRESETS.find((p) => p[2] === gr().amount && p[3] === gr().size && p[4] === gr().roughness)?.[0] ?? 'custom';
+    node.append(presetRow, amount.el, size.el, rough.el, reseed);
+    return { node, sync: () => { amount.set(gr().amount); size.set(gr().size); rough.set(gr().roughness); preset.value = which(); } };
   }
 
   /** A section from a parametric adjustment's control list. Every row exists from the start; rows of other groups
