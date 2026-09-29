@@ -64,9 +64,11 @@ ask it questions.
 - The Type tool adds editable text: point text or a paragraph in a box, horizontal or vertical, with font style,
   anti-aliasing, colour and warp. Type Mask tools make a selection in the shape of text.
 - Shape tools draw rectangles, ellipses, triangles, polygons, stars, lines, arrows and custom shapes, as shape
-  layers, paths or pixels, with a fill and a stroke.
-- The Pen draws Bézier paths; Path Selection and Direct Selection move and reshape them, and a path can become a
-  selection, be filled or be stroked.
+  layers, paths or pixels, with a fill and a stroke; the stroke is solid, dashed or dotted, and inside, centred on or
+  outside the shape's edge.
+- The Pen draws Bézier paths, or in Shape mode makes a shape layer from each path it closes; with Auto Add/Delete on,
+  clicking a path adds a point and clicking a point deletes it. Path Selection and Direct Selection move and reshape
+  paths, and a path can become a selection, be filled or be stroked.
 
 ## Adjustments, filters and looks
 

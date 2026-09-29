@@ -32,6 +32,9 @@ export const penTool: Tool = {
   cursor: () => 'crosshair',
   options: (e) => [
     { kind: 'title', text: 'Pen' },
+    // Mode and Auto Add/Delete (1.52.8, the tool audit), as Photoshop's bar.
+    { kind: 'segment', label: 'Mode', choices: [{ id: 'shape', label: 'Shape' }, { id: 'path', label: 'Path' }], get: () => e.penSettings.mode, set: (v: string) => { e.penSettings.mode = v === 'shape' ? 'shape' : 'path'; e.emit('options', null); } },
+    { kind: 'toggle', label: 'Auto Add/Delete', get: () => e.penSettings.autoAddDelete, set: (v: boolean) => { e.penSettings.autoAddDelete = v; e.emit('options', null); } },
     { kind: 'button', label: 'Make Selection', run: () => { active = null; e.pathToSelection(); } },
     { kind: 'button', label: 'Fill Path', run: () => e.fillPath() },
     { kind: 'button', label: 'Stroke Path', run: () => e.strokePath() },
@@ -45,14 +48,24 @@ export const penTool: Tool = {
       const first = v.toScreen(active.anchors[0]), at = v.toScreen(p.doc);
       if (Math.hypot(first.x - at.x, first.y - at.y) <= NEAR) {
         active.closed = true;
+        if (ctx.engine.penSettings.mode === 'shape') {   // Shape mode: the closed path becomes a shape layer, leaving the work path
+          const sp = active;
+          active = null;
+          vp.subpaths.splice(vp.subpaths.indexOf(sp), 1);
+          ctx.engine.setWorkPath(vp);
+          ctx.engine.endPathEdit();
+          ctx.engine.shapeFromPath({ subpaths: [sp] });
+          return;
+        }
         active = null;
         ctx.engine.setWorkPath(vp);
         return;
       }
     }
     if (!active) {
-      // Between paths the Pen adds and deletes points: clicking a point deletes it, clicking the path adds one there.
-      const edit = editAt(vp, v.toScreen(p.doc), (q) => v.toScreen(q));
+      // Between paths the Pen adds and deletes points: clicking a point deletes it, clicking the path adds one there,
+      // unless Auto Add/Delete is off (1.52.8); either way a new path starts here.
+      const edit = ctx.engine.penSettings.autoAddDelete ? editAt(vp, v.toScreen(p.doc), (q) => v.toScreen(q)) : null;
       if (edit?.kind === 'delete') {
         edit.sp.anchors.splice(edit.index, 1);
         if (!edit.sp.anchors.length) vp.subpaths.splice(vp.subpaths.indexOf(edit.sp), 1);

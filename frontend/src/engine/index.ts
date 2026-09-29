@@ -15,7 +15,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { antialiasMask, wandMask } from './kernels';
 import { Project } from './project';
-import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
 import { allPatterns, patternById } from './patterns';
 
 export * from './types';
@@ -1470,19 +1470,12 @@ export class Engine {
   private renderShape(path: VectorPath, style: ShapeStyle): { raster: Raster; x: number; y: number } | null {
     const b = pathBounds(path);
     if (!b || (!style.fill && !style.stroke)) return null;
-    const pad = (style.stroke ? style.stroke.width / 2 : 0) + 1;
+    const pad = (style.stroke ? (style.stroke.align === 'outside' ? style.stroke.width : style.stroke.width / 2) : 0) + 1;
     const x = Math.floor(b.x - pad), y = Math.floor(b.y - pad), w = Math.min(LIMITS.side, Math.ceil(b.x + b.w + pad) - x), h = Math.min(LIMITS.side, Math.ceil(b.y + b.h + pad) - y);
     const raster = new Raster(Math.max(1, w), Math.max(1, h)), c = raster.ctx, shape = tracePath(path);
     c.translate(-x, -y);
     if (style.fill) { c.fillStyle = rgbCss(style.fill); fillVector(c, path); }
-    if (style.stroke && style.stroke.width > 0) {
-      // Centred on the path, with round joins and caps so corners and open ends stay smooth.
-      c.strokeStyle = rgbCss(style.stroke.color);
-      c.lineWidth = style.stroke.width;
-      c.lineJoin = 'round';
-      c.lineCap = 'round';
-      c.stroke(shape);
-    }
+    if (style.stroke && style.stroke.width > 0) strokeShape(c, shape, style.stroke, path.subpaths.every((sp) => sp.closed));
     c.setTransform(1, 0, 0, 1, 0, 0);
     raster.touch();
     return { raster, x, y };
@@ -3933,8 +3926,18 @@ export class Engine {
   uiHooks: { gradientEditor?: () => void; importBrushes?: () => void } = {};
   /** The shape tools' settings. mode (1.49.8, the owner's tool list), as Photoshop's: a shape layer, the work path, or
    *  pixels on the active layer; fill and stroke each the foreground, the background or none, and the stroke's width. */
-  shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number } & PathShapeOptions =
-    { kind: 'rectangle', cornerRadius: 0, mode: 'shape', fill: 'fg', stroke: 'none', strokeWidth: 3, ...DEFAULT_PATH_SHAPE };
+  shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number; strokeDash: 'solid' | 'dashed' | 'dotted'; strokeAlign: 'inside' | 'center' | 'outside' } & PathShapeOptions =
+    { kind: 'rectangle', cornerRadius: 0, mode: 'shape', fill: 'fg', stroke: 'none', strokeWidth: 3, strokeDash: 'solid', strokeAlign: 'center', ...DEFAULT_PATH_SHAPE };
+  /** The Pen's Mode and Auto Add/Delete (1.52.8, the tool audit), as Photoshop's: a path, or a shape layer made from
+   *  each path closed; clicking a path adds a point and clicking a point deletes it, unless turned off. */
+  penSettings = { mode: 'path' as 'path' | 'shape', autoAddDelete: true };
+
+  /** The Pen in Shape mode: a closed path made into a shape layer with the Shape tool's fill and stroke. */
+  shapeFromPath(path: VectorPath): void {
+    const st = this.shapeSettings, colour = (c: 'fg' | 'bg' | 'none'): RGB | null => (c === 'fg' ? { ...this.fg } : c === 'bg' ? { ...this.bg } : null);
+    const strokeC = colour(st.stroke), look: ShapeStyle = { fill: colour(st.fill) ?? (strokeC ? null : { ...this.fg }), stroke: strokeC ? { color: strokeC, width: Math.max(0.5, st.strokeWidth), dash: st.strokeDash, align: st.strokeAlign } : null };
+    this.createVectorShape(path, look, 'Shape');
+  }
 
   /** The shape tools' drag, by mode: a shape layer (a filled rectangle or ellipse without a stroke stays a live shape;
    *  anything else a vector layer with the fill and stroke), the outline added to the work path, or painted pixels. */
@@ -3945,7 +3948,7 @@ export class Engine {
     if (line ? Math.hypot(b.x - a.x, b.y - a.y) < 2 : rect.w < 1 || rect.h < 1) return;
     const colour = (c: 'fg' | 'bg' | 'none'): RGB | null => (c === 'fg' ? { ...this.fg } : c === 'bg' ? { ...this.bg } : null);
     const fill = line ? colour(st.fill === 'none' ? 'fg' : st.fill) : colour(st.fill), strokeC = colour(st.stroke);
-    const look: ShapeStyle = { fill, stroke: strokeC ? { color: strokeC, width: Math.max(0.5, st.strokeWidth) } : null };
+    const look: ShapeStyle = { fill, stroke: strokeC ? { color: strokeC, width: Math.max(0.5, st.strokeWidth), dash: st.strokeDash, align: st.strokeAlign } : null };
     if (!look.fill && !look.stroke) { this.notice('Choose a fill or a stroke for the shape.'); return; }
     const path = line ? linePath(kind as 'line' | 'arrow', a, b, st) : boxedShapePath(kind as 'polygon' | 'star' | 'heart' | 'custom' | 'triangle' | 'rectangle' | 'ellipse', rect, st);
     const name = { rectangle: 'Rectangle', ellipse: 'Ellipse', triangle: 'Triangle', polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', custom: 'Custom Shape' }[kind];
@@ -3961,7 +3964,7 @@ export class Engine {
       // Pixels: painted into the active layer, fill then stroke, in one step.
       this.paintPath(name, (c, shape) => {
         if (look.fill) { c.fillStyle = rgbCss(look.fill); c.fill(shape); }
-        if (look.stroke) { c.strokeStyle = rgbCss(look.stroke.color); c.lineWidth = look.stroke.width; c.lineJoin = 'miter'; c.stroke(shape); }
+        if (look.stroke) strokeShape(c, shape, look.stroke, path.subpaths.every((sp) => sp.closed));
       }, path);
       return;
     }
@@ -6314,4 +6317,24 @@ function withinNeighbours(orig: ImageData, sharp: ImageData): ImageData {
     }
   }
   return out;
+}
+
+/** A shape's stroke (1.52.8), as Photoshop's options: solid, dashed (4 widths on, 2 off, square ends) or dotted (round
+ *  dots 2 widths apart); centred on the path, inside it (clipped to the shape) or outside it (the shape cut away). An open
+ *  path is always centred: it has no inside. Round joins keep corners smooth. */
+function strokeShape(c: Ctx2D, shape: Path2D, s: ShapeStroke, closed: boolean): void {
+  const w = s.width, align = closed ? s.align ?? 'center' : 'center', dotted = s.dash === 'dotted';
+  const set = (x: Ctx2D, width: number): void => {
+    x.strokeStyle = rgbCss(s.color); x.lineWidth = width; x.lineJoin = 'round';
+    x.lineCap = dotted ? 'round' : s.dash === 'dashed' ? 'butt' : 'round';
+    x.setLineDash(s.dash === 'dashed' ? [4 * w, 2 * w] : dotted ? [0.001, 2 * w] : []);
+  };
+  if (align === 'center') { set(c, w); c.stroke(shape); c.setLineDash([]); return; }
+  if (align === 'inside') { c.save(); c.clip(shape); set(c, 2 * w); c.stroke(shape); c.restore(); return; }
+  // Outside: twice the width, then the shape itself cut away, drawn over what is there.
+  const t = createSurface(c.canvas.width, c.canvas.height), x = ctxOf(t);
+  x.setTransform(c.getTransform());
+  set(x, 2 * w); x.stroke(shape);
+  x.globalCompositeOperation = 'destination-out'; x.fillStyle = '#000'; x.fill(shape);
+  c.save(); c.setTransform(1, 0, 0, 1, 0, 0); c.drawImage(t as CanvasImageSource, 0, 0); c.restore();
 }
