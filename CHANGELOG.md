@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.51.3 · 2026-09-28
+
+### Added: Color Match
+
+- Layer > Color Match matches a layer's colours to what is beneath it, or to what is around it, without changing its pixels: it adds a Curves layer clipped to it. Useful when a generated result comes back a shade off.
+- The amount is that layer's opacity, changed any time in the Layers panel (0% as the layer came, 100% fully matched). Run it again, from the layer or its Color Match layer, to match afresh; it updates rather than adds.
+- Saved with the project and in Photoshop files, as any adjustment layer.
+
 ## 1.51.2 · 2026-09-28
 
 ### Added: your ComfyUI workflows in Generative Fill, and Generate Image

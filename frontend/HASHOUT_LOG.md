@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Color Match · _v1.51.3 (engine/index.ts; ui/panels/color-match.ts new; app.ts)
+
+`Engine.colorMatch` (the layer's opaque pixels against the picture without it and what is above it, beneath the layer or in a 24-pixel band around its edge; each of red, green and blue a line mapping mean and spread, the scale kept within a quarter and four; a Curves layer clipped to it, its opacity the amount, updated when run again; one step); `ColorMatchDialog` and Layer > Color Match. Removed from frontend:
+
+```text
+      { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', '-',
+```
+
+Nothing removed from src-tauri or backend.
+
 ## Generative models and Generate Image · _v1.51.2 (backend/app/services/generative.py, routers/generative.py, routers/comfyui.py; frontend/src/io/comfy.ts and ui/panels/generate-image.ts new, ui/panels/generative-dialog.ts, io/api.ts, app.ts)
 
 The engine's `generative.generate` (FLUX1.1 [pro] on fal at `generation_size`: the document's shape, 256 to 1440 in multiples of 32) and `POST /api/generative/generate`; `POST /api/comfyui/run` taking no files for text to image; `io/comfy.ts` (kept workflows `recipes`, `addRecipe`, `removeRecipe`; `workflowProblem`; `runToResults`; `comfyGenerator`, the generator Generative Fill and Expand call); Generative Fill's Model (FLUX.1 Fill on fal, or a kept ComfyUI workflow, added and removed in the dialog, needing no fal key); `GenerateImageDialog` and Edit > Generate Image. Removed from frontend:
