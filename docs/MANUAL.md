@@ -88,7 +88,8 @@ ask it questions.
 ## Generating images
 
 - Edit > Generative Fill paints a selection from a prompt, or removes what it covers with an empty prompt; Generative
-  Expand grows the canvas and fills the new border; Image > Upscale enlarges two or four times. The result is a new
+  Expand grows the canvas and fills the new border; Image > Upscale enlarges two or four times. Upscale runs on fal, or
+  on this computer with no key once Real-ESRGAN is downloaded (Preferences > Plugins > Local models, about 67 MB). The result is a new
   layer, masked to the selection.
 - Edit > Generate Image makes a picture from a prompt alone, as a new layer at the document's size.
 - The model: FLUX on fal (paste a fal key into the dialog once), or one of your ComfyUI workflows (see ComfyUI

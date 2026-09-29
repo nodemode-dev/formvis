@@ -3,7 +3,7 @@ import { api, type GenerativeStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { addRecipe, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
-import { localFill, localModels, type LocalModel } from '../../io/local-gen';
+import { localFill, localModels, localUpscale, upscalerReady, type LocalModel } from '../../io/local-gen';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
 import { PromptImprover } from './prompt-improver';
@@ -14,7 +14,7 @@ const TITLES: Record<Mode, string> = { fill: 'Generative Fill', expand: 'Generat
 const HINTS: Record<Mode, string> = {
   fill: 'The result arrives as a new layer masked to the selection. fal charges about $0.05 per megapixel of the area sent.',
   expand: 'The canvas grows by these margins and the new border is filled as a layer masked to it; leave the prompt empty to extend the scene. fal charges about $0.05 per megapixel.',
-  upscale: 'Real-ESRGAN on fal enlarges what the document shows and opens it as a new document, for a fraction of a cent per image.',
+  upscale: 'Real-ESRGAN enlarges what the document shows and opens it as a new document: on this computer once its model is downloaded, or on fal for a fraction of a cent per image.',
 };
 
 /** Generative Fill, Generative Expand and Upscale, sent by the formvis engine to fal: FLUX.1 Fill [pro] with a
@@ -90,9 +90,10 @@ export class GenerativeDialog extends Dialog {
     setHidden(this.prompt, mode === 'upscale');
     setHidden(this.marginRows, mode !== 'expand');
     setText(this.hint, HINTS[mode]);
-    setHidden(this.modelRow, mode === 'upscale');   // Upscale stays Real-ESRGAN on fal
-    this.locals = (await localModels()).filter((m) => m.fromPicture);   // local models that start from a picture (1.52.9)
-    this.fillModels();
+    // Upscale: Real-ESRGAN on fal or on this computer (1.53.1); the fill models otherwise.
+    for (const b of this.modelRow.querySelectorAll('button')) setHidden(b as HTMLElement, mode === 'upscale');
+    if (mode === 'upscale') this.upscaleModels(await upscalerReady());
+    else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.fillModels(); }   // local models that start from a picture (1.52.9)
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
     setHidden(this.refs.el, mode === 'upscale');
     setHidden(this.improver.el, mode === 'upscale');
@@ -101,6 +102,16 @@ export class GenerativeDialog extends Dialog {
     this.sync();
     this.open();
     if (mode !== 'upscale') { this.prompt.focus(); this.prompt.select(); }
+  }
+
+  /** Upscale's choices: Real-ESRGAN on fal, or on this computer once its model is downloaded. */
+  private upscaleModels(ready: boolean): void {
+    const here = el<HTMLOptionElement>('<option value="local:ai-upscale">Real-ESRGAN (this computer)</option>');
+    here.disabled = !ready;
+    if (!ready) here.title = 'Download it in Preferences > Plugins > Local models';
+    const was = this.model.value;
+    this.model.replaceChildren(el('<option value="fal">Real-ESRGAN (fal)</option>'), here);
+    this.model.value = was === 'local:ai-upscale' && ready ? was : ready ? 'local:ai-upscale' : 'fal';
   }
 
   /** FLUX.1 Fill on fal, then the kept ComfyUI workflows; the choice kept when it still exists. */
@@ -126,12 +137,18 @@ export class GenerativeDialog extends Dialog {
   heard: (r: { notice?: string; warning?: string; notes: string[] }) => void = () => {};
 
   private get comfy(): boolean { return this.mode !== 'upscale' && this.model.value.startsWith('comfy:'); }
+  private get upscaleHere(): boolean { return this.mode === 'upscale' && this.model.value === 'local:ai-upscale'; }
   private get local(): LocalModel | undefined { return this.mode !== 'upscale' ? this.locals.find((m) => m.id === this.model.value) : undefined; }
 
   private sync(): void {
     const s = this.status, local = this.local;
     this.refs.forFal(!this.comfy);
     setHidden(this.influenceRow, !local);
+    if (this.upscaleHere) {
+      setHidden(this.keyRow, true); setHidden(this.forget, true);
+      setText(this.state, `Real-ESRGAN runs on this computer: no key, no cost. It enlarges what the document shows ${this.scale} times and opens it as a new document.`);
+      return;
+    }
     if (local) {   // a local model: no key, no references; the picture under the selection at the influence set
       if (!this.influence.dataset.set) this.influence.value = String(Math.round(local.influence * 100));
       setHidden(this.keyRow, true); setHidden(this.forget, true); setHidden(this.refs.el, true);
@@ -156,6 +173,12 @@ export class GenerativeDialog extends Dialog {
   }
 
   private async generate(): Promise<void> {
+    if (this.upscaleHere) {
+      const e = this.engine, scale = this.scale;
+      this.close();
+      await e.task(() => e.upscaleToDocument(scale, localUpscale(scale)));
+      return;
+    }
     const local = this.local;
     if (local) {
       const prompt = this.prompt.value, mode = this.mode, e = this.engine, influence = Number(this.influence.value) / 100;

@@ -151,6 +151,11 @@ PINNED: dict[str, str] = {
 }
 
 
+_lock = threading.RLock()
+
+_downloading: set[str] = set()
+
+
 MODELS = {
     "krea-2-mlx-q8": {
         "name": "Krea 2 Turbo, 8-bit MLX (mflux-community)",

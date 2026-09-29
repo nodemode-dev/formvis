@@ -24,6 +24,12 @@ const b64 = async (blob: Blob): Promise<string> => { const b = new Uint8Array(aw
 /** One job, to its pictures. `status` hears its progress; `cancelled` stops it in the engine. */
 export async function runLocal(body: Record<string, unknown>, status: (text: string) => void = () => {}, cancelled: () => boolean = () => false): Promise<LocalResult> {
   const { job_id: id } = await (await ask('/generate', { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-formvis-local': '1' }, body: JSON.stringify(body) })).json() as { job_id: string };
+  return followJob(id, status, cancelled);
+}
+
+/** A job followed to its pictures: progress heard, Cancel stopping it in the engine, each picture fetched and the
+ *  engine's copy removed (generation and upscaling alike). */
+async function followJob(id: string, status: (text: string) => void, cancelled: () => boolean): Promise<LocalResult> {
   for (;;) {
     await new Promise((ok) => setTimeout(ok, 700));
     if (cancelled()) { try { await ask(`/jobs/${id}`, { method: 'DELETE' }); } catch { /* ended */ } throw new Error('Cancelled.'); }
@@ -46,5 +52,19 @@ export function localFill(model: string, prompt: string, influence: number, hear
     const r = await runLocal({ generator: model, prompt: prompt.trim() || 'the surrounding scene, continued seamlessly', size: 'source', count: 1, options: { image: { png: await b64(image) }, imageStrength: influence } }, status);
     heard(r);
     return r.pictures[0];
+  };
+}
+
+/** Whether Real-ESRGAN is downloaded (1.53.1). */
+export async function upscalerReady(): Promise<boolean> {
+  try { const m = await (await ask('/models')).json() as Array<{ id: string; ready: boolean }>; return !!m.find((x) => x.id === 'ai-upscale')?.ready; } catch { return false; }
+}
+
+/** Image > Upscale's generator on this computer (1.53.1): Real-ESRGAN, the picture enlarged `scale` times. */
+export function localUpscale(scale: number, status?: (text: string) => void): (image: Blob) => Promise<Blob> {
+  return async (image) => {
+    const form = new FormData(); form.append('file', image, 'picture.png'); form.append('factor', String(scale));
+    const { job_id: id } = await (await ask('/upscale/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).json() as { job_id: string };
+    return (await followJob(id, status ?? (() => {}), () => false)).pictures[0];
   };
 }

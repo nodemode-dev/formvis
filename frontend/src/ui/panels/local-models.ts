@@ -19,14 +19,15 @@ export class LocalModelsSection {
   private readonly krea = el('<div class="cv-local-card" data-model="krea-2"></div>');
   private readonly klein = el('<div class="cv-local-card" data-model="klein"></div>');
   private readonly library = el('<div class="cv-local-card" data-model="loras"></div>');
+  private readonly upscaler = el('<div class="cv-local-card" data-model="ai-upscale"></div>');
   private job: string | null = null;
 
   constructor() {
-    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.krea, this.klein, this.library);
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.upscaler, this.krea, this.klein, this.library);
   }
 
   async refresh(): Promise<void> {
-    try { await Promise.all([this.showKrea(), this.showKlein(), this.showLibrary()]); }
+    try { await Promise.all([this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
     catch { this.krea.replaceChildren(el('<p class="cv-note">The formvis engine is offline: local models need it.</p>')); }
   }
 
@@ -46,6 +47,18 @@ export class LocalModelsSection {
     const b = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Cancel</button>');
     b.addEventListener('click', () => { const j = this.job; this.job = null; if (j) void api(`/jobs/${j}`, { method: 'DELETE' }).catch(() => undefined); setText(note, 'Cancelled.'); });
     return b;
+  }
+
+  /** Real-ESRGAN x4plus (1.53.1): Image > Upscale on this computer; BSD-3-Clause, so no licence to accept. */
+  private async showUpscaler(): Promise<void> {
+    const all = await api('/models') as unknown as Json[], m = all.find((x) => x.id === 'ai-upscale');
+    const state = el('<p class="cv-local-state" role="status"></p>'), note = el('<p class="cv-note cv-local-note" role="status"></p>');
+    setText(state, m?.ready ? 'Real-ESRGAN x4plus: downloaded, ready for Image > Upscale.' : 'Real-ESRGAN x4plus: not downloaded (about 67 MB).');
+    const get = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-primary">Download Real-ESRGAN</button>');
+    get.disabled = !m || !!m.ready;
+    get.addEventListener('click', () => void (async () => { try { const j = await api('/models/ai-upscale/download', { method: 'POST' }); await this.follow(j.job_id, note, () => void this.showUpscaler()); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not start the download.'); } })());
+    const row = el('<div class="cv-improve"></div>'); row.append(get);
+    this.upscaler.replaceChildren(state, el('<p class="cv-note">Enlarges pictures two or four times on this computer, in tiles, with no key and no cost. BSD-3-Clause.</p>'), row, note);
   }
 
   private async showKrea(): Promise<void> {
