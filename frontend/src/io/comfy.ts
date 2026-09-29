@@ -59,7 +59,7 @@ export async function runToResults(target: string, json: string, items: unknown[
 
 /** A generator for Generative Fill and Expand: the workflow run on the cropped image and its mask (white where it
  *  fills), its first result returned. */
-export function comfyGenerator(target: string, recipe: Recipe, prompt: string): (image: Blob, mask: Blob) => Promise<Blob> {
-  return async (image, mask) => (await runToResults(target, recipe.json, [{ name: 'formvis fill', kind: 'image' }, { name: 'formvis fill mask', kind: 'mask', maskOf: 0 }],
-    [{ name: 'image.png', blob: image }, { name: 'mask.png', blob: mask }], prompt))[0];
+export function comfyGenerator(target: string, recipe: Recipe, prompt: string, refs: Array<{ name: string; blob: Blob }> = []): (image: Blob, mask: Blob) => Promise<Blob> {
+  return async (image, mask) => (await runToResults(target, recipe.json, [{ name: 'formvis fill', kind: 'image' }, { name: 'formvis fill mask', kind: 'mask', maskOf: 0 }, ...refs.map((r) => ({ name: r.name, kind: 'reference' }))],
+    [{ name: 'image.png', blob: image }, { name: 'mask.png', blob: mask }, ...refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob }))], prompt))[0];
 }

@@ -4,6 +4,7 @@ import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { addRecipe, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
 import { loadPrefs } from '../prefs';
+import { ReferencePicker } from './references';
 
 type Mode = 'fill' | 'expand' | 'upscale';
 
@@ -32,6 +33,7 @@ export class GenerativeDialog extends Dialog {
   // The model (1.51.2): FLUX.1 Fill on fal, or one of your ComfyUI workflows, added here and kept.
   private readonly model = el<HTMLSelectElement>('<select class="cv-input" aria-label="Model"></select>');
   private readonly modelRow = el('<label class="cv-dialog-row"><span>Model</span></label>');
+  private readonly refs: ReferencePicker;
   private readonly addFile = el<HTMLInputElement>('<input type="file" accept=".json,application/json" aria-label="Add ComfyUI workflow" hidden>');
 
   constructor(private readonly engine: Engine) {
@@ -44,6 +46,8 @@ export class GenerativeDialog extends Dialog {
     this.model.addEventListener('change', () => this.sync());
     this.modelRow.append(this.model, add, remove, this.addFile);
     this.body.appendChild(this.modelRow);
+    this.refs = new ReferencePicker(engine);
+    this.body.appendChild(this.refs.el);
     this.body.appendChild(this.prompt);
     this.marginRows = el('<div class="cv-panel-section"></div>');
     this.body.appendChild(this.marginRows);
@@ -77,6 +81,8 @@ export class GenerativeDialog extends Dialog {
     setText(this.hint, HINTS[mode]);
     setHidden(this.modelRow, mode === 'upscale');   // Upscale stays Real-ESRGAN on fal
     this.fillModels();
+    this.refs.refresh(!this.model.value.startsWith('comfy:'));
+    setHidden(this.refs.el, mode === 'upscale');
     this.status = await api.generativeStatus();
     this.sync();
     this.open();
@@ -105,6 +111,7 @@ export class GenerativeDialog extends Dialog {
 
   private sync(): void {
     const s = this.status;
+    this.refs.forFal(!this.comfy);
     if (this.comfy) {   // a workflow needs no fal key
       setHidden(this.keyRow, true); setHidden(this.forget, true);
       setText(this.state, `Runs on ComfyUI at ${loadPrefs().comfyuiUrl}: its first Load Image takes the area, Load Image (as Mask) the mask, and a text node titled formvis prompt the prompt.`);
@@ -128,7 +135,7 @@ export class GenerativeDialog extends Dialog {
       const prompt = this.prompt.value, mode = this.mode, e = this.engine, target = loadPrefs().comfyuiUrl;
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       this.close();
-      const fill = comfyGenerator(target, recipe, prompt);
+      const fill = comfyGenerator(target, recipe, prompt, await this.refs.chosen());
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;

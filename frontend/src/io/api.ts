@@ -46,9 +46,9 @@ export const api = {
   },
 
   /** Run ComfyUI Workflow (1.51.1): uploads the inputs, fills the workflow and queues it. */
-  async comfyuiRun(target: string, workflow: string, items: unknown[], parts: FilePart[], prompt: string | null): Promise<{ job: string; image: string | null; mask: string | null; prompt: boolean }> {
+  async comfyuiRun(target: string, workflow: string, items: unknown[], parts: FilePart[], prompt: string | null): Promise<{ job: string; references: number; image: string | null; mask: string | null; prompt: boolean }> {
     const res = await request('/comfyui/run', { method: 'POST', body: form({ target, workflow, items: JSON.stringify(items), ...(prompt !== null ? { prompt } : {}) }, parts) });
-    return (await res.json()) as { job: string; image: string | null; mask: string | null; prompt: boolean };
+    return (await res.json()) as { job: string; references: number; image: string | null; mask: string | null; prompt: boolean };
   },
   async comfyuiJob(job: string, target: string): Promise<{ state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string }> {
     return (await (await request(`/comfyui/job/${encodeURIComponent(job)}?target=${encodeURIComponent(target)}`)).json()) as { state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string };

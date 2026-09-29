@@ -65,19 +65,28 @@ async def send(target: str = Form(...), items: str = Form(...), files: list[Uplo
 # the first Load Image takes the image, the first Load Image (as Mask) the mask, and a text node titled "formvis
 # prompt" the prompt. Queued with POST /prompt; followed with /queue and /history; results fetched with /view.
 PROMPT_TITLE = "formvis prompt"
+#: Load Image nodes titled "formvis reference" (or "formvis reference 1", "2" and on) take the reference layers (1.51.4).
+REFERENCE_TITLE = "formvis reference"
 
 
-def _fill(workflow: dict, image: str | None, mask: str | None, prompt: str | None) -> dict:
+def _title(n: dict) -> str:
+    return str(n.get("_meta", {}).get("title", "")).strip().lower()
+
+
+def _fill(workflow: dict, image: str | None, mask: str | None, prompt: str | None, references: list[str] | None = None) -> dict:
     """The workflow with formvis's inputs; refuses one that is not in API format, or has nothing to take the image."""
     if not isinstance(workflow, dict) or "nodes" in workflow or not workflow or not all(isinstance(n, dict) and "class_type" in n for n in workflow.values()):
         raise HTTPException(status_code=422, detail="This workflow is in ComfyUI's editor format. In ComfyUI, save it with Export (API) and choose that file.")
     nodes = sorted(workflow.items(), key=lambda kv: int(kv[0]) if str(kv[0]).isdigit() else 10**9)
-    loads = [n for _, n in nodes if n["class_type"] == "LoadImage"]
+    refs = [n for _, n in nodes if n["class_type"] == "LoadImage" and _title(n).startswith(REFERENCE_TITLE)]
+    loads = [n for _, n in nodes if n["class_type"] == "LoadImage" and not _title(n).startswith(REFERENCE_TITLE)]   # references are never the picture
     masks = [n for _, n in nodes if n["class_type"] == "LoadImageMask"]
     if image and loads:   # a workflow with no Load Image (text to image) runs on the prompt alone
         loads[0].setdefault("inputs", {})["image"] = image
     if mask and masks:
         masks[0].setdefault("inputs", {})["image"] = mask
+    for node, name in zip(sorted(refs, key=_title), references or []):   # "formvis reference", "... 1", "... 2" in order
+        node.setdefault("inputs", {})["image"] = name
     if prompt is not None:
         titled = [n for _, n in nodes if str(n.get("_meta", {}).get("title", "")).strip().lower() == PROMPT_TITLE and "text" in n.get("inputs", {})]
         for n in titled:
@@ -96,9 +105,10 @@ async def run(target: str = Form(...), workflow: str = Form(...), items: str = F
     _fill(json.loads(workflow), None, None, None)   # its format checked before anything is uploaded
     takes_image = any(n.get("class_type") == "LoadImage" for n in flow.values())
     uploaded = await send(target=target, items=items, files=files) if takes_image and files else {"files": []}   # text to image sends nothing
-    image = next((f["name"] for f in uploaded["files"] if f["kind"] != "mask"), None)
+    image = next((f["name"] for f in uploaded["files"] if f["kind"] not in ("mask", "reference")), None)
+    references = [f["name"] for f in uploaded["files"] if f["kind"] == "reference"]
     mask = next((f["name"] for f in uploaded["files"] if f["kind"] == "mask"), None)
-    flow = _fill(flow, image, mask, prompt)
+    flow = _fill(flow, image, mask, prompt, references)
     body = json.dumps({"prompt": flow, "client_id": "formvis"}).encode()
     try:
         with outbound.request(base + "/prompt", body, {"Content-Type": "application/json"}, "POST") as r:
@@ -116,7 +126,8 @@ async def run(target: str = Form(...), workflow: str = Form(...), items: str = F
     job = reply.get("prompt_id")
     if not job:
         raise HTTPException(status_code=502, detail="ComfyUI took the workflow but gave it no id.")
-    return {"job": job, "image": image, "mask": mask if mask and any(n["class_type"] == "LoadImageMask" for n in flow.values()) else None,
+    used = sum(1 for n in flow.values() if n.get("class_type") == "LoadImage" and _title(n).startswith(REFERENCE_TITLE))
+    return {"job": job, "references": min(used, len(references)), "image": image, "mask": mask if mask and any(n["class_type"] == "LoadImageMask" for n in flow.values()) else None,
             "prompt": prompt is not None and any(str(n.get("_meta", {}).get("title", "")).strip().lower() == PROMPT_TITLE for n in flow.values())}
 
 

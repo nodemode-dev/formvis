@@ -63,7 +63,7 @@ def test_a_workflow_is_filled_queued_followed_and_its_results_fetched(client, co
     base, seen = comfy
     r = _run(client, base, FLOW)
     assert r.status_code == 200, r.text
-    assert r.json() == {"job": "job1", "image": "formvis/Poster.png", "mask": "formvis/Poster mask.png", "prompt": True}
+    assert r.json() == {"job": "job1", "references": 0, "image": "formvis/Poster.png", "mask": "formvis/Poster mask.png", "prompt": True}
     sent = seen["prompts"][0]["prompt"]
     assert sent["10"]["inputs"]["image"] == "formvis/Poster.png" and sent["11"]["inputs"]["image"] == "formvis/Poster mask.png"
     assert sent["6"]["inputs"]["text"] == "a red kite" and sent["7"]["inputs"]["text"] == "blurry"            # only the titled one
@@ -93,3 +93,17 @@ def test_a_text_to_image_run_needs_no_files(client, comfy):
     flow = {k: v for k, v in FLOW.items() if k not in ("10", "11")}
     r = client.post("/api/comfyui/run", data={"target": base, "workflow": json.dumps(flow), "prompt": "a lighthouse"})
     assert r.status_code == 200 and r.json()["image"] is None and seen["prompts"][-1]["prompt"]["6"]["inputs"]["text"] == "a lighthouse"
+
+
+def test_reference_layers_fill_the_titled_nodes_in_order_and_never_the_picture(client, comfy):
+    base, seen = comfy
+    flow = {**FLOW, "30": {"class_type": "LoadImage", "inputs": {"image": "r.png"}, "_meta": {"title": "formvis reference 2"}},
+            "31": {"class_type": "LoadImage", "inputs": {"image": "r.png"}, "_meta": {"title": "formvis reference 1"}},
+            "5": {"class_type": "LoadImage", "inputs": {"image": "r.png"}, "_meta": {"title": "formvis reference"}}}   # numbered lowest: not the picture
+    items = [{"name": "Poster", "kind": "image"}, {"name": "Poster mask", "kind": "mask", "maskOf": 0}, {"name": "Style", "kind": "reference"}, {"name": "Palette", "kind": "reference"}, {"name": "Light", "kind": "reference"}]
+    r = client.post("/api/comfyui/run", data={"target": base, "workflow": json.dumps(flow), "items": json.dumps(items)},
+                    files=[("files", (f"{i}.png", png_bytes((8, 6)), "image/png")) for i in range(5)])
+    assert r.status_code == 200 and r.json()["references"] == 3
+    sent = seen["prompts"][-1]["prompt"]
+    assert sent["10"]["inputs"]["image"] == "formvis/Poster.png"                                   # the picture: the untitled Load Image
+    assert [sent[k]["inputs"]["image"] for k in ("5", "31", "30")] == ["formvis/Style.png", "formvis/Palette.png", "formvis/Light.png"]

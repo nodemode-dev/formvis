@@ -4832,7 +4832,7 @@ export class Engine {
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
 
-  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
+  retouch: { healMode: HealMode; cloneAligned: boolean; cloneSample: HealSample; cloneBlend: BlendMode; cloneFlow: number; smearMode: 'blur' | 'sharpen' | 'smudge' | 'liquify'; smearBlend: BlendMode; smearSampleAll: boolean; protectDetail: boolean; fingerPainting: boolean; cloneScale: number; cloneAngle: number; cloneFlipH: boolean; cloneFlipV: boolean; patchMode: 'normal' | 'contentAware'; patchFrom: 'source' | 'destination'; patchTransparent: boolean; patchDiffusion: number; patchStructure: number; patchColor: number; healDiffusion: number; healBlendMode: HealBlend; spotBlendMode: HealBlend; healSample: HealSample; spotSampleAll: boolean; patchSampleAll: boolean; healSource: 'sampled' | 'pattern'; healPattern: ID | null; patchPattern: ID | null } = { healMode: 'contentAware', cloneAligned: true, cloneSample: 'current', cloneBlend: 'normal', cloneFlow: 1, smearMode: 'blur', smearBlend: 'normal', smearSampleAll: false, protectDetail: true, fingerPainting: false, cloneScale: 100, cloneAngle: 0, cloneFlipH: false, cloneFlipV: false, patchMode: 'normal', patchFrom: 'source', patchTransparent: false, patchDiffusion: 7, patchStructure: 5, patchColor: 10, healDiffusion: 7, healBlendMode: 'normal', spotBlendMode: 'normal', healSample: 'current', spotSampleAll: false, patchSampleAll: false, healSource: 'sampled', healPattern: null, patchPattern: null };
 
   /** Clone Source: where a document point's source moves once scaled, rotated and flipped about `pivot` (the sample
    *  point), as a matrix taking source pixels to where they are painted from; null when all are neutral. Painting at
@@ -5013,11 +5013,13 @@ export class Engine {
         texture = { surface: t, dx: off.x, dy: off.y };
       }
     } else if (kind === 'blur') {
-      const sigma = clamp(this.brush.diameter / 10, 1.5, 30);
-      texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };
+      // Sample All Layers (1.51.4, the tool audit): the composite blurred, painted into the active layer, as Photoshop's.
+      const sigma = clamp(this.brush.diameter / 10, 1.5, 30), all = this.retouch.smearSampleAll && !onMask;
+      texture = { surface: onMask ? this.maskBlurSample(p, l0, sigma) : all ? blurred(renderDoc(this.work, p.doc), sigma) : this.layerSample(p, l0, sigma), dx: 0, dy: 0 };
     } else if (kind === 'sharpen') {
-      const src = this.layerSample(p, l0), W = src.width, H = src.height, out = createSurface(W, H);
-      ctxOf(out).putImageData(sharpenSample(ctxOf(src).getImageData(0, 0, W, H), clamp(this.brush.diameter / 40, 0.8, 4)), 0, 0);
+      const src = this.retouch.smearSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, l0), W = src.width, H = src.height, out = createSurface(W, H);
+      const before = ctxOf(src).getImageData(0, 0, W, H), sharp = sharpenSample(before, clamp(this.brush.diameter / 40, 0.8, 4));
+      ctxOf(out).putImageData(this.retouch.protectDetail ? withinNeighbours(before, sharp) : sharp, 0, 0);   // Protect Detail: no halos
       texture = { surface: out, dx: 0, dy: 0 };
     } else if (kind === 'dodge' || kind === 'burn' || kind === 'sponge') texture = { surface: this.toned(this.layerSample(p, l0), kind), dx: 0, dy: 0 };
     else if (kind === 'patternStamp') {
@@ -5042,7 +5044,8 @@ export class Engine {
     const white = { r: 255, g: 255, b: 255 };
     // The Clone Stamp's Flow and Mode (1.50.6, the tool audit), as Photoshop's bar; Lock Transparency keeps precedence.
     const style = kind === 'heal' || kind === 'remove' ? { ...this.brush, opacity: 0.45, color: white } : kind === 'clone' ? { ...this.brush, color: white, flow: this.retouch.cloneFlow } : { ...this.brush, color: white };
-    const op: GlobalCompositeOperation = pick.target !== 'mask' && l0.locks?.transparency ? 'source-atop' : kind === 'clone' && pick.target !== 'mask' ? compositeOp(this.retouch.cloneBlend) : 'source-over';
+    const op: GlobalCompositeOperation = pick.target !== 'mask' && l0.locks?.transparency ? 'source-atop' : pick.target === 'mask' ? 'source-over'
+      : kind === 'clone' ? compositeOp(this.retouch.cloneBlend) : kind === 'blur' || kind === 'sharpen' ? compositeOp(this.retouch.smearBlend) : 'source-over';
     const s = new PixelStroke(pick.raster, pick.local, style, op, p.selection, texture, pick.target === 'mask');
     // The Healing Brush heals from the same offset at release, in the layer's own pixels.
     let healFrom: Pt | undefined;
@@ -5339,13 +5342,22 @@ export class Engine {
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
     const l0 = p.activeLayer;
-    if (!this.paintable(l0) || !l0.raster) { this.notice('Select a layer with pixels first.'); return false; }
+    // An empty layer takes what Smudge samples from all layers (1.51.4), as Photoshop's; otherwise there is nothing to move.
+    const fromAll = mode === 'smudge' && this.retouch.smearSampleAll;
+    if (!this.paintable(l0) || (!l0.raster && !fromAll)) { this.notice('Select a layer with pixels first.'); return false; }
     if (this.smartLocked(p)) return false;
     if (p.maskTarget && l0.mask) { this.notice('Smudge and Liquify work on layer pixels. Click the layer thumbnail to target them.'); return false; }
     p.history.begin(mode === 'smudge' ? 'Smudge' : 'Liquify', p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const W = p.doc.width, H = p.doc.height;
-    const surface = this.layerSample(p, pick.layer);
+    // Smudge's Sample All Layers (the composite, written back only where the stroke passes) and Finger Painting (a dab
+    // of the foreground where the stroke starts, which it then drags), as Photoshop's (1.51.4).
+    const surface = mode === 'smudge' && this.retouch.smearSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, pick.layer);
+    if (mode === 'smudge' && this.retouch.fingerPainting) {
+      const c = ctxOf(surface), r = Math.max(1, this.brush.diameter / 2), g = c.createRadialGradient(pt.x, pt.y, r * Math.min(0.99, this.brush.hardness), pt.x, pt.y, r);
+      g.addColorStop(0, rgbCss(this.fg)); g.addColorStop(1, rgbCss(this.fg, 0));
+      c.fillStyle = g; c.beginPath(); c.arc(pt.x, pt.y, r, 0, Math.PI * 2); c.fill();
+    }
     const image = ctxOf(surface).getImageData(0, 0, W, H);
     const stroke = new WarpStroke(premultiply(image.data), W, H, mode, this.brush.diameter, this.brush.hardness, this.brush.opacity);
     this.warpState = { project: p, layerId: pick.layer.id, stroke, surface, image };
@@ -6210,5 +6222,29 @@ function gradientMethod<T extends { at: number; rgb: RGB; alpha: number }>(stops
     for (let k = 0; k < 24; k++) { const t = k / 24; out.push({ ...a, at: a.at + (b.at - a.at) * t, rgb: mix(a.rgb, b.rgb, t), alpha: a.alpha + (b.alpha - a.alpha) * t }); }
   }
   out.push(stops[stops.length - 1]);
+  return out;
+}
+
+/** A copy of `src` blurred by `sigma` pixels (Blur with Sample All Layers). */
+function blurred(src: Surface, sigma: number): Surface {
+  const out = createSurface(src.width, src.height), c = ctxOf(out);
+  c.filter = `blur(${sigma}px)`;
+  c.drawImage(src as CanvasImageSource, 0, 0);
+  c.filter = 'none';
+  return out;
+}
+
+/** Sharpen's Protect Detail: each sharpened pixel held within the range of its 3 by 3 neighbourhood in the original,
+ *  so edges gain contrast without the bright and dark halos and the speckle plain sharpening leaves. */
+function withinNeighbours(orig: ImageData, sharp: ImageData): ImageData {
+  const W = orig.width, H = orig.height, o = orig.data, s = sharp.data, out = new ImageData(new Uint8ClampedArray(s), W, H), d = out.data;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = (y * W + x) * 4;
+    for (let k = 0; k < 3; k++) {
+      let lo = 255, hi = 0;
+      for (let dy = -1; dy <= 1; dy++) { const Y = Math.min(H - 1, Math.max(0, y + dy)); for (let dx = -1; dx <= 1; dx++) { const v = o[(Y * W + Math.min(W - 1, Math.max(0, x + dx))) * 4 + k]; if (v < lo) lo = v; if (v > hi) hi = v; } }
+      d[i + k] = Math.max(lo, Math.min(hi, s[i + k]));
+    }
+  }
   return out;
 }
