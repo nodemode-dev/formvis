@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.52.3 · 2026-09-29
+
+### Added: formvis Help
+
+- Help > formvis Help (F1) opens the manual in the app: its contents, a search, and every section, from getting started to exporting, generating, ComfyUI, NodeMode, 3D models and the assistant.
+- Ask the manual a question: the sections most about it go to the language model set in Preferences > Plugins, which answers from them alone and names them; without a model, formvis names the sections to read.
+- The manual is also docs/MANUAL.md in the repository, one copy for both.
+
 ## 1.52.2 · 2026-09-29
 
 ### Added: the assistant

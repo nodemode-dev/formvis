@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## formvis Help · _v1.52.3 (docs/MANUAL.md new; frontend/src/help/markdown.ts and ui/panels/help.ts new, io/api.ts, app.ts, styles/dialogs.css, vite.config.ts)
+
+The manual, written fresh, one section per area, naming only shortcuts checked in the code; `sections`, `render` (elements and text nodes only, never innerHTML) and `relevant` (the sections most about a question); `HelpDialog` (Help > formvis Help, F1: contents, search, Ask with the top sections sent to the language model without tools); `api.assistantStep` taking whether to send tools; the dev server allowed to read ../docs. Removed from frontend:
+
+```text
+    { label: 'Help', items: ['shortcuts', 'copy-error-log', 'benchmark', 'about'] },
+  async assistantStep(messages: unknown[]): Promise<{ content: string; tool_calls: Array<{ id: string; name: string; arguments: string }> }> {
+    return (await (await request('/llm/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages }) })).json()) as { content: string; tool_calls: Array<{ id: string; name: string; arguments: string }> };
+```
+
+Nothing removed from src-tauri or backend.
+
 ## The assistant · _v1.52.2 (backend/app/services/llm.py, routers/llm.py; frontend/src/ui/panels/assistant.ts new, io/api.ts, app.ts, styles/dialogs.css)
 
 The engine's `llm.chat` and `POST /api/llm/chat` (one step of the conversation on the language model of Improve Prompt, the MCP catalogue attached as functions, the model's text and tool calls returned, the key kept); `AssistantPanel` (Window > Assistant, in the z-index registry's chat slot): each tool call run through `AgentBridge.run` as a card, its result sent back tied to the call, twelve steps at most a turn, Stop, and Undo This Turn by `history.steps.current`. Removed from frontend:
