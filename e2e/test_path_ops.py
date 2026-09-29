@@ -59,6 +59,9 @@ def test_operations_are_saved_and_go_to_psd(page):
     s = page.evaluate(SETUP)
     page.mouse.click(s[0] + 140 * s[2], s[1] + 80 * s[2])
     ops_bar(page).get_by_role("button", name="Intersect", exact=True).click()
+    # Wait for the operation to be on the path before saving (1.51.9: the same race the fill test had; under load the
+    # save could run first).
+    page.wait_for_function("() => (window.formvis.engine.workPath?.subpaths ?? []).some((s) => s.op === 'intersect')", timeout=5000)
     ops = page.evaluate("""async () => { const e = window.formvis.engine, io = await import('/src/io/project-io.ts');
       const { manifest, files } = await io.serialize(e.current.doc, e.current.activeId, e.pathsOf(e.current)); return JSON.stringify(manifest.paths || manifest); }""")
     assert '"op":"intersect"' in ops, ops[:300]

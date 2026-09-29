@@ -144,3 +144,6 @@
 .cv-improve { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 2px 0 6px; }
 .cv-improve select { max-width: 160px; }
 .cv-improve-note { font-size: 12px; }
+/* Place 3D Model (1.51.9): the preview on a checkerboard, as transparency shows elsewhere. */
+.cv-model3d-preview { display: block; width: 100%; height: auto; border-radius: 6px; margin-bottom: 6px;
+  background: repeating-conic-gradient(var(--surface-2, #2a2a2a) 0% 25%, var(--surface-1, #1f1f1f) 0% 50%) 50% / 16px 16px; }

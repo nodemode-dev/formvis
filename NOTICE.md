@@ -17,6 +17,7 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | --- | --- | --- |
 | Inter, JetBrains Mono (via @fontsource) | SIL OFL 1.1 fonts, MIT packaging | bundled font files |
 | ag-psd, with pako and base64-js | MIT (pako: MIT and Zlib) | layered PSD open and export, loaded on first use |
+| three.js | MIT | Place 3D Model (.glb and .gltf), loaded on first use |
 | tauri, tauri-plugin-shell, tauri-plugin-dialog, regex | Apache-2.0 or MIT | desktop shell |
 | fastapi, uvicorn, python-multipart | MIT, BSD-3-Clause, Apache-2.0 | engine |
 | Pillow | MIT-CMU | engine |
