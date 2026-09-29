@@ -4,7 +4,7 @@ import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { loadPrefs } from '../prefs';
 
-type What = 'flattened' | 'layer' | 'selection' | 'layers';
+export type What = 'flattened' | 'layer' | 'selection' | 'layers';
 
 /** File > Send to NodeMode (1.50.8, the owner's priority) and Send to ComfyUI (1.50.9): the flattened image, the
  *  active layer, the selection with its mask, or every layer, sent to the app at its address in Preferences > Plugins.
@@ -52,39 +52,7 @@ export class SendDialog extends Dialog {
       : `NodeMode is running at ${target}, but cannot place images on its canvas yet: they will go to its uploads.`);
   }
 
-  /** The chosen images, document-sized (a selection is its bounds), each with what NodeMode is told about it. */
-  private images(what: What): Array<{ surface: Surface; item: Record<string, unknown> }> {
-    const e = this.engine, p = e.current;
-    if (!p) return [];
-    const W = p.doc.width, H = p.doc.height, name = this.name.value.trim() || p.name;
-    const layerImage = (l: NonNullable<typeof p.activeLayer>): Surface => {
-      const s = createSurface(W, H);
-      if (l.raster) { const c = ctxOf(s); setMat(c, placement(l.transform, l.raster.width, l.raster.height)); c.drawImage(l.raster.canvas as CanvasImageSource, 0, 0); }
-      return s;
-    };
-    if (what === 'layer' && p.activeLayer) return [{ surface: layerImage(p.activeLayer), item: { name: `${name} - ${p.activeLayer.name}`, kind: 'layer', width: W, height: H } }];
-    if (what === 'layers') return p.doc.layers.filter((l) => l.raster && !l.isGroup && !l.adjustment).map((l) => ({ surface: layerImage(l), item: { name: `${name} - ${l.name}`, kind: 'layer', width: W, height: H } }));
-    const flat = e.flattened();
-    if (!flat) return [];
-    const sel = p.selection;
-    if (what !== 'selection' || !sel) return [{ surface: flat, item: { name, kind: 'image', width: W, height: H } }];
-    if (this.to === 'comfyui') {
-      // ComfyUI: the whole picture and a whole-picture mask (white where selected), for Load Image and Load Image (as Mask).
-      const mask = createSurface(W, H), mc = ctxOf(mask), m = mc.createImageData(W, H);
-      for (let i = 0; i < W * H; i++) m.data[i * 4 + 3] = 255;
-      for (let y = 0; y < sel.h; y++) for (let x = 0; x < sel.w; x++) { const X = x + sel.x, Y = y + sel.y; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const v = sel.data[y * sel.w + x], k = (Y * W + X) * 4; m.data[k] = m.data[k + 1] = m.data[k + 2] = v; }
-      mc.putImageData(m, 0, 0);
-      return [{ surface: flat, item: { name, kind: 'image', width: W, height: H } }, { surface: mask, item: { name: `${name} mask`, kind: 'mask', width: W, height: H, maskOf: 0 } }];
-    }
-    // The selection: the image within its bounds, cut to it, and its mask (white where selected).
-    const img = createSurface(sel.w, sel.h), mask = createSurface(sel.w, sel.h), ic = ctxOf(img), mc = ctxOf(mask);
-    ic.drawImage(flat as CanvasImageSource, -sel.x, -sel.y);
-    const px = ic.getImageData(0, 0, sel.w, sel.h), m = mc.createImageData(sel.w, sel.h);
-    for (let i = 0; i < sel.data.length; i++) { const v = sel.data[i]; px.data[i * 4 + 3] = Math.round((px.data[i * 4 + 3] * v) / 255); m.data[i * 4] = m.data[i * 4 + 1] = m.data[i * 4 + 2] = v; m.data[i * 4 + 3] = 255; }
-    ic.putImageData(px, 0, 0); mc.putImageData(m, 0, 0);
-    return [{ surface: img, item: { name: `${name} - selection`, kind: 'image', width: sel.w, height: sel.h } },
-      { surface: mask, item: { name: `${name} - selection mask`, kind: 'mask', width: sel.w, height: sel.h, maskOf: 0 } }];
-  }
+  private images(what: What): Array<{ surface: Surface; item: Record<string, unknown> }> { return imagesFor(this.engine, what, this.to, this.name.value); }
 
   private async send(): Promise<void> {
     if (this.sending) return;
@@ -109,7 +77,42 @@ export class SendDialog extends Dialog {
   }
 }
 
-async function toPng(s: Surface): Promise<Blob> {
+export async function toPng(s: Surface): Promise<Blob> {
   if ('convertToBlob' in s) return (s as OffscreenCanvas).convertToBlob({ type: 'image/png' });
   return new Promise((ok, no) => (s as HTMLCanvasElement).toBlob((b) => (b ? ok(b) : no(new Error('png'))), 'image/png'));
+}
+
+/** The chosen images, document-sized, each with what the app is told about it: a selection goes to NodeMode cut to its
+ *  bounds with its mask, to ComfyUI whole with a whole-picture mask (Send and Run ComfyUI Workflow alike). */
+export function imagesFor(e: Engine, what: What, to: 'nodemode' | 'comfyui', named: string): Array<{ surface: Surface; item: Record<string, unknown> }> {
+    const p = e.current;
+    if (!p) return [];
+    const W = p.doc.width, H = p.doc.height, name = named.trim() || p.name;
+    const layerImage = (l: NonNullable<typeof p.activeLayer>): Surface => {
+      const s = createSurface(W, H);
+      if (l.raster) { const c = ctxOf(s); setMat(c, placement(l.transform, l.raster.width, l.raster.height)); c.drawImage(l.raster.canvas as CanvasImageSource, 0, 0); }
+      return s;
+    };
+    if (what === 'layer' && p.activeLayer) return [{ surface: layerImage(p.activeLayer), item: { name: `${name} - ${p.activeLayer.name}`, kind: 'layer', width: W, height: H } }];
+    if (what === 'layers') return p.doc.layers.filter((l) => l.raster && !l.isGroup && !l.adjustment).map((l) => ({ surface: layerImage(l), item: { name: `${name} - ${l.name}`, kind: 'layer', width: W, height: H } }));
+    const flat = e.flattened();
+    if (!flat) return [];
+    const sel = p.selection;
+    if (what !== 'selection' || !sel) return [{ surface: flat, item: { name, kind: 'image', width: W, height: H } }];
+    if (to === 'comfyui') {
+      // ComfyUI: the whole picture and a whole-picture mask (white where selected), for Load Image and Load Image (as Mask).
+      const mask = createSurface(W, H), mc = ctxOf(mask), m = mc.createImageData(W, H);
+      for (let i = 0; i < W * H; i++) m.data[i * 4 + 3] = 255;
+      for (let y = 0; y < sel.h; y++) for (let x = 0; x < sel.w; x++) { const X = x + sel.x, Y = y + sel.y; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const v = sel.data[y * sel.w + x], k = (Y * W + X) * 4; m.data[k] = m.data[k + 1] = m.data[k + 2] = v; }
+      mc.putImageData(m, 0, 0);
+      return [{ surface: flat, item: { name, kind: 'image', width: W, height: H } }, { surface: mask, item: { name: `${name} mask`, kind: 'mask', width: W, height: H, maskOf: 0 } }];
+    }
+    // The selection: the image within its bounds, cut to it, and its mask (white where selected).
+    const img = createSurface(sel.w, sel.h), mask = createSurface(sel.w, sel.h), ic = ctxOf(img), mc = ctxOf(mask);
+    ic.drawImage(flat as CanvasImageSource, -sel.x, -sel.y);
+    const px = ic.getImageData(0, 0, sel.w, sel.h), m = mc.createImageData(sel.w, sel.h);
+    for (let i = 0; i < sel.data.length; i++) { const v = sel.data[i]; px.data[i * 4 + 3] = Math.round((px.data[i * 4 + 3] * v) / 255); m.data[i * 4] = m.data[i * 4 + 1] = m.data[i * 4 + 2] = v; m.data[i * 4 + 3] = 255; }
+    ic.putImageData(px, 0, 0); mc.putImageData(m, 0, 0);
+    return [{ surface: img, item: { name: `${name} - selection`, kind: 'image', width: sel.w, height: sel.h } },
+      { surface: mask, item: { name: `${name} - selection mask`, kind: 'mask', width: sel.w, height: sel.h, maskOf: 0 } }];
 }

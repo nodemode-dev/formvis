@@ -40,6 +40,21 @@ export const api = {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
   },
   /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
+  /** Run ComfyUI Workflow (1.51.1): uploads the inputs, fills the workflow and queues it. */
+  async comfyuiRun(target: string, workflow: string, items: unknown[], parts: FilePart[], prompt: string | null): Promise<{ job: string; image: string | null; mask: string | null; prompt: boolean }> {
+    const res = await request('/comfyui/run', { method: 'POST', body: form({ target, workflow, items: JSON.stringify(items), ...(prompt !== null ? { prompt } : {}) }, parts) });
+    return (await res.json()) as { job: string; image: string | null; mask: string | null; prompt: boolean };
+  },
+  async comfyuiJob(job: string, target: string): Promise<{ state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string }> {
+    return (await (await request(`/comfyui/job/${encodeURIComponent(job)}?target=${encodeURIComponent(target)}`)).json()) as { state: 'queued' | 'running' | 'done' | 'failed'; ahead?: number; images?: Array<{ filename: string; subfolder: string }>; detail?: string };
+  },
+  async comfyuiImage(target: string, filename: string, subfolder: string): Promise<Blob> {
+    return (await request(`/comfyui/image?target=${encodeURIComponent(target)}&filename=${encodeURIComponent(filename)}&subfolder=${encodeURIComponent(subfolder)}`)).blob();
+  },
+  async comfyuiCancel(job: string, target: string): Promise<void> {
+    try { await request(`/comfyui/cancel/${encodeURIComponent(job)}`, { method: 'POST', body: form({ target }) }); } catch { /* it may have finished */ }
+  },
+
   /** Send to ComfyUI (1.50.9): whether ComfyUI answers at `target`, and its version. */
   async comfyuiStatus(target: string): Promise<{ running: boolean; version?: string; detail?: string } | null> {
     try { return (await (await request(`/comfyui/status?target=${encodeURIComponent(target)}`)).json()) as { running: boolean; version?: string; detail?: string }; } catch { return null; }
