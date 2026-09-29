@@ -141,6 +141,18 @@ ask it questions.
 - Either way, every change is an undoable step, anything that costs money asks you first, your keys are never shown,
   and only this computer can connect.
 
+## Plugins
+
+- Plugins > Manage Plugins adds a plugin (a JavaScript file), turns plugins on and off, and removes them. Their
+  commands appear in the Plugins menu. Plugins are kept in the plugins folder of formvis's data folder.
+- A plugin runs in a sandbox: it can change the open document only through formvis's tools, each change undoable,
+  and anything that costs money still asks you. It cannot see your keys, your files or the rest of formvis. Add only
+  plugins you trust.
+- Writing one: call `formvis.register({ name, commands: [{ id, label, run }] })`. Inside `run`:
+  `await formvis.call(tool, args)` uses a tool (the same ones as the assistant: get_document, select, add_layer, fill
+  and the rest); `await formvis.getPixels()` gives the active layer at the document's size as `{ width, height, data }`;
+  `await formvis.putPixels(image, 'replace')` puts pixels back into that layer, or with `'new-layer'` into a new one.
+
 ## Keyboard shortcuts
 
 - Help > Keyboard Shortcuts lists every shortcut. Most follow Photoshop's: tools by their letters, and Ctrl (Cmd on a

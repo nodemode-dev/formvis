@@ -75,6 +75,8 @@ import { AgentConfirmDialog } from './ui/panels/agent-confirm';
 import { AgentBridge } from './automation/agent-bridge';
 import { AssistantPanel } from './ui/panels/assistant';
 import { HelpDialog } from './ui/panels/help';
+import { PluginHost } from './plugins/host';
+import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -928,6 +930,10 @@ export function startApp(): void {
   // The assistant (1.52.2) acts through the same bridge, whether or not outside agents are allowed.
   const assistant = new AssistantPanel(engine, agents);
   const help = new HelpDialog();
+  // Plugins (1.52.6): the plugins folder's plugins, each in a sandboxed frame; their commands in the Plugins menu.
+  const pluginHost = new PluginHost(engine, agents, commands, (t, kind) => toast(t, kind ?? 'info'));
+  const pluginsDialog = new PluginsDialog(pluginHost, (title, text, ok) => confirmAction(title, text, ok));
+  void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
   model3dInput.addEventListener('change', () => { const f = model3dInput.files?.[0]; model3dInput.value = ''; if (f) void model3d.load(f); });
@@ -979,6 +985,7 @@ export function startApp(): void {
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
     { id: 'assistant', label: 'Assistant', run: () => assistant.toggle() },   // 1.52.2
     { id: 'help', label: 'formvis Help', keys: ['F1'], run: () => help.show() },   // 1.52.3, as Photoshop's F1
+    { id: 'manage-plugins', label: 'Manage Plugins...', run: () => void pluginsDialog.show() },   // 1.52.6
     { id: 'place-3d', label: 'Place 3D Model...', enabled: has, run: () => model3dInput.click() },   // 1.51.9
     { id: 'export-ora', label: 'Export OpenRaster...', enabled: has, run: () => void exportOra() },   // 1.51.7
     { id: 'export-psb', label: 'Export PSB (Large Document)...', enabled: has, run: () => void exportPsd(true) },
@@ -1233,6 +1240,7 @@ export function startApp(): void {
     { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
+    { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: ['assistant', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
     { label: 'Help', items: ['help', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];

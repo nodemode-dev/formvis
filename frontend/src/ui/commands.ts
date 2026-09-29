@@ -52,6 +52,9 @@ export class Commands {
     }
   }
 
+  /** Takes a command away (1.52.6: a plugin turned off or removed). */
+  remove(id: string): void { const c = this.map.get(id); if (!c) return; this.map.delete(id); for (const k of c.keys ?? []) if (this.byKey.get(k) === c) this.byKey.delete(k); }
+
   get(id: string): Command | undefined { return this.map.get(id); }
   all(): Command[] { return [...this.map.values()]; }
   label(cmd: Command): string { return typeof cmd.label === 'function' ? cmd.label() : cmd.label; }

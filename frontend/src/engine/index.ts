@@ -4340,6 +4340,17 @@ export class Engine {
     return s;
   }
 
+  /** A pixel layer's pixels replaced by a document-sized image, one step (1.52.6, for plugins). */
+  replaceLayerPixels(id: ID, image: ImageData, undoName: string): boolean {
+    const p = this.current, l = p?.layer(id);
+    if (!p || !l || l.isGroup || l.adjustment || l.text || l.shape || l.smart) { this.notice('Only a pixel layer can take new pixels.'); return false; }
+    if (image.width !== p.doc.width || image.height !== p.doc.height) { this.notice('The image must be the size of the document.'); return false; }
+    const r = new Raster(image.width, image.height);
+    r.ctx.putImageData(image, 0, 0);
+    r.touch();
+    return this.edit(undoName, (pp) => { pp.updateLayer(id, { raster: r, transform: docTransform(image.width, image.height) }); return true; });
+  }
+
   addAdjustmentLayer(kind: AdjustmentKind): ID | null {
     let created: ID | null = null;
     this.edit(`New ${ADJUSTMENT_LABELS[kind]} Layer`, (p) => {
