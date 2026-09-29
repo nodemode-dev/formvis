@@ -6,31 +6,25 @@ sends rather than the page, as a page cannot post to another app's address unles
 
 import json
 import urllib.error
-import urllib.parse
-import urllib.request
-import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+
+from app.services import outbound
 
 router = APIRouter(prefix="/api/nodemode", tags=["nodemode"])
 TIMEOUT = 20
 
 
 def _base(target: str) -> str:
-    """NodeMode's address, as given: http or https with a host, nothing else."""
-    parsed = urllib.parse.urlparse(target.strip())
-    if parsed.scheme not in ("http", "https") or not parsed.netloc:
-        raise HTTPException(status_code=422, detail="NodeMode's address must be an http:// or https:// address, such as http://localhost:8000.")
-    return f"{parsed.scheme}://{parsed.netloc}{parsed.path.rstrip('/')}"
+    return outbound.base(target, "NodeMode", "http://localhost:8000")
 
 
 def _request(url: str, data: bytes | None = None, headers: dict | None = None, method: str = "GET", timeout: float = TIMEOUT):
-    req = urllib.request.Request(url, data=data, headers=headers or {}, method=method)
-    return urllib.request.urlopen(req, timeout=timeout)
+    return outbound.request(url, data, headers, method, timeout)
 
 
 def _unreachable(base: str, exc: Exception) -> HTTPException:
-    return HTTPException(status_code=502, detail=f"NodeMode is not answering at {base}. Start NodeMode, or set its address in Preferences > Plugins. ({exc.__class__.__name__})")
+    return outbound.unreachable("NodeMode", base, "Preferences > Plugins", exc)
 
 
 @router.get("/status")
@@ -56,9 +50,8 @@ def status(target: str) -> dict:
 
 def _upload(base: str, name: str, blob: bytes) -> str:
     """One image through NodeMode's upload; its address on NodeMode."""
-    boundary = uuid.uuid4().hex
-    body = (f"--{boundary}\r\nContent-Disposition: form-data; name=\"file\"; filename=\"{name}\"\r\nContent-Type: image/png\r\n\r\n").encode() + blob + f"\r\n--{boundary}--\r\n".encode()
-    with _request(base + "/api/upload", body, {"Content-Type": f"multipart/form-data; boundary={boundary}"}, "POST") as r:
+    body, kind = outbound.multipart("file", name, blob)
+    with _request(base + "/api/upload", body, {"Content-Type": kind}, "POST") as r:
         reply = json.loads(r.read() or b"{}")
     url = reply.get("url") or reply.get("path")
     if not url:

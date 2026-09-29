@@ -40,6 +40,17 @@ export const api = {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
   },
   /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
+  /** Send to ComfyUI (1.50.9): whether ComfyUI answers at `target`, and its version. */
+  async comfyuiStatus(target: string): Promise<{ running: boolean; version?: string; detail?: string } | null> {
+    try { return (await (await request(`/comfyui/status?target=${encodeURIComponent(target)}`)).json()) as { running: boolean; version?: string; detail?: string }; } catch { return null; }
+  },
+
+  /** Uploads `parts` into ComfyUI's input folder through the engine; the names its Load Image lists. */
+  async sendToComfyUI(target: string, items: unknown[], parts: FilePart[]): Promise<{ files: Array<{ name: string; kind: string }> }> {
+    const res = await request('/comfyui/send', { method: 'POST', body: form({ target, items: JSON.stringify(items) }, parts) });
+    return (await res.json()) as { files: Array<{ name: string; kind: string }> };
+  },
+
   /** Send to NodeMode (1.50.8): whether NodeMode answers at `target` and has formvis's receiver. */
   async nodemodeStatus(target: string): Promise<{ running: boolean; receiver: boolean; detail?: string } | null> {
     try { return (await (await request(`/nodemode/status?target=${encodeURIComponent(target)}`)).json()) as { running: boolean; receiver: boolean; detail?: string }; } catch { return null; }

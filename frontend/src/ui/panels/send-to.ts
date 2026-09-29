@@ -6,17 +6,18 @@ import { loadPrefs } from '../prefs';
 
 type What = 'flattened' | 'layer' | 'selection' | 'layers';
 
-/** File > Send to NodeMode (1.50.8, the owner's priority): the flattened image, the active layer, the selection (its
- *  image and its mask) or every layer, sent to the NodeMode at the address in Preferences > Plugins. The status line
- *  says whether NodeMode answers and whether it can place what arrives on its canvas. */
-export class SendToNodeModeDialog extends Dialog {
+/** File > Send to NodeMode (1.50.8, the owner's priority) and Send to ComfyUI (1.50.9): the flattened image, the
+ *  active layer, the selection with its mask, or every layer, sent to the app at its address in Preferences > Plugins.
+ *  A selection goes to NodeMode cut to its bounds; to ComfyUI whole, with a whole-picture mask, as inpainting needs
+ *  the picture around it. The status line says whether the app answers. */
+export class SendDialog extends Dialog {
   private readonly what = el<HTMLSelectElement>('<select class="cv-input" aria-label="Send"><option value="flattened">Flattened image</option><option value="layer">Active layer</option><option value="selection">Selection (image and mask)</option><option value="layers">Every layer</option></select>');
   private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Name" maxlength="120">');
   private readonly status = el('<p class="cv-note cv-send-status" role="status"></p>');
   private sending = false;
 
-  constructor(private readonly engine: Engine, private readonly toast: (text: string) => void) {
-    super('Send to NodeMode', 380);
+  constructor(private readonly engine: Engine, private readonly toast: (text: string) => void, private readonly to: 'nodemode' | 'comfyui' = 'nodemode') {
+    super(to === 'comfyui' ? 'Send to ComfyUI' : 'Send to NodeMode', 380);
     const row = (label: string, c: HTMLElement): HTMLElement => { const r = el(`<label class="cv-dialog-row"><span>${label}</span></label>`); r.append(c); return r; };
     this.body.append(row('Send', this.what), row('Name', this.name), this.status);
     this.button('Cancel', 'ghost', () => this.close());
@@ -33,8 +34,16 @@ export class SendToNodeModeDialog extends Dialog {
     void this.check();
   }
 
+  private get target(): string { const p = loadPrefs(); return this.to === 'comfyui' ? p.comfyuiUrl : p.nodemodeUrl; }
+
   private async check(): Promise<void> {
-    const target = loadPrefs().nodemodeUrl;
+    const target = this.target;
+    if (this.to === 'comfyui') {
+      setText(this.status, `Checking ComfyUI at ${target}...`);
+      const c = await api.comfyuiStatus(target);
+      setText(this.status, !c ? 'The formvis engine is offline: sending to ComfyUI needs it (./formvis boot).' : c.running ? `ComfyUI${c.version ? ` ${c.version}` : ''} is running at ${target}. Images go to its input folder, under formvis.` : `ComfyUI is not answering at ${target}. Start it, or set its address in Preferences > Plugins.`);
+      return;
+    }
     setText(this.status, `Checking NodeMode at ${target}...`);
     const s = await api.nodemodeStatus(target);
     setText(this.status, !s ? 'The formvis engine is offline: sending to NodeMode needs it (./formvis boot).'
@@ -59,6 +68,14 @@ export class SendToNodeModeDialog extends Dialog {
     if (!flat) return [];
     const sel = p.selection;
     if (what !== 'selection' || !sel) return [{ surface: flat, item: { name, kind: 'image', width: W, height: H } }];
+    if (this.to === 'comfyui') {
+      // ComfyUI: the whole picture and a whole-picture mask (white where selected), for Load Image and Load Image (as Mask).
+      const mask = createSurface(W, H), mc = ctxOf(mask), m = mc.createImageData(W, H);
+      for (let i = 0; i < W * H; i++) m.data[i * 4 + 3] = 255;
+      for (let y = 0; y < sel.h; y++) for (let x = 0; x < sel.w; x++) { const X = x + sel.x, Y = y + sel.y; if (X < 0 || Y < 0 || X >= W || Y >= H) continue; const v = sel.data[y * sel.w + x], k = (Y * W + X) * 4; m.data[k] = m.data[k + 1] = m.data[k + 2] = v; }
+      mc.putImageData(m, 0, 0);
+      return [{ surface: flat, item: { name, kind: 'image', width: W, height: H } }, { surface: mask, item: { name: `${name} mask`, kind: 'mask', width: W, height: H, maskOf: 0 } }];
+    }
     // The selection: the image within its bounds, cut to it, and its mask (white where selected).
     const img = createSurface(sel.w, sel.h), mask = createSurface(sel.w, sel.h), ic = ctxOf(img), mc = ctxOf(mask);
     ic.drawImage(flat as CanvasImageSource, -sel.x, -sel.y);
@@ -74,14 +91,20 @@ export class SendToNodeModeDialog extends Dialog {
     const imgs = this.images(this.what.value as What);
     if (!imgs.length) { setText(this.status, 'There is nothing to send: choose another option.'); return; }
     this.sending = true;
-    setText(this.status, `Sending ${imgs.length === 1 ? 'the image' : `${imgs.length} images`} to NodeMode...`);
+    setText(this.status, `Sending ${imgs.length === 1 ? 'the image' : `${imgs.length} images`} to ${this.to === 'comfyui' ? 'ComfyUI' : 'NodeMode'}...`);
     try {
       const parts = await Promise.all(imgs.map(async (x, i) => ({ name: `${i}.png`, blob: await toPng(x.surface) })));
-      const r = await api.sendToNodeMode(loadPrefs().nodemodeUrl, this.name.value.trim() || 'formvis', imgs.map((x) => x.item), parts);
+      if (this.to === 'comfyui') {
+        const c = await api.sendToComfyUI(this.target, imgs.map((x) => x.item), parts);
+        this.close();
+        this.toast(`Sent to ComfyUI: ${c.files.map((f) => f.name).join(', ')}. Pick ${c.files.length === 1 ? 'it' : 'them'} in Load Image${c.files.some((f) => f.kind === 'mask') ? ' (the mask in Load Image (as Mask))' : ''}.`);
+        return;
+      }
+      const r = await api.sendToNodeMode(this.target, this.name.value.trim() || 'formvis', imgs.map((x) => x.item), parts);
       this.close();
       this.toast(r.placed ? `Sent to NodeMode: ${imgs.length === 1 ? 'one image' : `${imgs.length} images`} on its canvas.` : r.detail ?? 'Uploaded to NodeMode.');
     } catch (err) {
-      setText(this.status, err instanceof ApiError ? err.message : 'Sending to NodeMode failed: the formvis engine is offline (./formvis boot).');
+      setText(this.status, err instanceof ApiError ? err.message : `Sending to ${this.to === 'comfyui' ? 'ComfyUI' : 'NodeMode'} failed: the formvis engine is offline (./formvis boot).`);
     } finally { this.sending = false; }
   }
 }

@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app.core import config
-from app.routers import generative, io, ops, projects, system, nodemode
+from app.routers import comfyui, generative, io, ops, projects, system, nodemode
 from app.services import sessions
 
 
@@ -23,6 +23,7 @@ app.include_router(projects.router, prefix="/api/projects")
 app.include_router(ops.router, prefix="/api/ops")
 app.include_router(generative.router, prefix="/api/generative")
 app.include_router(nodemode.router)   # Send to NodeMode, standalone (1.50.8); its prefix is its own
+app.include_router(comfyui.router)   # Send to ComfyUI (1.50.9); its prefix is its own
 
 _dist = config.dist_dir()
 if _dist is not None:

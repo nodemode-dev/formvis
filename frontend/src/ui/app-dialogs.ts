@@ -396,7 +396,11 @@ export class SettingsDialog extends Dialog {
     this.nodemodeUrl.addEventListener('change', () => { const v = this.nodemodeUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ nodemodeUrl: v }); void this.checkNodeMode(); } else setText(this.nodemodeNote, 'An address starts with http:// or https://, such as http://localhost:8000.'); });
     const nm = el('<label class="cv-dialog-row"><span>NodeMode address</span></label>');
     nm.append(this.nodemodeUrl, this.nodemodeCheck);
-    add('Plugins', nm, this.nodemodeNote);
+    this.comfyuiCheck.addEventListener('click', () => void this.checkComfyUI());
+    this.comfyuiUrl.addEventListener('change', () => { const v = this.comfyuiUrl.value.trim(); if (/^https?:\/\/./.test(v)) { this.change({ comfyuiUrl: v }); void this.checkComfyUI(); } else setText(this.comfyuiNote, 'An address starts with http:// or https://, such as http://127.0.0.1:8188.'); });
+    const cu = el('<label class="cv-dialog-row"><span>ComfyUI address</span></label>');
+    cu.append(this.comfyuiUrl, this.comfyuiCheck);
+    add('Plugins', nm, this.nodemodeNote, cu, this.comfyuiNote);
     const wrap = el('<div class="cv-prefs"></div>');
     wrap.append(this.nav, pages);
     this.body.appendChild(wrap);
@@ -472,6 +476,17 @@ export class SettingsDialog extends Dialog {
   private readonly nodemodeCheck = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Check</button>');
   private readonly nodemodeNote = el('<p class="cv-note" role="status">File > Send to NodeMode sends here. Embedded in NodeMode, formvis sends to the NodeMode around it.</p>');
 
+  private readonly comfyuiUrl = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="ComfyUI address" spellcheck="false">');
+  private readonly comfyuiCheck = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Check</button>');
+  private readonly comfyuiNote = el('<p class="cv-note" role="status">File > Send to ComfyUI sends here, into its input folder.</p>');
+
+  private async checkComfyUI(): Promise<void> {
+    const target = this.comfyuiUrl.value.trim();
+    setText(this.comfyuiNote, `Checking ${target}...`);
+    const c = await api.comfyuiStatus(target);
+    setText(this.comfyuiNote, !c ? 'The formvis engine is offline: sending to ComfyUI needs it.' : c.running ? `ComfyUI${c.version ? ` ${c.version}` : ''} is running at ${target}.` : `ComfyUI is not answering at ${target}.`);
+  }
+
   private async checkNodeMode(): Promise<void> {
     const target = this.nodemodeUrl.value.trim();
     setText(this.nodemodeNote, `Checking ${target}...`);
@@ -487,6 +502,7 @@ export class SettingsDialog extends Dialog {
 
   private sync(): void {
     if (document.activeElement !== this.nodemodeUrl) setValue(this.nodemodeUrl, this.prefs.nodemodeUrl);
+    if (document.activeElement !== this.comfyuiUrl) setValue(this.comfyuiUrl, this.prefs.comfyuiUrl);
     const c = readChoice();
     setValue(this.accent, c.accentColor);
     for (const b of Array.from(this.grid.querySelectorAll<HTMLElement>('[data-theme-id]'))) {

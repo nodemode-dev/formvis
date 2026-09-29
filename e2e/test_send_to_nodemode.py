@@ -54,7 +54,7 @@ def test_send_the_selection_and_every_layer(page, nodemode):
       e.fg = { r: 200, g: 30, b: 30 }; e.applySelection(E.SelectionMask.cropped(10, 10, 40, 30, new Uint8Array(1200).fill(255)), 'replace', 's'); }""")
     page.evaluate("window.formvis.commands.run('send-nodemode')")
     page.locator(DLG, has_text="Send to NodeMode").wait_for()
-    page.wait_for_function("(u) => document.querySelector('.cv-send-status').textContent.includes('running at ' + u)", arg=url)
+    page.wait_for_function("(u) => document.querySelector('.cv-scrim:not([hidden]) .cv-send-status').textContent.includes('running at ' + u)", arg=url)
     page.locator(f"{DLG} .cv-dialog-foot button", has_text="Send").click()
     page.wait_for_function("() => [...document.querySelectorAll('.cv-toast')].some((t) => t.textContent.includes('Sent to NodeMode'))")
     a = seen["announced"][-1]
@@ -75,6 +75,6 @@ def test_nodemode_not_running_is_said(page):
     set_address(page, "http://127.0.0.1:9")
     page.keyboard.press("Escape")
     page.evaluate("window.formvis.engine.newDocument(40, 30, 'X', 'white'); window.formvis.commands.run('send-nodemode')")
-    page.wait_for_function("() => document.querySelector('.cv-send-status').textContent.includes('not answering')")
+    page.wait_for_function("() => document.querySelector('.cv-scrim:not([hidden]) .cv-send-status').textContent.includes('not answering')")
     page.keyboard.press("Escape")
     set_address(page, "http://localhost:8000"); page.keyboard.press("Escape")
