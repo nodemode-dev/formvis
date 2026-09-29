@@ -1,7 +1,9 @@
 import { SPACES, type SpaceId } from '../engine/icc';
 
 export type ExportFormat = 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf';
-export interface ExportSettings { format: ExportFormat; quality: number; scale: number; profile?: SpaceId }
+/** size (1.51.8): by Scale, or Fit Within boxW by boxH keeping the shape, or a Frame of exactly boxW by boxH with the
+ *  picture centred; aiLabel: the IPTC Digital Source Type written into PNG, JPEG and WebP. */
+export interface ExportSettings { format: ExportFormat; quality: number; scale: number; profile?: SpaceId; size?: 'scale' | 'fit' | 'frame'; boxW?: number; boxH?: number; aiLabel?: 'none' | 'generated' | 'edited' }
 export interface ExportPreset extends ExportSettings { id: string; name: string; builtin: boolean }
 
 export const EXPORT_FORMATS: ReadonlyArray<readonly [ExportFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['webp', 'WebP'], ['avif', 'AVIF'], ['tiff', 'TIFF'], ['pdf', 'PDF']];
@@ -25,7 +27,17 @@ export const clampSettings = (s: ExportSettings): ExportSettings => ({
   quality: Math.round(Math.min(100, Math.max(1, Number.isFinite(s.quality) ? s.quality : 90))),
   scale: Math.round(Math.min(1000, Math.max(1, Number.isFinite(s.scale) ? s.scale : 100))),
   ...(s.profile && s.profile in SPACES && s.profile !== 'srgb' ? { profile: s.profile } : {}),
+  ...(s.size === 'fit' || s.size === 'frame' ? { size: s.size, boxW: box(s.boxW), boxH: box(s.boxH) } : {}),
+  ...(s.aiLabel === 'generated' || s.aiLabel === 'edited' ? { aiLabel: s.aiLabel } : {}),
 });
+const box = (v: unknown): number => Math.round(Math.min(30000, Math.max(1, Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : 1080)));
+
+/** Where the picture goes in the exported image: the image's size, and the rectangle the picture is drawn into. */
+export function exportLayout(w: number, h: number, s: ExportSettings): { w: number; h: number; dx: number; dy: number; dw: number; dh: number } {
+  if (s.size !== 'fit' && s.size !== 'frame') { const z = exportSize(w, h, s.scale); return { ...z, dx: 0, dy: 0, dw: z.w, dh: z.h }; }
+  const W = box(s.boxW), H = box(s.boxH), k = Math.min(W / w, H / h), dw = Math.max(1, Math.round(w * k)), dh = Math.max(1, Math.round(h * k));
+  return s.size === 'fit' ? { w: dw, h: dh, dx: 0, dy: 0, dw, dh } : { w: W, h: H, dx: Math.floor((W - dw) / 2), dy: Math.floor((H - dh) / 2), dw, dh };
+}
 
 /** Saved presets read back from storage: well-formed entries only, values clamped, never marked built-in. */
 export function presetsFromStorage(raw: string | null): ExportPreset[] {
@@ -35,7 +47,7 @@ export function presetsFromStorage(raw: string | null): ExportPreset[] {
   return v.flatMap((r) => {
     const o = r && typeof r === 'object' ? (r as Record<string, unknown>) : null;
     if (!o || typeof o.id !== 'string' || typeof o.name !== 'string' || !o.name.trim()) return [];
-    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale), profile: o.profile as SpaceId | undefined });
+    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale), profile: o.profile as SpaceId | undefined, size: o.size as ExportSettings['size'], boxW: Number(o.boxW), boxH: Number(o.boxH), aiLabel: o.aiLabel as ExportSettings['aiLabel'] });
     return [{ id: o.id, name: o.name.trim().slice(0, 60), ...s, builtin: false }];
   });
 }

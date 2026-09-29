@@ -14,7 +14,7 @@ import { pickLinkSource, placeLinked, relink, updateLinked } from './io/links';
 import { importAbr, loadImportedBrushes } from './io/brush-library';
 import { SPACES, convertPixels, iccProfile } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
-import { ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
+import { exportLayout, ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery } from './io/recovery';
 import { TrimDialog } from './ui/panels/trim-dialog';
@@ -34,6 +34,7 @@ import { ActionsDialog, BatchDialog } from './ui/panels/actions-dialogs';
 import { zipFiles } from './io/zip';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
+import { withAiLabel } from './io/ai-label';
 import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { BrushSettingsDialog } from './ui/panels/brush-settings';
@@ -520,10 +521,11 @@ export function startApp(): void {
       try {
         const base = await engine.exportBlob('image/png');
         if (!base) return;
-        const bmp = await createImageBitmap(base), z = exportSize(bmp.width, bmp.height, s.scale), c = createSurface(z.w, z.h), x = ctxOf(c);
+        // By Scale, Fit Within or a Frame (1.51.8): a frame's margins are transparent, or white in JPEG.
+        const bmp = await createImageBitmap(base), L = exportLayout(bmp.width, bmp.height, s), z = { w: L.w, h: L.h }, c = createSurface(z.w, z.h), x = ctxOf(c);
         if (s.format === 'jpg') { x.fillStyle = '#ffffff'; x.fillRect(0, 0, z.w, z.h); }
         x.imageSmoothingQuality = 'high';
-        x.drawImage(bmp, 0, 0, z.w, z.h);
+        x.drawImage(bmp, L.dx, L.dy, L.dw, L.dh);
         bmp.close();
         // Colour: formvis works in sRGB; another profile converts the pixels, and every format but PDF carries the
         // profile (WebP through the engine when it is not sRGB, as the browser's WebP encoder cannot embed one).
@@ -534,7 +536,8 @@ export function startApp(): void {
           : s.format === 'png' ? await embedPng(await toBlob(c, 'image/png'), icc, SPACES[space].label)
           : s.format === 'jpg' ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), icc)
           : await toBlob(c, 'image/webp', s.quality / 100);
-        await deliver(blob, exportName(p.name, s));
+        // The AI label (1.51.8), in PNG, JPEG and WebP.
+        await deliver(s.aiLabel && s.aiLabel !== 'none' ? await withAiLabel(blob, s.format, s.aiLabel) : blob, exportName(p.name, s));
       } catch (err) { toast(message(err), 'error'); }
     });
   }
