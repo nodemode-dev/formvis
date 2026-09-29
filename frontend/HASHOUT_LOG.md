@@ -2,6 +2,30 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Local image generation from formcut · _v1.52.9 (backend/app/localgen/ new: formcut's jobs, durable, processes, krea2, klein, local_runner, loras, checkpoints, content_filter, local_models, local_diffusion, prompt_data and generate, with model_manager built from formcut's; paths, media, orchestration and providers standing in for formcut's; main.py; frontend/src/io/local-gen.ts and ui/panels/local-models.ts new, generative-dialog.ts, generate-image.ts, app-dialogs.ts, app.ts, styles/dialogs.css; NOTICE.md; docs/MANUAL.md; requirements.txt)
+
+formcut's local generation adapted: its folders pointed at formvis's; its media library replaced by pictures kept, fetched and removed (`media.ingest_path`, `/api/generate/pictures`); `_source_image` taking the picture the window sends; the video and sound generators and the preview-cache release left out; fal declared as a provider (formcut declares none); the event channel a no-op. The window: `localModels`, `runLocal`, `localFill`; Krea 2 in Generative Fill and Expand with Influence; local models in Generate Image; the notice and warning shown; `LocalModelsSection`. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    add('Plugins', this.keysNote, nm, this.nodemodeNote, cu, this.comfyuiNote, lm, tp, ag, agNote);
+    this.model.replaceChildren(el('<option value="fal">FLUX1.1 [pro] (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = r.name; o.textContent = `${r.name} (ComfyUI)`; return o; }));
+      if (choice === 'fal') {
+    this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }));
+    const s = this.status;
+export const VERSION = '1.52.8';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.52.8"
+version = "1.52.8"
+version = "1.52.8"
+ "version": "1.52.8",
+```
+
+Nothing removed from src-tauri.
+
 ## The Pen and the shape stroke · _v1.52.8 (engine/types.ts, engine/index.ts; extensions/tools/pen.ts, shape.ts; docs/MANUAL.md)
 
 `ShapeStroke.dash` and `align`; `strokeShape` (solid, dashed or dotted; centred, inside by clipping, outside with the shape cut away; an open path centred) in `renderShape` and Pixels mode, a shape's padding following the alignment; `shapeSettings.strokeDash` and `strokeAlign` with the Shape bar's Stroke Type and Align; `Engine.penSettings` (mode, autoAddDelete) and `shapeFromPath`, the Pen's Mode and Auto Add/Delete. Removed lines taken after the version edit. Removed from frontend:

@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.52.9 · 2026-09-29
+
+### Added: local image generation, from formcut
+
+- Krea 2 Turbo and FLUX.2 [klein] 4B run on this computer (mflux on Apple silicon, diffusers elsewhere), with no key and no cost: in Edit > Generate Image, and Krea 2 in Generative Fill and Expand, starting from what the selection covers at the Influence set and masked to the selection.
+- Preferences > Plugins > Local models: each licence shown and accepted before anything downloads, a build chosen for the machine, the download followed and cancellable; Krea 2 installs with the content filter its licence requires; your LoRAs and checkpoints.
+- Krea 2's licence notice is shown with each of its pictures, and the filter's warning if it was removed. Each picture's recipe is written into it (steps, seed, LoRAs), and prompts written as Civitai shows them are read.
+- The engine's local generation comes from formcut, the same author's video editor: its jobs, model downloads (every file pinned to its SHA-256), Krea 2, Klein, runner, LoRAs, checkpoints and generation catalogue, with its tests.
+- A real Krea 2 or Klein run is not tested here (it wants Apple silicon or an NVIDIA GPU and up to 18 GB of model); everything around it is, with a stand-in model.
+
 ## 1.52.8 · 2026-09-29
 
 ### Changed: the Pen and the shape stroke against Photoshop's bars (the tool audit's last items)
