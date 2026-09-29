@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.52.8 · 2026-09-29
+
+### Changed: the Pen and the shape stroke against Photoshop's bars (the tool audit's last items)
+
+- The Pen has a Mode: Path as before, or Shape, where closing a path makes it a shape layer with the Shape tool's fill and stroke.
+- The Pen's Auto Add/Delete (on, as before): clicking a path adds a point and clicking a point deletes it; off, a click starts a new path.
+- A shape's stroke has a Stroke Type (Solid, Dashed, Dotted) and an Align (Inside, Center, Outside), in shape layers and in Pixels mode; an open path's stroke stays centred.
+- With these, the comparison of the tools' option bars with Photoshop's is complete.
+
 ## 1.52.7 · 2026-09-29
 
 ### Added: very large pictures

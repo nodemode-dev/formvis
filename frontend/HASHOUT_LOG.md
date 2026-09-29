@@ -2,6 +2,42 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Pen and the shape stroke · _v1.52.8 (engine/types.ts, engine/index.ts; extensions/tools/pen.ts, shape.ts; docs/MANUAL.md)
+
+`ShapeStroke.dash` and `align`; `strokeShape` (solid, dashed or dotted; centred, inside by clipping, outside with the shape cut away; an open path centred) in `renderShape` and Pixels mode, a shape's padding following the alignment; `shapeSettings.strokeDash` and `strokeAlign` with the Shape bar's Stroke Type and Align; `Engine.penSettings` (mode, autoAddDelete) and `shapeFromPath`, the Pen's Mode and Auto Add/Delete. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+    const pad = (style.stroke ? style.stroke.width / 2 : 0) + 1;
+    if (style.stroke && style.stroke.width > 0) {
+      // Centred on the path, with round joins and caps so corners and open ends stay smooth.
+      c.strokeStyle = rgbCss(style.stroke.color);
+      c.lineWidth = style.stroke.width;
+      c.lineJoin = 'round';
+      c.lineCap = 'round';
+      c.stroke(shape);
+    }
+  shapeSettings: { kind: 'rectangle' | 'ellipse' | PathShapeKind; cornerRadius: number; mode: 'shape' | 'path' | 'pixels'; fill: 'fg' | 'bg' | 'none'; stroke: 'fg' | 'bg' | 'none'; strokeWidth: number } & PathShapeOptions =
+    { kind: 'rectangle', cornerRadius: 0, mode: 'shape', fill: 'fg', stroke: 'none', strokeWidth: 3, ...DEFAULT_PATH_SHAPE };
+    const look: ShapeStyle = { fill, stroke: strokeC ? { color: strokeC, width: Math.max(0.5, st.strokeWidth) } : null };
+        if (look.stroke) { c.strokeStyle = rgbCss(look.stroke.color); c.lineWidth = look.stroke.width; c.lineJoin = 'miter'; c.stroke(shape); }
+export interface ShapeStroke { color: RGB; width: number }
+      // Between paths the Pen adds and deletes points: clicking a point deletes it, clicking the path adds one there.
+      const edit = editAt(vp, v.toScreen(p.doc), (q) => v.toScreen(q));
+export const VERSION = '1.52.7';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.52.7"
+version = "1.52.7"
+version = "1.52.7"
+ "version": "1.52.7",
+```
+
+Nothing removed from src-tauri.
+
 ## Very large pictures · _v1.52.7 (backend/app/services/large.py and routers/large.py new, main.py; frontend/src/io/image-size.ts and ui/panels/large-picture.ts new, io/images.ts, io/api.ts, engine/project.ts, app.ts; docs/MANUAL.md)
 
 `headerSize` (PNG, JPEG, WebP, GIF, BMP, nothing decoded) and `LargePictureError` in `decodeImage`; `LargePictureDialog` (a reduced copy, a region, tiles; the memory needed shown); `Project.tile`; the engine's `large.keep`, `reduced`, `region`, `tiles`, `forget` (Pillow's limit raised only while working, one picture kept decoded) and `assemble` (the tiles' coverage checked, one band decoded at a time, the PNG compressed and written as it goes) with `/api/large` and `/api/large/exports`; File > Export > Assemble Tiles; `relevant` in help/markdown.ts matching question words by stem and weighting them by rarity (the manual's new text had sent an AI-label question to the wrong section). Removed lines taken after the version edit. Removed from frontend:
