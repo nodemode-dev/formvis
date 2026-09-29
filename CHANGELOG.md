@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.51.2 · 2026-09-28
+
+### Added: your ComfyUI workflows in Generative Fill, and Generate Image
+
+- Generative Fill and Generative Expand have a Model: FLUX.1 Fill on fal, or one of your ComfyUI workflows. Add a workflow saved with Export (API) from the dialog; it is kept for next time, and Remove takes it off the list. A workflow needs no fal key; the result arrives masked to the selection, as with fal.
+- Edit > Generate Image makes a picture from a prompt alone, as a new layer at the document's size (a new document when none is open), with FLUX1.1 [pro] on fal or a text-to-image ComfyUI workflow. Cancel stops a ComfyUI run.
+
 ## 1.51.1 · 2026-09-28
 
 ### Added: Run ComfyUI Workflow

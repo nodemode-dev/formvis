@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Generative models and Generate Image · _v1.51.2 (backend/app/services/generative.py, routers/generative.py, routers/comfyui.py; frontend/src/io/comfy.ts and ui/panels/generate-image.ts new, ui/panels/generative-dialog.ts, io/api.ts, app.ts)
+
+The engine's `generative.generate` (FLUX1.1 [pro] on fal at `generation_size`: the document's shape, 256 to 1440 in multiples of 32) and `POST /api/generative/generate`; `POST /api/comfyui/run` taking no files for text to image; `io/comfy.ts` (kept workflows `recipes`, `addRecipe`, `removeRecipe`; `workflowProblem`; `runToResults`; `comfyGenerator`, the generator Generative Fill and Expand call); Generative Fill's Model (FLUX.1 Fill on fal, or a kept ComfyUI workflow, added and removed in the dialog, needing no fal key); `GenerateImageDialog` and Edit > Generate Image. Removed from frontend:
+
+```text
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'remove-wires', '-',
+```
+
+Removed from backend:
+
+```text
+async def run(target: str = Form(...), workflow: str = Form(...), items: str = Form(...), prompt: str | None = Form(None), files: list[UploadFile] = File(...)) -> dict:
+    uploaded = await send(target=target, items=items, files=files) if takes_image else {"files": []}
+```
+
+Nothing removed from src-tauri.
+
 ## Run ComfyUI Workflow · _v1.51.1 (backend/app/routers/comfyui.py; frontend/src/ui/panels/comfyui-run.ts new, ui/panels/send-to.ts, io/api.ts, app.ts)
 
 The engine's `POST /api/comfyui/run` (the workflow checked to be in API format before anything is uploaded; `_fill`: the first LoadImage takes the image, the first LoadImageMask the mask, text nodes titled formvis prompt the prompt; a workflow with no LoadImage runs on the prompt alone; queued with /prompt), `GET /api/comfyui/job/{id}` (/history, then /queue: queued with how many ahead, running, done with the output images, failed), `GET /api/comfyui/image` (/view, output folder only), `POST /api/comfyui/cancel/{id}` (out of the queue, then /interrupt); `RunWorkflowDialog` (the last workflow kept; results as layers scaled to the document and masked to a sent selection, one step each; closing cancels a running job); `imagesFor` and `toPng` shared with the Send dialog. Removed from frontend:
