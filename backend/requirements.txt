@@ -7,3 +7,4 @@ rawpy==0.27.1
 numpy==2.5.3
 opencv-python-headless==5.0.0.93
 keyring==25.7.0   # API keys in the system's password store (1.52.5); MIT
+httpx==0.28.1   # local generation's pinned model downloads (1.52.9); BSD-3-Clause

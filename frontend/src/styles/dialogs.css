@@ -176,3 +176,7 @@
 .cv-plugins-list { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; }
 .cv-plugins-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 13px; }
 .cv-plugins-row label { display: flex; align-items: center; gap: 6px; }
+/* Local models (1.52.9). */
+.cv-local-card { border-top: 1px solid var(--border, #333); padding-top: 6px; margin-top: 6px; }
+.cv-local-state { font-weight: 600; font-size: 13px; margin: 2px 0; }
+.cv-local-summary { margin: 2px 0 4px 16px; padding: 0; font-size: 12px; color: var(--text-muted, #999); }

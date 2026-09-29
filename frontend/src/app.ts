@@ -953,6 +953,10 @@ export function startApp(): void {
   const runWorkflow = new RunWorkflowDialog(engine, (t) => toast(t));
   const generateImage = new GenerateImageDialog(engine, (t) => toast(t));
   const colorMatch = new ColorMatchDialog(engine);
+  // A local model's notice (Krea 2's licence requires it with its pictures) and the filter's warning (1.52.9).
+  const heard = (r: { notice?: string; warning?: string; notes: string[] }): void => { if (r.warning) toast(r.warning, 'error'); if (r.notice) toast(r.notice, 'info'); };
+  dialogs.generative.heard = heard;
+  generateImage.heard = heard;
   const filmLayer = new FilmLayerDialog(engine);
   const model3d = new Model3DDialog(engine, (t) => toast(t));
   // Outside agents over MCP (1.52.1): the window runs their calls while Preferences > Plugins allows it.

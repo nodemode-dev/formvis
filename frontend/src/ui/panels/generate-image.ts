@@ -1,6 +1,7 @@
 import { Raster, type Engine } from '../../engine';
 import { api, ApiError } from '../../io/api';
 import { recipes, runToResults } from '../../io/comfy';
+import { localModels, runLocal } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { loadPrefs } from '../prefs';
@@ -32,7 +33,9 @@ export class GenerateImageDialog extends Dialog {
 
   async show(): Promise<void> {
     const was = this.model.value;
-    this.model.replaceChildren(el('<option value="fal">FLUX1.1 [pro] (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = r.name; o.textContent = `${r.name} (ComfyUI)`; return o; }));
+    const locals = await localModels();   // the local models (1.52.9)
+    this.model.replaceChildren(el('<option value="fal">FLUX1.1 [pro] (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = r.name; o.textContent = `${r.name} (ComfyUI)`; return o; }),
+      ...locals.map((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = `${m.label.replace(/ \(local\)$/, '')} (this computer)`; o.disabled = !m.ready; if (!m.ready && m.reason) o.title = m.reason; return o; }));
     if ([...this.model.options].some((o) => o.value === was)) this.model.value = was;
     this.refs.refresh(this.model.value === 'fal');
     this.improver.refresh();
@@ -41,6 +44,9 @@ export class GenerateImageDialog extends Dialog {
     this.open();
     this.prompt.focus();
   }
+
+  /** A local model's notice (Krea 2's licence) and the filter's warning, shown with its picture. */
+  heard: (r: { notice?: string; warning?: string; notes: string[] }) => void = () => {};
 
   private async generate(): Promise<void> {
     const prompt = this.prompt.value.trim();
@@ -54,7 +60,13 @@ export class GenerateImageDialog extends Dialog {
     this.stopped = false;
     try {
       let blob: Blob;
-      if (choice === 'fal') {
+      if (choice.startsWith('local:')) {
+        // On this computer: the document's shape within the model's 2048 pixels, in multiples of 16.
+        const k = Math.min(1, 2048 / Math.max(W, H)), w = Math.max(256, Math.round((W * k) / 16) * 16), h = Math.max(256, Math.round((H * k) / 16) * 16);
+        const r = await runLocal({ generator: choice, prompt, size: `${w}x${h}`, count: 1 }, (t) => setText(this.status, t), () => this.stopped);
+        this.heard(r);
+        blob = r.pictures[0];
+      } else if (choice === 'fal') {
         const st = await api.generativeStatus();
         if (!st) throw new Error('The formvis engine is offline. Start it with ./formvis boot.');
         if (!st.configured) throw new Error('Add a fal API key first, in Edit > Generative Fill.');

@@ -3,6 +3,7 @@ import { api, type GenerativeStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { addRecipe, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
+import { localFill, localModels, type LocalModel } from '../../io/local-gen';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
 import { PromptImprover } from './prompt-improver';
@@ -35,6 +36,9 @@ export class GenerativeDialog extends Dialog {
   private readonly model = el<HTMLSelectElement>('<select class="cv-input" aria-label="Model"></select>');
   private readonly modelRow = el('<label class="cv-dialog-row"><span>Model</span></label>');
   private readonly refs: ReferencePicker;
+  private locals: LocalModel[] = [];
+  private readonly influence = el<HTMLInputElement>('<input type="range" min="0" max="100" step="1" value="40" aria-label="Influence">');
+  private readonly influenceRow = el('<label class="cv-dialog-row" title="How much the area under the selection shapes the result (0: none)"><span>Influence</span></label>');
   private readonly improver: PromptImprover;
   private readonly addFile = el<HTMLInputElement>('<input type="file" accept=".json,application/json" aria-label="Add ComfyUI workflow" hidden>');
 
@@ -48,6 +52,9 @@ export class GenerativeDialog extends Dialog {
     this.model.addEventListener('change', () => this.sync());
     this.modelRow.append(this.model, add, remove, this.addFile);
     this.body.appendChild(this.modelRow);
+    this.influenceRow.append(this.influence);
+    this.influence.addEventListener('input', () => { this.influence.dataset.set = '1'; });
+    this.body.appendChild(this.influenceRow);
     this.refs = new ReferencePicker(engine);
     this.body.appendChild(this.refs.el);
     this.body.appendChild(this.prompt);
@@ -84,6 +91,7 @@ export class GenerativeDialog extends Dialog {
     setHidden(this.marginRows, mode !== 'expand');
     setText(this.hint, HINTS[mode]);
     setHidden(this.modelRow, mode === 'upscale');   // Upscale stays Real-ESRGAN on fal
+    this.locals = (await localModels()).filter((m) => m.fromPicture);   // local models that start from a picture (1.52.9)
     this.fillModels();
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
     setHidden(this.refs.el, mode === 'upscale');
@@ -98,7 +106,8 @@ export class GenerativeDialog extends Dialog {
   /** FLUX.1 Fill on fal, then the kept ComfyUI workflows; the choice kept when it still exists. */
   private fillModels(): void {
     const was = this.model.value;
-    this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }));
+    this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }),
+      ...this.locals.map((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = `${m.label.replace(/ \(local\)$/, '')} (this computer)`; o.disabled = !m.ready; if (!m.ready && m.reason) o.title = m.reason; return o; }));
     if ([...this.model.options].some((o) => o.value === was)) this.model.value = was;
   }
 
@@ -113,11 +122,23 @@ export class GenerativeDialog extends Dialog {
     this.sync();
   }
 
+  /** A local model's notice (Krea 2's licence) and the filter's warning, shown with its picture. */
+  heard: (r: { notice?: string; warning?: string; notes: string[] }) => void = () => {};
+
   private get comfy(): boolean { return this.mode !== 'upscale' && this.model.value.startsWith('comfy:'); }
+  private get local(): LocalModel | undefined { return this.mode !== 'upscale' ? this.locals.find((m) => m.id === this.model.value) : undefined; }
 
   private sync(): void {
-    const s = this.status;
+    const s = this.status, local = this.local;
     this.refs.forFal(!this.comfy);
+    setHidden(this.influenceRow, !local);
+    if (local) {   // a local model: no key, no references; the picture under the selection at the influence set
+      if (!this.influence.dataset.set) this.influence.value = String(Math.round(local.influence * 100));
+      setHidden(this.keyRow, true); setHidden(this.forget, true); setHidden(this.refs.el, true);
+      setText(this.state, `${local.label.replace(/ \(local\)$/, '')} runs on this computer: no key, no cost. It starts from what the selection covers, at the influence set, and the result is masked to the selection.`);
+      return;
+    }
+    setHidden(this.refs.el, this.mode === 'upscale');
     if (this.comfy) {   // a workflow needs no fal key
       setHidden(this.keyRow, true); setHidden(this.forget, true);
       setText(this.state, `Runs on ComfyUI at ${loadPrefs().comfyuiUrl}: its first Load Image takes the area, Load Image (as Mask) the mask, and a text node titled formvis prompt the prompt.`);
@@ -135,6 +156,16 @@ export class GenerativeDialog extends Dialog {
   }
 
   private async generate(): Promise<void> {
+    const local = this.local;
+    if (local) {
+      const prompt = this.prompt.value, mode = this.mode, e = this.engine, influence = Number(this.influence.value) / 100;
+      const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
+      this.close();
+      const fill = localFill(local.id, prompt, influence, (r) => this.heard(r));
+      if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
+      else await e.task(() => e.generativeFill(prompt, fill));
+      return;
+    }
     if (this.comfy) {
       const recipe = recipes().find((r) => `comfy:${r.name}` === this.model.value);
       if (!recipe) { setText(this.state, 'That workflow is no longer kept: add it again.'); return; }

@@ -97,6 +97,12 @@ ask it questions.
   Credential Manager on Windows, the Secret Service on Linux. Where there is none, in a file only you can read.
   Preferences > Plugins says which.
 - References: up to four layers can be sent to a ComfyUI workflow as references.
+- On this computer, with no key and no cost: install Krea 2 Turbo or FLUX.2 [klein] 4B in Preferences > Plugins >
+  Local models (each licence is shown for you to accept first; Krea 2 installs with the content filter its licence
+  requires). Both appear in Generate Image; Krea 2 also in Generative Fill and Expand, starting from what the selection
+  covers at the Influence you set, the result masked to the selection. Your LoRAs and checkpoints go there too.
+  Krea 2's licence notice is shown with each of its pictures. The models are large (up to about 18 GB) and want a
+  recent Mac with Apple silicon, or a PC with an NVIDIA graphics card.
 - Improve, beside the prompt, rewrites it through a language model following a prompt template; Restore puts yours
   back. Set the model, and edit the templates, in Preferences > Plugins.
 
