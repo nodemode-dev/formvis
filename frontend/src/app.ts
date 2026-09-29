@@ -16,7 +16,7 @@ import { SPACES, convertPixels, iccProfile } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
 import { exportLayout, ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
 import { PARAM_KINDS } from './engine/adjust-params';
-import { recovery } from './io/recovery';
+import { recovery, type RecoveryRecord } from './io/recovery';
 import { TrimDialog } from './ui/panels/trim-dialog';
 import { ColorRangeDialog } from './ui/panels/color-range-dialog';
 import { HistoryPanel } from './ui/history';
@@ -1456,39 +1456,70 @@ export function startApp(): void {
 
   if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation };
 
-  const keptAt = new Map<string, number>();
+  // Session restore (1.52.4): every open document is kept on this device (a copy per document, rewritten when it
+  // changes, is saved, or moves library entry) with the tab order and the active tab, and reopens at the next start.
+  // Off, only unsaved documents are kept and formvis asks after a crash, as before.
+  const SESSION = 'formvis.session';
+  const keptAt = new Map<string, string>();
   let keepTimer = 0;
   async function keepModified(): Promise<void> {
+    const whole = loadPrefs().restoreSession;
     for (const p of engine.projects) {
-      if (!p.modified) { if (keptAt.delete(p.id)) await recovery.drop(p.id); continue; }
-      if (keptAt.get(p.id) === p.history.revision) continue;
+      if (!p.modified && !whole) { if (keptAt.delete(p.id)) await recovery.drop(p.id); continue; }
+      const key = `${p.history.revision}:${p.modified}:${p.libraryName ?? ''}:${p.name}`;
+      if (keptAt.get(p.id) === key) continue;
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        if (await recovery.keep({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files })) keptAt.set(p.id, p.history.revision);
+        if (await recovery.keep({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName })) keptAt.set(p.id, key);
       } catch (err) { errorLog.add('Recovery copy', message(err)); }
     }
     for (const id of [...keptAt.keys()]) if (!engine.projects.some((p) => p.id === id)) { keptAt.delete(id); await recovery.drop(id); }
+    try {
+      if (whole) localStorage.setItem(SESSION, JSON.stringify({ order: engine.projects.map((p) => p.id), active: engine.current?.id ?? null }));
+      else localStorage.removeItem(SESSION);
+    } catch { /* the order is a convenience */ }
   }
   const keepSoon = (): void => { if (!keepTimer) keepTimer = window.setTimeout(() => { keepTimer = 0; void keepModified(); }, recoveryDelay); };
   let recoveryDelay = loadPrefs().recoverySeconds * 1000;
   engine.on('history', keepSoon);
   engine.on('projects', keepSoon);
+  async function reopen(r: RecoveryRecord, name: string): Promise<ReturnType<typeof engine.addProject> | null> {
+    try {
+      const byName = new Map(r.files.map((f) => [f.name, f.blob]));
+      const { doc, activeId, paths, timeline } = await deserialize(r.manifest, (n) => { const b = byName.get(n); return b ? Promise.resolve(b) : Promise.reject(new Error(`${n} is missing.`)); });
+      const p = engine.addProject(doc, name, activeId);
+      if (paths) engine.setPathsOf(p, paths);
+      if (timeline) engine.setTimelineFor(p, timeline);
+      if (r.modified !== false) p.history.markUnsaved();
+      p.libraryName = r.libraryName ?? null;
+      return p;
+    } catch (err) { toast(`${r.name}: ${message(err)}`, 'error'); return null; }
+  }
   async function offerRecovery(): Promise<void> {
     const found = await recovery.list();
     if (!found.length) return;
-    const names = found.map((r) => r.name).join(', ');
-    if (!(await confirmAction('Recover unsaved work?', `formvis closed with unsaved changes in ${names}. Open them again?`, 'Recover'))) { await recovery.clear(); return; }
-    for (const r of found) {
-      try {
-        const byName = new Map(r.files.map((f) => [f.name, f.blob]));
-        const { doc, activeId, paths, timeline } = await deserialize(r.manifest, (n) => { const b = byName.get(n); return b ? Promise.resolve(b) : Promise.reject(new Error(`${n} is missing.`)); });
-        const p = engine.addProject(doc, `${r.name} (recovered)`, activeId);
-        if (paths) engine.setPathsOf(p, paths);
-        if (timeline) engine.setTimelineFor(p, timeline);
-        p.history.markUnsaved();
-        engine.emit('projects', null);
-      } catch (err) { toast(`${r.name}: ${message(err)}`, 'error'); }
+    if (loadPrefs().restoreSession && !engine.projects.length) {
+      let meta: { order?: string[]; active?: string | null } = {};
+      try { meta = JSON.parse(localStorage.getItem(SESSION) ?? '{}') as typeof meta; } catch { /* by age */ }
+      const at = (id: string): number => { const i = meta.order?.indexOf(id) ?? -1; return i < 0 ? 1e9 : i; };
+      const ordered = [...found].sort((a, b) => at(a.id) - at(b.id) || a.savedAt - b.savedAt);
+      let active: string | null = null, n = 0;
+      for (const r of ordered) { const p = await reopen(r, r.name); if (p) { n++; if (r.id === meta.active) active = p.id; } }
+      if (active) engine.switchTo(active);
+      engine.emit('projects', null);
+      // Fresh copies first, then the last session's removed: a crash in between loses nothing.
+      await keepModified();
+      for (const r of await recovery.list()) if (!engine.projects.some((p) => p.id === r.id)) await recovery.drop(r.id);
+      if (n) toast(`Reopened ${n === 1 ? 'the document' : `${n} documents`} from last time.`, 'info');
+      return;
     }
+    const lost = found.filter((r) => r.modified !== false);
+    for (const r of found) if (r.modified === false) await recovery.drop(r.id);
+    if (!lost.length) return;
+    const names = lost.map((r) => r.name).join(', ');
+    if (!(await confirmAction('Recover unsaved work?', `formvis closed with unsaved changes in ${names}. Open them again?`, 'Recover'))) { await recovery.clear(); return; }
+    for (const r of lost) await reopen(r, `${r.name} (recovered)`);
+    engine.emit('projects', null);
     await recovery.clear();
   }
   if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { errorLog, keepModified, offerRecovery, setRecoveryDelay: (ms: number) => { recoveryDelay = ms; } });

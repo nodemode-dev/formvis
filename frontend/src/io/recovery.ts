@@ -1,6 +1,8 @@
 import type { FilePart } from './api';
 
-export interface RecoveryRecord { id: string; name: string; savedAt: number; manifest: Record<string, unknown>; files: FilePart[] }
+/** modified and libraryName (1.52.4, session restore): whether the copy has unsaved changes (older copies, without it,
+ *  are unsaved, as only unsaved documents were kept then) and the library entry it was saved to. */
+export interface RecoveryRecord { id: string; name: string; savedAt: number; manifest: Record<string, unknown>; files: FilePart[]; modified?: boolean; libraryName?: string | null }
 
 const DB_NAME = 'formvis-recovery';
 const STORE = 'docs';

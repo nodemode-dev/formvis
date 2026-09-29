@@ -10,7 +10,9 @@ ask it questions.
 - Open: File > Open Project opens formvis projects (.fmv), Photoshop files (.psd, .psb), OpenRaster files (.ora) and
   images (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, camera raw and more). Dropping files on the window opens them too.
 - Save: File > Save keeps everything editable in a .fmv project: layers, masks, adjustments, text, paths and history
-  snapshots. Unsaved work is kept for recovery after a crash (Preferences > File Handling).
+  snapshots.
+- The documents open when formvis closes reopen at the next start, saved or not, in their tab order (Preferences >
+  File Handling). With that off, only unsaved work is kept, and formvis asks to recover it after a crash.
 - The engine: some features (library saves, HEIC and TIFF import, background removal, generative tools, sending to
   other apps, the assistant) need the formvis engine. If a message says it is offline, start it with `./formvis boot`.
 

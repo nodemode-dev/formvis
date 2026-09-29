@@ -39,6 +39,8 @@ def test_unsaved_work_is_offered_back_after_reload(context):
     open_app(page)
     page.evaluate("""async () => {
       const e = window.formvis.engine;
+      // The question after a crash is how formvis recovers with session restore off (1.52.4; on, it reopens silently).
+      localStorage.setItem('formvis.prefs', JSON.stringify({ ...JSON.parse(localStorage.getItem('formvis.prefs') || '{}'), restoreSession: false }));
       e.newDocument(20, 20, 'Keep', 'white');
       e.edit('Rename', (q) => q.updateLayer(q.doc.layers[0].id, { name: 'Kept' }));
       await window.formvis.keepModified();
