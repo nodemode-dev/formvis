@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.52.2 · 2026-09-29
+
+### Added: the assistant
+
+- Window > Assistant: a chat beside the canvas that acts on the open document, on the language model set for Improve Prompt (Ollama or LM Studio on this computer, or a service with a key; the engine keeps the key).
+- It uses the same 14 tools as outside agents: each change an undoable step, anything that costs money asked first. Each tool call shows as a card with what it did and what came back.
+- Undo This Turn walks the document back to before your last message; Stop ends a turn. A turn takes at most 12 steps.
+
 ## 1.52.1 · 2026-09-29
 
 ### Added: outside agents over MCP

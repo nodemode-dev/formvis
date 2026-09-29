@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The assistant · _v1.52.2 (backend/app/services/llm.py, routers/llm.py; frontend/src/ui/panels/assistant.ts new, io/api.ts, app.ts, styles/dialogs.css)
+
+The engine's `llm.chat` and `POST /api/llm/chat` (one step of the conversation on the language model of Improve Prompt, the MCP catalogue attached as functions, the model's text and tool calls returned, the key kept); `AssistantPanel` (Window > Assistant, in the z-index registry's chat slot): each tool call run through `AgentBridge.run` as a card, its result sent back tied to the call, twelve steps at most a turn, Stop, and Undo This Turn by `history.steps.current`. Removed from frontend:
+
+```text
+    { label: 'Window', items: ['brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+```
+
+Removed from backend:
+
+```text
+from fastapi import APIRouter, Form, HTTPException
+```
+
+Nothing removed from src-tauri.
+
 ## Outside agents over MCP · _v1.52.1 (backend/app/routers/mcp.py new, main.py; setup/mcp_stdio.py new, formvis; frontend/src/automation/agent-bridge.ts and ui/panels/agent-confirm.ts new, ui/prefs.ts, ui/app-dialogs.ts, app.ts)
 
 The engine's MCP endpoint (`/mcp`, Streamable HTTP in stateless JSON mode, the 2026-07-28 specification with `server/discover`, still answering 2025-11-25's `initialize`; the Origin checked; batches and unknown versions refused) and its `TOOLS` catalogue (14, each with a schema and hints); the window bridge (`/api/mcp/bridge/next`, a long poll that checks the window is still connected before and after taking a request and returns it to the front if not; `/result`; `/stop`, which refuses at once and answers what was queued); `setup/mcp_stdio.py` behind `./formvis mcp`. `AgentBridge` runs each tool through the engine's undoable calls, asking before the generative ones (`AgentConfirmDialog`); `Prefs.agentsAllowed`, off by default, and its Preferences > Plugins row. Removed from frontend:
