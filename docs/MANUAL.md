@@ -9,6 +9,10 @@ ask it questions.
 - New document: File > New sets the size, resolution, colour mode (RGB, Grayscale or Bitmap) and background.
 - Open: File > Open Project opens formvis projects (.fmv), Photoshop files (.psd, .psb), OpenRaster files (.ora) and
   images (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, camera raw and more). Dropping files on the window opens them too.
+- A picture larger than formvis edits in one piece (over 30,000 pixels a side or 100 megapixels, up to 65,535 a
+  side) opens as a reduced copy that fits, a region at full size, or tiles at full size, each tile its own document.
+  File > Export > Assemble Tiles puts the edited tiles back together as one full-size PNG, written by the engine a
+  strip at a time. Opening needs memory for the whole picture once, about 4 bytes a pixel; the dialog says how much.
 - Save: File > Save keeps everything editable in a .fmv project: layers, masks, adjustments, text, paths and history
   snapshots.
 - The documents open when formvis closes reopen at the next start, saved or not, in their tab order (Preferences >

@@ -48,7 +48,7 @@ import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, type Capabilities, type OpenedProject } from './io/api';
-import { IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
+import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
@@ -77,6 +77,7 @@ import { AssistantPanel } from './ui/panels/assistant';
 import { HelpDialog } from './ui/panels/help';
 import { PluginHost } from './plugins/host';
 import { PluginsDialog } from './ui/panels/plugins-dialog';
+import { LargePictureDialog } from './ui/panels/large-picture';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -446,8 +447,12 @@ export function startApp(): void {
     if (images.length) {
       await engine.task(async () => {
         const decoded: ImportedImage[] = [];
+        let largeAsked = false;
         for (const f of images) {
-          try { decoded.push(await decodeImage(f, f.name)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+          try { decoded.push(await decodeImage(f, f.name)); } catch (err) {
+            if (err instanceof LargePictureError) { if (!largeAsked) { largeAsked = true; largePicture.show(err); } else toast(`${f.name}: open large pictures one at a time.`, 'info'); }   // 1.52.7
+            else toast(`${f.name}: ${message(err)}`, 'error');
+          }
         }
         engine.insertImages(decoded, at);
         // A single camera RAW opens into Develop, as Photoshop opens RAW files into Camera Raw.
@@ -724,6 +729,34 @@ export function startApp(): void {
 
   /** File > Export > OpenRaster (1.51.7): layers, groups, positions, opacity, visibility and blend modes, for Krita,
    *  GIMP and MyPaint. */
+  /** File > Export > Assemble Tiles (1.52.7): the open tiles of a large picture, each as it looks now, put back together
+   *  by the engine into one full-size PNG, strip by strip, downloaded straight from it (never held in this page). */
+  async function assembleTiles(): Promise<void> {
+    const tiles = engine.projects.filter((p) => p.tile);
+    if (!tiles.length) { toast('No tiles are open: open a large picture as tiles first.', 'info'); return; }
+    const source = engine.current?.tile?.source ?? (tiles[0].tile as NonNullable<typeof tiles[0]['tile']>).source;
+    const mine = tiles.filter((p) => p.tile?.source === source), first = mine[0].tile as NonNullable<typeof mine[0]['tile']>, was = engine.current?.id;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const parts: Array<{ name: string; blob: Blob }> = [], places: Array<{ x: number; y: number }> = [];
+        for (const p of mine) {
+          engine.switchTo(p.id);
+          const c = engine.flattened();
+          if (!c) continue;
+          parts.push({ name: `${p.tile?.row}-${p.tile?.col}.png`, blob: await toBlob(c) });
+          places.push({ x: p.tile?.x ?? 0, y: p.tile?.y ?? 0 });
+        }
+        if (was) engine.switchTo(was);
+        const r = await api.largeAssemble(source, first.width, first.height, places, parts);
+        const a = document.createElement('a');
+        a.href = r.url; a.download = r.file;
+        a.click();
+        toast(`Assembled ${mine.length} tiles into ${r.file} (${first.width.toLocaleString()} by ${first.height.toLocaleString()}); it is also in formvis's data folder, under exports.`, 'info');
+      } catch (err) { if (was) engine.switchTo(was); toast(message(err), 'error'); }
+    });
+  }
+
   async function exportOra(): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -933,6 +966,7 @@ export function startApp(): void {
   // Plugins (1.52.6): the plugins folder's plugins, each in a sandboxed frame; their commands in the Plugins menu.
   const pluginHost = new PluginHost(engine, agents, commands, (t, kind) => toast(t, kind ?? 'info'));
   const pluginsDialog = new PluginsDialog(pluginHost, (title, text, ok) => confirmAction(title, text, ok));
+  const largePicture = new LargePictureDialog(engine);
   void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
@@ -987,6 +1021,7 @@ export function startApp(): void {
     { id: 'help', label: 'formvis Help', keys: ['F1'], run: () => help.show() },   // 1.52.3, as Photoshop's F1
     { id: 'manage-plugins', label: 'Manage Plugins...', run: () => void pluginsDialog.show() },   // 1.52.6
     { id: 'place-3d', label: 'Place 3D Model...', enabled: has, run: () => model3dInput.click() },   // 1.51.9
+    { id: 'assemble-tiles', label: 'Assemble Tiles...', enabled: () => engine.projects.some((p) => p.tile), run: () => void assembleTiles() },   // 1.52.7
     { id: 'export-ora', label: 'Export OpenRaster...', enabled: has, run: () => void exportOra() },   // 1.51.7
     { id: 'export-psb', label: 'Export PSB (Large Document)...', enabled: has, run: () => void exportPsd(true) },
     { id: 'export-webp', label: 'Export WebP', enabled: has, run: () => void exportImage('webp', 0.9) },
@@ -1207,7 +1242,7 @@ export function startApp(): void {
 
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
-      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', 'export-ora', '-', 'export-artboards'] },
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',

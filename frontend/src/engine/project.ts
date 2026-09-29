@@ -6,6 +6,8 @@ import { uid, type Doc, type ID, type Layer } from './types';
 export class Project {
   readonly id = uid();
   libraryName: string | null = null;
+  /** Where this document sits in a larger picture opened as tiles (1.52.7), for Assemble Tiles. */
+  tile: { source: string; width: number; height: number; x: number; y: number; row: number; col: number } | null = null;
   selection: SelectionMask | null = null;
   activeId: ID | null = null;
   selectedIds = new Set<ID>();

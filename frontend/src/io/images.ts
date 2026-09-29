@@ -1,3 +1,4 @@
+import { headerSize } from './image-size';
 import { FORMER_PROJECT_EXTENSIONS } from './legacy';
 import { LIMITS, type ImportedImage } from '../engine';
 import { api } from './api';
@@ -32,7 +33,14 @@ async function bitmapOf(blob: Blob): Promise<ImportedImage['source'] & { width: 
   }
 }
 
+/** A picture larger than formvis edits in one piece (1.52.7), found from its header before anything is decoded. */
+export class LargePictureError extends Error {
+  constructor(readonly file: Blob, readonly picture: string, readonly width: number, readonly height: number) { super(`${picture} is ${width} by ${height}, larger than formvis edits in one piece.`); }
+}
+
 export async function decodeImage(file: Blob, name: string): Promise<ImportedImage> {
+  const size = await headerSize(file);
+  if (size && (size.width > LIMITS.side || size.height > LIMITS.side || size.width * size.height > LIMITS.pixels)) throw new LargePictureError(file, name, size.width, size.height);
   const server = SERVER.test(name) || RAW_FILE.test(name) || /image\/(heic|heif|tiff)/.test(file.type);
   let source: ImportedImage['source'] & { width: number; height: number };
   try { source = await bitmapOf(server ? await api.decode(file, name) : file); } catch (err) {

@@ -38,10 +38,16 @@ export function render(body: string): DocumentFragment {
   return out;
 }
 
-/** The sections most about `question`: its words (three letters or more, common words left out) counted in each. */
+/** The sections most about `question` (1.52.7): its words (three letters or more, common ones left out) matched to the
+ *  manual's by stem (the first four letters of longer words, so "written" meets "writes"), each weighted by how rare
+ *  it is across the manual, so a word few sections use ("label") counts for more than one many use. */
 export function relevant(all: Section[], question: string, n = 3): Section[] {
   const common = new Set(['the', 'and', 'how', 'can', 'does', 'what', 'where', 'with', 'for', 'you', 'this', 'that', 'into', 'from', 'are', 'there', 'formvis']);
-  const words = question.toLowerCase().match(/[a-z0-9]{3,}/g)?.filter((w) => !common.has(w)) ?? [];
-  const score = (s: Section): number => { const t = `${s.title} ${s.title} ${s.body}`.toLowerCase(); return words.reduce((n2, w) => n2 + (t.split(w).length - 1), 0); };
-  return all.map((s) => ({ s, k: score(s) })).filter((x) => x.k > 0).sort((a, b) => b.k - a.k).slice(0, n).map((x) => x.s);
+  const stem = (w: string): string => (w.length > 4 ? w.slice(0, 4) : w);
+  const words = (t: string): string[] => t.toLowerCase().match(/[a-z0-9]{3,}/g) ?? [];
+  const asked = words(question).filter((w) => !common.has(w)).map(stem);
+  const docs = all.map((s) => words(`${s.title} ${s.title} ${s.body}`).map(stem));
+  const weight = new Map(asked.map((w) => [w, Math.log((all.length + 1) / (1 + docs.filter((d) => d.includes(w)).length))]));
+  const score = (d: string[]): number => asked.reduce((k, w) => k + d.filter((x) => x === w).length * (weight.get(w) ?? 0), 0);
+  return all.map((s, i) => ({ s, k: score(docs[i]) })).filter((x) => x.k > 0).sort((a, b) => b.k - a.k).slice(0, n).map((x) => x.s);
 }

@@ -40,6 +40,18 @@ export const api = {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
   },
   /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
+  /** Large pictures (1.52.7): kept by the engine, then opened reduced, as a region or as tiles. */
+  async largeKeep(file: Blob, name: string): Promise<{ id: string; width: number; height: number; memory: number }> {
+    return (await (await request('/large', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).json()) as { id: string; width: number; height: number; memory: number };
+  },
+  async largeReduced(id: string, maxSide: number): Promise<Blob> { return (await request(`/large/${id}/reduced?max_side=${maxSide}`)).blob(); },
+  async largeRegion(id: string, x: number, y: number, w: number, h: number): Promise<Blob> { return (await request(`/large/${id}/region?x=${x}&y=${y}&w=${w}&h=${h}`)).blob(); },
+  async largeTiles(id: string, size: number): Promise<Array<{ row: number; col: number; x: number; y: number; width: number; height: number }>> { return (await (await request(`/large/${id}/tiles?size=${size}`)).json()) as Array<{ row: number; col: number; x: number; y: number; width: number; height: number }>; },
+  async largeAssemble(name: string, width: number, height: number, places: Array<{ x: number; y: number }>, parts: FilePart[]): Promise<{ file: string; url: string; bytes: number }> {
+    return (await (await request('/large/assemble', { method: 'POST', body: form({ name, width: String(width), height: String(height), places: JSON.stringify(places) }, parts) })).json()) as { file: string; url: string; bytes: number };
+  },
+  async largeForget(id: string): Promise<void> { try { await request(`/large/${id}`, { method: 'DELETE' }); } catch { /* gone */ } },
+
   /** Plugins (1.52.6): the plugins folder's files. */
   async plugins(): Promise<Array<{ name: string; size: number }>> { try { return (await (await request('/plugins')).json()) as Array<{ name: string; size: number }>; } catch { return []; } },
   async pluginCode(name: string): Promise<string> { return (await request(`/plugins/${encodeURIComponent(name)}`)).text(); },
