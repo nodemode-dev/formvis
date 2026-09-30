@@ -81,6 +81,7 @@ import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
 import { ColourView } from './ui/colour';
+import { composeDeep, deepFromU16, deepToU16 } from './engine/deep';
 import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog } from './ui/panels/colour-dialogs';
 import { embeddedProfile, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
 import { toolHost } from './extensions/registry';
@@ -457,6 +458,13 @@ export function startApp(): void {
         for (const f of images) {
           // A TIFF with several pages asks how to open them (1.53.4).
           if (/\.tiff?$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
+          // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
+          if (/\.(png|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+            const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
+            if (png16 || /\.tiff?$/i.test(f.name)) {
+              try { const d = await api.decodeDeep(f, f.name); if (d.depth === 16) { engine.openDeep(f.name.replace(/\.[^.]+$/, ''), deepFromU16(d.data, d.width, d.height)); continue; } } catch { /* opened at 8 bits as before */ }
+            }
+          }
           // An embedded profile other than sRGB (1.53.5): converted (the default, as the browser decodes), kept, or asked.
           let profile: { name: string; icc: string } | undefined;
           if (/\.(png|jpe?g|webp)$/i.test(f.name)) {
@@ -581,7 +589,10 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const blob = kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
+        // A 16-bit document's PNG and TIFF keep their 16 bits (1.53.6): composed in floating point, written by the engine.
+        const deep = p.doc.depth === 16 && (kind === 'png' || kind === 'tiff') ? composeDeep(p.doc) : null;
+        if (deep && 'error' in deep) throw new Error(deep.error);
+        const blob = deep ? await api.encodeDeep(deepToU16(deep.data), deep.width, deep.height, kind as 'png' | 'tiff') : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
           : kind === 'webp' ? await engine.exportBlob('image/webp', quality)
           : await (async () => { const png = await engine.exportBlob('image/png'); return png ? api.encode(png, kind, Math.round(quality * 100), p.doc.resolution ?? 72) : null; })();
         if (blob) await deliver(blob, `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);
@@ -1274,6 +1285,9 @@ export function startApp(): void {
     { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { engine.convertMode('grayscale'); } },
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => modeDialog.show('bitmap') },
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => modeDialog.show('indexed') },
+    // Bit depth (1.53.6, H1).
+    { id: 'depth-8', label: '8 Bits/Channel', enabled: has, checked: () => (engine.current?.doc.depth ?? 8) === 8, run: () => { engine.setDepth(8); } },
+    { id: 'depth-16', label: '16 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 16, run: () => { engine.setDepth(16); } },
     // Colour management (1.53.5, H2). Proof Colors has no key by default: Photoshop's Ctrl+Y is Redo here.
     { id: 'assign-profile', label: 'Assign Profile...', enabled: has, run: () => void colourDialogs.assign.show() },
     { id: 'convert-profile', label: 'Convert to Profile...', enabled: has, run: () => void colourDialogs.convert.show() },
@@ -1293,7 +1307,7 @@ export function startApp(): void {
       'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
-      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb'] }, '-',
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', '-', 'depth-8', 'depth-16'] }, '-',
       'image-size', 'canvas-size', { label: 'Image Rotation', items: ['flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-folder-dialog', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
@@ -1542,6 +1556,11 @@ export function startApp(): void {
   // a browser keeps "Load system fonts..." in the Type tool, since Local Font Access asks the user first.
   if ('__TAURI_INTERNALS__' in window) void loadSystemFonts().then((f) => { if (f) engine.emit('options', null); });
 
+  // A 16-bit document allows what keeps its 16 bits (1.53.6, H1); anything else waits for Image > Mode > 8 Bits/Channel.
+  const DEEP_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
+    'new-adj-levels', 'new-adj-curves', 'new-adj-exposure', 'edit-adjustment', 'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'depth-8', 'depth-16', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning',
+    'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
+  commands.gate = (c) => engine.current?.doc.depth !== 16 || DEEP_OK.has(c.id) || /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   // Rebound keys (1.53.4), applied once every command is registered.
   for (const [id, keys] of Object.entries(loadPrefs().shortcuts)) commands.setKeys(id, keys);
   if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation, colour: colourView };

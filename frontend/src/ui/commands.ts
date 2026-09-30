@@ -89,7 +89,9 @@ export class Commands {
   get(id: string): Command | undefined { return this.map.get(id); }
   all(): Command[] { return [...this.map.values()]; }
   label(cmd: Command): string { return typeof cmd.label === 'function' ? cmd.label() : cmd.label; }
-  enabled(cmd: Command): boolean { return cmd.enabled ? cmd.enabled() : true; }
+  /** What the document allows before a command's own test (1.53.6: a 16-bit document allows its 16-bit commands). */
+  gate: ((cmd: Command) => boolean) | null = null;
+  enabled(cmd: Command): boolean { return (!this.gate || this.gate(cmd)) && (cmd.enabled ? cmd.enabled() : true); }
   keyLabel(cmd: Command): string { const k = cmd.keys?.[0]; return k ? formatKeys(k) : ''; }
   forEvent(e: KeyboardEvent): Command | undefined { return this.byKey.get(comboOf(e)); }
 

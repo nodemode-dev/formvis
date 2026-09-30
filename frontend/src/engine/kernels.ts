@@ -25,7 +25,7 @@ function tableKernel(transfer: (channel: number, level: number) => number): Kern
     tables.push(t);
   }
   const [tr, tg, tb] = tables;
-  return (px) => {
+  const kernel: Kernel & { transfer?: (channel: number, level: number) => number } = (px) => {
     for (let i = 0; i < px.length; i += 4) {
       if (px[i + 3] === 0) continue;
       px[i] = tr[px[i]];
@@ -33,6 +33,8 @@ function tableKernel(transfer: (channel: number, level: number) => number): Kern
       px[i + 2] = tb[px[i + 2]];
     }
   };
+  kernel.transfer = transfer;   // sampled at 16-bit precision by engine/deep.ts (1.53.6)
+  return kernel;
 }
 
 /** One Levels range as a transfer on 0 to 255: input black and white points, a midtone gamma, output black and white. */

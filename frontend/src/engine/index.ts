@@ -1,5 +1,6 @@
 import { applyLut, type ColourLut } from './colour-lut';
-import type { DocProfile } from './types';
+import { deepFromRaster, rasterFromDeep } from './deep';
+import type { DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 export { PATH_OPS, type PathOp } from './paths';
@@ -482,9 +483,19 @@ export class Engine {
     const nested = p.history.open;
     p.history.begin(name, p.snapshot());
     let ok: boolean | void = true;
+    const deepBefore = p.doc.depth === 16 ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
     try { ok = fn(p); } catch (err) {
       if (nested) throw err;
       this.rollBack(p, name, err);
+      return false;
+    }
+    // 16 bits kept (1.53.6, H1): a step that changed a 16-bit layer's pixels without its 16-bit data is undone, so
+    // nothing drops a 16-bit document to 8 bits silently.
+    if (deepBefore && !nested && p.doc.layers.some((l) => { const o = deepBefore.get(l.id); return !!o?.deep && l.raster !== o.raster && l.deep === o.deep; })) {
+      const r = p.history.rollback();
+      if (r) { for (let i = r.patches.length - 1; i >= 0; i--) { const q = r.patches[i]; q.raster.write(q.before, q.x, q.y); } p.doc = r.before.doc; p.selection = r.before.selection; }
+      this.refresh();
+      this.notice(`${name} does not work in 16 bits yet. Image > Mode > 8 Bits/Channel to use it.`);
       return false;
     }
     p.history.end(p.snapshot());
@@ -2603,6 +2614,7 @@ export class Engine {
   /** opts (1.49.5, the owner's tool list): aliased paints hard pixel-exact dabs (the Pencil); autoErase paints the
    *  background colour when the stroke starts on the foreground colour (Photoshop's Pencil); name names the step. */
   beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; square?: boolean; autoErase?: boolean; name?: string } = {}): boolean {
+    if (this.deepBlocked('Painting')) return false;   // 1.53.6
     const p = this.current;
     if (!p || this.stroke) return false;
     this.settle();
@@ -5061,6 +5073,7 @@ export class Engine {
   }
 
   beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush' | 'patternStamp', pt: Pt, shift: boolean): boolean {
+    if (this.deepBlocked('Painting')) return false;   // 1.53.6
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
@@ -6190,6 +6203,34 @@ export class Engine {
       pp.doc = { ...pp.doc, layers, profile: target ?? undefined };
       return true;
     });
+  }
+
+  /** Image > Mode > 8 or 16 Bits/Channel (1.53.6, H1): each pixel layer gains its 16-bit pixels, or keeps only its
+   *  8-bit rendition. */
+  setDepth(depth: 8 | 16): boolean {
+    const p = this.current;
+    if (!p || (p.doc.depth ?? 8) === depth) return false;
+    return this.edit(depth === 16 ? '16 Bits/Channel' : '8 Bits/Channel', (pp) => {
+      const layers = pp.doc.layers.map((l) => (depth === 16 ? (l.raster && !l.isGroup && !l.adjustment ? { ...l, deep: deepFromRaster(l.raster) } : l) : l.deep ? { ...l, deep: undefined } : l));
+      pp.doc = { ...pp.doc, layers, depth: depth === 16 ? 16 : undefined };
+      return true;
+    });
+  }
+
+  /** Opens 16-bit pixels as a 16-bit document (1.53.6): its layer holds them, its raster their 8-bit rendition. */
+  openDeep(name: string, deep: DeepPixels): Project {
+    const raster = rasterFromDeep(deep);
+    const p = this.openImage({ source: raster.canvas as CanvasImageSource, width: deep.width, height: deep.height, name });
+    p.doc = { ...p.doc, depth: 16, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, deep } : l)) };
+    this.refresh();
+    return p;
+  }
+
+  /** Painting changes a raster in place, outside `edit`; in a 16-bit document it waits for a later release. */
+  private deepBlocked(what: string): boolean {
+    if (this.current?.doc.depth !== 16) return false;
+    this.notice(`${what} does not work in 16 bits yet. Image > Mode > 8 Bits/Channel to use it.`);
+    return true;
   }
 
   convertMode(mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean {

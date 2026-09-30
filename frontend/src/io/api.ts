@@ -150,6 +150,14 @@ export const api = {
   async decode(file: Blob, name: string, page = 0): Promise<Blob> {
     return (await request('/io/decode', { method: 'POST', body: form(page ? { page: String(page) } : {}, [{ name, blob: file }], 'file') })).blob();
   },
+  /** A picture's pixels at their own depth (1.53.6, H1): RGBA, 16 bits a channel, and whether the file held 16. */
+  async decodeDeep(file: Blob, name: string): Promise<{ width: number; height: number; depth: number; data: Uint16Array }> {
+    const r = await request('/io/decode-deep', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') });
+    return { width: Number(r.headers.get('X-Width')), height: Number(r.headers.get('X-Height')), depth: Number(r.headers.get('X-Depth')), data: new Uint16Array(await r.arrayBuffer()) };
+  },
+  async encodeDeep(data: Uint16Array, width: number, height: number, format: 'png' | 'tiff'): Promise<Blob> {
+    return (await request('/io/encode-deep', { method: 'POST', body: form({ width: String(width), height: String(height), format }, [{ name: 'pixels.raw', blob: new Blob([new Uint16Array(data)]) }], 'file') })).blob();
+  },
   /** Colour management (1.53.5, H2): the profiles on this computer and added to formvis. */
   async colourProfiles(): Promise<{ profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean }>; folder: string }> {
     return (await (await request('/color/profiles')).json()) as { profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean }>; folder: string };

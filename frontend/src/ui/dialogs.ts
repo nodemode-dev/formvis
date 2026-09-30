@@ -47,6 +47,9 @@ export class Dialog {
     this.scrim.hidden = true;
     openCount -= 1;
     this.onClose?.();
+    // Focus left inside the hidden dialog kept shortcuts from reaching formvis until the browser moved it at a later frame
+    // (1.53.6: a rebound key did nothing after Keyboard Shortcuts closed); it is released here, then returned.
+    if (this.scrim.contains(document.activeElement)) (document.activeElement as HTMLElement).blur();
     this.lastFocus?.focus?.();
   }
 
