@@ -1,10 +1,8 @@
-"""formvis engine."""
+"""formvis engine.
 
-import os
+OpenCV's OpenEXR codec stays off in this process (its parser has had security problems with untrusted files,
+opencv/opencv#21326); app/services/contained.py decodes and encodes EXR in a child interpreter that turns it on for
+itself alone (1.54.4, the parity plan's L14).
+"""
 
-# 32-bit documents (1.53.9, the parity plan's H1): OpenEXR is off in OpenCV by default, because its parser has had
-# security problems with untrusted files (opencv/opencv#21326). formvis opens the person's own files on their own
-# machine, so it is turned on for the engine, before OpenCV is first imported.
-os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
-
-__version__ = "1.54.3"
+__version__ = "1.54.4"
