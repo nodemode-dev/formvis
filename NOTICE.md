@@ -54,6 +54,9 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | Falconsai/nsfw_image_detection, as onnx-community/nsfw_image_detection-ONNX | Apache-2.0 | The content filter section 4.2 of Krea 2's licence requires, installed with Krea 2 and run on every picture it makes |
 | FLUX.2 [klein] 4B (Black Forest Labs) | Apache License 2.0 | Apple silicon only for now |
 | LaMa (big-lama, Suvorov et al.), exported to ONNX by Carve (Carve/LaMa-ONNX) | Apache-2.0 | Generative Fill and Expand on this computer without a prompt, downloaded from Preferences > Plugins > Local models |
+| SAM 2.1 tiny (Meta), exported to ONNX by onnx-community (sam2.1-hiera-tiny-ONNX; the export states no licence of its own) | Apache-2.0 (Meta's weights) | Object Selection, fetched on first use |
+| U²-Net (Qin et al.), the u2net.onnx rembg publishes | Apache-2.0 | Select Subject and Remove Background, fetched on first use |
 | Real-ESRGAN x4plus (Xintao Wang et al.), converted to ONNX (skillsafe-ai/realesrgan-x4plus) | BSD-3-Clause | Image > Upscale on this computer, downloaded from Preferences > Plugins > Local models |
 | mflux (Apple silicon) and diffusers (Windows and Linux) | MIT; Apache-2.0 | The runtimes the models run in, installed into their own environment with a model |
 | httpx | BSD-3-Clause | The engine's model downloads |
+| ONNX Runtime | MIT | Runs the local models; part of the base install |

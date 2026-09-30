@@ -1,4 +1,5 @@
 import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine } from '../../engine';
+import { ScopesView } from './scopes-view';
 import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { toast } from '../toast';
@@ -61,6 +62,8 @@ export function filterMargin(kind: FilterKind, s: FilterPanelSettings): number {
 }
 
 export class FilterPanel extends Dialog {
+  /** Develop's histogram, waveform and vectorscope (1.53.4). */
+  readonly scopes = new ScopesView();
   private kind: FilterKind = 'gaussianBlur';
   private readonly s = defaultFilterSettings();
   private editing: ((settings: Record<string, unknown>) => void) | null = null;
@@ -242,6 +245,7 @@ export class FilterPanel extends Dialog {
     const node = el('<div class="cv-panel-section" hidden></div>');
     node.append(...nodes);
     this.body.appendChild(node);
+    if (kind === 'develop') node.prepend(this.scopes.el);   // Develop's scopes (1.53.4)
     this.sections.set(kind, { node, sync });
   }
 
@@ -283,7 +287,9 @@ export class FilterPanel extends Dialog {
     window.clearTimeout(this.timer);
     this.timer = window.setTimeout(() => {
       if (!this.isOpen) return;
-      if (this.preview) this.engine.previewImageEdit((src, scale) => runFilterOffThread(this.kind, this.s, scale, this.seed, src) ?? this.run(src, scale), this.grow());
+      // Develop's scopes follow the developed preview (1.53.4).
+      const scoped = (out: ImageData | Promise<ImageData>): ImageData | Promise<ImageData> => { if (this.kind === 'develop') void Promise.resolve(out).then((img) => this.scopes.draw(img)).catch(() => undefined); return out; };
+      if (this.preview) this.engine.previewImageEdit((src, scale) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src) ?? this.run(src, scale)), this.grow());
       else this.engine.setPreview(null);
     }, delay);
   }

@@ -1,6 +1,7 @@
 import { Raster, SelectionMask, createSurface, ctxOf, toBlob, type BlendMode, type Engine } from '../engine';
 import { api } from '../io/api';
 import { PARAM_KINDS } from '../engine/adjust-params';
+import { LIMITS } from '../engine/types';
 import { decodeImage } from '../io/images';
 import { localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
 
@@ -164,7 +165,7 @@ export class AgentBridge {
         // The document's size and shape.
         case 'resize_image': {
           const w = Math.round(num('width', p.doc.width)), h = Math.round(num('height', p.doc.height));
-          return e.resampleImage(w, h, 'high', p.doc.resolution ?? 72) ? text(`Resized to ${w} by ${h}.`) : fail('The size is outside what formvis allows (30,000 pixels a side, 100 megapixels).');
+          return e.resampleImage(w, h, 'high', p.doc.resolution ?? 72) ? text(`Resized to ${w} by ${h}.`) : fail(`The size is outside what formvis allows (30,000 pixels a side, ${Math.round(LIMITS.pixels / 1_000_000)} megapixels on this computer).`);
         }
         case 'resize_canvas': {
           const w = Math.round(num('width', p.doc.width)), h = Math.round(num('height', p.doc.height)), an = str('anchor') || 'center';

@@ -1,4 +1,5 @@
 import type { Engine } from '../../engine';
+import { LIMITS } from '../../engine/types';
 import { api, ApiError } from '../../io/api';
 import { decodeImage, type LargePictureError } from '../../io/images';
 import { Dialog } from '../dialogs';
@@ -33,7 +34,7 @@ export class LargePictureDialog extends Dialog {
   show(pic: LargePictureError): void {
     this.pic = pic;
     const gb = (pic.width * pic.height * 4) / 1024 ** 3;
-    setText(this.info, `${pic.picture} is ${pic.width.toLocaleString()} by ${pic.height.toLocaleString()} pixels, larger than formvis edits in one piece (30,000 a side, 100 megapixels). The engine decodes it once to open it, which needs about ${gb < 1 ? `${Math.round(gb * 1024)} MB` : `${gb.toFixed(1)} GB`} of memory.`);
+    setText(this.info, `${pic.picture} is ${pic.width.toLocaleString()} by ${pic.height.toLocaleString()} pixels, larger than formvis edits in one piece (30,000 a side, ${Math.round(LIMITS.pixels / 1_000_000)} megapixels on this computer). The engine decodes it once to open it, which needs about ${gb < 1 ? `${Math.round(gb * 1024)} MB` : `${gb.toFixed(1)} GB`} of memory.`);
     const w = Math.min(8000, pic.width), h = Math.min(8000, pic.height);
     this.rx.value = String(Math.floor((pic.width - w) / 2)); this.ry.value = String(Math.floor((pic.height - h) / 2)); this.rw.value = String(w); this.rh.value = String(h);
     setText(this.note, '');

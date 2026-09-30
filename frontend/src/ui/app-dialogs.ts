@@ -4,7 +4,8 @@ import { saveTemplates, templates } from '../io/prompt-templates';
 import { LocalModelsSection } from './panels/local-models';
 import { PROJECT_ACCEPT } from '../io/images';
 import { VERSION } from '../version';
-import type { Commands } from './commands';
+import { comboOf, formatKeys, type Commands } from './commands';
+import { LIMITS } from '../engine/types';
 import { Dialog, confirmAction } from './dialogs';
 import { el, patchList, q, setClass, setDisabled, setHidden, setText, setValue } from './dom';
 import { icon } from './icons';
@@ -379,7 +380,7 @@ export class SettingsDialog extends Dialog {
     add('General', this.homeRow.el, reset, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, accentRow, this.intensityRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.</p>'));
-    add('Performance', this.redrawRow.el,
+    add('Performance', this.budgetNote, this.redrawRow.el,
       el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
@@ -513,6 +514,7 @@ export class SettingsDialog extends Dialog {
   private readonly restoreBox = el<HTMLInputElement>('<input type="checkbox" aria-label="Reopen documents at start">');
   private readonly agents = el<HTMLInputElement>('<input type="checkbox" aria-label="Allow outside agents">');
   private readonly localModels = new LocalModelsSection();   // 1.52.9
+  private readonly budgetNote = el('<p class="cv-note cv-budget-note" role="status"></p>');   // the largest document (1.53.4)
   private readonly keysNote = el('<p class="cv-note cv-keys-note" role="status"></p>');   // where API keys are kept (1.52.5)
   private readonly llmUrl = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="Language model address" spellcheck="false" placeholder="http://localhost:11434/v1">');
   private readonly llmModel = el<HTMLInputElement>('<input class="cv-input" type="text" aria-label="Language model" spellcheck="false" list="cv-llm-models" placeholder="llama3.2">');
@@ -589,6 +591,7 @@ export class SettingsDialog extends Dialog {
     if (document.activeElement !== this.comfyuiUrl) setValue(this.comfyuiUrl, this.prefs.comfyuiUrl);
     void this.loadLlm();
     void this.localModels.refresh();
+    setText(this.budgetNote, `Largest document: ${Math.round(LIMITS.pixels / 1_000_000)} megapixels, set from this computer's memory (at least 100, at most 250).`);
     this.agents.checked = this.prefs.agentsAllowed;
     if (!this.tplPick.options.length) this.fillTemplates();
     const c = readChoice();
@@ -611,29 +614,75 @@ const TOOL_KEYS: ReadonlyArray<[string, string]> = [
 ];
 
 export class ShortcutsDialog extends Dialog {
-  private readonly list = el('<div class="cv-list" aria-label="Keyboard shortcuts"></div>');
+  private readonly search = el<HTMLInputElement>('<input class="cv-input" type="search" placeholder="Search commands" aria-label="Search shortcuts">');
+  private readonly list = el('<div class="cv-list cv-keys-list" aria-label="Keyboard shortcuts"></div>');
+  private readonly note = el('<div class="cv-shortcuts-note" role="status"></div>');
+  private capturing: string | null = null;
+  private pending: { id: string; combo: string } | null = null;
+  private focusId: string | null = null;
 
+  /** Edit > Keyboard Shortcuts (1.53.4): every command rebindable, a conflict named and reassigned or not, Reset All;
+   *  kept in Preferences. Tool letters are listed, fixed by their tools. */
   constructor(private readonly commands: Commands) {
-    super('Keyboard Shortcuts', 520);
-    this.body.appendChild(this.list);
+    super('Keyboard Shortcuts', 620);
+    this.body.append(this.search, this.note, this.list);
+    this.search.addEventListener('input', () => this.render());
+    this.search.addEventListener('keydown', (e) => e.stopPropagation());
+    this.button('Reset All', 'ghost', () => { this.commands.resetKeys(); this.save(); this.say(''); this.render(); });
     this.button('Close', 'primary', () => this.close());
+    window.addEventListener('keydown', (e) => this.capture(e), true);
   }
 
-  show(): void {
-    const rows: Array<{ key: string; label: string; keys: string }> = [];
-    for (const c of this.commands.all()) if (c.keys?.length) rows.push({ key: c.id, label: this.commands.label(c), keys: this.commands.keyLabel(c) });
-    for (const [label, keys] of TOOL_KEYS) rows.push({ key: `tool:${label}`, label, keys });
-    patchList(this.list, rows, {
-      key: (r) => r.key,
-      create: (r) => {
-        const n = el('<div class="cv-list-row"><span></span><span class="cv-list-name"></span><span class="cv-list-meta"></span></div>');
-        setText(q(n, '.cv-list-name'), r.label);
-        setText(q(n, '.cv-list-meta'), r.keys);
-        return n;
-      },
-      update: (n, r) => { setText(q(n, '.cv-list-name'), r.label); setText(q(n, '.cv-list-meta'), r.keys); },
+  show(): void { this.capturing = null; this.pending = null; this.focusId = null; this.say(''); this.search.value = ''; this.render(); this.open(); }
+
+  private save(): void { savePrefs({ ...loadPrefs(), shortcuts: this.commands.overrides() }); }
+
+  private say(text: string, actions: HTMLElement[] = []): void { this.note.replaceChildren(); if (text) { const p = el('<span></span>'); setText(p, text); this.note.append(p, ...actions); } }
+
+  private capture(e: KeyboardEvent): void {
+    if (!this.capturing || !this.isOpen) return;
+    e.preventDefault(); e.stopPropagation();
+    if (['Shift', 'Control', 'Alt', 'Meta'].includes(e.key)) return;   // wait for the key itself
+    const id = this.capturing;
+    this.capturing = null;
+    if (e.key === 'Escape') { this.say(''); this.render(); return; }
+    const combo = comboOf(e), other = this.commands.forCombo(combo);
+    if (other && other.id !== id) {
+      this.pending = { id, combo };
+      const re = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Reassign</button>'), no = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Cancel</button>');
+      re.addEventListener('click', () => { const p = this.pending; this.pending = null; if (p) { this.commands.setKeys(p.id, [p.combo]); this.save(); } this.say(''); this.render(); });
+      no.addEventListener('click', () => { this.pending = null; this.say(''); this.render(); });
+      this.say(`${formatKeys(combo)} is used by ${this.commands.label(other)}. `, [re, no]);
+      return;
+    }
+    this.commands.setKeys(id, [combo]);
+    this.save(); this.say(''); this.render();
+  }
+
+  private render(): void {
+    const q2 = this.search.value.trim().toLowerCase();
+    const rows = this.commands.all().map((c) => ({ id: c.id, label: this.commands.label(c).replace(/\.\.\.$/, ''), keys: (c.keys ?? []).map(formatKeys).join(', ') }))
+      .filter((r) => r.label && (!q2 || r.label.toLowerCase().includes(q2) || r.keys.toLowerCase().includes(q2))).sort((a, b) => a.label.localeCompare(b.label));
+    const nodes: HTMLElement[] = rows.map((r) => {
+      const n = el('<div class="cv-list-row cv-keys-row"><span class="cv-list-name"></span><span class="cv-list-meta"></span><button type="button" class="cv-btn cv-btn-ghost">Change</button><button type="button" class="cv-btn cv-btn-ghost">Remove</button></div>');
+      n.dataset.command = r.id;
+      setText(q(n, '.cv-list-name'), r.label);
+      setText(q(n, '.cv-list-meta'), this.capturing === r.id ? 'Press the new keys (Esc cancels)' : r.keys || 'none');
+      const [change, remove] = [...n.querySelectorAll('button')] as HTMLButtonElement[];
+      change.setAttribute('aria-label', `Change ${r.label}`); remove.setAttribute('aria-label', `Remove ${r.label}`); remove.disabled = !r.keys;
+      change.addEventListener('click', () => { this.capturing = r.id; this.focusId = r.id; this.pending = null; this.say(''); this.render(); });
+      remove.addEventListener('click', () => { this.focusId = r.id; this.commands.setKeys(r.id, []); this.save(); this.render(); });
+      return n;
     });
-    this.open();
+    for (const [label, keys] of TOOL_KEYS) if (!q2 || label.toLowerCase().includes(q2)) {
+      const n = el('<div class="cv-list-row cv-keys-row is-tool"><span class="cv-list-name"></span><span class="cv-list-meta"></span></div>');
+      setText(q(n, '.cv-list-name'), `${label} (tool)`); setText(q(n, '.cv-list-meta'), keys);
+      nodes.push(n);
+    }
+    this.list.replaceChildren(...nodes);
+    // Focus back on the row just edited: re-rendering removed the focused button, and focus falling out of the dialog
+    // left Escape unable to close it (1.53.4).
+    if (this.focusId) (this.list.querySelector(`.cv-keys-row[data-command="${CSS.escape(this.focusId)}"] button`) as HTMLButtonElement | null)?.focus();
   }
 }
 

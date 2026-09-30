@@ -44,7 +44,7 @@ def model_dir() -> Path:
     return path
 
 
-def available() -> bool:
+def torch_available() -> bool:
     """Whether torch and sam2 are installed: found without importing them (1.50.3), so the capability report answers at
     once; importing torch took seconds on a cold engine, and a caller's short timeout read that as unavailable."""
     import importlib.util
@@ -53,6 +53,78 @@ def available() -> bool:
         return importlib.util.find_spec("sam2") is not None and importlib.util.find_spec("torch") is not None
     except (ImportError, ValueError):
         return False
+
+
+def onnx_available() -> bool:
+    """1.53.4: SAM 2.1 on ONNX Runtime, part of the base install, its model fetched on first use (nothing to install)."""
+    import importlib.util
+
+    try:
+        return importlib.util.find_spec("onnxruntime") is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def available() -> bool:
+    return torch_available() or onnx_available()
+
+
+def backend() -> str:
+    """torch when installed (it can use the GPU), else ONNX Runtime."""
+    return "torch" if torch_available() else "onnx"
+
+
+# SAM 2.1 on ONNX Runtime (1.53.4): the image processor's steps (1024 x 1024, 0 to 1, ImageNet mean and deviation).
+_MEAN = (0.485, 0.456, 0.406)
+_STD = (0.229, 0.224, 0.225)
+
+
+def _onnx_sessions():
+    from app.localgen import jobs, model_manager
+    from app.localgen.paths import providers, session as onnx_session
+    import onnxruntime as ort
+    import time
+
+    from app.localgen import sessions
+
+    def load():
+        if not model_manager.ready("sam2-onnx"):   # fetched on first use, pinned to its checksums
+            job = model_manager.start_download("sam2-onnx")
+            while True:
+                state = jobs.status(job["job_id"])
+                if state["status"] in ("done", "error", "failed", "cancelled"):
+                    break
+                time.sleep(0.25)
+            if not model_manager.ready("sam2-onnx"):
+                raise SegmentError(f"The selection model (SAM 2.1, about 155 MB) could not be downloaded: {state.get('error') or state.get('message') or 'check the connection'}.")
+        folder = "sam2.1-hiera-tiny/"
+        return (onnx_session(model_manager.model_file(folder + "vision_encoder.onnx")),
+                onnx_session(model_manager.model_file(folder + "prompt_encoder_mask_decoder.onnx")))
+    return sessions.get("sam2", load)   # held with the other local models, at most two at a time
+
+
+def _onnx_encode(rgb):
+    import numpy as np
+    enc, _ = _onnx_sessions()
+    im = np.asarray(Image.fromarray(rgb).resize((1024, 1024), Image.Resampling.BILINEAR), np.float32) / 255.0
+    im = (im - np.array(_MEAN, np.float32)) / np.array(_STD, np.float32)
+    outs = enc.run(None, {"pixel_values": im.transpose(2, 0, 1)[None].astype(np.float32)})
+    return {f"image_embeddings.{i}": outs[i] for i in range(3)}
+
+
+def _onnx_select(entry, points, box):
+    import cv2
+    import numpy as np
+    _, dec = _onnx_sessions()
+    w, h = entry["size"]
+    sx, sy = 1024.0 / w, 1024.0 / h
+    pts = [[x * sx, y * sy] for x, y, _ in points] or [[0.0, 0.0]]
+    labels = [1 if on else 0 for _, _, on in points] or [-1]   # -1: no point (a box alone)
+    boxes = np.array([[[box[0] * sx, box[1] * sy, box[2] * sx, box[3] * sy]]], np.float32) if box is not None else np.zeros((1, 0, 4), np.float32)
+    feeds = {"input_points": np.array([[pts]], np.float32), "input_labels": np.array([[labels]], np.int64), "input_boxes": boxes, **entry["onnx"]}
+    iou, masks, _ = dec.run(None, feeds)
+    best = masks[0, 0, int(np.argmax(iou[0, 0]))]
+    return cv2.resize(best.astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR) > 0
 
 
 def torch_device() -> tuple[str, str]:
@@ -129,9 +201,8 @@ def has(key: str) -> bool:
 def encode(key: str, data: bytes) -> tuple[int, int]:
     """Encodes the image under `key` (a layer and its revision); returns its size."""
     if not available():
-        raise SegmentError("Click-to-select needs the engine's AI extras (./formvis install-ml).")
+        raise SegmentError("Click-to-select needs ONNX Runtime in the engine (reinstall with ./formvis install).")
     import numpy as np
-    import torch
 
     try:
         with Image.open(io.BytesIO(data)) as im:
@@ -139,10 +210,14 @@ def encode(key: str, data: bytes) -> tuple[int, int]:
     except Exception as exc:
         raise SegmentError(f"The image could not be read: {exc}") from exc
     with _lock:
-        pred = _get_predictor()
-        with torch.inference_mode():
-            pred.set_image(rgb)
-        _embeddings[key] = {"features": pred._features, "orig_hw": pred._orig_hw, "size": (rgb.shape[1], rgb.shape[0])}
+        if backend() == "onnx":
+            _embeddings[key] = {"onnx": _onnx_encode(rgb), "size": (rgb.shape[1], rgb.shape[0])}
+        else:
+            import torch
+            pred = _get_predictor()
+            with torch.inference_mode():
+                pred.set_image(rgb)
+            _embeddings[key] = {"features": pred._features, "orig_hw": pred._orig_hw, "size": (rgb.shape[1], rgb.shape[0])}
         _embeddings.move_to_end(key)
         while len(_embeddings) > KEEP:
             _embeddings.popitem(last=False)
@@ -153,7 +228,6 @@ def select(key: str, points: list[tuple[float, float, int]], box: tuple[float, f
     """The object at the clicked points of the image encoded under `key`, and within `box` (x0, y0, x1, y1) when given, as a
     grey PNG mask: each point (x, y, 1) is on the object and (x, y, 0) not on it; of SAM's proposals the one it scores highest."""
     import numpy as np
-    import torch
 
     if not points and box is None:   # a box alone will do (Object Selection's box mode)
         raise SegmentError("Click on the object to select, or drag a box round it.")
@@ -162,6 +236,12 @@ def select(key: str, points: list[tuple[float, float, int]], box: tuple[float, f
         if entry is None:
             raise KeyError(key)
         _embeddings.move_to_end(key)
+        if "onnx" in entry:
+            mask = _onnx_select(entry, points, box)
+            out = io.BytesIO()
+            Image.fromarray((mask * 255).astype("uint8"), "L").save(out, "PNG")
+            return out.getvalue()
+        import torch
         pred = _get_predictor()
         pred._features, pred._orig_hw, pred._is_image_set = entry["features"], entry["orig_hw"], True
         # Points, a box (Object Selection's box mode, 1.49.10), or both, as SAM takes them.

@@ -180,3 +180,6 @@
 .cv-local-card { border-top: 1px solid var(--border, #333); padding-top: 6px; margin-top: 6px; }
 .cv-local-state { font-weight: 600; font-size: 13px; margin: 2px 0; }
 .cv-local-summary { margin: 2px 0 4px 16px; padding: 0; font-size: 12px; color: var(--text-muted, #999); }
+/* Develop's scopes (1.53.4). */
+.cv-scopes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
+.cv-scopes-canvas { width: 100%; max-width: 256px; height: auto; aspect-ratio: 2 / 1; background: #111; border-radius: 4px; image-rendering: pixelated; }

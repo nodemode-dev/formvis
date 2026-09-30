@@ -464,7 +464,7 @@ export class Engine {
 
   newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
     if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels) {
-      this.notice('Canvas sides must be 1 to 30,000 px, and the canvas at most 100 megapixels.', 'error');
+      this.notice(`Canvas sides must be 1 to 30,000 px, and the canvas at most ${Math.round(LIMITS.pixels / 1_000_000)} megapixels.`, 'error');
       return null;
     }
     const base: Doc = { id: uid(), width, height, resolution: Number.isFinite(resolution) && resolution >= 1 && resolution <= 10000 ? resolution : 72, layers: [] };
@@ -2301,7 +2301,7 @@ export class Engine {
   /** the copyLayer(into:): a layer, with a folder's contents, copied into another open project as one Copy
    *  Layers from Project step there: new ids, cloned pixels, parent and clip links kept inside the copy and dropped
    *  outside it, centered on the target canvas, on top of its stack; the target becomes current. Refused past
-   *  the 100-megapixel budget for the target. */
+   *  the target's pixel budget (LIMITS.pixels). */
   copyLayerToProject(id: ID, targetKey: string): boolean {
     const src = this.projects.find((q) => !!q.layer(id)), dst = this.projects.find((q) => q.id === targetKey);
     const head = src?.layer(id);
@@ -2314,7 +2314,7 @@ export class Engine {
     }
     const copied = src.doc.layers.filter((l) => included.has(l.id));
     const pixels = (ls: readonly Layer[]): number => ls.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0);
-    if (pixels(dst.doc.layers) + pixels(copied) > 100_000_000) { this.notice("The copied layers exceed this project's 100-megapixel limit."); return false; }
+    if (pixels(dst.doc.layers) + pixels(copied) > LIMITS.pixels) { this.notice(`The copied layers exceed this project's ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`); return false; }
     const dx = dst.doc.width / 2 - (head.transform.x + head.transform.w / 2), dy = dst.doc.height / 2 - (head.transform.y + head.transform.h / 2);
     const ids = new Map(copied.map((l) => [l.id, uid()]));
     const layers: Layer[] = copied.map((l) => ({
@@ -3889,7 +3889,7 @@ export class Engine {
       let added = false;
       for (const img of images) {
         if (img.width > LIMITS.side || img.height > LIMITS.side || used + img.width * img.height > LIMITS.pixels) {
-          this.notice(`${img.name} was skipped: it would exceed the 30,000 px side or the 100-megapixel document limit.`, 'error');
+          this.notice(`${img.name} was skipped: it would exceed the 30,000 px side or the ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel document limit.`, 'error');
           continue;
         }
         used += img.width * img.height;
@@ -4375,7 +4375,7 @@ export class Engine {
 
   private sizeOk(width: number, height: number): boolean {
     const ok = Number.isInteger(width) && Number.isInteger(height) && width >= 1 && height >= 1 && width <= LIMITS.side && height <= LIMITS.side && width * height <= LIMITS.pixels;
-    if (!ok) this.notice('Canvas sides must be 1 to 30,000 px, and the canvas at most 100 megapixels.', 'error');
+    if (!ok) this.notice(`Canvas sides must be 1 to 30,000 px, and the canvas at most ${Math.round(LIMITS.pixels / 1_000_000)} megapixels.`, 'error');
     return ok;
   }
 
@@ -4532,7 +4532,7 @@ export class Engine {
       const nq = cornersOf(l.transform).map(toOut);
       if (!distortUsable(nq)) continue;
       const b = boundsOf(nq);
-      if (b.w * b.h > LIMITS.pixels) { this.notice('That perspective would stretch a layer past the 100-megapixel limit. Pull the corners in a little.', 'error'); return false; }
+      if (b.w * b.h > LIMITS.pixels) { this.notice(`That perspective would stretch a layer past the ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit. Pull the corners in a little.`, 'error'); return false; }
       const w = warpRaster(l.raster, l.transform, nq);
       if (!w) continue;
       let mask = l.mask;
@@ -4560,7 +4560,7 @@ export class Engine {
     if (!p0 || !this.sizeOk(width, height)) return false;
     const sx0 = width / p0.doc.width, sy0 = height / p0.doc.height;
     const used = p0.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0);
-    if (used * sx0 * sy0 > LIMITS.pixels) { this.notice('The resized layers would exceed the 100-megapixel document limit.', 'error'); return false; }
+    if (used * sx0 * sy0 > LIMITS.pixels) { this.notice(`The resized layers would exceed the ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel document limit.`, 'error'); return false; }
     const scaleRaster = (r: Raster, w: number, h: number): Raster => {
       const out = new Raster(w, h);
       out.ctx.imageSmoothingEnabled = sampling !== 'nearest';
@@ -5532,7 +5532,7 @@ export class Engine {
     const p = this.current, view = this.flattened();
     if (!p || !view) return false;
     const W = p.doc.width * scale, H = p.doc.height * scale;
-    if (W > LIMITS.side || H > LIMITS.side || W * H > LIMITS.pixels) { this.notice(`Upscaled ${scale} times, this image would pass 30,000 px a side or 100 megapixels.`, 'error'); return false; }
+    if (W > LIMITS.side || H > LIMITS.side || W * H > LIMITS.pixels) { this.notice(`Upscaled ${scale} times, this image would pass 30,000 px a side or ${Math.round(LIMITS.pixels / 1_000_000)} megapixels.`, 'error'); return false; }
     let result: Blob;
     try {
       result = await run(await toBlob(view));

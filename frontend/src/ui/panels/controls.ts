@@ -11,6 +11,7 @@ export function sliderRow(label: string, min: number, max: number, step: number,
   setText(q(node, 'span'), label);
   const range = q<HTMLInputElement>(node, 'input[type="range"]');
   const box = q<HTMLInputElement>(node, 'input[type="number"]');
+  range.setAttribute('aria-label', label); box.setAttribute('aria-label', `${label} value`);   // named for assistive technology (1.53.4)
   range.addEventListener('input', () => { const v = Number(range.value); setValue(box, fmt(v)); onInput(v); });
   box.addEventListener('change', () => {
     const v = clamp(Number(box.value), lo, hi);

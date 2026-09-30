@@ -94,3 +94,13 @@ def test_the_real_model_downloads_pinned_and_upscales_through_the_route(monkeypa
     assert got.size == (160, 96) and got.mode == "RGBA"
     r, g, bl, a = got.getpixel((80, 48))
     assert abs(r - 40) < 12 and abs(g - 120) < 12 and abs(bl - 200) < 12 and a == 255 and got.getpixel((0, 0))[3] < 128
+
+
+def test_every_offered_model_download_is_pinned():
+    """Nothing offered for download goes unverified (1.53.4, the capability plan's M9): every file of every model the
+    model manager offers has a SHA-256 pin, and the pins are well formed."""
+    import re
+    for model, spec in model_manager.MODELS.items():
+        for name in spec["files"]:
+            pin = model_manager.PINNED.get(name) or model_manager.pin_for(name)
+            assert pin and re.fullmatch(r"[0-9a-f]{64}", pin), f"{model}: {name} has no SHA-256 pin"

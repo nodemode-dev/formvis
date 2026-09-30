@@ -48,7 +48,7 @@ export async function decodeImage(file: Blob, name: string): Promise<ImportedIma
     source = await bitmapOf(await api.decode(file, name));
   }
   if (source.width > LIMITS.side || source.height > LIMITS.side || source.width * source.height > LIMITS.pixels) {
-    throw new Error(`${name} exceeds the 30,000 px side or 100-megapixel limit.`);
+    throw new Error(`${name} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
   }
   return { source, width: source.width, height: source.height, name };
 }

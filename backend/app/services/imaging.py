@@ -51,7 +51,7 @@ def decoders() -> dict:
 
 def _check(width: int, height: int) -> None:
     if width < 1 or height < 1 or width > config.MAX_SIDE or height > config.MAX_SIDE or width * height > config.MAX_PIXELS:
-        raise DecodeError("The image exceeds the 30,000 px side or 100-megapixel limit.")
+        raise DecodeError(f"The image exceeds the 30,000 px side or {config.MAX_PIXELS // 1_000_000}-megapixel limit.")
 
 
 def _png(image: Image.Image) -> tuple[bytes, int, int]:
@@ -88,12 +88,33 @@ def _raw(data: bytes, filename: str) -> tuple[bytes, int, int]:
     return _png(Image.fromarray(rgb))
 
 
-def decode_to_png(data: bytes, filename: str) -> tuple[bytes, int, int]:
+def pages(data: bytes, filename: str) -> list[dict]:
+    """A TIFF's pages (1.53.4), BigTIFF included: each page's number, size and mode, read without decoding pixels.
+    One entry for anything else."""
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            if image.format != "TIFF":
+                return [{"index": 0, "width": image.width, "height": image.height, "mode": image.mode}]
+            out = []
+            for i in range(getattr(image, "n_frames", 1)):
+                image.seek(i)
+                out.append({"index": i, "width": image.width, "height": image.height, "mode": image.mode})
+            return out
+    except Exception as exc:
+        raise DecodeError(f"Could not read {filename or 'the image'}: {exc}") from exc
+
+
+def decode_to_png(data: bytes, filename: str, page: int = 0) -> tuple[bytes, int, int]:
     suffix = Path(filename or "").suffix.lower()
     if suffix in RAW_SUFFIXES:
         return _raw(data, filename)
     try:
         with Image.open(io.BytesIO(data)) as image:
+            if page:
+                count = getattr(image, "n_frames", 1)
+                if not 0 <= page < count:
+                    raise DecodeError(f"{filename or 'The image'} has {count} page{'s' if count != 1 else ''}; there is no page {page + 1}.")
+                image.seek(page)
             return _png(image)
     except DecodeError:
         raise

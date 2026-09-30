@@ -33,15 +33,13 @@ _lock = threading.Lock()
 
 
 def _run_model(batch: np.ndarray) -> np.ndarray:
-    global _session
+    import onnxruntime as ort
+
+    from . import sessions
+    from .paths import providers, session as onnx_session
+    session = sessions.get("esrgan", lambda: onnx_session(MODELS_ROOT / FILE))
     with _lock:
-        if _session is None:
-            import onnxruntime as ort
-
-            from .paths import providers
-
-            _session = ort.InferenceSession(str(MODELS_ROOT / FILE), providers=providers())
-        return _session.run(None, {"input": batch})[0]
+        return session.run(None, {"input": batch})[0]
 
 
 def upscale_rgb(

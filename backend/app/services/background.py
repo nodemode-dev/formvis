@@ -28,7 +28,7 @@ def model_name() -> str:
 
 
 def available() -> dict:
-    ml = _has("rembg") and _has("onnxruntime")
+    ml = _has("onnxruntime")   # 1.53.4: rembg when installed, else U^2-Net on ONNX Runtime directly (nothing to install)
     lite = _has("cv2")
     return {"ml": ml, "lite": lite, "default": "ml" if ml else ("lite" if lite else None), "model": model_name()}
 
@@ -49,7 +49,38 @@ def clear_sessions() -> None:
     _session.cache_clear()
 
 
+def _u2net_onnx(image: Image.Image) -> Image.Image:
+    """rembg's U^2-Net steps, run directly (1.53.4): 320 x 320 (Lanczos), scaled by the maximum, ImageNet-normalized;
+    the output min-max normalized and resized back (Lanczos). The model comes through the model manager, pinned."""
+    import time
+
+    import numpy as np
+    import onnxruntime as ort
+
+    from app.localgen import jobs, model_manager
+    from app.localgen.paths import providers, session as onnx_session
+    from app.localgen import sessions
+
+    def load():
+        if not model_manager.ready("u2net-onnx"):
+            job = model_manager.start_download("u2net-onnx")
+            while jobs.status(job["job_id"])["status"] not in ("done", "error", "failed", "cancelled"):
+                time.sleep(0.25)
+            if not model_manager.ready("u2net-onnx"):
+                raise BackgroundError("The background model (U2-Net, about 176 MB) could not be downloaded: check the connection.")
+        return onnx_session(model_manager.model_file("u2net.onnx"))
+    session = sessions.get("u2net", load)
+    im = np.array(image.convert("RGB").resize((320, 320), Image.Resampling.LANCZOS)).astype(np.float64)
+    im = im / max(np.max(im), 1e-6)
+    x = np.stack([(im[:, :, c] - m) / d for c, (m, d) in enumerate(zip((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)))])[None].astype(np.float32)
+    pred = session.run(None, {session.get_inputs()[0].name: x})[0][:, 0, :, :]
+    pred = np.squeeze((pred - pred.min()) / max(pred.max() - pred.min(), 1e-6))
+    return Image.fromarray((pred.clip(0, 1) * 255).astype("uint8"), mode="L").resize(image.size, Image.Resampling.LANCZOS)
+
+
 def _ml(image: Image.Image) -> Image.Image:
+    if not _has("rembg"):
+        return _u2net_onnx(image)
     from rembg import remove
 
     from app.services import compute
@@ -85,7 +116,7 @@ def remove(data: bytes, method: str = "auto") -> tuple[bytes, str]:
     caps = available()
     chosen = caps["default"] if method == "auto" else method
     if chosen not in ("ml", "lite") or not caps.get(chosen):
-        raise Unavailable("This background engine is not installed. Run ./formvis install-ml for the ML engine; the lightweight engine ships with the base install.")
+        raise Unavailable("This background engine is not installed. The engine needs ONNX Runtime (./formvis install); the lightweight engine ships with the base install.")
     try:
         with Image.open(io.BytesIO(data)) as image:
             image.load()
@@ -94,7 +125,7 @@ def remove(data: bytes, method: str = "auto") -> tuple[bytes, str]:
         raise BackgroundError("The image could not be read.") from exc
     width, height = source.size
     if width * height > config.MAX_PIXELS:
-        raise BackgroundError("The image exceeds the 100-megapixel limit.")
+        raise BackgroundError(f"The image exceeds the {config.MAX_PIXELS // 1_000_000}-megapixel limit.")
     mask = _ml(source) if chosen == "ml" else _lite(source)
     if mask.size != source.size:
         mask = mask.resize(source.size, Image.Resampling.BILINEAR)

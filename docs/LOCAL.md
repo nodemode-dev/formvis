@@ -22,7 +22,8 @@ replaces an outside program or a model too large for the test machine, and says 
 |---|---|---|---|
 | Generative Fill and Expand, no prompt | LaMa, 208 MB, Apache-2.0 | any computer's CPU (seconds) | real model: tests/test_localgen_inpaint.py, e2e/test_local_inpaint.py (no fal, no ComfyUI) |
 | Image > Upscale 2x or 4x | Real-ESRGAN x4plus, 67 MB, BSD-3-Clause | any computer's CPU | real model: tests/test_localgen_upscale.py, e2e/test_local_upscale.py |
-| Select Subject | SAM 2 | any computer's CPU | e2e/test_select_subject.py |
+| Object Selection | SAM 2.1 tiny, 155 MB, Apache-2.0, fetched on first use | any computer's CPU (ONNX Runtime; torch on a GPU when installed) | real model: tests/test_segment_onnx.py |
+| Select Subject and Remove Background | U²-Net, 176 MB, Apache-2.0, fetched on first use | any computer's CPU (ONNX Runtime; rembg when installed) | real model: tests/test_background_onnx.py, e2e/test_select_subject.py |
 | Generative Fill and Expand with a prompt; Generate Image | Krea 2 Turbo (up to 18 GB) or FLUX.2 [klein] 4B | Apple silicon (mflux); Krea 2 also Windows or Linux with an NVIDIA GPU (diffusers) | stand-in model: tests/test_localgen_krea2.py, tests/test_localgen_fill.py, e2e/test_local_generation.py. A real run is not verified: the test machine has neither |
 
 ## Local with a program of your own

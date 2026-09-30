@@ -124,6 +124,11 @@ PINNED: dict[str, str] = {
     "u2netp.onnx": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
     "u2net_human_seg.onnx": "01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c",
     "lama_fp32.onnx": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6",
+    "sam2.1-hiera-tiny/vision_encoder.onnx": "4f30aacd3aaefbca81a0b7fe4c1fc96345570ea0a6f80ced599493d1b3be2e8c",
+    "sam2.1-hiera-tiny/vision_encoder.onnx_data": "e83df9866a5afe68ea7f0f721f18f65137fc3acbf0da1c74e946d363e09c69cc",
+    "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx": "874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf",
+    "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx_data": "e9874d900dd4134ed60eab1e97910327c2419e0b2954485d8fd6e7f1a1470f47",
+    "u2net.onnx": "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
     "realesrgan-x4plus.onnx": "4851ec156207d271f5328605d0582eeb851e656227da8aca093ced9e60789291",
     "kokoro-v1.0.onnx": "beb0d1848dee9a49da392cc3df26958d46cfa35d321edf434f52949153f0df3a",
     "voices-v1.0.bin": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
@@ -292,37 +297,31 @@ MODELS = {
             "nsfw-filter/quantize_config.json": "https://huggingface.co/onnx-community/nsfw_image_detection-ONNX/resolve/1ceb3c7fe1e9f3f2507e6df577437f23a9149fd5/quantize_config.json",
         },
     },
-    "local-image": {
-        # A model the local generator can run out of the box, downloaded on
-        # request and never on boot: SD Turbo's ONNX export, 2.4 GB, one step
-        # a picture. Its licence is Stability's non-commercial research
-        # licence and the panel shows it before the download starts; a person
-        # who needs commercial terms declares another model in the slot
-        # registry instead. The files land in the diffusers layout the local
-        # diffusion runner reads (models/diffusion/sd-turbo).
-        "name": "SD Turbo (local image generation)",
-        "license": "Stability AI Non-Commercial Research Community License (non-commercial)",
-        "files": {
-            "diffusion/sd-turbo/LICENSE": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/LICENSE",
-            "diffusion/sd-turbo/model_index.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/model_index.json",
-            "diffusion/sd-turbo/scheduler/scheduler_config.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/scheduler/scheduler_config.json",
-            "diffusion/sd-turbo/tokenizer/merges.txt": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/tokenizer/merges.txt",
-            "diffusion/sd-turbo/tokenizer/special_tokens_map.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/tokenizer/special_tokens_map.json",
-            "diffusion/sd-turbo/tokenizer/tokenizer_config.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/tokenizer/tokenizer_config.json",
-            "diffusion/sd-turbo/tokenizer/vocab.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/tokenizer/vocab.json",
-            "diffusion/sd-turbo/unet/config.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/unet/config.json",
-            "diffusion/sd-turbo/vae_decoder/config.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/vae_decoder/config.json",
-            "diffusion/sd-turbo/text_encoder/model.onnx": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/text_encoder/model.onnx",
-            "diffusion/sd-turbo/unet/model.onnx": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/unet/model.onnx",
-            "diffusion/sd-turbo/vae_decoder/model.onnx": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/vae_decoder/model.onnx",
-        },
-    },
     # LaMa (1.53.2, formvis): inpainting on any computer's CPU, for Generative Fill and Expand without a prompt,
     # ComfyUI or fal. big-lama exported to ONNX by Carve (Apache-2.0), fixed at 512 x 512, pinned to its revision.
     "lama-inpaint": {
         "name": "LaMa inpainting (big-lama, ONNX)",
         "license": "Apache-2.0",
         "files": {"lama_fp32.onnx": "https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx"},
+    },
+    # SAM 2.1 tiny as ONNX (1.53.4, formvis): Object Selection with nothing to install, on ONNX Runtime. Meta's SAM 2.1
+    # weights (Apache-2.0), exported by onnx-community (the export states no licence of its own), pinned to its revision.
+    "sam2-onnx": {
+        "name": "SAM 2.1 tiny (ONNX)",
+        "license": "Apache-2.0",
+        "files": {
+            "sam2.1-hiera-tiny/vision_encoder.onnx": "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/vision_encoder.onnx",
+            "sam2.1-hiera-tiny/vision_encoder.onnx_data": "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/vision_encoder.onnx_data",
+            "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx": "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/prompt_encoder_mask_decoder.onnx",
+            "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx_data": "https://huggingface.co/onnx-community/sam2.1-hiera-tiny-ONNX/resolve/814a066640debee5a91e70aa401fb8e17e030503/onnx/prompt_encoder_mask_decoder.onnx_data",
+        },
+    },
+    # U^2-Net (1.53.4, formvis): Select Subject and Remove Background with nothing to install, the same model rembg uses
+    # (its md5 checked against rembg's), run on ONNX Runtime; Apache-2.0.
+    "u2net-onnx": {
+        "name": "U2-Net (background and subject)",
+        "license": "Apache-2.0",
+        "files": {"u2net.onnx": "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx"},
     },
     "ai-upscale": {
         "name": "Real-ESRGAN x4plus",
@@ -414,7 +413,11 @@ def download(model: str, report, cancelled):
                 if temporary.stat().st_size < (1024 if path.suffix in (".onnx", ".bin", ".pth", ".safetensors", ".gguf") else 1):
                     raise ValueError("Model download is incomplete")
                 expected = PINNED.get(name)
-                if expected and digest.hexdigest() != expected:
+                if not expected:
+                    # 1.53.4: a file with no pin is refused, not accepted unchecked (formcut's SD-Turbo entry had none).
+                    temporary.unlink(missing_ok=True)
+                    raise ValueError(f"{name} has no pinned checksum, so it is not downloaded")
+                if digest.hexdigest() != expected:
                     # P8: a file that does not match its pin never lands. It is
                     # deleted and named, so a bad mirror cannot poison the cache.
                     temporary.unlink(missing_ok=True)

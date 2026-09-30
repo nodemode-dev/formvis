@@ -11,7 +11,30 @@ VERSION = __version__
 FRONTEND_PORT = 5190
 BACKEND_PORT = 8190
 MAX_SIDE = 30_000
-MAX_PIXELS = 100_000_000
+def total_memory() -> int:
+    """This computer's memory in bytes, or 0 when it cannot be read (1.53.4)."""
+    import os
+    import sys
+    try:
+        if sys.platform == "win32":
+            import ctypes
+
+            class Status(ctypes.Structure):
+                _fields_ = [("dwLength", ctypes.c_ulong), ("dwMemoryLoad", ctypes.c_ulong), ("ullTotalPhys", ctypes.c_ulonglong)] + [(f"f{i}", ctypes.c_ulonglong) for i in range(6)]
+            st = Status(); st.dwLength = ctypes.sizeof(Status)
+            return int(st.ullTotalPhys) if ctypes.windll.kernel32.GlobalMemoryStatusEx(ctypes.byref(st)) else 0
+        return int(os.sysconf("SC_PAGE_SIZE") * os.sysconf("SC_PHYS_PAGES"))
+    except (ValueError, OSError, AttributeError):
+        return 0
+
+
+def pixel_budget(memory: int) -> int:
+    """The largest document, from the machine's memory (1.53.4, the capability plan's L10): a pixel per 40 bytes, never
+    below 100 megapixels (formvis's fixed cap until now) and never past 250 (under a browser's canvas area limit)."""
+    return max(100_000_000, min(250_000_000, memory // 40)) if memory else 100_000_000
+
+
+MAX_PIXELS = pixel_budget(total_memory())
 MAX_LAYERS = 10_000
 MAX_DEPTH = 64
 MAX_CLIP_CHAIN = 256

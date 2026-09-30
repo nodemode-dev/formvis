@@ -13,7 +13,7 @@ from PIL import Image, ImageFilter
 from starlette.concurrency import run_in_threadpool
 
 from . import model_manager
-from .paths import providers
+from .paths import providers, session as onnx_session
 
 MODEL = "lama-inpaint"
 FILE = "lama_fp32.onnx"
@@ -23,12 +23,11 @@ _lock = threading.Lock()
 
 
 def _run(image: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    global _session
+    from . import sessions
+    import onnxruntime as ort
+    session = sessions.get("lama", lambda: onnx_session(model_manager.model_file(FILE)))
     with _lock:
-        if _session is None:
-            import onnxruntime as ort
-            _session = ort.InferenceSession(str(model_manager.model_file(FILE)), providers=providers())
-        return _session.run(None, {"image": image, "mask": mask})[0]
+        return session.run(None, {"image": image, "mask": mask})[0]
 
 
 def inpaint(image: Image.Image, mask: Image.Image, run=_run) -> Image.Image:

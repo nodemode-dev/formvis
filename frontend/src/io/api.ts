@@ -1,4 +1,4 @@
-export interface Capabilities {
+export interface Capabilities { pixelBudget?: number; memory?: number;
   name: string;
   version: string;
   desktop: boolean;
@@ -146,8 +146,12 @@ export const api = {
     f.append('scale', String(scale));
     return (await request('/generative/upscale', { method: 'POST', body: f })).blob();
   },
-  async decode(file: Blob, name: string): Promise<Blob> {
-    return (await request('/io/decode', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).blob();
+  async decode(file: Blob, name: string, page = 0): Promise<Blob> {
+    return (await request('/io/decode', { method: 'POST', body: form(page ? { page: String(page) } : {}, [{ name, blob: file }], 'file') })).blob();
+  },
+  /** A TIFF's pages (1.53.4), BigTIFF included; one entry for anything else. */
+  async imagePages(file: Blob, name: string): Promise<Array<{ index: number; width: number; height: number; mode: string }>> {
+    return ((await (await request('/io/pages', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).json()) as { pages: Array<{ index: number; width: number; height: number; mode: string }> }).pages;
   },
   async library(): Promise<LibraryItem[]> {
     return (await (await request('/projects')).json()) as LibraryItem[];

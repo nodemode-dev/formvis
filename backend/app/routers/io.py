@@ -20,11 +20,20 @@ def encode(file: UploadFile = File(...), format: str = Form(...), quality: int =
     return Response(data, media_type=imaging.ENCODINGS[format.lower()])
 
 
+@router.post("/pages")
+def image_pages(file: UploadFile = File(...)) -> dict:
+    """A TIFF's pages (1.53.4): so every page can be opened, not only the first."""
+    try:
+        return {"pages": imaging.pages(file.file.read(), file.filename or "")}
+    except imaging.DecodeError as exc:
+        raise HTTPException(status_code=415, detail=str(exc)) from exc
+
+
 @router.post("/decode")
-def decode(file: UploadFile = File(...)) -> Response:
+def decode(file: UploadFile = File(...), page: int = Form(0)) -> Response:
     data = file.file.read()
     try:
-        png, width, height = imaging.decode_to_png(data, file.filename or "")
+        png, width, height = imaging.decode_to_png(data, file.filename or "", page)
     except imaging.DecodeError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     return Response(png, media_type="image/png", headers={"X-Width": str(width), "X-Height": str(height)})
