@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.53.5 · 2026-09-30
+
+Sprint 2 of the parity plan begins: colour management (H2).
+
+### Added
+
+- A document may carry its own colour profile, saved with the project and embedded on export as it is.
+- Edit > Assign Profile (the numbers kept) and Edit > Convert to Profile (the look kept, through LittleCMS, with a rendering intent and black point compensation), one undo step each.
+- View > Proof Setup (any profile on this computer, CMYK included, or one loaded from a file), Proof Colors and Gamut Warning (Shift+Ctrl+Y): the view through the proof device, what it cannot print greyed; the document unchanged. Proof Colors has no default key, as Ctrl+Y is Redo in formvis.
+- A document with a profile other than sRGB is shown colour-managed.
+- Embedded profiles on open: converted to sRGB with a message naming the profile (the default), kept, or asked (Preferences > File Handling); kept only when the image opens as its own document.
+
 ## 1.53.4 · 2026-09-30
 
 Sprint 1 of the parity plan (the v12 comparison): foundations.

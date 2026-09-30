@@ -2,6 +2,42 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Colour management · _v1.53.5 (engine/colour-lut.ts, io/icc-read.ts, ui/colour.ts, ui/panels/colour-dialogs.ts new; engine/index.ts, types.ts; io/project-io.ts, images.ts, api.ts; ui/stage.ts, prefs.ts, app-dialogs.ts; app.ts; backend services/colour.py and routers/colour.py new)
+
+`ColourLut`, `applyLut`, `lutFrom`, `lutOf`; `embeddedProfile`, `profileName`, `isSrgbName`, `toBase64`, `fromBase64`; `DocProfile` and `Doc.profile`, saved in the manifest and read by `profileFrom`; `Engine.viewTransform`, `setViewTransform`, `assignProfile`, `convertToProfile`, and an imported image's profile in `openImage` and `insertImages`; `Stage.applyView` and the GPU stepping aside while a view transform is on; `ColourView`; `AssignProfileDialog`, `ConvertProfileDialog`, `ProofSetupDialog`, `ProfileMismatchDialog`; `decodeImage`'s raw decode; `Prefs.profileMismatch`; the engine's `colour.profiles`, `add`, `describe`, `lut` and its gamut marks. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+        const space = s.profile ?? 'srgb', icc = iccProfile(space);
+      'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'shortcuts', 'settings'] },
+    { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
+export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string }
+      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: 72, layers: [] }, stripExt(f.name));
+    return this.addProject({ ...base, layers: [layer] }, img.name.replace(/\.[^.]+$/, '') || 'Image', layer.id);
+export interface Doc { mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
+async function bitmapOf(blob: Blob): Promise<ImportedImage['source'] & { width: number; height: number }> {
+export async function decodeImage(file: Blob, name: string): Promise<ImportedImage> {
+  try { source = await bitmapOf(server ? await api.decode(file, name) : file); } catch (err) {
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.mode && doc.mode !== 'rgb' ? { mode: doc.mode } : {}), ...(doc.palette?.length ? { palette: doc.palette.map((c) => [c.r, c.g, c.b]) } : {}),
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
+    add('File Handling', restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
+export interface Prefs { shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
+export const DEFAULT_PREFS: Prefs = { shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
+      const reason = documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
+export const VERSION = '1.53.4';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.53.4"
+from app.routers import comfyui, generative, io, large, llm, mcp, ops, plugins, projects, system, nodemode
+version = "1.53.4"
+version = "1.53.4"
+ "version": "1.53.4",
+```
+
+Nothing removed from src-tauri.
+
 ## Parity sprint 1 · _v1.53.4 (engine/scopes.ts; ui/panels/scopes-view.ts, tiff-pages.ts; ui/commands.ts, app-dialogs.ts, prefs.ts, controls.ts; engine/types.ts, index.ts messages; backend services segment, background, imaging, localgen sessions, paths, model_manager; core/config.py)
 
 `ScopesView` and `histogram`, `waveform`, `vectorscope`; `TiffPagesDialog` and the engine's `pages` and paged `decode_to_png`; `Commands.setKeys`, `forCombo`, `defaultKeys`, `overrides`, `resetKeys` and the Keyboard Shortcuts editor; `setPixelBudget`, `pixel_budget`, `total_memory`, and the budget in every message; SAM 2.1 and U²-Net on ONNX Runtime; `sessions` (two held, idle release) and `paths.session` (arena off); SD-Turbo removed and unpinned downloads refused. The engine split (M8) was held back, as it broke a reload after WebGL2. Removed lines taken after the version edit. Removed from frontend:
