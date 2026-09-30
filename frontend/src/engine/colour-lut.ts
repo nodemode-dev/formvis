@@ -63,3 +63,35 @@ export function applyLut4(ink: Float32Array, lut: Lut4, out: Uint8ClampedArray):
     out[o] = acc[0]; out[o + 1] = acc[1]; out[o + 2] = acc[2]; out[o + 3] = Math.round(Math.min(1, Math.max(0, ink[i + 4])) * 255);
   }
 }
+
+/** Ink, C, M, Y, K as floats 0 to 1 (1.54.2). */
+export type Ink = [number, number, number, number];
+/** A GRID^3 table of ink bytes from sRGB (r slowest, b fastest), from the engine: readouts and paint colours. */
+export interface Lut3x4 { grid: number; cmyk: Uint8Array }
+
+export function lut3x4From(data: ArrayBuffer, grid: number): Lut3x4 {
+  const b = new Uint8Array(data);
+  if (b.length < grid ** 3 * 4) throw new Error('The ink table is incomplete.');
+  return { grid, cmyk: b.slice(0, grid ** 3 * 4) };
+}
+
+export function inkOf(c: { r: number; g: number; b: number }, lut: Lut3x4): Ink {
+  const G = lut.grid, t = lut.cmyk, s = (G - 1) / 255, gg = G * G;
+  const x = c.r * s, y = c.g * s, z = c.b * s, x0 = Math.min(G - 2, x | 0), y0 = Math.min(G - 2, y | 0), z0 = Math.min(G - 2, z | 0), fx = x - x0, fy = y - y0, fz = z - z0;
+  const out: Ink = [0, 0, 0, 0];
+  for (let k = 0; k < 4; k++) {
+    const at = (xi: number, yi: number, zi: number): number => t[(xi * gg + yi * G + zi) * 4 + k];
+    const a = at(x0, y0, z0) + (at(x0, y0, z0 + 1) - at(x0, y0, z0)) * fz, b = at(x0, y0 + 1, z0) + (at(x0, y0 + 1, z0 + 1) - at(x0, y0 + 1, z0)) * fz;
+    const cc = at(x0 + 1, y0, z0) + (at(x0 + 1, y0, z0 + 1) - at(x0 + 1, y0, z0)) * fz, d = at(x0 + 1, y0 + 1, z0) + (at(x0 + 1, y0 + 1, z0 + 1) - at(x0 + 1, y0 + 1, z0)) * fz;
+    const e = a + (b - a) * fy, f = cc + (d - cc) * fy;
+    out[k] = Math.min(1, Math.max(0, (e + (f - e) * fx) / 255));
+  }
+  return out;
+}
+
+/** One ink's sRGB rendition through the display table. */
+export function renditionOf(ink: Ink, lut: Lut4): { r: number; g: number; b: number } {
+  const out = new Uint8ClampedArray(4);
+  applyLut4(new Float32Array([ink[0], ink[1], ink[2], ink[3], 1]), lut, out);
+  return { r: out[0], g: out[1], b: out[2] };
+}

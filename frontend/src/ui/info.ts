@@ -1,5 +1,6 @@
 import type { Engine, Pt } from '../engine';
 import { el } from './dom';
+import { composeChannels } from '../engine/channels';
 import { PanelGroup } from './panel-group';
 
 /** The Info panel (1.49.6, the owner's tool list), as Photoshop's: the colour and position under the pointer, the
@@ -14,7 +15,7 @@ export class InfoPanel {
 
   constructor(host: HTMLElement, private readonly engine: Engine, stage: HTMLElement) {
     this.group = new PanelGroup(host, 'info', [{ id: 'info', label: 'Info', body: this.body }], 'Info');
-    for (const ev of ['doc', 'history', 'active', 'projects', 'render'] as const) engine.on(ev, () => { this.pixels = null; this.soon(); });
+    for (const ev of ['doc', 'history', 'active', 'projects', 'render'] as const) engine.on(ev, () => { this.pixels = null; this.ink = null; this.soon(); });
     for (const ev of ['overlay', 'options', 'selection'] as const) engine.on(ev, () => this.soon());
     stage.addEventListener('pointermove', (e) => {
       const v = engine.current?.viewport, r = stage.getBoundingClientRect();
@@ -47,13 +48,25 @@ export class InfoPanel {
     return [px.data[i], px.data[i + 1], px.data[i + 2], px.data[i + 3]];
   }
 
+  private ink: { data: Float32Array; w: number; h: number } | null = null;
+  private inkAt(pt: Pt): string | null {
+    const p = this.engine.current;
+    if (!p || p.doc.mode !== 'cmyk') return null;
+    if (!this.ink) { const c = composeChannels(p.doc); if ('error' in c) return null; this.ink = { data: c.data, w: c.width, h: c.height }; }
+    const x = Math.floor(pt.x), y = Math.floor(pt.y), k = this.ink;
+    if (x < 0 || y < 0 || x >= k.w || y >= k.h) return '-';
+    const i = (y * k.w + x) * 5, pc = (v: number): string => `${Math.round(Math.min(1, Math.max(0, v)) * 100)}%`;
+    return k.data[i + 4] === 0 ? 'transparent' : `C ${pc(k.data[i])}  M ${pc(k.data[i + 1])}  Y ${pc(k.data[i + 2])}  K ${pc(k.data[i + 3])}`;
+  }
+
   private render(): void {
     if (!this.body.clientWidth) return;   // hidden: nothing to read
     const e = this.engine, p = e.current, m = e.measure;
     const rows: Array<[string, string]> = [];
     const rgb = (c: [number, number, number, number] | null): string => (c ? (c[3] === 0 ? 'transparent' : `R ${c[0]}  G ${c[1]}  B ${c[2]}`) : '-');
+    const at = (pt: Pt): string => this.inkAt(pt) ?? rgb(this.colorAt(pt));
     if (p && this.pointer) {
-      rows.push(['Colour', rgb(this.colorAt(this.pointer))]);
+      rows.push(['Colour', at(this.pointer)]);
       rows.push(['X, Y', `${Math.floor(this.pointer.x)}, ${Math.floor(this.pointer.y)} px`]);
     } else rows.push(['Colour', '-'], ['X, Y', '-']);
     const sel = p?.selection;
@@ -63,7 +76,7 @@ export class InfoPanel {
       const dx = r.b.x - r.a.x, dy = r.b.y - r.a.y;
       rows.push(['Ruler', `A ${(-Math.atan2(dy, dx) * 180 / Math.PI).toFixed(1)}\u00b0  L ${Math.hypot(dx, dy).toFixed(1)} px`]);
     }
-    for (const [i, s] of (m?.samplers ?? []).entries()) rows.push([`#${i + 1}`, rgb(this.colorAt(s))]);
+    for (const [i, s] of (m?.samplers ?? []).entries()) rows.push([`#${i + 1}`, at(s)]);
     const html = rows.map(([k, v]) => `<div class="cv-info-row"><span class="cv-info-key">${k}</span><span class="cv-info-val">${v}</span></div>`).join('');
     if (this.body.innerHTML !== html) this.body.innerHTML = html;
   }

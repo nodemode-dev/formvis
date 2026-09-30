@@ -1,5 +1,5 @@
-import { applyLut, type ColourLut, type Lut4 } from './colour-lut';
-import { rasterFromChannels } from './channels';
+import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, type Lut4 } from './colour-lut';
+import { rasterFromChannels, strokeChannels } from './channels';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
@@ -174,14 +174,26 @@ export class Engine {
    *  Photoshop's pickers are. */
   private fgc: RGB = { r: 0, g: 0, b: 0 };
   private bgc: RGB = { r: 255, g: 255, b: 255 };
+  /** In a CMYK document (1.54.2), the ink behind each colour: set from the picker's C, M, Y and K, or read through the
+   *  document's table when an RGB colour is set; `paintChannel` is the one ink a stroke writes when a channel is solo. */
+  fgInk: Ink = [0, 0, 0, 1];
+  bgInk: Ink = [0, 0, 0, 0];
+  paintChannel: 0 | 1 | 2 | 3 | null = null;
   get fg(): RGB { return this.fgc; }
-  set fg(c: RGB) { this.fgc = this.inMode(c); }
+  set fg(c: RGB) { this.fgc = this.inMode(c); if (this.current?.doc.mode === 'cmyk' && this.current.cmykIn) this.fgInk = inkOf(this.fgc, this.current.cmykIn); }
   get bg(): RGB { return this.bgc; }
-  set bg(c: RGB) { this.bgc = this.inMode(c); }
+  set bg(c: RGB) { this.bgc = this.inMode(c); if (this.current?.doc.mode === 'cmyk' && this.current.cmykIn) this.bgInk = inkOf(this.bgc, this.current.cmykIn); }
+  /** The picker's ink entry: the colour's rendition follows through the display table. */
+  setInk(which: 'fg' | 'bg', ink: Ink): void {
+    const lut = this.current?.cmykLut;
+    if (!lut) return;
+    if (which === 'fg') { this.fgInk = ink; this.fgc = renditionOf(ink, lut); } else { this.bgInk = ink; this.bgc = renditionOf(ink, lut); }
+    this.emit('colors', null); this.emit('options', null);
+  }
   /** A colour as the current document's mode allows it. */
   inMode(c: RGB, doc = this.current?.doc): RGB {
     const m = doc?.mode ?? 'rgb';
-    if (m === 'rgb') return { r: c.r, g: c.g, b: c.b };
+    if (m === 'rgb' || m === 'cmyk') return { r: c.r, g: c.g, b: c.b };
     const v = Math.round(0.299 * c.r + 0.587 * c.g + 0.114 * c.b);
     if (m === 'grayscale') return { r: v, g: v, b: v };
     if (m === 'bitmap') { const k = v < 128 ? 0 : 255; return { r: k, g: k, b: k }; }
@@ -2702,11 +2714,15 @@ export class Engine {
     const patch = st.heal === 'remove' ? this.removePatch(st.s) : st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
-    // 16 bits (1.53.8): the stroke rebuilt on the layer's 16-bit pixels, in this step, so Undo restores them too.
-    const dl = patch && st.target === 'pixels' && st.project.doc.depth === 16 ? st.project.layer(st.layerId) : null;
+    const dl = patch && st.target === 'pixels' && (st.project.doc.depth === 16 || st.project.doc.mode === 'cmyk') ? st.project.layer(st.layerId) : null;
     if (patch && dl?.deep && dl.raster === patch.raster) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
       st.project.updateLayer(st.layerId, { deep: strokeDeep(dl.deep, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fg, this.bg) });
+    } else if (patch && dl?.channels && dl.raster === patch.raster && st.project.cmykLut) {
+      const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
+      const r = strokeChannels(dl.channels, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fgInk, this.bgInk, st.project.cmykLut, this.paintChannel);
+      after.data.set(r.region); patch.raster.ctx.putImageData(after, patch.x, patch.y); patch.raster.touch(); patch.after.data.set(r.region);
+      st.project.updateLayer(st.layerId, { channels: r.channels });
     }
     st.project.history.end(st.project.snapshot());
     const lp = st.s.lastPoint;
@@ -6216,10 +6232,11 @@ export class Engine {
   /** Image > Mode > CMYK Color (1.54.0, H1): each pixel layer's ink, converted by the engine's LittleCMS, beside its
    *  rendition through `lut`; the CMYK profile becomes the document's; one step. Live type and shapes keep their
    *  RGB colours; the deep guard then keeps every later step to what knows ink. */
-  setCmyk(profile: DocProfile, ink: Map<ID, ChannelPixels>, lut: Lut4): boolean {
+  setCmyk(profile: DocProfile, ink: Map<ID, ChannelPixels>, lut: Lut4, inLut: Lut3x4 | null = null): boolean {
     const p = this.current;
     if (!p || p.doc.mode === 'cmyk') return false;
-    p.cmykLut = lut;
+    p.cmykLut = lut; p.cmykIn = inLut;
+    if (inLut) { this.fgInk = inkOf(this.fgc, inLut); this.bgInk = inkOf(this.bgc, inLut); }
     return this.edit('CMYK Color', (pp) => {
       const layers = pp.doc.layers.map((l) => { const ch = ink.get(l.id); return ch ? { ...l, channels: ch, deep: undefined, raster: rasterFromChannels(ch, lut) } : l; });
       pp.doc = { ...pp.doc, layers, mode: 'cmyk', profile, depth: undefined, palette: undefined };
@@ -6240,13 +6257,19 @@ export class Engine {
   }
 
   /** Opens CMYK ink as a CMYK document (1.54.0): its layer holds the ink, its raster the rendition through `lut`. */
-  openChannels(name: string, ch: ChannelPixels, profile: DocProfile, lut: Lut4): Project {
+  openChannels(name: string, ch: ChannelPixels, profile: DocProfile, lut: Lut4, inLut: Lut3x4 | null = null): Project {
     const raster = rasterFromChannels(ch, lut);
     const p = this.openImage({ source: raster.canvas as CanvasImageSource, width: ch.width, height: ch.height, name });
-    p.cmykLut = lut;
+    p.cmykLut = lut; p.cmykIn = inLut;
     p.doc = { ...p.doc, mode: 'cmyk', profile, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, channels: ch } : l)) };
     this.refresh();
     return p;
+  }
+
+  /** The tables of a CMYK project opened from a saved file (1.54.2), fetched by the app once its profile is known. */
+  setCmykTables(p: Project, lut: Lut4, inLut: Lut3x4): void {
+    p.cmykLut = lut; p.cmykIn = inLut;
+    if (p === this.current) { this.fgInk = inkOf(this.fgc, inLut); this.bgInk = inkOf(this.bgc, inLut); this.emit('colors', null); }
   }
 
   /** Image > Mode > 8 or 16 Bits/Channel (1.53.6, H1): each pixel layer gains its 16-bit pixels, or keeps only its
@@ -6302,8 +6325,10 @@ export class Engine {
   /** Brush, Pencil and Eraser paint at 16 bits (1.53.8) unless colour dynamics vary the paint (the rebuild needs one
    *  colour); other painting tools wait for a later release. */
   private deepPaintOk(): boolean {
-    if ((this.current?.doc.depth ?? 8) === 8) return true;
+    const cmyk = this.current?.doc.mode === 'cmyk';
+    if ((this.current?.doc.depth ?? 8) === 8 && !cmyk) return true;
     if (this.current?.doc.depth === 32) return !this.deepBlocked('Painting in 32 bits');   // painting would clip past white (1.53.9)
+    if (cmyk && (!this.current?.cmykLut || !this.current.cmykIn)) return !this.deepBlocked('Painting');
     const base = noDynamics() as unknown as Record<string, unknown>, cur = this.brushDynamics as unknown as Record<string, unknown>;
     const colourVaries = ['fgBg', 'hue', 'saturation', 'brightness'].some((k) => JSON.stringify(cur[k]) !== JSON.stringify(base[k]));
     if ((this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !colourVaries) return true;
@@ -6313,6 +6338,7 @@ export class Engine {
   /** Painting changes a raster in place, outside `edit`; in a 16-bit document it waits for a later release. */
   private deepBlocked(what: string): boolean {
     const d = this.current?.doc.depth ?? 8;
+    if (this.current?.doc.mode === 'cmyk') { this.notice(`${what} does not work in CMYK yet. Image > Mode > RGB Color to use it.`); return true; }
     if (d === 8) return false;
     this.notice(`${what} does not work in ${d} bits yet. Image > Mode > 8 Bits/Channel to use it.`);
     return true;

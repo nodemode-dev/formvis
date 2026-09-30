@@ -83,7 +83,7 @@ import { TiffPagesDialog } from './ui/panels/tiff-pages';
 import { ColourView } from './ui/colour';
 import { composeDeep, deepFromU16, deepToU16, deepToned } from './engine/deep';
 import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
-import type { Lut4 } from './engine/colour-lut';
+import type { Lut3x4, Lut4 } from './engine/colour-lut';
 import type { ChannelPixels, DocProfile, ID } from './engine/types';
 import { HdrToningDialog } from './ui/panels/hdr-toning';
 import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog } from './ui/panels/colour-dialogs';
@@ -612,13 +612,21 @@ export function startApp(): void {
   }
 
   /** CMYK documents (1.54.0, H1). The engine converts pixels exactly; the window keeps a display table per profile. */
-  const cmykLuts = new Map<string, Lut4>();
-  async function cmykLutFor(profile: DocProfile): Promise<Lut4> {
+  const cmykLuts = new Map<string, { out: Lut4; in: Lut3x4 }>();
+  async function cmykLutFor(profile: DocProfile): Promise<{ out: Lut4; in: Lut3x4 }> {
     const key = profile.icc.slice(0, 64) + profile.icc.length;
     let lut = cmykLuts.get(key);
-    if (!lut) { lut = await api.cmykLut({ icc: profile.icc }); cmykLuts.set(key, lut); }
+    if (!lut) { lut = { out: await api.cmykLut({ icc: profile.icc }), in: await api.rgbCmykLut({ icc: profile.icc }) }; cmykLuts.set(key, lut); }
     return lut;
   }
+  const tablesPending = new Set<string>();
+  async function ensureCmykTables(): Promise<void> {
+    const p = engine.current;
+    if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile || p.cmykLut || tablesPending.has(p.id)) return;
+    tablesPending.add(p.id);
+    try { const t = await cmykLutFor(p.doc.profile); engine.setCmykTables(p, t.out, t.in); } catch (err) { toast(message(err), 'error'); } finally { tablesPending.delete(p.id); }
+  }
+  for (const ev of ['projects', 'active', 'doc'] as const) engine.on(ev, () => void ensureCmykTables());
   async function cmykProfileOf(id: string, name: string): Promise<DocProfile> { return { name, icc: toBase64(await api.colourProfileBytes(id)) }; }
   async function toCmyk(profile: DocProfile, intent: string, bpc: boolean): Promise<void> {
     const p = engine.current;
@@ -631,7 +639,7 @@ export function startApp(): void {
           const out = await api.convertPixels(rasterBytes(l.raster), l.raster.width, l.raster.height, 'cmyk', profile.icc, src, intent, bpc);
           ink.set(l.id, channelsFromU8(out, l.raster.width, l.raster.height));
         }
-        engine.setCmyk(profile, ink, lut);
+        engine.setCmyk(profile, ink, lut.out, lut.in);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -655,7 +663,8 @@ export function startApp(): void {
   async function openCmyk(name: string, file: { width: number; height: number; ink: Uint8Array; icc: Uint8Array | null }): Promise<void> {
     let profile: DocProfile | null = file.icc ? { name: profileName(file.icc) || 'Embedded CMYK profile', icc: toBase64(file.icc) } : null;
     if (!profile) { const d = await api.defaultCmykProfile(); if (!d) throw new Error('No CMYK profile is available: add one in View > Proof Setup > Load Profile.'); profile = await cmykProfileOf(d.id, d.name); }
-    engine.openChannels(name, channelsFromU8(file.ink, file.width, file.height), profile, await cmykLutFor(profile));
+    const t = await cmykLutFor(profile);
+    engine.openChannels(name, channelsFromU8(file.ink, file.width, file.height), profile, t.out, t.in);
     if (!file.icc) toast(`${name} has no embedded profile; ${profile.name} is assumed.`);
   }
   async function exportCmyk(kind: 'tiff' | 'jpg', quality: number): Promise<void> {

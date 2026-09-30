@@ -1,6 +1,7 @@
 import type { Engine, RGB } from '../../engine';
+import { inkOf, renditionOf, type Ink } from '../../engine/colour-lut';
 import { Dialog } from '../dialogs';
-import { el } from '../dom';
+import { el, setHidden } from '../dom';
 import { numberRow } from './controls';
 
 const FIELD = 200, STRIP = 18;
@@ -45,11 +46,13 @@ export class ColorPickerDialog extends Dialog {
   private readonly green = numberRow('G', 0, 255, 1, (v) => this.setRgb({ ...this.rgb(), g: v }));
   private readonly blue = numberRow('B', 0, 255, 1, (v) => this.setRgb({ ...this.rgb(), b: v }));
   private readonly hex = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="7" spellcheck="false" aria-label="Hex">');
+  private readonly inks = (['C', 'M', 'Y', 'K'] as const).map((n, k) => numberRow(n, 0, 100, 1, (v) => this.setInk(k, v)));
+  private ink: Ink | null = null;
 
   constructor(private readonly engine: Engine) {
     super('Color Picker', 420);
     const side = el('<div class="cv-pick-side"></div>');
-    side.append(this.swatch, this.red.el, this.green.el, this.blue.el, this.hex);
+    side.append(this.swatch, this.red.el, this.green.el, this.blue.el, this.hex, ...this.inks.map((r) => r.el));
     const row = el('<div class="cv-pick"></div>');
     row.append(this.sbField, this.strip, side);
     this.body.append(row, el('<p class="cv-note">Click the canvas to sample a color.</p>'));
@@ -68,6 +71,9 @@ export class ColorPickerDialog extends Dialog {
     this.which = which;
     this.current = { ...(which === 'fg' ? this.engine.fg : this.engine.bg) };
     this.hsv = toHsv(this.current, 0);
+    const p = this.engine.current, cmyk = p?.doc.mode === 'cmyk' && !!p.cmykLut && !!p.cmykIn;
+    this.ink = cmyk ? [...(which === 'fg' ? this.engine.fgInk : this.engine.bgInk)] as Ink : null;
+    for (const r of this.inks) setHidden(r.el, !cmyk);
     this.setTitle(which === 'fg' ? 'Foreground Color' : 'Background Color');
     this.sync();
     this.open();
@@ -120,12 +126,24 @@ export class ColorPickerDialog extends Dialog {
   private setRgb(c: RGB): void {
     const clamp = (x: number): number => Math.min(255, Math.max(0, Math.round(Number.isFinite(x) ? x : 0)));
     this.hsv = toHsv({ r: clamp(c.r), g: clamp(c.g), b: clamp(c.b) }, this.hsv.h);
+    const p = this.engine.current;
+    if (this.ink && p?.cmykIn) this.ink = inkOf(this.rgb(), p.cmykIn);
+    this.sync();
+  }
+
+  /** One ink typed in a CMYK document: the ink is exactly what was typed; the swatch and RGB show its rendition. */
+  private setInk(k: number, percent: number): void {
+    const p = this.engine.current;
+    if (!this.ink || !p?.cmykLut) return;
+    this.ink[k] = Math.min(1, Math.max(0, (Number.isFinite(percent) ? percent : 0) / 100));
+    this.hsv = toHsv(renditionOf(this.ink, p.cmykLut), this.hsv.h);
     this.sync();
   }
 
   private commit(): void {
     const c = this.rgb();
     this.close();
+    if (this.ink) { this.engine.setInk(this.which, this.ink); return; }
     if (this.which === 'fg') this.engine.setColors(c);
     else this.engine.setColors(undefined, c);
   }
@@ -184,6 +202,7 @@ export class ColorPickerDialog extends Dialog {
     this.red.set(c.r);
     this.green.set(c.g);
     this.blue.set(c.b);
+    if (this.ink) this.inks.forEach((r, k) => r.set(Math.round(this.ink![k] * 100)));
     if (document.activeElement !== this.hex) this.hex.value = hexOf(c);
   }
 }

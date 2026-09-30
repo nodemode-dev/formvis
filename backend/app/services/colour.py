@@ -178,6 +178,23 @@ def cmyk_lut(profile: dict, bpc: bool = True) -> bytes:
         raise ColourError(f"LittleCMS could not build that transform: {exc}") from exc
 
 
+def rgb_cmyk_lut(profile: dict, source: dict | None = None, intent: str = "relative", bpc: bool = True) -> bytes:
+    """A GRID^3 table (r slowest, b fastest) of C, M, Y, K bytes from an RGB profile (sRGB when none) to `profile`: how
+    the window reads a colour's ink and converts a paint colour; the exact path stays convert_pixels."""
+    if intent not in INTENTS:
+        raise ColourError("Unknown rendering intent.")
+    cmyk, cmyk_mode = _profile(profile)
+    rgb, rgb_mode = _profile(source)
+    if cmyk_mode != "CMYK" or rgb_mode != "RGB":
+        raise ColourError("The CMYK profile must be CMYK and the other RGB.")
+    flags = ImageCms.Flags.BLACKPOINTCOMPENSATION if bpc else ImageCms.Flags.NONE
+    try:
+        t = ImageCms.buildTransform(rgb, cmyk, "RGB", "CMYK", renderingIntent=INTENTS[intent], flags=flags)
+        return np.asarray(ImageCms.applyTransform(_grid(), t)).reshape(-1, 4).astype(np.uint8).tobytes()
+    except ImageCms.PyCMSError as exc:
+        raise ColourError(f"LittleCMS could not build that transform: {exc}") from exc
+
+
 def convert_pixels(raw: bytes, width: int, height: int, to: str, profile: dict, source: dict | None = None,
                    intent: str = "relative", bpc: bool = True) -> bytes:
     """Pixels converted exactly by LittleCMS at 8 bits: `to` is "cmyk" (RGBA in, CMYK and alpha out, 5 bytes a pixel)

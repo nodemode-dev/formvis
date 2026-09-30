@@ -63,6 +63,22 @@ def build_cmyk_lut(req: CmykLutRequest) -> Response:
     return Response(data, media_type="application/octet-stream", headers={"X-Grid": str(colour.GRID4)})
 
 
+class RgbCmykLutRequest(BaseModel):
+    profile: dict
+    source: dict | None = None
+    intent: str = "relative"
+    bpc: bool = True
+
+
+@router.post("/rgb-cmyk-lut")
+def build_rgb_cmyk_lut(req: RgbCmykLutRequest) -> Response:
+    try:
+        data = colour.rgb_cmyk_lut(req.profile, req.source, req.intent, req.bpc)
+    except colour.ColourError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(data, media_type="application/octet-stream", headers={"X-Grid": str(colour.GRID)})
+
+
 @router.post("/convert-pixels")
 def convert_pixels(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), to: str = Form(...),
                    profile: str = Form(...), source: str = Form(""), intent: str = Form("relative"), bpc: bool = Form(True)) -> Response:

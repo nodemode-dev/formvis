@@ -1,4 +1,4 @@
-import { lutFrom, lut4From, type ColourLut, type Lut4 } from '../engine/colour-lut';
+import { lutFrom, lut4From, lut3x4From, type ColourLut, type Lut4, type Lut3x4 } from '../engine/colour-lut';
 export interface Capabilities { pixelBudget?: number; memory?: number;
   name: string;
   version: string;
@@ -177,6 +177,10 @@ export const api = {
   async cmykLut(profile: { icc?: string; id?: string }): Promise<Lut4> {
     const r = await request('/color/cmyk-lut', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile }) });
     return lut4From(await r.arrayBuffer(), Number(r.headers.get('X-Grid') ?? 17));
+  },
+  async rgbCmykLut(profile: { icc?: string; id?: string }, source: { icc?: string } | null = null): Promise<Lut3x4> {
+    const r = await request('/color/rgb-cmyk-lut', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile, source }) });
+    return lut3x4From(await r.arrayBuffer(), Number(r.headers.get('X-Grid') ?? 33));
   },
   /** Pixels converted exactly by LittleCMS at 8 bits: RGBA (four a pixel) to CMYK and alpha (five), or back. */
   async convertPixels(data: Uint8Array, width: number, height: number, to: 'cmyk' | 'rgb', profileIcc: string, sourceIcc = '', intent = 'relative', bpc = true): Promise<Uint8Array> {

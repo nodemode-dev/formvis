@@ -1,7 +1,7 @@
 import { History, type Snapshot } from './history';
 import { Viewport } from './viewport';
 import type { SelectionMask } from './selection';
-import type { Lut4 } from './colour-lut';
+import type { Lut3x4, Lut4 } from './colour-lut';
 import { uid, type Doc, type ID, type Layer } from './types';
 
 export class Project {
@@ -15,6 +15,7 @@ export class Project {
   maskTarget = false;
   /** A CMYK document's display table (1.54.0), from its profile; not part of history. */
   cmykLut: Lut4 | null = null;
+  cmykIn: Lut3x4 | null = null;
   readonly collapsed = new Set<ID>();
   readonly history = new History();
   readonly viewport = new Viewport();
