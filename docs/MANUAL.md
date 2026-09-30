@@ -97,6 +97,9 @@ ask it questions.
 - API keys (fal's, and the language model's) are kept in your system's password store: Keychain on a Mac,
   Credential Manager on Windows, the Secret Service on Linux. Where there is none, in a file only you can read.
   Preferences > Plugins says which.
+- Without fal or ComfyUI: download LaMa (Preferences > Plugins > Local models, about 208 MB) and Generative Fill and
+  Expand work on any computer, with no prompt: LaMa fills from what surrounds the selection. It is chosen for you when
+  fal has no key. docs/LOCAL.md lists everything that runs on this computer and what each needs.
 - References: up to four layers can be sent to a ComfyUI workflow as references.
 - On this computer, with no key and no cost: install Krea 2 Turbo or FLUX.2 [klein] 4B in Preferences > Plugins >
   Local models (each licence is shown for you to accept first; Krea 2 installs with the content filter its licence

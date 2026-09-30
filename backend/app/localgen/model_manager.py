@@ -123,6 +123,7 @@ PINNED: dict[str, str] = {
     "sam21-video-constants.json": "172edc70e892aab0aef6caedf97b8e4091fbf6c5d26dac5fd9ea69d093d927d3",
     "u2netp.onnx": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
     "u2net_human_seg.onnx": "01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c",
+    "lama_fp32.onnx": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6",
     "realesrgan-x4plus.onnx": "4851ec156207d271f5328605d0582eeb851e656227da8aca093ced9e60789291",
     "kokoro-v1.0.onnx": "beb0d1848dee9a49da392cc3df26958d46cfa35d321edf434f52949153f0df3a",
     "voices-v1.0.bin": "bca610b8308e8d99f32e6fe4197e7ec01679264efed0cac9140fe9c29f1fbf7d",
@@ -315,6 +316,13 @@ MODELS = {
             "diffusion/sd-turbo/unet/model.onnx": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/unet/model.onnx",
             "diffusion/sd-turbo/vae_decoder/model.onnx": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/vae_decoder/model.onnx",
         },
+    },
+    # LaMa (1.53.2, formvis): inpainting on any computer's CPU, for Generative Fill and Expand without a prompt,
+    # ComfyUI or fal. big-lama exported to ONNX by Carve (Apache-2.0), fixed at 512 x 512, pinned to its revision.
+    "lama-inpaint": {
+        "name": "LaMa inpainting (big-lama, ONNX)",
+        "license": "Apache-2.0",
+        "files": {"lama_fp32.onnx": "https://huggingface.co/Carve/LaMa-ONNX/resolve/c3c0c9e468934d62e79c329e35d82dd09ff8c444/lama_fp32.onnx"},
     },
     "ai-upscale": {
         "name": "Real-ESRGAN x4plus",

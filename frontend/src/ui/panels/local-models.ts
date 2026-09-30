@@ -20,14 +20,15 @@ export class LocalModelsSection {
   private readonly klein = el('<div class="cv-local-card" data-model="klein"></div>');
   private readonly library = el('<div class="cv-local-card" data-model="loras"></div>');
   private readonly upscaler = el('<div class="cv-local-card" data-model="ai-upscale"></div>');
+  private readonly lama = el('<div class="cv-local-card" data-model="lama-inpaint"></div>');
   private job: string | null = null;
 
   constructor() {
-    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.upscaler, this.krea, this.klein, this.library);
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.lama, this.upscaler, this.krea, this.klein, this.library);
   }
 
   async refresh(): Promise<void> {
-    try { await Promise.all([this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
+    try { await Promise.all([this.showDownload(this.lama, 'lama-inpaint', 'LaMa inpainting', 'Download LaMa', 'about 208 MB', 'Generative Fill and Expand on any computer, with no prompt, key or cost: it fills from what surrounds the selection. Apache-2.0.'), this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
     catch { this.krea.replaceChildren(el('<p class="cv-note">The formvis engine is offline: local models need it.</p>')); }
   }
 
@@ -47,6 +48,18 @@ export class LocalModelsSection {
     const b = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Cancel</button>');
     b.addEventListener('click', () => { const j = this.job; this.job = null; if (j) void api(`/jobs/${j}`, { method: 'DELETE' }).catch(() => undefined); setText(note, 'Cancelled.'); });
     return b;
+  }
+
+  /** A model with no licence to accept (1.53.2: LaMa), downloaded here. */
+  private async showDownload(card: HTMLElement, id: string, name: string, button: string, size: string, what: string): Promise<void> {
+    const all = await api('/models') as unknown as Json[], m = all.find((x) => x.id === id);
+    const state = el('<p class="cv-local-state" role="status"></p>'), note = el('<p class="cv-note cv-local-note" role="status"></p>'), info = el('<p class="cv-note"></p>');
+    setText(state, m?.ready ? `${name}: downloaded, ready.` : `${name}: not downloaded (${size}).`); setText(info, what);
+    const get = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-primary"></button>'); setText(get, button);
+    get.disabled = !m || !!m.ready;
+    get.addEventListener('click', () => void (async () => { try { const j = await api(`/models/${id}/download`, { method: 'POST' }); await this.follow(j.job_id, note, () => void this.showDownload(card, id, name, button, size, what)); } catch (err) { setText(note, err instanceof Error ? err.message : 'Could not start the download.'); } })());
+    const row = el('<div class="cv-improve"></div>'); row.append(get);
+    card.replaceChildren(state, info, row, note);
   }
 
   /** Real-ESRGAN x4plus (1.53.1): Image > Upscale on this computer; BSD-3-Clause, so no licence to accept. */

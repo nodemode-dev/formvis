@@ -3,7 +3,7 @@ import { api, type GenerativeStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { addRecipe, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
-import { localFill, localModels, localUpscale, upscalerReady, type LocalModel } from '../../io/local-gen';
+import { localFill, localInpaint, localModels, localUpscale, modelReady, upscalerReady, type LocalModel } from '../../io/local-gen';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
 import { PromptImprover } from './prompt-improver';
@@ -24,7 +24,7 @@ export class GenerativeDialog extends Dialog {
   private mode: Mode = 'fill';
   private scale = 2;
   private readonly prompt = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="true">');
-  private readonly margin = { left: this.number(), top: this.number(), right: this.number(), bottom: this.number() };
+  private readonly margin = { left: this.number('Left'), top: this.number('Top'), right: this.number('Right'), bottom: this.number('Bottom') };   // named (1.53.2)
   private readonly marginRows: HTMLElement;
   private readonly hint = el('<p class="cv-note"></p>');
   private readonly keyRow = el('<div class="cv-panel-section"></div>');
@@ -37,6 +37,7 @@ export class GenerativeDialog extends Dialog {
   private readonly modelRow = el('<label class="cv-dialog-row"><span>Model</span></label>');
   private readonly refs: ReferencePicker;
   private locals: LocalModel[] = [];
+  private lama = false;
   private readonly influence = el<HTMLInputElement>('<input type="range" min="0" max="100" step="1" value="40" aria-label="Influence">');
   private readonly influenceRow = el('<label class="cv-dialog-row" title="How much the area under the selection shapes the result (0: none)"><span>Influence</span></label>');
   private readonly improver: PromptImprover;
@@ -77,8 +78,10 @@ export class GenerativeDialog extends Dialog {
     this.button('Generate', 'primary', () => void this.generate());
   }
 
-  private number(): HTMLInputElement {
-    return el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="30000" step="1" value="0">');
+  private number(label: string): HTMLInputElement {
+    const i = el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="30000" step="1" value="0">');
+    i.setAttribute('aria-label', `${label} margin`);
+    return i;
   }
 
   /** Opens the dialog for Generative Fill, Generative Expand or Upscale (`scale` 2 or 4). */
@@ -93,12 +96,13 @@ export class GenerativeDialog extends Dialog {
     // Upscale: Real-ESRGAN on fal or on this computer (1.53.1); the fill models otherwise.
     for (const b of this.modelRow.querySelectorAll('button')) setHidden(b as HTMLElement, mode === 'upscale');
     if (mode === 'upscale') this.upscaleModels(await upscalerReady());
-    else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.fillModels(); }   // local models that start from a picture (1.52.9)
+    else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
     setHidden(this.refs.el, mode === 'upscale');
     setHidden(this.improver.el, mode === 'upscale');
     this.improver.refresh();
     this.status = await api.generativeStatus();
+    if (mode !== 'upscale') this.fillModels();   // again, now that fal's state is known
     this.sync();
     this.open();
     if (mode !== 'upscale') { this.prompt.focus(); this.prompt.select(); }
@@ -119,7 +123,12 @@ export class GenerativeDialog extends Dialog {
     const was = this.model.value;
     this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }),
       ...this.locals.map((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = `${m.label.replace(/ \(local\)$/, '')} (this computer)`; o.disabled = !m.ready; if (!m.ready && m.reason) o.title = m.reason; return o; }));
-    if ([...this.model.options].some((o) => o.value === was)) this.model.value = was;
+    // LaMa (1.53.2): inpainting on any computer's CPU, no prompt; chosen when fal has no key.
+    const lama = el<HTMLOptionElement>('<option value="local:lama">LaMa, no prompt (this computer)</option>');
+    lama.disabled = !this.lama; if (!this.lama) lama.title = 'Download it in Preferences > Plugins > Local models';
+    this.model.append(lama);
+    if ([...this.model.options].some((o) => o.value === was && !o.disabled)) this.model.value = was;
+    else if (this.lama && !this.status?.configured) this.model.value = 'local:lama';
   }
 
   private async addWorkflow(): Promise<void> {
@@ -137,6 +146,7 @@ export class GenerativeDialog extends Dialog {
   heard: (r: { notice?: string; warning?: string; notes: string[] }) => void = () => {};
 
   private get comfy(): boolean { return this.mode !== 'upscale' && this.model.value.startsWith('comfy:'); }
+  private get lamaHere(): boolean { return this.mode !== 'upscale' && this.model.value === 'local:lama'; }
   private get upscaleHere(): boolean { return this.mode === 'upscale' && this.model.value === 'local:ai-upscale'; }
   private get local(): LocalModel | undefined { return this.mode !== 'upscale' ? this.locals.find((m) => m.id === this.model.value) : undefined; }
 
@@ -144,6 +154,11 @@ export class GenerativeDialog extends Dialog {
     const s = this.status, local = this.local;
     this.refs.forFal(!this.comfy);
     setHidden(this.influenceRow, !local);
+    if (this.lamaHere) {
+      setHidden(this.keyRow, true); setHidden(this.forget, true); setHidden(this.refs.el, true); setHidden(this.influenceRow, true);
+      setText(this.state, 'LaMa runs on this computer, on any machine: no key, no cost. It fills from what surrounds the selection and takes no prompt; the result is masked to the selection.');
+      return;
+    }
     if (this.upscaleHere) {
       setHidden(this.keyRow, true); setHidden(this.forget, true);
       setText(this.state, `Real-ESRGAN runs on this computer: no key, no cost. It enlarges what the document shows ${this.scale} times and opens it as a new document.`);
@@ -173,6 +188,14 @@ export class GenerativeDialog extends Dialog {
   }
 
   private async generate(): Promise<void> {
+    if (this.lamaHere) {
+      const e = this.engine, mode = this.mode, prompt = this.prompt.value;
+      const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
+      this.close();
+      if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, localInpaint()));
+      else await e.task(() => e.generativeFill(prompt, localInpaint()));
+      return;
+    }
     if (this.upscaleHere) {
       const e = this.engine, scale = this.scale;
       this.close();

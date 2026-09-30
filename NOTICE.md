@@ -53,6 +53,7 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | Krea 2 Turbo (Krea) | Krea 2 Community License Agreement, v.1, June 22, 2026 (https://www.krea.ai/krea-2-licensing), with its use policy (https://www.krea.ai/krea-2-use-policy) | Shown with every Krea 2 picture: "Krea 2 is licensed under the Krea 2 Community License Agreement. For more information, visit https://krea.ai/krea-2-licensing." |
 | Falconsai/nsfw_image_detection, as onnx-community/nsfw_image_detection-ONNX | Apache-2.0 | The content filter section 4.2 of Krea 2's licence requires, installed with Krea 2 and run on every picture it makes |
 | FLUX.2 [klein] 4B (Black Forest Labs) | Apache License 2.0 | Apple silicon only for now |
+| LaMa (big-lama, Suvorov et al.), exported to ONNX by Carve (Carve/LaMa-ONNX) | Apache-2.0 | Generative Fill and Expand on this computer without a prompt, downloaded from Preferences > Plugins > Local models |
 | Real-ESRGAN x4plus (Xintao Wang et al.), converted to ONNX (skillsafe-ai/realesrgan-x4plus) | BSD-3-Clause | Image > Upscale on this computer, downloaded from Preferences > Plugins > Local models |
 | mflux (Apple silicon) and diffusers (Windows and Linux) | MIT; Apache-2.0 | The runtimes the models run in, installed into their own environment with a model |
 | httpx | BSD-3-Clause | The engine's model downloads |

@@ -55,9 +55,18 @@ export function localFill(model: string, prompt: string, influence: number, hear
   };
 }
 
-/** Whether Real-ESRGAN is downloaded (1.53.1). */
-export async function upscalerReady(): Promise<boolean> {
-  try { const m = await (await ask('/models')).json() as Array<{ id: string; ready: boolean }>; return !!m.find((x) => x.id === 'ai-upscale')?.ready; } catch { return false; }
+/** Whether a downloadable model is on this computer: 'ai-upscale' (Real-ESRGAN, 1.53.1), 'lama-inpaint' (LaMa, 1.53.2). */
+export async function modelReady(id: string): Promise<boolean> {
+  try { const m = await (await ask('/models')).json() as Array<{ id: string; ready: boolean }>; return !!m.find((x) => x.id === id)?.ready; } catch { return false; }
+}
+export const upscalerReady = (): Promise<boolean> => modelReady('ai-upscale');
+
+/** Generative Fill's and Expand's generator on LaMa (1.53.2): any computer's CPU, no prompt, no key. */
+export function localInpaint(): (image: Blob, mask: Blob) => Promise<Blob> {
+  return async (image, mask) => {
+    const form = new FormData(); form.append('image', image, 'image.png'); form.append('mask', mask, 'mask.png');
+    return (await ask('/inpaint/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
+  };
 }
 
 /** Image > Upscale's generator on this computer (1.53.1): Real-ESRGAN, the picture enlarged `scale` times. */
