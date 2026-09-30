@@ -151,9 +151,11 @@ ask it questions.
   add adjustments, place images, undo, and generate. Each action shows as a card. Undo This Turn takes back everything
   since your last message. It uses the language model set in Preferences > Plugins; a local model needs to support
   tool calling.
-- Outside agents: turn on Allow outside agents in Preferences > Plugins, then connect Claude Code with
-  `claude mcp add --transport http formvis http://127.0.0.1:8190/mcp`, or Claude Desktop with `./formvis mcp` (run in
-  the formvis folder) as the server's command.
+- Outside agents (Claude Code, Codex, Cursor): ask them in plain language to edit what is open in formvis. In the
+  formvis folder, `./formvis agents install` sets all three up for your account (the MCP server and the editing skill);
+  inside the formvis repository they are already set up. formvis starts itself when an agent asks, opens a window if
+  none is open, and asks you once to allow outside agents. They get 39 tools, from opening, saving and exporting files
+  to layers, text, selections, filters and generative fill, which uses the models on this computer first.
 - Either way, every change is an undoable step, anything that costs money asks you first, your keys are never shown,
   and only this computer can connect.
 

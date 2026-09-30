@@ -1086,8 +1086,9 @@ export class Engine {
   rasterizeLayer(): void {
     this.edit('Rasterize Layer', (p) => {
       const l = p.activeLayer;
-      if (!l || (!l.smart && !l.text && !l.vector)) return false;
-      p.updateLayer(l.id, { smart: null, text: null, vector: null });
+      // Live shapes too (1.53.3): a plain filled rectangle or ellipse keeps its pixels and becomes an ordinary layer.
+      if (!l || (!l.smart && !l.text && !l.vector && !l.shape)) return false;
+      p.updateLayer(l.id, { smart: null, text: null, vector: null, shape: null });
     });
   }
 

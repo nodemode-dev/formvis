@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "formvis": {
+      "type": "stdio",
+      "command": "${CLAUDE_PROJECT_DIR:-.}/formvis",
+      "args": ["mcp"]
+    }
+  }
+}

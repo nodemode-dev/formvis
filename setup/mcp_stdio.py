@@ -2,7 +2,8 @@
 """formvis over MCP's stdio transport (1.52.1): for clients that launch a server as a program (Claude Desktop). Each line
 from the client, a JSON-RPC message, goes to the running engine's /mcp; each reply comes back as one line. Notifications
 get no reply. Only protocol messages are written to stdout; anything else goes to stderr, as stdio requires.
-The engine's address: FORMVIS_MCP_URL, or http://127.0.0.1:8190/mcp."""
+The engine's address: FORMVIS_MCP_URL, or http://127.0.0.1:8190/mcp. With the default address, an engine not running
+is started (1.53.3)."""
 
 import json
 import os
@@ -27,12 +28,44 @@ def forward(line: str) -> str | None:
         body = exc.read().decode() or ""
     except (urllib.error.URLError, OSError) as exc:
         print(f"[formvis mcp] the engine is not answering at {URL}: {exc}", file=sys.stderr, flush=True)
+        if start_engine():   # 1.53.3: started here, once, then the request goes again
+            return forward(line)
         if msg.get("id") is None:
             return None
-        return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"), "error": {"code": -32000, "message": "The formvis engine is not running (./formvis boot)."}})
+        return json.dumps({"jsonrpc": "2.0", "id": msg.get("id"), "error": {"code": -32000, "message": "The formvis engine is not running and could not be started: run ./formvis boot in the formvis folder, then retry."}})
     if msg.get("id") is None:
         return None   # a notification: no reply
     return body.strip() or None
+
+
+_started = False
+
+
+def start_engine() -> bool:
+    """The engine started for the client (1.53.3), once: ./formvis serve when the app is built (one process, the engine
+    serving it), else ./formvis boot; detached, its output to a log in the temporary folder, never to stdout (the MCP
+    channel). True once it answers. FORMVIS_MCP_AUTOSTART=0 turns this off."""
+    global _started
+    if _started or os.environ.get("FORMVIS_MCP_AUTOSTART", "1") == "0" or os.environ.get("FORMVIS_MCP_URL"):
+        return False
+    _started = True
+    import subprocess
+    import tempfile
+    import time
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    command = "serve" if os.path.isfile(os.path.join(root, "frontend", "dist", "index.html")) else "boot"
+    log = open(os.path.join(tempfile.gettempdir(), "formvis-engine.log"), "ab")
+    print(f"[formvis mcp] starting the engine (./formvis {command}); its log: {log.name}", file=sys.stderr, flush=True)
+    subprocess.Popen([os.path.join(root, "formvis"), command], cwd=root, stdin=subprocess.DEVNULL, stdout=log, stderr=log, start_new_session=True)
+    for _ in range(120):
+        time.sleep(0.5)
+        try:
+            with urllib.request.urlopen(URL.rsplit("/mcp", 1)[0] + "/api/version", timeout=2) as r:
+                if r.status == 200:
+                    return True
+        except (urllib.error.URLError, OSError):
+            continue
+    return False
 
 
 def main() -> None:

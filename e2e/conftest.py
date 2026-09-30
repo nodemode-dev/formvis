@@ -70,7 +70,11 @@ def open_app(page):
     # where it went and what the page said first (1.52.1: one intermittent "execution context was destroyed").
     page.navigations = []
     page.warnings = []
-    page.on("framenavigated", lambda f: page.navigations.append(f.url) if f == page.main_frame else None)
+    page.on("framenavigated", lambda f: page.navigations.append(f.url if f == page.main_frame else f"subframe {f.url}"))
+    # 1.53.3: the Type anti-aliasing test lost its page a second time with no main-frame navigation recorded, so a
+    # renderer crash or the page closing is recorded too.
+    page.on("crash", lambda _p: page.navigations.append("RENDERER CRASHED"))
+    page.on("close", lambda _p: page.navigations.append("page closed"))
     page.on("console", lambda m: page.warnings.append(f"{m.type}: {m.text}"[:300]) if m.type in ("warning", "error") else None)
     return errors
 

@@ -961,7 +961,17 @@ export function startApp(): void {
   const model3d = new Model3DDialog(engine, (t) => toast(t));
   // Outside agents over MCP (1.52.1): the window runs their calls while Preferences > Plugins allows it.
   const agentConfirm = new AgentConfirmDialog();
-  const agents = new AgentBridge(engine, { ask: (title, text) => agentConfirm.ask(title, text), note: () => {} });
+  // Allow, asked in the window when an agent first calls (1.53.3), is the same setting as Preferences > Plugins.
+  const agents = new AgentBridge(engine, {
+    ask: (title, text) => agentConfirm.ask(title, text), note: (t) => toast(t, 'info'),
+    allow: () => { savePrefs({ ...loadPrefs(), agentsAllowed: true }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: true })); },
+    // 1.53.3: what agents reach through the app, the same paths as its menus.
+    openFile: (f) => openFiles([f]),
+    projectBlob: async () => { const p = engine.current; if (!p) return null; engine.settle(); const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p)); return api.package(manifest, files); },
+    applyFilter: (kind, settings) => dialogs.filter.applySettings(kind as Parameters<typeof dialogs.filter.applySettings>[0], settings),
+    selectSubject: () => selectSubject(false),
+    removeBackground: () => removeBackground('auto'),
+  });
   agents.setEnabled(loadPrefs().agentsAllowed);
   window.addEventListener('formvis:agents', (ev) => agents.setEnabled((ev as CustomEvent<boolean>).detail === true));
   // The assistant (1.52.2) acts through the same bridge, whether or not outside agents are allowed.
@@ -1198,7 +1208,7 @@ export function startApp(): void {
     { id: 'layer-style', label: 'Layer Style...', enabled: () => pixel(), run: () => dialogs.layerStyle.show() },
     { id: 'edit-text', label: 'Edit Type...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { const id = engine.current?.activeId; if (id) dialogs.text.showEdit(id); } },
     { id: 'convert-smart', label: 'Convert to Smart Object', enabled: () => { const l = engine.current?.activeLayer; return !!l?.raster && !l.isGroup && !l.adjustment && !l.smart; }, run: () => engine.convertToSmartObject() },
-    { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || !!l.vector || liveText(l)); }, run: () => engine.rasterizeLayer() },
+    { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || !!l.vector || !!l.shape || liveText(l)); }, run: () => engine.rasterizeLayer() },
     { id: 'smart-filters', label: 'Smart Filters...', enabled: () => !!engine.current?.activeLayer?.smart, run: () => dialogs.smartFilters.show() },
     { id: 'edit-contents', label: 'Edit Contents', enabled: () => !!engine.current?.activeLayer?.smart, run: () => engine.editContents() },
     { id: 'replace-contents', label: 'Replace Contents...', enabled: () => !!engine.current?.activeLayer?.smart, run: () => replaceInput.click() },

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "formvis": {
+      "command": "${workspaceFolder}/formvis",
+      "args": ["mcp"]
+    }
+  }
+}

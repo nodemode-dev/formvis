@@ -15,3 +15,7 @@ Layered image editor for the web and the desktop in the NodeMode design system: 
 - `formvis-skillset` · the orchestrator for all formvis work: engine, tools, UI shell, engine service, project format, desktop builds, NodeMode embedding and verification. Route through its `SKILL.md` routing table to the specialist `SUB-SKILL.md`.
 
 Always route work through `.claude/skills/formvis-skillset/SKILL.md` first: it maps the subsystems, the dependency graph and the laws, and loads the right references.
+
+## Editing pictures through formvis
+
+When the person wants a picture edited (retouched, an object removed or added, text added, resized, exported), use the `formvis` MCP server's tools with the `formvis-editing` skill (`.claude/skills/formvis-editing`), not formvis's source code. `.mcp.json` starts it (`./formvis mcp`, which starts the engine if it is not running); the first edit asks the person once, in the formvis window, to allow outside agents. After changing the MCP tools in `backend/app/routers/mcp.py`, run `./formvis agents sync` so the skill's tool reference and its `.agents/skills` mirror follow (the engine tests fail until you do).
