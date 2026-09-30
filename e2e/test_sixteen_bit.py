@@ -25,3 +25,28 @@ def test_a_16_bit_png_keeps_its_bits_through_an_adjustment(page, tmp_path):
     assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.deep).id); return e.beginStroke({ x: 5, y: 4 }, false); })()") is False
     page.evaluate("window.formvis.commands.run('depth-8')")
     assert page.evaluate("(() => { const d = window.formvis.engine.current.doc; return [d.depth ?? 8, d.layers.some((l) => l.deep)]; })()") == [8, False]
+
+
+def test_flips_sizes_and_filters_keep_16_bits(page, tmp_path):
+    src = tmp_path / "ramp16b.png"
+    ramp = np.linspace(0, 65535, 1024).astype(np.uint16).reshape(1, 1024, 1).repeat(3, 2).repeat(16, 0)
+    cv2.imwrite(str(src), ramp)
+    page.locator("input[data-role='import-images']").set_input_files(str(src))
+    page.wait_for_function("window.formvis.engine.current?.doc.depth === 16", timeout=20000)
+    for cid in ("flip-canvas-h", "image-size", "canvas-size", "filter-gaussianBlur"):
+        assert page.evaluate(f"window.formvis.commands.enabled(window.formvis.commands.get('{cid}'))") is True, cid
+    page.evaluate("window.formvis.commands.run('flip-canvas-h')")
+    page.evaluate("window.formvis.engine.resizeCanvas(1024, 20, 0, 2)")                          # Canvas Size: 2 px more above and below
+    page.evaluate("window.formvis.engine.resampleImage(768, 15, 'bilinear', 72)")               # Image Size
+    page.evaluate("window.formvis.commands.run('filter-gaussianBlur')")
+    page.locator(".cv-scrim:not([hidden]) .cv-dialog", has_text="Gaussian Blur").wait_for()
+    page.locator(".cv-scrim:not([hidden]) .cv-dialog .cv-dialog-foot button", has_text="OK").click()
+    page.wait_for_function("window.formvis.engine.current.history.undoName === 'Gaussian Blur'", timeout=15000)
+    with page.expect_download(timeout=30000) as d:
+        page.evaluate("window.formvis.commands.run('export-png')")
+    out = tmp_path / "out2.png"; d.value.save_as(str(out))
+    img = cv2.imread(str(out), cv2.IMREAD_UNCHANGED)
+    assert img.dtype == np.uint16 and img.shape[:2] == (15, 768), (img.dtype, img.shape)
+    row = img[7, :, 0].astype(int)
+    assert row[20] > row[-20] + 40000                                                           # flipped: bright on the left now
+    assert len(np.unique(row)) > 600, len(np.unique(row))                                      # still far past 8 bits' 256

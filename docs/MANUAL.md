@@ -150,9 +150,11 @@ ask it questions.
 ## 16-bit documents
 
 - A 16-bit PNG or TIFF opens as a 16-bit document, and Image > Mode > 16 Bits/Channel turns any RGB document into one.
-  Its layers keep their 16 bits; Levels, Curves and Exposure adjustment layers work on them; File > Export PNG and
-  Export TIFF write 16 bits a channel; the project keeps them.
-- What cannot keep 16 bits yet (painting, filters, the other adjustments, transforms) is unavailable in a 16-bit
+  Its layers keep their 16 bits; Levels, Curves and Exposure adjustment layers work on them, as do moving, Flip
+  Canvas, Canvas Size, Crop, Trim, Image Size, and Gaussian Blur, Unsharp Mask and Add Noise on a whole layer; File >
+  Export PNG and Export TIFF write 16 bits a channel; the project keeps them.
+- What cannot keep 16 bits yet (painting, the other filters and adjustments, Free Transform, filtering within a
+  selection) is unavailable in a 16-bit
   document rather than dropping it to 8 bits quietly: Image > Mode > 8 Bits/Channel makes it available.
 
 ## Exporting

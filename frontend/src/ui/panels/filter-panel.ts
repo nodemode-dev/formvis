@@ -1,3 +1,5 @@
+import { blurDeep, noiseDeep, unsharpDeep } from '../../engine/deep';
+import type { DeepPixels } from '../../engine/types';
 import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine } from '../../engine';
 import { ScopesView } from './scopes-view';
 import { Dialog } from '../dialogs';
@@ -299,7 +301,18 @@ export class FilterPanel extends Dialog {
 
   /** Applies `kind` with `settings` straight away, without the dialog, as Actions replay a recorded filter. */
   /** Applies `kind` with `settings` (the noise seed among them) off the main thread, the interface staying live. */
-  private applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
+/** Gaussian Blur, Unsharp Mask and Add Noise in a 16-bit document, at 16 bits (1.53.7), with these settings. */
+  private deepFilter(kind: FilterKind, settings: Record<string, unknown>): boolean {
+    if (this.engine.current?.doc.depth !== 16) return false;
+    const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed;
+    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed) : null;
+    if (!deep) return false;
+    this.engine.applyDeepFilter(FILTER_LABELS[kind], deep);
+    return true;
+  }
+
+    private applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
+    if (this.deepFilter(kind, settings)) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }   // 16 bits (1.53.7)
     const s = { ...defaultFilterSettings(), ...(structuredClone(settings) as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed;
     const sync = (src: ImageData, scale: number): ImageData => runFilter(kind, s, seed, src, scale);
     return this.engine.applyImageEditAsync(FILTER_LABELS[kind], (src, scale) => runFilterOffThread(kind, s, scale, seed, src) ?? Promise.resolve(sync(src, scale)), filterMargin(kind, s), sync);
@@ -312,6 +325,7 @@ export class FilterPanel extends Dialog {
     this.kind = kind;
     Object.assign(this.s, structuredClone(settings));
     const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
+    if (this.deepFilter(kind, settings)) return true;   // 16 bits (1.53.7)
     this.engine.applyImageEdit(FILTER_LABELS[kind], run, this.grow());
     return true;
   }

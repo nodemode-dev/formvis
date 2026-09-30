@@ -1,5 +1,5 @@
 import { applyLut, type ColourLut } from './colour-lut';
-import { deepFromRaster, rasterFromDeep } from './deep';
+import { deepFromRaster, rasterFromDeep, resampleDeep } from './deep';
 import type { DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
@@ -4593,6 +4593,8 @@ export class Engine {
         const raster = shape ? this.shapeRaster(shape, t.w, t.h) : l.raster ? scaleRaster(l.raster, Math.max(1, Math.round(l.raster.width * sx)), Math.max(1, Math.round(l.raster.height * sy))) : null;
         const mr = l.mask?.raster ?? null;
         const mask = l.mask ? { ...l.mask, raster: mr ? scaleRaster(mr, Math.max(1, Math.round(mr.width * sx)), Math.max(1, Math.round(mr.height * sy))) : null, placement: l.mask.placement ? scaleT(l.mask.placement) : null } : null;
+        // A 16-bit layer's pixels resampled at 16 bits, its 8-bit rendition from them (1.53.7).
+        if (l.deep && raster && !shape) { const deep = resampleDeep(l.deep, raster.width, raster.height); return { ...l, deep, raster: rasterFromDeep(deep), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }   // as the 8-bit path
         return { ...l, raster, mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) };
       });
       p.doc = { ...p.doc, width, height, resolution, layers };
@@ -6224,6 +6226,16 @@ export class Engine {
     p.doc = { ...p.doc, depth: 16, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, deep } : l)) };
     this.refresh();
     return p;
+  }
+
+  /** A filter at 16 bits (1.53.7): `fn` on the active layer's 16-bit pixels, its 8-bit rendition from the result, one
+   *  step. Within a selection it waits for a later release rather than filtering the whole layer. */
+  applyDeepFilter(name: string, fn: (d: DeepPixels) => DeepPixels): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l?.deep) return false;
+    if (p.selection) { this.notice(`${name} within a selection does not work in 16 bits yet: Select > Deselect to filter the whole layer.`); return false; }
+    const deep = fn(l.deep);
+    return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, deep, raster: rasterFromDeep(deep) } : x)) }; return true; });
   }
 
   /** Painting changes a raster in place, outside `edit`; in a 16-bit document it waits for a later release. */

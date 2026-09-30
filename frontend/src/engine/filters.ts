@@ -36,7 +36,7 @@ function unpremultiply(p: Float32Array, width: number, height: number): ImageDat
 
 /** Kovesi's widths for three box blurs whose succession approximates a Gaussian of standard deviation `sigma`:
  *  the ideal width rounded down to odd, some passes one size up so the variances add to sigma squared. */
-function threeBoxWidths(sigma: number): number[] {
+export function threeBoxWidths(sigma: number): number[] {   // exported for the 16-bit blur (1.53.7)
   const passes = 3, v = 12 * sigma * sigma;
   let lower = Math.floor(Math.sqrt(v / passes + 1));
   if (lower % 2 === 0) lower -= 1;
@@ -48,7 +48,7 @@ function threeBoxWidths(sigma: number): number[] {
  *  divided by its full width, so values fade past the image edge. Channels are summed in locals, and the column pass
  *  keeps one running sum per column and moves down a row at a time, so memory is read in order rather than a whole
  *  row apart; the additions happen in the same order as before, so results are identical. */
-function boxBlur(src: Float32Array, dst: Float32Array, w: number, h: number, r: number, across: boolean): void {
+export function boxBlur(src: Float32Array, dst: Float32Array, w: number, h: number, r: number, across: boolean): void {
   const scale = 1 / (2 * r + 1);
   if (across) {
     const warm = Math.min(r, w - 1);
@@ -149,13 +149,13 @@ export function unsharpMask(img: ImageData, amount: number, radius: number, thre
 }
 
 /** SplitMix32: a well-mixed 32-bit value from any 32-bit input. */
-function mix32(z: number): number {
+export function mix32(z: number): number {
   z = (z + 0x9e3779b9) | 0;
   z = Math.imul(z ^ (z >>> 16), 0x85ebca6b);
   z = Math.imul(z ^ (z >>> 13), 0xc2b2ae35);
   return (z ^ (z >>> 16)) >>> 0;
 }
-const toUnit = (bits: number): number => (bits + 0.5) / 4294967296;
+export const toUnit = (bits: number): number => (bits + 0.5) / 4294967296;
 
 /** Add Noise: per pixel and channel (or once per pixel when monochromatic), uniform noise within plus or minus
  *  `amount` percent of half the range, or Gaussian noise (Box and Muller) whose deviation is two thirds of that;
