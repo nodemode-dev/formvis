@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.54.6 · 2026-09-30
+
+More of every mode (DEV_PLAN 22.4, second part).
+
+### Added
+
+- Invert, Posterize and Brightness/Contrast adjustment layers work in 16-bit and CMYK documents, per channel and per ink, and compose into their exports; Motion Blur runs on 16-bit, 32-bit and CMYK pixels. Threshold, a luminosity operation, follows with the colour-model work.
+
 ## 1.54.5 · 2026-09-30
 
 Blend If and Knockout (the parity plan's M2, DEV_PLAN 23.1).
