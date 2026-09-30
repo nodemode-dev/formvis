@@ -1,5 +1,5 @@
 import { applyLut, type ColourLut } from './colour-lut';
-import { deepFromRaster, rasterFromDeep, resampleDeep } from './deep';
+import { deepFromRaster, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
@@ -2614,7 +2614,7 @@ export class Engine {
   /** opts (1.49.5, the owner's tool list): aliased paints hard pixel-exact dabs (the Pencil); autoErase paints the
    *  background colour when the stroke starts on the foreground colour (Photoshop's Pencil); name names the step. */
   beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; square?: boolean; autoErase?: boolean; name?: string } = {}): boolean {
-    if (this.deepBlocked('Painting')) return false;   // 1.53.6
+    if (!this.deepPaintOk()) return false;   // 16 bits: Brush, Pencil and Eraser paint (1.53.8)
     const p = this.current;
     if (!p || this.stroke) return false;
     this.settle();
@@ -2702,6 +2702,12 @@ export class Engine {
     const patch = st.heal === 'remove' ? this.removePatch(st.s) : st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
+    // 16 bits (1.53.8): the stroke rebuilt on the layer's 16-bit pixels, in this step, so Undo restores them too.
+    const dl = patch && st.target === 'pixels' && st.project.doc.depth === 16 ? st.project.layer(st.layerId) : null;
+    if (patch && dl?.deep && dl.raster === patch.raster) {
+      const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
+      st.project.updateLayer(st.layerId, { deep: strokeDeep(dl.deep, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fg, this.bg) });
+    }
     st.project.history.end(st.project.snapshot());
     const lp = st.s.lastPoint;
     if (lp) this.lastBrush = { layerId: st.layerId, target: st.target, p: lp };
@@ -6233,9 +6239,31 @@ export class Engine {
   applyDeepFilter(name: string, fn: (d: DeepPixels) => DeepPixels): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l?.deep) return false;
-    if (p.selection) { this.notice(`${name} within a selection does not work in 16 bits yet: Select > Deselect to filter the whole layer.`); return false; }
-    const deep = fn(l.deep);
+    let deep = fn(l.deep);
+    if (p.selection) {
+      // Within a selection (1.53.8): blended by its coverage, where the layer sits unscaled and unrotated.
+      const t = l.transform, sel = p.selection;
+      if (t.rotation || t.flipX || t.flipY || t.w !== l.deep.width || t.h !== l.deep.height || t.x !== Math.round(t.x) || t.y !== Math.round(t.y)) { this.notice(`${name} within a selection needs the layer unscaled and unrotated in 16 bits: Select > Deselect to filter the whole layer.`); return false; }
+      const src = l.deep.data, f = deep.data, out = new Float32Array(src);
+      for (let y = 0; y < l.deep.height; y++) for (let x = 0; x < l.deep.width; x++) {
+        const cov = sel.valueAt(x + t.x, y + t.y) / 255;
+        if (cov <= 0) continue;
+        const o = (y * l.deep.width + x) * 4;
+        for (let c = 0; c < 4; c++) out[o + c] = src[o + c] + (f[o + c] - src[o + c]) * cov;
+      }
+      deep = { width: l.deep.width, height: l.deep.height, data: out };
+    }
     return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, deep, raster: rasterFromDeep(deep) } : x)) }; return true; });
+  }
+
+  /** Brush, Pencil and Eraser paint at 16 bits (1.53.8) unless colour dynamics vary the paint (the rebuild needs one
+   *  colour); other painting tools wait for a later release. */
+  private deepPaintOk(): boolean {
+    if (this.current?.doc.depth !== 16) return true;
+    const base = noDynamics() as unknown as Record<string, unknown>, cur = this.brushDynamics as unknown as Record<string, unknown>;
+    const colourVaries = ['fgBg', 'hue', 'saturation', 'brightness'].some((k) => JSON.stringify(cur[k]) !== JSON.stringify(base[k]));
+    if ((this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !colourVaries) return true;
+    return !this.deepBlocked(colourVaries ? 'Painting with colour dynamics' : 'This tool');
   }
 
   /** Painting changes a raster in place, outside `edit`; in a 16-bit document it waits for a later release. */

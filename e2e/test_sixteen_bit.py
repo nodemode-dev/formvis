@@ -50,3 +50,33 @@ def test_flips_sizes_and_filters_keep_16_bits(page, tmp_path):
     row = img[7, :, 0].astype(int)
     assert row[20] > row[-20] + 40000                                                           # flipped: bright on the left now
     assert len(np.unique(row)) > 600, len(np.unique(row))                                      # still far past 8 bits' 256
+
+
+def test_painting_and_filtering_a_selection_keep_16_bits(page, tmp_path):
+    src = tmp_path / "ramp16c.png"
+    ramp = np.linspace(0, 65535, 1024).astype(np.uint16).reshape(1, 1024, 1).repeat(3, 2).repeat(80, 0)   # stroke about row 10, clear about 40, selection 50 to 70
+    cv2.imwrite(str(src), ramp)
+    page.locator("input[data-role='import-images']").set_input_files(str(src))
+    page.wait_for_function("window.formvis.engine.current?.doc.depth === 16", timeout=20000)
+    page.evaluate("""() => { const e = window.formvis.engine; e.setTool('brush'); e.fg = { r: 255, g: 0, b: 0 }; Object.assign(e.brush, { diameter: 30, hardness: 0, opacity: 0.5 });
+      e.beginStroke({ x: 2, y: 10 }, false); for (let x = 2; x <= 1022; x += 4) e.strokeTo({ x, y: 10 }); e.endStroke(); }""")
+    assert page.evaluate("window.formvis.engine.current.history.undoName") not in (None, "")
+    page.evaluate("() => { const e = window.formvis.engine; e.setTool('cloneStamp'); }")
+    assert page.evaluate("window.formvis.engine.beginRetouchStroke ? true : false") is True
+    page.evaluate("""async () => { const E = await import('/src/engine/index.ts'), e = window.formvis.engine; e.setTool('marquee');
+      e.applySelection(E.SelectionMask.cropped(0, 50, 1024, 20, new Uint8Array(1024 * 20).fill(255)), 'replace', 'Rectangular Marquee'); }""")
+    page.evaluate("window.formvis.commands.run('filter-gaussianBlur')")
+    page.locator(".cv-scrim:not([hidden]) .cv-dialog", has_text="Gaussian Blur").wait_for()
+    page.locator(".cv-scrim:not([hidden]) .cv-dialog .cv-dialog-foot button", has_text="OK").click()
+    page.wait_for_function("window.formvis.engine.current.history.undoName === 'Gaussian Blur'", timeout=15000)
+    page.evaluate("window.formvis.engine.deselect()")
+    with page.expect_download(timeout=30000) as d:
+        page.evaluate("window.formvis.commands.run('export-png')")
+    out = tmp_path / "out3.png"; d.value.save_as(str(out))
+    img = cv2.imread(str(out), cv2.IMREAD_UNCHANGED)[..., [2, 1, 0]].astype(int)                # RGB
+    painted, clear = img[10], img[40]
+    assert (painted[:, 0] >= clear[:, 0]).all() and painted[512, 0] > clear[512, 0] + 5000     # redder under the stroke
+    assert len(np.unique(painted[:, 1])) > 600, len(np.unique(painted[:, 1]))                  # its green channel still past 8 bits
+    assert np.array_equal(img[40, :, 1], ramp[40, :, 1].astype(int))                           # outside the stroke and the selection: untouched
+    assert len(np.unique(img[60, :, 1])) > 600                                                 # blurred within the selection, at 16 bits
+    assert not np.array_equal(img[60, :, 1], ramp[60, :, 1].astype(int))                       # and changed by the blur

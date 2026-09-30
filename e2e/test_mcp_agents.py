@@ -25,7 +25,19 @@ def agents(page, on):
     page.wait_for_timeout(400)
 
 
+def agents_on(page):
+    """Agents allowed, and the engine told by the window's next poll (1.53.8): each test starts from this, not from
+    whatever an earlier test in the same engine left (a refusal is remembered for ten minutes)."""
+    import time
+    agents(page, True)
+    for _ in range(60):
+        if not call("get_document").get("isError"):
+            return
+        time.sleep(0.5)
+
+
 def test_an_agent_works_in_the_document(page):
+    agents_on(page)
     page.evaluate("window.formvis.engine.newDocument(120, 80, 'Agent', 'white')")
     agents(page, True)
     doc = call("get_document")["structuredContent"]
@@ -63,3 +75,6 @@ def test_money_asks_first_and_off_refuses(page):
     agents(page, False)
     r = call("get_document")
     assert r["isError"] and "Allow outside agents" in r["content"][0]["text"]                   # refused at once
+    # Left as found (1.53.8): agents back on, and the engine told so by the window's next poll, so a second run of this file
+    # in the same engine does not meet this test's refusal.
+    agents_on(page)

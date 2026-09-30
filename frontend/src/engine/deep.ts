@@ -151,3 +151,39 @@ export function noiseDeep(src: DeepPixels, amount: number, gaussian: boolean, mo
   }
   return { width: src.width, height: src.height, data: d };
 }
+
+/** A Brush, Pencil or Eraser stroke at 16 bits (1.53.8): each pixel the stroke changed, rebuilt on the 16-bit pixels
+ *  from the stroke region's 8-bit before and after. Painting is source-over with the paint colour `paint`, its coverage
+ *  found from the alpha change (on transparency) or by least squares over the three channels (on opaque pixels), so
+ *  the 16 bits under a soft or partial stroke are kept; where the paint is too near the pixel to tell, the 16-bit
+ *  value moves by the 8-bit change. Erasing scales alpha, or paints `background` where alpha cannot change. */
+export function strokeDeep(deep: DeepPixels, before: ImageData, after: ImageData, x: number, y: number, paint: { r: number; g: number; b: number } | null, background: { r: number; g: number; b: number }): DeepPixels {
+  const out = new Float32Array(deep.data), bw = before.width, bh = before.height, B = before.data, A = after.data;
+  for (let j = 0; j < bh; j++) for (let i = 0; i < bw; i++) {
+    const px = x + i, py = y + j;
+    if (px < 0 || py < 0 || px >= deep.width || py >= deep.height) continue;
+    const s = (j * bw + i) * 4;
+    if (B[s] === A[s] && B[s + 1] === A[s + 1] && B[s + 2] === A[s + 2] && B[s + 3] === A[s + 3]) continue;
+    const o = (py * deep.width + px) * 4;
+    let colour = paint;
+    if (!colour) {
+      if (A[s + 3] !== B[s + 3] || B[s + 3] === 0) { out[o + 3] = B[s + 3] > 0 ? out[o + 3] * (A[s + 3] / B[s + 3]) : A[s + 3] / 255; continue; }
+      colour = background;                                              // alpha locked: the eraser paints the background colour
+    }
+    const C = [colour.r, colour.g, colour.b];
+    let a = -1;
+    if (B[s + 3] < 250) a = (A[s + 3] - B[s + 3]) / Math.max(1, 255 - B[s + 3]);
+    else {
+      // Least squares over the three channels: each channel's change against its distance to the paint.
+      let num = 0, den = 0;
+      for (let c = 0; c < 3; c++) { const d = C[c] - B[s + c]; num += (A[s + c] - B[s + c]) * d; den += d * d; }
+      if (den >= 9) a = num / den;
+    }
+    if (a < 0 || !Number.isFinite(a)) { for (let c = 0; c < 4; c++) out[o + c] = Math.min(1, Math.max(0, out[o + c] + (A[s + c] - B[s + c]) / 255)); continue; }
+    a = Math.min(1, a);
+    const oa = out[o + 3], na = a + oa * (1 - a);
+    for (let c = 0; c < 3; c++) out[o + c] = na > 0 ? (C[c] / 255 * a + out[o + c] * oa * (1 - a)) / na : C[c] / 255;
+    out[o + 3] = na;
+  }
+  return { width: deep.width, height: deep.height, data: out };
+}
