@@ -1,6 +1,6 @@
 """Colour management routes (1.53.5, H2): profiles, adding one, and colour lookup tables."""
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 from pydantic import BaseModel
 
@@ -47,6 +47,35 @@ def build_lut(req: LutRequest) -> Response:
     except colour.ColourError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Response(data, media_type="application/octet-stream", headers={"X-Grid": str(colour.GRID), "X-Gamut": "1" if req.gamut and req.proof else "0"})
+
+
+class CmykLutRequest(BaseModel):
+    profile: dict
+    bpc: bool = True
+
+
+@router.post("/cmyk-lut")
+def build_cmyk_lut(req: CmykLutRequest) -> Response:
+    try:
+        data = colour.cmyk_lut(req.profile, req.bpc)
+    except colour.ColourError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(data, media_type="application/octet-stream", headers={"X-Grid": str(colour.GRID4)})
+
+
+@router.post("/convert-pixels")
+def convert_pixels(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), to: str = Form(...),
+                   profile: str = Form(...), source: str = Form(""), intent: str = Form("relative"), bpc: bool = Form(True)) -> Response:
+    try:
+        data = colour.convert_pixels(file.file.read(), width, height, to, {"icc": profile}, {"icc": source} if source else None, intent, bpc)
+    except colour.ColourError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(data, media_type="application/octet-stream")
+
+
+@router.get("/default-cmyk")
+def default_cmyk() -> dict:
+    return {"profile": colour.default_cmyk()}
 
 
 @router.get("/profiles/{pid}")

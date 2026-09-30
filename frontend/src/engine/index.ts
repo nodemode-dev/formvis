@@ -1,6 +1,7 @@
-import { applyLut, type ColourLut } from './colour-lut';
+import { applyLut, type ColourLut, type Lut4 } from './colour-lut';
+import { rasterFromChannels } from './channels';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
-import type { DeepPixels, DocProfile } from './types';
+import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 export { PATH_OPS, type PathOp } from './paths';
@@ -483,19 +484,18 @@ export class Engine {
     const nested = p.history.open;
     p.history.begin(name, p.snapshot());
     let ok: boolean | void = true;
-    const deepBefore = (p.doc.depth ?? 8) > 8 ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
+    const cmyk = p.doc.mode === 'cmyk';
+    const deepBefore = (p.doc.depth ?? 8) > 8 || cmyk ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
     try { ok = fn(p); } catch (err) {
       if (nested) throw err;
       this.rollBack(p, name, err);
       return false;
     }
-    // 16 bits kept (1.53.6, H1): a step that changed a 16-bit layer's pixels without its 16-bit data is undone, so
-    // nothing drops a 16-bit document to 8 bits silently.
-    if (deepBefore && !nested && p.doc.layers.some((l) => { const o = deepBefore.get(l.id); return !!o?.deep && l.raster !== o.raster && l.deep === o.deep; })) {
+    if (deepBefore && !nested && p.doc.layers.some((l) => { const o = deepBefore.get(l.id); return !!o && l.raster !== o.raster && ((!!o.deep && l.deep === o.deep) || (!!o.channels && l.channels === o.channels)); })) {
       const r = p.history.rollback();
       if (r) { for (let i = r.patches.length - 1; i >= 0; i--) { const q = r.patches[i]; q.raster.write(q.before, q.x, q.y); } p.doc = r.before.doc; p.selection = r.before.selection; }
       this.refresh();
-      this.notice(`${name} does not work in ${p.doc.depth} bits yet. Image > Mode > 8 Bits/Channel to use it.`);
+      this.notice(cmyk ? `${name} does not work in CMYK yet. Image > Mode > RGB Color to use it.` : `${name} does not work in ${p.doc.depth} bits yet. Image > Mode > 8 Bits/Channel to use it.`);
       return false;
     }
     p.history.end(p.snapshot());
@@ -6213,6 +6213,42 @@ export class Engine {
     });
   }
 
+  /** Image > Mode > CMYK Color (1.54.0, H1): each pixel layer's ink, converted by the engine's LittleCMS, beside its
+   *  rendition through `lut`; the CMYK profile becomes the document's; one step. Live type and shapes keep their
+   *  RGB colours; the deep guard then keeps every later step to what knows ink. */
+  setCmyk(profile: DocProfile, ink: Map<ID, ChannelPixels>, lut: Lut4): boolean {
+    const p = this.current;
+    if (!p || p.doc.mode === 'cmyk') return false;
+    p.cmykLut = lut;
+    return this.edit('CMYK Color', (pp) => {
+      const layers = pp.doc.layers.map((l) => { const ch = ink.get(l.id); return ch ? { ...l, channels: ch, deep: undefined, raster: rasterFromChannels(ch, lut) } : l; });
+      pp.doc = { ...pp.doc, layers, mode: 'cmyk', profile, depth: undefined, palette: undefined };
+      return true;
+    });
+  }
+
+  /** Image > Mode > RGB Color from CMYK: each layer's rendition replaced by the engine's exact conversion, the ink
+   *  dropped, the document back in sRGB (or `profile`). */
+  setRgbFromCmyk(rasters: Map<ID, Raster>, profile: DocProfile | null = null): boolean {
+    const p = this.current;
+    if (!p || p.doc.mode !== 'cmyk') return false;
+    return this.edit('RGB Color', (pp) => {
+      const layers = pp.doc.layers.map((l) => { const r = rasters.get(l.id); return l.channels ? { ...l, channels: undefined, raster: r ?? l.raster } : l; });
+      pp.doc = { ...pp.doc, layers, mode: 'rgb', profile: profile ?? undefined };
+      return true;
+    });
+  }
+
+  /** Opens CMYK ink as a CMYK document (1.54.0): its layer holds the ink, its raster the rendition through `lut`. */
+  openChannels(name: string, ch: ChannelPixels, profile: DocProfile, lut: Lut4): Project {
+    const raster = rasterFromChannels(ch, lut);
+    const p = this.openImage({ source: raster.canvas as CanvasImageSource, width: ch.width, height: ch.height, name });
+    p.cmykLut = lut;
+    p.doc = { ...p.doc, mode: 'cmyk', profile, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, channels: ch } : l)) };
+    this.refresh();
+    return p;
+  }
+
   /** Image > Mode > 8 or 16 Bits/Channel (1.53.6, H1): each pixel layer gains its 16-bit pixels, or keeps only its
    *  8-bit rendition. */
   setDepth(depth: 8 | 16 | 32, tone: { exposure: number; gamma: number } = { exposure: 0, gamma: 1 }): boolean {
@@ -6284,8 +6320,8 @@ export class Engine {
 
   convertMode(mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean {
     const p = this.current;
-    if (!p || (p.doc.mode ?? 'rgb') === mode) return false;
-    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color' }[mode];
+    if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || p.doc.mode === 'cmyk') return false;
+    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color' }[mode];
     const flat = mode === 'bitmap' || mode === 'indexed' ? this.flattened() : null;
     const ok = this.edit(label, (pp) => {
       const W = pp.doc.width, H = pp.doc.height;

@@ -99,7 +99,7 @@ export class NewCanvasDialog extends Dialog {
     const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth"><option>8 bit</option></select>');
     this.mode = mode;
     // What is not offered, said plainly (1.50.2 claimed this note and did not show it).
-    const modeNote = el('<p class="cv-nd-note">16 and 32 bit, CMYK and Lab are not available yet: they need a new pixel engine.</p>');
+    const modeNote = el('<p class="cv-nd-note">16 and 32 bit and CMYK come from Image > Mode once the document is open; Lab is not available yet.</p>');
     this.modeNote = modeNote;
     mode.addEventListener('change', () => { depth.innerHTML = mode.value === 'bitmap' ? '<option>1 bit</option>' : '<option>8 bit</option>'; this.sync(); });
     const ab = el('<label class="cv-nd-check"></label>');
@@ -745,12 +745,25 @@ export class ModeDialog extends Dialog {
   private readonly method = el<HTMLSelectElement>('<select class="cv-input" aria-label="Method"><option value="threshold">50% Threshold</option><option value="dither">Diffusion Dither</option></select>');
   private readonly colors = el<HTMLInputElement>('<input class="cv-input" type="number" min="2" max="256" value="256" aria-label="Colors">');
   private readonly dither = el<HTMLInputElement>('<input type="checkbox" aria-label="Dither">');
-  private kind: 'bitmap' | 'indexed' = 'bitmap';
+  private readonly profile = el<HTMLSelectElement>('<select class="cv-input" aria-label="Profile"></select>');
+  private readonly intent = el<HTMLSelectElement>('<select class="cv-input" aria-label="Intent"><option value="perceptual">Perceptual</option><option value="relative" selected>Relative Colorimetric</option><option value="saturation">Saturation</option><option value="absolute">Absolute Colorimetric</option></select>');
+  private readonly bpc = el<HTMLInputElement>('<input type="checkbox" aria-label="Use Black Point Compensation" checked>');
+  private readonly note = el('<p class="cv-note" role="status"></p>');
+  private kind: 'bitmap' | 'indexed' | 'cmyk' = 'bitmap';
+  /** Image > Mode > CMYK Color (1.54.0): the app converts through the engine with the chosen profile. */
+  onCmyk: ((profileId: string, profileName: string, intent: string, bpc: boolean) => Promise<void>) | null = null;
 
   constructor(private readonly engine: Engine) {
     super('Mode', 340);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => {
+      if (this.kind === 'cmyk') {
+        if (!this.profile.value) { setText(this.note, 'No CMYK profile was found. Load one in View > Proof Setup.'); return; }
+        const name = this.profile.selectedOptions[0]?.textContent ?? 'CMYK';
+        this.close();
+        void this.onCmyk?.(this.profile.value, name, this.intent.value, this.bpc.checked);
+        return;
+      }
       const ok = this.kind === 'bitmap'
         ? this.engine.convertMode('bitmap', { dither: this.method.value === 'dither' })
         : this.engine.convertMode('indexed', { colors: Math.max(2, Math.min(256, Math.round(Number(this.colors.value) || 256))), dither: this.dither.checked });
@@ -758,12 +771,29 @@ export class ModeDialog extends Dialog {
     });
   }
 
-  show(kind: 'bitmap' | 'indexed'): void {
+  show(kind: 'bitmap' | 'indexed' | 'cmyk'): void {
     this.kind = kind;
-    this.setTitle(kind === 'bitmap' ? 'Bitmap' : 'Indexed Color');
+    this.setTitle(kind === 'bitmap' ? 'Bitmap' : kind === 'indexed' ? 'Indexed Color' : 'CMYK Color');
+    if (kind === 'cmyk') {
+      setText(this.note, '');
+      this.body.replaceChildren(el('<p class="cv-dialog-note">Every pixel layer is converted to ink through the profile, exactly, by the engine; tools that do not know ink yet wait until Mode > RGB Color.</p>'), rowOf('Profile', this.profile), rowOf('Intent', this.intent), rowOf('Use Black Point Compensation', this.bpc), this.note);
+      this.open();
+      void this.listProfiles();
+      return;
+    }
     this.body.replaceChildren(el(`<p class="cv-dialog-note">${kind === 'bitmap' ? 'The image is flattened, then made black and white.' : 'The image is flattened, then made of a palette of at most 256 colours: every colour when there are that few, else the ones that best represent it.'}</p>`),
       kind === 'bitmap' ? rowOf('Method', this.method) : rowOf('Colors', this.colors), ...(kind === 'indexed' ? [rowOf('Dither', this.dither)] : []));
     this.open();
+  }
+
+  private async listProfiles(): Promise<void> {
+    try {
+      const all = (await api.colourProfiles()).profiles.filter((p) => p.space === 'CMYK');
+      this.profile.replaceChildren(...all.map((p) => { const o = document.createElement('option'); o.value = p.id; o.textContent = p.name; return o; }));
+      const shipped = all.find((p) => p.shipped);
+      if (shipped) this.profile.value = shipped.id;
+      if (!all.length) setText(this.note, 'No CMYK profile was found. Load one in View > Proof Setup.');
+    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The engine did not answer.'); }
   }
 }
 

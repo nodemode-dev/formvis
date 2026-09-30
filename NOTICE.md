@@ -61,3 +61,7 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | httpx | BSD-3-Clause | The engine's model downloads |
 | ONNX Runtime | MIT | Runs the local models; part of the base install |
 | LittleCMS (through Pillow's ImageCms) | MIT | Colour management: profile conversion, proofing and the gamut warning |
+
+## The shipped CMYK profile (1.54.0)
+
+`backend/app/profiles/FOGRA39L_coated.icc` is the working CMYK profile a CMYK document uses when no other is chosen. It is the colord profile of the FOGRA39L characterisation data (offset printing on coated paper, ISO 12647-2:2004/Amd 1), Copyright Kai-Uwe Behrmann, Marti Maria, Photogamut, Graeme Gill and ColorSolutions, under the zlib/libpng License, as generated for the CTAN colorprofiles package by Peter Selinger, who waived his rights to the generated file; the profile itself carries the statement "This profile is free of known copyright restrictions". ECI's ISO Coated v2 profiles, built from the same data, are not shipped: ECI's terms require its permission to bundle them.

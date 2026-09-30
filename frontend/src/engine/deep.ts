@@ -69,35 +69,35 @@ export function composeDeep(doc: Doc): { width: number; height: number; data: Fl
 
 /** A layer's pixels drawn into `out` where its placement puts them (the renderer's own matrix, inverted): whole-pixel
  *  offsets and flips copy exactly; scaling and rotation sample bilinearly, as the canvas does. */
-function place(out: Float32Array, W: number, H: number, src: DeepPixels, t: import('./types').Transform, op: number): void {
+export function place(out: Float32Array, W: number, H: number, src: { width: number; height: number; data: Float32Array }, t: import('./types').Transform, op: number, n = 4): void {
   const m = placement(t, src.width, src.height), inv = invert(m);
   const xs = [0, src.width].flatMap((x) => [0, src.height].map((y) => m[0] * x + m[2] * y + m[4]));
   const ys = [0, src.width].flatMap((x) => [0, src.height].map((y) => m[1] * x + m[3] * y + m[5]));
   const x0 = Math.max(0, Math.floor(Math.min(...xs))), x1 = Math.min(W, Math.ceil(Math.max(...xs)));
   const y0 = Math.max(0, Math.floor(Math.min(...ys))), y1 = Math.min(H, Math.ceil(Math.max(...ys)));
-  const sw = src.width, sh = src.height, d = src.data, px = [0, 0, 0, 0];
+  const sw = src.width, sh = src.height, d = src.data, px = new Array<number>(n).fill(0), A = n - 1;
   for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) {
     const cx = x + 0.5, cy = y + 0.5, u = inv[0] * cx + inv[2] * cy + inv[4] - 0.5, v = inv[1] * cx + inv[3] * cy + inv[5] - 0.5;
     if (u < -0.5 || v < -0.5 || u > sw - 0.5 || v > sh - 0.5) continue;
     const ru = Math.round(u), rv = Math.round(v);
-    if (Math.abs(u - ru) < 1e-6 && Math.abs(v - rv) < 1e-6) { const s = (Math.min(sh - 1, Math.max(0, rv)) * sw + Math.min(sw - 1, Math.max(0, ru))) * 4; px[0] = d[s]; px[1] = d[s + 1]; px[2] = d[s + 2]; px[3] = d[s + 3]; }
-    else bilinear(d, sw, sh, u, v, px);
-    const sa = px[3] * op, o = (y * W + x) * 4, oa = out[o + 3], na = sa + oa * (1 - sa);
+    if (Math.abs(u - ru) < 1e-6 && Math.abs(v - rv) < 1e-6) { const s = (Math.min(sh - 1, Math.max(0, rv)) * sw + Math.min(sw - 1, Math.max(0, ru))) * n; for (let c = 0; c < n; c++) px[c] = d[s + c]; }
+    else bilinear(d, sw, sh, u, v, px, n);
+    const sa = px[A] * op, o = (y * W + x) * n, oa = out[o + A], na = sa + oa * (1 - sa);
     if (na <= 0) continue;
-    for (let c = 0; c < 3; c++) out[o + c] = (px[c] * sa + out[o + c] * oa * (1 - sa)) / na;
-    out[o + 3] = na;
+    for (let c = 0; c < A; c++) out[o + c] = (px[c] * sa + out[o + c] * oa * (1 - sa)) / na;
+    out[o + A] = na;
   }
 }
 
 /** Bilinear in premultiplied alpha, edges clamped. */
-function bilinear(d: Float32Array, w: number, h: number, u: number, v: number, px: number[]): void {
+function bilinear(d: Float32Array, w: number, h: number, u: number, v: number, px: number[], n = 4): void {
   const x0 = Math.max(0, Math.min(w - 1, Math.floor(u))), y0 = Math.max(0, Math.min(h - 1, Math.floor(v)));
   const x1 = Math.min(w - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = Math.min(1, Math.max(0, u - x0)), fy = Math.min(1, Math.max(0, v - y0));
-  let a = 0; const c = [0, 0, 0];
+  let a = 0; const c = new Array<number>(n - 1).fill(0), A = n - 1;
   for (const [xx, yy, wgt] of [[x0, y0, (1 - fx) * (1 - fy)], [x1, y0, fx * (1 - fy)], [x0, y1, (1 - fx) * fy], [x1, y1, fx * fy]]) {
-    const s = (yy * w + xx) * 4, al = d[s + 3] * wgt; a += al; for (let k = 0; k < 3; k++) c[k] += d[s + k] * al;
+    const s = (yy * w + xx) * n, al = d[s + A] * wgt; a += al; for (let k = 0; k < A; k++) c[k] += d[s + k] * al;
   }
-  px[3] = a; for (let k = 0; k < 3; k++) px[k] = a > 0 ? c[k] / a : 0;
+  px[A] = a; for (let k = 0; k < A; k++) px[k] = a > 0 ? c[k] / a : 0;
 }
 
 /** Image Size at 16 bits: an area average when shrinking, bilinear when enlarging, in premultiplied alpha. */

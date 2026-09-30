@@ -1,4 +1,4 @@
-import { lutFrom, type ColourLut } from '../engine/colour-lut';
+import { lutFrom, lut4From, type ColourLut, type Lut4 } from '../engine/colour-lut';
 export interface Capabilities { pixelBudget?: number; memory?: number;
   name: string;
   version: string;
@@ -161,8 +161,8 @@ export const api = {
     return (await request('/io/encode-deep', { method: 'POST', body: form({ width: String(width), height: String(height), format }, [{ name: 'pixels.raw', blob: new Blob([raw]) }], 'file') })).blob();
   },
   /** Colour management (1.53.5, H2): the profiles on this computer and added to formvis. */
-  async colourProfiles(): Promise<{ profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean }>; folder: string }> {
-    return (await (await request('/color/profiles')).json()) as { profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean }>; folder: string };
+  async colourProfiles(): Promise<{ profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean; shipped?: boolean }>; folder: string }> {
+    return (await (await request('/color/profiles')).json()) as { profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean; shipped?: boolean }>; folder: string };
   },
   async addColourProfile(file: File): Promise<{ id: string; name: string; space: string }> {
     return (await (await request('/color/profiles', { method: 'POST', body: form({}, [{ name: file.name, blob: file }], 'file') })).json()) as { id: string; name: string; space: string };
@@ -172,6 +172,32 @@ export const api = {
   async colourLut(req: { source?: { icc?: string; id?: string } | null; dest?: { icc?: string; id?: string } | null; proof?: { id?: string; icc?: string } | null; intent?: string; proofIntent?: string; bpc?: boolean; gamut?: boolean }): Promise<ColourLut> {
     const r = await request('/color/lut', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
     return lutFrom(await r.arrayBuffer(), Number(r.headers.get('X-Grid') ?? 33), r.headers.get('X-Gamut') === '1');
+  },
+  /** CMYK documents (1.54.0, H1): the display table from a CMYK profile (base64 ICC or a listed id). */
+  async cmykLut(profile: { icc?: string; id?: string }): Promise<Lut4> {
+    const r = await request('/color/cmyk-lut', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile }) });
+    return lut4From(await r.arrayBuffer(), Number(r.headers.get('X-Grid') ?? 17));
+  },
+  /** Pixels converted exactly by LittleCMS at 8 bits: RGBA (four a pixel) to CMYK and alpha (five), or back. */
+  async convertPixels(data: Uint8Array, width: number, height: number, to: 'cmyk' | 'rgb', profileIcc: string, sourceIcc = '', intent = 'relative', bpc = true): Promise<Uint8Array> {
+    const r = await request('/color/convert-pixels', { method: 'POST', body: form({ width: String(width), height: String(height), to, profile: profileIcc, source: sourceIcc, intent, bpc: bpc ? 'true' : 'false' }, [{ name: 'pixels.raw', blob: new Blob([new Uint8Array(data)]) }], 'file') });
+    return new Uint8Array(await r.arrayBuffer());
+  },
+  async defaultCmykProfile(): Promise<{ id: string; name: string } | null> {
+    return ((await (await request('/color/default-cmyk')).json()) as { profile: { id: string; name: string } | null }).profile;
+  },
+  /** A CMYK file's ink and embedded profile, or null when the file is not CMYK. */
+  async decodeCmyk(file: Blob, name: string): Promise<{ width: number; height: number; ink: Uint8Array; icc: Uint8Array | null } | null> {
+    const r = await request('/io/decode-cmyk', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') });
+    if (r.status === 204) return null;
+    const width = Number(r.headers.get('X-Width')), height = Number(r.headers.get('X-Height')), iccLen = Number(r.headers.get('X-Profile-Bytes') ?? 0), b = new Uint8Array(await r.arrayBuffer());
+    return { width, height, ink: b.slice(0, width * height * 5), icc: iccLen ? b.slice(width * height * 5, width * height * 5 + iccLen) : null };
+  },
+  async encodeCmyk(ink: Uint8Array, width: number, height: number, format: 'tiff' | 'jpg', icc: Uint8Array | null, quality = 90, dpi = 72): Promise<Blob> {
+    const files = [{ name: 'pixels.raw', blob: new Blob([new Uint8Array(ink)]) }];
+    const body = form({ width: String(width), height: String(height), format, quality: String(quality), dpi: String(dpi) }, files, 'file');
+    if (icc) body.append('icc', new Blob([new Uint8Array(icc)]), 'profile.icc');
+    return (await request('/io/encode-cmyk', { method: 'POST', body })).blob();
   },
   /** A TIFF's pages (1.53.4), BigTIFF included; one entry for anything else. */
   async imagePages(file: Blob, name: string): Promise<Array<{ index: number; width: number; height: number; mode: string }>> {

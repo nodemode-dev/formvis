@@ -82,6 +82,9 @@ import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
 import { ColourView } from './ui/colour';
 import { composeDeep, deepFromU16, deepToU16, deepToned } from './engine/deep';
+import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
+import type { Lut4 } from './engine/colour-lut';
+import type { ChannelPixels, DocProfile, ID } from './engine/types';
 import { HdrToningDialog } from './ui/panels/hdr-toning';
 import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog } from './ui/panels/colour-dialogs';
 import { embeddedProfile, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
@@ -459,6 +462,9 @@ export function startApp(): void {
         for (const f of images) {
           // A TIFF with several pages asks how to open them (1.53.4).
           if (/\.tiff?$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
+          if (/\.(jpe?g|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+            try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { toast(message(err), 'error'); continue; }
+          }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
           if (/\.(png|tiff?|hdr|exr)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
@@ -605,10 +611,71 @@ export function startApp(): void {
     engine.setDepth(depth);
   }
 
+  /** CMYK documents (1.54.0, H1). The engine converts pixels exactly; the window keeps a display table per profile. */
+  const cmykLuts = new Map<string, Lut4>();
+  async function cmykLutFor(profile: DocProfile): Promise<Lut4> {
+    const key = profile.icc.slice(0, 64) + profile.icc.length;
+    let lut = cmykLuts.get(key);
+    if (!lut) { lut = await api.cmykLut({ icc: profile.icc }); cmykLuts.set(key, lut); }
+    return lut;
+  }
+  async function cmykProfileOf(id: string, name: string): Promise<DocProfile> { return { name, icc: toBase64(await api.colourProfileBytes(id)) }; }
+  async function toCmyk(profile: DocProfile, intent: string, bpc: boolean): Promise<void> {
+    const p = engine.current;
+    if (!p || p.doc.mode === 'cmyk') return;
+    await engine.task(async () => {
+      try {
+        const src = p.doc.profile?.icc ?? '', lut = await cmykLutFor(profile), ink = new Map<ID, ChannelPixels>();
+        for (const l of p.doc.layers) {
+          if (!l.raster || l.isGroup || l.adjustment) continue;
+          const out = await api.convertPixels(rasterBytes(l.raster), l.raster.width, l.raster.height, 'cmyk', profile.icc, src, intent, bpc);
+          ink.set(l.id, channelsFromU8(out, l.raster.width, l.raster.height));
+        }
+        engine.setCmyk(profile, ink, lut);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+  async function cmykToRgb(): Promise<void> {
+    const p = engine.current;
+    if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile) return;
+    await engine.task(async () => {
+      try {
+        const rasters = new Map<ID, Raster>();
+        for (const l of p.doc.layers) {
+          if (!l.channels) continue;
+          const out = await api.convertPixels(channelsToU8(l.channels.data), l.channels.width, l.channels.height, 'rgb', p.doc.profile!.icc);
+          const r = new Raster(l.channels.width, l.channels.height), img = r.ctx.createImageData(l.channels.width, l.channels.height);
+          img.data.set(out); r.ctx.putImageData(img, 0, 0); r.touch();
+          rasters.set(l.id, r);
+        }
+        engine.setRgbFromCmyk(rasters);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+  async function openCmyk(name: string, file: { width: number; height: number; ink: Uint8Array; icc: Uint8Array | null }): Promise<void> {
+    let profile: DocProfile | null = file.icc ? { name: profileName(file.icc) || 'Embedded CMYK profile', icc: toBase64(file.icc) } : null;
+    if (!profile) { const d = await api.defaultCmykProfile(); if (!d) throw new Error('No CMYK profile is available: add one in View > Proof Setup > Load Profile.'); profile = await cmykProfileOf(d.id, d.name); }
+    engine.openChannels(name, channelsFromU8(file.ink, file.width, file.height), profile, await cmykLutFor(profile));
+    if (!file.icc) toast(`${name} has no embedded profile; ${profile.name} is assumed.`);
+  }
+  async function exportCmyk(kind: 'tiff' | 'jpg', quality: number): Promise<void> {
+    const p = engine.current;
+    if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile) return;
+    await engine.task(async () => {
+      try {
+        const ink = composeChannels(p.doc);
+        if ('error' in ink) throw new Error(ink.error);
+        const blob = await api.encodeCmyk(channelsToU8(ink.data), ink.width, ink.height, kind, fromBase64(p.doc.profile!.icc), Math.round(quality * 100), p.doc.resolution ?? 72);
+        await deliver(blob, `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function exportImage(kind: 'png' | 'jpg' | 'webp' | 'tiff' | 'pdf' | 'avif', quality = 0.92): Promise<void> {
     const p = engine.current;
     if (!p) return;
     engine.settle();
+    if (p.doc.mode === 'cmyk' && (kind === 'tiff' || kind === 'jpg')) { await exportCmyk(kind, quality); return; }
     await engine.task(async () => {
       try {
         // A 16-bit document's PNG and TIFF keep their 16 bits (1.53.6): composed in floating point, written by the engine.
@@ -1003,6 +1070,7 @@ export function startApp(): void {
   engine.askRasterize = (name, kind) => confirmAction(`Rasterize this ${kind}?`, `"${name}" must be rasterized before it can be painted on. Its ${kind === 'type layer' ? 'text' : kind === 'Smart Object' ? 'contents' : 'shape'} will no longer be editable.`, 'Rasterize');
   const noteDialog = new NoteDialog(engine);
   const modeDialog = new ModeDialog(engine);
+  modeDialog.onCmyk = async (id, name, intent, bpc) => { await toCmyk(await cmykProfileOf(id, name), intent, bpc); };
   const sendNodeMode = new SendDialog(engine, (t) => toast(t));
   const sendComfyUI = new SendDialog(engine, (t) => toast(t), 'comfyui');
   const runWorkflow = new RunWorkflowDialog(engine, (t) => toast(t));
@@ -1305,7 +1373,8 @@ export function startApp(): void {
     { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
     { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
     // Image > Mode and Layer > Flatten Image (1.50.2, the owner's walkthrough), as Photoshop's.
-    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { engine.convertMode('rgb'); } },
+    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { if (engine.current?.doc.mode === 'cmyk') void cmykToRgb(); else engine.convertMode('rgb'); } },
+    { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && (engine.current?.doc.depth ?? 8) === 8 && ['rgb', 'cmyk'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode !== 'cmyk') modeDialog.show('cmyk'); } },
     { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { engine.convertMode('grayscale'); } },
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => modeDialog.show('bitmap') },
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => modeDialog.show('indexed') },
@@ -1334,7 +1403,7 @@ export function startApp(): void {
       'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
-      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', { label: 'Image Rotation', items: ['flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-folder-dialog', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
@@ -1590,7 +1659,12 @@ export function startApp(): void {
   // 32 bits (1.53.9) are linear light, unbounded: what would clip past white waits there.
   const NOT_AT_32 = new Set(['new-adj-levels', 'new-adj-curves', 'filter-unsharpMask', 'filter-addNoise', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning']);
   for (const id of ['depth-32', 'export-hdr', 'export-exr']) DEEP_OK.add(id);
-  commands.gate = (c) => (engine.current?.doc.depth ?? 8) === 8 || ((DEEP_OK.has(c.id) || /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));
+  const CMYK_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
+    'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'mode-rgb', 'mode-cmyk',
+    'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
+  const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
+  commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? CMYK_OK.has(c.id) || passes(c)
+    : (engine.current?.doc.depth ?? 8) === 8 || ((DEEP_OK.has(c.id) || passes(c)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));
   // Rebound keys (1.53.4), applied once every command is registered.
   for (const [id, keys] of Object.entries(loadPrefs().shortcuts)) commands.setKeys(id, keys);
   if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation, colour: colourView };

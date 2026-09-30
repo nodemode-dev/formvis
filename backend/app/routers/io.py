@@ -1,6 +1,8 @@
+import io
 import re
 from pathlib import Path
 
+import numpy as np
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
@@ -84,6 +86,48 @@ def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: in
     if not ok:
         raise HTTPException(status_code=500, detail="The 16-bit file could not be written.")
     return Response(out.tobytes(), media_type={"png": "image/png", "hdr": "image/vnd.radiance", "exr": "image/x-exr"}.get(format, "image/tiff"))
+
+
+@router.post("/decode-cmyk")
+def decode_cmyk(file: UploadFile = File(...)) -> Response:
+    """A CMYK picture's ink (1.54.0, the parity plan's H1): C, M, Y, K and alpha, a byte each, then the embedded
+    profile's bytes (X-Profile-Bytes long, 0 when none). 204 when the file is not CMYK, so the usual decode goes on."""
+    from PIL import Image, UnidentifiedImageError
+    data = file.file.read()
+    try:
+        with Image.open(io.BytesIO(data)) as img:
+            if img.mode != "CMYK":
+                return Response(status_code=204)
+            w, h = img.size
+            if w > 30000 or h > 30000 or w * h > config.MAX_PIXELS:
+                raise HTTPException(status_code=413, detail="The picture is larger than formvis edits in one piece.")
+            icc = img.info.get("icc_profile") or b""
+            ink = np.asarray(img).reshape(h * w, 4)
+    except (UnidentifiedImageError, OSError, ValueError):
+        return Response(status_code=204)
+    px = np.concatenate([ink, np.full((h * w, 1), 255, np.uint8)], axis=1).astype(np.uint8).tobytes()
+    return Response(px + icc, media_type="application/octet-stream", headers={"X-Width": str(w), "X-Height": str(h), "X-Profile-Bytes": str(len(icc))})
+
+
+@router.post("/encode-cmyk")
+def encode_cmyk(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), format: str = Form("tiff"), quality: int = Form(90), dpi: int = Form(72), icc: UploadFile | None = File(default=None)) -> Response:
+    """A CMYK TIFF or JPEG from C, M, Y, K and alpha bytes (1.54.0): alpha lays the ink over paper, the profile embedded."""
+    from PIL import Image
+    if format not in ("tiff", "jpg"):
+        raise HTTPException(status_code=422, detail="CMYK export is TIFF or JPEG.")
+    raw = file.file.read()
+    if width <= 0 or height <= 0 or len(raw) != width * height * 5:
+        raise HTTPException(status_code=422, detail="The pixels do not match the size given.")
+    px = np.frombuffer(raw, np.uint8).reshape(height, width, 5).astype(np.float32)
+    ink = np.clip(px[..., :4] * (px[..., 4:5] / 255.0) + 0.5, 0, 255).astype(np.uint8)
+    img = Image.fromarray(ink, "CMYK")
+    out = io.BytesIO()
+    extra = {"icc_profile": icc.file.read()} if icc else {}
+    if format == "jpg":
+        img.save(out, "JPEG", quality=max(1, min(100, quality)), dpi=(dpi, dpi), **extra)
+    else:
+        img.save(out, "TIFF", compression="tiff_deflate", dpi=(dpi, dpi), **extra)
+    return Response(out.getvalue(), media_type="image/jpeg" if format == "jpg" else "image/tiff")
 
 
 @router.post("/decode")

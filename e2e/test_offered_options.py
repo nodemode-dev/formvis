@@ -148,14 +148,16 @@ def test_every_colour_mode_offered_changes_the_mode(page):
     dialog (Bitmap, Indexed Color) confirmed."""
     errors = collect(page)
     modes = page.evaluate("window.formvis.commands.all().map((c) => c.id).filter((id) => id.startsWith('mode-'))")
-    assert sorted(modes) == ["mode-bitmap", "mode-grayscale", "mode-indexed", "mode-rgb"], modes
-    for cid in ["mode-grayscale", "mode-bitmap", "mode-indexed", "mode-rgb"]:
+    assert sorted(modes) == ["mode-bitmap", "mode-cmyk", "mode-grayscale", "mode-indexed", "mode-rgb"], modes
+    for cid in ["mode-grayscale", "mode-bitmap", "mode-indexed", "mode-cmyk", "mode-rgb"]:
         page.evaluate(SETUP)
         if cid == "mode-rgb":
             page.evaluate("window.formvis.commands.run('mode-grayscale')")           # from another mode, back to RGB
         page.evaluate(f"window.formvis.commands.run('{cid}')")
-        page.wait_for_timeout(150)
+        page.wait_for_timeout(150 if cid != "mode-cmyk" else 600)                    # CMYK lists the profiles first (1.54.0)
         if page.evaluate("!!document.querySelector('.cv-scrim:not([hidden]) .cv-dialog')"):
             page.locator(".cv-scrim:not([hidden]) .cv-dialog .cv-dialog-foot button.cv-btn-primary").click()
         page.wait_for_function(f"window.formvis.engine.current.doc.mode === '{cid[5:]}' || ('{cid}' === 'mode-rgb' && (window.formvis.engine.current.doc.mode ?? 'rgb') === 'rgb')", timeout=10000)
+    page.evaluate("window.formvis.commands.run('mode-rgb')")                           # and back from CMYK (1.54.0), through the engine
+    page.wait_for_function("(window.formvis.engine.current.doc.mode ?? 'rgb') === 'rgb' && !window.formvis.engine.current.doc.layers.some((l) => l.channels)", timeout=10000)
     assert not errors, "\n".join(errors[:20])

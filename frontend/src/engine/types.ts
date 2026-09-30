@@ -59,6 +59,7 @@ export interface Layer {
   raster: Raster | null;
   /** In a 16-bit document, the layer's 16-bit pixels (1.53.6); `raster` is their 8-bit rendition. */
   deep?: DeepPixels;
+  channels?: ChannelPixels;
   transform: Transform;
   visible: boolean;
   parentId: ID | null;
@@ -95,12 +96,15 @@ export interface Guide { axis: 'x' | 'y'; at: number }
 export interface DocNote { id: ID; x: number; y: number; text: string }
 /** A document's colour mode (1.50.2, the owner's walkthrough), as Photoshop's: RGB, Grayscale (8-bit grey), Bitmap (1-bit
  *  black and white) or Indexed Color (a palette of at most 256). Absent means RGB. */
-export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed';
+export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk';
 /** A document's colour profile (1.53.5, H2): its name and ICC bytes, base64; none means sRGB, the working space. */
 export interface DocProfile { name: string; icc: string }
 /** A layer's pixels at 16 bits (1.53.6, H1): RGBA as floats 0 to 1, straight alpha, the size of its raster, which
  *  holds their 8-bit rendition for display and 8-bit tools. */
 export interface DeepPixels { width: number; height: number; data: Float32Array }
+/** A layer's ink in a CMYK document (1.54.0, H1): C, M, Y, K as floats 0 (paper) to 1 (full ink), then straight alpha,
+ *  five a pixel; `raster` holds their sRGB rendition through the document's profile. */
+export interface ChannelPixels { mode: 'cmyk'; width: number; height: number; data: Float32Array }
 export interface Doc { depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
 
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'count' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'idle';

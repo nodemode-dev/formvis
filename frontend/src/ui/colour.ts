@@ -23,7 +23,7 @@ export class ColourView {
   saveSetup(s: ProofSetup): void { this.setup = s; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* kept for this session */ } }
 
   async refresh(): Promise<void> {
-    const p = this.engine.current, prof = p?.doc.profile, s = this.setup, proofing = this.proof && !!s;
+    const p = this.engine.current, cmyk = p?.doc.mode === 'cmyk', prof = cmyk ? undefined : p?.doc.profile, s = this.setup, proofing = this.proof && !!s && !cmyk;
     const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s ? `${s.id}:${s.intent}:${s.bpc}` : ''}|${proofing && this.gamut}` : '';
     if (key === this.key) return;
     this.key = key;

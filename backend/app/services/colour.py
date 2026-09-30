@@ -27,9 +27,20 @@ class ColourError(Exception):
     pass
 
 
+def shipped_dir() -> Path:
+    return Path(getattr(sys, "_MEIPASS", str(Path(__file__).resolve().parent.parent))) / "profiles"
+
+
+def default_cmyk() -> dict | None:
+    for p in profiles():
+        if p["space"] == "CMYK" and p.get("shipped"):
+            return p
+    return next((p for p in profiles() if p["space"] == "CMYK"), None)
+
+
 def profile_dirs() -> list[Path]:
     """Where profiles are looked for: formvis's own folder first, then this computer's."""
-    dirs = [config.data_dir() / "Profiles"]
+    dirs = [config.data_dir() / "Profiles", shipped_dir()]
     extra = os.environ.get("FORMVIS_PROFILE_DIRS")
     if extra:
         dirs += [Path(p) for p in extra.split(os.pathsep) if p]
@@ -74,7 +85,7 @@ def profiles() -> list[dict]:
             if digest in seen:
                 continue
             seen.add(digest)
-            out.append({"id": digest, **info, "file": path.name, "added": d == profile_dirs()[0]})
+            out.append({"id": digest, **info, "file": path.name, "added": d == profile_dirs()[0], "shipped": d == shipped_dir()})
     return sorted(out, key=lambda p: (p["space"] != "RGB", p["name"].lower()))
 
 
@@ -146,6 +157,55 @@ def lut(source: dict | None, dest: dict | None = None, proof: dict | None = None
     except ImageCms.PyCMSError as exc:
         raise ColourError(f"LittleCMS could not build that transform: {exc}") from exc
     return out
+
+
+GRID4 = 17
+
+
+def cmyk_lut(profile: dict, bpc: bool = True) -> bytes:
+    """A GRID4^4 sRGB table (c slowest, k fastest) from a CMYK profile, relative intent: how the window shows CMYK ink."""
+    prf, mode = _profile(profile)
+    if mode != "CMYK":
+        raise ColourError("A CMYK document needs a CMYK profile.")
+    v = np.linspace(0, 255, GRID4).round().astype(np.uint8)
+    c, m, y, k = np.meshgrid(v, v, v, v, indexing="ij")
+    grid = Image.fromarray(np.stack([c.ravel(), m.ravel(), y.ravel(), k.ravel()], axis=1).reshape(1, -1, 4), "CMYK")
+    flags = ImageCms.Flags.BLACKPOINTCOMPENSATION if bpc else ImageCms.Flags.NONE
+    try:
+        t = ImageCms.buildTransform(prf, ImageCms.ImageCmsProfile(ImageCms.createProfile("sRGB")), "CMYK", "RGB", renderingIntent=INTENTS["relative"], flags=flags)
+        return np.asarray(ImageCms.applyTransform(grid, t)).reshape(-1, 3).astype(np.uint8).tobytes()
+    except ImageCms.PyCMSError as exc:
+        raise ColourError(f"LittleCMS could not build that transform: {exc}") from exc
+
+
+def convert_pixels(raw: bytes, width: int, height: int, to: str, profile: dict, source: dict | None = None,
+                   intent: str = "relative", bpc: bool = True) -> bytes:
+    """Pixels converted exactly by LittleCMS at 8 bits: `to` is "cmyk" (RGBA in, CMYK and alpha out, 5 bytes a pixel)
+    or "rgb" (CMYK and alpha in, RGBA out). `profile` is the CMYK profile; `source` the RGB one (sRGB when none) on
+    the way in, the RGB destination on the way out. Alpha passes through untouched."""
+    if intent not in INTENTS:
+        raise ColourError("Unknown rendering intent.")
+    if to not in ("cmyk", "rgb"):
+        raise ColourError("Conversion is to cmyk or to rgb.")
+    n_in, n_out = (4, 5) if to == "cmyk" else (5, 4)
+    if width <= 0 or height <= 0 or len(raw) != width * height * n_in:
+        raise ColourError("The pixels do not match the size given.")
+    if len(raw) > MAX_BYTES * 8:
+        raise ColourError("Convert in pieces: this request is too large.")
+    cmyk, cmyk_mode = _profile(profile)
+    rgb, rgb_mode = _profile(source)
+    if cmyk_mode != "CMYK" or rgb_mode != "RGB":
+        raise ColourError("The CMYK profile must be CMYK and the other RGB.")
+    flags = ImageCms.Flags.BLACKPOINTCOMPENSATION if bpc else ImageCms.Flags.NONE
+    px = np.frombuffer(raw, np.uint8).reshape(height * width, n_in)
+    src_mode, dst_mode = ("RGB", "CMYK") if to == "cmyk" else ("CMYK", "RGB")
+    img = Image.fromarray(np.ascontiguousarray(px[:, : n_in - 1]).reshape(1, -1, n_in - 1), src_mode)
+    try:
+        t = ImageCms.buildTransform(rgb if to == "cmyk" else cmyk, cmyk if to == "cmyk" else rgb, src_mode, dst_mode, renderingIntent=INTENTS[intent], flags=flags)
+        out = np.asarray(ImageCms.applyTransform(img, t)).reshape(-1, n_out - 1).astype(np.uint8)
+    except ImageCms.PyCMSError as exc:
+        raise ColourError(f"LittleCMS could not build that transform: {exc}") from exc
+    return np.concatenate([out, px[:, n_in - 1 :]], axis=1).astype(np.uint8).tobytes()
 
 
 def _raw(ref: dict) -> bytes:
