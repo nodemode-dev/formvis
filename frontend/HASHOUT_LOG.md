@@ -2,6 +2,37 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## LaMa, and what runs locally · _v1.53.2 (backend/app/localgen/inpaint.py new, localgen/model_manager.py, main.py; frontend/src/io/local-gen.ts, ui/panels/generative-dialog.ts, ui/panels/local-models.ts; docs/LOCAL.md new; NOTICE.md; docs/MANUAL.md)
+
+`inpaint.inpaint` (edge-padded to a square, 512 x 512, the mask grown, only the masked area taken) and `POST /api/inpaint/local`; `lama-inpaint` pinned in the model manager; `modelReady`, `localInpaint`; LaMa in Generative Fill and Expand, chosen when fal has no key; `showDownload` for models with no licence to accept; the margin fields named. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+/** Whether Real-ESRGAN is downloaded (1.53.1). */
+export async function upscalerReady(): Promise<boolean> {
+  try { const m = await (await ask('/models')).json() as Array<{ id: string; ready: boolean }>; return !!m.find((x) => x.id === 'ai-upscale')?.ready; } catch { return false; }
+import { localFill, localModels, localUpscale, upscalerReady, type LocalModel } from '../../io/local-gen';
+  private readonly margin = { left: this.number(), top: this.number(), right: this.number(), bottom: this.number() };
+  private number(): HTMLInputElement {
+    return el<HTMLInputElement>('<input class="cv-input" type="number" min="0" max="30000" step="1" value="0">');
+    else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.fillModels(); }   // local models that start from a picture (1.52.9)
+    if ([...this.model.options].some((o) => o.value === was)) this.model.value = was;
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.upscaler, this.krea, this.klein, this.library);
+    try { await Promise.all([this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
+export const VERSION = '1.53.1';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.53.1"
+for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router, _lg_upscale.router):
+version = "1.53.1"
+version = "1.53.1"
+ "version": "1.53.1",
+```
+
+Nothing removed from src-tauri.
+
 ## Upscale on this computer · _v1.53.1 (backend/app/localgen/ai_upscale.py new, localgen/model_manager.py, main.py; frontend/src/io/local-gen.ts, ui/panels/generative-dialog.ts, ui/panels/local-models.ts; NOTICE.md; docs/MANUAL.md)
 
 formcut's upscaler for still pictures (`upscale_rgb` gaining an optional `report`, `upscale_image` passing tile options) and formvis's `POST /api/upscale/local` as a job; `_lock` and `_downloading` taken from formcut into the model manager (their absence broke listing and every install); the window's `followJob` shared by generation and upscaling, `localUpscale`, `upscalerReady`; Upscale's Model row with Real-ESRGAN on fal or this computer; the Real-ESRGAN card with Download. Removed lines taken after the version edit. Removed from frontend:

@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.53.2 · 2026-09-29
+
+### Added: Generative Fill and Expand on any computer, without fal or ComfyUI
+
+- LaMa, a dedicated inpainting model (Apache-2.0, 208 MB, pinned to its SHA-256), runs on any computer's CPU in seconds: Generative Fill and Expand offer it as "LaMa, no prompt (this computer)" and choose it when fal has no key. It fills from what surrounds the selection; the result is masked to the selection. Download it in Preferences > Plugins > Local models.
+- docs/LOCAL.md: every capability, whether it runs on this computer, what it needs, and the test that proves it; and what is not local yet (reference layers need ComfyUI; prompted generation needs Apple silicon or an NVIDIA GPU; the language-model features need a local server such as Ollama).
+- Generative Expand's margin fields are named (Left, Top, Right, Bottom margin) for assistive technology.
+
 ## 1.53.1 · 2026-09-29
 
 ### Added: Upscale on this computer
