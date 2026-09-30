@@ -2,6 +2,75 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## 32-bit documents · _v1.53.9 (engine/deep.ts, index.ts, types.ts; io/project-io.ts, api.ts, images.ts; ui/panels/hdr-toning.ts new; app.ts; backend app/__init__.py, routers/io.py)
+
+`srgbToLinear`, `linearToSrgb`, `deepToLinear`, `deepToned`; `rasterFromDeep`'s linear display; `composeDeep`'s Exposure in linear light at 32 bits; `Engine.setDepth` to and from 32 with HDR Toning, `openDeep` at 32, the guard at 16 and 32, painting refused at 32; the project's `.deep32` floats; `api.decodeDeep` and `encodeDeep` with floats; `.hdr` and `.exr` accepted; `HdrToningDialog`; `exportWide`, `toDepth`, `NOT_AT_32`; the engine's float decode and HDR, EXR and 32-bit TIFF encode, and OpenEXR turned on. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import { composeDeep, deepFromU16, deepToU16 } from './engine/deep';
+          if (/\.(png|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+            if (png16 || /\.tiff?$/i.test(f.name)) {
+              try { const d = await api.decodeDeep(f, f.name); if (d.depth === 16) { engine.openDeep(f.name.replace(/\.[^.]+$/, ''), deepFromU16(d.data, d.width, d.height)); continue; } } catch { /* opened at 8 bits as before */ }
+        const deep = p.doc.depth === 16 && (kind === 'png' || kind === 'tiff') ? composeDeep(p.doc) : null;
+        const blob = deep ? await api.encodeDeep(deepToU16(deep.data), deep.width, deep.height, kind as 'png' | 'tiff') : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
+    { id: 'depth-8', label: '8 Bits/Channel', enabled: has, checked: () => (engine.current?.doc.depth ?? 8) === 8, run: () => { engine.setDepth(8); } },
+    { id: 'depth-16', label: '16 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 16, run: () => { engine.setDepth(16); } },
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', '-', 'depth-8', 'depth-16'] }, '-',
+  commands.gate = (c) => engine.current?.doc.depth !== 16 || DEEP_OK.has(c.id) || /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
+import { blurDeep, composeDeep, deepFromU16, noiseDeep, resampleDeep, strokeDeep, transferOf, unsharpDeep } from './deep';
+export function rasterFromDeep(deep: DeepPixels): Raster {
+  for (let i = 0; i < deep.data.length; i++) img.data[i] = Math.round(Math.min(1, Math.max(0, deep.data[i])) * 255);
+import { deepFromRaster, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
+    const deepBefore = p.doc.depth === 16 ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
+      this.notice(`${name} does not work in 16 bits yet. Image > Mode > 8 Bits/Channel to use it.`);
+        if (l.deep && raster && !shape) { const deep = resampleDeep(l.deep, raster.width, raster.height); return { ...l, deep, raster: rasterFromDeep(deep), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }   // as the 8-bit path
+  setDepth(depth: 8 | 16): boolean {
+    const p = this.current;
+    if (!p || (p.doc.depth ?? 8) === depth) return false;
+    return this.edit(depth === 16 ? '16 Bits/Channel' : '8 Bits/Channel', (pp) => {
+      const layers = pp.doc.layers.map((l) => (depth === 16 ? (l.raster && !l.isGroup && !l.adjustment ? { ...l, deep: deepFromRaster(l.raster) } : l) : l.deep ? { ...l, deep: undefined } : l));
+      pp.doc = { ...pp.doc, layers, depth: depth === 16 ? 16 : undefined };
+  openDeep(name: string, deep: DeepPixels): Project {
+    const raster = rasterFromDeep(deep);
+    p.doc = { ...p.doc, depth: 16, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, deep } : l)) };
+    return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, deep, raster: rasterFromDeep(deep) } : x)) }; return true; });
+    if (this.current?.doc.depth !== 16) return true;
+    if (this.current?.doc.depth !== 16) return false;
+    this.notice(`${what} does not work in 16 bits yet. Image > Mode > 8 Bits/Channel to use it.`);
+export interface Doc { depth?: 8 | 16; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
+  async decodeDeep(file: Blob, name: string): Promise<{ width: number; height: number; depth: number; data: Uint16Array }> {
+    return { width: Number(r.headers.get('X-Width')), height: Number(r.headers.get('X-Height')), depth: Number(r.headers.get('X-Depth')), data: new Uint16Array(await r.arrayBuffer()) };
+  async encodeDeep(data: Uint16Array, width: number, height: number, format: 'png' | 'tiff'): Promise<Blob> {
+    return (await request('/io/encode-deep', { method: 'POST', body: form({ width: String(width), height: String(height), format }, [{ name: 'pixels.raw', blob: new Blob([new Uint16Array(data)]) }], 'file') })).blob();
+export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,${RAW_ACCEPT},image/*`;
+export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name) || RAW_FILE.test(f.name);
+    if (l.deep) { const name = `${l.id}.deep16`; files.push({ name, blob: new Blob([deepToU16(l.deep.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = l.deep.width; r.deepHeight = l.deep.height; }   // 16 bits kept (1.53.6)
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, ...(doc.depth === 16 ? { depth: 16 } : {}), colorSpace: doc.profile?.name ?? 'sRGB', ...(doc.profile ? { profile: { name: doc.profile.name, icc: doc.profile.icc } } : {}), resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.mode && doc.mode !== 'rgb' ? { mode: doc.mode } : {}), ...(doc.palette?.length ? { palette: doc.palette.map((c) => [c.r, c.g, c.b]) } : {}),
+  const deeps = new Map<string, Uint16Array>();   // 16-bit pixels (1.53.6)
+  await Promise.all(records.map(async (r) => { const n = str(r.deepFile); if (n) deeps.set(n, new Uint16Array(await (await fetchImage(n)).arrayBuffer())); }));
+  records.forEach((r, i) => { const n = str(r.deepFile), u = n ? deeps.get(n) : undefined, w = num(r.deepWidth, 0), h = num(r.deepHeight, 0); if (u && layers[i] && u.length === w * h * 4) (layers[i] as { deep?: DeepPixels }).deep = deepFromU16(u, w, h); });
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 ? { depth: 16 as const } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
+export const VERSION = '1.53.8';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.53.8"
+    if format not in ("png", "tiff"):
+        raise HTTPException(status_code=422, detail="16-bit export is PNG or TIFF.")
+    if width <= 0 or height <= 0 or len(raw) != width * height * 8:
+    img = np.frombuffer(raw, "<u2").reshape(height, width, 4)
+    ok, out = cv2.imencode(".png" if format == "png" else ".tif", cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA))
+    return Response(out.tobytes(), media_type="image/png" if format == "png" else "image/tiff")
+version = "1.53.8"
+version = "1.53.8"
+ "version": "1.53.8",
+```
+
+Nothing removed from src-tauri.
+
 ## 16-bit painting and selections · _v1.53.8 (engine/deep.ts, index.ts)
 
 `strokeDeep`; the rebuild in `endStroke` before the stroke's step closes; `deepPaintOk` at the start of `beginStroke` (Brush, Pencil and Eraser without colour dynamics); `applyDeepFilter` blending by the selection's coverage. Removed lines taken after the version edit. Removed from frontend:

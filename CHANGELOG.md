@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.53.9 · 2026-09-30
+
+The parity plan's H1, fourth part: 32-bit documents.
+
+### Added
+
+- Radiance HDR, OpenEXR and 32-bit float TIFF open as 32-bit documents, linear light and unbounded, as Photoshop keeps them; Image > Mode > 32 Bits/Channel converts 8 and 16 bits up (linearised); converting down asks for HDR Toning, Exposure and Gamma.
+- At 32 bits the Exposure adjustment works in linear light, unclamped, as do moving, flips, canvas and image size, and Gaussian Blur; File > Export > Radiance HDR and OpenEXR, and Export TIFF as 32-bit float; the project keeps 32-bit layers as floats. What would clip past white (painting, Levels, Curves, Unsharp Mask, Add Noise, colour profiles) waits, and says so.
+
+### Changed
+
+- The engine turns on OpenCV's OpenEXR codec, which OpenCV leaves off because its parser has had security problems with untrusted files (opencv/opencv#21326): formvis opens the person's own files on their own machine. Removing the one line in backend/app/__init__.py turns it off again, and EXR then does not open.
+
 ## 1.53.8 · 2026-09-30
 
 The parity plan's H1, third part: painting and filtering a selection at 16 bits.
