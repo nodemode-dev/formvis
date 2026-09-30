@@ -2,6 +2,27 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## OpenEXR contained · _v1.54.4 (app/services/contained.py new, app/routers/io.py, app/__init__.py, formvis_engine.py)
+
+The parity plan's L14, closed. The engine keeps OpenCV's OpenEXR codec off; `contained.py` decodes and encodes EXR in a spawned child interpreter that turns the codec on for itself (`decode_exr`, `encode_exr`, `is_exr` by the file's magic), polling the result queue so a child that dies answers at once and a 60 s ceiling for one that hangs; workers answer None on any failure rather than tracing into the engine's log. `/io/decode-deep` routes an EXR to the child and names the refusal; `/io/encode-deep` writes EXR through it. `formvis_engine.py` calls `multiprocessing.freeze_support()` for the frozen build. Checked: a malformed EXR fails in 0.17 s with the engine process's codec still off and the process up; this sandbox's OpenCV wheel cannot write EXR at all (OpenEXR: NO), so the round trip is the owner's to confirm. Removed lines taken after the version edit:
+
+```text
+"""formvis engine."""
+import os
+# 32-bit documents (1.53.9, the parity plan's H1): OpenEXR is off in OpenCV by default, because its parser has had
+# security problems with untrusted files (opencv/opencv#21326). formvis opens the person's own files on their own
+# machine, so it is turned on for the engine, before OpenCV is first imported.
+os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
+__version__ = "1.54.3"
+    data = np.frombuffer(file.file.read(), np.uint8)
+    img = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
+        raise HTTPException(status_code=415, detail="The picture could not be read at its depth.")
+        ok, out = cv2.imencode({"png": ".png", "tiff": ".tif", "exr": ".exr", "tiff32": ".tif"}[format], cv2.cvtColor(np.ascontiguousarray(img), cv2.COLOR_RGBA2BGRA))
+version = "1.54.3"
+version = "1.54.3"
+ "version": "1.54.3",
+```
+
 ## Version only · _v1.54.3
 
 No engine code changed in 1.54.3 (the one float pixel model is a window change). Removed lines taken after the version edit:

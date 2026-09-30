@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.54.4 · 2026-09-30
+
+Levels and Curves per ink (DEV_PLAN 22.4, first part), and the parity plan's L14 closed.
+
+### Added
+
+- Levels and Curves adjustment layers in a CMYK document act on CMYK, Cyan, Magenta, Yellow or Black, each ink with its own range or curve; the Adjustments panel names the document's channels. Export, the Info panel, the Channels thumbnails and the single-ink view include them, and the canvas shows the composed ink.
+- OpenEXR files are read and written in a separate process, so a malformed EXR cannot reach the engine: it is refused with a message and the engine stays up (the comparison's "contain the OpenEXR decoder").
+
+### Changed
+
+- The engine no longer turns OpenCV's OpenEXR codec on for itself; the child process turns it on for its own read or write.
+
 ## 1.54.3 · 2026-09-30
 
 The parity plan's H1, seventh part, and the first release of "CMYK and Lab everywhere" (DEV_PLAN 22.3): one float pixel model, and a single-ink view of the canvas.
