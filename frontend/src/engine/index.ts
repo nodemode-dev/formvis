@@ -1,5 +1,5 @@
 import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, type Lut4 } from './colour-lut';
-import { rasterFromChannels, strokeChannels } from './channels';
+import { composeChannels, rasterFromChannels, strokeChannels } from './channels';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
@@ -1861,8 +1861,22 @@ export class Engine {
     if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.work });
     const fs = this.floatSel;
     if (fs && fs.project === p) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.base });
-    if (this.channelView !== null && p.doc.mode === 'cmyk') for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas });
+    if (this.channelView !== null && p.doc.mode === 'cmyk') { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
+    else if (p.doc.mode === 'cmyk' && p.cmykLut && !this.stroke && p.doc.layers.some((l) => l.adjustment && l.visible)) {
+      const composed = this.composedRendition(p);
+      if (composed) { const first = p.doc.layers.find((l) => l.raster && !l.isGroup); for (const l of p.doc.layers) m.set(l.id, l === first ? { ...(m.get(l.id) ?? {}), source: composed.canvas, transform: docTransform(p.doc.width, p.doc.height), opacity: 1, blend: 'normal' } : { ...(m.get(l.id) ?? {}), hidden: true }); }
+    }
     return m.size ? m : undefined;
+  }
+
+  /** A CMYK document with adjustment layers shown as its composed ink (1.54.4): Levels and Curves act per ink in
+   *  composeChannels, and the display follows that rather than the per-layer renditions. */
+  private composedCache: { doc: Doc; r: Raster | null } | null = null;
+  private composedRendition(p: Project): Raster | null {
+    if (this.composedCache && this.composedCache.doc === p.doc) return this.composedCache.r;
+    const ink = composeChannels(p.doc), r = 'error' in ink || !p.cmykLut ? null : rasterFromChannels({ mode: 'cmyk', n: 4, width: ink.width, height: ink.height, data: ink.data }, p.cmykLut);
+    this.composedCache = { doc: p.doc, r };
+    return r;
   }
 
   /** The Channels panel's single-ink view (1.54.3): one ink of a CMYK layer as grey (paper white, full ink black),

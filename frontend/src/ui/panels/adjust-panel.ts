@@ -58,6 +58,11 @@ interface Section { node: HTMLElement; sync: () => void }
 const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const CHANNELS = ['RGB', 'Red', 'Green', 'Blue'];
+const INKS = ['CMYK', 'Cyan', 'Magenta', 'Yellow', 'Black'];
+const ALL_CHANNELS = [...CHANNELS, ...INKS];
+/** The mode's channel names (1.54.4): Levels and Curves index their ranges by position within this list. */
+const channelsOf = (mode: string | undefined): string[] => (mode === 'cmyk' ? INKS : CHANNELS);
+const showChannels = (row: { el: HTMLElement }, names: string[]): void => { for (const o of row.el.querySelectorAll('option')) o.hidden = !names.includes(o.value); };
 const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const hexToUnit = (hex: string): Json => ({ red: parseInt(hex.slice(1, 3), 16) / 255, green: parseInt(hex.slice(3, 5), 16) / 255, blue: parseInt(hex.slice(5, 7), 16) / 255 });
 const unitToHex = (c: unknown): string => { const o = obj(c); return hexOf({ r: Math.round(num(o.red, 0) * 255), g: Math.round(num(o.green, 0) * 255), b: Math.round(num(o.blue, 0) * 255) }); };
@@ -395,7 +400,8 @@ export class AdjustPanel extends Dialog {
     const lv = (): { channel: string; ranges: Array<Record<string, number>> } => this.data.levels as { channel: string; ranges: Array<Record<string, number>> };
     const r = (): Record<string, number> => lv().ranges[ch];
     const set = (key: string, v: number): void => { r()[key] = v; this.changed(); };
-    const channel = selectRow('Channel', CHANNELS.map((c) => [c, c] as const), (v) => { ch = Math.max(0, CHANNELS.indexOf(v)); lv().channel = v; values(); this.drawHisto(ch); this.changed(); });
+    const names = (): string[] => channelsOf(this.engine.current?.doc.mode);
+    const channel = selectRow('Channel', ALL_CHANNELS.map((c) => [c, c] as const), (v) => { ch = Math.max(0, names().indexOf(v)); lv().channel = v; values(); this.drawHisto(ch); this.changed(); });
     const canvas = el<HTMLCanvasElement>('<canvas class="cv-histo" width="256" height="96"></canvas>');
     const black = sliderRow('Input black', 0, 253, 1, (v) => set('black', Math.min(v, r().white - 2)));
     const gamma = sliderRow('Midtones', 0.1, 9.99, 0.01, (v) => set('gamma', v));
@@ -415,7 +421,7 @@ export class AdjustPanel extends Dialog {
     node.append(channel.el, canvas, auto.el, sample.el, black.el, gamma.el, white.el, outB.el, outW.el);
     this.histo = canvas;
     const values = (): void => { const x = r(); black.set(x.black); gamma.set(x.gamma); white.set(x.white); outB.set(x.outputBlack); outW.set(x.outputWhite); };
-    return { node, sync: () => { ch = Math.max(0, CHANNELS.indexOf(lv().channel)); channel.set(CHANNELS[ch]); values(); this.drawHisto(ch); } };
+    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(0, n.indexOf(lv().channel)); while (lv().ranges.length < 5) lv().ranges.push({ black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 }); channel.set(n[ch]); values(); this.drawHisto(ch); } };
   }
 
   private buildCurves(): Section {
@@ -482,9 +488,10 @@ export class AdjustPanel extends Dialog {
     };
     canvas.addEventListener('pointerup', end);
     canvas.addEventListener('pointercancel', end);
-    const channel = selectRow('Channel', CHANNELS.map((c) => [c, c] as const), (v) => { ch = Math.max(0, CHANNELS.indexOf(v)); cv().channel = v; draw(); this.changed(); });
+    const names = (): string[] => channelsOf(this.engine.current?.doc.mode);
+    const channel = selectRow('Channel', ALL_CHANNELS.map((c) => [c, c] as const), (v) => { ch = Math.max(0, names().indexOf(v)); cv().channel = v; draw(); this.changed(); });
     node.append(channel.el, canvas, el('<p class="cv-note">Click to add a point, drag to shape the curve, drag a point off the graph to remove it.</p>'));
-    return { node, sync: () => { ch = Math.max(0, CHANNELS.indexOf(cv().channel)); channel.set(CHANNELS[ch]); draw(); } };
+    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(0, n.indexOf(cv().channel)); while (cv().channels.length < 5) cv().channels.push([{ x: 0, y: 0 }, { x: 255, y: 255 }]); channel.set(n[ch]); draw(); } };
   }
 
   private buildHsv(): Section {

@@ -1,6 +1,6 @@
 import type { ChannelPixels, Doc } from './types';
 import { applyLut4, renditionOf, type Ink, type Lut4 } from './colour-lut';
-import { place } from './deep';
+import { place, transferOf } from './deep';
 import { Raster } from './surface';
 
 /** CMYK documents (1.54.0, the parity plan's H1): a layer's ink as floats, its sRGB rendition through the document's
@@ -37,7 +37,13 @@ export function composeChannels(doc: Doc): { width: number; height: number; data
     if (!l.visible) continue;
     const name = `"${l.name}"`;
     if (l.isGroup || l.mask || l.clipId || l.effects || (l.blend && l.blend !== 'normal')) return { error: `${name} uses a group, mask, clipping, style or blend mode, which CMYK export does not compose yet.` };
-    if (l.adjustment) return { error: `${name} is an adjustment CMYK export does not compose yet.` };
+    if (l.adjustment) {
+      const t = transferOf(l.adjustment);
+      if (!t) return { error: `${name} is an adjustment CMYK does not compose yet (Levels and Curves do).` };
+      const op = l.opacity * (l.fill ?? 1);
+      for (let i = 0; i < out.length; i += 5) for (let c = 0; c < 4; c++) { const v = 1 - out[i + c], nv = 1 - Math.min(1, Math.max(0, t(c, v * 255) / 255)); out[i + c] += (nv - out[i + c]) * op; }
+      continue;
+    }
     if (!l.channels) { if (l.raster) return { error: `${name} has no CMYK ink; Image > Mode > CMYK Color converts it.` }; continue; }
     place(out, W, H, l.channels, l.transform, l.opacity * (l.fill ?? 1), 5);
   }

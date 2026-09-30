@@ -296,8 +296,8 @@ export function defaultAdjustmentData(kind: AdjustmentKind): Json {
   const identityRange = { black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 };
   const data: Json = {
     kind: ADJUSTMENT_LABELS[kind], hue: 0, saturation: 0, lightness: 0, colorize: false,
-    levels: { channel: 'RGB', ranges: [0, 1, 2, 3].map(() => ({ ...identityRange })) },
-    curves: { channel: 'RGB', channels: [0, 1, 2, 3].map(() => [{ x: 0, y: 0 }, { x: 255, y: 255 }]) },
+    levels: { channel: 'RGB', ranges: [0, 1, 2, 3, 4].map(() => ({ ...identityRange })) },
+    curves: { channel: 'RGB', channels: [0, 1, 2, 3, 4].map(() => [{ x: 0, y: 0 }, { x: 255, y: 255 }]) },
   };
   if (kind === 'hsv') data.hsvSettings = hsvToData(defaultHsv());
   else if (kind === 'exposure') data.exposureSettings = { exposure: 0, offset: 0, gamma: 1 };

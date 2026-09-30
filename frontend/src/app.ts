@@ -1670,7 +1670,7 @@ export function startApp(): void {
   for (const id of ['depth-32', 'export-hdr', 'export-exr']) DEEP_OK.add(id);
   const CMYK_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
     'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'mode-rgb', 'mode-cmyk',
-    'filter-gaussianBlur', 'filter-unsharpMask', 'filter-addNoise', 'image-size', 'canvas-size', 'flip-canvas-h', 'flip-canvas-v', 'trim', 'reveal-all',
+    'filter-gaussianBlur', 'filter-unsharpMask', 'filter-addNoise', 'image-size', 'canvas-size', 'flip-canvas-h', 'flip-canvas-v', 'trim', 'reveal-all', 'new-adj-levels', 'new-adj-curves',
     'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? CMYK_OK.has(c.id) || passes(c)

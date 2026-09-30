@@ -38,10 +38,11 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
     narrows to 8."""
     import cv2
     import numpy as np
-    data = np.frombuffer(file.file.read(), np.uint8)
-    img = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
+    from app.services import contained
+    raw = file.file.read()
+    img = contained.decode_exr(raw) if contained.is_exr(raw) else cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_UNCHANGED)
     if img is None:
-        raise HTTPException(status_code=415, detail="The picture could not be read at its depth.")
+        raise HTTPException(status_code=415, detail="The picture could not be read at its depth." if not contained.is_exr(raw) else "The OpenEXR file could not be read; a malformed file is refused outside the engine.")
     if img.dtype in (np.float32, np.float64):   # 32 bits (1.53.9): Radiance HDR, OpenEXR and float TIFF, linear light
         img = img.astype(np.float32)
         if img.ndim == 2:
@@ -81,8 +82,14 @@ def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: in
     img = np.frombuffer(raw, "<f4" if wide else "<u2").reshape(height, width, 4)
     if format == "hdr":   # Radiance holds no alpha
         ok, out = cv2.imencode(".hdr", cv2.cvtColor(np.ascontiguousarray(img[..., :3]), cv2.COLOR_RGB2BGR))
+    elif format == "exr":
+        from app.services import contained
+        data = contained.encode_exr(cv2.cvtColor(np.ascontiguousarray(img), cv2.COLOR_RGBA2BGRA))
+        if data is None:
+            raise HTTPException(status_code=500, detail="The OpenEXR file could not be written.")
+        return Response(data, media_type="image/x-exr")
     else:
-        ok, out = cv2.imencode({"png": ".png", "tiff": ".tif", "exr": ".exr", "tiff32": ".tif"}[format], cv2.cvtColor(np.ascontiguousarray(img), cv2.COLOR_RGBA2BGRA))
+        ok, out = cv2.imencode({"png": ".png", "tiff": ".tif", "tiff32": ".tif"}[format], cv2.cvtColor(np.ascontiguousarray(img), cv2.COLOR_RGBA2BGRA))
     if not ok:
         raise HTTPException(status_code=500, detail="The 16-bit file could not be written.")
     return Response(out.tobytes(), media_type={"png": "image/png", "hdr": "image/vnd.radiance", "exr": "image/x-exr"}.get(format, "image/tiff"))

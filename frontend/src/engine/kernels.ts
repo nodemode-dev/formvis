@@ -51,8 +51,8 @@ function levelsTransfer(raw: unknown): (v: number) => number {
 export function levelsKernel(settings: unknown): Kernel {
   const ranges = list(record(settings).ranges);
   const composite = levelsTransfer(ranges[0]);
-  const channel = [levelsTransfer(ranges[1]), levelsTransfer(ranges[2]), levelsTransfer(ranges[3])];
-  return tableKernel((c, level) => composite(channel[c](level)));
+  const channel = [levelsTransfer(ranges[1]), levelsTransfer(ranges[2]), levelsTransfer(ranges[3]), levelsTransfer(ranges[4])];
+  return tableKernel((c, level) => composite((channel[c] ?? channel[0])(level)));
 }
 
 interface Knot { x: number; y: number }
@@ -88,8 +88,8 @@ function monotoneCurve(input: Knot[]): (x: number) => number {
 export function curvesKernel(settings: unknown): Kernel {
   const channels = list(record(settings).channels).map((c) => list(c).map((p): Knot => ({ x: finite(record(p).x, 0), y: finite(record(p).y, 0) })));
   const curveAt = (i: number) => monotoneCurve(channels[i] ?? []);
-  const composite = curveAt(0), channel = [curveAt(1), curveAt(2), curveAt(3)];
-  return tableKernel((c, level) => composite(channel[c](level)));
+  const composite = curveAt(0), channel = [curveAt(1), curveAt(2), curveAt(3), curveAt(4)];
+  return tableKernel((c, level) => composite((channel[c] ?? channel[0])(level)));
 }
 
 const toLinear = (e: number): number => (e <= 0.04045 ? e / 12.92 : Math.pow((e + 0.055) / 1.055, 2.4));
