@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.54.5 · 2026-09-30
+
+Blend If and Knockout (the parity plan's M2, DEV_PLAN 23.1).
+
+### Added
+
+- Layer Style > Blending Options: Knockout (None, Shallow, Deep) punches the layer's silhouette through what lies below, down to the Background or to the bottom of its group, the layer's own pixels showing at their Fill; Blend If shows the layer only where this layer's value and the underlying composite's value fall inside each range, on Gray or one channel, each end feathered between its two values (the split slider), as eight sliders.
+- Both travel in PSD files (Photoshop's blending ranges and knockout flag) and in projects. On the GPU renderers such a document is drawn by the CPU compositor until the GPU port is checked on real hardware.
+
+### Known
+
+- One channel or Gray per layer rather than Photoshop's three channel pairs at once; Photoshop keeps one knockout flag, so a Deep knockout written to PSD reads back as Shallow.
+
 ## 1.54.4 · 2026-09-30
 
 Levels and Curves per ink (DEV_PLAN 22.4, first part), and the parity plan's L14 closed.

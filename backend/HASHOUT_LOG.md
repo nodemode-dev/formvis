@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.54.5
+
+No engine code changed in 1.54.5 (Blend If and Knockout are window compositing). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.54.4"
+version = "1.54.4"
+version = "1.54.4"
+ "version": "1.54.4",
+```
+
 ## OpenEXR contained · _v1.54.4 (app/services/contained.py new, app/routers/io.py, app/__init__.py, formvis_engine.py)
 
 The parity plan's L14, closed. The engine keeps OpenCV's OpenEXR codec off; `contained.py` decodes and encodes EXR in a spawned child interpreter that turns the codec on for itself (`decode_exr`, `encode_exr`, `is_exr` by the file's magic), polling the result queue so a child that dies answers at once and a 60 s ceiling for one that hangs; workers answer None on any failure rather than tracing into the engine's log. `/io/decode-deep` routes an EXR to the child and names the refusal; `/io/encode-deep` writes EXR through it. `formvis_engine.py` calls `multiprocessing.freeze_support()` for the frozen build. Checked: a malformed EXR fails in 0.17 s with the engine process's codec still off and the process up; this sandbox's OpenCV wheel cannot write EXR at all (OpenEXR: NO), so the round trip is the owner's to confirm. Removed lines taken after the version edit:
