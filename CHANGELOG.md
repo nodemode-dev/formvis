@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.53.6 · 2026-09-30
+
+The parity plan's H1, first part: 16-bit documents.
+
+### Added
+
+- 16-bit PNG and TIFF open as 16-bit documents (read by OpenCV in the engine; Pillow narrows 16-bit colour to 8), and Image > Mode > 8 Bits/Channel and 16 Bits/Channel switch between them.
+- In a 16-bit document, Levels, Curves and Exposure adjustment layers are applied at 16 bits (the same transfer functions as at 8, evaluated at each pixel's value), Export PNG and Export TIFF write 16 bits a channel, and the project saves and reopens the 16 bits.
+- Nothing drops a 16-bit document to 8 bits quietly: an edit that would change a layer's 8-bit rendition without its 16 bits is undone with a message, painting waits, and commands that cannot keep 16 bits yet are unavailable until Image > Mode > 8 Bits/Channel.
+
 ## 1.53.5 · 2026-09-30
 
 Sprint 2 of the parity plan begins: colour management (H2).

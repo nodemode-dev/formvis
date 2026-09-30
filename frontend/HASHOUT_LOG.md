@@ -2,6 +2,33 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## 16-bit documents · _v1.53.6 (engine/deep.ts new; engine/index.ts, types.ts, kernels.ts; io/project-io.ts, api.ts; ui/commands.ts; app.ts; backend routers/io.py)
+
+`DeepPixels`, `Doc.depth`, `Layer.deep`; `deepFromU16`, `deepToU16`, `deepFromRaster`, `rasterFromDeep`, `transferOf`, `composeDeep`; each table kernel keeps its `transfer`; `Engine.setDepth`, `openDeep`, `deepBlocked`, and the 16-bit guard in `edit`; `Commands.gate` and the 16-bit allow-list; the project's `deepFile` and `depth`; `api.decodeDeep`, `encodeDeep`; the engine's `/io/decode-deep` and `/io/encode-deep`. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+        const blob = kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb'] }, '-',
+import type { DocProfile } from './types';
+  return (px) => {
+export interface Doc { profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: doc.profile?.name ?? 'sRGB', ...(doc.profile ? { profile: { name: doc.profile.name, icc: doc.profile.icc } } : {}), resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.mode && doc.mode !== 'rgb' ? { mode: doc.mode } : {}), ...(doc.palette?.length ? { palette: doc.palette.map((c) => [c.r, c.g, c.b]) } : {}),
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
+  enabled(cmd: Command): boolean { return cmd.enabled ? cmd.enabled() : true; }
+export const VERSION = '1.53.5';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.53.5"
+version = "1.53.5"
+version = "1.53.5"
+ "version": "1.53.5",
+```
+
+Nothing removed from src-tauri.
+
 ## Colour management · _v1.53.5 (engine/colour-lut.ts, io/icc-read.ts, ui/colour.ts, ui/panels/colour-dialogs.ts new; engine/index.ts, types.ts; io/project-io.ts, images.ts, api.ts; ui/stage.ts, prefs.ts, app-dialogs.ts; app.ts; backend services/colour.py and routers/colour.py new)
 
 `ColourLut`, `applyLut`, `lutFrom`, `lutOf`; `embeddedProfile`, `profileName`, `isSrgbName`, `toBase64`, `fromBase64`; `DocProfile` and `Doc.profile`, saved in the manifest and read by `profileFrom`; `Engine.viewTransform`, `setViewTransform`, `assignProfile`, `convertToProfile`, and an imported image's profile in `openImage` and `insertImages`; `Stage.applyView` and the GPU stepping aside while a view transform is on; `ColourView`; `AssignProfileDialog`, `ConvertProfileDialog`, `ProofSetupDialog`, `ProfileMismatchDialog`; `decodeImage`'s raw decode; `Prefs.profileMismatch`; the engine's `colour.profiles`, `add`, `describe`, `lut` and its gamut marks. Removed lines taken after the version edit. Removed from frontend:
