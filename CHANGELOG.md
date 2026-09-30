@@ -4,6 +4,22 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.53.3 · 2026-09-29
+
+### Added: editing by asking, from Claude Code, Codex and Cursor
+
+- Seamless start: `./formvis mcp` starts formvis's engine when it is not running; a request with no formvis window open opens one in the browser; with outside agents not allowed, the first request asks once in the window (Allow turns the setting on and the request goes ahead; Not now, or turning agents off in Preferences, is answered with how to allow it, without asking again for ten minutes); a window reloading or busy is waited for. Every failure tells the agent what to do next.
+- 39 tools, up from 14: open, save (.fmv) and export (PNG, JPEG, WebP) at absolute paths, read and written by the engine with their checks; switch documents; resize, canvas, crop, flip; move, scale, rotate, flip, duplicate, reorder, merge, flatten and rasterize layers; text and shapes; ellipse and inverted selections, Select Subject and colour range; filters with settings, adjustments changed later, Color Match, film layers, Remove Background; and generative fill, expand, image and upscale that use this computer's models first (LaMa, Krea 2, Real-ESRGAN) and fal last, asked.
+- Current server instructions and an `edit_strategy` prompt with the decision tree.
+- The `formvis-editing` skill in `.claude/skills` (Claude Code) and `.agents/skills` (Codex, Cursor): three workflows with exact tool names, what to do when each kind of failure comes back, and setup; its tool reference is generated from the catalogue, and the tests fail if it drifts.
+- `.mcp.json`, `.cursor/mcp.json`, `.codex/config.toml`, `AGENTS.md`, and `./formvis agents install` to set all three up for your account from any folder (existing settings kept and backed up, idempotent, `--dry-run`).
+- docs/AGENT_EVALS.md: a checklist per client, ten evaluations with checkable results, and the skill's trigger test.
+
+### Fixed
+
+- Layer > Rasterize Layer did nothing to a plain filled rectangle or ellipse, so it could not be filtered either; it rasterizes now.
+- Every release zip since 1.50.5 carried untracked leftovers from before the rename (empty folders and a 115-byte stub), whose paths held the reference build's name; they are removed, and zips are built from a clone of the repository, so nothing untracked ships.
+
 ## 1.53.2 · 2026-09-29
 
 ### Added: Generative Fill and Expand on any computer, without fal or ComfyUI

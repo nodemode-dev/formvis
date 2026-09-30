@@ -2,6 +2,75 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Editing by asking, from Claude Code, Codex and Cursor · _v1.53.3 (backend/app/routers/mcp.py; setup/mcp_stdio.py; setup/agents.py new; frontend/src/automation/agent-bridge.ts, app.ts, engine/index.ts; .claude/skills/formvis-editing and .agents/skills/formvis-editing new; .mcp.json, .cursor/mcp.json, .codex/config.toml, AGENTS.md new; CLAUDE.md; docs/AGENT_EVALS.md new; docs/MANUAL.md, docs/LOCAL.md)
+
+The engine: `_live`, `_open_window`, `_ask`, the consent question (`__consent__`) and the declined window, the wait for a window that was just here; `_run` with `_path` for `open_file`, `save_project` and `export_image`; 39 tools; `INSTRUCTIONS`, `STRATEGY`, `PROMPTS`, `prompts/list` and `prompts/get`; `bridge_next` taking `allowed` and handing out only the question when not; `bridge_stop` as a declination. `start_engine` in the stdio bridge. The window: the bridge polling always and answering the question, `AgentDeps.allow`, `openFile`, `projectBlob`, `applyFilter`, `selectSubject`, `removeBackground`, and the new tool cases with local-first generative choice. `rasterizeLayer` and Rasterize Layer taking live shapes. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  const agents = new AgentBridge(engine, { ask: (title, text) => agentConfirm.ask(title, text), note: () => {} });
+    { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || !!l.vector || liveText(l)); }, run: () => engine.rasterizeLayer() },
+export interface AgentDeps { ask(title: string, text: string): Promise<boolean>; note(text: string): void }
+    if (on && !this.looping) void this.loop();
+    while (this.on) {
+        const res = await fetch('/api/mcp/bridge/next');
+      if (!p) return fail('No document is open: call new_document first.');
+          e.applySelection(SelectionMask.cropped(x, y, w, h, new Uint8Array(w * h).fill(255)), mode, 'Rectangular Marquee');
+        case 'generative_fill': case 'generate_image': {
+          const prompt = str('prompt').trim();
+          if (name === 'generative_fill' && !p.selection) return fail('Generative Fill needs a selection: call select first.');
+          const st = await api.generativeStatus();
+          if (!st?.configured) return fail('formvis has no fal key set, so it cannot generate. The user can add one in Edit > Generative Fill.');
+          const what = name === 'generative_fill' ? 'Generative Fill' : 'Generate Image';
+          if (!await this.deps.ask(`An agent asks to run ${what}`, `Prompt: "${prompt}". This runs on fal and costs money.`)) return fail(`The user declined ${what}.`);
+          if (name === 'generative_fill') await e.task(() => e.generativeFill(prompt, (image, mask) => api.generativeFill(image, mask, prompt)));
+          else {
+            const bmp = await createImageBitmap(await api.generateImage(prompt, p.doc.width, p.doc.height)), r = new Raster(p.doc.width, p.doc.height);
+            r.ctx.drawImage(bmp, 0, 0, p.doc.width, p.doc.height); bmp.close(); r.touch();
+            e.insertRasterLayer(r, 'Generated Image', 0, 0, {}, 'Generate Image');
+          return text(`${what} done; the result is a new layer (id ${e.activeLayer?.id}).`, { id: e.activeLayer?.id });
+      if (!l || (!l.smart && !l.text && !l.vector)) return false;
+      p.updateLayer(l.id, { smart: null, text: null, vector: null });
+export const VERSION = '1.53.2';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.53.2"
+INSTRUCTIONS = ("formvis is a layered image editor open on this computer. Call get_document first to see the document and its layers "
+                "(ids for later calls), and get_image to see it. Every change is one undoable step. Generative tools cost the user "
+                "money and ask them in formvis first.")
+    _tool("select", "Changes the selection: a rectangle (x, y, width, height in pixels) combined by mode, or all, or none.", {"shape": {"type": "string", "enum": ["rectangle", "all", "none"]},
+    _tool("generative_fill", "Fills the selection from a prompt with FLUX.1 Fill on fal, the result a new layer masked to the selection. Costs the user money: they are asked in formvis first.",
+          {"prompt": {"type": "string", "maxLength": 2000}}, ["prompt"], open=True),
+    _tool("generate_image", "Generates a picture from a prompt as a new layer, with FLUX1.1 [pro] on fal. Costs the user money: they are asked in formvis first.",
+          {"prompt": {"type": "string", "maxLength": 2000}}, ["prompt"], open=True),
+async def _call(name: str, args: dict) -> dict:
+    """Runs a tool in the window; its MCP result."""
+    if time.monotonic() - _seen > LIVE:
+        return {"content": [{"type": "text", "text": "formvis is not taking requests: open formvis and turn on Allow outside agents in Preferences > Plugins."}], "isError": True}
+        out = await asyncio.wait_for(fut, timeout=600)   # a generative call waits for the user and the model
+        return {"content": [{"type": "text", "text": "formvis did not answer in time."}], "isError": True}
+    return out
+        out = _ok(req_id, {"supportedVersions": VERSIONS, "capabilities": {"tools": {}}, "_meta": {"io.modelcontextprotocol/serverInfo": server}, "instructions": INSTRUCTIONS}, True)
+        out = _ok(req_id, {"protocolVersion": asked if asked in VERSIONS else "2025-11-25", "capabilities": {"tools": {}}, "serverInfo": server, "instructions": INSTRUCTIONS}, False)
+        out = _ok(req_id, await _call(name, args), modern) if name in NAMES and isinstance(args, dict) else _err(req_id, -32602, f"No tool named {name}")
+    global _seen
+        if not _pending:
+        if not _pending:
+        item = _pending.popleft()
+    """The window stopped taking requests (agents turned off): refuse at once, and answer anything queued."""
+    global _seen
+    _seen = 0.0
+            fut.set_result({"content": [{"type": "text", "text": "formvis stopped taking requests."}], "isError": True})
+    return {"live": time.monotonic() - _seen <= LIVE, "endpoint": "http://127.0.0.1:8190/mcp", "tools": len(TOOLS)}
+version = "1.53.2"
+version = "1.53.2"
+ "version": "1.53.2",
+```
+
+Nothing removed from src-tauri.
+
 ## LaMa, and what runs locally · _v1.53.2 (backend/app/localgen/inpaint.py new, localgen/model_manager.py, main.py; frontend/src/io/local-gen.ts, ui/panels/generative-dialog.ts, ui/panels/local-models.ts; docs/LOCAL.md new; NOTICE.md; docs/MANUAL.md)
 
 `inpaint.inpaint` (edge-padded to a square, 512 x 512, the mask grown, only the masked area taken) and `POST /api/inpaint/local`; `lama-inpaint` pinned in the model manager; `modelReady`, `localInpaint`; LaMa in Generative Fill and Expand, chosen when fal has no key; `showDownload` for models with no licence to accept; the margin fields named. Removed lines taken after the version edit. Removed from frontend:
