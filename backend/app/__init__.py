@@ -7,4 +7,4 @@ import os
 # machine, so it is turned on for the engine, before OpenCV is first imported.
 os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")
 
-__version__ = "1.54.1"
+__version__ = "1.54.2"
