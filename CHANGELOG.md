@@ -4,6 +4,28 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.53.4 · 2026-09-30
+
+Sprint 1 of the parity plan (the v12 comparison): foundations.
+
+### Added
+
+- Object Selection (SAM 2.1), Select Subject and Remove Background (U²-Net) with nothing to install: ONNX Runtime is in the base install and each model is fetched on first use, pinned to its checksums (torch and rembg are still used when installed).
+- Every page of a TIFF, BigTIFF included: the largest page (the default), each page as a document, or every page as a layer.
+- Develop's scopes: histogram, waveform and vectorscope of the developed preview, live.
+- Edit > Keyboard Shortcuts rebinds any command by pressing the keys; a conflict names the command that has them (Reassign or Cancel); Reset All; kept in Preferences.
+- The largest document follows this computer's memory (a pixel per 40 bytes, 100 to 250 megapixels), stated in Preferences > Performance and in every message about it.
+
+### Changed
+
+- The local models' memory: at most two held, released after ten minutes unused, and ONNX Runtime's memory arena off (SAM 2.1 and U²-Net held 2,575 MB after three runs each; now 687 MB).
+- Every slider has an accessible name.
+- A test runs everything formvis offers: 263 of the 280 menu commands, 650 tool option values each with a drag, and every Image > Mode choice.
+
+### Fixed
+
+- The model download route offered SD-Turbo (brought over from formcut) unpinned, from a moving branch, under a non-commercial licence with no acceptance; it is removed, and a download file without a checksum is now refused.
+
 ## 1.53.3 · 2026-09-29
 
 ### Added: editing by asking, from Claude Code, Codex and Cursor

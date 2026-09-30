@@ -2,6 +2,119 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Parity sprint 1 · _v1.53.4 (engine/scopes.ts; ui/panels/scopes-view.ts, tiff-pages.ts; ui/commands.ts, app-dialogs.ts, prefs.ts, controls.ts; engine/types.ts, index.ts messages; backend services segment, background, imaging, localgen sessions, paths, model_manager; core/config.py)
+
+`ScopesView` and `histogram`, `waveform`, `vectorscope`; `TiffPagesDialog` and the engine's `pages` and paged `decode_to_png`; `Commands.setKeys`, `forCombo`, `defaultKeys`, `overrides`, `resetKeys` and the Keyboard Shortcuts editor; `setPixelBudget`, `pixel_budget`, `total_memory`, and the budget in every message; SAM 2.1 and U²-Net on ONNX Runtime; `sessions` (two held, idle release) and `paths.session` (arena off); SD-Turbo removed and unpinned downloads refused. The engine split (M8) was held back, as it broke a reload after WebGL2. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    { id: 'shortcuts', label: 'Keyboard Shortcuts', keys: ['Shift+/'], run: () => dialogs.shortcuts.show() },
+      'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'settings'] },
+          return e.resampleImage(w, h, 'high', p.doc.resolution ?? 72) ? text(`Resized to ${w} by ${h}.`) : fail('The size is outside what formvis allows (30,000 pixels a side, 100 megapixels).');
+      this.notice('Canvas sides must be 1 to 30,000 px, and the canvas at most 100 megapixels.', 'error');
+   *  the 100-megapixel budget for the target. */
+    if (pixels(dst.doc.layers) + pixels(copied) > 100_000_000) { this.notice("The copied layers exceed this project's 100-megapixel limit."); return false; }
+          this.notice(`${img.name} was skipped: it would exceed the 30,000 px side or the 100-megapixel document limit.`, 'error');
+    if (!ok) this.notice('Canvas sides must be 1 to 30,000 px, and the canvas at most 100 megapixels.', 'error');
+      if (b.w * b.h > LIMITS.pixels) { this.notice('That perspective would stretch a layer past the 100-megapixel limit. Pull the corners in a little.', 'error'); return false; }
+    if (used * sx0 * sy0 > LIMITS.pixels) { this.notice('The resized layers would exceed the 100-megapixel document limit.', 'error'); return false; }
+    if (W > LIMITS.side || H > LIMITS.side || W * H > LIMITS.pixels) { this.notice(`Upscaled ${scale} times, this image would pass 30,000 px a side or 100 megapixels.`, 'error'); return false; }
+export const LIMITS = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 } as const;
+export interface Capabilities {
+  async decode(file: Blob, name: string): Promise<Blob> {
+    return (await request('/io/decode', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).blob();
+    throw new Error(`${name} exceeds the 30,000 px side or 100-megapixel limit.`);
+import type { Commands } from './commands';
+    add('Performance', this.redrawRow.el,
+  private readonly list = el('<div class="cv-list" aria-label="Keyboard shortcuts"></div>');
+    super('Keyboard Shortcuts', 520);
+    this.body.appendChild(this.list);
+  }
+  show(): void {
+    const rows: Array<{ key: string; label: string; keys: string }> = [];
+    for (const c of this.commands.all()) if (c.keys?.length) rows.push({ key: c.id, label: this.commands.label(c), keys: this.commands.keyLabel(c) });
+    for (const [label, keys] of TOOL_KEYS) rows.push({ key: `tool:${label}`, label, keys });
+    patchList(this.list, rows, {
+      key: (r) => r.key,
+      create: (r) => {
+        const n = el('<div class="cv-list-row"><span></span><span class="cv-list-name"></span><span class="cv-list-meta"></span></div>');
+        setText(q(n, '.cv-list-name'), r.label);
+        setText(q(n, '.cv-list-meta'), r.keys);
+        return n;
+      },
+      update: (n, r) => { setText(q(n, '.cv-list-name'), r.label); setText(q(n, '.cv-list-meta'), r.keys); },
+    this.open();
+      if (this.preview) this.engine.previewImageEdit((src, scale) => runFilterOffThread(this.kind, this.s, scale, this.seed, src) ?? this.run(src, scale), this.grow());
+    setText(this.info, `${pic.picture} is ${pic.width.toLocaleString()} by ${pic.height.toLocaleString()} pixels, larger than formvis edits in one piece (30,000 a side, 100 megapixels). The engine decodes it once to open it, which needs about ${gb < 1 ? `${Math.round(gb * 1024)} MB` : `${gb.toFixed(1)} GB`} of memory.`);
+export interface Prefs { restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
+export const DEFAULT_PREFS: Prefs = { restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
+export const VERSION = '1.53.3';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.53.3"
+MAX_PIXELS = 100_000_000
+    global _session
+    with _lock:
+        if _session is None:
+            import onnxruntime as ort
+            from .paths import providers
+            _session = ort.InferenceSession(str(MODELS_ROOT / FILE), providers=providers())
+        return _session.run(None, {"input": batch})[0]
+from .paths import providers
+    global _session
+        if _session is None:
+            import onnxruntime as ort
+            _session = ort.InferenceSession(str(model_manager.model_file(FILE)), providers=providers())
+        return _session.run(None, {"image": image, "mask": mask})[0]
+    "local-image": {
+        # A model the local generator can run out of the box, downloaded on
+        # request and never on boot: SD Turbo's ONNX export, 2.4 GB, one step
+        # a picture. Its licence is Stability's non-commercial research
+        # licence and the panel shows it before the download starts; a person
+        # who needs commercial terms declares another model in the slot
+        # registry instead. The files land in the diffusers layout the local
+        # diffusion runner reads (models/diffusion/sd-turbo).
+        "name": "SD Turbo (local image generation)",
+        "license": "Stability AI Non-Commercial Research Community License (non-commercial)",
+        "files": {
+            "diffusion/sd-turbo/LICENSE": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/LICENSE",
+            "diffusion/sd-turbo/model_index.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/model_index.json",
+            "diffusion/sd-turbo/scheduler/scheduler_config.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/scheduler/scheduler_config.json",
+            "diffusion/sd-turbo/tokenizer/merges.txt": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/tokenizer/merges.txt",
+            "diffusion/sd-turbo/tokenizer/special_tokens_map.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/tokenizer/special_tokens_map.json",
+            "diffusion/sd-turbo/tokenizer/tokenizer_config.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/tokenizer/tokenizer_config.json",
+            "diffusion/sd-turbo/tokenizer/vocab.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/tokenizer/vocab.json",
+            "diffusion/sd-turbo/unet/config.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/unet/config.json",
+            "diffusion/sd-turbo/vae_decoder/config.json": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/vae_decoder/config.json",
+            "diffusion/sd-turbo/text_encoder/model.onnx": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/text_encoder/model.onnx",
+            "diffusion/sd-turbo/unet/model.onnx": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/unet/model.onnx",
+            "diffusion/sd-turbo/vae_decoder/model.onnx": "https://huggingface.co/onnxruntime/sd-turbo/resolve/main/vae_decoder/model.onnx",
+        },
+    },
+                if expected and digest.hexdigest() != expected:
+def decode(file: UploadFile = File(...)) -> Response:
+        png, width, height = imaging.decode_to_png(data, file.filename or "")
+    ml = _has("rembg") and _has("onnxruntime")
+        raise Unavailable("This background engine is not installed. Run ./formvis install-ml for the ML engine; the lightweight engine ships with the base install.")
+        raise BackgroundError("The image exceeds the 100-megapixel limit.")
+        raise DecodeError("The image exceeds the 30,000 px side or 100-megapixel limit.")
+def decode_to_png(data: bytes, filename: str) -> tuple[bytes, int, int]:
+def available() -> bool:
+        raise SegmentError("Click-to-select needs the engine's AI extras (./formvis install-ml).")
+    import torch
+        pred = _get_predictor()
+        with torch.inference_mode():
+            pred.set_image(rgb)
+        _embeddings[key] = {"features": pred._features, "orig_hw": pred._orig_hw, "size": (rgb.shape[1], rgb.shape[0])}
+    import torch
+version = "1.53.3"
+version = "1.53.3"
+ "version": "1.53.3",
+```
+
+Nothing removed from src-tauri.
 ## Editing by asking, from Claude Code, Codex and Cursor · _v1.53.3 (backend/app/routers/mcp.py; setup/mcp_stdio.py; setup/agents.py new; frontend/src/automation/agent-bridge.ts, app.ts, engine/index.ts; .claude/skills/formvis-editing and .agents/skills/formvis-editing new; .mcp.json, .cursor/mcp.json, .codex/config.toml, AGENTS.md new; CLAUDE.md; docs/AGENT_EVALS.md new; docs/MANUAL.md, docs/LOCAL.md)
 
 The engine: `_live`, `_open_window`, `_ask`, the consent question (`__consent__`) and the declined window, the wait for a window that was just here; `_run` with `_path` for `open_file`, `save_project` and `export_image`; 39 tools; `INSTRUCTIONS`, `STRATEGY`, `PROMPTS`, `prompts/list` and `prompts/get`; `bridge_next` taking `allowed` and handing out only the question when not; `bridge_stop` as a declination. `start_engine` in the stdio bridge. The window: the bridge polling always and answering the question, `AgentDeps.allow`, `openFile`, `projectBlob`, `applyFilter`, `selectSubject`, `removeBackground`, and the new tool cases with local-first generative choice. `rasterizeLayer` and Rasterize Layer taking live shapes. Removed lines taken after the version edit. Removed from frontend:
