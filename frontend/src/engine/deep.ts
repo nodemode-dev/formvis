@@ -135,6 +135,26 @@ export function blurDeep(src: DeepPixels, sigma: number): DeepPixels {
   return { ...src, data: out };
 }
 
+/** Motion Blur on floats: the 8-bit filter's samples along the line (filters.ts), premultiplied, any channel count. */
+export function motionBlurDeep(src: DeepPixels, angleDeg: number, distance: number): DeepPixels {
+  const { width: w, height: h } = src, S = src.n + 1, A = src.n, d = src.data, out = new Float32Array(d.length);
+  const theta = (angleDeg * Math.PI) / 180, ux = Math.cos(theta), uy = -Math.sin(theta);
+  const count = Math.max(2, Math.min(96, Math.ceil(distance) + 1)), acc = new Float64Array(S), px = new Array<number>(S).fill(0);
+  const along = Array.from({ length: count }, (_, s) => -distance / 2 + (distance * s) / (count - 1));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    acc.fill(0);
+    for (const t of along) {
+      const sx = x + ux * t, sy = y + uy * t;
+      if (sx < -0.5 || sy < -0.5 || sx > w - 0.5 || sy > h - 0.5) continue;
+      bilinear(d, w, h, sx, sy, px, S);
+      const al = px[A]; acc[A] += al; for (let c = 0; c < A; c++) acc[c] += px[c] * al;
+    }
+    const o = (y * w + x) * S, al = acc[A] / count;
+    out[o + A] = al; for (let c = 0; c < A; c++) out[o + c] = acc[A] > 0 ? acc[c] / acc[A] : 0;
+  }
+  return { ...src, data: out };
+}
+
 /** Unsharp Mask on floats: the 8-bit formula, with the threshold in the same levels, on every channel but alpha. */
 export function unsharpDeep(src: DeepPixels, amount: number, radius: number, threshold: number): DeepPixels {
   const blur = blurDeep(src, Math.max(0.1, radius)), s = src.data, b = blur.data, o = new Float32Array(s.length), k = amount / 100, S = src.n + 1, A = src.n;

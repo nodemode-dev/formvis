@@ -1,4 +1,4 @@
-import { blurDeep, noiseDeep, unsharpDeep } from '../../engine/deep';
+import { blurDeep, motionBlurDeep, noiseDeep, unsharpDeep } from '../../engine/deep';
 import type { DeepPixels } from '../../engine/types';
 import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine } from '../../engine';
 import { ScopesView } from './scopes-view';
@@ -306,7 +306,7 @@ export class FilterPanel extends Dialog {
     const p = this.engine.current;
     if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
     const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed;
-    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed) : null;
+    const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed) : kind === 'motionBlur' ? (d: DeepPixels): DeepPixels => motionBlurDeep(d, s.angle, s.distance) : null;
     if (!deep) return false;
     this.engine.applyDeepFilter(FILTER_LABELS[kind], deep);
     return true;

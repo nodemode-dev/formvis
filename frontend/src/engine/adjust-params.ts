@@ -54,7 +54,9 @@ function perPixel(f: (r: number, g: number, b: number) => [number, number, numbe
 function lut(f: (v: number) => number): Kernel {
   const t = new Uint8ClampedArray(256);
   for (let i = 0; i < 256; i++) t[i] = Math.round(cl(f(i / 255)) * 255);
-  return (px) => { for (let i = 0; i < px.length; i += 4) { px[i] = t[px[i]]; px[i + 1] = t[px[i + 1]]; px[i + 2] = t[px[i + 2]]; } };
+  const k: Kernel & { transfer?: (c: number, level: number) => number } = (px) => { for (let i = 0; i < px.length; i += 4) { px[i] = t[px[i]]; px[i + 1] = t[px[i + 1]]; px[i + 2] = t[px[i + 2]]; } };
+  k.transfer = (_c, level) => cl(f(Math.max(0, Math.min(255, level)) / 255)) * 255;
+  return k;
 }
 
 const n = (v: Values, k: string): number => v[k] as number;
