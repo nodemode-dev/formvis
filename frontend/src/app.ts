@@ -471,7 +471,7 @@ export function startApp(): void {
             if (png16 || /\.(tiff?|hdr|exr)$/i.test(f.name)) {
               try {
                 const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, '');
-                if (d.depth === 32) { engine.openDeep(name, { width: d.width, height: d.height, data: d.data as Float32Array }, 32); continue; }   // 32 bits (1.53.9)
+                if (d.depth === 32) { engine.openDeep(name, { mode: 'rgb', n: 3, width: d.width, height: d.height, data: d.data as Float32Array }, 32); continue; }
                 if (d.depth === 16) { engine.openDeep(name, deepFromU16(d.data as Uint16Array, d.width, d.height)); continue; }
               } catch { /* opened at 8 bits as before */ }
             }
@@ -691,7 +691,7 @@ export function startApp(): void {
         const deep = (p.doc.depth ?? 8) > 8 && (kind === 'png' || kind === 'tiff') ? composeDeep(p.doc) : null;
         if (deep && 'error' in deep) throw new Error(deep.error);
         // From 32 bits (1.53.9): TIFF stays 32-bit float; PNG is 16-bit, sRGB-encoded, brighter than white clipped.
-        const blob = deep ? (p.doc.depth === 32 && kind === 'tiff' ? await api.encodeDeep(deep.data, deep.width, deep.height, 'tiff32') : await api.encodeDeep(deepToU16(p.doc.depth === 32 ? deepToned(deep, 0, 1).data : deep.data), deep.width, deep.height, kind as 'png' | 'tiff')) : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
+        const blob = deep ? (p.doc.depth === 32 && kind === 'tiff' ? await api.encodeDeep(deep.data, deep.width, deep.height, 'tiff32') : await api.encodeDeep(deepToU16(p.doc.depth === 32 ? deepToned({ mode: 'rgb', n: 3, ...deep }, 0, 1).data : deep.data), deep.width, deep.height, kind as 'png' | 'tiff')) : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
           : kind === 'webp' ? await engine.exportBlob('image/webp', quality)
           : await (async () => { const png = await engine.exportBlob('image/png'); return png ? api.encode(png, kind, Math.round(quality * 100), p.doc.resolution ?? 72) : null; })();
         if (blob) await deliver(blob, `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);
@@ -1670,6 +1670,7 @@ export function startApp(): void {
   for (const id of ['depth-32', 'export-hdr', 'export-exr']) DEEP_OK.add(id);
   const CMYK_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
     'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'mode-rgb', 'mode-cmyk',
+    'filter-gaussianBlur', 'filter-unsharpMask', 'filter-addNoise', 'image-size', 'canvas-size', 'flip-canvas-h', 'flip-canvas-v', 'trim', 'reveal-all',
     'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? CMYK_OK.has(c.id) || passes(c)

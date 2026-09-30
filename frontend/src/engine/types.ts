@@ -57,8 +57,7 @@ export interface Layer {
   vector?: VectorLayer | null;
   name: string;
   raster: Raster | null;
-  /** In a 16-bit document, the layer's 16-bit pixels (1.53.6); `raster` is their 8-bit rendition. */
-  deep?: DeepPixels;
+  /** The layer's float pixels beyond 8-bit RGB (16 and 32 bits, CMYK, Lab); `raster` is their rendition. */
   channels?: ChannelPixels;
   transform: Transform;
   visible: boolean;
@@ -101,10 +100,13 @@ export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk';
 export interface DocProfile { name: string; icc: string }
 /** A layer's pixels at 16 bits (1.53.6, H1): RGBA as floats 0 to 1, straight alpha, the size of its raster, which
  *  holds their 8-bit rendition for display and 8-bit tools. */
-export interface DeepPixels { width: number; height: number; data: Float32Array }
-/** A layer's ink in a CMYK document (1.54.0, H1): C, M, Y, K as floats 0 (paper) to 1 (full ink), then straight alpha,
- *  five a pixel; `raster` holds their sRGB rendition through the document's profile. */
-export interface ChannelPixels { mode: 'cmyk'; width: number; height: number; data: Float32Array }
+/** The one float pixel model (1.54.3, DEV_PLAN 22.3): a layer's pixels beyond 8-bit RGB. `mode` says what the channels
+ *  are (RGB at 16 or 32 bits, 0 to 1 or linear and unbounded; CMYK ink 0 paper to 1 full; Lab as L 0 to 100 and a, b
+ *  signed), `n` how many, then straight alpha last, `n + 1` floats a pixel. `raster` holds the sRGB rendition for
+ *  display and for tools that have not moved. */
+export interface ChannelPixels { mode: 'rgb' | 'cmyk' | 'lab'; n: 3 | 4; width: number; height: number; data: Float32Array }
+/** The RGB kind of ChannelPixels, as 16- and 32-bit documents hold it. */
+export type DeepPixels = ChannelPixels;
 export interface Doc { depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
 
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'count' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'idle';

@@ -154,14 +154,15 @@ ask it questions.
   intent and black point compensation of your choice. The engine converts every pixel exactly (LittleCMS); the tab
   reads CMYK/8 and shows the profile's name. Mode > RGB Color converts back the same way.
 - CMYK JPEG and TIFF files open as CMYK documents with their embedded profile; a file without one takes the shipped
-  profile, and a message says so. File > Export > TIFF and JPEG from a CMYK document write CMYK with the profile
-  embedded; PNG, WebP and the others write the sRGB rendition you see.
+  profile, and a message says so. File > Export > TIFF and JPEG from a CMYK document export in CMYK with the profile
+  embedded; PNG, WebP and the others export the sRGB rendition you see.
 - Every layer keeps its ink beside the rendition on screen, and the project keeps it too. The Channels panel lists
   CMYK, Cyan, Magenta, Yellow and Black with a thumbnail of each ink; click an ink and the Brush, Pencil and Eraser
-  write that ink alone (a K-only black is one click and a stroke), click CMYK to write all four. The colour picker
-  shows C, M, Y and K, and the Info panel reads the ink under the pointer. Nothing drops a CMYK document to RGB
-  quietly: what is not built for ink yet (adjustments, filters, transforms, retouching, a single-ink view of the
-  canvas) waits in the menu until Mode > RGB Color, and a step that would lose ink is undone with a message.
+  paint that ink alone (a K-only black is one click and a stroke), click CMYK to paint all four. The colour picker
+  shows C, M, Y and K, and the Info panel reads the ink under the pointer. Gaussian Blur, Unsharp Mask, Add Noise,
+  Image Size, Canvas Size, the flips, Trim and Reveal All run on the ink itself. Nothing drops a CMYK document to RGB
+  quietly: what is not built for ink yet waits in the menu until Mode > RGB Color, and a step that would lose ink is
+  undone with a message.
 
 ## 32-bit documents
 

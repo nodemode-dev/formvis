@@ -503,7 +503,7 @@ export class Engine {
       this.rollBack(p, name, err);
       return false;
     }
-    if (deepBefore && !nested && p.doc.layers.some((l) => { const o = deepBefore.get(l.id); return !!o && l.raster !== o.raster && ((!!o.deep && l.deep === o.deep) || (!!o.channels && l.channels === o.channels)); })) {
+    if (deepBefore && !nested && p.doc.layers.some((l) => { const o = deepBefore.get(l.id); return !!o?.channels && l.raster !== o.raster && l.channels === o.channels; })) {
       const r = p.history.rollback();
       if (r) { for (let i = r.patches.length - 1; i >= 0; i--) { const q = r.patches[i]; q.raster.write(q.before, q.x, q.y); } p.doc = r.before.doc; p.selection = r.before.selection; }
       this.refresh();
@@ -1861,7 +1861,23 @@ export class Engine {
     if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.work });
     const fs = this.floatSel;
     if (fs && fs.project === p) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.base });
+    if (this.channelView !== null && p.doc.mode === 'cmyk') for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas });
     return m.size ? m : undefined;
+  }
+
+  /** The Channels panel's single-ink view (1.54.3): one ink of a CMYK layer as grey (paper white, full ink black),
+   *  drawn in place of its rendition; the view only, never the pixels. */
+  channelView: 0 | 1 | 2 | 3 | null = null;
+  private readonly channelGreys = new WeakMap<ChannelPixels, { k: number; r: Raster }>();
+  setChannelView(k: 0 | 1 | 2 | 3 | null): void { if (this.channelView === k) return; this.channelView = k; this.emit('render', null); }
+  private channelGrey(ch: ChannelPixels, k: number): Raster {
+    const hit = this.channelGreys.get(ch);
+    if (hit && hit.k === k) return hit.r;
+    const r = new Raster(ch.width, ch.height), img = r.ctx.createImageData(ch.width, ch.height), S = ch.n + 1, d = img.data;
+    for (let i = 0, o = 0; i < ch.data.length; i += S, o += 4) { const v = Math.round((1 - Math.min(1, Math.max(0, ch.data[i + k]))) * 255); d[o] = d[o + 1] = d[o + 2] = v; d[o + 3] = Math.round(Math.min(1, Math.max(0, ch.data[i + ch.n])) * 255); }
+    r.ctx.putImageData(img, 0, 0); r.touch();
+    this.channelGreys.set(ch, { k, r });
+    return r;
   }
 
   selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void {
@@ -2715,10 +2731,10 @@ export class Engine {
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
     const dl = patch && st.target === 'pixels' && (st.project.doc.depth === 16 || st.project.doc.mode === 'cmyk') ? st.project.layer(st.layerId) : null;
-    if (patch && dl?.deep && dl.raster === patch.raster) {
+    if (patch && dl?.channels?.mode === 'rgb' && dl.raster === patch.raster) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
-      st.project.updateLayer(st.layerId, { deep: strokeDeep(dl.deep, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fg, this.bg) });
-    } else if (patch && dl?.channels && dl.raster === patch.raster && st.project.cmykLut) {
+      st.project.updateLayer(st.layerId, { channels: strokeDeep(dl.channels, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fg, this.bg) });
+    } else if (patch && dl?.channels?.mode === 'cmyk' && dl.raster === patch.raster && st.project.cmykLut) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
       const r = strokeChannels(dl.channels, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fgInk, this.bgInk, st.project.cmykLut, this.paintChannel);
       after.data.set(r.region); patch.raster.ctx.putImageData(after, patch.x, patch.y); patch.raster.touch(); patch.after.data.set(r.region);
@@ -4616,7 +4632,7 @@ export class Engine {
         const mr = l.mask?.raster ?? null;
         const mask = l.mask ? { ...l.mask, raster: mr ? scaleRaster(mr, Math.max(1, Math.round(mr.width * sx)), Math.max(1, Math.round(mr.height * sy))) : null, placement: l.mask.placement ? scaleT(l.mask.placement) : null } : null;
         // A 16-bit layer's pixels resampled at 16 bits, its 8-bit rendition from them (1.53.7).
-        if (l.deep && raster && !shape) { const deep = resampleDeep(l.deep, raster.width, raster.height); return { ...l, deep, raster: rasterFromDeep(deep, p.doc.depth === 32), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }   // as the 8-bit path
+        if (l.channels && raster && !shape) { const ch = resampleDeep(l.channels, raster.width, raster.height); return { ...l, channels: ch, raster: ch.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(ch, p.cmykLut) : rasterFromDeep(ch, p.doc.depth === 32), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }
         return { ...l, raster, mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) };
       });
       p.doc = { ...p.doc, width, height, resolution, layers };
@@ -6238,7 +6254,7 @@ export class Engine {
     p.cmykLut = lut; p.cmykIn = inLut;
     if (inLut) { this.fgInk = inkOf(this.fgc, inLut); this.bgInk = inkOf(this.bgc, inLut); }
     return this.edit('CMYK Color', (pp) => {
-      const layers = pp.doc.layers.map((l) => { const ch = ink.get(l.id); return ch ? { ...l, channels: ch, deep: undefined, raster: rasterFromChannels(ch, lut) } : l; });
+      const layers = pp.doc.layers.map((l) => { const ch = ink.get(l.id); return ch ? { ...l, channels: ch, raster: rasterFromChannels(ch, lut) } : l; });
       pp.doc = { ...pp.doc, layers, mode: 'cmyk', profile, depth: undefined, palette: undefined };
       return true;
     });
@@ -6281,10 +6297,10 @@ export class Engine {
     return this.edit(`${depth} Bits/Channel`, (pp) => {
       const layers = pp.doc.layers.map((l) => {
         if (!l.raster || l.isGroup || l.adjustment) return l;
-        const src = l.deep ?? deepFromRaster(l.raster);
-        if (depth === 32) return { ...l, deep: from === 32 ? src : deepToLinear(src) };
+        const src = l.channels ?? deepFromRaster(l.raster);
+        if (depth === 32) return { ...l, channels: from === 32 ? src : deepToLinear(src) };
         const enc = from === 32 ? deepToned(src, tone.exposure, tone.gamma) : src;
-        return depth === 16 ? { ...l, deep: enc, raster: from === 32 ? rasterFromDeep(enc) : l.raster } : { ...l, deep: undefined, raster: from === 32 ? rasterFromDeep(enc) : l.raster };
+        return depth === 16 ? { ...l, channels: enc, raster: from === 32 ? rasterFromDeep(enc) : l.raster } : { ...l, channels: undefined, raster: from === 32 ? rasterFromDeep(enc) : l.raster };
       });
       pp.doc = { ...pp.doc, layers, depth: depth === 8 ? undefined : depth };
       return true;
@@ -6295,7 +6311,7 @@ export class Engine {
   openDeep(name: string, deep: DeepPixels, depth: 16 | 32 = 16): Project {
     const raster = rasterFromDeep(deep, depth === 32);
     const p = this.openImage({ source: raster.canvas as CanvasImageSource, width: deep.width, height: deep.height, name });
-    p.doc = { ...p.doc, depth, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, deep } : l)) };
+    p.doc = { ...p.doc, depth, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, channels: deep } : l)) };
     this.refresh();
     return p;
   }
@@ -6303,23 +6319,23 @@ export class Engine {
   /** A filter at 16 bits (1.53.7): `fn` on the active layer's 16-bit pixels, its 8-bit rendition from the result, one
    *  step. Within a selection it waits for a later release rather than filtering the whole layer. */
   applyDeepFilter(name: string, fn: (d: DeepPixels) => DeepPixels): boolean {
-    const p = this.current, l = p?.activeLayer;
-    if (!p || !l?.deep) return false;
-    let deep = fn(l.deep);
+    const p = this.current, l = p?.activeLayer, ch = l?.channels;
+    if (!p || !l || !ch) return false;
+    let deep = fn(ch);
     if (p.selection) {
-      // Within a selection (1.53.8): blended by its coverage, where the layer sits unscaled and unrotated.
-      const t = l.transform, sel = p.selection;
-      if (t.rotation || t.flipX || t.flipY || t.w !== l.deep.width || t.h !== l.deep.height || t.x !== Math.round(t.x) || t.y !== Math.round(t.y)) { this.notice(`${name} within a selection needs the layer unscaled and unrotated in 16 bits: Select > Deselect to filter the whole layer.`); return false; }
-      const src = l.deep.data, f = deep.data, out = new Float32Array(src);
-      for (let y = 0; y < l.deep.height; y++) for (let x = 0; x < l.deep.width; x++) {
+      const t = l.transform, sel = p.selection, S = ch.n + 1;
+      if (t.rotation || t.flipX || t.flipY || t.w !== ch.width || t.h !== ch.height || t.x !== Math.round(t.x) || t.y !== Math.round(t.y)) { this.notice(`${name} within a selection needs the layer unscaled and unrotated in this mode: Select > Deselect to filter the whole layer.`); return false; }
+      const src = ch.data, f = deep.data, out = new Float32Array(src);
+      for (let y = 0; y < ch.height; y++) for (let x = 0; x < ch.width; x++) {
         const cov = sel.valueAt(x + t.x, y + t.y) / 255;
         if (cov <= 0) continue;
-        const o = (y * l.deep.width + x) * 4;
-        for (let c = 0; c < 4; c++) out[o + c] = src[o + c] + (f[o + c] - src[o + c]) * cov;
+        const o = (y * ch.width + x) * S;
+        for (let c = 0; c < S; c++) out[o + c] = src[o + c] + (f[o + c] - src[o + c]) * cov;
       }
-      deep = { width: l.deep.width, height: l.deep.height, data: out };
+      deep = { ...ch, data: out };
     }
-    return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, deep, raster: rasterFromDeep(deep, pp.doc.depth === 32) } : x)) }; return true; });
+    const rendition = deep.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(deep, p.cmykLut) : rasterFromDeep(deep, p.doc.depth === 32);
+    return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, channels: deep, raster: rendition } : x)) }; return true; });
   }
 
   /** Brush, Pencil and Eraser paint at 16 bits (1.53.8) unless colour dynamics vary the paint (the rebuild needs one

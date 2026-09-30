@@ -10,7 +10,7 @@ import { invert, placement } from './geometry';
 export function deepFromU16(u16: Uint16Array, width: number, height: number): DeepPixels {
   const data = new Float32Array(u16.length);
   for (let i = 0; i < u16.length; i++) data[i] = u16[i] / 65535;
-  return { width, height, data };
+  return { mode: 'rgb', n: 3, width, height, data };
 }
 
 export function deepToU16(data: Float32Array): Uint16Array {
@@ -22,12 +22,11 @@ export function deepToU16(data: Float32Array): Uint16Array {
 export function deepFromRaster(r: Raster): DeepPixels {
   const d = r.ctx.getImageData(0, 0, r.width, r.height).data, data = new Float32Array(d.length);
   for (let i = 0; i < d.length; i++) data[i] = d[i] / 255;
-  return { width: r.width, height: r.height, data };
+  return { mode: 'rgb', n: 3, width: r.width, height: r.height, data };
 }
 
 export function rasterFromDeep(deep: DeepPixels, linear = false): Raster {
   const r = new Raster(deep.width, deep.height), img = r.ctx.createImageData(deep.width, deep.height);
-  // A 32-bit layer is linear light, unbounded: its display is sRGB-encoded, white and above shown white (1.53.9).
   for (let i = 0; i < deep.data.length; i++) { const v = Math.min(1, Math.max(0, deep.data[i])); img.data[i] = Math.round((linear && i % 4 !== 3 ? linearToSrgb(v) : v) * 255); }
   r.ctx.putImageData(img, 0, 0); r.touch();
   return r;
@@ -61,7 +60,7 @@ export function composeDeep(doc: Doc): { width: number; height: number; data: Fl
       continue;
     }
     if (!l.raster) continue;
-    const src = l.deep ?? deepFromRaster(l.raster);
+    const src = l.channels ?? deepFromRaster(l.raster);
     place(out, W, H, src, l.transform, op);
   }
   return { width: W, height: H, data: out };
@@ -102,55 +101,58 @@ function bilinear(d: Float32Array, w: number, h: number, u: number, v: number, p
 
 /** Image Size at 16 bits: an area average when shrinking, bilinear when enlarging, in premultiplied alpha. */
 export function resampleDeep(src: DeepPixels, width: number, height: number): DeepPixels {
-  const out = new Float32Array(width * height * 4), sx = src.width / width, sy = src.height / height, px = [0, 0, 0, 0];
+  const S = src.n + 1, A = src.n, out = new Float32Array(width * height * S), sx = src.width / width, sy = src.height / height, px = new Array<number>(S).fill(0);
   for (let y = 0; y < height; y++) for (let x = 0; x < width; x++) {
-    const o = (y * width + x) * 4;
+    const o = (y * width + x) * S;
     if (sx > 1 || sy > 1) {
       const xa = x * sx, xb = (x + 1) * sx, ya = y * sy, yb = (y + 1) * sy;
-      let a = 0, area = 0; const c = [0, 0, 0];
+      let a = 0, area = 0; const c = new Array<number>(A).fill(0);
       for (let yy = Math.floor(ya); yy < Math.min(src.height, Math.ceil(yb)); yy++) for (let xx = Math.floor(xa); xx < Math.min(src.width, Math.ceil(xb)); xx++) {
-        const wgt = (Math.min(xb, xx + 1) - Math.max(xa, xx)) * (Math.min(yb, yy + 1) - Math.max(ya, yy)), s = (yy * src.width + xx) * 4, al = src.data[s + 3] * wgt;
-        area += wgt; a += al; for (let k = 0; k < 3; k++) c[k] += src.data[s + k] * al;
+        const wgt = (Math.min(xb, xx + 1) - Math.max(xa, xx)) * (Math.min(yb, yy + 1) - Math.max(ya, yy)), s = (yy * src.width + xx) * S, al = src.data[s + A] * wgt;
+        area += wgt; a += al; for (let k = 0; k < A; k++) c[k] += src.data[s + k] * al;
       }
-      out[o + 3] = area > 0 ? a / area : 0; for (let k = 0; k < 3; k++) out[o + k] = a > 0 ? c[k] / a : 0;
+      out[o + A] = area > 0 ? a / area : 0; for (let k = 0; k < A; k++) out[o + k] = a > 0 ? c[k] / a : 0;
     } else {
-      bilinear(src.data, src.width, src.height, (x + 0.5) * sx - 0.5, (y + 0.5) * sy - 0.5, px);
-      out[o] = px[0]; out[o + 1] = px[1]; out[o + 2] = px[2]; out[o + 3] = px[3];
+      bilinear(src.data, src.width, src.height, (x + 0.5) * sx - 0.5, (y + 0.5) * sy - 0.5, px, S);
+      for (let k = 0; k < S; k++) out[o + k] = px[k];
     }
   }
-  return { width, height, data: out };
+  return { mode: src.mode, n: src.n, width, height, data: out };
 }
 
-/** Gaussian Blur at 16 bits: the 8-bit filter's three box blurs (filters.ts), in premultiplied alpha, on floats. */
+/** Gaussian Blur on floats: the 8-bit filter's three box blurs (filters.ts), in premultiplied alpha, channel by channel
+ *  (each channel rides with alpha through the four-wide box blur), for any number of channels. */
 export function blurDeep(src: DeepPixels, sigma: number): DeepPixels {
-  const { width: w, height: h } = src, n = w * h * 4;
-  if (!(sigma >= 0.1)) return { width: w, height: h, data: new Float32Array(src.data) };
-  const a = new Float32Array(n), b = new Float32Array(n);
-  for (let i = 0; i < n; i += 4) { const al = src.data[i + 3]; a[i] = src.data[i] * al * 255; a[i + 1] = src.data[i + 1] * al * 255; a[i + 2] = src.data[i + 2] * al * 255; a[i + 3] = al * 255; }
-  for (const width of threeBoxWidths(sigma)) { const r = (width - 1) / 2; boxBlur(a, b, w, h, r, true); boxBlur(b, a, w, h, r, false); }
-  const out = new Float32Array(n);
-  for (let i = 0; i < n; i += 4) { const al = a[i + 3]; out[i + 3] = al / 255; for (let k = 0; k < 3; k++) out[i + k] = al > 0 ? a[i + k] / al : 0; }
-  return { width: w, height: h, data: out };
-}
-
-/** Unsharp Mask at 16 bits: the 8-bit formula, with the threshold in the same levels. */
-export function unsharpDeep(src: DeepPixels, amount: number, radius: number, threshold: number): DeepPixels {
-  const blur = blurDeep(src, Math.max(0.1, radius)), s = src.data, b = blur.data, o = new Float32Array(s.length), k = amount / 100;
-  for (let i = 0; i < s.length; i += 4) {
-    for (let c = 0; c < 3; c++) { const d = s[i + c] - b[i + c]; o[i + c] = Math.min(1, Math.max(0, Math.abs(d) * 255 >= threshold ? s[i + c] + k * d : s[i + c])); }
-    o[i + 3] = s[i + 3];
+  const { width: w, height: h } = src, S = src.n + 1, A = src.n, N = w * h;
+  if (!(sigma >= 0.1)) return { ...src, data: new Float32Array(src.data) };
+  const out = new Float32Array(src.data);
+  for (let c0 = 0; c0 < A; c0 += 3) {
+    const a = new Float32Array(N * 4), b = new Float32Array(N * 4), cn = Math.min(3, A - c0);
+    for (let p = 0, i = 0, j = 0; p < N; p++, i += S, j += 4) { const al = src.data[i + A]; for (let k = 0; k < cn; k++) a[j + k] = src.data[i + c0 + k] * al * 255; a[j + 3] = al * 255; }
+    for (const width of threeBoxWidths(sigma)) { const r = (width - 1) / 2; boxBlur(a, b, w, h, r, true); boxBlur(b, a, w, h, r, false); }
+    for (let p = 0, i = 0, j = 0; p < N; p++, i += S, j += 4) { const al = a[j + 3]; out[i + A] = al / 255; for (let k = 0; k < cn; k++) out[i + c0 + k] = al > 0 ? a[j + k] / al : 0; }
   }
-  return { width: src.width, height: src.height, data: o };
+  return { ...src, data: out };
 }
 
-/** Add Noise at 16 bits: the 8-bit filter's seeded noise (the same values for the same seed), not rounded. */
+/** Unsharp Mask on floats: the 8-bit formula, with the threshold in the same levels, on every channel but alpha. */
+export function unsharpDeep(src: DeepPixels, amount: number, radius: number, threshold: number): DeepPixels {
+  const blur = blurDeep(src, Math.max(0.1, radius)), s = src.data, b = blur.data, o = new Float32Array(s.length), k = amount / 100, S = src.n + 1, A = src.n;
+  for (let i = 0; i < s.length; i += S) {
+    for (let c = 0; c < A; c++) { const d = s[i + c] - b[i + c]; o[i + c] = Math.min(1, Math.max(0, Math.abs(d) * 255 >= threshold ? s[i + c] + k * d : s[i + c])); }
+    o[i + A] = s[i + A];
+  }
+  return { ...src, data: o };
+}
+
+/** Add Noise on floats: the 8-bit filter's seeded noise (the same values for the same seed), not rounded, per channel. */
 export function noiseDeep(src: DeepPixels, amount: number, gaussian: boolean, monochromatic: boolean, seed: number): DeepPixels {
-  const d = new Float32Array(src.data), spread = (amount / 100) * 127.5;
-  for (let px = 0, i = 0; i < d.length; px++, i += 4) {
-    if (d[i + 3] === 0) continue;
+  const d = new Float32Array(src.data), spread = (amount / 100) * 127.5, S = src.n + 1, A = src.n;
+  for (let px = 0, i = 0; i < d.length; px++, i += S) {
+    if (d[i + A] === 0) continue;
     const pixelKey = mix32(mix32(px) ^ seed);
     let shared = NaN;
-    for (let c = 0; c < 3; c++) {
+    for (let c = 0; c < A; c++) {
       if (!monochromatic || Number.isNaN(shared)) {
         const k = mix32(pixelKey + (monochromatic ? 0 : c));
         shared = gaussian ? Math.sqrt(-2 * Math.log(toUnit(k))) * Math.cos(2 * Math.PI * toUnit(mix32(k))) * spread * (2 / 3) : (toUnit(k) * 2 - 1) * spread;
@@ -158,7 +160,7 @@ export function noiseDeep(src: DeepPixels, amount: number, gaussian: boolean, mo
       d[i + c] = Math.min(1, Math.max(0, d[i + c] + shared / 255));
     }
   }
-  return { width: src.width, height: src.height, data: d };
+  return { ...src, data: d };
 }
 
 /** A Brush, Pencil or Eraser stroke at 16 bits (1.53.8): each pixel the stroke changed, rebuilt on the 16-bit pixels
@@ -194,7 +196,7 @@ export function strokeDeep(deep: DeepPixels, before: ImageData, after: ImageData
     for (let c = 0; c < 3; c++) out[o + c] = na > 0 ? (C[c] / 255 * a + out[o + c] * oa * (1 - a)) / na : C[c] / 255;
     out[o + 3] = na;
   }
-  return { width: deep.width, height: deep.height, data: out };
+  return { ...deep, data: out };
 }
 
 /** sRGB's encoding and its inverse (1.53.9: 32-bit documents are linear light). */
@@ -205,10 +207,10 @@ export function linearToSrgb(v: number): number { return v <= 0.0031308 ? v * 12
 export function deepToLinear(d: DeepPixels): DeepPixels {
   const out = new Float32Array(d.data);
   for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = srgbToLinear(out[i]);
-  return { width: d.width, height: d.height, data: out };
+  return { ...d, data: out };
 }
 export function deepToned(d: DeepPixels, exposure: number, gamma: number): DeepPixels {
   const out = new Float32Array(d.data), gain = 2 ** exposure, inv = 1 / Math.max(0.01, gamma);
   for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = linearToSrgb(Math.min(1, Math.max(0, Math.pow(Math.max(0, out[i] * gain), inv))));
-  return { width: d.width, height: d.height, data: out };
+  return { ...d, data: out };
 }

@@ -9,7 +9,7 @@ import { Raster } from './surface';
 export function channelsFromU8(u8: Uint8Array, width: number, height: number): ChannelPixels {
   const data = new Float32Array(u8.length);
   for (let i = 0; i < u8.length; i++) data[i] = u8[i] / 255;
-  return { mode: 'cmyk', width, height, data };
+  return { mode: 'cmyk', n: 4, width, height, data };
 }
 
 export function channelsToU8(data: Float32Array): Uint8Array {
@@ -81,5 +81,5 @@ export function strokeChannels(ch: ChannelPixels, before: ImageData, after: Imag
     for (let c = 0; c < 5; c++) strip[d + c] = out[o + c];
   }
   applyLut4(strip, lut, region);
-  return { channels: { mode: 'cmyk', width: W, height: ch.height, data: out }, region };
+  return { channels: { ...ch, data: out }, region };
 }

@@ -25,9 +25,9 @@ def test_a_16_bit_png_keeps_its_bits_through_an_adjustment(page, tmp_path):
     assert int(img[0, 512, 0]) > int(ramp[0, 512, 0]) + 3000                                   # the Exposure layer took effect
     assert page.evaluate("window.formvis.commands.enabled(window.formvis.commands.get('filter-gaussianBlur'))") is False
     assert page.evaluate("window.formvis.commands.enabled(window.formvis.commands.get('new-adj-curves'))") is True
-    assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.deep).id); return e.beginStroke({ x: 5, y: 4 }, false); })()") is False
+    assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.channels).id); return e.beginStroke({ x: 5, y: 4 }, false); })()") is False
     page.evaluate("window.formvis.commands.run('depth-8')")
-    assert page.evaluate("(() => { const d = window.formvis.engine.current.doc; return [d.depth ?? 8, d.layers.some((l) => l.deep)]; })()") == [8, False]
+    assert page.evaluate("(() => { const d = window.formvis.engine.current.doc; return [d.depth ?? 8, d.layers.some((l) => l.channels)]; })()") == [8, False]
 
 
 def test_flips_sizes_and_filters_keep_16_bits(page, tmp_path):
@@ -102,15 +102,15 @@ def test_32_bit_exr_keeps_its_highlights(page, tmp_path):
         page.evaluate("window.formvis.commands.run('export-tiff')")
     t = tmp_path / "out.tif"; d.value.save_as(str(t))
     assert cv2.imread(str(t), cv2.IMREAD_UNCHANGED).dtype == np.float32
-    assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.deep).id); e.setTool('brush'); return e.beginStroke({ x: 5, y: 2 }, false); })()") is False
+    assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.channels).id); e.setTool('brush'); return e.beginStroke({ x: 5, y: 2 }, false); })()") is False
     page.evaluate("() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.adjustment).id); e.deleteLayers(); }")
     page.evaluate("window.formvis.commands.run('depth-16')")
     page.locator(".cv-scrim:not([hidden]) .cv-dialog", has_text="HDR Toning").wait_for()
     page.locator(".cv-scrim:not([hidden]) .cv-dialog input[aria-label='Exposure']").fill("-3")
     page.locator(".cv-scrim:not([hidden]) .cv-dialog .cv-dialog-foot button", has_text="OK").click()
     page.wait_for_function("window.formvis.engine.current.doc.depth === 16")
-    top = page.evaluate("(() => { const l = window.formvis.engine.current.doc.layers.find((x) => x.deep); return l.deep.data[(1 * 256 + 255) * 4]; })()")
+    top = page.evaluate("(() => { const l = window.formvis.engine.current.doc.layers.find((x) => x.channels); return l.channels.data[(1 * 256 + 255) * 4]; })()")
     assert abs(top - 1.0) < 1e-4                                                               # 8 at -3 EV is exactly white
-    mid = page.evaluate("(() => { const l = window.formvis.engine.current.doc.layers.find((x) => x.deep); return l.deep.data[(1 * 256 + 128) * 4]; })()")
+    mid = page.evaluate("(() => { const l = window.formvis.engine.current.doc.layers.find((x) => x.channels); return l.channels.data[(1 * 256 + 128) * 4]; })()")
     want = float(lin[1, 128, 0]) / 8
     assert abs(mid - (1.055 * want ** (1 / 2.4) - 0.055)) < 1e-4                               # encoded after -3 EV

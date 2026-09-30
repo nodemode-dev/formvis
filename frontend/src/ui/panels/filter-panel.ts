@@ -303,7 +303,8 @@ export class FilterPanel extends Dialog {
   /** Applies `kind` with `settings` (the noise seed among them) off the main thread, the interface staying live. */
 /** Gaussian Blur, Unsharp Mask and Add Noise in a 16-bit document, at 16 bits (1.53.7), with these settings. */
   private deepFilter(kind: FilterKind, settings: Record<string, unknown>): boolean {
-    if (this.engine.current?.doc.depth !== 16) return false;
+    const p = this.engine.current;
+    if (!p || ((p.doc.depth ?? 8) === 8 && p.doc.mode !== 'cmyk')) return false;
     const s = { ...this.s, ...(settings as Partial<typeof this.s>) }, seed = this.seed;
     const deep = kind === 'gaussianBlur' ? (d: DeepPixels): DeepPixels => blurDeep(d, s.radius) : kind === 'unsharpMask' ? (d: DeepPixels): DeepPixels => unsharpDeep(d, s.usmAmount, s.usmRadius, s.threshold) : kind === 'addNoise' ? (d: DeepPixels): DeepPixels => noiseDeep(d, s.amount, s.gaussian, s.monochromatic, seed) : null;
     if (!deep) return false;
