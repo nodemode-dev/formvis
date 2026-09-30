@@ -3926,6 +3926,15 @@ export class Engine {
    *  square averaged (3, 5, 11, 31, 51 or 101). */
   eyedropperSize = 1;
 
+  /** The document composed beneath `id` (1.54.7, Harmonize): the layers below it, at document size. */
+  compositeBelow(id: ID): ImageData | null {
+    const p = this.current, l = p?.layer(id);
+    if (!p || !l) return null;
+    const s = createSurface(p.doc.width, p.doc.height);
+    this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides: this.belowOverrides(p, l), quality: 'high' });
+    return ctxOf(s).getImageData(0, 0, p.doc.width, p.doc.height);
+  }
+
   /** The document's colour at `pt`: the pixel itself for Point Sample, or the average of the Sample Size square around
    *  it, each pixel weighted by its opacity, so transparent pixels and anything past the canvas do not pull the colour. */
   sampleColor(pt: Pt): RGB | null {
