@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.54.3 · 2026-09-30
+
+The parity plan's H1, seventh part, and the first release of "CMYK and Lab everywhere" (DEV_PLAN 22.3): one float pixel model, and a single-ink view of the canvas.
+
+### Added
+
+- The Channels panel's ink solo now shows that ink alone on the canvas (paper white, full ink black) as well as making it what the Brush, Pencil and Eraser paint; CMYK returns the composite. The view never touches the pixels.
+- In a CMYK document, Gaussian Blur, Unsharp Mask and Add Noise run on the ink itself, and Image Size resamples the ink; Canvas Size, the flips, Trim and Reveal All are offered too.
+
+### Changed
+
+- 16-bit, 32-bit and CMYK layers now share one float pixel model inside formvis, so every operation ported to it serves all of them at once (and Lab when it comes). Projects, files and undo are unchanged; a `.fmv` saved before reopens as before.
+- At 32 bits Gaussian Blur now runs on the linear-light floats rather than on the rendition.
+
 ## 1.54.2 · 2026-09-30
 
 The parity plan's H1, sixth part: channels, painting, the picker and Info in CMYK (DEV_PLAN 22.2).

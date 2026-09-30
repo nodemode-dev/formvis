@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.54.3
+
+No engine code changed in 1.54.3 (the one float pixel model is a window change). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.54.2"
+version = "1.54.2"
+version = "1.54.2"
+ "version": "1.54.2",
+```
+
 ## The sRGB to ink table · _v1.54.2 (app/services/colour.py, app/routers/colour.py)
 
 `rgb_cmyk_lut(profile, source, intent, bpc)`: a GRID^3 table of C, M, Y, K bytes (r slowest, b fastest) from an RGB profile (sRGB when none) to a CMYK one, the window's readouts and paint colours; `/color/rgb-cmyk-lut`. The exact path for pixels stays `convert_pixels`. Checked: 33^3 by 4 bytes; a red through the table lands within 1 level of the direct transform. Removed lines taken after the version edit:

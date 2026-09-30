@@ -2,6 +2,91 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The one float pixel model, and the single-ink view · _v1.54.3 (engine/types.ts, deep.ts, channels.ts, index.ts; io/project-io.ts; ui/channels.ts, panels/filter-panel.ts; app.ts; frontend/src/engine/deep.test.ts and e2e/test_sixteen_bit.py follow the renamed field under the owner's 2a)
+
+DEV_PLAN 22.3, the first release of "CMYK and Lab everywhere". `ChannelPixels { mode: 'rgb' | 'cmyk' | 'lab'; n: 3 | 4; width; height; data }`, alpha last, `n + 1` floats a pixel, is the one model for 16-bit, 32-bit, CMYK and, later, Lab; `DeepPixels` names its RGB kind; `Layer.deep` is gone and `Layer.channels` is the single field. Every `deep.ts` kernel is n-channel in place: `resampleDeep` (area average and bilinear over n), `blurDeep` (each channel rides with alpha through the four-wide box blur, in groups of three), `unsharpDeep`, `noiseDeep`; `deepFromU16`, `deepFromRaster`, `strokeDeep`, `deepToLinear`, `deepToned` return the model; `place` and `bilinear` were n-channel since 1.54.1. The engine's guard, stroke end, Image Size (the rendition by kind: through the CMYK table for ink), `setCmyk`, `setDepth`, `openDeep` and `applyDeepFilter` (n-channel, the selection blend over `n + 1`, the rendition by kind) read the one field; `.fmv` writes `.deep32`, `.deep16` or `.cmyk32` by kind and reads all three onto it. The filter panel's float path serves every layer with channels, so Gaussian Blur, Unsharp Mask and Add Noise run on ink, and at 32 bits Gaussian Blur now runs in linear light through `blurDeep`. `CMYK_OK` opens those three, Image Size, Canvas Size, both flips, Trim and Reveal All. The single-ink canvas view: `Engine.channelView`, `setChannelView`, `channelGrey` (a grey rendition of one ink per layer, paper white and full ink black, cached against its channels object), drawn through the display's override hook and never touching pixels; the Channels panel's ink solo sets the paint target and the view. Four stamped comments moved here: "A 32-bit layer is linear light, unbounded: its display is sRGB-encoded, white and above shown white (1.53.9)" (`rasterFromDeep`); "32 bits as floats (1.53.9)" and "16 bits kept (1.53.6)" (`project-io.ts` write); "Within a selection (1.53.8): blended by its coverage, where the layer sits unscaled and unrotated" (`applyDeepFilter`); "as the 8-bit path" (Image Size). Verified: unit 188 with `deep.test.ts` on the model; the 16-bit browser suite (three of its four; the EXR case is the sandbox's OpenCV without OpenEXR) and the mode walk; in the browser `blurDeep` on a CMYK layer equals the blur of each ink as a grey image to 0.00, alpha included, and Gaussian Blur through the menu lands as a step on the ink with the mode kept; with Black solo the scene canvas draws grey where the composite drew red and returns when cleared. A first landing of this entry used a script and was reverted before commit, as SEDO requires; this is the hand-made one. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+                if (d.depth === 32) { engine.openDeep(name, { width: d.width, height: d.height, data: d.data as Float32Array }, 32); continue; }   // 32 bits (1.53.9)
+        const blob = deep ? (p.doc.depth === 32 && kind === 'tiff' ? await api.encodeDeep(deep.data, deep.width, deep.height, 'tiff32') : await api.encodeDeep(deepToU16(p.doc.depth === 32 ? deepToned(deep, 0, 1).data : deep.data), deep.width, deep.height, kind as 'png' | 'tiff')) : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
+  return { mode: 'cmyk', width, height, data };
+  return { channels: { mode: 'cmyk', width: W, height: ch.height, data: out }, region };
+  return { width, height, data };
+  return { width: r.width, height: r.height, data };
+  // A 32-bit layer is linear light, unbounded: its display is sRGB-encoded, white and above shown white (1.53.9).
+    const src = l.deep ?? deepFromRaster(l.raster);
+  const out = new Float32Array(width * height * 4), sx = src.width / width, sy = src.height / height, px = [0, 0, 0, 0];
+    const o = (y * width + x) * 4;
+      let a = 0, area = 0; const c = [0, 0, 0];
+        const wgt = (Math.min(xb, xx + 1) - Math.max(xa, xx)) * (Math.min(yb, yy + 1) - Math.max(ya, yy)), s = (yy * src.width + xx) * 4, al = src.data[s + 3] * wgt;
+        area += wgt; a += al; for (let k = 0; k < 3; k++) c[k] += src.data[s + k] * al;
+      out[o + 3] = area > 0 ? a / area : 0; for (let k = 0; k < 3; k++) out[o + k] = a > 0 ? c[k] / a : 0;
+      bilinear(src.data, src.width, src.height, (x + 0.5) * sx - 0.5, (y + 0.5) * sy - 0.5, px);
+      out[o] = px[0]; out[o + 1] = px[1]; out[o + 2] = px[2]; out[o + 3] = px[3];
+  return { width, height, data: out };
+/** Gaussian Blur at 16 bits: the 8-bit filter's three box blurs (filters.ts), in premultiplied alpha, on floats. */
+  const { width: w, height: h } = src, n = w * h * 4;
+  if (!(sigma >= 0.1)) return { width: w, height: h, data: new Float32Array(src.data) };
+  const a = new Float32Array(n), b = new Float32Array(n);
+  for (let i = 0; i < n; i += 4) { const al = src.data[i + 3]; a[i] = src.data[i] * al * 255; a[i + 1] = src.data[i + 1] * al * 255; a[i + 2] = src.data[i + 2] * al * 255; a[i + 3] = al * 255; }
+  for (const width of threeBoxWidths(sigma)) { const r = (width - 1) / 2; boxBlur(a, b, w, h, r, true); boxBlur(b, a, w, h, r, false); }
+  const out = new Float32Array(n);
+  for (let i = 0; i < n; i += 4) { const al = a[i + 3]; out[i + 3] = al / 255; for (let k = 0; k < 3; k++) out[i + k] = al > 0 ? a[i + k] / al : 0; }
+  return { width: w, height: h, data: out };
+/** Unsharp Mask at 16 bits: the 8-bit formula, with the threshold in the same levels. */
+  const blur = blurDeep(src, Math.max(0.1, radius)), s = src.data, b = blur.data, o = new Float32Array(s.length), k = amount / 100;
+  for (let i = 0; i < s.length; i += 4) {
+    for (let c = 0; c < 3; c++) { const d = s[i + c] - b[i + c]; o[i + c] = Math.min(1, Math.max(0, Math.abs(d) * 255 >= threshold ? s[i + c] + k * d : s[i + c])); }
+    o[i + 3] = s[i + 3];
+  return { width: src.width, height: src.height, data: o };
+/** Add Noise at 16 bits: the 8-bit filter's seeded noise (the same values for the same seed), not rounded. */
+  const d = new Float32Array(src.data), spread = (amount / 100) * 127.5;
+  for (let px = 0, i = 0; i < d.length; px++, i += 4) {
+    if (d[i + 3] === 0) continue;
+    for (let c = 0; c < 3; c++) {
+  return { width: src.width, height: src.height, data: d };
+  return { width: deep.width, height: deep.height, data: out };
+  return { width: d.width, height: d.height, data: out };
+  return { width: d.width, height: d.height, data: out };
+    if (deepBefore && !nested && p.doc.layers.some((l) => { const o = deepBefore.get(l.id); return !!o && l.raster !== o.raster && ((!!o.deep && l.deep === o.deep) || (!!o.channels && l.channels === o.channels)); })) {
+    if (patch && dl?.deep && dl.raster === patch.raster) {
+      st.project.updateLayer(st.layerId, { deep: strokeDeep(dl.deep, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fg, this.bg) });
+    } else if (patch && dl?.channels && dl.raster === patch.raster && st.project.cmykLut) {
+        if (l.deep && raster && !shape) { const deep = resampleDeep(l.deep, raster.width, raster.height); return { ...l, deep, raster: rasterFromDeep(deep, p.doc.depth === 32), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }   // as the 8-bit path
+      const layers = pp.doc.layers.map((l) => { const ch = ink.get(l.id); return ch ? { ...l, channels: ch, deep: undefined, raster: rasterFromChannels(ch, lut) } : l; });
+        const src = l.deep ?? deepFromRaster(l.raster);
+        if (depth === 32) return { ...l, deep: from === 32 ? src : deepToLinear(src) };
+        return depth === 16 ? { ...l, deep: enc, raster: from === 32 ? rasterFromDeep(enc) : l.raster } : { ...l, deep: undefined, raster: from === 32 ? rasterFromDeep(enc) : l.raster };
+    p.doc = { ...p.doc, depth, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, deep } : l)) };
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l?.deep) return false;
+    let deep = fn(l.deep);
+      // Within a selection (1.53.8): blended by its coverage, where the layer sits unscaled and unrotated.
+      const t = l.transform, sel = p.selection;
+      if (t.rotation || t.flipX || t.flipY || t.w !== l.deep.width || t.h !== l.deep.height || t.x !== Math.round(t.x) || t.y !== Math.round(t.y)) { this.notice(`${name} within a selection needs the layer unscaled and unrotated in 16 bits: Select > Deselect to filter the whole layer.`); return false; }
+      const src = l.deep.data, f = deep.data, out = new Float32Array(src);
+      for (let y = 0; y < l.deep.height; y++) for (let x = 0; x < l.deep.width; x++) {
+        const o = (y * l.deep.width + x) * 4;
+        for (let c = 0; c < 4; c++) out[o + c] = src[o + c] + (f[o + c] - src[o + c]) * cov;
+      deep = { width: l.deep.width, height: l.deep.height, data: out };
+    return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, deep, raster: rasterFromDeep(deep, pp.doc.depth === 32) } : x)) }; return true; });
+  /** In a 16-bit document, the layer's 16-bit pixels (1.53.6); `raster` is their 8-bit rendition. */
+  deep?: DeepPixels;
+export interface DeepPixels { width: number; height: number; data: Float32Array }
+/** A layer's ink in a CMYK document (1.54.0, H1): C, M, Y, K as floats 0 (paper) to 1 (full ink), then straight alpha,
+ *  five a pixel; `raster` holds their sRGB rendition through the document's profile. */
+export interface ChannelPixels { mode: 'cmyk'; width: number; height: number; data: Float32Array }
+    if (l.deep && doc.depth === 32) { const name = `${l.id}.deep32`; files.push({ name, blob: new Blob([new Float32Array(l.deep.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = l.deep.width; r.deepHeight = l.deep.height; }   // 32 bits as floats (1.53.9)
+    else if (l.deep) { const name = `${l.id}.deep16`; files.push({ name, blob: new Blob([deepToU16(l.deep.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = l.deep.width; r.deepHeight = l.deep.height; }   // 16 bits kept (1.53.6)
+    if (l.channels) { const name = `${l.id}.cmyk32`; files.push({ name, blob: new Blob([new Float32Array(l.channels.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = l.channels.width; r.inkHeight = l.channels.height; }
+  records.forEach((r, i) => { const n = str(r.deepFile), u = n ? deeps.get(n) : undefined, w = num(r.deepWidth, 0), h = num(r.deepHeight, 0); if (u && layers[i] && u.length === w * h * 4) (layers[i] as { deep?: DeepPixels }).deep = u instanceof Float32Array ? { width: w, height: h, data: u } : deepFromU16(u, w, h); });
+  if (mode === 'cmyk') records.forEach((r, i) => { const n = str(r.inkFile), u = n ? inks.get(n) : undefined, w = num(r.inkWidth, 0), h = num(r.inkHeight, 0); if (u && layers[i] && u.length === w * h * 5) (layers[i] as { channels?: ChannelPixels }).channels = { mode: 'cmyk', width: w, height: h, data: u }; });
+    if (!cmyk && this.inkSolo) { this.inkSolo = null; this.engine.paintChannel = null; }
+    setText(this.root.querySelector('.cv-ch-note') as HTMLElement, cmyk ? (this.inkSolo ? `The Brush, Pencil and Eraser write ${ROWS.find((r) => r.id === this.inkSolo)?.label} only; the view stays the composite.` : 'Click an ink to paint it alone; ⌘- or Ctrl-click loads its light areas as a selection.')
+    if (this.engine.current?.doc.depth !== 16) return false;
+export const VERSION = '1.54.2';
+```
+
 ## Channels, painting, picker and Info in CMYK · _v1.54.2 (engine/channels.ts, colour-lut.ts, index.ts, project.ts; io/api.ts; ui/channels.ts, info.ts, panels/color-picker.ts; app.ts; backend app/services/colour.py, routers/colour.py)
 
 DEV_PLAN 22.2. `Ink`, `Lut3x4`, `lut3x4From`, `inkOf` (sRGB to ink through a 33-point table, trilinear), `renditionOf` (one ink through the display table). `strokeChannels`: a Brush, Pencil or Eraser stroke rebuilt on a layer's ink from the 8-bit rendition it painted, as `strokeDeep` at 16 bits (the 1.53.8 comment at the stroke-end site said: "16 bits: the stroke rebuilt on the layer's 16-bit pixels, in this step, so Undo restores them too"; it is here now); with a solo channel only that ink changes and alpha stays; the region's rendition is redrawn from the ink and written into the raster and the history patch's `after`, so redo keeps ink and rendition in step. Engine: `fgInk`, `bgInk`, `paintChannel`, `setInk`; the `fg` and `bg` setters read ink through the project's `cmykIn`; `inMode` passes CMYK through; `deepPaintOk` paints in CMYK once both tables are present; `setCmyk` and `openChannels` take the ink table; `setCmykTables` for a project reopened from `.fmv` (the app's `ensureCmykTables`). `Project.cmykIn`. Channels panel: CMYK, Cyan, Magenta, Yellow and Black rows created once beside the RGB ones and hidden per mode; ink thumbnails from `composeChannels`; a click on an ink makes it the paint target (the note says the view stays the composite: the RGB solo view is a colour matrix over the rendition, which cannot recover an ink, so a single-ink view waits for the renderer, 22.3); Cmd- or Ctrl-click loads an ink's light areas. Info reads C, M, Y, K percent from the composed ink. The picker gains C, M, Y, K rows in CMYK: an RGB change re-reads the ink through the table, a typed ink is exact, OK hands the ink to the engine. Backend: `rgb_cmyk_lut` and `/color/rgb-cmyk-lut`. Verified: a K-only stroke leaves ink (0, 0, 0, 100) with the rendition at the profile's black (31, 31, 29), Info reads it, undo and redo restore ink and rendition; a red stroke through the table lands ink (1, 231, 193, 46) against LittleCMS's direct (1, 231, 194, 46); the eraser thins alpha in both; the mode walk passes; throttled (4x CPU, slow network) layout shift 0.00003 across the Channels tab, the mode change, row clicks and strokes, no errors. Removed lines taken after the version edit. Removed from frontend:
