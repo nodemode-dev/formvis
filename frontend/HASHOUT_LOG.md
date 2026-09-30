@@ -2,6 +2,42 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## 16-bit geometry and filters · _v1.53.7 (engine/deep.ts, filters.ts, index.ts; ui/panels/filter-panel.ts; app.ts)
+
+`composeDeep` places each layer with `placement` inverted (`place`, `bilinear`); `resampleDeep`, `blurDeep`, `unsharpDeep`, `noiseDeep`; `threeBoxWidths`, `boxBlur`, `mix32` and `toUnit` exported; `resampleImage` resamples a layer's 16 bits; `Engine.applyDeepFilter`; `FilterPanel.deepFilter`, at the start of `applyInBackground`; the allow-list's geometry and three filters. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    'new-adj-levels', 'new-adj-curves', 'new-adj-exposure', 'edit-adjustment', 'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'depth-8', 'depth-16', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning',
+import { composeDeep, deepFromU16, transferOf } from './deep';
+    const tf = l.transform;
+    if (tf.rotation || tf.flipX || tf.flipY || tf.w !== l.raster.width || tf.h !== l.raster.height) return { error: `${name} is scaled, rotated or flipped, which 16-bit export does not compose yet.` };
+    const src = l.deep ?? deepFromRaster(l.raster), ox = Math.round(tf.x), oy = Math.round(tf.y);
+    for (let y = Math.max(0, oy); y < Math.min(H, oy + src.height); y++) for (let x = Math.max(0, ox); x < Math.min(W, ox + src.width); x++) {
+      const s = ((y - oy) * src.width + (x - ox)) * 4, o = (y * W + x) * 4, sa = src.data[s + 3] * op, oa = out[o + 3], na = sa + oa * (1 - sa);
+      if (na <= 0) continue;
+      for (let c = 0; c < 3; c++) out[o + c] = (src.data[s + c] * sa + out[o + c] * oa * (1 - sa)) / na;
+      out[o + 3] = na;
+    }
+function threeBoxWidths(sigma: number): number[] {
+function boxBlur(src: Float32Array, dst: Float32Array, w: number, h: number, r: number, across: boolean): void {
+function mix32(z: number): number {
+const toUnit = (bits: number): number => (bits + 0.5) / 4294967296;
+import { deepFromRaster, rasterFromDeep } from './deep';
+  private applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
+export const VERSION = '1.53.6';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.53.6"
+version = "1.53.6"
+version = "1.53.6"
+ "version": "1.53.6",
+```
+
+Nothing removed from src-tauri.
+
 ## 16-bit documents · _v1.53.6 (engine/deep.ts new; engine/index.ts, types.ts, kernels.ts; io/project-io.ts, api.ts; ui/commands.ts; app.ts; backend routers/io.py)
 
 `DeepPixels`, `Doc.depth`, `Layer.deep`; `deepFromU16`, `deepToU16`, `deepFromRaster`, `rasterFromDeep`, `transferOf`, `composeDeep`; each table kernel keeps its `transfer`; `Engine.setDepth`, `openDeep`, `deepBlocked`, and the 16-bit guard in `edit`; `Commands.gate` and the 16-bit allow-list; the project's `deepFile` and `depth`; `api.decodeDeep`, `encodeDeep`; the engine's `/io/decode-deep` and `/io/encode-deep`. Removed lines taken after the version edit. Removed from frontend:

@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.53.7 · 2026-09-30
+
+The parity plan's H1, second part: 16-bit geometry and filters.
+
+### Added
+
+- In a 16-bit document: moving, Flip Canvas, Canvas Size, Crop, Trim and Reveal All keep 16 bits (the export composes each layer where the renderer places it: whole-pixel moves and flips copy exactly, scaling and rotation sample bilinearly); Image Size resamples the 16 bits (an area average when shrinking, bilinear when enlarging) and derives the 8-bit rendition from them.
+- Gaussian Blur, Unsharp Mask and Add Noise at 16 bits on a whole layer, the same maths as at 8 (the blur's three box passes, the same seeded noise), from the filter dialog, actions and the agent tools alike; within a selection they wait for a later release, and say so.
+
 ## 1.53.6 · 2026-09-30
 
 The parity plan's H1, first part: 16-bit documents.
