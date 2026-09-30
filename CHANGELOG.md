@@ -4,6 +4,21 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.54.2 · 2026-09-30
+
+The parity plan's H1, sixth part: channels, painting, the picker and Info in CMYK (DEV_PLAN 22.2).
+
+### Added
+
+- The Channels panel lists CMYK, Cyan, Magenta, Yellow and Black in a CMYK document, each with a thumbnail of its ink. Clicking an ink makes it what the Brush, Pencil and Eraser write, so a K-only black is one click and a stroke; Cmd- or Ctrl-click loads an ink's light areas as a selection.
+- The Brush, Pencil and Eraser paint CMYK documents in ink: a stroke paints the rendition as before, and when it ends it is rebuilt on the layer's ink and the rendition redrawn from the ink, in the same undo step.
+- The colour picker shows C, M, Y and K in a CMYK document: an RGB or hex entry reads its ink through the document's profile; a typed ink is kept exactly. The Info panel and the Color Samplers read C, M, Y, K percentages from the ink under the pointer.
+
+### Changed
+
+- In CMYK the Channels panel's solo choice sets the paint target and the canvas keeps showing the composite; the panel says so. A single-ink view of the canvas needs a per-layer rendition through the renderer and follows in 1.54.3.
+- The README's line counts follow the code again (36,000 TypeScript, 7,800 Python).
+
 ## 1.54.1 · 2026-09-30
 
 The parity plan's H1, fifth part: CMYK documents as true channels (DEV_PLAN Phase 22.1).

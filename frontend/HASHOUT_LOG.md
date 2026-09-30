@@ -2,6 +2,52 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Channels, painting, picker and Info in CMYK · _v1.54.2 (engine/channels.ts, colour-lut.ts, index.ts, project.ts; io/api.ts; ui/channels.ts, info.ts, panels/color-picker.ts; app.ts; backend app/services/colour.py, routers/colour.py)
+
+DEV_PLAN 22.2. `Ink`, `Lut3x4`, `lut3x4From`, `inkOf` (sRGB to ink through a 33-point table, trilinear), `renditionOf` (one ink through the display table). `strokeChannels`: a Brush, Pencil or Eraser stroke rebuilt on a layer's ink from the 8-bit rendition it painted, as `strokeDeep` at 16 bits (the 1.53.8 comment at the stroke-end site said: "16 bits: the stroke rebuilt on the layer's 16-bit pixels, in this step, so Undo restores them too"; it is here now); with a solo channel only that ink changes and alpha stays; the region's rendition is redrawn from the ink and written into the raster and the history patch's `after`, so redo keeps ink and rendition in step. Engine: `fgInk`, `bgInk`, `paintChannel`, `setInk`; the `fg` and `bg` setters read ink through the project's `cmykIn`; `inMode` passes CMYK through; `deepPaintOk` paints in CMYK once both tables are present; `setCmyk` and `openChannels` take the ink table; `setCmykTables` for a project reopened from `.fmv` (the app's `ensureCmykTables`). `Project.cmykIn`. Channels panel: CMYK, Cyan, Magenta, Yellow and Black rows created once beside the RGB ones and hidden per mode; ink thumbnails from `composeChannels`; a click on an ink makes it the paint target (the note says the view stays the composite: the RGB solo view is a colour matrix over the rendition, which cannot recover an ink, so a single-ink view waits for the renderer, 22.3); Cmd- or Ctrl-click loads an ink's light areas. Info reads C, M, Y, K percent from the composed ink. The picker gains C, M, Y, K rows in CMYK: an RGB change re-reads the ink through the table, a typed ink is exact, OK hands the ink to the engine. Backend: `rgb_cmyk_lut` and `/color/rgb-cmyk-lut`. Verified: a K-only stroke leaves ink (0, 0, 0, 100) with the rendition at the profile's black (31, 31, 29), Info reads it, undo and redo restore ink and rendition; a red stroke through the table lands ink (1, 231, 193, 46) against LittleCMS's direct (1, 231, 194, 46); the eraser thins alpha in both; the mode walk passes; throttled (4x CPU, slow network) layout shift 0.00003 across the Channels tab, the mode change, row clicks and strokes, no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import type { Lut4 } from './engine/colour-lut';
+  const cmykLuts = new Map<string, Lut4>();
+  async function cmykLutFor(profile: DocProfile): Promise<Lut4> {
+    if (!lut) { lut = await api.cmykLut({ icc: profile.icc }); cmykLuts.set(key, lut); }
+        engine.setCmyk(profile, ink, lut);
+    engine.openChannels(name, channelsFromU8(file.ink, file.width, file.height), profile, await cmykLutFor(profile));
+import { applyLut4, type Lut4 } from './colour-lut';
+import { applyLut, type ColourLut, type Lut4 } from './colour-lut';
+import { rasterFromChannels } from './channels';
+  set fg(c: RGB) { this.fgc = this.inMode(c); }
+  set bg(c: RGB) { this.bgc = this.inMode(c); }
+    if (m === 'rgb') return { r: c.r, g: c.g, b: c.b };
+    // 16 bits (1.53.8): the stroke rebuilt on the layer's 16-bit pixels, in this step, so Undo restores them too.
+    const dl = patch && st.target === 'pixels' && st.project.doc.depth === 16 ? st.project.layer(st.layerId) : null;
+  setCmyk(profile: DocProfile, ink: Map<ID, ChannelPixels>, lut: Lut4): boolean {
+    p.cmykLut = lut;
+  openChannels(name: string, ch: ChannelPixels, profile: DocProfile, lut: Lut4): Project {
+    p.cmykLut = lut;
+    if ((this.current?.doc.depth ?? 8) === 8) return true;
+import type { Lut4 } from './colour-lut';
+import { lutFrom, lut4From, type ColourLut, type Lut4 } from '../engine/colour-lut';
+type Ch = 'rgb' | 'r' | 'g' | 'b';
+const ROWS: ReadonlyArray<{ id: Ch; label: string }> = [{ id: 'rgb', label: 'RGB' }, { id: 'r', label: 'Red' }, { id: 'g', label: 'Green' }, { id: 'b', label: 'Blue' }];
+        if (r.id === 'rgb') { this.solo = null; this.shown.r = this.shown.g = this.shown.b = true; } else { this.solo = r.id; }
+    for (const ev of ['history', 'doc', 'active', 'projects'] as const) engine.on(ev, () => this.schedule());
+    const src = this.engine.current ? this.engine.flattened() : null;
+      if (id === 'rgb') continue;
+    const m = this.solo
+      : [this.shown.r ? 1 : 0, 0, 0, 0, 0, 0, this.shown.g ? 1 : 0, 0, 0, 0, 0, 0, this.shown.b ? 1 : 0, 0, 0, 0, 0, 0, 1, 0];
+    const plain = !this.solo && this.shown.r && this.shown.g && this.shown.b;
+      const id = row.dataset.ch as Ch;
+    setText(this.root.querySelector('.cv-ch-note') as HTMLElement, native && !plain ? 'The Native GPU renderer draws outside the page: switch the renderer in Preferences to view single channels.' : '⌘- or Ctrl-click a channel to load it as a selection.');
+      const v = id === 'rgb' ? 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] : d[i + (id === 'r' ? 0 : id === 'g' ? 1 : 2)];
+    for (const ev of ['doc', 'history', 'active', 'projects', 'render'] as const) engine.on(ev, () => { this.pixels = null; this.soon(); });
+      rows.push(['Colour', rgb(this.colorAt(this.pointer))]);
+    for (const [i, s] of (m?.samplers ?? []).entries()) rows.push([`#${i + 1}`, rgb(this.colorAt(s))]);
+import { el } from '../dom';
+    side.append(this.swatch, this.red.el, this.green.el, this.blue.el, this.hex);
+export const VERSION = '1.54.1';
+```
+
 ## CMYK documents · _v1.54.1 (engine/channels.ts new, colour-lut.ts, deep.ts, index.ts, project.ts, types.ts; io/api.ts, project-io.ts; ui/app-dialogs.ts, colour.ts, tabs.ts; app.ts; backend app/services/colour.py, routers/colour.py, routers/io.py, app/profiles/ new)
 
 The parity plan's H1, fifth part (DEV_PLAN Phase 22.1): `Doc.mode` gains `'cmyk'`; `ChannelPixels` (C, M, Y, K as ink 0 to 1, then straight alpha, five floats a pixel) on `Layer.channels`, the sRGB rendition staying in `raster`. `Lut4`, `lut4From`, `applyLut4` (a 17-a-side CMYK to sRGB table from the engine, quadrilinear). `channels.ts`: `channelsFromU8`, `channelsToU8`, `rasterFromChannels`, `rasterBytes`, `composeChannels` (Normal only, as `composeDeep`). `deep.ts`'s `place` and `bilinear` take a channel count (default 4, exported, so ink composes through the same placement). `Engine.setCmyk`, `setRgbFromCmyk`, `openChannels`; `Project.cmykLut` outside history. `Engine.edit()`'s guard, written for 16 bits at 1.53.6, now also undoes a step that changed a CMYK layer's rendition without its ink, so nothing drops a CMYK document to RGB silently; the guard's explanatory comment moved here. `convertMode` refuses CMYK either way (the engine converts). `api.cmykLut`, `convertPixels`, `defaultCmykProfile`, `decodeCmyk`, `encodeCmyk`. `.fmv`: `<id>.cmyk32` beside the rendition, `inkFile`, `inkWidth`, `inkHeight`; `mode: 'cmyk'` read. `ModeDialog`'s CMYK pane (profile, intent, black point; `onCmyk`). `ColourView` applies no view table in CMYK (the rendition is already through the profile; proofing waits). Tab reads `CMYK/8`. `app.ts`: `cmykLutFor`, `cmykProfileOf`, `toCmyk`, `cmykToRgb`, `openCmyk`, `exportCmyk`; CMYK JPEG and TIFF open as CMYK documents and export in ink with the profile embedded; `mode-cmyk`; `CMYK_OK` beside the depth gate; the New dialog's note corrected. Backend: `shipped_dir`, `default_cmyk`, `cmyk_lut`, `convert_pixels` (exact, 8 bits); routes `/color/cmyk-lut`, `/color/convert-pixels`, `/color/default-cmyk`, `/io/decode-cmyk`, `/io/encode-cmyk`; the shipped FOGRA39L profile (zlib licence, NOTICE.md). Verified: ink against LittleCMS applied directly, 0 levels apart; the rendition within 1 level of the direct transform; TIFF ink round trip exact, JPEG within 1; undo and redo; the way back to RGB; the mode walk and the 274-command walk in the browser; throttled (4x CPU, slow network) layout shift 0.00004 across the dialog, the conversion and the New dialog, no console errors. Removed lines taken after the version edit. Removed from frontend:

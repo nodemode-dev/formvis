@@ -156,9 +156,12 @@ ask it questions.
 - CMYK JPEG and TIFF files open as CMYK documents with their embedded profile; a file without one takes the shipped
   profile, and a message says so. File > Export > TIFF and JPEG from a CMYK document write CMYK with the profile
   embedded; PNG, WebP and the others write the sRGB rendition you see.
-- Every layer keeps its ink beside the rendition on screen, and the project keeps it too. Nothing drops a CMYK document
-  to RGB quietly: what is not built for ink yet (painting, adjustments, filters, transforms, the Channels panel's C, M,
-  Y and K) waits in the menu until Mode > RGB Color, and a step that would lose ink is undone with a message.
+- Every layer keeps its ink beside the rendition on screen, and the project keeps it too. The Channels panel lists
+  CMYK, Cyan, Magenta, Yellow and Black with a thumbnail of each ink; click an ink and the Brush, Pencil and Eraser
+  write that ink alone (a K-only black is one click and a stroke), click CMYK to write all four. The colour picker
+  shows C, M, Y and K, and the Info panel reads the ink under the pointer. Nothing drops a CMYK document to RGB
+  quietly: what is not built for ink yet (adjustments, filters, transforms, retouching, a single-ink view of the
+  canvas) waits in the menu until Mode > RGB Color, and a step that would lose ink is undone with a message.
 
 ## 32-bit documents
 

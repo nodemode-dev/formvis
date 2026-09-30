@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The sRGB to ink table · _v1.54.2 (app/services/colour.py, app/routers/colour.py)
+
+`rgb_cmyk_lut(profile, source, intent, bpc)`: a GRID^3 table of C, M, Y, K bytes (r slowest, b fastest) from an RGB profile (sRGB when none) to a CMYK one, the window's readouts and paint colours; `/color/rgb-cmyk-lut`. The exact path for pixels stays `convert_pixels`. Checked: 33^3 by 4 bytes; a red through the table lands within 1 level of the direct transform. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.54.1"
+version = "1.54.1"
+version = "1.54.1"
+ "version": "1.54.1",
+```
+
 ## CMYK documents · _v1.54.1 (app/services/colour.py, app/routers/colour.py, app/routers/io.py, app/profiles/FOGRA39L_coated.icc new; setup/freeze_backend and .bat)
 
 `colour.py`: `shipped_dir` (beside the app, or PyInstaller's `_MEIPASS`), `default_cmyk`, `cmyk_lut` (GRID4 = 17, c slowest, k fastest, relative intent), `convert_pixels` (LittleCMS at 8 bits, RGBA to CMYK and alpha or back, alpha through, MAX_BYTES times 8 a request); `profile_dirs` lists the shipped folder second; `profiles()` marks `shipped`. `routers/colour.py`: `/cmyk-lut`, `/convert-pixels` (multipart: pixels, width, height, to, profile base64, source base64, intent, bpc), `/default-cmyk`. `routers/io.py`: `/decode-cmyk` (Pillow; ink and alpha bytes then the embedded profile, `X-Profile-Bytes`; 204 when not CMYK) and `/encode-cmyk` (alpha lays the ink over paper, TIFF deflate or JPEG, profile embedded). The freeze scripts bundle `profiles`. The profile is colord's FOGRA39L under the zlib licence (NOTICE.md); ECI's own is not shippable. Checked: the conversion equals `ImageCms.applyTransform` directly; the table is 17^4 by 3 bytes; a TIFF ink round trip is exact and JPEG within 1 level. Removed lines taken after the version edit:
