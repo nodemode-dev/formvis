@@ -1,5 +1,8 @@
 # 16-bit documents (1.53.6, the parity plan's H1): a 16-bit PNG opened, an Exposure layer, a 16-bit PNG exported with
 # thousands of levels; painting refused and 8-bit-only commands disabled; back to 8 bits.
+import os
+
+os.environ.setdefault("OPENCV_IO_ENABLE_OPENEXR", "1")   # this test writes and reads EXR itself, as the engine does (1.53.9)
 import cv2
 import numpy as np
 
@@ -80,3 +83,34 @@ def test_painting_and_filtering_a_selection_keep_16_bits(page, tmp_path):
     assert np.array_equal(img[40, :, 1], ramp[40, :, 1].astype(int))                           # outside the stroke and the selection: untouched
     assert len(np.unique(img[60, :, 1])) > 600                                                 # blurred within the selection, at 16 bits
     assert not np.array_equal(img[60, :, 1], ramp[60, :, 1].astype(int))                       # and changed by the blur
+
+
+def test_32_bit_exr_keeps_its_highlights(page, tmp_path):
+    src = tmp_path / "bright.exr"
+    lin = np.linspace(0, 8, 256, dtype=np.float32).reshape(1, 256, 1).repeat(3, 2).repeat(4, 0)   # up to 8 times white
+    assert cv2.imwrite(str(src), lin)
+    page.locator("input[data-role='import-images']").set_input_files(str(src))
+    page.wait_for_function("window.formvis.engine.current?.doc.depth === 32", timeout=20000)
+    page.evaluate("""() => { const e = window.formvis.engine; e.addAdjustmentLayer('exposure');
+      e.edit('Exposure', (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((l) => (l.adjustment?.kind === 'exposure' ? { ...l, adjustment: { ...l.adjustment, data: { ...l.adjustment.data, exposureSettings: { exposure: -2, offset: 0, gamma: 1 } } } } : l)) }; }); }""")
+    with page.expect_download(timeout=30000) as d:
+        page.evaluate("window.formvis.commands.run('export-exr')")
+    out = tmp_path / "out.exr"; d.value.save_as(str(out))
+    img = cv2.imread(str(out), cv2.IMREAD_UNCHANGED)
+    assert img.dtype == np.float32 and np.abs(img[2, :, 0] - lin[2, :, 0] / 4).max() < 1e-5 and img.max() > 1.9   # a quarter, highlights past white kept
+    with page.expect_download(timeout=30000) as d:
+        page.evaluate("window.formvis.commands.run('export-tiff')")
+    t = tmp_path / "out.tif"; d.value.save_as(str(t))
+    assert cv2.imread(str(t), cv2.IMREAD_UNCHANGED).dtype == np.float32
+    assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.deep).id); e.setTool('brush'); return e.beginStroke({ x: 5, y: 2 }, false); })()") is False
+    page.evaluate("() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.adjustment).id); e.deleteLayers(); }")
+    page.evaluate("window.formvis.commands.run('depth-16')")
+    page.locator(".cv-scrim:not([hidden]) .cv-dialog", has_text="HDR Toning").wait_for()
+    page.locator(".cv-scrim:not([hidden]) .cv-dialog input[aria-label='Exposure']").fill("-3")
+    page.locator(".cv-scrim:not([hidden]) .cv-dialog .cv-dialog-foot button", has_text="OK").click()
+    page.wait_for_function("window.formvis.engine.current.doc.depth === 16")
+    top = page.evaluate("(() => { const l = window.formvis.engine.current.doc.layers.find((x) => x.deep); return l.deep.data[(1 * 256 + 255) * 4]; })()")
+    assert abs(top - 1.0) < 1e-4                                                               # 8 at -3 EV is exactly white
+    mid = page.evaluate("(() => { const l = window.formvis.engine.current.doc.layers.find((x) => x.deep); return l.deep.data[(1 * 256 + 128) * 4]; })()")
+    want = float(lin[1, 128, 0]) / 8
+    assert abs(mid - (1.055 * want ** (1 / 2.4) - 0.055)) < 1e-4                               # encoded after -3 EV

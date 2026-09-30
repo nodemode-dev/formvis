@@ -25,9 +25,10 @@ export function deepFromRaster(r: Raster): DeepPixels {
   return { width: r.width, height: r.height, data };
 }
 
-export function rasterFromDeep(deep: DeepPixels): Raster {
+export function rasterFromDeep(deep: DeepPixels, linear = false): Raster {
   const r = new Raster(deep.width, deep.height), img = r.ctx.createImageData(deep.width, deep.height);
-  for (let i = 0; i < deep.data.length; i++) img.data[i] = Math.round(Math.min(1, Math.max(0, deep.data[i])) * 255);
+  // A 32-bit layer is linear light, unbounded: its display is sRGB-encoded, white and above shown white (1.53.9).
+  for (let i = 0; i < deep.data.length; i++) { const v = Math.min(1, Math.max(0, deep.data[i])); img.data[i] = Math.round((linear && i % 4 !== 3 ? linearToSrgb(v) : v) * 255); }
   r.ctx.putImageData(img, 0, 0); r.touch();
   return r;
 }
@@ -45,6 +46,14 @@ export function composeDeep(doc: Doc): { width: number; height: number; data: Fl
     const name = `"${l.name}"`;
     if (l.isGroup || l.mask || l.clipId || l.effects || (l.blend && l.blend !== 'normal')) return { error: `${name} uses a group, mask, clipping, style or blend mode, which 16-bit export does not compose yet.` };
     const op = l.opacity * (l.fill ?? 1);
+    if (l.adjustment && doc.depth === 32) {
+      // 32 bits are linear light (1.53.9): Exposure is exposure there, unclamped; the others wait.
+      const e = l.adjustment.kind === 'exposure' ? (l.adjustment.data as { exposureSettings?: { exposure?: number; offset?: number; gamma?: number } }).exposureSettings : null;
+      if (!e) return { error: `${name} is an adjustment 32-bit export does not compose yet (Exposure does).` };
+      const gain = 2 ** (e.exposure ?? 0), off = e.offset ?? 0, inv = 1 / Math.max(0.01, e.gamma ?? 1);
+      for (let i = 0; i < out.length; i += 4) for (let c = 0; c < 3; c++) { const v = out[i + c], nv = Math.pow(Math.max(0, v * gain + off), inv); out[i + c] = v + (nv - v) * op; }
+      continue;
+    }
     if (l.adjustment) {
       const t = transferOf(l.adjustment);
       if (!t) return { error: `${name} is an adjustment 16-bit export does not compose yet (Levels, Curves and Exposure do).` };
@@ -186,4 +195,20 @@ export function strokeDeep(deep: DeepPixels, before: ImageData, after: ImageData
     out[o + 3] = na;
   }
   return { width: deep.width, height: deep.height, data: out };
+}
+
+/** sRGB's encoding and its inverse (1.53.9: 32-bit documents are linear light). */
+export function srgbToLinear(v: number): number { return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }
+export function linearToSrgb(v: number): number { return v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055; }
+
+/** 16-bit (encoded) pixels to 32-bit (linear), and back with Photoshop's Exposure and Gamma (1.53.9). */
+export function deepToLinear(d: DeepPixels): DeepPixels {
+  const out = new Float32Array(d.data);
+  for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = srgbToLinear(out[i]);
+  return { width: d.width, height: d.height, data: out };
+}
+export function deepToned(d: DeepPixels, exposure: number, gamma: number): DeepPixels {
+  const out = new Float32Array(d.data), gain = 2 ** exposure, inv = 1 / Math.max(0.01, gamma);
+  for (let i = 0; i < out.length; i++) if (i % 4 !== 3) out[i] = linearToSrgb(Math.min(1, Math.max(0, Math.pow(Math.max(0, out[i] * gain), inv))));
+  return { width: d.width, height: d.height, data: out };
 }

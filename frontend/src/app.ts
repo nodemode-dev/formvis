@@ -81,7 +81,8 @@ import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
 import { ColourView } from './ui/colour';
-import { composeDeep, deepFromU16, deepToU16 } from './engine/deep';
+import { composeDeep, deepFromU16, deepToU16, deepToned } from './engine/deep';
+import { HdrToningDialog } from './ui/panels/hdr-toning';
 import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog } from './ui/panels/colour-dialogs';
 import { embeddedProfile, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
 import { toolHost } from './extensions/registry';
@@ -459,10 +460,14 @@ export function startApp(): void {
           // A TIFF with several pages asks how to open them (1.53.4).
           if (/\.tiff?$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
-          if (/\.(png|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+          if (/\.(png|tiff?|hdr|exr)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
-            if (png16 || /\.tiff?$/i.test(f.name)) {
-              try { const d = await api.decodeDeep(f, f.name); if (d.depth === 16) { engine.openDeep(f.name.replace(/\.[^.]+$/, ''), deepFromU16(d.data, d.width, d.height)); continue; } } catch { /* opened at 8 bits as before */ }
+            if (png16 || /\.(tiff?|hdr|exr)$/i.test(f.name)) {
+              try {
+                const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, '');
+                if (d.depth === 32) { engine.openDeep(name, { width: d.width, height: d.height, data: d.data as Float32Array }, 32); continue; }   // 32 bits (1.53.9)
+                if (d.depth === 16) { engine.openDeep(name, deepFromU16(d.data as Uint16Array, d.width, d.height)); continue; }
+              } catch { /* opened at 8 bits as before */ }
             }
           }
           // An embedded profile other than sRGB (1.53.5): converted (the default, as the browser decodes), kept, or asked.
@@ -583,6 +588,23 @@ export function startApp(): void {
     });
   }
 
+  /** File > Export > Radiance HDR and OpenEXR from a 32-bit document (1.53.9): linear floats, as they are. */
+  async function exportWide(kind: 'hdr' | 'exr'): Promise<void> {
+    const p = engine.current;
+    if (!p || p.doc.depth !== 32) return;
+    try {
+      const deep = composeDeep(p.doc);
+      if ('error' in deep) throw new Error(deep.error);
+      await deliver(await api.encodeDeep(deep.data, deep.width, deep.height, kind), `${(p.name || 'Untitled').replace(/\.[^.]+$/, '')}.${kind}`);
+    } catch (err) { toast(`Export failed: ${err instanceof Error ? err.message : String(err)}`); }
+  }
+
+  /** Image > Mode > 8 or 16 Bits/Channel; from 32 bits, HDR Toning first (1.53.9). */
+  async function toDepth(depth: 8 | 16): Promise<void> {
+    if (engine.current?.doc.depth === 32) { const tone = await hdrToning.ask(depth); if (tone) engine.setDepth(depth, tone); return; }
+    engine.setDepth(depth);
+  }
+
   async function exportImage(kind: 'png' | 'jpg' | 'webp' | 'tiff' | 'pdf' | 'avif', quality = 0.92): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -590,9 +612,10 @@ export function startApp(): void {
     await engine.task(async () => {
       try {
         // A 16-bit document's PNG and TIFF keep their 16 bits (1.53.6): composed in floating point, written by the engine.
-        const deep = p.doc.depth === 16 && (kind === 'png' || kind === 'tiff') ? composeDeep(p.doc) : null;
+        const deep = (p.doc.depth ?? 8) > 8 && (kind === 'png' || kind === 'tiff') ? composeDeep(p.doc) : null;
         if (deep && 'error' in deep) throw new Error(deep.error);
-        const blob = deep ? await api.encodeDeep(deepToU16(deep.data), deep.width, deep.height, kind as 'png' | 'tiff') : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
+        // From 32 bits (1.53.9): TIFF stays 32-bit float; PNG is 16-bit, sRGB-encoded, brighter than white clipped.
+        const blob = deep ? (p.doc.depth === 32 && kind === 'tiff' ? await api.encodeDeep(deep.data, deep.width, deep.height, 'tiff32') : await api.encodeDeep(deepToU16(p.doc.depth === 32 ? deepToned(deep, 0, 1).data : deep.data), deep.width, deep.height, kind as 'png' | 'tiff')) : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
           : kind === 'webp' ? await engine.exportBlob('image/webp', quality)
           : await (async () => { const png = await engine.exportBlob('image/png'); return png ? api.encode(png, kind, Math.round(quality * 100), p.doc.resolution ?? 72) : null; })();
         if (blob) await deliver(blob, `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);
@@ -1015,6 +1038,7 @@ export function startApp(): void {
   const largePicture = new LargePictureDialog(engine);
   const tiffPages = new TiffPagesDialog(engine);
   const colourView = new ColourView(engine);   // colour management (1.53.5)
+  const hdrToning = new HdrToningDialog();   // 1.53.9
   const colourDialogs = { assign: new AssignProfileDialog(engine), convert: new ConvertProfileDialog(engine), proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
   void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
@@ -1286,8 +1310,11 @@ export function startApp(): void {
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => modeDialog.show('bitmap') },
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => modeDialog.show('indexed') },
     // Bit depth (1.53.6, H1).
-    { id: 'depth-8', label: '8 Bits/Channel', enabled: has, checked: () => (engine.current?.doc.depth ?? 8) === 8, run: () => { engine.setDepth(8); } },
-    { id: 'depth-16', label: '16 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 16, run: () => { engine.setDepth(16); } },
+    { id: 'depth-8', label: '8 Bits/Channel', enabled: has, checked: () => (engine.current?.doc.depth ?? 8) === 8, run: () => void toDepth(8) },
+    { id: 'depth-16', label: '16 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 16, run: () => void toDepth(16) },
+    { id: 'depth-32', label: '32 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 32, run: () => { engine.setDepth(32); } },   // 1.53.9
+    { id: 'export-hdr', label: 'Radiance HDR...', enabled: () => engine.current?.doc.depth === 32, run: () => void exportWide('hdr') },
+    { id: 'export-exr', label: 'OpenEXR...', enabled: () => engine.current?.doc.depth === 32, run: () => void exportWide('exr') },
     // Colour management (1.53.5, H2). Proof Colors has no key by default: Photoshop's Ctrl+Y is Redo here.
     { id: 'assign-profile', label: 'Assign Profile...', enabled: has, run: () => void colourDialogs.assign.show() },
     { id: 'convert-profile', label: 'Convert to Profile...', enabled: has, run: () => void colourDialogs.convert.show() },
@@ -1300,14 +1327,14 @@ export function startApp(): void {
 
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
-      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
-      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', '-', 'depth-8', 'depth-16'] }, '-',
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', { label: 'Image Rotation', items: ['flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-folder-dialog', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
@@ -1560,7 +1587,10 @@ export function startApp(): void {
   const DEEP_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
     'new-adj-levels', 'new-adj-curves', 'new-adj-exposure', 'edit-adjustment', 'flip-canvas-h', 'flip-canvas-v', 'canvas-size', 'image-size', 'trim', 'reveal-all', 'filter-gaussianBlur', 'filter-unsharpMask', 'filter-addNoise', 'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'depth-8', 'depth-16', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning',
     'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
-  commands.gate = (c) => engine.current?.doc.depth !== 16 || DEEP_OK.has(c.id) || /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
+  // 32 bits (1.53.9) are linear light, unbounded: what would clip past white waits there.
+  const NOT_AT_32 = new Set(['new-adj-levels', 'new-adj-curves', 'filter-unsharpMask', 'filter-addNoise', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning']);
+  for (const id of ['depth-32', 'export-hdr', 'export-exr']) DEEP_OK.add(id);
+  commands.gate = (c) => (engine.current?.doc.depth ?? 8) === 8 || ((DEEP_OK.has(c.id) || /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));
   // Rebound keys (1.53.4), applied once every command is registered.
   for (const [id, keys] of Object.entries(loadPrefs().shortcuts)) commands.setKeys(id, keys);
   if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation, colour: colourView };

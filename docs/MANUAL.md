@@ -147,6 +147,16 @@ ask it questions.
 - Opening an image with an embedded profile other than sRGB converts it to sRGB and says so. Preferences > File
   Handling can keep the embedded profile instead, or ask each time.
 
+## 32-bit documents
+
+- Radiance HDR, OpenEXR and 32-bit TIFF open as 32-bit documents, and Image > Mode > 32 Bits/Channel turns any RGB
+  document into one. Their pixels are linear light and may be brighter than white; the canvas shows them with white and
+  above as white. The Exposure adjustment works in linear light, as do moving, the canvas and image size commands and
+  Gaussian Blur. File > Export > Radiance HDR and OpenEXR write them as they are; Export TIFF writes 32-bit float.
+- Image > Mode > 16 or 8 Bits/Channel asks for HDR Toning (Exposure and Gamma): lower the exposure to keep highlights.
+- What would clip brighter than white (painting, Levels, Curves, Unsharp Mask, Add Noise, colour profiles) waits at 32
+  bits: Image > Mode > 16 Bits/Channel to use it.
+
 ## 16-bit documents
 
 - A 16-bit PNG or TIFF opens as a 16-bit document, and Image > Mode > 16 Bits/Channel turns any RGB document into one.

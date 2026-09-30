@@ -32,6 +32,7 @@ BUILDERS = [
     ("a layer style", "() => { const e = window.formvis.engine, l = e.current.doc.layers.find((x) => x.name === 'Paint'); e.selectLayer(l.id); e.setLayerEffects(l.id, { ...(l.effects ?? {}), dropShadow: { ...(l.effects?.dropShadow ?? {}), enabled: true, color: { r: 0, g: 0, b: 0 }, opacity: 0.5, angle: 120, distance: 5, spread: 0, size: 5 } }); window.formvis.commands.run('copy-layer-style'); }"),
     ("a vector shape", "() => { const e = window.formvis.engine; Object.assign(e.shapeSettings, { kind: 'star', mode: 'shape', fill: 'fg', stroke: 'fg', strokeWidth: 2 }); e.drawShape({ x: 40, y: 40 }, { x: 100, y: 100 }, { x: 40, y: 40, w: 60, h: 60 }); }"),
     ("three layers selected", "() => { const e = window.formvis.engine, ls = e.current.doc.layers.filter((l) => !l.adjustment).slice(0, 3); e.selectLayer(ls[0].id); for (const l of ls.slice(1)) e.selectLayer(l.id, 'toggle'); }"),
+    ("a 32-bit document", "() => window.formvis.engine.setDepth(32)"),   # File > Export > Radiance HDR and OpenEXR (1.53.9)
     ("a proof setup", """async () => { const { iccProfile } = await import('/src/engine/icc.ts'), fd = new FormData(); fd.append('file', new Blob([iccProfile('adobe-rgb')]), 'adobe.icc');
       const r = await (await fetch('/api/color/profiles', { method: 'POST', body: fd })).json(); window.formvis.colour.saveSetup({ id: r.id, name: r.name, intent: 'relative', bpc: true }); }"""),
     ("an action recording", "() => { const a = window.formvis.actions; a.start('Test'); a.record({ kind: 'command', id: 'invert', label: 'Invert' }); }"),

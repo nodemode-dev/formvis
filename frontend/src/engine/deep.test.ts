@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { blurDeep, composeDeep, deepFromU16, noiseDeep, resampleDeep, strokeDeep, transferOf, unsharpDeep } from './deep';
+import { blurDeep, composeDeep, deepFromU16, deepToned, linearToSrgb, noiseDeep, resampleDeep, srgbToLinear, strokeDeep, transferOf, unsharpDeep } from './deep';
 import type { Adjustment, Doc, Layer } from './types';
 
 const W = 1024;
@@ -85,5 +85,25 @@ describe('16-bit painting (1.53.8)', () => {
     after.set(before); for (let x = 0; x < N; x++) after[x * 4 + 3] = 128;
     const out = strokeDeep(deep, img(before), img(after), 0, 0, null, white).data;
     expect(out[3]).toBeCloseTo(128 / 255, 6); expect(out[500 * 4 + 1]).toBe(deep.data[500 * 4 + 1]);   // colour untouched
+  });
+});
+
+describe('32-bit documents (1.53.9)', () => {
+  it('converts sRGB to linear and back', () => {
+    for (const v of [0, 0.002, 0.04, 0.2, 0.5, 0.9, 1]) expect(linearToSrgb(srgbToLinear(v))).toBeCloseTo(v, 6);
+  });
+
+  it('applies Exposure in linear light, unclamped, and HDR Toning brings it in', () => {
+    const lin = new Float32Array([0.25, 2, 8, 1]);
+    const layerOf = (): Layer => layer({ deep: { width: 1, height: 1, data: lin }, raster: { width: 1, height: 1 } as never, transform: { x: 0, y: 0, w: 1, h: 1, rotation: 0, flipX: false, flipY: false, sampling: 'bilinear' as never } });
+    const up = { kind: 'exposure', data: { exposureSettings: { exposure: 1, offset: 0, gamma: 1 } } } as unknown as Adjustment;
+    const out = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, depth: 32, layers: [layerOf(), layer({ id: 'x', raster: null, adjustment: up })] } as unknown as Doc);
+    if ('error' in out) throw new Error(out.error);
+    expect(Array.from(out.data.slice(0, 3))).toEqual([0.5, 4, 16]);                        // doubled, past white kept
+    const toned = deepToned({ width: 1, height: 1, data: lin }, -1, 1).data;
+    expect(toned[0]).toBeCloseTo(linearToSrgb(0.125), 6); expect(toned[2]).toBe(1);      // halved then encoded; 4 still clips
+    const lv = { kind: 'levels', data: {} } as unknown as Adjustment;
+    const refused = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, depth: 32, layers: [layerOf(), layer({ id: 'y', raster: null, adjustment: lv })] } as unknown as Doc);
+    expect('error' in refused && refused.error).toMatch(/Exposure does/);
   });
 });

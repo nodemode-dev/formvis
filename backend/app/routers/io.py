@@ -40,6 +40,17 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
     img = cv2.imdecode(data, cv2.IMREAD_UNCHANGED)
     if img is None:
         raise HTTPException(status_code=415, detail="The picture could not be read at its depth.")
+    if img.dtype in (np.float32, np.float64):   # 32 bits (1.53.9): Radiance HDR, OpenEXR and float TIFF, linear light
+        img = img.astype(np.float32)
+        if img.ndim == 2:
+            img = np.stack([img, img, img], axis=2)
+        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) if img.shape[2] == 3 else cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA)
+        if img.shape[2] == 3:
+            img = np.dstack([img, np.ones(img.shape[:2], np.float32)])
+        h, w = img.shape[:2]
+        if w > 30000 or h > 30000 or w * h > config.MAX_PIXELS:
+            raise HTTPException(status_code=413, detail="The picture is larger than formvis edits in one piece.")
+        return Response(np.ascontiguousarray(img).astype("<f4").tobytes(), media_type="application/octet-stream", headers={"X-Width": str(w), "X-Height": str(h), "X-Depth": "32"})
     depth = 16 if img.dtype == np.uint16 else 8
     img = img.astype(np.uint16) * (257 if depth == 8 else 1)
     if img.ndim == 2:
@@ -59,16 +70,20 @@ def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: in
     """A 16-bit PNG or TIFF from RGBA, 16 bits a channel, little-endian (1.53.6, H1)."""
     import cv2
     import numpy as np
-    if format not in ("png", "tiff"):
-        raise HTTPException(status_code=422, detail="16-bit export is PNG or TIFF.")
+    if format not in ("png", "tiff", "hdr", "exr", "tiff32"):
+        raise HTTPException(status_code=422, detail="Deep export is 16-bit PNG or TIFF, or 32-bit Radiance HDR, OpenEXR or TIFF.")
     raw = file.file.read()
-    if width <= 0 or height <= 0 or len(raw) != width * height * 8:
+    wide = format in ("hdr", "exr", "tiff32")   # 32 bits (1.53.9): float, linear light
+    if width <= 0 or height <= 0 or len(raw) != width * height * (16 if wide else 8):
         raise HTTPException(status_code=422, detail="The pixels do not match the size given.")
-    img = np.frombuffer(raw, "<u2").reshape(height, width, 4)
-    ok, out = cv2.imencode(".png" if format == "png" else ".tif", cv2.cvtColor(img, cv2.COLOR_RGBA2BGRA))
+    img = np.frombuffer(raw, "<f4" if wide else "<u2").reshape(height, width, 4)
+    if format == "hdr":   # Radiance holds no alpha
+        ok, out = cv2.imencode(".hdr", cv2.cvtColor(np.ascontiguousarray(img[..., :3]), cv2.COLOR_RGB2BGR))
+    else:
+        ok, out = cv2.imencode({"png": ".png", "tiff": ".tif", "exr": ".exr", "tiff32": ".tif"}[format], cv2.cvtColor(np.ascontiguousarray(img), cv2.COLOR_RGBA2BGRA))
     if not ok:
         raise HTTPException(status_code=500, detail="The 16-bit file could not be written.")
-    return Response(out.tobytes(), media_type="image/png" if format == "png" else "image/tiff")
+    return Response(out.tobytes(), media_type={"png": "image/png", "hdr": "image/vnd.radiance", "exr": "image/x-exr"}.get(format, "image/tiff"))
 
 
 @router.post("/decode")

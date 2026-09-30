@@ -1,5 +1,5 @@
 import { applyLut, type ColourLut } from './colour-lut';
-import { deepFromRaster, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
+import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
@@ -483,7 +483,7 @@ export class Engine {
     const nested = p.history.open;
     p.history.begin(name, p.snapshot());
     let ok: boolean | void = true;
-    const deepBefore = p.doc.depth === 16 ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
+    const deepBefore = (p.doc.depth ?? 8) > 8 ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
     try { ok = fn(p); } catch (err) {
       if (nested) throw err;
       this.rollBack(p, name, err);
@@ -495,7 +495,7 @@ export class Engine {
       const r = p.history.rollback();
       if (r) { for (let i = r.patches.length - 1; i >= 0; i--) { const q = r.patches[i]; q.raster.write(q.before, q.x, q.y); } p.doc = r.before.doc; p.selection = r.before.selection; }
       this.refresh();
-      this.notice(`${name} does not work in 16 bits yet. Image > Mode > 8 Bits/Channel to use it.`);
+      this.notice(`${name} does not work in ${p.doc.depth} bits yet. Image > Mode > 8 Bits/Channel to use it.`);
       return false;
     }
     p.history.end(p.snapshot());
@@ -4600,7 +4600,7 @@ export class Engine {
         const mr = l.mask?.raster ?? null;
         const mask = l.mask ? { ...l.mask, raster: mr ? scaleRaster(mr, Math.max(1, Math.round(mr.width * sx)), Math.max(1, Math.round(mr.height * sy))) : null, placement: l.mask.placement ? scaleT(l.mask.placement) : null } : null;
         // A 16-bit layer's pixels resampled at 16 bits, its 8-bit rendition from them (1.53.7).
-        if (l.deep && raster && !shape) { const deep = resampleDeep(l.deep, raster.width, raster.height); return { ...l, deep, raster: rasterFromDeep(deep), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }   // as the 8-bit path
+        if (l.deep && raster && !shape) { const deep = resampleDeep(l.deep, raster.width, raster.height); return { ...l, deep, raster: rasterFromDeep(deep, p.doc.depth === 32), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }   // as the 8-bit path
         return { ...l, raster, mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) };
       });
       p.doc = { ...p.doc, width, height, resolution, layers };
@@ -6215,21 +6215,28 @@ export class Engine {
 
   /** Image > Mode > 8 or 16 Bits/Channel (1.53.6, H1): each pixel layer gains its 16-bit pixels, or keeps only its
    *  8-bit rendition. */
-  setDepth(depth: 8 | 16): boolean {
-    const p = this.current;
-    if (!p || (p.doc.depth ?? 8) === depth) return false;
-    return this.edit(depth === 16 ? '16 Bits/Channel' : '8 Bits/Channel', (pp) => {
-      const layers = pp.doc.layers.map((l) => (depth === 16 ? (l.raster && !l.isGroup && !l.adjustment ? { ...l, deep: deepFromRaster(l.raster) } : l) : l.deep ? { ...l, deep: undefined } : l));
-      pp.doc = { ...pp.doc, layers, depth: depth === 16 ? 16 : undefined };
+  setDepth(depth: 8 | 16 | 32, tone: { exposure: number; gamma: number } = { exposure: 0, gamma: 1 }): boolean {
+    const p = this.current, from = p?.doc.depth ?? 8;
+    if (!p || from === depth) return false;
+    // 32 bits are linear light (1.53.9): up, the encoded values are linearised; down, Exposure and Gamma bring them in.
+    return this.edit(`${depth} Bits/Channel`, (pp) => {
+      const layers = pp.doc.layers.map((l) => {
+        if (!l.raster || l.isGroup || l.adjustment) return l;
+        const src = l.deep ?? deepFromRaster(l.raster);
+        if (depth === 32) return { ...l, deep: from === 32 ? src : deepToLinear(src) };
+        const enc = from === 32 ? deepToned(src, tone.exposure, tone.gamma) : src;
+        return depth === 16 ? { ...l, deep: enc, raster: from === 32 ? rasterFromDeep(enc) : l.raster } : { ...l, deep: undefined, raster: from === 32 ? rasterFromDeep(enc) : l.raster };
+      });
+      pp.doc = { ...pp.doc, layers, depth: depth === 8 ? undefined : depth };
       return true;
     });
   }
 
   /** Opens 16-bit pixels as a 16-bit document (1.53.6): its layer holds them, its raster their 8-bit rendition. */
-  openDeep(name: string, deep: DeepPixels): Project {
-    const raster = rasterFromDeep(deep);
+  openDeep(name: string, deep: DeepPixels, depth: 16 | 32 = 16): Project {
+    const raster = rasterFromDeep(deep, depth === 32);
     const p = this.openImage({ source: raster.canvas as CanvasImageSource, width: deep.width, height: deep.height, name });
-    p.doc = { ...p.doc, depth: 16, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, deep } : l)) };
+    p.doc = { ...p.doc, depth, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, deep } : l)) };
     this.refresh();
     return p;
   }
@@ -6253,13 +6260,14 @@ export class Engine {
       }
       deep = { width: l.deep.width, height: l.deep.height, data: out };
     }
-    return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, deep, raster: rasterFromDeep(deep) } : x)) }; return true; });
+    return this.edit(name, (pp) => { pp.doc = { ...pp.doc, layers: pp.doc.layers.map((x) => (x.id === l.id ? { ...x, deep, raster: rasterFromDeep(deep, pp.doc.depth === 32) } : x)) }; return true; });
   }
 
   /** Brush, Pencil and Eraser paint at 16 bits (1.53.8) unless colour dynamics vary the paint (the rebuild needs one
    *  colour); other painting tools wait for a later release. */
   private deepPaintOk(): boolean {
-    if (this.current?.doc.depth !== 16) return true;
+    if ((this.current?.doc.depth ?? 8) === 8) return true;
+    if (this.current?.doc.depth === 32) return !this.deepBlocked('Painting in 32 bits');   // painting would clip past white (1.53.9)
     const base = noDynamics() as unknown as Record<string, unknown>, cur = this.brushDynamics as unknown as Record<string, unknown>;
     const colourVaries = ['fgBg', 'hue', 'saturation', 'brightness'].some((k) => JSON.stringify(cur[k]) !== JSON.stringify(base[k]));
     if ((this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !colourVaries) return true;
@@ -6268,8 +6276,9 @@ export class Engine {
 
   /** Painting changes a raster in place, outside `edit`; in a 16-bit document it waits for a later release. */
   private deepBlocked(what: string): boolean {
-    if (this.current?.doc.depth !== 16) return false;
-    this.notice(`${what} does not work in 16 bits yet. Image > Mode > 8 Bits/Channel to use it.`);
+    const d = this.current?.doc.depth ?? 8;
+    if (d === 8) return false;
+    this.notice(`${what} does not work in ${d} bits yet. Image > Mode > 8 Bits/Channel to use it.`);
     return true;
   }
 
