@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Neural Filters, the gallery and its first two · _v1.54.7 (engine/neural.ts new, index.ts; ui/panels/neural-dialog.ts new; app.ts)
+
+DEV_PLAN 23.2, first part: the row none of the compared builds has. `NeuralFiltersDialog` (Filter > Neural Filters, `filter-neural`): a filter selector and every filter's rows built once, the other filters' rows kept in place by visibility so switching moves nothing (a first landing used `hidden` and measured layout shift 0.00512; visibility brought it to 0), a live preview through `previewImageEdit`, OK as one `applyImageEdit` step. `engine/neural.ts`: `harmonize` (Reinhard's statistics transfer in YCbCr from the composite beneath the layer, pixels weighted by alpha, blended by amount), `skinMask` (soft Cb 77 to 127 and Cr 133 to 173 bands) and `skinSmooth` (Surface Blur under the mask, blended by amount). `Engine.compositeBelow(id)` renders the layers beneath one at document size. The gallery is 8-bit RGB for now (not in `DEEP_OK` or `CMYK_OK`). Verified under 4x CPU throttling: the gallery lists Harmonize and Skin Smoothing; Harmonize moves a flat skin patch over a blue backdrop to (85, 90, 128) as one "Harmonize" step; Skin Smoothing lowers a noisy patch's red-channel noise from sd 11.7 to 7.9; layout shift 0, no errors. The model-backed filters (Depth Blur, Colorize, Style Transfer, Super Zoom, JPEG Artifacts Removal) follow as each licence and pin lands. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    { label: 'Filter', items: ['filter-develop', 'filter-lensCorrection', 'filter-liquify', '-',
+export const VERSION = '1.54.6';
+```
+
 ## Invert, Posterize, Brightness/Contrast and Motion Blur at depth and in ink · _v1.54.6 (engine/adjust-params.ts, deep.ts; ui/panels/filter-panel.ts; app.ts)
 
 DEV_PLAN 22.4, second part. `lut()` in `adjust-params.ts`, behind Invert, Posterize and Brightness/Contrast, exposes a `transfer` that evaluates its function on floats (no 8-bit table on the way), so `transferOf` serves them and the float compositors (`composeDeep`, `composeChannels`) apply them per channel, per ink on paper-white values. `motionBlurDeep`: the 8-bit filter's samples along the line, premultiplied, any channel count. The filter panel's float path takes Motion Blur. `DEEP_OK` and `CMYK_OK` open the three adjustments, `edit-adjustment` and Motion Blur; `NOT_AT_32` holds the three adjustments (they clip past white). Verified in the browser: in CMYK the five are offered (Threshold, a luminosity operation, stays for 22.6); an Invert layer turns ink (0, 91, 76, 18) into (100, 9, 24, 82); `motionBlurDeep` on ink equals the same blur of each ink as a grey image to 0.00; unit 188. Removed lines taken after the version edit. Removed from frontend:

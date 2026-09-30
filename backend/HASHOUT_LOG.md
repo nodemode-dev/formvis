@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.54.7
+
+No engine code changed in 1.54.7 (the first Neural Filters run in the window). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.54.6"
+version = "1.54.6"
+version = "1.54.6"
+ "version": "1.54.6",
+```
+
 ## Version only · _v1.54.6
 
 No engine code changed in 1.54.6. Removed lines taken after the version edit:

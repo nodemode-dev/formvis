@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.54.7 · 2026-09-30
+
+Neural Filters, the gallery and its first two (DEV_PLAN 23.2, first part).
+
+### Added
+
+- Filter > Neural Filters: a gallery with a live preview and one undo step. Harmonize moves a layer's light and colour toward what lies beneath it, by an amount; Skin Smoothing softens skin tones only, leaving everything else as it was. Neither needs a model or a download. The model-backed filters (Depth Blur, Colorize, Style Transfer, Super Zoom, JPEG Artifacts Removal) join the gallery as each model's licence and pin land. The gallery works on 8-bit RGB layers for now.
+
 ## 1.54.6 · 2026-09-30
 
 More of every mode (DEV_PLAN 22.4, second part).
