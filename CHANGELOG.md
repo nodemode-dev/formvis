@@ -4,6 +4,22 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.54.1 · 2026-09-30
+
+The parity plan's H1, fifth part: CMYK documents as true channels (DEV_PLAN Phase 22.1).
+
+### Added
+
+- Image > Mode > CMYK Color converts an 8-bit RGB document to CMYK ink through a CMYK profile, exactly, in the engine (LittleCMS, the profile's own black generation, the intent and black point chosen in the dialog); every pixel layer keeps C, M, Y, K and alpha beside its sRGB rendition, which the window draws through a 17-point table from the same profile. Mode > RGB Color converts back the same way. Undo and redo carry the mode.
+- A CMYK profile ships: FOGRA39L Coated (colord's profile of the FOGRA39 data, zlib licence, see NOTICE.md), preselected in the dialog; any CMYK profile loaded through View > Proof Setup can be chosen instead.
+- CMYK JPEG and TIFF open as CMYK documents with their embedded profile (or the shipped one, said in a message); File > Export > TIFF and JPEG from a CMYK document write CMYK with the profile embedded. The `.fmv` project keeps the ink.
+- A CMYK document never drops to RGB quietly: a step that would change a layer without its ink is undone with a message, and the menus offer only what keeps the ink (files, undo, exports, layer order and naming, selection, the view). Painting, adjustments, filters and the Channels panel in CMYK follow in the next releases.
+
+### Changed
+
+- The New dialog's note now says 16 and 32 bit and CMYK come from Image > Mode; Lab is the one still to come.
+- The version numbering keeps the repo's rule (the last number 1 to 9), so this release is 1.54.1, not the plan's 1.54.0.
+
 ## 1.53.9 · 2026-09-30
 
 The parity plan's H1, fourth part: 32-bit documents.

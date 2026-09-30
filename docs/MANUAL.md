@@ -147,6 +147,19 @@ ask it questions.
 - Opening an image with an embedded profile other than sRGB converts it to sRGB and says so. Preferences > File
   Handling can keep the embedded profile instead, or ask each time.
 
+## CMYK documents
+
+- Image > Mode > CMYK Color turns an 8-bit RGB document into CMYK ink through a CMYK profile: the shipped FOGRA39L
+  Coated (offset printing on coated paper) or any CMYK profile loaded through View > Proof Setup, with the rendering
+  intent and black point compensation of your choice. The engine converts every pixel exactly (LittleCMS); the tab
+  reads CMYK/8 and shows the profile's name. Mode > RGB Color converts back the same way.
+- CMYK JPEG and TIFF files open as CMYK documents with their embedded profile; a file without one takes the shipped
+  profile, and a message says so. File > Export > TIFF and JPEG from a CMYK document write CMYK with the profile
+  embedded; PNG, WebP and the others write the sRGB rendition you see.
+- Every layer keeps its ink beside the rendition on screen, and the project keeps it too. Nothing drops a CMYK document
+  to RGB quietly: what is not built for ink yet (painting, adjustments, filters, transforms, the Channels panel's C, M,
+  Y and K) waits in the menu until Mode > RGB Color, and a step that would lose ink is undone with a message.
+
 ## 32-bit documents
 
 - Radiance HDR, OpenEXR and 32-bit TIFF open as 32-bit documents, and Image > Mode > 32 Bits/Channel turns any RGB

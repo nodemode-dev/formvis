@@ -45,6 +45,7 @@ formvis is a layered image editor: stack photos and paintings as layers, group t
 - **NodeMode native.** NodeMode tokens and 14 theme profiles, the host theme bridge, the portal ready and init protocol, and a send-to-canvas message.
 - **HEIC and TIFF import.** Decoded server-side w/ Pillow and pillow-heif, falling back to `sips` on macOS.
 - **Camera RAW import.** DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2 and more, developed server-side by LibRaw (via rawpy) w/ the camera's white balance, then opened into Develop.
+- **Depth, profiles and CMYK.** 8, 16 and 32 bits a channel (16-bit PNG and TIFF, Radiance HDR, OpenEXR and float TIFF in and out); document profiles, Assign and Convert to Profile, Proof Colors and Gamut Warning through LittleCMS in the engine; Image > Mode > CMYK Color keeps true C, M, Y and K ink through a shipped FOGRA39 profile or one of your own, with CMYK TIFF and JPEG in and out. Nothing drops depth or ink quietly: what is not built at that depth or mode waits in the menu.
 
 ## Quick Start
 

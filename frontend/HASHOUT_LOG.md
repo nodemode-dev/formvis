@@ -2,6 +2,50 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## CMYK documents · _v1.54.1 (engine/channels.ts new, colour-lut.ts, deep.ts, index.ts, project.ts, types.ts; io/api.ts, project-io.ts; ui/app-dialogs.ts, colour.ts, tabs.ts; app.ts; backend app/services/colour.py, routers/colour.py, routers/io.py, app/profiles/ new)
+
+The parity plan's H1, fifth part (DEV_PLAN Phase 22.1): `Doc.mode` gains `'cmyk'`; `ChannelPixels` (C, M, Y, K as ink 0 to 1, then straight alpha, five floats a pixel) on `Layer.channels`, the sRGB rendition staying in `raster`. `Lut4`, `lut4From`, `applyLut4` (a 17-a-side CMYK to sRGB table from the engine, quadrilinear). `channels.ts`: `channelsFromU8`, `channelsToU8`, `rasterFromChannels`, `rasterBytes`, `composeChannels` (Normal only, as `composeDeep`). `deep.ts`'s `place` and `bilinear` take a channel count (default 4, exported, so ink composes through the same placement). `Engine.setCmyk`, `setRgbFromCmyk`, `openChannels`; `Project.cmykLut` outside history. `Engine.edit()`'s guard, written for 16 bits at 1.53.6, now also undoes a step that changed a CMYK layer's rendition without its ink, so nothing drops a CMYK document to RGB silently; the guard's explanatory comment moved here. `convertMode` refuses CMYK either way (the engine converts). `api.cmykLut`, `convertPixels`, `defaultCmykProfile`, `decodeCmyk`, `encodeCmyk`. `.fmv`: `<id>.cmyk32` beside the rendition, `inkFile`, `inkWidth`, `inkHeight`; `mode: 'cmyk'` read. `ModeDialog`'s CMYK pane (profile, intent, black point; `onCmyk`). `ColourView` applies no view table in CMYK (the rendition is already through the profile; proofing waits). Tab reads `CMYK/8`. `app.ts`: `cmykLutFor`, `cmykProfileOf`, `toCmyk`, `cmykToRgb`, `openCmyk`, `exportCmyk`; CMYK JPEG and TIFF open as CMYK documents and export in ink with the profile embedded; `mode-cmyk`; `CMYK_OK` beside the depth gate; the New dialog's note corrected. Backend: `shipped_dir`, `default_cmyk`, `cmyk_lut`, `convert_pixels` (exact, 8 bits); routes `/color/cmyk-lut`, `/color/convert-pixels`, `/color/default-cmyk`, `/io/decode-cmyk`, `/io/encode-cmyk`; the shipped FOGRA39L profile (zlib licence, NOTICE.md). Verified: ink against LittleCMS applied directly, 0 levels apart; the rendition within 1 level of the direct transform; TIFF ink round trip exact, JPEG within 1; undo and redo; the way back to RGB; the mode walk and the 274-command walk in the browser; throttled (4x CPU, slow network) layout shift 0.00004 across the dialog, the conversion and the New dialog, no console errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { engine.convertMode('rgb'); } },
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
+  commands.gate = (c) => (engine.current?.doc.depth ?? 8) === 8 || ((DEEP_OK.has(c.id) || /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));
+function place(out: Float32Array, W: number, H: number, src: DeepPixels, t: import('./types').Transform, op: number): void {
+  const sw = src.width, sh = src.height, d = src.data, px = [0, 0, 0, 0];
+    if (Math.abs(u - ru) < 1e-6 && Math.abs(v - rv) < 1e-6) { const s = (Math.min(sh - 1, Math.max(0, rv)) * sw + Math.min(sw - 1, Math.max(0, ru))) * 4; px[0] = d[s]; px[1] = d[s + 1]; px[2] = d[s + 2]; px[3] = d[s + 3]; }
+    else bilinear(d, sw, sh, u, v, px);
+    const sa = px[3] * op, o = (y * W + x) * 4, oa = out[o + 3], na = sa + oa * (1 - sa);
+    for (let c = 0; c < 3; c++) out[o + c] = (px[c] * sa + out[o + c] * oa * (1 - sa)) / na;
+    out[o + 3] = na;
+function bilinear(d: Float32Array, w: number, h: number, u: number, v: number, px: number[]): void {
+  let a = 0; const c = [0, 0, 0];
+    const s = (yy * w + xx) * 4, al = d[s + 3] * wgt; a += al; for (let k = 0; k < 3; k++) c[k] += d[s + k] * al;
+  px[3] = a; for (let k = 0; k < 3; k++) px[k] = a > 0 ? c[k] / a : 0;
+import { applyLut, type ColourLut } from './colour-lut';
+import type { DeepPixels, DocProfile } from './types';
+    const deepBefore = (p.doc.depth ?? 8) > 8 ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
+    // 16 bits kept (1.53.6, H1): a step that changed a 16-bit layer's pixels without its 16-bit data is undone, so
+    // nothing drops a 16-bit document to 8 bits silently.
+    if (deepBefore && !nested && p.doc.layers.some((l) => { const o = deepBefore.get(l.id); return !!o?.deep && l.raster !== o.raster && l.deep === o.deep; })) {
+      this.notice(`${name} does not work in ${p.doc.depth} bits yet. Image > Mode > 8 Bits/Channel to use it.`);
+    if (!p || (p.doc.mode ?? 'rgb') === mode) return false;
+    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color' }[mode];
+export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed';
+import { lutFrom, type ColourLut } from '../engine/colour-lut';
+  async colourProfiles(): Promise<{ profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean }>; folder: string }> {
+    return (await (await request('/color/profiles')).json()) as { profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean }>; folder: string };
+import type { DeepPixels } from '../engine/types';
+  const mode = manifest.mode === 'grayscale' || manifest.mode === 'bitmap' || manifest.mode === 'indexed' ? manifest.mode : null;
+    const modeNote = el('<p class="cv-nd-note">16 and 32 bit, CMYK and Lab are not available yet: they need a new pixel engine.</p>');
+  private kind: 'bitmap' | 'indexed' = 'bitmap';
+  show(kind: 'bitmap' | 'indexed'): void {
+    this.setTitle(kind === 'bitmap' ? 'Bitmap' : 'Indexed Color');
+    const p = this.engine.current, prof = p?.doc.profile, s = this.setup, proofing = this.proof && !!s;
+    setText(mEl, { rgb: 'RGB/8', grayscale: 'Gray/8', bitmap: 'Bitmap/1', indexed: 'Index' }[md]);
+    const tip = { rgb: 'RGB, 8 bits a channel', grayscale: 'Grayscale, 8 bits', bitmap: 'Bitmap, 1 bit', indexed: `Indexed Color, ${p.doc.palette?.length ?? 0} colours` }[md];
+export const VERSION = '1.53.9';
+```
+
 ## 32-bit documents · _v1.53.9 (engine/deep.ts, index.ts, types.ts; io/project-io.ts, api.ts, images.ts; ui/panels/hdr-toning.ts new; app.ts; backend app/__init__.py, routers/io.py)
 
 `srgbToLinear`, `linearToSrgb`, `deepToLinear`, `deepToned`; `rasterFromDeep`'s linear display; `composeDeep`'s Exposure in linear light at 32 bits; `Engine.setDepth` to and from 32 with HDR Toning, `openDeep` at 32, the guard at 16 and 32, painting refused at 32; the project's `.deep32` floats; `api.decodeDeep` and `encodeDeep` with floats; `.hdr` and `.exr` accepted; `HdrToningDialog`; `exportWide`, `toDepth`, `NOT_AT_32`; the engine's float decode and HDR, EXR and 32-bit TIFF encode, and OpenEXR turned on. Removed lines taken after the version edit. Removed from frontend:
