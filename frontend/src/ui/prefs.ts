@@ -5,7 +5,7 @@ import type { GpuRenderer } from '../gpu/probe';
  *  something real: History States and history memory are the undo limits every project uses; region redraws decide
  *  whether a brush stroke repaints only what it changed; the recovery delay is how soon after a change unsaved work is
  *  kept for crash recovery. The graphics processor settings choose the renderer (Phase 18). */
-export interface Prefs { shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
+export interface Prefs { profileMismatch: 'convert' | 'keep' | 'ask'; shortcuts: Record<string, string[]>; restoreSession: boolean; agentsAllowed: boolean; comfyuiUrl: string; nodemodeUrl: string; historyStates: number; historyMB: number; regionRedraws: boolean; recoverySeconds: number; autoShowHome: boolean; useGpu: boolean; renderer: GpuRenderer; gpuMemoryMB: number; engineDevice: EngineDevice;
   /* Photoshop's sections (the owner's walkthrough): Tools, History & Cache, Workspace, Cursors, Transparency & Gamut,
      Units & Rulers, Guides & Grid; every one acts on something real. */
   zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean;
@@ -27,7 +27,7 @@ export const CHECKER_PAIR: Record<CheckerColors, readonly [string, string]> = { 
 export type EngineDevice = 'auto' | 'metal' | 'cuda' | 'cpu';
 export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [['auto', 'Automatic'], ['metal', 'Metal (Core ML)'], ['cuda', 'CUDA'], ['cpu', 'CPU']];
 
-export const DEFAULT_PREFS: Prefs = { shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
+export const DEFAULT_PREFS: Prefs = { profileMismatch: 'convert', shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'light', rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4 };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
@@ -46,6 +46,7 @@ export function loadPrefs(): Prefs {
       autoShowHome: typeof r.autoShowHome === 'boolean' ? r.autoShowHome : DEFAULT_PREFS.autoShowHome,
       // Rebound keys (1.53.4): command id to its combinations, only strings kept.
       shortcuts: r.shortcuts && typeof r.shortcuts === 'object' ? Object.fromEntries(Object.entries(r.shortcuts as Record<string, unknown>).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, (v as unknown[]).filter((x): x is string => typeof x === 'string')])) : {},
+      profileMismatch: r.profileMismatch === 'keep' || r.profileMismatch === 'ask' ? r.profileMismatch : 'convert',   // 1.53.5
       restoreSession: r.restoreSession !== false,   // Preferences > File Handling, on unless turned off (1.52.4)
       agentsAllowed: r.agentsAllowed === true,   // Preferences > Plugins, off unless turned on (1.52.1)
       comfyuiUrl: typeof r.comfyuiUrl === 'string' && /^https?:\/\/./.test(r.comfyuiUrl) ? r.comfyuiUrl.slice(0, 300) : DEFAULT_PREFS.comfyuiUrl,   // Preferences > Plugins (1.50.9)

@@ -1,3 +1,5 @@
+import { applyLut, type ColourLut } from './colour-lut';
+import type { DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 export { PATH_OPS, type PathOp } from './paths';
@@ -78,7 +80,7 @@ export interface EngineEvents {
   history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null; timeline: null;
 }
 export interface BrushSettings { diameter: number; hardness: number; opacity: number; tip?: SampledTip | null }
-export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string }
+export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile }
 type Target = 'pixels' | 'mask';
 type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'autoSelectTarget' | 'lockRatio'>;
 
@@ -3882,7 +3884,7 @@ export class Engine {
     if (!images.length) return;
     if (!this.current) {
       const f = images[0];
-      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: 72, layers: [] }, stripExt(f.name));
+      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: 72, layers: [], ...(f.profile ? { profile: f.profile } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5)
     }
     this.edit(images.length > 1 ? 'Import Images' : 'Import Image', (p) => {
       let used = p.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0);
@@ -5524,7 +5526,7 @@ export class Engine {
   openImage(img: ImportedImage): Project {
     const base: Doc = { id: uid(), width: img.width, height: img.height, resolution: 72, layers: [] };
     const layer = { ...newLayer('Background', base), raster: Raster.from(img.source, img.width, img.height) };
-    return this.addProject({ ...base, layers: [layer] }, img.name.replace(/\.[^.]+$/, '') || 'Image', layer.id);
+    return this.addProject({ ...base, ...(img.profile ? { profile: img.profile } : {}), layers: [layer] }, img.name.replace(/\.[^.]+$/, '') || 'Image', layer.id);   // an embedded profile kept (1.53.5)
   }
 
   /** Upscale: what the document shows, enlarged `scale` times by `run`, opened as a new document. */
@@ -6161,6 +6163,35 @@ export class Engine {
    *  shapes and vectors kept editable with their colours made grey); Bitmap (flattened, then black and white by a 50
    *  percent threshold or diffusion dither); Indexed Color (flattened, then to a palette: exact at 256 colours or fewer,
    *  else adaptive by median cut, optionally dithered). New pixels throughout, so one undo restores the old ones. */
+  /** The view's colour transform (1.53.5, H2): the document's profile to the display, through a proof profile when
+   *  Proof Colors is on, with the gamut warning; the document itself is not changed. */
+  viewTransform: { lut: ColourLut; gamut: boolean } | null = null;
+
+  setViewTransform(v: { lut: ColourLut; gamut: boolean } | null): void { this.viewTransform = v; this.emit('render', null); }   // the stage redraws on render, not doc
+
+  /** Edit > Assign Profile: the profile the numbers are read in, the numbers unchanged; null for sRGB. */
+  assignProfile(profile: DocProfile | null): boolean {
+    const p = this.current;
+    if (!p || (p.doc.profile?.icc ?? null) === (profile?.icc ?? null)) return false;
+    return this.edit('Assign Profile', (pp) => { pp.doc = { ...pp.doc, profile: profile ?? undefined }; return true; });
+  }
+
+  /** Edit > Convert to Profile: every layer's pixels through `lut` (the engine's LittleCMS table from the document's
+   *  profile to `target`), then `target` assigned; one step. Live type and shapes keep their colours' numbers. */
+  convertToProfile(target: DocProfile | null, lut: ColourLut): boolean {
+    if (!this.current) return false;
+    return this.edit('Convert to Profile', (pp) => {
+      const layers = pp.doc.layers.map((l) => {
+        if (!l.raster || l.isGroup) return l;
+        const r = l.raster.clone(), d = r.ctx.getImageData(0, 0, r.width, r.height);
+        applyLut(d.data, lut); r.ctx.putImageData(d, 0, 0); r.touch();
+        return { ...l, raster: r };
+      });
+      pp.doc = { ...pp.doc, layers, profile: target ?? undefined };
+      return true;
+    });
+  }
+
   convertMode(mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean {
     const p = this.current;
     if (!p || (p.doc.mode ?? 'rgb') === mode) return false;

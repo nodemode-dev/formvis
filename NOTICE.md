@@ -60,3 +60,4 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | mflux (Apple silicon) and diffusers (Windows and Linux) | MIT; Apache-2.0 | The runtimes the models run in, installed into their own environment with a model |
 | httpx | BSD-3-Clause | The engine's model downloads |
 | ONNX Runtime | MIT | Runs the local models; part of the base install |
+| LittleCMS (through Pillow's ImageCms) | MIT | Colour management: profile conversion, proofing and the gamut warning |

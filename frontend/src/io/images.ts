@@ -25,7 +25,8 @@ function viaElement(blob: Blob): Promise<HTMLImageElement> {
   });
 }
 
-async function bitmapOf(blob: Blob): Promise<ImportedImage['source'] & { width: number; height: number }> {
+async function bitmapOf(blob: Blob, raw = false): Promise<ImportedImage['source'] & { width: number; height: number }> {
+  if (raw) return createImageBitmap(blob, { colorSpaceConversion: 'none' });   // the numbers as stored, for a kept profile (1.53.5)
   try { return await createImageBitmap(blob, { imageOrientation: 'from-image' }); } catch {
     const img = await viaElement(blob);
     if (!img.naturalWidth || !img.naturalHeight) { img.width = 1024; img.height = 1024; }
@@ -38,12 +39,12 @@ export class LargePictureError extends Error {
   constructor(readonly file: Blob, readonly picture: string, readonly width: number, readonly height: number) { super(`${picture} is ${width} by ${height}, larger than formvis edits in one piece.`); }
 }
 
-export async function decodeImage(file: Blob, name: string): Promise<ImportedImage> {
+export async function decodeImage(file: Blob, name: string, raw = false): Promise<ImportedImage> {
   const size = await headerSize(file);
   if (size && (size.width > LIMITS.side || size.height > LIMITS.side || size.width * size.height > LIMITS.pixels)) throw new LargePictureError(file, name, size.width, size.height);
   const server = SERVER.test(name) || RAW_FILE.test(name) || /image\/(heic|heif|tiff)/.test(file.type);
   let source: ImportedImage['source'] & { width: number; height: number };
-  try { source = await bitmapOf(server ? await api.decode(file, name) : file); } catch (err) {
+  try { source = await bitmapOf(server ? await api.decode(file, name) : file, raw && !server); } catch (err) {
     if (server) throw err;
     source = await bitmapOf(await api.decode(file, name));
   }

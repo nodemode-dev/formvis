@@ -135,6 +135,18 @@ ask it questions.
 - File > Place 3D Model places a .glb or .gltf model: turn, tilt and size it, and set its light and the ambient light,
   in a live preview. Place renders it at the document's size on transparency, as a new layer.
 
+## Colour management
+
+- A document is sRGB unless it has its own profile. Edit > Assign Profile gives it one (Display P3, Adobe RGB, or an
+  RGB profile on this computer) without changing its numbers; Edit > Convert to Profile converts the numbers so the
+  colours look the same in the new profile, with a rendering intent and black point compensation. The profile is
+  saved with the project and embedded when you export.
+- View > Proof Setup chooses a device to simulate, such as a press or printer profile (CMYK profiles included); Load
+  Profile adds a .icc or .icm file. View > Proof Colors shows the picture as that device would print it, and Gamut
+  Warning (Shift+Ctrl+Y) greys out the colours it cannot print. Neither changes the document.
+- Opening an image with an embedded profile other than sRGB converts it to sRGB and says so. Preferences > File
+  Handling can keep the embedded profile instead, or ask each time.
+
 ## Exporting
 
 - File > Export As chooses the format (PNG, JPEG, WebP, AVIF, TIFF, PDF), quality, colour profile and size: a Scale in

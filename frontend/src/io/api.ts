@@ -1,3 +1,4 @@
+import { lutFrom, type ColourLut } from '../engine/colour-lut';
 export interface Capabilities { pixelBudget?: number; memory?: number;
   name: string;
   version: string;
@@ -148,6 +149,19 @@ export const api = {
   },
   async decode(file: Blob, name: string, page = 0): Promise<Blob> {
     return (await request('/io/decode', { method: 'POST', body: form(page ? { page: String(page) } : {}, [{ name, blob: file }], 'file') })).blob();
+  },
+  /** Colour management (1.53.5, H2): the profiles on this computer and added to formvis. */
+  async colourProfiles(): Promise<{ profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean }>; folder: string }> {
+    return (await (await request('/color/profiles')).json()) as { profiles: Array<{ id: string; name: string; space: string; file: string; added: boolean }>; folder: string };
+  },
+  async addColourProfile(file: File): Promise<{ id: string; name: string; space: string }> {
+    return (await (await request('/color/profiles', { method: 'POST', body: form({}, [{ name: file.name, blob: file }], 'file') })).json()) as { id: string; name: string; space: string };
+  },
+  async colourProfileBytes(id: string): Promise<Uint8Array> { return new Uint8Array(await (await request(`/color/profiles/${encodeURIComponent(id)}`)).arrayBuffer()); },
+  /** A LittleCMS lookup table (engine/colour-lut.ts): source to dest (sRGB when none), through a proof profile when given. */
+  async colourLut(req: { source?: { icc?: string; id?: string } | null; dest?: { icc?: string; id?: string } | null; proof?: { id?: string; icc?: string } | null; intent?: string; proofIntent?: string; bpc?: boolean; gamut?: boolean }): Promise<ColourLut> {
+    const r = await request('/color/lut', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+    return lutFrom(await r.arrayBuffer(), Number(r.headers.get('X-Grid') ?? 33), r.headers.get('X-Gamut') === '1');
   },
   /** A TIFF's pages (1.53.4), BigTIFF included; one entry for anything else. */
   async imagePages(file: Blob, name: string): Promise<Array<{ index: number; width: number; height: number; mode: string }>> {

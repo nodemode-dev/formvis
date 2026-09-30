@@ -80,6 +80,9 @@ import { PluginHost } from './plugins/host';
 import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
+import { ColourView } from './ui/colour';
+import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog } from './ui/panels/colour-dialogs';
+import { embeddedProfile, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
 import { enhanceAllSelects } from './ui/dropdown';
@@ -454,6 +457,18 @@ export function startApp(): void {
         for (const f of images) {
           // A TIFF with several pages asks how to open them (1.53.4).
           if (/\.tiff?$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
+          // An embedded profile other than sRGB (1.53.5): converted (the default, as the browser decodes), kept, or asked.
+          let profile: { name: string; icc: string } | undefined;
+          if (/\.(png|jpe?g|webp)$/i.test(f.name)) {
+            const icc = await embeddedProfile(f).catch(() => null), pname = icc ? profileName(icc) : '';
+            if (icc && !isSrgbName(pname)) {
+              const pref = loadPrefs().profileMismatch, how = pref === 'ask' ? await colourDialogs.mismatch.ask(f.name, pname) : pref;
+              // Kept only when the image opens as its own document: placed into an open document, it is converted (as Photoshop places).
+              if ((how === 'keep' || how === 'discard') && !engine.current && decoded.length === 0) {
+                try { const raw = await decodeImage(f, f.name, true); if (how === 'keep') raw.profile = { name: pname, icc: toBase64(icc) }; decoded.push(raw); continue; } catch { /* decoded as before */ }
+              } else toast(`${f.name} was converted from its embedded profile, ${pname}, to sRGB, the working space.`);
+            }
+          }
           try { decoded.push(await decodeImage(f, f.name)); } catch (err) {
             if (err instanceof LargePictureError) { if (!largeAsked) { largeAsked = true; largePicture.show(err); } else toast(`${f.name}: open large pictures one at a time.`, 'info'); }   // 1.52.7
             else toast(`${f.name}: ${message(err)}`, 'error');
@@ -546,7 +561,8 @@ export function startApp(): void {
         bmp.close();
         // Colour: formvis works in sRGB; another profile converts the pixels, and every format but PDF carries the
         // profile (WebP through the engine when it is not sRGB, as the browser's WebP encoder cannot embed one).
-        const space = s.profile ?? 'srgb', icc = iccProfile(space);
+        // A document with its own profile (1.53.5) is exported in it, the profile embedded as it is.
+        const own = engine.current?.doc.profile, space = own ? 'srgb' : s.profile ?? 'srgb', icc = own ? fromBase64(own.icc) : iccProfile(space);
         if (space !== 'srgb') { const img = x.getImageData(0, 0, z.w, z.h); convertPixels(img.data, 'srgb', space); x.putImageData(img, 0, 0); }
         const viaEngine = ENGINE_FORMATS.has(s.format) || (s.format === 'webp' && space !== 'srgb');
         const blob = viaEngine ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, s.format === 'pdf' || (s.format === 'webp' && space === 'srgb') ? null : icc)
@@ -987,6 +1003,8 @@ export function startApp(): void {
   const pluginsDialog = new PluginsDialog(pluginHost, (title, text, ok) => confirmAction(title, text, ok));
   const largePicture = new LargePictureDialog(engine);
   const tiffPages = new TiffPagesDialog(engine);
+  const colourView = new ColourView(engine);   // colour management (1.53.5)
+  const colourDialogs = { assign: new AssignProfileDialog(engine), convert: new ConvertProfileDialog(engine), proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
   void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
@@ -1256,6 +1274,12 @@ export function startApp(): void {
     { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { engine.convertMode('grayscale'); } },
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => modeDialog.show('bitmap') },
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => modeDialog.show('indexed') },
+    // Colour management (1.53.5, H2). Proof Colors has no key by default: Photoshop's Ctrl+Y is Redo here.
+    { id: 'assign-profile', label: 'Assign Profile...', enabled: has, run: () => void colourDialogs.assign.show() },
+    { id: 'convert-profile', label: 'Convert to Profile...', enabled: has, run: () => void colourDialogs.convert.show() },
+    { id: 'proof-setup', label: 'Proof Setup...', enabled: has, run: () => void colourDialogs.proof.show() },
+    { id: 'proof-colors', label: 'Proof Colors', enabled: () => has() && !!colourView.setup, checked: () => colourView.proof, run: () => { colourView.proof = !colourView.proof; if (!colourView.proof) colourView.gamut = false; void colourView.refresh(); } },
+    { id: 'gamut-warning', label: 'Gamut Warning', keys: ['Shift+Mod+Y'], enabled: () => has() && !!colourView.setup, checked: () => colourView.gamut, run: () => { colourView.gamut = !colourView.gamut; if (colourView.gamut) colourView.proof = true; void colourView.refresh(); } },
     { id: 'flatten', label: 'Flatten Image', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => { engine.flattenImage(); } },
     ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, ...(kind === 'develop' ? { keys: ['Shift+Mod+A'] } : {}), enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
   );
@@ -1266,7 +1290,7 @@ export function startApp(): void {
       { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
-      'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'shortcuts', 'settings'] },
+      'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb'] }, '-',
@@ -1292,7 +1316,7 @@ export function startApp(): void {
       { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur'] },
       { label: 'Sharpen', items: ['filter-smartSharpen', 'filter-shakeReduction', 'filter-unsharpMask'] },
       { label: 'Noise', items: ['filter-addNoise'] }, '-', 'remove-bg', 'remove-bg-lite'] },
-    { label: 'View', items: ['zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
+    { label: 'View', items: ['proof-setup', 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
@@ -1520,7 +1544,7 @@ export function startApp(): void {
 
   // Rebound keys (1.53.4), applied once every command is registered.
   for (const [id, keys] of Object.entries(loadPrefs().shortcuts)) commands.setKeys(id, keys);
-  if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation };
+  if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation, colour: colourView };
 
   // Session restore (1.52.4): every open document is kept on this device (a copy per document, rewritten when it
   // changes, is saved, or moves library entry) with the tab order and the active tab, and reopens at the next start.

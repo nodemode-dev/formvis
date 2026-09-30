@@ -390,9 +390,11 @@ export class SettingsDialog extends Dialog {
     add('History & Cache', this.statesRow.el, this.memoryRow.el, el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
     this.restoreBox.addEventListener('change', () => this.change({ restoreSession: this.restoreBox.checked }));
+    this.mismatchSel.addEventListener('change', () => this.change({ profileMismatch: this.mismatchSel.value as 'convert' | 'keep' | 'ask' }));
     const restore = el('<label class="cv-dialog-row"><span>Reopen the documents that were open when formvis closed</span></label>');
     restore.append(this.restoreBox);
-    add('File Handling', restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
+    const mismatch = el('<label class="cv-dialog-row"><span>Embedded profiles</span></label>'); mismatch.append(this.mismatchSel);
+    add('File Handling', mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
     add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el('<p class="cv-note">The checkerboard shown behind transparent pixels. None shows it plain.</p>'));
     add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
@@ -453,6 +455,7 @@ export class SettingsDialog extends Dialog {
     this.redrawRow.set(this.prefs.regionRedraws);
     this.recoveryRow.set(String(this.prefs.recoverySeconds));
     this.restoreBox.checked = this.prefs.restoreSession;
+    this.mismatchSel.value = this.prefs.profileMismatch;
     this.homeRow.set(this.prefs.autoShowHome);
     this.gpuUseRow.set(this.prefs.useGpu);
     this.rendererRow.set(this.prefs.renderer);
@@ -514,6 +517,7 @@ export class SettingsDialog extends Dialog {
   private readonly restoreBox = el<HTMLInputElement>('<input type="checkbox" aria-label="Reopen documents at start">');
   private readonly agents = el<HTMLInputElement>('<input type="checkbox" aria-label="Allow outside agents">');
   private readonly localModels = new LocalModelsSection();   // 1.52.9
+  private readonly mismatchSel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Embedded profiles"><option value="convert">Convert to the working space (sRGB)</option><option value="keep">Keep the embedded profile</option><option value="ask">Ask when opening</option></select>');   // 1.53.5
   private readonly budgetNote = el('<p class="cv-note cv-budget-note" role="status"></p>');   // the largest document (1.53.4)
   private readonly keysNote = el('<p class="cv-note cv-keys-note" role="status"></p>');   // where API keys are kept (1.52.5)
   private readonly llmUrl = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="Language model address" spellcheck="false" placeholder="http://localhost:11434/v1">');

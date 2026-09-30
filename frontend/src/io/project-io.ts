@@ -91,7 +91,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.shape) r.shape = l.shape;
     layers.push(r);
   }
-  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: 'sRGB', resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.mode && doc.mode !== 'rgb' ? { mode: doc.mode } : {}), ...(doc.palette?.length ? { palette: doc.palette.map((c) => [c.r, c.g, c.b]) } : {}),
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, colorSpace: doc.profile?.name ?? 'sRGB', ...(doc.profile ? { profile: { name: doc.profile.name, icc: doc.profile.icc } } : {}), resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.mode && doc.mode !== 'rgb' ? { mode: doc.mode } : {}), ...(doc.palette?.length ? { palette: doc.palette.map((c) => [c.r, c.g, c.b]) } : {}),
      ...(doc.notes?.length ? { notes: doc.notes.map((n) => ({ id: n.id, x: n.x, y: n.y, text: n.text })) } : {}), ...(doc.counts?.length ? { counts: doc.counts.map((c) => ({ x: c.x, y: c.y })) } : {}), ...(doc.globalLight ? { globalLight: { angle: doc.globalLight.angle, altitude: doc.globalLight.altitude } } : {}), ...(doc.paragraphStyles?.length ? { paragraphStyles: doc.paragraphStyles.map((s) => ({ ...s, color: { ...s.color } })) } : {}) };
   if (activeId && doc.layers.some((l) => l.id === activeId)) manifest.activeLayerID = activeId;
   const pathRecord = pathSetData(paths);
@@ -186,5 +186,11 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const palette = (Array.isArray(manifest.palette) ? manifest.palette : []).flatMap((c) => Array.isArray(c) && c.length === 3 && c.every((v) => Number.isInteger(v) && v >= 0 && v <= 255) ? [{ r: c[0] as number, g: c[1] as number, b: c[2] as number }] : []).slice(0, 256);
   const notes = (Array.isArray(manifest.notes) ? manifest.notes : []).flatMap((n) => { const o = obj(n), x = num(o.x, NaN), y = num(o.y, NaN); return inside(x, y) ? [{ id: str(o.id) ?? uid(), x, y, text: (str(o.text) ?? '').slice(0, 10000) }] : []; }).slice(0, 1000);
   const counts = (Array.isArray(manifest.counts) ? manifest.counts : []).flatMap((c) => { const o = obj(c), x = num(o.x, NaN), y = num(o.y, NaN); return inside(x, y) ? [{ x, y }] : []; }).slice(0, 10000);
-  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
+}
+
+/** A document's colour profile from a manifest (1.53.5): a name and base64 ICC bytes, or nothing (sRGB). */
+function profileFrom(v: unknown): { profile?: { name: string; icc: string } } {
+  const o = v as { name?: unknown; icc?: unknown } | null;
+  return o && typeof o.name === 'string' && typeof o.icc === 'string' && /^[A-Za-z0-9+/=]+$/.test(o.icc) ? { profile: { name: o.name.slice(0, 200), icc: o.icc } } : {};
 }

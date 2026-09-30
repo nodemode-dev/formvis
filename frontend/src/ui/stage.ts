@@ -1,3 +1,4 @@
+import { applyLut } from '../engine/colour-lut';
 import { createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type Engine, type Pt, type Rect, type Surface } from '../engine';
 import type { Project } from '../engine/project';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
@@ -176,6 +177,17 @@ export class Stage {
     return pattern;
   }
 
+  /** Proof Colors and a colour-managed view (1.53.5, H2): the composed region through the view's lookup table. */
+  private applyView(w: number, h: number): void {
+    const v = this.engine.viewTransform;
+    if (!v || w <= 0 || h <= 0) return;
+    const c = (this.work as unknown as { getContext(k: '2d'): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null }).getContext('2d');
+    if (!c) return;
+    const img = c.getImageData(0, 0, w, h);
+    applyLut(img.data, v.lut, v.gamut);
+    c.putImageData(img, 0, 0);
+  }
+
   private renderScene(region: Rect | null = null): void {
     this.wantScene = false;
     const g = this.sctx;
@@ -189,7 +201,7 @@ export class Stage {
     let gpuLayers: DisplayLayer[] | null = null;
     if (this.gpu) {
       const gl = this.engine.gpuLayers();
-      const reason = documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
+      const reason = (this.engine.viewTransform ? 'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
       if (!reason && 'layers' in gl) gpuLayers = gl.layers;
       if (reason !== this.gpuReason) {
         this.gpuReason = reason;
@@ -234,12 +246,14 @@ export class Stage {
       if (d) {
         sizeSurface(this.work, d.w, d.h);
         this.engine.compose(this.work, translation(-d.x, -d.y));
+        this.applyView(d.w, d.h);
         g.imageSmoothingEnabled = false;
         g.drawImage(this.work as CanvasImageSource, 0, 0, d.w, d.h, ox + d.x * z, oy + d.y * z, d.w * z, d.h * z);
       }
     } else {
       sizeSurface(this.work, vis.w, vis.h);
       this.engine.compose(this.work, [z, 0, 0, z, ox - vis.x, oy - vis.y], v.zoom < 0.5 ? 'medium' : 'high');
+      this.applyView(vis.w, vis.h);
       g.drawImage(this.work as CanvasImageSource, vis.x, vis.y);
     }
     if (this.engine.showPixelGrid && v.zoom >= 8) {
