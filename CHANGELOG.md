@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.53.8 · 2026-09-30
+
+The parity plan's H1, third part: painting and filtering a selection at 16 bits.
+
+### Added
+
+- The Brush, Pencil and Eraser paint 16-bit documents at 16 bits: a stroke paints the 8-bit rendition as before, and when it ends it is rebuilt on the 16-bit pixels (source-over with the paint colour, its coverage from the alpha change or by least squares over the three channels; erasing scales alpha), in the stroke's own undo step, so the 16 bits under a soft or partial stroke are kept. Colour dynamics and the other painting and retouching tools wait for a later release, and say so.
+- Gaussian Blur, Unsharp Mask and Add Noise within a selection at 16 bits, blended by the selection's coverage.
+
 ## 1.53.7 · 2026-09-30
 
 The parity plan's H1, second part: 16-bit geometry and filters.

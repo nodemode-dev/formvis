@@ -2,6 +2,30 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## 16-bit painting and selections · _v1.53.8 (engine/deep.ts, index.ts)
+
+`strokeDeep`; the rebuild in `endStroke` before the stroke's step closes; `deepPaintOk` at the start of `beginStroke` (Brush, Pencil and Eraser without colour dynamics); `applyDeepFilter` blending by the selection's coverage. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import { blurDeep, composeDeep, deepFromU16, noiseDeep, resampleDeep, transferOf, unsharpDeep } from './deep';
+import { deepFromRaster, rasterFromDeep, resampleDeep } from './deep';
+    if (this.deepBlocked('Painting')) return false;   // 1.53.6
+    if (p.selection) { this.notice(`${name} within a selection does not work in 16 bits yet: Select > Deselect to filter the whole layer.`); return false; }
+    const deep = fn(l.deep);
+export const VERSION = '1.53.7';
+```
+
+Removed from backend:
+
+```text
+__version__ = "1.53.7"
+version = "1.53.7"
+version = "1.53.7"
+ "version": "1.53.7",
+```
+
+Nothing removed from src-tauri.
+
 ## 16-bit geometry and filters · _v1.53.7 (engine/deep.ts, filters.ts, index.ts; ui/panels/filter-panel.ts; app.ts)
 
 `composeDeep` places each layer with `placement` inverted (`place`, `bilinear`); `resampleDeep`, `blurDeep`, `unsharpDeep`, `noiseDeep`; `threeBoxWidths`, `boxBlur`, `mix32` and `toUnit` exported; `resampleImage` resamples a layer's 16 bits; `Engine.applyDeepFilter`; `FilterPanel.deepFilter`, at the start of `applyInBackground`; the allow-list's geometry and three filters. Removed lines taken after the version edit. Removed from frontend:
