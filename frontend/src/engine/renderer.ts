@@ -2,7 +2,7 @@ import { resizeMask } from './filters';
 import { blendPixels } from './blend';
 import { patternById } from './patterns';
 import { applyContour, contourLut, withGlobalLight, type ContourId } from './style-extras';
-import { canvasBlend, compositeOp, instances, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect } from './types';
+import { canvasBlend, compositeOp, instances, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect, type BlendIf, blendIfActive } from './types';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
 import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
 import { ancestors, hierarchy } from './tree';
@@ -169,7 +169,8 @@ export class Renderer {
       // drawn per render instead.
       const parts = styled && !base && !folders.length && !ov?.source && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height) : null;
       if (parts) this.drawParts(ctx, parts, job.view, opacity, false);
-      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts)) {
+      const blendIf = blendIfActive(layer.blendIf) ? layer.blendIf as BlendIf : null, knock = layer.knockout && layer.knockout !== 'none' ? layer.knockout : null;
+      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts) && !blendIf && !knock) {
         this.draw(ctx, src, m, t.sampling, pix, op, job.quality);
         if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
         continue;
@@ -189,6 +190,8 @@ export class Renderer {
         a.c.drawImage(cov, 0, 0);
         a.c.globalCompositeOperation = 'source-over';
       }
+      if (blendIf) this.blendIf(a, ctx, blendIf, W, H);
+      if (knock) this.knockout(job, ctx, a, layer, map, W, H, opacity);
       const placed = styled && !parts ? boundsOf([applyMat(m, 0, 0), applyMat(m, src.width, 0), applyMat(m, src.width, src.height), applyMat(m, 0, src.height)]) : null;
       if (placed) this.effects(this.drawer(ctx), a, fx as LayerEffects, matScale(job.view), opacity, W, H, placed, 'below');
       if (pixelBlend) this.pixelBlend(ctx, a, mode, pix, m, src, job.view, W, H);
@@ -546,6 +549,45 @@ export class Renderer {
       if (a) out.push({ src: whitePixel(), w: 1, h: 1, t: { x: a.x, y: a.y, w: a.w, h: a.h, rotation: 0, flipX: false, flipY: false, sampling: 'nearest' }, covers: false });
     }
     return out;
+  }
+
+  /** Blend If (1.54.5, M2): the layer's coverage in `a` multiplied by the range factor of its own value and of the
+   *  underlying composite's value in `ctx`, on the grey (Rec. 601 luminosity) or one channel, each split feathered. */
+  private blendIf(a: Slot, ctx: Ctx2D, b: BlendIf, W: number, H: number): void {
+    const top = a.c.getImageData(0, 0, W, H), under = ctx.getImageData(0, 0, W, H), t = top.data, u = under.data;
+    const valueOf = (d: Uint8ClampedArray, i: number): number => b.channel === 'r' ? d[i] : b.channel === 'g' ? d[i + 1] : b.channel === 'b' ? d[i + 2] : 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+    const factor = (v: number, r: [number, number, number, number]): number => {
+      const lo = v < r[0] ? 0 : v >= r[1] ? 1 : (v - r[0]) / Math.max(1, r[1] - r[0]);
+      const hi = v > r[3] ? 0 : v <= r[2] ? 1 : (r[3] - v) / Math.max(1, r[3] - r[2]);
+      return lo * hi;
+    };
+    for (let i = 0; i < t.length; i += 4) {
+      if (t[i + 3] === 0) continue;
+      const f = factor(valueOf(t, i), b.thisLayer) * (u[i + 3] === 0 ? factor(255, b.underlying) : factor(valueOf(u, i), b.underlying));
+      if (f < 1) t[i + 3] = Math.round(t[i + 3] * f);
+    }
+    a.c.putImageData(top, 0, 0);
+  }
+
+  /** Knockout (1.54.5, M2): what lies below the layer is replaced, through the layer's silhouette at its opacity,
+   *  by the Background (deep, or shallow for a layer outside any group) or by the composite beneath the layer's
+   *  group (shallow inside a group). The layer's own pixels then draw at their fill, so Fill 0 shows the knockout. */
+  private knockout(job: RenderJob, ctx: Ctx2D, a: Slot, layer: Layer, map: ReadonlyMap<ID, Layer>, W: number, H: number, opacity: number): void {
+    const parents = ancestors(map, layer), group = layer.knockout === 'shallow' ? parents[0] ?? null : null;
+    const only = new Set<ID>();
+    if (!group) { const bottom = job.doc.layers.find((l) => l.raster && !l.isGroup && !l.adjustment); if (bottom && bottom.id !== layer.id) only.add(bottom.id); }
+    else { const gi = job.doc.layers.indexOf(group); for (const [i, l] of job.doc.layers.entries()) if (i < gi && !ancestors(map, l).some((g) => g.id === group.id)) only.add(l.id); }
+    const back = this.slot(2, W, H);
+    back.c.setTransform(1, 0, 0, 1, 0, 0); back.c.clearRect(0, 0, W, H);
+    if (only.size) this.render({ ...job, target: back.s, only, overrides: job.overrides, quality: job.quality });
+    back.c.globalCompositeOperation = 'destination-in';
+    back.c.drawImage(a.s, 0, 0);
+    back.c.globalCompositeOperation = 'source-over';
+    ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = opacity; ctx.globalCompositeOperation = 'source-over';
+    // Clear the silhouette to the backdrop: destination-out by the silhouette, then the backdrop under it.
+    ctx.globalCompositeOperation = 'destination-out'; ctx.drawImage(a.s, 0, 0);
+    ctx.globalCompositeOperation = 'destination-over'; ctx.globalAlpha = 1; ctx.drawImage(back.s, 0, 0);
+    ctx.restore();
   }
 
   private cover(c: Ctx2D, mk: MaskInfo, view: Mat, W: number, H: number): void {

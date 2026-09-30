@@ -46,6 +46,13 @@ export interface Layer {
   readonly id: ID;
   /** Layer styles drawn beneath the layer; absent or null for none. */
   effects?: LayerEffects | null;
+  /** Blending Options (1.54.5, the parity plan's M2). Blend If: the layer's pixels shown only where this layer's
+   *  value and the underlying composite's value fall inside each range, each end feathered between its two numbers
+   *  (the split slider), on the grey (luminosity) or one channel. Knockout: where the layer has coverage, what lies
+   *  below it down to the Background (deep) or to the bottom of its group (shallow) is punched through, the layer's
+   *  own pixels showing at its fill. */
+  blendIf?: BlendIf | null;
+  knockout?: 'none' | 'shallow' | 'deep';
   /** A type layer's text, while its pixels are still the rendering of it; see `liveText`. */
   text?: TextSpec | null;
   /** A smart object's original pixels and live filter stack; `raster` shows the result. */
@@ -96,6 +103,11 @@ export interface DocNote { id: ID; x: number; y: number; text: string }
 /** A document's colour mode (1.50.2, the owner's walkthrough), as Photoshop's: RGB, Grayscale (8-bit grey), Bitmap (1-bit
  *  black and white) or Indexed Color (a palette of at most 256). Absent means RGB. */
 export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk';
+/** Blend If ranges, 0 to 255: [blackStart, blackEnd, whiteStart, whiteEnd] for this layer and for the underlying
+ *  composite; between the two numbers of a split the layer fades. Identity is [0, 0, 255, 255] on both. */
+export interface BlendIf { channel: 'gray' | 'r' | 'g' | 'b'; thisLayer: [number, number, number, number]; underlying: [number, number, number, number] }
+export const BLEND_IF_IDENTITY: BlendIf = { channel: 'gray', thisLayer: [0, 0, 255, 255], underlying: [0, 0, 255, 255] };
+export const blendIfActive = (b: BlendIf | null | undefined): boolean => !!b && (b.thisLayer.some((v, i) => v !== BLEND_IF_IDENTITY.thisLayer[i]) || b.underlying.some((v, i) => v !== BLEND_IF_IDENTITY.underlying[i]));
 /** A document's colour profile (1.53.5, H2): its name and ICC bytes, base64; none means sRGB, the working space. */
 export interface DocProfile { name: string; icc: string }
 /** A layer's pixels at 16 bits (1.53.6, H1): RGBA as floats 0 to 1, straight alpha, the size of its raster, which

@@ -1,4 +1,5 @@
 import { CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, instances, withGlobalLight, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
+import { BLEND_IF_IDENTITY, type BlendIf } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { checkRow, sliderRow } from './controls';
@@ -18,6 +19,7 @@ export class LayerStyleDialog extends Dialog {
   private sel = {} as Record<MultiEffect, number>;
   private layerId: string | null = null;
   private applied = false;
+  private blending: { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep' } = { blendIf: structuredClone(BLEND_IF_IDENTITY), knockout: 'none' };
   private readonly syncs: Array<() => void> = [];
 
   constructor(private readonly engine: Engine) {
@@ -70,6 +72,13 @@ export class LayerStyleDialog extends Dialog {
     const lightRowB = sliderRow('Global light altitude (\u00b0)', 0, 90, 1, (v) => { this.light = { ...this.light, altitude: v }; this.changed(); });
     this.body.append(lightRowA.el, lightRowB.el);
     this.syncs.push(() => { lightRowA.set(this.light.angle); lightRowB.set(this.light.altitude); });
+    const bl = (): { blendIf: BlendIf; knockout: 'none' | 'shallow' | 'deep' } => this.blending;
+    this.body.appendChild(el('<p class="cv-dialog-note">Blending Options (M2): Knockout punches through what lies below; Blend If shows the layer only inside each range, each end feathered between its two values.</p>'));
+    choice('Knockout', [['none', 'None'], ['shallow', 'Shallow'], ['deep', 'Deep']], () => bl().knockout, (v) => { bl().knockout = v as 'none' | 'shallow' | 'deep'; });
+    choice('Blend If', [['gray', 'Gray'], ['r', 'Red'], ['g', 'Green'], ['b', 'Blue']], () => bl().blendIf.channel, (v) => { bl().blendIf.channel = v as BlendIf['channel']; });
+    for (const [side, label] of [['thisLayer', 'This Layer'], ['underlying', 'Underlying Layer']] as const) for (const [k, name] of [[0, 'black start'], [1, 'black end'], [2, 'white start'], [3, 'white end']] as const) {
+      slider(`${label}: ${name}`, 0, 255, () => bl().blendIf[side][k], (v) => { const r = bl().blendIf[side]; r[k] = v; if (k === 0 && r[1] < v) r[1] = v; if (k === 1 && r[0] > v) r[0] = v; if (k === 2 && r[3] < v) r[3] = v; if (k === 3 && r[2] > v) r[2] = v; });
+    }
     check('Drop Shadow', () => fx().dropShadow.enabled, (v) => { fx().dropShadow.enabled = v; });
     multi('dropShadow');
     colour('Colour', () => fx().dropShadow.color, (c) => { fx().dropShadow.color = c; });
@@ -169,6 +178,7 @@ export class LayerStyleDialog extends Dialog {
     this.layerId = layer.id;
     this.applied = false;
     this.fx = structuredClone(layer.effects ?? defaultEffects());
+    this.blending = { blendIf: structuredClone(layer.blendIf ?? BLEND_IF_IDENTITY), knockout: layer.knockout ?? 'none' };
     for (const k of MULTI_EFFECTS) { this.inst[k] = instances(this.fx, k); this.sel[k] = 0; (this.fx as unknown as Record<string, unknown>)[k] = this.inst[k][0]; }
     delete this.fx.extra;
     this.light = { ...(this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT) };
@@ -211,6 +221,6 @@ export class LayerStyleDialog extends Dialog {
     const whole = this.assembled(), id = this.layerId, fx = effectsActive(whole) ? whole : null, cur = this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT;
     const light = this.light.angle !== cur.angle || this.light.altitude !== cur.altitude ? { ...this.light } : null;
     this.close();
-    if (id) { this.engine.applyStyleAndLight(id, fx, light); this.onApplied?.(fx ? structuredClone(fx) : null); }
+    if (id) { this.engine.applyStyleAndLight(id, fx, light, { blendIf: this.blending.blendIf, knockout: this.blending.knockout }); this.onApplied?.(fx ? structuredClone(fx) : null); }
   }
 }

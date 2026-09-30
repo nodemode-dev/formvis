@@ -3,6 +3,7 @@ import {
   Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS,
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
+import { blendIfActive, type BlendIf } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
 import { addPathResources, readPathResources } from './psd-paths';
 import type { PathSet, SubPath } from '../engine/paths';
@@ -94,6 +95,37 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
 }
 
 /** Photoshop layer effects as a formvis layer style, noting what formvis does not have. */
+/** Blending Options (1.54.5, M2) in Photoshop's terms. A range is [blackStart, blackEnd, whiteStart, whiteEnd]. The
+ *  composite grey pair carries a Gray Blend If; one of the three channel pairs a Red, Green or Blue one. Photoshop's
+ *  'knko' is a single flag, so Shallow and Deep both write true and read back as Shallow. */
+const IDENT: [number, number, number, number] = [0, 0, 255, 255];
+function toPsdBlending(l: Layer): { blendingRanges?: NonNullable<PsdLayer['blendingRanges']>; knockout?: boolean } {
+  const out: { blendingRanges?: NonNullable<PsdLayer['blendingRanges']>; knockout?: boolean } = {};
+  if (l.knockout && l.knockout !== 'none') out.knockout = true;
+  const b = l.blendIf;
+  if (b && blendIfActive(b)) {
+    const ch = { r: 0, g: 1, b: 2 }[b.channel as 'r' | 'g' | 'b'];
+    out.blendingRanges = { compositeGrayBlendSource: b.channel === 'gray' ? [...b.thisLayer] : [...IDENT], compositeGraphBlendDestinationRange: b.channel === 'gray' ? [...b.underlying] : [...IDENT],
+      ranges: [0, 1, 2, 3].map((i) => (i === ch ? { sourceRange: [...b.thisLayer], destRange: [...b.underlying] } : { sourceRange: [...IDENT], destRange: [...IDENT] })) };
+  }
+  return out;
+}
+function fromPsdBlending(pl: PsdLayer): { blendIf?: BlendIf; knockout?: 'shallow' } {
+  const out: { blendIf?: BlendIf; knockout?: 'shallow' } = {};
+  if (pl.knockout) out.knockout = 'shallow';
+  const r = pl.blendingRanges;
+  if (!r) return out;
+  const four = (a: number[] | undefined): [number, number, number, number] => [a?.[0] ?? 0, a?.[1] ?? 0, a?.[2] ?? 255, a?.[3] ?? 255];
+  const ident = (a: [number, number, number, number]): boolean => a.every((v, i) => v === IDENT[i]);
+  const g = four(r.compositeGrayBlendSource), gd = four(r.compositeGraphBlendDestinationRange);
+  if (!ident(g) || !ident(gd)) { out.blendIf = { channel: 'gray', thisLayer: g, underlying: gd }; return out; }
+  for (const [i, ch] of (['r', 'g', 'b'] as const).entries()) {
+    const s = four(r.ranges?.[i]?.sourceRange), d = four(r.ranges?.[i]?.destRange);
+    if (!ident(s) || !ident(d)) { out.blendIf = { channel: ch, thisLayer: s, underlying: d }; return out; }
+  }
+  return out;
+}
+
 function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefined, name: string, notes: string[]): LayerEffects | null {
   const fx = defaultEffects(), px = (u: UnitsValue | undefined, d: number): number => (u && typeof u.value === 'number' ? u.value : d);
   const col = (c: unknown, d: { r: number; g: number; b: number }): { r: number; g: number; b: number } => {
@@ -261,6 +293,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
         if (tx.shapeType === 'box' || warped) notes.push(`"${name}" is ${warped ? 'warped' : 'paragraph'} type in Photoshop; formvis edits it as plain point type.`);
       }
       if (pl.effects) { const fx = fromPsdEffects(pl.effects, psd.patterns, name, notes); if (fx) layer.effects = fx; }
+      Object.assign(layer, fromPsdBlending(pl));
       if (pl.clipping && base) layer.clipId = base.id;
       else base = layer;
       layers.push(layer);
@@ -315,7 +348,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
       const adjustment = toPsdAdjustment(l.adjustment);
       if (!adjustment) { notes.push(`"${l.name}" is a ${ADJUSTMENT_LABELS[l.adjustment.kind]} adjustment, which Photoshop has no adjustment layer for; it is left out of the PSD.`); return null; }
       if (l.adjustment.kind === 'hsv' && (l.adjustment.data as { colorize?: unknown }).colorize === true) notes.push(`"${l.name}" uses Colorize, which the PSD's Hue/Saturation layer does not carry from formvis.`);
-      const out: PsdLayer = { name: l.name, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment };
+      const out: PsdLayer = { name: l.name, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, adjustment, ...toPsdBlending(l) };
       maskOnto(l, out);
       return out;
     }
@@ -324,7 +357,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     if (!px) return null;
 
 
-    const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId };
+    const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, ...toPsdBlending(l) };
     if (effectsActive(l.effects)) { const e = toPsdEffects(l.effects, psdPatterns); if (e) out.effects = e; }
     if (liveText(l) && l.text && l.raster) {
       // Live type goes as Photoshop point type: anchored where formvis anchors it, on the first line's baseline, the

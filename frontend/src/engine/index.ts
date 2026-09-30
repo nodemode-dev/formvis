@@ -19,7 +19,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { antialiasMask, wandMask } from './kernels';
 import { Project } from './project';
-import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
 import { allPatterns, patternById } from './patterns';
 
 export * from './types';
@@ -799,6 +799,7 @@ export class Engine {
       }
       const folders = fchains.get(l.parentId ?? null);
       if (folders && l.clipId) return { reason: 'a clipped layer inside a masked folder' };
+      if (visible && (blendIfActive(l.blendIf) || (l.knockout && l.knockout !== 'none'))) return { reason: 'Blend If or Knockout' };
       const mask = maskFor(l, o);
       let clip: GpuClipSpec | undefined;
       if (l.clipId) {
@@ -858,10 +859,11 @@ export class Engine {
   }
 
   /** The Layer Style dialog's OK: the layer's effects and, when it changed, the document's Global Light, one step. */
-  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null): void {
-    this.edit('Layer Style', () => {
+  applyStyleAndLight(id: ID, effects: LayerEffects | null, light: GlobalLight | null, blending: { blendIf: BlendIf | null; knockout: 'none' | 'shallow' | 'deep' } | null = null): void {
+    this.edit('Layer Style', (p) => {
       if (light) this.setGlobalLight(light);
       this.setLayerEffects(id, effects);
+      if (blending) p.updateLayer(id, { blendIf: blendIfActive(blending.blendIf) ? blending.blendIf : null, knockout: blending.knockout });
       return true;
     });
   }
