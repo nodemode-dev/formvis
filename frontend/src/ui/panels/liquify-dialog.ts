@@ -1,7 +1,9 @@
 import type { Engine, ID } from '../../engine';
 import { clearFreeze, dabField, fieldIsZero, freezeAt, invertFreeze, liquifyImage, makeField, paintFreeze, pushField, resetField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
+import { FACE_SLIDERS, faceField, noFaceChange, type Face, type FaceSettings, type FaceSlider } from '../../engine/face-liquify';
+import { faceReady, findFaces } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
-import { el } from '../dom';
+import { el, setText } from '../dom';
 import { paint } from '../palette';
 import { toast } from '../toast';
 import { sliderRow, type Row } from './controls';
@@ -19,6 +21,11 @@ export class LiquifyDialog extends Dialog {
   private size = 100;
   private pressure = 50;
   private liq: LiquifyField | null = null;
+  /** Face-Aware Liquify (1.56.7): the faces the engine found, the sliders, and the note under them. */
+  private faces: Face[] = [];
+  private faceSet: FaceSettings = noFaceChange();
+  private readonly faceRows = new Map<FaceSlider, Row<number>>();
+  private readonly faceNote = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
   private src: ImageData | null = null;
   private layerId: ID | null = null;
   private scale = 1;
@@ -54,7 +61,15 @@ export class LiquifyDialog extends Dialog {
     maskInvert.addEventListener('click', () => { if (this.liq) { invertFreeze(this.liq); this.render(); } });
     const actions = el('<div class="cv-row-actions"></div>');
     actions.append(restore, maskNone, maskInvert);
-    this.body.append(bar, this.canvas, this.sizeRow.el, this.pressureRow.el, actions);
+    const findFaces = el('<button class="cv-btn" type="button">Find faces</button>') as HTMLButtonElement;
+    findFaces.addEventListener('click', () => void this.findFaces());
+    const resetFace = el('<button class="cv-btn cv-btn-ghost" type="button">Reset face</button>') as HTMLButtonElement;
+    resetFace.addEventListener('click', () => { this.faceSet = noFaceChange(); for (const r of this.faceRows.values()) r.set(0); this.render(); });
+    const faceBar = el('<div class="cv-row-actions"><strong style="margin-right: 8px">Face-Aware Liquify</strong></div>');
+    faceBar.append(findFaces, resetFace);
+    const grid = el('<div style="display: grid; grid-template-columns: 1fr 1fr; column-gap: 16px"></div>');
+    for (const [k, label] of FACE_SLIDERS) { const r = sliderRow(label, -100, 100, 1, (v) => { this.faceSet[k] = v; this.render(); }); this.faceRows.set(k, r); grid.appendChild(r.el); }
+    this.body.append(bar, this.canvas, this.sizeRow.el, this.pressureRow.el, actions, faceBar, this.faceNote, grid);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => this.release();
@@ -70,6 +85,7 @@ export class LiquifyDialog extends Dialog {
     this.src = l.raster.read();
     this.layerId = l.id;
     this.liq = makeField(this.src.width, this.src.height);
+    this.faces = []; this.faceSet = noFaceChange(); for (const r of this.faceRows.values()) r.set(0); setText(this.faceNote, 'Find faces to shape them with the sliders.');
     this.scale = Math.min(1, PW / this.src.width, PH / this.src.height);
     this.ox = Math.floor((PW - this.src.width * this.scale) / 2);
     this.oy = Math.floor((PH - this.src.height * this.scale) / 2);
@@ -127,7 +143,7 @@ export class LiquifyDialog extends Dialog {
       this.frame = 0;
       if (!this.src || !this.liq) return;
       const w = Math.max(1, Math.round(this.src.width * this.scale)), h = Math.max(1, Math.round(this.src.height * this.scale));
-      this.shown = liquifyImage(this.src, this.liq, this.scale, w, h);
+      this.shown = liquifyImage(this.src, this.combined(this.liq), this.scale, w, h);
       this.draw();
     });
   }
@@ -160,9 +176,32 @@ export class LiquifyDialog extends Dialog {
   }
 
   private apply(): void {
-    const f = this.liq, id = this.layerId;
+    const f = this.liq ? this.combined(this.liq) : null, id = this.layerId;
     this.close();
     if (f && id && !fieldIsZero(f)) this.engine.applyLiquify(id, f);
+  }
+
+  /** The brushes' field with the face's sliders added (Face-Aware Liquify, 1.56.7), recomputed so they never compound. */
+  private combined(f: LiquifyField): LiquifyField {
+    const face = this.faces[0];
+    if (!face || Object.values(this.faceSet).every((v) => !v)) return f;
+    const add = faceField(f, face, this.faceSet), d = new Float32Array(f.d);
+    for (let i = 0; i < d.length; i++) d[i] += add[i];
+    return { ...f, d };
+  }
+
+  /** Finds the faces in the layer with the engine's YuNet; the sliders work on the largest. */
+  private async findFaces(): Promise<void> {
+    if (!this.src) return;
+    try {
+      if (!(await faceReady())) { setText(this.faceNote, 'Face-Aware Liquify needs the face finder (YuNet, 232 KB, MIT): download it in Preferences > Plugins > Local models.'); return; }
+      setText(this.faceNote, 'Finding faces...');
+      const c = document.createElement('canvas'); c.width = this.src.width; c.height = this.src.height; (c.getContext('2d') as CanvasRenderingContext2D).putImageData(this.src, 0, 0);
+      const blob = await new Promise<Blob>((res, rej) => c.toBlob((b) => (b ? res(b) : rej(new Error('no pixels'))), 'image/png'));
+      this.faces = await findFaces(blob);
+      setText(this.faceNote, this.faces.length ? `${this.faces.length} face${this.faces.length > 1 ? 's' : ''} found; the sliders shape the largest.` : 'No face found in this layer.');
+      this.render();
+    } catch (err) { setText(this.faceNote, err instanceof Error ? err.message : 'The faces could not be found.'); }
   }
 
   private release(): void {

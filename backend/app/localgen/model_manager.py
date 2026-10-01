@@ -131,6 +131,7 @@ PINNED: dict[str, str] = {
     "fast-style/pointilism-9.onnx": "5ee2b8d4d6bc60a777f54e0fe96a1b717360a004b79d56c67390d4a975b14d98",
     "fast-style/rain-princess-9.onnx": "4162912e6f75fedef6f810ae989b9e10d3d5d43308dab34b027c850cf255e152",
     "fast-style/udnie-9.onnx": "8656b6ce7dec8f22ee13c2d557d6b67bd6f550dde88d0f2e7c9972aeb765cc0d",
+    "yunet-face/face_detection_yunet_2023mar.onnx": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
     "sam2.1-hiera-tiny/vision_encoder.onnx": "4f30aacd3aaefbca81a0b7fe4c1fc96345570ea0a6f80ced599493d1b3be2e8c",
     "sam2.1-hiera-tiny/vision_encoder.onnx_data": "e83df9866a5afe68ea7f0f721f18f65137fc3acbf0da1c74e946d363e09c69cc",
     "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx": "874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf",
@@ -332,6 +333,13 @@ MODELS = {
         "name": "Style Transfer presets (fast neural style, ONNX)",
         "license": "BSD-3-Clause",
         "files": {f"fast-style/{s}-9.onnx": f"https://github.com/onnx/models/raw/main/validated/vision/style_transfer/fast_neural_style/model/{s}-9.onnx" for s in ("candy", "mosaic", "rain-princess", "udnie", "pointilism")},
+    },
+    # YuNet (1.56.7, formvis): OpenCV Zoo's face detector, MIT (Shiqi Yu), for Face-Aware Liquify; OpenCV's Hugging Face
+    # copy pinned to its revision, hashed on 1 October 2026; OpenCV's own FaceDetectorYN runs it.
+    "yunet-face": {
+        "name": "YuNet face detector (OpenCV Zoo)",
+        "license": "MIT",
+        "files": {"yunet-face/face_detection_yunet_2023mar.onnx": "https://huggingface.co/opencv/face_detection_yunet/resolve/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310/face_detection_yunet_2023mar.onnx"},
     },
     # SAM 2.1 tiny as ONNX (1.53.4, formvis): Object Selection with nothing to install, on ONNX Runtime. Meta's SAM 2.1
     # weights (Apache-2.0), exported by onnx-community (the export states no licence of its own), pinned to its revision.

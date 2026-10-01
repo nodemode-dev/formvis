@@ -67,7 +67,8 @@ ask it questions.
   Painting), in the Smear tool with Liquify.
 - Filter > Liquify has Forward Warp, Reconstruct, both Twirls, Pucker and Bloat, and Freeze Mask: paint over what
   must not move (shown in red) and every tool leaves it still; Thaw Mask frees it, Mask None clears the mask and
-  Invert Mask swaps frozen and free.
+  Invert Mask swaps frozen and free. Find faces (the face finder downloads once, 232 KB) and the Face-Aware sliders
+  reshape the largest face: eyes, nose, smile and mouth, forehead, chin and face width.
 
 ## Type, shapes and paths
 
