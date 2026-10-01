@@ -43,6 +43,7 @@ import { diamondFill, presetById, reflectStops, resolveStops, type GradientType 
 import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
 import { liquifyImage, type LiquifyField } from './liquify';
 import { puppetImage } from './puppet';
+import { applyH, convexQuadTLTRBRBL, homography as quadHomography, perspectiveImage, straighten, type Plane, type Quad } from './perspective';
 import { findWires } from './distractions';
 import type { SampledTip } from './abr';
 import { DEFAULT_GLOBAL_LIGHT, type GlobalLight } from './style-extras';
@@ -1850,6 +1851,8 @@ export class Engine {
     if (mw && mw.project === p && mw.preview) m.set(mw.layerId, { ...(m.get(mw.layerId) ?? {}), source: mw.preview.raster.canvas, transform: mw.preview.t });
     const pw = this.puppetEdit;
     if (pw && pw.project === p && pw.preview) m.set(pw.layerId, { ...(m.get(pw.layerId) ?? {}), source: pw.preview.raster.canvas, transform: pw.preview.t });
+    const px = this.perspectiveEdit;
+    if (px && px.project === p && px.preview) m.set(px.layerId, { ...(m.get(px.layerId) ?? {}), source: px.preview.raster.canvas, transform: px.preview.t });
     if (pv && pv.project === p) m.set(pv.layerId, { ...(m.get(pv.layerId) ?? {}), ...(pv.target === 'pixels' ? { source: pv.surface } : { maskSource: pv.surface }), ...(pv.transform ? { transform: pv.transform } : {}) });
     const gr = this.gradient;
     if (gr && gr.project === p) m.set(gr.layerId, { ...(m.get(gr.layerId) ?? {}), ...(gr.target === 'pixels' ? { source: gr.surface } : { maskSource: gr.surface }) });
@@ -3674,7 +3677,7 @@ export class Engine {
 
   beginMeshWarp(): boolean {
     const p = this.current, l = p?.activeLayer;
-    if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit) return false;
+    if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.perspectiveEdit) return false;
     if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
     this.settle();
     const r = l.raster, c = cornersOf(l.transform), gw = 4, gh = 4, points: P2[] = [];
@@ -3742,7 +3745,7 @@ export class Engine {
 
   beginPuppetWarp(): boolean {
     const p = this.current, l = p?.activeLayer;
-    if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.puppetEdit) return false;
+    if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) return false;
     if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Puppet Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
     this.settle();
     const r = l.raster, m = placement(l.transform, r.width, r.height);
@@ -3807,6 +3810,125 @@ export class Engine {
   }
 
   cancelPuppetWarp(): void { if (this.puppetEdit) this.dropPuppet(); }
+
+  /** Edit > Perspective Warp (1.55.6, the parity plan's M4): in Layout, drag to draw planes over the picture and move
+   *  their corners to fit it (corners within a few pixels of another plane's snap to share it); in Warp, move the
+   *  corners and the picture follows each plane's homography (engine/perspective.ts). Straighten and Level make
+   *  near-vertical or near-horizontal edges exact. Enter applies as one step, Escape cancels. */
+  perspectiveEdit: { project: Project; layerId: ID; phase: 'layout' | 'warp'; planes: Plane[]; source: ImageData; toLocal: Mat; box: Rect; preview: Warped | null } | null = null;
+  private perspectiveFrame = 0;
+
+  beginPerspectiveWarp(): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) return false;
+    if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Perspective Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
+    this.settle();
+    const r = l.raster, m = placement(l.transform, r.width, r.height);
+    this.perspectiveEdit = { project: p, layerId: l.id, phase: 'layout', planes: [], source: r.read(), toLocal: invert(m), box: transformBounds(l.transform), preview: null };
+    this.emit('render', null);
+    this.emit('options', null);
+    return true;
+  }
+
+  /** Layout: a plane from a dragged rectangle; corners near another plane's corner (within `snap`) take it. */
+  addPerspectivePlane(a: Pt, b: Pt, snap = 0): number {
+    const w = this.perspectiveEdit;
+    if (!w || w.phase !== 'layout') return -1;
+    const x0 = Math.min(a.x, b.x), x1 = Math.max(a.x, b.x), y0 = Math.min(a.y, b.y), y1 = Math.max(a.y, b.y);
+    const quad = ([[x0, y0], [x1, y0], [x1, y1], [x0, y1]] as Quad).map((c) => this.snapPerspective(c, snap, -1)) as Quad;
+    if (!convexQuadTLTRBRBL(quad)) return -1;
+    w.planes.push({ src: quad.map((c) => [c[0], c[1]]) as Quad, dst: quad.map((c) => [c[0], c[1]]) as Quad });
+    this.emit('overlay', null);
+    this.emit('options', null);
+    return w.planes.length - 1;
+  }
+
+  private snapPerspective(c: P2, snap: number, skip: number): P2 {
+    const w = this.perspectiveEdit;
+    if (!w || snap <= 0) return c;
+    for (const [k, pl] of w.planes.entries()) { if (k === skip) continue; for (const q of pl.dst) if (Math.hypot(q[0] - c[0], q[1] - c[1]) <= snap) return [q[0], q[1]]; }
+    return c;
+  }
+
+  /** Moves one corner: in Layout the plane's layout and warped corner together (the plane is fitted to the picture),
+   *  in Warp only the warped one; every plane's corner at the same place moves with it, so shared edges stay shared.
+   *  A move that would fold a quad is ignored. */
+  movePerspectiveCorner(plane: number, corner: number, pt: Pt, snap = 0): void {
+    const w = this.perspectiveEdit;
+    if (!w || !w.planes[plane]) return;
+    const old = w.planes[plane].dst[corner], target = w.phase === 'layout' ? this.snapPerspective([pt.x, pt.y], snap, plane) : [pt.x, pt.y] as P2;
+    const same = (c: P2): boolean => Math.abs(c[0] - old[0]) < 1e-6 && Math.abs(c[1] - old[1]) < 1e-6;
+    const next = w.planes.map((pl) => ({ src: (w.phase === 'layout' ? pl.src.map((c) => (same(c) ? [target[0], target[1]] : c)) : pl.src) as Quad, dst: pl.dst.map((c) => (same(c) ? [target[0], target[1]] : c)) as Quad }));
+    if (next.some((pl) => !convexQuadTLTRBRBL(pl.dst) || !convexQuadTLTRBRBL(pl.src))) return;
+    w.planes = next;
+    this.schedulePerspective();
+  }
+
+  setPerspectivePhase(phase: 'layout' | 'warp'): void {
+    const w = this.perspectiveEdit;
+    if (!w || w.phase === phase) return;
+    if (phase === 'layout' && w.planes.some((pl) => pl.dst.some((c, i) => c[0] !== pl.src[i][0] || c[1] !== pl.src[i][1]))) { this.notice('Layout returns once the warp is undone: Escape cancels the warp.'); return; }
+    w.phase = phase;
+    this.emit('overlay', null);
+    this.emit('options', null);
+  }
+
+  straightenPerspective(vertical: boolean): void {
+    const w = this.perspectiveEdit;
+    if (!w || w.phase !== 'warp' || !w.planes.length) return;
+    const planes = w.planes.map((pl) => ({ src: pl.src, dst: pl.dst.map((c) => [c[0], c[1]]) as Quad }));
+    straighten(planes, vertical);
+    if (planes.some((pl) => !convexQuadTLTRBRBL(pl.dst))) { this.notice('Straightening would fold a plane.'); return; }
+    w.planes = planes;
+    this.schedulePerspective();
+  }
+
+  private schedulePerspective(): void {
+    if (!this.perspectiveFrame) this.perspectiveFrame = requestAnimationFrame(() => { this.perspectiveFrame = 0; const w = this.perspectiveEdit; if (w) { w.preview = this.perspectiveRender(w, 360); this.emit('render', null); } });
+    this.emit('overlay', null);
+  }
+
+  /** The layer through the planes over a region holding the layer's box and every warped quad, at most `maxSide`
+   *  pixels a side (0 for full size); null while nothing is warped. */
+  private perspectiveRender(w: NonNullable<Engine['perspectiveEdit']>, maxSide = 0): Warped | null {
+    if (!w.planes.length || w.planes.every((pl) => pl.dst.every((c, i) => c[0] === pl.src[i][0] && c[1] === pl.src[i][1]))) return null;
+    let x0 = w.box.x, y0 = w.box.y, x1 = w.box.x + w.box.w, y1 = w.box.y + w.box.h;
+    for (const pl of w.planes) {
+      const f = quadHomography(pl.src, pl.dst);
+      const pts: P2[] = [...pl.dst, ...(f ? [[w.box.x, w.box.y], [x1, w.box.y], [x1, w.box.y + w.box.h], [w.box.x, w.box.y + w.box.h]].map(([x, y]) => applyH(f, x, y)) : [])];
+      for (const [x, y] of pts) if (Number.isFinite(x) && Number.isFinite(y)) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
+    }
+    const doc = w.project.doc, lim = 2 * Math.max(doc.width, doc.height);
+    x0 = Math.floor(Math.max(-lim, x0)); y0 = Math.floor(Math.max(-lim, y0)); x1 = Math.ceil(Math.min(doc.width + lim, x1)); y1 = Math.ceil(Math.min(doc.height + lim, y1));
+    const W = Math.max(1, x1 - x0), H = Math.max(1, y1 - y0), s = maxSide ? Math.min(1, maxSide / Math.max(W, H)) : 1;
+    const img = perspectiveImage(w.source, (x, y) => { const q = applyMat(w.toLocal, x, y); return [q.x, q.y]; }, w.planes, x0, y0, W, H, s);
+    const raster = new Raster(img.width, img.height);
+    raster.ctx.putImageData(img, 0, 0);
+    return { raster, t: { ...docTransform(W, H), x: x0, y: y0, w: W, h: H } };
+  }
+
+  /** Applies at full resolution as one Perspective Warp step, trimmed to the visible pixels. */
+  applyPerspectiveWarp(): void {
+    const w = this.perspectiveEdit;
+    if (!w) return;
+    this.dropPerspective();
+    const p = w.project, l = p.layer(w.layerId);
+    if (p !== this.current || !l) return;
+    const full = this.perspectiveRender(w);
+    if (!full) return;
+    const crop = visibleBounds(full.raster), pixels = crop ? cropWarp(full, crop) : full;
+    this.edit('Perspective Warp', (q) => q.updateLayer(l.id, { raster: pixels.raster, transform: pixels.t, shape: null }));
+  }
+
+  cancelPerspectiveWarp(): void { if (this.perspectiveEdit) this.dropPerspective(); }
+
+  private dropPerspective(): void {
+    if (this.perspectiveFrame) cancelAnimationFrame(this.perspectiveFrame);
+    this.perspectiveFrame = 0;
+    this.perspectiveEdit = null;
+    this.emit('render', null);
+    this.emit('options', null);
+  }
 
   private dropPuppet(): void {
     if (this.puppetFrame) cancelAnimationFrame(this.puppetFrame);

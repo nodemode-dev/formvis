@@ -88,6 +88,11 @@ ask it questions.
   so the parts that matter keep their shape; tick Protect skin tones or Protect the selection to keep those whole. It
   goes from a quarter to twice the size in one step. Image > Image Rotation turns the whole canvas by 90 or 180
   degrees without resampling a pixel.
+- Edit > Perspective Warp straightens or changes the perspective of what is in a picture. In Layout, drag to draw a
+  plane over a surface (a wall, a road, a box side) and move its corners onto the surface's corners; draw more planes
+  beside it, their corners snapping together. Then choose Warp in the options bar and move the corners: the picture
+  follows each plane. Straighten verticals and Level horizontals do the common fixes at once. Enter applies, Escape
+  cancels.
 
 ## Generating images
 
