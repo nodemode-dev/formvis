@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.55.8 · 2026-10-01
+
+Adaptive Wide Angle (the parity plan's M4, third part, which closes the row with Content-Aware Scale and Perspective Warp).
+
+### Added
+
+- Filter > Adaptive Wide Angle: a wide or fisheye picture reprojected to the ordinary perspective view, so lines that are straight in the world come out straight. Click along something that should be straight to draw a constraint line on the dialog's picture (New line starts another), and Fit to lines finds the lens's field of view that straightens them and levels the first; or set Correction (Fisheye, Equisolid, Stereographic), Strength, Scale and Rotation yourself. The canvas shows the result live; OK is one step.
+
 ## 1.55.7 · 2026-10-01
 
 Colour-model operations in every mode (DEV_PLAN 22.6).
