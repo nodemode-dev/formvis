@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## JPEG Artifacts Removal and Super Zoom complete the gallery · _v1.55.2 (engine/neural.ts; ui/panels/neural-dialog.ts; app.ts)
+
+DEV_PLAN 23.2, fifth part. No FBCNN ONNX exists on the Hub and this environment cannot export one (no PyTorch), so JPEG Artifacts Removal's first version needs no model: `deblock` spreads the steps across JPEG's 8-pixel block boundaries over four pixels where the jump is below an edge threshold (24 levels: a real edge is kept), then a light Surface Blur softens the mosquito noise in flat areas, scaled by Strength; FBCNN (Apache-2.0 at its source) replaces it when an export can be pinned. Super Zoom is Real-ESRGAN's Upscale, already shipped: the gallery's entry takes a Factor (2x, 4x) and hands off to `upscale-2x` or `upscale-4x` through `onSuperZoom`, which the app wires to the commands. The gallery's seven are now all present: Harmonize, Skin Smoothing, Depth Blur, Colorize, Style Transfer, JPEG Artifacts Removal, Super Zoom. Verified under 4x CPU throttling on a gradient re-encoded as a quality-12 JPEG: the block-boundary step ratio (on-grid against off-grid differences) fell from 53.2 to 9.6 while a hard black edge kept its 134-level jump exactly, as one "JPEG Artifacts Removal" step; Super Zoom opened "Upscale 2x"; layout shift 0 after the JPEG note was shortened to the note's two lines (a longer first wording made a third line and measured 0.00402); no errors. The README's line counts follow the code (36,500 TypeScript, 8,100 Python). Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import { depthBlur, harmonize, mixColor, skinSmooth } from '../../engine/neural';
+type NeuralKind = 'harmonize' | 'skinSmooth' | 'depthBlur' | 'colorize' | 'style';
+export const NEURAL_LABELS: Record<NeuralKind, string> = { harmonize: 'Harmonize', skinSmooth: 'Skin Smoothing', depthBlur: 'Depth Blur', colorize: 'Colorize', style: 'Style Transfer' };
+  private readonly s = { amount: 100, smooth: 60, radius: 6, focus: 70, range: 15, blur: 8 };
+    this.rows.push({ el: amount.el, kinds: ['harmonize', 'colorize', 'style'] }, { el: smooth.el, kinds: ['skinSmooth'] }, { el: radius.el, kinds: ['skinSmooth'] }, { el: focus.el, kinds: ['depthBlur'] }, { el: range.el, kinds: ['depthBlur'] }, { el: blur.el, kinds: ['depthBlur'] }, { el: styleRow.el, kinds: ['style'] });
+    this.body.append(amount.el, smooth.el, radius.el, focus.el, range.el, blur.el, styleRow.el, this.note);
+    const run = this.run(), kind = this.kind;
+export const VERSION = '1.55.1';
+```
+
 ## Style Transfer presets, the third model-backed Neural Filter · _v1.55.1 (io/local-gen.ts; ui/panels/neural-dialog.ts, local-models.ts; backend app/localgen/style.py new, paths.py, model_manager.py, main.py, requirements.txt)
 
 DEV_PLAN 23.2, fourth part. The gate first: an AdaIN export would need PyTorch, which this environment lacks, so Style Transfer's first version is five preset styles from the ONNX model zoo's fast neural style models (Johnson et al.; the zoo's files are BSD-3-Clause), each pinned to a SHA-256 computed from the real download. `localStyle` and `styleReady`; the gallery's Style Transfer with a Style choice (Mosaic, Candy, Rain Princess, Udnie, Pointilism) and Amount, the styled picture fetched once per layer and style (`ensureStyle`) and mixed by `mixColor`; the Local models card. Verified under 4x CPU throttling through the gallery: the Style select holds five options, a gradient-and-disc scene changes by a mean 47.9 on the red channel as one "Style Transfer" step, layout shift 0, no errors; in the engine each preset ran on a real photograph at 640 px in 1.1 to 1.5 s at its own size (Mosaic looked at: a stained-glass rendering). Removed lines taken after the version edit. Removed from frontend:

@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.55.2
+
+No engine code changed in 1.55.2 (the deblocker runs in the window; Super Zoom reuses the shipped upscaler). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.55.1"
+version = "1.55.1"
+version = "1.55.1"
+ "version": "1.55.1",
+```
+
 ## Style Transfer presets · _v1.55.1 (app/localgen/style.py new, app/localgen/paths.py, app/localgen/model_manager.py, app/main.py, requirements.txt)
 
 `style.py`: the ONNX model zoo's five fast neural style models (BSD-3-Clause), each pinned by SHA-256 from the real download; the zoo exports a fixed 224 by 224 input, so the graph's input and output dims are made dynamic in memory when the session is built (the onnx package, Apache-2.0, pinned in requirements at 1.23.1; the file on disk stays the pinned original); RGB floats 0 to 255 in and out, the picture capped at 1024 on its long side for the model and scaled back; `POST /api/style/local` with a `style` field. `paths.session()` also takes model bytes, so the patched graph gets the same providers and memory settings as every model. Checked here: each preset on a photograph at 640 px in 1.1 to 1.5 s at the picture's own size. Removed lines taken after the version edit:

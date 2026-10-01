@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.55.2 · 2026-10-01
+
+Neural Filters: JPEG Artifacts Removal and Super Zoom (DEV_PLAN 23.2, fifth part). The gallery's seven are all present.
+
+### Added
+
+- JPEG Artifacts Removal in Filter > Neural Filters: the steps on JPEG's 8-pixel grid are smoothed where they are small and real edges are kept, then the noise in flat areas softened, by a Strength you set. No model and no download; a learned model (FBCNN) takes its place when an export can be pinned.
+- Super Zoom in the gallery: Real-ESRGAN's Upscale at 2x or 4x, into a new layer.
+
+### Changed
+
+- The README's line counts follow the code again.
+
 ## 1.55.1 · 2026-10-01
 
 Neural Filters: Style Transfer (DEV_PLAN 23.2, fourth part).
