@@ -4,6 +4,25 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.57.3 · 2026-10-01
+
+The modes Photoshop withholds, and the ones to check, closed (DEV_PLAN 22.11).
+
+### Added
+
+- Image > Mode > Indexed Color, Bitmap and CMYK Color from 16- and 32-bit documents: the document comes down to 8 bits first, from 32 bits through HDR Toning, then the mode's own dialog. Lab Color from 16-bit documents converts from their 16-bit values; from 32 bits it comes down to 16 first.
+- Every blend mode in 32-bit documents. The modes Photoshop offers at 32 bits keep light above white; the others blend in the visible range, and light above white is kept wherever only one of the two layers covers a pixel.
+- Exposure and HDR Toning in CMYK and Lab documents, and Channel Mixer in Lab documents, with the same results as in RGB.
+- Assign Profile, Convert to Profile, Proof Setup, Proof Colors and Gamut Warning in 32-bit documents; Convert to Profile converts linear light exactly through the two profiles' primaries, light above white included.
+
+### Fixed
+
+- 1.57.1's note listed Darker Color and Lighter Color among the blend modes Photoshop offers at 32 bits; Adobe's list is Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge (Add), Difference, Hue, Saturation, Color and Luminosity. formvis offers all of them.
+
+### Known
+
+- Still to come: Grayscale at 16 and 32 bits, the adjustment layers other than Exposure at 32 bits, and in CMYK the Channel Mixer on inks, profiles and proofs, and 16 bits.
+
 ## 1.57.2 · 2026-10-01
 
 The last of the mode gates decided (DEV_PLAN 22.10).

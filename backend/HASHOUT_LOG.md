@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Convert to Profile at 32 bits: the linear matrix · _v1.57.3 (app/services/colour.py, app/routers/colour.py)
+
+`colour.linear_matrix(source, dest)`: the 3 by 3 matrix taking linear RGB in one profile to linear RGB in another through each profile's D50 primaries (Pillow's `red_colorant`, `green_colorant`, `blue_colorant`), `np.linalg.solve(dest, source)`; a non-RGB profile and an RGB profile without primaries (table-based) are refused by name. `POST /color/linear-matrix` returns it. Checked here: sRGB to sRGB is the identity; sRGB to Adobe RGB (1998) takes white to (0.999991, 1.000003, 1.000013) and pure red to 0.7151, the known value; the shipped CMYK profile is refused. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.57.2"
+version = "1.57.2"
+version = "1.57.2"
+ "version": "1.57.2",
+```
+
 ## Version only · _v1.57.2
 
 No engine code changed in 1.57.2 (the float filters and gates are window code). Removed lines taken after the version edit:
