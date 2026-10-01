@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.55.6 · 2026-10-01
+
+Perspective Warp (the parity plan's M4, second part; DEV_PLAN 23.3).
+
+### Added
+
+- Edit > Perspective Warp: in Layout, drag to draw planes over the picture and fit their corners to it (a corner near another plane's snaps to share it); choose Warp in the options bar and move the corners, and the picture follows each plane's perspective. Straighten verticals and Level horizontals make near-upright and near-level edges exact. Enter applies as one step, Escape cancels.
+
+### Known
+
+- Where two planes with different perspectives meet, a seam can show, since each plane carries its own map. Adaptive Wide Angle, M4's third part, follows.
+
 ## 1.55.5 · 2026-10-01
 
 Compositing in the mode (DEV_PLAN 22.5): 16-bit and CMYK documents compose as RGB ones do.

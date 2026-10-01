@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.55.6
+
+No engine code changed in 1.55.6 (Perspective Warp runs in the window). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.55.5"
+version = "1.55.5"
+version = "1.55.5"
+ "version": "1.55.5",
+```
+
 ## Version only · _v1.55.5
 
 No engine code changed in 1.55.5 (the float compositor is window code). Removed lines taken after the version edit:
