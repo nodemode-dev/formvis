@@ -65,6 +65,9 @@ ask it questions.
 - Dodge and Burn (Range, Exposure, Protect Tones) and Sponge (Saturate or Desaturate, Flow, Vibrance).
 - Blur and Sharpen (Mode and Sample All Layers; Sharpen's Protect Detail) and Smudge (Sample All Layers, Finger
   Painting), in the Smear tool with Liquify.
+- Filter > Liquify has Forward Warp, Reconstruct, both Twirls, Pucker and Bloat, and Freeze Mask: paint over what
+  must not move (shown in red) and every tool leaves it still; Thaw Mask frees it, Mask None clears the mask and
+  Invert Mask swaps frozen and free.
 
 ## Type, shapes and paths
 

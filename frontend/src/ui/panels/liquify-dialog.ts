@@ -1,5 +1,5 @@
 import type { Engine, ID } from '../../engine';
-import { dabField, fieldIsZero, liquifyImage, makeField, pushField, resetField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
+import { clearFreeze, dabField, fieldIsZero, freezeAt, invertFreeze, liquifyImage, makeField, paintFreeze, pushField, resetField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { paint } from '../palette';
@@ -7,7 +7,7 @@ import { toast } from '../toast';
 import { sliderRow, type Row } from './controls';
 
 const PW = 640, PH = 440;
-const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat']];
+const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask']];
 
 /** Filter > Liquify (Shift+Mod+X), Photoshop's workspace: the active layer in a preview, brushed with Forward Warp,
  *  Reconstruct, Twirl either way, Pucker or Bloat; Restore All clears the field; OK applies once as a Liquify step,
@@ -48,7 +48,13 @@ export class LiquifyDialog extends Dialog {
     this.pressureRow = sliderRow('Brush pressure (%)', 1, 100, 1, (v) => { this.pressure = v; });
     const restore = el('<button class="cv-btn" type="button">Restore All</button>') as HTMLButtonElement;
     restore.addEventListener('click', () => { if (this.liq) { resetField(this.liq); this.render(); } });
-    this.body.append(bar, this.canvas, this.sizeRow.el, this.pressureRow.el, restore);
+    const maskNone = el('<button class="cv-btn cv-btn-ghost" type="button">Mask None</button>') as HTMLButtonElement;
+    maskNone.addEventListener('click', () => { if (this.liq) { clearFreeze(this.liq); this.render(); } });
+    const maskInvert = el('<button class="cv-btn cv-btn-ghost" type="button">Invert Mask</button>') as HTMLButtonElement;
+    maskInvert.addEventListener('click', () => { if (this.liq) { invertFreeze(this.liq); this.render(); } });
+    const actions = el('<div class="cv-row-actions"></div>');
+    actions.append(restore, maskNone, maskInvert);
+    this.body.append(bar, this.canvas, this.sizeRow.el, this.pressureRow.el, actions);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => this.release();
@@ -87,6 +93,7 @@ export class LiquifyDialog extends Dialog {
     if (!f) return;
     const s = this.pressure / 100;
     if (this.tool === 'warp') { if (this.last) pushField(f, this.last.x, this.last.y, pt.x, pt.y, this.size / 2, s); }
+    else if (this.tool === 'freeze' || this.tool === 'thaw') paintFreeze(f, pt.x, pt.y, this.size / 2, s, this.tool === 'thaw');
     else dabField(f, this.tool, pt.x, pt.y, this.size / 2, s);
     this.last = pt;
     this.render();
@@ -132,6 +139,17 @@ export class LiquifyDialog extends Dialog {
     const pal = paint();
     g.clearRect(0, 0, PW, PH);
     if (this.shown) g.putImageData(this.shown, this.ox, this.oy);
+    const f = this.liq;
+    if (f?.freeze && this.shown) {
+      const w = this.shown.width, h = this.shown.height, img = g.getImageData(this.ox, this.oy, w, h), d = img.data;
+      for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+        const m = freezeAt(f, x / this.scale, y / this.scale);
+        if (m <= 0.01) continue;
+        const i = (y * w + x) * 4, k = m * 0.5;
+        d[i] = d[i] + (255 - d[i]) * k; d[i + 1] = d[i + 1] * (1 - k); d[i + 2] = d[i + 2] * (1 - k);
+      }
+      g.putImageData(img, this.ox, this.oy);
+    }
     if (this.hover) {
       g.strokeStyle = pal.accent;
       g.lineWidth = 1;

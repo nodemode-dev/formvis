@@ -6,8 +6,8 @@
  *  zero, Twirl rotates what lies under the brush, Pucker draws it in and Bloat swells it out, each weighted by a
  *  smoothstep falloff from the brush centre. */
 
-export interface LiquifyField { gw: number; gh: number; cell: number; d: Float32Array }
-export type LiquifyTool = 'warp' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat';
+export interface LiquifyField { gw: number; gh: number; cell: number; d: Float32Array; freeze?: Float32Array }
+export type LiquifyTool = 'warp' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'freeze' | 'thaw';
 
 export function makeField(w: number, h: number, cell = 4): LiquifyField {
   const gw = Math.ceil(w / cell) + 1, gh = Math.ceil(h / cell) + 1;
@@ -25,15 +25,36 @@ export function fieldAt(f: LiquifyField, x: number, y: number, out: [number, num
   out[1] = (f.d[i00 + 1] * (1 - tx) + f.d[i10 + 1] * tx) * (1 - ty) + (f.d[i01 + 1] * (1 - tx) + f.d[i11 + 1] * tx) * ty;
 }
 
-/** Visits every grid node within `radius` of (cx, cy) with its falloff weight. */
-function eachNode(f: LiquifyField, cx: number, cy: number, radius: number, visit: (i: number, px: number, py: number, w: number) => void): void {
+/** Visits every grid node within `radius` of (cx, cy) with its falloff weight, less its freeze (1.56.5, the parity
+ *  plan's M3: Freeze Mask, as Photoshop's, holds what it covers still under every tool, Reconstruct included). */
+function eachNode(f: LiquifyField, cx: number, cy: number, radius: number, visit: (i: number, px: number, py: number, w: number) => void, ignoreFreeze = false): void {
   const r = Math.max(2, radius);
   const x0 = Math.max(0, Math.floor((cx - r) / f.cell)), y0 = Math.max(0, Math.floor((cy - r) / f.cell));
   const x1 = Math.min(f.gw - 1, Math.ceil((cx + r) / f.cell)), y1 = Math.min(f.gh - 1, Math.ceil((cy + r) / f.cell));
   for (let gy = y0; gy <= y1; gy++) for (let gx = x0; gx <= x1; gx++) {
-    const px = gx * f.cell, py = gy * f.cell, dist = Math.hypot(px - cx, py - cy) / r;
-    if (dist < 1) visit((gy * f.gw + gx) * 2, px, py, smooth(1 - dist));
+    const px = gx * f.cell, py = gy * f.cell, dist = Math.hypot(px - cx, py - cy) / r, n = gy * f.gw + gx;
+    const free = ignoreFreeze || !f.freeze ? 1 : 1 - f.freeze[n];
+    if (dist < 1 && free > 0) visit(n * 2, px, py, smooth(1 - dist) * free);
   }
+}
+
+/** Freeze Mask and Thaw Mask: paint the freeze up or down under the brush by strength. */
+export function paintFreeze(f: LiquifyField, cx: number, cy: number, radius: number, strength: number, thaw: boolean): void {
+  if (!f.freeze) f.freeze = new Float32Array(f.gw * f.gh);
+  const s = Math.min(1, Math.max(0.02, strength)), m = f.freeze;
+  eachNode(f, cx, cy, radius, (i, _x, _y, w) => { const n = i / 2; m[n] = Math.min(1, Math.max(0, m[n] + (thaw ? -1 : 1) * w * s)); }, true);
+}
+
+/** The freeze mask cleared, or inverted (Photoshop's Mask Options: None, Invert All). */
+export function clearFreeze(f: LiquifyField): void { f.freeze = undefined; }
+export function invertFreeze(f: LiquifyField): void { const m = f.freeze ?? new Float32Array(f.gw * f.gh); for (let i = 0; i < m.length; i++) m[i] = 1 - m[i]; f.freeze = m; }
+
+/** The freeze at an image point, bilinear over the grid (for drawing the mask). */
+export function freezeAt(f: LiquifyField, x: number, y: number): number {
+  const m = f.freeze;
+  if (!m) return 0;
+  const gx = Math.min(f.gw - 1.001, Math.max(0, x / f.cell)), gy = Math.min(f.gh - 1.001, Math.max(0, y / f.cell)), x0 = Math.floor(gx), y0 = Math.floor(gy), tx = gx - x0, ty = gy - y0, i = y0 * f.gw + x0;
+  return (m[i] * (1 - tx) + m[i + 1] * tx) * (1 - ty) + (m[i + f.gw] * (1 - tx) + m[i + f.gw + 1] * tx) * ty;
 }
 
 /** Forward Warp, as in the source: the drag from a to b is added under the brush, scaled by strength (0 to 1). */
@@ -44,7 +65,7 @@ export function pushField(f: LiquifyField, ax: number, ay: number, bx: number, b
 }
 
 /** One dab of a stationary tool at (cx, cy): Reconstruct, Twirl either way, Pucker or Bloat. */
-export function dabField(f: LiquifyField, tool: Exclude<LiquifyTool, 'warp'>, cx: number, cy: number, radius: number, strength: number): void {
+export function dabField(f: LiquifyField, tool: Exclude<LiquifyTool, 'warp' | 'freeze' | 'thaw'>, cx: number, cy: number, radius: number, strength: number): void {
   const s = Math.min(1, Math.max(0.02, strength));
   eachNode(f, cx, cy, radius, (i, px, py, w) => {
     const k = w * s;
