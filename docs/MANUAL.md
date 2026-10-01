@@ -93,6 +93,10 @@ ask it questions.
   beside it, their corners snapping together. Then choose Warp in the options bar and move the corners: the picture
   follows each plane. Straighten verticals and Level horizontals do the common fixes at once. Enter applies, Escape
   cancels.
+- Filter > Adaptive Wide Angle straightens a wide or fisheye picture. Click three or more points along something
+  that should be straight (a horizon, a door frame) on the dialog's picture, add more lines with New line, and click
+  Fit to lines: formvis finds the lens's field of view that straightens them and levels the first. Correction,
+  Strength, Scale and Rotation can also be set by hand.
 
 ## Generating images
 
