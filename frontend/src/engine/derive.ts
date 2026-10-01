@@ -20,9 +20,15 @@ function inkFor(r: number, g: number, b: number, t: DeriveTables): Ink {
   return inkOf({ r, g, b }, t.in);
 }
 
-/** A layer's floats taken whole from its 8-bit pixels: CMYK through the table, Lab exactly (1.56.4), otherwise 16-bit RGB. */
-export function deriveWhole(img: ImageData, t: DeriveTables | null, lab = false): ChannelPixels {
+/** sRGB levels to linear light and back (1.56.8, 32-bit documents hold linear light). */
+const lin = (v: number): number => { const u = v / 255; return u <= 0.04045 ? u / 12.92 : ((u + 0.055) / 1.055) ** 2.4; };
+const enc = (v: number): number => { const u = Math.max(0, Math.min(1, v)); return Math.round((u <= 0.0031308 ? 12.92 * u : 1.055 * u ** (1 / 2.4) - 0.055) * 255); };
+
+/** A layer's floats taken whole from its 8-bit pixels: CMYK through the table, Lab exactly (1.56.4), 32-bit as linear
+ *  light (1.56.8), otherwise 16-bit RGB. */
+export function deriveWhole(img: ImageData, t: DeriveTables | null, lab = false, linear = false): ChannelPixels {
   if (lab) return labFromRgba(img);
+  if (linear) { const { width: w, height: h, data: d } = img, out = new Float32Array(w * h * 4); for (let i = 0; i < d.length; i += 4) { out[i] = lin(d[i]); out[i + 1] = lin(d[i + 1]); out[i + 2] = lin(d[i + 2]); out[i + 3] = d[i + 3] / 255; } return { mode: 'rgb', n: 3, width: w, height: h, data: out }; }
   const { width: w, height: h, data: d } = img, n = t ? 4 : 3, S = n + 1, out = new Float32Array(w * h * S);
   for (let j = 0, i = 0; j < w * h; j++, i += 4) {
     const o = j * S;
@@ -34,7 +40,7 @@ export function deriveWhole(img: ImageData, t: DeriveTables | null, lab = false)
 }
 
 /** The region (x, y, the size of `before`) of a layer's floats brought into step with what changed there. */
-export function deriveRegion(ch: ChannelPixels, x: number, y: number, before: ImageData, after: ImageData, t: DeriveTables | null): ChannelPixels {
+export function deriveRegion(ch: ChannelPixels, x: number, y: number, before: ImageData, after: ImageData, t: DeriveTables | null, linear = false): ChannelPixels {
   const out = new Float32Array(ch.data), S = ch.n + 1, A = ch.n, bw = before.width, bh = before.height, B = before.data, F = after.data;
   for (let j = 0; j < bh; j++) for (let i = 0; i < bw; i++) {
     const px = x + i, py = y + j;
@@ -52,14 +58,15 @@ export function deriveRegion(ch: ChannelPixels, x: number, y: number, before: Im
       const after4 = inkFor(F[s], F[s + 1], F[s + 2], t), before4 = w ? inkOf({ r: B[s], g: B[s + 1], b: B[s + 2] }, t.in) : after4;
       for (let c = 0; c < 4; c++) out[o + c] = clamp01(after4[c] + w * (out[o + c] - before4[c]));
     } else {
-      for (let c = 0; c < 3; c++) out[o + c] = clamp01(F[s + c] / 255 + w * (out[o + c] - B[s + c] / 255));
+      if (linear) for (let c = 0; c < 3; c++) out[o + c] = Math.max(0, lin(F[s + c]) + w * (out[o + c] - lin(B[s + c])));
+      else for (let c = 0; c < 3; c++) out[o + c] = clamp01(F[s + c] / 255 + w * (out[o + c] - B[s + c] / 255));
     }
   }
   return { ...ch, data: out };
 }
 
 /** A region's 8-bit rendition of the floats: through the display table for CMYK, rounded for 16-bit RGB. */
-export function renderRegion(ch: ChannelPixels, x: number, y: number, w: number, h: number, lut: Lut4 | null): ImageData {
+export function renderRegion(ch: ChannelPixels, x: number, y: number, w: number, h: number, lut: Lut4 | null, linear = false): ImageData {
   const S = ch.n + 1, strip = new Float32Array(w * h * S), img = new ImageData(w, h);
   for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
     const px = x + i, py = y + j;
@@ -69,6 +76,7 @@ export function renderRegion(ch: ChannelPixels, x: number, y: number, w: number,
   }
   if (ch.mode === 'lab') renderLab(strip, img.data);
   else if (ch.n === 4 && lut) applyLut4(strip, lut, img.data);
+  else if (linear) for (let k = 0, q = 0; k < strip.length; k += S, q += 4) { for (let c = 0; c < 3; c++) img.data[q + c] = enc(strip[k + c]); img.data[q + 3] = Math.round(clamp01(strip[k + 3]) * 255); }
   else for (let k = 0, q = 0; k < strip.length; k += S, q += 4) { for (let c = 0; c < 3; c++) img.data[q + c] = Math.round(clamp01(strip[k + c]) * 255); img.data[q + 3] = Math.round(clamp01(strip[k + 3]) * 255); }
   return img;
 }

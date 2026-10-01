@@ -1740,25 +1740,20 @@ export function startApp(): void {
   // a browser keeps "Load system fonts..." in the Type tool, since Local Font Access asks the user first.
   if ('__TAURI_INTERNALS__' in window) void loadSystemFonts().then((f) => { if (f) engine.emit('options', null); });
 
-  // A 16-bit document allows what keeps its 16 bits (1.53.6, H1); anything else waits for Image > Mode > 8 Bits/Channel.
-  const DEEP_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
-    'new-adj-levels', 'new-adj-curves', 'new-adj-exposure', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'edit-adjustment', 'flip-canvas-h', 'flip-canvas-v', 'rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'canvas-size', 'image-size', 'trim', 'reveal-all', 'filter-gaussianBlur', 'filter-motionBlur', 'filter-surfaceBlur', 'filter-unsharpMask', 'filter-addNoise', 'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'duplicate', 'duplicate-dialog', 'group', 'add-mask', 'add-mask-hide', 'delete-mask', 'toggle-mask', 'link-mask', 'clip', 'blend-next', 'blend-prev', 'depth-8', 'depth-16', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning',
-    'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
-  // 32 bits (1.53.9) are linear light, unbounded: what would clip past white waits there.
-  const NOT_AT_32 = new Set(['new-adj-levels', 'new-adj-curves', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'filter-unsharpMask', 'filter-addNoise', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning']);
-  for (const id of ['depth-32', 'export-hdr', 'export-exr']) DEEP_OK.add(id);
-  const COLOUR_ADJ = ['new-adj-hsv', 'new-adj-vibrance', 'new-adj-colorBalance', 'new-adj-blackWhite', 'new-adj-photoFilter', 'new-adj-channelMixer', 'new-adj-threshold', 'new-adj-selectiveColor', 'new-adj-gradientMap', 'new-adj-colorLookup', 'new-adj-shadowsHighlights'];
-  for (const id of COLOUR_ADJ) { DEEP_OK.add(id); NOT_AT_32.add(id); }
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   // 1.55.9 (DEV_PLAN 22.7): at 16 bits and in CMYK every command runs, the ones not on the float model through derive
-  // (engine/derive.ts); these are the ones that cannot work in that mode yet. 32 bits keeps its allowlist.
+  // (engine/derive.ts); these are the ones that cannot work in that mode yet. 32 bits joined them in 1.56.8.
   const STYLES = ['layer-style', 'paste-layer-style'];
   const CMYK_NOT = new Set([...STYLES, 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
   const DEEP16_NOT = new Set([...STYLES, 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-hdrToning']);
-  const LAB_NOT = new Set([...STYLES, ...ADJUSTMENT_KINDS.filter((k) => k !== 'levels' && k !== 'curves').map((k) => `new-adj-${k}`), 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const LAB_NOT = new Set([...STYLES, 'new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  // 1.56.8 (DEV_PLAN 22.10): 32 bits as a denylist too, everything else through derive in linear light. What remains is
+  // what the 32-bit compositor cannot draw (groups, masks, clipping, styles, blend modes, adjustments but Exposure),
+  // the colour models and the profile and proof commands.
+  const DEEP32_NOT = new Set([...STYLES, ...ADJUSTMENT_KINDS.filter((k) => k !== 'exposure').map((k) => `new-adj-${k}`), 'group', 'add-mask', 'add-mask-hide', 'clip', 'blend-next', 'blend-prev', 'mode-cmyk', 'mode-lab', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'filter-unsharpMask', 'filter-addNoise']);
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? !CMYK_NOT.has(c.id) || passes(c)
     : engine.current?.doc.mode === 'lab' ? !LAB_NOT.has(c.id) || passes(c)
-    : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || ((DEEP_OK.has(c.id) || passes(c)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));
+    : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || (engine.current?.doc.depth === 32 && (!DEEP32_NOT.has(c.id) || passes(c)));
   // Rebound keys (1.53.4), applied once every command is registered.
   for (const [id, keys] of Object.entries(loadPrefs().shortcuts)) commands.setKeys(id, keys);
   if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation, colour: colourView };

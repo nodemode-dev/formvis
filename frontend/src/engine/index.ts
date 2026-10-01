@@ -509,7 +509,7 @@ export class Engine {
       this.rollBack(p, name, err);
       return false;
     }
-    if (deepBefore && !nested && p.doc.depth !== 32) this.deriveChannels(p, deepBefore, p.history.pendingPatches);
+    if (deepBefore && !nested) this.deriveChannels(p, deepBefore, p.history.pendingPatches);
     if (deepBefore && !nested && p.doc.layers.some((l) => { const o = deepBefore.get(l.id); return !!o?.channels && l.raster !== o.raster && l.channels === o.channels; })) {
       const r = p.history.rollback();
       if (r) { for (let i = r.patches.length - 1; i >= 0; i--) { const q = r.patches[i]; q.raster.write(q.before, q.x, q.y); } p.doc = r.before.doc; p.selection = r.before.selection; }
@@ -2794,8 +2794,8 @@ export class Engine {
     const patch = st.heal === 'remove' ? this.removePatch(st.s) : st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
-    const dl = patch && st.target === 'pixels' && (st.project.doc.depth === 16 || st.project.doc.mode === 'cmyk' || st.project.doc.mode === 'lab') ? st.project.layer(st.layerId) : null;
-    const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics();
+    const dl = patch && st.target === 'pixels' && ((st.project.doc.depth ?? 8) > 8 || st.project.doc.mode === 'cmyk' || st.project.doc.mode === 'lab') ? st.project.layer(st.layerId) : null;
+    const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics() && st.project.doc.depth !== 32;
     if (patch && exact && dl?.channels?.mode === 'rgb' && dl.raster === patch.raster) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
       st.project.updateLayer(st.layerId, { channels: strokeDeep(dl.channels, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fg, this.bg) });
@@ -2808,7 +2808,7 @@ export class Engine {
       const t = dl.channels.mode === 'cmyk' ? this.deriveTables(st.project) : null;
       if (dl.channels.mode !== 'cmyk' || t) {
         const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
-        const ch = deriveRegion(dl.channels, patch.x, patch.y, patch.before, after, t), img = renderRegion(ch, patch.x, patch.y, after.width, after.height, t ? t.out : null);
+        const linear = st.project.doc.depth === 32, ch = deriveRegion(dl.channels, patch.x, patch.y, patch.before, after, t, linear), img = renderRegion(ch, patch.x, patch.y, after.width, after.height, t ? t.out : null, linear);
         patch.raster.ctx.putImageData(img, patch.x, patch.y); patch.raster.touch(); patch.after.data.set(img.data);
         st.project.updateLayer(st.layerId, { channels: ch });
       }
@@ -6490,7 +6490,7 @@ export class Engine {
    *  8-bit pixels changed while its floats did not is brought into step (engine/derive.ts), its rendition redrawn from
    *  the floats; a pixel layer without floats takes them whole. Replaced rasters, in-place patches and new layers. */
   private deriveChannels(p: Project, before: ReadonlyMap<ID, Layer>, patches: readonly PixelPatch[]): boolean {
-    const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab', t = cmyk ? this.deriveTables(p) : null, lut = cmyk ? p.cmykLut : null;
+    const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab', linear = p.doc.depth === 32, t = cmyk ? this.deriveTables(p) : null, lut = cmyk ? p.cmykLut : null;
     if (cmyk && !t) return false;
     let changed = false;
     const layers = p.doc.layers.map((l) => {
@@ -6499,14 +6499,14 @@ export class Engine {
       if (!o?.channels || !o.raster) {
         if (l.channels) return l;
         changed = true;
-        const ch = deriveWhole(l.raster.read(), t, lab);
+        const ch = deriveWhole(l.raster.read(), t, lab, linear);
         return { ...l, channels: ch, raster: lut ? rasterFromChannels(ch, lut) : l.raster };
       }
       if (l.channels !== o.channels) return l;
       if (l.raster !== o.raster) {
         changed = true;
         const same = l.raster.width === o.raster.width && l.raster.height === o.raster.height && JSON.stringify(l.transform) === JSON.stringify(o.transform);
-        const ch = same ? deriveRegion(o.channels, 0, 0, o.raster.read(), l.raster.read(), t) : deriveWhole(l.raster.read(), t, lab);
+        const ch = same ? deriveRegion(o.channels, 0, 0, o.raster.read(), l.raster.read(), t, linear) : deriveWhole(l.raster.read(), t, lab, linear);
         return { ...l, channels: ch, raster: lut ? rasterFromChannels(ch, lut) : l.raster };
       }
       const mine = patches.filter((q) => q.raster === l.raster);
@@ -6514,8 +6514,8 @@ export class Engine {
       changed = true;
       let ch = o.channels;
       for (const q of mine) {
-        ch = deriveRegion(ch, q.x, q.y, q.before, q.after, t);
-        const img = renderRegion(ch, q.x, q.y, q.before.width, q.before.height, lut);
+        ch = deriveRegion(ch, q.x, q.y, q.before, q.after, t, linear);
+        const img = renderRegion(ch, q.x, q.y, q.before.width, q.before.height, lut, linear);
         l.raster.write(img, q.x, q.y);
         q.after.data.set(img.data);
       }
@@ -6529,7 +6529,7 @@ export class Engine {
    *  Move Pixels, Stroke Path...) brings 16-bit and CMYK floats into step here; 32 bits is left to its own guards. */
   private readonly stepHook = (History.onStepEnd = (h: History, before: Snapshot, patches: readonly PixelPatch[]): Snapshot | null => {
     const p = this.projects.find((q) => q.history === h);
-    if (!p || !(p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || p.doc.depth === 16)) return null;
+    if (!p || !(p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || (p.doc.depth ?? 8) > 8)) return null;
     return this.deriveChannels(p, new Map(before.doc.layers.map((l) => [l.id, l])), patches) ? p.snapshot() : null;
   });
 
@@ -6680,7 +6680,7 @@ export class Engine {
   private deepPaintOk(): boolean {
     const cmyk = this.current?.doc.mode === 'cmyk';
     if ((this.current?.doc.depth ?? 8) === 8 && !cmyk) return true;
-    if (this.current?.doc.depth === 32) return !this.deepBlocked('Painting in 32 bits');   // painting would clip past white (1.53.9)
+    if (this.current?.doc.depth === 32) return true;   // 1.56.8: through derive in linear light, light above white kept where a stroke changes little
     if (cmyk && (!this.current?.cmykLut || !this.current.cmykIn)) return !this.deepBlocked('Painting');
     return true;
   }

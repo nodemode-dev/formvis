@@ -3,7 +3,7 @@ import { deepFromRaster, place, transferOf } from './deep';
 import { hierarchy, byId, ancestors } from './tree';
 import { placement, setMat } from './geometry';
 import { applyLut4, inkOf, type Lut3x4, type Lut4 } from './colour-lut';
-import { encodeLab, labFloatToRgb, srgbToLab } from './lab';
+import { encodeLab, labFloatToRgb, renderLab, srgbToLab } from './lab';
 import { kernelFor } from './renderer';
 import type { Kernel } from './kernels';
 import type { BlendMode, Doc, Layer, ID } from './types';
@@ -89,9 +89,10 @@ export interface CmykLuts { out: Lut4; in: Lut3x4 }
  *  to how small the change is: fully for an adjustment that changes nothing, not at all for one that changes a colour
  *  by 48 levels or more. An identity adjustment leaves every value exactly as it was. */
 const KEEP_LEVELS = 48;
-function viaKernel(out: Float32Array, W: number, H: number, n: 3 | 4, kern: Kernel, op: number, cov: Float32Array | null, luts: CmykLuts | null): void {
+function viaKernel(out: Float32Array, W: number, H: number, n: 3 | 4, kern: Kernel, op: number, cov: Float32Array | null, luts: CmykLuts | null, lab = false): void {
   const N = W * H, S = n + 1, A = n, rgba = new Uint8ClampedArray(N * 4);
-  if (n === 4 && luts) applyLut4(out, luts.out, rgba);
+  if (lab) renderLab(out, rgba);
+  else if (n === 4 && luts) applyLut4(out, luts.out, rgba);
   else for (let j = 0; j < N; j++) { const i = j * S, o = j * 4; for (let c = 0; c < 3; c++) rgba[o + c] = Math.round(clamp01(out[i + c]) * 255); rgba[o + 3] = Math.round(clamp01(out[i + A]) * 255); }
   const adj = new Uint8ClampedArray(rgba);
   kern(adj, { width: W, height: H, originX: 0, originY: 0, unitsPerPixel: 1 });
@@ -99,6 +100,12 @@ function viaKernel(out: Float32Array, W: number, H: number, n: 3 | 4, kern: Kern
     const i = j * S, o = j * 4, k = op * (cov ? cov[j] : 1);
     if (k <= 0 || out[i + A] <= 0) continue;
     if (adj[o] === rgba[o] && adj[o + 1] === rgba[o + 1] && adj[o + 2] === rgba[o + 2]) continue;
+    if (lab) {
+      const before = encodeLab(...srgbToLab(rgba[o], rgba[o + 1], rgba[o + 2])), after = encodeLab(...srgbToLab(adj[o], adj[o + 1], adj[o + 2]));
+      const d = Math.max(Math.abs(adj[o] - rgba[o]), Math.abs(adj[o + 1] - rgba[o + 1]), Math.abs(adj[o + 2] - rgba[o + 2])), w = clamp01(1 - d / KEEP_LEVELS);
+      for (let c = 0; c < 3; c++) { const target = clamp01(after[c] + w * (out[i + c] - before[c])); out[i + c] += (target - out[i + c]) * k; }
+      continue;
+    }
     if (n === 3 || !luts) { for (let c = 0; c < 3; c++) out[i + c] = clamp01(out[i + c] + ((adj[o + c] - rgba[o + c]) / 255) * k); continue; }
     const before = inkOf({ r: rgba[o], g: rgba[o + 1], b: rgba[o + 2] }, luts.in), after = inkOf({ r: adj[o], g: adj[o + 1], b: adj[o + 2] }, luts.in);
     const d = Math.max(Math.abs(adj[o] - rgba[o]), Math.abs(adj[o + 1] - rgba[o + 1]), Math.abs(adj[o + 2] - rgba[o + 2])), w = clamp01(1 - d / KEEP_LEVELS);
@@ -164,11 +171,12 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     if (l.effects) return { error: `${name} has a layer style, which this mode's compositor does not draw yet.` };
     const op = l.opacity * (l.fill ?? 1), cov = coverageOf(l);
     if (l.adjustment) {
-      const t = transferOf(l.adjustment);
+      const inLab = doc.mode === 'lab', perChannel = !inLab || ['levels', 'curves', 'invert', 'posterize'].includes(l.adjustment.kind);
+      const t = perChannel ? transferOf(l.adjustment) : null;
       if (!t) {
         const kern = kernelFor(l.adjustment);
         if (!kern || (n === 4 && !luts)) return { error: `${name} is an adjustment that needs the document's colour tables, which load with the document.` };
-        viaKernel(out, W, H, n, kern, op, cov, n === 4 ? luts : null);
+        viaKernel(out, W, H, n, kern, op, cov, n === 4 ? luts : null, inLab);
         continue;
       }
       for (let i = 0, j = 0; i < out.length; i += S, j++) {

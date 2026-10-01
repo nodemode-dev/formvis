@@ -208,8 +208,9 @@ ask it questions.
 - Image > Mode > Lab Color turns an 8-bit RGB document into CIE Lab (with the D50 white Photoshop's Lab uses); RGB
   Color turns it back exactly. Painting, text, shapes, fills and filters work in it; the pixels they leave alone keep
   their Lab values. The Channels panel shows Lab, Lightness, a and b (a and b mid-grey where neutral), and Info reads
-  L, a and b. Levels and Curves work on Lightness, a and b; blend modes look as they do in RGB; Export TIFF writes a
-  Lab TIFF. The other adjustment layers, layer styles, single-channel views and opening Lab files wait for now.
+  L, a and b. Levels and Curves work on Lightness, a and b; the colour adjustments (Hue/Saturation, Black and White and
+  the rest) give the same results as in RGB; blend modes look as they do in RGB; Export TIFF writes a Lab TIFF. Channel
+  Mixer, Exposure, HDR Toning, layer styles, single-channel views and opening Lab files wait for now.
 
 ## 32-bit documents
 
@@ -218,8 +219,10 @@ ask it questions.
   above as white. The Exposure adjustment works in linear light, as do moving, the canvas and image size commands and
   Gaussian Blur. File > Export > Radiance HDR and OpenEXR write them as they are; Export TIFF writes 32-bit float.
 - Image > Mode > 16 or 8 Bits/Channel asks for HDR Toning (Exposure and Gamma): lower the exposure to keep highlights.
-- What would clip brighter than white (painting, Levels, Curves, Unsharp Mask, Add Noise, colour profiles) waits at 32
-  bits: Image > Mode > 16 Bits/Channel to use it.
+- Painting, the retouching tools and the other filters work at 32 bits too: what they leave alone keeps its light
+  exactly, above white included, and what they change takes the new colour. Painting white over a highlight already
+  brighter than white leaves it as it was. Groups, masks, clipping, layer styles, blend modes, adjustment layers but
+  Exposure, Unsharp Mask, Add Noise and colour profiles wait at 32 bits: Image > Mode > 16 Bits/Channel to use them.
 
 ## 16-bit documents
 
