@@ -15,7 +15,7 @@ import type { SampledTip } from './abr';
 /** `flow` (0 to 1, default 1) is Photoshop's Flow: how much paint each dab lays down, so paint builds within a stroke as
  *  dabs overlap, up to the stroke's `opacity`, which caps the stroke as a whole. */
 /** aliased (the Pencil): dabs are pixel-exact circles, every pixel painted fully or not at all. */
-export interface StrokeStyle { square?: boolean; bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number }
+export interface StrokeStyle { square?: boolean; bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number; dabColor?: ((x: number, y: number) => RGB | null) | null }
 
 /** A sampled tip (from an .abr file) as the brush's colour with the tip's greys as alpha, its longer side `sizePx`. */
 function sampledTip(sizePx: number, tip: SampledTip, color: RGB): Surface {
@@ -210,7 +210,7 @@ export class PixelStroke {
     setMat(this.paintCtx, this.toLocal);
     if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
     const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
-    this.paintCtx.drawImage(this.dabTip(), p.x - rx, p.y - ry, rx * 2, ry * 2);
+    this.paintCtx.drawImage(this.dabTip(p.x, p.y), p.x - rx, p.y - ry, rx * 2, ry * 2);
     this.wetMark(this.toLocal, p.x, p.y, rx, ry);
     if (flow < 1) this.paintCtx.globalAlpha = 1;
     const corners = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([ox, oy]) => applyMat(this.toLocal, p.x + ox, p.y + oy));
@@ -243,9 +243,11 @@ export class PixelStroke {
     return Math.max(0, k);
   }
 
-  /** The tip for this dab: coloured by Color Dynamics (towards the background, hue, saturation and brightness varied),
-   *  else the stroke's own. */
-  private dabTip(): Surface {
+  /** The tip for this dab: from the style's colour source when it has one (the Mixer Brush, 1.56.2), else coloured by
+   *  Color Dynamics (towards the background, hue, saturation and brightness varied), else the stroke's own. */
+  private dabTip(x = NaN, y = NaN): Surface {
+    const own = this.style.dabColor && !Number.isNaN(x) ? this.style.dabColor(x, y) : null;
+    if (own) return this.tinted(own.r, own.g, own.b);
     const cd = this.colorDyn;
     if (!cd) return this.tip;
     const fg = this.style.color, bg = this.style.bg ?? fg, t = Math.random() * (cd.fgBg / 100);
@@ -254,6 +256,11 @@ export class PixelStroke {
     sat = Math.max(0, Math.min(1, sat + (Math.random() * 2 - 1) * (cd.saturation / 100)));
     v = Math.max(0, Math.min(1, v + (Math.random() * 2 - 1) * (cd.brightness / 100)));
     const [r, g, b] = fromHsv(h, sat, v);
+    return this.tinted(r, g, b);
+  }
+
+  /** The tip recoloured to one colour, its alpha kept. */
+  private tinted(r: number, g: number, b: number): Surface {
     const w = this.tip.width, ht = this.tip.height;
     if (!this.recolor || this.recolor.width !== w || this.recolor.height !== ht) this.recolor = createSurface(w, ht);
     const c = ctxOf(this.recolor);
@@ -321,7 +328,7 @@ export class PixelStroke {
       setMat(this.paintCtx, mul(place, [1, 0, 0, round, 0, 0]));
       if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
       const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
-      this.paintCtx.drawImage(this.dabTip(), -rx, -ry, rx * 2, ry * 2);
+      this.paintCtx.drawImage(this.dabTip(x, y), -rx, -ry, rx * 2, ry * 2);
       this.wetMark(mul(place, [1, 0, 0, round, 0, 0]), 0, 0, rx, ry);
       if (flow < 1) this.paintCtx.globalAlpha = 1;
       if (this.dualPaint && this.dualTip) {

@@ -51,6 +51,9 @@ ask it questions.
 
 ## Painting and retouching
 
+- The Mixer Brush (B) paints with wet paint: Wet sets how much colour it picks up from the canvas, Mix how much of
+  that it lays with the loaded colour, Load how far the loaded colour lasts along a stroke. Alt-click loads the
+  brush from the canvas; with Wet and Mix at 0 it paints like the Brush.
 - Brush, Pencil and Eraser (including Background and Magic Eraser), with Photoshop's brush settings: shape dynamics,
   scattering, colour dynamics, transfer, noise and wet edges. Brushes from Photoshop .abr files can be imported.
 - Clone Stamp (Sample: Current Layer, Current & Below or All Layers; Mode; Flow), Healing Brush, Spot Healing, Patch,

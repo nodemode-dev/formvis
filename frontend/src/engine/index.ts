@@ -1,6 +1,7 @@
 import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, type Lut4 } from './colour-lut';
 import { composeChannels, rasterFromChannels, strokeChannels } from './channels';
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
+import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
@@ -118,7 +119,7 @@ const SHAPE_NOTICE = 'This is a shape layer. Reshape it with Direct Selection on
 const SMART_NOTICE = 'This layer is a smart object. Rasterize it (Layer > Rasterize Layer) to change its pixels; its filters stay editable in Layer > Smart Filters.';
 
 /** Tools that paint with a PixelStroke, whose surfaces are warmed when the tool is chosen. */
-const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'cloneStamp', 'healingBrush', 'spotHealing', 'remove']);
+const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'mixer', 'cloneStamp', 'healingBrush', 'spotHealing', 'remove']);
 
 /** The tools Stroke Path can stroke with, and their names in its dialog. */
 export type StrokeTool = 'brush' | 'eraser' | 'clone' | 'healBrush' | 'spotHealing' | 'dodge' | 'burn' | 'sponge' | 'blur' | 'sharpen';
@@ -2696,7 +2697,7 @@ export class Engine {
     if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to paint on.'); return false; }
     if (this.smartLocked(p)) return false;
-    p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : 'Brush'), p.snapshot());
+    p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : this.tool === 'mixer' ? 'Mixer Brush' : 'Brush'), p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = pick.target === 'mask' && luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
@@ -2709,7 +2710,7 @@ export class Engine {
       const q = applyMat(invert(pick.local) ?? [1, 0, 0, 1, 0, 0], pt.x, pt.y), px = pick.raster.ctx.getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data;
       if (px[3] > 0 && px[0] === this.fg.r && px[1] === this.fg.g && px[2] === this.fg.b) color = this.bg;
     }
-    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square }, op, p.selection);
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square, dabColor: this.tool === 'mixer' && pick.target !== 'mask' && this.brushMode !== 'erase' ? this.mixerSourceFor(p, pick.raster, pick.local) : null }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
     if (!opts.aliased) s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
@@ -5305,6 +5306,18 @@ export class Engine {
     }
     if (sigma > 0) c.putImageData(gaussianBlur(c.getImageData(0, 0, W, H), sigma), 0, 0);
     return s;
+  }
+
+  /** The Mixer Brush (1.56.2, the parity plan's L4): its settings, what it holds between strokes, and the colour
+   *  source each stroke paints with (engine/mixer.ts). The canvas it picks up from is read once as the stroke starts:
+   *  the layer it paints, or every visible layer with Sample All Layers. */
+  mixer: MixerSettings = { ...DEFAULT_MIXER };
+  private mixerState: MixerState | null = null;
+  private mixerSourceFor(p: Project, raster: Raster, local: Mat): (x: number, y: number) => RGB | null {
+    this.mixerState = mixerStart(this.mixerState, this.fg, this.mixer);
+    const all = this.mixer.sampleAll, img = all ? ctxOf(renderDoc(this.work, p.doc)).getImageData(0, 0, p.doc.width, p.doc.height) : raster.read();
+    const inv = all ? null : invert(local) ?? null, toPixels = (x: number, y: number): { x: number; y: number } => (inv ? applyMat(inv, x, y) : { x, y });
+    return mixerSource(this.mixerState, this.mixer, windowSampler(img, toPixels, this.brush.diameter / 6));
   }
 
   beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush' | 'patternStamp', pt: Pt, shift: boolean): boolean {
