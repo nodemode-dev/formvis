@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.56.1 · 2026-10-01
+
+CMYK PSD in and out, and agents see the mode (DEV_PLAN 22.8).
+
+### Added
+
+- A CMYK PSD opens as a CMYK document with its layers' ink, names, places, opacity, visibility and blend modes and its embedded profile (or the default one, with a message). Export PSD from a CMYK document writes a layered CMYK PSD with the profile embedded; layer masks, styles and adjustment layers reach it in the composite, and a message says so. Reading and writing go through psd-tools (MIT) in the engine.
+- An agent's `get_document` reports the bit depth and colour profile beside the colour mode.
+
+### Known
+
+- PSB from a CMYK document is still written as RGB; 16-bit CMYK TIFF waits for a 16-bit CMYK writer.
+
 ## 1.55.9 · 2026-10-01
 
 Every command at 16 bits and in CMYK (DEV_PLAN 22.7).
