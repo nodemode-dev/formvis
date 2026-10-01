@@ -155,6 +155,37 @@ export function motionBlurDeep(src: DeepPixels, angleDeg: number, distance: numb
   return { ...src, data: out };
 }
 
+/** Surface Blur on floats: the 8-bit filter's neighbourhood and weights (blur-gallery.ts), the threshold in the same
+ *  levels, on every channel but alpha, any channel count. */
+export function surfaceBlurDeep(src: DeepPixels, radius: number, threshold: number): DeepPixels {
+  const { width: w, height: h } = src, S = src.n + 1, A = src.n, d = src.data, o = new Float32Array(d), r = Math.max(1, Math.round(radius)), t = Math.max(1, threshold) / 255;
+  const step = Math.max(1, Math.round(r / 8));
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = (y * w + x) * S;
+    if (d[i + A] === 0) continue;
+    for (let c = 0; c < A; c++) {
+      const v0 = d[i + c];
+      let sum = 0, wsum = 0;
+      for (let yy = -r; yy <= r; yy += step) {
+        const ny = y + yy;
+        if (ny < 0 || ny >= h) continue;
+        for (let xx = -r; xx <= r; xx += step) {
+          const nx = x + xx;
+          if (nx < 0 || nx >= w || xx * xx + yy * yy > r * r) continue;
+          const j = (ny * w + nx) * S;
+          if (d[j + A] === 0) continue;
+          const v = d[j + c], diff = Math.abs(v - v0);
+          if (diff > t) continue;
+          const wt = 1 - diff / (t * 2.5);
+          sum += v * wt; wsum += wt;
+        }
+      }
+      o[i + c] = wsum ? sum / wsum : v0;
+    }
+  }
+  return { ...src, data: o };
+}
+
 /** Unsharp Mask on floats: the 8-bit formula, with the threshold in the same levels, on every channel but alpha. */
 export function unsharpDeep(src: DeepPixels, amount: number, radius: number, threshold: number): DeepPixels {
   const blur = blurDeep(src, Math.max(0.1, radius)), s = src.data, b = blur.data, o = new Float32Array(s.length), k = amount / 100, S = src.n + 1, A = src.n;

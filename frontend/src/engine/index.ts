@@ -2566,6 +2566,32 @@ export class Engine {
     });
   }
 
+  /** Image > Image Rotation (1.55.3, DEV_PLAN 22.4): the canvas turned by quarter turns. Every layer's box turns about
+   *  the document's centre and its rotation follows, masks and artboards with it, the selection too; no pixel is
+   *  resampled, so this works at every depth and in every mode. */
+  rotateCanvas(quarters: 1 | 2 | 3): void {
+    const name = quarters === 1 ? 'Rotate 90° Clockwise' : quarters === 2 ? 'Rotate 180°' : 'Rotate 90° Counter Clockwise';
+    this.edit(name, (p) => {
+      const { width: W, height: H } = p.doc, deg = quarters * 90;
+      const turn = (t: Transform): Transform => {
+        const cx = t.x + t.w / 2, cy = t.y + t.h / 2;
+        const nx = quarters === 1 ? H - cy : quarters === 2 ? W - cx : cy, ny = quarters === 1 ? cx : quarters === 2 ? H - cy : W - cx;
+        return { ...t, x: nx - t.w / 2, y: ny - t.h / 2, rotation: t.rotation + deg };
+      };
+      const rect = (a: { x: number; y: number; w: number; h: number }): { x: number; y: number; w: number; h: number } =>
+        quarters === 1 ? { x: H - a.y - a.h, y: a.x, w: a.h, h: a.w } : quarters === 2 ? { x: W - a.x - a.w, y: H - a.y - a.h, w: a.w, h: a.h } : { x: a.y, y: W - a.x - a.w, w: a.h, h: a.w };
+      const layers = p.doc.layers.map((l) => ({
+        ...l,
+        transform: turn(l.transform),
+        mask: l.mask?.placement ? { ...l.mask, placement: turn(l.mask.placement) } : l.mask,
+        ...(l.artboard ? { artboard: { ...l.artboard, ...rect(l.artboard) } } : {}),
+      }));
+      p.doc = { ...p.doc, width: quarters === 2 ? W : H, height: quarters === 2 ? H : W, layers };
+      if (p.selection) p.selection = p.selection.rotated(quarters, W, H);
+      return true;
+    });
+  }
+
   flipCanvas(horizontal: boolean): void {
     this.edit(horizontal ? 'Flip Canvas Horizontal' : 'Flip Canvas Vertical', (p) => {
       const { width: W, height: H } = p.doc;

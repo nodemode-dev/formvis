@@ -1234,6 +1234,9 @@ export function startApp(): void {
     { id: 'select-subject', label: 'Subject', enabled: () => !!engine.current, run: () => void selectSubject(false) },
     { id: 'select-object', label: 'Object in Selection', enabled: selected, run: () => void selectSubject(true) },
     { id: 'select-and-mask', label: 'Select and Mask...', keys: ['Alt+Mod+R'], enabled: selected, run: () => dialogs.selectMask.show() },
+    { id: 'rotate-180', label: '180°', enabled: has, run: () => engine.rotateCanvas(2) },
+    { id: 'rotate-90-cw', label: '90° Clockwise', enabled: has, run: () => engine.rotateCanvas(1) },
+    { id: 'rotate-90-ccw', label: '90° Counter Clockwise', enabled: has, run: () => engine.rotateCanvas(3) },
     { id: 'flip-canvas-h', label: 'Flip Canvas Horizontal', enabled: has, run: () => engine.flipCanvas(true) },
     { id: 'flip-canvas-v', label: 'Flip Canvas Vertical', enabled: has, run: () => engine.flipCanvas(false) },
     { id: 'new-layer', label: 'New Layer', enabled: has, run: () => engine.addLayer() },
@@ -1417,7 +1420,7 @@ export function startApp(): void {
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', { label: 'Image Rotation', items: ['flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
+      'image-size', 'canvas-size', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-folder-dialog', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
       { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
@@ -1667,14 +1670,14 @@ export function startApp(): void {
 
   // A 16-bit document allows what keeps its 16 bits (1.53.6, H1); anything else waits for Image > Mode > 8 Bits/Channel.
   const DEEP_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
-    'new-adj-levels', 'new-adj-curves', 'new-adj-exposure', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'edit-adjustment', 'flip-canvas-h', 'flip-canvas-v', 'canvas-size', 'image-size', 'trim', 'reveal-all', 'filter-gaussianBlur', 'filter-motionBlur', 'filter-unsharpMask', 'filter-addNoise', 'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'depth-8', 'depth-16', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning',
+    'new-adj-levels', 'new-adj-curves', 'new-adj-exposure', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'edit-adjustment', 'flip-canvas-h', 'flip-canvas-v', 'rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'canvas-size', 'image-size', 'trim', 'reveal-all', 'filter-gaussianBlur', 'filter-motionBlur', 'filter-surfaceBlur', 'filter-unsharpMask', 'filter-addNoise', 'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'depth-8', 'depth-16', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning',
     'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
   // 32 bits (1.53.9) are linear light, unbounded: what would clip past white waits there.
   const NOT_AT_32 = new Set(['new-adj-levels', 'new-adj-curves', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'filter-unsharpMask', 'filter-addNoise', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning']);
   for (const id of ['depth-32', 'export-hdr', 'export-exr']) DEEP_OK.add(id);
   const CMYK_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
     'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'mode-rgb', 'mode-cmyk',
-    'filter-gaussianBlur', 'filter-unsharpMask', 'filter-addNoise', 'filter-motionBlur', 'image-size', 'canvas-size', 'flip-canvas-h', 'flip-canvas-v', 'trim', 'reveal-all', 'new-adj-levels', 'new-adj-curves', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'edit-adjustment',
+    'filter-gaussianBlur', 'filter-unsharpMask', 'filter-addNoise', 'filter-motionBlur', 'filter-surfaceBlur', 'image-size', 'canvas-size', 'flip-canvas-h', 'flip-canvas-v', 'rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'trim', 'reveal-all', 'new-adj-levels', 'new-adj-curves', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'edit-adjustment',
     'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? CMYK_OK.has(c.id) || passes(c)

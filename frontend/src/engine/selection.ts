@@ -211,4 +211,18 @@ export class SelectionMask {
       ? new SelectionMask(docW - this.x - this.w, this.y, this.w, this.h, out)
       : new SelectionMask(this.x, docH - this.y - this.h, this.w, this.h, out);
   }
+
+  /** The selection turned with the canvas (1.55.3, Image Rotation): `quarters` clockwise quarter turns of a document
+   *  `docW` by `docH` (before the turn). */
+  rotated(quarters: 1 | 2 | 3, docW: number, docH: number): SelectionMask {
+    const { w, h, data } = this, nw = quarters === 2 ? w : h, nh = quarters === 2 ? h : w, out = new Uint8Array(nw * nh);
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const v = data[j * w + i];
+      const ni = quarters === 1 ? h - 1 - j : quarters === 2 ? w - 1 - i : j, nj = quarters === 1 ? i : quarters === 2 ? h - 1 - j : w - 1 - i;
+      out[nj * nw + ni] = v;
+    }
+    const nx = quarters === 1 ? docH - this.y - h : quarters === 2 ? docW - this.x - w : this.y;
+    const ny = quarters === 1 ? this.x : quarters === 2 ? docH - this.y - h : docW - this.x - w;
+    return new SelectionMask(nx, ny, nw, nh, out);
+  }
 }
