@@ -2,6 +2,32 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Compositing in the mode · _v1.55.5 (engine/compose-float.ts new, channels.ts, deep.ts, deep.test.ts under 2a; app.ts)
+
+DEV_PLAN 22.5. `composeFloat(doc, n, paperWhite)`: one float compositor for 16-bit and CMYK documents (32-bit keeps its linear path with Exposure unclamped). All 19 separable blend modes per channel by the W3C formulas (`SEPARABLE_FLOAT`, which also gives the window formulas for the canvas-native modes it never had in code), on paper-white values in CMYK so Multiply darkens as Photoshop's CMYK does; Dissolve by `dissolveNoise`; the six non-separable modes by SetLum and SetSat on RGB floats, named as waiting for Lab in CMYK; opacity and fill; the layer's own mask and its folders' masks through their placements (`maskCoverage`, cached per mask); clipping to a base layer's placed alpha (cached per base); adjustment layers with a transfer per channel under their masks; groups pass-through as the renderer treats them; layer styles named as waiting for 22.7. A document whose layers lack `parentId` (test documents) is walked as top-level. `composeChannels` and the 16-bit `composeDeep` route through it, so exports, the composed CMYK display, the Channels thumbnails and Info all gain blend modes, masks and clipping at once. The gates open duplicate, group, the mask commands, clipping and blend next and previous at depth and in CMYK. `deep.test.ts`: the expectation that a mask is refused became one that a style is, since masks compose. Verified in the browser: a CMYK document with Normal, Multiply at 80 percent and Screen at 60 percent under a half-black layer mask, composed in ink, matches the 8-bit compositor's formulas run on each ink as a grey image to 0.51 levels; unit 188; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    'new-adj-levels', 'new-adj-curves', 'new-adj-exposure', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'edit-adjustment', 'flip-canvas-h', 'flip-canvas-v', 'rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'canvas-size', 'image-size', 'trim', 'reveal-all', 'filter-gaussianBlur', 'filter-motionBlur', 'filter-surfaceBlur', 'filter-unsharpMask', 'filter-addNoise', 'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'depth-8', 'depth-16', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning',
+import { place, transferOf } from './deep';
+  const W = doc.width, H = doc.height, out = new Float32Array(W * H * 5);
+  for (const l of doc.layers) {
+    if (!l.visible) continue;
+    const name = `"${l.name}"`;
+    if (l.isGroup || l.mask || l.clipId || l.effects || (l.blend && l.blend !== 'normal')) return { error: `${name} uses a group, mask, clipping, style or blend mode, which CMYK export does not compose yet.` };
+    if (l.adjustment) {
+      const t = transferOf(l.adjustment);
+      if (!t) return { error: `${name} is an adjustment CMYK does not compose yet (Levels and Curves do).` };
+      const op = l.opacity * (l.fill ?? 1);
+      for (let i = 0; i < out.length; i += 5) for (let c = 0; c < 4; c++) { const v = 1 - out[i + c], nv = 1 - Math.min(1, Math.max(0, t(c, v * 255) / 255)); out[i + c] += (nv - out[i + c]) * op; }
+      continue;
+    }
+    if (!l.channels) { if (l.raster) return { error: `${name} has no CMYK ink; Image > Mode > CMYK Color converts it.` }; continue; }
+    place(out, W, H, l.channels, l.transform, l.opacity * (l.fill ?? 1), 5);
+  }
+  return { width: W, height: H, data: out };
+export const VERSION = '1.55.4';
+```
+
 ## Content-Aware Scale · _v1.55.4 (engine/index.ts; io/api.ts; ui/panels/content-aware-scale.ts new; app.ts; backend app/routers/seam.py new, app/main.py)
 
 The parity plan's M4, first part (DEV_PLAN 23.3). Image > Content-Aware Scale: `ContentAwareScaleDialog` (Width and Height as percentages, Protect skin tones, Protect the selection; rows built once; the note held to two lines; one step), `api.contentAwareScale` (the layer's PNG, the target size, skin protection, an optional protect-mask PNG from the selection sampled in layer space), `Engine.rescaleLayerPixels` (new pixels at a new size, the box resized in place). The engine's `seam.py`: seam carving (Avidan and Shamir) vectorised over rows; the lowest-energy vertical seams removed to narrow, or the k lowest seams found on the original and inserted with their neighbours averaged to enlarge; height through the transpose; energy is the luminance gradient plus the protection mask times a million; a quarter to twice the size in one step, up to 12 megapixels. The command is 8-bit RGB for now (it replaces the raster). Verified: in the engine a 320 by 200 scene narrows to 240 in 0.58 s and enlarges to 400 in 0.72 s; an unprotected flat disc is carved through (its interior has no gradient, the classic behaviour, looked at), a protected one keeps its 81-pixel width exactly; in the browser under 4x CPU throttling through the dialog with the selection protecting the disc, the layer goes from 320 to 240 wide with its box following and the disc keeps all 80 of its red pixels where plain scaling leaves 60, one "Content-Aware Scale" step, undo restores 320, layout shift 0, no errors. Removed lines taken after the version edit. Removed from frontend:

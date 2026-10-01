@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.55.5
+
+No engine code changed in 1.55.5 (the float compositor is window code). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.55.4"
+version = "1.55.4"
+version = "1.55.4"
+ "version": "1.55.4",
+```
+
 ## Seam carving · _v1.55.4 (app/routers/seam.py new, app/main.py)
 
 `seam.py`: `_energy` (luminance gradient plus the protection mask times a million), `_seam` (the dynamic programme over rows, vectorised across the row's columns, with a back-pointer array), `_remove`, `_insert` (the seam duplicated with its left neighbour averaged), `carve_width` (removal one seam at a time with the mask carved along; enlargement by the k lowest seams of the original tracked back to original columns, sorted per row and inserted with offsets), `carve` (height through the transpose, the mask carved to the new width first), `skin_mask` (Cb 77 to 127, Cr 133 to 173); `POST /api/seam/content-aware-scale` with `file`, `width`, `height`, `skin`, and an optional `mask`; limits a quarter to twice the size and 12 megapixels. Registered in `main.py`. Checked here: 320 by 200 to 240 in 0.58 s, to 400 in 0.72 s, a protected disc kept whole. Removed lines taken after the version edit:

@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.55.5 · 2026-10-01
+
+Compositing in the mode (DEV_PLAN 22.5): 16-bit and CMYK documents compose as RGB ones do.
+
+### Added
+
+- In 16-bit and CMYK documents, every blend mode, layer opacity and fill, layer masks and folder masks, clipping masks and adjustment layers now compose in the document's own channels (in CMYK on the ink itself, so Multiply darkens as print does), in exports, in the canvas and in the Channels and Info panels. Duplicate, Group, the mask commands, Create Clipping Mask and the blend-mode shortcuts are offered at depth and in CMYK.
+
+### Known
+
+- Hue, Saturation, Color, Luminosity, Darker Color and Lighter Color compose in 16-bit RGB; in CMYK they wait for the Lab work. Layer styles do not yet compose in these modes; the compositor says so by name.
+
 ## 1.55.4 · 2026-10-01
 
 Content-Aware Scale (the parity plan's M4, first part; DEV_PLAN 23.3).
