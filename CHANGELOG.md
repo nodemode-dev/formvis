@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.55.4 · 2026-10-01
+
+Content-Aware Scale (the parity plan's M4, first part; DEV_PLAN 23.3).
+
+### Added
+
+- Image > Content-Aware Scale: the layer's width and height change by removing or adding the least important seams, so the parts that matter keep their shape; skin tones and the selection can be protected. Seam carving runs in the engine on this computer, from a quarter to twice the size in one step. 8-bit RGB layers for now.
+
 ## 1.55.3 · 2026-10-01
 
 Image Rotation, and more of every mode (DEV_PLAN 22.4, third part).
