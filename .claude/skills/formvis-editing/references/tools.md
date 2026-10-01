@@ -16,7 +16,7 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 
 ## get_document
 
-The open document: name, size, resolution, colour mode, the layers bottom to top (id, name, kind, visible, opacity, blend, parent group), the active layer and the selection's bounds.
+The open document: name, size, resolution, colour mode (rgb, cmyk, grayscale...), bit depth, colour profile, the layers bottom to top (id, name, kind, visible, opacity, blend, parent group), the active layer and the selection's bounds.
 
 - no parameters
 

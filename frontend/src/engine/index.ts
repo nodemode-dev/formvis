@@ -6531,6 +6531,19 @@ export class Engine {
     return p;
   }
 
+  /** Opens CMYK layers as a CMYK document (1.56.1, a CMYK PSD): each layer's ink beside its rendition through `lut`,
+   *  its place, opacity, visibility and blend mode kept; bottom layer first. */
+  openChannelLayers(name: string, width: number, height: number, layers: ReadonlyArray<{ name: string; x: number; y: number; channels: ChannelPixels; opacity: number; visible: boolean; blend: string }>, profile: DocProfile, lut: Lut4, inLut: Lut3x4): Project {
+    const made = layers.map((l) => {
+      const raster = rasterFromChannels(l.channels, lut), blend = (BLEND_MODES.find((b) => b.id === l.blend)?.id ?? 'normal') as BlendMode;
+      return newLayer(l.name, { width, height }, { raster, channels: l.channels, transform: { ...docTransform(l.channels.width, l.channels.height), x: l.x, y: l.y }, opacity: l.opacity, visible: l.visible, blend });
+    });
+    const doc: Doc = { id: uid(), width, height, resolution: 72, layers: made, mode: 'cmyk', profile } as Doc;
+    const p = this.addProject(doc, name, made[made.length - 1]?.id ?? null);
+    this.setCmykTables(p, lut, inLut);
+    return p;
+  }
+
   /** The tables of a CMYK project opened from a saved file (1.54.2), fetched by the app once its profile is known. */
   setCmykTables(p: Project, lut: Lut4, inLut: Lut3x4): void {
     p.cmykLut = lut; p.cmykIn = inLut;

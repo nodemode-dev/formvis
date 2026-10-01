@@ -1,4 +1,5 @@
 import io
+import json
 import re
 from pathlib import Path
 
@@ -93,6 +94,108 @@ def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: in
     if not ok:
         raise HTTPException(status_code=500, detail="The 16-bit file could not be written.")
     return Response(out.tobytes(), media_type={"png": "image/png", "hdr": "image/vnd.radiance", "exr": "image/x-exr"}.get(format, "image/tiff"))
+
+
+_PSD_BLENDS = {"normal": "NORMAL", "multiply": "MULTIPLY", "screen": "SCREEN", "overlay": "OVERLAY", "darken": "DARKEN", "lighten": "LIGHTEN",
+               "color-dodge": "COLOR_DODGE", "color-burn": "COLOR_BURN", "hard-light": "HARD_LIGHT", "soft-light": "SOFT_LIGHT", "difference": "DIFFERENCE",
+               "exclusion": "EXCLUSION", "hue": "HUE", "saturation": "SATURATION", "color": "COLOR", "luminosity": "LUMINOSITY", "linear-burn": "LINEAR_BURN",
+               "linear-dodge": "LINEAR_DODGE", "vivid-light": "VIVID_LIGHT", "linear-light": "LINEAR_LIGHT", "pin-light": "PIN_LIGHT", "hard-mix": "HARD_MIX",
+               "subtract": "SUBTRACT", "divide": "DIVIDE", "darker-color": "DARKER_COLOR", "lighter-color": "LIGHTER_COLOR", "dissolve": "DISSOLVE"}
+
+
+def _pack(meta: dict, chunks: list[bytes]) -> bytes:
+    head = json.dumps(meta).encode()
+    return len(head).to_bytes(4, "little") + head + b"".join(chunks)
+
+
+@router.post("/decode-cmyk-psd")
+def decode_cmyk_psd(file: UploadFile = File(...)) -> Response:
+    """A CMYK PSD's layers as ink (1.56.1, DEV_PLAN 22.8), read by psd-tools (MIT): a 4-byte length, a JSON header
+    (the document's size and each pixel layer's name, place, size, opacity, visibility and blend mode), then each
+    layer's C, M, Y, K and alpha bytes in turn (a layer mask folded into the alpha), then the embedded profile. 204
+    when the file is not a CMYK PSD, so the usual reader goes on."""
+    from PIL import Image
+    from psd_tools import PSDImage
+    from psd_tools.constants import ColorMode, Resource
+    data = file.file.read()
+    try:
+        psd = PSDImage.open(io.BytesIO(data))
+    except Exception:
+        return Response(status_code=204)
+    if psd.color_mode != ColorMode.CMYK or psd.depth != 8:
+        return Response(status_code=204)
+    if psd.width * psd.height > config.MAX_PIXELS:
+        raise HTTPException(status_code=413, detail="The picture is larger than formvis edits in one piece.")
+    layers, chunks = [], []
+    for layer in psd.descendants():
+        if layer.is_group() or not layer.has_pixels() or layer.width <= 0 or layer.height <= 0:
+            continue
+        ink = layer.topil(apply_icc=False)
+        if ink is None or ink.mode != "CMYK":
+            continue
+        arr = layer.numpy()
+        alpha = np.clip(arr[..., 4] * 255 + 0.5, 0, 255).astype(np.uint8) if arr is not None and arr.shape[-1] >= 5 else np.full((layer.height, layer.width), 255, np.uint8)
+        m = layer.mask
+        if m is not None and not m.disabled and m.width > 0 and m.height > 0:
+            mi = np.asarray(m.topil().convert("L"), np.float32) / 255.0
+            full = np.full((layer.height, layer.width), m.background_color / 255.0, np.float32)
+            x0, y0 = m.left - layer.left, m.top - layer.top
+            sx0, sy0, sx1, sy1 = max(0, -x0), max(0, -y0), min(m.width, layer.width - x0), min(m.height, layer.height - y0)
+            if sx1 > sx0 and sy1 > sy0:
+                full[y0 + sy0:y0 + sy1, x0 + sx0:x0 + sx1] = mi[sy0:sy1, sx0:sx1]
+            alpha = np.clip(alpha.astype(np.float32) * full + 0.5, 0, 255).astype(np.uint8)
+        px = np.concatenate([np.asarray(ink, np.uint8).reshape(layer.height, layer.width, 4), alpha[..., None]], axis=-1)
+        chunks.append(px.tobytes())
+        layers.append({"name": layer.name, "left": layer.left, "top": layer.top, "width": layer.width, "height": layer.height,
+                       "opacity": layer.opacity, "visible": layer.is_visible(),
+                       "blend": next((k for k, v in _PSD_BLENDS.items() if v == getattr(layer.blend_mode, "name", "NORMAL")), "normal")})
+    icc = psd.image_resources.get_data(Resource.ICC_PROFILE) or b""
+    return Response(_pack({"width": psd.width, "height": psd.height, "layers": layers, "icc": len(icc)}, chunks + [icc]), media_type="application/octet-stream")
+
+
+@router.post("/encode-cmyk-psd")
+def encode_cmyk_psd(meta: str = Form(...), file: UploadFile = File(...)) -> Response:
+    """A layered CMYK PSD (1.56.1), written by psd-tools: the request's `meta` names the document's size and each
+    layer's name, place, size, opacity, visibility and blend mode; `file` holds the composite's C, M, Y, K and alpha
+    bytes, then each layer's, then the profile. A layer's transparency is stored as a layer mask, as Photoshop's CMYK
+    documents hold no transparency band."""
+    from PIL import Image
+    from psd_tools import PSDImage
+    from psd_tools.api.layers import PixelLayer
+    from psd_tools.constants import BlendMode, Resource
+    from psd_tools.psd.image_resources import ImageResource
+    m = json.loads(meta)
+    W, H, raw = int(m["width"]), int(m["height"]), file.file.read()
+    if W <= 0 or H <= 0 or W * H > config.MAX_PIXELS:
+        raise HTTPException(status_code=422, detail="The document's size is out of range.")
+    at = W * H * 5
+    if len(raw) < at:
+        raise HTTPException(status_code=422, detail="The composite does not match the size given.")
+
+    def paper(px: np.ndarray) -> Image.Image:
+        a = px[..., 4:5].astype(np.float32) / 255.0
+        return Image.fromarray(np.clip(px[..., :4].astype(np.float32) * a + 0.5, 0, 255).astype(np.uint8), "CMYK")
+
+    psd = PSDImage.frompil(paper(np.frombuffer(raw[:at], np.uint8).reshape(H, W, 5)))
+    for lm in m.get("layers", []):
+        w, h = int(lm["width"]), int(lm["height"])
+        n = w * h * 5
+        if w <= 0 or h <= 0 or at + n > len(raw):
+            raise HTTPException(status_code=422, detail=f"Layer \"{lm.get('name', '')}\" does not match its size.")
+        px = np.frombuffer(raw[at:at + n], np.uint8).reshape(h, w, 5)
+        at += n
+        layer = PixelLayer.frompil(Image.fromarray(np.ascontiguousarray(px[..., :4]), "CMYK"), psd, str(lm.get("name", "Layer")), top=int(lm["top"]), left=int(lm["left"]))
+        if (px[..., 4] < 255).any():
+            layer.create_mask(Image.fromarray(np.ascontiguousarray(px[..., 4]), "L"), top=int(lm["top"]), left=int(lm["left"]))
+        layer.opacity = max(0, min(255, int(lm.get("opacity", 255))))
+        layer.visible = bool(lm.get("visible", True))
+        layer.blend_mode = BlendMode[_PSD_BLENDS.get(str(lm.get("blend", "normal")), "NORMAL")]
+    icc = raw[at:]
+    if icc:
+        psd._record.image_resources[Resource.ICC_PROFILE] = ImageResource(key=Resource.ICC_PROFILE, data=icc)
+    out = io.BytesIO()
+    psd.save(out)
+    return Response(out.getvalue(), media_type="image/vnd.adobe.photoshop")
 
 
 @router.post("/decode-cmyk")

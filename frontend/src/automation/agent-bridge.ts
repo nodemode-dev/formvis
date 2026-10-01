@@ -79,7 +79,7 @@ export class AgentBridge {
       switch (name) {
         case 'get_document': {
           const d = p.doc, s = p.selection;
-          const data = { name: p.name, width: d.width, height: d.height, resolution: d.resolution ?? 72, mode: d.mode ?? 'rgb', activeLayerId: p.activeId,
+          const data = { name: p.name, width: d.width, height: d.height, resolution: d.resolution ?? 72, mode: d.mode ?? 'rgb', depth: d.depth ?? 8, profile: d.profile?.name ?? (d.mode === 'cmyk' ? null : 'sRGB'), activeLayerId: p.activeId,
             selection: s ? { x: s.x, y: s.y, width: s.w, height: s.h } : null,
             documents: e.projects.map((q) => ({ id: q.id, name: q.name, active: q === p })),
             layers: d.layers.map((l) => ({ id: l.id, name: l.name, kind: l.isGroup ? 'group' : l.adjustment ? `adjustment:${l.adjustment.kind}` : l.text ? 'text' : l.shape ? 'shape' : l.smart ? 'smart object' : 'pixels',

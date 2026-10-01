@@ -29,6 +29,9 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
   return res;
 }
 
+/** A CMYK PSD as the engine reads it (1.56.1): each layer's place, look and C, M, Y, K and alpha bytes. */
+export interface CmykPsd { width: number; height: number; icc: Uint8Array | null; layers: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean; blend: string; ink: Uint8Array }> }
+
 function form(fields: Record<string, string>, files: FilePart[] = [], key = 'files'): FormData {
   const f = new FormData();
   for (const [k, v] of Object.entries(fields)) f.append(k, v);
@@ -198,6 +201,22 @@ export const api = {
     return ((await (await request('/color/default-cmyk')).json()) as { profile: { id: string; name: string } | null }).profile;
   },
   /** A CMYK file's ink and embedded profile, or null when the file is not CMYK. */
+  /** A CMYK PSD's layers as ink (1.56.1, DEV_PLAN 22.8), read by the engine's psd-tools; null when the file is not one. */
+  async decodeCmykPsd(file: Blob, name: string): Promise<CmykPsd | null> {
+    const r = await request('/io/decode-cmyk-psd', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') });
+    if (r.status === 204) return null;
+    const b = new Uint8Array(await r.arrayBuffer()), n = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
+    const head = JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + n))) as { width: number; height: number; icc: number; layers: Array<Omit<CmykPsd['layers'][number], 'ink'>> };
+    let at = 4 + n;
+    const layers = head.layers.map((l) => { const len = l.width * l.height * 5, ink = b.slice(at, at + len); at += len; return { ...l, ink }; });
+    return { width: head.width, height: head.height, layers, icc: head.icc ? b.slice(at, at + head.icc) : null };
+  },
+  /** A layered CMYK PSD written by the engine: the composite's ink, then each layer's, then the profile. */
+  async encodeCmykPsd(doc: { width: number; height: number; layers: Array<Omit<CmykPsd['layers'][number], 'ink'>> }, composite: Uint8Array, inks: Uint8Array[], icc: Uint8Array | null): Promise<Blob> {
+    const parts: BlobPart[] = [new Uint8Array(composite), ...inks.map((k) => new Uint8Array(k)), ...(icc ? [new Uint8Array(icc)] : [])];
+    const body = form({ meta: JSON.stringify(doc) }, [{ name: 'layers.raw', blob: new Blob(parts) }], 'file');
+    return (await request('/io/encode-cmyk-psd', { method: 'POST', body })).blob();
+  },
   async decodeCmyk(file: Blob, name: string): Promise<{ width: number; height: number; ink: Uint8Array; icc: Uint8Array | null } | null> {
     const r = await request('/io/decode-cmyk', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') });
     if (r.status === 204) return null;

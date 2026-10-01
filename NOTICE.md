@@ -61,6 +61,7 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | httpx | BSD-3-Clause | The engine's model downloads |
 | ONNX Runtime | MIT | Runs the local models; part of the base install |
 | LittleCMS (through Pillow's ImageCms) | MIT | Colour management: profile conversion, proofing and the gamut warning |
+| psd-tools (Kota Yamaguchi) | MIT | CMYK PSD files read and written with their layers (1.56.1) |
 
 ## The shipped CMYK profile (1.54.0)
 

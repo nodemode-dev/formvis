@@ -47,7 +47,7 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, str
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
-import { api, type Capabilities, type OpenedProject } from './io/api';
+import { api, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, serialize } from './io/project-io';
@@ -81,7 +81,7 @@ import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
 import { ColourView } from './ui/colour';
-import { composeDeep, deepFromU16, deepToU16, deepToned } from './engine/deep';
+import { composeDeep, deepFromU16, deepToU16, deepToned, place } from './engine/deep';
 import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
 import type { Lut3x4, Lut4 } from './engine/colour-lut';
 import type { ChannelPixels, DocProfile, ID } from './engine/types';
@@ -436,6 +436,8 @@ export function startApp(): void {
             engine.addProject(doc, f.name.replace(/\.ora$/i, ''), null);
             if (notes.length) toast(notes.join(' '), 'info');
           } else if (isPsdFile(f)) {
+            const cmykPsd = await api.decodeCmykPsd(f, f.name).catch(() => null);
+            if (cmykPsd) { await openCmykPsd(f.name.replace(/\.ps[db]$/i, ''), cmykPsd); continue; }
             const { doc, notes, activeId, paths } = await readPsdFile(f);
             const opened = engine.addProject(doc, f.name.replace(/\.ps[db]$/i, ''), activeId);
             if (paths) engine.setPathsOf(opened, paths);
@@ -670,6 +672,46 @@ export function startApp(): void {
     engine.openChannels(name, channelsFromU8(file.ink, file.width, file.height), profile, t.out, t.in);
     if (!file.icc) toast(`${name} has no embedded profile; ${profile.name} is assumed.`);
   }
+  /** A CMYK PSD opened with its layers' ink (1.56.1, DEV_PLAN 22.8). */
+  async function openCmykPsd(name: string, d: CmykPsd): Promise<void> {
+    let profile: DocProfile | null = d.icc ? { name: profileName(d.icc) || 'Embedded CMYK profile', icc: toBase64(d.icc) } : null;
+    if (!profile) { const def = await api.defaultCmykProfile(); if (!def) throw new Error('No CMYK profile is available: add one in View > Proof Setup > Load Profile.'); profile = await cmykProfileOf(def.id, def.name); }
+    const t = await cmykLutFor(profile);
+    engine.openChannelLayers(name, d.width, d.height, d.layers.map((l) => ({ name: l.name, x: l.left, y: l.top, channels: channelsFromU8(l.ink, l.width, l.height), opacity: l.opacity / 255, visible: l.visible, blend: l.blend })), profile, t.out, t.in);
+    if (!d.icc) toast(`${name} has no embedded profile; ${profile.name} is assumed.`);
+  }
+
+  /** Export PSD from a CMYK document (1.56.1): each pixel layer placed in ink at its bounds, the composite from the
+   *  document's ink, the profile embedded. Groups, masks, adjustment layers and styles are not carried as such; the
+   *  composite holds their effect, and a note says so. */
+  async function exportCmykPsd(): Promise<void> {
+    const p = engine.current, prof = p?.doc.profile;
+    if (!p || p.doc.mode !== 'cmyk' || !prof) return;
+    await engine.task(async () => {
+      try {
+        const W = p.doc.width, H = p.doc.height, comp = composeChannels(p.doc, p.cmykTables);
+        if ('error' in comp) throw new Error(comp.error);
+        const metas: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean; blend: string }> = [], inks: Uint8Array[] = [];
+        let skipped = 0;
+        for (const l of p.doc.layers) {
+          if (!l.channels || l.isGroup || l.adjustment) { if (l.adjustment || l.mask || l.effects) skipped++; continue; }
+          const full = new Float32Array(W * H * 5); place(full, W, H, l.channels, l.transform, 1, 5);
+          let x0 = W, y0 = H, x1 = -1, y1 = -1;
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (full[(y * W + x) * 5 + 4] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+          if (x1 < 0) continue;
+          const w = x1 - x0 + 1, h = y1 - y0 + 1, cut = new Float32Array(w * h * 5);
+          for (let y = 0; y < h; y++) cut.set(full.subarray(((y0 + y) * W + x0) * 5, ((y0 + y) * W + x0 + w) * 5), y * w * 5);
+          metas.push({ name: l.name, left: x0, top: y0, width: w, height: h, opacity: Math.round(l.opacity * (l.fill ?? 1) * 255), visible: l.visible, blend: l.blend ?? 'normal' });
+          inks.push(channelsToU8(cut));
+          if (l.mask || l.effects) skipped++;
+        }
+        const blob = await api.encodeCmykPsd({ width: W, height: H, layers: metas }, channelsToU8(comp.data), inks, fromBase64(prof.icc));
+        await deliver(blob, `${p.name}.psd`);
+        if (skipped) toast(`${skipped} layer mask, style or adjustment layer${skipped > 1 ? 's are' : ' is'} in the composite, not as such: the CMYK PSD carries pixel layers.`, 'info');
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function exportCmyk(kind: 'tiff' | 'jpg', quality: number): Promise<void> {
     const p = engine.current;
     if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile) return;
@@ -910,6 +952,7 @@ export function startApp(): void {
     const p = engine.current;
     if (!p) return;
     engine.settle();
+    if (p.doc.mode === 'cmyk' && !psb) { await exportCmykPsd(); return; }
     await engine.task(async () => {
       try {
         const flat = engine.flattened();

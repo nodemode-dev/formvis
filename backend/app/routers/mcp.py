@@ -53,7 +53,7 @@ def _tool(name: str, description: str, props: dict, required: list[str] | None =
 
 _ID = {"type": "string", "description": "A layer id from get_document."}
 TOOLS = [
-    _tool("get_document", "The open document: name, size, resolution, colour mode, the layers bottom to top (id, name, kind, visible, opacity, blend, parent group), the active layer and the selection's bounds.", {}, read=True, idempotent=True),
+    _tool("get_document", "The open document: name, size, resolution, colour mode (rgb, cmyk, grayscale...), bit depth, colour profile, the layers bottom to top (id, name, kind, visible, opacity, blend, parent group), the active layer and the selection's bounds.", {}, read=True, idempotent=True),
     _tool("get_image", "The document as it looks, as a PNG image, its longer side at most max_size pixels.", {"max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}}, read=True, idempotent=True),
     _tool("new_document", "Opens a new document.", {"width": {"type": "integer", "minimum": 1, "maximum": 30000}, "height": {"type": "integer", "minimum": 1, "maximum": 30000},
           "name": {"type": "string", "maxLength": 120}, "background": {"type": "string", "enum": ["white", "transparent", "black"], "default": "white"}}, ["width", "height"]),
