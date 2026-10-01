@@ -6609,6 +6609,29 @@ export class Engine {
     });
   }
 
+  /** Image > Mode > Grayscale from Lab (1.57.5): each layer's grey from its Lightness alone, as Photoshop takes it,
+   *  the sRGB grey of that lightness exactly; the document leaves Lab for 8-bit Grayscale. */
+  setGrayFromLab(): boolean {
+    const p = this.current;
+    if (!p || p.doc.mode !== 'lab') return false;
+    return this.edit('Grayscale', (pp) => {
+      const layers = pp.doc.layers.map((l) => {
+        if (l.channels?.mode !== 'lab') return l;
+        const ch = l.channels, r = new Raster(ch.width, ch.height), img = r.ctx.createImageData(ch.width, ch.height), memo = new Map<number, number>();
+        for (let i = 0; i < ch.data.length; i += 4) {
+          const key = Math.round(ch.data[i] * 65535);
+          let v = memo.get(key);
+          if (v === undefined) { v = labToSrgb(ch.data[i] * 100, 0, 0)[0]; memo.set(key, v); }
+          img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = Math.round(ch.data[i + 3] * 255);
+        }
+        r.ctx.putImageData(img, 0, 0); r.touch();
+        return { ...l, channels: undefined, raster: r };
+      });
+      pp.doc = { ...pp.doc, layers, mode: 'grayscale' };
+      return true;
+    });
+  }
+
   /** Image > Mode > RGB Color from Lab: each layer's pixels from its Lab floats, exactly, clipped to sRGB. */
   setRgbFromLab(): boolean {
     const p = this.current;
@@ -6753,6 +6776,15 @@ export class Engine {
         const gray = (c: RGB): RGB => { const v = Math.round(0.299 * c.r + 0.587 * c.g + 0.114 * c.b); return { r: v, g: v, b: v }; };
         const layers = pp.doc.layers.map((l) => {
           if (!l.raster || l.isGroup) return l;
+          if (l.channels?.mode === 'rgb' && l.channels.n === 3 && (pp.doc.depth ?? 8) > 8) {
+            // 16 and 32 bits (1.57.5, DEV_PLAN 22.11): the floats themselves go grey, 16 bits by the 8-bit formula on
+            // their encoded values, 32 bits as luminance in linear light (sRGB primaries), light above white kept.
+            const lin = pp.doc.depth === 32, s = l.channels.data, d = new Float32Array(s.length);
+            for (let i = 0; i < s.length; i += 4) { const v = lin ? 0.2126 * s[i] + 0.7152 * s[i + 1] + 0.0722 * s[i + 2] : 0.299 * s[i] + 0.587 * s[i + 1] + 0.114 * s[i + 2]; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = s[i + 3]; }
+            const ch = { ...l.channels, data: d }, r = rasterFromDeep(ch, lin), patch: Partial<Layer> = { raster: r, channels: ch };
+            if (l.text && liveText(l)) patch.text = { ...l.text, color: gray(l.text.color), rendered: textKey(r) };
+            return { ...l, ...patch };
+          }
           const r = l.raster.clone(), d = r.ctx.getImageData(0, 0, r.width, r.height);
           for (let i = 0; i < d.data.length; i += 4) { const v = Math.round(0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2]); d.data[i] = d.data[i + 1] = d.data[i + 2] = v; }
           r.ctx.putImageData(d, 0, 0);

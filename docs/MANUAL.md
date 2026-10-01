@@ -231,8 +231,8 @@ ask it questions.
   every blend mode: Photoshop's 32-bit modes keep light above white, and the others blend in the visible range, light
   above white kept wherever one layer alone covers a pixel. Unsharp Mask and Add Noise keep light above white too.
   Convert to Profile converts linear light exactly between RGB profiles; proofing works as in other documents. Indexed
-  Color, Bitmap, CMYK and Lab bring the document down first (HDR Toning asks how). Adjustment layers but Exposure and
-  Grayscale wait at 32 bits for now.
+  Color, Bitmap, CMYK and Lab bring the document down first (HDR Toning asks how); Grayscale keeps 32 bits, taking
+  each pixel's luminance in linear light. Adjustment layers but Exposure wait at 32 bits for now.
 
 ## 16-bit documents
 
