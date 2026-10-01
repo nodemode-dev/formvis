@@ -1,7 +1,7 @@
 import type { ChannelPixels, Doc } from './types';
 import { applyLut4, renditionOf, type Ink, type Lut4 } from './colour-lut';
 import { place } from './deep';
-import { composeFloat } from './compose-float';
+import { composeFloat, type CmykLuts } from './compose-float';
 import { Raster } from './surface';
 
 /** CMYK documents (1.54.0, the parity plan's H1): a layer's ink as floats, its sRGB rendition through the document's
@@ -32,8 +32,8 @@ export function rasterBytes(r: Raster): Uint8Array {
 }
 
 /** The document composed in ink, straight alpha, five floats a pixel: Normal blending only, as composeDeep. */
-export function composeChannels(doc: Doc): { width: number; height: number; data: Float32Array } | { error: string } {
-  return composeFloat(doc, 4, true);
+export function composeChannels(doc: Doc, luts: CmykLuts | null = null): { width: number; height: number; data: Float32Array } | { error: string } {
+  return composeFloat(doc, 4, true, luts);
 }
 
 /** A stroke rebuilt on a layer's ink from the 8-bit rendition it painted (1.54.2, as strokeDeep): each changed pixel's

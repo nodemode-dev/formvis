@@ -16,6 +16,8 @@ export class Project {
   /** A CMYK document's display table (1.54.0), from its profile; not part of history. */
   cmykLut: Lut4 | null = null;
   cmykIn: Lut3x4 | null = null;
+  /** Both tables for the float compositor (1.55.7), or null until they load. */
+  get cmykTables(): { out: Lut4; in: Lut3x4 } | null { return this.cmykLut && this.cmykIn ? { out: this.cmykLut, in: this.cmykIn } : null; }
   readonly collapsed = new Set<ID>();
   readonly history = new History();
   readonly viewport = new Viewport();

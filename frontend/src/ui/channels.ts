@@ -71,7 +71,7 @@ export class ChannelsPanel {
   private drawThumbs(): void {
     const p = this.engine.current, cmyk = p?.doc.mode === 'cmyk';
     const src = p ? this.engine.flattened() : null;
-    const ink = cmyk && p ? composeChannels(p.doc) : null, inkOk = ink && !('error' in ink) ? ink : null;
+    const ink = cmyk && p ? composeChannels(p.doc, p.cmykTables) : null, inkOk = ink && !('error' in ink) ? ink : null;
     for (const [id, c] of this.thumbs) {
       const g = c.getContext('2d') as CanvasRenderingContext2D;
       g.clearRect(0, 0, c.width, c.height);
@@ -124,7 +124,7 @@ export class ChannelsPanel {
     const e = this.engine;
     if (!e.current) return;
     if (isInk(id)) {
-      const ink = composeChannels(e.current.doc);
+      const ink = composeChannels(e.current.doc, e.current.cmykTables);
       if ('error' in ink) { e.notice(ink.error); return; }
       const mask = new Uint8Array(ink.width * ink.height), k = INK[id];
       for (let i = 0, j = 0; j < mask.length; i += 5, j++) mask[j] = Math.round((1 - Math.min(1, Math.max(0, ink.data[i + k]))) * Math.min(1, ink.data[i + 4]) * 255);

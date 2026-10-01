@@ -674,7 +674,7 @@ export function startApp(): void {
     if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile) return;
     await engine.task(async () => {
       try {
-        const ink = composeChannels(p.doc);
+        const ink = composeChannels(p.doc, p.cmykTables);
         if ('error' in ink) throw new Error(ink.error);
         const blob = await api.encodeCmyk(channelsToU8(ink.data), ink.width, ink.height, kind, fromBase64(p.doc.profile!.icc), Math.round(quality * 100), p.doc.resolution ?? 72);
         await deliver(blob, `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);
@@ -1684,6 +1684,8 @@ export function startApp(): void {
     'duplicate', 'duplicate-dialog', 'group', 'add-mask', 'add-mask-hide', 'delete-mask', 'toggle-mask', 'link-mask', 'clip', 'blend-next', 'blend-prev',
     'filter-gaussianBlur', 'filter-unsharpMask', 'filter-addNoise', 'filter-motionBlur', 'filter-surfaceBlur', 'image-size', 'canvas-size', 'flip-canvas-h', 'flip-canvas-v', 'rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'trim', 'reveal-all', 'new-adj-levels', 'new-adj-curves', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'edit-adjustment',
     'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
+  const COLOUR_ADJ = ['new-adj-hsv', 'new-adj-vibrance', 'new-adj-colorBalance', 'new-adj-blackWhite', 'new-adj-photoFilter', 'new-adj-channelMixer', 'new-adj-threshold', 'new-adj-selectiveColor', 'new-adj-gradientMap', 'new-adj-colorLookup', 'new-adj-shadowsHighlights'];
+  for (const id of COLOUR_ADJ) { DEEP_OK.add(id); NOT_AT_32.add(id); if (id !== 'new-adj-channelMixer') CMYK_OK.add(id); }
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? CMYK_OK.has(c.id) || passes(c)
     : (engine.current?.doc.depth ?? 8) === 8 || ((DEEP_OK.has(c.id) || passes(c)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));

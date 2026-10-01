@@ -11,7 +11,7 @@ import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
 import type { Adjustment } from './types';
 
 const kernelCache = new WeakMap<object, Kernel | null>();
-function kernelFor(adj: Adjustment | null): Kernel | null {
+export function kernelFor(adj: Adjustment | null): Kernel | null {
   if (!adj) return null;
   const hit = kernelCache.get(adj.data);
   if (hit !== undefined) return hit;

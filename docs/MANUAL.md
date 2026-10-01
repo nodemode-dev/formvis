@@ -180,7 +180,10 @@ ask it questions.
   shows C, M, Y and K, and the Info panel reads the ink under the pointer. Gaussian, Motion and Surface Blur, Unsharp
   Mask, Add Noise, Levels, Curves, Invert, Posterize and Brightness/Contrast layers, Image Size, Canvas Size, Image
   Rotation, Free Transform, Trim and Reveal All run on the ink itself, and so do blend modes, opacity and fill, layer
-  and folder masks, clipping masks and groups, in the canvas and in every export. Nothing drops a CMYK document to RGB
+  and folder masks, clipping masks and groups, in the canvas and in every export. Hue/Saturation, Vibrance, Color
+  Balance, Black and White, Photo Filter, Threshold, Selective Color, Gradient Map, Color Lookup and Shadows/Highlights
+  layers give the same results as in RGB: a small change keeps the ink's own structure (a K-only black stays K-only),
+  a large one takes the profile's separation. Nothing drops a CMYK document to RGB
   quietly: what is not built for ink yet waits in the menu until Mode > RGB Color, and a step that would lose ink is
   undone with a message.
 

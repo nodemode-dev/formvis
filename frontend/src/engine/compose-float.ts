@@ -2,15 +2,19 @@ import { dissolveNoise } from './blend';
 import { deepFromRaster, place, transferOf } from './deep';
 import { hierarchy, byId, ancestors } from './tree';
 import { placement, setMat } from './geometry';
+import { applyLut4, inkOf, type Lut3x4, type Lut4 } from './colour-lut';
+import { kernelFor } from './renderer';
+import type { Kernel } from './kernels';
 import type { BlendMode, Doc, Layer, ID } from './types';
 
 /** Compositing in the mode (1.55.5, DEV_PLAN 22.5): the document composed on the one float model, for 16-bit, 32-bit
  *  and CMYK documents alike. Every separable blend mode runs per channel on the channel values (for CMYK on
  *  paper-white values, 1 minus ink, so Multiply darkens as Photoshop's CMYK does), with opacity and fill, the layer's
  *  own mask, its folders' masks, clipping to a base layer, and adjustment layers with a transfer (Levels, Curves,
- *  Invert, Posterize, Brightness/Contrast, Exposure) applied per channel under their masks. The non-separable modes
- *  (Hue, Saturation, Color, Luminosity, Darker and Lighter Color) run on RGB floats by the W3C formulas and wait for
- *  Lab in CMYK; layer styles wait for 22.7; both say so. Groups are pass-through, as the renderer treats them. */
+ *  Invert, Posterize, Brightness/Contrast, Exposure) applied per channel under their masks. Every other adjustment
+ *  and the non-separable modes (Hue, Saturation, Color, Luminosity, Darker and Lighter Color) run through the
+ *  document's rendition (1.55.7, `viaKernel`); layer styles wait for 22.7 and say so. Groups are pass-through, as the
+ *  renderer treats them. */
 
 type Sep = (b: number, s: number) => number;
 const clamp01 = (v: number): number => (v < 0 ? 0 : v > 1 ? 1 : v);
@@ -73,6 +77,42 @@ function nonSeparable(mode: BlendMode, b: [number, number, number], s: [number, 
   }
 }
 
+/** A CMYK document's two tables: ink to its sRGB rendition, and sRGB to ink (the profile's separation). */
+export interface CmykLuts { out: Lut4; in: Lut3x4 }
+
+/** Colour-model operations in the mode (1.55.7, DEV_PLAN 22.6). An adjustment defined on colour rather than on each
+ *  channel (Hue/Saturation, Color Balance, Black and White, Gradient Map, Threshold...) runs its own 8-bit kernel on
+ *  the composite's rendition, the same kernel RGB documents use. At 16 bits the change it makes is added to the floats,
+ *  so the gradations between 8-bit levels survive. In CMYK the result is separated back to ink by the profile, and the
+ *  original ink's structure (its black generation, a K-only black, detail beyond sRGB) is carried over in proportion
+ *  to how small the change is: fully for an adjustment that changes nothing, not at all for one that changes a colour
+ *  by 48 levels or more. An identity adjustment leaves every value exactly as it was. */
+const KEEP_LEVELS = 48;
+function viaKernel(out: Float32Array, W: number, H: number, n: 3 | 4, kern: Kernel, op: number, cov: Float32Array | null, luts: CmykLuts | null): void {
+  const N = W * H, S = n + 1, A = n, rgba = new Uint8ClampedArray(N * 4);
+  if (n === 4 && luts) applyLut4(out, luts.out, rgba);
+  else for (let j = 0; j < N; j++) { const i = j * S, o = j * 4; for (let c = 0; c < 3; c++) rgba[o + c] = Math.round(clamp01(out[i + c]) * 255); rgba[o + 3] = Math.round(clamp01(out[i + A]) * 255); }
+  const adj = new Uint8ClampedArray(rgba);
+  kern(adj, { width: W, height: H, originX: 0, originY: 0, unitsPerPixel: 1 });
+  for (let j = 0; j < N; j++) {
+    const i = j * S, o = j * 4, k = op * (cov ? cov[j] : 1);
+    if (k <= 0 || out[i + A] <= 0) continue;
+    if (adj[o] === rgba[o] && adj[o + 1] === rgba[o + 1] && adj[o + 2] === rgba[o + 2]) continue;
+    if (n === 3 || !luts) { for (let c = 0; c < 3; c++) out[i + c] = clamp01(out[i + c] + ((adj[o + c] - rgba[o + c]) / 255) * k); continue; }
+    const before = inkOf({ r: rgba[o], g: rgba[o + 1], b: rgba[o + 2] }, luts.in), after = inkOf({ r: adj[o], g: adj[o + 1], b: adj[o + 2] }, luts.in);
+    const d = Math.max(Math.abs(adj[o] - rgba[o]), Math.abs(adj[o + 1] - rgba[o + 1]), Math.abs(adj[o + 2] - rgba[o + 2])), w = clamp01(1 - d / KEEP_LEVELS);
+    for (let c = 0; c < 4; c++) { const target = clamp01(after[c] + w * (out[i + c] - before[c])); out[i + c] += (target - out[i + c]) * k; }
+  }
+}
+
+/** One ink's 8-bit rendition through the display table, without allocating. */
+const oneInk = new Float32Array(5), oneRgb = new Uint8ClampedArray(4);
+function rgbOfInk(lut: Lut4, d: Float32Array, i: number): [number, number, number] {
+  oneInk[0] = d[i]; oneInk[1] = d[i + 1]; oneInk[2] = d[i + 2]; oneInk[3] = d[i + 3]; oneInk[4] = 1;
+  applyLut4(oneInk, lut, oneRgb);
+  return [oneRgb[0], oneRgb[1], oneRgb[2]];
+}
+
 /** A mask raster's coverage at document size, 0 to 1 (white shows), through its placement. */
 function maskCoverage(mask: { raster: { canvas: CanvasImageSource; width: number; height: number }; placement: import('./types').Transform }, W: number, H: number): Float32Array {
   const c = document.createElement('canvas'); c.width = W; c.height = H;
@@ -87,7 +127,7 @@ function maskCoverage(mask: { raster: { canvas: CanvasImageSource; width: number
 
 export interface FloatComposite { width: number; height: number; data: Float32Array }
 
-export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean): FloatComposite | { error: string } {
+export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: CmykLuts | null = null): FloatComposite | { error: string } {
   const W = doc.width, H = doc.height, S = n + 1, A = n, N = W * H, out = new Float32Array(N * S), tmp = new Float32Array(N * S);
   const layers = doc.layers.map((l) => (l.parentId === undefined ? { ...l, parentId: null } : l)), walked = { ...doc, layers };
   const map = byId(walked), covers = new Map<string, Float32Array>(), clipAlpha = new Map<ID, Float32Array>();
@@ -124,7 +164,12 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean): FloatComp
     const op = l.opacity * (l.fill ?? 1), cov = coverageOf(l);
     if (l.adjustment) {
       const t = transferOf(l.adjustment);
-      if (!t) return { error: `${name} is an adjustment that waits for Lab in this mode.` };
+      if (!t) {
+        const kern = kernelFor(l.adjustment);
+        if (!kern || (n === 4 && !luts)) return { error: `${name} is an adjustment that needs the document's colour tables, which load with the document.` };
+        viaKernel(out, W, H, n, kern, op, cov, n === 4 ? luts : null);
+        continue;
+      }
       for (let i = 0, j = 0; i < out.length; i += S, j++) {
         const k = op * (cov ? cov[j] : 1);
         if (k <= 0) continue;
@@ -139,7 +184,7 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean): FloatComp
     const clip = l.clipId ? map.get(l.clipId) : null, clipA = clip ? alphaOf(clip) : null;
     if (l.clipId && !clipA) return { error: `${name} is clipped to a layer this compositor cannot read.` };
     const mode = l.blend ?? 'normal', sep = SEPARABLE_FLOAT[mode];
-    if (!sep && mode !== 'dissolve' && (n !== 3 || !nonSeparable(mode, [0, 0, 0], [0, 0, 0]))) return { error: `${name} uses ${mode}, which waits for Lab in this mode.` };
+    if (!sep && mode !== 'dissolve' && (!nonSeparable(mode, [0, 0, 0], [0, 0, 0]) || (n === 4 && !luts))) return { error: `${name} uses ${mode}, which needs the document's colour tables in this mode.` };
     const bv: [number, number, number] = [0, 0, 0], sv: [number, number, number] = [0, 0, 0];
     for (let i = 0, j = 0; i < out.length; i += S, j++) {
       let as = tmp[i + A] * op * (cov ? cov[j] : 1) * (clipA ? clipA[j] : 1);
@@ -150,6 +195,18 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean): FloatComp
       if (sep || mode === 'dissolve') {
         const f = sep ?? SEPARABLE_FLOAT.normal!;
         for (let c = 0; c < A; c++) { const b = toValue(out[i + c]), s = toValue(tmp[i + c]), r = f(b, s); out[i + c] = fromValue((k1 * s + k2 * r + k3 * b) / ao); }
+      } else if (n === 4 && luts) {
+        const B = rgbOfInk(luts.out, out, i), Sx = rgbOfInk(luts.out, tmp, i), r4 = [0, 0, 0, 0];
+        if (mode === 'darker-color' || mode === 'lighter-color') {
+          const takeS = mode === 'darker-color' ? lum(Sx[0], Sx[1], Sx[2]) < lum(B[0], B[1], B[2]) : lum(Sx[0], Sx[1], Sx[2]) >= lum(B[0], B[1], B[2]);
+          for (let c = 0; c < 4; c++) r4[c] = takeS ? tmp[i + c] : out[i + c];
+        } else {
+          const rr = nonSeparable(mode, [B[0] / 255, B[1] / 255, B[2] / 255], [Sx[0] / 255, Sx[1] / 255, Sx[2] / 255]) ?? [Sx[0] / 255, Sx[1] / 255, Sx[2] / 255];
+          const r8 = { r: clamp01(rr[0]) * 255, g: clamp01(rr[1]) * 255, b: clamp01(rr[2]) * 255 }, after = inkOf(r8, luts.in), before = inkOf({ r: B[0], g: B[1], b: B[2] }, luts.in);
+          const w = clamp01(1 - Math.max(Math.abs(r8.r - B[0]), Math.abs(r8.g - B[1]), Math.abs(r8.b - B[2])) / KEEP_LEVELS);
+          for (let c = 0; c < 4; c++) r4[c] = clamp01(after[c] + w * (out[i + c] - before[c]));
+        }
+        for (let c = 0; c < 4; c++) out[i + c] = (k1 * tmp[i + c] + k2 * r4[c] + k3 * out[i + c]) / ao;
       } else {
         for (let c = 0; c < 3; c++) { bv[c] = toValue(out[i + c]); sv[c] = toValue(tmp[i + c]); }
         const r = nonSeparable(mode, bv, sv) ?? sv;

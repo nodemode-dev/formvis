@@ -52,7 +52,7 @@ export class InfoPanel {
   private inkAt(pt: Pt): string | null {
     const p = this.engine.current;
     if (!p || p.doc.mode !== 'cmyk') return null;
-    if (!this.ink) { const c = composeChannels(p.doc); if ('error' in c) return null; this.ink = { data: c.data, w: c.width, h: c.height }; }
+    if (!this.ink) { const c = composeChannels(p.doc, p.cmykTables); if ('error' in c) return null; this.ink = { data: c.data, w: c.width, h: c.height }; }
     const x = Math.floor(pt.x), y = Math.floor(pt.y), k = this.ink;
     if (x < 0 || y < 0 || x >= k.w || y >= k.h) return '-';
     const i = (y * k.w + x) * 5, pc = (v: number): string => `${Math.round(Math.min(1, Math.max(0, v)) * 100)}%`;

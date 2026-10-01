@@ -1867,7 +1867,7 @@ export class Engine {
     const fs = this.floatSel;
     if (fs && fs.project === p) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.base });
     if (this.channelView !== null && p.doc.mode === 'cmyk') { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
-    else if (p.doc.mode === 'cmyk' && p.cmykLut && !this.stroke && p.doc.layers.some((l) => l.adjustment && l.visible)) {
+    else if (p.doc.mode === 'cmyk' && p.cmykLut && !this.stroke && p.doc.layers.some((l) => l.visible && (l.adjustment || (l.blend && l.blend !== 'normal')))) {
       const composed = this.composedRendition(p);
       if (composed) { const first = p.doc.layers.find((l) => l.raster && !l.isGroup); for (const l of p.doc.layers) m.set(l.id, l === first ? { ...(m.get(l.id) ?? {}), source: composed.canvas, transform: docTransform(p.doc.width, p.doc.height), opacity: 1, blend: 'normal' } : { ...(m.get(l.id) ?? {}), hidden: true }); }
     }
@@ -1879,7 +1879,7 @@ export class Engine {
   private composedCache: { doc: Doc; r: Raster | null } | null = null;
   private composedRendition(p: Project): Raster | null {
     if (this.composedCache && this.composedCache.doc === p.doc) return this.composedCache.r;
-    const ink = composeChannels(p.doc), r = 'error' in ink || !p.cmykLut ? null : rasterFromChannels({ mode: 'cmyk', n: 4, width: ink.width, height: ink.height, data: ink.data }, p.cmykLut);
+    const ink = composeChannels(p.doc, p.cmykTables), r = 'error' in ink || !p.cmykLut ? null : rasterFromChannels({ mode: 'cmyk', n: 4, width: ink.width, height: ink.height, data: ink.data }, p.cmykLut);
     this.composedCache = { doc: p.doc, r };
     return r;
   }
