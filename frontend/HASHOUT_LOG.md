@@ -2,6 +2,24 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Liquify's Freeze Mask and Thaw Mask · _v1.56.5 (engine/liquify.ts; ui/panels/liquify-dialog.ts)
+
+The parity plan's M3, first part (DEV_PLAN 23.5). The Liquify field carries a freeze mask, one value a grid node (`LiquifyField.freeze`); `eachNode` weighs every tool's effect by one minus the node's freeze, so a frozen area stays still under Forward Warp, Twirl, Pucker, Bloat and Reconstruct alike, as in Photoshop; `paintFreeze` (Freeze Mask and Thaw Mask paint it up or down under the brush, by pressure), `clearFreeze` and `invertFreeze` (Photoshop's Mask Options None and Invert All), `freezeAt` (bilinear, for drawing). The dialog gains the two mask tools, a row of Restore All, Mask None and Invert Mask (built once; Restore All moved into it), and draws the frozen area as Photoshop's translucent red over the preview. Verified under 4x CPU throttling with real drags in the dialog over a striped layer: the left part painted frozen, then Forward Warp dragged across the whole picture three times, OK: 0 pixels changed in the frozen part (columns 0 to 80) against 15,802 in the free part (columns 250 to 400), one "Liquify" step; layout shift 0; no errors. Face-Aware Liquify, M3's second part, needs a face-landmark model: its licence and hash come first. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+export interface LiquifyField { gw: number; gh: number; cell: number; d: Float32Array }
+export type LiquifyTool = 'warp' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat';
+/** Visits every grid node within `radius` of (cx, cy) with its falloff weight. */
+function eachNode(f: LiquifyField, cx: number, cy: number, radius: number, visit: (i: number, px: number, py: number, w: number) => void): void {
+    const px = gx * f.cell, py = gy * f.cell, dist = Math.hypot(px - cx, py - cy) / r;
+    if (dist < 1) visit((gy * f.gw + gx) * 2, px, py, smooth(1 - dist));
+export function dabField(f: LiquifyField, tool: Exclude<LiquifyTool, 'warp'>, cx: number, cy: number, radius: number, strength: number): void {
+import { dabField, fieldIsZero, liquifyImage, makeField, pushField, resetField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
+const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat']];
+    this.body.append(bar, this.canvas, this.sizeRow.el, this.pressureRow.el, restore);
+export const VERSION = '1.56.4';
+```
+
 ## Lab documents, first part · _v1.56.4 (engine/lab.ts new, derive.ts, index.ts, types.ts; io/project-io.ts; ui/channels.ts, info.ts, tabs.ts; app.ts)
 
 DEV_PLAN 22.9, first part. `engine/lab.ts`: CIE L*a*b* with the D50 white Photoshop's Lab uses, from and to sRGB through the Bradford-adapted sRGB matrix; floats L / 100, (a + 128) / 255, (b + 128) / 255; `renderLab` by the formulas with a 16,384-step gamma table (a first version through a 33-point grid interpolated across the clipped edge of the sRGB gamut and missed by up to 21 levels); `labFromRgba`. Image > Mode > Lab Color (`mode-lab`, from 8-bit RGB) and RGB Color back (`setLab`, `setRgbFromLab`); `convertMode` leaves Lab to them; `DocMode` and the tab name it. Lab documents join `edit()`, the step-end hook and the stroke end, and derive brings a Lab layer's floats into step (whole layers exactly, changed pixels with their structure kept for small changes, the rendition redrawn from the floats). The project file keeps the floats (`.lab32`). The Channels panel's Lab, Lightness, a and b rows (built once, shown in a Lab document; thumbnails from the Lab composite, a and b mid-grey where neutral); clicking a Lab row changes nothing yet, and the panel's note says viewing or painting one Lab channel comes later. Info reads L, a and b. The gate's Lab denylist: layer styles, adjustment layers, other blend modes, the depths, the other modes and CMYK straight from Lab, profiles, proofs and the HDR exports. Verified: against LittleCMS in Python on ten colours within its own 8-bit rounding (worst 0.49 units); in the browser, red (200, 51, 50) is (46.2, 58.7, 38.1), a white stroke lands as (100, 0, 0) with untouched floats exact, a 256-step gradient goes to Lab and back with 0 levels of difference, the rendition of the floats matches the original pixels exactly; under 4x CPU throttling with the Channels and Info panels open, the conversion swaps the panel's rows to Lab, Lightness, a and b with thumbnails over red of 118, 187 and 166 (46.2, 58.7 and 38.1 encoded), Info reads "L 46 a 59 b 38", the project file round-trips the floats exactly and reopens in Lab, layout shift 0, no errors. Removed lines taken after the version edit. Removed from frontend:

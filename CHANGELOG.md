@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.56.5 · 2026-10-01
+
+Liquify's Freeze Mask (the parity plan's M3, first part; DEV_PLAN 23.5).
+
+### Added
+
+- Liquify's Freeze Mask and Thaw Mask: paint over what must not move, shown in translucent red, and every Liquify tool leaves it still, Reconstruct included; Thaw Mask frees it again. Mask None clears the mask and Invert Mask swaps frozen and free.
+
 ## 1.56.4 · 2026-10-01
 
 Lab documents, first part (DEV_PLAN 22.9).
