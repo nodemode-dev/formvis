@@ -1,5 +1,5 @@
 import { dissolveNoise } from './blend';
-import { deepFromRaster, place, transferOf } from './deep';
+import { deepFromRaster, place, srgbToLinear, transferOf } from './deep';
 import { hierarchy, byId, ancestors } from './tree';
 import { placement, setMat } from './geometry';
 import { applyLut4, inkOf, type Lut3x4, type Lut4 } from './colour-lut';
@@ -48,6 +48,18 @@ export const SEPARABLE_FLOAT: Partial<Record<BlendMode, Sep>> = {
   'hard-mix': (b, s) => (b + s >= 1 ? 1 : 0),
   subtract: (b, s) => clamp01(b - s),
   divide: (b, s) => (s <= 0 ? (b <= 0 ? 0 : 1) : Math.min(1, b / s)),
+  'linear-dodge': (b, s) => clamp01(b + s),
+};
+
+/** At 32 bits (1.57.1) values are linear light and may pass 1: the modes Photoshop offers there, unclamped. Darker and
+ *  Lighter Color and Dissolve also work; the rest wait and are named. */
+const LINEAR_FLOAT: Partial<Record<BlendMode, Sep>> = {
+  normal: (_b, s) => s,
+  multiply: (b, s) => b * s,
+  darken: (b, s) => Math.min(b, s),
+  lighten: (b, s) => Math.max(b, s),
+  difference: (b, s) => Math.abs(b - s),
+  'linear-dodge': (b, s) => b + s,
 };
 
 const lum = (r: number, g: number, b: number): number => 0.3 * r + 0.59 * g + 0.11 * b;
@@ -122,7 +134,7 @@ export type StyleDrawer = (doc: Doc, layer: Layer) => { styled: ImageData; plain
 let styleDrawer: StyleDrawer | null = null;
 export function setStyleDrawer(fn: StyleDrawer | null): StyleDrawer | null { styleDrawer = fn; return fn; }
 
-function withStyle(tmp: Float32Array, d: { styled: ImageData; plain: ImageData }, n: 3 | 4, toFloats: (r: number, g: number, b: number) => ArrayLike<number>, fill: number): void {
+function withStyle(tmp: Float32Array, d: { styled: ImageData; plain: ImageData }, n: 3 | 4, toFloats: (r: number, g: number, b: number) => ArrayLike<number>, fill: number, linear = false): void {
   const A = n, S = n + 1, st = d.styled.data, pl = d.plain.data, N = st.length / 4;
   for (let j = 0; j < N; j++) {
     const o = j * 4, i = j * S;
@@ -131,7 +143,7 @@ function withStyle(tmp: Float32Array, d: { styled: ImageData; plain: ImageData }
     const after = toFloats(st[o], st[o + 1], st[o + 2]);
     const dd = Math.max(Math.abs(st[o] - pl[o]), Math.abs(st[o + 1] - pl[o + 1]), Math.abs(st[o + 2] - pl[o + 2])), w = pl[o + 3] === 0 ? 0 : clamp01(1 - dd / KEEP_LEVELS);
     const before = w ? toFloats(pl[o], pl[o + 1], pl[o + 2]) : after;
-    for (let c = 0; c < A; c++) tmp[i + c] = clamp01(after[c] + w * (tmp[i + c] - before[c]));
+    for (let c = 0; c < A; c++) { const v = after[c] + w * (tmp[i + c] - before[c]); tmp[i + c] = linear ? Math.max(0, v) : clamp01(v); }
     tmp[i + A] = st[o + 3] / 255;
   }
 }
@@ -158,7 +170,7 @@ function maskCoverage(mask: { raster: { canvas: CanvasImageSource; width: number
 
 export interface FloatComposite { width: number; height: number; data: Float32Array }
 
-export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: CmykLuts | null = null): FloatComposite | { error: string } {
+export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: CmykLuts | null = null, linear = false): FloatComposite | { error: string } {
   const W = doc.width, H = doc.height, S = n + 1, A = n, N = W * H, out = new Float32Array(N * S), tmp = new Float32Array(N * S);
   const layers = doc.layers.map((l) => (l.parentId === undefined ? { ...l, parentId: null } : l)), walked = { ...doc, layers };
   const map = byId(walked), covers = new Map<string, Float32Array>(), clipAlpha = new Map<ID, Float32Array>();
@@ -194,6 +206,14 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     const drawn = effectsActive(l.effects) && !l.adjustment && l.raster ? styleDrawer?.(doc, l) ?? null : null;
     if (effectsActive(l.effects) && !l.adjustment && !drawn) return { error: `${name} has a layer style, which this mode's compositor cannot draw here.` };
     const op = l.opacity * (drawn ? 1 : l.fill ?? 1), cov = coverageOf(l);
+    if (l.adjustment && linear) {
+      // 32 bits (1.53.9, on this compositor since 1.57.1): Exposure is exposure in linear light, unclamped.
+      const e = l.adjustment.kind === 'exposure' ? (l.adjustment.data as { exposureSettings?: { exposure?: number; offset?: number; gamma?: number } }).exposureSettings : null;
+      if (!e) return { error: `${name} is an adjustment that waits at 32 bits (Exposure does).` };
+      const gain = 2 ** (e.exposure ?? 0), off = e.offset ?? 0, inv = 1 / Math.max(0.01, e.gamma ?? 1);
+      for (let i = 0, j = 0; i < out.length; i += S, j++) { const k = op * (cov ? cov[j] : 1); if (k <= 0) continue; for (let c = 0; c < A; c++) { const v = out[i + c], nv = Math.pow(Math.max(0, v * gain + off), inv); out[i + c] = v + (nv - v) * k; } }
+      continue;
+    }
     if (l.adjustment) {
       const inLab = doc.mode === 'lab', perChannel = !inLab || ['levels', 'curves', 'invert', 'posterize'].includes(l.adjustment.kind);
       const t = perChannel ? transferOf(l.adjustment) : null;
@@ -216,11 +236,12 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     tmp.fill(0); place(tmp, W, H, src, l.transform, 1, S);
     if (drawn) {
       const isLab = doc.mode === 'lab';
-      withStyle(tmp, drawn, n, isLab ? (r, g, b) => encodeLab(...srgbToLab(r, g, b)) : n === 4 && luts ? (r, g, b) => inkOf({ r, g, b }, luts.in) : (r, g, b) => [r / 255, g / 255, b / 255], l.fill ?? 1);
+      withStyle(tmp, drawn, n, isLab ? (r, g, b) => encodeLab(...srgbToLab(r, g, b)) : n === 4 && luts ? (r, g, b) => inkOf({ r, g, b }, luts.in) : linear ? (r, g, b) => [srgbToLinear(r / 255), srgbToLinear(g / 255), srgbToLinear(b / 255)] : (r, g, b) => [r / 255, g / 255, b / 255], l.fill ?? 1, linear);
     }
     const clip = l.clipId ? map.get(l.clipId) : null, clipA = clip ? alphaOf(clip) : null;
     if (l.clipId && !clipA) return { error: `${name} is clipped to a layer this compositor cannot read.` };
-    const mode = l.blend ?? 'normal', sep = SEPARABLE_FLOAT[mode];
+    const mode = l.blend ?? 'normal', sep = linear ? LINEAR_FLOAT[mode] : SEPARABLE_FLOAT[mode];
+    if (linear && !sep && mode !== 'dissolve' && mode !== 'darker-color' && mode !== 'lighter-color') return { error: `${name} uses ${mode}, which waits at 32 bits (Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge, Difference, Darker and Lighter Color work).` };
     if (!sep && mode !== 'dissolve' && (!nonSeparable(mode, [0, 0, 0], [0, 0, 0]) || (n === 4 && !luts))) return { error: `${name} uses ${mode}, which needs the document's colour tables in this mode.` };
     const bv: [number, number, number] = [0, 0, 0], sv: [number, number, number] = [0, 0, 0], lab = doc.mode === 'lab';
     for (let i = 0, j = 0; i < out.length; i += S, j++) {

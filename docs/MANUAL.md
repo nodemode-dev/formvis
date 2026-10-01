@@ -221,8 +221,10 @@ ask it questions.
 - Image > Mode > 16 or 8 Bits/Channel asks for HDR Toning (Exposure and Gamma): lower the exposure to keep highlights.
 - Painting, the retouching tools and the other filters work at 32 bits too: what they leave alone keeps its light
   exactly, above white included, and what they change takes the new colour. Painting white over a highlight already
-  brighter than white leaves it as it was. Groups, masks, clipping, layer styles, blend modes, adjustment layers but
-  Exposure, Unsharp Mask, Add Noise and colour profiles wait at 32 bits: Image > Mode > 16 Bits/Channel to use them.
+  brighter than white leaves it as it was. Groups, masks, clipping masks and layer styles work at 32 bits, and the blend
+  modes Photoshop offers there (Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge, Difference, Darker and
+  Lighter Color) keep light above white. Adjustment layers but Exposure, the other blend modes, Unsharp Mask, Add
+  Noise and colour profiles wait at 32 bits: Image > Mode > 16 Bits/Channel to use them.
 
 ## 16-bit documents
 

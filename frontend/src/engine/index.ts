@@ -1889,6 +1889,9 @@ export class Engine {
     if (p.doc.mode === 'lab') {
       const c = composeFloat(p.doc, 3, false);
       if (!('error' in c)) { r = new Raster(c.width, c.height); const img = r.ctx.createImageData(c.width, c.height); renderLab(c.data, img.data); r.ctx.putImageData(img, 0, 0); r.touch(); }
+    } else if (p.doc.depth === 32) {
+      const c = composeFloat(p.doc, 3, false, null, true);
+      if (!('error' in c)) r = rasterFromDeep({ mode: 'rgb', n: 3, width: c.width, height: c.height, data: c.data }, true);
     } else {
       const ink = composeChannels(p.doc, p.cmykTables);
       r = 'error' in ink || !p.cmykLut ? null : rasterFromChannels({ mode: 'cmyk', n: 4, width: ink.width, height: ink.height, data: ink.data }, p.cmykLut);
@@ -1900,6 +1903,7 @@ export class Engine {
   /** Whether the canvas and exports show the composed floats rather than the layers' renditions (1.54.4, Lab 1.56.6):
    *  a CMYK or Lab document with a visible adjustment layer or a blend mode other than Normal. */
   private composesFloats(p: Project): boolean {
+    if (p.doc.depth === 32) return p.doc.layers.some((l) => l.visible && (!!l.adjustment || (!!l.blend && l.blend !== 'normal') || effectsActive(l.effects) || !!l.mask || !!l.clipId));
     return ((p.doc.mode === 'cmyk' && !!p.cmykLut) || p.doc.mode === 'lab') && p.doc.layers.some((l) => l.visible && (l.adjustment || (l.blend && l.blend !== 'normal') || effectsActive(l.effects)));
   }
 

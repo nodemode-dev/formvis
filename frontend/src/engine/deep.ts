@@ -38,34 +38,10 @@ export function transferOf(adj: Adjustment): ((channel: number, level: number) =
   return (adjustmentKernel(adj) as unknown as { transfer?: (c: number, l: number) => number } | null)?.transfer ?? null;
 }
 
-/** The document composed in floating point, bottom layer first; an error naming what 16 bits cannot compose yet. */
+/** The document composed in floating point, bottom layer first: 16 bits (1.55.5) and 32 bits in linear light (1.57.1)
+ *  on the one float compositor; an error naming what it cannot compose yet. */
 export function composeDeep(doc: Doc): { width: number; height: number; data: Float32Array } | { error: string } {
-  if (doc.depth !== 32) return composeFloat(doc, 3, false);
-  const W = doc.width, H = doc.height, out = new Float32Array(W * H * 4);
-  for (const l of doc.layers) {
-    if (!l.visible) continue;
-    const name = `"${l.name}"`;
-    if (l.isGroup || l.mask || l.clipId || l.effects || (l.blend && l.blend !== 'normal')) return { error: `${name} uses a group, mask, clipping, style or blend mode, which 16-bit export does not compose yet.` };
-    const op = l.opacity * (l.fill ?? 1);
-    if (l.adjustment && doc.depth === 32) {
-      // 32 bits are linear light (1.53.9): Exposure is exposure there, unclamped; the others wait.
-      const e = l.adjustment.kind === 'exposure' ? (l.adjustment.data as { exposureSettings?: { exposure?: number; offset?: number; gamma?: number } }).exposureSettings : null;
-      if (!e) return { error: `${name} is an adjustment 32-bit export does not compose yet (Exposure does).` };
-      const gain = 2 ** (e.exposure ?? 0), off = e.offset ?? 0, inv = 1 / Math.max(0.01, e.gamma ?? 1);
-      for (let i = 0; i < out.length; i += 4) for (let c = 0; c < 3; c++) { const v = out[i + c], nv = Math.pow(Math.max(0, v * gain + off), inv); out[i + c] = v + (nv - v) * op; }
-      continue;
-    }
-    if (l.adjustment) {
-      const t = transferOf(l.adjustment);
-      if (!t) return { error: `${name} is an adjustment 16-bit export does not compose yet (Levels, Curves and Exposure do).` };
-      for (let i = 0; i < out.length; i += 4) for (let c = 0; c < 3; c++) { const v = out[i + c], nv = Math.min(1, Math.max(0, t(c, v * 255) / 255)); out[i + c] = v + (nv - v) * op; }
-      continue;
-    }
-    if (!l.raster) continue;
-    const src = l.channels ?? deepFromRaster(l.raster);
-    place(out, W, H, src, l.transform, op);
-  }
-  return { width: W, height: H, data: out };
+  return composeFloat(doc, 3, false, null, doc.depth === 32);
 }
 
 /** A layer's pixels drawn into `out` where its placement puts them (the renderer's own matrix, inverted): whole-pixel
