@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.55.3
+
+No engine code changed in 1.55.3. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.55.2"
+version = "1.55.2"
+version = "1.55.2"
+ "version": "1.55.2",
+```
+
 ## Version only · _v1.55.2
 
 No engine code changed in 1.55.2 (the deblocker runs in the window; Super Zoom reuses the shipped upscaler). Removed lines taken after the version edit:

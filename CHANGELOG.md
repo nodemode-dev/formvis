@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.55.3 · 2026-10-01
+
+Image Rotation, and more of every mode (DEV_PLAN 22.4, third part).
+
+### Added
+
+- Image > Image Rotation > 180°, 90° Clockwise, 90° Counter Clockwise: the canvas turns with every layer, mask, artboard and the selection, with no pixel resampled, at every depth and in every mode. formvis had only the flips before.
+- Surface Blur runs on 16-bit, 32-bit and CMYK pixels.
+
+### Noted
+
+- Free Transform already works at every depth and in every mode, since it commits only a layer's placement; the warps (Warp, Puppet Warp, Liquify) wait for a float path.
+
 ## 1.55.2 · 2026-10-01
 
 Neural Filters: JPEG Artifacts Removal and Super Zoom (DEV_PLAN 23.2, fifth part). The gallery's seven are all present.
