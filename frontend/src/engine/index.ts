@@ -4,7 +4,7 @@ import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './de
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
 import { artHistoryTexture, type ArtStyle } from './art-history';
 import { decodeLab, labFromRgba, labToSrgb, renderLab } from './lab';
-import { composeFloat } from './compose-float';
+import { composeFloat, setStyleDrawer } from './compose-float';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
@@ -1900,7 +1900,7 @@ export class Engine {
   /** Whether the canvas and exports show the composed floats rather than the layers' renditions (1.54.4, Lab 1.56.6):
    *  a CMYK or Lab document with a visible adjustment layer or a blend mode other than Normal. */
   private composesFloats(p: Project): boolean {
-    return ((p.doc.mode === 'cmyk' && !!p.cmykLut) || p.doc.mode === 'lab') && p.doc.layers.some((l) => l.visible && (l.adjustment || (l.blend && l.blend !== 'normal')));
+    return ((p.doc.mode === 'cmyk' && !!p.cmykLut) || p.doc.mode === 'lab') && p.doc.layers.some((l) => l.visible && (l.adjustment || (l.blend && l.blend !== 'normal') || effectsActive(l.effects)));
   }
 
   /** The Channels panel's single-ink view (1.54.3): one ink of a CMYK layer as grey (paper white, full ink black),
@@ -6524,6 +6524,14 @@ export class Engine {
     if (changed) p.doc = { ...p.doc, layers };
     return changed;
   }
+
+  /** Layer styles for the float compositor (1.56.9): the layer drawn alone by the 8-bit renderer, with and without its
+   *  style, at full opacity with its Fill, without mask, blend, clipping or group (the compositor applies those). */
+  private readonly styleDrawer = setStyleDrawer((doc: Doc, l: Layer) => {
+    const alone: Layer = { ...l, parentId: null, opacity: 1, blend: 'normal', clipId: null, mask: null, visible: true };
+    const draw = (layer: Layer): ImageData => ctxOf(renderDoc(this.work, { ...doc, layers: [layer] })).getImageData(0, 0, doc.width, doc.height);
+    return { styled: draw(alone), plain: draw({ ...alone, effects: null }) };
+  });
 
   /** Every step's end (1.55.9): a step made outside `edit` (strokes of the retouching tools, the Gradient tool, Crop,
    *  Move Pixels, Stroke Path...) brings 16-bit and CMYK floats into step here; 32 bits is left to its own guards. */

@@ -200,8 +200,8 @@ ask it questions.
   layers give the same results as in RGB: a small change keeps the ink's own structure (a K-only black stays K-only),
   a large one takes the profile's separation. Text, shapes, gradients, fills, the retouching tools and the other
   filters work too: the pixels they leave alone keep their ink exactly, the ones they change take the new colour's
-  ink (black text set at K 100 stays K-only). What does not work in CMYK yet (layer styles, Channel Mixer, Exposure,
-  the profile and proof commands) waits in the menu until Mode > RGB Color.
+  ink (black text set at K 100 stays K-only), and layer styles draw in ink too. What does not work in CMYK yet (Channel
+  Mixer, Exposure, the profile and proof commands) waits in the menu until Mode > RGB Color.
 
 ## Lab documents
 
@@ -210,7 +210,7 @@ ask it questions.
   their Lab values. The Channels panel shows Lab, Lightness, a and b (a and b mid-grey where neutral), and Info reads
   L, a and b. Levels and Curves work on Lightness, a and b; the colour adjustments (Hue/Saturation, Black and White and
   the rest) give the same results as in RGB; blend modes look as they do in RGB; Export TIFF writes a Lab TIFF. Channel
-  Mixer, Exposure, HDR Toning, layer styles, single-channel views and opening Lab files wait for now.
+  Mixer, Exposure, HDR Toning, single-channel views and opening Lab files wait for now; layer styles work.
 
 ## 32-bit documents
 

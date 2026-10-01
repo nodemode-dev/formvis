@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { blurDeep, composeDeep, deepFromU16, deepToned, linearToSrgb, noiseDeep, resampleDeep, srgbToLinear, strokeDeep, transferOf, unsharpDeep } from './deep';
 import type { Adjustment, DeepPixels, Doc, Layer } from './types';
+import { defaultEffects } from './types';
 
 const W = 1024;
 const layer = (over: Partial<Layer>): Layer => ({ id: over.id ?? 'l', name: 'L', raster: { width: W, height: 1 } as never, transform: { x: 0, y: 0, w: W, h: 1, rotation: 0, flipX: false, flipY: false, sampling: 'bilinear' as never }, visible: true, isGroup: false, opacity: 1, blend: 'normal', mask: null, clipId: null, adjustment: null, ...over } as Layer);
@@ -29,7 +30,7 @@ describe('16-bit composing (1.53.6)', () => {
     const one = (id: string, data: Float32Array): Layer => layer({ id, channels: rgb(1, 1, data), raster: { width: 1, height: 1 } as never, transform: { x: 0, y: 0, w: 1, h: 1, rotation: 0, flipX: false, flipY: false, sampling: 'bilinear' as never } });
     const out = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, layers: [one('r', red), one('b', blue)] } as unknown as Doc);
     expect('error' in out ? out.error : Array.from(out.data)).toEqual([0, 0, 1, 1]);   // the top layer, blue, over red
-    const styled = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, layers: [layer({ effects: {} as never })] } as unknown as Doc);   // masks compose since 1.55.5; a style still waits
+    const styled = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, layers: [layer({ effects: { ...defaultEffects(), dropShadow: { ...defaultEffects().dropShadow, enabled: true } } })] } as unknown as Doc);   // 1.56.9: styles compose through the engine's drawer; without one (no engine here) a style is named
     expect('error' in styled && styled.error).toMatch(/style/);
   });
 });

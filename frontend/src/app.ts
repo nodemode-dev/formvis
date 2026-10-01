@@ -1744,9 +1744,9 @@ export function startApp(): void {
   // 1.55.9 (DEV_PLAN 22.7): at 16 bits and in CMYK every command runs, the ones not on the float model through derive
   // (engine/derive.ts); these are the ones that cannot work in that mode yet. 32 bits joined them in 1.56.8.
   const STYLES = ['layer-style', 'paste-layer-style'];
-  const CMYK_NOT = new Set([...STYLES, 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
-  const DEEP16_NOT = new Set([...STYLES, 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-hdrToning']);
-  const LAB_NOT = new Set([...STYLES, 'new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const CMYK_NOT = new Set(['depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const DEEP16_NOT = new Set(['mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-hdrToning']);
+  const LAB_NOT = new Set(['new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
   // 1.56.8 (DEV_PLAN 22.10): 32 bits as a denylist too, everything else through derive in linear light. What remains is
   // what the 32-bit compositor cannot draw (groups, masks, clipping, styles, blend modes, adjustments but Exposure),
   // the colour models and the profile and proof commands.

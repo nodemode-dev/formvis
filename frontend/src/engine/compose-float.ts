@@ -7,6 +7,7 @@ import { encodeLab, labFloatToRgb, renderLab, srgbToLab } from './lab';
 import { kernelFor } from './renderer';
 import type { Kernel } from './kernels';
 import type { BlendMode, Doc, Layer, ID } from './types';
+import { effectsActive } from './types';
 
 /** Compositing in the mode (1.55.5, DEV_PLAN 22.5): the document composed on the one float model, for 16-bit, 32-bit
  *  and CMYK documents alike. Every separable blend mode runs per channel on the channel values (for CMYK on
@@ -113,6 +114,28 @@ function viaKernel(out: Float32Array, W: number, H: number, n: 3 | 4, kern: Kern
   }
 }
 
+/** Layer styles in the float compositor (1.56.9, DEV_PLAN 22.10): the engine's 8-bit renderer draws a styled layer
+ *  alone twice, with and without its style (at full opacity, its Fill applied, no mask, outside any group); pixels the
+ *  style leaves alone keep the layer's floats exactly, and the ones it draws come in through the mode's conversion with
+ *  the derive rule (the old floats kept where the change is small). The engine registers the drawer at start. */
+export type StyleDrawer = (doc: Doc, layer: Layer) => { styled: ImageData; plain: ImageData } | null;
+let styleDrawer: StyleDrawer | null = null;
+export function setStyleDrawer(fn: StyleDrawer | null): StyleDrawer | null { styleDrawer = fn; return fn; }
+
+function withStyle(tmp: Float32Array, d: { styled: ImageData; plain: ImageData }, n: 3 | 4, toFloats: (r: number, g: number, b: number) => ArrayLike<number>, fill: number): void {
+  const A = n, S = n + 1, st = d.styled.data, pl = d.plain.data, N = st.length / 4;
+  for (let j = 0; j < N; j++) {
+    const o = j * 4, i = j * S;
+    tmp[i + A] *= fill;
+    if (st[o] === pl[o] && st[o + 1] === pl[o + 1] && st[o + 2] === pl[o + 2] && st[o + 3] === pl[o + 3]) continue;
+    const after = toFloats(st[o], st[o + 1], st[o + 2]);
+    const dd = Math.max(Math.abs(st[o] - pl[o]), Math.abs(st[o + 1] - pl[o + 1]), Math.abs(st[o + 2] - pl[o + 2])), w = pl[o + 3] === 0 ? 0 : clamp01(1 - dd / KEEP_LEVELS);
+    const before = w ? toFloats(pl[o], pl[o + 1], pl[o + 2]) : after;
+    for (let c = 0; c < A; c++) tmp[i + c] = clamp01(after[c] + w * (tmp[i + c] - before[c]));
+    tmp[i + A] = st[o + 3] / 255;
+  }
+}
+
 /** One ink's 8-bit rendition through the display table, without allocating. */
 const oneInk = new Float32Array(5), oneRgb = new Uint8ClampedArray(4);
 function rgbOfInk(lut: Lut4, d: Float32Array, i: number): [number, number, number] {
@@ -168,8 +191,9 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
   for (const { layer: l, visible } of hierarchy(walked)) {
     if (!visible || l.isGroup) continue;
     const name = `"${l.name}"`;
-    if (l.effects) return { error: `${name} has a layer style, which this mode's compositor does not draw yet.` };
-    const op = l.opacity * (l.fill ?? 1), cov = coverageOf(l);
+    const drawn = effectsActive(l.effects) && !l.adjustment && l.raster ? styleDrawer?.(doc, l) ?? null : null;
+    if (effectsActive(l.effects) && !l.adjustment && !drawn) return { error: `${name} has a layer style, which this mode's compositor cannot draw here.` };
+    const op = l.opacity * (drawn ? 1 : l.fill ?? 1), cov = coverageOf(l);
     if (l.adjustment) {
       const inLab = doc.mode === 'lab', perChannel = !inLab || ['levels', 'curves', 'invert', 'posterize'].includes(l.adjustment.kind);
       const t = perChannel ? transferOf(l.adjustment) : null;
@@ -190,6 +214,10 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     const src = l.channels ?? deepFromRaster(l.raster);
     if (src.n !== n) return { error: `${name} has no ${paperWhite ? 'ink' : 'float pixels'}; Image > Mode converts it.` };
     tmp.fill(0); place(tmp, W, H, src, l.transform, 1, S);
+    if (drawn) {
+      const isLab = doc.mode === 'lab';
+      withStyle(tmp, drawn, n, isLab ? (r, g, b) => encodeLab(...srgbToLab(r, g, b)) : n === 4 && luts ? (r, g, b) => inkOf({ r, g, b }, luts.in) : (r, g, b) => [r / 255, g / 255, b / 255], l.fill ?? 1);
+    }
     const clip = l.clipId ? map.get(l.clipId) : null, clipA = clip ? alphaOf(clip) : null;
     if (l.clipId && !clipA) return { error: `${name} is clipped to a layer this compositor cannot read.` };
     const mode = l.blend ?? 'normal', sep = SEPARABLE_FLOAT[mode];
