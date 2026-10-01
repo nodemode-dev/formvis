@@ -2,6 +2,51 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## 32 bits on the one compositor · _v1.57.1 (engine/compose-float.ts, deep.ts, index.ts; app.ts)
+
+DEV_PLAN 22.10's last large piece. `composeDeep` sends 32-bit documents to `composeFloat` in linear light (its `linear` flag) and the older 32-bit compositor is removed, so 32 bits gain groups (pass-through), layer and folder masks, clipping, layer styles and blend modes. At 32 bits the modes Photoshop offers there are composed unclamped above white (`LINEAR_FLOAT`: Normal, Multiply, Darken, Lighten, Difference, Linear Dodge), with Dissolve and Darker and Lighter Color; the rest are named. Exposure composes in linear light under its mask (the old formula), the other adjustments are named with the old wording the unit test reads. A style's pixels come in as linear light and keep light above white (`withStyle`'s `linear`). Linear Dodge (Add) joins `SEPARABLE_FLOAT`, which lacked it for 16-bit, CMYK and Lab too. `composedRendition` composes 32-bit documents in linear light and shows them clipped at white as the layers are; `composesFloats` covers a 32-bit document with an adjustment, a blend mode, a style, a mask or clipping, so the canvas and exports show the linear composite. `DEEP32_NOT` loses groups, masks, clipping, styles and the blend shortcuts; `STYLES` goes with no list using it. Verified in the browser: at 32 bits the menus offer Group, Add Mask, Create Clipping Mask, the blend shortcuts and Layer Style and withhold Hue/Saturation; a 0.5 grey layer (derived 0.503) in Multiply over (4, 2, 1) composes to (2.012, 1.006, 0.503), past white kept, and the canvas shows (255, 255, 188); Linear Dodge gives (4.503, 2.503, 1.503); Overlay is named; a mask hiding the grey's left half shows (4, 2, 1) there; an outside or inside red stroke on a grey box draws (1, 0, 0) at its edge while the box's centre stays 0.503 and the HDR base 4.0 elsewhere; unit 188. A first probe put an inside stroke on a layer filling the whole canvas, where the renderer draws no edge at the canvas border (as in RGB); the second used a smaller box. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  const STYLES = ['layer-style', 'paste-layer-style'];
+  // 1.56.8 (DEV_PLAN 22.10): 32 bits as a denylist too, everything else through derive in linear light. What remains is
+  // what the 32-bit compositor cannot draw (groups, masks, clipping, styles, blend modes, adjustments but Exposure),
+  const DEEP32_NOT = new Set([...STYLES, ...ADJUSTMENT_KINDS.filter((k) => k !== 'exposure').map((k) => `new-adj-${k}`), 'group', 'add-mask', 'add-mask-hide', 'clip', 'blend-next', 'blend-prev', 'mode-cmyk', 'mode-lab', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'filter-unsharpMask', 'filter-addNoise']);
+import { deepFromRaster, place, transferOf } from './deep';
+function withStyle(tmp: Float32Array, d: { styled: ImageData; plain: ImageData }, n: 3 | 4, toFloats: (r: number, g: number, b: number) => ArrayLike<number>, fill: number): void {
+    for (let c = 0; c < A; c++) tmp[i + c] = clamp01(after[c] + w * (tmp[i + c] - before[c]));
+export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: CmykLuts | null = null): FloatComposite | { error: string } {
+      withStyle(tmp, drawn, n, isLab ? (r, g, b) => encodeLab(...srgbToLab(r, g, b)) : n === 4 && luts ? (r, g, b) => inkOf({ r, g, b }, luts.in) : (r, g, b) => [r / 255, g / 255, b / 255], l.fill ?? 1);
+    const mode = l.blend ?? 'normal', sep = SEPARABLE_FLOAT[mode];
+/** The document composed in floating point, bottom layer first; an error naming what 16 bits cannot compose yet. */
+  if (doc.depth !== 32) return composeFloat(doc, 3, false);
+  const W = doc.width, H = doc.height, out = new Float32Array(W * H * 4);
+  for (const l of doc.layers) {
+    if (!l.visible) continue;
+    const name = `"${l.name}"`;
+    if (l.isGroup || l.mask || l.clipId || l.effects || (l.blend && l.blend !== 'normal')) return { error: `${name} uses a group, mask, clipping, style or blend mode, which 16-bit export does not compose yet.` };
+    const op = l.opacity * (l.fill ?? 1);
+    if (l.adjustment && doc.depth === 32) {
+      // 32 bits are linear light (1.53.9): Exposure is exposure there, unclamped; the others wait.
+      const e = l.adjustment.kind === 'exposure' ? (l.adjustment.data as { exposureSettings?: { exposure?: number; offset?: number; gamma?: number } }).exposureSettings : null;
+      if (!e) return { error: `${name} is an adjustment 32-bit export does not compose yet (Exposure does).` };
+      const gain = 2 ** (e.exposure ?? 0), off = e.offset ?? 0, inv = 1 / Math.max(0.01, e.gamma ?? 1);
+      for (let i = 0; i < out.length; i += 4) for (let c = 0; c < 3; c++) { const v = out[i + c], nv = Math.pow(Math.max(0, v * gain + off), inv); out[i + c] = v + (nv - v) * op; }
+      continue;
+    }
+    if (l.adjustment) {
+      const t = transferOf(l.adjustment);
+      if (!t) return { error: `${name} is an adjustment 16-bit export does not compose yet (Levels, Curves and Exposure do).` };
+      for (let i = 0; i < out.length; i += 4) for (let c = 0; c < 3; c++) { const v = out[i + c], nv = Math.min(1, Math.max(0, t(c, v * 255) / 255)); out[i + c] = v + (nv - v) * op; }
+      continue;
+    }
+    if (!l.raster) continue;
+    const src = l.channels ?? deepFromRaster(l.raster);
+    place(out, W, H, src, l.transform, op);
+  }
+  return { width: W, height: H, data: out };
+export const VERSION = '1.56.9';
+```
+
 ## Layer styles in every mode but 32 bits · _v1.56.9 (engine/compose-float.ts, index.ts, deep.test.ts under 2a; app.ts)
 
 DEV_PLAN 22.10: the one item every denylist shared. `composeFloat` draws a styled layer through `StyleDrawer`, which the engine registers as it starts (`setStyleDrawer`, the engine's `styleDrawer`): the 8-bit renderer draws the layer alone twice, with and without its style, at full opacity with its Fill, without mask, blend, clipping or group (the compositor applies those); `withStyle` keeps the layer's floats exactly where the style draws nothing and brings the style's pixels in through the mode's conversion (the profile's separation, Lab exactly, 16-bit) by the derive rule; the layer's opacity alone then applies, since the drawer applied its Fill; an active style is still named when no drawer is registered (a unit test). `composesFloats` now also covers a CMYK or Lab layer with an active style, so the canvas shows the style's colours as they will print. Styles leave the 16-bit, CMYK and Lab lists; 32 bits keeps them (its compositor is the older one). `deep.test.ts` (under the owner's 2a): the style fixture became a real, active drop shadow, since an empty object is not a style. Verified in the browser: in CMYK a red box with a drop shadow and an outside black stroke composes with the box's own ink exact inside (0, 91, 76, 18), the stroke as the profile's black (85, 79, 54, 98), the shadow present (9, 9, 6, 11), paper elsewhere, and the canvas equal to the composite to 0 levels (30 before `composesFloats` covered styles: the canvas had shown RGB black, which no ink prints); at 16 bits a styled layer composes with its interior's 0.25000 exact and the stroke at (20, 40, 200); in Lab the interior stays exact and the canvas shows the stroke's colour; unit 188; no errors. Removed lines taken after the version edit. Removed from frontend:

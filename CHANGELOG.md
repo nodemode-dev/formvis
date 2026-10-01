@@ -4,6 +4,22 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.57.1 · 2026-10-01
+
+32-bit documents on the one compositor (DEV_PLAN 22.10).
+
+### Added
+
+- 32-bit documents gain groups, layer and folder masks, clipping masks, layer styles and blend modes, composed in linear light with light above white kept: Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge (Add), Difference, Darker Color and Lighter Color, the modes Photoshop offers at 32 bits. The canvas and exports show the linear composite, clipped at white on screen.
+
+### Fixed
+
+- Linear Dodge (Add) now composes in 16-bit, CMYK and Lab documents too.
+
+### Known
+
+- At 32 bits the other blend modes and the adjustment layers other than Exposure still wait, named in the menus or when exporting.
+
 ## 1.56.9 · 2026-10-01
 
 Layer styles in 16-bit, CMYK and Lab documents (DEV_PLAN 22.10).
