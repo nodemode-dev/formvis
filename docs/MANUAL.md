@@ -106,8 +106,9 @@ ask it questions.
   blurs by distance from the focus depth you set, past a sharp range. Colorize predicts a black-and-white layer's
   colour with DDColor-tiny (about 135 MB, Apache-2.0), keeping its own light, mixed in by Amount. Style Transfer
   repaints the layer in one of five preset styles (Mosaic, Candy, Rain Princess, Udnie, Pointilism; the ONNX model
-  zoo's fast neural style models, about 34 MB, BSD-3-Clause), mixed in by Amount. More filters join the gallery as
-  their models land; the gallery works on 8-bit RGB layers for now.
+  zoo's fast neural style models, about 34 MB, BSD-3-Clause), mixed in by Amount. JPEG Artifacts Removal smooths
+  the steps on JPEG's 8-pixel grid and the noise in flat areas while keeping real edges, with no model; Super Zoom is
+  Image > Upscale (Real-ESRGAN) at 2x or 4x. The gallery works on 8-bit RGB layers for now.
 - References: up to four layers can be sent to a ComfyUI workflow as references.
 - On this computer, with no key and no cost: install Krea 2 Turbo or FLUX.2 [klein] 4B in Preferences > Plugins >
   Local models (each licence is shown for you to accept first; Krea 2 installs with the content filter its licence

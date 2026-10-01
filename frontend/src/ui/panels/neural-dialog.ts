@@ -1,13 +1,13 @@
 import type { Engine } from '../../engine';
-import { depthBlur, harmonize, mixColor, skinSmooth } from '../../engine/neural';
+import { deblock, depthBlur, harmonize, mixColor, skinSmooth } from '../../engine/neural';
 import { colorizeReady, depthReady, localColorize, localDepth, localStyle, styleReady } from '../../io/local-gen';
 import { toBlob } from '../../engine/surface';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { selectRow, sliderRow } from './controls';
 
-type NeuralKind = 'harmonize' | 'skinSmooth' | 'depthBlur' | 'colorize' | 'style';
-export const NEURAL_LABELS: Record<NeuralKind, string> = { harmonize: 'Harmonize', skinSmooth: 'Skin Smoothing', depthBlur: 'Depth Blur', colorize: 'Colorize', style: 'Style Transfer' };
+type NeuralKind = 'harmonize' | 'skinSmooth' | 'depthBlur' | 'colorize' | 'style' | 'jpeg' | 'superZoom';
+export const NEURAL_LABELS: Record<NeuralKind, string> = { harmonize: 'Harmonize', skinSmooth: 'Skin Smoothing', depthBlur: 'Depth Blur', colorize: 'Colorize', style: 'Style Transfer', jpeg: 'JPEG Artifacts Removal', superZoom: 'Super Zoom' };
 const STYLES: Array<[string, string]> = [['mosaic', 'Mosaic'], ['candy', 'Candy'], ['rain-princess', 'Rain Princess'], ['udnie', 'Udnie'], ['pointilism', 'Pointilism']];
 
 /** Filter > Neural Filters (1.54.7, DEV_PLAN 23.2): a gallery of filters that run here, the first two without any
@@ -15,7 +15,7 @@ const STYLES: Array<[string, string]> = [['mosaic', 'Mosaic'], ['candy', 'Candy'
  *  step. Filters that need a model join this list as their pinned weights and licences land. */
 export class NeuralFiltersDialog extends Dialog {
   private kind: NeuralKind = 'harmonize';
-  private readonly s = { amount: 100, smooth: 60, radius: 6, focus: 70, range: 15, blur: 8 };
+  private readonly s = { amount: 100, smooth: 60, radius: 6, focus: 70, range: 15, blur: 8, strength: 70 };
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 2.8em"></p>');
   private readonly rows: Array<{ el: HTMLElement; kinds: NeuralKind[] }> = [];
   private backdrop: ImageData | null = null;
@@ -33,9 +33,11 @@ export class NeuralFiltersDialog extends Dialog {
     const focus = sliderRow('Focus (near 100, far 0)', 0, 100, 1, (v) => { this.s.focus = v; this.schedule(); });
     const range = sliderRow('Sharp range (%)', 0, 100, 1, (v) => { this.s.range = v; this.schedule(); });
     const blur = sliderRow('Blur (px)', 1, 40, 1, (v) => { this.s.blur = v; this.schedule(); });
+    const strength = sliderRow('Strength (%)', 0, 100, 1, (v) => { this.s.strength = v; this.schedule(); });
+    const factor = selectRow('Factor', [['2', '2x'], ['4', '4x']], (v) => { this.factor = v === '4' ? 4 : 2; });
     const styleRow = selectRow('Style', STYLES, (v) => { this.style = v; this.styled = null; void this.ensureStyle(); });
-    this.rows.push({ el: amount.el, kinds: ['harmonize', 'colorize', 'style'] }, { el: smooth.el, kinds: ['skinSmooth'] }, { el: radius.el, kinds: ['skinSmooth'] }, { el: focus.el, kinds: ['depthBlur'] }, { el: range.el, kinds: ['depthBlur'] }, { el: blur.el, kinds: ['depthBlur'] }, { el: styleRow.el, kinds: ['style'] });
-    this.body.append(amount.el, smooth.el, radius.el, focus.el, range.el, blur.el, styleRow.el, this.note);
+    this.rows.push({ el: amount.el, kinds: ['harmonize', 'colorize', 'style'] }, { el: smooth.el, kinds: ['skinSmooth'] }, { el: radius.el, kinds: ['skinSmooth'] }, { el: focus.el, kinds: ['depthBlur'] }, { el: range.el, kinds: ['depthBlur'] }, { el: blur.el, kinds: ['depthBlur'] }, { el: styleRow.el, kinds: ['style'] }, { el: strength.el, kinds: ['jpeg'] }, { el: factor.el, kinds: ['superZoom'] });
+    this.body.append(amount.el, smooth.el, radius.el, focus.el, range.el, blur.el, styleRow.el, strength.el, factor.el, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { window.clearTimeout(this.timer); this.engine.setPreview(null); this.backdrop = null; };
@@ -83,6 +85,8 @@ export class NeuralFiltersDialog extends Dialog {
     for (const r of this.rows) r.el.style.visibility = r.kinds.includes(this.kind) ? '' : 'hidden';
     setText(this.note, this.kind === 'harmonize' ? 'Harmonize moves the layer\'s light and colour toward what lies beneath it (its mean and spread per channel), by the amount.'
       : this.kind === 'skinSmooth' ? 'Skin Smoothing softens skin tones only: other pixels are untouched.'
+      : this.kind === 'jpeg' ? 'JPEG Artifacts Removal smooths the steps on JPEG\'s 8-pixel grid and flat-area noise, keeping real edges; no model yet.'
+      : this.kind === 'superZoom' ? 'Super Zoom enlarges the layer with Real-ESRGAN on this computer (Image > Upscale), 2x or 4x, into a new layer.'
       : this.kind === 'style' ? (this.styled ? 'Style Transfer repaints the layer in the chosen style on this computer (five presets, BSD-3-Clause); Amount mixes it in.' : 'Style Transfer repaints the layer in a preset style on this computer.')
       : this.kind === 'colorize' ? (this.color ? 'Colorize predicts the layer\'s colour with DDColor-tiny on this computer, keeping its own light; Amount mixes it in.' : 'Colorize reads the layer\'s colour with DDColor-tiny on this computer.')
       : this.depth ? 'Depth Blur blurs by distance from the focus depth, read by Depth Anything V2 Small on this computer.' : 'Depth Blur reads the layer\'s depth with Depth Anything V2 Small on this computer.');
@@ -92,6 +96,8 @@ export class NeuralFiltersDialog extends Dialog {
     const s = { ...this.s }, back = this.backdrop, depth = this.depth?.map ?? null, color = this.color?.pixels ?? null, styled = this.styled?.pixels ?? null;
     return this.kind === 'harmonize' ? (src) => (back ? harmonize(src, back, s.amount / 100) : src)
       : this.kind === 'skinSmooth' ? (src) => skinSmooth(src, s.smooth / 100, s.radius)
+      : this.kind === 'jpeg' ? (src) => deblock(src, s.strength / 100)
+      : this.kind === 'superZoom' ? (src) => src
       : this.kind === 'style' ? (src) => (styled && styled.width === src.width && styled.height === src.height ? mixColor(src, styled, s.amount / 100) : src)
       : this.kind === 'colorize' ? (src) => (color && color.width === src.width && color.height === src.height ? mixColor(src, color, s.amount / 100) : src)
       : (src) => (depth ? depthBlur(src, depth, s.focus * 2.55, s.range * 2.55, s.blur) : src);
@@ -144,8 +150,13 @@ export class NeuralFiltersDialog extends Dialog {
 
   private apply(): void {
     window.clearTimeout(this.timer);
-    const run = this.run(), kind = this.kind;
+    const run = this.run(), kind = this.kind, factor = this.factor;
     this.close();
+    if (kind === 'superZoom') { this.onSuperZoom?.(factor); return; }
     this.engine.applyImageEdit(NEURAL_LABELS[kind], run);
   }
+
+  /** Super Zoom (1.55.2) is Real-ESRGAN's Upscale, already shipped: the app runs it with the chosen factor. */
+  onSuperZoom: ((factor: 2 | 4) => void) | null = null;
+  private factor: 2 | 4 = 2;
 }

@@ -73,3 +73,26 @@ export function mixColor(img: ImageData, color: ImageData, amount: number): Imag
   for (let i = 0; i < d.length; i += 4) { if (d[i + 3] === 0) continue; for (let k = 0; k < 3; k++) d[i + k] = d[i + k] + (c[i + k] - d[i + k]) * t; }
   return out;
 }
+
+/** JPEG Artifacts Removal without a model: the steps JPEG leaves on its 8-pixel grid are smoothed across each block
+ *  boundary where the jump is small (a real edge, with a jump above `edge`, is kept), then a light Surface Blur
+ *  under `smooth` softens the mosquito noise in flat areas. A learned model (FBCNN) replaces this when an ONNX export
+ *  can be pinned. */
+export function deblock(img: ImageData, strength: number, edge = 24): ImageData {
+  const { width: w, height: h } = img, out = new ImageData(new Uint8ClampedArray(img.data), w, h), d = out.data, s = Math.max(0, Math.min(1, strength));
+  const fix = (a: number, b: number, c: number): void => {
+    // Pixels a (inside block), b (the boundary pixel), c (first pixel of the next block): the step across b and c is
+    // spread over four pixels when it is smaller than `edge`.
+    for (let k = 0; k < 3; k++) {
+      const jump = d[c + k] - d[b + k];
+      if (Math.abs(jump) >= edge || Math.abs(jump) < 2) continue;
+      const q = jump * s * 0.25;
+      d[a + k] += q * 0.5; d[b + k] += q; d[c + k] -= q; d[c + k + (c - b)] -= q * 0.5;
+    }
+  };
+  for (let y = 0; y < h; y++) for (let x = 8; x < w - 1; x += 8) { const b = (y * w + x - 1) * 4, c = b + 4; if (x + 1 < w) fix(b - 4, b, c); }
+  for (let x = 0; x < w; x++) for (let y = 8; y < h - 1; y += 8) { const b = ((y - 1) * w + x) * 4, c = b + w * 4; if (y + 1 < h) fix(b - w * 4, b, c); }
+  const soft = surfaceBlur(out, 2, 12), sd = soft.data, t = s * 0.6;
+  for (let i = 0; i < d.length; i += 4) { if (d[i + 3] === 0) continue; for (let k = 0; k < 3; k++) d[i + k] = d[i + k] + (sd[i + k] - d[i + k]) * t; }
+  return out;
+}

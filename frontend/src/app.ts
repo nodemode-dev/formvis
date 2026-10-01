@@ -1082,6 +1082,7 @@ export function startApp(): void {
   const noteDialog = new NoteDialog(engine);
   const modeDialog = new ModeDialog(engine);
   modeDialog.onCmyk = async (id, name, intent, bpc) => { await toCmyk(await cmykProfileOf(id, name), intent, bpc); };
+  dialogs.neural.onSuperZoom = (factor) => { commands.run(factor === 4 ? 'upscale-4x' : 'upscale-2x'); };
   const sendNodeMode = new SendDialog(engine, (t) => toast(t));
   const sendComfyUI = new SendDialog(engine, (t) => toast(t), 'comfyui');
   const runWorkflow = new RunWorkflowDialog(engine, (t) => toast(t));
