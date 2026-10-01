@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Lab TIFF · _v1.56.6 (app/routers/io.py)
+
+`POST /io/encode-lab-tiff`: the window's 8-bit Lab bytes (L * 255 / 100, a and b offset by 128) with a* and b* turned to signed bytes, as the TIFF specification's CIELab (photometric 8) and Photoshop have them, then written by Pillow with LZW. Pillow writes the bytes it is given; its own reading of a CIELab file adds 128 back, which is why the file reads through Pillow as L 17.3, a 22, b 0 for a pixel the window composed as (17.3, 22.2, 0.2). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.56.5"
+version = "1.56.5"
+version = "1.56.5"
+ "version": "1.56.5",
+```
+
 ## Version only · _v1.56.5
 
 No engine code changed in 1.56.5 (Liquify runs in the window). Removed lines taken after the version edit:

@@ -2,6 +2,27 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Lab documents, second part · _v1.56.6 (engine/compose-float.ts, lab.ts, index.ts; io/api.ts; ui/panels/adjust-panel.ts; app.ts; backend app/routers/io.py)
+
+DEV_PLAN 22.9, second part. Levels and Curves layers in Lab work per channel on Lightness, a and b: the adjust panel's Lab names (`LABS`, positions as the ranges), Lab's composite position never offered (Photoshop's Levels and Curves in Lab have none) and the channel starting at Lightness; the transfer applies to the Lab floats in `composeFloat`. Blend modes in Lab: every mode but Normal and Dissolve blends the two colours' renditions by the RGB formula (`labFloatToRgb`) and comes back to Lab exactly; Normal composites the Lab floats themselves. The engine's `composesFloats` (CMYK or Lab with a visible adjustment layer or a blend mode other than Normal) drives the composed canvas, and `flattened()` now gives that composite too, so exports, thumbnails and the Channels panel show what the canvas shows (for CMYK as for Lab); `composedRendition` composes Lab and renders it by the formulas. The gate's Lab denylist lets Levels, Curves and the blend shortcuts through. Export TIFF from a Lab document writes a Lab TIFF (`exportLabTiff`, `api.encodeLabTiff`, the engine's `/io/encode-lab-tiff`): the composite laid on white, 8-bit CIELab with a* and b* as signed bytes as the TIFF specification and Photoshop have them (Pillow writes the bytes given; a first look read its own reading of the file as the bytes). Verified in the browser under 4x CPU throttling: the Curves channel list holds exactly Lightness, a and b; a Lightness curve lifting 128 to 180 takes red from L 46.2 to 66.9 with a and b unchanged (58.7, 38.1), and the canvas and `flattened()` show the curved colour (255, 111, 98); a Multiply layer of (90, 140, 220) over red composes to Lab (17.3, 22.2, 0.2), equal to the RGB formula's result converted; the Lab TIFF reads back through Pillow as L 17.3, a 22, b 0; layout shift 0; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  const LAB_NOT = new Set([...STYLES, ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'blend-next', 'blend-prev', 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+    const bv: [number, number, number] = [0, 0, 0], sv: [number, number, number] = [0, 0, 0];
+      if (sep || mode === 'dissolve') {
+import { decodeLab, labFromRgba, labToSrgb } from './lab';
+    else if (p.doc.mode === 'cmyk' && p.cmykLut && !this.stroke && p.doc.layers.some((l) => l.visible && (l.adjustment || (l.blend && l.blend !== 'normal')))) {
+    const ink = composeChannels(p.doc, p.cmykTables), r = 'error' in ink || !p.cmykLut ? null : rasterFromChannels({ mode: 'cmyk', n: 4, width: ink.width, height: ink.height, data: ink.data }, p.cmykLut);
+  flattened(): Surface | null { const p = this.current; return p ? renderDoc(this.work, p.doc) : null; }
+const ALL_CHANNELS = [...CHANNELS, ...INKS];
+/** The mode's channel names (1.54.4): Levels and Curves index their ranges by position within this list. */
+const channelsOf = (mode: string | undefined): string[] => (mode === 'cmyk' ? INKS : CHANNELS);
+const showChannels = (row: { el: HTMLElement }, names: string[]): void => { for (const o of row.el.querySelectorAll('option')) o.hidden = !names.includes(o.value); };
+    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(0, n.indexOf(lv().channel)); while (lv().ranges.length < 5) lv().ranges.push({ black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 }); channel.set(n[ch]); values(); this.drawHisto(ch); } };
+    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(0, n.indexOf(cv().channel)); while (cv().channels.length < 5) cv().channels.push([{ x: 0, y: 0 }, { x: 255, y: 255 }]); channel.set(n[ch]); draw(); } };
+export const VERSION = '1.56.5';
+```
+
 ## Liquify's Freeze Mask and Thaw Mask · _v1.56.5 (engine/liquify.ts; ui/panels/liquify-dialog.ts)
 
 The parity plan's M3, first part (DEV_PLAN 23.5). The Liquify field carries a freeze mask, one value a grid node (`LiquifyField.freeze`); `eachNode` weighs every tool's effect by one minus the node's freeze, so a frozen area stays still under Forward Warp, Twirl, Pucker, Bloat and Reconstruct alike, as in Photoshop; `paintFreeze` (Freeze Mask and Thaw Mask paint it up or down under the brush, by pressure), `clearFreeze` and `invertFreeze` (Photoshop's Mask Options None and Invert All), `freezeAt` (bilinear, for drawing). The dialog gains the two mask tools, a row of Restore All, Mask None and Invert Mask (built once; Restore All moved into it), and draws the frozen area as Photoshop's translucent red over the preview. Verified under 4x CPU throttling with real drags in the dialog over a striped layer: the left part painted frozen, then Forward Warp dragged across the whole picture three times, OK: 0 pixels changed in the frozen part (columns 0 to 80) against 15,802 in the free part (columns 250 to 400), one "Liquify" step; layout shift 0; no errors. Face-Aware Liquify, M3's second part, needs a face-landmark model: its licence and hash come first. Removed lines taken after the version edit. Removed from frontend:
