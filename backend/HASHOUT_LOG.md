@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Colour for a black-and-white picture · _v1.54.9 (app/localgen/colorize.py new, app/localgen/model_manager.py, app/main.py)
+
+`colorize.py`: DDColor-tiny as ONNX on ONNX Runtime with DDColor's own recipe (the picture's L of Lab as an RGB made of L alone, 512 by 512 in 0 to 1 NCHW; the predicted a and b scaled back to the picture's size and joined to the picture's own L through OpenCV's float Lab, so luminance is never touched); `POST /api/colorize/local`, 409 until the model is downloaded. `model_manager.py`: the registry entry (Apache-2.0, edgetools' revision 4755ae9f) and the SHA-256 pin computed from the real download. `main.py` includes the router. Checked here: a grey pier photograph colourised plausibly with luminance within 0.9; ONNX Runtime prints constant-folding warnings for the fp16 weights, harmless. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.54.8"
+for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router, _lg_upscale.router, _lg_inpaint.router, _lg_depth.router):
+version = "1.54.8"
+version = "1.54.8"
+ "version": "1.54.8",
+```
+
 ## Depth from one picture · _v1.54.8 (app/localgen/depth.py new, app/localgen/model_manager.py, app/main.py)
 
 `depth.py`: Depth Anything V2 Small as ONNX on ONNX Runtime; the picture scaled to 518 by 518 and ImageNet-normalised (NCHW), the relative inverse depth scaled back to the picture's size and written as an 8-bit PNG with near bright; `POST /api/depth/local`, 409 until the model is downloaded. The session's real names are `pixel_values` and `predicted_depth`. `model_manager.py`: the registry entry (Apache-2.0, onnx-community's revision 413ce838) and the SHA-256 pin computed from the real download. `main.py` includes the router. Checked here: the model listed ready once in place; a synthetic scene's near object reads 203 and its far sky 85, in 1.8 s on this CPU. Removed lines taken after the version edit:

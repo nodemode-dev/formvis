@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.54.9 · 2026-10-01
+
+Neural Filters: Colorize (DEV_PLAN 23.2, third part).
+
+### Added
+
+- Colorize in Filter > Neural Filters: a black-and-white layer's colour is predicted on this computer by DDColor-tiny (Apache-2.0, 135 MB, fetched on first use from Preferences > Plugins > Local models, pinned to its revision and hash), its own light kept exactly; Amount mixes the colour in. Nothing leaves the computer.
+
 ## 1.54.8 · 2026-09-30
 
 Neural Filters: Depth Blur, the first with a model (DEV_PLAN 23.2, second part).

@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Colorize, the second model-backed Neural Filter · _v1.54.9 (engine/neural.ts; io/local-gen.ts; ui/panels/neural-dialog.ts, local-models.ts; backend app/localgen/colorize.py new, model_manager.py, main.py)
+
+DEV_PLAN 23.2, third part. The gate first: DDColor is Apache-2.0 at its source (piddnad/DDColor); edgetools' DDColor-tiny export (fp16 weights, float32 in and out, fixed 512, `input` 1 by 3 by 512 by 512, `output` 1 by 2 by 512 by 512 read from the session) is pinned to revision 4755ae9f and to SHA-256 2653da00... computed from the real 135 MB download. `localColorize` and `colorizeReady`; `mixColor` (the colourised picture blended into the source by Amount, alpha kept); the gallery's Colorize, fetching the colour once per layer when chosen (`ensureColor`), with the download prompt when the model is absent; the Amount row serves Harmonize and Colorize; the Local models card. Verified: in the engine, a grey version of a real pier photograph comes back with a warm sky, blue water and sand (looked at, not only measured), luminance kept within 0.9 of the grey, saturation 24.5 against the original's 52.8, 6 s a picture here; in the browser under 4x CPU throttling through the gallery, a grey scene gains mean saturation 85 with mean luminance 132.2 to 132.7, as one "Colorize" step, layout shift 0, no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.lama, this.depth, this.upscaler, this.krea, this.klein, this.library);
+    try { await Promise.all([this.showDownload(this.lama, 'lama-inpaint', 'LaMa inpainting', 'Download LaMa', 'about 208 MB', 'Generative Fill and Expand on any computer, with no prompt, key or cost: it fills from what surrounds the selection. Apache-2.0.'), this.showDownload(this.depth, 'depth-anything-v2-small', 'Depth Anything V2 Small', 'Download Depth Anything', 'about 99 MB', 'Depth from one picture for the Neural Filters\' Depth Blur, on any computer. The Small checkpoint, Apache-2.0.'), this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
+import { depthBlur, harmonize, skinSmooth } from '../../engine/neural';
+import { depthReady, localDepth } from '../../io/local-gen';
+type NeuralKind = 'harmonize' | 'skinSmooth' | 'depthBlur';
+export const NEURAL_LABELS: Record<NeuralKind, string> = { harmonize: 'Harmonize', skinSmooth: 'Skin Smoothing', depthBlur: 'Depth Blur' };
+    const pick = selectRow('Filter', (Object.keys(NEURAL_LABELS) as NeuralKind[]).map((k) => [k, NEURAL_LABELS[k]] as const), (v) => { this.kind = v as NeuralKind; this.showRows(); void this.ensureDepth(); this.schedule(); });
+    this.rows.push({ el: amount.el, kinds: ['harmonize'] }, { el: smooth.el, kinds: ['skinSmooth'] }, { el: radius.el, kinds: ['skinSmooth'] }, { el: focus.el, kinds: ['depthBlur'] }, { el: range.el, kinds: ['depthBlur'] }, { el: blur.el, kinds: ['depthBlur'] });
+    const s = { ...this.s }, back = this.backdrop, depth = this.depth?.map ?? null;
+export const VERSION = '1.54.8';
+```
+
 ## Depth Blur, the first model-backed Neural Filter · _v1.54.8 (engine/neural.ts; io/local-gen.ts; ui/panels/neural-dialog.ts, local-models.ts; backend app/localgen/depth.py new, model_manager.py, main.py)
 
 DEV_PLAN 23.2, second part. The gate first: Depth Anything V2 Small is Apache-2.0 at its source (Base, Large and Giant are CC-BY-NC and are not used); onnx-community's ONNX export is pinned to revision 413ce838 and to SHA-256 afb6a5c2... computed from the real 99 MB download. `depthBlur` (three blur levels mixed by distance from the focal depth past a sharp range); `localDepth` and `depthReady` in `local-gen.ts`. The gallery gains Depth Blur (Focus, Sharp range, Blur) and reads the layer's depth once per layer when the filter is chosen, saying when the model needs downloading; the note keeps two lines of height so its changing text never resizes the dialog (a first run measured layout shift 0.00362 from that; 0 after). Preferences > Plugins > Local models gains the model's card, built once. Verified under 4x CPU throttling, end to end through the engine: on a striped scene with a near block and a far sky, the near block's stripe contrast stays 63 and the sky's falls from 44 to 36 as one "Depth Blur" step; layout shift 0; no errors. Removed lines taken after the version edit. Removed from frontend:
