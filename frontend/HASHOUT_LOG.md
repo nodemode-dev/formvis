@@ -2,6 +2,43 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Lab documents, first part · _v1.56.4 (engine/lab.ts new, derive.ts, index.ts, types.ts; io/project-io.ts; ui/channels.ts, info.ts, tabs.ts; app.ts)
+
+DEV_PLAN 22.9, first part. `engine/lab.ts`: CIE L*a*b* with the D50 white Photoshop's Lab uses, from and to sRGB through the Bradford-adapted sRGB matrix; floats L / 100, (a + 128) / 255, (b + 128) / 255; `renderLab` by the formulas with a 16,384-step gamma table (a first version through a 33-point grid interpolated across the clipped edge of the sRGB gamut and missed by up to 21 levels); `labFromRgba`. Image > Mode > Lab Color (`mode-lab`, from 8-bit RGB) and RGB Color back (`setLab`, `setRgbFromLab`); `convertMode` leaves Lab to them; `DocMode` and the tab name it. Lab documents join `edit()`, the step-end hook and the stroke end, and derive brings a Lab layer's floats into step (whole layers exactly, changed pixels with their structure kept for small changes, the rendition redrawn from the floats). The project file keeps the floats (`.lab32`). The Channels panel's Lab, Lightness, a and b rows (built once, shown in a Lab document; thumbnails from the Lab composite, a and b mid-grey where neutral); clicking a Lab row changes nothing yet, and the panel's note says viewing or painting one Lab channel comes later. Info reads L, a and b. The gate's Lab denylist: layer styles, adjustment layers, other blend modes, the depths, the other modes and CMYK straight from Lab, profiles, proofs and the HDR exports. Verified: against LittleCMS in Python on ten colours within its own 8-bit rounding (worst 0.49 units); in the browser, red (200, 51, 50) is (46.2, 58.7, 38.1), a white stroke lands as (100, 0, 0) with untouched floats exact, a 256-step gradient goes to Lab and back with 0 levels of difference, the rendition of the floats matches the original pixels exactly; under 4x CPU throttling with the Channels and Info panels open, the conversion swaps the panel's rows to Lab, Lightness, a and b with thumbnails over red of 118, 187 and 166 (46.2, 58.7 and 38.1 encoded), Info reads "L 46 a 59 b 38", the project file round-trips the floats exactly and reopens in Lab, layout shift 0, no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { if (engine.current?.doc.mode === 'cmyk') void cmykToRgb(); else engine.convertMode('rgb'); } },
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
+/** A layer's floats taken whole from its 8-bit pixels: CMYK through the table, otherwise 16-bit RGB. */
+export function deriveWhole(img: ImageData, t: DeriveTables | null): ChannelPixels {
+    if (ch.n === 4 && t) {
+  if (ch.n === 4 && lut) applyLut4(strip, lut, img.data);
+    const deepBefore = (p.doc.depth ?? 8) > 8 || cmyk ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
+    const dl = patch && st.target === 'pixels' && (st.project.doc.depth === 16 || st.project.doc.mode === 'cmyk') ? st.project.layer(st.layerId) : null;
+    const cmyk = p.doc.mode === 'cmyk', t = cmyk ? this.deriveTables(p) : null, lut = cmyk ? p.cmykLut : null;
+        const ch = deriveWhole(l.raster.read(), t);
+        const ch = same ? deriveRegion(o.channels, 0, 0, o.raster.read(), l.raster.read(), t) : deriveWhole(l.raster.read(), t);
+    if (!p || !(p.doc.mode === 'cmyk' || p.doc.depth === 16)) return null;
+    if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || p.doc.mode === 'cmyk') return false;
+    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color' }[mode];
+export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk';
+  const mode = manifest.mode === 'grayscale' || manifest.mode === 'bitmap' || manifest.mode === 'indexed' || manifest.mode === 'cmyk' ? manifest.mode : null;
+type Ch = 'rgb' | 'r' | 'g' | 'b' | 'cmyk' | 'c' | 'm' | 'y' | 'k';
+  { id: 'cmyk', label: 'CMYK' }, { id: 'c', label: 'Cyan' }, { id: 'm', label: 'Magenta' }, { id: 'y', label: 'Yellow' }, { id: 'k', label: 'Black' }];
+        if (r.id === 'cmyk' || isInk(r.id)) return;
+    const p = this.engine.current, cmyk = p?.doc.mode === 'cmyk';
+      if (cmyk ? rgbRow : !rgbRow) continue;
+    const cmyk = this.engine.current?.doc.mode === 'cmyk';
+    const m = this.solo && !cmyk
+    const plain = cmyk || (!this.solo && this.shown.r && this.shown.g && this.shown.b);
+      const id = row.dataset.ch as Ch, inkRow = id === 'cmyk' || isInk(id);
+      setHidden(row, cmyk ? !inkRow : inkRow);
+    setText(this.root.querySelector('.cv-ch-note') as HTMLElement, cmyk ? (this.inkSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.inkSolo)?.label} alone (paper white, full ink black); the Brush, Pencil and Eraser paint it alone.` : 'Click an ink to paint it alone; ⌘- or Ctrl-click loads its light areas as a selection.')
+    setText(mEl, { rgb: 'RGB/8', grayscale: 'Gray/8', bitmap: 'Bitmap/1', indexed: 'Index', cmyk: 'CMYK/8' }[md]);
+    const tip = { rgb: 'RGB, 8 bits a channel', grayscale: 'Grayscale, 8 bits', bitmap: 'Bitmap, 1 bit', indexed: `Indexed Color, ${p.doc.palette?.length ?? 0} colours`, cmyk: `CMYK, 8 bits a channel, ${p.doc.profile?.name ?? 'no profile'}` }[md];
+export const VERSION = '1.56.3';
+```
+
 ## The Art History Brush, and L4 closed · _v1.56.3 (engine/art-history.ts new, index.ts, types.ts; extensions/tools/art-history.ts new, index.ts)
 
 The parity plan's L4, second part (DEV_PLAN 23.4), which closes the row with the Mixer Brush (1.56.2). `engine/art-history.ts`: `artHistoryTexture` lays stylised strokes over the whole layer as a stroke starts, each in the source's colour where it begins, running across the source's brightness gradient (along its contours), on a jittered grid in shuffled order with a seeded random, capped near 250,000 strokes; ten styles as Photoshop's (`ART_STYLES`: tight and loose, short, medium and long, Dab, and four curls) by length, wander and bend; Tolerance clears the strokes where the current layer is already within that many levels of the source. The engine's `artHistory` settings and `artHistoryTexture`, the strokes a quarter of the brush wide and a new pattern each stroke; `beginRetouchStroke` gives the Art History Brush the History Brush's source (the snapshot's copy of the layer) and reveals the painted version through the brush as the History Brush reveals the snapshot; its steps are named so. The tool (Y with the History Brush) with Source, Style, Tolerance and the Brush's rows. The README's line counts follow the code (37,700 TypeScript, 8,300 Python). Verified in the browser under 4x CPU throttling with real drags across a red and blue snapshot on a whitened layer: the History Brush lays back the snapshot exactly (no red on the blue side, no blue on the red), the Art History Brush covers the same area with strokes that cross the boundary (82 red pixels on the blue side, 108 blue on the red); with Tolerance 100 on a layer equal to its snapshot it lays nothing; the options bar shows Source, Style and Tolerance; layout shift 0; no errors. Removed lines taken after the version edit. Removed from frontend:

@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.56.4 · 2026-10-01
+
+Lab documents, first part (DEV_PLAN 22.9).
+
+### Added
+
+- Image > Mode > Lab Color: an 8-bit RGB document converts to CIE Lab (D50, as Photoshop's Lab) held as floats, and back to RGB Color exactly. Painting, text, shapes, fills, filters and the other tools work in it, the pixels they leave alone keeping their Lab exactly. The Channels panel shows Lab, Lightness, a and b; Info reads L, a and b; project files keep the Lab values.
+
+### Known
+
+- Not yet in Lab documents: adjustment layers, blend modes other than Normal, layer styles, viewing or painting one channel alone, and Lab TIFF and PSD files; they wait in the menus. Exports go through the sRGB rendition.
+
 ## 1.56.3 · 2026-10-01
 
 The Art History Brush (the parity plan's L4, second part, which closes the row with the Mixer Brush).
