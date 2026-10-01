@@ -2,6 +2,27 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Depth Blur, the first model-backed Neural Filter · _v1.54.8 (engine/neural.ts; io/local-gen.ts; ui/panels/neural-dialog.ts, local-models.ts; backend app/localgen/depth.py new, model_manager.py, main.py)
+
+DEV_PLAN 23.2, second part. The gate first: Depth Anything V2 Small is Apache-2.0 at its source (Base, Large and Giant are CC-BY-NC and are not used); onnx-community's ONNX export is pinned to revision 413ce838 and to SHA-256 afb6a5c2... computed from the real 99 MB download. `depthBlur` (three blur levels mixed by distance from the focal depth past a sharp range); `localDepth` and `depthReady` in `local-gen.ts`. The gallery gains Depth Blur (Focus, Sharp range, Blur) and reads the layer's depth once per layer when the filter is chosen, saying when the model needs downloading; the note keeps two lines of height so its changing text never resizes the dialog (a first run measured layout shift 0.00362 from that; 0 after). Preferences > Plugins > Local models gains the model's card, built once. Verified under 4x CPU throttling, end to end through the engine: on a striped scene with a near block and a far sky, the near block's stripe contrast stays 63 and the sky's falls from 44 to 36 as one "Depth Blur" step; layout shift 0; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.lama, this.upscaler, this.krea, this.klein, this.library);
+    try { await Promise.all([this.showDownload(this.lama, 'lama-inpaint', 'LaMa inpainting', 'Download LaMa', 'about 208 MB', 'Generative Fill and Expand on any computer, with no prompt, key or cost: it fills from what surrounds the selection. Apache-2.0.'), this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
+import { harmonize, skinSmooth } from '../../engine/neural';
+type NeuralKind = 'harmonize' | 'skinSmooth';
+export const NEURAL_LABELS: Record<NeuralKind, string> = { harmonize: 'Harmonize', skinSmooth: 'Skin Smoothing' };
+  private readonly s = { amount: 100, smooth: 60, radius: 6 };
+  private readonly note = el('<p class="cv-dialog-note" role="status"></p>');
+    const pick = selectRow('Filter', (Object.keys(NEURAL_LABELS) as NeuralKind[]).map((k) => [k, NEURAL_LABELS[k]] as const), (v) => { this.kind = v as NeuralKind; this.showRows(); this.schedule(); });
+    this.rows.push({ el: amount.el, kinds: ['harmonize'] }, { el: smooth.el, kinds: ['skinSmooth'] }, { el: radius.el, kinds: ['skinSmooth'] });
+    this.body.append(amount.el, smooth.el, radius.el, this.note);
+    setText(this.note, this.kind === 'harmonize' ? 'Harmonize moves the layer\'s light and colour toward what lies beneath it (its mean and spread per channel), by the amount.' : 'Skin Smoothing softens skin tones only: other pixels are untouched.');
+    const s = { ...this.s }, back = this.backdrop;
+    return this.kind === 'harmonize' ? (src) => (back ? harmonize(src, back, s.amount / 100) : src) : (src) => skinSmooth(src, s.smooth / 100, s.radius);
+export const VERSION = '1.54.7';
+```
+
 ## Neural Filters, the gallery and its first two · _v1.54.7 (engine/neural.ts new, index.ts; ui/panels/neural-dialog.ts new; app.ts)
 
 DEV_PLAN 23.2, first part: the row none of the compared builds has. `NeuralFiltersDialog` (Filter > Neural Filters, `filter-neural`): a filter selector and every filter's rows built once, the other filters' rows kept in place by visibility so switching moves nothing (a first landing used `hidden` and measured layout shift 0.00512; visibility brought it to 0), a live preview through `previewImageEdit`, OK as one `applyImageEdit` step. `engine/neural.ts`: `harmonize` (Reinhard's statistics transfer in YCbCr from the composite beneath the layer, pixels weighted by alpha, blended by amount), `skinMask` (soft Cb 77 to 127 and Cr 133 to 173 bands) and `skinSmooth` (Surface Blur under the mask, blended by amount). `Engine.compositeBelow(id)` renders the layers beneath one at document size. The gallery is 8-bit RGB for now (not in `DEEP_OK` or `CMYK_OK`). Verified under 4x CPU throttling: the gallery lists Harmonize and Skin Smoothing; Harmonize moves a flat skin patch over a blue backdrop to (85, 90, 128) as one "Harmonize" step; Skin Smoothing lowers a noisy patch's red-channel noise from sd 11.7 to 7.9; layout shift 0, no errors. The model-backed filters (Depth Blur, Colorize, Style Transfer, Super Zoom, JPEG Artifacts Removal) follow as each licence and pin lands. Removed lines taken after the version edit. Removed from frontend:

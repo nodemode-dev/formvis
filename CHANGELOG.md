@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.54.8 · 2026-09-30
+
+Neural Filters: Depth Blur, the first with a model (DEV_PLAN 23.2, second part).
+
+### Added
+
+- Depth Blur in Filter > Neural Filters: the layer's depth is read on this computer by Depth Anything V2 Small (Apache-2.0, 99 MB, fetched on first use from Preferences > Plugins > Local models with nothing to install, pinned to its revision and hash), and pixels blur by their distance from the chosen focus depth past a sharp range, up to a blur you set. Nothing leaves the computer.
+
 ## 1.54.7 · 2026-09-30
 
 Neural Filters, the gallery and its first two (DEV_PLAN 23.2, first part).
