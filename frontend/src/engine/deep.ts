@@ -164,18 +164,20 @@ export function surfaceBlurDeep(src: DeepPixels, radius: number, threshold: numb
   return { ...src, data: o };
 }
 
-/** Unsharp Mask on floats: the 8-bit formula, with the threshold in the same levels, on every channel but alpha. */
-export function unsharpDeep(src: DeepPixels, amount: number, radius: number, threshold: number): DeepPixels {
+/** Unsharp Mask on floats: the 8-bit formula, with the threshold in the same levels, on every channel but alpha; at 32
+ *  bits (1.57.2) `ceiling` is Infinity, so light above white is sharpened rather than clipped. */
+export function unsharpDeep(src: DeepPixels, amount: number, radius: number, threshold: number, ceiling = 1): DeepPixels {
   const blur = blurDeep(src, Math.max(0.1, radius)), s = src.data, b = blur.data, o = new Float32Array(s.length), k = amount / 100, S = src.n + 1, A = src.n;
   for (let i = 0; i < s.length; i += S) {
-    for (let c = 0; c < A; c++) { const d = s[i + c] - b[i + c]; o[i + c] = Math.min(1, Math.max(0, Math.abs(d) * 255 >= threshold ? s[i + c] + k * d : s[i + c])); }
+    for (let c = 0; c < A; c++) { const d = s[i + c] - b[i + c]; o[i + c] = Math.min(ceiling, Math.max(0, Math.abs(d) * 255 >= threshold ? s[i + c] + k * d : s[i + c])); }
     o[i + A] = s[i + A];
   }
   return { ...src, data: o };
 }
 
-/** Add Noise on floats: the 8-bit filter's seeded noise (the same values for the same seed), not rounded, per channel. */
-export function noiseDeep(src: DeepPixels, amount: number, gaussian: boolean, monochromatic: boolean, seed: number): DeepPixels {
+/** Add Noise on floats: the 8-bit filter's seeded noise (the same values for the same seed), not rounded, per channel;
+ *  at 32 bits (1.57.2) `ceiling` is Infinity, so light above white keeps its brightness. */
+export function noiseDeep(src: DeepPixels, amount: number, gaussian: boolean, monochromatic: boolean, seed: number, ceiling = 1): DeepPixels {
   const d = new Float32Array(src.data), spread = (amount / 100) * 127.5, S = src.n + 1, A = src.n;
   for (let px = 0, i = 0; i < d.length; px++, i += S) {
     if (d[i + A] === 0) continue;
@@ -186,7 +188,7 @@ export function noiseDeep(src: DeepPixels, amount: number, gaussian: boolean, mo
         const k = mix32(pixelKey + (monochromatic ? 0 : c));
         shared = gaussian ? Math.sqrt(-2 * Math.log(toUnit(k))) * Math.cos(2 * Math.PI * toUnit(mix32(k))) * spread * (2 / 3) : (toUnit(k) * 2 - 1) * spread;
       }
-      d[i + c] = Math.min(1, Math.max(0, d[i + c] + shared / 255));
+      d[i + c] = Math.min(ceiling, Math.max(0, d[i + c] + shared / 255));
     }
   }
   return { ...src, data: d };
