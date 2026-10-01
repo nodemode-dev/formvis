@@ -82,6 +82,7 @@ import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
 import { ColourView } from './ui/colour';
 import { composeDeep, deepFromU16, deepToU16, deepToned, place } from './engine/deep';
+import { composeFloat } from './engine/compose-float';
 import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
 import type { Lut3x4, Lut4 } from './engine/colour-lut';
 import type { ChannelPixels, DocProfile, ID } from './engine/types';
@@ -712,6 +713,25 @@ export function startApp(): void {
     });
   }
 
+  /** Export TIFF from a Lab document (1.56.6, DEV_PLAN 22.9): the Lab composite laid on white (a Lab TIFF holds no
+   *  transparency here), 8 bits a channel as Photoshop's Lab TIFF, written by the engine's Pillow. */
+  async function exportLabTiff(): Promise<void> {
+    const p = engine.current;
+    if (!p || p.doc.mode !== 'lab') return;
+    await engine.task(async () => {
+      try {
+        const c = composeFloat(p.doc, 3, false);
+        if ('error' in c) throw new Error(c.error);
+        const n = c.width * c.height, bytes = new Uint8Array(n * 3);
+        for (let i = 0, o = 0; i < c.data.length; i += 4, o += 3) {
+          const a = c.data[i + 3], l = c.data[i] * a + (1 - a), A = c.data[i + 1] * a + 0.5 * (1 - a), B = c.data[i + 2] * a + 0.5 * (1 - a);
+          bytes[o] = Math.round(Math.max(0, Math.min(1, l)) * 255); bytes[o + 1] = Math.round(Math.max(0, Math.min(1, A)) * 255); bytes[o + 2] = Math.round(Math.max(0, Math.min(1, B)) * 255);
+        }
+        await deliver(await api.encodeLabTiff(bytes, c.width, c.height), `${p.name}.tif`);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function exportCmyk(kind: 'tiff' | 'jpg', quality: number): Promise<void> {
     const p = engine.current;
     if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile) return;
@@ -730,6 +750,7 @@ export function startApp(): void {
     if (!p) return;
     engine.settle();
     if (p.doc.mode === 'cmyk' && (kind === 'tiff' || kind === 'jpg')) { await exportCmyk(kind, quality); return; }
+    if (p.doc.mode === 'lab' && kind === 'tiff') { await exportLabTiff(); return; }
     await engine.task(async () => {
       try {
         // A 16-bit document's PNG and TIFF keep their 16 bits (1.53.6): composed in floating point, written by the engine.
@@ -1734,7 +1755,7 @@ export function startApp(): void {
   const STYLES = ['layer-style', 'paste-layer-style'];
   const CMYK_NOT = new Set([...STYLES, 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
   const DEEP16_NOT = new Set([...STYLES, 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-hdrToning']);
-  const LAB_NOT = new Set([...STYLES, ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'blend-next', 'blend-prev', 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const LAB_NOT = new Set([...STYLES, ...ADJUSTMENT_KINDS.filter((k) => k !== 'levels' && k !== 'curves').map((k) => `new-adj-${k}`), 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? !CMYK_NOT.has(c.id) || passes(c)
     : engine.current?.doc.mode === 'lab' ? !LAB_NOT.has(c.id) || passes(c)
     : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || ((DEEP_OK.has(c.id) || passes(c)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));

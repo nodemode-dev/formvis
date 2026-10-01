@@ -3,7 +3,8 @@ import { composeChannels, rasterFromChannels, strokeChannels } from './channels'
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
 import { artHistoryTexture, type ArtStyle } from './art-history';
-import { decodeLab, labFromRgba, labToSrgb } from './lab';
+import { decodeLab, labFromRgba, labToSrgb, renderLab } from './lab';
+import { composeFloat } from './compose-float';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
@@ -1872,7 +1873,7 @@ export class Engine {
     const fs = this.floatSel;
     if (fs && fs.project === p) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.base });
     if (this.channelView !== null && p.doc.mode === 'cmyk') { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
-    else if (p.doc.mode === 'cmyk' && p.cmykLut && !this.stroke && p.doc.layers.some((l) => l.visible && (l.adjustment || (l.blend && l.blend !== 'normal')))) {
+    else if (!this.stroke && this.composesFloats(p)) {
       const composed = this.composedRendition(p);
       if (composed) { const first = p.doc.layers.find((l) => l.raster && !l.isGroup); for (const l of p.doc.layers) m.set(l.id, l === first ? { ...(m.get(l.id) ?? {}), source: composed.canvas, transform: docTransform(p.doc.width, p.doc.height), opacity: 1, blend: 'normal' } : { ...(m.get(l.id) ?? {}), hidden: true }); }
     }
@@ -1884,9 +1885,22 @@ export class Engine {
   private composedCache: { doc: Doc; r: Raster | null } | null = null;
   private composedRendition(p: Project): Raster | null {
     if (this.composedCache && this.composedCache.doc === p.doc) return this.composedCache.r;
-    const ink = composeChannels(p.doc, p.cmykTables), r = 'error' in ink || !p.cmykLut ? null : rasterFromChannels({ mode: 'cmyk', n: 4, width: ink.width, height: ink.height, data: ink.data }, p.cmykLut);
+    let r: Raster | null = null;
+    if (p.doc.mode === 'lab') {
+      const c = composeFloat(p.doc, 3, false);
+      if (!('error' in c)) { r = new Raster(c.width, c.height); const img = r.ctx.createImageData(c.width, c.height); renderLab(c.data, img.data); r.ctx.putImageData(img, 0, 0); r.touch(); }
+    } else {
+      const ink = composeChannels(p.doc, p.cmykTables);
+      r = 'error' in ink || !p.cmykLut ? null : rasterFromChannels({ mode: 'cmyk', n: 4, width: ink.width, height: ink.height, data: ink.data }, p.cmykLut);
+    }
     this.composedCache = { doc: p.doc, r };
     return r;
+  }
+
+  /** Whether the canvas and exports show the composed floats rather than the layers' renditions (1.54.4, Lab 1.56.6):
+   *  a CMYK or Lab document with a visible adjustment layer or a blend mode other than Normal. */
+  private composesFloats(p: Project): boolean {
+    return ((p.doc.mode === 'cmyk' && !!p.cmykLut) || p.doc.mode === 'lab') && p.doc.layers.some((l) => l.visible && (l.adjustment || (l.blend && l.blend !== 'normal')));
   }
 
   /** The Channels panel's single-ink view (1.54.3): one ink of a CMYK layer as grey (paper white, full ink black),
@@ -6407,7 +6421,12 @@ export class Engine {
     return withResolution(await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality), p.doc.resolution);
   }
 
-  flattened(): Surface | null { const p = this.current; return p ? renderDoc(this.work, p.doc) : null; }
+  flattened(): Surface | null {
+    const p = this.current;
+    if (!p) return null;
+    if (this.composesFloats(p)) { const r = this.composedRendition(p); if (r) return r.canvas; }
+    return renderDoc(this.work, p.doc);
+  }
 
   /** A new document's mode (New Document's Color Mode): set, not converted, as its pixels are only the background. */
   setDocumentMode(mode: DocMode): void {

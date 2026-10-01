@@ -59,10 +59,12 @@ const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const CHANNELS = ['RGB', 'Red', 'Green', 'Blue'];
 const INKS = ['CMYK', 'Cyan', 'Magenta', 'Yellow', 'Black'];
-const ALL_CHANNELS = [...CHANNELS, ...INKS];
-/** The mode's channel names (1.54.4): Levels and Curves index their ranges by position within this list. */
-const channelsOf = (mode: string | undefined): string[] => (mode === 'cmyk' ? INKS : CHANNELS);
-const showChannels = (row: { el: HTMLElement }, names: string[]): void => { for (const o of row.el.querySelectorAll('option')) o.hidden = !names.includes(o.value); };
+const LABS = ['Lab', 'Lightness', 'a', 'b'];
+const ALL_CHANNELS = [...CHANNELS, ...INKS, ...LABS];
+/** The mode's channel names (1.54.4; Lab 1.56.6): Levels and Curves index their ranges by position within this list.
+ *  Lab's first position (a composite) is never offered, as Photoshop's Levels and Curves in Lab offer none. */
+const channelsOf = (mode: string | undefined): string[] => (mode === 'cmyk' ? INKS : mode === 'lab' ? LABS : CHANNELS);
+const showChannels = (row: { el: HTMLElement }, names: string[]): void => { for (const o of row.el.querySelectorAll('option')) o.hidden = !names.includes(o.value) || o.value === 'Lab'; };
 const cssVar = (name: string): string => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 const hexToUnit = (hex: string): Json => ({ red: parseInt(hex.slice(1, 3), 16) / 255, green: parseInt(hex.slice(3, 5), 16) / 255, blue: parseInt(hex.slice(5, 7), 16) / 255 });
 const unitToHex = (c: unknown): string => { const o = obj(c); return hexOf({ r: Math.round(num(o.red, 0) * 255), g: Math.round(num(o.green, 0) * 255), b: Math.round(num(o.blue, 0) * 255) }); };
@@ -421,7 +423,7 @@ export class AdjustPanel extends Dialog {
     node.append(channel.el, canvas, auto.el, sample.el, black.el, gamma.el, white.el, outB.el, outW.el);
     this.histo = canvas;
     const values = (): void => { const x = r(); black.set(x.black); gamma.set(x.gamma); white.set(x.white); outB.set(x.outputBlack); outW.set(x.outputWhite); };
-    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(0, n.indexOf(lv().channel)); while (lv().ranges.length < 5) lv().ranges.push({ black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 }); channel.set(n[ch]); values(); this.drawHisto(ch); } };
+    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(n[0] === 'Lab' ? 1 : 0, n.indexOf(lv().channel)); while (lv().ranges.length < 5) lv().ranges.push({ black: 0, gamma: 1, white: 255, outputBlack: 0, outputWhite: 255 }); channel.set(n[ch]); values(); this.drawHisto(ch); } };
   }
 
   private buildCurves(): Section {
@@ -491,7 +493,7 @@ export class AdjustPanel extends Dialog {
     const names = (): string[] => channelsOf(this.engine.current?.doc.mode);
     const channel = selectRow('Channel', ALL_CHANNELS.map((c) => [c, c] as const), (v) => { ch = Math.max(0, names().indexOf(v)); cv().channel = v; draw(); this.changed(); });
     node.append(channel.el, canvas, el('<p class="cv-note">Click to add a point, drag to shape the curve, drag a point off the graph to remove it.</p>'));
-    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(0, n.indexOf(cv().channel)); while (cv().channels.length < 5) cv().channels.push([{ x: 0, y: 0 }, { x: 255, y: 255 }]); channel.set(n[ch]); draw(); } };
+    return { node, sync: () => { const n = names(); showChannels(channel, n); ch = Math.max(n[0] === 'Lab' ? 1 : 0, n.indexOf(cv().channel)); while (cv().channels.length < 5) cv().channels.push([{ x: 0, y: 0 }, { x: 255, y: 255 }]); channel.set(n[ch]); draw(); } };
   }
 
   private buildHsv(): Section {

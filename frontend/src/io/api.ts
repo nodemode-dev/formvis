@@ -223,6 +223,11 @@ export const api = {
     const width = Number(r.headers.get('X-Width')), height = Number(r.headers.get('X-Height')), iccLen = Number(r.headers.get('X-Profile-Bytes') ?? 0), b = new Uint8Array(await r.arrayBuffer());
     return { width, height, ink: b.slice(0, width * height * 5), icc: iccLen ? b.slice(width * height * 5, width * height * 5 + iccLen) : null };
   },
+  /** A Lab TIFF (1.56.6) from 8-bit Lab bytes (L * 255 / 100, then a and b offset by 128), written by the engine. */
+  async encodeLabTiff(lab: Uint8Array, width: number, height: number): Promise<Blob> {
+    const body = form({ width: String(width), height: String(height) }, [{ name: 'lab.raw', blob: new Blob([new Uint8Array(lab)]) }], 'file');
+    return (await request('/io/encode-lab-tiff', { method: 'POST', body })).blob();
+  },
   async encodeCmyk(ink: Uint8Array, width: number, height: number, format: 'tiff' | 'jpg', icc: Uint8Array | null, quality = 90, dpi = 72): Promise<Blob> {
     const files = [{ name: 'pixels.raw', blob: new Blob([new Uint8Array(ink)]) }];
     const body = form({ width: String(width), height: String(height), format, quality: String(quality), dpi: String(dpi) }, files, 'file');

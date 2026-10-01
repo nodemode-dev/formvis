@@ -108,6 +108,23 @@ def _pack(meta: dict, chunks: list[bytes]) -> bytes:
     return len(head).to_bytes(4, "little") + head + b"".join(chunks)
 
 
+@router.post("/encode-lab-tiff")
+def encode_lab_tiff(width: int = Form(...), height: int = Form(...), file: UploadFile = File(...)) -> Response:
+    """A Lab TIFF (1.56.6, DEV_PLAN 22.9): 8-bit CIELab (photometric 8) as the TIFF specification and Photoshop have it,
+    L* as L * 255 / 100 and a* and b* as signed bytes. The window sends a and b offset by 128; they are turned signed
+    here, since Pillow writes the bytes it is given (its own reading of such a file differs, which a spec reader's
+    does not), and the file is LZW-compressed."""
+    from PIL import Image
+    raw = file.file.read()
+    if width <= 0 or height <= 0 or width * height > config.MAX_PIXELS or len(raw) != width * height * 3:
+        raise HTTPException(status_code=422, detail="The Lab pixels do not match the size given.")
+    px = np.frombuffer(raw, np.uint8).reshape(height, width, 3).copy()
+    px[..., 1:] = ((px[..., 1:].astype(np.int16) - 128) & 0xFF).astype(np.uint8)
+    out = io.BytesIO()
+    Image.frombytes("LAB", (width, height), px.tobytes()).save(out, "TIFF", compression="tiff_lzw")
+    return Response(out.getvalue(), media_type="image/tiff")
+
+
 @router.post("/decode-cmyk-psd")
 def decode_cmyk_psd(file: UploadFile = File(...)) -> Response:
     """A CMYK PSD's layers as ink (1.56.1, DEV_PLAN 22.8), read by psd-tools (MIT): a 4-byte length, a JSON header

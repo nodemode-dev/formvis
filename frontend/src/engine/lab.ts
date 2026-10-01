@@ -33,6 +33,14 @@ export function labToSrgb(L: number, a: number, b: number): [number, number, num
 export const encodeLab = (L: number, a: number, b: number): [number, number, number] => [L / 100, (a + 128) / 255, (b + 128) / 255];
 export const decodeLab = (l: number, a: number, b: number): [number, number, number] => [l * 100, a * 255 - 128, b * 255 - 128];
 
+/** Encoded Lab floats to sRGB from 0 to 1, unrounded, clipped to the gamut (1.56.6, blending in the rendition). */
+export function labFloatToRgb(l: number, a: number, b: number): [number, number, number] {
+  const fy = (l * 100 + 16) / 116, x = finv(fy + (a * 255 - 128) / 500) * WX, y = finv(fy) * WY, z = finv(fy - (b * 255 - 128) / 200) * WZ;
+  const out: [number, number, number] = [0, 0, 0];
+  for (let c = 0; c < 3; c++) out[c] = Math.max(0, Math.min(1, toGamma(Math.max(0, MI[c * 3] * x + MI[c * 3 + 1] * y + MI[c * 3 + 2] * z))));
+  return out;
+}
+
 /** The sRGB encoding of linear light, 16,384 steps, so a rendition costs a table lookup per channel. */
 const GN = 16384;
 let gammaTable: Uint8ClampedArray | null = null;

@@ -207,8 +207,8 @@ ask it questions.
 - Image > Mode > Lab Color turns an 8-bit RGB document into CIE Lab (with the D50 white Photoshop's Lab uses); RGB
   Color turns it back exactly. Painting, text, shapes, fills and filters work in it; the pixels they leave alone keep
   their Lab values. The Channels panel shows Lab, Lightness, a and b (a and b mid-grey where neutral), and Info reads
-  L, a and b. Adjustment layers, blend modes other than Normal, layer styles, single-channel views and Lab TIFF and
-  PSD files wait in the menus for now.
+  L, a and b. Levels and Curves work on Lightness, a and b; blend modes look as they do in RGB; Export TIFF writes a
+  Lab TIFF. The other adjustment layers, layer styles, single-channel views and opening Lab files wait for now.
 
 ## 32-bit documents
 

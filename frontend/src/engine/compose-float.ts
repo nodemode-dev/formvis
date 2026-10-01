@@ -3,6 +3,7 @@ import { deepFromRaster, place, transferOf } from './deep';
 import { hierarchy, byId, ancestors } from './tree';
 import { placement, setMat } from './geometry';
 import { applyLut4, inkOf, type Lut3x4, type Lut4 } from './colour-lut';
+import { encodeLab, labFloatToRgb, srgbToLab } from './lab';
 import { kernelFor } from './renderer';
 import type { Kernel } from './kernels';
 import type { BlendMode, Doc, Layer, ID } from './types';
@@ -185,14 +186,20 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     if (l.clipId && !clipA) return { error: `${name} is clipped to a layer this compositor cannot read.` };
     const mode = l.blend ?? 'normal', sep = SEPARABLE_FLOAT[mode];
     if (!sep && mode !== 'dissolve' && (!nonSeparable(mode, [0, 0, 0], [0, 0, 0]) || (n === 4 && !luts))) return { error: `${name} uses ${mode}, which needs the document's colour tables in this mode.` };
-    const bv: [number, number, number] = [0, 0, 0], sv: [number, number, number] = [0, 0, 0];
+    const bv: [number, number, number] = [0, 0, 0], sv: [number, number, number] = [0, 0, 0], lab = doc.mode === 'lab';
     for (let i = 0, j = 0; i < out.length; i += S, j++) {
       let as = tmp[i + A] * op * (cov ? cov[j] : 1) * (clipA ? clipA[j] : 1);
       if (as <= 0) continue;
       const ab = out[i + A];
       if (mode === 'dissolve') { if (dissolveNoise(j % W, Math.floor(j / W)) >= as) continue; as = 1; }
       const ao = as + ab * (1 - as), k1 = as * (1 - ab), k2 = as * ab, k3 = (1 - as) * ab;
-      if (sep || mode === 'dissolve') {
+      if (lab && mode !== 'normal' && mode !== 'dissolve') {
+        // Lab (1.56.6): the two colours' renditions blended by the RGB document's own formula, the result back in Lab.
+        const B = labFloatToRgb(out[i], out[i + 1], out[i + 2]), Sx = labFloatToRgb(tmp[i], tmp[i + 1], tmp[i + 2]);
+        const rr = sep ? [sep(B[0], Sx[0]), sep(B[1], Sx[1]), sep(B[2], Sx[2])] : (nonSeparable(mode, B, Sx) ?? Sx);
+        const r3 = encodeLab(...srgbToLab(clamp01(rr[0]) * 255, clamp01(rr[1]) * 255, clamp01(rr[2]) * 255));
+        for (let c = 0; c < 3; c++) out[i + c] = (k1 * tmp[i + c] + k2 * r3[c] + k3 * out[i + c]) / ao;
+      } else if (sep || mode === 'dissolve') {
         const f = sep ?? SEPARABLE_FLOAT.normal!;
         for (let c = 0; c < A; c++) { const b = toValue(out[i + c]), s = toValue(tmp[i + c]), r = f(b, s); out[i + c] = fromValue((k1 * s + k2 * r + k3 * b) / ao); }
       } else if (n === 4 && luts) {
