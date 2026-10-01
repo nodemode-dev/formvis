@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Faces for Face-Aware Liquify · _v1.56.7 (app/localgen/face.py new, app/localgen/model_manager.py, app/main.py)
+
+`face.py`: YuNet through OpenCV's `FaceDetectorYN` (score 0.75, NMS 0.3), the picture capped at 2,048 px on its long side for detection and the results scaled back; each face's box and five landmarks named by the side of the picture they are on (`eyeLeft`, `eyeRight`, `nose`, `mouthLeft`, `mouthRight`), largest first; `POST /api/face/landmarks`, 409 until the model is downloaded. `model_manager.py`: the registry entry (MIT, OpenCV's Hugging Face revision 3cc26e7f) and the SHA-256 pin from the real download. `main.py` includes the router. Checked here: on scikit-image's astronaut portrait one face, score 0.93, box (178, 63, 90, 113), the eyes at (200, 102) and (247, 103), the nose at (220, 125), the mouth corners at (199, 143) and (240, 144), looked at on the picture; 0.2 s. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.56.6"
+for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router, _lg_upscale.router, _lg_inpaint.router, _lg_depth.router, _lg_colorize.router, _lg_style.router):
+version = "1.56.6"
+version = "1.56.6"
+ "version": "1.56.6",
+```
+
 ## Lab TIFF · _v1.56.6 (app/routers/io.py)
 
 `POST /io/encode-lab-tiff`: the window's 8-bit Lab bytes (L * 255 / 100, a and b offset by 128) with a* and b* turned to signed bytes, as the TIFF specification's CIELab (photometric 8) and Photoshop have them, then written by Pillow with LZW. Pillow writes the bytes it is given; its own reading of a CIELab file adds 128 back, which is why the file reads through Pillow as L 17.3, a 22, b 0 for a pixel the window composed as (17.3, 22.2, 0.2). Removed lines taken after the version edit:

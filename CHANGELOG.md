@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.56.7 · 2026-10-01
+
+Face-Aware Liquify (the parity plan's M3, second part, which closes the row with the Freeze Mask).
+
+### Added
+
+- Face-Aware Liquify in Filter > Liquify: Find faces locates each face and its eyes, nose and mouth on this computer (YuNet, 232 KB, MIT, fetched on first use from Preferences > Plugins > Local models), and eleven sliders reshape the largest: Eye Size, Height and Distance; Nose Height and Width; Smile, Mouth Width and Height; Forehead, Chin Height and Face Width. They respect the Freeze Mask and combine with the brushes; OK applies everything as one step.
+
+### Known
+
+- Eye Tilt, Eye Width, Upper and Lower Lip and Jawline need a face model with more landmarks and wait for one.
+
 ## 1.56.6 · 2026-10-01
 
 Lab documents, second part (DEV_PLAN 22.9).
