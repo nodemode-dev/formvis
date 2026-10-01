@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.55.7 · 2026-10-01
+
+Colour-model operations in every mode (DEV_PLAN 22.6).
+
+### Added
+
+- Hue/Saturation, Vibrance, Color Balance, Black and White, Photo Filter, Threshold, Selective Color, Gradient Map, Color Lookup and Shadows/Highlights adjustment layers work in 16-bit and CMYK documents, with the same results as in RGB, in the canvas and in every export; Channel Mixer at 16 bits. In CMYK a small change keeps the ink's own structure (a K-only black stays K-only), a large one takes the profile's separation, and an adjustment that changes nothing leaves the ink exactly as it was.
+- Hue, Saturation, Color, Luminosity, Darker Color and Lighter Color blend modes compose in CMYK, and the CMYK canvas shows any blend mode exactly as it exports.
+
+### Known
+
+- At 16 bits a change that moves colour between channels (a large hue rotation) is computed at 8-bit precision of the change, within half a level. Channel Mixer in CMYK, which would mix inks rather than RGB channels, follows later.
+
 ## 1.55.6 · 2026-10-01
 
 Perspective Warp (the parity plan's M4, second part; DEV_PLAN 23.3).
