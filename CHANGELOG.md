@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.56.9 · 2026-10-01
+
+Layer styles in 16-bit, CMYK and Lab documents (DEV_PLAN 22.10).
+
+### Added
+
+- Layer styles (drop shadow, stroke, glows, overlays, bevel, satin) work in 16-bit, CMYK and Lab documents, in the canvas and every export. The layer's own pixels keep their full precision wherever the style draws nothing; the style's pixels come in through the document's colours (in CMYK the profile's separation, so a black stroke prints as the profile's black). In CMYK and Lab documents with styles the canvas shows the colours as they will print.
+
+### Known
+
+- 32-bit documents still wait for layer styles.
+
 ## 1.56.8 · 2026-10-01
 
 The remaining mode gates (DEV_PLAN 22.10), and Lab's colour adjustments.
