@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Remove's finder · _v1.57.4 (app/routers/remove_find.py new, app/main.py)
+
+`POST /api/remove/find` (kind `people` or `distractions`): People turns each face YuNet finds into a box around the person (from 1.3 face widths left to 2.3 right, half a face above to 7.5 below) that SAM2 makes the person's mask; the largest person is kept as the subject when their face is at least 2.5 times the next one's, or, alone, fills at least 0.5% of the picture. Distractions adds U2-Net's salient objects other than the largest (and at least 0.05% of the picture) to the people other than the subject. The mask is dilated by a few pixels; 409 names a missing model. A first subject rule (at least 4% of the picture) marked a portrait-sized subject for removal; corrected before release. Checked here on the scene: the background person covered 0.71, the subject 0.00, everything else 0.000; 4.6 s for People on the CPU (22.5 s the first time, while SAM2 loaded); over HTTP the same mask in 4.8 s. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.57.3"
+version = "1.57.3"
+version = "1.57.3"
+ "version": "1.57.3",
+```
+
 ## Convert to Profile at 32 bits: the linear matrix · _v1.57.3 (app/services/colour.py, app/routers/colour.py)
 
 `colour.linear_matrix(source, dest)`: the 3 by 3 matrix taking linear RGB in one profile to linear RGB in another through each profile's D50 primaries (Pillow's `red_colorant`, `green_colorant`, `blue_colorant`), `np.linalg.solve(dest, source)`; a non-RGB profile and an RGB profile without primaries (table-based) are refused by name. `POST /color/linear-matrix` returns it. Checked here: sRGB to sRGB is the identity; sRGB to Adobe RGB (1998) takes white to (0.999991, 1.000003, 1.000013) and pure red to 0.7151, the known value; the shipped CMYK profile is refused. Removed lines taken after the version edit:

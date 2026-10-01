@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.57.4 · 2026-10-01
+
+Remove finds people and distractions (the parity plan's M1).
+
+### Added
+
+- The Remove tool's Remove People and Remove Distractions: models on this computer find the people other than the subject (faces, then each person's outline), and for distractions also the salient objects other than the subject; LaMa fills them, continuing the scene, as one step. The subject is the person whose face is clearly the largest. Needs the face finder, Segment Anything 2 and LaMa from Preferences > Plugins > Local models.
+
 ## 1.57.3 · 2026-10-01
 
 The modes Photoshop withholds, and the ones to check, closed (DEV_PLAN 22.11).
