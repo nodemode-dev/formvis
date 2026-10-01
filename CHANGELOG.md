@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.57.2 · 2026-10-01
+
+The last of the mode gates decided (DEV_PLAN 22.10).
+
+### Added
+
+- Unsharp Mask and Add Noise in 32-bit documents: light above white is sharpened and kept rather than clipped.
+- HDR Toning in 16-bit documents.
+
 ## 1.57.1 · 2026-10-01
 
 32-bit documents on the one compositor (DEV_PLAN 22.10).

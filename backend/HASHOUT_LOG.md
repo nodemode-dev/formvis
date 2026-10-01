@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.57.2
+
+No engine code changed in 1.57.2 (the float filters and gates are window code). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.57.1"
+version = "1.57.1"
+version = "1.57.1"
+ "version": "1.57.1",
+```
+
 ## Version only · _v1.57.1
 
 No engine code changed in 1.57.1 (32-bit composing is window code). Removed lines taken after the version edit:
