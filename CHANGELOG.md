@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.56.8 · 2026-10-01
+
+The remaining mode gates (DEV_PLAN 22.10), and Lab's colour adjustments.
+
+### Added
+
+- 32-bit documents: painting, the retouching tools and the filters not yet on the float model now work. Pixels an operation leaves alone keep their values exactly, light above white included; changed pixels take the new colour in linear light and keep their old light where the change is small. What still waits is named in the menus: groups, masks, clipping, layer styles, blend modes and adjustment layers other than Exposure, Unsharp Mask and Add Noise, the other colour modes, and profiles and proofs.
+- Lab documents: Hue/Saturation, Black and White, Color Balance and the other colour adjustments, with the same results as in RGB; Levels, Curves, Invert and Posterize act on Lightness, a and b themselves. Channel Mixer, Exposure and HDR Toning still wait, as in Photoshop's Lab.
+
+### Known
+
+- In 32-bit documents, painting a colour the screen already shows for light above white (white over a bright highlight) leaves that light as it was; Photoshop would set it to white.
+
 ## 1.56.7 · 2026-10-01
 
 Face-Aware Liquify (the parity plan's M3, second part, which closes the row with the Freeze Mask).

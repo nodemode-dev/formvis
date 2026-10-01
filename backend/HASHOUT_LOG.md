@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.56.8
+
+No engine code changed in 1.56.8 (the gates and derive are window code). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.56.7"
+version = "1.56.7"
+version = "1.56.7"
+ "version": "1.56.7",
+```
+
 ## Faces for Face-Aware Liquify · _v1.56.7 (app/localgen/face.py new, app/localgen/model_manager.py, app/main.py)
 
 `face.py`: YuNet through OpenCV's `FaceDetectorYN` (score 0.75, NMS 0.3), the picture capped at 2,048 px on its long side for detection and the results scaled back; each face's box and five landmarks named by the side of the picture they are on (`eyeLeft`, `eyeRight`, `nose`, `mouthLeft`, `mouthRight`), largest first; `POST /api/face/landmarks`, 409 until the model is downloaded. `model_manager.py`: the registry entry (MIT, OpenCV's Hugging Face revision 3cc26e7f) and the SHA-256 pin from the real download. `main.py` includes the router. Checked here: on scikit-image's astronaut portrait one face, score 0.93, box (178, 63, 90, 113), the eyes at (200, 102) and (247, 103), the nose at (220, 125), the mouth corners at (199, 143) and (240, 144), looked at on the picture; 0.2 s. Removed lines taken after the version edit:

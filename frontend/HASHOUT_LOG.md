@@ -2,6 +2,47 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The remaining mode gates: 32 bits through derive, Lab's colour adjustments · _v1.56.8 (engine/derive.ts, compose-float.ts, index.ts; app.ts)
+
+DEV_PLAN 22.10, with 22.9's remainder. Derive gains linear light for 32-bit documents (`lin`, `enc`; the `linear` flag on `deriveWhole`, `deriveRegion` and `renderRegion`): untouched pixels keep their floats exactly, light above white included; a changed pixel takes the new colour in linear light and keeps its old light (above white too) in proportion to how small the change was, never clipped at 1. `edit()`, the step-end hook and the stroke end now derive at 32 bits (the Brush's exact rebuild is gamma-encoded, for 16 bits, so at 32 bits every stroke comes through derive); `deepPaintOk` lets painting run at 32 bits. The gate's 32-bit allowlist becomes `DEEP32_NOT`: what the 32-bit compositor cannot draw (groups, masks, clipping, styles, blend modes, adjustments but Exposure), Unsharp Mask and Add Noise as before, the colour models, the profile and proof commands; `DEEP_OK`, `NOT_AT_32` and `COLOUR_ADJ` are removed, so every mode's gate is a named denylist. In Lab, `composeFloat` keeps Levels, Curves, Invert and Posterize on the channels themselves and sends every other adjustment through `viaKernel`'s new Lab branch (the rendition by the formulas, the kernel, back to Lab exactly with the old Lab kept for small changes); `LAB_NOT` keeps only Channel Mixer, Exposure and HDR Toning among the adjustments, as Photoshop's Lab. Verified in the browser: at 32 bits the menus offer Lens Blur, Gaussian Blur and Exposure and withhold styles, Hue/Saturation, Unsharp Mask and clipping; a white Brush stroke over a 0.25 area lands as 1.0, every untouched pixel exact and 4.0 kept away from the stroke; a +2-level edit moves 0.250 to 0.258 and leaves 4.0 alone; the export composes; in Lab, Hue/Saturation +120 on red gives Lab (71.1, -60.4, 58.2), the RGB kernel's result converted exactly, and the canvas shows (50, 200, 51); unit 188; no errors. Known: at 32 bits, painting a colour the screen already shows for light above white (white over a bright highlight) changes nothing in the 8-bit picture derive reads, so that light stays; Photoshop would set it to 1.0, and a brush painting in floats removes this. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  // A 16-bit document allows what keeps its 16 bits (1.53.6, H1); anything else waits for Image > Mode > 8 Bits/Channel.
+  const DEEP_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
+    'new-adj-levels', 'new-adj-curves', 'new-adj-exposure', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'edit-adjustment', 'flip-canvas-h', 'flip-canvas-v', 'rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'canvas-size', 'image-size', 'trim', 'reveal-all', 'filter-gaussianBlur', 'filter-motionBlur', 'filter-surfaceBlur', 'filter-unsharpMask', 'filter-addNoise', 'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'duplicate', 'duplicate-dialog', 'group', 'add-mask', 'add-mask-hide', 'delete-mask', 'toggle-mask', 'link-mask', 'clip', 'blend-next', 'blend-prev', 'depth-8', 'depth-16', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning',
+    'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
+  // 32 bits (1.53.9) are linear light, unbounded: what would clip past white waits there.
+  const NOT_AT_32 = new Set(['new-adj-levels', 'new-adj-curves', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'filter-unsharpMask', 'filter-addNoise', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning']);
+  for (const id of ['depth-32', 'export-hdr', 'export-exr']) DEEP_OK.add(id);
+  const COLOUR_ADJ = ['new-adj-hsv', 'new-adj-vibrance', 'new-adj-colorBalance', 'new-adj-blackWhite', 'new-adj-photoFilter', 'new-adj-channelMixer', 'new-adj-threshold', 'new-adj-selectiveColor', 'new-adj-gradientMap', 'new-adj-colorLookup', 'new-adj-shadowsHighlights'];
+  for (const id of COLOUR_ADJ) { DEEP_OK.add(id); NOT_AT_32.add(id); }
+  // (engine/derive.ts); these are the ones that cannot work in that mode yet. 32 bits keeps its allowlist.
+  const LAB_NOT = new Set([...STYLES, ...ADJUSTMENT_KINDS.filter((k) => k !== 'levels' && k !== 'curves').map((k) => `new-adj-${k}`), 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+    : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || ((DEEP_OK.has(c.id) || passes(c)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));
+import { encodeLab, labFloatToRgb, srgbToLab } from './lab';
+function viaKernel(out: Float32Array, W: number, H: number, n: 3 | 4, kern: Kernel, op: number, cov: Float32Array | null, luts: CmykLuts | null): void {
+  if (n === 4 && luts) applyLut4(out, luts.out, rgba);
+      const t = transferOf(l.adjustment);
+        viaKernel(out, W, H, n, kern, op, cov, n === 4 ? luts : null);
+/** A layer's floats taken whole from its 8-bit pixels: CMYK through the table, Lab exactly (1.56.4), otherwise 16-bit RGB. */
+export function deriveWhole(img: ImageData, t: DeriveTables | null, lab = false): ChannelPixels {
+export function deriveRegion(ch: ChannelPixels, x: number, y: number, before: ImageData, after: ImageData, t: DeriveTables | null): ChannelPixels {
+      for (let c = 0; c < 3; c++) out[o + c] = clamp01(F[s + c] / 255 + w * (out[o + c] - B[s + c] / 255));
+export function renderRegion(ch: ChannelPixels, x: number, y: number, w: number, h: number, lut: Lut4 | null): ImageData {
+    if (deepBefore && !nested && p.doc.depth !== 32) this.deriveChannels(p, deepBefore, p.history.pendingPatches);
+    const dl = patch && st.target === 'pixels' && (st.project.doc.depth === 16 || st.project.doc.mode === 'cmyk' || st.project.doc.mode === 'lab') ? st.project.layer(st.layerId) : null;
+    const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics();
+        const ch = deriveRegion(dl.channels, patch.x, patch.y, patch.before, after, t), img = renderRegion(ch, patch.x, patch.y, after.width, after.height, t ? t.out : null);
+    const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab', t = cmyk ? this.deriveTables(p) : null, lut = cmyk ? p.cmykLut : null;
+        const ch = deriveWhole(l.raster.read(), t, lab);
+        const ch = same ? deriveRegion(o.channels, 0, 0, o.raster.read(), l.raster.read(), t) : deriveWhole(l.raster.read(), t, lab);
+        ch = deriveRegion(ch, q.x, q.y, q.before, q.after, t);
+        const img = renderRegion(ch, q.x, q.y, q.before.width, q.before.height, lut);
+    if (!p || !(p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || p.doc.depth === 16)) return null;
+    if (this.current?.doc.depth === 32) return !this.deepBlocked('Painting in 32 bits');   // painting would clip past white (1.53.9)
+export const VERSION = '1.56.7';
+```
+
 ## Face-Aware Liquify, and M3 closed · _v1.56.7 (engine/face-liquify.ts new; io/local-gen.ts; ui/panels/liquify-dialog.ts, local-models.ts; backend app/localgen/face.py new, model_manager.py, main.py)
 
 The parity plan's M3, second part (DEV_PLAN 23.5), which closes the row with the Freeze Mask (1.56.5). The gate first: YuNet (OpenCV Zoo) is MIT (Shiqi Yu, licence read at its source and at OpenCV's Hugging Face copy), 232,589 bytes, pinned to revision 3cc26e7f and SHA-256 8f2383e4... from the real download, run by OpenCV's own `FaceDetectorYN`; dlib's 68-point model was not a candidate (its training data forbids commercial use). `engine/face-liquify.ts`: eleven sliders as Photoshop's (Eye Size, Height and Distance; Nose Height and Width; Smile, Mouth Width and Height; Forehead, Chin Height, Face Width) placed as smooth local moves and scales on Liquify's own grid from the five landmarks, sized by the distance between the eyes, weighed by the freeze, recomputed from the sliders on each render so they never compound; Eye Tilt, Eye Width, Upper and Lower Lip and Jawline need more landmarks and wait. The dialog's Face-Aware section (Find faces, Reset face, the sliders in two columns, a note; built once), the brushes' field plus the face's in the preview and on OK (`combined`); `findFaces` and `faceReady`; the Local models card. Verified under 4x CPU throttling with real clicks on scikit-image's astronaut portrait (NASA, public domain): one face found; Eye Size and Smile at 100 changed 620 pixels around the eyes and 368 around the mouth and none far from the face (the rocket, the suit), as one Liquify step; looked at: larger eyes, a wider smile, nothing else moved; layout shift 0; no errors. Removed lines taken after the version edit. Removed from frontend:
