@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.56.2
+
+No engine code changed in 1.56.2 (the Mixer Brush paints in the window). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.56.1"
+version = "1.56.1"
+version = "1.56.1"
+ "version": "1.56.1",
+```
+
 ## CMYK PSD through psd-tools · _v1.56.1 (app/routers/io.py, app/routers/mcp.py, requirements.txt)
 
 `POST /io/decode-cmyk-psd`: psd-tools reads the file; 204 unless it is an 8-bit CMYK PSD; each pixel layer's ink read as stored (`topil(apply_icc=False)`: by default psd-tools converts through the embedded profile, which turned every layer of a profiled file into RGB and made the first version return no layers), its alpha from `numpy()`, a layer mask folded into the alpha, its name, place, size, opacity, visibility (`is_visible`, parents counted) and blend mode; the answer is a 4-byte length, a JSON header, the layers' bytes, the profile. `POST /io/encode-cmyk-psd`: the composite laid on paper as the PSD's merged image, each layer by `PixelLayer.frompil` with its transparency as a layer mask (`create_mask`; Photoshop's CMYK documents carry no transparency band), opacity, visibility and blend mode, the profile as the ICC image resource. `_PSD_BLENDS` maps formvis's 27 blend modes to psd-tools'. `get_document`'s description names the depth and profile. Checked here: a two-layer document written and read back with names, places, sizes, opacity, a hidden layer, Multiply and Normal, ink exactly, the transparent half at alpha 0 and the 121,368-byte profile byte for byte; a PNG answers 204. Removed lines taken after the version edit:

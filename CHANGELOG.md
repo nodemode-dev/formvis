@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.56.2 · 2026-10-01
+
+The Mixer Brush (the parity plan's L4, first part; DEV_PLAN 23.4).
+
+### Added
+
+- The Mixer Brush (B, with the Brush and Pencil): wet paint that picks up the colours under it and mixes them with the paint it carries. Wet sets how much it picks up, Mix how much of the picked-up paint it lays, Load how long the loaded paint lasts along a stroke; Load the brush and Clean the brush after each stroke, Sample All Layers, and Alt-click to load the reservoir from the canvas. With Wet and Mix at 0 it paints like the Brush.
+
 ## 1.56.1 · 2026-10-01
 
 CMYK PSD in and out, and agents see the mode (DEV_PLAN 22.8).
