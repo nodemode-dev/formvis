@@ -37,6 +37,13 @@ function form(fields: Record<string, string>, files: FilePart[] = [], key = 'fil
 }
 
 export const api = {
+  /** Content-Aware Scale (1.55.4, M4): the layer's PNG, a target size, skin protection and an optional protect mask
+   *  PNG (white protects) go to the engine's seam carver; the carved PNG comes back. */
+  async contentAwareScale(image: Blob, width: number, height: number, skin: boolean, mask: Blob | null): Promise<Blob> {
+    const body = form({ width: String(width), height: String(height), skin: skin ? 'true' : 'false' }, [{ name: 'layer.png', blob: image }], 'file');
+    if (mask) body.append('mask', mask, 'mask.png');
+    return (await request('/seam/content-aware-scale', { method: 'POST', body })).blob();
+  },
   async capabilities(): Promise<Capabilities | null> {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
   },

@@ -84,6 +84,10 @@ ask it questions.
   adds a Curves layer clipped to it, whose opacity is the amount.
 - Filters (Filter menu) include blurs, sharpening, noise, lens correction and the gallery's artistic filters; on a
   smart object they stay editable.
+- Image > Content-Aware Scale changes a layer's width or height by removing or adding the least important seams,
+  so the parts that matter keep their shape; tick Protect skin tones or Protect the selection to keep those whole. It
+  goes from a quarter to twice the size in one step. Image > Image Rotation turns the whole canvas by 90 or 180
+  degrees without resampling a pixel.
 
 ## Generating images
 

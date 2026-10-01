@@ -4458,6 +4458,17 @@ export class Engine {
     return this.edit(undoName, (pp) => { pp.updateLayer(id, { raster: r, transform: docTransform(image.width, image.height) }); return true; });
   }
 
+  /** Content-Aware Scale (1.55.4, M4): the layer's pixels replaced at a new size, its box resized in place. */
+  rescaleLayerPixels(id: ID, image: ImageData, undoName: string): boolean {
+    const p = this.current, l = p?.layer(id);
+    if (!p || !l || !l.raster || l.isGroup || l.adjustment || l.text || l.shape || l.smart) { this.notice('Only a pixel layer can take new pixels.'); return false; }
+    const r = new Raster(image.width, image.height);
+    r.ctx.putImageData(image, 0, 0);
+    r.touch();
+    const t = l.transform, sx = image.width / l.raster.width, sy = image.height / l.raster.height;
+    return this.edit(undoName, (pp) => { pp.updateLayer(id, { raster: r, transform: { ...t, w: t.w * sx, h: t.h * sy } }); return true; });
+  }
+
   addAdjustmentLayer(kind: AdjustmentKind): ID | null {
     let created: ID | null = null;
     this.edit(`New ${ADJUSTMENT_LABELS[kind]} Layer`, (p) => {

@@ -100,6 +100,7 @@ import { ALL_PANELS, Dock, registerPanel, unregisterPanel } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
 import { NeuralFiltersDialog } from './ui/panels/neural-dialog';
+import { ContentAwareScaleDialog } from './ui/panels/content-aware-scale';
 import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
 import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel } from './ui/panels/background-panel';
@@ -1054,6 +1055,7 @@ export function startApp(): void {
     adjust: new AdjustPanel(engine),
     filter: new FilterPanel(engine),
     neural: new NeuralFiltersDialog(engine),
+    contentAwareScale: new ContentAwareScaleDialog(engine),
     canvasSize: new CanvasSizeDialog(engine),
     imageSize: new ImageSizeDialog(engine),
     amount: new AmountDialog(engine),
@@ -1235,6 +1237,7 @@ export function startApp(): void {
     { id: 'select-object', label: 'Object in Selection', enabled: selected, run: () => void selectSubject(true) },
     { id: 'select-and-mask', label: 'Select and Mask...', keys: ['Alt+Mod+R'], enabled: selected, run: () => dialogs.selectMask.show() },
     { id: 'rotate-180', label: '180°', enabled: has, run: () => engine.rotateCanvas(2) },
+    { id: 'content-aware-scale', label: 'Content-Aware Scale...', enabled: pixel, run: () => dialogs.contentAwareScale.show() },
     { id: 'rotate-90-cw', label: '90° Clockwise', enabled: has, run: () => engine.rotateCanvas(1) },
     { id: 'rotate-90-ccw', label: '90° Counter Clockwise', enabled: has, run: () => engine.rotateCanvas(3) },
     { id: 'flip-canvas-h', label: 'Flip Canvas Horizontal', enabled: has, run: () => engine.flipCanvas(true) },
@@ -1420,7 +1423,7 @@ export function startApp(): void {
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
+      'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-folder-dialog', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
       { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
