@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.55.9 · 2026-10-01
+
+Every command at 16 bits and in CMYK (DEV_PLAN 22.7).
+
+### Added
+
+- In 16-bit and CMYK documents nearly every command and tool now works: text, shapes, gradients, fills, pastes, the retouching tools (Clone Stamp, Healing, Dodge, Burn, Sponge, Blur, Sharpen, Smudge), the erasers, Crop, Move Pixels, Stroke Path and the filters not yet on the float model. Pixels such an operation does not touch keep their 16 bits or their ink exactly; the pixels it changes take the new colour (in CMYK the profile's separation, or the foreground's or background's own ink, so black text set at K 100 stays K-only), keeping their old structure where the change is small.
+- What still waits is named in the menus rather than undone afterwards: layer styles at 16 bits and in CMYK; in CMYK, Channel Mixer, Exposure, the profile and proof commands; 32-bit documents keep their own list.
+
+### Known
+
+- Operations not yet on the float model change pixels at 8-bit precision in the change; the Brush, Pencil, Eraser and the ported filters and adjustments keep full precision.
+
 ## 1.55.8 · 2026-10-01
 
 Adaptive Wide Angle (the parity plan's M4, third part, which closes the row with Content-Aware Scale and Perspective Warp).
