@@ -66,3 +66,10 @@ export function depthBlur(img: ImageData, depth: Uint8ClampedArray, focal: numbe
   }
   return out;
 }
+
+/** Colorize's mix: the engine's colourised picture blended into the source by `amount`, the source's alpha kept. */
+export function mixColor(img: ImageData, color: ImageData, amount: number): ImageData {
+  const out = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), d = out.data, c = color.data, t = Math.max(0, Math.min(1, amount));
+  for (let i = 0; i < d.length; i += 4) { if (d[i + 3] === 0) continue; for (let k = 0; k < 3; k++) d[i + k] = d[i + k] + (c[i + k] - d[i + k]) * t; }
+  return out;
+}

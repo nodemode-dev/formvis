@@ -61,6 +61,14 @@ export async function modelReady(id: string): Promise<boolean> {
 }
 export const upscalerReady = (): Promise<boolean> => modelReady('ai-upscale');
 export const depthReady = (): Promise<boolean> => modelReady('depth-anything-v2-small');
+export const colorizeReady = (): Promise<boolean> => modelReady('ddcolor-tiny');
+
+/** Colour for a black-and-white picture (1.54.9, Neural Filters' Colorize): DDColor-tiny on this computer; the
+ *  picture's own luminance kept, its colour predicted. */
+export async function localColorize(image: Blob): Promise<Blob> {
+  const form = new FormData(); form.append('image', image, 'image.png');
+  return (await ask('/colorize/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
+}
 
 /** Depth from one picture (1.54.8, Neural Filters' Depth Blur): Depth Anything V2 Small on this computer, an 8-bit
  *  map with near bright and far dark, the picture's size. */

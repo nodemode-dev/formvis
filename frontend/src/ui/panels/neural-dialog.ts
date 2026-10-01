@@ -1,13 +1,13 @@
 import type { Engine } from '../../engine';
-import { depthBlur, harmonize, skinSmooth } from '../../engine/neural';
-import { depthReady, localDepth } from '../../io/local-gen';
+import { depthBlur, harmonize, mixColor, skinSmooth } from '../../engine/neural';
+import { colorizeReady, depthReady, localColorize, localDepth } from '../../io/local-gen';
 import { toBlob } from '../../engine/surface';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { selectRow, sliderRow } from './controls';
 
-type NeuralKind = 'harmonize' | 'skinSmooth' | 'depthBlur';
-export const NEURAL_LABELS: Record<NeuralKind, string> = { harmonize: 'Harmonize', skinSmooth: 'Skin Smoothing', depthBlur: 'Depth Blur' };
+type NeuralKind = 'harmonize' | 'skinSmooth' | 'depthBlur' | 'colorize';
+export const NEURAL_LABELS: Record<NeuralKind, string> = { harmonize: 'Harmonize', skinSmooth: 'Skin Smoothing', depthBlur: 'Depth Blur', colorize: 'Colorize' };
 
 /** Filter > Neural Filters (1.54.7, DEV_PLAN 23.2): a gallery of filters that run here, the first two without any
  *  model. Each filter's rows exist once and show for the chosen filter; the preview follows every change; OK is one
@@ -24,7 +24,7 @@ export class NeuralFiltersDialog extends Dialog {
 
   constructor(private readonly engine: Engine) {
     super('Neural Filters', 400);
-    const pick = selectRow('Filter', (Object.keys(NEURAL_LABELS) as NeuralKind[]).map((k) => [k, NEURAL_LABELS[k]] as const), (v) => { this.kind = v as NeuralKind; this.showRows(); void this.ensureDepth(); this.schedule(); });
+    const pick = selectRow('Filter', (Object.keys(NEURAL_LABELS) as NeuralKind[]).map((k) => [k, NEURAL_LABELS[k]] as const), (v) => { this.kind = v as NeuralKind; this.showRows(); void this.ensureDepth(); void this.ensureColor(); this.schedule(); });
     this.body.append(pick.el);
     const amount = sliderRow('Amount (%)', 0, 100, 1, (v) => { this.s.amount = v; this.schedule(); });
     const smooth = sliderRow('Smoothness (%)', 0, 100, 1, (v) => { this.s.smooth = v; this.schedule(); });
@@ -32,7 +32,7 @@ export class NeuralFiltersDialog extends Dialog {
     const focus = sliderRow('Focus (near 100, far 0)', 0, 100, 1, (v) => { this.s.focus = v; this.schedule(); });
     const range = sliderRow('Sharp range (%)', 0, 100, 1, (v) => { this.s.range = v; this.schedule(); });
     const blur = sliderRow('Blur (px)', 1, 40, 1, (v) => { this.s.blur = v; this.schedule(); });
-    this.rows.push({ el: amount.el, kinds: ['harmonize'] }, { el: smooth.el, kinds: ['skinSmooth'] }, { el: radius.el, kinds: ['skinSmooth'] }, { el: focus.el, kinds: ['depthBlur'] }, { el: range.el, kinds: ['depthBlur'] }, { el: blur.el, kinds: ['depthBlur'] });
+    this.rows.push({ el: amount.el, kinds: ['harmonize', 'colorize'] }, { el: smooth.el, kinds: ['skinSmooth'] }, { el: radius.el, kinds: ['skinSmooth'] }, { el: focus.el, kinds: ['depthBlur'] }, { el: range.el, kinds: ['depthBlur'] }, { el: blur.el, kinds: ['depthBlur'] });
     this.body.append(amount.el, smooth.el, radius.el, focus.el, range.el, blur.el, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
@@ -46,9 +46,11 @@ export class NeuralFiltersDialog extends Dialog {
     this.kind = kind;
     this.backdrop = this.engine.compositeBelow(l.id);
     if (this.depth?.layerId !== l.id) this.depth = null;
+    if (this.color?.layerId !== l.id) this.color = null;
     this.showRows();
     this.open();
     void this.ensureDepth();
+    void this.ensureColor();
     this.schedule();
   }
 
@@ -77,14 +79,35 @@ export class NeuralFiltersDialog extends Dialog {
     for (const r of this.rows) r.el.style.visibility = r.kinds.includes(this.kind) ? '' : 'hidden';
     setText(this.note, this.kind === 'harmonize' ? 'Harmonize moves the layer\'s light and colour toward what lies beneath it (its mean and spread per channel), by the amount.'
       : this.kind === 'skinSmooth' ? 'Skin Smoothing softens skin tones only: other pixels are untouched.'
+      : this.kind === 'colorize' ? (this.color ? 'Colorize predicts the layer\'s colour with DDColor-tiny on this computer, keeping its own light; Amount mixes it in.' : 'Colorize reads the layer\'s colour with DDColor-tiny on this computer.')
       : this.depth ? 'Depth Blur blurs by distance from the focus depth, read by Depth Anything V2 Small on this computer.' : 'Depth Blur reads the layer\'s depth with Depth Anything V2 Small on this computer.');
   }
 
   private run(): (src: ImageData) => ImageData {
-    const s = { ...this.s }, back = this.backdrop, depth = this.depth?.map ?? null;
+    const s = { ...this.s }, back = this.backdrop, depth = this.depth?.map ?? null, color = this.color?.pixels ?? null;
     return this.kind === 'harmonize' ? (src) => (back ? harmonize(src, back, s.amount / 100) : src)
       : this.kind === 'skinSmooth' ? (src) => skinSmooth(src, s.smooth / 100, s.radius)
+      : this.kind === 'colorize' ? (src) => (color && color.width === src.width && color.height === src.height ? mixColor(src, color, s.amount / 100) : src)
       : (src) => (depth ? depthBlur(src, depth, s.focus * 2.55, s.range * 2.55, s.blur) : src);
+  }
+
+  /** The layer colourised by the engine's DDColor (1.54.9), fetched once per layer; the download prompt when absent. */
+  private color: { layerId: string; pixels: ImageData } | null = null;
+  private colorPending = false;
+  private async ensureColor(): Promise<void> {
+    const l = this.engine.current?.activeLayer;
+    if (this.kind !== 'colorize' || !l?.raster || this.color?.layerId === l.id || this.colorPending) return;
+    this.colorPending = true;
+    try {
+      if (!(await colorizeReady())) { setText(this.note, 'Colorize needs DDColor-tiny (135 MB, Apache-2.0): download it in Preferences > Plugins > Local models.'); return; }
+      setText(this.note, 'Colouring this layer...');
+      const png = await localColorize(await toBlob(l.raster.canvas)), bmp = await createImageBitmap(png), c = document.createElement('canvas'); c.width = bmp.width; c.height = bmp.height;
+      const g = c.getContext('2d') as CanvasRenderingContext2D; g.drawImage(bmp, 0, 0);
+      this.color = { layerId: l.id, pixels: g.getImageData(0, 0, c.width, c.height) };
+      this.showRows();
+      this.schedule();
+    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'The colour could not be read.'); }
+    finally { this.colorPending = false; }
   }
 
   private schedule(): void {

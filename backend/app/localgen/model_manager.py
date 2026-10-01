@@ -125,6 +125,7 @@ PINNED: dict[str, str] = {
     "u2net_human_seg.onnx": "01eb6a29a5c4d8edb30b56adad9bb3a2a0535338e480724a213e0acfd2d1c73c",
     "lama_fp32.onnx": "1faef5301d78db7dda502fe59966957ec4b79dd64e16f03ed96913c7a4eb68d6",
     "depth-anything-v2-small/model.onnx": "afb6a5c28f3b6bf1618c6e43f02073ef9dfdc70e937502d51603e57b0a1df10c",
+    "ddcolor-tiny/ddcolor-tiny-fp16.onnx": "2653da00dc15e54a45e5200b61dbf82ee9ceaf56b02bb9b9657569ac775e82e6",
     "sam2.1-hiera-tiny/vision_encoder.onnx": "4f30aacd3aaefbca81a0b7fe4c1fc96345570ea0a6f80ced599493d1b3be2e8c",
     "sam2.1-hiera-tiny/vision_encoder.onnx_data": "e83df9866a5afe68ea7f0f721f18f65137fc3acbf0da1c74e946d363e09c69cc",
     "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx": "874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf",
@@ -312,6 +313,13 @@ MODELS = {
         "name": "Depth Anything V2 Small (ONNX)",
         "license": "Apache-2.0",
         "files": {"depth-anything-v2-small/model.onnx": "https://huggingface.co/onnx-community/depth-anything-v2-small/resolve/413ce838e669ab7dfc01a6a396bf3d4397286d7f/onnx/model.onnx"},
+    },
+    # DDColor-tiny as ONNX (1.54.9, formvis): colour for black-and-white pictures in the Neural Filters. DDColor is
+    # Apache-2.0 (piddnad/DDColor); the fp16 export is edgetools', pinned to its revision, hashed on 1 October 2026.
+    "ddcolor-tiny": {
+        "name": "DDColor-tiny (ONNX)",
+        "license": "Apache-2.0",
+        "files": {"ddcolor-tiny/ddcolor-tiny-fp16.onnx": "https://huggingface.co/edgetools/ddcolor/resolve/4755ae9f1f7a35a9e7693b96c2a88f3432cb6ab0/ddcolor-tiny-fp16.onnx"},
     },
     # SAM 2.1 tiny as ONNX (1.53.4, formvis): Object Selection with nothing to install, on ONNX Runtime. Meta's SAM 2.1
     # weights (Apache-2.0), exported by onnx-community (the export states no licence of its own), pinned to its revision.

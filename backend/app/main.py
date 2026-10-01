@@ -34,7 +34,8 @@ from app.localgen import checkpoints as _lg_checkpoints, generate as _lg_generat
 from app.localgen import ai_upscale as _lg_upscale  # noqa: E402  (1.53.1)
 from app.localgen import inpaint as _lg_inpaint  # noqa: E402  (1.53.2)
 from app.localgen import depth as _lg_depth  # noqa: E402  (1.54.8)
-for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router, _lg_upscale.router, _lg_inpaint.router, _lg_depth.router):
+from app.localgen import colorize as _lg_colorize  # noqa: E402  (1.54.9)
+for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router, _lg_upscale.router, _lg_inpaint.router, _lg_depth.router, _lg_colorize.router):
     app.include_router(_router)
 
 _dist = config.dist_dir()

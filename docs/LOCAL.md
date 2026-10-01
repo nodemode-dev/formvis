@@ -22,6 +22,7 @@ replaces an outside program or a model too large for the test machine, and says 
 |---|---|---|---|
 | Generative Fill and Expand, no prompt | LaMa, 208 MB, Apache-2.0 | any computer's CPU (seconds) | real model: tests/test_localgen_inpaint.py, e2e/test_local_inpaint.py (no fal, no ComfyUI) |
 | Neural Filters > Depth Blur | Depth Anything V2 Small (ONNX), 99 MB, Apache-2.0 | any computer's CPU (about 2 s a picture) | real model run here on 1 October 2026 (a near object 203, a far sky 85); the browser run under throttling in frontend/HASHOUT_LOG.md 1.54.8 |
+| Neural Filters > Colorize | DDColor-tiny (ONNX, fp16 weights), 135 MB, Apache-2.0 | any computer's CPU (about 6 s a picture) | real model run here on 1 October 2026 on a grey photograph (a plausible sky, water and sand; luminance kept within 0.9); the browser run under throttling in frontend/HASHOUT_LOG.md 1.54.9 |
 | Image > Upscale 2x or 4x | Real-ESRGAN x4plus, 67 MB, BSD-3-Clause | any computer's CPU | real model: tests/test_localgen_upscale.py, e2e/test_local_upscale.py |
 | Object Selection | SAM 2.1 tiny, 155 MB, Apache-2.0, fetched on first use | any computer's CPU (ONNX Runtime; torch on a GPU when installed) | real model: tests/test_segment_onnx.py |
 | Select Subject and Remove Background | U²-Net, 176 MB, Apache-2.0, fetched on first use | any computer's CPU (ONNX Runtime; rembg when installed) | real model: tests/test_background_onnx.py, e2e/test_select_subject.py |
