@@ -1,6 +1,8 @@
 import type { Engine, Pt } from '../engine';
 import { el } from './dom';
 import { composeChannels } from '../engine/channels';
+import { composeFloat } from '../engine/compose-float';
+import { decodeLab } from '../engine/lab';
 import { PanelGroup } from './panel-group';
 
 /** The Info panel (1.49.6, the owner's tool list), as Photoshop's: the colour and position under the pointer, the
@@ -51,6 +53,13 @@ export class InfoPanel {
   private ink: { data: Float32Array; w: number; h: number } | null = null;
   private inkAt(pt: Pt): string | null {
     const p = this.engine.current;
+    if (p?.doc.mode === 'lab') {
+      if (!this.ink) { const c = composeFloat(p.doc, 3, false); if ('error' in c) return null; this.ink = { data: c.data, w: c.width, h: c.height }; }
+      const x = Math.floor(pt.x), y = Math.floor(pt.y), k = this.ink;
+      if (x < 0 || y < 0 || x >= k.w || y >= k.h) return '-';
+      const i = (y * k.w + x) * 4, [L, a, b] = decodeLab(k.data[i], k.data[i + 1], k.data[i + 2]);
+      return k.data[i + 3] === 0 ? 'transparent' : `L ${Math.round(L)}  a ${Math.round(a)}  b ${Math.round(b)}`;
+    }
     if (!p || p.doc.mode !== 'cmyk') return null;
     if (!this.ink) { const c = composeChannels(p.doc, p.cmykTables); if ('error' in c) return null; this.ink = { data: c.data, w: c.width, h: c.height }; }
     const x = Math.floor(pt.x), y = Math.floor(pt.y), k = this.ink;

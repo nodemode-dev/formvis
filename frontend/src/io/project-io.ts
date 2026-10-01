@@ -60,6 +60,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (ch?.mode === 'rgb' && doc.depth === 32) { const name = `${l.id}.deep32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = ch.width; r.deepHeight = ch.height; }
     else if (ch?.mode === 'rgb') { const name = `${l.id}.deep16`; files.push({ name, blob: new Blob([deepToU16(ch.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = ch.width; r.deepHeight = ch.height; }
     else if (ch?.mode === 'cmyk') { const name = `${l.id}.cmyk32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
+    else if (ch?.mode === 'lab') { const name = `${l.id}.lab32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
     if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.smart && !l.isGroup) {
       const name = `${l.id}.source.png`;
@@ -192,12 +193,13 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const styles = paragraphStylesFrom(manifest.paragraphStyles);
   const inside = (x: number, y: number): boolean => Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x <= width && y <= height;
   // The colour mode and an indexed document's palette (1.50.2); anything else reads as RGB.
-  const mode = manifest.mode === 'grayscale' || manifest.mode === 'bitmap' || manifest.mode === 'indexed' || manifest.mode === 'cmyk' ? manifest.mode : null;
+  const mode = manifest.mode === 'grayscale' || manifest.mode === 'bitmap' || manifest.mode === 'indexed' || manifest.mode === 'cmyk' || manifest.mode === 'lab' ? manifest.mode : null;
   const palette = (Array.isArray(manifest.palette) ? manifest.palette : []).flatMap((c) => Array.isArray(c) && c.length === 3 && c.every((v) => Number.isInteger(v) && v >= 0 && v <= 255) ? [{ r: c[0] as number, g: c[1] as number, b: c[2] as number }] : []).slice(0, 256);
   const notes = (Array.isArray(manifest.notes) ? manifest.notes : []).flatMap((n) => { const o = obj(n), x = num(o.x, NaN), y = num(o.y, NaN); return inside(x, y) ? [{ id: str(o.id) ?? uid(), x, y, text: (str(o.text) ?? '').slice(0, 10000) }] : []; }).slice(0, 1000);
   const counts = (Array.isArray(manifest.counts) ? manifest.counts : []).flatMap((c) => { const o = obj(c), x = num(o.x, NaN), y = num(o.y, NaN); return inside(x, y) ? [{ x, y }] : []; }).slice(0, 10000);
   records.forEach((r, i) => { const n = str(r.deepFile), u = n ? deeps.get(n) : undefined, w = num(r.deepWidth, 0), h = num(r.deepHeight, 0); if (u && layers[i] && u.length === w * h * 4) (layers[i] as { channels?: ChannelPixels }).channels = u instanceof Float32Array ? { mode: 'rgb', n: 3, width: w, height: h, data: u } : deepFromU16(u, w, h); });
   if (mode === 'cmyk') records.forEach((r, i) => { const n = str(r.inkFile), u = n ? inks.get(n) : undefined, w = num(r.inkWidth, 0), h = num(r.inkHeight, 0); if (u && layers[i] && u.length === w * h * 5) (layers[i] as { channels?: ChannelPixels }).channels = { mode: 'cmyk', n: 4, width: w, height: h, data: u }; });
+  if (mode === 'lab') records.forEach((r, i) => { const n = str(r.inkFile), u = n ? inks.get(n) : undefined, w = num(r.inkWidth, 0), h = num(r.inkHeight, 0); if (u && layers[i] && u.length === w * h * 4) (layers[i] as { channels?: ChannelPixels }).channels = { mode: 'lab', n: 3, width: w, height: h, data: u }; });
   return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
 }
 

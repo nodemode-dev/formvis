@@ -3,6 +3,7 @@ import { composeChannels, rasterFromChannels, strokeChannels } from './channels'
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
 import { artHistoryTexture, type ArtStyle } from './art-history';
+import { decodeLab, labFromRgba, labToSrgb } from './lab';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
@@ -501,7 +502,7 @@ export class Engine {
     p.history.begin(name, p.snapshot());
     let ok: boolean | void = true;
     const cmyk = p.doc.mode === 'cmyk';
-    const deepBefore = (p.doc.depth ?? 8) > 8 || cmyk ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
+    const deepBefore = (p.doc.depth ?? 8) > 8 || cmyk || p.doc.mode === 'lab' ? new Map(p.doc.layers.map((l) => [l.id, l])) : null;
     try { ok = fn(p); } catch (err) {
       if (nested) throw err;
       this.rollBack(p, name, err);
@@ -2779,7 +2780,7 @@ export class Engine {
     const patch = st.heal === 'remove' ? this.removePatch(st.s) : st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
-    const dl = patch && st.target === 'pixels' && (st.project.doc.depth === 16 || st.project.doc.mode === 'cmyk') ? st.project.layer(st.layerId) : null;
+    const dl = patch && st.target === 'pixels' && (st.project.doc.depth === 16 || st.project.doc.mode === 'cmyk' || st.project.doc.mode === 'lab') ? st.project.layer(st.layerId) : null;
     const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics();
     if (patch && exact && dl?.channels?.mode === 'rgb' && dl.raster === patch.raster) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
@@ -6470,7 +6471,7 @@ export class Engine {
    *  8-bit pixels changed while its floats did not is brought into step (engine/derive.ts), its rendition redrawn from
    *  the floats; a pixel layer without floats takes them whole. Replaced rasters, in-place patches and new layers. */
   private deriveChannels(p: Project, before: ReadonlyMap<ID, Layer>, patches: readonly PixelPatch[]): boolean {
-    const cmyk = p.doc.mode === 'cmyk', t = cmyk ? this.deriveTables(p) : null, lut = cmyk ? p.cmykLut : null;
+    const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab', t = cmyk ? this.deriveTables(p) : null, lut = cmyk ? p.cmykLut : null;
     if (cmyk && !t) return false;
     let changed = false;
     const layers = p.doc.layers.map((l) => {
@@ -6479,14 +6480,14 @@ export class Engine {
       if (!o?.channels || !o.raster) {
         if (l.channels) return l;
         changed = true;
-        const ch = deriveWhole(l.raster.read(), t);
+        const ch = deriveWhole(l.raster.read(), t, lab);
         return { ...l, channels: ch, raster: lut ? rasterFromChannels(ch, lut) : l.raster };
       }
       if (l.channels !== o.channels) return l;
       if (l.raster !== o.raster) {
         changed = true;
         const same = l.raster.width === o.raster.width && l.raster.height === o.raster.height && JSON.stringify(l.transform) === JSON.stringify(o.transform);
-        const ch = same ? deriveRegion(o.channels, 0, 0, o.raster.read(), l.raster.read(), t) : deriveWhole(l.raster.read(), t);
+        const ch = same ? deriveRegion(o.channels, 0, 0, o.raster.read(), l.raster.read(), t) : deriveWhole(l.raster.read(), t, lab);
         return { ...l, channels: ch, raster: lut ? rasterFromChannels(ch, lut) : l.raster };
       }
       const mine = patches.filter((q) => q.raster === l.raster);
@@ -6509,7 +6510,7 @@ export class Engine {
    *  Move Pixels, Stroke Path...) brings 16-bit and CMYK floats into step here; 32 bits is left to its own guards. */
   private readonly stepHook = (History.onStepEnd = (h: History, before: Snapshot, patches: readonly PixelPatch[]): Snapshot | null => {
     const p = this.projects.find((q) => q.history === h);
-    if (!p || !(p.doc.mode === 'cmyk' || p.doc.depth === 16)) return null;
+    if (!p || !(p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || p.doc.depth === 16)) return null;
     return this.deriveChannels(p, new Map(before.doc.layers.map((l) => [l.id, l])), patches) ? p.snapshot() : null;
   });
 
@@ -6537,6 +6538,35 @@ export class Engine {
 
   /** Image > Mode > RGB Color from CMYK: each layer's rendition replaced by the engine's exact conversion, the ink
    *  dropped, the document back in sRGB (or `profile`). */
+  /** Image > Mode > Lab Color (1.56.4, DEV_PLAN 22.9): each pixel layer's floats in Lab, converted from its pixels
+   *  exactly (engine/lab.ts); the rasters stay as their rendition. From an 8-bit RGB document. */
+  setLab(): boolean {
+    const p = this.current;
+    if (!p || (p.doc.mode ?? 'rgb') !== 'rgb' || (p.doc.depth ?? 8) !== 8) return false;
+    return this.edit('Lab Color', (pp) => {
+      const layers = pp.doc.layers.map((l) => (l.raster && !l.isGroup && !l.adjustment ? { ...l, channels: labFromRgba(l.raster.read()) } : l));
+      pp.doc = { ...pp.doc, layers, mode: 'lab' };
+      return true;
+    });
+  }
+
+  /** Image > Mode > RGB Color from Lab: each layer's pixels from its Lab floats, exactly, clipped to sRGB. */
+  setRgbFromLab(): boolean {
+    const p = this.current;
+    if (!p || p.doc.mode !== 'lab') return false;
+    return this.edit('RGB Color', (pp) => {
+      const layers = pp.doc.layers.map((l) => {
+        if (l.channels?.mode !== 'lab') return l;
+        const ch = l.channels, r = new Raster(ch.width, ch.height), img = r.ctx.createImageData(ch.width, ch.height);
+        for (let i = 0, o = 0; i < ch.data.length; i += 4, o += 4) { const [L, a, b] = decodeLab(ch.data[i], ch.data[i + 1], ch.data[i + 2]), rgb = labToSrgb(L, a, b); img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = Math.round(ch.data[i + 3] * 255); }
+        r.ctx.putImageData(img, 0, 0); r.touch();
+        return { ...l, channels: undefined, raster: r };
+      });
+      pp.doc = { ...pp.doc, layers, mode: 'rgb' };
+      return true;
+    });
+  }
+
   setRgbFromCmyk(rasters: Map<ID, Raster>, profile: DocProfile | null = null): boolean {
     const p = this.current;
     if (!p || p.doc.mode !== 'cmyk') return false;
@@ -6654,8 +6684,8 @@ export class Engine {
 
   convertMode(mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean {
     const p = this.current;
-    if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || p.doc.mode === 'cmyk') return false;
-    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color' }[mode];
+    if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || p.doc.mode === 'cmyk' || mode === 'lab' || p.doc.mode === 'lab') return false;
+    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color', lab: 'Lab Color' }[mode];
     const flat = mode === 'bitmap' || mode === 'indexed' ? this.flattened() : null;
     const ok = this.edit(label, (pp) => {
       const W = pp.doc.width, H = pp.doc.height;

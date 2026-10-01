@@ -102,7 +102,7 @@ export interface Guide { axis: 'x' | 'y'; at: number }
 export interface DocNote { id: ID; x: number; y: number; text: string }
 /** A document's colour mode (1.50.2, the owner's walkthrough), as Photoshop's: RGB, Grayscale (8-bit grey), Bitmap (1-bit
  *  black and white) or Indexed Color (a palette of at most 256). Absent means RGB. */
-export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk';
+export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk' | 'lab';
 /** Blend If ranges, 0 to 255: [blackStart, blackEnd, whiteStart, whiteEnd] for this layer and for the underlying
  *  composite; between the two numbers of a split the layer fades. Identity is [0, 0, 255, 255] on both. */
 export interface BlendIf { channel: 'gray' | 'r' | 'g' | 'b'; thisLayer: [number, number, number, number]; underlying: [number, number, number, number] }

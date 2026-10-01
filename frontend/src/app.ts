@@ -1439,7 +1439,8 @@ export function startApp(): void {
     { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
     { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
     // Image > Mode and Layer > Flatten Image (1.50.2, the owner's walkthrough), as Photoshop's.
-    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { if (engine.current?.doc.mode === 'cmyk') void cmykToRgb(); else engine.convertMode('rgb'); } },
+    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { if (engine.current?.doc.mode === 'cmyk') void cmykToRgb(); else if (engine.current?.doc.mode === 'lab') engine.setRgbFromLab(); else engine.convertMode('rgb'); } },
+    { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && (engine.current?.doc.depth ?? 8) === 8 && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (engine.current?.doc.mode !== 'lab') engine.setLab(); } },
     { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && (engine.current?.doc.depth ?? 8) === 8 && ['rgb', 'cmyk'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode !== 'cmyk') modeDialog.show('cmyk'); } },
     { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { engine.convertMode('grayscale'); } },
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => modeDialog.show('bitmap') },
@@ -1469,7 +1470,7 @@ export function startApp(): void {
       'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
-      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'new-folder-dialog', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
@@ -1733,7 +1734,9 @@ export function startApp(): void {
   const STYLES = ['layer-style', 'paste-layer-style'];
   const CMYK_NOT = new Set([...STYLES, 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
   const DEEP16_NOT = new Set([...STYLES, 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-hdrToning']);
+  const LAB_NOT = new Set([...STYLES, ...ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`), 'blend-next', 'blend-prev', 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? !CMYK_NOT.has(c.id) || passes(c)
+    : engine.current?.doc.mode === 'lab' ? !LAB_NOT.has(c.id) || passes(c)
     : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || ((DEEP_OK.has(c.id) || passes(c)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));
   // Rebound keys (1.53.4), applied once every command is registered.
   for (const [id, keys] of Object.entries(loadPrefs().shortcuts)) commands.setKeys(id, keys);
