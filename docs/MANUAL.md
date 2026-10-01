@@ -187,9 +187,10 @@ ask it questions.
   and folder masks, clipping masks and groups, in the canvas and in every export. Hue/Saturation, Vibrance, Color
   Balance, Black and White, Photo Filter, Threshold, Selective Color, Gradient Map, Color Lookup and Shadows/Highlights
   layers give the same results as in RGB: a small change keeps the ink's own structure (a K-only black stays K-only),
-  a large one takes the profile's separation. Nothing drops a CMYK document to RGB
-  quietly: what is not built for ink yet waits in the menu until Mode > RGB Color, and a step that would lose ink is
-  undone with a message.
+  a large one takes the profile's separation. Text, shapes, gradients, fills, the retouching tools and the other
+  filters work too: the pixels they leave alone keep their ink exactly, the ones they change take the new colour's
+  ink (black text set at K 100 stays K-only). What does not work in CMYK yet (layer styles, Channel Mixer, Exposure,
+  the profile and proof commands) waits in the menu until Mode > RGB Color.
 
 ## 32-bit documents
 

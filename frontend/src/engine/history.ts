@@ -9,6 +9,9 @@ export interface PixelPatch { raster: Raster; x: number; y: number; before: Imag
 export interface HistoryEntry { name: string; before: Snapshot; after: Snapshot; patches: PixelPatch[]; beforeRev: number; afterRev: number }
 
 export class History {
+  /** Called as any step ends (1.55.9): the engine brings floats into step with the step's 8-bit pixels and returns the
+   *  snapshot to keep, or null when nothing changed. One engine per window, so one hook. */
+  static onStepEnd: ((h: History, before: Snapshot, patches: readonly PixelPatch[]) => Snapshot | null) | null = null;
   entryLimit = 100;
   byteLimit = 256 * 1024 * 1024;
   revision = 0;
@@ -39,12 +42,17 @@ export class History {
 
   addPatch(patch: PixelPatch): void { this.pending?.patches.push(patch); }
 
+  /** The in-place pixel patches of the step being built (1.55.9), so a 16-bit or CMYK layer's floats can follow them. */
+  get pendingPatches(): readonly PixelPatch[] { return this.pending?.patches ?? []; }
+
   end(snap: Snapshot): boolean {
     if (this.depth === 0) return false;
     this.depth -= 1;
     if (this.depth > 0 || !this.pending) return false;
     const p = this.pending;
     this.pending = null;
+    const hooked = History.onStepEnd ? History.onStepEnd(this, p.before, p.patches) : null;
+    if (hooked) snap = hooked;
     // A step that changed nothing is dropped; a path edit's step (it carries the paths) counts when the paths changed.
     const pathsSame = !p.before.paths || JSON.stringify(p.before.paths) === JSON.stringify(snap.paths);
     if (!p.patches.length && p.before.doc === snap.doc && p.before.selection === snap.selection && pathsSame) return false;

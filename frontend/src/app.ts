@@ -1682,16 +1682,16 @@ export function startApp(): void {
   // 32 bits (1.53.9) are linear light, unbounded: what would clip past white waits there.
   const NOT_AT_32 = new Set(['new-adj-levels', 'new-adj-curves', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'filter-unsharpMask', 'filter-addNoise', 'assign-profile', 'proof-setup', 'proof-colors', 'gamut-warning']);
   for (const id of ['depth-32', 'export-hdr', 'export-exr']) DEEP_OK.add(id);
-  const CMYK_OK = new Set(['new', 'open', 'import', 'save', 'save-as', 'download-project', 'close-tab', 'undo', 'redo', 'export-png', 'export-tiff', 'export-jpg', 'export-webp', 'export-avif', 'export-gif', 'export-pdf',
-    'delete-layer', 'rename', 'forward', 'backward', 'select-all', 'deselect', 'inverse', 'mode-rgb', 'mode-cmyk',
-    'duplicate', 'duplicate-dialog', 'group', 'add-mask', 'add-mask-hide', 'delete-mask', 'toggle-mask', 'link-mask', 'clip', 'blend-next', 'blend-prev',
-    'filter-gaussianBlur', 'filter-unsharpMask', 'filter-addNoise', 'filter-motionBlur', 'filter-surfaceBlur', 'image-size', 'canvas-size', 'flip-canvas-h', 'flip-canvas-v', 'rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'trim', 'reveal-all', 'new-adj-levels', 'new-adj-curves', 'new-adj-invert', 'new-adj-posterize', 'new-adj-brightnessContrast', 'edit-adjustment',
-    'fit', 'actual', 'pixel-grid', 'toggle-panels', 'rail-columns', 'reset-panels', 'merge-columns', 'settings', 'shortcuts', 'help', 'about', 'assistant', 'benchmark', 'copy-error-log', 'new-guide', 'clear-guides', 'lock-guides', 'clear-recent', 'edit-note', 'swatch-add', 'swatches-reset', 'manage-plugins']);
   const COLOUR_ADJ = ['new-adj-hsv', 'new-adj-vibrance', 'new-adj-colorBalance', 'new-adj-blackWhite', 'new-adj-photoFilter', 'new-adj-channelMixer', 'new-adj-threshold', 'new-adj-selectiveColor', 'new-adj-gradientMap', 'new-adj-colorLookup', 'new-adj-shadowsHighlights'];
-  for (const id of COLOUR_ADJ) { DEEP_OK.add(id); NOT_AT_32.add(id); if (id !== 'new-adj-channelMixer') CMYK_OK.add(id); }
+  for (const id of COLOUR_ADJ) { DEEP_OK.add(id); NOT_AT_32.add(id); }
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
-  commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? CMYK_OK.has(c.id) || passes(c)
-    : (engine.current?.doc.depth ?? 8) === 8 || ((DEEP_OK.has(c.id) || passes(c)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));
+  // 1.55.9 (DEV_PLAN 22.7): at 16 bits and in CMYK every command runs, the ones not on the float model through derive
+  // (engine/derive.ts); these are the ones that cannot work in that mode yet. 32 bits keeps its allowlist.
+  const STYLES = ['layer-style', 'paste-layer-style'];
+  const CMYK_NOT = new Set([...STYLES, 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const DEEP16_NOT = new Set([...STYLES, 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-hdrToning']);
+  commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? !CMYK_NOT.has(c.id) || passes(c)
+    : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || ((DEEP_OK.has(c.id) || passes(c)) && !(engine.current?.doc.depth === 32 && NOT_AT_32.has(c.id)));
   // Rebound keys (1.53.4), applied once every command is registered.
   for (const [id, keys] of Object.entries(loadPrefs().shortcuts)) commands.setKeys(id, keys);
   if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation, colour: colourView };
