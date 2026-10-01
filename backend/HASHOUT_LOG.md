@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.57.5
+
+No engine code changed in 1.57.5 (Grayscale and the mode chains are window code). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.57.4"
+version = "1.57.4"
+version = "1.57.4"
+ "version": "1.57.4",
+```
+
 ## Remove's finder · _v1.57.4 (app/routers/remove_find.py new, app/main.py)
 
 `POST /api/remove/find` (kind `people` or `distractions`): People turns each face YuNet finds into a box around the person (from 1.3 face widths left to 2.3 right, half a face above to 7.5 below) that SAM2 makes the person's mask; the largest person is kept as the subject when their face is at least 2.5 times the next one's, or, alone, fills at least 0.5% of the picture. Distractions adds U2-Net's salient objects other than the largest (and at least 0.05% of the picture) to the people other than the subject. The mask is dilated by a few pixels; 409 names a missing model. A first subject rule (at least 4% of the picture) marked a portrait-sized subject for removal; corrected before release. Checked here on the scene: the background person covered 0.71, the subject 0.00, everything else 0.000; 4.6 s for People on the CPU (22.5 s the first time, while SAM2 loaded); over HTTP the same mask in 4.8 s. Removed lines taken after the version edit:

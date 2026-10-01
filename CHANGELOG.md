@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.57.5 · 2026-10-01
+
+Grayscale at every depth and from every mode (DEV_PLAN 22.11).
+
+### Added
+
+- Image > Mode > Grayscale in 16-bit documents (keeping 16 bits) and 32-bit documents (luminance in linear light, light above white kept). Every command now works in 16-bit documents.
+- Grayscale from a Lab document takes its Lightness, as Photoshop does.
+- Grayscale, Bitmap and Indexed Color from CMYK documents, and Bitmap, Indexed Color and CMYK Color from Lab documents, going through RGB first.
+
 ## 1.57.4 · 2026-10-01
 
 Remove finds people and distractions (the parity plan's M1).
