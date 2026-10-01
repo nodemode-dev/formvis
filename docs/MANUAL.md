@@ -104,8 +104,10 @@ ask it questions.
   colour toward what lies beneath it; Skin Smoothing softens skin tones only; neither needs a model. Depth Blur reads
   the layer's depth with Depth Anything V2 Small (Preferences > Plugins > Local models, about 99 MB, Apache-2.0) and
   blurs by distance from the focus depth you set, past a sharp range. Colorize predicts a black-and-white layer's
-  colour with DDColor-tiny (about 135 MB, Apache-2.0), keeping its own light, mixed in by Amount. More filters join
-  the gallery as their models land; the gallery works on 8-bit RGB layers for now.
+  colour with DDColor-tiny (about 135 MB, Apache-2.0), keeping its own light, mixed in by Amount. Style Transfer
+  repaints the layer in one of five preset styles (Mosaic, Candy, Rain Princess, Udnie, Pointilism; the ONNX model
+  zoo's fast neural style models, about 34 MB, BSD-3-Clause), mixed in by Amount. More filters join the gallery as
+  their models land; the gallery works on 8-bit RGB layers for now.
 - References: up to four layers can be sent to a ComfyUI workflow as references.
 - On this computer, with no key and no cost: install Krea 2 Turbo or FLUX.2 [klein] 4B in Preferences > Plugins >
   Local models (each licence is shown for you to accept first; Krea 2 installs with the content filter its licence

@@ -23,14 +23,15 @@ export class LocalModelsSection {
   private readonly lama = el('<div class="cv-local-card" data-model="lama-inpaint"></div>');
   private readonly depth = el('<div class="cv-local-card" data-model="depth-anything-v2-small"></div>');
   private readonly ddcolor = el('<div class="cv-local-card" data-model="ddcolor-tiny"></div>');
+  private readonly styles = el('<div class="cv-local-card" data-model="fast-style"></div>');
   private job: string | null = null;
 
   constructor() {
-    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.lama, this.depth, this.ddcolor, this.upscaler, this.krea, this.klein, this.library);
+    this.el.append(el('<p class="cv-note">Models that run here, with no key and no cost: they appear in Generate Image, and Krea 2 in Generative Fill. They are large, and each licence is shown for you to accept before anything downloads.</p>'), this.lama, this.depth, this.ddcolor, this.styles, this.upscaler, this.krea, this.klein, this.library);
   }
 
   async refresh(): Promise<void> {
-    try { await Promise.all([this.showDownload(this.lama, 'lama-inpaint', 'LaMa inpainting', 'Download LaMa', 'about 208 MB', 'Generative Fill and Expand on any computer, with no prompt, key or cost: it fills from what surrounds the selection. Apache-2.0.'), this.showDownload(this.depth, 'depth-anything-v2-small', 'Depth Anything V2 Small', 'Download Depth Anything', 'about 99 MB', 'Depth from one picture for the Neural Filters\' Depth Blur, on any computer. The Small checkpoint, Apache-2.0.'), this.showDownload(this.ddcolor, 'ddcolor-tiny', 'DDColor-tiny', 'Download DDColor', 'about 135 MB', 'Colour for black-and-white pictures in the Neural Filters, on any computer; the picture\'s own light is kept. Apache-2.0.'), this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
+    try { await Promise.all([this.showDownload(this.lama, 'lama-inpaint', 'LaMa inpainting', 'Download LaMa', 'about 208 MB', 'Generative Fill and Expand on any computer, with no prompt, key or cost: it fills from what surrounds the selection. Apache-2.0.'), this.showDownload(this.depth, 'depth-anything-v2-small', 'Depth Anything V2 Small', 'Download Depth Anything', 'about 99 MB', 'Depth from one picture for the Neural Filters\' Depth Blur, on any computer. The Small checkpoint, Apache-2.0.'), this.showDownload(this.ddcolor, 'ddcolor-tiny', 'DDColor-tiny', 'Download DDColor', 'about 135 MB', 'Colour for black-and-white pictures in the Neural Filters, on any computer; the picture\'s own light is kept. Apache-2.0.'), this.showDownload(this.styles, 'fast-style', 'Style Transfer presets', 'Download the styles', 'about 34 MB', 'Five preset styles (Mosaic, Candy, Rain Princess, Udnie, Pointilism) for the Neural Filters, the ONNX model zoo\'s fast neural style models, on any computer. BSD-3-Clause.'), this.showUpscaler(), this.showKrea(), this.showKlein(), this.showLibrary()]); }
     catch { this.krea.replaceChildren(el('<p class="cv-note">The formvis engine is offline: local models need it.</p>')); }
   }
 

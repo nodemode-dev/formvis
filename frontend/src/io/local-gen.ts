@@ -62,6 +62,13 @@ export async function modelReady(id: string): Promise<boolean> {
 export const upscalerReady = (): Promise<boolean> => modelReady('ai-upscale');
 export const depthReady = (): Promise<boolean> => modelReady('depth-anything-v2-small');
 export const colorizeReady = (): Promise<boolean> => modelReady('ddcolor-tiny');
+export const styleReady = (): Promise<boolean> => modelReady('fast-style');
+
+/** Style Transfer presets (1.55.1): the ONNX model zoo's fast neural style models on this computer. */
+export async function localStyle(image: Blob, style: string): Promise<Blob> {
+  const form = new FormData(); form.append('image', image, 'image.png'); form.append('style', style);
+  return (await ask('/style/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
+}
 
 /** Colour for a black-and-white picture (1.54.9, Neural Filters' Colorize): DDColor-tiny on this computer; the
  *  picture's own luminance kept, its colour predicted. */

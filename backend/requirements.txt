@@ -9,3 +9,4 @@ opencv-python-headless==5.0.0.93
 keyring==25.7.0   # API keys in the system's password store (1.52.5); MIT
 httpx==0.28.1   # local generation's pinned model downloads (1.52.9); BSD-3-Clause
 onnxruntime==1.30.0   # the local models (SAM 2.1, LaMa, Real-ESRGAN) with nothing extra to install (1.53.4); MIT
+onnx==1.23.1          # the style presets' fixed 224 by 224 input made dynamic in memory (1.55.1); Apache-2.0
