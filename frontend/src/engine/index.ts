@@ -2,6 +2,7 @@ import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, ty
 import { composeChannels, rasterFromChannels, strokeChannels } from './channels';
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
+import { artHistoryTexture, type ArtStyle } from './art-history';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
@@ -5320,7 +5321,17 @@ export class Engine {
     return mixerSource(this.mixerState, this.mixer, windowSampler(img, toPixels, this.brush.diameter / 6));
   }
 
-  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush' | 'patternStamp', pt: Pt, shift: boolean): boolean {
+  /** The Art History Brush (1.56.3): its style and tolerance (percent of the level range), and the stylised version
+   *  of the source a stroke reveals, its strokes a quarter of the brush wide, a new pattern each stroke. */
+  artHistory: { style: ArtStyle; tolerance: number } = { style: 'tightShort', tolerance: 0 };
+  private artHistoryTexture(p: Project, l0: Layer, sample: Surface): Surface {
+    const W = p.doc.width, H = p.doc.height, src = ctxOf(sample).getImageData(0, 0, W, H);
+    const tol = Math.round(Math.max(0, Math.min(100, this.artHistory.tolerance)) * 2.55);
+    const current = tol > 0 ? ctxOf(this.layerSample(p, l0)).getImageData(0, 0, W, H) : null;
+    return artHistoryTexture(src, this.artHistory.style, Math.max(2, this.brush.diameter / 4), Math.floor(Math.random() * 2 ** 31), current, tol);
+  }
+
+  beginRetouchStroke(kind: 'heal' | 'remove' | 'clone' | 'blur' | 'sharpen' | 'healBrush' | 'dodge' | 'burn' | 'sponge' | 'historyBrush' | 'artHistory' | 'patternStamp', pt: Pt, shift: boolean): boolean {
     if (!this.deepPaintOk()) return false;
     const p = this.current;
     if (!p || this.stroke || this.warpState) return false;
@@ -5365,15 +5376,17 @@ export class Engine {
       if (fill) { c.fillStyle = fill; c.fillRect(0, 0, W, H); }
       texture = { surface: tile, dx: 0, dy: 0 };
     }
-    else if (kind === 'historyBrush') {
-      // The History Brush paints this layer back from the source snapshot's own copy of it, in document space.
+    else if (kind === 'historyBrush' || kind === 'artHistory') {
+      // The History Brush paints this layer back from the source snapshot's own copy of it, in document space; the Art
+      // History Brush (1.56.3) paints a stylised version of that copy (engine/art-history.ts).
       const id = this.historyBrushSourceId, snap = id ? this.historySnapshots.get(p)?.find((x) => x.id === id) : undefined;
       const src = snap?.state.doc.layers.find((l) => l.id === l0.id);
       if (!snap) { this.notice('The History Brush paints from a snapshot: take one in the History panel (New Snapshot).'); return false; }
       if (!src?.raster) { this.notice(`${snap.name} has no layer matching this one, so the History Brush cannot paint it back; choose another source in the History panel.`); return false; }
-      texture = { surface: this.layerSample(p, src), dx: 0, dy: 0 };
+      const sample = this.layerSample(p, src);
+      texture = { surface: kind === 'artHistory' ? this.artHistoryTexture(p, l0, sample) : sample, dx: 0, dy: 0 };
     }
-    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', patternStamp: 'Pattern Stamp' }[kind], p.snapshot());
+    p.history.begin({ heal: 'Spot Healing', remove: 'Remove', clone: 'Clone Stamp', healBrush: 'Healing Brush', blur: 'Blur', sharpen: 'Sharpen', dodge: 'Dodge', burn: 'Burn', sponge: 'Sponge', historyBrush: 'History Brush', artHistory: 'Art History Brush', patternStamp: 'Pattern Stamp' }[kind], p.snapshot());
     const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = { r: 255, g: 255, b: 255 };
     // The Clone Stamp's Flow and Mode (1.50.6, the tool audit), as Photoshop's bar; Lock Transparency keeps precedence.

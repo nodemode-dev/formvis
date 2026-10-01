@@ -54,6 +54,10 @@ ask it questions.
 - The Mixer Brush (B) paints with wet paint: Wet sets how much colour it picks up from the canvas, Mix how much of
   that it lays with the loaded colour, Load how far the loaded colour lasts along a stroke. Alt-click loads the
   brush from the canvas; with Wet and Mix at 0 it paints like the Brush.
+- The Art History Brush (Y) paints stylised strokes in the colours of the History Brush's source snapshot: take a
+  snapshot in the History panel, then brush over the picture to turn it into a painted version of itself. Style sets
+  the strokes (tight or loose, short to long, dabs or curls); Tolerance leaves alone what is already close to the
+  snapshot.
 - Brush, Pencil and Eraser (including Background and Magic Eraser), with Photoshop's brush settings: shape dynamics,
   scattering, colour dynamics, transfer, noise and wet edges. Brushes from Photoshop .abr files can be imported.
 - Clone Stamp (Sample: Current Layer, Current & Below or All Layers; Mode; Flow), Healing Brush, Spot Healing, Patch,

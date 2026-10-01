@@ -13,7 +13,7 @@
 
 formvis is a layered image editor: stack photos and paintings as layers, group them in folders, mask and clip them, blend them, select, paint and export. It saves its own `.fmv` projects and opens NodeMode canvasor projects, and it runs standalone in a browser, inside NodeMode as a portal app, or as a desktop app for macOS, Linux and Windows.
 
-**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 36,500 lines of TypeScript, 1,200 of CSS, 8,100 of Python and 2,200 of Rust (product code, tests excluded; `./formvis counts` prints this, and `./formvis counts --check` verifies it).
+**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 37,700 lines of TypeScript, 1,200 of CSS, 8,300 of Python and 2,200 of Rust (product code, tests excluded; `./formvis counts` prints this, and `./formvis counts --check` verifies it).
 
 ## Highlights
 
