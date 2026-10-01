@@ -60,6 +60,14 @@ export async function modelReady(id: string): Promise<boolean> {
   try { const m = await (await ask('/models')).json() as Array<{ id: string; ready: boolean }>; return !!m.find((x) => x.id === id)?.ready; } catch { return false; }
 }
 export const upscalerReady = (): Promise<boolean> => modelReady('ai-upscale');
+export const depthReady = (): Promise<boolean> => modelReady('depth-anything-v2-small');
+
+/** Depth from one picture (1.54.8, Neural Filters' Depth Blur): Depth Anything V2 Small on this computer, an 8-bit
+ *  map with near bright and far dark, the picture's size. */
+export async function localDepth(image: Blob): Promise<Blob> {
+  const form = new FormData(); form.append('image', image, 'image.png');
+  return (await ask('/depth/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
+}
 
 /** Generative Fill's and Expand's generator on LaMa (1.53.2): any computer's CPU, no prompt, no key. */
 export function localInpaint(): (image: Blob, mask: Blob) => Promise<Blob> {

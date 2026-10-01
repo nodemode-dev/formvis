@@ -100,6 +100,11 @@ ask it questions.
 - Without fal or ComfyUI: download LaMa (Preferences > Plugins > Local models, about 208 MB) and Generative Fill and
   Expand work on any computer, with no prompt: LaMa fills from what surrounds the selection. It is chosen for you when
   fal has no key. docs/LOCAL.md lists everything that runs on this computer and what each needs.
+- Filter > Neural Filters is a gallery with a live preview and one undo step. Harmonize moves a layer's light and
+  colour toward what lies beneath it; Skin Smoothing softens skin tones only; neither needs a model. Depth Blur reads
+  the layer's depth with Depth Anything V2 Small (Preferences > Plugins > Local models, about 99 MB, Apache-2.0) and
+  blurs by distance from the focus depth you set, past a sharp range. More filters join the gallery as their models
+  land; the gallery works on 8-bit RGB layers for now.
 - References: up to four layers can be sent to a ComfyUI workflow as references.
 - On this computer, with no key and no cost: install Krea 2 Turbo or FLUX.2 [klein] 4B in Preferences > Plugins >
   Local models (each licence is shown for you to accept first; Krea 2 installs with the content filter its licence

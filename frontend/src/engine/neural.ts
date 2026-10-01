@@ -1,4 +1,5 @@
 import { surfaceBlur } from './blur-gallery';
+import { gaussianBlur } from './filters';
 
 /** Neural Filters (1.54.7, the parity plan's L2 and DEV_PLAN 23.2): the gallery's first two need no model.
  *
@@ -48,5 +49,20 @@ export function skinMask(img: ImageData): Float32Array {
 export function skinSmooth(img: ImageData, amount: number, radius: number): ImageData {
   const mask = skinMask(img), soft = surfaceBlur(img, Math.max(1, radius), 24), out = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), d = out.data, s = soft.data, t = Math.max(0, Math.min(1, amount));
   for (let i = 0, j = 0; i < d.length; i += 4, j++) { const k = mask[j] * t; if (k === 0) continue; for (let c = 0; c < 3; c++) d[i + c] = d[i + c] + (s[i + c] - d[i + c]) * k; }
+  return out;
+}
+
+/** Depth Blur: pixels blur by how far their depth (0 far to 255 near, from the engine's Depth Anything map) lies from
+ *  the focal depth, past a range where everything stays sharp; the blur grows linearly to `radius` at the far end of
+ *  the picture's depth, mixed from three blur levels. */
+export function depthBlur(img: ImageData, depth: Uint8ClampedArray, focal: number, range: number, radius: number): ImageData {
+  if (depth.length < img.width * img.height) return img;
+  const half = gaussianBlur(img, Math.max(0.1, radius / 2)), full = gaussianBlur(img, Math.max(0.1, radius));
+  const out = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), d = out.data, h = half.data, f = full.data, o = img.data;
+  for (let i = 0, j = 0; i < d.length; i += 4, j++) {
+    const dist = Math.max(0, Math.abs(depth[j] - focal) - range), t = Math.min(1, dist / Math.max(1, 255 - range));
+    if (t === 0) continue;
+    for (let c = 0; c < 4; c++) d[i + c] = t < 0.5 ? o[i + c] + (h[i + c] - o[i + c]) * (t * 2) : h[i + c] + (f[i + c] - h[i + c]) * ((t - 0.5) * 2);
+  }
   return out;
 }
