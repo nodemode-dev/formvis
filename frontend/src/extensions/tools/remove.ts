@@ -6,8 +6,8 @@ let hover: Pt | null = null;
 
 /** Remove (J, with the healing tools): paint over something to take it out; on release what the stroke covered is
  *  rebuilt by content-aware fill from the rest of the layer. Remove Wires and Cables finds thin dark lines on the layer
- *  by itself and fills them. Photoshop's Remove uses generative fill for large objects and also finds people; neither
- *  is here. */
+ *  by itself and fills them. Remove People and Remove Distractions (1.57.4) find people other than the subject, and
+ *  salient objects other than the subject, with models on this computer, and fill them with LaMa as one step. */
 export const removeTool: Tool = {
   id: 'remove', label: 'Remove', key: 'J', order: 55.5,
   icon: () => 'tRemove',
@@ -24,5 +24,7 @@ export const removeTool: Tool = {
     { kind: 'title', text: 'Remove' },
     ...brushOptions(e),
     { kind: 'button', label: 'Remove Wires and Cables', icon: 'sparkle', run: () => { e.removeWires(); } },
+    { kind: 'button', label: 'Remove People', icon: 'sparkle', run: () => { void e.removeFinder?.('people'); } },
+    { kind: 'button', label: 'Remove Distractions', icon: 'sparkle', run: () => { void e.removeFinder?.('distractions'); } },
   ],
 };

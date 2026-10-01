@@ -91,6 +91,12 @@ export async function localDepth(image: Blob): Promise<Blob> {
   return (await ask('/depth/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
 }
 
+/** Remove's People and Distractions (1.57.4): the area to remove from `image`, a white-on-black mask the same size. */
+export async function findToRemove(image: Blob, kind: 'people' | 'distractions'): Promise<Blob> {
+  const form = new FormData(); form.append('image', image, 'image.png'); form.append('kind', kind);
+  return (await ask('/remove/find', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
+}
+
 /** Generative Fill's and Expand's generator on LaMa (1.53.2): any computer's CPU, no prompt, no key. */
 export function localInpaint(): (image: Blob, mask: Blob) => Promise<Blob> {
   return async (image, mask) => {

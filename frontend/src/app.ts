@@ -48,6 +48,7 @@ import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
+import { findToRemove, localInpaint, modelReady } from './io/local-gen';
 import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, serialize } from './io/project-io';
@@ -1012,6 +1013,25 @@ export function startApp(): void {
   /** Select > Subject: the visible image goes to the background engine and its subject mask comes back as the
    *  selection, one step. Select > Object in Selection does the same inside the current selection's bounds (draw a
    *  marquee around one object first), keeping only what falls inside that selection. */
+  /** Remove People and Remove Distractions (1.57.4, M1): the area found on what the document shows (the engine's
+   *  YuNet, SAM2 and U2-Net), filled with LaMa as one step; says so when nothing is found or a model is missing. */
+  async function removeFound(kind: 'people' | 'distractions'): Promise<void> {
+    const p = engine.current, flat = engine.flattened();
+    if (!p || !flat) return;
+    if (!(await modelReady('lama-inpaint'))) { toast('Remove fills with LaMa: download it in Preferences > Plugins > Local models.', 'error'); return; }
+    await engine.task(async () => {
+      try {
+        const W = p.doc.width, H = p.doc.height, found = await createImageBitmap(await findToRemove(await toBlob(flat), kind));
+        const s = createSurface(W, H), c = ctxOf(s); c.drawImage(found, 0, 0, W, H); found.close();
+        const px = c.getImageData(0, 0, W, H).data, area = new Uint8Array(W * H);
+        let n = 0; for (let i = 0; i < area.length; i++) if (px[i * 4] > 127) { area[i] = 255; n++; }
+        if (!n) { toast(kind === 'people' ? 'No people to remove were found (the subject is kept).' : 'No distractions were found.'); return; }
+        await engine.removeArea(new SelectionMask(0, 0, W, H, area), kind === 'people' ? 'Remove People' : 'Remove Distractions', localInpaint());
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+  engine.removeFinder = removeFound;
+
   async function selectSubject(withinSelection: boolean): Promise<void> {
     const p = engine.current;
     if (!p) return;

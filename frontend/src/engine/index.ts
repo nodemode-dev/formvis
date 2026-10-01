@@ -5850,6 +5850,15 @@ export class Engine {
   /** Sends what the document shows around `sel` (a quarter of its size again as context, 16 to 256 px), with see-
    *  through areas pre-filled smoothly and `sel` grown by three pixels as the mask, to `generate`, then places the
    *  result as a new layer masked to `sel`, unless the document changed meanwhile. */
+  /** Remove's People and Distractions (1.57.4, the parity plan's M1): the app sets `removeFinder` (it asks the engine
+   *  for the area and LaMa for the fill); `removeArea` fills a found area as one step, as Generative Fill does. */
+  removeFinder: ((kind: 'people' | 'distractions') => Promise<void>) | null = null;
+  async removeArea(area: SelectionMask, undoName: string, generate: (image: Blob, mask: Blob) => Promise<Blob>): Promise<boolean> {
+    const p = this.current;
+    if (!p) return false;
+    return this.fillArea(p, area, '', generate, undoName, 'remove');
+  }
+
   private async fillArea(p: Project, sel: SelectionMask, prompt: string, generate: (image: Blob, mask: Blob) => Promise<Blob>, undoName: string, emptyName: string): Promise<boolean> {
     const view = this.flattened();
     if (!view) return false;

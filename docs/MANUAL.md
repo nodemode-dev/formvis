@@ -58,6 +58,10 @@ ask it questions.
   snapshot in the History panel, then brush over the picture to turn it into a painted version of itself. Style sets
   the strokes (tight or loose, short to long, dabs or curls); Tolerance leaves alone what is already close to the
   snapshot.
+- The Remove tool (J) takes out what you paint over. Its options also find things to remove by themselves: wires and
+  cables, people other than the subject, and distractions (other salient objects as well as people), filling them so
+  the scene continues, as one step. These use the face finder, Segment Anything 2 and LaMa from Preferences > Plugins
+  > Local models.
 - Brush, Pencil and Eraser (including Background and Magic Eraser), with Photoshop's brush settings: shape dynamics,
   scattering, colour dynamics, transfer, noise and wet edges. Brushes from Photoshop .abr files can be imported.
 - Clone Stamp (Sample: Current Layer, Current & Below or All Layers; Mode; Flow), Healing Brush, Spot Healing, Patch,
