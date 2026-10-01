@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.56.3 · 2026-10-01
+
+The Art History Brush (the parity plan's L4, second part, which closes the row with the Mixer Brush).
+
+### Added
+
+- The Art History Brush (Y, with the History Brush): paints stylised strokes in the colours of the History Brush's source snapshot, so brushing over a picture turns it into a painted version of itself. Ten styles as Photoshop's (Tight and Loose, Short, Medium and Long, Dab, and four curls), strokes a quarter of the brush wide and running along the picture's contours, and Tolerance to leave alone the parts already close to the source.
+
+### Changed
+
+- The README's line counts follow the code again.
+
 ## 1.56.2 · 2026-10-01
 
 The Mixer Brush (the parity plan's L4, first part; DEV_PLAN 23.4).
