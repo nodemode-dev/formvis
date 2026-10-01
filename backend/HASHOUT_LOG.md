@@ -2,6 +2,20 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Style Transfer presets · _v1.55.1 (app/localgen/style.py new, app/localgen/paths.py, app/localgen/model_manager.py, app/main.py, requirements.txt)
+
+`style.py`: the ONNX model zoo's five fast neural style models (BSD-3-Clause), each pinned by SHA-256 from the real download; the zoo exports a fixed 224 by 224 input, so the graph's input and output dims are made dynamic in memory when the session is built (the onnx package, Apache-2.0, pinned in requirements at 1.23.1; the file on disk stays the pinned original); RGB floats 0 to 255 in and out, the picture capped at 1024 on its long side for the model and scaled back; `POST /api/style/local` with a `style` field. `paths.session()` also takes model bytes, so the patched graph gets the same providers and memory settings as every model. Checked here: each preset on a photograph at 640 px in 1.1 to 1.5 s at the picture's own size. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.54.9"
+    SAM 2.1 and U^2-Net held 2,575 MB after three runs each; off, 687 MB (a peak of 1,314 MB), for a little speed."""
+    return ort.InferenceSession(str(path), options, providers=providers())
+for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router, _lg_upscale.router, _lg_inpaint.router, _lg_depth.router, _lg_colorize.router):
+version = "1.54.9"
+version = "1.54.9"
+ "version": "1.54.9",
+```
+
 ## Colour for a black-and-white picture · _v1.54.9 (app/localgen/colorize.py new, app/localgen/model_manager.py, app/main.py)
 
 `colorize.py`: DDColor-tiny as ONNX on ONNX Runtime with DDColor's own recipe (the picture's L of Lab as an RGB made of L alone, 512 by 512 in 0 to 1 NCHW; the predicted a and b scaled back to the picture's size and joined to the picture's own L through OpenCV's float Lab, so luminance is never touched); `POST /api/colorize/local`, 409 until the model is downloaded. `model_manager.py`: the registry entry (Apache-2.0, edgetools' revision 4755ae9f) and the SHA-256 pin computed from the real download. `main.py` includes the router. Checked here: a grey pier photograph colourised plausibly with luminance within 0.9; ONNX Runtime prints constant-folding warnings for the fp16 weights, harmless. Removed lines taken after the version edit:

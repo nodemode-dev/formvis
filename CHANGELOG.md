@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.55.1 · 2026-10-01
+
+Neural Filters: Style Transfer (DEV_PLAN 23.2, fourth part).
+
+### Added
+
+- Style Transfer in Filter > Neural Filters: the layer repainted in one of five preset styles (Mosaic, Candy, Rain Princess, Udnie, Pointilism) on this computer, mixed in by Amount. The models are the ONNX model zoo's fast neural style networks (BSD-3-Clause, 34 MB together, fetched on first use from Preferences > Plugins > Local models, each pinned to its hash), run at the picture's own size.
+
+### Changed
+
+- The engine's requirements gain the onnx package (Apache-2.0), used to run the style presets at any size.
+
 ## 1.54.9 · 2026-10-01
 
 Neural Filters: Colorize (DEV_PLAN 23.2, third part).
