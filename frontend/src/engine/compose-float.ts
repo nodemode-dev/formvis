@@ -1,5 +1,5 @@
 import { dissolveNoise } from './blend';
-import { deepFromRaster, place, srgbToLinear, transferOf } from './deep';
+import { deepFromRaster, linearToSrgb, place, srgbToLinear, transferOf } from './deep';
 import { hierarchy, byId, ancestors } from './tree';
 import { placement, setMat } from './geometry';
 import { applyLut4, inkOf, type Lut3x4, type Lut4 } from './colour-lut';
@@ -215,7 +215,8 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
       continue;
     }
     if (l.adjustment) {
-      const inLab = doc.mode === 'lab', perChannel = !inLab || ['levels', 'curves', 'invert', 'posterize'].includes(l.adjustment.kind);
+      const inLab = doc.mode === 'lab', kind = l.adjustment.kind, viaRgb = ((kind === 'exposure' || kind === 'hdrToning') && (inLab || paperWhite)) || (kind === 'channelMixer' && inLab);
+      const perChannel = !viaRgb && (!inLab || ['levels', 'curves', 'invert', 'posterize'].includes(l.adjustment.kind));
       const t = perChannel ? transferOf(l.adjustment) : null;
       if (!t) {
         const kern = kernelFor(l.adjustment);
@@ -241,8 +242,11 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     const clip = l.clipId ? map.get(l.clipId) : null, clipA = clip ? alphaOf(clip) : null;
     if (l.clipId && !clipA) return { error: `${name} is clipped to a layer this compositor cannot read.` };
     const mode = l.blend ?? 'normal', sep = linear ? LINEAR_FLOAT[mode] : SEPARABLE_FLOAT[mode];
-    if (linear && !sep && mode !== 'dissolve' && mode !== 'darker-color' && mode !== 'lighter-color') return { error: `${name} uses ${mode}, which waits at 32 bits (Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge, Difference, Darker and Lighter Color work).` };
-    if (!sep && mode !== 'dissolve' && (!nonSeparable(mode, [0, 0, 0], [0, 0, 0]) || (n === 4 && !luts))) return { error: `${name} uses ${mode}, which needs the document's colour tables in this mode.` };
+    // 32 bits (1.57.3): a mode outside the linear table blends the two colours in the display range (each clipped at
+    // white, sRGB-encoded) by the 8-bit formula and comes back to linear light; light above white is kept wherever
+    // only one of the two layers covers a pixel. Every blend mode works at 32 bits this way.
+    const displayRange = linear && !sep && mode !== 'dissolve' && mode !== 'darker-color' && mode !== 'lighter-color';
+    if (!displayRange && !sep && mode !== 'dissolve' && (!nonSeparable(mode, [0, 0, 0], [0, 0, 0]) || (n === 4 && !luts))) return { error: `${name} uses ${mode}, which needs the document's colour tables in this mode.` };
     const bv: [number, number, number] = [0, 0, 0], sv: [number, number, number] = [0, 0, 0], lab = doc.mode === 'lab';
     for (let i = 0, j = 0; i < out.length; i += S, j++) {
       let as = tmp[i + A] * op * (cov ? cov[j] : 1) * (clipA ? clipA[j] : 1);
@@ -250,7 +254,11 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
       const ab = out[i + A];
       if (mode === 'dissolve') { if (dissolveNoise(j % W, Math.floor(j / W)) >= as) continue; as = 1; }
       const ao = as + ab * (1 - as), k1 = as * (1 - ab), k2 = as * ab, k3 = (1 - as) * ab;
-      if (lab && mode !== 'normal' && mode !== 'dissolve') {
+      if (displayRange) {
+        const enc = (v: number): number => linearToSrgb(Math.max(0, Math.min(1, v))), B = [enc(out[i]), enc(out[i + 1]), enc(out[i + 2])] as [number, number, number], Sx = [enc(tmp[i]), enc(tmp[i + 1]), enc(tmp[i + 2])] as [number, number, number];
+        const sep8 = SEPARABLE_FLOAT[mode], rr = sep8 ? [sep8(B[0], Sx[0]), sep8(B[1], Sx[1]), sep8(B[2], Sx[2])] : (nonSeparable(mode, B, Sx) ?? Sx);
+        for (let c = 0; c < 3; c++) out[i + c] = Math.max(0, (k1 * tmp[i + c] + k2 * srgbToLinear(clamp01(rr[c])) + k3 * out[i + c]) / ao);
+      } else if (lab && mode !== 'normal' && mode !== 'dissolve') {
         // Lab (1.56.6): the two colours' renditions blended by the RGB document's own formula, the result back in Lab.
         const B = labFloatToRgb(out[i], out[i + 1], out[i + 2]), Sx = labFloatToRgb(tmp[i], tmp[i + 1], tmp[i + 2]);
         const rr = sep ? [sep(B[0], Sx[0]), sep(B[1], Sx[1]), sep(B[2], Sx[2])] : (nonSeparable(mode, B, Sx) ?? Sx);

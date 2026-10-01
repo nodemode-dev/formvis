@@ -49,6 +49,20 @@ def build_lut(req: LutRequest) -> Response:
     return Response(data, media_type="application/octet-stream", headers={"X-Grid": str(colour.GRID), "X-Gamut": "1" if req.gamut and req.proof else "0"})
 
 
+class MatrixRequest(BaseModel):
+    source: dict | None = None
+    dest: dict | None = None
+
+
+@router.post("/linear-matrix")
+def build_linear_matrix(req: MatrixRequest) -> dict:
+    """Convert to Profile at 32 bits (1.57.3): the 3 by 3 matrix between two RGB matrix profiles in linear light."""
+    try:
+        return {"matrix": colour.linear_matrix(req.source, req.dest)}
+    except colour.ColourError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 class CmykLutRequest(BaseModel):
     profile: dict
     bpc: bool = True

@@ -61,6 +61,16 @@ export function renderLab(src: Float32Array, out: Uint8ClampedArray): void {
   }
 }
 
+/** A layer's 16-bit RGB floats (sRGB-encoded, 0 to 1) as Lab floats, keeping their precision (1.57.3). */
+export function labFromFloats(ch: ChannelPixels): ChannelPixels {
+  const d = ch.data, out = new Float32Array(ch.width * ch.height * 4);
+  for (let i = 0; i < d.length; i += 4) {
+    const v = encodeLab(...srgbToLab(Math.max(0, Math.min(1, d[i])) * 255, Math.max(0, Math.min(1, d[i + 1])) * 255, Math.max(0, Math.min(1, d[i + 2])) * 255));
+    out[i] = v[0]; out[i + 1] = v[1]; out[i + 2] = v[2]; out[i + 3] = d[i + 3];
+  }
+  return { mode: 'lab', n: 3, width: ch.width, height: ch.height, data: out };
+}
+
 /** A layer's 8-bit pixels as Lab floats, exactly. */
 export function labFromRgba(img: ImageData): ChannelPixels {
   const { width: w, height: h, data: d } = img, out = new Float32Array(w * h * 4), memo = new Map<number, [number, number, number]>();

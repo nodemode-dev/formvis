@@ -127,6 +127,27 @@ def _profile(ref: dict | None) -> tuple[ImageCms.ImageCmsProfile, str]:
     return ImageCms.ImageCmsProfile(io.BytesIO(data)), MODES[info["space"]]
 
 
+def linear_matrix(source: dict | None, dest: dict | None) -> list[list[float]]:
+    """Convert to Profile for 32-bit documents (1.57.3): linear light in one RGB matrix profile to linear light in
+    another, as the 3 by 3 matrix through the profiles' D50 primaries (each profile's rXYZ, gXYZ and bXYZ), so light
+    above white converts exactly; the tone curves do not enter, since 32-bit values are already linear. A profile
+    without primaries (a table-based RGB profile, or not RGB) is refused, naming it."""
+    def primaries(ref: dict | None) -> np.ndarray:
+        prof, space = _profile(ref)
+        if space != "RGB":
+            raise ColourError("A 32-bit document converts only between RGB profiles.")
+        p = prof.profile
+        try:
+            cols = [p.red_colorant[0], p.green_colorant[0], p.blue_colorant[0]]
+        except Exception as exc:
+            raise ColourError("This RGB profile has no primaries (it is table-based), so a 32-bit document cannot convert to or from it exactly.") from exc
+        if any(c is None for c in cols):
+            raise ColourError("This RGB profile has no primaries (it is table-based), so a 32-bit document cannot convert to or from it exactly.")
+        return np.array(cols, dtype=np.float64).T
+    m = np.linalg.solve(primaries(dest), primaries(source))
+    return [[float(x) for x in row] for row in m]
+
+
 def _grid() -> Image.Image:
     v = np.linspace(0, 255, GRID).round().astype(np.uint8)
     r, g, b = np.meshgrid(v, v, v, indexing="ij")    # r slowest, b fastest

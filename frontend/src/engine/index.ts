@@ -3,7 +3,7 @@ import { composeChannels, rasterFromChannels, strokeChannels } from './channels'
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
 import { artHistoryTexture, type ArtStyle } from './art-history';
-import { decodeLab, labFromRgba, labToSrgb, renderLab } from './lab';
+import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab } from './lab';
 import { composeFloat, setStyleDrawer } from './compose-float';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
@@ -6474,6 +6474,24 @@ export class Engine {
     return this.edit('Assign Profile', (pp) => { pp.doc = { ...pp.doc, profile: profile ?? undefined }; return true; });
   }
 
+  /** Convert to Profile at 32 bits (1.57.3): every layer's linear floats through `m` (the engine's matrix between the
+   *  two profiles' primaries), light above white converting exactly; renditions redrawn; `target` assigned; one step. */
+  convertToProfileLinear(target: DocProfile | null, m: number[][]): boolean {
+    const p = this.current;
+    if (!p || p.doc.depth !== 32) return false;
+    return this.edit('Convert to Profile', (pp) => {
+      const layers = pp.doc.layers.map((l) => {
+        if (!l.channels || l.channels.mode !== 'rgb' || l.isGroup) return l;
+        const d = new Float32Array(l.channels.data);
+        for (let i = 0; i < d.length; i += 4) { const r = d[i], g = d[i + 1], b = d[i + 2]; for (let c = 0; c < 3; c++) d[i + c] = Math.max(0, m[c][0] * r + m[c][1] * g + m[c][2] * b); }
+        const ch = { ...l.channels, data: d };
+        return { ...l, channels: ch, raster: rasterFromDeep(ch, true) };
+      });
+      pp.doc = { ...pp.doc, layers, profile: target ?? undefined };
+      return true;
+    });
+  }
+
   /** Edit > Convert to Profile: every layer's pixels through `lut` (the engine's LittleCMS table from the document's
    *  profile to `target`), then `target` assigned; one step. Live type and shapes keep their colours' numbers. */
   convertToProfile(target: DocProfile | null, lut: ColourLut): boolean {
@@ -6570,13 +6588,14 @@ export class Engine {
   /** Image > Mode > RGB Color from CMYK: each layer's rendition replaced by the engine's exact conversion, the ink
    *  dropped, the document back in sRGB (or `profile`). */
   /** Image > Mode > Lab Color (1.56.4, DEV_PLAN 22.9): each pixel layer's floats in Lab, converted from its pixels
-   *  exactly (engine/lab.ts); the rasters stay as their rendition. From an 8-bit RGB document. */
+   *  exactly (engine/lab.ts); the rasters stay as their rendition. From an 8-bit or (1.57.3) a 16-bit RGB document,
+   *  whose layers convert from their 16-bit floats; 32 bits come down to 16 first (app.ts). */
   setLab(): boolean {
     const p = this.current;
-    if (!p || (p.doc.mode ?? 'rgb') !== 'rgb' || (p.doc.depth ?? 8) !== 8) return false;
+    if (!p || (p.doc.mode ?? 'rgb') !== 'rgb' || (p.doc.depth ?? 8) > 16) return false;
     return this.edit('Lab Color', (pp) => {
-      const layers = pp.doc.layers.map((l) => (l.raster && !l.isGroup && !l.adjustment ? { ...l, channels: labFromRgba(l.raster.read()) } : l));
-      pp.doc = { ...pp.doc, layers, mode: 'lab' };
+      const layers = pp.doc.layers.map((l) => (l.raster && !l.isGroup && !l.adjustment ? { ...l, channels: l.channels?.mode === 'rgb' && l.channels.n === 3 ? labFromFloats(l.channels) : labFromRgba(l.raster.read()) } : l));
+      pp.doc = { ...pp.doc, layers, mode: 'lab', depth: 8 };
       return true;
     });
   }

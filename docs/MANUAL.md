@@ -200,8 +200,9 @@ ask it questions.
   layers give the same results as in RGB: a small change keeps the ink's own structure (a K-only black stays K-only),
   a large one takes the profile's separation. Text, shapes, gradients, fills, the retouching tools and the other
   filters work too: the pixels they leave alone keep their ink exactly, the ones they change take the new colour's
-  ink (black text set at K 100 stays K-only), and layer styles draw in ink too. What does not work in CMYK yet (Channel
-  Mixer, Exposure, the profile and proof commands) waits in the menu until Mode > RGB Color.
+  ink (black text set at K 100 stays K-only), and layer styles draw in ink too; Exposure and HDR Toning give their RGB
+  results. What does not work in CMYK yet (Channel Mixer, the profile and proof commands) waits in the menu until Mode
+  > RGB Color.
 
 ## Lab documents
 
@@ -209,8 +210,9 @@ ask it questions.
   Color turns it back exactly. Painting, text, shapes, fills and filters work in it; the pixels they leave alone keep
   their Lab values. The Channels panel shows Lab, Lightness, a and b (a and b mid-grey where neutral), and Info reads
   L, a and b. Levels and Curves work on Lightness, a and b; the colour adjustments (Hue/Saturation, Black and White and
-  the rest) give the same results as in RGB; blend modes look as they do in RGB; Export TIFF writes a Lab TIFF. Channel
-  Mixer, Exposure, HDR Toning, single-channel views and opening Lab files wait for now; layer styles work.
+  the rest, Channel Mixer, Exposure and HDR Toning among them) give the same results as in RGB; blend modes look as they
+  do in RGB; Export TIFF writes a Lab TIFF. Lab Color from a 16-bit document keeps its 16-bit values. Single-channel
+  views and opening Lab files wait for now; layer styles work.
 
 ## 32-bit documents
 
@@ -221,10 +223,12 @@ ask it questions.
 - Image > Mode > 16 or 8 Bits/Channel asks for HDR Toning (Exposure and Gamma): lower the exposure to keep highlights.
 - Painting, the retouching tools and the other filters work at 32 bits too: what they leave alone keeps its light
   exactly, above white included, and what they change takes the new colour. Painting white over a highlight already
-  brighter than white leaves it as it was. Groups, masks, clipping masks and layer styles work at 32 bits, and the blend
-  modes Photoshop offers there (Normal, Dissolve, Darken, Multiply, Lighten, Linear Dodge, Difference, Darker and
-  Lighter Color) keep light above white, as do Unsharp Mask and Add Noise. Adjustment layers but Exposure, the other
-  blend modes and colour profiles wait at 32 bits: Image > Mode > 16 Bits/Channel to use them.
+  brighter than white leaves it as it was. Groups, masks, clipping masks and layer styles work at 32 bits, and so does
+  every blend mode: Photoshop's 32-bit modes keep light above white, and the others blend in the visible range, light
+  above white kept wherever one layer alone covers a pixel. Unsharp Mask and Add Noise keep light above white too.
+  Convert to Profile converts linear light exactly between RGB profiles; proofing works as in other documents. Indexed
+  Color, Bitmap, CMYK and Lab bring the document down first (HDR Toning asks how). Adjustment layers but Exposure and
+  Grayscale wait at 32 bits for now.
 
 ## 16-bit documents
 

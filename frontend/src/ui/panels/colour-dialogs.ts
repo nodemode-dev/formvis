@@ -67,6 +67,7 @@ export class ConvertProfileDialog extends Dialog {
     try {
       setText(this.note, 'Converting...');
       const target = await profileOf(this.sel.value, this.sel.selectedOptions[0]?.textContent ?? '');
+      if (this.engine.current?.doc.depth === 32) { this.engine.convertToProfileLinear(target, await api.linearMatrix({ source: src ? { icc: src.icc } : null, dest: target ? { icc: target.icc } : null })); this.close(); return; }
       const lut = await api.colourLut({ source: src ? { icc: src.icc } : null, dest: target ? { icc: target.icc } : null, intent: this.intent.value, bpc: this.bpc.checked });
       this.engine.convertToProfile(target, lut);
       this.close();

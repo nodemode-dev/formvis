@@ -617,6 +617,15 @@ export function startApp(): void {
     engine.setDepth(depth);
   }
 
+  /** Before a mode that needs at most `depth` bits (1.57.3): a deeper document is brought down first, from 32 bits with
+   *  HDR Toning as Image > Mode does; true when the document is then at `depth` or less. */
+  async function downTo(depth: 8 | 16): Promise<boolean> {
+    const d = engine.current?.doc.depth ?? 8;
+    if (d <= depth) return true;
+    await toDepth(depth);
+    return (engine.current?.doc.depth ?? 8) <= depth;
+  }
+
   /** CMYK documents (1.54.0, H1). The engine converts pixels exactly; the window keeps a display table per profile. */
   const cmykLuts = new Map<string, { out: Lut4; in: Lut3x4 }>();
   async function cmykLutFor(profile: DocProfile): Promise<{ out: Lut4; in: Lut3x4 }> {
@@ -1461,11 +1470,11 @@ export function startApp(): void {
     { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
     // Image > Mode and Layer > Flatten Image (1.50.2, the owner's walkthrough), as Photoshop's.
     { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { if (engine.current?.doc.mode === 'cmyk') void cmykToRgb(); else if (engine.current?.doc.mode === 'lab') engine.setRgbFromLab(); else engine.convertMode('rgb'); } },
-    { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && (engine.current?.doc.depth ?? 8) === 8 && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (engine.current?.doc.mode !== 'lab') engine.setLab(); } },
-    { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && (engine.current?.doc.depth ?? 8) === 8 && ['rgb', 'cmyk'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode !== 'cmyk') modeDialog.show('cmyk'); } },
+    { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (engine.current?.doc.mode !== 'lab') void downTo(16).then((ok) => { if (ok) engine.setLab(); }); } },
+    { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && ['rgb', 'cmyk'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode !== 'cmyk') void downTo(8).then((ok) => { if (ok) modeDialog.show('cmyk'); }); } },
     { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { engine.convertMode('grayscale'); } },
-    { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => modeDialog.show('bitmap') },
-    { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => modeDialog.show('indexed') },
+    { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => void downTo(8).then((ok) => { if (ok) modeDialog.show('bitmap'); }) },
+    { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => void downTo(8).then((ok) => { if (ok) modeDialog.show('indexed'); }) },
     // Bit depth (1.53.6, H1).
     { id: 'depth-8', label: '8 Bits/Channel', enabled: has, checked: () => (engine.current?.doc.depth ?? 8) === 8, run: () => void toDepth(8) },
     { id: 'depth-16', label: '16 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 16, run: () => void toDepth(16) },
@@ -1743,13 +1752,13 @@ export function startApp(): void {
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   // 1.55.9 (DEV_PLAN 22.7): at 16 bits and in CMYK every command runs, the ones not on the float model through derive
   // (engine/derive.ts); these are the ones that cannot work in that mode yet. 32 bits joined them in 1.56.8.
-  const CMYK_NOT = new Set(['depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
-  const DEEP16_NOT = new Set(['mode-grayscale', 'mode-bitmap', 'mode-indexed']);
-  const LAB_NOT = new Set(['new-adj-channelMixer', 'new-adj-exposure', 'new-adj-hdrToning', 'depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const CMYK_NOT = new Set(['depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'new-adj-channelMixer', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const DEEP16_NOT = new Set(['mode-grayscale']);
+  const LAB_NOT = new Set(['depth-16', 'depth-32', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'mode-cmyk', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
   // 1.56.8 (DEV_PLAN 22.10): 32 bits as a denylist too, everything else through derive in linear light; since 1.57.1 it
   // composes on the one compositor, so what remains is the adjustments other than Exposure, Unsharp Mask and Add Noise,
   // the colour models and the profile and proof commands.
-  const DEEP32_NOT = new Set([...ADJUSTMENT_KINDS.filter((k) => k !== 'exposure').map((k) => `new-adj-${k}`), 'mode-cmyk', 'mode-lab', 'mode-grayscale', 'mode-bitmap', 'mode-indexed', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning']);
+  const DEEP32_NOT = new Set([...ADJUSTMENT_KINDS.filter((k) => k !== 'exposure').map((k) => `new-adj-${k}`), 'mode-grayscale']);
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? !CMYK_NOT.has(c.id) || passes(c)
     : engine.current?.doc.mode === 'lab' ? !LAB_NOT.has(c.id) || passes(c)
     : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || (engine.current?.doc.depth === 32 && (!DEEP32_NOT.has(c.id) || passes(c)));
