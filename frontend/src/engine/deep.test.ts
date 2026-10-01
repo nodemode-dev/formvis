@@ -29,8 +29,8 @@ describe('16-bit composing (1.53.6)', () => {
     const one = (id: string, data: Float32Array): Layer => layer({ id, channels: rgb(1, 1, data), raster: { width: 1, height: 1 } as never, transform: { x: 0, y: 0, w: 1, h: 1, rotation: 0, flipX: false, flipY: false, sampling: 'bilinear' as never } });
     const out = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, layers: [one('r', red), one('b', blue)] } as unknown as Doc);
     expect('error' in out ? out.error : Array.from(out.data)).toEqual([0, 0, 1, 1]);   // the top layer, blue, over red
-    const masked = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, layers: [layer({ mask: {} as never })] } as unknown as Doc);
-    expect('error' in masked && masked.error).toMatch(/mask/);
+    const styled = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, layers: [layer({ effects: {} as never })] } as unknown as Doc);   // masks compose since 1.55.5; a style still waits
+    expect('error' in styled && styled.error).toMatch(/style/);
   });
 });
 

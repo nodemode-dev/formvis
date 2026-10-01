@@ -174,7 +174,8 @@ ask it questions.
   paint that ink alone (a K-only black is one click and a stroke), click CMYK to paint all four. The colour picker
   shows C, M, Y and K, and the Info panel reads the ink under the pointer. Gaussian, Motion and Surface Blur, Unsharp
   Mask, Add Noise, Levels, Curves, Invert, Posterize and Brightness/Contrast layers, Image Size, Canvas Size, Image
-  Rotation, Free Transform, Trim and Reveal All run on the ink itself. Nothing drops a CMYK document to RGB
+  Rotation, Free Transform, Trim and Reveal All run on the ink itself, and so do blend modes, opacity and fill, layer
+  and folder masks, clipping masks and groups, in the canvas and in every export. Nothing drops a CMYK document to RGB
   quietly: what is not built for ink yet waits in the menu until Mode > RGB Color, and a step that would lose ink is
   undone with a message.
 

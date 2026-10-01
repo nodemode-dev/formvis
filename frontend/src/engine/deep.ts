@@ -3,6 +3,7 @@ import { adjustmentKernel } from './kernels';
 import { Raster } from './surface';
 import { boxBlur, mix32, threeBoxWidths, toUnit } from './filters';
 import { invert, placement } from './geometry';
+import { composeFloat } from './compose-float';
 
 /** 16-bit documents (1.53.6, the parity plan's H1): a layer's 16-bit pixels as floats, and the document composed in
  *  floating point for a 16-bit export. Adjustments are the same transfer functions as the 8-bit ones, evaluated at the
@@ -39,6 +40,7 @@ export function transferOf(adj: Adjustment): ((channel: number, level: number) =
 
 /** The document composed in floating point, bottom layer first; an error naming what 16 bits cannot compose yet. */
 export function composeDeep(doc: Doc): { width: number; height: number; data: Float32Array } | { error: string } {
+  if (doc.depth !== 32) return composeFloat(doc, 3, false);
   const W = doc.width, H = doc.height, out = new Float32Array(W * H * 4);
   for (const l of doc.layers) {
     if (!l.visible) continue;

@@ -1,6 +1,7 @@
 import type { ChannelPixels, Doc } from './types';
 import { applyLut4, renditionOf, type Ink, type Lut4 } from './colour-lut';
-import { place, transferOf } from './deep';
+import { place } from './deep';
+import { composeFloat } from './compose-float';
 import { Raster } from './surface';
 
 /** CMYK documents (1.54.0, the parity plan's H1): a layer's ink as floats, its sRGB rendition through the document's
@@ -32,22 +33,7 @@ export function rasterBytes(r: Raster): Uint8Array {
 
 /** The document composed in ink, straight alpha, five floats a pixel: Normal blending only, as composeDeep. */
 export function composeChannels(doc: Doc): { width: number; height: number; data: Float32Array } | { error: string } {
-  const W = doc.width, H = doc.height, out = new Float32Array(W * H * 5);
-  for (const l of doc.layers) {
-    if (!l.visible) continue;
-    const name = `"${l.name}"`;
-    if (l.isGroup || l.mask || l.clipId || l.effects || (l.blend && l.blend !== 'normal')) return { error: `${name} uses a group, mask, clipping, style or blend mode, which CMYK export does not compose yet.` };
-    if (l.adjustment) {
-      const t = transferOf(l.adjustment);
-      if (!t) return { error: `${name} is an adjustment CMYK does not compose yet (Levels and Curves do).` };
-      const op = l.opacity * (l.fill ?? 1);
-      for (let i = 0; i < out.length; i += 5) for (let c = 0; c < 4; c++) { const v = 1 - out[i + c], nv = 1 - Math.min(1, Math.max(0, t(c, v * 255) / 255)); out[i + c] += (nv - out[i + c]) * op; }
-      continue;
-    }
-    if (!l.channels) { if (l.raster) return { error: `${name} has no CMYK ink; Image > Mode > CMYK Color converts it.` }; continue; }
-    place(out, W, H, l.channels, l.transform, l.opacity * (l.fill ?? 1), 5);
-  }
-  return { width: W, height: H, data: out };
+  return composeFloat(doc, 4, true);
 }
 
 /** A stroke rebuilt on a layer's ink from the 8-bit rendition it painted (1.54.2, as strokeDeep): each changed pixel's
