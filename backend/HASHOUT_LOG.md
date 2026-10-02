@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.58.3
+
+No engine code changed in 1.58.3 (Vanishing Point works in the window). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.58.2"
+version = "1.58.2"
+version = "1.58.2"
+ "version": "1.58.2",
+```
+
 ## Photomerge and Merge to HDR · _v1.58.2 (app/routers/merge.py new, app/main.py)
 
 `POST /api/merge/panorama` (photos, layout auto or reposition, crop): OpenCV's Stitcher in panorama (spherical) or scans (move and turn) mode; transparent where no photo reaches, found as the pure black the stitcher leaves there joined to the edge; or cropped to the largest rectangle the photos fill (the histogram method on a reduced mask); the header X-Photos-Stitched says how many photos the stitch kept. `POST /api/merge/hdr` (exposures): aligned by median threshold bitmaps, the camera's response recovered and the exposures merged by Debevec, scaled so the exposure nearest the middle keeps its mid-tones; exposure times from EXIF, or when any photo lacks one estimated from the photos (the median ratio of pixels mid-toned in both, in linear light). Found on the way: OpenCV 5.0's bindings expose no warper and no result mask, so Perspective and Cylindrical are out of reach; recomposing white copies to find the covered area crashed (composePanorama segfaults when the stitch kept only some photos), so that path was dropped; three tiles cut from one flat picture are a degenerate test (no camera rotation, so the cameras cannot be worked out: one tile was dropped, and a lower confidence gave a tiny picture), so the test set became views from a virtual camera turning about its centre. Checked here: the three turned views stitch whole in 0.5 s (582 by 405, 0.988 covered; cropped 582 by 383, fully covered), looked at; the exposures (a scene up to four times white, shot at 0.25, 1 and 4) give estimated times 0.25, 1.0 and 3.994, the merge reaching 4.07 against the scene's 4, mid-tones at a median ratio of 1.000 and a log correlation of 0.998, the brightest parts averaging 1.59 against the scene's 1.75. Removed lines taken after the version edit:

@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.58.3 · 2026-10-01
+
+Vanishing Point (the parity plan's L6, second part, which closes the row).
+
+### Added
+
+- Filter > Vanishing Point: draw a perspective plane by clicking its four corners (a grid shows its perspective; drag the corners to fit), paste another layer onto the plane in perspective and slide it along, and clone in perspective with the Stamp (Alt-click a source, then paint). OK applies it all as one step.
+
+### Changed
+
+- The README's line counts follow the code again.
+
 ## 1.58.2 · 2026-10-01
 
 Photomerge and Merge to HDR (the parity plan's L6, first part).
