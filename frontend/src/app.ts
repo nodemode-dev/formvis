@@ -54,6 +54,7 @@ import { MergeDialog } from './ui/panels/merge-dialog';
 import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
+import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
 import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, serialize } from './io/project-io';
@@ -297,7 +298,8 @@ export function startApp(): void {
   layers.adoptPaths(q(root, '.cv-paths'));
   layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage')));   // the Channels tab (Phase 21)
   new TimelinePanel(q(root, '.cv-layers'), engine);
-  new VideoTimelinePanel(q(root, '.cv-vtl'), engine);   // 1.59.3, DEV_PLAN 25.2: under the canvas
+  const renderDialog = new RenderVideoDialog(engine, (c) => renderVideo(c));   // 1.59.6, DEV_PLAN 25.4
+  new VideoTimelinePanel(q(root, '.cv-vtl'), engine, () => renderDialog.show());   // 1.59.3, DEV_PLAN 25.2: under the canvas
   new HistoryPanel(q(root, '.cv-layers'), engine);
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
   // arrangement, filled when the tabs' homes are restored.
@@ -954,6 +956,31 @@ export function startApp(): void {
     });
   }
 
+  /** File > Export > Render Video (1.59.6, DEV_PLAN 25.4): the video timeline's frames `from` to `to` (excluded), scaled,
+   *  as an H.264 MP4 (over white), a GIF (formvis's encoder) or numbered PNGs in a zip; each frame lasts 1/fps. */
+  async function renderVideo(c: RenderChoice): Promise<void> {
+    const p = engine.current, vt = engine.video;
+    if (!p || !vt) return;
+    const w = Math.max(1, Math.round(p.doc.width * c.scale)), h = Math.max(1, Math.round(p.doc.height * c.scale)), delay = Math.round(1000 / vt.fps);
+    const pngs: Blob[] = [], gif: GifFrame[] = [];
+    for (let f = c.from; f < c.to; f++) {
+      const s = engine.renderVideoFrame(f);
+      if (!s) return;
+      const flat = createSurface(w, h), g = ctxOf(flat);
+      g.imageSmoothingQuality = 'high';
+      if (c.format === 'mp4') { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); }
+      g.drawImage(s as CanvasImageSource, 0, 0, w, h);
+      if (c.format === 'gif') gif.push({ data: g.getImageData(0, 0, w, h), delayMs: delay });
+      else pngs.push(await toBlob(flat, 'image/png'));
+      await new Promise((r) => window.setTimeout(r, 0));
+    }
+    const base = (p.name || 'Untitled').replace(/\.[^.]+$/, '');
+    if (c.format === 'gif') await deliver(new Blob([encodeGif(gif, w, h, vt.loops)], { type: 'image/gif' }), `${base}.gif`);
+    else if (c.format === 'png') await deliver(await api.videoSequence(pngs, base), `${base}-frames.zip`);
+    else await deliver(await api.encodeVideo(pngs, pngs.map(() => delay)), `${base}.mp4`);
+    toast(`Rendered ${c.to - c.from} frames.`);
+  }
+
   async function exportGif(scale = 1): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -1394,6 +1421,7 @@ export function startApp(): void {
     { id: 'import-video', label: 'Video Frames to Layers...', run: () => videoDialog.show() },   // 1.58.9, L1
     { id: 'create-video-timeline', label: 'Create Video Timeline', enabled: () => !!engine.current && !engine.video && engine.timeline.frames.length === 0, run: () => { if (engine.createVideoTimeline()) toast('Video timeline ready, a track per layer.'); } },   // 1.59.3
     { id: 'export-mp4', label: 'Video (MP4)...', enabled: () => !!engine.current, run: () => void exportMp4() },
+    { id: 'render-video', label: 'Render Video...', enabled: () => !!engine.video, run: () => renderDialog.show() },   // 1.59.6
     { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
     { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
@@ -1662,7 +1690,7 @@ export function startApp(): void {
 
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
-      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',

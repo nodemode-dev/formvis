@@ -130,6 +130,19 @@ def _encode(folder: Path, names: list[str], delays: list[int]) -> bytes:
     return out.read_bytes()
 
 
+@router.post("/sequence")
+async def sequence(file: list[UploadFile] = File(...), name: str = Form("frame")) -> Response:
+    """Render Video's picture sequence (1.59.6, DEV_PLAN 25.4): the frames (PNGs in order) as `name_00001.png` and on
+    in one zip, stored, not deflated again (PNG is compressed already)."""
+    import zipfile
+    stem = "".join(c for c in name if c.isalnum() or c in "-_ ").strip()[:60] or "frame"
+    out = io.BytesIO()
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_STORED) as z:
+        for i, f in enumerate(file):
+            z.writestr(f"{stem}_{i + 1:05d}.png", await f.read())
+    return Response(out.getvalue(), media_type="application/zip")
+
+
 @router.post("/encode")
 async def encode(file: list[UploadFile] = File(...), delays: str = Form("[]")) -> Response:
     """An H.264 MP4 from frames (PNGs in order) and their delays in milliseconds."""

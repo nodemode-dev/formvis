@@ -239,6 +239,10 @@ export const api = {
     const frames = head.sizes.map((s) => { const blob = new Blob([b.slice(at, at + s)], { type: 'image/png' }); at += s; return blob; });
     return { width: head.width, height: head.height, fps: head.fps, delayMs: head.delayMs, frames };
   },
+  /** Render Video's picture sequence (1.59.6): the frames as numbered PNGs in one zip, made by the engine. */
+  async videoSequence(frames: Blob[], name: string): Promise<Blob> {
+    return (await request('/video/sequence', { method: 'POST', body: form({ name }, frames.map((blob, i) => ({ name: `f${i}.png`, blob })), 'file') })).blob();
+  },
   /** An H.264 MP4 from frames (PNG) and their delays in milliseconds, written by the engine's ffmpeg (1.58.9). */
   async encodeVideo(frames: Blob[], delays: number[]): Promise<Blob> {
     const body = form({ delays: JSON.stringify(delays) }, frames.map((blob, i) => ({ name: `f${i}.png`, blob })), 'file');

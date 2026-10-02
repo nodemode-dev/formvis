@@ -350,6 +350,15 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-vtl-strip { position: absolute; left: 0; top: 0; height: 30px; border-bottom: 1px solid var(--border-color); background: rgba(128, 128, 128, 0.04); }
 .cv-vtl-dia { position: absolute; left: 0; top: 10px; width: 10px; height: 10px; background: var(--text-primary); border-radius: 1px; cursor: grab; touch-action: none; }
 .cv-vtl-dia.is-hold { background: var(--accent-color, #7c5cff); }
+/* Transitions (1.59.6, DEV_PLAN 25.4): the menu under the bar, and each clip's fades as ramps over its ends. */
+.cv-vtl { position: relative; }
+.cv-vtl-pop { position: absolute; left: 160px; top: 34px; z-index: var(--z-menu); display: grid; gap: 2px; min-width: 190px; padding: 6px; border: 1px solid var(--border-color); border-radius: 8px; background: var(--bg-primary); box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.35)); }
+.cv-vtl-pop[hidden] { display: none; }
+.cv-vtl-pop .cv-btn { justify-content: flex-start; }
+.cv-vtl-pop-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 8px 2px; color: var(--text-muted); font-size: 11px; }
+.cv-vtl-fade { position: absolute; top: 0; bottom: 0; width: 0; pointer-events: none; }
+.cv-vtl-fade.is-in { left: 0; background: linear-gradient(to right, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)); }
+.cv-vtl-fade.is-out { right: 0; background: linear-gradient(to left, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)); }
 
 /* The compact layout (1.58.7, the parity plan's L12): under 720 pixels the canvas takes the whole width, and the tool
    rail, the panels and the side column become sheets over it (the rail from the left, the others from the bottom),

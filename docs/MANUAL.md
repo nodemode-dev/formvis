@@ -40,7 +40,9 @@ ask it questions.
   time (the canvas shows that moment), drag a clip to move it or its ends to trim it, and Split at Playhead cuts the
   selected layer's clip in two. The timecode and the frame rate and length are buttons; Video (MP4) exports it.
   Open a track (its arrow) for its keyframe lanes: turn on a lane's stopwatch, move the playhead, and type a value to
-  key it there; the diamonds drag in time, and a right-click holds a value until the next keyframe.
+  key it there; the diamonds drag in time, and a right-click holds a value until the next keyframe. Add Transition
+  fades the selected clip in or out, or cross fades it with a clip overlapping it; Render (or File > Export > Render
+  Video) writes MP4, GIF or a PNG sequence, all of it or a range, at full, half or quarter size.
 - On a touch screen, pinch to zoom, drag two fingers to pan and turn them to rotate the view; tap two fingers to undo
   and three to redo. One finger, or a pen with its pressure and tilt, works the tool.
 - On a phone or a window under 720 pixels wide, the canvas takes the whole width; the buttons at the right of the

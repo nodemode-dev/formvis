@@ -25,13 +25,23 @@ export class VideoTimelinePanel {
   private pxPerFrame = 8;
   private playing = 0;
 
-  constructor(private readonly root: HTMLElement, private readonly engine: Engine) {
+  constructor(private readonly root: HTMLElement, private readonly engine: Engine, private readonly renderVideo: () => void = () => {}) {
     const bar = el('<div class="cv-vtl-bar"></div>');
+    // Add Transition (1.59.6, DEV_PLAN 25.4): a small menu, built once, acting on the selected layer's clip.
+    const pop = el('<div class="cv-vtl-pop" role="menu" aria-label="Transitions" hidden></div>');
+    const secs = el<HTMLInputElement>('<input class="cv-vtl-lane-val" type="number" min="0.1" max="60" step="0.1" value="1" aria-label="Transition length in seconds">');
+    const pick = (label: string, run: () => void): HTMLButtonElement => { const b = el<HTMLButtonElement>(`<button class="cv-btn cv-btn-ghost" type="button" role="menuitem">${label}</button>`); b.addEventListener('click', () => { pop.hidden = true; run(); }); return b; };
+    const len = (): number => { const vt = engine.video; return vt ? Math.max(1, Math.round((Number(secs.value) || 1) * vt.fps)) : 1; };
+    const lenRow = el('<label class="cv-vtl-pop-row"><span>Length (seconds)</span></label>'); lenRow.append(secs);
+    pop.append(pick('Fade In', () => this.fade(len(), true, false)), pick('Fade Out', () => this.fade(len(), false, true)), pick('Fade In and Out', () => this.fade(len(), true, true)), pick('Cross Fade', () => this.crossFade()), pick('Remove Transitions', () => this.fade(0, true, true)), lenRow);
+    const addTr = el<HTMLButtonElement>('<button class="cv-icon-btn cv-vtl-btn" type="button" title="Add transition" aria-label="Add transition" aria-haspopup="menu">&#9698;</button>');
+    addTr.addEventListener('click', () => { pop.hidden = !pop.hidden; });
+    root.append(pop);
     const btn = (label: string, glyph: string, run: () => void): HTMLButtonElement => { const b = el<HTMLButtonElement>(`<button class="cv-icon-btn cv-vtl-btn" type="button" title="${label}" aria-label="${label}">${glyph}</button>`); b.addEventListener('click', run); return b; };
     const go = (f: (vt: VideoTimeline) => number): void => { const vt = engine.video; if (vt) engine.setVideoTime(f(vt)); };
     const playBtn = btn('Play', '&#9654;', () => this.toggle(playBtn));
     bar.append(btn('First frame', '&#9198;', () => go((v) => v.workIn)), btn('Previous frame', '&#9664;', () => go((v) => v.current - 1)), playBtn, btn('Next frame', '&#9654;&#124;', () => go((v) => v.current + 1)),
-      btn('Split at Playhead', '&#9986;', () => this.split()), el('<span class="cv-vtl-gap"></span>'), this.time, this.rate,
+      btn('Split at Playhead', '&#9986;', () => this.split()), addTr, el('<span class="cv-vtl-gap"></span>'), this.time, this.rate,
       btn('Convert to Frame Animation', '&#9638;', () => { this.stop(playBtn); engine.convertVideoToFrames(); }), btn('Delete Timeline', '&#215;', () => { this.stop(playBtn); engine.deleteVideoTimeline(); }));
     this.time.addEventListener('click', () => { const vt = engine.video; if (!vt) return; const v = window.prompt('Go to frame', String(vt.current)); if (v !== null && v.trim() !== '' && Number.isFinite(Number(v))) engine.setVideoTime(Number(v)); });
     this.rate.addEventListener('click', () => this.setRate());
@@ -42,7 +52,9 @@ export class VideoTimelinePanel {
     fit.addEventListener('click', () => this.fit());
     this.zoom.addEventListener('input', () => { this.pxPerFrame = Number(this.zoom.value); this.sync(); });
     const foot = el('<div class="cv-vtl-foot"></div>');
-    foot.append(this.render, fit, this.zoom);
+    const renderBtn = el<HTMLButtonElement>('<button class="cv-btn cv-vtl-go" type="button" aria-label="Render Video">Render</button>');
+    renderBtn.addEventListener('click', () => this.renderVideo());
+    foot.append(this.render, fit, this.zoom, renderBtn);
     root.append(bar, body, foot);
     this.lanes.addEventListener('scroll', () => { this.heads.scrollTop = this.lanes.scrollTop; });   // names beside their clips
     this.ruler.addEventListener('pointerdown', (e) => { this.ruler.setPointerCapture(e.pointerId); this.scrub(e); });
@@ -129,6 +141,8 @@ export class VideoTimelinePanel {
       clip.style.transform = `translate(${tr.start * this.pxPerFrame}px, ${r * ROW_H + 3}px)`;
       clip.style.width = `${Math.max(4, tr.length * this.pxPerFrame)}px`;
       setText(clip.querySelector('.cv-vtl-clip-name') as HTMLElement, l.name);
+      (clip.querySelector('.cv-vtl-fade.is-in') as HTMLElement).style.width = `${(tr.fadeIn?.frames ?? 0) * this.pxPerFrame}px`;   // 1.59.6
+      (clip.querySelector('.cv-vtl-fade.is-out') as HTMLElement).style.width = `${(tr.fadeOut?.frames ?? 0) * this.pxPerFrame}px`;
       r++;
       if (!isOpen) continue;
       // The keyframe lanes (1.59.4, DEV_PLAN 25.3), as Photon's: a lane per property under the clip.
@@ -263,8 +277,45 @@ export class VideoTimelinePanel {
     return d;
   }
 
+  /** Fade In, Fade Out or both on the selected layer's clip, over `frames` (0 removes them), as one step. */
+  private fade(frames: number, inn: boolean, out: boolean): void {
+    const id = this.engine.current?.activeId, vt = this.engine.video;
+    if (!id || !vt?.tracks[id]) { this.engine.notice('Select a layer with a clip in the timeline.'); return; }
+    this.engine.editVideo((v) => {
+      const t = v.tracks[id];
+      if (!t) return;
+      const f = Math.min(frames, t.length);
+      if (inn) t.fadeIn = f > 0 ? { frames: f } : null;
+      if (out) t.fadeOut = f > 0 ? { frames: f } : null;
+    }, frames > 0 ? 'Add Transition' : 'Remove Transition');
+  }
+
+  /** Cross Fade, as Photoshop's: with the clip overlapping the selected one most, over their overlap. Only the upper of
+   *  the two fades (in when it starts later, out when it ends first), so the lower shows through and the picture never
+   *  dips. */
+  private crossFade(): void {
+    const e = this.engine, vt = e.video, p = e.current, id = p?.activeId;
+    const a = id ? vt?.tracks[id] : undefined;
+    if (!vt || !p || !id || !a) { e.notice('Select a layer with a clip in the timeline.'); return; }
+    let best: { id: string; len: number } | null = null;
+    for (const [other, b] of Object.entries(vt.tracks)) {
+      if (other === id) continue;
+      // Only a clip that starts or ends within this one makes a transition with it; one covering it whole does not.
+      const covers = b.start <= a.start && b.start + b.length >= a.start + a.length;
+      const len = Math.min(a.start + a.length, b.start + b.length) - Math.max(a.start, b.start);
+      if (len > 0 && !covers && (!best || len > best.len)) best = { id: other, len };
+    }
+    if (!best) { e.notice('Cross Fade needs another clip that starts or ends within this one.'); return; }
+    const order = p.doc.layers.map((l) => l.id), upper = order.indexOf(id) > order.indexOf(best.id) ? id : best.id, lower = upper === id ? best.id : id, len = best.len;
+    e.editVideo((v) => {
+      const u = v.tracks[upper], l = v.tracks[lower];
+      if (!u || !l) return;
+      if (u.start >= l.start) u.fadeIn = { frames: len }; else u.fadeOut = { frames: len };
+    }, 'Add Transition');
+  }
+
   private makeClip(id: string): HTMLElement {
-    const c = el('<div class="cv-vtl-clip" role="group" aria-label="Clip"><span class="cv-vtl-trim is-in" aria-label="Trim start"></span><span class="cv-vtl-clip-name"></span><span class="cv-vtl-trim is-out" aria-label="Trim end"></span></div>');
+    const c = el('<div class="cv-vtl-clip" role="group" aria-label="Clip"><span class="cv-vtl-fade is-in" aria-hidden="true"></span><span class="cv-vtl-fade is-out" aria-hidden="true"></span><span class="cv-vtl-trim is-in" aria-label="Trim start"></span><span class="cv-vtl-clip-name"></span><span class="cv-vtl-trim is-out" aria-label="Trim end"></span></div>');
     c.addEventListener('pointerdown', (e) => {
       const vt = this.engine.video, tr = vt?.tracks[id];
       if (!vt || !tr) return;
