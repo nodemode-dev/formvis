@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.61.5 · 2026-10-02
+
+### Added
+
+- `./formvis bench`: times formvis's drawing on your computer's graphics in a Chrome window (the same tests as Help > Performance Benchmark), records the computer, browser and graphics adapter, and writes the results to bench-results/ to send back.
+
 ## 1.61.4 · 2026-10-02
 
 ### Fixed

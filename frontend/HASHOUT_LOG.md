@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.61.5
+
+No window code changed in 1.61.5: `./formvis bench` (the register's H4) is in setup/ and the CLI, recorded in the backend's log, and runs the window's own benchmark (gpu/bench.ts) as it is. Removed lines taken after the version edit:
+
+```text
+export const VERSION = '1.61.4';
+```
+
 ## The register's 150 MP test, and room made before a large filter · _v1.61.4 (engine/index.ts, engine/stroke.ts, ui/panels/filter-panel.ts; e2e/test_large_document.py new)
 
 DEV_PLAN 26.4 closed and 26.5 done. Saving large layers needed no change: a 150 MP project saved in 2 to 5 s (the browser's PNG encoder streams rows) and reopened in 4 s at full size, three 1,024-pixel tiles (random noise, shape edges, a corner) equal to before over every byte. The register's test is now `e2e/test_large_document.py`, opt-in (`FORMVIS_LARGE=1`, the engine running): a 15,000 by 10,000 document painted with three strokes, blurred over MCP, saved to the library, closed, reopened with the same pixels and exported as PNG, the memory counted inside the budget after every stage and the page never lost. Run together, the stages showed what the separate runs had not: a blur straight after painting was refused, the strokes' undo not yet paged (that waits for edits to settle and spares the newest two steps) and the stroke pool holding 189 MB of spare surfaces. `relieveFor` now makes room before a large banded filter on the background path (agents, the closed dialog): the stroke pool emptied first (`dropSpareSurfaces`), then, only if still short, every undo tile still in the window paged (`pageOut(keep, all)`, after any round under way); `layerBytes` public for the panel's ask. Verified: the test passed in 262 s on the 4 GB test machine (after failing twice, at the refusal and then the pool, each fixed); the 16 MP equivalence and paging check again exact; unit 188; no errors. Removed lines taken after the version edit. Removed from frontend:

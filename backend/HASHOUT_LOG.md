@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## ./formvis bench · _v1.61.5 (setup/bench.py, setup/bench and setup/bench.bat new; formvis, formvis.bat, .gitignore)
+
+The register's H4 named `./formvis bench`, and it had never been built; the owner ran it on a MacBook Air and got "unknown command". Now: it starts the window server if it is not running (and stops it after), opens the installed Google Chrome in a visible window (a hidden browser draws on a software GPU) or else Playwright's Chromium, installs Playwright first if needed, runs Help > Performance Benchmark's tests (gpu/bench.ts) on every display path the browser has with 60 frames by default, asks the browser which adapter WebGL2 and WebGPU draw with, runs the native renderer's brush benchmark when Rust is installed (said plainly when not), and writes bench-results/<date>-<machine>.md and .json (the machine, the browser, both adapters, every timing, the notes) and says which file to send back; bench-results/ is ignored by git. Options: --frames N, --no-native, --headless (software graphics, for checking the command). The shell and Windows wrappers find formvis's Python as `test` does; formvis.bat dispatches it; the npm start and the server's stop work on Windows too. Checked here as the owner would run it, headless with the window server stopped first: it started the server, ran in Chrome on the software adapter (named in the file), wrote both files, and stopped the server again. Nothing removed besides the version lines:
+
+```text
+__version__ = "1.61.4"
+version = "1.61.4"
+version = "1.61.4"
+ "version": "1.61.4",
+```
+
 ## Version only · _v1.61.4
 
 No engine code changed in 1.61.4 (room made before a large filter, in the window; the register's test drives the engine's MCP, library, undo store and banded PNG writer as they were). Removed lines taken after the version edit:
