@@ -366,6 +366,8 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-vtl-fade { position: absolute; top: 0; bottom: 0; width: 0; pointer-events: none; }
 .cv-vtl-fade.is-in { left: 0; background: linear-gradient(to right, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)); }
 .cv-vtl-fade.is-out { right: 0; background: linear-gradient(to left, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)); }
+/* The status bar's memory reading (1.60.2, DEV_PLAN 26.1), in a warning colour past 85% of the budget. */
+.cv-st-mem.is-high { color: var(--warning-color, #f59e0b); }
 /* Fades to black or white (1.60.1) drawn in their colour. */
 .cv-vtl-fade.is-in.is-black { background: linear-gradient(to right, #000, rgba(0, 0, 0, 0)); }
 .cv-vtl-fade.is-out.is-black { background: linear-gradient(to left, #000, rgba(0, 0, 0, 0)); }

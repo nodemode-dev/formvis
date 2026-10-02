@@ -1951,6 +1951,9 @@ export function startApp(): void {
   void api.capabilities().then((c) => {
     caps = c;
     if (c?.pixelBudget) setPixelBudget(c.pixelBudget);   // the largest document, from this computer's memory (1.53.4)
+    // What formvis may hold in pixels (1.60.2, DEV_PLAN 26.1): 45% of this computer's memory, leaving the browser and
+    // the system theirs (measured: the page was killed at 3.45 GB of 4 GB with the browser itself near 0.9 GB).
+    if (c?.memory) { engine.memoryBudget = Math.max(512 * 1048576, Math.round(c.memory * 0.45)); status.syncMemory(); }
     status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop' : ''}` : 'Engine offline');
     if (!c) toast('The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).');
     syncEngineDevice();

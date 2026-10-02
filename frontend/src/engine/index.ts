@@ -486,6 +486,7 @@ export class Engine {
   }
 
   newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
+    if (Number.isInteger(width) && Number.isInteger(height) && !this.room(width * height * 8, 'A new document')) return null;   // its layer and display (1.60.2)
     if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels) {
       this.notice(`Canvas sides must be 1 to 30,000 px, and the canvas at most ${Math.round(LIMITS.pixels / 1_000_000)} megapixels.`, 'error');
       return null;
@@ -2190,7 +2191,40 @@ export class Engine {
 
   /** Layer > New > Layer; the New Layer dialog passes its name, blending mode, opacity and whether to clip the new layer
    *  to the one below (Use Previous Layer to Create Clipping Mask). One step either way. */
+  /** Memory (1.60.2, DEV_PLAN 26.1, the register's M5): the bytes formvis may hold in pixels, set from this computer's
+   *  memory by the engine (0 while unknown: no limit), so an operation that would not fit is refused with a message
+   *  rather than the browser's page being killed (measured: a 150 MP document's second layer and stroke at 3.45 GB). */
+  memoryBudget = 0;
+
+  /** The pixels held for every open document: its layers and masks (each raster once), one document-size copy for
+   *  the display, and what its undo history keeps beyond them. */
+  memoryUse(): number {
+    let n = 0;
+    for (const p of this.projects) {
+      const seen = new Set<string>();
+      for (const l of p.doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && !seen.has(r.id)) { seen.add(r.id); n += r.width * r.height * 4; }
+      // The display holds two document-size copies (measured at 1.60.2: a 150 MP document grew the browser by 1.6 GB, its
+      // one layer 572 MB of it), and the undo history what it keeps beyond the layers.
+      n += p.doc.width * p.doc.height * 8 + p.history.retained(p.snapshot());
+    }
+    return n;
+  }
+
+  /** Room for `what`, needing `extra` bytes more: true when it fits the budget, else false with a message. */
+  room(extra: number, what: string): boolean {
+    if (!this.memoryBudget || extra <= 0) return true;
+    const use = this.memoryUse();
+    if (use + extra <= this.memoryBudget) return true;
+    const mb = (b: number): string => `${Math.round(b / 1048576).toLocaleString()} MB`;
+    this.notice(`${what} needs about ${mb(extra)} more, and formvis is holding ${mb(use)} of the ${mb(this.memoryBudget)} this computer allows it. Merge or delete layers, close a document, or work on a smaller copy.`);
+    return false;
+  }
+
+  /** A full layer's bytes in the current document (what a new layer, a stroke's working copy or a filter's buffer takes). */
+  private layerBytes(): number { const p = this.current, r = p?.activeLayer?.raster; return r ? r.width * r.height * 4 : p ? p.doc.width * p.doc.height * 4 : 0; }
+
   addLayer(opts: { name?: string; blend?: BlendMode; opacity?: number; clip?: boolean } = {}): void {
+    // No room asked (1.60.2): a new layer holds no pixels until painted, and the first stroke's check counts them.
     this.edit('New Layer', (p) => {
       const names = new Set(p.doc.layers.map((l) => l.name));
       let n = 1;
@@ -2305,6 +2339,8 @@ export class Engine {
 
   /** Layer > Duplicate Layer; the dialog passes a name, used when one layer or folder is duplicated. One step. */
   duplicateLayers(name?: string): void {
+    const p0 = this.current;   // room for the copies (1.60.2)
+    if (p0 && !this.room([...p0.selectedIds].reduce((n, id) => { const r = p0.layer(id)?.raster; return n + (r ? r.width * r.height * 4 : 0); }, 0), 'Duplicating')) return;
     this.edit('Duplicate Layer', (p) => {
       const roots = this.selectedRoots(p);
       if (!roots.length) return false;
@@ -2911,6 +2947,9 @@ export class Engine {
     if (!this.deepPaintOk()) return false;   // 16 bits: Brush, Pencil and Eraser paint (1.53.8)
     const p = this.current;
     if (!p || this.stroke) return false;
+    // Its working copy, and the layer's own pixels when this stroke is the first on it (1.60.2: measured, both).
+    const fresh = p.activeLayer && !p.activeLayer.raster ? p.doc.width * p.doc.height * 4 : 0;
+    if (!this.room(this.layerBytes() + fresh, 'This stroke')) return false;
     this.settle();
     if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to paint on.'); return false; }
@@ -4641,6 +4680,7 @@ export class Engine {
   }
 
   applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0): void {
+    if (!this.room(this.layerBytes() * 2, name)) return;   // its source and result (1.60.2)
     const al = this.current?.activeLayer;
     if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return; }
     this.preview = null;
@@ -4675,6 +4715,7 @@ export class Engine {
    *  applyImageEdit as one undo step. If the layer changed meanwhile nothing is applied; if the pixels applyImageEdit
    *  sees ever differ in size from those computed on, `fallback` recomputes on them there. */
   async applyImageEditAsync(name: string, run: (src: ImageData, scale: number) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number) => ImageData): Promise<boolean> {
+    if (!this.room(this.layerBytes() * 2, name)) return false;   // its source and result (1.60.2)
     const al = this.current?.activeLayer;
     if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
     const p0 = this.current, l0 = p0?.activeLayer ?? null;

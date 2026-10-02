@@ -331,7 +331,12 @@ export class AgentBridge {
         // Filters and looks.
         case 'apply_filter': {
           if (!this.deps.applyFilter) return fail('Filters are not available here.');
-          const ok = await this.deps.applyFilter(str('kind'), (a.settings && typeof a.settings === 'object' ? a.settings : {}) as Record<string, unknown>);
+          // The engine's own reason, when it gives one (1.60.2: a memory refusal, a lock), is the agent's answer.
+          let said = '';
+          const off = e.on('notice', (n) => { said = (n as { text?: string } | null)?.text ?? said; });
+          let ok: boolean;
+          try { ok = await this.deps.applyFilter(str('kind'), (a.settings && typeof a.settings === 'object' ? a.settings : {}) as Record<string, unknown>); } finally { off?.(); }
+          if (!ok && said) return fail(said);
           const al = e.activeLayer;
           return ok ? text(`Applied ${str('kind')} to ${al?.name}.`) : fail(al && (al.text || al.shape || al.smart) ? `${al.name} is a ${al.text ? 'text' : al.shape ? 'shape' : 'smart object'} layer: call rasterize_layer with its id (${al.id}) first, then apply the filter.` : `${str('kind')} could not be applied to ${al?.name}: a pixel layer is needed (see get_document for the kinds).`);
         }
