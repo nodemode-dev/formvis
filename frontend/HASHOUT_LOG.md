@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.61.6
+
+No window code changed in 1.61.6 (bench runs in the background and finds the window server on macOS, in setup/bench.py, recorded in the backend's log). Removed lines taken after the version edit:
+
+```text
+export const VERSION = '1.61.5';
+```
+
 ## Version only · _v1.61.5
 
 No window code changed in 1.61.5: `./formvis bench` (the register's H4) is in setup/ and the CLI, recorded in the backend's log, and runs the window's own benchmark (gpu/bench.ts) as it is. Removed lines taken after the version edit:

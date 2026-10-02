@@ -2,6 +2,52 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## ./formvis bench in the background, and the window server found on macOS · _v1.61.6 (setup/bench.py)
+
+The owner's first run on a MacBook Air said the window server had not started, and asked for no window at all. Cause: Vite (host false) listens on localhost, which on macOS is IPv6 (::1) only, and bench asked 127.0.0.1 alone, so a running server went unseen for 90 s. Now `up()` asks localhost, then 127.0.0.1, and returns the address that answers, which the page opens; a server bench starts is logged to bench-results/window-server.log and waited for up to 2 minutes, and if it never answers (or exits) bench quotes its last lines instead of guessing; a missing npm is said plainly. No window by default: Chrome runs in the background with its GPU switched on (`GPU_ARGS`: enable-gpu, ignore-gpu-blocklist, enable-unsafe-webgpu, and Metal through ANGLE on macOS); `--window` opens one. Whether the GPU drew is read back, never assumed: an adapter the browser names as software (SwiftShader, llvmpipe, Microsoft Basic Render) is recorded (`software` in the .json, the .md's browser line) and bench says those numbers do not show the GPU and to run `--window`. Checked here: the default run with the server stopped started it, ran in the background (WebGPU now included, software on this machine), wrote both files and named the software adapter with the advice; with port 5190 held by another program, bench quoted Vite's "Port 5190 is already in use"; with no npm on the path, the plain message. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.61.5"
+Options: --frames N (default 60), --no-native (skip the native renderer), --headless (no window: software graphics,
+for checking the command itself, not for numbers worth sending).
+URL = os.environ.get("FORMVIS_BENCH_URL", "http://127.0.0.1:5190/")
+def up() -> bool:
+    try:
+        with urllib.request.urlopen(URL, timeout=2) as r:
+            return r.status == 200
+    except OSError:
+        return False
+def open_browser(p, headless: bool):
+    try:
+        return p.chromium.launch(channel="chrome", headless=headless), "Google Chrome"
+    except Exception:
+        pass
+    try:
+        return p.chromium.launch(headless=headless), "Playwright's Chromium"
+    except Exception:
+        sys.exit("[formvis] no browser to run in: install Google Chrome, or run "
+                 f"'{sys.executable} -m playwright install chromium'")
+    ap.add_argument("--headless", action="store_true")
+    started = None
+    if not up():
+        say("starting formvis's window server (stopped again when the benchmark ends)")
+        started = subprocess.Popen(["npm", "run", "dev"], cwd=ROOT / "frontend", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                   start_new_session=True, shell=os.name == "nt")
+        for _ in range(90):
+            if up():
+        else:
+            sys.exit("[formvis] the window server did not start: run ./formvis install, then try again")
+            browser, which = open_browser(p, args.headless)
+            say(f"running in {which}{' (headless: software graphics, numbers not worth sending)' if args.headless else ''}; keep its window in front until it closes")
+            page.goto(URL)
+              "browser": f"{which} {browser_version}", "headless": args.headless, "webgl": got["webgl"], "webgpu": got["webgpu"],
+| Browser | {record['browser']}{' (headless, software graphics)' if args.headless else ''} |
+    say("send that .md file back; it holds the numbers and the machine they were measured on")
+version = "1.61.5"
+version = "1.61.5"
+ "version": "1.61.5",
+```
+
 ## ./formvis bench · _v1.61.5 (setup/bench.py, setup/bench and setup/bench.bat new; formvis, formvis.bat, .gitignore)
 
 The register's H4 named `./formvis bench`, and it had never been built; the owner ran it on a MacBook Air and got "unknown command". Now: it starts the window server if it is not running (and stops it after), opens the installed Google Chrome in a visible window (a hidden browser draws on a software GPU) or else Playwright's Chromium, installs Playwright first if needed, runs Help > Performance Benchmark's tests (gpu/bench.ts) on every display path the browser has with 60 frames by default, asks the browser which adapter WebGL2 and WebGPU draw with, runs the native renderer's brush benchmark when Rust is installed (said plainly when not), and writes bench-results/<date>-<machine>.md and .json (the machine, the browser, both adapters, every timing, the notes) and says which file to send back; bench-results/ is ignored by git. Options: --frames N, --no-native, --headless (software graphics, for checking the command). The shell and Windows wrappers find formvis's Python as `test` does; formvis.bat dispatches it; the npm start and the server's stop work on Windows too. Checked here as the owner would run it, headless with the window server stopped first: it started the server, ran in Chrome on the software adapter (named in the file), wrote both files, and stopped the server again. Nothing removed besides the version lines:

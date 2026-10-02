@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.61.6 · 2026-10-02
+
+### Fixed
+
+- `./formvis bench` on a Mac said the window server had not started when it had (it looked for it on the wrong address); if the server really cannot start, it now shows the server's own reason.
+
+### Changed
+
+- `./formvis bench` runs in the background with no window, with the graphics processor switched on, and says plainly if the browser drew in software instead (then `./formvis bench --window` measures with a window).
+
 ## 1.61.5 · 2026-10-02
 
 ### Added
