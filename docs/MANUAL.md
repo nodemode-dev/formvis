@@ -124,7 +124,9 @@ ask it questions.
   Expand grows the canvas and fills the new border; Image > Upscale enlarges two or four times. Upscale runs on fal, or
   on this computer with no key once Real-ESRGAN is downloaded (Preferences > Plugins > Local models, about 67 MB). The result is a new
   layer, masked to the selection.
-- Edit > Generate Image makes a picture from a prompt alone, as a new layer at the document's size.
+- Edit > Generate Image makes a picture from a prompt alone, as a new layer at the document's size. Besides fal it
+  works with OpenAI, Google, Black Forest Labs and Ideogram: choose one, paste its API key in the dialog once (it is
+  kept in your system's password store, or read from the provider's usual environment variable), and generate.
 - The model: FLUX on fal (paste a fal key into the dialog once), or one of your ComfyUI workflows (see ComfyUI
   below). A workflow needs no fal key.
 - API keys (fal's, and the language model's) are kept in your system's password store: Keychain on a Mac,

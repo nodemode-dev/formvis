@@ -11,6 +11,8 @@ export interface LibraryItem { name: string; modified: number; size: number }
 export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string> }
 export interface FilePart { name: string; blob: Blob }
 export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; fillModel: string; eraseModel: string; upscaleModel: string }
+/** A generation provider beside fal (1.58.4, L7): OpenAI, Google, Black Forest Labs or Ideogram. */
+export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null }
 
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
@@ -86,9 +88,18 @@ export const api = {
     return ((await (await request('/llm/improve', { method: 'POST', body: form({ prompt, instructions }) })).json()) as { prompt: string }).prompt;
   },
 
-  /** Edit > Generate Image (1.51.2): a picture from a prompt alone through fal, near the document's shape. */
-  async generateImage(prompt: string, width: number, height: number): Promise<Blob> {
-    return (await request('/generative/generate', { method: 'POST', body: form({ prompt, width: String(width), height: String(height) }) })).blob();
+  /** Edit > Generate Image (1.51.2): a picture from a prompt alone through fal, or (1.58.4) through another provider,
+   *  near the document's shape. */
+  async generateImage(prompt: string, width: number, height: number, provider = 'fal'): Promise<Blob> {
+    return (await request('/generative/generate', { method: 'POST', body: form({ prompt, width: String(width), height: String(height), provider }) })).blob();
+  },
+  /** The providers beside fal (1.58.4, L7): which have keys, never the keys themselves. */
+  async providers(): Promise<ProviderStatus[]> {
+    try { return (await (await request('/generative/providers')).json()) as ProviderStatus[]; } catch { return []; }
+  },
+  /** A provider's key, kept in the system's password store by the engine. */
+  async saveProviderKey(id: string, key: string): Promise<ProviderStatus[]> {
+    return (await (await request(`/generative/providers/${id}/key`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ key }) })).json()) as ProviderStatus[];
   },
 
   /** Run ComfyUI Workflow (1.51.1): uploads the inputs, fills the workflow and queues it. */
