@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Render Video's picture sequence · _v1.59.6 (app/routers/video.py)
+
+`POST /api/video/sequence` (frames as PNGs in order, and a name): the frames as `name_00001.png` and on in one zip, stored rather than deflated again (PNG is compressed already), the name cleaned to letters, digits, spaces, hyphens and underscores. Checked through the window's Render Video: 30 frames zipped as T_00001.png to T_00030.png at 100 by 50. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.59.5"
+version = "1.59.5"
+version = "1.59.5"
+ "version": "1.59.5",
+```
+
 ## Version only · _v1.59.5
 
 No engine code changed in 1.59.5 (timeline edits as undo steps, in the window). Removed lines taken after the version edit:

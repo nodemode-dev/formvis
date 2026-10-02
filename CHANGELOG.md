@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.59.6 · 2026-10-02
+
+Transitions and Render Video (DEV_PLAN 25.4).
+
+### Added
+
+- Add Transition in the timeline: Fade In, Fade Out, both, and Cross Fade between overlapping clips (the picture never dips between them), each with its length; the clips show their fades.
+- File > Export > Render Video (and Render in the timeline): MP4, an animated GIF or a PNG sequence, of every frame, the work area or a range, at full, half or quarter size.
+
+### Known
+
+- Fades from black or white are not offered yet.
+
 ## 1.59.5 · 2026-10-02
 
 Undo for the video timeline.
