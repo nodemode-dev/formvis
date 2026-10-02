@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.57.9 · 2026-10-01
+
+CMYK and Lab: profiles, the Channel Mixer on inks, and Lab's channels alone (DEV_PLAN 22.11). Every command now works in every mode and depth.
+
+### Added
+
+- Assign Profile and Convert to Profile in CMYK documents: Assign shows the same inks through another press; Convert changes the inks to look the same on it, keeping black text black only. Each is one step.
+- Convert to Profile from a Lab document, through RGB; Assign Profile there opens it, since Lab colours are absolute.
+- The Channel Mixer in CMYK documents mixes the inks: each output ink from Cyan, Magenta, Yellow, Black and a constant.
+- In Lab documents, clicking Lightness, a or b in the Channels panel shows that channel alone on the canvas.
+
 ## 1.57.8 · 2026-10-01
 
 CMYK and Lab: 16 and 32 bits, proofing and HDR exports (DEV_PLAN 22.11).

@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## CMYK to CMYK, pure black kept · _v1.57.9 (app/routers/colour.py)
+
+`POST /color/convert-ink` (form: width, height, source and dest as base64 ICC, intent, preserve_black, and the 8-bit inks): through LittleCMS by Pillow's ImageCms. Pillow reaches only the four standard intents, so LittleCMS's black-preserving ones (tried: intents 11 and 14 are refused) are done here: with `preserve_black` (the default) a pixel inked with black alone stays black alone, its black moved to the value of the same lightness under the new profile (both profiles' black ramps measured in Lab and matched). Checked here with FOGRA39L to itself: with it (0, 0, 0, 255) and (0, 0, 0, 128) come back unchanged; without it they become (195, 179, 161, 212) and (102, 80, 80, 25), four-colour black, as plain colorimetric conversion makes them (in Photoshop too); a blue (200, 100, 0, 0) converts the same either way. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.57.8"
+version = "1.57.8"
+version = "1.57.8"
+ "version": "1.57.8",
+```
+
 ## 16-bit CMYK and Lab TIFF · _v1.57.8 (app/routers/io.py, requirements.txt; NOTICE.md)
 
 `POST /io/encode-tiff16` (fields width, height, space; files values.raw and, for CMYK, profile.icc): 16-bit CMYK as separated inks with the profile in tag 34675, and 16-bit Lab as CIELab with L* over 0 to 65535 and a* and b* as signed 16-bit values (a* times 256), both zlib-compressed, through tifffile, since Pillow writes neither. tifffile pinned at 2026.3.3 (BSD-3-Clause, Christoph Gohlke) in requirements.txt and credited in NOTICE.md; it needs only numpy for zlib. Checked through the browser's exports: tifffile reads the CMYK file back as uint16 separated with the profile and the inks exact, and the Lab file as CIELab within 1/256 of the floats. Removed lines taken after the version edit:
