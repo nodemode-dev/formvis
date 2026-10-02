@@ -65,7 +65,7 @@ export class VideoTimelinePanel {
     if (secs === null) return;
     const f = Number(fps), s = Number(secs);
     if (!(f >= 1 && f <= 240) || !(s > 0 && s <= 3600)) return;
-    this.engine.editVideo((v) => { const d = Math.max(1, Math.round(f * s)); v.fps = f; v.duration = d; v.workOut = Math.min(Math.max(v.workOut, 1), d); v.workIn = Math.min(v.workIn, v.workOut - 1); v.current = Math.min(v.current, d - 1); });
+    this.engine.editVideo((v) => { const d = Math.max(1, Math.round(f * s)); v.fps = f; v.duration = d; v.workOut = Math.min(Math.max(v.workOut, 1), d); v.workIn = Math.min(v.workIn, v.workOut - 1); v.current = Math.min(v.current, d - 1); }, 'Set Timeline Frame Rate');
   }
 
   /** Split at Playhead, as Photoshop's: the active layer's clip ends at the playhead, and a copy of the layer carries
@@ -79,7 +79,7 @@ export class VideoTimelinePanel {
     e.duplicateLayers();
     const copy = e.current?.doc.layers.find((l) => !before.has(l.id));
     if (!copy) return;
-    e.editVideo((v) => { const t = v.tracks[id]; v.tracks[copy.id] = { ...structuredClone(t), start: ph, length: t.start + t.length - ph }; t.length = ph - t.start; });
+    e.editVideo((v) => { const t = v.tracks[id]; v.tracks[copy.id] = { ...structuredClone(t), start: ph, length: t.start + t.length - ph }; t.length = ph - t.start; }, 'Split at Playhead');
   }
 
   private toggle(b: HTMLButtonElement): void { if (this.playing) this.stop(b); else this.play(b); }
@@ -185,7 +185,7 @@ export class VideoTimelinePanel {
       if (!tr) return;
       const ks = (tr.keys[prop] ??= []), at = ks.find((k) => k.t === vt.current);
       if (at) at.v = v; else { ks.push({ t: vt.current, v, interp: 'linear' }); ks.sort((a, b) => a.t - b.t); }
-    });
+    }, 'Make Keyframe');
   }
 
   private makeLaneHead(id: string, prop: VideoProp): HTMLElement {
@@ -196,7 +196,7 @@ export class VideoTimelinePanel {
     const scale = prop === 'opacity' || prop === 'fill' ? 100 : 1;
     watch.addEventListener('click', () => {
       const v = this.current(id, prop);
-      this.engine.editVideo((vt) => { const tr = vt.tracks[id]; if (!tr) return; if (tr.keys[prop]?.length) delete tr.keys[prop]; else tr.keys[prop] = [{ t: vt.current, v, interp: 'linear' }]; });
+      this.engine.editVideo((vt) => { const tr = vt.tracks[id]; if (!tr) return; if (tr.keys[prop]?.length) delete tr.keys[prop]; else tr.keys[prop] = [{ t: vt.current, v, interp: 'linear' }]; }, 'Keyframe Animation');
     });
     input.addEventListener('change', () => {
       const n = Number(input.value);
@@ -223,7 +223,7 @@ export class VideoTimelinePanel {
     add.addEventListener('click', () => {
       const vt = this.engine.video, ks = vt?.tracks[id]?.keys[prop] ?? [];
       if (!vt) return;
-      if (ks.some((k) => k.t === vt.current)) this.engine.editVideo((v) => { const tr = v.tracks[id]; if (!tr) return; tr.keys[prop] = (tr.keys[prop] ?? []).filter((k) => k.t !== v.current); if (!tr.keys[prop]?.length) delete tr.keys[prop]; });
+      if (ks.some((k) => k.t === vt.current)) this.engine.editVideo((v) => { const tr = v.tracks[id]; if (!tr) return; tr.keys[prop] = (tr.keys[prop] ?? []).filter((k) => k.t !== v.current); if (!tr.keys[prop]?.length) delete tr.keys[prop]; }, 'Delete Keyframe');
       else this.key(id, prop, this.current(id, prop));
     });
     return h;
@@ -247,17 +247,18 @@ export class VideoTimelinePanel {
       const move = (ev: PointerEvent): void => {
         const t = Math.max(0, Math.min(vt.duration - 1, t0 + Math.round((ev.clientX - x0) / this.pxPerFrame)));
         if (t === t0 && !moved) return;
+        if (!moved) this.engine.beginVideoGesture('Move Keyframe');   // one step (1.59.5)
         moved = true;
         this.engine.editVideo((v) => { const ks = v.tracks[id]?.keys[prop]; if (!ks) return; const kk = ks.find((x) => x.t === (moved ? Number(d.dataset.t ?? t0) : t0)) ?? ks[i]; kk.t = t; ks.sort((a, b) => a.t - b.t); });
         d.dataset.t = String(t);
       };
-      const up = (): void => { d.removeEventListener('pointermove', move); d.removeEventListener('pointerup', up); d.removeEventListener('pointercancel', up); delete d.dataset.t; if (!moved) this.engine.setVideoTime(t0); };
+      const up = (): void => { d.removeEventListener('pointermove', move); d.removeEventListener('pointerup', up); d.removeEventListener('pointercancel', up); delete d.dataset.t; if (moved) this.engine.endVideoGesture(); else this.engine.setVideoTime(t0); };
       d.addEventListener('pointermove', move); d.addEventListener('pointerup', up); d.addEventListener('pointercancel', up);
     });
     d.addEventListener('contextmenu', (e) => {
       e.preventDefault();
       const i = Number(d.dataset.index);
-      this.engine.editVideo((v) => { const k = v.tracks[id]?.keys[prop]?.[i]; if (k) k.interp = k.interp === 'hold' ? 'linear' : 'hold'; });
+      this.engine.editVideo((v) => { const k = v.tracks[id]?.keys[prop]?.[i]; if (k) k.interp = k.interp === 'hold' ? 'linear' : 'hold'; }, 'Keyframe Interpolation');
     });
     return d;
   }
@@ -270,6 +271,7 @@ export class VideoTimelinePanel {
       e.preventDefault(); c.setPointerCapture(e.pointerId);
       const target = e.target as HTMLElement, kind = target.classList.contains('is-in') ? 'in' : target.classList.contains('is-out') ? 'out' : 'move';
       const x0 = e.clientX, s0 = tr.start, l0 = tr.length;
+      this.engine.beginVideoGesture(kind === 'move' ? 'Move Clip' : kind === 'in' ? 'Trim Layer Start' : 'Trim Layer End');   // one step (1.59.5)
       const move = (ev: PointerEvent): void => {
         const d = Math.round((ev.clientX - x0) / this.pxPerFrame);
         this.engine.editVideo((v) => {
@@ -280,7 +282,7 @@ export class VideoTimelinePanel {
           else t.length = Math.max(1, l0 + d);
         });
       };
-      const up = (): void => { c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', up); };
+      const up = (): void => { c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', up); this.engine.endVideoGesture(); };
       c.addEventListener('pointermove', move); c.addEventListener('pointerup', up); c.addEventListener('pointercancel', up);
     });
     return c;

@@ -664,6 +664,12 @@ export class Engine {
     p.doc = s.doc;
     p.selection = s.selection;
     if (s.paths) { this.pathSets.set(p, structuredClone(s.paths) as PathSet); this.pathsChanged(p); }   // a path edit's step
+    if (s.video !== undefined) {   // a timeline edit's step (1.59.5): its timeline back, the playhead where it is now
+      const now = this.timelineOf(p).video, v = s.video ? structuredClone(s.video) as VideoTimeline : null;
+      if (v && now) v.current = Math.min(now.current, v.duration - 1);
+      this.timelines.set(p, { ...this.timelineOf(p), video: v });
+      this.emit('timeline', null);
+    }
     this.focus(p, s.activeId && s.doc.layers.some((l) => l.id === s.activeId) ? s.activeId : null);
     this.refresh();
   }
@@ -1477,30 +1483,59 @@ export class Engine {
     if (!p) return false;
     const t = this.timelineOf(p);
     if (t.frames.length || t.video) return false;
-    this.timelines.set(p, { ...t, video: newVideoTimeline(p.doc, fps, seconds) });
+    const v = newVideoTimeline(p.doc, fps, seconds);
+    p.history.begin('Create Video Timeline', { ...p.snapshot(), video: null });   // a step (1.59.5)
+    this.timelines.set(p, { ...t, video: v });
+    p.history.end({ ...p.snapshot(), video: structuredClone(v) });
+    this.refresh();
     this.emit('timeline', null);
     return true;
   }
 
-  /** Delete Timeline (the video one). */
+  /** Delete Timeline (the video one), a step. */
   deleteVideoTimeline(): boolean {
-    const p = this.current;
-    if (!p || !this.timelineOf(p).video) return false;
+    const p = this.current, v = p ? this.timelineOf(p).video : null;
+    if (!p || !v) return false;
+    p.history.begin('Delete Timeline', { ...p.snapshot(), video: structuredClone(v) });
     this.timelines.set(p, { ...this.timelineOf(p), video: null });
+    p.history.end({ ...p.snapshot(), video: null });
+    this.refresh();
     this.emit('timeline', null);
     return true;
   }
 
-  /** The video timeline changed through `fn` on a copy, then put in place and shown. */
-  editVideo(fn: (vt: VideoTimeline) => void): boolean {
+  /** The video timeline changed through `fn` on a copy, then put in place and shown. With a `name` it is one undoable
+   *  step (1.59.5, carrying the timeline as path edits carry paths); inside a gesture (`beginVideoGesture`) it is live,
+   *  the gesture being the step; without either it is live and no step at all (the playhead moving). */
+  editVideo(fn: (vt: VideoTimeline) => void, name?: string): boolean {
     const p = this.current, vt = this.video;
     if (!p || !vt) return false;
+    const step = !!name && !this.videoGesture;
+    if (step) p.history.begin(name as string, { ...p.snapshot(), video: structuredClone(vt) });
     const next = structuredClone(vt);
     fn(next);
     this.timelines.set(p, { ...this.timelineOf(p), video: next });
+    if (step) { p.history.end({ ...p.snapshot(), video: structuredClone(next) }); this.refresh(); }
     this.emit('timeline', null);
     this.emit('render', null);   // the canvas shows the playhead's frame (1.59.3)
     return true;
+  }
+
+  /** A drag in the timeline (a clip moved or trimmed, a keyframe moved) as one step, from press to release. */
+  private videoGesture: { p: Project } | null = null;
+  beginVideoGesture(name: string): void {
+    const p = this.current, vt = this.video;
+    if (!p || !vt || this.videoGesture) return;
+    p.history.begin(name, { ...p.snapshot(), video: structuredClone(vt) });
+    this.videoGesture = { p };
+  }
+  endVideoGesture(): void {
+    const g = this.videoGesture;
+    if (!g) return;
+    this.videoGesture = null;
+    const v = this.timelineOf(g.p).video ?? null;
+    g.p.history.end({ ...g.p.snapshot(), video: v ? structuredClone(v) : null });
+    this.refresh();
   }
 
   /** The playhead moved to frame `f` (kept within the timeline); the canvas shows that frame. */
