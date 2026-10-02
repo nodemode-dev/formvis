@@ -54,6 +54,15 @@ export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number
   }
 }
 
+/** Each filter's peak memory when run on the whole layer, in layer-sizes, rounded up (1.61.1: measured on a 4,000 by
+ *  4,000 layer with the browser's memory sampled every 100 ms; the room check had counted 2 for all). Surface Blur's
+ *  reading was masked by the previous filter's memory being collected during it, so it takes the common 12. */
+const FILTER_PEAK: Partial<Record<FilterKind, number>> = {
+  gaussianBlur: 12, motionBlur: 10, addNoise: 2, lensCorrection: 10, unsharpMask: 11, lensBlur: 19, smartSharpen: 12, shakeReduction: 10,
+  radialBlur: 12, surfaceBlur: 12, fieldBlur: 16, irisBlur: 13, tiltShift: 15, pathBlur: 4, develop: 4,
+};
+export const filterPeak = (kind: FilterKind): number => FILTER_PEAK[kind] ?? 12;
+
 /** How far a filter that may run in bands reaches (1.60.9, DEV_PLAN 26.4), or null: those whose effect reaches a bounded
  *  distance and is the same wherever it is. Add Noise (its random sequence), Lens Correction (the whole picture's
  *  geometry) and the blurs placed in the picture (radial, path, field, iris, tilt-shift) run whole. */
@@ -332,7 +341,7 @@ export class FilterPanel extends Dialog {
     const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => sync(src, 1), apron, filterMargin(kind, s)) : false;
     if (banded === 'refused') return Promise.resolve(false);   // not done, and said why
     if (banded) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }
-    return this.engine.applyImageEditAsync(FILTER_LABELS[kind], (src, scale) => runFilterOffThread(kind, s, scale, seed, src) ?? Promise.resolve(sync(src, scale)), filterMargin(kind, s), sync);
+    return this.engine.applyImageEditAsync(FILTER_LABELS[kind], (src, scale) => runFilterOffThread(kind, s, scale, seed, src) ?? Promise.resolve(sync(src, scale)), filterMargin(kind, s), sync, filterPeak(kind) + 2);   // its peak, and the copies to and from the worker (1.61.1)
   }
 
   applySettings(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> | boolean {
@@ -347,7 +356,7 @@ export class FilterPanel extends Dialog {
     const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => run(src, 1), apron, this.grow()) : false;
     if (banded === 'refused') return false;   // not done, and said why
     if (banded) return true;
-    this.engine.applyImageEdit(FILTER_LABELS[kind], run, this.grow());
+    this.engine.applyImageEdit(FILTER_LABELS[kind], run, this.grow(), filterPeak(kind));   // its measured peak (1.61.1)
     return true;
   }
 

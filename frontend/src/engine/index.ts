@@ -4989,8 +4989,9 @@ export class Engine {
     this.emit('history', null);
   }
 
-  applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0): void {
-    if (!this.room(this.layerBytes() * 2, name)) return;   // its source and result (1.60.2)
+  applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0, peak = 2): void {
+    // Its peak in layer-sizes, as its caller measured it (1.61.1: the filters peak at 2 to 19; two when unmeasured).
+    if (!this.room(this.layerBytes() * peak, name)) return;
     const al = this.current?.activeLayer;
     if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return; }
     this.preview = null;
@@ -5024,8 +5025,8 @@ export class Engine {
    *  mask), `run` computes on it in the background while the interface stays live, and the result goes through
    *  applyImageEdit as one undo step. If the layer changed meanwhile nothing is applied; if the pixels applyImageEdit
    *  sees ever differ in size from those computed on, `fallback` recomputes on them there. */
-  async applyImageEditAsync(name: string, run: (src: ImageData, scale: number) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number) => ImageData): Promise<boolean> {
-    if (!this.room(this.layerBytes() * 2, name)) return false;   // its source and result (1.60.2)
+  async applyImageEditAsync(name: string, run: (src: ImageData, scale: number) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number) => ImageData, peak = 2): Promise<boolean> {
+    if (!this.room(this.layerBytes() * peak, name)) return false;   // its caller's measured peak (1.61.1)
     const al = this.current?.activeLayer;
     if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
     const p0 = this.current, l0 = p0?.activeLayer ?? null;
