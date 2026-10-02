@@ -405,11 +405,12 @@ Keys a layer's property at a frame (default the playhead): x and y in pixels, op
 
 ## timeline_transition
 
-Adds a transition to a layer's clip: fade_in, fade_out or fade (both) over seconds; cross_fade with the clip starting or ending within it (only the upper fades, so the picture never dips); or remove.
+Adds a transition to a layer's clip: fade_in, fade_out or fade (both) over seconds, to transparent or with black or white (the layer turns to that colour at the clip's edge); cross_fade with the clip starting or ending within it (only the upper fades, so the picture never dips); or remove.
 
 - `id`: string; required; A layer id from get_document.
 - `kind`: string (fade_in | fade_out | fade | cross_fade | remove); required
 - `seconds`: number; default 1
+- `color`: string (transparent | black | white); default "transparent"
 
 ## timeline_frame_image
 

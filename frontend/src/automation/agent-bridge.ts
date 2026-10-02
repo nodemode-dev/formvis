@@ -160,7 +160,7 @@ export class AgentBridge {
           const vt = e.video;
           if (!vt) return text('The document has no video timeline: timeline_create makes one.', { timeline: null });
           const data = { fps: vt.fps, frames: vt.duration, seconds: +(vt.duration / vt.fps).toFixed(3), current: vt.current, work_in: vt.workIn, work_out: vt.workOut, loops: vt.loops,
-            tracks: [...p.doc.layers].reverse().filter((l) => vt.tracks[l.id]).map((l) => { const t = vt.tracks[l.id]; return { id: l.id, name: l.name, start: t.start, length: t.length, fade_in: t.fadeIn?.frames ?? 0, fade_out: t.fadeOut?.frames ?? 0,
+            tracks: [...p.doc.layers].reverse().filter((l) => vt.tracks[l.id]).map((l) => { const t = vt.tracks[l.id]; return { id: l.id, name: l.name, start: t.start, length: t.length, fade_in: t.fadeIn?.frames ?? 0, fade_out: t.fadeOut?.frames ?? 0, fade_in_color: t.fadeIn?.color ?? null, fade_out_color: t.fadeOut?.color ?? null,
               keyframes: Object.fromEntries(Object.entries(t.keys).map(([k, ks]) => [k, (ks ?? []).map((x) => ({ frame: x.t, value: x.v, interpolation: x.interp }))])) }; }) };
           return text(JSON.stringify(data), data);
         }
@@ -215,8 +215,9 @@ export class AgentBridge {
           if (name === 'timeline_transition') {
             const kind = str('kind'), len = Math.max(1, Math.round(num('seconds', 1) * vt.fps));
             if (kind === 'cross_fade') { const why = e.crossFade(l.id); return why ? fail(why) : text(`Cross faded ${l.name}.`); }
-            const ok = kind === 'remove' ? e.fadeClip(l.id, 0, true, true) : e.fadeClip(l.id, len, kind !== 'fade_out', kind !== 'fade_in');
-            return ok ? text(kind === 'remove' ? `Removed ${l.name}'s transitions.` : `${l.name} fades ${kind === 'fade_in' ? 'in' : kind === 'fade_out' ? 'out' : 'in and out'} over ${len} frames.`) : fail('Could not change the transition.');
+            const c = str('color') === 'black' || str('color') === 'white' ? str('color') as 'black' | 'white' : null;   // 1.60.1
+            const ok = kind === 'remove' ? e.fadeClip(l.id, 0, true, true) : e.fadeClip(l.id, len, kind !== 'fade_out', kind !== 'fade_in', c);
+            return ok ? text(kind === 'remove' ? `Removed ${l.name}'s transitions.` : `${l.name} fades ${kind === 'fade_in' ? 'in' : kind === 'fade_out' ? 'out' : 'in and out'} over ${len} frames${c ? `, with ${c}` : ''}.`) : fail('Could not change the transition.');
           }
           // timeline_keyframe
           const prop = str('property') as VideoProp;

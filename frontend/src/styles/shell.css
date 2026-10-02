@@ -366,6 +366,11 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-vtl-fade { position: absolute; top: 0; bottom: 0; width: 0; pointer-events: none; }
 .cv-vtl-fade.is-in { left: 0; background: linear-gradient(to right, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)); }
 .cv-vtl-fade.is-out { right: 0; background: linear-gradient(to left, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)); }
+/* Fades to black or white (1.60.1) drawn in their colour. */
+.cv-vtl-fade.is-in.is-black { background: linear-gradient(to right, #000, rgba(0, 0, 0, 0)); }
+.cv-vtl-fade.is-out.is-black { background: linear-gradient(to left, #000, rgba(0, 0, 0, 0)); }
+.cv-vtl-fade.is-in.is-white { background: linear-gradient(to right, #fff, rgba(255, 255, 255, 0)); }
+.cv-vtl-fade.is-out.is-white { background: linear-gradient(to left, #fff, rgba(255, 255, 255, 0)); }
 
 /* The compact layout (1.58.7, the parity plan's L12): under 720 pixels the canvas takes the whole width, and the tool
    rail, the panels and the side column become sheets over it (the rail from the left, the others from the bottom),

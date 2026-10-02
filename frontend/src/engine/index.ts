@@ -8,7 +8,7 @@ import { composeFloat, setStyleDrawer } from './compose-float';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
-import { newVideoTimeline, sampleToFrames, stateAt, valueAt, type VideoTimeline } from './video-timeline';
+import { newVideoTimeline, sampleToFrames, stateAt, valueAt, type FadeColor, type VideoTimeline } from './video-timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
@@ -1542,14 +1542,14 @@ export class Engine {
 
   /** Fade In, Fade Out or both on layer `id`'s clip over `frames` (0 removes them), one step (1.59.7: from the panel
    *  into the engine, which the MCP tools share). False when the layer has no clip. */
-  fadeClip(id: ID, frames: number, inn: boolean, out: boolean): boolean {
+  fadeClip(id: ID, frames: number, inn: boolean, out: boolean, color: FadeColor | null = null): boolean {
     if (!this.video?.tracks[id]) return false;
     return this.editVideo((v) => {
       const t = v.tracks[id];
       if (!t) return;
-      const f = Math.max(0, Math.min(Math.round(frames), t.length));
-      if (inn) t.fadeIn = f > 0 ? { frames: f } : null;
-      if (out) t.fadeOut = f > 0 ? { frames: f } : null;
+      const f = Math.max(0, Math.min(Math.round(frames), t.length)), c = color ? { color } : {};   // with a colour: 1.60.1
+      if (inn) t.fadeIn = f > 0 ? { frames: f, ...c } : null;
+      if (out) t.fadeOut = f > 0 ? { frames: f, ...c } : null;
     }, frames > 0 ? 'Add Transition' : 'Remove Transition');
   }
 
@@ -2027,7 +2027,7 @@ export class Engine {
         if (!s.visible && l.visible) o.hidden = true;
         if (s.x !== l.transform.x || s.y !== l.transform.y) o.transform = { ...l.transform, x: s.x, y: s.y };
         if (s.opacity !== l.opacity) o.opacity = s.opacity;
-        if (s.fx === null && l.effects) o.effects = null;
+        if (s.fx !== undefined && s.fx !== (l.effects ?? null)) o.effects = s.fx;   // a style set aside, or a colour fade (1.60.1)
         if (Object.keys(o).length) m.set(l.id, o);
       }
     }

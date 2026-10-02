@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import { VIDEO_PROPS, valueAt, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
+import { VIDEO_PROPS, valueAt, type FadeColor, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
 import { el, setText } from './dom';
 
 const HEAD_W = 180, ROW_H = 30, RULER_H = 24;
@@ -46,7 +46,11 @@ export class VideoTimelinePanel {
     const pick = (label: string, run: () => void): HTMLButtonElement => { const b = el<HTMLButtonElement>(`<button class="cv-btn cv-btn-ghost" type="button" role="menuitem">${label}</button>`); b.addEventListener('click', () => { pop.hidden = true; run(); }); return b; };
     const len = (): number => { const vt = engine.video; return vt ? Math.max(1, Math.round((Number(secs.value) || 1) * vt.fps)) : 1; };
     const lenRow = el('<label class="cv-vtl-pop-row"><span>Length (seconds)</span></label>'); lenRow.append(secs);
-    pop.append(pick('Fade In', () => this.fade(len(), true, false)), pick('Fade Out', () => this.fade(len(), false, true)), pick('Fade In and Out', () => this.fade(len(), true, true)), pick('Cross Fade', () => this.crossFade()), pick('Remove Transitions', () => this.fade(0, true, true)), lenRow);
+    // Fade to (1.60.1): transparent as before, or Photoshop's Fade With Black and Fade With White.
+    const to = el<HTMLSelectElement>('<select class="cv-vtl-lane-val cv-vtl-fade-to" aria-label="Fade to"><option value="">Transparent</option><option value="black">Black</option><option value="white">White</option></select>');
+    const toRow = el('<label class="cv-vtl-pop-row"><span>Fade to</span></label>'); toRow.append(to);
+    const col = (): FadeColor | null => (to.value === 'black' || to.value === 'white' ? to.value : null);
+    pop.append(pick('Fade In', () => this.fade(len(), true, false, col())), pick('Fade Out', () => this.fade(len(), false, true, col())), pick('Fade In and Out', () => this.fade(len(), true, true, col())), pick('Cross Fade', () => this.crossFade()), pick('Remove Transitions', () => this.fade(0, true, true)), lenRow, toRow);
     const addTr = el<HTMLButtonElement>('<button class="cv-icon-btn cv-vtl-btn" type="button" title="Add transition" aria-label="Add transition" aria-haspopup="menu">&#9698;</button>');
     addTr.addEventListener('click', () => { pop.hidden = !pop.hidden; });
     root.append(pop);
@@ -154,8 +158,12 @@ export class VideoTimelinePanel {
       clip.style.transform = `translate(${tr.start * this.pxPerFrame}px, ${r * ROW_H + 3}px)`;
       clip.style.width = `${Math.max(4, tr.length * this.pxPerFrame)}px`;
       setText(clip.querySelector('.cv-vtl-clip-name') as HTMLElement, l.name);
-      (clip.querySelector('.cv-vtl-fade.is-in') as HTMLElement).style.width = `${(tr.fadeIn?.frames ?? 0) * this.pxPerFrame}px`;   // 1.59.6
-      (clip.querySelector('.cv-vtl-fade.is-out') as HTMLElement).style.width = `${(tr.fadeOut?.frames ?? 0) * this.pxPerFrame}px`;
+      for (const [sel, fd] of [['.cv-vtl-fade.is-in', tr.fadeIn], ['.cv-vtl-fade.is-out', tr.fadeOut]] as const) {   // 1.59.6; colours 1.60.1
+        const ramp = clip.querySelector(sel) as HTMLElement;
+        ramp.style.width = `${(fd?.frames ?? 0) * this.pxPerFrame}px`;
+        ramp.classList.toggle('is-white', fd?.color === 'white');
+        ramp.classList.toggle('is-black', fd?.color === 'black');
+      }
       r++;
       if (!isOpen) continue;
       // The keyframe lanes (1.59.4, DEV_PLAN 25.3), as Photon's: a lane per property under the clip.
@@ -291,9 +299,9 @@ export class VideoTimelinePanel {
   }
 
   /** Fade In, Fade Out or both on the selected layer's clip, over `frames` (0 removes them), as one step. */
-  private fade(frames: number, inn: boolean, out: boolean): void {
+  private fade(frames: number, inn: boolean, out: boolean, color: FadeColor | null = null): void {
     const id = this.engine.current?.activeId;   // the engine's since 1.59.7, which the MCP tools share
-    if (!id || !this.engine.fadeClip(id, frames, inn, out)) this.engine.notice('Select a layer with a clip in the timeline.');
+    if (!id || !this.engine.fadeClip(id, frames, inn, out, color)) this.engine.notice('Select a layer with a clip in the timeline.');
   }
 
   /** Cross Fade, as Photoshop's: with the clip overlapping the selected one most, over their overlap. Only the upper of
