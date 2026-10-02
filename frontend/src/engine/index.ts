@@ -15,7 +15,7 @@ import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, with
 import { Emitter } from './events';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
-import { PixelStroke, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
+import { PixelStroke, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
 import { SelectionMask, type SelectionMode } from './selection';
 import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
@@ -377,17 +377,17 @@ export class Engine {
         for (const q of p.history.pageable(2)) {
           if (held <= this.undoShare()) break;
           if (q.paged) continue;
-          const w = q.before.width, h = q.before.height, n = w * h * 4, bytes = new Uint8Array(n * 2);
+          const w = q.before.width, h = q.before.height, n = w * h * 4, lazy = !!q.lazy, bytes = new Uint8Array(lazy ? n : n * 2);
           bytes.set(q.before.data, 0);
-          bytes.set(q.after.data, n);
+          if (!lazy) bytes.set(q.after.data, n);   // a lazy tile keeps only its before (1.60.9)
           const key = await store.put(bytes);
           // Closed, or its step trimmed, while it was on its way: the key is dropped rather than left behind (1.60.8).
           if (!this.projects.includes(p)) { store.drop(key); break; }
-          if (q.paged || !p.history.entries().some((s) => s.patches.includes(q))) { store.drop(key); continue; }
+          if (q.paged || !!q.lazy !== lazy || !p.history.entries().some((s) => s.patches.includes(q))) { store.drop(key); continue; }
           q.paged = { key, w, h };
           q.before = new ImageData(1, 1);
           q.after = new ImageData(1, 1);
-          held -= n * 2;
+          held -= lazy ? n : n * 2;
           sent += 1;
         }
       }
@@ -409,7 +409,7 @@ export class Engine {
         job = store.get(key).then((buf) => {
           const all = new Uint8ClampedArray(buf), n = w * h * 4;
           q.before = new ImageData(all.slice(0, n), w, h);
-          q.after = new ImageData(all.slice(n, n * 2), w, h);
+          if (!q.lazy) q.after = new ImageData(all.slice(n, n * 2), w, h);   // a lazy tile's after is read at undo (1.60.9)
           q.paged = null;
           store.drop(key);
         }).finally(() => this.pageJobs.delete(key));
@@ -787,7 +787,11 @@ export class Engine {
     this.settle();
     const e = p.history.undo();
     if (!e) return;
-    for (let i = e.patches.length - 1; i >= 0; i--) { const q = e.patches[i]; q.raster.write(q.before, q.x, q.y); }
+    for (let i = e.patches.length - 1; i >= 0; i--) {
+      const q = e.patches[i];
+      if (q.lazy) { q.after = q.raster.read(q.x, q.y, q.before.width, q.before.height); q.lazy = false; }   // 1.60.9
+      q.raster.write(q.before, q.x, q.y);
+    }
     this.restore(p, e.before);
     this.reconcileFrame(p, e.name === 'Select Frame');
   }
@@ -4889,6 +4893,100 @@ export class Engine {
     const out = run(src, scale);
     if (out instanceof Promise) { void out.then((done) => { if (token === this.previewToken) finish(done); }).catch(() => undefined); return; }
     finish(out);
+  }
+
+  /** Filters on layers past this many pixels run in bands (1.60.9, DEV_PLAN 26.4); settable so a check can force either way. */
+  bandFrom = 16_000_000;
+
+  /** A filter whose effect reaches `apron` pixels and does not depend on where it is, run on a large active layer in
+   *  bands of 512 rows (1.60.9, DEV_PLAN 26.4): each read with `apron` rows above and below, so its result is what the
+   *  whole layer at once gives, byte for byte; written back in 512-pixel tiles through the selection (each band's own
+   *  coverage, blended as `blendThrough` blends), each changed tile's undo its before pixels only (its after read at
+   *  undo), and the step's tiles then sent to the undo store. One step. False when this is not a case it handles the
+   *  same as the whole-layer path (smaller layers, masks, smart and shape layers, deep, CMYK and Lab documents, a layer
+   *  the filter would grow), for the caller to run that path. */
+  bandedFilter(name: string, run: (src: ImageData) => ImageData, apron: number, grow = 0): boolean | 'refused' {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l?.raster || this.stroke || p.maskTarget || l.smart || l.vector || !this.paintable(l)) return false;
+    if (l.raster.width * l.raster.height <= this.bandFrom || (p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab') return false;
+    if (grow > 0 && this.canGrow(p, l)) return this.bandedGrow(name, run, apron, grow, p, l);   // as applyImageEdit grows
+    // Bands at least as tall as the apron, and each band's source read before the band above it is written, so the
+    // apron above a band lies in rows not yet written and every band filters the layer's original pixels.
+    const r = l.raster, W = r.width, H = r.height, A = Math.max(0, Math.ceil(apron)), B = Math.max(512, A), T = 512;
+    // Room: two bands read with their apron, one filtered, its coverage, and the tiles' before pixels until stored.
+    if (!this.room((B + 2 * A) * W * 4 * 4 + W * H * 4, name)) return 'refused';   // said so; not done
+    this.preview = null;
+    const sel = p.selection, m = sel ? mul(invert(placement(l.transform, W, H)), translation(sel.x, sel.y)) : null;
+    const source = (y0: number): ImageData => { const a0 = Math.max(0, y0 - A), a1 = Math.min(H, Math.min(H, y0 + B) + A); return r.ctx.getImageData(0, a0, W, a1 - a0); };
+    p.history.begin(name, p.snapshot());
+    try {
+      let src = source(0);
+      for (let y0 = 0; y0 < H; y0 += B) {
+        const y1 = Math.min(H, y0 + B), h = y1 - y0, a0 = Math.max(0, y0 - A);
+        const out = run(src);
+        src = y1 < H ? source(y1) : src;   // the next band's original pixels, before this band is written
+        let cov: Uint8ClampedArray | null = null;
+        if (sel && m) { const s = createSurface(W, h), c = ctxOf(s); setMat(c, mul(translation(0, -y0), m)); c.drawImage(sel.surface(), 0, 0); cov = c.getImageData(0, 0, W, h).data; }
+        for (let x0 = 0; x0 < W; x0 += T) {
+          const w = Math.min(T, W - x0), before = r.read(x0, y0, w, h), tile = new ImageData(w, h);
+          for (let yy = 0; yy < h; yy++) { const so = ((y0 - a0 + yy) * W + x0) * 4; tile.data.set(out.data.subarray(so, so + w * 4), yy * w * 4); }
+          let after = tile;
+          if (cov) { const ct = new Uint8ClampedArray(w * h * 4); for (let yy = 0; yy < h; yy++) { const so = (yy * W + x0) * 4; ct.set(cov.subarray(so, so + w * 4), yy * w * 4); } after = this.blendThrough(before, tile, ct); }
+          if (sameBytes(before.data, after.data)) continue;
+          r.ctx.putImageData(after, x0, y0);
+          p.history.addPatch({ raster: r, x: x0, y: y0, before, after: new ImageData(1, 1), lazy: true });
+        }
+      }
+      r.touch();
+      if (l.shape) p.updateLayer(l.id, { shape: null });
+    } finally {
+      p.history.end(p.snapshot());
+      this.refresh();
+    }
+    void this.pageNewest(p);
+    return true;
+  }
+
+  /** `grown` in bands (1.60.9): the layer made larger by the filter's reach on every side and the filter run on it a
+   *  band of 512 rows at a time, each drawn from the old layer with `apron` rows around it onto transparent at the same
+   *  offset, its middle rows written into the larger layer; the same pixels and placement as `grown`, one step, the
+   *  old layer kept for undo as there, with no whole-layer copy in or out. */
+  private bandedGrow(name: string, run: (src: ImageData) => ImageData, apron: number, grow: number, p: Project, l: Layer): boolean | 'refused' {
+    const r = l.raster as Raster, g = Math.ceil(grow), A = Math.max(g, Math.ceil(apron)), Wb = r.width + 2 * g, Hb = r.height + 2 * g, B = 512;
+    if (!this.room(Wb * Hb * 4 + (B + 2 * A) * Wb * 4 * 3, name)) return 'refused';   // said so; not done
+    this.preview = null;
+    const big = new Raster(Wb, Hb);
+    for (let y0 = 0; y0 < Hb; y0 += B) {
+      const y1 = Math.min(Hb, y0 + B), a0 = Math.max(0, y0 - A), a1 = Math.min(Hb, y1 + A);
+      const band = createSurface(Wb, a1 - a0), c = ctxOf(band);
+      c.drawImage(r.canvas, g, g - a0);
+      const out = run(c.getImageData(0, 0, Wb, a1 - a0));
+      big.ctx.putImageData(out, 0, a0, 0, y0 - a0, Wb, y1 - y0);
+      band.width = 0; band.height = 0;
+    }
+    big.touch();
+    const t = l.transform, sx = t.w / r.width, sy = t.h / r.height;
+    this.edit(name, (q) => { q.updateLayer(l.id, { raster: big, transform: { ...t, x: t.x - g * sx, y: t.y - g * sy, w: t.w + 2 * g * sx, h: t.h + 2 * g * sy }, shape: null }); return true; });
+    return true;
+  }
+
+  /** The newest step's lazy tiles sent to the undo store at once (a banded filter's whole-layer undo), each let go only
+   *  once stored, and only if still lazy and still in the history (an undo or a close meanwhile keeps them). */
+  private async pageNewest(p: Project): Promise<void> {
+    const store = this.undoStore, e = p.history.peekUndo();
+    if (!store || !e) return;
+    for (const q of e.patches) {
+      if (q.paged || !q.lazy) continue;
+      const w = q.before.width, h = q.before.height, bytes = new Uint8Array(w * h * 4);
+      bytes.set(q.before.data, 0);
+      let key: string;
+      try { key = await store.put(bytes); } catch { return; }
+      if (!this.projects.includes(p)) { store.drop(key); return; }
+      if (q.paged || !q.lazy || !p.history.entries().some((s) => s.patches.includes(q))) { store.drop(key); continue; }
+      q.paged = { key, w, h };
+      q.before = new ImageData(1, 1);
+    }
+    this.emit('history', null);
   }
 
   applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0): void {

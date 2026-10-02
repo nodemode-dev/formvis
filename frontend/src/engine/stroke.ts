@@ -583,7 +583,7 @@ export class PixelStroke {
 }
 
 /** Whether two pixel buffers hold the same bytes (four at a time; 1.60.7, for undo tiles). */
-function sameBytes(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
+export function sameBytes(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
   if (a.length !== b.length) return false;
   const n = a.length >> 2, A = new Uint32Array(a.buffer, a.byteOffset, n), B = new Uint32Array(b.buffer, b.byteOffset, n);
   for (let i = 0; i < n; i++) if (A[i] !== B[i]) return false;

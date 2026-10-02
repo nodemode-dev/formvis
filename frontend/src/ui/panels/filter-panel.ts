@@ -54,6 +54,18 @@ export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number
   }
 }
 
+/** How far a filter that may run in bands reaches (1.60.9, DEV_PLAN 26.4), or null: those whose effect reaches a bounded
+ *  distance and is the same wherever it is. Add Noise (its random sequence), Lens Correction (the whole picture's
+ *  geometry) and the blurs placed in the picture (radial, path, field, iris, tilt-shift) run whole. */
+export function bandApron(kind: FilterKind, s: FilterPanelSettings): number | null {
+  switch (kind) {
+    // (Smart Sharpen runs whole: banded, its result was not the whole layer's, so its effect is wider than its margin.)
+    case 'gaussianBlur': case 'motionBlur': case 'lensBlur': case 'surfaceBlur': return filterMargin(kind, s);
+    case 'unsharpMask': return gaussianMargin(s.usmRadius) + 2;
+    default: return null;
+  }
+}
+
 /** How far a filter's effect reaches past its input, in pixels. */
 export function filterMargin(kind: FilterKind, s: FilterPanelSettings): number {
   return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : kind === 'lensBlur' ? lensBlurMargin(s.lensRadius) : kind === 'smartSharpen' ? smartSharpenMargin(s.smart) : kind === 'shakeReduction' ? shakeMargin(s.shake)
@@ -316,6 +328,10 @@ export class FilterPanel extends Dialog {
     if (this.deepFilter(kind, settings)) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }   // 16 bits (1.53.7)
     const s = { ...defaultFilterSettings(), ...(structuredClone(settings) as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed;
     const sync = (src: ImageData, scale: number): ImageData => runFilter(kind, s, seed, src, scale);
+    const apron = bandApron(kind, s);   // a large layer in bands (1.60.9)
+    const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => sync(src, 1), apron, filterMargin(kind, s)) : false;
+    if (banded === 'refused') return Promise.resolve(false);   // not done, and said why
+    if (banded) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }
     return this.engine.applyImageEditAsync(FILTER_LABELS[kind], (src, scale) => runFilterOffThread(kind, s, scale, seed, src) ?? Promise.resolve(sync(src, scale)), filterMargin(kind, s), sync);
   }
 
@@ -327,6 +343,10 @@ export class FilterPanel extends Dialog {
     Object.assign(this.s, structuredClone(settings));
     const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
     if (this.deepFilter(kind, settings)) return true;   // 16 bits (1.53.7)
+    const apron = bandApron(kind, this.s);   // a large layer in bands (1.60.9)
+    const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => run(src, 1), apron, this.grow()) : false;
+    if (banded === 'refused') return false;   // not done, and said why
+    if (banded) return true;
     this.engine.applyImageEdit(FILTER_LABELS[kind], run, this.grow());
     return true;
   }

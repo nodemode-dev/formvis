@@ -8,7 +8,9 @@ export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionM
 /* frames (1.59.8): a copy of the frame animation (frames, current, loops), carried by steps that change it (Convert to
    Frame Animation), as video and paths are carried. */
 /* video (1.59.5, DEV_PLAN 25): a copy of the video timeline, carried only by timeline edits' steps, as paths are. */
-export interface PixelPatch { raster: Raster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null }
+export interface PixelPatch { raster: Raster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null; lazy?: boolean }
+/* lazy (1.60.9, DEV_PLAN 26.4): only `before` is kept; `after` is what the layer holds when the step is undone, read
+   there just before `before` is written back (a whole-layer filter's undo, halved). */
 /* paged (1.60.8, DEV_PLAN 26.3): kept in the engine's undo store under `key`, its before and after pixels (w by h)
    replaced here by a pixel's worth each until an undo or redo brings them back. */
 export interface HistoryEntry { name: string; before: Snapshot; after: Snapshot; patches: PixelPatch[]; beforeRev: number; afterRev: number }
