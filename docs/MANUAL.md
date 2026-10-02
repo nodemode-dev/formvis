@@ -224,6 +224,9 @@ ask it questions.
 
 ## 32-bit documents
 
+- File > Automate > Merge to HDR merges exposures of one scene into a new 32-bit document (photos taken by hand are
+  aligned; exposure times come from EXIF or are worked out from the photos). File > Automate > Photomerge stitches
+  overlapping photos into a panorama (Auto or Reposition; transparent edges or cropped).
 - Radiance HDR, OpenEXR and 32-bit TIFF open as 32-bit documents, and Image > Mode > 32 Bits/Channel turns any RGB
   document into one. Their pixels are linear light and may be brighter than white; the canvas shows them with white and
   above as white. The Exposure adjustment works in linear light, as do moving, the canvas and image size commands and

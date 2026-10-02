@@ -212,6 +212,20 @@ export const api = {
   },
   /** A CMYK file's ink and embedded profile, or null when the file is not CMYK. */
   /** A CMYK PSD's layers as ink (1.56.1, DEV_PLAN 22.8), read by the engine's psd-tools; null when the file is not one. */
+  /** File > Automate > Photomerge (1.58.2): the photos stitched by the engine's OpenCV, transparent where none reaches
+   *  (or cropped); `stitched` says how many of them the stitch kept, as "kept/given". */
+  async mergePanorama(files: File[], layout: 'auto' | 'reposition', crop: boolean): Promise<{ png: Blob; stitched: string }> {
+    const r = await request('/merge/panorama', { method: 'POST', body: form({ layout, crop: String(crop) }, files.map((f) => ({ name: f.name, blob: f })), 'file') });
+    return { png: await r.blob(), stitched: r.headers.get('X-Photos-Stitched') ?? '' };
+  },
+  /** File > Automate > Merge to HDR (1.58.2): the exposures merged by the engine into linear light (RGB floats), with
+   *  the exposure times used and where they came from. */
+  async mergeHdr(files: File[]): Promise<{ width: number; height: number; rgb: Float32Array; times: number[]; source: string }> {
+    const r = await request('/merge/hdr', { method: 'POST', body: form({}, files.map((f) => ({ name: f.name, blob: f })), 'file') });
+    const b = new Uint8Array(await r.arrayBuffer()), n = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
+    const head = JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + n))) as { width: number; height: number; times: number[]; source: string };
+    return { ...head, rgb: new Float32Array(b.slice(4 + n).buffer) };
+  },
   /** A Lab TIFF or PSD as Lab layers (1.58.1): each layer's L, a, b and alpha as floats in the window's encoding;
    *  null when the file is not Lab. */
   async decodeLab(file: Blob, name: string): Promise<{ width: number; height: number; bits: 8 | 16; layers: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean; data: Float32Array }> } | null> {
