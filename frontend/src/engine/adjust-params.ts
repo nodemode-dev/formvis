@@ -221,8 +221,10 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
     label: 'Channel Mixer',
     groupBy: 'output',
     params: [
-      { key: 'output', label: 'Output channel', kind: 'select', options: [['red', 'Red'], ['green', 'Green'], ['blue', 'Blue']], def: 'red' },
+      { key: 'output', label: 'Output channel', kind: 'select', options: [['red', 'Red'], ['green', 'Green'], ['blue', 'Blue'], ['cyan', 'Cyan'], ['magenta', 'Magenta'], ['yellow', 'Yellow'], ['black', 'Black']], def: 'red' },
       ...(['red', 'green', 'blue'] as const).flatMap((o) => [range(`${o}R`, 'Red', -200, 200, o === 'red' ? 100 : 0, 1, o), range(`${o}G`, 'Green', -200, 200, o === 'green' ? 100 : 0, 1, o), range(`${o}B`, 'Blue', -200, 200, o === 'blue' ? 100 : 0, 1, o), range(`${o}K`, 'Constant', -200, 200, 0, 1, o)]),
+      // The inks (1.57.9, CMYK documents): each output ink mixes the four inks and a constant, as Photoshop's in CMYK.
+      ...(['cyan', 'magenta', 'yellow', 'black'] as const).flatMap((o) => [range(`${o}Cy`, 'Cyan', -200, 200, o === 'cyan' ? 100 : 0, 1, o), range(`${o}Ma`, 'Magenta', -200, 200, o === 'magenta' ? 100 : 0, 1, o), range(`${o}Ye`, 'Yellow', -200, 200, o === 'yellow' ? 100 : 0, 1, o), range(`${o}Bk`, 'Black', -200, 200, o === 'black' ? 100 : 0, 1, o), range(`${o}Co`, 'Constant', -200, 200, 0, 1, o)]),
       { key: 'monochrome', label: 'Monochrome', kind: 'check', def: false },
     ],
     kernel: (v) => {

@@ -49,6 +49,41 @@ def build_lut(req: LutRequest) -> Response:
     return Response(data, media_type="application/octet-stream", headers={"X-Grid": str(colour.GRID), "X-Gamut": "1" if req.gamut and req.proof else "0"})
 
 
+@router.post("/convert-ink")
+def convert_ink(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), source: str = Form(...), dest: str = Form(...), intent: str = Form("relative"), preserve_black: bool = Form(True)) -> Response:
+    """Convert to Profile in a CMYK document (1.57.9): 8-bit inks (0 no ink, 255 full) from the `source` CMYK profile to
+    the `dest` one (both base64 ICC), through LittleCMS by Pillow's ImageCms, with the rendering intent asked. With
+    `preserve_black` (the default), pixels inked with black alone stay black alone, their black moved to the value
+    of the same lightness under `dest`, as LittleCMS's black-preserving intents do (Pillow reaches only the four
+    standard intents, so this is done here); colorimetric conversion would make them four-colour black."""
+    import base64
+    import io as _io
+    import numpy as np
+    from PIL import Image, ImageCms
+    raw = file.file.read()
+    if width <= 0 or height <= 0 or len(raw) != width * height * 4:
+        raise HTTPException(status_code=422, detail="The inks do not match the size given.")
+    intents = {"perceptual": 0, "relative": 1, "saturation": 2, "absolute": 3}
+    try:
+        src = ImageCms.ImageCmsProfile(_io.BytesIO(base64.b64decode(source)))
+        dst = ImageCms.ImageCmsProfile(_io.BytesIO(base64.b64decode(dest)))
+        out = np.frombuffer(ImageCms.profileToProfile(Image.frombytes("CMYK", (width, height), raw), src, dst, renderingIntent=intents.get(intent, 1), outputMode="CMYK").tobytes(), np.uint8).reshape(-1, 4).copy()
+        if preserve_black:
+            lab = ImageCms.createProfile("LAB")
+            ramp = Image.frombytes("CMYK", (256, 1), bytes(np.stack([np.zeros(256), np.zeros(256), np.zeros(256), np.arange(256)], 1).astype(np.uint8).tobytes()))
+            light = lambda prof: np.frombuffer(ImageCms.applyTransform(ramp, ImageCms.buildTransform(prof, lab, "CMYK", "LAB")).tobytes(), np.uint8).reshape(-1, 3)[:, 0].astype(np.float64)
+            ls, ld = light(src), light(dst)
+            order = np.argsort(ld)
+            k_of = np.clip(np.round(np.interp(ls, ld[order], np.arange(256)[order])), 0, 255).astype(np.uint8)
+            ink = np.frombuffer(raw, np.uint8).reshape(-1, 4)
+            only_k = (ink[:, 0] == 0) & (ink[:, 1] == 0) & (ink[:, 2] == 0)
+            out[only_k] = 0
+            out[only_k, 3] = k_of[ink[only_k, 3]]
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=f"The inks could not be converted: {exc}") from exc
+    return Response(out.tobytes(), media_type="application/octet-stream")
+
+
 class MatrixRequest(BaseModel):
     source: dict | None = None
     dest: dict | None = None

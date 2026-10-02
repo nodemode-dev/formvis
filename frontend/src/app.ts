@@ -664,11 +664,16 @@ export function startApp(): void {
     return lut;
   }
   const tablesPending = new Set<string>();
+  /** Which profile each document's tables came from (1.57.9): after Assign or Convert to Profile is undone or redone,
+   *  the tables reload for the profile the document has now. */
+  const tablesFor = new Map<string, string>();
   async function ensureCmykTables(): Promise<void> {
     const p = engine.current;
-    if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile || p.cmykLut || tablesPending.has(p.id)) return;
+    if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile || tablesPending.has(p.id)) return;
+    const key = p.doc.profile.icc.slice(0, 64) + p.doc.profile.icc.length;
+    if (p.cmykLut && (tablesFor.get(p.id) ?? key) === key) { tablesFor.set(p.id, key); return; }
     tablesPending.add(p.id);
-    try { const t = await cmykLutFor(p.doc.profile); engine.setCmykTables(p, t.out, t.in); } catch (err) { toast(message(err), 'error'); } finally { tablesPending.delete(p.id); }
+    try { const t = await cmykLutFor(p.doc.profile); engine.setCmykTables(p, t.out, t.in); tablesFor.set(p.id, key); } catch (err) { toast(message(err), 'error'); } finally { tablesPending.delete(p.id); }
   }
   for (const ev of ['projects', 'active', 'doc'] as const) engine.on(ev, () => void ensureCmykTables());
   async function cmykProfileOf(id: string, name: string): Promise<DocProfile> { return { name, icc: toBase64(await api.colourProfileBytes(id)) }; }
@@ -1278,7 +1283,8 @@ export function startApp(): void {
   const colourView = new ColourView(engine);   // colour management (1.53.5)
   const hdrToning = new HdrToningDialog();   // 1.53.9
   const focusAreaDialog = new FocusAreaDialog(engine);   // 1.57.6
-  const colourDialogs = { assign: new AssignProfileDialog(engine), convert: new ConvertProfileDialog(engine), proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
+  const convertDialog = new ConvertProfileDialog(engine, (pr) => cmykLutFor(pr));   // CMYK's tables (1.57.9)
+  const colourDialogs = { assign: new AssignProfileDialog(engine, (pr) => cmykLutFor(pr), () => convertDialog.show()), convert: convertDialog, proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
   void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
@@ -1836,9 +1842,9 @@ export function startApp(): void {
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   // 1.55.9 (DEV_PLAN 22.7): at 16 bits and in CMYK every command runs, the ones not on the float model through derive
   // (engine/derive.ts); these are the ones that cannot work in that mode yet. 32 bits joined them in 1.56.8.
-  const CMYK_NOT = new Set(['new-adj-channelMixer', 'assign-profile', 'convert-profile']);
+  const CMYK_NOT = new Set<string>();
   const DEEP16_NOT = new Set<string>();
-  const LAB_NOT = new Set(['assign-profile', 'convert-profile']);
+  const LAB_NOT = new Set<string>();
   // 1.56.8 (DEV_PLAN 22.10): 32 bits as a denylist too, everything else through derive in linear light; since 1.57.1 it
   // composes on the one compositor, so what remains is the adjustments other than Exposure, Unsharp Mask and Add Noise,
   // the colour models and the profile and proof commands.

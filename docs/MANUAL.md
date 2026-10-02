@@ -207,7 +207,8 @@ ask it questions.
   filters work too: the pixels they leave alone keep their ink exactly, the ones they change take the new colour's
   ink (black text set at K 100 stays K-only), and layer styles draw in ink too; Exposure and HDR Toning give their RGB
   results. Image > Mode > 16 Bits/Channel keeps the document CMYK, and Export TIFF then writes 16-bit CMYK; proofing
-  works as in RGB. What does not work in CMYK yet (Channel Mixer, Assign and Convert to Profile) waits in the menu.
+  works as in RGB. Assign Profile shows the same inks through another press; Convert to Profile changes them to look
+  the same on it, black text staying black only. The Channel Mixer mixes the inks themselves.
 
 ## Lab documents
 
@@ -217,8 +218,9 @@ ask it questions.
   L, a and b. Levels and Curves work on Lightness, a and b; the colour adjustments (Hue/Saturation, Black and White and
   the rest, Channel Mixer, Exposure and HDR Toning among them) give the same results as in RGB; blend modes look as they
   do in RGB; Export TIFF writes a Lab TIFF, at 16 bits when the document is (Image > Mode > 16 Bits/Channel keeps it
-  Lab). Lab Color from a 16-bit document keeps its 16-bit values. Proofing works as in RGB. Single-channel views,
-  Assign and Convert to Profile, and opening Lab files wait for now; layer styles work.
+  Lab). Lab Color from a 16-bit document keeps its 16-bit values. Proofing works as in RGB. Click Lightness, a or b in
+  the Channels panel to see it alone. Convert to Profile goes through RGB (Assign Profile opens it, Lab colours being
+  absolute). Opening Lab files waits for now; layer styles work.
 
 ## 32-bit documents
 

@@ -1872,7 +1872,7 @@ export class Engine {
     if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.work });
     const fs = this.floatSel;
     if (fs && fs.project === p) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.base });
-    if (this.channelView !== null && p.doc.mode === 'cmyk') { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
+    if (this.channelView !== null && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
     else if (!this.stroke && this.composesFloats(p)) {
       const composed = this.composedRendition(p);
       if (composed) { const first = p.doc.layers.find((l) => l.raster && !l.isGroup); for (const l of p.doc.layers) m.set(l.id, l === first ? { ...(m.get(l.id) ?? {}), source: composed.canvas, transform: docTransform(p.doc.width, p.doc.height), opacity: 1, blend: 'normal' } : { ...(m.get(l.id) ?? {}), hidden: true }); }
@@ -1916,7 +1916,8 @@ export class Engine {
     const hit = this.channelGreys.get(ch);
     if (hit && hit.k === k) return hit.r;
     const r = new Raster(ch.width, ch.height), img = r.ctx.createImageData(ch.width, ch.height), S = ch.n + 1, d = img.data;
-    for (let i = 0, o = 0; i < ch.data.length; i += S, o += 4) { const v = Math.round((1 - Math.min(1, Math.max(0, ch.data[i + k]))) * 255); d[o] = d[o + 1] = d[o + 2] = v; d[o + 3] = Math.round(Math.min(1, Math.max(0, ch.data[i + ch.n])) * 255); }
+    const lab = ch.mode === 'lab';   // 1.57.9: a Lab channel shows its own value; an ink, paper minus ink
+    for (let i = 0, o = 0; i < ch.data.length; i += S, o += 4) { const x = Math.min(1, Math.max(0, ch.data[i + k])), v = Math.round((lab ? x : 1 - x) * 255); d[o] = d[o + 1] = d[o + 2] = v; d[o + 3] = Math.round(Math.min(1, Math.max(0, ch.data[i + ch.n])) * 255); }
     r.ctx.putImageData(img, 0, 0); r.touch();
     this.channelGreys.set(ch, { k, r });
     return r;
@@ -6481,6 +6482,35 @@ export class Engine {
     const p = this.current;
     if (!p || (p.doc.profile?.icc ?? null) === (profile?.icc ?? null)) return false;
     return this.edit('Assign Profile', (pp) => { pp.doc = { ...pp.doc, profile: profile ?? undefined }; return true; });
+  }
+
+  /** Assign Profile in a CMYK document (1.57.9): the inks unchanged, each layer's rendition redrawn through the new
+   *  profile's tables (`lut`, `inLut`), the profile assigned; one step. */
+  assignCmykProfile(profile: DocProfile, lut: Lut4, inLut: Lut3x4): boolean {
+    const p = this.current;
+    if (!p || p.doc.mode !== 'cmyk') return false;
+    const ok = this.edit('Assign Profile', (pp) => {
+      // A new ink record with the same values, so derive (1.55.9) reads the inks as set, not as an 8-bit edit to undo.
+      const layers = pp.doc.layers.map((l) => (l.channels?.mode === 'cmyk' ? { ...l, channels: { ...l.channels }, raster: rasterFromChannels(l.channels, lut) } : l));
+      pp.doc = { ...pp.doc, layers, profile };
+      return true;
+    });
+    if (ok) this.setCmykTables(p, lut, inLut);
+    return ok;
+  }
+
+  /** Convert to Profile in a CMYK document (1.57.9): each layer's inks replaced by `inks` (converted by the engine's
+   *  LittleCMS to `profile`), renditions redrawn through its tables, the profile assigned; one step. */
+  convertCmykProfile(profile: DocProfile, inks: Map<ID, ChannelPixels>, lut: Lut4, inLut: Lut3x4): boolean {
+    const p = this.current;
+    if (!p || p.doc.mode !== 'cmyk') return false;
+    const ok = this.edit('Convert to Profile', (pp) => {
+      const layers = pp.doc.layers.map((l) => { const ch = inks.get(l.id); return ch ? { ...l, channels: ch, raster: rasterFromChannels(ch, lut) } : l; });
+      pp.doc = { ...pp.doc, layers, profile };
+      return true;
+    });
+    if (ok) this.setCmykTables(p, lut, inLut);
+    return ok;
   }
 
   /** Convert to Profile at 32 bits (1.57.3): every layer's linear floats through `m` (the engine's matrix between the

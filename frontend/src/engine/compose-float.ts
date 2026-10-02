@@ -4,6 +4,7 @@ import { hierarchy, byId, ancestors } from './tree';
 import { placement, setMat } from './geometry';
 import { applyLut4, inkOf, type Lut3x4, type Lut4 } from './colour-lut';
 import { encodeLab, labFloatToRgb, renderLab, srgbToLab } from './lab';
+import { paramValues } from './adjust-params';
 import { kernelFor } from './renderer';
 import type { Kernel } from './kernels';
 import type { BlendMode, Doc, Layer, ID } from './types';
@@ -236,6 +237,19 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
       }
       const gain = 2 ** (e.exposure ?? 0), off = e.offset ?? 0, inv = 1 / Math.max(0.01, e.gamma ?? 1);
       for (let i = 0, j = 0; i < out.length; i += S, j++) { const k = op * (cov ? cov[j] : 1); if (k <= 0) continue; for (let c = 0; c < A; c++) { const v = out[i + c], nv = Math.pow(Math.max(0, v * gain + off), inv); out[i + c] = v + (nv - v) * k; } }
+      continue;
+    }
+    if (l.adjustment && paperWhite && l.adjustment.kind === 'channelMixer') {
+      // The Channel Mixer on inks (1.57.9, CMYK): each output ink is the four inks mixed by its row, plus its constant.
+      const v = paramValues('channelMixer', (l.adjustment.data as { params?: unknown }).params), keys = ['Cy', 'Ma', 'Ye', 'Bk'];
+      const rows = ['cyan', 'magenta', 'yellow', 'black'].map((o) => [...keys.map((k) => Number(v[`${o}${k}`] ?? 0) / 100), Number(v[`${o}Co`] ?? 0) / 100]);
+      const mixed = [0, 0, 0, 0];
+      for (let i = 0, j = 0; i < out.length; i += S, j++) {
+        const k = op * (cov ? cov[j] : 1);
+        if (k <= 0) continue;
+        for (let o = 0; o < 4; o++) { const r = rows[o]; mixed[o] = clamp01(r[0] * out[i] + r[1] * out[i + 1] + r[2] * out[i + 2] + r[3] * out[i + 3] + r[4]); }
+        for (let o = 0; o < 4; o++) out[i + o] += (mixed[o] - out[i + o]) * k;
+      }
       continue;
     }
     if (l.adjustment) {

@@ -179,6 +179,11 @@ export const api = {
   },
   async colourProfileBytes(id: string): Promise<Uint8Array> { return new Uint8Array(await (await request(`/color/profiles/${encodeURIComponent(id)}`)).arrayBuffer()); },
   /** A LittleCMS lookup table (engine/colour-lut.ts): source to dest (sRGB when none), through a proof profile when given. */
+  /** Convert to Profile in CMYK (1.57.9): 8-bit inks from one CMYK profile to another (base64 ICC), pure black kept. */
+  async convertInk(ink: Uint8Array, width: number, height: number, source: string, dest: string, intent: string): Promise<Uint8Array> {
+    const body = form({ width: String(width), height: String(height), source, dest, intent, preserve_black: 'true' }, [{ name: 'ink.raw', blob: new Blob([new Uint8Array(ink)]) }], 'file');
+    return new Uint8Array(await (await request('/color/convert-ink', { method: 'POST', body })).arrayBuffer());
+  },
   /** Convert to Profile at 32 bits (1.57.3): the 3 by 3 matrix between two RGB matrix profiles in linear light. */
   async linearMatrix(req: { source?: { icc?: string; id?: string } | null; dest?: { icc?: string; id?: string } | null }): Promise<number[][]> {
     const r = await request('/color/linear-matrix', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });

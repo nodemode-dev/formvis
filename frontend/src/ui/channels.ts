@@ -25,6 +25,7 @@ export class ChannelsPanel {
   private readonly shown = { r: true, g: true, b: true };
   private solo: 'r' | 'g' | 'b' | null = null;
   private inkSolo: 'c' | 'm' | 'y' | 'k' | null = null;
+  private labSolo: 'll' | 'la' | 'lb' | null = null;   // the Lab channel viewed alone (1.57.9)
   private readonly thumbs = new Map<Ch, HTMLCanvasElement>();
   private timer = 0;
 
@@ -44,7 +45,7 @@ export class ChannelsPanel {
         this.apply();
       });
       row.addEventListener('click', (e) => {
-        if (isLabRow(r.id)) return;
+        if (isLabRow(r.id)) { this.labSolo = r.id === 'lab' ? null : r.id; this.engine.setChannelView(this.labSolo ? LAB_CH[this.labSolo] : null); this.apply(); return; }
         if (e.metaKey || e.ctrlKey) { this.loadSelection(r.id); return; }
         if (r.id === 'cmyk') this.inkSolo = null;
         else if (isInk(r.id)) this.inkSolo = r.id;
@@ -116,6 +117,7 @@ export class ChannelsPanel {
   private apply(): void {
     const cmyk = this.engine.current?.doc.mode === 'cmyk', lab = this.engine.current?.doc.mode === 'lab';
     if (!cmyk && this.inkSolo) { this.inkSolo = null; this.engine.paintChannel = null; this.engine.setChannelView(null); }
+    if (!lab && this.labSolo) { this.labSolo = null; this.engine.setChannelView(null); }
     const m = this.solo && !cmyk && !lab
       ? (() => { const k = { r: [1, 0, 0], g: [0, 1, 0], b: [0, 0, 1] }[this.solo]; return [...k, 0, 0, ...k, 0, 0, ...k, 0, 0, 0, 0, 0, 1, 0]; })()
       : [this.shown.r || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.g || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.b || cmyk ? 1 : 0, 0, 0, 0, 0, 0, 1, 0];
@@ -125,14 +127,14 @@ export class ChannelsPanel {
     for (const row of this.root.querySelectorAll<HTMLElement>('.cv-ch-row')) {
       const id = row.dataset.ch as Ch, inkRow = id === 'cmyk' || isInk(id), labRow = isLabRow(id);
       setHidden(row, cmyk ? !inkRow : lab ? !labRow : inkRow || labRow);
-      if (labRow) { row.classList.toggle('is-on', id === 'lab'); row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', false); continue; }
+      if (labRow) { row.classList.toggle('is-on', this.labSolo ? id === this.labSolo : true); row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', !!this.labSolo && id !== this.labSolo); continue; }
       if (inkRow) { row.classList.toggle('is-on', id === 'cmyk' ? !this.inkSolo : this.inkSolo === id); row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', false); continue; }
       const visible = id === 'rgb' ? plain : this.solo ? this.solo === id : this.shown[id as 'r' | 'g' | 'b'];
       row.classList.toggle('is-on', id === 'rgb' ? !this.solo : this.solo === id);
       row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', !visible);
     }
     const native = !!this.stage.querySelector('.cv-scene-native:not([hidden])');
-    setText(this.root.querySelector('.cv-ch-note') as HTMLElement, lab ? 'Lab: Lightness, a and b as greys (a and b mid-grey where neutral). Viewing or painting one Lab channel alone comes later.' : cmyk ? (this.inkSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.inkSolo)?.label} alone (paper white, full ink black); the Brush, Pencil and Eraser paint it alone.` : 'Click an ink to paint it alone; ⌘- or Ctrl-click loads its light areas as a selection.')
+    setText(this.root.querySelector('.cv-ch-note') as HTMLElement, lab ? (this.labSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.labSolo)?.label} alone, as grey (a and b mid-grey where neutral); click Lab to see the colours again.` : 'Lab: Lightness, a and b as greys (a and b mid-grey where neutral). Click one to see it alone on the canvas.') : cmyk ? (this.inkSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.inkSolo)?.label} alone (paper white, full ink black); the Brush, Pencil and Eraser paint it alone.` : 'Click an ink to paint it alone; ⌘- or Ctrl-click loads its light areas as a selection.')
       : native && !plain ? 'The Native GPU renderer draws outside the page: switch the renderer in Preferences to view single channels.' : '⌘- or Ctrl-click a channel to load it as a selection.');
   }
 

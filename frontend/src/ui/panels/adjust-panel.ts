@@ -626,7 +626,20 @@ export class AdjustPanel extends Dialog {
     const rows = spec.params.map((s) => {
       if (s.kind === 'range') { const r = sliderRow(s.label, s.min, s.max, s.step, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(num(pv()[s.key], s.def)) }; }
       if (s.kind === 'check') { const r = checkRow(s.label, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(pv()[s.key] === true) }; }
-      if (s.kind === 'select') { const r = selectRow(s.label, s.options, (v) => put(s.key, v)); return { s, el: r.el, set: () => r.set(String(pv()[s.key] ?? s.def)) }; }
+      if (s.kind === 'select') {
+        const r = selectRow(s.label, s.options, (v) => put(s.key, v));
+        // The Channel Mixer's outputs (1.57.9): the inks in a CMYK document, Red, Green and Blue in any other.
+        const inks = ['cyan', 'magenta', 'yellow', 'black'], mixer = kind === 'channelMixer' && s.key === 'output';
+        return { s, el: r.el, set: () => {
+          let v = String(pv()[s.key] ?? s.def);
+          if (mixer) {
+            const cmyk = this.engine.current?.doc.mode === 'cmyk';
+            for (const o of r.el.querySelectorAll('option')) o.hidden = inks.includes(o.value) !== cmyk;
+            if (inks.includes(v) !== cmyk) { v = cmyk ? 'cyan' : 'red'; this.data.params = { ...pv(), [s.key]: v }; queueMicrotask(() => this.sections.get(kind)?.sync()); }
+          }
+          r.set(v);
+        } };
+      }
       if (s.kind === 'text') {
         // Color Lookup's 3D LUT file: loaded from disk (checked to be a 3D .cube table), named, cleared back to the look.
         if (s.key !== 'cube') return { s, el: el('<span hidden></span>'), set: () => undefined };
