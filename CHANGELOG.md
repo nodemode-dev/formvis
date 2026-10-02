@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.58.7 · 2026-10-01
+
+A compact layout for phones and narrow windows (the parity plan's L12, second part, which closes the row).
+
+### Added
+
+- Under 720 pixels wide the canvas takes the whole width, and the tools, the panels and the properties column slide over it as sheets, opened one at a time from buttons in the title bar; tap the canvas to close one. The menu bar and the options bar scroll sideways.
+
+### Known
+
+- In the compact layout the title bar's zoom buttons (pinch instead), theme toggle, command search and workspace picker are hidden; all are in the menus and Preferences.
+
 ## 1.58.6 · 2026-10-01
 
 Touch gestures (the parity plan's L12, first part).
