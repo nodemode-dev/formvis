@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.58.2 · 2026-10-01
+
+Photomerge and Merge to HDR (the parity plan's L6, first part).
+
+### Added
+
+- File > Automate > Photomerge: overlapping photos stitched into a panorama (Auto, projected onto a sphere, or Reposition, moved and turned only), with transparent edges or cropped to the picture, opened as a new document.
+- File > Automate > Merge to HDR: exposures of one scene merged into a 32-bit picture whose highlights run past white; photos taken by hand are aligned first, and exposure times come from EXIF or are worked out from the photos.
+
+### Known
+
+- Photoshop's Perspective, Cylindrical and Collage layouts are not offered (the OpenCV build used does not expose them).
+
 ## 1.58.1 · 2026-10-01
 
 Opening Lab files (DEV_PLAN 22.11), which completes the parity plan's H1: every mode and depth works throughout.

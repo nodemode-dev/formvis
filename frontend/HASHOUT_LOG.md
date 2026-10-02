@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Photomerge and Merge to HDR · _v1.58.2 (ui/panels/merge-dialog.ts new; io/api.ts; app.ts; backend app/routers/merge.py new, app/main.py)
+
+The parity plan's L6, first part. File > Automate > Photomerge and Merge to HDR, after Batch as Photoshop orders them: `MergeDialog` (one class for both; the photos chosen with a file input; for panoramas the Layout, Auto or Reposition, and Crop to the picture, with a note that Photoshop's Perspective, Cylindrical and Collage are not offered; built once) sends them to the engine (`api.mergePanorama`, `api.mergeHdr`) and opens the result as a new document: the panorama through `openImage` (transparent where no photo reaches, a notice when the stitch kept only some photos), the HDR through `openDeep` at 32 bits (a notice of the exposure times and where they came from). Verified in the browser under 4x CPU throttling through the real menu and dialog: three views of scikit-image's rocket (NASA, public domain) from a virtual camera turning -12, 0 and +12 degrees open as a 582 by 405 "Panorama" with transparent corners; three exposures of it at -2, 0 and +2 stops (clipped, no EXIF) open as a 32-bit "HDR" whose brightest value is 4.07; the menu reads Batch, Photomerge, Merge to HDR; layout shift 0; no errors. Vanishing Point, L6's second part, comes next. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
+export const VERSION = '1.58.1';
+```
+
 ## Opening Lab files, and H1 closed · _v1.58.1 (engine/index.ts; io/api.ts; app.ts; backend app/routers/io.py)
 
 DEV_PLAN 22.11's last item, closing the parity plan's H1 (the owner: finish the CMYK and Lab list before L6). `api.decodeLab` reads the engine's `/io/decode-lab` answer (null for anything not Lab); `Engine.openLabLayers` opens a Lab document from the layers, each one's Lab floats kept and its rendition drawn by the formulas, 16 bits kept for a 16-bit file; `openLab` (app.ts) is called from the import: a PSD tries Lab after CMYK, and a TIFF opened as a new document tries Lab first (before the page count, whose decoder refuses a Lab TIFF and so put a 415 in the console). Verified in the browser through the real import input, each in a fresh window: formvis's own 8-bit Lab TIFF reopens as Lab at 8 bits within its rounding (46.27, 59, 38 and 74.12, -33, -27 for 46.20, 58.67, 38.13 and 73.98, -32.92, -26.85); its 16-bit TIFF reopens at 16 bits exactly; a layered Lab PSD in Photoshop's layout reopens with its two layers in place and both exact (the patch L 78.43, a -30, b -60); a flat one too; no errors. Removed lines taken after the version edit. Removed from frontend:
