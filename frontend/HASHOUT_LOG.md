@@ -2,6 +2,56 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The video timeline over MCP · _v1.59.7 (automation/agent-bridge.ts; engine/index.ts; ui/video-timeline.ts; app.ts; backend app/routers/mcp.py)
+
+DEV_PLAN 25.5, the last part of the owner's request: agents drive the video timeline as they drive the rest of formvis, through eleven tools named after Photon Studio's timeline operations: `timeline_get` (the model, top track first, keyframes as frame, value and interpolation), `timeline_create`, `timeline_delete`, `timeline_set` (frame rate, length in seconds, work area, loops), `timeline_go_to` (the playhead, not an edit), `timeline_clip`, `timeline_split`, `timeline_keyframe` (with hold, delete and clear), `timeline_transition` (fade_in, fade_out, fade, cross_fade, remove), `timeline_frame_image` (a frame as a PNG) and `timeline_render` (.mp4, .gif or .zip at an absolute path, written by the engine as export_image's file is). Each edit is the engine's undoable step. The engine gains `fadeClip`, `crossFade` and `splitClip`, which the panel now calls instead of its own copies (the panel's code below moved there unchanged in substance); the app's Render Video makes its file in `renderVideoBlob`, which the dialog delivers and the bridge returns. The README's tool count 39 to 50. Found on the way: TypeScript keeps a property read narrowed across a method call, so `e.video` read after `if (e.video) return` and `createVideoTimeline()` typed as null; read with its declared type. Verified as a real MCP client (JSON-RPC to /mcp with the 2026-07-28 meta) driving the open window: the eleven tools listed; a timeline created at 10 frames a second for 2 seconds; Sq keyed from x 0 to 100 over 10 frames and faded in over half a second, read back exactly by timeline_get; frame 5 as a 200 by 100 PNG with the square at x 50, fully in; Sq split at frame 10 (the copy's id returned); an MP4 of 20 frames at 200 by 100, a 20-frame GIF and a 20-file zip written; the playhead to 15 in the window; the history Place, Create Video Timeline, Make Keyframe, Make Keyframe, Add Transition, Duplicate Layer, Split at Playhead (a clip edit changing nothing made no step); one undo taking the split back; delete; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    if (!p || !vt) return;
+      if (!s) return;
+    if (c.format === 'gif') await deliver(new Blob([encodeGif(gif, w, h, vt.loops)], { type: 'image/gif' }), `${base}.gif`);
+    else if (c.format === 'png') await deliver(await api.videoSequence(pngs, base), `${base}-frames.zip`);
+    else await deliver(await api.encodeVideo(pngs, pngs.map(() => delay)), `${base}.mp4`);
+    toast(`Rendered ${c.to - c.from} frames.`);
+    const e = this.engine, vt = e.video, p = e.current, id = p?.activeId;
+    if (!vt || !p || !id) return;
+    const tr = vt.tracks[id], ph = vt.current;
+    if (!tr || ph <= tr.start || ph >= tr.start + tr.length) return;
+    const before = new Set(p.doc.layers.map((l) => l.id));
+    e.duplicateLayers();
+    const copy = e.current?.doc.layers.find((l) => !before.has(l.id));
+    if (!copy) return;
+    e.editVideo((v) => { const t = v.tracks[id]; v.tracks[copy.id] = { ...structuredClone(t), start: ph, length: t.start + t.length - ph }; t.length = ph - t.start; }, 'Split at Playhead');
+    const id = this.engine.current?.activeId, vt = this.engine.video;
+    if (!id || !vt?.tracks[id]) { this.engine.notice('Select a layer with a clip in the timeline.'); return; }
+    this.engine.editVideo((v) => {
+      const t = v.tracks[id];
+      if (!t) return;
+      const f = Math.min(frames, t.length);
+      if (inn) t.fadeIn = f > 0 ? { frames: f } : null;
+      if (out) t.fadeOut = f > 0 ? { frames: f } : null;
+    }, frames > 0 ? 'Add Transition' : 'Remove Transition');
+    const e = this.engine, vt = e.video, p = e.current, id = p?.activeId;
+    const a = id ? vt?.tracks[id] : undefined;
+    if (!vt || !p || !id || !a) { e.notice('Select a layer with a clip in the timeline.'); return; }
+    let best: { id: string; len: number } | null = null;
+    for (const [other, b] of Object.entries(vt.tracks)) {
+      if (other === id) continue;
+      // Only a clip that starts or ends within this one makes a transition with it; one covering it whole does not.
+      const covers = b.start <= a.start && b.start + b.length >= a.start + a.length;
+      const len = Math.min(a.start + a.length, b.start + b.length) - Math.max(a.start, b.start);
+      if (len > 0 && !covers && (!best || len > best.len)) best = { id: other, len };
+    }
+    if (!best) { e.notice('Cross Fade needs another clip that starts or ends within this one.'); return; }
+    const order = p.doc.layers.map((l) => l.id), upper = order.indexOf(id) > order.indexOf(best.id) ? id : best.id, lower = upper === id ? best.id : id, len = best.len;
+    e.editVideo((v) => {
+      const u = v.tracks[upper], l = v.tracks[lower];
+      if (!u || !l) return;
+      if (u.start >= l.start) u.fadeIn = { frames: len }; else u.fadeOut = { frames: len };
+    }, 'Add Transition');
+export const VERSION = '1.59.6';
+```
+
 ## Transitions and Render Video · _v1.59.6 (ui/panels/render-video-dialog.ts new; ui/video-timeline.ts; io/api.ts; styles/shell.css; app.ts; backend app/routers/video.py)
 
 DEV_PLAN 25.4. The panel's bar gains Add Transition, a small menu built once (Fade In, Fade Out, Fade In and Out, Cross Fade, Remove Transitions, and the length in seconds), acting on the selected layer's clip as an undoable step; each clip shows its fades as ramps over its ends. Cross Fade, as Photoshop's: with the clip that starts or ends within the selected one and overlaps it most, over the overlap, fading only the upper of the two (in when it starts later, out when it ends first) so the lower shows through and the picture never dips. Render Video (`RenderVideoDialog`, File > Export > Render Video and the panel's Render): H.264 MP4 (over white), an animated GIF (formvis's encoder) or a PNG sequence (numbered, zipped by the engine's new `/api/video/sequence`); all frames, the work area, or frames from and to; document size, half or a quarter; the dialog says how many frames, how long and how big. Found on the way: the first Cross Fade paired with the full-length white Background, which overlaps everything most, and faded the clip in over its whole length; a clip covering the selected one whole is now no partner. Not yet: fades from black or white (they blend toward a colour, which opacity cannot carry). Verified in the browser under 4x CPU throttling with real input: Cross Fade on a clip starting at 60 over one ending at 90 gives a 30-frame fade-in, the picture nearly all blue at 60, half red at 75, full red at 89, never white, its ramp 240 pixels at 8 a frame; Fade In and Out at 0.5 seconds gives 15 and 15, undone with Ctrl+Z; frames 60 to 90 at half size render as a 30-frame 100 by 50 GIF, a zip of T_00001.png to T_00030.png at 100 by 50, and a 30-frame 100 by 50 MP4; no errors. Removed lines taken after the version edit. Removed from frontend:

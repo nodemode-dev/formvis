@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.59.7 · 2026-10-02
+
+The video timeline for agents (DEV_PLAN 25.5).
+
+### Added
+
+- formvis's MCP server gains eleven timeline tools, so Claude Code, Codex, Cursor and other agents can make and edit animations: read the timeline, create or delete it, set its frame rate, length and work area, move the playhead, move, trim and split clips, key position, opacity, fill and style, add fades and cross fades, look at any frame, and render MP4, GIF or a PNG sequence to a file. Each edit is an ordinary undo step.
+
 ## 1.59.6 · 2026-10-02
 
 Transitions and Render Video (DEV_PLAN 25.4).
