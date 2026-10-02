@@ -4,7 +4,9 @@ import type { SelectionMask } from './selection';
 
 /** paths: a copy of the document's paths, carried only by path edits' steps (their undo and redo restore it; other
  *  steps leave paths as they are, since drawing with the Pen is not itself a step). */
-export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionMask | null; paths?: unknown; video?: unknown }
+export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionMask | null; paths?: unknown; video?: unknown; frames?: unknown }
+/* frames (1.59.8): a copy of the frame animation (frames, current, loops), carried by steps that change it (Convert to
+   Frame Animation), as video and paths are carried. */
 /* video (1.59.5, DEV_PLAN 25): a copy of the video timeline, carried only by timeline edits' steps, as paths are. */
 export interface PixelPatch { raster: Raster; x: number; y: number; before: ImageData; after: ImageData }
 export interface HistoryEntry { name: string; before: Snapshot; after: Snapshot; patches: PixelPatch[]; beforeRev: number; afterRev: number }
@@ -53,12 +55,13 @@ export class History {
     const p = this.pending;
     this.pending = null;
     const hooked = History.onStepEnd ? History.onStepEnd(this, p.before, p.patches) : null;
-    if (hooked) snap = { ...hooked, ...(snap.video !== undefined ? { video: snap.video } : {}) };   // the timeline kept (1.59.5)
+    if (hooked) snap = { ...hooked, ...(snap.video !== undefined ? { video: snap.video } : {}), ...(snap.frames !== undefined ? { frames: snap.frames } : {}) };   // the timelines kept (1.59.5, 1.59.8)
+    const framesSame = p.before.frames === undefined || JSON.stringify(p.before.frames) === JSON.stringify(snap.frames);
     // A step that changed nothing is dropped; a path edit's step (it carries the paths) counts when the paths changed,
     // and a timeline edit's (it carries the video timeline, 1.59.5) when the timeline changed.
     const pathsSame = !p.before.paths || JSON.stringify(p.before.paths) === JSON.stringify(snap.paths);
     const videoSame = p.before.video === undefined || JSON.stringify(p.before.video) === JSON.stringify(snap.video);
-    if (!p.patches.length && p.before.doc === snap.doc && p.before.selection === snap.selection && pathsSame && videoSame) return false;
+    if (!p.patches.length && p.before.doc === snap.doc && p.before.selection === snap.selection && pathsSame && videoSame && framesSame) return false;
     const beforeRev = this.revision;
     this.counter += 1;
     this.revision = this.counter;

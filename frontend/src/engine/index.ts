@@ -664,6 +664,11 @@ export class Engine {
     p.doc = s.doc;
     p.selection = s.selection;
     if (s.paths) { this.pathSets.set(p, structuredClone(s.paths) as PathSet); this.pathsChanged(p); }   // a path edit's step
+    if (s.frames !== undefined) {   // a step carrying the frame animation (1.59.8: Convert to Frame Animation)
+      const f = structuredClone(s.frames) as { frames: Frame[]; current: ID | null; loops: number };
+      this.timelines.set(p, { ...this.timelineOf(p), frames: f.frames, current: f.current, loops: f.loops });
+      this.emit('timeline', null);
+    }
     if (s.video !== undefined) {   // a timeline edit's step (1.59.5): its timeline back, the playhead where it is now
       const now = this.timelineOf(p).video, v = s.video ? structuredClone(s.video) as VideoTimeline : null;
       if (v && now) v.current = Math.min(now.current, v.duration - 1);
@@ -1364,6 +1369,20 @@ export class Engine {
 
   /** Timeline > New Frame: a copy of the selected frame after it, selected. With no frames yet, frame 1 is the layers
    *  as they are, and the copy is frame 2. */
+  /** Create Frame Animation (1.59.8), as Photoshop's: one frame, the document as it is; refused beside a video timeline
+   *  or an animation already begun. */
+  startFrameAnimation(): boolean {
+    const p = this.current;
+    if (!p) return false;
+    const t = this.timelineOf(p);
+    if (t.frames.length || t.video) return false;
+    const first: Frame = { id: uid(), delay: 100, state: captureFrame(p.doc) };
+    t.frames.push(first);
+    t.current = first.id;
+    this.emit('timeline', null);
+    return true;
+  }
+
   newFrame(): void {
     const p = this.current;
     if (!p) return;
@@ -1565,11 +1584,18 @@ export class Engine {
     if (!p || !tr || frame <= tr.start || frame >= tr.start + tr.length) return null;
     const before = new Set(p.doc.layers.map((l) => l.id));
     this.selectLayer(id);
-    this.duplicateLayers();
-    const copy = this.current?.doc.layers.find((l) => !before.has(l.id));
-    if (!copy) return null;
-    this.editVideo((v) => { const t = v.tracks[id]; if (!t) return; v.tracks[copy.id] = { ...structuredClone(t), start: frame, length: t.start + t.length - frame }; t.length = frame - t.start; }, 'Split at Playhead');
-    return copy.id;
+    // One step (1.59.8): the copy and the split nest inside it, so one undo takes back both.
+    p.history.begin('Split at Playhead', { ...p.snapshot(), video: structuredClone(this.video) });
+    let copy: Layer | undefined;
+    try {
+      this.duplicateLayers();
+      copy = this.current?.doc.layers.find((l) => !before.has(l.id));
+      if (copy) { const c = copy; this.editVideo((v) => { const t = v.tracks[id]; if (!t) return; v.tracks[c.id] = { ...structuredClone(t), start: frame, length: t.start + t.length - frame }; t.length = frame - t.start; }, 'Split at Playhead'); }
+    } finally {
+      p.history.end({ ...p.snapshot(), video: structuredClone(this.video) });
+      this.refresh();
+    }
+    return copy?.id ?? null;
   }
 
   /** A drag in the timeline (a clip moved or trimmed, a keyframe moved) as one step, from press to release. */
@@ -1610,7 +1636,11 @@ export class Engine {
     if (!p || !vt) return false;
     const frames = sampleToFrames(p.doc, vt);
     if (!frames.length) return false;
+    const was = this.timelineOf(p);   // one step (1.59.8), carrying both timelines so undo brings the video one back
+    p.history.begin('Convert to Frame Animation', { ...p.snapshot(), video: structuredClone(vt), frames: structuredClone({ frames: was.frames, current: was.current, loops: was.loops }) });
     this.timelines.set(p, { frames, current: frames[0].id, loops: vt.loops, video: null });
+    p.history.end({ ...p.snapshot(), video: null, frames: structuredClone({ frames, current: frames[0].id, loops: vt.loops }) });
+    this.refresh();
     this.emit('timeline', null);
     return true;
   }

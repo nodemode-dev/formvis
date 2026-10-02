@@ -25,7 +25,20 @@ export class VideoTimelinePanel {
   private pxPerFrame = 8;
   private playing = 0;
 
-  constructor(private readonly root: HTMLElement, private readonly engine: Engine, private readonly renderVideo: () => void = () => {}) {
+  /** Shown by choice (1.59.8): null follows the document (open while it has a video timeline); true or false is the
+   *  person's Window > Timeline or Close. A video timeline appearing resets it. */
+  private shown: boolean | null = null;
+  private had = false;
+
+  constructor(private readonly root: HTMLElement, private readonly engine: Engine, private readonly renderVideo: () => void = () => {}, private readonly openFrames: () => void = () => {}) {
+    // The empty state (1.59.8), as Photon's: the two kinds of timeline offered while the document has neither.
+    const empty = el('<div class="cv-vtl-empty"><p class="cv-vtl-empty-title">Timeline</p><p class="cv-vtl-empty-note">Animate this document with a video timeline (clips, keyframes and transitions over time) or a frame animation (frame by frame).</p><div class="cv-vtl-empty-acts"></div></div>');
+    const act = (label: string, kind: string, run: () => void): HTMLButtonElement => { const b = el<HTMLButtonElement>(`<button class="cv-btn ${kind}" type="button">${label}</button>`); b.addEventListener('click', run); return b; };
+    (empty.querySelector('.cv-vtl-empty-acts') as HTMLElement).append(
+      act('Create Video Timeline', 'cv-btn-primary', () => { this.shown = null; engine.createVideoTimeline(); }),
+      act('Create Frame Animation', '', () => { this.shown = null; engine.startFrameAnimation(); this.sync(); this.openFrames(); }),
+      act('Close', 'cv-btn-ghost', () => { this.shown = false; this.sync(); }));
+    root.append(empty);
     const bar = el('<div class="cv-vtl-bar"></div>');
     // Add Transition (1.59.6, DEV_PLAN 25.4): a small menu, built once, acting on the selected layer's clip.
     const pop = el('<div class="cv-vtl-pop" role="menu" aria-label="Transitions" hidden></div>');
@@ -62,6 +75,10 @@ export class VideoTimelinePanel {
     for (const ev of ['timeline', 'doc', 'projects', 'active'] as const) engine.on(ev, () => this.sync());
     this.sync();
   }
+
+  /** Window > Timeline (1.59.8): shows the panel (its empty state when there is no timeline) or hides it. */
+  toggleOpen(): void { this.shown = this.root.hidden !== false; this.sync(); }   // toggle is Play's
+  get isOpen(): boolean { return !this.root.hidden; }
 
   private frameAt(clientX: number): number { const r = this.lanes.getBoundingClientRect(); return Math.round((clientX - r.left + this.lanes.scrollLeft) / this.pxPerFrame); }
   private scrub(e: PointerEvent): void { this.engine.setVideoTime(this.frameAt(e.clientX)); }
@@ -106,8 +123,11 @@ export class VideoTimelinePanel {
 
   /** The panel kept in step: shown while there is a video timeline; tracks made once per layer, then moved and sized. */
   sync(): void {
-    const vt = this.engine.video, p = this.engine.current;
-    this.root.hidden = !vt || !p;
+    const vt = this.engine.video, p = this.engine.current, frames = !!p && this.engine.timeline.frames.length > 0;
+    if (!!vt !== this.had) { this.had = !!vt; if (vt) this.shown = null; }   // a timeline appearing shows it
+    const open = !!p && !frames && (this.shown ?? !!vt);
+    this.root.hidden = !open;
+    this.root.classList.toggle('is-empty', open && !vt);
     if (!vt || !p) return;
     const fr = (n: number): string => String(Math.floor(n)).padStart(2, '0');
     const s = vt.current / vt.fps;

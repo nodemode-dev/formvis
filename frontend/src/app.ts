@@ -299,7 +299,8 @@ export function startApp(): void {
   layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage')));   // the Channels tab (Phase 21)
   new TimelinePanel(q(root, '.cv-layers'), engine);
   const renderDialog = new RenderVideoDialog(engine, (c) => renderVideo(c));   // 1.59.6, DEV_PLAN 25.4
-  new VideoTimelinePanel(q(root, '.cv-vtl'), engine, () => renderDialog.show());   // 1.59.3, DEV_PLAN 25.2: under the canvas
+  // 1.59.3, DEV_PLAN 25.2: under the canvas; 1.59.8: kept for Window > Timeline, and opening the frames panel.
+  const vtl = new VideoTimelinePanel(q(root, '.cv-vtl'), engine, () => renderDialog.show(), () => { if (!dock.isShown('timeline')) dock.toggle('timeline'); });
   new HistoryPanel(q(root, '.cv-layers'), engine);
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
   // arrangement, filled when the tabs' homes are restored.
@@ -1498,7 +1499,10 @@ export function startApp(): void {
     { id: 'sheet-tools', label: 'Tools Sheet', run: () => openSheet(root.classList.contains('is-sheet-tools') ? null : 'tools') },
     { id: 'sheet-panels', label: 'Panels Sheet', run: () => openSheet(root.classList.contains('is-sheet-panels') ? null : 'panels') },
     { id: 'sheet-props', label: 'Properties Sheet', run: () => openSheet(root.classList.contains('is-sheet-props') ? null : 'props') },
-    ...ALL_PANELS.map((pn) => ({ id: `panel-${pn.id}`, label: pn.label, checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) })),
+    ...ALL_PANELS.map((pn) => pn.id === 'timeline'
+      // Window > Timeline (1.59.8), as Photon's: the frames panel beside a frame animation, else the panel under the canvas.
+      ? { id: 'panel-timeline', label: pn.label, checked: () => (engine.timeline.frames.length ? dock.isShown('timeline') : vtl.isOpen), run: () => { if (engine.timeline.frames.length) dock.toggle('timeline'); else vtl.toggleOpen(); } }
+      : { id: `panel-${pn.id}`, label: pn.label, checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) }),
     { id: 'merge-columns', label: 'Merge Panel Columns', checked: () => dock.merged, run: () => { if (dock.merged) dock.separate(); else dock.merge(); } },
     // Paths is a tab of the Layers group (Phase 21): Window > Paths shows the group on its Paths tab.
     { id: 'panel-paths', label: 'Paths', run: () => { if (!dock.isShown('layers')) dock.toggle('layers'); layers.showTab('paths'); } },
