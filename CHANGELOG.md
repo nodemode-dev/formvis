@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.59.2 · 2026-10-02
+
+The video timeline's foundation (DEV_PLAN 25.1, the timeline to work like Photon Studio's).
+
+### Added
+
+- Documents can hold a video timeline: a frame rate and length, a work area, and per layer a clip (when it shows), keyframes of position, opacity, fill opacity and style (smooth or held), and fades at the clip's ends. It is saved with the project, converts to a frame animation, and Video (MP4) renders it. Its panel comes next.
+
 ## 1.59.1 · 2026-10-02
 
 ### Fixed

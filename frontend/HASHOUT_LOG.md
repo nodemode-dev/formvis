@@ -2,6 +2,25 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The video timeline's model and evaluation · _v1.59.2 (engine/video-timeline.ts new; engine/timeline.ts, engine/index.ts; app.ts)
+
+DEV_PLAN 25.1, the first part of the owner's request that formvis's timeline work like Photon Studio's (PHOTON_TIMELINE_ANALYSIS.md in the sidecar: Photoshop's video timeline). `engine/video-timeline.ts`, pure functions: the model (frame rate, duration, current frame, work area, loops; per layer a track with its clip's start and length, keyframes of Position X and Y, Opacity, Fill Opacity and Style each linear or hold, and fades at the clip's ends), `newVideoTimeline` (a track per layer across the whole, 30 frames a second and 5 seconds by default, as Photoshop and Photon start), `valueAt`, `stateAt` (each layer shown only inside its clip, its properties from its keyframes or its own, its opacity eased by the fades, its style kept or set aside), `sampleToFrames`, and `videoFrom` (read back checked and bounded). `timeline.ts`: a frame's layer state may carry Fill Opacity (`frameLayers` applies it), and the timeline carries `video`, saved by `timelineData` and read by `timelineFrom` (a timeline with only a video one is kept). The engine: `video`, `createVideoTimeline` (refused beside a frame animation or a second one, Photoshop's two modes being one or the other), `deleteVideoTimeline`, `editVideo`, `renderVideoFrame`, `convertVideoToFrames`; Video (MP4) renders a video timeline's work area at its frame rate. The panel is 25.2. Verified in the browser on a 200 by 100 document: created at 10 frames a second for 2 seconds (20 frames, three tracks, the work area whole), a second creation refused; a red square keyed from x 0 to 100 and opacity 0 to 1 over 10 frames reads (255, 126, 126) halfway at frame 5 and (255, 0, 0) at x 100 at frame 10, white where it starts at frame 0; a blue square's clip from frame 5 for 10 frames is absent at 4, there at 5 and 14, absent at 15; hold keeps the square at x 0 at frame 9 (fading in: 255, 24, 24) until frame 10; saved and read back through the project format exactly; Video (MP4) through the real menu 20 frames at 10 a second, 2.0 seconds; Convert to Frame Animation 20 frames of 100 ms, the video timeline gone; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+        const t = engine.timeline, frames = t.frames.length ? t.frames : [null], pngs: Blob[] = [], delays: number[] = [];
+          const s = engine.renderFrame(f);
+export interface FrameLayer { visible: boolean; opacity: number; x: number; y: number; fx?: LayerEffects | null }
+/** `loops`: 0 repeats forever. */
+export interface Timeline { frames: Frame[]; current: ID | null; loops: number }
+    if (!styled && s.visible === l.visible && s.opacity === l.opacity && s.x === l.transform.x && s.y === l.transform.y) return l;
+    return { ...l, visible: s.visible, opacity: s.opacity, transform: { ...l.transform, x: s.x, y: s.y }, ...(styled ? { effects: s.fx ? structuredClone(s.fx) : null } : {}) };
+export function timelineData(t: Timeline | null): { loops: number; current: ID | null; frames: Frame[] } | null {
+  return t && t.frames.length ? { loops: t.loops, current: t.current, frames: t.frames.map((f) => ({ id: f.id, delay: f.delay, state: f.state })) } : null;
+  if (!frames.length) return null;
+  return { frames, loops, current: typeof o.current === 'string' && frames.some((f) => f.id === o.current) ? o.current : frames[0].id };
+export const VERSION = '1.59.1';
+```
+
 ## Z1: opening a document no longer moves the dock · _v1.59.1 (styles/panels.css)
 
 The register's Z1, found at 1.58.9. Measured with every shift's element and boxes: a first document of ten layers made the Layers panel's footer buttons go from y 838 to no box at all, and a one-layer document after it brought the footer back at y 827. The Layers panel was told `flex-shrink: 0` with an automatic basis (the owner's walkthrough: keep room for its controls and rows), which meant never smaller than all its rows: with ten it grew to 641 pixels, the dock overflowed (1020 in 832) and the footer fell below the dock's visible bottom (1015 against 872). It is now `flex: 1 1 0` with the same 230-pixel minimum: it fills what the other panels leave, gives way to its minimum, and never grows with its rows, so its list scrolls inside (441 pixels of rows in 253) and the footer stays at 827 whatever the document holds; the dock overflows only when its panels and that minimum truly exceed it. Verified in the browser: one layer and ten measure the same (the section 453 pixels, the footer at 827, the dock not overflowing); layout shift 0.00000 opening a first document of ten layers, a second of one, a third of three, and clicking back to the first tab. Then DEV_PLAN 25, the video timeline. Removed lines taken after the version edit. Removed from frontend:

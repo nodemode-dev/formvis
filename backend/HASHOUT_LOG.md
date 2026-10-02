@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.59.2
+
+No engine code changed in 1.59.2 (the video timeline's model in the window; Video (MP4) uses the 1.58.9 encoder). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.59.1"
+version = "1.59.1"
+version = "1.59.1"
+ "version": "1.59.1",
+```
+
 ## Version only · _v1.59.1
 
 No engine code changed in 1.59.1 (the Layers panel's sizing in the window). Removed lines taken after the version edit:
