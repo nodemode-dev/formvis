@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Lab reader · _v1.58.1 (app/routers/io.py)
+
+`POST /io/decode-lab` answers 204 for anything not Lab, else a 4-byte length, a JSON header (width, height, bits, layers) and each layer's L, a, b and alpha as 16-bit values in the window's encoding. Three libraries, three conventions, each found by test here: an 8-bit CIELab TIFF through Pillow, whose bytes are the file's own, so a* and b* are read signed as the TIFF specification has them (formvis's own 8-bit export round-trips exactly, -30 and -60 included; Pillow's own TIFF writer puts them offset, which this reads as the specification says); a 16-bit one through tifffile (a* and b* signed, times 256; tifffile cannot read LZW without imagecodecs, so 8-bit files stay with Pillow); a Lab PSD through psd-tools' numpy, which for Photoshop's layout (L, a, b over 0 to 255, a and b offset by 128) gives each over 0 to 1, the window's encoding as it is, and a layer's transparency from its shape channel. Two wrong turns on the way, both caught by the tests: a first version took Pillow's "A" band for transparency, but Pillow's Lab bands are L, A and B and its A is a*; a second read a* and b* as signed from psd-tools, which held only for psd-tools' own Lab writer, which puts them signed on disk where Photoshop's layout keeps them offset (test files were then written in Photoshop's layout, Lab bytes in RGB(A) channels numbered 0, 1, 2 and -1, the header marked Lab). Checked here: 8-bit and 16-bit TIFF, flat and layered PSD, an RGB TIFF refused with 204. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.57.9"
+version = "1.57.9"
+version = "1.57.9"
+ "version": "1.57.9",
+```
+
 ## CMYK to CMYK, pure black kept · _v1.57.9 (app/routers/colour.py)
 
 `POST /color/convert-ink` (form: width, height, source and dest as base64 ICC, intent, preserve_black, and the 8-bit inks): through LittleCMS by Pillow's ImageCms. Pillow reaches only the four standard intents, so LittleCMS's black-preserving ones (tried: intents 11 and 14 are refused) are done here: with `preserve_black` (the default) a pixel inked with black alone stays black alone, its black moved to the value of the same lightness under the new profile (both profiles' black ramps measured in Lab and matched). Checked here with FOGRA39L to itself: with it (0, 0, 0, 255) and (0, 0, 0, 128) come back unchanged; without it they become (195, 179, 161, 212) and (102, 80, 80, 25), four-colour black, as plain colorimetric conversion makes them (in Photoshop too); a blue (200, 100, 0, 0) converts the same either way. Removed lines taken after the version edit:

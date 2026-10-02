@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.58.1 · 2026-10-01
+
+Opening Lab files (DEV_PLAN 22.11), which completes the parity plan's H1: every mode and depth works throughout.
+
+### Added
+
+- Lab TIFF (8 and 16 bits) and Lab PSD files open as Lab documents, a PSD with its layers in place and a 16-bit file at 16 bits.
+
 ## 1.57.9 · 2026-10-01
 
 CMYK and Lab: profiles, the Channel Mixer on inks, and Lab's channels alone (DEV_PLAN 22.11). Every command now works in every mode and depth.
