@@ -2,6 +2,32 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Timeline edits as undo steps · _v1.59.5 (engine/history.ts, engine/index.ts; ui/video-timeline.ts)
+
+Carried from 25.2 and 25.3, and needed by 25.5's MCP. A snapshot may carry a copy of the video timeline (`video`), as a path edit's carries the paths; `History.end` keeps a step whose timeline changed (and a hooked snapshot keeps the timeline it carries), and `restore` puts a step's timeline back, the playhead staying where it is. `editVideo` takes a name for a one-shot step; `beginVideoGesture` and `endVideoGesture` make a drag one step from press to release; an edit with neither is live and no step (the playhead moving). Create Video Timeline and Delete Timeline are steps. The panel names its edits as Photon titles them: Make Keyframe, Keyframe Animation, Delete Keyframe, Keyframe Interpolation, Set Timeline Frame Rate, Split at Playhead, and the gestures Move Clip, Trim Layer Start, Trim Layer End and Move Keyframe. Found on the way: History drops a step that changed neither the document nor the selection unless it carries changed paths, so the first build's timeline steps were silently dropped (the first undo after creating a timeline removed the layer before it); the timeline now counts like the paths. Not yet: Convert to Frame Animation is not a step (the frame animation is not kept in snapshots); Split at Playhead is two (Duplicate Layer, then the split). Verified in the browser under 4x CPU throttling with real input and Ctrl+Z and Ctrl+Shift+Z: Create Video Timeline a step, undone (no timeline) and redone; three scrubs, no steps; the stopwatch and a typed key, two steps undone one by one and redone; a clip dragged in eight moves one Move Clip step, one undo putting it back; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionMask | null; paths?: unknown }
+    if (hooked) snap = hooked;
+    // A step that changed nothing is dropped; a path edit's step (it carries the paths) counts when the paths changed.
+    if (!p.patches.length && p.before.doc === snap.doc && p.before.selection === snap.selection && pathsSame) return false;
+    this.timelines.set(p, { ...t, video: newVideoTimeline(p.doc, fps, seconds) });
+  /** Delete Timeline (the video one). */
+    const p = this.current;
+    if (!p || !this.timelineOf(p).video) return false;
+  /** The video timeline changed through `fn` on a copy, then put in place and shown. */
+  editVideo(fn: (vt: VideoTimeline) => void): boolean {
+    this.engine.editVideo((v) => { const d = Math.max(1, Math.round(f * s)); v.fps = f; v.duration = d; v.workOut = Math.min(Math.max(v.workOut, 1), d); v.workIn = Math.min(v.workIn, v.workOut - 1); v.current = Math.min(v.current, d - 1); });
+    e.editVideo((v) => { const t = v.tracks[id]; v.tracks[copy.id] = { ...structuredClone(t), start: ph, length: t.start + t.length - ph }; t.length = ph - t.start; });
+    });
+      this.engine.editVideo((vt) => { const tr = vt.tracks[id]; if (!tr) return; if (tr.keys[prop]?.length) delete tr.keys[prop]; else tr.keys[prop] = [{ t: vt.current, v, interp: 'linear' }]; });
+      if (ks.some((k) => k.t === vt.current)) this.engine.editVideo((v) => { const tr = v.tracks[id]; if (!tr) return; tr.keys[prop] = (tr.keys[prop] ?? []).filter((k) => k.t !== v.current); if (!tr.keys[prop]?.length) delete tr.keys[prop]; });
+      const up = (): void => { d.removeEventListener('pointermove', move); d.removeEventListener('pointerup', up); d.removeEventListener('pointercancel', up); delete d.dataset.t; if (!moved) this.engine.setVideoTime(t0); };
+      this.engine.editVideo((v) => { const k = v.tracks[id]?.keys[prop]?.[i]; if (k) k.interp = k.interp === 'hold' ? 'linear' : 'hold'; });
+      const up = (): void => { c.removeEventListener('pointermove', move); c.removeEventListener('pointerup', up); c.removeEventListener('pointercancel', up); };
+export const VERSION = '1.59.4';
+```
+
 ## The video timeline's keyframe lanes · _v1.59.4 (ui/video-timeline.ts; styles/shell.css)
 
 DEV_PLAN 25.3, as Photon's lanes. Each track's head gains an expand chevron; opened, the track shows a lane per property under its clip (Position X, Position Y, Opacity, Fill Opacity, Style), each with a stopwatch (on keys the value at the playhead; off clears the lane), the value at the playhead in an inline field (pixels, percent, or 1 and 0 for style; typed with the stopwatch on it keys the playhead, off it changes the layer itself as an undoable step, style always keying), previous and next keyframe, and add or delete at the playhead; the lane's strip carries a diamond per keyframe, dragged to move it in time, clicked to go there, right-clicked to switch linear and hold (hold drawn in the accent). Heads, lane heads, strips and diamonds are kept by layer and property and moved by transform. Verified in the browser under 4x CPU throttling with real input: a track opened shows the five lanes; the Opacity stopwatch at frame 0 and 0 typed at frame 30 make keys (0, 1) and (30, 0), and the render at frame 15 is half faded (255, 126, 126); Position X keyed 0 at frame 30 and 200 at frame 60 puts frame 45 at 100; previous keyframe from 60 goes to 30; a diamond dragged from 30 to 40, right-clicked to hold, and deleted at 40 with the add or delete button; the X stopwatch off clears its keys; 50 typed with it off moves the layer itself (a "Move" step); layout shift 0; no errors. Not yet: canvas edits at the playhead keying (the Move tool dragging a keyed layer), the panel's own empty state, timeline edits as history steps. Removed lines taken after the version edit. Removed from frontend:

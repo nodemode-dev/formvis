@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.59.5 · 2026-10-02
+
+Undo for the video timeline.
+
+### Added
+
+- Timeline edits undo and redo like any other: creating or deleting a timeline, keyframes made, deleted, moved or switched between smooth and hold, clips moved or trimmed (a whole drag as one step), Split at Playhead, and the frame rate and length. Moving the playhead is not an edit.
+
 ## 1.59.4 · 2026-10-02
 
 Keyframes in the video timeline (DEV_PLAN 25.3).
