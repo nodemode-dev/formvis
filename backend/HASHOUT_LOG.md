@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.61.4
+
+No engine code changed in 1.61.4 (room made before a large filter, in the window; the register's test drives the engine's MCP, library, undo store and banded PNG writer as they were). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.61.3"
+version = "1.61.3"
+version = "1.61.3"
+ "version": "1.61.3",
+```
+
 ## Version only · _v1.61.3
 
 No engine code changed in 1.61.3 (raster paging and automatic history memory, in the window; the paged layer's tiles use the 1.60.8 store). Removed lines taken after the version edit:

@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.61.4 · 2026-10-02
+
+### Fixed
+
+- A blur on a very large picture straight after painting could be refused for memory: formvis now clears its spare painting surfaces and moves earlier undo steps to disk first when it needs the room.
+
+### Added
+
+- A test of a 150 megapixel picture painted, blurred, saved, reopened and exported in one session within the memory budget (run with `FORMVIS_LARGE=1`; it takes a few minutes).
+
 ## 1.61.3 · 2026-10-02
 
 ### Changed
