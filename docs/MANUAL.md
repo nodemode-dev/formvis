@@ -108,6 +108,9 @@ ask it questions.
 - Shape tools draw rectangles, ellipses, triangles, polygons, stars, lines, arrows and custom shapes, as shape
   layers, paths or pixels, with a fill and a stroke; the stroke is solid, dashed or dotted, and inside, centred on or
   outside the shape's edge.
+- The Markup tool (with Note and Count, I) marks a picture in one drag: an arrow, a callout pointing at something, a
+  highlight, or a redaction box, each its own layer. Apply Redactions (its options, or Layer > Shape) burns the boxes
+  into every layer beneath them, so what they hide is gone from layered files too.
 - The Pen draws Bézier paths, or in Shape mode makes a shape layer from each path it closes; with Auto Add/Delete on,
   clicking a path adds a point and clicking a point deletes it. Path Selection and Direct Selection move and reshape
   paths, and a path can become a selection, be filled or be stroked.

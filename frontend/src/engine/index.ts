@@ -56,6 +56,7 @@ import { DEFAULT_GLOBAL_LIGHT, type GlobalLight } from './style-extras';
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { UPRIGHT, defaultShape, noDynamics, pressureOption, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
+import { markupPath, type MarkupKind } from './markup';
 import { CUSTOM_SHAPES } from './custom-shapes';
 export { CUSTOM_SHAPES } from './custom-shapes';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode, type HealSample } from './retouch';
@@ -1741,6 +1742,61 @@ export class Engine {
     let n = 1;
     while (p.doc.layers.some((l) => l.name === `Shape ${n}`)) n++;
     this.insertRasterLayer(r.raster, `Shape ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'New Shape Layer');
+  }
+
+  /** The Markup tool's choice (1.60.3, the register's L2, DEV_PLAN 23.13): what a drag makes, its colour and width. */
+  markupKind: MarkupKind = 'arrow';
+  markupColor: RGB = { r: 230, g: 40, b: 40 };
+  markupWidth = 6;
+
+  /** A mark from a drag `a` to `b` (Markup), its own vector layer and one step: an arrow in the markup colour; a callout
+   *  (a white box outlined in it, its tail at `a`); a highlight (yellow, Multiply at 60%); a redaction box (black,
+   *  named Redaction N, which Apply Redactions burns in). */
+  addMarkup(a: Pt, b: Pt): boolean {
+    const p = this.current;
+    if (!p || Math.hypot(b.x - a.x, b.y - a.y) < 4) return false;
+    const k = this.markupKind, w = this.markupWidth, c = this.markupColor;
+    const path = markupPath(k, a, b, w);
+    const look: ShapeStyle = k === 'arrow' ? { fill: { ...c }, stroke: null }
+      : k === 'callout' ? { fill: { r: 255, g: 255, b: 255 }, stroke: { color: { ...c }, width: Math.max(1, Math.round(w / 2)) } }
+        : k === 'highlight' ? { fill: { r: 255, g: 226, b: 0 }, stroke: null } : { fill: { r: 0, g: 0, b: 0 }, stroke: null };
+    const r = this.renderShape(path, look);
+    if (!r) return false;
+    const base = k === 'redact' ? 'Redaction' : k === 'callout' ? 'Callout' : k === 'highlight' ? 'Highlight' : 'Arrow';
+    let n = 1;
+    while (p.doc.layers.some((l) => l.name === `${base} ${n}`)) n++;
+    this.insertRasterLayer(r.raster, `${base} ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } }, ...(k === 'highlight' ? { blend: 'multiply' as BlendMode, opacity: 0.6 } : {}) }, `Markup ${base}`);
+    return true;
+  }
+
+  /** Layer > Apply Redactions (1.60.3): every Redaction box burned into the pixels of every layer beneath it, so what
+   *  it hides is gone from layered files too (a box alone only covers it). Text, shape and smart object layers under a
+   *  box become pixels (their originals would keep the text); the boxes themselves stay as black pixel layers named
+   *  Redacted N. One step. A rotated or scaled layer under a box is named and refused, to be rasterized first. */
+  applyRedactions(): number {
+    const p = this.current;
+    if (!p) return 0;
+    const boxes = p.doc.layers.filter((l) => l.vector && /^Redaction \d+$/.test(l.name));
+    if (!boxes.length) { this.notice('No redaction boxes: draw them with the Markup tool set to Redact.'); return 0; }
+    const ids = new Set(boxes.map((l) => l.id)), rects = boxes.map((l) => ({ x: l.transform.x, y: l.transform.y, w: l.transform.w, h: l.transform.h }));
+    const under = (l: Layer): boolean => !ids.has(l.id) && !!l.raster && rects.some((r) => r.x < l.transform.x + l.transform.w && r.x + r.w > l.transform.x && r.y < l.transform.y + l.transform.h && r.y + r.h > l.transform.y);
+    const skewed = p.doc.layers.filter((l) => under(l) && (l.transform.rotation || l.transform.flipX || l.transform.flipY || Math.abs(l.transform.w - (l.raster?.width ?? 0)) > 0.5 || Math.abs(l.transform.h - (l.raster?.height ?? 0)) > 0.5));
+    if (skewed.length) { this.notice(`Rasterize ${skewed.map((l) => l.name).join(', ')} first (rotated or scaled beneath a redaction), then apply again.`, 'error'); return 0; }
+    let burned = 0;
+    this.edit('Apply Redactions', (q) => {
+      for (const l of q.doc.layers) {
+        if (!under(l) || !l.raster) continue;
+        const copy = Raster.from(l.raster.canvas as CanvasImageSource, l.raster.width, l.raster.height);   // a new raster: undo keeps the old
+        copy.ctx.fillStyle = '#000';
+        for (const r of rects) copy.ctx.fillRect(r.x - l.transform.x, r.y - l.transform.y, r.w, r.h);
+        copy.touch();
+        q.updateLayer(l.id, { raster: copy, text: null, vector: null, shape: null, smart: null });
+        burned += 1;
+      }
+      boxes.forEach((bx, i) => q.updateLayer(bx.id, { vector: null, name: `Redacted ${i + 1}` }));
+      return true;
+    });
+    return burned;
   }
 
   /** The Shape tool's polygon, star, line, arrow and heart: a new vector layer filled in the foreground colour. A box

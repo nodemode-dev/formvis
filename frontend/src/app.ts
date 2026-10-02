@@ -1653,6 +1653,7 @@ export function startApp(): void {
     { id: 'toggle-filter-mask', label: () => (engine.current?.activeLayer?.smart?.filterMaskEnabled === false ? 'Enable Smart Filter Mask' : 'Disable Smart Filter Mask'), enabled: () => !!engine.current?.activeLayer?.smart?.filterMask, run: () => engine.toggleSmartFilterMask() },
     { id: 'delete-filter-mask', label: 'Delete Smart Filter Mask', enabled: () => !!engine.current?.activeLayer?.smart?.filterMask, run: () => engine.deleteSmartFilterMask() },
     { id: 'new-shape-path', label: 'New Shape Layer from Path', enabled: () => !!engine.workPath?.subpaths.some((s) => s.anchors.length > 1), run: () => engine.newShapeFromPath() },
+    { id: 'apply-redactions', label: 'Apply Redactions', enabled: () => !!engine.current?.doc.layers.some((l) => l.vector && /^Redaction \d+$/.test(l.name)), run: () => { const n = engine.applyRedactions(); if (n) toast(`Redacted: the boxes burned into ${n} layer${n === 1 ? '' : 's'}.`); } },   // 1.60.3
     { id: 'shape-color', label: 'Shape Color from Foreground', enabled: () => !!engine.current?.activeLayer?.vector, run: () => engine.recolorShape() },
     { id: 'shape-style', label: 'Shape Fill and Stroke...', enabled: () => !!engine.current?.activeLayer?.vector, run: () => dialogs.shapeStyle.show() },
     { id: 'shape-corners', label: 'Corner Radii...', enabled: () => { const s = engine.current?.activeLayer?.shape; return !!s && s.kind !== 'Ellipse'; }, run: () => dialogs.corners.show() },
@@ -1719,7 +1720,7 @@ export function startApp(): void {
       'flatten', '-',
       { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
       { label: 'Smart Objects', items: ['convert-smart', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
-      'rasterize', 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] }, '-',
+      'rasterize', 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-',
       'group', 'move-out', 'merge', '-',
       { label: 'Arrange', items: ['forward', 'backward'] },
@@ -1750,7 +1751,7 @@ export function startApp(): void {
   }
   contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', 'warp-text', '-',
     { label: 'Smart Objects', items: ['convert-smart', 'rasterize', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
-    { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners'] },
+    { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] }, '-',
     { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-', 'group', 'move-out', 'merge', '-', 'layer-pixels']);
   new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));

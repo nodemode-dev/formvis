@@ -48,7 +48,7 @@ function fit(pts: Pt[], box: Rect): Pt[] {
   return pts.map((p) => ({ x: box.x + (p.x - x0) * sx, y: box.y + (p.y - y0) * sy }));
 }
 
-const closed = (pts: Pt[]): VectorPath => ({ subpaths: [{ anchors: pts.map(cornerAt), closed: true }] });
+export const closed = (pts: Pt[]): VectorPath => ({ subpaths: [{ anchors: pts.map(cornerAt), closed: true }] });   // exported 1.60.3 (Markup)
 
 /** The closed path for a boxed shape (polygon, star, heart, or a custom shape from the library) fitted to `box`. */
 export function boxedShapePath(kind: 'polygon' | 'star' | 'heart' | 'custom' | 'triangle' | 'rectangle' | 'ellipse', box: Rect, o: PathShapeOptions & { cornerRadius?: number }): VectorPath {
