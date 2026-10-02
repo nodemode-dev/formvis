@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.59.8 · 2026-10-02
+
+### Added
+
+- Window > Timeline on a document without a timeline offers both kinds, as Photon does: Create Video Timeline or Create Frame Animation (which starts with one frame of the document as it is).
+
+### Changed
+
+- Split at Playhead and Convert to Frame Animation are each one undo step; undoing Convert brings the video timeline back.
+
 ## 1.59.7 · 2026-10-02
 
 The video timeline for agents (DEV_PLAN 25.5).
