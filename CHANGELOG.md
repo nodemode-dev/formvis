@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.61.3 · 2026-10-02
+
+### Changed
+
+- A blur on a very large picture keeps its undo on disk once done, so a 150 megapixel Gaussian Blur now runs, and undoes exactly, on a computer with 4 GB of memory.
+- Preferences > Performance: history memory is set automatically from your computer's memory unless you choose a figure with its slider (a tick box returns it to automatic).
+
+### Fixed
+
+- A change to the whole of a very large layer could not be undone: history memory dropped its step the moment it ended.
+
 ## 1.61.2 · 2026-10-02
 
 ### Added
