@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.57.7 · 2026-10-01
+
+Every adjustment layer in 32-bit documents (DEV_PLAN 22.11).
+
+### Added
+
+- All adjustment layers work in 32-bit documents. Each acts on a pixel's colour as it shows within the visible range, and light above white keeps its brightness: a highlight brighter than white changes colour without losing its light. Every command now works in 32-bit documents, as in 16-bit ones.
+
+### Changed
+
+- The README's line counts follow the code again.
+
 ## 1.57.6 · 2026-10-01
 
 Select > Sky and Select > Focus Area (the parity plan's L5).

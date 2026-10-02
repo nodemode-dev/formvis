@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Every adjustment at 32 bits · _v1.57.7 (engine/compose-float.ts, deep.test.ts under 2a; app.ts)
+
+DEV_PLAN 22.11's 32-bit adjustments. At 32 bits an adjustment other than Exposure acts on each pixel's colour within the display range, the pixel divided by its brightest channel when that passes white and sRGB-encoded, and the brightness above white is scaled back after, so a highlight keeps its light while its colour turns; transfers (Levels, Curves and the like) run in float, and a kernel's change is added to the float, so precision is kept; opacity and masks mix as for Exposure. `DEEP32_NOT` is empty: every command works at 32 bits, as at 16. `deep.test.ts` (under the owner's 2a): its last check expected Levels refused at 32 bits, which this release changes; it now checks that an unchanged Levels composes and keeps (0.25, 2, 8), past white. The README's line counts follow the code (38,500 TypeScript, 8,600 Python). Verified in the browser: all 23 adjustment kinds compose at 32 bits and are offered; Hue/Saturation +120 turns (4, 2, 1) to (1.001, 3.988, 2.011), its brightest channel kept near 4, matching the 8-bit adjustment of the normalised pixel (255, 188, 137 to 137, 255, 188) scaled back; (0.25, 0.5, 0.75) turns to (0.753, 0.247, 0.5); the canvas shows the highlight white; unit 188; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  const DEEP32_NOT = new Set([...ADJUSTMENT_KINDS.filter((k) => k !== 'exposure').map((k) => `new-adj-${k}`)]);
+      if (!e) return { error: `${name} is an adjustment that waits at 32 bits (Exposure does).` };
+    const refused = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, depth: 32, layers: [layerOf(), layer({ id: 'y', raster: null, adjustment: lv })] } as unknown as Doc);
+    expect('error' in refused && refused.error).toMatch(/Exposure does/);
+export const VERSION = '1.57.6';
+```
+
 ## Select > Sky and Select > Focus Area, and L5 closed · _v1.57.6 (engine/focus-area.ts new; ui/panels/focus-area-dialog.ts new; io/local-gen.ts; app.ts; backend app/localgen/sky.py new, model_manager.py, main.py)
 
 The parity plan's L5. Select > Sky (`selectSky`): what the document shows goes to the engine's sky model and comes back as a soft mask, applied as the selection in one step; a missing model and an empty sky are said. Select > Focus Area: `engine/focus-area.ts` finds the in-focus parts from local sharpness (the Laplacian of brightness, its local energy over about an eightieth of the picture, less the noise floor, as a share of the picture's 99th percentile, kept above a threshold the In-Focus Range sets; holes closed and specks dropped; Soften Edge feathers it; on a copy at most 1,024 pixels long); `FocusAreaDialog` (In-Focus Range, Image Noise Level, Soften Edge, a 360 by 240 preview of the found area over the dimmed picture, a note of how much is in focus; built once) replaces the selection with it on OK. The Select menu orders Color Range, Focus Area, Subject, Sky, as Photoshop's. Verified in the browser under 4x CPU throttling through the real Select menu: on scikit-image's rocket (NASA, public domain) Select Sky took all of the sky band, none of the rocket's body and none of the ground, as "Select Sky"; on the astronaut portrait with its right half blurred (6 px), Focus Area took 29% of the sharp half and 0% of the blurred one (the sharp half's flat wall carries no detail to judge, so a higher range takes more), as "Focus Area"; layout shift 0; no errors. Removed lines taken after the version edit. Removed from frontend:
