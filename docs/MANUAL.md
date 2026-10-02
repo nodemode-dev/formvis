@@ -74,6 +74,10 @@ ask it questions.
   must not move (shown in red) and every tool leaves it still; Thaw Mask frees it, Mask None clears the mask and
   Invert Mask swaps frozen and free. Find faces (the face finder downloads once, 232 KB) and the Face-Aware sliders
   reshape the largest face: eyes, nose, smile and mouth, forehead, chin and face width.
+- Filter > Vanishing Point: click a surface's four corners in turn (top left, top right, bottom right, bottom left)
+  to make a perspective plane, and drag them to fit. Paste puts another layer on the plane in perspective (drag it
+  along; Paste size sets how much of the plane it covers); Stamp clones in perspective (Alt-click a source, then
+  paint). OK applies it as one step.
 
 ## Type, shapes and paths
 
