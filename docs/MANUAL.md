@@ -36,6 +36,9 @@ ask it questions.
 - File > Video Frames to Layers opens a clip's frames (trimmed with From and To, every Nth if you like) as layers of a
   new document, with a frame animation in the Timeline; File > Export > Video (MP4) and Export GIF write it out. Video
   needs ffmpeg installed (brew install ffmpeg, winget install ffmpeg), or FORMVIS_FFMPEG pointing at it.
+- File > Create Video Timeline puts a timeline under the canvas, a track per layer: drag on the ruler to move through
+  time (the canvas shows that moment), drag a clip to move it or its ends to trim it, and Split at Playhead cuts the
+  selected layer's clip in two. The timecode and the frame rate and length are buttons; Video (MP4) exports it.
 - On a touch screen, pinch to zoom, drag two fingers to pan and turn them to rotate the view; tap two fingers to undo
   and three to redo. One finger, or a pen with its pressure and tilt, works the tool.
 - On a phone or a window under 720 pixels wide, the canvas takes the whole width; the buttons at the right of the

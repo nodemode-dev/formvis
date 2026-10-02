@@ -1499,7 +1499,16 @@ export class Engine {
     fn(next);
     this.timelines.set(p, { ...this.timelineOf(p), video: next });
     this.emit('timeline', null);
+    this.emit('render', null);   // the canvas shows the playhead's frame (1.59.3)
     return true;
+  }
+
+  /** The playhead moved to frame `f` (kept within the timeline); the canvas shows that frame. */
+  setVideoTime(f: number): void {
+    const vt = this.video;
+    if (!vt) return;
+    const t = Math.round(Math.min(vt.duration - 1, Math.max(0, f)));
+    if (t !== vt.current) this.editVideo((v) => { v.current = t; });
   }
 
   /** The picture at video frame `f`: the layers in the state the timeline gives them there. */
@@ -1890,8 +1899,24 @@ export class Engine {
 
   private overrides(p: Project): Map<ID, LayerOverride> | undefined {
     const m = new Map<ID, LayerOverride>();
+    // The video timeline (1.59.3, DEV_PLAN 25.2): the canvas shows the playhead's frame, each layer hidden outside its
+    // clip and placed, faded and styled as its keyframes say there; the layers themselves keep their own values.
+    const vt = this.timelines.get(p)?.video;
+    if (vt) {
+      const state = stateAt(p.doc, vt, vt.current);
+      for (const l of p.doc.layers) {
+        const s = state[l.id];
+        if (!s) continue;
+        const o: LayerOverride = {};
+        if (!s.visible && l.visible) o.hidden = true;
+        if (s.x !== l.transform.x || s.y !== l.transform.y) o.transform = { ...l.transform, x: s.x, y: s.y };
+        if (s.opacity !== l.opacity) o.opacity = s.opacity;
+        if (s.fx === null && l.effects) o.effects = null;
+        if (Object.keys(o).length) m.set(l.id, o);
+      }
+    }
     const st = this.stroke;
-    if (st && st.project === p) m.set(st.layerId, st.target === 'pixels' ? { source: st.s.working } : { maskSource: st.s.working });
+    if (st && st.project === p) m.set(st.layerId, { ...(m.get(st.layerId) ?? {}), ...(st.target === 'pixels' ? { source: st.s.working } : { maskSource: st.s.working }) });
     const te = this.transformEdit;
     if (te && te.project === p) {
       if (te.group) for (const [id, orig] of te.group.originals) m.set(id, { ...(m.get(id) ?? {}), transform: following(orig, te.group.box, te.draft) });

@@ -53,6 +53,7 @@ import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
 import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
+import { VideoTimelinePanel } from './ui/video-timeline';
 import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, serialize } from './io/project-io';
@@ -181,6 +182,7 @@ const SHELL = `<div class="cv-app">
 </div></div>
 <div class="cv-drop" hidden></div>
 </main>
+<section class="cv-vtl" aria-label="Video timeline" hidden></section>
 </div>
 <section class="cv-props-col" aria-label="Properties"></section>
 <div class="cv-resizer" role="separator" aria-orientation="vertical" aria-label="Resize the layers panel"></div>
@@ -295,6 +297,7 @@ export function startApp(): void {
   layers.adoptPaths(q(root, '.cv-paths'));
   layers.adoptChannels(new ChannelsPanel(engine, q(root, '.cv-stage')));   // the Channels tab (Phase 21)
   new TimelinePanel(q(root, '.cv-layers'), engine);
+  new VideoTimelinePanel(q(root, '.cv-vtl'), engine);   // 1.59.3, DEV_PLAN 25.2: under the canvas
   new HistoryPanel(q(root, '.cv-layers'), engine);
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
   // arrangement, filled when the tabs' homes are restored.
@@ -1389,6 +1392,7 @@ export function startApp(): void {
     { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
     { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
     { id: 'import-video', label: 'Video Frames to Layers...', run: () => videoDialog.show() },   // 1.58.9, L1
+    { id: 'create-video-timeline', label: 'Create Video Timeline', enabled: () => !!engine.current && !engine.video && engine.timeline.frames.length === 0, run: () => { if (engine.createVideoTimeline()) toast('Video timeline ready, a track per layer.'); } },   // 1.59.3
     { id: 'export-mp4', label: 'Video (MP4)...', enabled: () => !!engine.current, run: () => void exportMp4() },
     { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
     { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
@@ -1657,7 +1661,7 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
+    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
