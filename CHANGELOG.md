@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.61.1 · 2026-10-02
+
+### Fixed
+
+- Filters that work on the whole picture at once now check for the memory they really need (measured for each: from twice the picture's size for Add Noise to nineteen times for Lens Blur, where two had been assumed for all), so a filter too big for the computer is refused with the reason rather than running out of memory.
+
 ## 1.60.9 · 2026-10-02
 
 ### Changed
