@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.59.3 · 2026-10-02
+
+The video timeline's panel (DEV_PLAN 25.2, the timeline to work like Photon Studio's).
+
+### Added
+
+- File > Create Video Timeline opens a timeline under the canvas: play, step and scrub through time (the canvas shows each frame), a track per layer whose clip you drag to move and trim at either end, Split at Playhead, the timecode and Go to Time, the frame rate and length, zoom and Fit, Convert to Frame Animation and Delete Timeline. Video (MP4) exports it.
+
+### Known
+
+- Timeline edits are not undo steps yet; keyframe lanes come next.
+
 ## 1.59.2 · 2026-10-02
 
 The video timeline's foundation (DEV_PLAN 25.1, the timeline to work like Photon Studio's).
