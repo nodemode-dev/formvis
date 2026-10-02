@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.58.5 · 2026-10-01
+
+fal is the cloud default; without a key, this computer.
+
+### Changed
+
+- Generate Image, Generative Fill and Upscale open on fal when it has a key, since fal reaches the most image models through one key; without a fal key they open on a model on this computer when one is ready. A model you choose stays chosen. OpenAI, Google, Black Forest Labs and Ideogram are there to choose, never chosen for you.
+
+### Fixed
+
+- Generative Fill could open on LaMa even with a fal key.
+
 ## 1.58.4 · 2026-10-01
 
 More generation providers (the parity plan's L7).

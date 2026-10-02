@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.58.5
+
+No engine code changed in 1.58.5 (the dialogs' defaults). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.58.4"
+version = "1.58.4"
+version = "1.58.4"
+ "version": "1.58.4",
+```
+
 ## More generation providers · _v1.58.4 (app/services/providers.py new, app/routers/generative.py)
 
 The parity plan's L7. `providers.py`: OpenAI, Google, Black Forest Labs and Ideogram, each request its provider's documented one (checked against the providers' documentation this session for Black Forest Labs, polling included, and Ideogram's v3 multipart; OpenAI's images API and Gemini's generateContent as documented): OpenAI images/generations with a Bearer key (and images/edits with the mask's fill area made transparent, as OpenAI reads it), Google generateContent with x-goog-api-key, the IMAGE modality and the nearest aspect ratio, Black Forest Labs flux-pro-1.1 (and flux-pro-1.0-fill) with x-key, then its polling_url until Ready, Ideogram v3 generate with Api-Key as a multipart form. Keys from each provider's usual environment variable, else the password store through secrets.py (a private providers.json where there is none), never sent back; each base movable with FORMVIS_<PROVIDER>_BASE. Errors named: a missing key 428, a rejected key "rejected the API key", no credit 402, Google's and Ideogram's fill refused by name. Routes: GET /generative/providers, PUT and DELETE /generative/providers/{id}/key; /generative/generate and /fill take `provider` (fal by default). Checked here against stand-in servers (a harness in /tmp): no key 428, a wrong key named; a picture from each in its colour (OpenAI 1536 by 1024 for a wide document, Black Forest Labs 1440 by 800 within its limits on 32-pixel steps); fills from OpenAI and Black Forest Labs; the stand-ins' log shows each request's header, model, size or aspect, Black Forest Labs polled from Pending to Ready, Ideogram's multipart fields, and OpenAI's edit mask transparent over exactly the quarter that was white. Removed lines taken after the version edit:

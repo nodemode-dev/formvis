@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## fal the cloud default, this computer without a key · _v1.58.5 (ui/panels/generate-image.ts, panels/generative-dialog.ts)
+
+The owner's word after 1.58.4: fal reaches all the providers and more of the best image models through one key, so it is the cloud default, and with no key the default is this computer. Generate Image, Generative Fill (and Expand) and Upscale choose, on opening: the person's own choice while it stands (a `picked` flag, set only by the person changing the model or adding a workflow, so a default chosen earlier is never mistaken for a choice); else fal when it has a key; else a model on this computer that is ready (for Fill a ready fill model, then LaMa; for Upscale this computer's Real-ESRGAN); else fal, which then asks for its key. OpenAI, Google, Black Forest Labs and Ideogram are chosen, never defaults. Found on the way: Generative Fill listed its models before it knew fal's state and listed them again after, the second keeping the first's guess as if chosen, so with a key it could open on LaMa; fal's state is now read first and the models listed once. Verified in the browser through the real commands: without a fal key, Generate Image opens on fal (no local picture model is installed here), Fill on LaMa, Upscale on this computer's Real-ESRGAN; with a fal key all three open on fal; LaMa picked with key presses stays picked on reopening. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    this.model.addEventListener('change', () => { this.refs.forFal(this.model.value === 'fal'); this.keyFor(); });
+    if ([...this.model.options].some((o) => o.value === was)) this.model.value = was;
+    this.model.addEventListener('change', () => this.sync());
+    this.status = await api.generativeStatus();
+    if (mode !== 'upscale') this.fillModels();   // again, now that fal's state is known
+    this.model.value = was === 'local:ai-upscale' && ready ? was : ready ? 'local:ai-upscale' : 'fal';
+  /** FLUX.1 Fill on fal, then the kept ComfyUI workflows; the choice kept when it still exists. */
+    if ([...this.model.options].some((o) => o.value === was && !o.disabled)) this.model.value = was;
+    else if (this.lama && !this.status?.configured) this.model.value = 'local:lama';
+export const VERSION = '1.58.4';
+```
+
 ## More generation providers · _v1.58.4 (ui/panels/generate-image.ts; io/api.ts; backend app/services/providers.py new, app/routers/generative.py)
 
 The parity plan's L7, done here; the real keys are the owner's to try. Edit > Generate Image offers GPT Image (OpenAI), Gemini image (Google), FLUX1.1 [pro] (Black Forest Labs) and Ideogram 3.0 (Ideogram) after fal's FLUX1.1 [pro]; `api.generateImage` takes a provider, `api.providers` and `api.saveProviderKey` read which have keys (never the keys) and keep a key. The key row (built once) keeps its space for every model and shows only for a provider, at one height and with a fixed label: a field and Save key when the provider has none, the field closed with "kept in your password store" and Change when it has; saving says where the key went. Found on the way: hiding the row when the engine answered moved the dialog (0.01475, the save's answer arriving long after the click), and a label naming the provider moved the field sideways (0.00011); both gone. Verified in the browser under 4x CPU throttling through the real Edit menu against stand-in servers (a harness in /tmp answering each provider's documented requests and refusing a wrong key): the five offered by name; OpenAI's picture added as a layer at 1200 by 800; Ideogram with no key shows the field, Save key keeps it (30 pixels high before and after), and its picture arrives; the providers' status reaching the window holds id, name, model, fill, configured and source, no key; with the model chosen by key presses, layout shift 0 and no shifts at all; no errors. (A first probe matched "Generate Image" in the Edit menu's "Undo Generate Image" and so undid the layer instead of opening the dialog; the probe now matches the item's start.) Removed lines taken after the version edit. Removed from frontend:
