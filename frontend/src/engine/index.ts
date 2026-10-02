@@ -154,8 +154,13 @@ export class Engine {
   /** Preferences > Performance: History States (steps kept for undo, 1 to 1000) and the memory history may hold. Each
    *  project takes them when made; changing them applies to every open project from its next step. */
   historyLimits = { states: 100, bytes: 256 * 1024 * 1024 };
-  setHistoryLimits(states: number, bytes: number): void {
-    this.historyLimits = { states: Math.round(clamp(states, 1, 1000)), bytes: Math.round(clamp(bytes, 16 * 1024 * 1024, 4096 * 1024 * 1024)) };
+  /** The memory chosen for history, or null for automatic (1.61.3): 40% of the memory budget once known, at least
+   *  256 MB, so a large layer's whole-layer step is kept (then paged to the engine's disk) rather than trimmed. */
+  private historyBytesChosen: number | null = null;
+  setHistoryLimits(states: number, bytes: number | null): void {
+    this.historyBytesChosen = bytes === null ? null : Math.round(clamp(bytes, 16 * 1024 * 1024, 4096 * 1024 * 1024));
+    const auto = Math.max(256 * 1024 * 1024, Math.round(this.memoryBudget * 0.4));
+    this.historyLimits = { states: Math.round(clamp(states, 1, 1000)), bytes: this.historyBytesChosen ?? auto };
     for (const p of this.projects) { p.history.entryLimit = this.historyLimits.states; p.history.byteLimit = this.historyLimits.bytes; }
   }
   /** Pen pressure's effect on the Brush's size and flow; neutral until a preset or the options turn it on. */
@@ -398,6 +403,73 @@ export class Engine {
     return sent;
   }
 
+  /** Rasters kept in the undo store (1.61.3, DEV_PLAN 26.4): a whole layer an edit replaced (a growing filter's old
+   *  layer), its 1,024-pixel tiles stored and its canvas freed; brought back before a step that restores it. */
+  private readonly pagedRasters = new WeakMap<Raster, Array<{ key: string; x: number; y: number; w: number; h: number }>>();
+  private readonly rasterJobs = new Map<Raster, Promise<void>>();
+
+  /** The memory budget set (1.61.3), and with it the history's memory when that is automatic (a chosen figure stays). */
+  setMemoryBudget(bytes: number): void {
+    this.memoryBudget = bytes;
+    this.setHistoryLimits(this.historyLimits.states, this.historyBytesChosen);
+  }
+
+  /** Raster `r`, no longer in `p`'s document, to the store tile by tile, its canvas freed once all are stored; left as
+   *  it was (its stored tiles dropped) if the store fails, the document closes, the raster comes back into use, or no
+   *  step holds it any more (trimmed). */
+  private async pageRasterOut(p: Project, r: Raster): Promise<void> {
+    const store = this.undoStore;
+    if (!store || this.pagedRasters.has(r) || this.rasterJobs.has(r)) return;
+    const T = 1024, tiles: Array<{ key: string; x: number; y: number; w: number; h: number }> = [];
+    const held = (): boolean => p.history.entries().some((e) => [e.before, e.after].some((s) => s.doc.layers.some((l) => l.raster === r || l.mask?.raster === r)));
+    const abandoned = (): boolean => !this.projects.includes(p) || p.doc.layers.some((l) => l.raster === r || l.mask?.raster === r) || !held();
+    const undoAll = (): void => { for (const t of tiles) store.drop(t.key); };
+    try {
+      for (let y = 0; y < r.height; y += T) {
+        for (let x = 0; x < r.width; x += T) {
+          const w = Math.min(T, r.width - x), h = Math.min(T, r.height - y), d = r.ctx.getImageData(x, y, w, h).data;
+          tiles.push({ key: await store.put(new Uint8Array(d.buffer, d.byteOffset, d.length) as Uint8Array<ArrayBuffer>), x, y, w, h });
+          if (abandoned()) { undoAll(); return; }
+        }
+      }
+    } catch { undoAll(); return; }
+    if (abandoned()) { undoAll(); return; }
+    this.pagedRasters.set(r, tiles);
+    r.canvas.width = 0;
+    r.canvas.height = 0;
+    this.emit('history', null);
+  }
+
+  /** A paged raster brought back: its canvas made its size again and each tile fetched, written and dropped in turn. */
+  private unpageRaster(r: Raster): Promise<void> {
+    const tiles = this.pagedRasters.get(r), store = this.undoStore;
+    if (!tiles || !store) return Promise.resolve();
+    let job = this.rasterJobs.get(r);
+    if (!job) {
+      job = (async () => {
+        r.canvas.width = r.width;
+        r.canvas.height = r.height;
+        for (const t of tiles) { r.ctx.putImageData(new ImageData(new Uint8ClampedArray(await store.get(t.key)), t.w, t.h), t.x, t.y); store.drop(t.key); }
+        this.pagedRasters.delete(r);
+        r.touch();
+      })().finally(() => this.rasterJobs.delete(r));
+      this.rasterJobs.set(r, job);
+    }
+    return job;
+  }
+
+  /** Whether a step needs anything brought back before it is applied: its paged tiles, or a paged raster in the
+   *  document it restores. */
+  private needsBack(e: HistoryEntry | null, op: 'undo' | 'redo'): boolean {
+    if (!e) return false;
+    if (e.patches.some((q) => q.paged)) return true;
+    return (op === 'undo' ? e.before : e.after).doc.layers.some((l) => [l.raster, l.mask?.raster].some((r) => !!r && this.pagedRasters.has(r)));
+  }
+  private async bringBack(e: HistoryEntry, op: 'undo' | 'redo'): Promise<void> {
+    await this.pageIn(e);
+    for (const l of (op === 'undo' ? e.before : e.after).doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && this.pagedRasters.has(r)) await this.unpageRaster(r);
+  }
+
   /** A step's paged tiles brought back from the store (each fetched once, however many ask), then dropped there. */
   private pageIn(e: HistoryEntry): Promise<void> {
     const store = this.undoStore;
@@ -570,6 +642,7 @@ export class Engine {
     // until it collected them, while the count already said free. Each canvas only it keeps (its layers and its undo
     // history; no other open document's) is shrunk to nothing, which frees it at once.
     for (const e of closing.history.entries()) for (const q of e.patches) if (q.paged) this.undoStore?.drop(q.paged.key);   // its stored undo too (1.60.8)
+    for (const r of this.rastersOf(closing)) { const t = this.pagedRasters.get(r); if (t) { for (const x of t) this.undoStore?.drop(x.key); this.pagedRasters.delete(r); } }   // and its paged layers (1.61.3)
     const kept = new Set<Raster>();
     for (const q of this.projects) for (const r of this.rastersOf(q)) kept.add(r);
     for (const r of this.rastersOf(closing)) if (!kept.has(r)) { try { r.canvas.width = 0; r.canvas.height = 0; } catch { /* already gone */ } }
@@ -757,7 +830,7 @@ export class Engine {
     const p = this.current;
     if (!p || this.stroke) return;
     const next = op === 'undo' ? p.history.peekUndo() : p.history.peekRedo();
-    if (!this.historyOps.length && !next?.patches.some((q) => q.paged)) { if (op === 'undo') this.undoNow(); else this.redoNow(); return; }
+    if (!this.historyOps.length && !this.needsBack(next, op)) { if (op === 'undo') this.undoNow(); else this.redoNow(); return; }
     this.historyOps.push(op);
     void this.drainHistory();
   }
@@ -769,7 +842,7 @@ export class Engine {
         const p = this.current, op = this.historyOps[0];
         if (!p) { this.historyOps.length = 0; break; }
         const next = op === 'undo' ? p.history.peekUndo() : p.history.peekRedo();
-        if (next?.patches.some((q) => q.paged)) await this.pageIn(next);
+        if (next && this.needsBack(next, op)) await this.bringBack(next, op);   // tiles and rasters (1.61.3)
         this.historyOps.shift();
         if (op === 'undo') this.undoNow(); else this.redoNow();
       }
@@ -4952,7 +5025,8 @@ export class Engine {
    *  offset, its middle rows written into the larger layer; the same pixels and placement as `grown`, one step, the
    *  old layer kept for undo as there, with no whole-layer copy in or out. */
   private bandedGrow(name: string, run: (src: ImageData) => ImageData, apron: number, grow: number, p: Project, l: Layer): boolean | 'refused' {
-    const r = l.raster as Raster, g = Math.ceil(grow), A = Math.max(g, Math.ceil(apron)), Wb = r.width + 2 * g, Hb = r.height + 2 * g, B = 512;
+    // Bands of 256 rows (1.61.3): with the new layer beside the old, the peak at 150 MP stays inside a 4 GB computer's budget.
+    const r = l.raster as Raster, g = Math.ceil(grow), A = Math.max(g, Math.ceil(apron)), Wb = r.width + 2 * g, Hb = r.height + 2 * g, B = 256;
     if (!this.room(Wb * Hb * 4 + (B + 2 * A) * Wb * 4 * 3, name)) return 'refused';   // said so; not done
     this.preview = null;
     const big = new Raster(Wb, Hb);
@@ -4967,6 +5041,7 @@ export class Engine {
     big.touch();
     const t = l.transform, sx = t.w / r.width, sy = t.h / r.height;
     this.edit(name, (q) => { q.updateLayer(l.id, { raster: big, transform: { ...t, x: t.x - g * sx, y: t.y - g * sy, w: t.w + 2 * g * sx, h: t.h + 2 * g * sy }, shape: null }); return true; });
+    void this.pageRasterOut(p, r);   // the old layer, kept only for undo, to the undo store, its canvas freed (1.61.3)
     return true;
   }
 

@@ -1962,7 +1962,7 @@ export function startApp(): void {
     if (c?.pixelBudget) setPixelBudget(c.pixelBudget);   // the largest document, from this computer's memory (1.53.4)
     // What formvis may hold in pixels (1.60.2, DEV_PLAN 26.1): 45% of this computer's memory, leaving the browser and
     // the system theirs (measured: the page was killed at 3.45 GB of 4 GB with the browser itself near 0.9 GB).
-    if (c?.memory) { engine.memoryBudget = Math.max(512 * 1048576, Math.round(c.memory * 0.45)); status.syncMemory(); }
+    if (c?.memory) { engine.setMemoryBudget(Math.max(512 * 1048576, Math.round(c.memory * 0.45))); status.syncMemory(); }   // the history's limit with it (1.61.3)
     // Older undo kept on the engine's disk past its share of memory (1.60.8, DEV_PLAN 26.3).
     if (c) engine.undoStore = { put: (b) => api.undoPut(b), get: (k) => api.undoGet(k), drop: (k) => api.undoDrop(k) };
     status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop' : ''}` : 'Engine offline');

@@ -314,7 +314,9 @@ export class SettingsDialog extends Dialog {
   /** How strongly the accent tints what it marks: selections, active tools and tabs (the owner's walkthrough). */
   private readonly intensityRow = sliderRow('Accent intensity (%)', 0, 150, 5, (v) => setIntensity(v / 100));
   private readonly statesRow = sliderRow('History States', 1, 1000, 1, (v) => this.change({ historyStates: v }));
-  private readonly memoryRow = sliderRow('History memory (MB)', 16, 4096, 16, (v) => this.change({ historyMB: v }));
+  private readonly memoryRow = sliderRow('History memory (MB)', 16, 4096, 16, (v) => this.change({ historyMB: v, historyAuto: false }));
+  /** 1.61.3: automatic is 40% of what this computer allows formvis; moving the slider above chooses a figure instead. */
+  private readonly memoryAutoRow = checkRow('History memory set automatically from this computer\'s memory', (v) => this.change({ historyAuto: v }));
   private readonly redrawRow = checkRow('Redraw only what a brush stroke changed', (v) => this.change({ regionRedraws: v }));
   private readonly recoveryRow = selectRow('Keep recovery information after changes, within', RECOVERY_CHOICES, (v) => this.change({ recoverySeconds: Number(v) }));
   private readonly homeRow = checkRow('Auto show the Home Screen', (v) => this.change({ autoShowHome: v }));
@@ -387,7 +389,7 @@ export class SettingsDialog extends Dialog {
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
     add('Workspace', this.lockRow.el, this.narrowRow.el, el('<p class="cv-note">Locked, panels are neither dragged nor resized. In a window too narrow for the canvas beside the open side column, it shows as its icons until there is room (your choice is kept).</p>'));
     add('Tools', this.wheelRow.el, el('<p class="cv-note">On, the wheel zooms about the pointer and Ctrl or Cmd with the wheel scrolls; off, the other way round.</p>'));
-    add('History & Cache', this.statesRow.el, this.memoryRow.el, el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
+    add('History & Cache', this.statesRow.el, this.memoryRow.el, this.memoryAutoRow.el, el('<p class="cv-note">History States is how many steps undo keeps (Photoshop keeps 50 by default, up to 1000); history memory caps what those steps may hold, and the oldest steps go first when either is reached. A browser app cannot reserve system memory as Photoshop\'s Memory Usage does, so this is the part formvis controls. Turning off region redraws repaints the whole canvas on each stroke, slower but useful if painting ever draws out of place.</p>'),
       this.firstSnapRow.el, this.snapMemRow.el, el('<p class="cv-note">Each document keeps itself as opened, the History Brush\'s first source; snapshots, that one included, share this memory.</p>'));
     this.restoreBox.addEventListener('change', () => this.change({ restoreSession: this.restoreBox.checked }));
     this.mismatchSel.addEventListener('change', () => this.change({ profileMismatch: this.mismatchSel.value as 'convert' | 'keep' | 'ask' }));
@@ -484,6 +486,7 @@ export class SettingsDialog extends Dialog {
     void this.refreshLibrary();
     this.statesRow.set(this.prefs.historyStates);
     this.memoryRow.set(this.prefs.historyMB);
+    this.memoryAutoRow.set(this.prefs.historyAuto);
     this.redrawRow.set(this.prefs.regionRedraws);
     this.recoveryRow.set(String(this.prefs.recoverySeconds));
     this.restoreBox.checked = this.prefs.restoreSession;

@@ -132,7 +132,7 @@ export class History {
     const count = (s: Snapshot): void => {
       for (const l of s.doc.layers) {
         for (const r of [l.raster, l.mask?.raster ?? null]) {
-          if (r && !live.has(r.id) && !seen.has(r.id)) { seen.add(r.id); bytes += r.bytes; }
+          if (r && !live.has(r.id) && !seen.has(r.id)) { seen.add(r.id); bytes += r.canvas.width * r.canvas.height * 4; }   // by its canvas: a paged raster counts nothing (1.61.3)
         }
       }
       if (s.selection && s.selection !== current.selection && !selections.has(s.selection)) { selections.add(s.selection); bytes += s.selection.bytes; }
