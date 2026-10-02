@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.58.9 · 2026-10-02
+
+Video (the parity plan's L1, the last open row).
+
+### Added
+
+- File > Video Frames to Layers: choose a clip, trim it with From and To (and keep every Nth frame if you like), and each frame becomes a layer of a new document, with a frame animation that plays them at the clip's speed.
+- File > Export > Video (MP4): the animation written as an H.264 video, each frame for exactly its delay.
+
+### Known
+
+- Video needs ffmpeg installed (macOS: brew install ffmpeg; Windows: winget install ffmpeg), or FORMVIS_FFMPEG set to it; formvis does not bundle it.
+- A clip arrives as frames on layers, as Photoshop's Video Frames to Layers does; a single layer that plays a clip is not offered.
+
 ## 1.58.8 · 2026-10-02
 
 The library in any folder, synced ones included, with conflict-safe saves (the parity plan's L13).
