@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.60.1 · 2026-10-02
+
+### Added
+
+- Fades with black or white in the timeline (Add Transition, Fade to), as Photoshop's Fade With Black and Fade With White: the clip turns to that colour at its edge instead of becoming transparent. Agents can ask for them too.
+
 ## 1.59.9 · 2026-10-02
 
 ### Changed
