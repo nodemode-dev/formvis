@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## 16-bit CMYK and Lab TIFF · _v1.57.8 (app/routers/io.py, requirements.txt; NOTICE.md)
+
+`POST /io/encode-tiff16` (fields width, height, space; files values.raw and, for CMYK, profile.icc): 16-bit CMYK as separated inks with the profile in tag 34675, and 16-bit Lab as CIELab with L* over 0 to 65535 and a* and b* as signed 16-bit values (a* times 256), both zlib-compressed, through tifffile, since Pillow writes neither. tifffile pinned at 2026.3.3 (BSD-3-Clause, Christoph Gohlke) in requirements.txt and credited in NOTICE.md; it needs only numpy for zlib. Checked through the browser's exports: tifffile reads the CMYK file back as uint16 separated with the profile and the inks exact, and the Lab file as CIELab within 1/256 of the floats. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.57.7"
+version = "1.57.7"
+version = "1.57.7"
+ "version": "1.57.7",
+```
+
 ## Version only · _v1.57.7
 
 No engine code changed in 1.57.7 (32-bit adjustments compose in the window). Removed lines taken after the version edit:

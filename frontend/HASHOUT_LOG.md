@@ -2,6 +2,25 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## CMYK and Lab: 16 and 32 bits, proofs and HDR exports · _v1.57.8 (engine/index.ts; io/api.ts; ui/colour.ts, tabs.ts; app.ts; backend app/routers/io.py, requirements.txt; NOTICE.md)
+
+DEV_PLAN 22.11's CMYK and Lab remainders, first part (the owner: finish them before L6). 16 and 32 Bits/Channel work from every mode (`toDeeper`): CMYK and Lab keep their mode at 16 bits, `setDepth` changing only the depth since their values are floats already (as Photoshop's 16-bit CMYK and Lab); 32 bits takes CMYK and Lab through RGB first, Bitmap through Grayscale and Indexed Color through RGB. Export TIFF from a 16-bit CMYK or Lab document writes 16 bits (`api.encodeTiff16`, the engine's `/io/encode-tiff16` with tifffile: separated inks with the profile embedded; CIELab with a* and b* as signed 16-bit). Radiance HDR and OpenEXR export from any document, below 32 bits as linear light from what the canvas shows. The proof view works in CMYK and Lab, proofing their sRGB rendition (Proof Colors and Gamut Warning still wait for a Proof Setup, as in RGB). The tab names the real depth in RGB, Grayscale, CMYK and Lab. The CMYK list keeps only the ink Channel Mixer and the two profile commands, Lab's only the profile commands: the next release's. Verified in the browser: CMYK at 16 bits stays CMYK, the tab "CMYK/16"; its TIFF read back by tifffile is uint16 separated with the profile embedded and the inks exactly the floats (0.81176, 0.59608, 0, 0); Lab at 16 bits, its TIFF read back as CIELab L 46.201, a 58.672, b 38.129 against the floats' 46.201, 58.675, 38.130; HDR export from CMYK writes a Radiance file; CMYK to 32 bits leaves "RGB Color" then "32 Bits/Channel"; in CMYK, Proof Setup's dialog offers the profiles and intents, then Proof Colors and Gamut Warning enable and run; unit 188; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import { composeDeep, deepFromU16, deepToU16, deepToned, place } from './engine/deep';
+    if (!p || p.doc.depth !== 32) return;
+      const deep = composeDeep(p.doc);
+    { id: 'depth-16', label: '16 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 16, run: () => void toDepth(16) },
+    { id: 'depth-32', label: '32 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 32, run: () => { engine.setDepth(32); } },   // 1.53.9
+    { id: 'export-hdr', label: 'Radiance HDR...', enabled: () => engine.current?.doc.depth === 32, run: () => void exportWide('hdr') },
+    { id: 'export-exr', label: 'OpenEXR...', enabled: () => engine.current?.doc.depth === 32, run: () => void exportWide('exr') },
+  const CMYK_NOT = new Set(['depth-16', 'depth-32', 'new-adj-channelMixer', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const LAB_NOT = new Set(['depth-16', 'depth-32', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+    const p = this.engine.current, cmyk = p?.doc.mode === 'cmyk', prof = cmyk ? undefined : p?.doc.profile, s = this.setup, proofing = this.proof && !!s && !cmyk;
+    setText(mEl, { rgb: 'RGB/8', grayscale: 'Gray/8', bitmap: 'Bitmap/1', indexed: 'Index', cmyk: 'CMYK/8', lab: 'Lab/8' }[md]);
+export const VERSION = '1.57.7';
+```
+
 ## Every adjustment at 32 bits · _v1.57.7 (engine/compose-float.ts, deep.test.ts under 2a; app.ts)
 
 DEV_PLAN 22.11's 32-bit adjustments. At 32 bits an adjustment other than Exposure acts on each pixel's colour within the display range, the pixel divided by its brightest channel when that passes white and sRGB-encoded, and the brightness above white is scaled back after, so a highlight keeps its light while its colour turns; transfers (Levels, Curves and the like) run in float, and a kernel's change is added to the float, so precision is kept; opacity and masks mix as for Exposure. `DEEP32_NOT` is empty: every command works at 32 bits, as at 16. `deep.test.ts` (under the owner's 2a): its last check expected Levels refused at 32 bits, which this release changes; it now checks that an unchanged Levels composes and keeps (0.25, 2, 8), past white. The README's line counts follow the code (38,500 TypeScript, 8,600 Python). Verified in the browser: all 23 adjustment kinds compose at 32 bits and are offered; Hue/Saturation +120 turns (4, 2, 1) to (1.001, 3.988, 2.011), its brightest channel kept near 4, matching the 8-bit adjustment of the normalised pixel (255, 188, 137 to 137, 255, 188) scaled back; (0.25, 0.5, 0.75) turns to (0.753, 0.247, 0.5); the canvas shows the highlight white; unit 188; no errors. Removed lines taken after the version edit. Removed from frontend:

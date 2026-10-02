@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.57.8 · 2026-10-01
+
+CMYK and Lab: 16 and 32 bits, proofing and HDR exports (DEV_PLAN 22.11).
+
+### Added
+
+- 16 Bits/Channel in CMYK and Lab documents, as Photoshop's: they stay CMYK or Lab, and Export TIFF writes 16-bit CMYK (with its profile) or 16-bit CIELab.
+- 32 Bits/Channel from any document: CMYK and Lab go through RGB first, Bitmap through Grayscale, Indexed Color through RGB.
+- Proof Setup, Proof Colors and Gamut Warning in CMYK and Lab documents.
+- Export Radiance HDR and OpenEXR from any document; below 32 bits they hold the picture as linear light.
+- The document tab shows the real depth in every mode.
+
 ## 1.57.7 · 2026-10-01
 
 Every adjustment layer in 32-bit documents (DEV_PLAN 22.11).
