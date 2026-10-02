@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.59.1
+
+No engine code changed in 1.59.1 (the Layers panel's sizing in the window). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.58.9"
+version = "1.58.9"
+version = "1.58.9"
+ "version": "1.58.9",
+```
+
 ## Video · _v1.58.9 (app/routers/video.py new, app/main.py)
 
 The parity plan's L1. ffmpeg runs as a separate program, never bundled (its usual builds are LGPL or GPL): FORMVIS_FFMPEG, else ffmpeg on the PATH, else imageio-ffmpeg's binary when that package happens to be installed (it is not a dependency); without one, 503 says how to install it. POST /api/video/probe: size, frame rate and duration from ffmpeg's own report (no ffprobe needed). POST /api/video/frames: from `start` to `end` seconds, every `every`th frame (a select filter), scaled to fit `max_side` on even sizes, at most 300, as a 4-byte length, a JSON header (width, height, fps, every, delayMs, count, sizes) and PNGs. POST /api/video/encode: frames and their delays to H.264 (yuv420p, CRF 18, faststart): the frames are repeated on a common grid of time (the delays' greatest common divisor, up to 60 a second; else 30 a second with each delay rounded) and written as a constant-rate image sequence. Found on the way: ffmpeg's concat list either added a frame (the last listed twice, 11 frames and 1.04 seconds for 10 and 1.0) or drifted to its own time base (1.36 seconds for 1.4); the grid gives ten frames in 1.000 seconds, a 500 ms frame among 100 ms ones fourteen frames in 1.400 seconds, and delay 0 ten frames at 30 a second in 0.33 seconds. Checked here with a real clip: the probe's figures; a 1 to 2 second trim of ten frames identical to ffmpeg's own frames 10 to 19; every third frame (ten at 300 ms); an encode checked by ffprobe. (A still picture probes as a one-frame video, as ffmpeg reads it; the dialog offers video files.) Removed lines taken after the version edit:

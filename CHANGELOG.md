@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.59.1 · 2026-10-02
+
+### Fixed
+
+- Opening a document with many layers no longer pushes the Layers panel's buttons out of sight: the panel keeps its size, its list scrolls, and nothing in the panels moves as documents open or tabs change.
+
 ## 1.58.9 · 2026-10-02
 
 Video (the parity plan's L1, the last open row).
