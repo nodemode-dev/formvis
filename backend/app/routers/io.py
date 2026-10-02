@@ -152,6 +152,95 @@ def encode_lab_tiff(width: int = Form(...), height: int = Form(...), file: Uploa
     return Response(out.getvalue(), media_type="image/tiff")
 
 
+@router.post("/decode-lab")
+def decode_lab(file: UploadFile = File(...)) -> Response:
+    """Lab TIFF and PSD opened as Lab (1.58.1, DEV_PLAN 22.11): a 4-byte length, a JSON header (width, height, bits,
+    layers with name, left, top, width, height, opacity, visible), then each layer's L, a, b and alpha as 16-bit values
+    in the window's encoding (L over 0 to 65535; a and b offset by 128 over 0 to 65535, half for neutral). An 8-bit
+    CIELab TIFF is read by Pillow with a* and b* as signed bytes, as the TIFF specification has them; a 16-bit one by
+    tifffile (a* and b* signed, a* times 256); a Lab PSD by psd-tools, each pixel layer through Pillow's LAB (a PSD
+    keeps a and b offset by 128), or the flat image when it has no layers. 204 for a file that is not Lab."""
+    from PIL import Image
+    data = file.file.read()
+    layers: list[dict] = []
+    blobs: list[bytes] = []
+    bits = 8
+
+    def add(name: str, left: int, top: int, lab: np.ndarray, alpha: np.ndarray | None, opacity: int = 255, visible: bool = True) -> None:
+        h, w = lab.shape[:2]
+        a = np.full((h, w), 65535, np.uint16) if alpha is None else alpha.astype(np.uint16)
+        blobs.append(np.dstack([lab.astype(np.uint16), a]).astype("<u2").tobytes())
+        layers.append({"name": name, "left": int(left), "top": int(top), "width": int(w), "height": int(h), "opacity": int(opacity), "visible": bool(visible)})
+
+    if data[:4] == b"8BPS":
+        from psd_tools import PSDImage
+        from psd_tools.constants import ColorMode
+        try:
+            psd = PSDImage.open(io.BytesIO(data))
+        except Exception:
+            return Response(status_code=204)
+        if psd.color_mode != ColorMode.LAB:
+            return Response(status_code=204)
+        W, H = psd.width, psd.height
+        pixel = [l for l in psd.descendants() if l.kind == "pixel" and l.width > 0 and l.height > 0]
+        def from_numpy(v: np.ndarray) -> np.ndarray:
+            # Photoshop's layout stores a Lab PSD's L, a and b each over 0 to 255, a and b offset by 128; psd-tools'
+            # numpy gives them over 0 to 1, which is formvis's own encoding. (psd-tools' own Lab writer puts a* and b*
+            # signed on disk instead, which is not Photoshop's layout; such files read wrongly here.)
+            return np.clip(np.asarray(v, np.float64)[..., :3], 0, 1) * 65535.0
+
+        for layer in pixel:
+            col = layer.numpy("color")
+            if col is None:
+                continue
+            lab = from_numpy(col)
+            # Transparency from psd-tools' shape channel: Pillow's LAB bands are L, A and B, and its A is a*, not alpha.
+            try:
+                shape = layer.numpy("shape")
+                alpha = None if shape is None else np.clip(np.asarray(shape, np.float64).reshape(lab.shape[:2]), 0, 1) * 65535.0
+            except Exception:
+                alpha = None
+            add(layer.name, layer.left, layer.top, lab, alpha, layer.opacity, layer.visible)
+        if not layers:
+            flat = psd.numpy("color")
+            if flat is None:
+                return Response(status_code=204)
+            add("Background", 0, 0, from_numpy(flat), None)
+    elif data[:4] in (b"II*\x00", b"MM\x00*"):
+        try:
+            im = Image.open(io.BytesIO(data))
+            im.load()
+        except Exception:
+            im = None
+        W = H = 0
+        if im is not None and im.mode == "LAB":
+            # The TIFF specification's CIELab has a* and b* signed, as formvis (1.56.6) and Photoshop write them; Pillow
+            # hands the file's bytes over as they are (and writes its own files with them offset, which this reads as
+            # the specification says).
+            W, H = im.size
+            v = np.asarray(im, np.uint8)[..., :3].astype(np.int16)
+            ab = np.where(v[..., 1:] > 127, v[..., 1:] - 256, v[..., 1:]).astype(np.float64)
+            add("Background", 0, 0, np.dstack([v[..., 0] * 257.0, (ab + 128.0) * 257.0]), None)
+        else:
+            import tifffile
+            try:
+                page = tifffile.TiffFile(io.BytesIO(data)).pages[0]
+            except Exception:
+                return Response(status_code=204)
+            if int(page.photometric) != 8 or page.bitspersample != 16:
+                return Response(status_code=204)
+            v = page.asarray().astype(np.int32)
+            ab = np.where(v[..., 1:] > 32767, v[..., 1:] - 65536, v[..., 1:]) / 256.0
+            lab = np.dstack([v[..., 0], np.clip((ab + 128.0) / 255.0, 0, 1) * 65535.0])
+            H, W = lab.shape[:2]
+            bits = 16
+            add("Background", 0, 0, lab, None)
+    else:
+        return Response(status_code=204)
+    head = json.dumps({"width": int(W), "height": int(H), "bits": bits, "layers": layers}).encode()
+    return Response(len(head).to_bytes(4, "little") + head + b"".join(blobs), media_type="application/octet-stream")
+
+
 @router.post("/decode-cmyk-psd")
 def decode_cmyk_psd(file: UploadFile = File(...)) -> Response:
     """A CMYK PSD's layers as ink (1.56.1, DEV_PLAN 22.8), read by psd-tools (MIT): a 4-byte length, a JSON header

@@ -441,6 +441,8 @@ export function startApp(): void {
           } else if (isPsdFile(f)) {
             const cmykPsd = await api.decodeCmykPsd(f, f.name).catch(() => null);
             if (cmykPsd) { await openCmykPsd(f.name.replace(/\.ps[db]$/i, ''), cmykPsd); continue; }
+            const labPsd = await api.decodeLab(f, f.name).catch(() => null);   // 1.58.1
+            if (labPsd) { openLab(f.name.replace(/\.ps[db]$/i, ''), labPsd); continue; }
             const { doc, notes, activeId, paths } = await readPsdFile(f);
             const opened = engine.addProject(doc, f.name.replace(/\.ps[db]$/i, ''), activeId);
             if (paths) engine.setPathsOf(opened, paths);
@@ -468,6 +470,8 @@ export function startApp(): void {
         let largeAsked = false;
         let pagesAsked = false;
         for (const f of images) {
+          // A Lab TIFF opened as a new document is a Lab document (1.58.1), tried before the page count (which refuses it).
+          if (/\.tiff?$/i.test(f.name) && !engine.current && decoded.length === 0) { const lab = await api.decodeLab(f, f.name).catch(() => null); if (lab) { openLab(f.name.replace(/\.[^.]+$/, ''), lab); continue; } }
           // A TIFF with several pages asks how to open them (1.53.4).
           if (/\.tiff?$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
           if (/\.(jpe?g|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
@@ -717,6 +721,11 @@ export function startApp(): void {
     if (!file.icc) toast(`${name} has no embedded profile; ${profile.name} is assumed.`);
   }
   /** A CMYK PSD opened with its layers' ink (1.56.1, DEV_PLAN 22.8). */
+  /** A Lab TIFF or PSD opened as a Lab document (1.58.1, DEV_PLAN 22.11), each layer at its place, 16 bits kept. */
+  function openLab(name: string, d: NonNullable<Awaited<ReturnType<typeof api.decodeLab>>>): void {
+    engine.openLabLayers(name, d.width, d.height, d.layers.map((l) => ({ name: l.name, x: l.left, y: l.top, channels: { mode: 'lab' as const, n: 3 as const, width: l.width, height: l.height, data: l.data }, opacity: l.opacity / 255, visible: l.visible })), d.bits === 16 ? 16 : 8);
+  }
+
   async function openCmykPsd(name: string, d: CmykPsd): Promise<void> {
     let profile: DocProfile | null = d.icc ? { name: profileName(d.icc) || 'Embedded CMYK profile', icc: toBase64(d.icc) } : null;
     if (!profile) { const def = await api.defaultCmykProfile(); if (!def) throw new Error('No CMYK profile is available: add one in View > Proof Setup > Load Profile.'); profile = await cmykProfileOf(def.id, def.name); }

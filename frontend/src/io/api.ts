@@ -212,6 +212,22 @@ export const api = {
   },
   /** A CMYK file's ink and embedded profile, or null when the file is not CMYK. */
   /** A CMYK PSD's layers as ink (1.56.1, DEV_PLAN 22.8), read by the engine's psd-tools; null when the file is not one. */
+  /** A Lab TIFF or PSD as Lab layers (1.58.1): each layer's L, a, b and alpha as floats in the window's encoding;
+   *  null when the file is not Lab. */
+  async decodeLab(file: Blob, name: string): Promise<{ width: number; height: number; bits: 8 | 16; layers: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean; data: Float32Array }> } | null> {
+    const r = await request('/io/decode-lab', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') });
+    if (r.status === 204) return null;
+    const b = new Uint8Array(await r.arrayBuffer()), n = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
+    const head = JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + n))) as { width: number; height: number; bits: 8 | 16; layers: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean }> };
+    let at = 4 + n;
+    const layers = head.layers.map((l) => {
+      const count = l.width * l.height * 4, u = new Uint16Array(b.slice(at, at + count * 2).buffer), data = new Float32Array(count);
+      for (let i = 0; i < count; i++) data[i] = u[i] / 65535;
+      at += count * 2;
+      return { ...l, data };
+    });
+    return { width: head.width, height: head.height, bits: head.bits, layers };
+  },
   async decodeCmykPsd(file: Blob, name: string): Promise<CmykPsd | null> {
     const r = await request('/io/decode-cmyk-psd', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') });
     if (r.status === 204) return null;

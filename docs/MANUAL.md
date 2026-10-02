@@ -220,7 +220,7 @@ ask it questions.
   do in RGB; Export TIFF writes a Lab TIFF, at 16 bits when the document is (Image > Mode > 16 Bits/Channel keeps it
   Lab). Lab Color from a 16-bit document keeps its 16-bit values. Proofing works as in RGB. Click Lightness, a or b in
   the Channels panel to see it alone. Convert to Profile goes through RGB (Assign Profile opens it, Lab colours being
-  absolute). Opening Lab files waits for now; layer styles work.
+  absolute). Lab TIFF and PSD files open as Lab documents; layer styles work.
 
 ## 32-bit documents
 

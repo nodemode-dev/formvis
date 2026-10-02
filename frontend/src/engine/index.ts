@@ -6712,6 +6712,18 @@ export class Engine {
     return p;
   }
 
+  /** A Lab document from read layers (1.58.1, Lab TIFF and PSD): each layer's Lab floats kept, its rendition drawn by
+   *  the formulas; `depth` 16 for a 16-bit file. */
+  openLabLayers(name: string, width: number, height: number, layers: ReadonlyArray<{ name: string; x: number; y: number; channels: ChannelPixels; opacity: number; visible: boolean }>, depth: 8 | 16): Project {
+    const made = layers.map((l) => {
+      const ch = l.channels, raster = new Raster(ch.width, ch.height), img = raster.ctx.createImageData(ch.width, ch.height);
+      renderLab(ch.data, img.data); raster.ctx.putImageData(img, 0, 0); raster.touch();
+      return newLayer(l.name, { width, height }, { raster, channels: ch, transform: { ...docTransform(ch.width, ch.height), x: l.x, y: l.y }, opacity: l.opacity, visible: l.visible });
+    });
+    const doc: Doc = { id: uid(), width, height, resolution: 72, layers: made, mode: 'lab', depth } as Doc;
+    return this.addProject(doc, name, made[made.length - 1]?.id ?? null);
+  }
+
   /** The tables of a CMYK project opened from a saved file (1.54.2), fetched by the app once its profile is known. */
   setCmykTables(p: Project, lut: Lut4, inLut: Lut3x4): void {
     p.cmykLut = lut; p.cmykIn = inLut;
