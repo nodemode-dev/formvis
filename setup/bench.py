@@ -7,8 +7,9 @@ Performance Benchmark on every display path this browser has (CPU, CPU region re
 frames than the dialog uses, asks the browser which graphics adapter it drew with, times the native renderer's brush
 benchmark when Rust is installed, and writes bench-results/<date>-<machine>.md (to read and send) and .json.
 
-Options: --frames N (default 60), --no-native (skip the native renderer), --headless (no window: software graphics,
-for checking the command itself, not for numbers worth sending).
+Options: --frames N (default 60), --no-native (skip the native renderer), --window (a visible Chrome window, for when
+the background run reports it drew with software graphics). By default nothing opens: Chrome runs in the background
+with its GPU switched on (1.61.6), and the results say which adapter actually drew, and warn if it was software.
 """
 from __future__ import annotations
 
@@ -28,7 +29,7 @@ import urllib.request
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-URL = os.environ.get("FORMVIS_BENCH_URL", "http://127.0.0.1:5190/")
+URLS = [os.environ["FORMVIS_BENCH_URL"]] if os.environ.get("FORMVIS_BENCH_URL") else ["http://localhost:5190/", "http://127.0.0.1:5190/"]
 OUT = ROOT / "bench-results"
 
 
@@ -36,12 +37,17 @@ def say(text: str) -> None:
     print(f"[formvis] {text}", flush=True)
 
 
-def up() -> bool:
-    try:
-        with urllib.request.urlopen(URL, timeout=2) as r:
-            return r.status == 200
-    except OSError:
-        return False
+def up() -> str | None:
+    """The address formvis's window server answers on, or None (1.61.6). Vite listens on localhost, which on macOS is
+    IPv6 (::1) only, so asking 127.0.0.1 alone missed a running server (the owner's first run on a Mac)."""
+    for url in URLS:
+        try:
+            with urllib.request.urlopen(url, timeout=2) as r:
+                if r.status == 200:
+                    return url
+        except OSError:
+            continue
+    return None
 
 
 def run(cmd: list[str], **kw) -> str:
@@ -83,16 +89,19 @@ def playwright_module():
         return sync_playwright
 
 
-def open_browser(p, headless: bool):
-    try:
-        return p.chromium.launch(channel="chrome", headless=headless), "Google Chrome"
-    except Exception:
-        pass
-    try:
-        return p.chromium.launch(headless=headless), "Playwright's Chromium"
-    except Exception:
-        sys.exit("[formvis] no browser to run in: install Google Chrome, or run "
-                 f"'{sys.executable} -m playwright install chromium'")
+# The GPU switched on for a browser running in the background (1.61.6): Metal through ANGLE on macOS, the blocklist
+# ignored, WebGPU allowed. Whether it took is read back from the adapters, never assumed.
+GPU_ARGS = ["--enable-gpu", "--ignore-gpu-blocklist", "--enable-unsafe-webgpu"] + (["--use-angle=metal"] if sys.platform == "darwin" else [])
+
+
+def open_browser(p, window: bool):
+    for kw, which in (({"channel": "chrome"}, "Google Chrome"), ({}, "Playwright's Chromium")):
+        try:
+            return p.chromium.launch(headless=not window, args=GPU_ARGS, **kw), which
+        except Exception:
+            continue
+    sys.exit("[formvis] no browser to run in: install Google Chrome, or run "
+             f"'{sys.executable} -m playwright install chromium'")
 
 
 BENCH_JS = """async (frames) => {
@@ -123,27 +132,36 @@ def main() -> int:
     ap = argparse.ArgumentParser(prog="./formvis bench", description="formvis's drawing paths timed on this computer's graphics")
     ap.add_argument("--frames", type=int, default=60)
     ap.add_argument("--no-native", action="store_true")
-    ap.add_argument("--headless", action="store_true")
+    ap.add_argument("--window", action="store_true")
     args = ap.parse_args()
 
-    started = None
-    if not up():
-        say("starting formvis's window server (stopped again when the benchmark ends)")
-        started = subprocess.Popen(["npm", "run", "dev"], cwd=ROOT / "frontend", stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                   start_new_session=True, shell=os.name == "nt")
-        for _ in range(90):
-            if up():
+    started, url = None, up()
+    if not url:
+        say("starting formvis's window server in the background (stopped again when the benchmark ends)")
+        OUT.mkdir(exist_ok=True)
+        log_path = OUT / "window-server.log"
+        log = open(log_path, "w")
+        try:
+            started = subprocess.Popen(["npm", "run", "dev"], cwd=ROOT / "frontend", stdout=log, stderr=subprocess.STDOUT,
+                                       start_new_session=True, shell=os.name == "nt")
+        except OSError:
+            sys.exit("[formvis] npm was not found, so the window server cannot start: install Node.js (./formvis doctor checks it)")
+        for _ in range(120):
+            url = up()
+            if url or started.poll() is not None:
                 break
             time.sleep(1)
-        else:
-            sys.exit("[formvis] the window server did not start: run ./formvis install, then try again")
+        log.close()
+        if not url:
+            tail = log_path.read_text(errors="replace").strip().splitlines()[-15:] or ["(it printed nothing)"]
+            sys.exit("[formvis] the window server did not answer on port 5190 within 2 minutes; its last lines:\n  " + "\n  ".join(tail))
     try:
         sync_playwright = playwright_module()
         with sync_playwright() as p:
-            browser, which = open_browser(p, args.headless)
-            say(f"running in {which}{' (headless: software graphics, numbers not worth sending)' if args.headless else ''}; keep its window in front until it closes")
+            browser, which = open_browser(p, args.window)
+            say(f"running in {which}, {'in a window' if args.window else 'in the background with its GPU on'}; this takes a few minutes")
             page = browser.new_page(viewport={"width": 1400, "height": 900})
-            page.goto(URL)
+            page.goto(url)
             page.wait_for_function("window.formvis && window.formvis.engine", timeout=120000)
             page.wait_for_timeout(1500)
             got = page.evaluate(BENCH_JS, args.frames)
@@ -159,6 +177,8 @@ def main() -> int:
             except OSError:
                 pass
 
+    # Software graphics named by the browser itself (SwiftShader, llvmpipe, Microsoft Basic Render): never sent as a GPU's numbers.
+    soft = [a for a in (got["webgl"], got["webgpu"]) if a and re.search(r"swiftshader|llvmpipe|software|basic render", a, re.I)]
     native = "not run (--no-native)" if args.no_native else native_bench()
     m = machine()
     stamp = datetime.datetime.now().strftime("%Y-%m-%d-%H%M")
@@ -166,7 +186,7 @@ def main() -> int:
     OUT.mkdir(exist_ok=True)
     base = OUT / f"{stamp}-{slug}"
     record = {"formvis": (ROOT / "frontend" / "src" / "version.ts").read_text().split("'")[1], "when": stamp, "machine": m,
-              "browser": f"{which} {browser_version}", "headless": args.headless, "webgl": got["webgl"], "webgpu": got["webgpu"],
+              "browser": f"{which} {browser_version}", "background": not args.window, "software": soft, "webgl": got["webgl"], "webgpu": got["webgpu"],
               "user_agent": got["ua"], "frames": args.frames, "rows": got["res"]["rows"], "notes": got["res"]["notes"], "native": native}
     base.with_suffix(".json").write_text(json.dumps(record, indent=2))
     rows = "\n".join(f"| {r['test']} | {r['path']} | {r['medianMs']} | {r['p90Ms']} | {r['frames']} |" for r in got["res"]["rows"])
@@ -178,7 +198,7 @@ def main() -> int:
 | formvis | {record['formvis']} |
 | Computer | {m['model'] or m['arch']}, {m['cpu']}, {m['cores']} cores, {m['memory_gb']} GB |
 | System | {m['os']} ({m['arch']}) |
-| Browser | {record['browser']}{' (headless, software graphics)' if args.headless else ''} |
+| Browser | {record['browser']}, {'in a window' if args.window else 'in the background'}{', SOFTWARE graphics: these numbers do not show the GPU' if soft else ''} |
 | WebGL2 draws on | {got['webgl'] or 'not available'} |
 | WebGPU adapter | {got['webgpu'] or 'not available'} |
 
@@ -201,7 +221,11 @@ Native renderer (brush benchmark):
     print()
     say(f"native renderer: {native.splitlines()[-1] if native else 'nothing printed'}")
     say(f"written: {base.with_suffix('.md')} (and .json beside it)")
-    say("send that .md file back; it holds the numbers and the machine they were measured on")
+    if soft:
+        say(f"the browser drew with software graphics ({soft[0]}), so these numbers do not show your GPU;")
+        say("run ./formvis bench --window to measure with a visible Chrome window instead, then send that file")
+    else:
+        say("send that .md file back; it holds the numbers and the machine they were measured on")
     return 0
 
 
