@@ -15,7 +15,7 @@ import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, with
 import { Emitter } from './events';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
-import { PixelStroke, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
+import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
 import { SelectionMask, type SelectionMode } from './selection';
 import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
@@ -371,7 +371,7 @@ export class Engine {
 
   /** Each document's oldest undo tiles (its last two steps spared) sent to the store until it holds no more than its
    *  share; a tile's pixels are let go only once the store has them. One round at a time; resolves when done. */
-  async pageOut(): Promise<number> {
+  async pageOut(keep = 2, all = false): Promise<number> {
     const store = this.undoStore;
     if (!store || this.paging) return 0;
     this.paging = true;
@@ -379,8 +379,8 @@ export class Engine {
     try {
       for (const p of [...this.projects]) {
         let held = this.undoBytes(p);
-        for (const q of p.history.pageable(2)) {
-          if (held <= this.undoShare()) break;
+        for (const q of p.history.pageable(keep)) {
+          if (!all && held <= this.undoShare()) break;
           if (q.paged) continue;
           const w = q.before.width, h = q.before.height, n = w * h * 4, lazy = !!q.lazy, bytes = new Uint8Array(lazy ? n : n * 2);
           bytes.set(q.before.data, 0);
@@ -468,6 +468,17 @@ export class Engine {
   private async bringBack(e: HistoryEntry, op: 'undo' | 'redo'): Promise<void> {
     await this.pageIn(e);
     for (const l of (op === 'undo' ? e.before : e.after).doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && this.pagedRasters.has(r)) await this.unpageRaster(r);
+  }
+
+  /** Room made for an operation needing `extra` bytes (1.61.4, DEV_PLAN 26.5): if it would not fit the budget, every
+   *  undo tile still in the window goes to the store first, the newest steps' too, after any paging round under way.
+   *  A large filter straight after painting (as an agent works) had found the strokes' undo all still in memory. */
+  async relieveFor(extra: number): Promise<void> {
+    if (!this.memoryBudget || this.memoryUse() + extra <= this.memoryBudget) return;
+    dropSpareSurfaces();   // the stroke pool first: speed, not work (up to 256 MB)
+    if (!this.undoStore || this.memoryUse() + extra <= this.memoryBudget) return;
+    while (this.paging) await new Promise((r) => setTimeout(r, 100));
+    await this.pageOut(0, true);
   }
 
   /** A step's paged tiles brought back from the store (each fetched once, however many ask), then dropped there. */
@@ -2500,7 +2511,7 @@ export class Engine {
   }
 
   /** A full layer's bytes in the current document (what a new layer, a stroke's working copy or a filter's buffer takes). */
-  private layerBytes(): number { const p = this.current, r = p?.activeLayer?.raster; return r ? r.width * r.height * 4 : p ? p.doc.width * p.doc.height * 4 : 0; }
+  layerBytes(): number { const p = this.current, r = p?.activeLayer?.raster; return r ? r.width * r.height * 4 : p ? p.doc.width * p.doc.height * 4 : 0; }
 
   addLayer(opts: { name?: string; blend?: BlendMode; opacity?: number; clip?: boolean } = {}): void {
     // No room asked (1.60.2): a new layer holds no pixels until painted, and the first stroke's check counts them.

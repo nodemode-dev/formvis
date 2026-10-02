@@ -333,11 +333,12 @@ export class FilterPanel extends Dialog {
     return true;
   }
 
-    private applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
+    private async applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
     if (this.deepFilter(kind, settings)) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }   // 16 bits (1.53.7)
     const s = { ...defaultFilterSettings(), ...(structuredClone(settings) as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed;
     const sync = (src: ImageData, scale: number): ImageData => runFilter(kind, s, seed, src, scale);
     const apron = bandApron(kind, s);   // a large layer in bands (1.60.9)
+    if (apron !== null) await this.engine.relieveFor(this.engine.layerBytes() * 1.25);   // undo to disk first if it would not fit (1.61.4)
     const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => sync(src, 1), apron, filterMargin(kind, s)) : false;
     if (banded === 'refused') return Promise.resolve(false);   // not done, and said why
     if (banded) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }

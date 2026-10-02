@@ -103,6 +103,8 @@ function giveSurface(surface: Surface | null): void {
 export const spareSurfaces = (): number => spares.length;
 /** Their bytes, which the engine's memory count includes (1.60.5). */
 export const spareBytes = (): number => spares.reduce((n, s) => n + bytesOf(s), 0);
+/** Every spare surface let go, when memory is wanted for something larger (1.61.4); the next stroke makes its own. */
+export function dropSpareSurfaces(): void { while (spares.length) drop(spares.pop()); }
 
 /** Readies spare surfaces of `w` by `h` for the next stroke, so even the first stroke skips creating them. */
 export function warmStrokeSurfaces(w: number, h: number, count = 2): void {
