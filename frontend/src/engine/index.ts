@@ -15,7 +15,7 @@ import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, with
 import { Emitter } from './events';
 import { History, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
-import { PixelStroke, warmStrokeSurfaces } from './stroke';
+import { PixelStroke, spareBytes, warmStrokeSurfaces } from './stroke';
 import { SelectionMask, type SelectionMode } from './selection';
 import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
@@ -422,7 +422,14 @@ export class Engine {
   /** Preferences > Cursors: how painting tools show where they will paint (drawn by brush-common's drawBrushCursor). */
   cursorPrefs: { paint: 'tip' | 'precise' | 'standard'; crosshair: boolean } = { paint: 'tip', crosshair: false };
   private openingSnapshot(p: Project): void {
-    if (!this.autoFirstSnapshot || this.docBytes(p.doc) > this.snapshotByteLimit) return;
+    if (!this.autoFirstSnapshot) return;
+    // A copy of every pixel (1.60.5, DEV_PLAN 26.2: measured, this was the second full copy of every document): past a
+    // quarter of this computer's budget it is not taken, and the document says so; New Snapshot takes one when wanted.
+    const need = this.docBytes(p.doc);
+    if (need > this.snapshotByteLimit || (this.memoryBudget && need > this.memoryBudget / 4)) {
+      if (this.memoryBudget && need > this.memoryBudget / 4) this.notice(`No opening snapshot: this document's pixels (${Math.ceil(need / 1048576).toLocaleString()} MB) would take too much of this computer's memory. New Snapshot takes one when you want it.`);
+      return;
+    }
     this.historySnapshots.set(p, [{ id: uid(), name: p.name, state: { doc: this.copyDoc(p.doc), activeId: p.activeId, selection: p.selection } }]);
   }
 
@@ -501,7 +508,9 @@ export class Engine {
   }
 
   newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
-    if (Number.isInteger(width) && Number.isInteger(height) && !this.room(width * height * 12, 'A new document')) return null;   // its layer twice and display (1.60.2, recounted 1.60.4)
+    // Its layer and its display, and its opening snapshot when one will be taken (1.60.2, recounted 1.60.5).
+    const px = width * height * 4, snap = this.autoFirstSnapshot && px <= this.snapshotByteLimit && (!this.memoryBudget || px <= this.memoryBudget / 4) ? px : 0;
+    if (Number.isInteger(width) && Number.isInteger(height) && !this.room(px * 2 + snap, 'A new document')) return null;
     if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels) {
       this.notice(`Canvas sides must be 1 to 30,000 px, and the canvas at most ${Math.round(LIMITS.pixels / 1_000_000)} megapixels.`, 'error');
       return null;
@@ -615,6 +624,7 @@ export class Engine {
     this.settle();
     const list = this.historySnapshots.get(p) ?? [], need = this.docBytes(p.doc), used = list.reduce((a, x) => a + this.docBytes(x.state.doc), 0), mb = (b: number): number => Math.ceil(b / 1048576);
     if (used + need > this.snapshotByteLimit) { this.notice(`A snapshot of this document needs ${mb(need)} MB, and snapshots already keep ${mb(used)} MB of the ${mb(this.snapshotByteLimit)} MB they may use. Delete one first.`); return; }
+    if (!this.room(need, 'A snapshot')) return;   // its copy of every pixel (1.60.5)
     // Numbered as Photoshop's: the opening snapshot bears the document's name, so the first taken is Snapshot 1.
     let n = list.filter((x) => /^Snapshot \d+$/.test(x.name)).length + 1;
     while (list.some((x) => x.name === `Snapshot ${n}`)) n += 1;
@@ -2272,13 +2282,14 @@ export class Engine {
     let n = 0;
     for (const p of this.projects) {
       const seen = new Set<string>();
-      // Each raster twice, its canvas and the display's copy of it, and the document's display once more (measured at
-      // 1.60.4: one 572 MB layer grew the browser 1.6 GB; two 309 MB layers and a stroke, 1.95 GB); then what the undo
-      // history keeps beyond the layers.
-      for (const l of p.doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && !seen.has(r.id)) { seen.add(r.id); n += r.width * r.height * 8; }
+      // Each raster once, the document's display once, the History panel's snapshots (each a copy of every pixel), and
+      // what the undo history keeps beyond the layers. (1.60.5: the large canvases made as a document opens, watched,
+      // were its layer and its opening snapshot; 1.60.4 had read the snapshot as a second copy of each layer.)
+      for (const l of p.doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && !seen.has(r.id)) { seen.add(r.id); n += r.width * r.height * 4; }
+      for (const s of this.historySnapshots.get(p) ?? []) n += this.docBytes(s.state.doc);
       n += p.doc.width * p.doc.height * 4 + p.history.retained(p.snapshot());
     }
-    return n;
+    return n + spareBytes();   // the strokes' spare surfaces, kept for speed (1.60.5, capped at 256 MB)
   }
 
   /** Room for `what`, needing `extra` bytes more: true when it fits the budget, else false with a message. */
@@ -3018,9 +3029,10 @@ export class Engine {
     if (!this.deepPaintOk()) return false;   // 16 bits: Brush, Pencil and Eraser paint (1.53.8)
     const p = this.current;
     if (!p || this.stroke) return false;
-    // Its working copy, and the layer's own pixels when this stroke is the first on it (1.60.2: measured, both).
-    const fresh = p.activeLayer && !p.activeLayer.raster ? p.doc.width * p.doc.height * 8 : 0;   // its canvas and the display's copy (1.60.4)
-    if (!this.room(this.layerBytes() + fresh, 'This stroke')) return false;
+    // What a stroke makes (1.60.5, engine/stroke.ts): its working and paint surfaces, each the layer's size, a third
+    // with a selection; and the layer's own pixels when this stroke is the first on it.
+    const fresh = p.activeLayer && !p.activeLayer.raster ? p.doc.width * p.doc.height * 4 : 0;
+    if (!this.room(this.layerBytes() * (p.selection ? 3 : 2) + fresh, 'This stroke')) return false;
     this.settle();
     if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to paint on.'); return false; }

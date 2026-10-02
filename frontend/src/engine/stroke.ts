@@ -79,14 +79,25 @@ function takeSurface(w: number, h: number): Surface {
   return surface;
 }
 
+/** At most this many bytes of spares (1.60.5, DEV_PLAN 26.2): measured, a 6,000 by 6,000 stroke left 274 MB in the
+ *  pool, and four spares of a 150 MP layer would be 2.3 GB. A surface past it is never kept; one dropped is shrunk to
+ *  nothing, so its memory comes back at once rather than when the browser collects it. */
+const MAX_SPARE_BYTES = 256 * 1024 * 1024;
+const bytesOf = (s: Surface): number => s.width * s.height * 4;
+const drop = (s: Surface | undefined): void => { if (s) { s.width = 0; s.height = 0; } };
+
 function giveSurface(surface: Surface | null): void {
   if (!surface) return;
-  if (spares.length >= MAX_SPARES) spares.shift();
+  if (bytesOf(surface) > MAX_SPARE_BYTES) { drop(surface); return; }
+  if (spares.length >= MAX_SPARES) drop(spares.shift());
   spares.push(surface);
+  while (spareBytes() > MAX_SPARE_BYTES && spares.length > 1) drop(spares.shift());
 }
 
 /** How many spare stroke surfaces are kept, for checks. */
 export const spareSurfaces = (): number => spares.length;
+/** Their bytes, which the engine's memory count includes (1.60.5). */
+export const spareBytes = (): number => spares.reduce((n, s) => n + bytesOf(s), 0);
 
 /** Readies spare surfaces of `w` by `h` for the next stroke, so even the first stroke skips creating them. */
 export function warmStrokeSurfaces(w: number, h: number, count = 2): void {
