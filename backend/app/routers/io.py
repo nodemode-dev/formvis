@@ -108,6 +108,33 @@ def _pack(meta: dict, chunks: list[bytes]) -> bytes:
     return len(head).to_bytes(4, "little") + head + b"".join(chunks)
 
 
+@router.post("/encode-tiff16")
+def encode_tiff16(width: int = Form(...), height: int = Form(...), space: str = Form(...), file: list[UploadFile] = File(...)) -> Response:
+    """16-bit CMYK and Lab TIFFs (1.57.8), which Pillow does not write, through tifffile (BSD-3-Clause, Christoph
+    Gohlke): CMYK as separated inks with the document's profile embedded; Lab as CIELab with L* over 0 to 65535 and a*
+    and b* as signed 16-bit values (a* times 256), as the TIFF specification and Photoshop have them. The window sends
+    16-bit values: inks, or L and a and b in its own encoding (a and b at half for neutral). zlib-compressed."""
+    import tifffile
+    parts = {f.filename: f.file.read() for f in file}
+    raw = parts.get("values.raw", b"")
+    n = 4 if space == "cmyk" else 3
+    if space not in ("cmyk", "lab") or width <= 0 or height <= 0 or width * height > config.MAX_PIXELS or len(raw) != width * height * n * 2:
+        raise HTTPException(status_code=422, detail="The 16-bit values do not match the size given.")
+    v = np.frombuffer(raw, "<u2").reshape(height, width, n)
+    out = io.BytesIO()
+    if space == "cmyk":
+        icc = parts.get("profile.icc")
+        tifffile.imwrite(out, v, photometric="separated", compression="zlib", extratags=[(34675, "B", len(icc), icc, True)] if icc else [])
+    else:
+        lab = v.astype(np.int32)
+        ab = np.round((lab[..., 1:] / 65535.0 * 255.0 - 128.0) * 256.0).astype(np.int32)
+        packed = np.empty((height, width, 3), np.uint16)
+        packed[..., 0] = lab[..., 0].astype(np.uint16)
+        packed[..., 1:] = (ab & 0xFFFF).astype(np.uint16)
+        tifffile.imwrite(out, packed, photometric="cielab", compression="zlib")
+    return Response(out.getvalue(), media_type="image/tiff")
+
+
 @router.post("/encode-lab-tiff")
 def encode_lab_tiff(width: int = Form(...), height: int = Form(...), file: UploadFile = File(...)) -> Response:
     """A Lab TIFF (1.56.6, DEV_PLAN 22.9): 8-bit CIELab (photometric 8) as the TIFF specification and Photoshop have it,

@@ -6693,6 +6693,12 @@ export class Engine {
   setDepth(depth: 8 | 16 | 32, tone: { exposure: number; gamma: number } = { exposure: 0, gamma: 1 }): boolean {
     const p = this.current, from = p?.doc.depth ?? 8;
     if (!p || from === depth) return false;
+    if (p.doc.mode === 'cmyk' || p.doc.mode === 'lab') {
+      // CMYK and Lab (1.57.8): their ink and Lab values are floats already, so 16 bits (as Photoshop's) changes only how
+      // files keep them; 32 bits needs RGB (app.ts brings the document there first).
+      if (depth === 32) return false;
+      return this.edit(`${depth} Bits/Channel`, (pp) => { pp.doc = { ...pp.doc, depth }; return true; });
+    }
     // 32 bits are linear light (1.53.9): up, the encoded values are linearised; down, Exposure and Gamma bring them in.
     return this.edit(`${depth} Bits/Channel`, (pp) => {
       const layers = pp.doc.layers.map((l) => {

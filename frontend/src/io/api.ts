@@ -228,6 +228,14 @@ export const api = {
     const width = Number(r.headers.get('X-Width')), height = Number(r.headers.get('X-Height')), iccLen = Number(r.headers.get('X-Profile-Bytes') ?? 0), b = new Uint8Array(await r.arrayBuffer());
     return { width, height, ink: b.slice(0, width * height * 5), icc: iccLen ? b.slice(width * height * 5, width * height * 5 + iccLen) : null };
   },
+  /** A 16-bit CMYK or Lab TIFF (1.57.8): 16-bit values from 0 to 65535 (inks; or L, then a and b in the window's
+   *  encoding, half for neutral), written by the engine with tifffile; a CMYK file carries `icc`. */
+  async encodeTiff16(values: Uint16Array, width: number, height: number, space: 'cmyk' | 'lab', icc: Uint8Array | null): Promise<Blob> {
+    const files = [{ name: 'values.raw', blob: new Blob([new Uint8Array(new Uint8Array(values.buffer, values.byteOffset, values.byteLength))]) }];
+    if (icc) files.push({ name: 'profile.icc', blob: new Blob([new Uint8Array(icc)]) });
+    const body = form({ width: String(width), height: String(height), space }, files, 'file');
+    return (await request('/io/encode-tiff16', { method: 'POST', body })).blob();
+  },
   /** A Lab TIFF (1.56.6) from 8-bit Lab bytes (L * 255 / 100, then a and b offset by 128), written by the engine. */
   async encodeLabTiff(lab: Uint8Array, width: number, height: number): Promise<Blob> {
     const body = form({ width: String(width), height: String(height) }, [{ name: 'lab.raw', blob: new Blob([new Uint8Array(lab)]) }], 'file');

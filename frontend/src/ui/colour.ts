@@ -23,7 +23,8 @@ export class ColourView {
   saveSetup(s: ProofSetup): void { this.setup = s; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* kept for this session */ } }
 
   async refresh(): Promise<void> {
-    const p = this.engine.current, cmyk = p?.doc.mode === 'cmyk', prof = cmyk ? undefined : p?.doc.profile, s = this.setup, proofing = this.proof && !!s && !cmyk;
+    // CMYK and Lab documents (1.57.8): the canvas shows their sRGB rendition, so that is the source proofed.
+    const p = this.engine.current, rendered = p?.doc.mode === 'cmyk' || p?.doc.mode === 'lab', prof = rendered ? undefined : p?.doc.profile, s = this.setup, proofing = this.proof && !!s;
     const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s ? `${s.id}:${s.intent}:${s.bpc}` : ''}|${proofing && this.gamut}` : '';
     if (key === this.key) return;
     this.key = key;

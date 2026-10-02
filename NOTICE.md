@@ -62,6 +62,7 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | ONNX Runtime | MIT | Runs the local models; part of the base install |
 | LittleCMS (through Pillow's ImageCms) | MIT | Colour management: profile conversion, proofing and the gamut warning |
 | psd-tools (Kota Yamaguchi) | MIT | CMYK PSD files read and written with their layers (1.56.1) |
+| tifffile (Christoph Gohlke) | BSD-3-Clause | 16-bit CMYK and Lab TIFF files written (1.57.8) |
 
 ## The shipped CMYK profile (1.54.0)
 

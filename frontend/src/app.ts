@@ -83,7 +83,7 @@ import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
 import { ColourView } from './ui/colour';
-import { composeDeep, deepFromU16, deepToU16, deepToned, place } from './engine/deep';
+import { composeDeep, deepFromU16, deepToU16, deepToned, place, srgbToLinear } from './engine/deep';
 import { composeFloat } from './engine/compose-float';
 import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
 import type { Lut3x4, Lut4 } from './engine/colour-lut';
@@ -605,9 +605,18 @@ export function startApp(): void {
   /** File > Export > Radiance HDR and OpenEXR from a 32-bit document (1.53.9): linear floats, as they are. */
   async function exportWide(kind: 'hdr' | 'exr'): Promise<void> {
     const p = engine.current;
-    if (!p || p.doc.depth !== 32) return;
+    if (!p) return;
     try {
-      const deep = composeDeep(p.doc);
+      // 1.57.8: from any document; below 32 bits (and in CMYK and Lab) the picture the canvas shows, as linear light.
+      let deep: { width: number; height: number; data: Float32Array } | { error: string };
+      if (p.doc.depth === 32) deep = composeDeep(p.doc);
+      else {
+        const flat = engine.flattened();
+        if (!flat) return;
+        const img = ctxOf(flat).getImageData(0, 0, flat.width, flat.height), d = new Float32Array(img.data.length);
+        for (let i = 0; i < d.length; i += 4) { for (let c = 0; c < 3; c++) d[i + c] = srgbToLinear(img.data[i + c] / 255); d[i + 3] = img.data[i + 3] / 255; }
+        deep = { width: flat.width, height: flat.height, data: d };
+      }
       if ('error' in deep) throw new Error(deep.error);
       await deliver(await api.encodeDeep(deep.data, deep.width, deep.height, kind), `${(p.name || 'Untitled').replace(/\.[^.]+$/, '')}.${kind}`);
     } catch (err) { toast(`Export failed: ${err instanceof Error ? err.message : String(err)}`); }
@@ -626,6 +635,16 @@ export function startApp(): void {
     if (d <= depth) return true;
     await toDepth(depth);
     return (engine.current?.doc.depth ?? 8) <= depth;
+  }
+
+  /** 16 or 32 Bits/Channel from any mode (1.57.8): CMYK and Lab keep their mode at 16 bits; 32 bits needs RGB or
+   *  Grayscale, so CMYK and Lab come to RGB first; Bitmap goes to Grayscale and Indexed Color to RGB first. */
+  async function toDeeper(depth: 16 | 32): Promise<void> {
+    const m = engine.current?.doc.mode ?? 'rgb';
+    if (m === 'bitmap') engine.convertMode('grayscale');
+    else if (m === 'indexed') engine.convertMode('rgb');
+    else if ((m === 'cmyk' || m === 'lab') && depth === 32 && !(await toRgbFirst())) return;
+    engine.setDepth(depth);
   }
 
   /** A CMYK or Lab document to RGB first (1.57.5), for Bitmap, Indexed Color and (from Lab) CMYK; true when it is RGB. */
@@ -741,6 +760,13 @@ export function startApp(): void {
       try {
         const c = composeFloat(p.doc, 3, false);
         if ('error' in c) throw new Error(c.error);
+        if (p.doc.depth === 16) {
+          // 16-bit Lab (1.57.8): L, a and b at 16 bits in the window's encoding, laid on white; the engine writes CIELab.
+          const m = c.width * c.height, u = new Uint16Array(m * 3);
+          for (let i = 0, o = 0; i < c.data.length; i += 4, o += 3) { const a = c.data[i + 3]; u[o] = Math.round(Math.max(0, Math.min(1, c.data[i] * a + (1 - a))) * 65535); u[o + 1] = Math.round(Math.max(0, Math.min(1, c.data[i + 1] * a + 0.5 * (1 - a))) * 65535); u[o + 2] = Math.round(Math.max(0, Math.min(1, c.data[i + 2] * a + 0.5 * (1 - a))) * 65535); }
+          await deliver(await api.encodeTiff16(u, c.width, c.height, 'lab', null), `${p.name}.tif`);
+          return;
+        }
         const n = c.width * c.height, bytes = new Uint8Array(n * 3);
         for (let i = 0, o = 0; i < c.data.length; i += 4, o += 3) {
           const a = c.data[i + 3], l = c.data[i] * a + (1 - a), A = c.data[i + 1] * a + 0.5 * (1 - a), B = c.data[i + 2] * a + 0.5 * (1 - a);
@@ -758,6 +784,13 @@ export function startApp(): void {
       try {
         const ink = composeChannels(p.doc, p.cmykTables);
         if ('error' in ink) throw new Error(ink.error);
+        if (kind === 'tiff' && p.doc.depth === 16) {
+          // 16-bit CMYK (1.57.8): the inks at 16 bits, transparency laid on paper, written by the engine with tifffile.
+          const n = ink.width * ink.height, u = new Uint16Array(n * 4);
+          for (let j = 0; j < n; j++) { const a = ink.data[j * 5 + 4]; for (let c = 0; c < 4; c++) u[j * 4 + c] = Math.round(Math.max(0, Math.min(1, ink.data[j * 5 + c] * a)) * 65535); }
+          await deliver(await api.encodeTiff16(u, ink.width, ink.height, 'cmyk', fromBase64(p.doc.profile!.icc)), `${p.name}.tif`);
+          return;
+        }
         const blob = await api.encodeCmyk(channelsToU8(ink.data), ink.width, ink.height, kind, fromBase64(p.doc.profile!.icc), Math.round(quality * 100), p.doc.resolution ?? 72);
         await deliver(blob, `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);
       } catch (err) { toast(message(err), 'error'); }
@@ -1528,10 +1561,10 @@ export function startApp(): void {
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('indexed'); }) },
     // Bit depth (1.53.6, H1).
     { id: 'depth-8', label: '8 Bits/Channel', enabled: has, checked: () => (engine.current?.doc.depth ?? 8) === 8, run: () => void toDepth(8) },
-    { id: 'depth-16', label: '16 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 16, run: () => void toDepth(16) },
-    { id: 'depth-32', label: '32 Bits/Channel', enabled: () => has() && (engine.current?.doc.mode ?? 'rgb') === 'rgb', checked: () => engine.current?.doc.depth === 32, run: () => { engine.setDepth(32); } },   // 1.53.9
-    { id: 'export-hdr', label: 'Radiance HDR...', enabled: () => engine.current?.doc.depth === 32, run: () => void exportWide('hdr') },
-    { id: 'export-exr', label: 'OpenEXR...', enabled: () => engine.current?.doc.depth === 32, run: () => void exportWide('exr') },
+    { id: 'depth-16', label: '16 Bits/Channel', enabled: has, checked: () => engine.current?.doc.depth === 16, run: () => { if (engine.current?.doc.depth === 32) void toDepth(16); else void toDeeper(16); } },
+    { id: 'depth-32', label: '32 Bits/Channel', enabled: has, checked: () => engine.current?.doc.depth === 32, run: () => void toDeeper(32) },   // 1.53.9; every mode 1.57.8
+    { id: 'export-hdr', label: 'Radiance HDR...', enabled: () => !!engine.current, run: () => void exportWide('hdr') },
+    { id: 'export-exr', label: 'OpenEXR...', enabled: () => !!engine.current, run: () => void exportWide('exr') },
     // Colour management (1.53.5, H2). Proof Colors has no key by default: Photoshop's Ctrl+Y is Redo here.
     { id: 'assign-profile', label: 'Assign Profile...', enabled: has, run: () => void colourDialogs.assign.show() },
     { id: 'convert-profile', label: 'Convert to Profile...', enabled: has, run: () => void colourDialogs.convert.show() },
@@ -1803,9 +1836,9 @@ export function startApp(): void {
   const passes = (c: { id: string }): boolean => /^(zoom-|panel-|screen-|recent-|toggle-)/.test(c.id);
   // 1.55.9 (DEV_PLAN 22.7): at 16 bits and in CMYK every command runs, the ones not on the float model through derive
   // (engine/derive.ts); these are the ones that cannot work in that mode yet. 32 bits joined them in 1.56.8.
-  const CMYK_NOT = new Set(['depth-16', 'depth-32', 'new-adj-channelMixer', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const CMYK_NOT = new Set(['new-adj-channelMixer', 'assign-profile', 'convert-profile']);
   const DEEP16_NOT = new Set<string>();
-  const LAB_NOT = new Set(['depth-16', 'depth-32', 'assign-profile', 'convert-profile', 'proof-setup', 'proof-colors', 'gamut-warning', 'export-hdr', 'export-exr']);
+  const LAB_NOT = new Set(['assign-profile', 'convert-profile']);
   // 1.56.8 (DEV_PLAN 22.10): 32 bits as a denylist too, everything else through derive in linear light; since 1.57.1 it
   // composes on the one compositor, so what remains is the adjustments other than Exposure, Unsharp Mask and Add Noise,
   // the colour models and the profile and proof commands.
