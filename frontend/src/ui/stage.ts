@@ -73,6 +73,7 @@ export class Stage {
     engine.on('projects', () => { this.queue(true, true); this.syncAnts(); this.syncWelcome(); this.updateCursor(); });
     engine.on('selection', () => { this.queue(false, true); this.syncAnts(); });
     engine.on('tool', () => { this.queue(false, true); this.updateCursor(); });
+    this.bindTouch();   // 1.58.6: before the tools' handling, so a gesture's fingers never reach them
     this.bindPointer();
     this.syncWelcome();
     this.resize();
@@ -559,6 +560,92 @@ export class Stage {
   toolKeydown(e: KeyboardEvent): boolean { return this.tool()?.keydown?.(this.ctx, e) ?? false; }
 
   cancelTool(): void { this.tool()?.cancel?.(this.ctx); }
+
+  /** Touch gestures (1.58.6, the parity plan's L12), as on a tablet: one finger works the tool; a second finger undoes
+   *  whatever the first began and starts a gesture, in which the fingers' spread zooms about their midpoint, the
+   *  midpoint's travel pans, and turning them turns the view once past 10 degrees (a pinch alone never turns it). A
+   *  quick tap of two fingers undoes, of three redoes, as Procreate and Photoshop on iPad. Capture-phase listeners, so
+   *  the tools never see a gesture's fingers; pens and mice pass straight through. */
+  private bindTouch(): void {
+    const o = this.overlay, touches = new Map<number, { x: number; y: number; x0: number; y0: number; t: number }>();
+    let g: { d0: number; a0: number; mx: number; my: number; z0: number; r0: number; turning: boolean; t0: number; moved: boolean; fingers: number } | null = null;
+    // Fingers are measured against the stage's host, which never turns, as `pointer` does: the overlay itself is
+    // turned with the view, so its box grows and moves as the view turns.
+    const box = (): DOMRect => this.rect ?? this.host.getBoundingClientRect();
+    const local = (e: PointerEvent): { x: number; y: number } => { const r = box(); return { x: e.clientX - r.left, y: e.clientY - r.top }; };
+    const pair = (): { d: number; ang: number; mx: number; my: number } => {
+      const [a, b] = [...touches.values()];
+      return { d: Math.hypot(b.x - a.x, b.y - a.y), ang: Math.atan2(b.y - a.y, b.x - a.x), mx: (a.x + b.x) / 2, my: (a.y + b.y) / 2 };
+    };
+    const baseline = (): void => {
+      if (!g || touches.size !== 2) return;
+      const v = this.engine.current?.viewport, q = pair();
+      Object.assign(g, { d0: q.d, a0: q.ang, mx: q.mx, my: q.my, z0: v?.zoom ?? 1, r0: v?.rotation ?? 0, turning: false });
+    };
+    o.addEventListener('pointerdown', (e) => {
+      if (e.pointerType !== 'touch') return;
+      const p = local(e);
+      touches.set(e.pointerId, { ...p, x0: p.x, y0: p.y, t: performance.now() });
+      if (touches.size < 2 && !g) return;   // one finger: the tool, as ever
+      e.stopImmediatePropagation(); e.preventDefault();
+      if (!g) {
+        // A second finger: what the first began is cancelled, so a gesture leaves no mark.
+        if (this.dragId !== null) {
+          const id = this.dragId;
+          this.dragId = null; this.panLast = null; this.tool()?.cancel?.(this.ctx);
+          if (o.hasPointerCapture(id)) o.releasePointerCapture(id);
+        }
+        // A finger that was already drawing (it has travelled, or went down earlier) means this is no tap.
+        const all = [...touches.values()];
+        g = { d0: 1, a0: 0, mx: 0, my: 0, z0: 1, r0: 0, turning: false, t0: Math.min(...all.map((f) => f.t)), moved: all.some((f) => Math.hypot(f.x - f.x0, f.y - f.y0) > 10), fingers: touches.size };
+        baseline();
+      } else { g.fingers = Math.max(g.fingers, touches.size); baseline(); }
+      o.setPointerCapture(e.pointerId);
+    }, true);
+    // A finger's new position, and the gesture's step from it. A lift runs it too with the lift's own position, since
+    // the browser can deliver a finger's last move with its lift (the turn and spread would otherwise stop short).
+    const step = (e: PointerEvent): void => {
+      const t = touches.get(e.pointerId);
+      if (!t || !g) return;
+      const p = local(e);
+      t.x = p.x; t.y = p.y;
+      if (Math.hypot(t.x - t.x0, t.y - t.y0) > 10) g.moved = true;
+      const v = this.engine.current?.viewport;
+      if (touches.size !== 2 || !v) return;
+      const q = pair(), r = box();
+      // Pan by the midpoint's travel, turned into the view's frame as the wheel and the middle button do.
+      const dx = q.mx - g.mx, dy = q.my - g.my, ra = (-v.rotation * Math.PI) / 180;
+      g.mx = q.mx; g.my = q.my;
+      this.engine.pan(dx * Math.cos(ra) - dy * Math.sin(ra), dx * Math.sin(ra) + dy * Math.cos(ra));
+      // Zoom by the spread about the midpoint, which stays under the fingers.
+      this.engine.zoomTo(g.z0 * (q.d / Math.max(1, g.d0)), Stage.unturn(q.mx, q.my, r.width, r.height, this.engine.current?.viewport.rotation ?? 0));
+      // Turn once the fingers have turned past 10 degrees.
+      const turn = ((q.ang - g.a0) * 180) / Math.PI, wrapped = ((turn + 540) % 360) - 180;
+      if (!g.turning && Math.abs(wrapped) > 10) g.turning = true;
+      if (g.turning) this.engine.setViewRotation(g.r0 + wrapped);
+    };
+    o.addEventListener('pointermove', (e) => {
+      if (e.pointerType !== 'touch' || !touches.has(e.pointerId)) return;
+      if (!g) { const t = touches.get(e.pointerId), p = local(e); if (t) { t.x = p.x; t.y = p.y; } return; }
+      e.stopImmediatePropagation();
+      step(e);
+    }, true);
+    const lift = (e: PointerEvent): void => {
+      if (e.pointerType !== 'touch' || !touches.has(e.pointerId)) return;
+      if (g && e.type === 'pointerup') step(e);   // the finger's last position first
+      touches.delete(e.pointerId);
+      if (!g) return;
+      e.stopImmediatePropagation();
+      if (o.hasPointerCapture(e.pointerId)) o.releasePointerCapture(e.pointerId);
+      if (touches.size === 0) {
+        // A quick tap: two fingers undo, three redo.
+        if (!g.moved && performance.now() - g.t0 < 350 && e.type === 'pointerup') { if (g.fingers === 2) this.engine.undo(); else if (g.fingers === 3) this.engine.redo(); }
+        g = null;
+      } else baseline();   // with one finger left the gesture holds (no stroke) until it lifts
+    };
+    o.addEventListener('pointerup', lift, true);
+    o.addEventListener('pointercancel', lift, true);
+  }
 
   private bindPointer(): void {
     const o = this.overlay;

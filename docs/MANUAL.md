@@ -30,6 +30,8 @@ ask it questions.
 - Workspaces arrange the panels for a kind of work, and the lock keeps an arrangement from being changed by accident.
 - Preferences (Edit > Preferences, Ctrl+comma) has Photoshop's sections: General, Interface, Performance, Workspace, Tools, History
   & Cache, File Handling, Cursors, Transparency & Gamut, Units & Rulers, Guides & Grid, and Plugins.
+- On a touch screen, pinch to zoom, drag two fingers to pan and turn them to rotate the view; tap two fingers to undo
+  and three to redo. One finger, or a pen with its pressure and tilt, works the tool.
 
 ## Layers
 
