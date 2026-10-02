@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The sky model · _v1.57.6 (app/localgen/sky.py new, app/localgen/model_manager.py, app/main.py)
+
+The gate first: xiongzhu666's sky segmenter (Sky-Segmentation-and-Post-processing on GitHub, MIT, Copyright 2021, licence read there; a U-2-Net its author trained, its README not saying on what data) through the Hugging Face copy the VGGT project uses (JianyuanWang/skyseg, tagged MIT, its card naming the origin), pinned to revision 3ba8c6df and SHA-256 ab9c34c6... from the real 175,997,079-byte download. `sky.py`: the picture at 320 by 320 with ImageNet's normalisation, the output stretched to 0 to 255 and scaled back to the picture as a soft mask; `POST /api/sky/mask`, 409 until the model is downloaded. Checked here on scikit-image's rocket: 1.1 s on the CPU, the top band 0.95 sky, the rocket's body 0.25 and the bottom 0.20 in the soft mask, looked at as an overlay (sky and the gaps in the towers' lattice tinted, the rocket, towers and hills not); over HTTP 1.9 s. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.57.5"
+for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router, _lg_upscale.router, _lg_inpaint.router, _lg_depth.router, _lg_colorize.router, _lg_style.router, _lg_face.router):
+version = "1.57.5"
+version = "1.57.5"
+ "version": "1.57.5",
+```
+
 ## Version only · _v1.57.5
 
 No engine code changed in 1.57.5 (Grayscale and the mode chains are window code). Removed lines taken after the version edit:

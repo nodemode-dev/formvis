@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.57.6 · 2026-10-01
+
+Select > Sky and Select > Focus Area (the parity plan's L5).
+
+### Added
+
+- Select > Sky: a sky model on this computer selects the sky, soft at its edges (176 MB, MIT, from Preferences > Plugins > Local models).
+- Select > Focus Area: selects the in-focus parts of the picture from local sharpness, with In-Focus Range, Image Noise Level and Soften Edge and a live preview, as Photoshop's.
+
 ## 1.57.5 · 2026-10-01
 
 Grayscale at every depth and from every mode (DEV_PLAN 22.11).
