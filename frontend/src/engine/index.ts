@@ -471,11 +471,25 @@ export class Engine {
     if (i < 0 || this.stroke) return;
     if (this.transformEdit?.project.id === id) this.transformEdit = null;
     if (this.floatSel?.project.id === id) this.floatSel = null;
+    const closing = this.projects[i];
     this.projects.splice(i, 1);
     if (this.currentId === id) this.currentId = this.projects[Math.min(i, this.projects.length - 1)]?.id ?? null;
     this.emit('projects', null);
     this.emit('viewport', null);
     this.refresh();
+    // Its memory back now (1.60.4, DEV_PLAN 26.2): measured, a closed 150 MP document's canvases stayed in the browser
+    // until it collected them, while the count already said free. Each canvas only it keeps (its layers and its undo
+    // history; no other open document's) is shrunk to nothing, which frees it at once.
+    const kept = new Set<Raster>();
+    for (const q of this.projects) for (const r of this.rastersOf(q)) kept.add(r);
+    for (const r of this.rastersOf(closing)) if (!kept.has(r)) { try { r.canvas.width = 0; r.canvas.height = 0; } catch { /* already gone */ } }
+  }
+
+  /** Every raster a document keeps: its layers' (pixels, masks, smart objects' sources and filter masks) and its history's. */
+  private rastersOf(p: Project): Set<Raster> {
+    const out = p.history.rasters();
+    for (const l of p.doc.layers) for (const r of [l.raster, l.mask?.raster, l.smart?.source, l.smart?.filterMask]) if (r) out.add(r);
+    return out;
   }
 
   markSaved(p: Project, name: string, libraryName: string | null): void {
@@ -487,7 +501,7 @@ export class Engine {
   }
 
   newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
-    if (Number.isInteger(width) && Number.isInteger(height) && !this.room(width * height * 8, 'A new document')) return null;   // its layer and display (1.60.2)
+    if (Number.isInteger(width) && Number.isInteger(height) && !this.room(width * height * 12, 'A new document')) return null;   // its layer twice and display (1.60.2, recounted 1.60.4)
     if (!Number.isInteger(width) || !Number.isInteger(height) || width < 1 || height < 1 || width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels) {
       this.notice(`Canvas sides must be 1 to 30,000 px, and the canvas at most ${Math.round(LIMITS.pixels / 1_000_000)} megapixels.`, 'error');
       return null;
@@ -2258,10 +2272,11 @@ export class Engine {
     let n = 0;
     for (const p of this.projects) {
       const seen = new Set<string>();
-      for (const l of p.doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && !seen.has(r.id)) { seen.add(r.id); n += r.width * r.height * 4; }
-      // The display holds two document-size copies (measured at 1.60.2: a 150 MP document grew the browser by 1.6 GB, its
-      // one layer 572 MB of it), and the undo history what it keeps beyond the layers.
-      n += p.doc.width * p.doc.height * 8 + p.history.retained(p.snapshot());
+      // Each raster twice, its canvas and the display's copy of it, and the document's display once more (measured at
+      // 1.60.4: one 572 MB layer grew the browser 1.6 GB; two 309 MB layers and a stroke, 1.95 GB); then what the undo
+      // history keeps beyond the layers.
+      for (const l of p.doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && !seen.has(r.id)) { seen.add(r.id); n += r.width * r.height * 8; }
+      n += p.doc.width * p.doc.height * 4 + p.history.retained(p.snapshot());
     }
     return n;
   }
@@ -3004,7 +3019,7 @@ export class Engine {
     const p = this.current;
     if (!p || this.stroke) return false;
     // Its working copy, and the layer's own pixels when this stroke is the first on it (1.60.2: measured, both).
-    const fresh = p.activeLayer && !p.activeLayer.raster ? p.doc.width * p.doc.height * 4 : 0;
+    const fresh = p.activeLayer && !p.activeLayer.raster ? p.doc.width * p.doc.height * 8 : 0;   // its canvas and the display's copy (1.60.4)
     if (!this.room(this.layerBytes() + fresh, 'This stroke')) return false;
     this.settle();
     if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer

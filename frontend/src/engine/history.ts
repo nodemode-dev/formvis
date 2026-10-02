@@ -107,6 +107,15 @@ export class History {
     return e;
   }
 
+  /** Every raster the steps keep (1.60.4, DEV_PLAN 26.2): in their snapshots' layers (pixels, masks, smart objects'
+   *  sources and filter masks) and their patches, so a closed document can release what nothing else keeps. */
+  rasters(): Set<Raster> {
+    const out = new Set<Raster>();
+    const add = (s: Snapshot): void => { for (const l of s.doc.layers) for (const r of [l.raster, l.mask?.raster, l.smart?.source, l.smart?.filterMask]) if (r) out.add(r); };
+    for (const e of [...this.past, ...this.future]) { add(e.before); add(e.after); for (const p of e.patches) out.add(p.raster); }
+    return out;
+  }
+
   retained(current: Snapshot): number {
     const live = new Set<string>();
     for (const l of current.doc.layers) {
