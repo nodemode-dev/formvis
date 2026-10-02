@@ -13,7 +13,7 @@ import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPat
 export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
 import { Emitter } from './events';
-import { History, type PixelPatch, type Snapshot } from './history';
+import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { PixelStroke, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
 import { SelectionMask, type SelectionMode } from './selection';
@@ -336,6 +336,87 @@ export class Engine {
 
   private refresh(): void {
     for (const key of ['doc', 'selection', 'active', 'history', 'render', 'options'] as const) this.emit(key, null);
+    this.schedulePaging();   // 1.60.8
+  }
+
+  /** The engine's undo store (1.60.8, DEV_PLAN 26.3), given by the app once the engine answers; null keeps every undo
+   *  tile in the window. */
+  undoStore: { put(bytes: Uint8Array<ArrayBuffer>): Promise<string>; get(key: string): Promise<ArrayBuffer>; drop(key: string): void } | null = null;
+  /** What a document's undo tiles may hold in the window before the oldest go to the store: 15% of the memory budget
+   *  (256 MB while it is unknown); `undoShareOverride` sets it for checks. */
+  undoShareOverride: number | null = null;
+  private undoShare(): number { return this.undoShareOverride ?? (this.memoryBudget ? this.memoryBudget * 0.15 : 256 * 1048576); }
+  private paging = false;
+  private pageTimer = 0;
+  private readonly pageJobs = new Map<string, Promise<void>>();
+
+  /** After an edit settles (0.8 s), the oldest undo tiles past the share go to the store. */
+  private schedulePaging(): void {
+    if (!this.undoStore) return;
+    clearTimeout(this.pageTimer);
+    this.pageTimer = window.setTimeout(() => void this.pageOut(), 800);
+  }
+
+  /** The undo tiles a document holds in the window. */
+  undoBytes(p: Project): number {
+    let n = 0;
+    for (const e of p.history.entries()) for (const q of e.patches) if (!q.paged) n += q.before.data.length + q.after.data.length;
+    return n;
+  }
+
+  /** Each document's oldest undo tiles (its last two steps spared) sent to the store until it holds no more than its
+   *  share; a tile's pixels are let go only once the store has them. One round at a time; resolves when done. */
+  async pageOut(): Promise<number> {
+    const store = this.undoStore;
+    if (!store || this.paging) return 0;
+    this.paging = true;
+    let sent = 0;
+    try {
+      for (const p of [...this.projects]) {
+        let held = this.undoBytes(p);
+        for (const q of p.history.pageable(2)) {
+          if (held <= this.undoShare()) break;
+          if (q.paged) continue;
+          const w = q.before.width, h = q.before.height, n = w * h * 4, bytes = new Uint8Array(n * 2);
+          bytes.set(q.before.data, 0);
+          bytes.set(q.after.data, n);
+          const key = await store.put(bytes);
+          // Closed, or its step trimmed, while it was on its way: the key is dropped rather than left behind (1.60.8).
+          if (!this.projects.includes(p)) { store.drop(key); break; }
+          if (q.paged || !p.history.entries().some((s) => s.patches.includes(q))) { store.drop(key); continue; }
+          q.paged = { key, w, h };
+          q.before = new ImageData(1, 1);
+          q.after = new ImageData(1, 1);
+          held -= n * 2;
+          sent += 1;
+        }
+      }
+    } catch { /* the store out of reach: the tiles stay in the window */ } finally {
+      this.paging = false;
+    }
+    if (sent) this.emit('history', null);
+    return sent;
+  }
+
+  /** A step's paged tiles brought back from the store (each fetched once, however many ask), then dropped there. */
+  private pageIn(e: HistoryEntry): Promise<void> {
+    const store = this.undoStore;
+    if (!store) return Promise.resolve();
+    return Promise.all(e.patches.filter((q) => q.paged).map((q) => {
+      const { key, w, h } = q.paged as { key: string; w: number; h: number };
+      let job = this.pageJobs.get(key);
+      if (!job) {
+        job = store.get(key).then((buf) => {
+          const all = new Uint8ClampedArray(buf), n = w * h * 4;
+          q.before = new ImageData(all.slice(0, n), w, h);
+          q.after = new ImageData(all.slice(n, n * 2), w, h);
+          q.paged = null;
+          store.drop(key);
+        }).finally(() => this.pageJobs.delete(key));
+        this.pageJobs.set(key, job);
+      }
+      return job;
+    })).then(() => undefined);
   }
 
   setViewSize(w: number, h: number): void {
@@ -488,6 +569,7 @@ export class Engine {
     // Its memory back now (1.60.4, DEV_PLAN 26.2): measured, a closed 150 MP document's canvases stayed in the browser
     // until it collected them, while the count already said free. Each canvas only it keeps (its layers and its undo
     // history; no other open document's) is shrunk to nothing, which frees it at once.
+    for (const e of closing.history.entries()) for (const q of e.patches) if (q.paged) this.undoStore?.drop(q.paged.key);   // its stored undo too (1.60.8)
     const kept = new Set<Raster>();
     for (const q of this.projects) for (const r of this.rastersOf(q)) kept.add(r);
     for (const r of this.rastersOf(closing)) if (!kept.has(r)) { try { r.canvas.width = 0; r.canvas.height = 0; } catch { /* already gone */ } }
@@ -665,7 +747,41 @@ export class Engine {
     for (let k = current; k < target; k++) this.redo();
   }
 
-  undo(): void {
+  undo(): void { this.historyOp('undo'); }
+
+  /** Undo and redo in the order asked (1.60.8, DEV_PLAN 26.3): at once when the step is in the window and nothing
+   *  waits; else queued, each step's tiles brought back from the undo store before it is applied. */
+  private readonly historyOps: Array<'undo' | 'redo'> = [];
+  private draining = false;
+  private historyOp(op: 'undo' | 'redo'): void {
+    const p = this.current;
+    if (!p || this.stroke) return;
+    const next = op === 'undo' ? p.history.peekUndo() : p.history.peekRedo();
+    if (!this.historyOps.length && !next?.patches.some((q) => q.paged)) { if (op === 'undo') this.undoNow(); else this.redoNow(); return; }
+    this.historyOps.push(op);
+    void this.drainHistory();
+  }
+  private async drainHistory(): Promise<void> {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      while (this.historyOps.length) {
+        const p = this.current, op = this.historyOps[0];
+        if (!p) { this.historyOps.length = 0; break; }
+        const next = op === 'undo' ? p.history.peekUndo() : p.history.peekRedo();
+        if (next?.patches.some((q) => q.paged)) await this.pageIn(next);
+        this.historyOps.shift();
+        if (op === 'undo') this.undoNow(); else this.redoNow();
+      }
+    } catch {
+      this.historyOps.length = 0;
+      this.notice('That step could not be brought back from the engine.', 'error');
+    } finally {
+      this.draining = false;
+    }
+  }
+
+  private undoNow(): void {
     const p = this.current;
     if (!p || this.stroke) return;
     this.settle();
@@ -676,7 +792,9 @@ export class Engine {
     this.reconcileFrame(p, e.name === 'Select Frame');
   }
 
-  redo(): void {
+  redo(): void { this.historyOp('redo'); }
+
+  private redoNow(): void {
     const p = this.current;
     if (!p || this.stroke) return;
     this.settle();
@@ -6974,6 +7092,9 @@ export class Engine {
 
   /** Every step's end (1.55.9): a step made outside `edit` (strokes of the retouching tools, the Gradient tool, Crop,
    *  Move Pixels, Stroke Path...) brings 16-bit and CMYK floats into step here; 32 bits is left to its own guards. */
+  /** A step the History trims away has its tiles in the undo store dropped too (1.60.8). */
+  private readonly dropHook = (History.onDrop = (e: HistoryEntry): void => { for (const q of e.patches) if (q.paged) this.undoStore?.drop(q.paged.key); });
+
   private readonly stepHook = (History.onStepEnd = (h: History, before: Snapshot, patches: readonly PixelPatch[]): Snapshot | null => {
     const p = this.projects.find((q) => q.history === h);
     if (!p || !(p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || (p.doc.depth ?? 8) > 8)) return null;

@@ -239,6 +239,16 @@ export const api = {
     const frames = head.sizes.map((s) => { const blob = new Blob([b.slice(at, at + s)], { type: 'image/png' }); at += s; return blob; });
     return { width: head.width, height: head.height, fps: head.fps, delayMs: head.delayMs, frames };
   },
+  /** The engine's undo store (1.60.8, DEV_PLAN 26.3): bytes kept on its disk under a key, given back, or forgotten. */
+  async undoPut(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
+    return ((await (await request('/undo', { method: 'POST', body: bytes, headers: { 'Content-Type': 'application/octet-stream' } })).json()) as { key: string }).key;
+  },
+  async undoGet(key: string): Promise<ArrayBuffer> {
+    return (await request(`/undo/${key}`)).arrayBuffer();
+  },
+  undoDrop(key: string): void {
+    void request(`/undo/${key}`, { method: 'DELETE' }).catch(() => undefined);
+  },
   /** Render Video's picture sequence (1.59.6): the frames as numbered PNGs in one zip, made by the engine. */
   async videoSequence(frames: Blob[], name: string): Promise<Blob> {
     return (await request('/video/sequence', { method: 'POST', body: form({ name }, frames.map((blob, i) => ({ name: `f${i}.png`, blob })), 'file') })).blob();

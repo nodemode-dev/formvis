@@ -8,7 +8,9 @@ export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionM
 /* frames (1.59.8): a copy of the frame animation (frames, current, loops), carried by steps that change it (Convert to
    Frame Animation), as video and paths are carried. */
 /* video (1.59.5, DEV_PLAN 25): a copy of the video timeline, carried only by timeline edits' steps, as paths are. */
-export interface PixelPatch { raster: Raster; x: number; y: number; before: ImageData; after: ImageData }
+export interface PixelPatch { raster: Raster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null }
+/* paged (1.60.8, DEV_PLAN 26.3): kept in the engine's undo store under `key`, its before and after pixels (w by h)
+   replaced here by a pixel's worth each until an undo or redo brings them back. */
 export interface HistoryEntry { name: string; before: Snapshot; after: Snapshot; patches: PixelPatch[]; beforeRev: number; afterRev: number }
 
 export class History {
@@ -143,8 +145,23 @@ export class History {
 
   private trim(current: Snapshot): void {
     while ((this.past.length || this.future.length) && (this.past.length + this.future.length > this.entryLimit || this.retained(current) > this.byteLimit)) {
-      if (this.past.length) this.past.shift();
-      else this.future.shift();
+      const gone = this.past.length ? this.past.shift() : this.future.shift();
+      if (gone) History.onDrop?.(gone);   // its tiles in the engine's undo store dropped too (1.60.8)
     }
+  }
+
+  /** Handed each step trimmed away (1.60.8), so what it keeps outside the window can go. */
+  static onDrop: ((e: HistoryEntry) => void) | null = null;
+  /** The step an undo would take back, and the one a redo would make again (1.60.8: paged ones are brought back first). */
+  peekUndo(): HistoryEntry | null { return this.canUndo ? this.past[this.past.length - 1] : null; }
+  peekRedo(): HistoryEntry | null { return this.canRedo ? this.future[this.future.length - 1] : null; }
+  /** Every step, for dropping all a closed document keeps outside the window. */
+  entries(): HistoryEntry[] { return [...this.past, ...this.future]; }
+  /** The patches that may go to the engine's undo store, oldest first: those of past steps but the last `keep`, not yet
+   *  paged (1.60.8, DEV_PLAN 26.3). */
+  pageable(keep: number): PixelPatch[] {
+    const out: PixelPatch[] = [];
+    for (const e of this.past.slice(0, Math.max(0, this.past.length - keep))) for (const q of e.patches) if (!q.paged) out.push(q);
+    return out;
   }
 }
