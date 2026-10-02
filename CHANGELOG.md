@@ -4,6 +4,23 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.58.8 · 2026-10-02
+
+The library in any folder, synced ones included, with conflict-safe saves (the parity plan's L13).
+
+### Added
+
+- Preferences > File Handling: choose where the library lives, formvis's own folder, a synced one found on this computer (iCloud Drive, Dropbox, OneDrive, Google Drive) or any folder, and move your projects there.
+- Saving never overwrites a newer copy: if a project changed in the library since you opened it (another device's copy synced in, or another window saved), that version is kept and yours is saved beside it as a conflict copy, and formvis says so.
+
+### Changed
+
+- The README's line counts follow the code again.
+
+### Known
+
+- A share link is out of scope while formvis has no server.
+
 ## 1.58.7 · 2026-10-01
 
 A compact layout for phones and narrow windows (the parity plan's L12, second part, which closes the row).

@@ -2,6 +2,23 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The library in any folder, conflict-safe saves · _v1.58.8 (app/core/config.py, app/routers/projects.py)
+
+The parity plan's L13. `config.projects_dir` is FORMVIS_LIBRARY_DIR, else the folder kept in library.json in the data folder, else the data folder's Projects (`default_projects_dir`), falling back to it when a chosen folder cannot be made. GET /api/projects/folder answers where the library is, the default, whether the environment fixes it, and the synced folders found on this computer (iCloud Drive's Mobile Documents, Dropbox, OneDrive, Google Drive and macOS's CloudStorage providers, each with a Formvis folder suggested); PUT moves it (made if missing and tested by writing a temporary file; with `move`, each project copied with its times, checked by size and only then removed, a same-named project there kept and the one moved in renamed "(moved)"; an empty folder means the default). Saves stay atomic (a temporary file in the same folder, then renamed) and became conflict-safe: a save naming the version it was based on (`base`, the file's modification time in nanoseconds and size) overwrites only a file still at that version; otherwise it is written beside it as "name (conflict date time)" (the library's name rule allows it), the answer saying so and what was kept. Every save and every open answers with the file's version. Checked here over the API with a temporary data folder: a first save, an open at the same version, a save on it overwriting; another device's copy appended, then a save on the old version: the conflict copy written and the other version byte for byte; saving on to the copy without conflict; the library moved to a "synced" folder with three projects (a same-named one there kept, the incoming one "(moved)"), listed and opened from there, and back to the default with all four; a folder that cannot be written refused with the reason. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.58.7"
+    return _ensure(data_dir() / "Projects")
+def save(name: str = Form(...), manifest: str = Form(...), files: list[UploadFile] = File(default=[])) -> dict:
+    for x in OLD_EXTS:
+        target.with_suffix(x).unlink(missing_ok=True)
+    return {"name": target.stem, "path": str(target), "size": len(blob)}
+    return sessions.payload(sessions.create(assets), manifest, assets, path.stem)
+version = "1.58.7"
+version = "1.58.7"
+ "version": "1.58.7",
+```
+
 ## Version only · _v1.58.7
 
 No engine code changed in 1.58.7 (the compact layout in the window). Removed lines taken after the version edit:
