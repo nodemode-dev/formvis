@@ -8,6 +8,7 @@ import { composeFloat, setStyleDrawer } from './compose-float';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
+import { newVideoTimeline, sampleToFrames, stateAt, type VideoTimeline } from './video-timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
@@ -1464,6 +1465,59 @@ export class Engine {
     const p = this.current;
     if (!p) return null;
     return renderDoc(this.work, f ? { ...p.doc, layers: frameLayers(p.doc.layers, f.state) } : p.doc);
+  }
+
+  /** The current document's video timeline (1.59.2, DEV_PLAN 25.1), or null. */
+  get video(): VideoTimeline | null { const p = this.current; return p ? this.timelineOf(p).video ?? null : null; }
+
+  /** Timeline > Create Video Timeline: `fps` frames a second for `seconds`, a track per layer; refused while the
+   *  document has a frame animation or a video timeline already (Photoshop's two modes are one or the other). */
+  createVideoTimeline(fps = 30, seconds = 5): boolean {
+    const p = this.current;
+    if (!p) return false;
+    const t = this.timelineOf(p);
+    if (t.frames.length || t.video) return false;
+    this.timelines.set(p, { ...t, video: newVideoTimeline(p.doc, fps, seconds) });
+    this.emit('timeline', null);
+    return true;
+  }
+
+  /** Delete Timeline (the video one). */
+  deleteVideoTimeline(): boolean {
+    const p = this.current;
+    if (!p || !this.timelineOf(p).video) return false;
+    this.timelines.set(p, { ...this.timelineOf(p), video: null });
+    this.emit('timeline', null);
+    return true;
+  }
+
+  /** The video timeline changed through `fn` on a copy, then put in place and shown. */
+  editVideo(fn: (vt: VideoTimeline) => void): boolean {
+    const p = this.current, vt = this.video;
+    if (!p || !vt) return false;
+    const next = structuredClone(vt);
+    fn(next);
+    this.timelines.set(p, { ...this.timelineOf(p), video: next });
+    this.emit('timeline', null);
+    return true;
+  }
+
+  /** The picture at video frame `f`: the layers in the state the timeline gives them there. */
+  renderVideoFrame(f: number): Surface | null {
+    const p = this.current, vt = this.video;
+    if (!p || !vt) return null;
+    return renderDoc(this.work, { ...p.doc, layers: frameLayers(p.doc.layers, stateAt(p.doc, vt, f)) });
+  }
+
+  /** Convert to Frame Animation: a frame for each frame of the work area (500 at most), the video timeline gone. */
+  convertVideoToFrames(): boolean {
+    const p = this.current, vt = this.video;
+    if (!p || !vt) return false;
+    const frames = sampleToFrames(p.doc, vt);
+    if (!frames.length) return false;
+    this.timelines.set(p, { frames, current: frames[0].id, loops: vt.loops, video: null });
+    this.emit('timeline', null);
+    return true;
   }
 
   /** Any open document's timeline, as saving reads it, and replacing it, as opening restores it. */

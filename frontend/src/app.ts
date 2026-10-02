@@ -931,9 +931,13 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
-        const t = engine.timeline, frames = t.frames.length ? t.frames : [null], pngs: Blob[] = [], delays: number[] = [];
+        // A video timeline (1.59.2): its work area, each frame at its frame rate; else the frame animation's frames.
+        const t = engine.timeline, vt = engine.video, pngs: Blob[] = [], delays: number[] = [];
+        const frames: Array<{ render: () => ReturnType<typeof engine.renderFrame>; delay: number }> = vt
+          ? Array.from({ length: Math.max(0, vt.workOut - vt.workIn) }, (_, i) => ({ render: () => engine.renderVideoFrame(vt.workIn + i), delay: Math.round(1000 / vt.fps) }))
+          : (t.frames.length ? t.frames : [null]).map((f) => ({ render: () => engine.renderFrame(f), delay: f?.delay ?? 0 }));
         for (const f of frames) {
-          const s = engine.renderFrame(f);
+          const s = f.render();
           if (!s) return;
           const flat = createSurface(p.doc.width, p.doc.height), c = ctxOf(flat);
           c.fillStyle = '#ffffff'; c.fillRect(0, 0, p.doc.width, p.doc.height); c.drawImage(s as CanvasImageSource, 0, 0);
