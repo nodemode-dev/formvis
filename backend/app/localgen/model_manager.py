@@ -132,6 +132,7 @@ PINNED: dict[str, str] = {
     "fast-style/rain-princess-9.onnx": "4162912e6f75fedef6f810ae989b9e10d3d5d43308dab34b027c850cf255e152",
     "fast-style/udnie-9.onnx": "8656b6ce7dec8f22ee13c2d557d6b67bd6f550dde88d0f2e7c9972aeb765cc0d",
     "yunet-face/face_detection_yunet_2023mar.onnx": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+    "skyseg/skyseg.onnx": "ab9c34c64c3d821220a2886a4a06da4642ffa14d5b30e8d5339056a089aa1d39",
     "sam2.1-hiera-tiny/vision_encoder.onnx": "4f30aacd3aaefbca81a0b7fe4c1fc96345570ea0a6f80ced599493d1b3be2e8c",
     "sam2.1-hiera-tiny/vision_encoder.onnx_data": "e83df9866a5afe68ea7f0f721f18f65137fc3acbf0da1c74e946d363e09c69cc",
     "sam2.1-hiera-tiny/prompt_encoder_mask_decoder.onnx": "874414704c5d686db7d206a35f6e15d26563d50c8c4468fccc6739bd7e491dcf",
@@ -340,6 +341,13 @@ MODELS = {
         "name": "YuNet face detector (OpenCV Zoo)",
         "license": "MIT",
         "files": {"yunet-face/face_detection_yunet_2023mar.onnx": "https://huggingface.co/opencv/face_detection_yunet/resolve/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310/face_detection_yunet_2023mar.onnx"},
+    },
+    # The sky segmenter (1.57.6, formvis): xiongzhu666's U-2-Net sky model, MIT (2021), from the Hugging Face copy the
+    # VGGT project uses, pinned to its revision; hashed on 1 October 2026 from the real download; for Select > Sky.
+    "skyseg": {
+        "name": "Sky segmenter (U-2-Net)",
+        "license": "MIT",
+        "files": {"skyseg/skyseg.onnx": "https://huggingface.co/JianyuanWang/skyseg/resolve/3ba8c6df1d9ba9ff26f637c7ba9568ac11a9aa7f/skyseg.onnx"},
     },
     # SAM 2.1 tiny as ONNX (1.53.4, formvis): Object Selection with nothing to install, on ONNX Runtime. Meta's SAM 2.1
     # weights (Apache-2.0), exported by onnx-community (the export states no licence of its own), pinned to its revision.

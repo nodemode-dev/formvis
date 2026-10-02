@@ -41,7 +41,8 @@ from app.localgen import depth as _lg_depth  # noqa: E402  (1.54.8)
 from app.localgen import colorize as _lg_colorize  # noqa: E402  (1.54.9)
 from app.localgen import style as _lg_style  # noqa: E402  (1.55.1)
 from app.localgen import face as _lg_face  # noqa: E402  (1.56.7)
-for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router, _lg_upscale.router, _lg_inpaint.router, _lg_depth.router, _lg_colorize.router, _lg_style.router, _lg_face.router):
+from app.localgen import sky as _lg_sky  # noqa: E402  (1.57.6)
+for _router in (_lg_jobs.router, _lg_models.router, _lg_krea2.router, _lg_klein.router, _lg_loras.router, _lg_checkpoints.router, _lg_generate.router, _lg_upscale.router, _lg_inpaint.router, _lg_depth.router, _lg_colorize.router, _lg_style.router, _lg_face.router, _lg_sky.router):
     app.include_router(_router)
 
 _dist = config.dist_dir()

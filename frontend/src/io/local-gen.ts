@@ -64,6 +64,13 @@ export const depthReady = (): Promise<boolean> => modelReady('depth-anything-v2-
 export const colorizeReady = (): Promise<boolean> => modelReady('ddcolor-tiny');
 export const styleReady = (): Promise<boolean> => modelReady('fast-style');
 export const faceReady = (): Promise<boolean> => modelReady('yunet-face');
+export const skyReady = (): Promise<boolean> => modelReady('skyseg');
+
+/** Select > Sky (1.57.6): the sky in `image` as a soft white-on-black mask the same size, from the engine's model. */
+export async function skyMask(image: Blob): Promise<Blob> {
+  const form = new FormData(); form.append('image', image, 'image.png');
+  return (await ask('/sky/mask', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
+}
 
 /** Faces for Face-Aware Liquify (1.56.7): each face's box and five landmarks, largest first, from the engine's YuNet. */
 export async function findFaces(image: Blob): Promise<import('../engine/face-liquify').Face[]> {

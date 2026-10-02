@@ -45,7 +45,8 @@ ask it questions.
 
 - Marquee (rectangle, ellipse, single row and column), Lasso (freehand, polygonal, magnetic), Magic Wand, Quick
   Selection and Object Selection (hover to see the object it would take).
-- Select > Subject finds the main subject; Select > Color Range selects by colour or by tone.
+- Select > Subject finds the main subject; Select > Color Range selects by colour or by tone; Select > Sky selects the
+  sky (its model downloads once, 176 MB); Select > Focus Area selects what is in focus, with a preview to set how much.
 - Select and Mask refines an edge. Expand, Contract, Feather, Border, Smooth and Invert change a selection; selections
   can be saved and loaded.
 

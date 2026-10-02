@@ -48,7 +48,8 @@ import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
 import { api, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
-import { findToRemove, localInpaint, modelReady } from './io/local-gen';
+import { findToRemove, localInpaint, modelReady, skyMask, skyReady } from './io/local-gen';
+import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, serialize } from './io/project-io';
@@ -1040,6 +1041,25 @@ export function startApp(): void {
   }
   engine.removeFinder = removeFound;
 
+  /** Select > Sky (1.57.6, L5): the sky the engine's model finds in what the document shows, as the selection (soft at
+   *  its edges), one step; says so when no sky is found or the model is missing. */
+  async function selectSky(): Promise<void> {
+    const p = engine.current, flat = engine.flattened();
+    if (!p || !flat) return;
+    if (!(await skyReady())) { toast('Select > Sky needs the sky model (176 MB, MIT): download it in Preferences > Plugins > Local models.', 'error'); return; }
+    await engine.task(async () => {
+      try {
+        const W = p.doc.width, H = p.doc.height, bitmap = await createImageBitmap(await skyMask(await toBlob(flat)));
+        const s = createSurface(W, H), c = ctxOf(s); c.drawImage(bitmap, 0, 0, W, H); bitmap.close();
+        const px = c.getImageData(0, 0, W, H).data, data = new Uint8Array(W * H);
+        for (let i = 0; i < data.length; i++) data[i] = px[i * 4];
+        if (engine.current !== p) return;
+        if (!data.some((v) => v >= 128)) { toast('No sky was found.'); return; }
+        engine.applySelection(SelectionMask.cropped(0, 0, W, H, data), 'replace', 'Select Sky');
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function selectSubject(withinSelection: boolean): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -1224,6 +1244,7 @@ export function startApp(): void {
   const tiffPages = new TiffPagesDialog(engine);
   const colourView = new ColourView(engine);   // colour management (1.53.5)
   const hdrToning = new HdrToningDialog();   // 1.53.9
+  const focusAreaDialog = new FocusAreaDialog(engine);   // 1.57.6
   const colourDialogs = { assign: new AssignProfileDialog(engine), convert: new ConvertProfileDialog(engine), proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
   void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
@@ -1339,6 +1360,8 @@ export function startApp(): void {
     { id: 'remove-bg', label: 'Remove Background', enabled: withPixels, run: () => void removeBackground('auto') },
     { id: 'remove-bg-lite', label: 'Remove Background (Lightweight)', enabled: withPixels, run: () => void removeBackground('lite') },
     { id: 'select-subject', label: 'Subject', enabled: () => !!engine.current, run: () => void selectSubject(false) },
+    { id: 'select-sky', label: 'Sky', enabled: () => !!engine.current, run: () => void selectSky() },
+    { id: 'focus-area', label: 'Focus Area...', enabled: () => !!engine.current, run: () => focusAreaDialog.show() },
     { id: 'select-object', label: 'Object in Selection', enabled: selected, run: () => void selectSubject(true) },
     { id: 'select-and-mask', label: 'Select and Mask...', keys: ['Alt+Mod+R'], enabled: selected, run: () => dialogs.selectMask.show() },
     { id: 'rotate-180', label: '180°', enabled: has, run: () => engine.rotateCanvas(2) },
@@ -1544,7 +1567,7 @@ export function startApp(): void {
       { label: 'Align', items: ['align-left', 'align-hcenter', 'align-right', '-', 'align-top', 'align-vcenter', 'align-bottom'] },
       { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }] },
-    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'select-subject', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, '-', 'quick-mask', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: ['filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-neural', '-',
       { label: 'Blur', items: ['filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur'] },
