@@ -7024,6 +7024,30 @@ export class Engine {
     });
   }
 
+  /** Whether the current document's flattened picture goes out in bands (1.61.2, DEV_PLAN 26.4): an 8-bit RGB
+   *  document past the band size, composed by the ordinary renderer. */
+  bandedExportable(): boolean {
+    const p = this.current;
+    return !!p && p.doc.width * p.doc.height > this.bandFrom && (p.doc.depth ?? 8) <= 8 && p.doc.mode !== 'cmyk' && p.doc.mode !== 'lab' && !this.composesFloats(p);
+  }
+
+  /** The flattened picture rendered a band of 512 rows at a time, as `renderDoc` renders it whole (the same renderer,
+   *  its view moved up by the band's top), each band's RGBA rows handed to `sink` and awaited before the next, so
+   *  nothing full-size is made. */
+  async renderBands(sink: (rows: Uint8ClampedArray<ArrayBuffer>, y0: number, h: number) => Promise<void>, background: string | null = null): Promise<boolean> {
+    const p = this.current;
+    if (!p) return false;
+    const W = p.doc.width, H = p.doc.height, B = 512;
+    for (let y0 = 0; y0 < H; y0 += B) {
+      const h = Math.min(B, H - y0), s = createSurface(W, h);
+      this.work.render({ doc: p.doc, target: s, view: translation(0, -y0), background, quality: 'high' });
+      const rows = ctxOf(s).getImageData(0, 0, W, h).data as Uint8ClampedArray<ArrayBuffer>;
+      s.width = 0; s.height = 0;
+      await sink(rows, y0, h);
+    }
+    return true;
+  }
+
   async exportBlob(type: 'image/png' | 'image/jpeg' | 'image/webp', quality = 0.92): Promise<Blob | null> {
     const p = this.current;
     if (!p) return null;

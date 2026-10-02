@@ -854,6 +854,14 @@ export function startApp(): void {
         // A 16-bit document's PNG and TIFF keep their 16 bits (1.53.6): composed in floating point, written by the engine.
         const deep = (p.doc.depth ?? 8) > 8 && (kind === 'png' || kind === 'tiff') ? composeDeep(p.doc) : null;
         if (deep && 'error' in deep) throw new Error(deep.error);
+        // A very large 8-bit picture's PNG (1.61.2, DEV_PLAN 26.4): rendered a band at a time and written by the engine
+        // as it comes, so no full-size copy is made here or there.
+        if (!deep && kind === 'png' && engine.bandedExportable()) {
+          const key = await api.bandsBegin(p.doc.width, p.doc.height, p.doc.resolution ?? 72);
+          await engine.renderBands((rows) => api.bandsPut(key, rows));
+          await deliver(await api.bandsEnd(key), `${p.name}.png`);
+          return;
+        }
         // From 32 bits (1.53.9): TIFF stays 32-bit float; PNG is 16-bit, sRGB-encoded, brighter than white clipped.
         const blob = deep ? (p.doc.depth === 32 && kind === 'tiff' ? await api.encodeDeep(deep.data, deep.width, deep.height, 'tiff32') : await api.encodeDeep(deepToU16(p.doc.depth === 32 ? deepToned({ mode: 'rgb', n: 3, ...deep }, 0, 1).data : deep.data), deep.width, deep.height, kind as 'png' | 'tiff')) : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
           : kind === 'webp' ? await engine.exportBlob('image/webp', quality)

@@ -239,6 +239,16 @@ export const api = {
     const frames = head.sizes.map((s) => { const blob = new Blob([b.slice(at, at + s)], { type: 'image/png' }); at += s; return blob; });
     return { width: head.width, height: head.height, fps: head.fps, delayMs: head.delayMs, frames };
   },
+  /** A PNG written by the engine a band of rows at a time (1.61.2, DEV_PLAN 26.4): opened, fed rows top first, closed. */
+  async bandsBegin(width: number, height: number, ppi: number): Promise<string> {
+    return ((await (await request(`/bands/png?width=${width}&height=${height}&ppi=${ppi}`, { method: 'POST' })).json()) as { key: string }).key;
+  },
+  async bandsPut(key: string, rows: Uint8ClampedArray<ArrayBuffer>): Promise<void> {
+    await request(`/bands/png/${key}`, { method: 'POST', body: rows, headers: { 'Content-Type': 'application/octet-stream' } });
+  },
+  async bandsEnd(key: string): Promise<Blob> {
+    return (await request(`/bands/png/${key}/end`, { method: 'POST' })).blob();
+  },
   /** The engine's undo store (1.60.8, DEV_PLAN 26.3): bytes kept on its disk under a key, given back, or forgotten. */
   async undoPut(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
     return ((await (await request('/undo', { method: 'POST', body: bytes, headers: { 'Content-Type': 'application/octet-stream' } })).json()) as { key: string }).key;
