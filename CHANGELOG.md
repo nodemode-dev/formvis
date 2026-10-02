@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.60.9 · 2026-10-02
+
+### Changed
+
+- Gaussian, Motion, Surface and Lens Blur and Unsharp Mask on very large layers run a strip at a time, with the same result pixel for pixel, using far less memory (a 49 megapixel Gaussian Blur peaked at 0.4 GB rather than 2.1).
+
+### Fixed
+
+- A filter refused for want of memory is reported as refused, with the reason, rather than as applied.
+
 ## 1.60.8 · 2026-10-02
 
 ### Changed
