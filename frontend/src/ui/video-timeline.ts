@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import type { VideoTimeline } from '../engine/video-timeline';
+import { VIDEO_PROPS, valueAt, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
 import { el, setText } from './dom';
 
 const HEAD_W = 180, ROW_H = 30, RULER_H = 24;
@@ -110,24 +110,156 @@ export class VideoTimelinePanel {
     setText(this.rate, `${vt.fps} fps · ${vt.duration} frames`);
     setText(this.render, `${vt.workOut - vt.workIn} frames to render`);
     const width = Math.ceil(vt.duration * this.pxPerFrame) + 40, layers = [...p.doc.layers].reverse().filter((l) => vt.tracks[l.id]);
+    const rowsUsed = layers.reduce((n, l) => n + 1 + (this.open.has(l.id) ? VIDEO_PROPS.length : 0), 0);
     this.rows.style.width = `${width}px`;
-    this.rows.style.height = `${layers.length * ROW_H}px`;
-    const live = new Set(layers.map((l) => l.id));
+    this.rows.style.height = `${rowsUsed * ROW_H}px`;
+    const live = new Set(layers.map((l) => l.id)), liveLanes = new Set<string>();
     for (const [id, n] of this.clips) if (!live.has(id)) { n.remove(); this.clips.delete(id); this.heads$.get(id)?.remove(); this.heads$.delete(id); }
-    layers.forEach((l, i) => {
+    let r = 0;
+    for (const l of layers) {
       const tr = vt.tracks[l.id];
       let head = this.heads$.get(l.id), clip = this.clips.get(l.id);
-      if (!head) { head = el('<div class="cv-vtl-head"></div>'); this.heads$.set(l.id, head); this.heads.append(head); }
+      if (!head) { head = this.makeHead(l.id); this.heads$.set(l.id, head); this.heads.append(head); }
       if (!clip) { clip = this.makeClip(l.id); this.clips.set(l.id, clip); this.rows.append(clip); }
-      setText(head, l.name);
-      head.style.top = `${RULER_H + i * ROW_H}px`;
+      setText(head.querySelector('.cv-vtl-head-name') as HTMLElement, l.name);
+      const chev = head.querySelector('.cv-vtl-chev') as HTMLElement, isOpen = this.open.has(l.id);
+      chev.setAttribute('aria-expanded', String(isOpen)); chev.setAttribute('aria-label', isOpen ? 'Collapse track' : 'Expand track');
+      head.style.transform = `translateY(${RULER_H + r * ROW_H}px)`;
       head.classList.toggle('is-active', p.activeId === l.id);
-      clip.style.transform = `translate(${tr.start * this.pxPerFrame}px, ${i * ROW_H + 3}px)`;
+      clip.style.transform = `translate(${tr.start * this.pxPerFrame}px, ${r * ROW_H + 3}px)`;
       clip.style.width = `${Math.max(4, tr.length * this.pxPerFrame)}px`;
       setText(clip.querySelector('.cv-vtl-clip-name') as HTMLElement, l.name);
-    });
+      r++;
+      if (!isOpen) continue;
+      // The keyframe lanes (1.59.4, DEV_PLAN 25.3), as Photon's: a lane per property under the clip.
+      for (const prop of VIDEO_PROPS) {
+        const key = `${l.id}:${prop}`, keys = tr.keys[prop] ?? [], base = prop === 'x' ? l.transform.x : prop === 'y' ? l.transform.y : prop === 'opacity' ? l.opacity : prop === 'fill' ? l.fill ?? 1 : 1;
+        liveLanes.add(key);
+        let lh = this.laneHeads.get(key), strip = this.strips.get(key);
+        if (!lh) { lh = this.makeLaneHead(l.id, prop); this.laneHeads.set(key, lh); this.heads.append(lh); }
+        if (!strip) { strip = this.makeStrip(l.id, prop); this.strips.set(key, strip); this.rows.append(strip); }
+        lh.style.transform = `translateY(${RULER_H + r * ROW_H}px)`;
+        strip.style.transform = `translateY(${r * ROW_H}px)`;
+        strip.style.width = `${width}px`;
+        const watch = lh.querySelector('.cv-vtl-watch') as HTMLElement, input = lh.querySelector('input') as HTMLInputElement, on = keys.length > 0;
+        watch.setAttribute('aria-pressed', String(on)); watch.classList.toggle('is-on', on);
+        const v = valueAt(keys, vt.current, base), shown = prop === 'opacity' || prop === 'fill' ? Math.round(v * 100) : prop === 'style' ? Math.round(v) : Math.round(v * 10) / 10;
+        if (document.activeElement !== input) input.value = String(shown);
+        (lh.querySelector('.cv-vtl-key') as HTMLElement).classList.toggle('is-on', keys.some((k) => k.t === vt.current));
+        // Diamonds: made or dropped to match the keyframes, then placed.
+        const dots = Array.from(strip.children) as HTMLElement[];
+        while (dots.length > keys.length) (dots.pop() as HTMLElement).remove();
+        while (dots.length < keys.length) { const d = this.makeDiamond(l.id, prop); strip.append(d); dots.push(d); }
+        keys.forEach((k, i) => { const d = dots[i]; d.dataset.index = String(i); d.style.transform = `translateX(${k.t * this.pxPerFrame - 5}px) rotate(45deg)`; d.classList.toggle('is-hold', k.interp === 'hold'); d.title = `Frame ${k.t}, ${k.interp === 'hold' ? 'hold' : 'linear'} (right-click to switch)`; });
+        r++;
+      }
+    }
+    for (const [key, n] of this.laneHeads) if (!liveLanes.has(key)) { n.remove(); this.laneHeads.delete(key); this.strips.get(key)?.remove(); this.strips.delete(key); }
     this.playhead.style.transform = `translateX(${vt.current * this.pxPerFrame}px)`;
     this.drawRuler(vt, width);
+  }
+
+  // The keyframe lanes (1.59.4, DEV_PLAN 25.3): which tracks are open, and each lane's head and strip by layer and property.
+  private readonly open = new Set<string>();
+  private readonly laneHeads = new Map<string, HTMLElement>();
+  private readonly strips = new Map<string, HTMLElement>();
+
+  private makeHead(id: string): HTMLElement {
+    const h = el('<div class="cv-vtl-head"><button class="cv-vtl-chev" type="button" aria-expanded="false" aria-label="Expand track">&#8250;</button><span class="cv-vtl-head-name"></span></div>');
+    (h.querySelector('.cv-vtl-chev') as HTMLElement).addEventListener('click', () => { if (this.open.has(id)) this.open.delete(id); else this.open.add(id); this.sync(); });
+    return h;
+  }
+
+  /** The value a lane shows and keys: px for position, percent for the opacities, 1 or 0 for style. */
+  private current(id: string, prop: VideoProp): number {
+    const vt = this.engine.video, l = this.engine.current?.doc.layers.find((x) => x.id === id);
+    if (!vt || !l) return 0;
+    const base = prop === 'x' ? l.transform.x : prop === 'y' ? l.transform.y : prop === 'opacity' ? l.opacity : prop === 'fill' ? l.fill ?? 1 : 1;
+    return valueAt(vt.tracks[id]?.keys[prop], vt.current, base);
+  }
+
+  /** A keyframe set at the playhead (a keyframe already there takes the value). */
+  private key(id: string, prop: VideoProp, v: number): void {
+    this.engine.editVideo((vt) => {
+      const tr = vt.tracks[id];
+      if (!tr) return;
+      const ks = (tr.keys[prop] ??= []), at = ks.find((k) => k.t === vt.current);
+      if (at) at.v = v; else { ks.push({ t: vt.current, v, interp: 'linear' }); ks.sort((a, b) => a.t - b.t); }
+    });
+  }
+
+  private makeLaneHead(id: string, prop: VideoProp): HTMLElement {
+    const names: Record<VideoProp, string> = { x: 'Position X', y: 'Position Y', opacity: 'Opacity', fill: 'Fill Opacity', style: 'Style' };
+    const h = el(`<div class="cv-vtl-lane-head"><button class="cv-vtl-watch" type="button" aria-pressed="false" aria-label="Keyframes for ${names[prop]}" title="Keyframes for ${names[prop]}">&#9201;</button><span class="cv-vtl-lane-name">${names[prop]}</span><input class="cv-vtl-lane-val" type="number" step="${prop === 'style' ? 1 : prop === 'x' || prop === 'y' ? 1 : 1}" aria-label="${names[prop]} at the playhead"><button class="cv-vtl-nav" type="button" aria-label="Previous keyframe">&#8249;</button><button class="cv-vtl-key" type="button" aria-label="Add or delete keyframe">&#9670;</button><button class="cv-vtl-nav" type="button" aria-label="Next keyframe">&#8250;</button></div>`);
+    const [watch, prev, add, next] = ['.cv-vtl-watch', '[aria-label="Previous keyframe"]', '.cv-vtl-key', '[aria-label="Next keyframe"]'].map((s) => h.querySelector(s) as HTMLElement);
+    const input = h.querySelector('input') as HTMLInputElement;
+    const scale = prop === 'opacity' || prop === 'fill' ? 100 : 1;
+    watch.addEventListener('click', () => {
+      const v = this.current(id, prop);
+      this.engine.editVideo((vt) => { const tr = vt.tracks[id]; if (!tr) return; if (tr.keys[prop]?.length) delete tr.keys[prop]; else tr.keys[prop] = [{ t: vt.current, v, interp: 'linear' }]; });
+    });
+    input.addEventListener('change', () => {
+      const n = Number(input.value);
+      if (!Number.isFinite(n)) return;
+      const v = prop === 'style' ? (n >= 0.5 ? 1 : 0) : prop === 'opacity' || prop === 'fill' ? Math.min(1, Math.max(0, n / scale)) : n;
+      const keyed = !!this.engine.video?.tracks[id]?.keys[prop]?.length;
+      // With the stopwatch on, a value keys the playhead; off, it changes the layer itself (Style always keys).
+      if (keyed || prop === 'style') { this.key(id, prop, v); return; }
+      this.engine.edit(prop === 'x' || prop === 'y' ? 'Move' : prop === 'opacity' ? 'Opacity' : 'Fill Opacity', (q) => {
+        const l = q.doc.layers.find((x) => x.id === id);
+        if (!l) return false;
+        q.updateLayer(id, prop === 'x' ? { transform: { ...l.transform, x: v } } : prop === 'y' ? { transform: { ...l.transform, y: v } } : prop === 'opacity' ? { opacity: v } : { fill: v });
+        return true;
+      });
+    });
+    const hop = (dir: 1 | -1): void => {
+      const vt = this.engine.video, ks = vt?.tracks[id]?.keys[prop] ?? [];
+      if (!vt || !ks.length) return;
+      const k = dir > 0 ? ks.find((x) => x.t > vt.current) : [...ks].reverse().find((x) => x.t < vt.current);
+      if (k) this.engine.setVideoTime(k.t);
+    };
+    prev.addEventListener('click', () => hop(-1));
+    next.addEventListener('click', () => hop(1));
+    add.addEventListener('click', () => {
+      const vt = this.engine.video, ks = vt?.tracks[id]?.keys[prop] ?? [];
+      if (!vt) return;
+      if (ks.some((k) => k.t === vt.current)) this.engine.editVideo((v) => { const tr = v.tracks[id]; if (!tr) return; tr.keys[prop] = (tr.keys[prop] ?? []).filter((k) => k.t !== v.current); if (!tr.keys[prop]?.length) delete tr.keys[prop]; });
+      else this.key(id, prop, this.current(id, prop));
+    });
+    return h;
+  }
+
+  private makeStrip(id: string, prop: VideoProp): HTMLElement {
+    const s = el('<div class="cv-vtl-strip"></div>');
+    s.dataset.layer = id; s.dataset.prop = prop;
+    return s;
+  }
+
+  private makeDiamond(id: string, prop: VideoProp): HTMLElement {
+    const d = el('<span class="cv-vtl-dia" role="button" aria-label="Keyframe"></span>');
+    d.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault(); e.stopPropagation(); d.setPointerCapture(e.pointerId);
+      const i = Number(d.dataset.index), vt = this.engine.video, k = vt?.tracks[id]?.keys[prop]?.[i];
+      if (!vt || !k) return;
+      const x0 = e.clientX, t0 = k.t;
+      let moved = false;
+      const move = (ev: PointerEvent): void => {
+        const t = Math.max(0, Math.min(vt.duration - 1, t0 + Math.round((ev.clientX - x0) / this.pxPerFrame)));
+        if (t === t0 && !moved) return;
+        moved = true;
+        this.engine.editVideo((v) => { const ks = v.tracks[id]?.keys[prop]; if (!ks) return; const kk = ks.find((x) => x.t === (moved ? Number(d.dataset.t ?? t0) : t0)) ?? ks[i]; kk.t = t; ks.sort((a, b) => a.t - b.t); });
+        d.dataset.t = String(t);
+      };
+      const up = (): void => { d.removeEventListener('pointermove', move); d.removeEventListener('pointerup', up); d.removeEventListener('pointercancel', up); delete d.dataset.t; if (!moved) this.engine.setVideoTime(t0); };
+      d.addEventListener('pointermove', move); d.addEventListener('pointerup', up); d.addEventListener('pointercancel', up);
+    });
+    d.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      const i = Number(d.dataset.index);
+      this.engine.editVideo((v) => { const k = v.tracks[id]?.keys[prop]?.[i]; if (k) k.interp = k.interp === 'hold' ? 'linear' : 'hold'; });
+    });
+    return d;
   }
 
   private makeClip(id: string): HTMLElement {

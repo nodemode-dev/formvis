@@ -337,6 +337,19 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-vtl-clip-name { flex: 1; padding: 0 8px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; pointer-events: none; }
 .cv-vtl-trim { width: 6px; align-self: stretch; cursor: ew-resize; background: rgba(0, 0, 0, 0.2); }
 .cv-vtl-playhead { position: absolute; left: 0; top: 0; bottom: 0; width: 1px; background: var(--accent-color, #7c5cff); pointer-events: none; z-index: var(--z-selected); }
+/* The keyframe lanes (1.59.4, DEV_PLAN 25.3): a lane per property under an opened track. */
+.cv-vtl-head { gap: 4px; padding: 0 6px; }
+.cv-vtl-head-name { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cv-vtl-chev { width: 18px; height: 20px; border: 0; background: none; color: var(--text-muted); cursor: pointer; transition: transform 120ms ease; }
+.cv-vtl-chev[aria-expanded="true"] { transform: rotate(90deg); }
+.cv-vtl-lane-head { position: absolute; left: 0; right: 0; height: 30px; display: flex; align-items: center; gap: 3px; padding: 0 4px 0 18px; color: var(--text-muted); font-size: 11px; border-bottom: 1px solid var(--border-color); }
+.cv-vtl-lane-name { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.cv-vtl-lane-val { width: 46px; height: 20px; padding: 0 4px; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-primary); color: var(--text-primary); font-size: 11px; }
+.cv-vtl-watch, .cv-vtl-nav, .cv-vtl-key { width: 18px; height: 20px; padding: 0; border: 0; background: none; color: var(--text-muted); cursor: pointer; font-size: 11px; }
+.cv-vtl-watch.is-on, .cv-vtl-key.is-on { color: var(--accent-color, #7c5cff); }
+.cv-vtl-strip { position: absolute; left: 0; top: 0; height: 30px; border-bottom: 1px solid var(--border-color); background: rgba(128, 128, 128, 0.04); }
+.cv-vtl-dia { position: absolute; left: 0; top: 10px; width: 10px; height: 10px; background: var(--text-primary); border-radius: 1px; cursor: grab; touch-action: none; }
+.cv-vtl-dia.is-hold { background: var(--accent-color, #7c5cff); }
 
 /* The compact layout (1.58.7, the parity plan's L12): under 720 pixels the canvas takes the whole width, and the tool
    rail, the panels and the side column become sheets over it (the rail from the left, the others from the bottom),
