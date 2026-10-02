@@ -536,6 +536,34 @@ export class PixelStroke {
     this.shaped = null;
   }
 
+  /** The stroke written into the layer as `commit` does, its undo kept as 512-pixel tiles, only those where the layer
+   *  changed (1.60.7, DEV_PLAN 26.3): a stroke across a large layer keeps the tiles it painted rather than the whole
+   *  rectangle it spanned, before and after. Read and written a tile at a time, so no rectangle-sized copy is made. */
+  commitTiles(): PixelPatch[] {
+    this.compose();
+    const area = this.touched;
+    if (!area) return [];
+    const T = 512, out: PixelPatch[] = [], c = this.raster.ctx;
+    for (let ty = Math.floor(area.y / T) * T; ty < area.y + area.h; ty += T) {
+      for (let tx = Math.floor(area.x / T) * T; tx < area.x + area.w; tx += T) {
+        const x = Math.max(tx, area.x), y = Math.max(ty, area.y), w = Math.min(tx + T, area.x + area.w) - x, h = Math.min(ty + T, area.y + area.h) - y;
+        if (w <= 0 || h <= 0) continue;
+        const before = this.raster.read(x, y, w, h);
+        c.save();
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.globalAlpha = 1;
+        c.globalCompositeOperation = 'source-over';
+        c.clearRect(x, y, w, h);
+        c.drawImage(this.working, x - this.ox, y - this.oy, w, h, x, y, w, h);
+        c.restore();
+        const after = this.raster.read(x, y, w, h);
+        if (!sameBytes(before.data, after.data)) out.push({ raster: this.raster, x, y, before, after });
+      }
+    }
+    this.raster.touch();
+    return out;
+  }
+
   commit(): PixelPatch | null {
     this.compose();
     const area = this.touched;
@@ -552,6 +580,15 @@ export class PixelStroke {
     this.raster.touch();
     return { raster: this.raster, x: area.x, y: area.y, before, after: this.raster.read(area.x, area.y, area.w, area.h) };
   }
+}
+
+/** Whether two pixel buffers hold the same bytes (four at a time; 1.60.7, for undo tiles). */
+function sameBytes(a: Uint8ClampedArray, b: Uint8ClampedArray): boolean {
+  if (a.length !== b.length) return false;
+  const n = a.length >> 2, A = new Uint32Array(a.buffer, a.byteOffset, n), B = new Uint32Array(b.buffer, b.byteOffset, n);
+  for (let i = 0; i < n; i++) if (A[i] !== B[i]) return false;
+  for (let i = n << 2; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
 }
 
 /** The tip with Noise (its soft edge roughened) and Wet Edges (its centre lighter than its rim), as Photoshop's. */

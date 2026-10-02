@@ -3122,7 +3122,11 @@ export class Engine {
       this.refresh();
       return;
     }
-    const patch = st.heal === 'remove' ? this.removePatch(st.s) : st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
+    // A plain stroke on pixels in an 8-bit RGB document keeps its undo as the tiles it changed (1.60.7, DEV_PLAN 26.3);
+    // healing, masks and deep, CMYK or Lab documents keep the whole patch, which their steps below read.
+    const plain = !st.heal && !st.healFrom && st.target === 'pixels' && (st.project.doc.depth ?? 8) <= 8 && st.project.doc.mode !== 'cmyk' && st.project.doc.mode !== 'lab';
+    if (plain) for (const t of st.s.commitTiles()) st.project.history.addPatch(t);
+    const patch = plain ? null : st.heal === 'remove' ? this.removePatch(st.s) : st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
     const dl = patch && st.target === 'pixels' && ((st.project.doc.depth ?? 8) > 8 || st.project.doc.mode === 'cmyk' || st.project.doc.mode === 'lab') ? st.project.layer(st.layerId) : null;
