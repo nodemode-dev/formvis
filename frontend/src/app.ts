@@ -155,6 +155,9 @@ const SHELL = `<div class="cv-app">
 <button class="cv-icon-btn" type="button" data-cmd="fit">${icon('fitView', 16)}</button>
 <span class="cv-sep"></span>
 <button class="cv-icon-btn" type="button" data-cmd="settings">${icon('settings', 16)}</button>
+<button class="cv-icon-btn cv-sheet-btn" type="button" data-cmd="sheet-tools" aria-label="Tools" title="Tools">${icon('tBrush', 16)}</button>
+<button class="cv-icon-btn cv-sheet-btn" type="button" data-cmd="sheet-panels" aria-label="Panels" title="Panels">${icon('layers', 16)}</button>
+<button class="cv-icon-btn cv-sheet-btn" type="button" data-cmd="sheet-props" aria-label="Properties" title="Properties">${icon('panelProps', 16)}</button>
 </div>
 </header>
 <div class="cv-main">
@@ -223,6 +226,22 @@ export function startApp(): void {
   // Screen modes and panels, as Photoshop's (the owner's walkthrough): Standard, Full Screen with Menu Bar (no tabs or
   // status bar), Full Screen (the canvas alone, on black; Esc leaves it); F cycles them; Tab shows or hides the panels.
   // The rail: Quick Mask (Q) below the colours, and its one or two columns (the » at its top), remembered.
+  // The compact layout (1.58.7, L12): under 720 pixels the rail, the panels and the side column are sheets over the
+  // canvas (shell.css), one open at a time from the title bar's buttons; a tap on the canvas closes an open sheet and
+  // paints nothing.
+  type Sheet = 'tools' | 'panels' | 'props';
+  const SHEETS: Sheet[] = ['tools', 'panels', 'props'];
+  const openSheet = (s: Sheet | null): void => {
+    for (const k of SHEETS) {
+      root.classList.toggle(`is-sheet-${k}`, k === s);
+      root.querySelector(`[data-cmd="sheet-${k}"]`)?.classList.toggle('is-on', k === s);
+    }
+  };
+  const sheetOpen = (): boolean => SHEETS.some((k) => root.classList.contains(`is-sheet-${k}`));
+  root.querySelector('.cv-stage')?.addEventListener('pointerdown', (e) => {
+    if (!sheetOpen() || !window.matchMedia('(max-width: 719px)').matches) return;
+    e.stopPropagation(); e.preventDefault(); openSheet(null);
+  }, true);
   type Screen = 'standard' | 'menu' | 'full';
   let screen: Screen = 'standard', panelsHidden = false;
   const applyScreen = (): void => {
@@ -1398,6 +1417,10 @@ export function startApp(): void {
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
     { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
     { id: 'settings', label: 'Preferences...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
+    // The compact layout's sheets (1.58.7): each opens its own and closes the others; again closes it.
+    { id: 'sheet-tools', label: 'Tools Sheet', run: () => openSheet(root.classList.contains('is-sheet-tools') ? null : 'tools') },
+    { id: 'sheet-panels', label: 'Panels Sheet', run: () => openSheet(root.classList.contains('is-sheet-panels') ? null : 'panels') },
+    { id: 'sheet-props', label: 'Properties Sheet', run: () => openSheet(root.classList.contains('is-sheet-props') ? null : 'props') },
     ...ALL_PANELS.map((pn) => ({ id: `panel-${pn.id}`, label: pn.label, checked: () => dock.isShown(pn.id), run: () => dock.toggle(pn.id) })),
     { id: 'merge-columns', label: 'Merge Panel Columns', checked: () => dock.merged, run: () => { if (dock.merged) dock.separate(); else dock.merge(); } },
     // Paths is a tab of the Layers group (Phase 21): Window > Paths shows the group on its Paths tab.

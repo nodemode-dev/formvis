@@ -313,3 +313,32 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-opt-color input[type="color"] { width: 26px; height: 20px; padding: 0; border: 1px solid var(--border-light); border-radius: 4px; background: none; cursor: pointer; }
 .cv-opt-color input[type="color"]::-webkit-color-swatch-wrapper { padding: 1px; }
 .cv-opt-color input[type="color"]::-webkit-color-swatch { border: 0; border-radius: 3px; }
+
+/* The compact layout (1.58.7, the parity plan's L12): under 720 pixels the canvas takes the whole width, and the tool
+   rail, the panels and the side column become sheets over it (the rail from the left, the others from the bottom),
+   opened one at a time from the title bar's buttons; they move by transform alone, so the canvas never reflows. The
+   menu bar and the options bar scroll sideways. The buttons are in the shell from the start and only shown here. */
+.cv-sheet-btn { display: none; }
+.cv-sheet-btn.is-on { color: var(--accent-ink); background: var(--accent-soft); }
+@media (max-width: 719px) {
+  .cv-main { grid-template-columns: 0 minmax(0, 1fr) 0 0 0; }
+  .cv-main > .cv-resizer { display: none; }
+  .cv-main > .cv-rail, .cv-main > .cv-props-col, .cv-main > .cv-layers { position: fixed; z-index: var(--z-chrome); transition: transform 180ms ease; }
+  /* Closed sheets slide clear of the screen with their shadows (and, at the bottom, past the status bar). */
+  .cv-main > .cv-rail { left: 0; top: var(--cv-titlebar-h); bottom: var(--cv-status-h); width: var(--cv-rail-w, 44px); transform: translateX(calc(-100% - 32px)); box-shadow: var(--shadow-lg, 0 8px 24px rgba(0, 0, 0, 0.35)); }
+  .cv-main > .cv-props-col, .cv-main > .cv-layers { left: 0; right: 0; bottom: var(--cv-status-h); height: min(60vh, 520px); overflow-y: auto; overscroll-behavior: contain; transform: translateY(calc(100% + var(--cv-status-h) + 32px)); box-shadow: var(--shadow-lg, 0 -8px 24px rgba(0, 0, 0, 0.35)); border-top: 1px solid var(--border-color); }
+  .cv-app.is-sheet-tools .cv-main > .cv-rail, .cv-app.is-sheet-panels .cv-main > .cv-layers, .cv-app.is-sheet-props .cv-main > .cv-props-col { transform: none; }
+  .cv-sheet-btn { display: grid; }
+  .cv-brand-name { display: none; }
+  /* The title bar keeps undo, redo, Preferences and the sheets; pinching zooms, so the zoom buttons go, and the
+     title tools (theme, command search, workspaces) wait in the menus and Preferences. The menu bar takes the rest
+     and scrolls, and nothing may be wider than the screen (a tap would scroll the page sideways). */
+  .cv-app { overflow: hidden; }
+  .cv-titlebar { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .cv-title-tools, .cv-zoom [data-cmd="zoom-out"], .cv-zoom [data-cmd="zoom-in"], .cv-zoom [data-cmd="fit"], .cv-zoom .cv-zoom-label, .cv-zoom .cv-sep { display: none; }
+  .cv-menubar { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .cv-options { overflow-x: auto; scrollbar-width: none; }
+}
+@media (max-width: 719px) and (prefers-reduced-motion: reduce) {
+  .cv-main > .cv-rail, .cv-main > .cv-props-col, .cv-main > .cv-layers { transition: none; }
+}

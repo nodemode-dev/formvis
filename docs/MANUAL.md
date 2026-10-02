@@ -32,6 +32,9 @@ ask it questions.
   & Cache, File Handling, Cursors, Transparency & Gamut, Units & Rulers, Guides & Grid, and Plugins.
 - On a touch screen, pinch to zoom, drag two fingers to pan and turn them to rotate the view; tap two fingers to undo
   and three to redo. One finger, or a pen with its pressure and tilt, works the tool.
+- On a phone or a window under 720 pixels wide, the canvas takes the whole width; the buttons at the right of the
+  title bar slide the tools, the panels or the properties over it (tap the canvas to close them), and the menu bar
+  scrolls sideways.
 
 ## Layers
 
