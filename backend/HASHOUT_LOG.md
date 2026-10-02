@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The undo store · _v1.60.8 (app/routers/undo.py new; app/main.py)
+
+`/api/undo`: POST keeps the bytes sent (a tile's pixels before and after) deflated with zlib at level 1 under a new 32-hex key and returns it; GET gives them back as sent; DELETE forgets them; keys other than 32 lower-case hex are refused. The folder (`undo` under the data folder) is emptied when the engine starts (`undo.clear()` in main.py, beside the router's inclusion), so nothing outlives its session. Checked through the engine's test client (a 1 MB put stored as 8 KB, given back byte for byte, dropped, then 404; a bad key 400) and through the window's paging in the browser (47 tiles put, all given back and dropped by undo, none left after closing). Nothing removed besides the version lines:
+
+```text
+__version__ = "1.60.7"
+version = "1.60.7"
+version = "1.60.7"
+ "version": "1.60.7",
+```
+
 ## Version only · _v1.60.7
 
 No engine code changed in 1.60.7 (a stroke's undo as tiles, in the window). Removed lines taken after the version edit:

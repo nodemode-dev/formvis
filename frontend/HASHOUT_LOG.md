@@ -2,6 +2,20 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Older undo kept on the engine's disk · _v1.60.8 (engine/history.ts, engine/index.ts, io/api.ts, app.ts; backend routers/undo.py new, main.py)
+
+DEV_PLAN 26.3, second part, so 26.3 is done. The engine keeps an undo store (`/api/undo`: put, get, drop; zlib-deflated in a session folder emptied when it starts), which the app hands the engine core as `undoStore` once the engine answers (the core makes no network calls itself). Once a document's undo tiles hold more than its share of memory (15% of the budget; `undoShareOverride` for checks), `pageOut` sends the oldest (`History.pageable`, the last two steps spared) to the store a tile at a time after edits settle (0.8 s after `refresh`), and lets a tile's pixels go (a pixel's worth kept, the patch marked `paged` with its key and size) only once the store has them; a tile whose document closed or whose step was trimmed while it was on its way has its key dropped rather than attached. Undo and redo run in the order asked through one queue (`historyOp`, `drainHistory`): at once when the step is in the window and nothing waits, else after `pageIn` brings its tiles back (each fetched once however many ask, then dropped from the store); the History panel's jump goes through the same queue. Closing a document and the History trimming a step (`History.onDrop`) drop their stored tiles. Found on the way: the first version let each queued undo run when its own fetch finished, which is only partly ordered (a redo pressed meanwhile on a step still in the window ran at once, before earlier undos), so six quick undos had reached step 2 of 1 after 3 seconds; one queue fixed it. A paging round still uploading when its document closed left 10 tiles in the store; checked after each upload now. Verified in the browser with an 8 MB share, six strokes on a 4,000 by 3,000 layer, each layer compared by hashing every byte: 47 of 70 tiles paged, the window's undo from 122 MB to 41; three undos and a redo pressed quickly over paged steps ending exactly after stroke 4 (1.4 s); four more undos exactly before any stroke (2.9 s), the store emptied as they came back; six redos exactly after stroke 6; the History panel three steps back after paging again exactly after stroke 3; closing the document left no tiles in the store; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+export interface PixelPatch { raster: Raster; x: number; y: number; before: ImageData; after: ImageData }
+      if (this.past.length) this.past.shift();
+      else this.future.shift();
+import { History, type PixelPatch, type Snapshot } from './history';
+  undo(): void {
+  redo(): void {
+export const VERSION = '1.60.7';
+```
+
 ## A stroke's undo as the tiles it changed · _v1.60.7 (engine/stroke.ts, engine/index.ts)
 
 DEV_PLAN 26.3, first part (carried from 26.2). `PixelStroke.commitTiles` writes the stroke into the layer a 512-pixel tile at a time, reading each tile before and after and keeping it for undo only if it changed (`sameBytes`, four bytes at a time), so a stroke keeps the tiles it painted rather than the whole rectangle it spanned, and no rectangle-sized copy is made while committing. `endStroke` uses it for a plain stroke on pixels in an 8-bit RGB document; healing, Remove, masks, and 16-bit, 32-bit, CMYK and Lab documents keep the whole patch, which their steps after it read. Undo and redo apply the tiles as they applied the one patch. Next, 26.3's second part: older undo kept on the engine's disk. Verified in the browser on a 6,000 by 4,000 layer, a diagonal stroke of 41 points: 20 tiles kept, 36 MB, where the rectangle it spans is 158 MB; undo restores the layer and redo gives the stroke back, compared by a hash over every seventh byte of the layer (the tiles are put back by the same putImageData the whole patch used), both for a full-size stroke and a windowed one; no errors. Removed lines taken after the version edit. Removed from frontend:

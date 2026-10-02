@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.60.8 · 2026-10-02
+
+### Changed
+
+- Older undo steps of long painting sessions are kept on disk by formvis's engine once they would take too much memory, and brought back when you undo that far (a fraction of a second a step). Undo and redo always happen in the order you press them.
+
 ## 1.60.7 · 2026-10-02
 
 ### Changed
