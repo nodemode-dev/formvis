@@ -26,6 +26,8 @@ from app.routers import remove_find  # noqa: E402  (Remove's People and Distract
 app.include_router(remove_find.router)
 from app.routers import merge  # noqa: E402  (Photomerge and Merge to HDR, 1.58.2)
 app.include_router(merge.router)
+from app.routers import video  # noqa: E402  (Video Frames to Layers and MP4 export, 1.58.9)
+app.include_router(video.router)
 from app.routers import seam as _seam  # noqa: E402  (1.55.4)
 app.include_router(_seam.router, prefix="/api/seam")   # Content-Aware Scale (1.55.4, M4)
 app.include_router(generative.router, prefix="/api/generative")

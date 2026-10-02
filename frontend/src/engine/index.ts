@@ -6724,6 +6724,20 @@ export class Engine {
     return this.addProject(doc, name, made[made.length - 1]?.id ?? null);
   }
 
+  /** File > Import > Video Frames to Layers (1.58.9, L1), as Photoshop's: a new document of the clip's frames, one
+   *  layer each named Frame 1, Frame 2 and on (the first at the bottom); with `animate`, a frame animation in which
+   *  each frame shows its own layer alone for `delayMs`, the first frame showing. */
+  openFrames(name: string, width: number, height: number, frames: Raster[], delayMs: number, animate: boolean): Project {
+    const made = frames.map((r, i) => newLayer(`Frame ${i + 1}`, { width, height }, { raster: r, transform: docTransform(r.width, r.height), visible: animate ? i === 0 : true }));
+    const doc: Doc = { id: uid(), width, height, resolution: 72, layers: made } as Doc;
+    const p = this.addProject(doc, name, made[animate ? 0 : made.length - 1]?.id ?? null);
+    if (animate && made.length) {
+      const anim: Frame[] = made.map((_, k) => ({ id: uid(), delay: delayMs, state: Object.fromEntries(made.map((l, i) => [l.id, { visible: i === k, opacity: 1, x: l.transform.x, y: l.transform.y }])) }));
+      this.setTimelineFor(p, { frames: anim, current: anim[0].id, loops: 0 });
+    }
+    return p;
+  }
+
   /** The tables of a CMYK project opened from a saved file (1.54.2), fetched by the app once its profile is known. */
   setCmykTables(p: Project, lut: Lut4, inLut: Lut3x4): void {
     p.cmykLut = lut; p.cmykIn = inLut;

@@ -33,6 +33,9 @@ ask it questions.
 - The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included: choose
   it in Preferences > File Handling, with your projects moved there. If a project changed in the library since you
   opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.
+- File > Video Frames to Layers opens a clip's frames (trimmed with From and To, every Nth if you like) as layers of a
+  new document, with a frame animation in the Timeline; File > Export > Video (MP4) and Export GIF write it out. Video
+  needs ffmpeg installed (brew install ffmpeg, winget install ffmpeg), or FORMVIS_FFMPEG pointing at it.
 - On a touch screen, pinch to zoom, drag two fingers to pan and turn them to rotate the view; tap two fingers to undo
   and three to redo. One finger, or a pen with its pressure and tilt, works the tool.
 - On a phone or a window under 720 pixels wide, the canvas takes the whole width; the buttons at the right of the

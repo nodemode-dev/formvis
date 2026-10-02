@@ -52,6 +52,7 @@ import { findToRemove, localInpaint, modelReady, skyMask, skyReady } from './io/
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
 import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
+import { VideoImportDialog } from './ui/panels/video-dialog';
 import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, serialize } from './io/project-io';
@@ -922,6 +923,30 @@ export function startApp(): void {
   }
 
   /** File > Export GIF: every frame of the timeline at full size, or the image as it stands when there are no frames. */
+  /** File > Export > Video (MP4) (1.58.9, L1): each frame of the animation (or the picture, without one) drawn over
+   *  white (video keeps no transparency) and written by the engine's ffmpeg as H.264, each frame for its delay. */
+  async function exportMp4(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const t = engine.timeline, frames = t.frames.length ? t.frames : [null], pngs: Blob[] = [], delays: number[] = [];
+        for (const f of frames) {
+          const s = engine.renderFrame(f);
+          if (!s) return;
+          const flat = createSurface(p.doc.width, p.doc.height), c = ctxOf(flat);
+          c.fillStyle = '#ffffff'; c.fillRect(0, 0, p.doc.width, p.doc.height); c.drawImage(s as CanvasImageSource, 0, 0);
+          pngs.push(await toBlob(flat, 'image/png'));
+          delays.push(f?.delay ?? 0);
+          await new Promise((r) => window.setTimeout(r, 0));
+        }
+        await deliver(await api.encodeVideo(pngs, delays), `${p.name}.mp4`);
+        toast(pngs.length > 1 ? `Exported ${pngs.length} frames as an MP4.` : 'Exported as an MP4.');
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function exportGif(scale = 1): Promise<void> {
     const p = engine.current;
     if (!p) return;
@@ -1319,6 +1344,7 @@ export function startApp(): void {
   const focusAreaDialog = new FocusAreaDialog(engine);   // 1.57.6
   const photomergeDialog = new MergeDialog(engine, 'panorama'), hdrMergeDialog = new MergeDialog(engine, 'hdr');   // 1.58.2
   const vanishingDialog = new VanishingPointDialog(engine);   // 1.58.3
+  const videoDialog = new VideoImportDialog(engine);   // 1.58.9
   const convertDialog = new ConvertProfileDialog(engine, (pr) => cmykLutFor(pr));   // CMYK's tables (1.57.9)
   const colourDialogs = { assign: new AssignProfileDialog(engine, (pr) => cmykLutFor(pr), () => convertDialog.show()), convert: convertDialog, proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
   void pluginHost.loadAll();
@@ -1358,6 +1384,8 @@ export function startApp(): void {
     ...Array.from({ length: 10 }, (_, i) => ({ id: `recent-${i}`, label: () => recent[i] ?? '', enabled: () => i < recent.length, run: () => { const n = recent[i]; if (n) void openLibrary(n); } })),
     { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
     { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
+    { id: 'import-video', label: 'Video Frames to Layers...', run: () => videoDialog.show() },   // 1.58.9, L1
+    { id: 'export-mp4', label: 'Video (MP4)...', enabled: () => !!engine.current, run: () => void exportMp4() },
     { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
     { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
@@ -1625,8 +1653,8 @@ export function startApp(): void {
   );
 
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
-      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
+    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
     { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',

@@ -226,6 +226,24 @@ export const api = {
   },
   /** A CMYK file's ink and embedded profile, or null when the file is not CMYK. */
   /** A CMYK PSD's layers as ink (1.56.1, DEV_PLAN 22.8), read by the engine's psd-tools; null when the file is not one. */
+  /** A clip's size, frame rate, length and frame count, read by the engine's ffmpeg (1.58.9, L1). */
+  async videoProbe(file: File): Promise<{ width: number; height: number; fps: number; duration: number; frames: number }> {
+    return (await (await request('/video/probe', { method: 'POST', body: form({}, [{ name: file.name, blob: file }], 'file') })).json()) as { width: number; height: number; fps: number; duration: number; frames: number };
+  },
+  /** A clip's frames from `start` to `end` seconds (0: to the end), every `every`th, decoded by the engine's ffmpeg. */
+  async videoFrames(file: File, start: number, end: number, every: number): Promise<{ width: number; height: number; fps: number; delayMs: number; frames: Blob[] }> {
+    const r = await request('/video/frames', { method: 'POST', body: form({ start: String(start), end: String(end), every: String(every) }, [{ name: file.name, blob: file }], 'file') });
+    const b = new Uint8Array(await r.arrayBuffer()), n = b[0] | (b[1] << 8) | (b[2] << 16) | (b[3] << 24);
+    const head = JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + n))) as { width: number; height: number; fps: number; delayMs: number; sizes: number[] };
+    let at = 4 + n;
+    const frames = head.sizes.map((s) => { const blob = new Blob([b.slice(at, at + s)], { type: 'image/png' }); at += s; return blob; });
+    return { width: head.width, height: head.height, fps: head.fps, delayMs: head.delayMs, frames };
+  },
+  /** An H.264 MP4 from frames (PNG) and their delays in milliseconds, written by the engine's ffmpeg (1.58.9). */
+  async encodeVideo(frames: Blob[], delays: number[]): Promise<Blob> {
+    const body = form({ delays: JSON.stringify(delays) }, frames.map((blob, i) => ({ name: `f${i}.png`, blob })), 'file');
+    return (await request('/video/encode', { method: 'POST', body })).blob();
+  },
   /** File > Automate > Photomerge (1.58.2): the photos stitched by the engine's OpenCV, transparent where none reaches
    *  (or cropped); `stitched` says how many of them the stitch kept, as "kept/given". */
   async mergePanorama(files: File[], layout: 'auto' | 'reposition', crop: boolean): Promise<{ png: Blob; stitched: string }> {
