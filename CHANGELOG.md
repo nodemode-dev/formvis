@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.58.4 · 2026-10-01
+
+More generation providers (the parity plan's L7).
+
+### Added
+
+- Edit > Generate Image works with OpenAI (GPT Image), Google (Gemini image), Black Forest Labs (FLUX1.1 [pro]) and Ideogram (Ideogram 3.0) beside fal, each with its own API key, entered in the dialog and kept in your system's password store (or taken from the provider's usual environment variable).
+- The engine can also fill a masked area through OpenAI or Black Forest Labs.
+
+### Known
+
+- Tested here against stand-in servers that answer as each provider documents; trying them with real keys is yours.
+
 ## 1.58.3 · 2026-10-01
 
 Vanishing Point (the parity plan's L6, second part, which closes the row).
