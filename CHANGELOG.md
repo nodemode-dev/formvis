@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.60.7 · 2026-10-02
+
+### Changed
+
+- Undo keeps far less for long strokes: only the parts of the picture a stroke changed, not the whole rectangle it spanned (a diagonal stroke across a 24 megapixel layer: 36 MB rather than 158).
+
 ## 1.60.6 · 2026-10-02
 
 ### Changed
