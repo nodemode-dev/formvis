@@ -2,6 +2,53 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Strokes in a window on large layers · _v1.60.6 (engine/stroke.ts, engine/renderer.ts, engine/index.ts)
+
+DEV_PLAN 26.2, the stroke's surfaces bounded. On a layer of more than 16 megapixels (`strokeWindowFrom`, settable so a check can force either way) a pixel stroke keeps its working, paint, selection and texture surfaces only over a window around where it paints, in layer pixels from (`ox`, `oy`): opened at its first dab and grown before any dab that would fall outside it (`ensure`: the union with half again around it, at least 512 pixels, within the layer), its surfaces remade with what they held (the working surface takes the layer's pixels where the window is new, then its old pixels by 'copy' inside the old window) and the old ones shrunk to nothing; each growth asks the engine (`canGrow`, the memory budget with the stroke counted), and a refusal stops the stroke there, which the engine then says. Drawing goes through `toWin` (the window's translation before `toLocal`); bounds stay in layer pixels; `compose` frames, the selection and texture matrices, the working update (the layer's pixels read at their own place), `commit` and `coverageAlpha` are offset by the window; dab bounds come before the dab (an off-layer dab still takes its tip, so Color Dynamics' sequence holds). A Brush Settings shape, Wet Edges (`setShape`) and Quick Mask (`keepWhole`, its working surface read whole) keep surfaces the layer's size, as do smaller layers and mask strokes. The display: the override carries a windowed stroke as a `patch`; the renderer draws a patched layer through its buffered path, the layer's pixels and then the patch with 'copy' clipped to the window (`patchIn`), likewise for a clipping base, and keeps it from the effects cache; the GPU display hands that document to the CPU while the stroke lasts. The engine asks room for a first window around the brush rather than the whole layer, and counts the stroke in progress. Not done here: undo patches as tiles (the stroke's patch is still its touched rectangle). Verified in the browser: the same strokes windowed and full-size byte for byte equal through the engine's stroke calls (soft round, hard round, pencil, eraser on a filled layer, inside a selection, one long stroke regrowing the window, and in the far corner of a 6,000 by 4,000 layer with the window at 3,862, 2,362, with and without a selection); by real input, the canvas mid-stroke red on the stroke and the layer's own blue far from it and just outside the window, the layer red there after; on the 4 GB test machine, a stroke across the 150 MP document begun, laid and committed (the count's peak 1,415 MB of 1,800), where 1.60.5 refused it and 1.60.1 lost the page; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import { PixelStroke, spareBytes, warmStrokeSurfaces } from './stroke';
+    if (st && st.project === p) m.set(st.layerId, { ...(m.get(st.layerId) ?? {}), ...(st.target === 'pixels' ? { source: st.s.working } : { maskSource: st.s.working }) });
+    return n + spareBytes();   // the strokes' spare surfaces, kept for speed (1.60.5, capped at 256 MB)
+    if (!this.room(this.layerBytes() * (p.selection ? 3 : 2) + fresh, 'This stroke')) return false;
+export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number; effects?: LayerEffects | null }
+      const parts = styled && !base && !folders.length && !ov?.source && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height) : null;
+      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts) && !blendIf && !knock) {
+    if (ov?.source || ov?.maskSource || ov?.transform || !layer.raster) return null;
+  /** The layer's pixels with the stroke so far composed in. */
+  readonly working: Surface;
+  private readonly workingCtx: Ctx2D;
+  private readonly paint: Surface;
+  private readonly paintCtx: Ctx2D;
+  private readonly masked: Surface | null;
+    this.working = takeSurface(raster.width, raster.height);
+    this.workingCtx.drawImage(raster.canvas, 0, 0);
+    this.paint = takeSurface(raster.width, raster.height);
+    this.masked = selection ? takeSurface(raster.width, raster.height) : null;
+    setMat(this.paintCtx, this.toLocal);
+    this.wetMark(this.toLocal, p.x, p.y, rx, ry);
+    const corners = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([ox, oy]) => applyMat(this.toLocal, p.x + ox, p.y + oy));
+    const box = integral(boundsOf(corners));
+    const hit = intersectRect({ x: box.x - 1, y: box.y - 1, w: box.w + 2, h: box.h + 2 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
+    if (!hit) return;
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    const cx = Math.floor(c.x) + 0.5, cy = Math.floor(c.y) + 0.5, rr = r <= 0.75 ? 0.5 : r;
+      this.shaped ??= takeSurface(this.raster.width, this.raster.height);
+      openFrame(c, area);
+          const k = this.shape.texture.scale / 100, m = mul(this.toLocal, [k, 0, 0, k, 0, 0]);
+          c.fillRect(area.x, area.y, area.w, area.h);
+      openFrame(c, area);
+      setMat(c, mul(this.toLocal, translation(this.selection.x, this.selection.y)));
+      this.textured ??= takeSurface(this.raster.width, this.raster.height);
+      openFrame(c, area);
+      setMat(c, mul(this.toLocal, translation(-this.texture.dx, -this.texture.dy)));
+    const w = this.workingCtx, { x, y, w: aw, h: ah } = area;
+    w.drawImage(this.raster.canvas, x, y, aw, ah, x, y, aw, ah);
+    c.drawImage(this.paint, 0, 0);
+    c.drawImage(this.working, area.x, area.y, area.w, area.h, area.x, area.y, area.w, area.h);
+export const VERSION = '1.60.5';
+```
+
 ## The opening snapshot in proportion, the stroke pool capped, the count as found · _v1.60.5 (engine/index.ts, engine/stroke.ts)
 
 DEV_PLAN 26.2, continued. Every large canvas made while a document opened was watched (a probe wrapping the canvas constructors with the code path that made each): there were two, the layer and the History panel's opening snapshot, a copy of every pixel (`copyDoc`), taken for any document up to a fixed 768 MB whatever the computer. 1.60.4 had read that copy as a second copy of each layer in the display. The opening snapshot is now skipped past a quarter of the memory budget, with a note (New Snapshot still takes one, and now asks for room); the count is each raster once, the display once, the snapshots it holds, the undo history's extra, and the strokes' spare surfaces. A stroke had grown the browser 620 MB against 263 counted: its working and paint surfaces stayed in a pool of up to four full-size spares kept for speed (35 ms to make against 5 ms to clear at 12 MP), which for a 150 MP layer could be 2.3 GB; the pool now holds at most 256 MB (a larger surface never kept, one dropped shrunk to nothing so its memory comes back at once), counted by the engine (`spareBytes`), and a stroke asks room for its working and paint surfaces (a third with a selection) and a first stroke's new layer. Not done here: the stroke's surfaces bounded to the tiles it touches (they are still each the layer's size). Verified on the 4 GB test machine, run detached with a log: the 150 MP document now grows the browser 1,076 MB (1,592 before), counted 1,144; a 6,000 by 6,000 document 377 counted 412; a stroke on a new layer of it 483 counted 401; unit 188; no errors. Removed lines taken after the version edit. Removed from frontend:

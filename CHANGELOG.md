@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.60.6 · 2026-10-02
+
+### Changed
+
+- Painting on very large layers (past 16 megapixels) uses memory only around where you paint rather than the whole layer's size again, so a 150 megapixel picture can be painted on a computer with 4 GB of memory. The result is the same, pixel for pixel. If a stroke would run past what this computer allows, it stops there and says so.
+
 ## 1.60.5 · 2026-10-02
 
 ### Changed
