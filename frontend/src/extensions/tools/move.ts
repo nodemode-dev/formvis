@@ -7,13 +7,16 @@ const ROTATE_PX = 24;
 const CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'];
 
 function editable(ctx: ToolContext): Transform | null {
-  const e = ctx.engine, te = e.transformEdit;
-  if (te) return te.draft;
+  const e = ctx.engine, te = e.transformEdit, p = e.current;
+  // A layer placed by the video timeline's Position keyframes has its box where it is seen (1.59.9); the engine takes
+  // the pointer back by the same offset, so the edit itself is in the layer's own coordinates.
+  const seen = (id: string, t: Transform): Transform => { if (!p) return t; const o = e.keyedOffset(p, id); return o.dx || o.dy ? { ...t, x: t.x + o.dx, y: t.y + o.dy } : t; };
+  if (te) return te.group || te.mask ? te.draft : seen(te.layerId, te.draft);
   const box = e.groupBox();
   if (box) return box;
   const l = e.activeLayer;
   if (!l || l.isGroup || !l.raster) return null;
-  return e.transformsMask(l) ? l.mask?.placement ?? l.transform : l.transform;
+  return e.transformsMask(l) ? l.mask?.placement ?? l.transform : seen(l.id, l.transform);
 }
 
 /** the free distort: the corner under the pointer in handle order (top-left, top-right, bottom-right,

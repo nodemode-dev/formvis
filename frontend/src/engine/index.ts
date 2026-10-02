@@ -8,7 +8,7 @@ import { composeFloat, setStyleDrawer } from './compose-float';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
-import { newVideoTimeline, sampleToFrames, stateAt, type VideoTimeline } from './video-timeline';
+import { newVideoTimeline, sampleToFrames, stateAt, valueAt, type VideoTimeline } from './video-timeline';
 import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
 export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
@@ -2035,8 +2035,10 @@ export class Engine {
     if (st && st.project === p) m.set(st.layerId, { ...(m.get(st.layerId) ?? {}), ...(st.target === 'pixels' ? { source: st.s.working } : { maskSource: st.s.working }) });
     const te = this.transformEdit;
     if (te && te.project === p) {
-      if (te.group) for (const [id, orig] of te.group.originals) m.set(id, { ...(m.get(id) ?? {}), transform: following(orig, te.group.box, te.draft) });
-      else m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), ...(te.mask ? { maskPlacement: te.draft } : { transform: te.draft }) });
+      // A keyed layer's draft shown where its keys place it (1.59.9), so the drag follows the layer as seen.
+      const keyed = (id: ID, t: Transform): Transform => { const o = this.keyedOffset(p, id); return o.dx || o.dy ? { ...t, x: t.x + o.dx, y: t.y + o.dy } : t; };
+      if (te.group) for (const [id, orig] of te.group.originals) m.set(id, { ...(m.get(id) ?? {}), transform: keyed(id, following(orig, te.group.box, te.draft)) });
+      else m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), ...(te.mask ? { maskPlacement: te.draft } : { transform: keyed(te.layerId, te.draft) }) });
     }
     const dz = this.distortEdit;
     if (dz && dz.project === p) {
@@ -3681,6 +3683,9 @@ export class Engine {
     const p = this.current;
     const l = p?.activeLayer;
     if (!p || !l || this.stroke) return false;
+    // A keyed layer is edited in its own coordinates (1.59.9): its box is shown where the keys place it, so the
+    // pointer is taken back by that offset here and in updateTransform; the display adds it once.
+    if (!this.groupMembers(p).length && !this.transformsMask(l)) { const o = this.keyedOffset(p, l.id); start = { x: start.x - o.dx, y: start.y - o.dy }; }
     if (this.locked(l, 'position')) return false;
     const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
     if (box) {
@@ -3699,6 +3704,7 @@ export class Engine {
   updateTransform(pt: Pt, shift: boolean, alt: boolean): void {
     const te = this.transformEdit;
     if (!te) return;
+    if (!te.group && !te.mask) { const o = this.keyedOffset(te.project, te.layerId); pt = { x: pt.x - o.dx, y: pt.y - o.dy }; }   // 1.59.9
     te.draft = dragged(te.original, te.start, pt, te.mode, this.lockRatio, shift, alt);
     if (te.mode.kind === 'move' && this.snapping) te.draft = this.snapMove(te.project, te.layerId, te.draft, te.group ? new Set(te.group.originals.keys()) : undefined);
     else this.snapGuides = null;
@@ -3751,6 +3757,10 @@ export class Engine {
       return;
     }
     const name = te.mode.kind === 'move' ? 'Move Layer' : te.mode.kind === 'rotate' ? 'Rotate Layer' : 'Transform Layer';
+    if (te.mode.kind === 'move' && !te.group) {   // a layer with Position keyframes keys its new place (1.59.9)
+      const l0 = te.project.layer(te.layerId);
+      if (l0 && this.keyMove(te.layerId, next.x - l0.transform.x, next.y - l0.transform.y, name)) return;
+    }
     this.edit(name, (p) => {
       const l = p.layer(te.layerId);
       if (!l) return false;
@@ -4184,8 +4194,45 @@ export class Engine {
 
   cancelTransform(): void { this.snapGuides = null; if (this.transformEdit) { this.transformEdit = null; this.emit('render', null); this.emit('options', null); } }
 
+  /** How far the video timeline places layer `id` from its own position at the playhead (its Position keyframes), so a
+   *  drag's preview starts where the layer is seen (1.59.9). Zero without keyframes. */
+  keyedOffset(p: Project, id: ID): { dx: number; dy: number } {
+    const vt = this.timelines.get(p)?.video, tr = vt?.tracks[id], l = p.layer(id);
+    if (!vt || !tr || !l) return { dx: 0, dy: 0 };
+    return { dx: tr.keys.x?.length ? valueAt(tr.keys.x, vt.current, l.transform.x) - l.transform.x : 0, dy: tr.keys.y?.length ? valueAt(tr.keys.y, vt.current, l.transform.y) - l.transform.y : 0 };
+  }
+
+  /** A move keyed (1.59.9), as Photoshop's: a layer whose Position X or Y has keyframes moves by keying its new place at
+   *  the playhead (an axis without keyframes moves the layer itself), all one step named `name`. False when the layer
+   *  has no Position keyframes, for the caller to move it as ever. */
+  keyMove(id: ID, dx: number, dy: number, name: string): boolean {
+    const p = this.current, vt = this.video, tr = vt?.tracks[id], l = p?.layer(id);
+    if (!p || !vt || !tr || !l || (!tr.keys.x?.length && !tr.keys.y?.length) || (!dx && !dy)) return false;
+    p.history.begin(name, { ...p.snapshot(), video: structuredClone(vt) });
+    try {
+      this.editVideo((v) => {
+        const t = v.tracks[id];
+        if (!t) return;
+        for (const [prop, d, base] of [['x', dx, l.transform.x], ['y', dy, l.transform.y]] as const) {
+          const ks = t.keys[prop];
+          if (!ks?.length || !d) continue;
+          const val = valueAt(ks, v.current, base) + d, at = ks.find((k) => k.t === v.current);
+          if (at) at.v = val; else { ks.push({ t: v.current, v: val, interp: 'linear' }); ks.sort((a, b) => a.t - b.t); }
+        }
+      }, name);
+      const fx = tr.keys.x?.length ? 0 : dx, fy = tr.keys.y?.length ? 0 : dy;
+      if (fx || fy) this.edit(name, (q) => { const ll = q.layer(id); if (!ll) return false; const t = { ...ll.transform, x: ll.transform.x + fx, y: ll.transform.y + fy }; q.updateLayer(id, { transform: t, mask: followMask(ll, t) }); return true; });
+    } finally {
+      p.history.end({ ...p.snapshot(), video: structuredClone(this.video) });
+      this.refresh();
+    }
+    return true;
+  }
+
   nudge(dx: number, dy: number): void {
     if (this.locked(this.activeLayer, 'position')) return;
+    const sel = this.current?.selectedIds, one = sel && sel.size === 1 ? [...sel][0] : null;   // a keyed layer keys (1.59.9)
+    if (one && this.keyMove(one, dx, dy, 'Nudge')) return;
     this.edit('Nudge', (p) => {
       let moved = false;
       for (const id of p.selectedIds) {
