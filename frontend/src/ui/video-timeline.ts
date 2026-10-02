@@ -83,15 +83,8 @@ export class VideoTimelinePanel {
   /** Split at Playhead, as Photoshop's: the active layer's clip ends at the playhead, and a copy of the layer carries
    *  on from it with the rest of the clip and the same keyframes. */
   private split(): void {
-    const e = this.engine, vt = e.video, p = e.current, id = p?.activeId;
-    if (!vt || !p || !id) return;
-    const tr = vt.tracks[id], ph = vt.current;
-    if (!tr || ph <= tr.start || ph >= tr.start + tr.length) return;
-    const before = new Set(p.doc.layers.map((l) => l.id));
-    e.duplicateLayers();
-    const copy = e.current?.doc.layers.find((l) => !before.has(l.id));
-    if (!copy) return;
-    e.editVideo((v) => { const t = v.tracks[id]; v.tracks[copy.id] = { ...structuredClone(t), start: ph, length: t.start + t.length - ph }; t.length = ph - t.start; }, 'Split at Playhead');
+    const e = this.engine, vt = e.video, id = e.current?.activeId;   // the engine's since 1.59.7
+    if (vt && id) e.splitClip(id, vt.current);
   }
 
   private toggle(b: HTMLButtonElement): void { if (this.playing) this.stop(b); else this.play(b); }
@@ -279,39 +272,17 @@ export class VideoTimelinePanel {
 
   /** Fade In, Fade Out or both on the selected layer's clip, over `frames` (0 removes them), as one step. */
   private fade(frames: number, inn: boolean, out: boolean): void {
-    const id = this.engine.current?.activeId, vt = this.engine.video;
-    if (!id || !vt?.tracks[id]) { this.engine.notice('Select a layer with a clip in the timeline.'); return; }
-    this.engine.editVideo((v) => {
-      const t = v.tracks[id];
-      if (!t) return;
-      const f = Math.min(frames, t.length);
-      if (inn) t.fadeIn = f > 0 ? { frames: f } : null;
-      if (out) t.fadeOut = f > 0 ? { frames: f } : null;
-    }, frames > 0 ? 'Add Transition' : 'Remove Transition');
+    const id = this.engine.current?.activeId;   // the engine's since 1.59.7, which the MCP tools share
+    if (!id || !this.engine.fadeClip(id, frames, inn, out)) this.engine.notice('Select a layer with a clip in the timeline.');
   }
 
   /** Cross Fade, as Photoshop's: with the clip overlapping the selected one most, over their overlap. Only the upper of
    *  the two fades (in when it starts later, out when it ends first), so the lower shows through and the picture never
    *  dips. */
   private crossFade(): void {
-    const e = this.engine, vt = e.video, p = e.current, id = p?.activeId;
-    const a = id ? vt?.tracks[id] : undefined;
-    if (!vt || !p || !id || !a) { e.notice('Select a layer with a clip in the timeline.'); return; }
-    let best: { id: string; len: number } | null = null;
-    for (const [other, b] of Object.entries(vt.tracks)) {
-      if (other === id) continue;
-      // Only a clip that starts or ends within this one makes a transition with it; one covering it whole does not.
-      const covers = b.start <= a.start && b.start + b.length >= a.start + a.length;
-      const len = Math.min(a.start + a.length, b.start + b.length) - Math.max(a.start, b.start);
-      if (len > 0 && !covers && (!best || len > best.len)) best = { id: other, len };
-    }
-    if (!best) { e.notice('Cross Fade needs another clip that starts or ends within this one.'); return; }
-    const order = p.doc.layers.map((l) => l.id), upper = order.indexOf(id) > order.indexOf(best.id) ? id : best.id, lower = upper === id ? best.id : id, len = best.len;
-    e.editVideo((v) => {
-      const u = v.tracks[upper], l = v.tracks[lower];
-      if (!u || !l) return;
-      if (u.start >= l.start) u.fadeIn = { frames: len }; else u.fadeOut = { frames: len };
-    }, 'Add Transition');
+    const id = this.engine.current?.activeId;   // the engine's since 1.59.7, which the MCP tools share
+    const why = id ? this.engine.crossFade(id) : 'Select a layer with a clip in the timeline.';
+    if (why) this.engine.notice(why);
   }
 
   private makeClip(id: string): HTMLElement {

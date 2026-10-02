@@ -3,6 +3,7 @@ import { api } from '../io/api';
 import { PARAM_KINDS } from '../engine/adjust-params';
 import { LIMITS } from '../engine/types';
 import { decodeImage } from '../io/images';
+import { VIDEO_PROPS, type VideoProp, type VideoTimeline } from '../engine/video-timeline';
 import { localFill, localInpaint, localModels, localUpscale, modelReady, runLocal } from '../io/local-gen';
 
 /** Outside agents in the window (1.52.1): while Allow outside agents is on (Preferences > Plugins), the window collects
@@ -14,6 +15,8 @@ export interface AgentDeps {
   // 1.53.3: what the app does that the engine alone does not (File > Open, the .fmv file, filters without their dialog, Select Subject, Remove Background).
   openFile?(file: File): Promise<void>; projectBlob?(): Promise<Blob | null>; applyFilter?(kind: string, settings: Record<string, unknown>): Promise<boolean> | boolean;
   selectSubject?(): Promise<void>; removeBackground?(): Promise<void>;
+  // 1.59.7, DEV_PLAN 25.5: Render Video's file, for timeline_render.
+  renderVideo?(c: { format: 'mp4' | 'gif' | 'png'; from: number; to: number; scale: number }): Promise<Blob | null>;
 }
 
 const text = (t: string, data?: Record<string, unknown>): McpResult => ({ content: [{ type: 'text', text: t }], ...(data ? { structuredContent: data } : {}) });
@@ -151,6 +154,89 @@ export class AgentBridge {
         case '__project': {
           const blob = await this.deps.projectBlob?.();
           return blob ? text('The project, as a .fmv file.', { data: await b64(blob) }) : fail('formvis could not pack the project.');
+        }
+        // The video timeline (1.59.7, DEV_PLAN 25.5), as Photon Studio's timeline operations; each edit one undoable step.
+        case 'timeline_get': {
+          const vt = e.video;
+          if (!vt) return text('The document has no video timeline: timeline_create makes one.', { timeline: null });
+          const data = { fps: vt.fps, frames: vt.duration, seconds: +(vt.duration / vt.fps).toFixed(3), current: vt.current, work_in: vt.workIn, work_out: vt.workOut, loops: vt.loops,
+            tracks: [...p.doc.layers].reverse().filter((l) => vt.tracks[l.id]).map((l) => { const t = vt.tracks[l.id]; return { id: l.id, name: l.name, start: t.start, length: t.length, fade_in: t.fadeIn?.frames ?? 0, fade_out: t.fadeOut?.frames ?? 0,
+              keyframes: Object.fromEntries(Object.entries(t.keys).map(([k, ks]) => [k, (ks ?? []).map((x) => ({ frame: x.t, value: x.v, interpolation: x.interp }))])) }; }) };
+          return text(JSON.stringify(data), data);
+        }
+        case 'timeline_create': {
+          if (e.video) return fail('The document has a video timeline already: timeline_get shows it.');
+          if (e.timeline.frames.length) return fail('The document has a frame animation; a document has one or the other.');
+          e.createVideoTimeline(Math.min(240, Math.max(1, num('fps', 30))), Math.min(3600, Math.max(0.1, num('seconds', 5))));
+          const vt = e.video as VideoTimeline | null;   // read afresh: the check above narrowed e.video to null
+          return vt ? text(`Created a video timeline: ${vt.fps} frames a second, ${vt.duration} frames, a track per layer.`) : fail('Could not create a video timeline.');
+        }
+        case 'timeline_delete': return e.deleteVideoTimeline() ? text('Deleted the video timeline; the layers stay.') : fail('The document has no video timeline.');
+        case 'timeline_set': case 'timeline_go_to': case 'timeline_clip': case 'timeline_split': case 'timeline_keyframe': case 'timeline_transition': case 'timeline_frame_image': case '__render': {
+          const vt = e.video;
+          if (!vt) return fail('The document has no video timeline: call timeline_create first.');
+          const frame = (k: string, d: number): number => Math.round(num(k, d));
+          if (name === 'timeline_set') {
+            const fps = Math.min(240, Math.max(1, num('fps', vt.fps))), secs = Math.min(3600, Math.max(0.01, num('seconds', vt.duration / vt.fps)));
+            e.editVideo((v) => {
+              v.fps = fps; v.duration = Math.max(1, Math.round(fps * secs));
+              v.workIn = Math.min(v.duration - 1, Math.max(0, frame('work_in', Math.min(v.workIn, v.duration - 1))));
+              v.workOut = Math.min(v.duration, Math.max(v.workIn + 1, frame('work_out', Math.min(v.workOut, v.duration))));
+              v.loops = Math.max(0, frame('loops', v.loops)); v.current = Math.min(v.current, v.duration - 1);
+            }, 'Set Timeline');
+            const v = e.video as typeof vt;
+            return text(`${v.fps} frames a second, ${v.duration} frames, the work area ${v.workIn} to ${v.workOut}.`);
+          }
+          if (name === 'timeline_go_to') { e.setVideoTime(frame('frame', vt.current)); return text(`The playhead is at frame ${e.video?.current}.`); }
+          if (name === 'timeline_frame_image') {
+            const f = Math.min(vt.duration - 1, Math.max(0, frame('frame', vt.current))), s = e.renderVideoFrame(f);
+            if (!s) return fail('Nothing to show.');
+            const k = Math.min(1, num('max_size', 1024) / Math.max(s.width, s.height)), out = createSurface(Math.max(1, Math.round(s.width * k)), Math.max(1, Math.round(s.height * k)));
+            ctxOf(out).drawImage(s as CanvasImageSource, 0, 0, out.width, out.height);
+            return { content: [{ type: 'image', data: await b64(await toBlob(out)), mimeType: 'image/png' }, { type: 'text', text: `Frame ${f}, shown at ${out.width} by ${out.height}.` }] };
+          }
+          if (name === '__render') {   // timeline_render: the engine writes the file at its path
+            if (!this.deps.renderVideo) return fail('formvis cannot render video for agents here.');
+            const from = Math.min(vt.duration - 1, Math.max(0, frame('from', 0))), to = Math.min(vt.duration, Math.max(from + 1, frame('to', vt.duration)));
+            const fmt = str('format'), blob = await this.deps.renderVideo({ format: fmt === 'gif' || fmt === 'png' ? fmt : 'mp4', from, to, scale: [1, 0.5, 0.25].includes(num('scale', 1)) ? num('scale', 1) : 1 });
+            return blob ? text(`Rendered ${to - from} frames.`, { data: await b64(blob) }) : fail('Nothing was rendered.');
+          }
+          const l = layerOf(), tr = vt.tracks[l.id];
+          if (!tr) return fail(`${l.name} has no track in the timeline.`);
+          if (name === 'timeline_clip') {
+            e.editVideo((v) => { const t = v.tracks[l.id]; if (!t) return; t.start = Math.min(v.duration - 1, Math.max(-v.duration, frame('start', t.start))); t.length = Math.max(1, frame('length', t.length)); }, 'Move Clip');
+            const t = e.video?.tracks[l.id];
+            return text(`${l.name}'s clip runs from frame ${t?.start} for ${t?.length} frames.`);
+          }
+          if (name === 'timeline_split') {
+            const at = frame('frame', vt.current), copy = e.splitClip(l.id, at);
+            return copy ? text(`Split ${l.name} at frame ${at}; the rest is the layer ${copy}.`, { id: copy }) : fail(`Frame ${at} is not inside ${l.name}'s clip (${tr.start} to ${tr.start + tr.length}).`);
+          }
+          if (name === 'timeline_transition') {
+            const kind = str('kind'), len = Math.max(1, Math.round(num('seconds', 1) * vt.fps));
+            if (kind === 'cross_fade') { const why = e.crossFade(l.id); return why ? fail(why) : text(`Cross faded ${l.name}.`); }
+            const ok = kind === 'remove' ? e.fadeClip(l.id, 0, true, true) : e.fadeClip(l.id, len, kind !== 'fade_out', kind !== 'fade_in');
+            return ok ? text(kind === 'remove' ? `Removed ${l.name}'s transitions.` : `${l.name} fades ${kind === 'fade_in' ? 'in' : kind === 'fade_out' ? 'out' : 'in and out'} over ${len} frames.`) : fail('Could not change the transition.');
+          }
+          // timeline_keyframe
+          const prop = str('property') as VideoProp;
+          if (!VIDEO_PROPS.includes(prop)) return fail('property is one of x, y, opacity, fill, style.');
+          const at = Math.min(vt.duration - 1, Math.max(0, frame('frame', vt.current)));
+          if (a.clear === true) { e.editVideo((v) => { const t = v.tracks[l.id]; if (t) delete t.keys[prop]; }, 'Keyframe Animation'); return text(`Cleared ${l.name}'s ${prop} keyframes.`); }
+          if (a.delete === true) {
+            if (!(tr.keys[prop] ?? []).some((k) => k.t === at)) return fail(`${l.name} has no ${prop} keyframe at frame ${at}.`);
+            e.editVideo((v) => { const t = v.tracks[l.id]; if (!t) return; t.keys[prop] = (t.keys[prop] ?? []).filter((k) => k.t !== at); if (!t.keys[prop]?.length) delete t.keys[prop]; }, 'Delete Keyframe');
+            return text(`Deleted ${l.name}'s ${prop} keyframe at frame ${at}.`);
+          }
+          if (typeof a.value !== 'number' || !Number.isFinite(a.value)) return fail('value is required: pixels for x and y, 0 to 1 for opacity and fill, 1 or 0 for style.');
+          const raw = a.value as number, value = prop === 'opacity' || prop === 'fill' ? Math.min(1, Math.max(0, raw)) : prop === 'style' ? (raw >= 0.5 ? 1 : 0) : raw, interp = str('interpolation') === 'hold' ? 'hold' as const : 'linear' as const;
+          e.editVideo((v) => {
+            const t = v.tracks[l.id];
+            if (!t) return;
+            const ks = (t.keys[prop] ??= []), k = ks.find((x) => x.t === at);
+            if (k) { k.v = value; k.interp = interp; } else { ks.push({ t: at, v: value, interp }); ks.sort((x, y) => x.t - y.t); }
+          }, 'Make Keyframe');
+          return text(`Keyed ${l.name}'s ${prop} at frame ${at}: ${value} (${interp}).`);
         }
         case '__export': {
           const t = (['image/png', 'image/jpeg', 'image/webp'].includes(str('type')) ? str('type') : 'image/png') as 'image/png';

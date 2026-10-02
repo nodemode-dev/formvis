@@ -42,7 +42,8 @@ ask it questions.
   Open a track (its arrow) for its keyframe lanes: turn on a lane's stopwatch, move the playhead, and type a value to
   key it there; the diamonds drag in time, and a right-click holds a value until the next keyframe. Add Transition
   fades the selected clip in or out, or cross fades it with a clip overlapping it; Render (or File > Export > Render
-  Video) writes MP4, GIF or a PNG sequence, all of it or a range, at full, half or quarter size.
+  Video) writes MP4, GIF or a PNG sequence, all of it or a range, at full, half or quarter size. Agents connected to
+  formvis's MCP server can do all of this too (the timeline_ tools), each change an ordinary undo step.
 - On a touch screen, pinch to zoom, drag two fingers to pan and turn them to rotate the view; tap two fingers to undo
   and three to redo. One finger, or a pen with its pressure and tilt, works the tool.
 - On a phone or a window under 720 pixels wide, the canvas takes the whole width; the buttons at the right of the

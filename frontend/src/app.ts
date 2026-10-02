@@ -959,13 +959,22 @@ export function startApp(): void {
   /** File > Export > Render Video (1.59.6, DEV_PLAN 25.4): the video timeline's frames `from` to `to` (excluded), scaled,
    *  as an H.264 MP4 (over white), a GIF (formvis's encoder) or numbered PNGs in a zip; each frame lasts 1/fps. */
   async function renderVideo(c: RenderChoice): Promise<void> {
+    const p = engine.current, out = await renderVideoBlob(c);
+    if (!p || !out) return;
+    const base = (p.name || 'Untitled').replace(/\.[^.]+$/, '');
+    await deliver(out, c.format === 'gif' ? `${base}.gif` : c.format === 'png' ? `${base}-frames.zip` : `${base}.mp4`);
+    toast(`Rendered ${c.to - c.from} frames.`);
+  }
+
+  /** The rendered file itself (1.59.7), which Render Video delivers and the MCP tool timeline_render writes. */
+  async function renderVideoBlob(c: RenderChoice): Promise<Blob | null> {
     const p = engine.current, vt = engine.video;
-    if (!p || !vt) return;
+    if (!p || !vt) return null;
     const w = Math.max(1, Math.round(p.doc.width * c.scale)), h = Math.max(1, Math.round(p.doc.height * c.scale)), delay = Math.round(1000 / vt.fps);
     const pngs: Blob[] = [], gif: GifFrame[] = [];
     for (let f = c.from; f < c.to; f++) {
       const s = engine.renderVideoFrame(f);
-      if (!s) return;
+      if (!s) return null;
       const flat = createSurface(w, h), g = ctxOf(flat);
       g.imageSmoothingQuality = 'high';
       if (c.format === 'mp4') { g.fillStyle = '#ffffff'; g.fillRect(0, 0, w, h); }
@@ -975,10 +984,9 @@ export function startApp(): void {
       await new Promise((r) => window.setTimeout(r, 0));
     }
     const base = (p.name || 'Untitled').replace(/\.[^.]+$/, '');
-    if (c.format === 'gif') await deliver(new Blob([encodeGif(gif, w, h, vt.loops)], { type: 'image/gif' }), `${base}.gif`);
-    else if (c.format === 'png') await deliver(await api.videoSequence(pngs, base), `${base}-frames.zip`);
-    else await deliver(await api.encodeVideo(pngs, pngs.map(() => delay)), `${base}.mp4`);
-    toast(`Rendered ${c.to - c.from} frames.`);
+    if (c.format === 'gif') return new Blob([encodeGif(gif, w, h, vt.loops)], { type: 'image/gif' });
+    if (c.format === 'png') return api.videoSequence(pngs, base);
+    return api.encodeVideo(pngs, pngs.map(() => delay));
   }
 
   async function exportGif(scale = 1): Promise<void> {
@@ -1358,6 +1366,7 @@ export function startApp(): void {
     allow: () => { savePrefs({ ...loadPrefs(), agentsAllowed: true }); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: true })); },
     // 1.53.3: what agents reach through the app, the same paths as its menus.
     openFile: (f) => openFiles([f]),
+    renderVideo: (c) => renderVideoBlob(c),   // 1.59.7, DEV_PLAN 25.5: timeline_render
     projectBlob: async () => { const p = engine.current; if (!p) return null; engine.settle(); const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p)); return api.package(manifest, files); },
     applyFilter: (kind, settings) => dialogs.filter.applySettings(kind as Parameters<typeof dialogs.filter.applySettings>[0], settings),
     selectSubject: () => selectSubject(false),

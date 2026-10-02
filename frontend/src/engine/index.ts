@@ -1521,6 +1521,57 @@ export class Engine {
     return true;
   }
 
+  /** Fade In, Fade Out or both on layer `id`'s clip over `frames` (0 removes them), one step (1.59.7: from the panel
+   *  into the engine, which the MCP tools share). False when the layer has no clip. */
+  fadeClip(id: ID, frames: number, inn: boolean, out: boolean): boolean {
+    if (!this.video?.tracks[id]) return false;
+    return this.editVideo((v) => {
+      const t = v.tracks[id];
+      if (!t) return;
+      const f = Math.max(0, Math.min(Math.round(frames), t.length));
+      if (inn) t.fadeIn = f > 0 ? { frames: f } : null;
+      if (out) t.fadeOut = f > 0 ? { frames: f } : null;
+    }, frames > 0 ? 'Add Transition' : 'Remove Transition');
+  }
+
+  /** Cross Fade, as Photoshop's: layer `id`'s clip with the clip that starts or ends within it and overlaps it most
+   *  (one covering it whole, a background, is no partner), over their overlap, fading only the upper of the two (in
+   *  when it starts later, out when it ends first) so the picture never dips. Null when done, else why not. */
+  crossFade(id: ID): string | null {
+    const p = this.current, vt = this.video, a = vt?.tracks[id];
+    if (!p || !vt || !a) return 'Select a layer with a clip in the timeline.';
+    let best: { id: ID; len: number } | null = null;
+    for (const [other, b] of Object.entries(vt.tracks)) {
+      if (other === id) continue;
+      const covers = b.start <= a.start && b.start + b.length >= a.start + a.length;
+      const len = Math.min(a.start + a.length, b.start + b.length) - Math.max(a.start, b.start);
+      if (len > 0 && !covers && (!best || len > best.len)) best = { id: other, len };
+    }
+    if (!best) return 'Cross Fade needs another clip that starts or ends within this one.';
+    const order = p.doc.layers.map((l) => l.id), upper = order.indexOf(id) > order.indexOf(best.id) ? id : best.id, lower = upper === id ? best.id : id, len = best.len;
+    this.editVideo((v) => {
+      const u = v.tracks[upper], l = v.tracks[lower];
+      if (!u || !l) return;
+      if (u.start >= l.start) u.fadeIn = { frames: len }; else u.fadeOut = { frames: len };
+    }, 'Add Transition');
+    return null;
+  }
+
+  /** Split at a frame, as Photoshop's Split at Playhead: layer `id`'s clip ends at `frame`, and a copy of the layer
+   *  carries on from it with the rest of the clip and the same keyframes. The copy's id, or null when `frame` is not
+   *  inside the clip. */
+  splitClip(id: ID, frame: number): ID | null {
+    const p = this.current, tr = this.video?.tracks[id];
+    if (!p || !tr || frame <= tr.start || frame >= tr.start + tr.length) return null;
+    const before = new Set(p.doc.layers.map((l) => l.id));
+    this.selectLayer(id);
+    this.duplicateLayers();
+    const copy = this.current?.doc.layers.find((l) => !before.has(l.id));
+    if (!copy) return null;
+    this.editVideo((v) => { const t = v.tracks[id]; if (!t) return; v.tracks[copy.id] = { ...structuredClone(t), start: frame, length: t.start + t.length - frame }; t.length = frame - t.start; }, 'Split at Playhead');
+    return copy.id;
+  }
+
   /** A drag in the timeline (a clip moved or trimmed, a keyframe moved) as one step, from press to release. */
   private videoGesture: { p: Project } | null = null;
   beginVideoGesture(name: string): void {

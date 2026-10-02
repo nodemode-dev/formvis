@@ -13,6 +13,7 @@ Generated from the engine's catalogue by `./formvis agents sync`; do not edit by
 - Painting and generating: `fill`, `generative_fill`, `generate_image`, `remove_background`
 - Colour, filters and looks: `add_adjustment`, `apply_filter`, `set_adjustment`, `color_match`, `add_film_layer`
 - History: `undo`, `redo`
+- Other: `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render`
 
 ## get_document
 
@@ -335,3 +336,97 @@ Adds a film look as its own layer: a light leak (color amber|red|magenta|gold fr
 - `color`: string (amber | red | magenta | gold); default "amber"
 - `from`: string (left | right | top | bottom | corner); default "left"
 - `style`: string (film | white | line); default "film"
+
+## timeline_get
+
+The document's video timeline: frame rate, length in frames and seconds, the playhead, the work area, loops, and per layer (top first) its clip (start and length in frames), fades and keyframes. Null when it has none.
+
+- no parameters
+
+Note: read-only.
+
+## timeline_create
+
+Creates a video timeline with a track per layer, fps frames a second and seconds long. A document has a video timeline or a frame animation, not both.
+
+- `fps`: number; default 30
+- `seconds`: number; default 5
+
+## timeline_delete
+
+Deletes the video timeline: its clips, keyframes and transitions (the layers stay).
+
+- no parameters
+
+Note: replaces or removes.
+
+## timeline_set
+
+Changes the frame rate, the length in seconds, the work area (work_in to work_out, frames, work_out excluded) or the loop count (0 forever).
+
+- `fps`: number
+- `seconds`: number
+- `work_in`: integer
+- `work_out`: integer
+- `loops`: integer
+
+## timeline_go_to
+
+Moves the playhead to a frame; the window shows that moment. Not an edit.
+
+- `frame`: integer; required
+
+## timeline_clip
+
+Moves or trims a layer's clip: start is the frame where it begins, length how many frames it lasts. Outside its clip the layer does not show.
+
+- `id`: string; required; A layer id from get_document.
+- `start`: integer
+- `length`: integer
+
+## timeline_split
+
+Splits a layer's clip at a frame (default the playhead): the clip ends there and a copy of the layer carries on with the rest and the same keyframes; returns the copy's id.
+
+- `id`: string; required; A layer id from get_document.
+- `frame`: integer
+
+## timeline_keyframe
+
+Keys a layer's property at a frame (default the playhead): x and y in pixels, opacity and fill 0 to 1, style 1 (its layer style on) or 0; interpolation linear or hold (until the next keyframe). delete removes the keyframe at that frame; clear removes all of the property's keyframes.
+
+- `id`: string; required; A layer id from get_document.
+- `property`: string (x | y | opacity | fill | style); required
+- `frame`: integer
+- `value`: number
+- `interpolation`: string (linear | hold); default "linear"
+- `delete`: boolean; default false
+- `clear`: boolean; default false
+
+## timeline_transition
+
+Adds a transition to a layer's clip: fade_in, fade_out or fade (both) over seconds; cross_fade with the clip starting or ending within it (only the upper fades, so the picture never dips); or remove.
+
+- `id`: string; required; A layer id from get_document.
+- `kind`: string (fade_in | fade_out | fade | cross_fade | remove); required
+- `seconds`: number; default 1
+
+## timeline_frame_image
+
+One frame of the video timeline as a PNG image, its longer side at most max_size pixels.
+
+- `frame`: integer; required
+- `max_size`: integer; default 1024
+
+Note: read-only.
+
+## timeline_render
+
+Renders the video timeline to an absolute path: .mp4 (H.264), .gif, or .zip (numbered PNG frames); every frame, or from to to (frames, to excluded); scale 1, 0.5 or 0.25. Replaces a file there.
+
+- `path`: string; required; Absolute path ending .mp4, .gif or .zip
+- `from`: integer
+- `to`: integer
+- `scale`: number (1 | 0.5 | 0.25); default 1
+
+Note: replaces or removes.

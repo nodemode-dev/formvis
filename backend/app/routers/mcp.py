@@ -128,6 +128,30 @@ TOOLS = [
     _tool("add_film_layer", "Adds a film look as its own layer: a light leak (color amber|red|magenta|gold from left|right|top|bottom|corner) or a frame (style film|white|line).",
           {"kind": {"type": "string", "enum": ["leak", "frame"]}, "color": {"type": "string", "enum": ["amber", "red", "magenta", "gold"], "default": "amber"},
            "from": {"type": "string", "enum": ["left", "right", "top", "bottom", "corner"], "default": "left"}, "style": {"type": "string", "enum": ["film", "white", "line"], "default": "film"}}, ["kind"]),
+    # The video timeline (1.59.7, DEV_PLAN 25.5), as Photon Studio's timeline operations: frames counted from 0; every
+    # edit is one undoable step; moving the playhead is not an edit.
+    _tool("timeline_get", "The document's video timeline: frame rate, length in frames and seconds, the playhead, the work area, loops, and per layer (top first) its clip (start and length in frames), fades and keyframes. Null when it has none.", {}, read=True, idempotent=True),
+    _tool("timeline_create", "Creates a video timeline with a track per layer, fps frames a second and seconds long. A document has a video timeline or a frame animation, not both.",
+          {"fps": {"type": "number", "minimum": 1, "maximum": 240, "default": 30}, "seconds": {"type": "number", "minimum": 0.1, "maximum": 3600, "default": 5}}),
+    _tool("timeline_delete", "Deletes the video timeline: its clips, keyframes and transitions (the layers stay).", {}, destructive=True),
+    _tool("timeline_set", "Changes the frame rate, the length in seconds, the work area (work_in to work_out, frames, work_out excluded) or the loop count (0 forever).",
+          {"fps": {"type": "number", "minimum": 1, "maximum": 240}, "seconds": {"type": "number", "minimum": 0.01, "maximum": 3600}, "work_in": {"type": "integer", "minimum": 0},
+           "work_out": {"type": "integer", "minimum": 1}, "loops": {"type": "integer", "minimum": 0, "maximum": 65535}}, idempotent=True),
+    _tool("timeline_go_to", "Moves the playhead to a frame; the window shows that moment. Not an edit.", {"frame": {"type": "integer", "minimum": 0}}, ["frame"], idempotent=True),
+    _tool("timeline_clip", "Moves or trims a layer's clip: start is the frame where it begins, length how many frames it lasts. Outside its clip the layer does not show.",
+          {"id": _ID, "start": {"type": "integer"}, "length": {"type": "integer", "minimum": 1}}, ["id"], idempotent=True),
+    _tool("timeline_split", "Splits a layer's clip at a frame (default the playhead): the clip ends there and a copy of the layer carries on with the rest and the same keyframes; returns the copy's id.",
+          {"id": _ID, "frame": {"type": "integer", "minimum": 1}}, ["id"]),
+    _tool("timeline_keyframe", "Keys a layer's property at a frame (default the playhead): x and y in pixels, opacity and fill 0 to 1, style 1 (its layer style on) or 0; interpolation linear or hold (until the next keyframe). delete removes the keyframe at that frame; clear removes all of the property's keyframes.",
+          {"id": _ID, "property": {"type": "string", "enum": ["x", "y", "opacity", "fill", "style"]}, "frame": {"type": "integer", "minimum": 0}, "value": {"type": "number"},
+           "interpolation": {"type": "string", "enum": ["linear", "hold"], "default": "linear"}, "delete": {"type": "boolean", "default": False}, "clear": {"type": "boolean", "default": False}}, ["id", "property"]),
+    _tool("timeline_transition", "Adds a transition to a layer's clip: fade_in, fade_out or fade (both) over seconds; cross_fade with the clip starting or ending within it (only the upper fades, so the picture never dips); or remove.",
+          {"id": _ID, "kind": {"type": "string", "enum": ["fade_in", "fade_out", "fade", "cross_fade", "remove"]}, "seconds": {"type": "number", "minimum": 0.01, "maximum": 600, "default": 1}}, ["id", "kind"]),
+    _tool("timeline_frame_image", "One frame of the video timeline as a PNG image, its longer side at most max_size pixels.",
+          {"frame": {"type": "integer", "minimum": 0}, "max_size": {"type": "integer", "minimum": 64, "maximum": 2048, "default": 1024}}, ["frame"], read=True, idempotent=True),
+    _tool("timeline_render", "Renders the video timeline to an absolute path: .mp4 (H.264), .gif, or .zip (numbered PNG frames); every frame, or from to to (frames, to excluded); scale 1, 0.5 or 0.25. Replaces a file there.",
+          {"path": {"type": "string", "description": "Absolute path ending .mp4, .gif or .zip"}, "from": {"type": "integer", "minimum": 0}, "to": {"type": "integer", "minimum": 1},
+           "scale": {"type": "number", "enum": [1, 0.5, 0.25], "default": 1}}, ["path"], destructive=True),
 ]
 NAMES = {t["name"] for t in TOOLS}
 
@@ -237,6 +261,16 @@ async def _run(name: str, args: dict) -> dict:
                 return _fail(f"{path.name} is larger than 512 MB.")
             data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
             return await _call("__open", {"name": path.name, "data": data})
+        if name == "timeline_render":   # 1.59.7, DEV_PLAN 25.5: the window renders, this writes
+            path = _path(args.get("path"), {".mp4", ".gif", ".zip"}, False)
+            out = await _call("__render", {"format": {".mp4": "mp4", ".gif": "gif", ".zip": "png"}[path.suffix.lower()],
+                                           **{k: args[k] for k in ("from", "to", "scale") if k in args}})
+            data = (out.get("structuredContent") or {}).get("data") if not out.get("isError") else None
+            if not data:
+                return out if out.get("isError") else _fail("formvis rendered nothing.")
+            blob = base64.b64decode(data)
+            await asyncio.to_thread(path.write_bytes, blob)
+            return {"content": [{"type": "text", "text": f"Wrote {path} ({len(blob):,} bytes)."}], "structuredContent": {"path": str(path), "bytes": len(blob)}}
         if name in ("save_project", "export_image"):
             path = _path(args.get("path"), {".fmv"} if name == "save_project" else set(_EXPORTS), False)
             out = await _call("__project" if name == "save_project" else "__export", {} if name == "save_project" else {"type": _EXPORTS[path.suffix.lower()], "quality": args.get("quality", 0.92)})
