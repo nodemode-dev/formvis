@@ -8,7 +8,10 @@ export interface Capabilities { pixelBudget?: number; memory?: number;
   dataDir: string;
 }
 export interface LibraryItem { name: string; modified: number; size: number }
-export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string> }
+export interface OpenedProject { session: string; name: string; manifest: Record<string, unknown>; images: Record<string, string>; version?: string }
+/** The library's folder (1.58.8, L13): where it is, the default, whether it is fixed by the engine's environment, and
+ *  the synced folders found on this computer with a Formvis folder suggested in each. */
+export interface LibraryFolder { folder: string; default: string; custom: boolean; fixed: boolean; synced: Array<{ label: string; base: string; suggested: string }> }
 export interface FilePart { name: string; blob: Blob }
 export interface GenerativeStatus { configured: boolean; source: 'environment' | 'settings' | null; fillModel: string; eraseModel: string; upscaleModel: string }
 /** A generation provider beside fal (1.58.4, L7): OpenAI, Google, Black Forest Labs or Ideogram. */
@@ -300,8 +303,18 @@ export const api = {
   async library(): Promise<LibraryItem[]> {
     return (await (await request('/projects')).json()) as LibraryItem[];
   },
-  async save(name: string, manifest: object, files: FilePart[]): Promise<{ name: string; path: string }> {
-    return (await (await request('/projects/save', { method: 'POST', body: form({ name, manifest: JSON.stringify(manifest) }, files) })).json()) as { name: string; path: string };
+  /** A save to the library; `base` (1.58.8) is the version the project was opened or last saved at, so a file changed
+   *  since (another device's copy synced in) is kept and this save goes beside it as a conflict copy. */
+  async save(name: string, manifest: object, files: FilePart[], base = ''): Promise<{ name: string; path: string; version?: string; conflict?: boolean; kept?: string }> {
+    return (await (await request('/projects/save', { method: 'POST', body: form({ name, manifest: JSON.stringify(manifest), base }, files) })).json()) as { name: string; path: string; version?: string; conflict?: boolean; kept?: string };
+  },
+  /** Where the library is (1.58.8, L13), the default, and the synced folders found on this computer. */
+  async libraryFolder(): Promise<LibraryFolder | null> {
+    try { return (await (await request('/projects/folder')).json()) as LibraryFolder; } catch { return null; }
+  },
+  /** The library moved to `folder` (empty: the default), its projects moved there with `move`. */
+  async setLibraryFolder(folder: string, move: boolean): Promise<LibraryFolder & { moved: number }> {
+    return (await (await request('/projects/folder', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder, move }) })).json()) as LibraryFolder & { moved: number };
   },
   async package(manifest: object, files: FilePart[], root = ''): Promise<Blob> {
     return (await request('/projects/package', { method: 'POST', body: form({ manifest: JSON.stringify(manifest), ...(root ? { root } : {}) }, files) })).blob();

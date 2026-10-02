@@ -75,8 +75,27 @@ def data_dir() -> Path:
     return _ensure(path)
 
 
+def default_projects_dir() -> Path:
+    return data_dir() / "Projects"
+
+
 def projects_dir() -> Path:
-    return _ensure(data_dir() / "Projects")
+    """The library (1.58.8, the parity plan's L13): FORMVIS_LIBRARY_DIR, else the folder chosen in Preferences (kept
+    in library.json in the data folder; any folder, a synced one such as iCloud Drive, Dropbox or OneDrive included),
+    else the data folder's Projects. A chosen folder that cannot be made falls back to the default."""
+    raw = os.environ.get("FORMVIS_LIBRARY_DIR", "").strip()
+    if not raw:
+        try:
+            import json
+            raw = str(json.loads((data_dir() / "library.json").read_text()).get("folder", "")).strip()
+        except (OSError, ValueError, AttributeError):
+            raw = ""
+    if raw:
+        try:
+            return _ensure(Path(raw).expanduser())
+        except OSError:
+            pass
+    return _ensure(default_projects_dir())
 
 
 def exports_dir() -> Path:

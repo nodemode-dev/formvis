@@ -30,6 +30,9 @@ ask it questions.
 - Workspaces arrange the panels for a kind of work, and the lock keeps an arrangement from being changed by accident.
 - Preferences (Edit > Preferences, Ctrl+comma) has Photoshop's sections: General, Interface, Performance, Workspace, Tools, History
   & Cache, File Handling, Cursors, Transparency & Gamut, Units & Rulers, Guides & Grid, and Plugins.
+- The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included: choose
+  it in Preferences > File Handling, with your projects moved there. If a project changed in the library since you
+  opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.
 - On a touch screen, pinch to zoom, drag two fingers to pan and turn them to rotate the view; tap two fingers to undo
   and three to redo. One finger, or a pen with its pressure and tilt, works the tool.
 - On a phone or a window under 720 pixels wide, the canvas takes the whole width; the buttons at the right of the

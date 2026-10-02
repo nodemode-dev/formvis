@@ -7,6 +7,8 @@ import { uid, type Doc, type ID, type Layer } from './types';
 export class Project {
   readonly id = uid();
   libraryName: string | null = null;
+  /** The library file's version when opened or last saved (1.58.8), so a save does not overwrite a newer copy. */
+  libraryVersion: string | null = null;
   /** Where this document sits in a larger picture opened as tiles (1.52.7), for Assemble Tiles. */
   tile: { source: string; width: number; height: number; x: number; y: number; row: number; col: number } | null = null;
   selection: SelectionMask | null = null;

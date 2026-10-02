@@ -368,6 +368,7 @@ export function startApp(): void {
     if (paths) engine.setPathsOf(p, paths);
     if (timeline) engine.setTimelineFor(p, timeline);
     engine.markSaved(p, p.name, libraryName);
+    p.libraryVersion = libraryName ? o.version ?? null : null;   // 1.58.8: conflict-safe saves
   }
 
   /** the Open Recent (the system's recent documents, noted on every save and open): the ten library projects
@@ -559,10 +560,13 @@ export function startApp(): void {
       const revision = p.history.revision;
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
-        const res = await api.save(target, manifest, files);
+        // Based on the version it was opened or last saved at (1.58.8), when saving over that same library item.
+        const res = await api.save(target, manifest, files, target === p.libraryName ? p.libraryVersion ?? '' : '');
         if (p.history.revision === revision) engine.markSaved(p, res.name, res.name);
         else { p.name = res.name; p.libraryName = res.name; engine.emit('projects', null); }
-        toast(`Saved ${res.name}.`);
+        p.libraryVersion = res.version ?? null;
+        if (res.conflict) toast(`${res.kept ?? target} changed elsewhere since you opened it (another device or window), so it was kept as it is; yours was saved beside it as ${res.name}.`, 'info');
+        else toast(`Saved ${res.name}.`);
         noteRecent(res.name);
         return true;
       } catch (err) {

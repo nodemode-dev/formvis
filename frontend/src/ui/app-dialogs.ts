@@ -394,7 +394,15 @@ export class SettingsDialog extends Dialog {
     const restore = el('<label class="cv-dialog-row"><span>Reopen the documents that were open when formvis closed</span></label>');
     restore.append(this.restoreBox);
     const mismatch = el('<label class="cv-dialog-row"><span>Embedded profiles</span></label>'); mismatch.append(this.mismatchSel);
-    add('File Handling', mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
+    // The library's folder (1.58.8): the choice fills the path, which can be any folder; applying moves the projects.
+    const libRow = el('<label class="cv-dialog-row"><span>Library folder</span></label>'); libRow.append(this.libSel);
+    const pathRow = el('<label class="cv-dialog-row"><span>Folder</span></label>'); pathRow.append(this.libPath);
+    const moveRow = el('<label class="cv-dialog-row"><span>Move my projects there</span></label>'); moveRow.append(this.libMove);
+    this.libSel.addEventListener('change', () => { if (this.libSel.value !== 'other') this.libPath.value = this.libSel.value; else this.libPath.focus(); });
+    this.libApply.addEventListener('click', () => void this.applyLibrary());
+    const library = el('<div></div>');
+    library.append(this.libNow, libRow, pathRow, moveRow, this.libApply, el('<p class="cv-note">The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included. If a project changed in that folder since you opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.</p>'));
+    add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
     add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el('<p class="cv-note">The checkerboard shown behind transparent pixels. None shows it plain.</p>'));
     add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
@@ -448,8 +456,32 @@ export class SettingsDialog extends Dialog {
   }
 
   /** Opens on a section, Interface unless named. */
+  /** The library control (1.58.8): where the library is now, the default and the synced folders found here, or any
+   *  path; a library fixed by the engine's environment is said to be so. */
+  private async refreshLibrary(): Promise<void> {
+    const f = await api.libraryFolder();
+    if (!f) { setText(this.libNow, 'The library folder is shown when the engine is running.'); this.libApply.disabled = true; return; }
+    this.libDefault = f.default;
+    const opts: Array<[string, string]> = [[f.default, 'This computer (formvis\'s own folder)'], ...f.synced.map((s) => [s.suggested, `${s.label} (synced): ${s.suggested}`] as [string, string]), ['other', 'Another folder...']];
+    this.libSel.replaceChildren(...opts.map(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; }));
+    this.libSel.value = opts.some(([v]) => v === f.folder) ? f.folder : 'other';
+    this.libPath.value = f.folder;
+    this.libApply.disabled = f.fixed;
+    setText(this.libNow, f.fixed ? `The library is in ${f.folder}, set by FORMVIS_LIBRARY_DIR for this engine.` : `The library is in ${f.folder}.`);
+  }
+
+  private async applyLibrary(): Promise<void> {
+    const path = this.libPath.value.trim();
+    try {
+      const r = await api.setLibraryFolder(path === this.libDefault ? '' : path, this.libMove.checked);
+      setText(this.libNow, `The library is in ${r.folder}${r.moved ? `; ${r.moved} project${r.moved === 1 ? '' : 's'} moved there` : ''}.`);
+      this.libSel.value = [...this.libSel.options].some((o) => o.value === r.folder) ? r.folder : 'other';
+    } catch (err) { setText(this.libNow, err instanceof Error ? err.message : 'The library could not move there.'); }
+  }
+
   show(section?: string): void {
     this.prefs = loadPrefs();
+    void this.refreshLibrary();
     this.statesRow.set(this.prefs.historyStates);
     this.memoryRow.set(this.prefs.historyMB);
     this.redrawRow.set(this.prefs.regionRedraws);
@@ -515,6 +547,13 @@ export class SettingsDialog extends Dialog {
   private readonly comfyuiNote = el('<p class="cv-note" role="status">File > Send to ComfyUI sends here, into its input folder.</p>');
 
   private readonly restoreBox = el<HTMLInputElement>('<input type="checkbox" aria-label="Reopen documents at start">');
+  // The library's folder (1.58.8, L13): any folder, a synced one included; built once, filled when the dialog opens.
+  private readonly libNow = el('<p class="cv-note" role="status" style="min-height: 2.8em"></p>');
+  private readonly libSel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Library folder"></select>');
+  private readonly libPath = el<HTMLInputElement>('<input class="cv-input" type="text" spellcheck="false" aria-label="Library folder path">');
+  private readonly libMove = el<HTMLInputElement>('<input type="checkbox" aria-label="Move my projects there" checked>');
+  private readonly libApply = el<HTMLButtonElement>('<button class="cv-btn" type="button">Use this folder</button>');
+  private libDefault = '';
   private readonly agents = el<HTMLInputElement>('<input type="checkbox" aria-label="Allow outside agents">');
   private readonly localModels = new LocalModelsSection();   // 1.52.9
   private readonly mismatchSel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Embedded profiles"><option value="convert">Convert to the working space (sRGB)</option><option value="keep">Keep the embedded profile</option><option value="ask">Ask when opening</option></select>');   // 1.53.5
