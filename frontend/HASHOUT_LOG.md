@@ -2,6 +2,26 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The opening snapshot in proportion, the stroke pool capped, the count as found · _v1.60.5 (engine/index.ts, engine/stroke.ts)
+
+DEV_PLAN 26.2, continued. Every large canvas made while a document opened was watched (a probe wrapping the canvas constructors with the code path that made each): there were two, the layer and the History panel's opening snapshot, a copy of every pixel (`copyDoc`), taken for any document up to a fixed 768 MB whatever the computer. 1.60.4 had read that copy as a second copy of each layer in the display. The opening snapshot is now skipped past a quarter of the memory budget, with a note (New Snapshot still takes one, and now asks for room); the count is each raster once, the display once, the snapshots it holds, the undo history's extra, and the strokes' spare surfaces. A stroke had grown the browser 620 MB against 263 counted: its working and paint surfaces stayed in a pool of up to four full-size spares kept for speed (35 ms to make against 5 ms to clear at 12 MP), which for a 150 MP layer could be 2.3 GB; the pool now holds at most 256 MB (a larger surface never kept, one dropped shrunk to nothing so its memory comes back at once), counted by the engine (`spareBytes`), and a stroke asks room for its working and paint surfaces (a third with a selection) and a first stroke's new layer. Not done here: the stroke's surfaces bounded to the tiles it touches (they are still each the layer's size). Verified on the 4 GB test machine, run detached with a log: the 150 MP document now grows the browser 1,076 MB (1,592 before), counted 1,144; a 6,000 by 6,000 document 377 counted 412; a stroke on a new layer of it 483 counted 401; unit 188; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+import { PixelStroke, warmStrokeSurfaces } from './stroke';
+    if (!this.autoFirstSnapshot || this.docBytes(p.doc) > this.snapshotByteLimit) return;
+    if (Number.isInteger(width) && Number.isInteger(height) && !this.room(width * height * 12, 'A new document')) return null;   // its layer twice and display (1.60.2, recounted 1.60.4)
+      // Each raster twice, its canvas and the display's copy of it, and the document's display once more (measured at
+      // 1.60.4: one 572 MB layer grew the browser 1.6 GB; two 309 MB layers and a stroke, 1.95 GB); then what the undo
+      // history keeps beyond the layers.
+      for (const l of p.doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && !seen.has(r.id)) { seen.add(r.id); n += r.width * r.height * 8; }
+    return n;
+    // Its working copy, and the layer's own pixels when this stroke is the first on it (1.60.2: measured, both).
+    const fresh = p.activeLayer && !p.activeLayer.raster ? p.doc.width * p.doc.height * 8 : 0;   // its canvas and the display's copy (1.60.4)
+    if (!this.room(this.layerBytes() + fresh, 'This stroke')) return false;
+  if (spares.length >= MAX_SPARES) spares.shift();
+export const VERSION = '1.60.4';
+```
+
 ## Memory back on close, and the count as measured · _v1.60.4 (engine/index.ts, engine/history.ts)
 
 DEV_PLAN 26.2, first part (the stroke's bounded working pixels are the second). Closing a document now shrinks to nothing each of its canvases that no other open document keeps, in its layers or its undo history (`History.rasters`, `rastersOf`: pixels, masks, smart objects' sources and filter masks, patches), so the browser frees them at once; measured, the browser went from 2,502 MB to 1,229 MB within three seconds of closing the 150 MP document, where at 1.60.2 it stayed at 2,579 MB. The count recalibrated from two measurements: one 572 MB layer grew the browser 1.6 GB, and two 309 MB layers with a stroke 1.95 GB, so each raster counts twice (its canvas and the display's copy) and the document's display once, a new document three layer-sizes, and a first stroke its new layer twice with its working copy. Found on the way: the e2e WebGL2 runs left the engine down, and a wait loop that does not check what it waited for hid it; the loop now reports. M8's baseline taken: e2e/test_gl_display.py (the test the earlier split failed 3 of 3) passes 3 of 3 on today's engine, 30 tests each. The README's TypeScript count 39,300 to 40,600 (the counts check: the code has 40,583). Verified on the 4 GB test machine, run detached with a log: the 150 MP document opens (Memory 1.7 of 1.8 GB), closes back to 1,229 MB; a 9,000 by 9,000 document counts 0.9 GB and refuses a stroke on a new layer ("needs about 927 MB more, and formvis is holding 927 MB of the 1,800 MB"), the browser at 2,075 MB where the same stroke reached 3,178 MB before; a raster another open document holds keeps its 50 by 50 pixels when its first document closes; no errors. Removed lines taken after the version edit. Removed from frontend:

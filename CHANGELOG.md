@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.60.5 · 2026-10-02
+
+### Changed
+
+- Large documents use far less memory: the History panel's automatic first snapshot, a full copy of the picture, is skipped when it would take too much of this computer's memory (New Snapshot still takes one), and painting no longer keeps big spare canvases around. A 150 megapixel document now needs about 1 GB rather than 1.6.
+
 ## 1.60.4 · 2026-10-02
 
 ### Changed
