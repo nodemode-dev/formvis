@@ -2,7 +2,7 @@
 <h1 align="center">formvis</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-1.59.6-f97316" alt="version 1.59.6">
+<img src="https://img.shields.io/badge/version-1.59.7-f97316" alt="version 1.59.7">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
@@ -24,7 +24,7 @@ formvis is a layered image editor: stack photos and paintings as layers, group t
 - **Healing.** Spot Healing, the Healing Brush (Alt-click a source) and the Patch tool blend copied texture into its surroundings; Shift+J cycles them.
 - **Paths.** The Pen draws Bezier paths and Direct Selection reshapes them; a path becomes a selection (Ctrl or Cmd with Enter) or is filled or stroked into a layer. Paths save with the project, and the Pen adds or deletes points on them. A Paths panel keeps named paths, and a path can become a shape layer whose outline stays editable. Shape layers take a fill, a stroke or both, and travel to and from Photoshop as shapes.
 - **Actions and Batch.** Record commands, filters, adjustments, layer styles and size changes into actions, replay them, share them as JSON, and batch-process a set of images into one zip. Size steps can follow each image. Stops and dialog pauses let an action wait for input.
-- **Edit by asking, from Claude Code, Codex or Cursor.** formvis's MCP server gives agents 39 tools (files, layers, text, selections, filters, local-first generative fill) and the `formvis-editing` skill teaches them to use them; `./formvis agents install` sets all three up, formvis starts itself and asks you once to allow them. See [docs/AGENT_EVALS.md](docs/AGENT_EVALS.md) to check each client.
+- **Edit by asking, from Claude Code, Codex or Cursor.** formvis's MCP server gives agents 50 tools (files, layers, text, selections, filters, local-first generative fill, the video timeline) and the `formvis-editing` skill teaches them to use them; `./formvis agents install` sets all three up, formvis starts itself and asks you once to allow them. See [docs/AGENT_EVALS.md](docs/AGENT_EVALS.md) to check each client.
 - **The assistant.** Window > Assistant is a chat beside the canvas that edits the open document through the same tools, on the language model set in Preferences > Plugins; each tool call is a card, and Undo This Turn takes back everything since your last message.
 - **Help in the app.** Help > formvis Help (F1) is the manual ([docs/MANUAL.md](docs/MANUAL.md)) with its contents, a search, and questions answered from it by the language model set in Preferences > Plugins.
 - **Plugins.** JavaScript plugins (Plugins > Manage Plugins) add commands to the Plugins menu; each runs in a sandbox, changing the document only through formvis's tools, undoable, and never seeing your keys or files.
