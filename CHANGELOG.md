@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.59.9 · 2026-10-02
+
+### Changed
+
+- Moving a layer whose position is animated (dragging it with the Move tool, or the arrow keys) keys its new place at the playhead, as Photoshop does, in one undo step; its box and handles show where the layer is seen at that moment.
+
 ## 1.59.8 · 2026-10-02
 
 ### Added
