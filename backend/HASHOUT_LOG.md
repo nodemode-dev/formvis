@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.59.4
+
+No engine code changed in 1.59.4 (the keyframe lanes in the window). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.59.3"
+version = "1.59.3"
+version = "1.59.3"
+ "version": "1.59.3",
+```
+
 ## Version only · _v1.59.3
 
 No engine code changed in 1.59.3 (the video timeline's panel in the window). Removed lines taken after the version edit:

@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.59.4 · 2026-10-02
+
+Keyframes in the video timeline (DEV_PLAN 25.3).
+
+### Added
+
+- Open a track in the timeline to see its keyframe lanes: Position X and Y, Opacity, Fill Opacity and Style. Turn on a lane's stopwatch and type values at different moments to animate them; step between keyframes, add or delete them at the playhead, drag them in time, and right-click one to hold its value until the next.
+
 ## 1.59.3 · 2026-10-02
 
 The video timeline's panel (DEV_PLAN 25.2, the timeline to work like Photon Studio's).
