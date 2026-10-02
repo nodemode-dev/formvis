@@ -83,6 +83,11 @@ function takeSurface(w: number, h: number): Surface {
  *  pool, and four spares of a 150 MP layer would be 2.3 GB. A surface past it is never kept; one dropped is shrunk to
  *  nothing, so its memory comes back at once rather than when the browser collects it. */
 const MAX_SPARE_BYTES = 256 * 1024 * 1024;
+/** Layers of more pixels than this stroke in a window (1.60.6, DEV_PLAN 26.2); settable so a check can force either
+ *  way on the same strokes and compare the pixels. */
+let windowFrom = 16_000_000;
+export function setStrokeWindowFrom(px: number): void { windowFrom = px; }
+export const strokeWindowFrom = (): number => windowFrom;
 const bytesOf = (s: Surface): number => s.width * s.height * 4;
 const drop = (s: Surface | undefined): void => { if (s) { s.width = 0; s.height = 0; } };
 
@@ -113,12 +118,25 @@ export function warmStrokeSurfaces(w: number, h: number, count = 2): void {
 }
 
 export class PixelStroke {
-  /** The layer's pixels with the stroke so far composed in. */
-  readonly working: Surface;
-  private readonly workingCtx: Ctx2D;
-  private readonly paint: Surface;
-  private readonly paintCtx: Ctx2D;
-  private readonly masked: Surface | null;
+  /** The layer's pixels with the stroke so far composed in (over the window, for a windowed stroke). */
+  working: Surface;
+  private workingCtx: Ctx2D;
+  private paint: Surface;
+  private paintCtx: Ctx2D;
+  private masked: Surface | null;
+  /** The window (1.60.6, DEV_PLAN 26.2): a large layer's stroke keeps its surfaces only over a window around where it
+   *  paints, in layer pixels from (ox, oy), grown as the stroke reaches past it; a smaller layer's window is the whole
+   *  layer, as before. `toWin` maps document points into the window's surfaces. */
+  windowed: boolean;
+  ox = 0;
+  oy = 0;
+  private ww: number;
+  private wh: number;
+  private toWin: Mat;
+  /** Asked before the window grows by `bytes`; false cuts the stroke there (the engine's memory budget). */
+  canGrow: ((bytes: number) => boolean) | null = null;
+  /** Whether a dab fell outside what the window could grow to (the stroke was cut there). */
+  clipped = false;
   private textured: Surface | null = null;
   private tip: Surface;
   private readonly toLocal: Mat;
@@ -132,17 +150,70 @@ export class PixelStroke {
 
   constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null, private readonly lerp = false) {
     this.toLocal = invert(localToDoc);
-    this.working = takeSurface(raster.width, raster.height);
+    // Past `windowFrom` pixels a stroke on pixels works in a window (1.60.6), opened at its first dab; a mask's stroke
+    // (lerp) and a smaller layer's keep surfaces the layer's size, as before.
+    this.windowed = raster.width * raster.height > windowFrom && !lerp;
+    this.ww = this.windowed ? 1 : raster.width;
+    this.wh = this.windowed ? 1 : raster.height;
+    this.toWin = this.toLocal;
+    this.working = takeSurface(this.ww, this.wh);
     this.workingCtx = ctxOf(this.working);
-    this.workingCtx.drawImage(raster.canvas, 0, 0);
-    this.paint = takeSurface(raster.width, raster.height);
+    if (!this.windowed) this.workingCtx.drawImage(raster.canvas, 0, 0);
+    this.paint = takeSurface(this.ww, this.wh);
     this.paintCtx = ctxOf(this.paint);
-    this.masked = selection ? takeSurface(raster.width, raster.height) : null;
+    this.masked = selection ? takeSurface(this.ww, this.wh) : null;
     this.radius = Math.max(0.5, style.diameter / 2);
     // Dabs every 1.5% of the diameter for a hard tip and 2.5% for a soft one; a sampled tip every quarter of its size.
     this.spacing = Math.max(0.5, style.diameter * (style.tip ? 0.25 : style.hardness >= 0.99 ? 0.015 : 0.025));
     this.tip = style.tip ? sampledTip(style.diameter * matScale(this.toLocal), style.tip, style.color) : brushTip(style.diameter * matScale(this.toLocal), style.hardness, style.color);
     this.tipAspect = style.tip ? { x: style.tip.w / Math.max(style.tip.w, style.tip.h), y: style.tip.h / Math.max(style.tip.w, style.tip.h) } : { x: 1, y: 1 };
+  }
+
+  /** The bytes the stroke's surfaces hold (the engine counts them while it lasts). */
+  get bytes(): number { return this.ww * this.wh * 4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0)); }
+
+  /** The window grown to hold `box` (layer pixels) with room to spare, its surfaces remade with what they held; false
+   *  when growing would pass what the engine allows, and the dab is then not laid (the stroke is cut there). */
+  private ensure(box: Rect): boolean {
+    if (!this.windowed) return true;
+    const L = this.raster.width, H = this.raster.height, b = intersectRect(box, { x: 0, y: 0, w: L, h: H });
+    if (!b) return true;
+    const open = this.ww > 1 || this.wh > 1;
+    if (open && b.x >= this.ox && b.y >= this.oy && b.x + b.w <= this.ox + this.ww && b.y + b.h <= this.oy + this.wh) return true;
+    const u = open ? unionRect({ x: this.ox, y: this.oy, w: this.ww, h: this.wh }, b) as Rect : b;
+    const m = Math.max(512, Math.round(Math.max(u.w, u.h) / 2));   // half again around it, so a stroke regrows rarely
+    const nx = Math.max(0, u.x - m), ny = Math.max(0, u.y - m), nw = Math.min(L, u.x + u.w + m) - nx, nh = Math.min(H, u.y + u.h + m) - ny;
+    if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * 4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0)))) { this.clipped = true; return false; }
+    const dx = this.ox - nx, dy = this.oy - ny;
+    const remake = (old: Surface | null, layer: boolean): Surface | null => {
+      if (!old) return null;
+      const s = createSurface(nw, nh), c = ctxOf(s);
+      if (layer) c.drawImage(this.raster.canvas, nx, ny, nw, nh, 0, 0, nw, nh);   // the layer's pixels where the window is new
+      if (open) { c.save(); c.beginPath(); c.rect(dx, dy, this.ww, this.wh); c.clip(); c.globalCompositeOperation = 'copy'; c.drawImage(old, dx, dy); c.restore(); }
+      old.width = 0; old.height = 0;   // freed at once
+      return s;
+    };
+    this.working = remake(this.working, true) as Surface; this.workingCtx = ctxOf(this.working);
+    this.paint = remake(this.paint, false) as Surface; this.paintCtx = ctxOf(this.paint);
+    this.masked = remake(this.masked, false);
+    this.textured = remake(this.textured, false);
+    this.ox = nx; this.oy = ny; this.ww = nw; this.wh = nh;
+    this.toWin = mul(translation(-nx, -ny), this.toLocal);
+    return true;
+  }
+
+  /** For a stroke whose working surface is read whole (Quick Mask's), before its first dab (1.60.6). */
+  keepWhole(): void { this.toFull(); }
+
+  /** Back to surfaces the layer's size, before the first dab (a Brush Settings shape or Wet Edges needs them whole). */
+  private toFull(): void {
+    if (!this.windowed) return;
+    const w = this.raster.width, h = this.raster.height;
+    for (const s of [this.working, this.paint, this.masked]) if (s) { s.width = 0; s.height = 0; }
+    this.windowed = false; this.ox = 0; this.oy = 0; this.ww = w; this.wh = h; this.toWin = this.toLocal;
+    this.working = takeSurface(w, h); this.workingCtx = ctxOf(this.working); this.workingCtx.drawImage(this.raster.canvas, 0, 0);
+    this.paint = takeSurface(w, h); this.paintCtx = ctxOf(this.paint);
+    this.masked = this.selection ? takeSurface(w, h) : null;
   }
 
   /** A sampled tip's width and height as parts of its longer side; a round tip's are both 1. */
@@ -168,6 +239,7 @@ export class PixelStroke {
   /** Installs a Brush Settings shape: its spacing (a percentage of the diameter, where set), the dual brush's round tip,
    *  and the texture as a tile whose alpha is what it cuts from the paint (darker pattern, more; scaled by Depth). */
   setShape(shape: BrushShape | null, pattern: Surface | null): void {
+    if (shape && (shape.wetEdges || shapeActive(shape))) this.toFull();   // their surfaces are the layer's size (1.60.6)
     // Color Dynamics, Transfer, Noise and Wet Edges (1.50.1) apply to every brush, a plain round one too.
     if (shape) {
       this.colorDyn = shape.color?.on ? { ...shape.color } : null;
@@ -218,16 +290,18 @@ export class PixelStroke {
     if (this.style.aliased) { this.aliasedDab(p, pressure); return; }
     if (this.shape) { this.shapedDab(p, pressure); return; }
     const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1) * this.transferAlpha(pressure);
-    setMat(this.paintCtx, this.toLocal);
-    if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
-    const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
-    this.paintCtx.drawImage(this.dabTip(p.x, p.y), p.x - rx, p.y - ry, rx * 2, ry * 2);
-    this.wetMark(this.toLocal, p.x, p.y, rx, ry);
-    if (flow < 1) this.paintCtx.globalAlpha = 1;
+    // Its bounds first, so a windowed stroke's window can grow to hold it before it is laid (1.60.6).
     const corners = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([ox, oy]) => applyMat(this.toLocal, p.x + ox, p.y + oy));
     const box = integral(boundsOf(corners));
     const hit = intersectRect({ x: box.x - 1, y: box.y - 1, w: box.w + 2, h: box.h + 2 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
-    if (!hit) return;
+    if (!hit) { this.dabTip(p.x, p.y); return; }   // off the layer: its tip still taken, so Color Dynamics' sequence holds
+    if (!this.ensure(hit)) return;
+    setMat(this.paintCtx, this.toWin);
+    if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
+    const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
+    this.paintCtx.drawImage(this.dabTip(p.x, p.y), p.x - rx, p.y - ry, rx * 2, ry * 2);
+    this.wetMark(this.toWin, p.x, p.y, rx, ry);
+    if (flow < 1) this.paintCtx.globalAlpha = 1;
     this.pending = unionRect(this.pending, hit);
     this.touched = unionRect(this.touched, hit);
   }
@@ -288,10 +362,13 @@ export class PixelStroke {
   private aliasedDab(p: Pt, pressure: number): void {
     const d = this.dynamics, info = { pressure }, c = applyMat(this.toLocal, p.x, p.y);
     const r = Math.max(0.5, this.radius * matScale(this.toLocal) * (d ? Math.max(0.01, computeOption(d.size, info)) : 1));
-    const ctx = this.paintCtx, col = this.style.color;
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.fillStyle = `rgb(${col.r}, ${col.g}, ${col.b})`;
     const cx = Math.floor(c.x) + 0.5, cy = Math.floor(c.y) + 0.5, rr = r <= 0.75 ? 0.5 : r;
+    // Its bounds first, so a windowed stroke's window can hold it (1.60.6); drawn shifted by the window's whole-pixel origin.
+    const pre = intersectRect({ x: Math.floor(cx - rr) - 1, y: Math.floor(cy - rr) - 1, w: Math.ceil(rr * 2) + 3, h: Math.ceil(rr * 2) + 3 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
+    if (pre && !this.ensure(pre)) return;
+    const ctx = this.paintCtx, col = this.style.color;
+    ctx.setTransform(1, 0, 0, 1, -this.ox, -this.oy);
+    ctx.fillStyle = `rgb(${col.r}, ${col.g}, ${col.b})`;
     // The Eraser's Block (1.50.3, the tool audit): a pixel-exact square.
     // (In place of the circle, not returning early: the lines after it record the area the dab touched.)
     if (this.style.square) { const side = Math.max(1, Math.round(rr * 2)); ctx.fillRect(Math.round(cx - side / 2), Math.round(cy - side / 2), side, side); }
@@ -362,23 +439,24 @@ export class PixelStroke {
     const area = this.pending;
     this.pending = null;
     if (!area) return null;
+    const win: Rect = { x: area.x - this.ox, y: area.y - this.oy, w: area.w, h: area.h };   // in the window's pixels (1.60.6)
     // Coverage: the paint layer, shaped by the dual brush (kept only where its marks fell) and the texture (its tile's
     // alpha cut out, tiled at Scale in document space), then cut to the selection when there is one.
     let coverage: Surface = this.paint;
     if (this.dualPaint || this.textureTile || this.wetInner) {
-      this.shaped ??= takeSurface(this.raster.width, this.raster.height);
+      this.shaped ??= takeSurface(this.ww, this.wh);
       const c = ctxOf(this.shaped);
-      openFrame(c, area);
+      openFrame(c, win);
       c.drawImage(this.paint, 0, 0);
       if (this.dualPaint) { c.globalCompositeOperation = 'destination-in'; c.drawImage(this.dualPaint, 0, 0); }
       if (this.textureTile && this.shape) {
         const pat = c.createPattern(this.textureTile, 'repeat');
         if (pat) {
-          const k = this.shape.texture.scale / 100, m = mul(this.toLocal, [k, 0, 0, k, 0, 0]);
+          const k = this.shape.texture.scale / 100, m = mul(this.toWin, [k, 0, 0, k, 0, 0]);
           pat.setTransform(new DOMMatrix([m[0], m[1], m[2], m[3], m[4], m[5]]));
           c.globalCompositeOperation = 'destination-out';
           c.fillStyle = pat;
-          c.fillRect(area.x, area.y, area.w, area.h);
+          c.fillRect(win.x, win.y, win.w, win.h);
         }
       }
       if (this.wetInner) { c.globalCompositeOperation = 'destination-out'; c.globalAlpha = 0.45; c.drawImage(this.wetInner, 0, 0); c.globalAlpha = 1; }   // the middle lighter, the rim full
@@ -387,10 +465,10 @@ export class PixelStroke {
     }
     if (this.masked && this.selection) {
       const c = ctxOf(this.masked);
-      openFrame(c, area);
+      openFrame(c, win);
       c.drawImage(coverage, 0, 0);
       c.globalCompositeOperation = 'destination-in';
-      setMat(c, mul(this.toLocal, translation(this.selection.x, this.selection.y)));
+      setMat(c, mul(this.toWin, translation(this.selection.x, this.selection.y)));
       c.drawImage(this.selection.surface(), 0, 0);
       c.restore();
       coverage = this.masked;
@@ -398,10 +476,10 @@ export class PixelStroke {
     // What gets laid down: the coverage itself, or the texture showing through it.
     let laid = coverage;
     if (this.texture) {
-      this.textured ??= takeSurface(this.raster.width, this.raster.height);
+      this.textured ??= takeSurface(this.ww, this.wh);
       const c = ctxOf(this.textured);
-      openFrame(c, area);
-      setMat(c, mul(this.toLocal, translation(-this.texture.dx, -this.texture.dy)));
+      openFrame(c, win);
+      setMat(c, mul(this.toWin, translation(-this.texture.dx, -this.texture.dy)));
       c.drawImage(this.texture.surface, 0, 0);
       c.setTransform(1, 0, 0, 1, 0, 0);
       c.globalCompositeOperation = 'destination-in';
@@ -409,11 +487,11 @@ export class PixelStroke {
       c.restore();
       laid = this.textured;
     }
-    const w = this.workingCtx, { x, y, w: aw, h: ah } = area;
+    const w = this.workingCtx, { x, y, w: aw, h: ah } = win, lx = area.x, ly = area.y;   // window pixels; the layer's at lx, ly
     w.save();
     w.setTransform(1, 0, 0, 1, 0, 0);
     w.clearRect(x, y, aw, ah);
-    w.drawImage(this.raster.canvas, x, y, aw, ah, x, y, aw, ah);
+    w.drawImage(this.raster.canvas, lx, ly, aw, ah, x, y, aw, ah);
     w.globalAlpha = this.style.opacity;
     if (this.lerp) {
       // An alpha-coded mask (white, its level in alpha) should move toward the paint: out = old (1 - c) + paint c. Cut
@@ -431,7 +509,7 @@ export class PixelStroke {
   /** The stroke's coverage per layer pixel, 0 to 255, cut to the selection. */
   coverageAlpha(): Uint8Array {
     const w = this.raster.width, h = this.raster.height, s = createSurface(w, h), c = ctxOf(s);
-    c.drawImage(this.paint, 0, 0);
+    c.drawImage(this.paint, this.ox, this.oy);   // the window's paint at its place (1.60.6)
     if (this.selection) {
       c.globalCompositeOperation = 'destination-in';
       setMat(c, mul(this.toLocal, translation(this.selection.x, this.selection.y)));
@@ -469,7 +547,7 @@ export class PixelStroke {
     c.globalAlpha = 1;
     c.globalCompositeOperation = 'source-over';
     c.clearRect(area.x, area.y, area.w, area.h);
-    c.drawImage(this.working, area.x, area.y, area.w, area.h, area.x, area.y, area.w, area.h);
+    c.drawImage(this.working, area.x - this.ox, area.y - this.oy, area.w, area.h, area.x, area.y, area.w, area.h);   // from the window (1.60.6)
     c.restore();
     this.raster.touch();
     return { raster: this.raster, x: area.x, y: area.y, before, after: this.raster.read(area.x, area.y, area.w, area.h) };

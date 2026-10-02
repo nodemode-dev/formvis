@@ -15,7 +15,7 @@ import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, with
 import { Emitter } from './events';
 import { History, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
-import { PixelStroke, spareBytes, warmStrokeSurfaces } from './stroke';
+import { PixelStroke, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
 import { SelectionMask, type SelectionMode } from './selection';
 import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
@@ -275,6 +275,7 @@ export class Engine {
     ctxOf(r.canvas).putImageData(img, 0, 0);
     const white = force ? force === 'add' : luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
     const s = new PixelStroke(r, [1, 0, 0, 1, 0, 0], { ...this.brush, color: { r: 255, g: 255, b: 255 }, flow: this.brushFlow }, white ? 'source-over' : 'destination-out', null);
+    s.keepWhole();   // its working surface is the live mask, read whole (1.60.6)
     s.dynamics = structuredClone(this.brushDynamics);
     s.setShape(this.brushShape, null);
     this.stroke = { project: p, layerId: p.activeId ?? '', target: 'pixels', s, quick: r };
@@ -813,6 +814,7 @@ export class Engine {
     const p = this.current;
     if (!p) return { reason: 'no document is open' };
     const ov = this.overrides(p), layers: GpuLayerSpec[] = [], map = byId(p.doc), clips = new Map<ID, GpuClipSpec | null | 'nested'>(), fchains = new Map<ID | null, GpuMaskSpec[] | undefined>();
+    for (const o of ov?.values() ?? []) if (o.patch) return { reason: 'a stroke on a large layer' };   // drawn by the CPU while it lasts (1.60.6)
     // A layer's mask, as the CPU renderer's maskOf reads it: enabled with pixels, the live preview's source while
     // painting, and its own placement, else the layer's (Phase 18, masks).
     const maskFor = (x: Layer, xo: LayerOverride | undefined): GpuMaskSpec | undefined => {
@@ -2113,7 +2115,7 @@ export class Engine {
       }
     }
     const st = this.stroke;
-    if (st && st.project === p) m.set(st.layerId, { ...(m.get(st.layerId) ?? {}), ...(st.target === 'pixels' ? { source: st.s.working } : { maskSource: st.s.working }) });
+    if (st && st.project === p) m.set(st.layerId, { ...(m.get(st.layerId) ?? {}), ...(st.target !== 'pixels' ? { maskSource: st.s.working } : st.s.windowed ? { patch: { surface: st.s.working, x: st.s.ox, y: st.s.oy } } : { source: st.s.working }) });   // a windowed stroke as a patch (1.60.6)
     const te = this.transformEdit;
     if (te && te.project === p) {
       // A keyed layer's draft shown where its keys place it (1.59.9), so the drag follows the layer as seen.
@@ -2289,7 +2291,7 @@ export class Engine {
       for (const s of this.historySnapshots.get(p) ?? []) n += this.docBytes(s.state.doc);
       n += p.doc.width * p.doc.height * 4 + p.history.retained(p.snapshot());
     }
-    return n + spareBytes();   // the strokes' spare surfaces, kept for speed (1.60.5, capped at 256 MB)
+    return n + spareBytes() + (this.stroke?.s.bytes ?? 0);   // the strokes' spare surfaces (1.60.5), and one in progress (1.60.6)
   }
 
   /** Room for `what`, needing `extra` bytes more: true when it fits the budget, else false with a message. */
@@ -3032,7 +3034,10 @@ export class Engine {
     // What a stroke makes (1.60.5, engine/stroke.ts): its working and paint surfaces, each the layer's size, a third
     // with a selection; and the layer's own pixels when this stroke is the first on it.
     const fresh = p.activeLayer && !p.activeLayer.raster ? p.doc.width * p.doc.height * 4 : 0;
-    if (!this.room(this.layerBytes() * (p.selection ? 3 : 2) + fresh, 'This stroke')) return false;
+    // A large layer's stroke works in a window around where it paints, grown within the budget (1.60.6): it asks room
+    // here only for a first window around the brush.
+    const lb = this.layerBytes(), first = lb / 4 > strokeWindowFrom() ? Math.min(lb, (this.brush.diameter + 1026) ** 2 * 4) : lb;
+    if (!this.room(first * (p.selection ? 3 : 2) + fresh, 'This stroke')) return false;
     this.settle();
     if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer
     if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to paint on.'); return false; }
@@ -3055,6 +3060,7 @@ export class Engine {
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
     if (!opts.aliased) s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s };
+    s.canGrow = (b) => !this.memoryBudget || this.memoryUse() + b <= this.memoryBudget;   // its window, within the budget (1.60.6)
     const last = this.lastBrush;
     if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p, pressure, pose);
     s.to(pt, pressure, pose);
@@ -3103,6 +3109,7 @@ export class Engine {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
+    if (st.s.clipped) this.notice('The stroke stopped where it would have needed more memory than this computer allows formvis. Merge or delete layers, close a document, or paint in shorter strokes.');   // 1.60.6
     if (st.quick) {
       // Quick Mask: the painted coverage is the new selection, in this stroke's history step (the raster was temporary).
       st.s.commit();
@@ -5787,6 +5794,7 @@ export class Engine {
       healFrom = { x: Math.round(b.x - a.x), y: Math.round(b.y - a.y) };
     }
     this.stroke = { project: p, layerId: pick.layer.id, target: pick.target, s, heal: kind === 'heal' ? this.retouch.healMode : kind === 'remove' ? 'remove' : undefined, healFrom };
+    s.canGrow = (b) => !this.memoryBudget || this.memoryUse() + b <= this.memoryBudget;   // its window, within the budget (1.60.6)
     const last = this.lastBrush;
     if (shift && last && last.layerId === pick.layer.id && last.target === pick.target) s.to(last.p);
     s.to(pt);

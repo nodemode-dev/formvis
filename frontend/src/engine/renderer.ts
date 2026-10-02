@@ -47,7 +47,10 @@ function halved(r: Raster, level: number): { surface: Surface; scale: number } {
   return { surface: prev, scale: 2 ** level };
 }
 
-export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number; effects?: LayerEffects | null }
+export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number; effects?: LayerEffects | null; patch?: LayerPatch }
+/** A windowed stroke's pixels (1.60.6, DEV_PLAN 26.2): the layer as it will be over the window from (x, y), in layer
+ *  pixels; outside it the layer's own stand. */
+export interface LayerPatch { surface: Surface; x: number; y: number }
 export interface RenderJob {
   doc: Doc;
   target: Surface;
@@ -167,10 +170,10 @@ export class Renderer {
       // A styled layer's effects come from the per-layer cache at document resolution when they can, so any view and
       // any repainted region shows them whole; strokes and transforms in progress, clipping and folder masks are
       // drawn per render instead.
-      const parts = styled && !base && !folders.length && !ov?.source && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height) : null;
+      const parts = styled && !base && !folders.length && !ov?.source && !ov?.patch && !ov?.maskSource && !ov?.transform ? this.effectParts(layer, fx as LayerEffects, src, t, own, ov?.maskPlacement ?? null, job.doc.width, job.doc.height) : null;
       if (parts) this.drawParts(ctx, parts, job.view, opacity, false);
       const blendIf = blendIfActive(layer.blendIf) ? layer.blendIf as BlendIf : null, knock = layer.knockout && layer.knockout !== 'none' ? layer.knockout : null;
-      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts) && !blendIf && !knock) {
+      if (!own && !folders.length && !base && !pixelBlend && (!styled || parts) && !blendIf && !knock && !ov?.patch) {
         this.draw(ctx, src, m, t.sampling, pix, op, job.quality);
         if (parts) this.drawParts(ctx, parts, job.view, opacity, true);
         continue;
@@ -183,6 +186,7 @@ export class Renderer {
       }
       const a = this.slot(0, W, H);
       this.draw(a.c, src, m, t.sampling, 1, 'source-over', job.quality);
+      if (ov?.patch) this.patchIn(a.c, ov.patch, m, t.sampling, 1, job.quality);   // a windowed stroke (1.60.6)
       if (own) this.cover(a.c, own, job.view, W, H);
       for (const g of folders) this.cover(a.c, g, job.view, W, H);
       if (cov) {
@@ -275,7 +279,7 @@ export class Renderer {
   gpuEffectParts(layer: Layer, ov: LayerOverride | undefined, doc: Doc): { image: Surface; matrix: Mat; alpha: number; blend: BlendMode; above: boolean }[] | null {
     const fx0 = ov && 'effects' in ov ? ov.effects ?? null : layer.effects ?? null, fx = fx0 ? withGlobalLight(fx0, doc.globalLight) : null;
     if (!effectsActive(fx)) return [];
-    if (ov?.source || ov?.maskSource || ov?.transform || !layer.raster) return null;
+    if (ov?.source || ov?.patch || ov?.maskSource || ov?.transform || !layer.raster) return null;
     const t = layer.transform, src = layer.raster.canvas;
     const parts = this.effectParts(layer, fx as LayerEffects, src, t, this.maskOf(layer, ov, t), ov?.maskPlacement ?? null, doc.width, doc.height);
     return parts.map((p) => ({ image: p.s, matrix: [1 / p.k, 0, 0, 1 / p.k, p.x, p.y] as Mat, alpha: p.alpha, blend: p.op === 'source-over' ? 'normal' : p.op as BlendMode, above: p.above }));
@@ -515,6 +519,19 @@ export class Renderer {
     }
   }
 
+  /** A windowed stroke's pixels over their window (1.60.6, DEV_PLAN 26.2), drawn with 'copy' inside the window's
+   *  rectangle (layer pixels, placed by `m`): they replace the layer's own there rather than adding to them, which
+   *  erasing and part-transparent pixels need; where the stroke has not reached, they are the layer's own anyway. */
+  private patchIn(c: Ctx2D, p: LayerPatch, m: Mat, sampling: Sampling, alpha: number, quality?: ImageSmoothingQuality): void {
+    c.save();
+    setMat(c, m);
+    c.beginPath();
+    c.rect(p.x, p.y, p.surface.width, p.surface.height);
+    c.clip();
+    this.draw(c, p.surface as CanvasImageSource, mul(m, translation(p.x, p.y)), sampling, alpha, 'copy', quality);
+    c.restore();
+  }
+
   private draw(c: Ctx2D, src: CanvasImageSource, m: Mat, sampling: Sampling, alpha: number, op: GlobalCompositeOperation, quality?: ImageSmoothingQuality): void {
     let img = src, mm = m;
     const level = sampling === 'nearest' ? 0 : halvings(matScale(m)), r = level ? rasterOf(src) : undefined;
@@ -639,6 +656,7 @@ export class Renderer {
     if (!slot) { const s = createSurface(W, H); slot = { s, c: ctxOf(s) }; this.clipPool.set(base.id, slot); }
     this.prepare(slot, W, H);
     this.draw(slot.c, src, mul(job.view, placement(t, src.width, src.height)), t.sampling, ov?.opacity ?? base.opacity, 'source-over', job.quality);
+    if (ov?.patch) this.patchIn(slot.c, ov.patch, mul(job.view, placement(t, src.width, src.height)), t.sampling, ov?.opacity ?? base.opacity, job.quality);   // 1.60.6
     const own = this.maskOf(base, ov, t);
     if (own) this.cover(slot.c, own, job.view, W, H);
     if (base.clipId) {

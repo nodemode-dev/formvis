@@ -87,6 +87,8 @@ ask it questions.
   > Local models.
 - Brush, Pencil and Eraser (including Background and Magic Eraser), with Photoshop's brush settings: shape dynamics,
   scattering, colour dynamics, transfer, noise and wet edges. Brushes from Photoshop .abr files can be imported.
+- On very large pictures a stroke uses memory only around where it paints. The status bar shows how much memory
+  formvis holds of what this computer allows it; work that would not fit is refused with a message, not lost.
 - Clone Stamp (Sample: Current Layer, Current & Below or All Layers; Mode; Flow), Healing Brush, Spot Healing, Patch,
   Content-Aware Move and Red Eye.
 - Dodge and Burn (Range, Exposure, Protect Tones) and Sponge (Saturate or Desaturate, Flow, Vibrance).
