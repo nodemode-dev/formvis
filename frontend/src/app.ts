@@ -1809,7 +1809,7 @@ export function startApp(): void {
   // 1.56.8 (DEV_PLAN 22.10): 32 bits as a denylist too, everything else through derive in linear light; since 1.57.1 it
   // composes on the one compositor, so what remains is the adjustments other than Exposure, Unsharp Mask and Add Noise,
   // the colour models and the profile and proof commands.
-  const DEEP32_NOT = new Set([...ADJUSTMENT_KINDS.filter((k) => k !== 'exposure').map((k) => `new-adj-${k}`)]);
+  const DEEP32_NOT = new Set<string>();
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? !CMYK_NOT.has(c.id) || passes(c)
     : engine.current?.doc.mode === 'lab' ? !LAB_NOT.has(c.id) || passes(c)
     : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || (engine.current?.doc.depth === 32 && (!DEEP32_NOT.has(c.id) || passes(c)));

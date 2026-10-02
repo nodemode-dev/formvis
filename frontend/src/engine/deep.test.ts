@@ -105,7 +105,8 @@ describe('32-bit documents (1.53.9)', () => {
     const toned = deepToned(rgb(1, 1, lin), -1, 1).data;
     expect(toned[0]).toBeCloseTo(linearToSrgb(0.125), 6); expect(toned[2]).toBe(1);      // halved then encoded; 4 still clips
     const lv = { kind: 'levels', data: {} } as unknown as Adjustment;
-    const refused = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, depth: 32, layers: [layerOf(), layer({ id: 'y', raster: null, adjustment: lv })] } as unknown as Doc);
-    expect('error' in refused && refused.error).toMatch(/Exposure does/);
+    const kept = composeDeep({ id: 'd', width: 1, height: 1, resolution: 72, depth: 32, layers: [layerOf(), layer({ id: 'y', raster: null, adjustment: lv })] } as unknown as Doc);
+    if ('error' in kept) throw new Error(kept.error);                                      // 1.57.7: every adjustment composes at 32 bits
+    expect(Array.from(kept.data.slice(0, 3)).map((v) => +v.toFixed(5))).toEqual([0.25, 2, 8]);   // an unchanged Levels keeps it, past white
   });
 });

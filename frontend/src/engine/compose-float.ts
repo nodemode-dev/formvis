@@ -209,7 +209,31 @@ export function composeFloat(doc: Doc, n: 3 | 4, paperWhite: boolean, luts: Cmyk
     if (l.adjustment && linear) {
       // 32 bits (1.53.9, on this compositor since 1.57.1): Exposure is exposure in linear light, unclamped.
       const e = l.adjustment.kind === 'exposure' ? (l.adjustment.data as { exposureSettings?: { exposure?: number; offset?: number; gamma?: number } }).exposureSettings : null;
-      if (!e) return { error: `${name} is an adjustment that waits at 32 bits (Exposure does).` };
+      if (!e) {
+        // Every other adjustment at 32 bits (1.57.7, DEV_PLAN 22.11): it acts on each pixel's colour within the display
+        // range (the pixel divided by its brightest channel when that passes white, sRGB-encoded), and the brightness
+        // above white is scaled back after, so a highlight keeps its light. Transfers (Levels, Curves and the like) run
+        // in float; a kernel's change is added to the float, so precision is kept.
+        const t = transferOf(l.adjustment), kern = t ? null : kernelFor(l.adjustment);
+        if (!t && !kern) return { error: `${name} is an adjustment that waits at 32 bits (Exposure does).` };
+        const N = W * H, scale = new Float32Array(N), rgba = kern ? new Uint8ClampedArray(N * 4) : null;
+        for (let j = 0, i = 0; j < N; j++, i += S) {
+          const m = Math.max(1, out[i], out[i + 1], out[i + 2]); scale[j] = m;
+          if (rgba) { for (let c = 0; c < 3; c++) rgba[j * 4 + c] = Math.round(linearToSrgb(Math.max(0, out[i + c] / m)) * 255); rgba[j * 4 + 3] = 255; }
+        }
+        const adj = rgba ? new Uint8ClampedArray(rgba) : null;
+        if (kern && adj) kern(adj, { width: W, height: H, originX: 0, originY: 0, unitsPerPixel: 1 });
+        for (let j = 0, i = 0; j < N; j++, i += S) {
+          const k = op * (cov ? cov[j] : 1), m = scale[j];
+          if (k <= 0) continue;
+          for (let c = 0; c < 3; c++) {
+            const u = Math.max(0, out[i + c] / m);
+            const nu = t ? srgbToLinear(Math.max(0, Math.min(1, t(c, linearToSrgb(Math.min(1, u)) * 255) / 255))) : Math.max(0, u + srgbToLinear((adj as Uint8ClampedArray)[j * 4 + c] / 255) - srgbToLinear((rgba as Uint8ClampedArray)[j * 4 + c] / 255));
+            out[i + c] += (nu * m - out[i + c]) * k;
+          }
+        }
+        continue;
+      }
       const gain = 2 ** (e.exposure ?? 0), off = e.offset ?? 0, inv = 1 / Math.max(0.01, e.gamma ?? 1);
       for (let i = 0, j = 0; i < out.length; i += S, j++) { const k = op * (cov ? cov[j] : 1); if (k <= 0) continue; for (let c = 0; c < A; c++) { const v = out[i + c], nv = Math.pow(Math.max(0, v * gain + off), inv); out[i + c] = v + (nv - v) * k; } }
       continue;
