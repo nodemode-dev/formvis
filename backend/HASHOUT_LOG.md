@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The banded PNG writer · _v1.61.2 (app/routers/bands.py new; app/main.py)
+
+`/api/bands/png`: POST with width, height and ppi opens a PNG (signature, IHDR as 8-bit RGBA, pHYs) in the data folder's bands directory and returns a key; POST to the key appends whole rows (RGBA, top first), each band given PNG's Up filter with numpy (the row before kept between bands) and deflated straight into IDAT chunks; POST to the key's end checks every row came, closes the stream (IEND) and returns the file. Part rows, extra rows and missing rows are refused; the directory is emptied when the engine starts (`bands.clear()` in main.py, beside the router's inclusion). Checked through the engine's test client (random RGBA with varying alpha in three bands decoded back exactly at its 300 ppi; a part row and missing rows refused) and through the window (the 150 MP export, the engine peaking 161 MB). Nothing removed besides the version lines:
+
+```text
+__version__ = "1.61.1"
+version = "1.61.1"
+version = "1.61.1"
+ "version": "1.61.1",
+```
+
 ## Version only · _v1.61.1
 
 No engine code changed in 1.61.1 (whole-layer filters' room from measured peaks, in the window). Removed lines taken after the version edit:

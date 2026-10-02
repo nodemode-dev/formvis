@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.61.2 · 2026-10-02
+
+### Added
+
+- Exporting a very large picture as PNG works a strip at a time, written by formvis's engine as it comes, with the same pixels as before: a 150 megapixel picture now exports on a computer with 4 GB of memory.
+
 ## 1.61.1 · 2026-10-02
 
 ### Fixed
