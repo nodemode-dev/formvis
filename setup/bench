@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# ./formvis bench (1.61.5, the register's H4): formvis's drawing paths timed on this computer's real graphics and
+# written to bench-results/ to send back. The work is in setup/bench.py.
+source "$(dirname "$0")/lib.sh"
+py="$FORMVIS_ROOT/backend/venv/bin/python"
+[ -x "$py" ] || py="$(cv_python)" || { cv_say "Python 3.12+ is required"; exit 1; }
+exec "$py" "$FORMVIS_ROOT/setup/bench.py" "$@"

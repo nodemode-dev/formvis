@@ -1,4 +1,5 @@
 node_modules/
+bench-results/
 frontend/dist/
 backend/venv/
 backend/build/
