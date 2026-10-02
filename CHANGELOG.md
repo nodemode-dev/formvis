@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.60.4 · 2026-10-02
+
+### Changed
+
+- Closing a document gives its memory back straight away (measured: a 150 megapixel document's 1.3 GB within three seconds), and formvis's memory reading now matches what the browser really holds, so it refuses work before the computer runs short.
+
 ## 1.60.3 · 2026-10-02
 
 ### Added
