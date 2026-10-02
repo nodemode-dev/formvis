@@ -38,6 +38,7 @@ export class GenerativeDialog extends Dialog {
   private readonly refs: ReferencePicker;
   private locals: LocalModel[] = [];
   private lama = false;
+  private picked = false;   // the person chose the model (1.58.5); until then the default is fal with a key, else local
   private readonly influence = el<HTMLInputElement>('<input type="range" min="0" max="100" step="1" value="40" aria-label="Influence">');
   private readonly influenceRow = el('<label class="cv-dialog-row" title="How much the area under the selection shapes the result (0: none)"><span>Influence</span></label>');
   private readonly improver: PromptImprover;
@@ -50,7 +51,7 @@ export class GenerativeDialog extends Dialog {
     add.addEventListener('click', () => this.addFile.click());
     this.addFile.addEventListener('change', () => void this.addWorkflow());
     remove.addEventListener('click', () => { const v = this.model.value; if (v.startsWith('comfy:')) { removeRecipe(v.slice(6)); this.fillModels(); this.sync(); } });
-    this.model.addEventListener('change', () => this.sync());
+    this.model.addEventListener('change', () => { this.picked = true; this.sync(); });
     this.modelRow.append(this.model, add, remove, this.addFile);
     this.body.appendChild(this.modelRow);
     this.influenceRow.append(this.influence);
@@ -95,14 +96,13 @@ export class GenerativeDialog extends Dialog {
     setText(this.hint, HINTS[mode]);
     // Upscale: Real-ESRGAN on fal or on this computer (1.53.1); the fill models otherwise.
     for (const b of this.modelRow.querySelectorAll('button')) setHidden(b as HTMLElement, mode === 'upscale');
+    this.status = await api.generativeStatus();   // first, so the default knows whether fal has a key (1.58.5)
     if (mode === 'upscale') this.upscaleModels(await upscalerReady());
     else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
     setHidden(this.refs.el, mode === 'upscale');
     setHidden(this.improver.el, mode === 'upscale');
     this.improver.refresh();
-    this.status = await api.generativeStatus();
-    if (mode !== 'upscale') this.fillModels();   // again, now that fal's state is known
     this.sync();
     this.open();
     if (mode !== 'upscale') { this.prompt.focus(); this.prompt.select(); }
@@ -115,10 +115,12 @@ export class GenerativeDialog extends Dialog {
     if (!ready) here.title = 'Download it in Preferences > Plugins > Local models';
     const was = this.model.value;
     this.model.replaceChildren(el('<option value="fal">Real-ESRGAN (fal)</option>'), here);
-    this.model.value = was === 'local:ai-upscale' && ready ? was : ready ? 'local:ai-upscale' : 'fal';
+    // The person's choice while it stands; else fal when it has a key, this computer when not (1.58.5).
+    this.model.value = this.picked && (was === 'fal' || (was === 'local:ai-upscale' && ready)) ? was : this.status?.configured ? 'fal' : ready ? 'local:ai-upscale' : 'fal';
   }
 
-  /** FLUX.1 Fill on fal, then the kept ComfyUI workflows; the choice kept when it still exists. */
+  /** FLUX.1 Fill on fal, then the kept ComfyUI workflows and this computer's models; the person's choice kept while it
+   *  exists, else fal when it has a key, else a model on this computer (1.58.5). */
   private fillModels(): void {
     const was = this.model.value;
     this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }),
@@ -127,8 +129,11 @@ export class GenerativeDialog extends Dialog {
     const lama = el<HTMLOptionElement>('<option value="local:lama">LaMa, no prompt (this computer)</option>');
     lama.disabled = !this.lama; if (!this.lama) lama.title = 'Download it in Preferences > Plugins > Local models';
     this.model.append(lama);
-    if ([...this.model.options].some((o) => o.value === was && !o.disabled)) this.model.value = was;
-    else if (this.lama && !this.status?.configured) this.model.value = 'local:lama';
+    // The person's choice while it stands; else fal when it has a key; else this computer: a ready fill model, then
+    // LaMa; else fal, whose key the dialog then asks for (1.58.5).
+    const local = this.locals.find((m) => m.ready)?.id ?? (this.lama ? 'local:lama' : null);
+    if (this.picked && [...this.model.options].some((o) => o.value === was && !o.disabled)) this.model.value = was;
+    else this.model.value = this.status?.configured ? 'fal' : local ?? 'fal';
   }
 
   private async addWorkflow(): Promise<void> {
@@ -139,6 +144,7 @@ export class GenerativeDialog extends Dialog {
     if (problem) { setText(this.state, problem); return; }
     this.fillModels();
     this.model.value = `comfy:${f.name.replace(/\.json$/i, '')}`;
+    this.picked = true;   // adding it was the person's choice (1.58.5)
     this.sync();
   }
 

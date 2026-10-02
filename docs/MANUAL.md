@@ -127,6 +127,8 @@ ask it questions.
 - Edit > Generate Image makes a picture from a prompt alone, as a new layer at the document's size. Besides fal it
   works with OpenAI, Google, Black Forest Labs and Ideogram: choose one, paste its API key in the dialog once (it is
   kept in your system's password store, or read from the provider's usual environment variable), and generate.
+  Generate Image, Generative Fill and Upscale open on fal when it has a key (it reaches the most models through one
+  key), and on a model on this computer when it has none; a model you choose stays chosen.
 - The model: FLUX on fal (paste a fal key into the dialog once), or one of your ComfyUI workflows (see ComfyUI
   below). A workflow needs no fal key.
 - API keys (fal's, and the language model's) are kept in your system's password store: Keychain on a Mac,

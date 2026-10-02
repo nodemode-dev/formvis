@@ -25,13 +25,14 @@ export class GenerateImageDialog extends Dialog {
   private readonly keyRow = el('<div class="cv-dialog-row" hidden><span class="cv-gen-keylabel">API key</span></div>');
   private readonly keyButton = el<HTMLButtonElement>('<button class="cv-btn" type="button">Save key</button>');
   private changing = false;   // a kept key being replaced
+  private picked = false;     // the person chose the model (1.58.5); until then the default is fal with a key, else local
 
   constructor(private readonly engine: Engine, private readonly toast: (text: string) => void) {
     super('Generate Image', 420);
     const row = el('<label class="cv-dialog-row"><span>Model</span></label>');
     row.append(this.model);
     this.refs = new ReferencePicker(engine);
-    this.model.addEventListener('change', () => { this.refs.forFal(this.model.value === 'fal'); this.keyFor(); });
+    this.model.addEventListener('change', () => { this.picked = true; this.refs.forFal(this.model.value === 'fal'); this.keyFor(); });
     this.improver = new PromptImprover(this.prompt, 'Richer detail');
     this.keyButton.addEventListener('click', () => {
       const pr = this.chosenProvider();
@@ -52,7 +53,11 @@ export class GenerateImageDialog extends Dialog {
       ...this.providers.map((pr) => { const o = document.createElement('option'); o.value = `provider:${pr.id}`; o.textContent = `${named[pr.id] ?? pr.model} (${pr.name})`; return o; }),
       ...recipes().map((r) => { const o = document.createElement('option'); o.value = r.name; o.textContent = `${r.name} (ComfyUI)`; return o; }),
       ...locals.map((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = `${m.label.replace(/ \(local\)$/, '')} (this computer)`; o.disabled = !m.ready; if (!m.ready && m.reason) o.title = m.reason; return o; }));
-    if ([...this.model.options].some((o) => o.value === was)) this.model.value = was;
+    // The person's choice while it stands; else fal, the cloud default, when it has a key; else a model on this
+    // computer; else fal, whose key the dialog then asks for (1.58.5). The other providers are chosen, never defaults.
+    const falKey = !!(await api.generativeStatus())?.configured, local = locals.find((m) => m.ready)?.id ?? null;
+    if (this.picked && [...this.model.options].some((o) => o.value === was && !o.disabled)) this.model.value = was;
+    else this.model.value = falKey ? 'fal' : local ?? 'fal';
     this.refs.refresh(this.model.value === 'fal');
     this.keyFor();
     this.improver.refresh();
