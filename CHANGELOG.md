@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.58.6 · 2026-10-01
+
+Touch gestures (the parity plan's L12, first part).
+
+### Added
+
+- On a touch screen: pinch to zoom about your fingers, drag two fingers to pan, turn them to rotate the view (past a small angle, so a pinch never turns it), tap two fingers to undo and three to redo. One finger works the tool as before; a second finger arriving mid-stroke cancels that stroke instead of leaving a mark.
+
 ## 1.58.5 · 2026-10-01
 
 fal is the cloud default; without a key, this computer.
