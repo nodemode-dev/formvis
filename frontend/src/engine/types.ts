@@ -1,4 +1,5 @@
 import type { Raster } from './surface';
+import type { TiledRaster } from './tiled';
 import { isContour, type ContourId, type GlobalLight } from './style-extras';
 
 export type ID = string;
@@ -64,6 +65,9 @@ export interface Layer {
   vector?: VectorLayer | null;
   name: string;
   raster: Raster | null;
+  /** A layer past one canvas's 2^28 pixels kept as tiles (1.62.3, DEV_PLAN 26.6b); `raster` is null on it, so code
+   *  written for ordinary layers declines it as it declines an adjustment, until each stage teaches that code tiles. */
+  tiled?: TiledRaster | null;
   /** The layer's float pixels beyond 8-bit RGB (16 and 32 bits, CMYK, Lab); `raster` is their rendition. */
   channels?: ChannelPixels;
   transform: Transform;

@@ -16,6 +16,7 @@ import { Emitter } from './events';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
+import { TiledRaster } from './tiled';
 import { SelectionMask, type SelectionMode } from './selection';
 import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
@@ -675,6 +676,18 @@ export class Engine {
   }
 
   newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
+    // Past what one canvas may hold here (a side past 30,000, or more pixels than the budget) but within 65,535 a side,
+    // a tiled document (1.62.3, DEV_PLAN 26.6b): its background costs nothing until drawn into. Before 1.62.3 refused.
+    if (Number.isInteger(width) && Number.isInteger(height) && width >= 1 && height >= 1 && width <= 65535 && height <= 65535 &&
+        (width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels)) {
+      const doc: Doc = { id: uid(), width, height, resolution: Number.isFinite(resolution) && resolution >= 1 && resolution <= 10000 ? resolution : 72, layers: [] };
+      const tiled = new TiledRaster(width, height);
+      if (fill === 'white') tiled.base = [255, 255, 255, 255];
+      else if (fill === 'background') tiled.base = [this.bg.r, this.bg.g, this.bg.b, 255];
+      const layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', doc, { tiled });
+      this.notice(`A ${Math.round(width * height / 1e6).toLocaleString('en-US')} megapixel document is kept in tiles: it opens, zooms and pans now; painting, filters, export and undo on it come in the next releases.`);
+      return this.addProject({ ...doc, layers: [layer] }, name, layer.id);
+    }
     // Its layer and its display, and its opening snapshot when one will be taken (1.60.2, recounted 1.60.5).
     const px = width * height * 4, snap = this.autoFirstSnapshot && px <= this.snapshotByteLimit && (!this.memoryBudget || px <= this.memoryBudget / 4) ? px : 0;
     if (Number.isInteger(width) && Number.isInteger(height) && !this.room(px * 2 + snap, 'A new document')) return null;
@@ -1021,6 +1034,7 @@ export class Engine {
     if (!p) return { reason: 'no document is open' };
     const ov = this.overrides(p), layers: GpuLayerSpec[] = [], map = byId(p.doc), clips = new Map<ID, GpuClipSpec | null | 'nested'>(), fchains = new Map<ID | null, GpuMaskSpec[] | undefined>();
     for (const o of ov?.values() ?? []) if (o.patch) return { reason: 'a stroke on a large layer' };   // drawn by the CPU while it lasts (1.60.6)
+    if (p.doc.layers.some((x) => x.tiled)) return { reason: 'a layer past 268 megapixels' };   // the CPU display draws tiles (1.62.3; the GPU per tile is 26.6g)
     // A layer's mask, as the CPU renderer's maskOf reads it: enabled with pixels, the live preview's source while
     // painting, and its own placement, else the layer's (Phase 18, masks).
     const maskFor = (x: Layer, xo: LayerOverride | undefined): GpuMaskSpec | undefined => {
@@ -2494,8 +2508,12 @@ export class Engine {
       // what the undo history keeps beyond the layers. (1.60.5: the large canvases made as a document opens, watched,
       // were its layer and its opening snapshot; 1.60.4 had read the snapshot as a second copy of each layer.)
       for (const l of p.doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && !seen.has(r.id)) { seen.add(r.id); n += r.width * r.height * 4; }
+      // A tiled layer counts the tiles it holds, and its document no full-size display copy: the CPU display draws only
+      // the view (1.62.3; at 600 MP that copy would be 2.4 GB never made).
+      const tiled = p.doc.layers.some((l) => l.tiled);
+      for (const l of p.doc.layers) if (l.tiled && !seen.has(l.tiled.id)) { seen.add(l.tiled.id); n += l.tiled.bytes; }
       for (const s of this.historySnapshots.get(p) ?? []) n += this.docBytes(s.state.doc);
-      n += p.doc.width * p.doc.height * 4 + p.history.retained(p.snapshot());
+      n += (tiled ? 0 : p.doc.width * p.doc.height * 4) + p.history.retained(p.snapshot());
     }
     return n + spareBytes() + (this.stroke?.s.bytes ?? 0);   // the strokes' spare surfaces (1.60.5), and one in progress (1.60.6)
   }
@@ -2511,7 +2529,11 @@ export class Engine {
   }
 
   /** A full layer's bytes in the current document (what a new layer, a stroke's working copy or a filter's buffer takes). */
-  layerBytes(): number { const p = this.current, r = p?.activeLayer?.raster; return r ? r.width * r.height * 4 : p ? p.doc.width * p.doc.height * 4 : 0; }
+  layerBytes(): number {
+    const p = this.current, r = p?.activeLayer?.raster;
+    if (p?.activeLayer?.tiled) return 0;   // declined by paintable, with the true reason, not a memory figure (1.62.3)
+    return r ? r.width * r.height * 4 : p ? p.doc.width * p.doc.height * 4 : 0;
+  }
 
   addLayer(opts: { name?: string; blend?: BlendMode; opacity?: number; clip?: boolean } = {}): void {
     // No room asked (1.60.2): a new layer holds no pixels until painted, and the first stroke's check counts them.
@@ -3162,6 +3184,8 @@ export class Engine {
   private paintable(l: Layer | null): l is Layer {
     if (!l) return false;
     if (l.isGroup) { this.notice(`"${l.name}" is a group: choose a layer inside it.`); this.lockedAt = performance.now(); return false; }
+    // A layer past 268 MP, kept in tiles (1.62.3): painting it had given it a full-size canvas the browser cannot make.
+    if (l.tiled) { this.notice(`"${l.name}" is past 268 megapixels and kept in tiles: painting and editing its pixels come in the next releases.`); this.lockedAt = performance.now(); return false; }
     if (this.locked(l, 'pixels')) return false;
     if (l.adjustment) return true;
     const kind = liveText(l) ? 'type layer' : l.smart ? 'Smart Object' : l.vector || l.shape ? 'shape layer' : null;
@@ -3239,7 +3263,7 @@ export class Engine {
     if (!p || this.stroke) return false;
     // What a stroke makes (1.60.5, engine/stroke.ts): its working and paint surfaces, each the layer's size, a third
     // with a selection; and the layer's own pixels when this stroke is the first on it.
-    const fresh = p.activeLayer && !p.activeLayer.raster ? p.doc.width * p.doc.height * 4 : 0;
+    const fresh = p.activeLayer && !p.activeLayer.raster && !p.activeLayer.tiled ? p.doc.width * p.doc.height * 4 : 0;   // a tiled layer is never given one (1.62.3)
     // A large layer's stroke works in a window around where it paints, grown within the budget (1.60.6): it asks room
     // here only for a first window around the brush.
     const lb = this.layerBytes(), first = lb / 4 > strokeWindowFrom() ? Math.min(lb, (this.brush.diameter + 1026) ** 2 * 4) : lb;
@@ -7114,6 +7138,9 @@ export class Engine {
    *  document past the band size, composed by the ordinary renderer. */
   bandedExportable(): boolean {
     const p = this.current;
+    // Not a tiled document yet (1.62.3): at 600 MP its 61 MB bands, awaiting collection, crashed the page; 26.6e makes
+    // its export safe, and until then the full-size path refuses it out loud (createSurface) and the page survives.
+    if (p?.doc.layers.some((l) => l.tiled)) return false;
     return !!p && p.doc.width * p.doc.height > this.bandFrom && (p.doc.depth ?? 8) <= 8 && p.doc.mode !== 'cmyk' && p.doc.mode !== 'lab' && !this.composesFloats(p);
   }
 

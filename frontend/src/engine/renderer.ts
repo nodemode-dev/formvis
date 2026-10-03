@@ -162,6 +162,20 @@ export class Renderer {
       const own = this.maskOf(layer, ov, t);
       const base = layer.clipId ? map.get(layer.clipId) ?? null : null;
       if (layer.adjustment) { this.adjust(job, ctx, layer, own, folders, base, map, clipCache, W, H, pix); continue; }
+      if (layer.tiled && !layer.raster) {
+        // A layer past one canvas's 2^28 pixels (1.62.3, DEV_PLAN 26.6b): its tiles drawn at its opacity, in its mode
+        // when the canvas has it (Normal otherwise for now); its masks, clipping, styles, Blend If and knockout come in
+        // later stages of 26.6.
+        const mode = ov?.blend ?? layer.blend;
+        ctx.save();
+        ctx.globalAlpha = pix;
+        ctx.globalCompositeOperation = canvasBlend(mode) ? compositeOp(mode) : 'source-over';
+        ctx.imageSmoothingEnabled = true;
+        if (job.quality) ctx.imageSmoothingQuality = job.quality;
+        layer.tiled.drawTo(ctx, mul(job.view, placement(t, layer.tiled.width, layer.tiled.height)) as unknown as [number, number, number, number, number, number]);
+        ctx.restore();
+        continue;
+      }
       const src = ov?.source ?? layer.raster?.canvas;
       if (!src || !layer.raster) continue;
       const m = mul(job.view, placement(t, src.width, src.height));

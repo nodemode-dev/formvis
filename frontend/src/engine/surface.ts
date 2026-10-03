@@ -3,8 +3,16 @@ import { uid } from './types';
 export type Surface = OffscreenCanvas | HTMLCanvasElement;
 export type Ctx2D = OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D;
 
+/** What one browser canvas holds (Chrome's limits): past it a canvas is made but silently draws nothing. */
+export const CANVAS_PIXELS = 268_435_456, CANVAS_SIDE = 32_767;
+
 export function createSurface(w: number, h: number): Surface {
   const width = Math.max(1, Math.ceil(w)), height = Math.max(1, Math.ceil(h));
+  // Refused out loud (1.62.3): an operation not yet taught tiles, on a document past one canvas, stops with this
+  // rather than working on a canvas that is not there (painting had given a 600 MP layer such a canvas).
+  if (width * height > CANVAS_PIXELS || width > CANVAS_SIDE || height > CANVAS_SIDE) {
+    throw new Error(`A picture of ${width.toLocaleString('en-US')} by ${height.toLocaleString('en-US')} is past what a browser canvas holds (268 megapixels, 32,767 a side); this does not work on documents that large yet.`);
+  }
   if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);
   const canvas = document.createElement('canvas');
   canvas.width = width;

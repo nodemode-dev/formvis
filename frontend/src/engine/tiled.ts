@@ -34,6 +34,9 @@ export class TiledRaster {
   readonly cols: number;
   readonly rows: number;
   private readonly tiles = new Map<number, Tile>();
+  /** The colour an empty tile reads and draws as, red, green, blue and alpha 0 to 255 (1.62.3, DEV_PLAN 26.6b): a
+   *  600 MP white background costs nothing until something is drawn into it. Null is transparent. */
+  base: [number, number, number, number] | null = null;
 
   constructor(readonly width: number, readonly height: number, readonly tile = TILE) {
     this.cols = Math.ceil(width / tile);
@@ -57,6 +60,7 @@ export class TiledRaster {
     if (!t && make) {
       const canvas = createSurface(Math.min(this.tile, this.width - tx * this.tile), Math.min(this.tile, this.height - ty * this.tile));
       t = { canvas, ctx: ctxOf(canvas) };
+      if (this.base) { t.ctx.fillStyle = this.baseCss(); t.ctx.fillRect(0, 0, canvas.width, canvas.height); }   // as it read before
       this.tiles.set(key, t);
     }
     return t ?? null;
@@ -66,11 +70,14 @@ export class TiledRaster {
   read(x: number, y: number, w: number, h: number): ImageData {
     const out = new ImageData(w, h);
     for (const [tx, ty] of tilesIn(x, y, w, h, this.tile, this.cols, this.rows)) {
-      const t = this.tileAt(tx, ty);
-      if (!t) continue;
-      const ox = tx * this.tile, oy = ty * this.tile;
-      const ix0 = Math.max(x, ox), iy0 = Math.max(y, oy), ix1 = Math.min(x + w, ox + t.canvas.width), iy1 = Math.min(y + h, oy + t.canvas.height);
+      const t = this.tileAt(tx, ty), ox = tx * this.tile, oy = ty * this.tile;
+      const tw = Math.min(this.tile, this.width - ox), th = Math.min(this.tile, this.height - oy);
+      const ix0 = Math.max(x, ox), iy0 = Math.max(y, oy), ix1 = Math.min(x + w, ox + tw), iy1 = Math.min(y + h, oy + th);
       if (ix1 <= ix0 || iy1 <= iy0) continue;
+      if (!t) {   // empty: its base colour, or transparent
+        if (this.base) for (let yy = iy0; yy < iy1; yy++) for (let xx = ix0; xx < ix1; xx++) out.data.set(this.base, ((yy - y) * w + (xx - x)) * 4);
+        continue;
+      }
       const part = t.ctx.getImageData(ix0 - ox, iy0 - oy, ix1 - ix0, iy1 - iy0), row = (ix1 - ix0) * 4;
       for (let r = 0; r < iy1 - iy0; r++) out.data.set(part.data.subarray(r * row, (r + 1) * row), ((iy0 - y + r) * w + (ix0 - x)) * 4);
     }
@@ -104,16 +111,40 @@ export class TiledRaster {
     this.touch();
   }
 
-  /** The layer drawn onto `ctx` through `m` (layer to target, as setTransform's six numbers), tile by tile; exact at a
-   *  scale of 1 (see the note at the top for other scales). */
+  /** The layer drawn onto `ctx` through `m` (layer to target pixels, as setTransform's six numbers), tile by tile, an
+   *  empty tile as the base colour (1.62.3). Unrotated and unflipped (the canvas view), each tile goes to whole target
+   *  pixels, so neighbours meet exactly at any zoom with no seam, and at a scale of 1 with a whole-pixel offset it is a
+   *  copy; tiles outside the target are skipped. Rotated or flipped, tiles are drawn through `m`, and may seam at a
+   *  scale other than 1. The caller's alpha and composite operation apply. */
   drawTo(ctx: Ctx2D, m: readonly [number, number, number, number, number, number]): void {
-    for (const [key, t] of this.tiles) {
-      const tx = key % this.cols, ty = Math.floor(key / this.cols);
-      ctx.save();
-      ctx.transform(m[0], m[1], m[2], m[3], m[4], m[5]);
-      ctx.drawImage(t.canvas, tx * this.tile, ty * this.tile);
-      ctx.restore();
+    const cw = ctx.canvas.width, ch = ctx.canvas.height, straight = m[1] === 0 && m[2] === 0 && m[0] > 0 && m[3] > 0;
+    for (let ty = 0; ty < this.rows; ty++) {
+      for (let tx = 0; tx < this.cols; tx++) {
+        const t = this.tileAt(tx, ty);
+        if (!t && !this.base) continue;
+        const ox = tx * this.tile, oy = ty * this.tile, tw = Math.min(this.tile, this.width - ox), th = Math.min(this.tile, this.height - oy);
+        if (straight) {
+          const x0 = Math.round(m[0] * ox + m[4]), x1 = Math.round(m[0] * (ox + tw) + m[4]), y0 = Math.round(m[3] * oy + m[5]), y1 = Math.round(m[3] * (oy + th) + m[5]);
+          if (x1 <= 0 || y1 <= 0 || x0 >= cw || y0 >= ch || x1 === x0 || y1 === y0) continue;
+          ctx.save();
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          if (t) ctx.drawImage(t.canvas, 0, 0, tw, th, x0, y0, x1 - x0, y1 - y0);
+          else { ctx.fillStyle = this.baseCss(); ctx.fillRect(x0, y0, x1 - x0, y1 - y0); }
+          ctx.restore();
+        } else {
+          ctx.save();
+          ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
+          if (t) ctx.drawImage(t.canvas, ox, oy);
+          else { ctx.fillStyle = this.baseCss(); ctx.fillRect(ox, oy, tw, th); }
+          ctx.restore();
+        }
+      }
     }
+  }
+
+  private baseCss(): string {
+    const b = this.base ?? [0, 0, 0, 0];
+    return `rgba(${b[0]}, ${b[1]}, ${b[2]}, ${b[3] / 255})`;
   }
 
   touch(): void { this.version++; }
