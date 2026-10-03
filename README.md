@@ -2,7 +2,7 @@
 <h1 align="center">formvis</h1>
 <p align="center"><b>Layered image compositing for the web and the desktop, in the NodeMode design system.</b></p>
 <p align="center">
-<img src="https://img.shields.io/badge/version-1.62.4-f97316" alt="version 1.62.4">
+<img src="https://img.shields.io/badge/version-1.62.5-f97316" alt="version 1.62.5">
 <img src="https://img.shields.io/badge/node-22-339933" alt="node 22">
 <img src="https://img.shields.io/badge/python-3.12-3776AB" alt="python 3.12">
 <img src="https://img.shields.io/badge/tauri-2-24C8DB" alt="tauri 2">
