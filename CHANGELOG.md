@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.62.3 · 2026-10-03
+
+### Added
+
+- New documents larger than one browser canvas holds (up to 65,535 pixels a side; a 30,000 by 20,000 picture is 600 megapixels) open, zoom and pan, kept in tiles that cost memory only where something is drawn. Painting, filters, export and undo on them come in the next releases, and formvis says so when you try.
+
+### Fixed
+
+- An operation that would need a canvas larger than a browser can hold now stops with a plain message, rather than working on a canvas that silently draws nothing.
+
 ## 1.62.2 · 2026-10-03
 
 ### Added
