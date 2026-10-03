@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# ./formvis verify-local (1.61.8, the register's M7): formvis's two local image models each make one picture on this
+# computer, timed, written to bench-results/ to send back. The work is in setup/verify_local.py.
+source "$(dirname "$0")/lib.sh"
+py="$FORMVIS_ROOT/backend/venv/bin/python"
+[ -x "$py" ] || py="$(cv_python)" || { cv_say "Python 3.12+ is required"; exit 1; }
+exec "$py" "$FORMVIS_ROOT/setup/verify_local.py" "$@"

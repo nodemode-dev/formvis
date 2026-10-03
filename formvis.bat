@@ -22,6 +22,7 @@ if /i "%CMD%"=="doctor" ( call setup\doctor.bat & goto :eof )
 if /i "%CMD%"=="test" ( call setup\test.bat & goto :eof )
 if /i "%CMD%"=="counts" ( call setup\counts.bat %ARG% & goto :eof )
 if /i "%CMD%"=="bench" ( call setup\bench.bat %ARG% & goto :eof )
+if /i "%CMD%"=="verify-local" ( call setup\verify_local.bat %ARG% & goto :eof )
 if /i "%CMD%"=="clean" ( call setup\clean.bat %ARG% & goto :eof )
 if /i "%CMD%"=="help" ( call :usage & exit /b 0 )
 echo [formvis] unknown command: %CMD%
