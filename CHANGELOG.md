@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.62.4 · 2026-10-03
+
+### Added
+
+- A very large document's parts that are out of view are kept on disk by formvis's engine once they would take too much memory, each with a small preview shown at once while the full part loads back.
+
 ## 1.62.3 · 2026-10-03
 
 ### Added
