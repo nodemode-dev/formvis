@@ -3668,7 +3668,7 @@ dependencies = [
 
 [[package]]
 name = "formvis"
-version = "1.62.3"
+version = "1.62.4"
 dependencies = [
  "fontdb",
  "regex",
