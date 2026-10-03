@@ -16,7 +16,7 @@ import { Emitter } from './events';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
-import { TiledRaster } from './tiled';
+import { PREVIEW, TiledRaster } from './tiled';
 import { SelectionMask, type SelectionMode } from './selection';
 import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
@@ -1100,12 +1100,14 @@ export class Engine {
   /** The GPU display's view of the current document (Phase 18.2b): its visible layers bottom to top, each with its
    *  pixels, placement, opacity and blend mode, live previews applied as `compose` applies them; or the reason the
    *  document still draws on the CPU (what the GPU path does not draw yet). */
-  gpuLayers(): { layers: GpuLayerSpec[] } | { reason: string } {
+  gpuLayers(view: { matrix: Mat; width: number; height: number } | null = null): { layers: GpuLayerSpec[] } | { reason: string } {
     const p = this.current;
     if (!p) return { reason: 'no document is open' };
     const ov = this.overrides(p), layers: GpuLayerSpec[] = [], map = byId(p.doc), clips = new Map<ID, GpuClipSpec | null | 'nested'>(), fchains = new Map<ID | null, GpuMaskSpec[] | undefined>();
     for (const o of ov?.values() ?? []) if (o.patch) return { reason: 'a stroke on a large layer' };   // drawn by the CPU while it lasts (1.60.6)
-    if (p.doc.layers.some((x) => x.tiled)) return { reason: 'a layer past 268 megapixels' };   // the CPU display draws tiles (1.62.3; the GPU per tile is 26.6g)
+    // A giant document's tiles in view go to the GPU (1.62.9, DEV_PLAN 26.6g; the CPU drew them since 1.62.3), which
+    // needs the view to know which; asked without one (the bench), it stays on the CPU.
+    if (!view && p.doc.layers.some((x) => x.tiled)) return { reason: 'a layer past 268 megapixels, asked without a view' };
     // A layer's mask, as the CPU renderer's maskOf reads it: enabled with pixels, the live preview's source while
     // painting, and its own placement, else the layer's (Phase 18, masks).
     const maskFor = (x: Layer, xo: LayerOverride | undefined): GpuMaskSpec | undefined => {
@@ -1170,6 +1172,11 @@ export class Engine {
       }
       // Dissolve's pattern is fixed to document pixels; the display composites in screen pixels, so it stays on the CPU.
       if ((o?.blend ?? l.blend) === 'dissolve') return { reason: 'a layer in Dissolve mode' };
+      if (l.tiled && view) {   // a giant layer: its tiles in view, each its own texture (1.62.9)
+        if (mask || clip || fxParts.length) return { reason: 'a mask, clipping mask or style on a layer kept in tiles' };
+        this.tileSpecs(l.tiled, o?.transform ?? l.transform, (o?.opacity ?? l.opacity) * (l.fill ?? 1), o?.blend ?? l.blend, folders, view, layers);
+        continue;
+      }
       const img = o?.source ?? l.raster?.canvas;
       if (!img || !l.raster) continue;
       const lop = o?.opacity ?? l.opacity;
@@ -5145,6 +5152,35 @@ export class Engine {
     }
     void this.pageNewest(p);
     return true;
+  }
+
+  /** A tiled layer's tiles in view as GPU layers (1.62.9, DEV_PLAN 26.6g): each tile its own texture (2,048 a side,
+   *  within any GPU's limit) at the level suiting the view (a half, a quarter, down to a sixteenth of its side, so a
+   *  frame's textures stay about one screen's worth at any zoom), an empty tile as the base colour stretched over it, a
+   *  tile on disk as its preview while it is fetched, each shown tile stamped as drawTo stamps those it draws. Tiles do
+   *  not overlap, so each drawn with the layer's opacity and blend equals the layer drawn whole. */
+  private tileSpecs(t: TiledRaster, tf: Transform, opacity: number, blend: BlendMode, folders: GpuMaskSpec[] | undefined, view: { matrix: Mat; width: number; height: number }, out: GpuLayerSpec[]): void {
+    const L = placement(tf, t.width, t.height), S = mul(view.matrix, L), scale = Math.hypot(S[0], S[1]);
+    const k = Math.max(0, Math.min(4, Math.floor(Math.log2(1 / Math.max(scale, 1e-6))))), full = scale > 1 / PREVIEW;
+    const base = t.baseSurface(), shown: number[] = [];
+    for (let ty = 0; ty < t.rows; ty++) {
+      for (let tx = 0; tx < t.cols; tx++) {
+        const key = ty * t.cols + tx, ox = tx * t.tile, oy = ty * t.tile, tw = Math.min(t.tile, t.width - ox), th = Math.min(t.tile, t.height - oy);
+        let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+        for (const [px, py] of [[ox, oy], [ox + tw, oy], [ox, oy + th], [ox + tw, oy + th]]) {
+          const sx = S[0] * px + S[2] * py + S[4], sy = S[1] * px + S[3] * py + S[5];
+          x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y0 = Math.min(y0, sy); y1 = Math.max(y1, sy);
+        }
+        if (x1 <= 0 || y1 <= 0 || x0 >= view.width || y0 >= view.height) continue;
+        const state = t.stateOf(key);
+        let lv = t.levelOf(key, k);
+        if (state !== 'empty') shown.push(key);
+        if (!lv && state === 'paged') { lv = t.levelOf(key, 4); if (full) t.onMissing?.(t, key); }
+        if (lv) out.push({ image: lv.image, version: lv.version, width: lv.image.width, height: lv.image.height, matrix: mul(L, [lv.sx, 0, 0, lv.sy, ox, oy]), opacity, blend, folders });
+        else if (state === 'empty' && base) out.push({ image: base, version: 0, width: 1, height: 1, matrix: mul(L, [tw, 0, 0, th, ox, oy]), opacity, blend, folders });
+      }
+    }
+    t.touchView(shown, full);
   }
 
   /** A fresh pixel layer (no pixels yet) on a giant document, given tiles, empty and transparent, costing nothing, in

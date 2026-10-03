@@ -201,7 +201,7 @@ export class Stage {
     // reason reported once each time it changes.
     let gpuLayers: DisplayLayer[] | null = null;
     if (this.gpu) {
-      const gl = this.engine.gpuLayers();
+      const vz = p.viewport.zoom * this.dpr, gl = this.engine.gpuLayers({ matrix: [vz, 0, 0, vz, p.viewport.panX * this.dpr, p.viewport.panY * this.dpr], width: W, height: H });   // the view, for a giant document's tiles (1.62.9)
       const reason = (this.engine.viewTransform ? 'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
       if (!reason && 'layers' in gl) gpuLayers = gl.layers;
       if (reason !== this.gpuReason) {

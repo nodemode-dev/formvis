@@ -70,6 +70,7 @@ export class TiledRaster {
   get residentBytes(): number {
     let n = 0;
     for (const t of this.tiles.values()) n += t.canvas.width * t.canvas.height * 4;
+    for (const c of this.levels.values()) n += c.image.width * c.image.height * 4;   // the GPU's reduced copies (1.62.9)
     return n;
   }
 
@@ -207,6 +208,7 @@ export class TiledRaster {
     if ((this.tileVersion.get(key) ?? 0) !== v || this.inView.has(key) || this.tiles.get(key) !== t) { store.drop(stored); return false; }
     this.paged.set(key, { key: stored, preview, w, h });
     this.tiles.delete(key);
+    this.dropLevel(key);
     t.canvas.width = 0;
     t.canvas.height = 0;
     return true;
@@ -248,6 +250,68 @@ export class TiledRaster {
   /** Every stored tile dropped from the store (its document closing). */
   dropAll(store: TileStore): void {
     for (const p of this.paged.values()) store.drop(p.key);
+    for (const key of [...this.levels.keys()]) this.dropLevel(key);
+  }
+
+  /** A tile's version, rising with every drawing into it (the GPU display uploads a tile's texture again when it does). */
+  versionOf(key: number): number { return this.tileVersion.get(key) ?? 0; }
+
+  /** Whether a tile is in memory, on the engine's disk, or empty (never drawn into). */
+  stateOf(key: number): 'resident' | 'paged' | 'empty' { return this.tiles.has(key) ? 'resident' : this.paged.has(key) ? 'paged' : 'empty'; }
+
+  private readonly levels = new Map<number, { k: number; version: number; image: Surface }>();
+  private baseImage: Surface | null = null;
+  private baseFor = '';
+
+  /** A tile for a display showing it at 1/2^k of its side or less (1.62.9, DEV_PLAN 26.6g, the GPU per tile): k of 0 is
+   *  the tile itself; above, a reduced copy made when first asked and kept until the tile changes or leaves memory, so a
+   *  frame's textures stay about one screen's worth at any zoom. A tile on disk gives its preview (a sixteenth of its
+   *  side) at k of 4 or more, null below (the caller asks for it back); an empty tile null. `sx` and `sy` are the
+   *  tile's pixels per pixel of the image. */
+  levelOf(key: number, k: number): { image: Surface; version: number; sx: number; sy: number } | null {
+    const v = this.versionOf(key), t = this.tiles.get(key);
+    if (!t) {
+      const pg = this.paged.get(key);
+      return pg && 2 ** k >= PREVIEW ? { image: pg.preview, version: v, sx: pg.w / pg.preview.width, sy: pg.h / pg.preview.height } : null;
+    }
+    if (k <= 0) return { image: t.canvas, version: v, sx: 1, sy: 1 };
+    const c = this.levels.get(key), W = t.canvas.width, H = t.canvas.height;
+    if (!c || c.k !== k || c.version !== v) {
+      if (c) { c.image.width = 0; c.image.height = 0; }
+      const image = createSurface(Math.max(1, Math.round(W / 2 ** k)), Math.max(1, Math.round(H / 2 ** k))), g = ctxOf(image);
+      g.imageSmoothingQuality = 'high';
+      g.drawImage(t.canvas, 0, 0, image.width, image.height);
+      this.levels.set(key, { k, version: v, image });
+      return { image, version: v, sx: W / image.width, sy: H / image.height };
+    }
+    return { image: c.image, version: v, sx: W / c.image.width, sy: H / c.image.height };
+  }
+
+  /** The base colour as a 1-by-1 picture (an empty tile on the GPU, stretched over it), or null when transparent. */
+  baseSurface(): Surface | null {
+    if (!this.base) return null;
+    const css = this.baseCss();
+    if (!this.baseImage || this.baseFor !== css) {
+      this.baseImage = createSurface(1, 1);
+      const g = ctxOf(this.baseImage);
+      g.fillStyle = css;
+      g.fillRect(0, 0, 1, 1);
+      this.baseFor = css;
+    }
+    return this.baseImage;
+  }
+
+  /** Tiles a display showed (the GPU per tile), stamped as drawTo stamps those it draws: used now and, shown at more
+   *  than a sixteenth of actual size, in view, which paging never sends to disk. */
+  touchView(keys: number[], full: boolean): void {
+    const stamp = ++this.clock;
+    if (full) this.inView.clear();
+    for (const key of keys) { this.used.set(key, stamp); if (full) this.inView.add(key); }
+  }
+
+  private dropLevel(key: number): void {
+    const c = this.levels.get(key);
+    if (c) { c.image.width = 0; c.image.height = 0; this.levels.delete(key); }
   }
 
   private bumpTile(tx: number, ty: number): void {

@@ -8,7 +8,8 @@ GIANT = """async () => {
   const used0 = e.memoryUse(), p = e.newDocument(30000, 20000, 'Giant', 'white');
   const l = e.current.doc.layers[0];
   return { made: !!p, raster: !!l.raster, tiled: !!l.tiled, grid: l.tiled ? l.tiled.cols * l.tiled.rows : 0, tiles: l.tiled ? l.tiled.tileCount : -1,
-    usedMB: Math.round((e.memoryUse() - used0) / 1048576), gpu: e.gpuLayers().reason ?? 'gpu', note: window.__notes[0] ?? '' };
+    usedMB: Math.round((e.memoryUse() - used0) / 1048576), gpu: e.gpuLayers().reason ?? 'gpu', note: window.__notes[0] ?? '',
+    gpuView: (() => { const g = e.gpuLayers({ matrix: [0.05, 0, 0, 0.05, 0, 0], width: 1500, height: 1000 }); return 'layers' in g ? g.layers.length : g.reason; })() };
 }"""
 
 
@@ -16,7 +17,8 @@ def test_a_600_megapixel_document_opens_in_tiles_and_costs_nothing_until_drawn(p
     r = page.evaluate(GIANT)
     assert r["made"] and r["tiled"] and not r["raster"], r              # before 1.62.3 refused
     assert r["grid"] == 150 and r["tiles"] == 0 and r["usedMB"] == 0, r   # a white background is its base colour
-    assert r["gpu"] == "a layer past 268 megapixels", r                 # the CPU display draws tiles until 26.6g
+    assert r["gpu"] == "a layer past 268 megapixels, asked without a view", r   # without a view, the CPU (the bench)
+    assert r["gpuView"] == 150, r                                        # with one, the GPU per tile (1.62.9): all 150 in a whole view
     assert "kept in tiles" in r["note"], r
 
 
