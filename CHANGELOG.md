@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.61.7 · 2026-10-02
+
+### Added
+
+- `./formvis bench` also checks that each graphics-processor path draws what the CPU draws, and says whether it matches.
+- docs/BENCH.md: the first benchmark on real hardware, an Apple M5 MacBook Air, where every graphics-processor path draws a frame in about a millisecond.
+
 ## 1.61.6 · 2026-10-02
 
 ### Fixed

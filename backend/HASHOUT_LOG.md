@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## bench writes each GPU path's check · _v1.61.7 (setup/bench.py)
+
+After the timings, bench runs the window's `checkPaths` and writes, per GPU path, the share of values within 4 levels of the CPU's picture and the largest difference, with "matches" or "DIFFERS" by the 99% bar, into the terminal, the .md (a table) and the .json (`matches_cpu`). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.61.6"
+  return { res, text: B.benchText(res, webgpu || webgl || 'unknown'), webgl, webgpu, ua: navigator.userAgent };
+              "user_agent": got["ua"], "frames": args.frames, "rows": got["res"]["rows"], "notes": got["res"]["notes"], "native": native}
+version = "1.61.6"
+version = "1.61.6"
+ "version": "1.61.6",
+```
+
 ## ./formvis bench in the background, and the window server found on macOS · _v1.61.6 (setup/bench.py)
 
 The owner's first run on a MacBook Air said the window server had not started, and asked for no window at all. Cause: Vite (host false) listens on localhost, which on macOS is IPv6 (::1) only, and bench asked 127.0.0.1 alone, so a running server went unseen for 90 s. Now `up()` asks localhost, then 127.0.0.1, and returns the address that answers, which the page opens; a server bench starts is logged to bench-results/window-server.log and waited for up to 2 minutes, and if it never answers (or exits) bench quotes its last lines instead of guessing; a missing npm is said plainly. No window by default: Chrome runs in the background with its GPU switched on (`GPU_ARGS`: enable-gpu, ignore-gpu-blocklist, enable-unsafe-webgpu, and Metal through ANGLE on macOS); `--window` opens one. Whether the GPU drew is read back, never assumed: an adapter the browser names as software (SwiftShader, llvmpipe, Microsoft Basic Render) is recorded (`software` in the .json, the .md's browser line) and bench says those numbers do not show the GPU and to run `--window`. Checked here: the default run with the server stopped started it, ran in the background (WebGPU now included, software on this machine), wrote both files and named the software adapter with the advice; with port 5190 held by another program, bench quoted Vite's "Port 5190 is already in use"; with no npm on the path, the plain message. Removed lines taken after the version edit:
