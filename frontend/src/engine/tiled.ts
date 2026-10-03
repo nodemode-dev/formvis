@@ -235,6 +235,11 @@ export class TiledRaster {
     return job;
   }
 
+  /** Whether any tile a rectangle touches is on disk (1.62.5: undo brings them back before writing there). */
+  pagedIn(x: number, y: number, w: number, h: number): boolean {
+    return tilesIn(x, y, w, h, this.tile, this.cols, this.rows).some(([tx, ty]) => this.paged.has(ty * this.cols + tx));
+  }
+
   /** Every tile a rectangle touches brought back, before a read, a write or drawing there. */
   async ensure(x: number, y: number, w: number, h: number, store: TileStore): Promise<void> {
     await Promise.all(tilesIn(x, y, w, h, this.tile, this.cols, this.rows).map(([tx, ty]) => this.pageIn(ty * this.cols + tx, store)));

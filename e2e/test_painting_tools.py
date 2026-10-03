@@ -51,7 +51,9 @@ def test_the_magic_eraser_erases_the_like_area_only(page):
 
 def test_the_brush_and_eraser_groups(page):
     page.evaluate("window.formvis.engine.newDocument(100, 60, 'G', 'white')")
-    for member, want in [("brush", ["Brush", "Pencil"]), ("eraser", ["Eraser", "Background Eraser", "Magic Eraser"]), ("cloneStamp", ["Clone Stamp", "Pattern Stamp"])]:
+    # The Mixer Brush joined Brush and Pencil at 1.56.2 (a3e88c4, the parity plan's L4), as in Photoshop; this list was
+    # not updated then, so the test failed from that release until 1.62.5.
+    for member, want in [("brush", ["Brush", "Pencil", "Mixer Brush"]), ("eraser", ["Eraser", "Background Eraser", "Magic Eraser"]), ("cloneStamp", ["Clone Stamp", "Pattern Stamp"])]:
         idx = page.evaluate(f"(async () => {{ const {{ toolGroups }} = await import('/src/ui/tool-groups.ts'); return toolGroups().findIndex((g) => g.tools.some((t) => t.id === '{member}')); }})()")
         page.locator(".cv-rail-tools .cv-tool").nth(idx).click(button="right")
         assert page.locator(".cv-flyout:not([hidden]) .cv-flyout-label").all_inner_texts() == want

@@ -172,7 +172,14 @@ export class Renderer {
         ctx.globalCompositeOperation = canvasBlend(mode) ? compositeOp(mode) : 'source-over';
         ctx.imageSmoothingEnabled = true;
         if (job.quality) ctx.imageSmoothingQuality = job.quality;
-        layer.tiled.drawTo(ctx, mul(job.view, placement(t, layer.tiled.width, layer.tiled.height)) as unknown as [number, number, number, number, number, number]);
+        const tm = mul(job.view, placement(t, layer.tiled.width, layer.tiled.height));
+        if (ov?.patch) {   // a stroke in progress (1.62.5): the tiles into a slot, its window patched in, as an ordinary layer's
+          const a = this.slot(0, W, H);
+          layer.tiled.drawTo(a.c, tm as unknown as [number, number, number, number, number, number]);
+          this.patchIn(a.c, ov.patch, tm, t.sampling, 1, job.quality);
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.drawImage(a.s, 0, 0);
+        } else layer.tiled.drawTo(ctx, tm as unknown as [number, number, number, number, number, number]);
         ctx.restore();
         continue;
       }

@@ -55,7 +55,7 @@ import { findWires } from './distractions';
 import type { SampledTip } from './abr';
 import { DEFAULT_GLOBAL_LIGHT, type GlobalLight } from './style-extras';
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
-import { UPRIGHT, defaultShape, noDynamics, pressureOption, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
+import { UPRIGHT, defaultShape, noDynamics, pressureOption, shapeActive, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
 import { CUSTOM_SHAPES } from './custom-shapes';
@@ -464,10 +464,14 @@ export class Engine {
   private needsBack(e: HistoryEntry | null, op: 'undo' | 'redo'): boolean {
     if (!e) return false;
     if (e.patches.some((q) => q.paged)) return true;
+    // A stroke on a tiled layer writes back into tiles that may be on disk now (1.62.5).
+    if (e.patches.some((q) => q.raster instanceof TiledRaster && q.raster.pagedIn(q.x, q.y, q.paged?.w ?? q.before.width, q.paged?.h ?? q.before.height))) return true;
     return (op === 'undo' ? e.before : e.after).doc.layers.some((l) => [l.raster, l.mask?.raster].some((r) => !!r && this.pagedRasters.has(r)));
   }
   private async bringBack(e: HistoryEntry, op: 'undo' | 'redo'): Promise<void> {
     await this.pageIn(e);
+    const store = this.undoStore;   // then the tiles its patches land on (1.62.5)
+    if (store) for (const q of e.patches) if (q.raster instanceof TiledRaster) await q.raster.ensure(q.x, q.y, q.before.width, q.before.height, store);
     for (const l of (op === 'undo' ? e.before : e.after).doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && this.pagedRasters.has(r)) await this.unpageRaster(r);
   }
 
@@ -481,7 +485,7 @@ export class Engine {
    *  goes only once stored and keeps a preview. One round at a time; the number sent. */
   async pageTiles(): Promise<number> {
     const store = this.undoStore;
-    if (!store || this.tilePaging) return 0;
+    if (!store || this.tilePaging || this.stroke) return 0;   // never under a stroke in progress (1.62.5)
     this.tilePaging = true;
     let sent = 0;
     try {
@@ -3225,11 +3229,11 @@ export class Engine {
    *  Photoshop paints): a group says so; a locked layer says why; an adjustment layer paints its mask; a type, shape or
    *  smart-object layer asks to be rasterized first (and is, on OK, so the next action paints). A refusal's own message
    *  stands alone: the caller's generic one is held back (lockedAt). */
-  private paintable(l: Layer | null): l is Layer {
+  private paintable(l: Layer | null, allowTiled = false): l is Layer {   // allowTiled: the plain stroke (1.62.5)
     if (!l) return false;
     if (l.isGroup) { this.notice(`"${l.name}" is a group: choose a layer inside it.`); this.lockedAt = performance.now(); return false; }
     // A layer past 268 MP, kept in tiles (1.62.3): painting it had given it a full-size canvas the browser cannot make.
-    if (l.tiled) { this.notice(`"${l.name}" is past 268 megapixels and kept in tiles: painting and editing its pixels come in the next releases.`); this.lockedAt = performance.now(); return false; }
+    if (l.tiled && !allowTiled) { this.notice(`"${l.name}" is past 268 megapixels and kept in tiles: the brush, pencil and eraser paint it; this comes in a later release.`); this.lockedAt = performance.now(); return false; }
     if (this.locked(l, 'pixels')) return false;
     if (l.adjustment) return true;
     const kind = liveText(l) ? 'type layer' : l.smart ? 'Smart Object' : l.vector || l.shape ? 'shape layer' : null;
@@ -3314,10 +3318,22 @@ export class Engine {
     if (!this.room(first * (p.selection ? 3 : 2) + fresh, 'This stroke')) return false;
     this.settle();
     if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer
-    if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to paint on.'); return false; }
+    if (!this.paintable(p.activeLayer, true)) { this.notice('Select a pixel layer to paint on.'); return false; }
     if (this.smartLocked(p)) return false;
+    // A giant layer kept in tiles (1.62.5, DEV_PLAN 26.6d): the plain brush, pencil and eraser paint it; what needs
+    // the whole layer declines here, before any history step opens.
+    const lt = p.activeLayer?.tiled ?? null;
+    if (lt) {
+      const whole = this.tool === 'mixer' ? 'The Mixer Brush' : p.maskTarget ? 'Painting a mask' : p.selection ? 'Painting inside a selection'
+        : !opts.aliased && shapeActive(this.brushShape) ? 'Brush Settings (shape and scattering, texture, dual brush, wet edges)' : null;
+      if (whole) { this.notice(`${whole} on a layer kept in tiles comes in a later release; the plain brush, pencil and eraser paint it now.`); return false; }
+    }
     p.history.begin(opts.name ?? (this.brushMode === 'erase' ? 'Eraser' : this.tool === 'mixer' ? 'Mixer Brush' : 'Brush'), p.snapshot());
-    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+    // A tiled layer's target is its tiles, placed as target places a layer (target would give it a full-size canvas).
+    const al = p.activeLayer as Layer;
+    const pick: { layer: Layer; target: Target; raster: Raster | TiledRaster; local: Mat } = lt
+      ? { layer: al, target: 'pixels', raster: lt, local: placement(al.transform, lt.width, lt.height) }
+      : this.target(p) as NonNullable<ReturnType<Engine['target']>>;
     const white = pick.target === 'mask' && luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
     // colour, as Photoshop's does, since it may not make pixels transparent.
@@ -3326,10 +3342,12 @@ export class Engine {
     let color = pick.target === 'mask' ? { r: 255, g: 255, b: 255 } : keepAlpha && this.brushMode === 'erase' ? this.bg : this.fg;
     if (opts.autoErase && pick.target !== 'mask' && this.brushMode !== 'erase') {
       // Auto Erase: starting on the foreground colour, the stroke paints the background colour.
-      const q = applyMat(invert(pick.local) ?? [1, 0, 0, 1, 0, 0], pt.x, pt.y), px = pick.raster.ctx.getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data;
+      const q = applyMat(invert(pick.local) ?? [1, 0, 0, 1, 0, 0], pt.x, pt.y), rr = pick.raster;
+      let px: Uint8ClampedArray;
+      try { px = 'ctx' in rr ? rr.ctx.getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data : rr.read(Math.floor(q.x), Math.floor(q.y), 1, 1).data; } catch { px = new Uint8ClampedArray(4); }   // a tile on disk: not the foreground
       if (px[3] > 0 && px[0] === this.fg.r && px[1] === this.fg.g && px[2] === this.fg.b) color = this.bg;
     }
-    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square, dabColor: this.tool === 'mixer' && pick.target !== 'mask' && this.brushMode !== 'erase' ? this.mixerSourceFor(p, pick.raster, pick.local) : null }, op, p.selection);
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square, dabColor: this.tool === 'mixer' && pick.target !== 'mask' && this.brushMode !== 'erase' ? this.mixerSourceFor(p, pick.raster as Raster, pick.local) : null }, op, p.selection);
     s.dynamics = structuredClone(this.brushDynamics);
     // Brush Settings (tip shape, shape dynamics, scattering, texture, dual brush); inactive, the stroke is as before.
     if (!opts.aliased) s.setShape(this.brushShape, this.brushShape.texture.on ? (patternById(this.brushShape.texture.pattern) ?? allPatterns()[0])?.surface ?? null : null);
@@ -3402,6 +3420,12 @@ export class Engine {
     if (plain) for (const t of st.s.commitTiles()) st.project.history.addPatch(t);
     const patch = plain ? null : st.heal === 'remove' ? this.removePatch(st.s) : st.heal ? this.healPatch(st.s, st.heal) : st.healFrom ? this.healFromPatch(st.s, st.healFrom) : st.s.commit();
     if (patch) st.project.history.addPatch(patch);
+    // Cut where a giant layer's tiles were still on disk (1.62.5): said, and those tiles brought back to paint again.
+    const miss = st.s.missing, mt = st.project.layer(st.layerId)?.tiled;
+    if (miss && mt && this.undoStore) {
+      void mt.ensure(miss.x, miss.y, miss.w, miss.h, this.undoStore).then(() => this.emit('render', null));
+      this.notice('That stroke reached parts of the picture still on disk and stopped there; they are loading, so paint there again in a moment.');
+    }
     if (st.target === 'pixels' && st.project.layer(st.layerId)?.shape) st.project.updateLayer(st.layerId, { shape: null });
     const dl = patch && st.target === 'pixels' && ((st.project.doc.depth ?? 8) > 8 || st.project.doc.mode === 'cmyk' || st.project.doc.mode === 'lab') ? st.project.layer(st.layerId) : null;
     const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics() && st.project.doc.depth !== 32;
@@ -6266,7 +6290,7 @@ export class Engine {
   }
 
   private healFromPatch(s: PixelStroke, off: Pt): ReturnType<PixelStroke['commit']> {
-    const r = s.raster;
+    const r = s.layer;   // an ordinary layer (1.62.5)
     const before = r.read();
     const sample = this.retouch.healSample, p = this.current, l = p?.doc.layers.find((x) => x.raster === r);
     // Source: Pattern: the pattern in the layer's pixel space, healed from in place (the offset is 0).
@@ -6391,7 +6415,7 @@ export class Engine {
   /** The Remove tool's release: what the stroke covered, grown by two pixels so its soft edge goes too, rebuilt by
    *  content-aware fill (PatchMatch-style patch copying) from the rest of the layer. */
   private removePatch(s: PixelStroke): ReturnType<PixelStroke['commit']> {
-    const r = s.raster, W = r.width, H = r.height, before = r.read(), pm = premultiply(before.data), cov = s.coverageAlpha(), hole0 = new Uint8Array(W * H);
+    const r = s.layer, W = r.width, H = r.height, before = r.read(), pm = premultiply(before.data), cov = s.coverageAlpha(), hole0 = new Uint8Array(W * H);
     for (let i = 0; i < hole0.length; i++) hole0[i] = cov[i] > 0 ? 255 : 0;
     const grown = resizeMask(hole0, W, H, 2), hole = new Uint8Array(W * H);
     for (let i = 0; i < hole.length; i++) hole[i] = grown[i] >= 128 ? 1 : 0;
@@ -6430,7 +6454,7 @@ export class Engine {
   }
 
   private healPatch(s: PixelStroke, mode: HealMode): ReturnType<PixelStroke['commit']> {
-    const r = s.raster;
+    const r = s.layer;   // an ordinary layer (1.62.5)
     const before = r.read();
     const p = this.current, l = p?.doc.layers.find((x) => x.raster === r);
     if (this.retouch.spotSampleAll && p && l) {

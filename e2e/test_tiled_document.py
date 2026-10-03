@@ -1,6 +1,6 @@
 """A document past one canvas (1.62.3, DEV_PLAN 26.6b): 30,000 by 20,000 (600 MP) opens with its layer in tiles, shows
 without seams at any zoom and exactly at actual size, and declines, out loud and with the page alive, what is not yet
-taught tiles (painting, filters, export: the stages 26.6c to h)."""
+taught tiles (filters and export, 26.6e; painting is taught at 1.62.5, in e2e/test_tiled_paint.py)."""
 
 GIANT = """async () => {
   const e = window.formvis.engine; window.__notes = []; e.on('notice', (n) => window.__notes.push(n.text));
@@ -44,12 +44,12 @@ def test_what_is_not_yet_taught_tiles_declines_out_loud_and_the_page_lives(page)
     page.evaluate(GIANT)
     r = page.evaluate("""() => {
       const e = window.formvis.engine; window.__notes = [];
-      e.setTool('brush'); e.beginStroke({ x: 100, y: 100 }, false); e.strokeTo({ x: 300, y: 300 }); e.endStroke();
+      // The brush paints a tiled layer since 1.62.5 (e2e/test_tiled_paint.py); a filter still declines until 26.6e.
       e.applyImageEdit('Gaussian Blur', (src) => src, 0);
       const l = e.current.doc.layers[0];
       return { steps: e.current.history.steps.names.length, raster: !!l.raster, tiled: !!l.tiled, notes: window.__notes.slice() };
     }""")
-    assert r["steps"] == 0 and not r["raster"] and r["tiled"], r        # painting had given it a canvas the browser cannot make
+    assert r["steps"] == 0 and not r["raster"] and r["tiled"], r        # declined: no step, never a full-size canvas
     # The true reason, never a memory figure (an identical notice back to back is shown once, by design).
     assert r["notes"] and all("kept in tiles" in n for n in r["notes"]), r
     page.evaluate("window.formvis.commands.run('export-png')")

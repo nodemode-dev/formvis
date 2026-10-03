@@ -1,5 +1,6 @@
 import { applyMat, boundsOf, integral, intersectRect, invert, matScale, mul, setMat, translation, unionRect, type Mat } from './geometry';
 import { createSurface, ctxOf, type Ctx2D, type Raster, type Surface } from './surface';
+import { TiledRaster } from './tiled';
 import type { SelectionMask } from './selection';
 import type { PixelPatch } from './history';
 import type { Pt, Rect, RGB } from './types';
@@ -150,17 +151,33 @@ export class PixelStroke {
   private pending: Rect | null = null;
   private touched: Rect | null = null;
 
-  constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null, private readonly lerp = false) {
+  /** A giant layer kept in tiles (1.62.5, DEV_PLAN 26.6d): read into `orig`, the window's original pixels, as the window
+   *  grows; the stroke reads the layer from there, and commits into the tiles. Null for an ordinary layer. */
+  private readonly tiled: TiledRaster | null;
+  private orig: Surface | null = null;
+  /** Where the window could not grow because tiles there were on disk (the engine brings them back). */
+  missing: Rect | null = null;
+
+  /** The ordinary layer that the retouch strokes (healing, Remove, cloning, Dodge and Burn) work on whole; they are
+   *  declined on a tiled layer before they start, and this refuses one plainly if one ever arrives (1.62.5). */
+  get layer(): Raster {
+    if (this.tiled) throw new Error('This tool works on a whole layer, which a layer kept in tiles cannot give yet.');
+    return this.raster as Raster;
+  }
+
+  constructor(readonly raster: Raster | TiledRaster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null, private readonly lerp = false) {
     this.toLocal = invert(localToDoc);
     // Past `windowFrom` pixels a stroke on pixels works in a window (1.60.6), opened at its first dab; a mask's stroke
     // (lerp) and a smaller layer's keep surfaces the layer's size, as before.
-    this.windowed = raster.width * raster.height > windowFrom && !lerp;
+    this.tiled = raster instanceof TiledRaster ? raster : null;
+    if (this.tiled && lerp) throw new Error('A mask stroke on a layer kept in tiles is not supported yet.');
+    this.windowed = (!!this.tiled || raster.width * raster.height > windowFrom) && !lerp;   // a tiled layer always (1.62.5)
     this.ww = this.windowed ? 1 : raster.width;
     this.wh = this.windowed ? 1 : raster.height;
     this.toWin = this.toLocal;
     this.working = takeSurface(this.ww, this.wh);
     this.workingCtx = ctxOf(this.working);
-    if (!this.windowed) this.workingCtx.drawImage(raster.canvas, 0, 0);
+    if (!this.windowed) this.workingCtx.drawImage((raster as Raster).canvas, 0, 0);
     this.paint = takeSurface(this.ww, this.wh);
     this.paintCtx = ctxOf(this.paint);
     this.masked = selection ? takeSurface(this.ww, this.wh) : null;
@@ -186,11 +203,26 @@ export class PixelStroke {
     const m = Math.max(512, Math.round(Math.max(u.w, u.h) / 2));   // half again around it, so a stroke regrows rarely
     const nx = Math.max(0, u.x - m), ny = Math.max(0, u.y - m), nw = Math.min(L, u.x + u.w + m) - nx, nh = Math.min(H, u.y + u.h + m) - ny;
     if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * 4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0)))) { this.clipped = true; return false; }
+    // A tiled layer's original pixels for the whole new window, read once (1.62.5); a tile there on disk stops the
+    // window here, the dab not laid and the area noted for the engine to bring back: never painted over unloaded.
+    let fresh: ImageData | null = null;
+    if (this.tiled) {
+      try { fresh = this.tiled.read(nx, ny, nw, nh); } catch { this.missing = { x: nx, y: ny, w: nw, h: nh }; this.clipped = true; return false; }
+    }
+    if (fresh) {
+      const o = createSurface(nw, nh);
+      ctxOf(o).putImageData(fresh, 0, 0);
+      if (this.orig) { this.orig.width = 0; this.orig.height = 0; }
+      this.orig = o;
+    }
     const dx = this.ox - nx, dy = this.oy - ny;
     const remake = (old: Surface | null, layer: boolean): Surface | null => {
       if (!old) return null;
       const s = createSurface(nw, nh), c = ctxOf(s);
-      if (layer) c.drawImage(this.raster.canvas, nx, ny, nw, nh, 0, 0, nw, nh);   // the layer's pixels where the window is new
+      if (layer) {   // the layer's pixels where the window is new
+        if (fresh) c.putImageData(fresh, 0, 0);
+        else c.drawImage((this.raster as Raster).canvas, nx, ny, nw, nh, 0, 0, nw, nh);
+      }
       if (open) { c.save(); c.beginPath(); c.rect(dx, dy, this.ww, this.wh); c.clip(); c.globalCompositeOperation = 'copy'; c.drawImage(old, dx, dy); c.restore(); }
       old.width = 0; old.height = 0;   // freed at once
       return s;
@@ -213,7 +245,7 @@ export class PixelStroke {
     const w = this.raster.width, h = this.raster.height;
     for (const s of [this.working, this.paint, this.masked]) if (s) { s.width = 0; s.height = 0; }
     this.windowed = false; this.ox = 0; this.oy = 0; this.ww = w; this.wh = h; this.toWin = this.toLocal;
-    this.working = takeSurface(w, h); this.workingCtx = ctxOf(this.working); this.workingCtx.drawImage(this.raster.canvas, 0, 0);
+    this.working = takeSurface(w, h); this.workingCtx = ctxOf(this.working); this.workingCtx.drawImage(this.layer.canvas, 0, 0);   // never tiled (1.62.5)
     this.paint = takeSurface(w, h); this.paintCtx = ctxOf(this.paint);
     this.masked = this.selection ? takeSurface(w, h) : null;
   }
@@ -493,7 +525,8 @@ export class PixelStroke {
     w.save();
     w.setTransform(1, 0, 0, 1, 0, 0);
     w.clearRect(x, y, aw, ah);
-    w.drawImage(this.raster.canvas, lx, ly, aw, ah, x, y, aw, ah);
+    if (this.orig) w.drawImage(this.orig, lx - this.ox, ly - this.oy, aw, ah, x, y, aw, ah);   // a tiled layer's, kept (1.62.5)
+    else w.drawImage((this.raster as Raster).canvas, lx, ly, aw, ah, x, y, aw, ah);
     w.globalAlpha = this.style.opacity;
     if (this.lerp) {
       // An alpha-coded mask (white, its level in alpha) should move toward the paint: out = old (1 - c) + paint c. Cut
@@ -545,7 +578,21 @@ export class PixelStroke {
     this.compose();
     const area = this.touched;
     if (!area) return [];
-    const T = 512, out: PixelPatch[] = [], c = this.raster.ctx;
+    if (this.tiled && this.orig) {   // into the tiles (1.62.5): before from the kept originals, after from the window
+      const T = 512, out: PixelPatch[] = [], oc = ctxOf(this.orig);
+      for (let ty = Math.floor(area.y / T) * T; ty < area.y + area.h; ty += T) {
+        for (let tx = Math.floor(area.x / T) * T; tx < area.x + area.w; tx += T) {
+          const x = Math.max(tx, area.x), y = Math.max(ty, area.y), w = Math.min(tx + T, area.x + area.w) - x, h = Math.min(ty + T, area.y + area.h) - y;
+          if (w <= 0 || h <= 0) continue;
+          const before = oc.getImageData(x - this.ox, y - this.oy, w, h), after = this.workingCtx.getImageData(x - this.ox, y - this.oy, w, h);
+          if (sameBytes(before.data, after.data)) continue;
+          this.tiled.write(after, x, y);
+          out.push({ raster: this.tiled, x, y, before, after });
+        }
+      }
+      return out;
+    }
+    const T = 512, out: PixelPatch[] = [], c = (this.raster as Raster).ctx;
     for (let ty = Math.floor(area.y / T) * T; ty < area.y + area.h; ty += T) {
       for (let tx = Math.floor(area.x / T) * T; tx < area.x + area.w; tx += T) {
         const x = Math.max(tx, area.x), y = Math.max(ty, area.y), w = Math.min(tx + T, area.x + area.w) - x, h = Math.min(ty + T, area.y + area.h) - y;
@@ -570,8 +617,9 @@ export class PixelStroke {
     this.compose();
     const area = this.touched;
     if (!area) return null;
+    if (this.tiled) throw new Error('A stroke on a layer kept in tiles commits by tiles.');   // (1.62.5)
     const before = this.raster.read(area.x, area.y, area.w, area.h);
-    const c = this.raster.ctx;
+    const c = (this.raster as Raster).ctx;
     c.save();
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalAlpha = 1;

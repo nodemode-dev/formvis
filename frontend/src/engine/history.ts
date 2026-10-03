@@ -1,5 +1,6 @@
 import type { Doc, ID } from './types';
 import type { Raster } from './surface';
+import type { TiledRaster } from './tiled';
 import type { SelectionMask } from './selection';
 
 /** paths: a copy of the document's paths, carried only by path edits' steps (their undo and redo restore it; other
@@ -8,7 +9,7 @@ export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionM
 /* frames (1.59.8): a copy of the frame animation (frames, current, loops), carried by steps that change it (Convert to
    Frame Animation), as video and paths are carried. */
 /* video (1.59.5, DEV_PLAN 25): a copy of the video timeline, carried only by timeline edits' steps, as paths are. */
-export interface PixelPatch { raster: Raster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null; lazy?: boolean }
+export interface PixelPatch { raster: Raster | TiledRaster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null; lazy?: boolean }
 /* lazy (1.60.9, DEV_PLAN 26.4): only `before` is kept; `after` is what the layer holds when the step is undone, read
    there just before `before` is written back (a whole-layer filter's undo, halved). */
 /* paged (1.60.8, DEV_PLAN 26.3): kept in the engine's undo store under `key`, its before and after pixels (w by h)
@@ -116,7 +117,7 @@ export class History {
   rasters(): Set<Raster> {
     const out = new Set<Raster>();
     const add = (s: Snapshot): void => { for (const l of s.doc.layers) for (const r of [l.raster, l.mask?.raster, l.smart?.source, l.smart?.filterMask]) if (r) out.add(r); };
-    for (const e of [...this.past, ...this.future]) { add(e.before); add(e.after); for (const p of e.patches) out.add(p.raster); }
+    for (const e of [...this.past, ...this.future]) { add(e.before); add(e.after); for (const p of e.patches) if ('canvas' in p.raster) out.add(p.raster); }   // a tiled layer has no canvas to free (1.62.5)
     return out;
   }
 
