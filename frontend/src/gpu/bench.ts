@@ -131,6 +131,55 @@ export async function runBenchmark(engine: Engine, n = FRAMES, warm = WARM): Pro
 }
 
 /** The result as plain text, to copy into the build notes. */
+/** Whether each GPU display draws what the CPU draws (1.61.7, the register's H4: Automatic must pick the fastest
+ *  *correct* path): the benchmark document through each display at a quarter size over the checkerboard, against the
+ *  CPU's picture through the same view, as the display tests compare them; the largest difference in any colour
+ *  channel of any pixel, 0 to 255 (the display tests allow 4). The document is closed and the previous one restored. */
+export async function checkPaths(engine: Engine): Promise<Array<{ path: string; maxDiff: number; share: number }>> {
+  const previous = engine.current?.id ?? null, out: Array<{ path: string; maxDiff: number; share: number }> = [];
+  let docId: string | null = null;
+  try {
+    build(engine);
+    docId = engine.current?.id ?? null;
+    const p = engine.current;
+    if (!p) return out;
+    // At actual size, a window into the middle of the document: nothing resampled, so a difference is the path's own
+    // (at a quarter size the CPU's and the GPU's downscaling filters differ at edges by design: 25 levels here).
+    const zoom = 1, ox = Math.round(-p.doc.width / 2 + 280), oy = Math.round(-p.doc.height / 2 + 200), Wv = 560, Hv = 400;
+    const x0 = Math.max(0, ox), y0 = Math.max(0, oy), x1 = Math.min(Wv, Math.ceil(ox + p.doc.width * zoom)), y1 = Math.min(Hv, Math.ceil(oy + p.doc.height * zoom));
+    const checker: Checker = { ...CHECKER, origin: [ox, oy] }, cell = checker.cell, view: Mat = [zoom, 0, 0, zoom, ox, oy];
+    const s = createSurface(Wv, Hv), c = ctxOf(s);
+    for (let y = y0; y < y1; y += cell) {
+      for (let x = x0; x < x1; x += cell) {
+        const odd = (Math.floor((x - ox) / cell) + Math.floor((y - oy) / cell)) % 2 !== 0;
+        c.fillStyle = `rgb(${(odd ? checker.b : checker.a).join(',')})`;
+        c.fillRect(x, y, Math.min(cell, x1 - x), Math.min(cell, y1 - y));
+      }
+    }
+    const work = createSurface(x1 - x0, y1 - y0);
+    engine.compose(work, [zoom, 0, 0, zoom, ox - x0, oy - y0], 'high');
+    c.drawImage(work, x0, y0);
+    const cpu = c.getImageData(0, 0, Wv, Hv).data, g = engine.gpuLayers();
+    if (!('layers' in g)) return out;   // not drawable on the GPU: nothing to compare
+    const layers = g.layers;
+    // The largest difference, and the share of values within 4 levels: the bar the GPU adjustment tests use, since the
+    // layers below differ by up to 3 levels between GPU and canvas compositing and an adjustment can amplify one level.
+    const diff = (path: string, gpu: Uint8ClampedArray): { path: string; maxDiff: number; share: number } => {
+      let m = 0, n = 0, within = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) for (let k = 0; k < 3; k++) { const i = (y * Wv + x) * 4 + k, d = Math.abs(cpu[i] - gpu[i]); m = Math.max(m, d); n++; if (d <= 4) within++; }
+      return { path, maxDiff: m, share: n ? within / n : 1 };
+    };
+    const gpu = await GpuDisplay.create(document.createElement('canvas'));
+    if (gpu) { out.push(diff('WebGPU', await gpu.renderToPixels(layers, view, zoom, [x0, y0, x1, y1], checker, Wv, Hv))); gpu.destroy(); }
+    const gl = GlDisplay.create(document.createElement('canvas'));
+    if (gl) { out.push(diff('WebGL2', await gl.renderToPixels(layers, view, zoom, [x0, y0, x1, y1], checker, Wv, Hv))); gl.destroy(); }
+  } finally {
+    if (docId) engine.closeProject(docId);
+    if (previous) engine.switchTo(previous);
+  }
+  return out;
+}
+
 export function benchText(r: BenchResult, adapter: string): string {
   const head = ['Test', 'Path', 'Median ms', 'P90 ms', 'Frames'], body = r.rows.map((x) => [x.test, x.path, x.medianMs.toFixed(2), x.p90Ms.toFixed(2), String(x.frames)]);
   const w = head.map((h, i) => Math.max(h.length, ...body.map((b) => b[i].length)));

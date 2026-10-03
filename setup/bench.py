@@ -114,7 +114,8 @@ BENCH_JS = """async (frames) => {
     if (a) { const i = a.info || (a.requestAdapterInfo ? await a.requestAdapterInfo() : {}); webgpu = [i.vendor, i.architecture, i.device, i.description].filter(Boolean).join(' ') || 'available'; }
   } catch { webgpu = null; }
   const res = await B.runBenchmark(e, frames, 10);
-  return { res, text: B.benchText(res, webgpu || webgl || 'unknown'), webgl, webgpu, ua: navigator.userAgent };
+  const checks = await B.checkPaths(e);   // each GPU path's picture against the CPU's (1.61.7)
+  return { res, checks, text: B.benchText(res, webgpu || webgl || 'unknown'), webgl, webgpu, ua: navigator.userAgent };
 }"""
 
 
@@ -187,10 +188,12 @@ def main() -> int:
     base = OUT / f"{stamp}-{slug}"
     record = {"formvis": (ROOT / "frontend" / "src" / "version.ts").read_text().split("'")[1], "when": stamp, "machine": m,
               "browser": f"{which} {browser_version}", "background": not args.window, "software": soft, "webgl": got["webgl"], "webgpu": got["webgpu"],
-              "user_agent": got["ua"], "frames": args.frames, "rows": got["res"]["rows"], "notes": got["res"]["notes"], "native": native}
+              "user_agent": got["ua"], "frames": args.frames, "rows": got["res"]["rows"], "notes": got["res"]["notes"], "native": native,
+              "matches_cpu": got["checks"]}
     base.with_suffix(".json").write_text(json.dumps(record, indent=2))
     rows = "\n".join(f"| {r['test']} | {r['path']} | {r['medianMs']} | {r['p90Ms']} | {r['frames']} |" for r in got["res"]["rows"])
     notes = "\n".join(f"- {n}" for n in got["res"]["notes"]) or "- none"
+    checks = "\n".join(f"| {c['path']} | {c['maxDiff']} | {c['share'] * 100:.2f}% | {'matches' if c['share'] >= 0.99 else 'DIFFERS'} |" for c in got["checks"]) or "| (no GPU path to check) | | | |"
     base.with_suffix(".md").write_text(f"""# formvis benchmark, {stamp}
 
 | | |
@@ -206,6 +209,13 @@ def main() -> int:
 |---|---|---|---|---|
 {rows}
 
+Each GPU path's picture against the CPU's at actual size (correct when at least 99% of values are within 4 levels,
+the bar formvis's GPU adjustment tests use):
+
+| Path | Largest difference | Within 4 levels | |
+|---|---|---|---|
+{checks}
+
 Notes from the benchmark:
 
 {notes}
@@ -219,6 +229,8 @@ Native renderer (brush benchmark):
     print()
     print(got["text"])
     print()
+    for c in got["checks"]:
+        say(f"{c['path']} against the CPU's picture: {c['share'] * 100:.2f}% of values within 4 levels, largest difference {c['maxDiff']} ({'matches' if c['share'] >= 0.99 else 'DIFFERS'})")
     say(f"native renderer: {native.splitlines()[-1] if native else 'nothing printed'}")
     say(f"written: {base.with_suffix('.md')} (and .json beside it)")
     if soft:
