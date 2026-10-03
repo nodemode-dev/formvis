@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.61.8
+
+No window code changed in 1.61.8: `./formvis verify-local` (the register's M7) is in setup/ and the CLI, recorded in the backend's log. Removed lines taken after the version edit:
+
+```text
+export const VERSION = '1.61.7';
+```
+
 ## Each GPU path checked against the CPU, and the owner's bench recorded · _v1.61.7 (gpu/bench.ts; e2e/test_benchmark.py; docs/BENCH.md new)
 
 The register's H4 asks that Automatic pick the fastest *correct* path, and the owner's first `./formvis bench` (Apple M5 MacBook Air, Metal 3) measured speed only. `checkPaths` renders the benchmark document through each GPU display and through the CPU at actual size, a 560 by 400 window into its middle, and reports the largest difference and the share of values within 4 levels; a path is correct when that share is at least 99%, the bar test_gpu_adjust uses (its own note: the layers below differ by up to 3 levels between GPU and canvas compositing, and an adjustment can amplify one). The document is closed and the user's restored. Found on the way: at a quarter size both paths differed by 25 levels, identically, because the CPU's and the GPU's downscaling filters differ at edges by design, so the check compares where nothing is resampled; at actual size, the largest difference was 5 against a maximum of 4 I had taken from the display tests, which test no adjustment layers, so the bar is the adjustment tests' rather than one chosen to pass. The owner's run is recorded in docs/BENCH.md: every GPU path near 1 ms a frame, the CPU 20 ms with adjustment layers (22 times the GPU), Automatic (WebGPU) within 0.2 ms of the fastest in every test, the native brush benchmark 0.47 ms median against a 3 ms target; not yet measured there, each path's correctness (checked from this release) and the Channels view through the native renderer (H3's desktop app). Verified here: both GPU paths 100% within 4 levels, the largest difference 5; test_benchmark 3 passed; no errors. Removed lines taken after the version edit:

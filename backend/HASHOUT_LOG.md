@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## ./formvis verify-local · _v1.61.8 (setup/verify_local.py, setup/verify_local and setup/verify_local.bat new; formvis, formvis.bat)
+
+The register's M7 named `./formvis verify-local`, never built. Now, for Krea 2 (Apple silicon, or Windows and Linux) and FLUX.2 [klein] 4B (Apple silicon), through the app's own localgen modules: a model not for this computer is said so; a licence not yet accepted is shown (name, version, link, summary, use policy) and accepted only by the person's yes, recorded by the module's own `record_consent` (declined or unanswered: skipped, nothing recorded); a model not installed has the build for this memory chosen (`krea2.recommended()`, Klein's 8-bit from 16 GB; the 4-bit builds with --small), its size stated and the download made only on a yes, through the module's own `install`; then one 1,024 by 1,024 picture from a fixed prompt and seed, timed. Results to bench-results/local-<date>-<machine>.md and .json, the pictures beside them, the machine recorded as bench records it. --yes answers every question (only when passed); --stand-in runs the flow with no download and no model. The shell and Windows wrappers find formvis's Python as `bench` does; the CLI and formvis.bat dispatch it. Checked here: --stand-in wrote both files and two pictures, labelled a stand-in; a real run with no one to answer showed the Krea 2 licence in full, skipped it, recorded no consent and downloaded nothing, and said Klein is not for this computer. Nothing removed besides the version lines:
+
+```text
+__version__ = "1.61.7"
+version = "1.61.7"
+version = "1.61.7"
+ "version": "1.61.7",
+```
+
 ## bench writes each GPU path's check · _v1.61.7 (setup/bench.py)
 
 After the timings, bench runs the window's `checkPaths` and writes, per GPU path, the share of values within 4 levels of the CPU's picture and the largest difference, with "matches" or "DIFFERS" by the 99% bar, into the terminal, the .md (a table) and the .json (`matches_cpu`). Removed lines taken after the version edit:
