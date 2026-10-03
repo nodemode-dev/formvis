@@ -338,6 +338,11 @@ export class FilterPanel extends Dialog {
     const s = { ...defaultFilterSettings(), ...(structuredClone(settings) as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed;
     const sync = (src: ImageData, scale: number): ImageData => runFilter(kind, s, seed, src, scale);
     const apron = bandApron(kind, s);   // a large layer in bands (1.60.9)
+    if (apron !== null && this.engine.activeTiled()) {   // a giant layer: in place, its undo on disk (1.62.7)
+      const r = await this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src) => sync(src, 1), apron);
+      if (r === true) { this.engine.setPreview(null); this.close(); }
+      return r === true;
+    }
     if (apron !== null) await this.engine.relieveFor(this.engine.layerBytes() * 1.25);   // undo to disk first if it would not fit (1.61.4)
     const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => sync(src, 1), apron, filterMargin(kind, s)) : false;
     if (banded === 'refused') return Promise.resolve(false);   // not done, and said why
@@ -354,6 +359,7 @@ export class FilterPanel extends Dialog {
     const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
     if (this.deepFilter(kind, settings)) return true;   // 16 bits (1.53.7)
     const apron = bandApron(kind, this.s);   // a large layer in bands (1.60.9)
+    if (apron !== null && this.engine.activeTiled()) { void this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src) => run(src, 1), apron); return true; }   // a giant layer (1.62.7)
     const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => run(src, 1), apron, this.grow()) : false;
     if (banded === 'refused') return false;   // not done, and said why
     if (banded) return true;

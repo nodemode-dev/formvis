@@ -463,12 +463,24 @@ export class Engine {
    *  document it restores. */
   private needsBack(e: HistoryEntry | null, op: 'undo' | 'redo'): boolean {
     if (!e) return false;
+    if (e.streamed) return true;   // applied a tile at a time from the store (1.62.7)
     if (e.patches.some((q) => q.paged)) return true;
     // A stroke on a tiled layer writes back into tiles that may be on disk now (1.62.5).
     if (e.patches.some((q) => q.raster instanceof TiledRaster && q.raster.pagedIn(q.x, q.y, q.paged?.w ?? q.before.width, q.paged?.h ?? q.before.height))) return true;
     return (op === 'undo' ? e.before : e.after).doc.layers.some((l) => [l.raster, l.mask?.raster].some((r) => !!r && this.pagedRasters.has(r)));
   }
   private async bringBack(e: HistoryEntry, op: 'undo' | 'redo'): Promise<void> {
+    if (e.streamed && this.undoStore) {   // a tile at a time: fetched, written in, let go; undo in reverse (1.62.7)
+      const store = this.undoStore, order = op === 'undo' ? [...e.patches].reverse() : e.patches;
+      for (const q of order) {
+        if (!q.disk) continue;
+        if (q.raster instanceof TiledRaster) await q.raster.ensure(q.x, q.y, q.disk.w, q.disk.h, store);
+        const buf = await store.get(op === 'undo' ? q.disk.before : q.disk.after);
+        q.raster.write(new ImageData(new Uint8ClampedArray(buf), q.disk.w, q.disk.h), q.x, q.y);
+        if (q.raster instanceof TiledRaster) await this.pageTiles();
+      }
+      return;
+    }
     await this.pageIn(e);
     const store = this.undoStore;   // then the tiles its patches land on (1.62.5)
     if (store) for (const q of e.patches) if (q.raster instanceof TiledRaster) await q.raster.ensure(q.x, q.y, q.before.width, q.before.height, store);
@@ -687,7 +699,7 @@ export class Engine {
 
   closeProject(id: string): void {
     const i = this.projects.findIndex((p) => p.id === id);
-    if (i < 0 || this.stroke) return;
+    if (i < 0 || this.stroke || this.waiting()) return;
     if (this.transformEdit?.project.id === id) this.transformEdit = null;
     if (this.floatSel?.project.id === id) this.floatSel = null;
     const closing = this.projects[i];
@@ -700,6 +712,7 @@ export class Engine {
     // until it collected them, while the count already said free. Each canvas only it keeps (its layers and its undo
     // history; no other open document's) is shrunk to nothing, which frees it at once.
     for (const e of closing.history.entries()) for (const q of e.patches) if (q.paged) this.undoStore?.drop(q.paged.key);   // its stored undo too (1.60.8)
+    for (const e of closing.history.entries()) for (const q of e.patches) if (q.disk) { this.undoStore?.drop(q.disk.before); this.undoStore?.drop(q.disk.after); }   // and its streamed steps' (1.62.7)
     for (const r of this.rastersOf(closing)) { const t = this.pagedRasters.get(r); if (t) { for (const x of t) this.undoStore?.drop(x.key); this.pagedRasters.delete(r); } }   // and its paged layers (1.61.3)
     if (this.undoStore) for (const l of closing.doc.layers) l.tiled?.dropAll(this.undoStore);   // and its stored tiles (1.62.4)
     const kept = new Set<Raster>();
@@ -749,9 +762,18 @@ export class Engine {
     return this.addProject({ ...base, layers: [layer] }, name, layer.id);
   }
 
+  /** What is running that edits must wait for (1.62.7: a filter on a giant layer, which works a band at a time and
+   *  awaits the engine's disk between bands), or null. */
+  busyWith: string | null = null;
+  private waiting(): boolean {
+    if (!this.busyWith) return false;
+    this.notice(`Wait for ${this.busyWith} to finish.`);
+    return true;
+  }
+
   edit(name: string, fn: (p: Project) => boolean | void): boolean {
     const p = this.current;
-    if (!p || this.stroke) return false;
+    if (!p || this.stroke || this.waiting()) return false;
     this.settle();
     const nested = p.history.open;
     p.history.begin(name, p.snapshot());
@@ -900,7 +922,7 @@ export class Engine {
   private draining = false;
   private historyOp(op: 'undo' | 'redo'): void {
     const p = this.current;
-    if (!p || this.stroke) return;
+    if (!p || this.stroke || this.waiting()) return;
     const next = op === 'undo' ? p.history.peekUndo() : p.history.peekRedo();
     if (!this.historyOps.length && !this.needsBack(next, op)) { if (op === 'undo') this.undoNow(); else this.redoNow(); return; }
     this.historyOps.push(op);
@@ -932,7 +954,7 @@ export class Engine {
     this.settle();
     const e = p.history.undo();
     if (!e) return;
-    for (let i = e.patches.length - 1; i >= 0; i--) {
+    for (let i = e.streamed ? -1 : e.patches.length - 1; i >= 0; i--) {   // a streamed step's are already in (1.62.7)
       const q = e.patches[i];
       if (q.lazy) { q.after = q.raster.read(q.x, q.y, q.before.width, q.before.height); q.lazy = false; }   // 1.60.9
       q.raster.write(q.before, q.x, q.y);
@@ -949,7 +971,7 @@ export class Engine {
     this.settle();
     const e = p.history.redo();
     if (!e) return;
-    for (const q of e.patches) q.raster.write(q.after, q.x, q.y);
+    if (!e.streamed) for (const q of e.patches) q.raster.write(q.after, q.x, q.y);   // a streamed step's are already in (1.62.7)
     this.restore(p, e.after);
     this.reconcileFrame(p, e.name === 'Select Frame');
   }
@@ -3308,7 +3330,7 @@ export class Engine {
   beginStroke(pt: Pt, shift: boolean, pressure = 1, pose: PenPose = UPRIGHT, opts: { aliased?: boolean; square?: boolean; autoErase?: boolean; name?: string } = {}): boolean {
     if (!this.deepPaintOk()) return false;   // 16 bits: Brush, Pencil and Eraser paint (1.53.8)
     const p = this.current;
-    if (!p || this.stroke) return false;
+    if (!p || this.stroke || this.waiting()) return false;
     // What a stroke makes (1.60.5, engine/stroke.ts): its working and paint surfaces, each the layer's size, a third
     // with a selection; and the layer's own pixels when this stroke is the first on it.
     const fresh = p.activeLayer && !p.activeLayer.raster && !p.activeLayer.tiled ? p.doc.width * p.doc.height * 4 : 0;   // a tiled layer is never given one (1.62.3)
@@ -5120,6 +5142,58 @@ export class Engine {
       this.refresh();
     }
     void this.pageNewest(p);
+    return true;
+  }
+
+  /** Whether the active layer is a giant one kept in tiles (1.62.7: the filter panel sends bandable filters there). */
+  activeTiled(): boolean { return !!this.current?.activeLayer?.tiled; }
+
+  /** A filter on a giant layer kept in tiles (1.62.7, DEV_PLAN 26.6e), in place, a band at a time: each band read with
+   *  `apron` rows around it, its tiles brought back first, the next band's source read before this band is written (so
+   *  every band filters original pixels), written back a 512-pixel tile at a time, each changed tile's before and after
+   *  sent at once to the engine's store, so the step's undo (up to 2.4 GB a side at 600 MP) never sits in memory: undo
+   *  and redo stream it back a tile at a time. Tiles behind are paged out as it goes; edits wait while it runs. A
+   *  blur's spill past the canvas is not kept here (an ordinary layer grows to keep it; a giant one cannot). */
+  async bandedFilterTiled(name: string, run: (src: ImageData) => ImageData, apron: number): Promise<boolean | 'refused'> {
+    const p = this.current, l = p?.activeLayer, t = l?.tiled, store = this.undoStore;
+    if (!p || !l || !t || this.stroke) return false;
+    if (this.waiting() || !this.paintable(l, true)) return 'refused';
+    if (!store) { this.notice(`${name} on a document this large needs formvis's engine running: its undo is kept on the engine's disk.`, 'error'); return 'refused'; }
+    if (p.selection || p.maskTarget) { this.notice(`${name} inside a selection or on a mask, on a layer kept in tiles, comes in a later release.`); return 'refused'; }
+    const W = t.width, H = t.height, A = Math.max(0, Math.ceil(apron)), B = Math.max(A, 16, Math.min(512, Math.floor(2_097_152 / W)));
+    this.busyWith = name;
+    this.notice(`${name} runs over the picture a band at a time, keeping its undo on disk; editing waits until it finishes.`);
+    p.history.begin(name, p.snapshot());
+    try {
+      const source = async (y0: number): Promise<{ img: ImageData; a0: number }> => {
+        const a0 = Math.max(0, y0 - A), a1 = Math.min(H, Math.min(H, y0 + B) + A);
+        await t.ensure(0, a0, W, a1 - a0, store);
+        return { img: t.read(0, a0, W, a1 - a0), a0 };
+      };
+      let src = await source(0);
+      for (let y0 = 0; y0 < H; y0 += B) {
+        const y1 = Math.min(H, y0 + B), h = y1 - y0, out = run(src.img), a0 = src.a0;
+        if (y1 < H) src = await source(y1);   // the next band's originals, before this band is written
+        await t.ensure(0, y0, W, h, store);
+        for (let x0 = 0; x0 < W; x0 += 512) {
+          const w = Math.min(512, W - x0), before = t.read(x0, y0, w, h), after = new ImageData(w, h);
+          for (let yy = 0; yy < h; yy++) { const so = ((y0 - a0 + yy) * W + x0) * 4; after.data.set(out.data.subarray(so, so + w * 4), yy * w * 4); }
+          if (sameBytes(before.data, after.data)) continue;
+          t.write(after, x0, y0);
+          const [kb, ka] = await Promise.all([store.put(new Uint8Array(before.data.buffer) as Uint8Array<ArrayBuffer>), store.put(new Uint8Array(after.data.buffer) as Uint8Array<ArrayBuffer>)]);
+          p.history.addPatch({ raster: t, x: x0, y: y0, before: new ImageData(1, 1), after: new ImageData(1, 1), disk: { before: kb, after: ka, w, h } });
+        }
+        await this.pageTiles();
+      }
+    } catch (err) {
+      this.notice(`${name} stopped part way (what it did is one step, undoable): ${String((err as Error)?.message ?? err)}`, 'error');
+    } finally {
+      p.history.end(p.snapshot());
+      const e = p.history.peekUndo();
+      if (e && e.patches.some((q) => q.disk)) e.streamed = true;   // undo and redo stream it from the store
+      this.busyWith = null;
+      this.refresh();
+    }
     return true;
   }
 
@@ -7409,7 +7483,12 @@ export class Engine {
   /** Every step's end (1.55.9): a step made outside `edit` (strokes of the retouching tools, the Gradient tool, Crop,
    *  Move Pixels, Stroke Path...) brings 16-bit and CMYK floats into step here; 32 bits is left to its own guards. */
   /** A step the History trims away has its tiles in the undo store dropped too (1.60.8). */
-  private readonly dropHook = (History.onDrop = (e: HistoryEntry): void => { for (const q of e.patches) if (q.paged) this.undoStore?.drop(q.paged.key); });
+  private readonly dropHook = (History.onDrop = (e: HistoryEntry): void => {
+    for (const q of e.patches) {
+      if (q.paged) this.undoStore?.drop(q.paged.key);
+      if (q.disk) { this.undoStore?.drop(q.disk.before); this.undoStore?.drop(q.disk.after); }   // a streamed step's (1.62.7)
+    }
+  });
 
   private readonly stepHook = (History.onStepEnd = (h: History, before: Snapshot, patches: readonly PixelPatch[]): Snapshot | null => {
     const p = this.projects.find((q) => q.history === h);

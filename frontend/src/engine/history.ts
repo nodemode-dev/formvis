@@ -9,12 +9,14 @@ export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionM
 /* frames (1.59.8): a copy of the frame animation (frames, current, loops), carried by steps that change it (Convert to
    Frame Animation), as video and paths are carried. */
 /* video (1.59.5, DEV_PLAN 25): a copy of the video timeline, carried only by timeline edits' steps, as paths are. */
-export interface PixelPatch { raster: Raster | TiledRaster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null; lazy?: boolean }
+export interface PixelPatch { raster: Raster | TiledRaster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null; lazy?: boolean; disk?: { before: string; after: string; w: number; h: number } | null }
 /* lazy (1.60.9, DEV_PLAN 26.4): only `before` is kept; `after` is what the layer holds when the step is undone, read
    there just before `before` is written back (a whole-layer filter's undo, halved). */
 /* paged (1.60.8, DEV_PLAN 26.3): kept in the engine's undo store under `key`, its before and after pixels (w by h)
    replaced here by a pixel's worth each until an undo or redo brings them back. */
-export interface HistoryEntry { name: string; before: Snapshot; after: Snapshot; patches: PixelPatch[]; beforeRev: number; afterRev: number }
+export interface HistoryEntry { name: string; before: Snapshot; after: Snapshot; patches: PixelPatch[]; beforeRev: number; afterRev: number; streamed?: boolean }
+/* streamed (1.62.7, DEV_PLAN 26.6e): a step whose patches keep both sides on the engine's disk (`disk`), applied a tile at
+   a time by undo and redo rather than brought into memory together: a filter on a giant layer, up to 2.4 GB a side. */
 
 export class History {
   /** Called as any step ends (1.55.9): the engine brings floats into step with the step's 8-bit pixels and returns the
@@ -164,7 +166,7 @@ export class History {
    *  paged (1.60.8, DEV_PLAN 26.3). */
   pageable(keep: number): PixelPatch[] {
     const out: PixelPatch[] = [];
-    for (const e of this.past.slice(0, Math.max(0, this.past.length - keep))) for (const q of e.patches) if (!q.paged) out.push(q);
+    for (const e of this.past.slice(0, Math.max(0, this.past.length - keep))) for (const q of e.patches) if (!q.paged && !q.disk) out.push(q);   // a streamed step's are on disk already (1.62.7)
     return out;
   }
 }
