@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.62.9 · 2026-10-03
+
+### Changed
+
+- Documents larger than a browser canvas holds are drawn by the graphics processor where one is available, a piece at a time, using smaller copies when zoomed out so its memory stays about one screen's worth at any zoom. A mask, clipping mask or layer style on such a document keeps it on the slower display.
+
 ## 1.62.8 · 2026-10-03
 
 ### Added

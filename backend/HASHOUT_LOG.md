@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.62.9
+
+No engine code changed in 1.62.9 (the GPU per tile is in the window). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.62.8"
+version = "1.62.8"
+version = "1.62.8"
+ "version": "1.62.8",
+```
+
 ## The streaming PNG reader · _v1.62.8 (app/routers/bands.py)
 
 `/api/bands/read`: POST with an opened project's session and file opens its PNG (resolved by `sessions.asset_path`, so only files of an opened project, by safe names) to be read a band of rows at a time, 8-bit RGB or RGBA, not interlaced; GET to the key returns the next rows as RGBA, the reader closing after the last. Rows are inflated as they are asked for and unfiltered one at a time (`_unfilter`: None and Up at numpy speed, Up being what the banded writer uses; Sub by cumulative sums; Average and Paeth a byte at a time, correct and slow, for a PNG from elsewhere), holding only the current row and what is inflated ahead; RGB is given opaque alpha. It is how a giant layer (past what a browser can decode) is opened. Checked through the engine's test client: the writer's random RGBA (varying alpha) read back in bands of 300, 500 and 37 rows exactly; a Pillow RGB PNG (adaptive filters) read back exactly with alpha 255; an unknown key and a file not in the session 404; and through the window, the 120 MP project reopened exactly. Nothing removed besides the version lines:
