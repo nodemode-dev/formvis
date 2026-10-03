@@ -2,6 +2,30 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Giant documents exported as PNG · _v1.62.6 (engine/index.ts; e2e/test_large_document.py, e2e/test_tiled_document.py)
+
+DEV_PLAN 26.6e, its first part (filters on giant layers follow). Export PNG of a giant document goes through the bands again (excluded at 1.62.3, when 512-row bands 30,000 wide, 61 MB each, piled up awaiting collection and crashed the page): `renderBands` sizes its bands to about 4 megapixels from the width (16 to 512 rows; 139 rows, 16 MB, at 30,000 wide) and reuses one band surface; before each band it brings back the tiles under it, because a tile on disk draws as its preview, a placeholder on screen but wrong pixels in a file; after each band it pages tiles behind it out again, so memory stays bounded whatever is painted. Verified on the 4 GB test machine, through Export PNG: a 30,000 by 20,000 document with two rectangles and a brush stroke across tile edges, its painted tiles sent to disk first (18 of 22), exported in 276 s with the browser peaking 502 MB above where it stood and no errors; the 30,000 by 20,000 PNG, streamed row by row (2.4 GB decoded is past the machine), equal to the layer at nine pixels including both sides of each rectangle's edges, the stroke and the far corner. The same run is now an opt-in test in e2e/test_large_document.py; while making it, its paging check proved flaky (a paging round the stroke had scheduled was running, and an explicit pageTiles returns at once during one), so the test waits until the tiles fit their share. test_tiled_document no longer expects export to be refused. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+taught tiles (filters and export, 26.6e; painting is taught at 1.62.5, in e2e/test_tiled_paint.py)."""
+    page.evaluate("window.formvis.commands.run('export-png')")
+    page.wait_for_timeout(3000)
+    toasts = page.evaluate("Array.from(document.querySelectorAll('.cv-toast')).map((t) => t.textContent)")
+    assert any("past what a browser canvas holds" in t for t in toasts), toasts   # refused out loud (bands crashed the page)
+    assert page.evaluate("1 + 1") == 2                                   # and the page lives
+    // Not a tiled document yet (1.62.3): at 600 MP its 61 MB bands, awaiting collection, crashed the page; 26.6e makes
+    // its export safe, and until then the full-size path refuses it out loud (createSurface) and the page survives.
+    if (p?.doc.layers.some((l) => l.tiled)) return false;
+    const W = p.doc.width, H = p.doc.height, B = 512;
+    for (let y0 = 0; y0 < H; y0 += B) {
+      const h = Math.min(B, H - y0), s = createSurface(W, h);
+      this.work.render({ doc: p.doc, target: s, view: translation(0, -y0), background, quality: 'high' });
+      const rows = ctxOf(s).getImageData(0, 0, W, h).data as Uint8ClampedArray<ArrayBuffer>;
+      s.width = 0; s.height = 0;
+      await sink(rows, y0, h);
+export const VERSION = '1.62.5';
+```
+
 ## Painting on a giant layer · _v1.62.5 (engine/stroke.ts, engine/index.ts, engine/history.ts, engine/renderer.ts, engine/tiled.ts; e2e/test_tiled_paint.py new; e2e/test_tiled_document.py, e2e/test_painting_tools.py)
 
 DEV_PLAN 26.6d. The plain brush, pencil and eraser paint a layer kept in tiles: `PixelStroke` takes a `TiledRaster` (always windowed), keeps `orig`, the window's original pixels, read from the tiles as the window grows (a tile there on disk stops the window, the dab not laid and the area noted in `missing`, never painted over unloaded), recomposes from it, and `commitTiles` writes each changed 512-pixel tile into the tiles, its before from `orig` and after from the window; `commit` (the whole rectangle) and `layer` (what the retouch strokes and `toFull` work on whole) refuse a tiled layer plainly. `beginStroke` lets `paintable` allow a tiled layer for the plain stroke only, declines before any step opens what needs the whole layer (the Mixer Brush, a mask, a selection, Brush Settings), builds the target from the tiles (target would give the layer a full-size canvas), and reads Auto Erase's pixel from the tiles; `endStroke` says when a stroke stopped at tiles still on disk and brings them back. `PixelPatch.raster` may be a tiled layer; `History.rasters` gathers only canvases; undo and redo bring a stroke's tiles back from disk before writing there (`needsBack`, `bringBack`, `pagedIn`); tile paging waits during a stroke; the renderer shows a stroke in progress on a tiled layer through a slot and its window, as an ordinary layer's. Also corrected: test_painting_tools' brush group expected Brush and Pencil, but the Mixer Brush joined them at 1.56.2 (a3e88c4, as Photoshop's), so the test had failed since then (confirmed failing on 1.62.4's code with this release's changes set aside); test_tiled_document's decline now uses a filter, since the brush paints. Verified: the same stroke across tile edges on a 30,000 by 20,000 tiled layer and on an ordinary 6,000 by 5,000 layer equal over every byte of the painted region, one Brush step, no full-size canvas; the stroke shown in the view before it is written into the layer; undo to white and redo exactly; the Mixer Brush declined with no step; with the share forcing the stroke's tiles to disk, undo brought them back and restored white exactly (e2e/test_tiled_paint.py 4 passed); 93 browser tests of brushes, dynamics, flow, modes, settings, tips, cloning, healing, the History Brush, paint targets, painting tools, retouching, the tiled suites and the GL display passed with the two corrections; unit 194; no errors. Removed lines taken after the version edit. Removed from frontend:
