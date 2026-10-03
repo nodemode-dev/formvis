@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.63.0 · 2026-10-03
+
+### Added
+
+- A 600 megapixel document (30,000 by 20,000) can be edited whole on a computer with 4 GB of memory: painted, filtered across the whole picture, undone and redone, saved, reopened and exported, every pixel as it should be. A filter over a whole picture this size takes about eleven minutes and its undo about five; a photograph this size needs several GB of free disk while it is filtered.
+- `./formvis bench` also reports whether such a document is drawn by the graphics processor.
+
+### Fixed
+
+- Parts of a very large picture moved to disk no longer stay in memory too, which could make the page run out of memory and close.
+- Closing a very large document after a filter no longer holds up opening the next one for minutes.
+- Long brush strokes on very large pictures use far less memory.
+
 ## 1.62.9 · 2026-10-03
 
 ### Changed
