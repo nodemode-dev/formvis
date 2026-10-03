@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.62.8 · 2026-10-03
+
+### Added
+
+- Documents larger than a browser canvas holds save to the library and open again, every pixel as it was; untouched background costs nothing when reopened. Save them yourself: recovery copies are not kept for documents this large, as each takes minutes to write.
+
+### Fixed
+
+- A new layer on such a document could not be painted (it needed a canvas larger than a browser can make); it now paints like the first.
+
 ## 1.62.7 · 2026-10-03
 
 ### Added
