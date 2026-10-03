@@ -2,6 +2,40 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Painting on a giant layer · _v1.62.5 (engine/stroke.ts, engine/index.ts, engine/history.ts, engine/renderer.ts, engine/tiled.ts; e2e/test_tiled_paint.py new; e2e/test_tiled_document.py, e2e/test_painting_tools.py)
+
+DEV_PLAN 26.6d. The plain brush, pencil and eraser paint a layer kept in tiles: `PixelStroke` takes a `TiledRaster` (always windowed), keeps `orig`, the window's original pixels, read from the tiles as the window grows (a tile there on disk stops the window, the dab not laid and the area noted in `missing`, never painted over unloaded), recomposes from it, and `commitTiles` writes each changed 512-pixel tile into the tiles, its before from `orig` and after from the window; `commit` (the whole rectangle) and `layer` (what the retouch strokes and `toFull` work on whole) refuse a tiled layer plainly. `beginStroke` lets `paintable` allow a tiled layer for the plain stroke only, declines before any step opens what needs the whole layer (the Mixer Brush, a mask, a selection, Brush Settings), builds the target from the tiles (target would give the layer a full-size canvas), and reads Auto Erase's pixel from the tiles; `endStroke` says when a stroke stopped at tiles still on disk and brings them back. `PixelPatch.raster` may be a tiled layer; `History.rasters` gathers only canvases; undo and redo bring a stroke's tiles back from disk before writing there (`needsBack`, `bringBack`, `pagedIn`); tile paging waits during a stroke; the renderer shows a stroke in progress on a tiled layer through a slot and its window, as an ordinary layer's. Also corrected: test_painting_tools' brush group expected Brush and Pencil, but the Mixer Brush joined them at 1.56.2 (a3e88c4, as Photoshop's), so the test had failed since then (confirmed failing on 1.62.4's code with this release's changes set aside); test_tiled_document's decline now uses a filter, since the brush paints. Verified: the same stroke across tile edges on a 30,000 by 20,000 tiled layer and on an ordinary 6,000 by 5,000 layer equal over every byte of the painted region, one Brush step, no full-size canvas; the stroke shown in the view before it is written into the layer; undo to white and redo exactly; the Mixer Brush declined with no step; with the share forcing the stroke's tiles to disk, undo brought them back and restored white exactly (e2e/test_tiled_paint.py 4 passed); 93 browser tests of brushes, dynamics, flow, modes, settings, tips, cloning, healing, the History Brush, paint targets, painting tools, retouching, the tiled suites and the GL display passed with the two corrections; unit 194; no errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+    for member, want in [("brush", ["Brush", "Pencil"]), ("eraser", ["Eraser", "Background Eraser", "Magic Eraser"]), ("cloneStamp", ["Clone Stamp", "Pattern Stamp"])]:
+taught tiles (painting, filters, export: the stages 26.6c to h)."""
+      e.setTool('brush'); e.beginStroke({ x: 100, y: 100 }, false); e.strokeTo({ x: 300, y: 300 }); e.endStroke();
+    assert r["steps"] == 0 and not r["raster"] and r["tiled"], r        # painting had given it a canvas the browser cannot make
+export interface PixelPatch { raster: Raster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null; lazy?: boolean }
+    for (const e of [...this.past, ...this.future]) { add(e.before); add(e.after); for (const p of e.patches) out.add(p.raster); }
+import { UPRIGHT, defaultShape, noDynamics, pressureOption, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
+    if (!store || this.tilePaging) return 0;
+  private paintable(l: Layer | null): l is Layer {
+    if (l.tiled) { this.notice(`"${l.name}" is past 268 megapixels and kept in tiles: painting and editing its pixels come in the next releases.`); this.lockedAt = performance.now(); return false; }
+    if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to paint on.'); return false; }
+    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
+      const q = applyMat(invert(pick.local) ?? [1, 0, 0, 1, 0, 0], pt.x, pt.y), px = pick.raster.ctx.getImageData(Math.floor(q.x), Math.floor(q.y), 1, 1).data;
+    const s = new PixelStroke(pick.raster, pick.local, { ...this.brush, color, bg: { ...this.bg }, flow: this.brushFlow, aliased: !!opts.aliased || !!opts.square, square: !!opts.square, dabColor: this.tool === 'mixer' && pick.target !== 'mask' && this.brushMode !== 'erase' ? this.mixerSourceFor(p, pick.raster, pick.local) : null }, op, p.selection);
+    const r = s.raster;
+    const r = s.raster, W = r.width, H = r.height, before = r.read(), pm = premultiply(before.data), cov = s.coverageAlpha(), hole0 = new Uint8Array(W * H);
+    const r = s.raster;
+        layer.tiled.drawTo(ctx, mul(job.view, placement(t, layer.tiled.width, layer.tiled.height)) as unknown as [number, number, number, number, number, number]);
+  constructor(readonly raster: Raster, localToDoc: Mat, readonly style: StrokeStyle, readonly op: GlobalCompositeOperation, private readonly selection: SelectionMask | null, private readonly texture: { surface: Surface; dx: number; dy: number } | null = null, private readonly lerp = false) {
+    this.windowed = raster.width * raster.height > windowFrom && !lerp;
+    if (!this.windowed) this.workingCtx.drawImage(raster.canvas, 0, 0);
+      if (layer) c.drawImage(this.raster.canvas, nx, ny, nw, nh, 0, 0, nw, nh);   // the layer's pixels where the window is new
+    this.working = takeSurface(w, h); this.workingCtx = ctxOf(this.working); this.workingCtx.drawImage(this.raster.canvas, 0, 0);
+    w.drawImage(this.raster.canvas, lx, ly, aw, ah, x, y, aw, ah);
+    const T = 512, out: PixelPatch[] = [], c = this.raster.ctx;
+    const c = this.raster.ctx;
+export const VERSION = '1.62.4';
+```
+
 ## A giant document's tiles on the engine's disk · _v1.62.4 (engine/tiled.ts, engine/index.ts; e2e/test_tiled_paging.py new)
 
 DEV_PLAN 26.6c. Past the tiles' share of memory (40% of the budget; `tileShareOverride` for checks), `pageTiles` sends each tiled layer's least recently used tile out of view to the engine's store (the undo store since 1.60.8) after edits settle: `TiledRaster.pageOut` keeps a preview at a sixteenth of the tile's side and frees the canvas only once stored, abandoning (the stored copy dropped) a tile drawn into meanwhile (per-tile versions) or come into view. `drawTo` draws a tile on disk as its preview and, when the view needs more than the preview (scale above a sixteenth), asks for it (`onMissing`), which `bringTile` answers with `pageIn` (fetched once however many ask, the stored copy then dropped) and one redraw; the tiles a full-detail view drew are recorded and never paged while on screen, and a small view (the Navigator's) neither asks nor counts. A tile on disk is never read as empty nor drawn over as new: `tileAt` throws for it, and an operation brings its tiles back first with `ensure`. Closing a document drops its stored tiles. `bytes` (the memory count) is the tiles in memory and the previews; `residentBytes` is what the share bounds. Verified with the share at four tiles on a 600 MP document: twelve tiles of distinct patterns written, four stayed and eight went to the store (previews under 1 MB in all); reading a tile on disk refused; the view over tile 0 brought it back and showed every byte as written; ensure brought tile 11 back for an exact read; closing emptied the store of them; e2e/test_tiled_paging.py passed, with the tiled raster, tiled document and GL display suites (39 in all); unit 194; no errors. Removed lines taken after the version edit. Removed from frontend:

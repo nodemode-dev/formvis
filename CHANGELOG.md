@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.62.5 · 2026-10-03
+
+### Added
+
+- The Brush, Pencil and Eraser paint documents larger than a browser canvas holds, exactly as on any other document, and undo them. Brush Settings, the Mixer Brush, painting inside a selection and painting masks on such documents come later, and say so.
+
 ## 1.62.4 · 2026-10-03
 
 ### Added
