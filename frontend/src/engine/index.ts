@@ -7206,9 +7206,8 @@ export class Engine {
    *  document past the band size, composed by the ordinary renderer. */
   bandedExportable(): boolean {
     const p = this.current;
-    // Not a tiled document yet (1.62.3): at 600 MP its 61 MB bands, awaiting collection, crashed the page; 26.6e makes
-    // its export safe, and until then the full-size path refuses it out loud (createSurface) and the page survives.
-    if (p?.doc.layers.some((l) => l.tiled)) return false;
+    // A tiled document too (1.62.6, DEV_PLAN 26.6e; excluded at 1.62.3, when its 61 MB bands crashed the page): its
+    // bands are now sized from its width, one surface reused, its tiles brought back before each band is drawn.
     return !!p && p.doc.width * p.doc.height > this.bandFrom && (p.doc.depth ?? 8) <= 8 && p.doc.mode !== 'cmyk' && p.doc.mode !== 'lab' && !this.composesFloats(p);
   }
 
@@ -7218,13 +7217,26 @@ export class Engine {
   async renderBands(sink: (rows: Uint8ClampedArray<ArrayBuffer>, y0: number, h: number) => Promise<void>, background: string | null = null): Promise<boolean> {
     const p = this.current;
     if (!p) return false;
-    const W = p.doc.width, H = p.doc.height, B = 512;
-    for (let y0 = 0; y0 < H; y0 += B) {
-      const h = Math.min(B, H - y0), s = createSurface(W, h);
-      this.work.render({ doc: p.doc, target: s, view: translation(0, -y0), background, quality: 'high' });
-      const rows = ctxOf(s).getImageData(0, 0, W, h).data as Uint8ClampedArray<ArrayBuffer>;
-      s.width = 0; s.height = 0;
-      await sink(rows, y0, h);
+    // About 4 megapixels a band, 16 to 512 rows, from the width (1.62.6): 16 MB at 30,000 wide, where 512 rows had been
+    // 61 MB and, piling up awaiting collection, crashed the page at 1.62.3; one band surface, cleared and reused.
+    const W = p.doc.width, H = p.doc.height, B = Math.max(16, Math.min(512, Math.floor(4_194_304 / W)));
+    const s = createSurface(W, Math.min(B, H)), c = ctxOf(s), store = this.undoStore;
+    const tiled = p.doc.layers.map((l) => l.tiled).filter((t): t is TiledRaster => !!t);
+    try {
+      for (let y0 = 0; y0 < H; y0 += B) {
+        const h = Math.min(B, H - y0);
+        // A tiled layer's tiles under the band brought back first: a tile on disk draws as its preview, a placeholder on
+        // screen but wrong pixels in a file (1.62.6).
+        if (store) for (const t of tiled) await t.ensure(0, y0, W, h, store);
+        c.clearRect(0, 0, W, s.height);
+        this.work.render({ doc: p.doc, target: s, view: translation(0, -y0), background, quality: 'high' });
+        const rows = c.getImageData(0, 0, W, h).data as Uint8ClampedArray<ArrayBuffer>;
+        await sink(rows, y0, h);
+        if (tiled.length) await this.pageTiles();   // the tiles behind it back to disk past their share
+      }
+    } finally {
+      s.width = 0;
+      s.height = 0;
     }
     return true;
   }
