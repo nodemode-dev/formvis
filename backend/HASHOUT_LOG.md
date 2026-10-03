@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.62.7
+
+No engine code changed in 1.62.7 (filters on giant layers, their undo through the 1.60.8 store, in the window). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.62.6"
+version = "1.62.6"
+version = "1.62.6"
+ "version": "1.62.6",
+```
+
 ## Version only · _v1.62.6
 
 No engine code changed in 1.62.6 (giant documents exported through the 1.61.2 banded PNG writer, from the window). Removed lines taken after the version edit:
