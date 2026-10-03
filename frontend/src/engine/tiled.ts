@@ -27,6 +27,12 @@ export function tilesIn(x: number, y: number, w: number, h: number, tile: number
 }
 
 interface Tile { canvas: Surface; ctx: Ctx2D }
+/** A tile on the engine's disk (1.62.4, DEV_PLAN 26.6c): its key in the store, and a preview at a sixteenth of its side
+ *  that the view draws until the tile is back. */
+interface PagedTile { key: string; preview: Surface; w: number; h: number }
+/** The store tiles go to: the engine's undo store, as the app hands it to the engine. */
+export interface TileStore { put(bytes: Uint8Array<ArrayBuffer>): Promise<string>; get(key: string): Promise<ArrayBuffer>; drop(key: string): void }
+export const PREVIEW = 16;
 
 export class TiledRaster {
   readonly id = uid();
@@ -34,6 +40,16 @@ export class TiledRaster {
   readonly cols: number;
   readonly rows: number;
   private readonly tiles = new Map<number, Tile>();
+  private readonly paged = new Map<number, PagedTile>();
+  /** When each tile was last used (a drawing or a frame), for least-recently-used paging; the frame counter marks the
+   *  tiles the last drawTo drew, which are in view and never paged. */
+  private readonly used = new Map<number, number>();
+  private clock = 0;
+  private frame = -1;
+  /** Each tile's own version, so a page-out that a drawing overtook is abandoned rather than kept stale. */
+  private readonly tileVersion = new Map<number, number>();
+  /** Asked for a tile on disk a drawing wanted (1.62.4): the engine brings it back and redraws. */
+  onMissing: ((t: TiledRaster, key: number) => void) | null = null;
   /** The colour an empty tile reads and draws as, red, green, blue and alpha 0 to 255 (1.62.3, DEV_PLAN 26.6b): a
    *  600 MP white background costs nothing until something is drawn into it. Null is transparent. */
   base: [number, number, number, number] | null = null;
@@ -45,10 +61,19 @@ export class TiledRaster {
 
   /** The bytes its tiles hold: only the tiles something was drawn into. */
   get bytes(): number {
+    let n = this.residentBytes;
+    for (const p of this.paged.values()) n += p.preview.width * p.preview.height * 4;   // a tile on disk keeps its preview
+    return n;
+  }
+
+  /** The bytes of the tiles in memory (not their previews): what paging keeps within its share. */
+  get residentBytes(): number {
     let n = 0;
     for (const t of this.tiles.values()) n += t.canvas.width * t.canvas.height * 4;
     return n;
   }
+
+  get pagedCount(): number { return this.paged.size; }
 
   get tileCount(): number { return this.tiles.size; }
 
@@ -56,6 +81,9 @@ export class TiledRaster {
   tileAt(tx: number, ty: number, make = false): Tile | null {
     if (tx < 0 || ty < 0 || tx >= this.cols || ty >= this.rows) return null;
     const key = ty * this.cols + tx;
+    // On disk: never read as empty nor drawn over as a new tile, which would lose its pixels (1.62.4); bring it back.
+    if (this.paged.has(key)) throw new Error(`Tile ${tx}, ${ty} of this layer is on disk: bring it back first (ensure).`);
+    this.used.set(key, ++this.clock);
     let t = this.tiles.get(key);
     if (!t && make) {
       const canvas = createSurface(Math.min(this.tile, this.width - tx * this.tile), Math.min(this.tile, this.height - ty * this.tile));
@@ -88,6 +116,7 @@ export class TiledRaster {
   write(img: ImageData, x: number, y: number): void {
     for (const [tx, ty] of tilesIn(x, y, img.width, img.height, this.tile, this.cols, this.rows)) {
       const t = this.tileAt(tx, ty, true) as Tile;
+      this.bumpTile(tx, ty);
       const ox = tx * this.tile, oy = ty * this.tile;
       const ix0 = Math.max(x, ox), iy0 = Math.max(y, oy), ix1 = Math.min(x + img.width, ox + t.canvas.width), iy1 = Math.min(y + img.height, oy + t.canvas.height);
       if (ix1 > ix0 && iy1 > iy0) t.ctx.putImageData(img, x - ox, y - oy, ix0 - x, iy0 - y, ix1 - ix0, iy1 - iy0);
@@ -103,6 +132,7 @@ export class TiledRaster {
   drawOn(x: number, y: number, w: number, h: number, draw: (ctx: Ctx2D) => void): void {
     for (const [tx, ty] of tilesIn(Math.floor(x), Math.floor(y), Math.ceil(x + w) - Math.floor(x), Math.ceil(y + h) - Math.floor(y), this.tile, this.cols, this.rows)) {
       const t = this.tileAt(tx, ty, true) as Tile;
+      this.bumpTile(tx, ty);
       t.ctx.save();
       t.ctx.setTransform(1, 0, 0, 1, -tx * this.tile, -ty * this.tile);
       draw(t.ctx);
@@ -118,28 +148,106 @@ export class TiledRaster {
    *  scale other than 1. The caller's alpha and composite operation apply. */
   drawTo(ctx: Ctx2D, m: readonly [number, number, number, number, number, number]): void {
     const cw = ctx.canvas.width, ch = ctx.canvas.height, straight = m[1] === 0 && m[2] === 0 && m[0] > 0 && m[3] > 0;
+    // At a sixteenth of actual size or less a tile on disk's preview is all the view can show, so it is not asked
+    // for, and such a view (the Navigator's) does not count as one the tiles are in (1.62.4).
+    const full = Math.hypot(m[0], m[1]) > 1 / PREVIEW, stamp = ++this.clock;
+    if (full) this.inView.clear();
     for (let ty = 0; ty < this.rows; ty++) {
       for (let tx = 0; tx < this.cols; tx++) {
-        const t = this.tileAt(tx, ty);
-        if (!t && !this.base) continue;
+        const key = ty * this.cols + tx, t = this.tiles.get(key) ?? null, pg = this.paged.get(key) ?? null;
+        if (!t && !pg && !this.base) continue;
         const ox = tx * this.tile, oy = ty * this.tile, tw = Math.min(this.tile, this.width - ox), th = Math.min(this.tile, this.height - oy);
         if (straight) {
           const x0 = Math.round(m[0] * ox + m[4]), x1 = Math.round(m[0] * (ox + tw) + m[4]), y0 = Math.round(m[3] * oy + m[5]), y1 = Math.round(m[3] * (oy + th) + m[5]);
           if (x1 <= 0 || y1 <= 0 || x0 >= cw || y0 >= ch || x1 === x0 || y1 === y0) continue;
+          if (t || pg) { this.used.set(key, stamp); if (full) this.inView.add(key); }
           ctx.save();
           ctx.setTransform(1, 0, 0, 1, 0, 0);
           if (t) ctx.drawImage(t.canvas, 0, 0, tw, th, x0, y0, x1 - x0, y1 - y0);
+          else if (pg) { ctx.drawImage(pg.preview, 0, 0, pg.preview.width, pg.preview.height, x0, y0, x1 - x0, y1 - y0); if (full) this.onMissing?.(this, key); }
           else { ctx.fillStyle = this.baseCss(); ctx.fillRect(x0, y0, x1 - x0, y1 - y0); }
           ctx.restore();
         } else {
+          if (t || pg) { this.used.set(key, stamp); if (full) this.inView.add(key); }
           ctx.save();
           ctx.setTransform(m[0], m[1], m[2], m[3], m[4], m[5]);
           if (t) ctx.drawImage(t.canvas, ox, oy);
+          else if (pg) { ctx.drawImage(pg.preview, ox, oy, tw, th); if (full) this.onMissing?.(this, key); }
           else { ctx.fillStyle = this.baseCss(); ctx.fillRect(ox, oy, tw, th); }
           ctx.restore();
         }
       }
     }
+  }
+
+  /** Tiles a full-detail view last drew: never paged while they are on screen (1.62.4). */
+  private readonly inView = new Set<number>();
+
+  /** The tile in memory least recently used and not in view, or null (1.62.4). */
+  leastUsed(): number | null {
+    let best: number | null = null, at = Infinity;
+    for (const key of this.tiles.keys()) {
+      if (this.inView.has(key)) continue;
+      const u = this.used.get(key) ?? 0;
+      if (u < at) { at = u; best = key; }
+    }
+    return best;
+  }
+
+  /** Tile `key` to the store with a preview kept, its canvas freed only once stored; abandoned (the stored copy
+   *  dropped) if it was drawn into meanwhile or came into view. True when it went. */
+  async pageOut(key: number, store: TileStore): Promise<boolean> {
+    const t = this.tiles.get(key);
+    if (!t || this.paged.has(key)) return false;
+    const w = t.canvas.width, h = t.canvas.height, v = this.tileVersion.get(key) ?? 0, d = t.ctx.getImageData(0, 0, w, h).data;
+    const preview = createSurface(Math.max(1, Math.ceil(w / PREVIEW)), Math.max(1, Math.ceil(h / PREVIEW))), pc = ctxOf(preview);
+    pc.imageSmoothingQuality = 'high';
+    pc.drawImage(t.canvas, 0, 0, preview.width, preview.height);
+    const stored = await store.put(new Uint8Array(d.buffer, d.byteOffset, d.length) as Uint8Array<ArrayBuffer>);
+    if ((this.tileVersion.get(key) ?? 0) !== v || this.inView.has(key) || this.tiles.get(key) !== t) { store.drop(stored); return false; }
+    this.paged.set(key, { key: stored, preview, w, h });
+    this.tiles.delete(key);
+    t.canvas.width = 0;
+    t.canvas.height = 0;
+    return true;
+  }
+
+  private readonly bringing = new Map<number, Promise<void>>();
+
+  /** Tile `key` back from the store, fetched once however many ask, the stored copy then dropped (1.62.4). */
+  pageIn(key: number, store: TileStore): Promise<void> {
+    const p = this.paged.get(key);
+    if (!p) return Promise.resolve();
+    let job = this.bringing.get(key);
+    if (!job) {
+      job = store.get(p.key).then((buf) => {
+        const canvas = createSurface(p.w, p.h), ctx = ctxOf(canvas);
+        ctx.putImageData(new ImageData(new Uint8ClampedArray(buf), p.w, p.h), 0, 0);
+        this.tiles.set(key, { canvas, ctx });
+        this.paged.delete(key);
+        this.used.set(key, ++this.clock);
+        store.drop(p.key);
+        p.preview.width = 0;
+        p.preview.height = 0;
+      }).finally(() => this.bringing.delete(key));
+      this.bringing.set(key, job);
+    }
+    return job;
+  }
+
+  /** Every tile a rectangle touches brought back, before a read, a write or drawing there. */
+  async ensure(x: number, y: number, w: number, h: number, store: TileStore): Promise<void> {
+    await Promise.all(tilesIn(x, y, w, h, this.tile, this.cols, this.rows).map(([tx, ty]) => this.pageIn(ty * this.cols + tx, store)));
+  }
+
+  /** Every stored tile dropped from the store (its document closing). */
+  dropAll(store: TileStore): void {
+    for (const p of this.paged.values()) store.drop(p.key);
+  }
+
+  private bumpTile(tx: number, ty: number): void {
+    const key = ty * this.cols + tx;
+    this.tileVersion.set(key, (this.tileVersion.get(key) ?? 0) + 1);
   }
 
   private baseCss(): string {

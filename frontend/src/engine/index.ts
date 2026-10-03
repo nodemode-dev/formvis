@@ -360,7 +360,7 @@ export class Engine {
   private schedulePaging(): void {
     if (!this.undoStore) return;
     clearTimeout(this.pageTimer);
-    this.pageTimer = window.setTimeout(() => void this.pageOut(), 800);
+    this.pageTimer = window.setTimeout(() => { void this.pageOut(); void this.pageTiles(); }, 800);   // tiles too (1.62.4)
   }
 
   /** The undo tiles a document holds in the window. */
@@ -469,6 +469,48 @@ export class Engine {
   private async bringBack(e: HistoryEntry, op: 'undo' | 'redo'): Promise<void> {
     await this.pageIn(e);
     for (const l of (op === 'undo' ? e.before : e.after).doc.layers) for (const r of [l.raster, l.mask?.raster]) if (r && this.pagedRasters.has(r)) await this.unpageRaster(r);
+  }
+
+  /** What a giant document's tiles may hold in memory before the least used go to the engine's store (1.62.4, DEV_PLAN
+   *  26.6c): 40% of the memory budget, 512 MB until it is known; `tileShareOverride` sets it for checks. */
+  tileShareOverride: number | null = null;
+  private tileShare(): number { return this.tileShareOverride ?? (this.memoryBudget ? this.memoryBudget * 0.4 : 512 * 1048576); }
+  private tilePaging = false;
+
+  /** Each tiled layer's tiles past the share sent to the store, least recently used first, never one in view; a tile
+   *  goes only once stored and keeps a preview. One round at a time; the number sent. */
+  async pageTiles(): Promise<number> {
+    const store = this.undoStore;
+    if (!store || this.tilePaging) return 0;
+    this.tilePaging = true;
+    let sent = 0;
+    try {
+      for (const p of [...this.projects]) {
+        for (const l of p.doc.layers) {
+          const t = l.tiled;
+          while (t && t.residentBytes > this.tileShare()) {
+            const key = t.leastUsed();
+            if (key === null) break;   // every tile in memory is in view
+            if (await t.pageOut(key, store)) sent += 1;
+            else break;                // drawn into or in view meanwhile: the next round
+          }
+        }
+      }
+    } catch { /* the store out of reach: the tiles stay in memory */ } finally {
+      this.tilePaging = false;
+    }
+    return sent;
+  }
+
+  private tileRedraw = 0;
+  /** A tile on disk the view asked for, brought back; one redraw however many arrive together. */
+  private bringTile(t: TiledRaster, key: number): void {
+    const store = this.undoStore;
+    if (!store) return;
+    void t.pageIn(key, store).then(() => {
+      clearTimeout(this.tileRedraw);
+      this.tileRedraw = window.setTimeout(() => this.emit('render', null), 0);
+    }, () => this.notice('A part of the picture could not be brought back from the engine.', 'error'));
   }
 
   /** Room made for an operation needing `extra` bytes (1.61.4, DEV_PLAN 26.5): if it would not fit the budget, every
@@ -655,6 +697,7 @@ export class Engine {
     // history; no other open document's) is shrunk to nothing, which frees it at once.
     for (const e of closing.history.entries()) for (const q of e.patches) if (q.paged) this.undoStore?.drop(q.paged.key);   // its stored undo too (1.60.8)
     for (const r of this.rastersOf(closing)) { const t = this.pagedRasters.get(r); if (t) { for (const x of t) this.undoStore?.drop(x.key); this.pagedRasters.delete(r); } }   // and its paged layers (1.61.3)
+    if (this.undoStore) for (const l of closing.doc.layers) l.tiled?.dropAll(this.undoStore);   // and its stored tiles (1.62.4)
     const kept = new Set<Raster>();
     for (const q of this.projects) for (const r of this.rastersOf(q)) kept.add(r);
     for (const r of this.rastersOf(closing)) if (!kept.has(r)) { try { r.canvas.width = 0; r.canvas.height = 0; } catch { /* already gone */ } }
@@ -682,6 +725,7 @@ export class Engine {
         (width > LIMITS.side || height > LIMITS.side || width * height > LIMITS.pixels)) {
       const doc: Doc = { id: uid(), width, height, resolution: Number.isFinite(resolution) && resolution >= 1 && resolution <= 10000 ? resolution : 72, layers: [] };
       const tiled = new TiledRaster(width, height);
+      tiled.onMissing = (t, key) => this.bringTile(t, key);   // a tile on disk the view wants (1.62.4)
       if (fill === 'white') tiled.base = [255, 255, 255, 255];
       else if (fill === 'background') tiled.base = [this.bg.r, this.bg.g, this.bg.b, 255];
       const layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', doc, { tiled });
