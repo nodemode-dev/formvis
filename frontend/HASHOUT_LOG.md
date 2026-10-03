@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.61.9
+
+No window code changed in 1.61.9 (the CLI's help names its version; the owner's second bench recorded), both in the backend's log. Removed lines taken after the version edit:
+
+```text
+export const VERSION = '1.61.8';
+```
+
 ## Version only · _v1.61.8
 
 No window code changed in 1.61.8: `./formvis verify-local` (the register's M7) is in setup/ and the CLI, recorded in the backend's log. Removed lines taken after the version edit:

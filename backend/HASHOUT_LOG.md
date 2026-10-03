@@ -2,6 +2,21 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The CLI names its version; the owner's second bench recorded · _v1.61.9 (formvis; docs/BENCH.md)
+
+The owner's `./formvis verify-local` said "unknown command": the copy's `formvis` was older than 1.61.8 (on a Mac, opening a zip extracts a second copy beside the first and overwrites nothing, so "unzip it over your folder" could not be done as written). The help's first line now names the version, read from frontend/src/version.ts as it runs ("formvis 1.61.9 · layered image editor"), so a copy that missed an update shows it at once, and an unknown command is followed by it. The owner's second bench (1.61.7) is recorded in docs/BENCH.md: on the Apple M5's Metal 3, WebGPU and WebGL2 each 100.00% of values within 4 levels of the CPU's picture, the largest difference 3, so both are correct on real hardware; Automatic's WebGPU never more than 0.9 ms from the fastest path across the two runs and 22 times faster than the CPU with adjustment layers; the first run's section points to it. Checked: help's first line shows the version, an unknown command shows it, the CLI parses. Removed lines taken after the version edit (docs/BENCH.md's with them):
+
+```text
+__version__ = "1.61.8"
+formvis · layered image editor
+version = "1.61.8"
+version = "1.61.8"
+ "version": "1.61.8",
+Not yet measured on this computer: whether each GPU path draws exactly what the CPU draws (`./formvis bench` checks it
+from 1.61.7, against the bar formvis's GPU adjustment tests use: 99% of values within 4 levels), and the Channels view
+through the native renderer, which needs the desktop app (H3).
+```
+
 ## ./formvis verify-local · _v1.61.8 (setup/verify_local.py, setup/verify_local and setup/verify_local.bat new; formvis, formvis.bat)
 
 The register's M7 named `./formvis verify-local`, never built. Now, for Krea 2 (Apple silicon, or Windows and Linux) and FLUX.2 [klein] 4B (Apple silicon), through the app's own localgen modules: a model not for this computer is said so; a licence not yet accepted is shown (name, version, link, summary, use policy) and accepted only by the person's yes, recorded by the module's own `record_consent` (declined or unanswered: skipped, nothing recorded); a model not installed has the build for this memory chosen (`krea2.recommended()`, Klein's 8-bit from 16 GB; the 4-bit builds with --small), its size stated and the download made only on a yes, through the module's own `install`; then one 1,024 by 1,024 picture from a fixed prompt and seed, timed. Results to bench-results/local-<date>-<machine>.md and .json, the pictures beside them, the machine recorded as bench records it. --yes answers every question (only when passed); --stand-in runs the flow with no download and no model. The shell and Windows wrappers find formvis's Python as `bench` does; the CLI and formvis.bat dispatch it. Checked here: --stand-in wrote both files and two pictures, labelled a stand-in; a real run with no one to answer showed the Krea 2 licence in full, skipped it, recorded no consent and downloaded nothing, and said Klein is not for this computer. Nothing removed besides the version lines:

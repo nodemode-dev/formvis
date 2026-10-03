@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.61.9 · 2026-10-03
+
+### Changed
+
+- `./formvis help` names the version in its first line, so a copy that missed an update says so.
+- docs/BENCH.md: on an Apple M5 MacBook Air, both graphics-processor paths draw what the CPU draws (every value within 4 levels, the largest difference 3).
+
 ## 1.61.8 · 2026-10-03
 
 ### Added
