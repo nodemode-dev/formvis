@@ -2,6 +2,18 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The macOS install's missing packages · _v1.62.1 (requirements_macos.txt; tests/test_requirements.py new; setup/verify_local.py)
+
+The owner's `./formvis verify-local` stopped at `No module named 'httpx'`. A Mac installs from requirements_macos.txt (backend/oc_install, the unpinned macOS base) and every other system from requirements.txt; six packages added to the main list over time never reached the Mac's: httpx (local generation's downloads; the engine imports local generation as it starts, so on a Mac installed this way it could not start), keyring (API keys in the system password store), onnxruntime and onnx (the local models and the style presets, base since 1.53.4 and 1.55.1), psd-tools (Photoshop files) and tifffile (TIFF). The six are added, unpinned as the rest of that list; tests/test_requirements.py fails whenever requirements.txt or requirements_ml.txt names a package its macOS list lacks (it failed with the old list, naming all six); verify-local names a missing package in one line with what to run instead of a traceback. Checked: the new tests pass, and fail with the old list put back; in a Python with no packages, verify-local said "formvis's engine is missing the Python package 'fastapi': run ./formvis install" and exited 1; the stand-in run still completes. Removed lines taken after the version edit:
+
+```text
+__version__ = "1.61.9"
+    from app.localgen import klein, krea2
+version = "1.61.9"
+version = "1.61.9"
+ "version": "1.61.9",
+```
+
 ## The CLI names its version; the owner's second bench recorded · _v1.61.9 (formvis; docs/BENCH.md)
 
 The owner's `./formvis verify-local` said "unknown command": the copy's `formvis` was older than 1.61.8 (on a Mac, opening a zip extracts a second copy beside the first and overwrites nothing, so "unzip it over your folder" could not be done as written). The help's first line now names the version, read from frontend/src/version.ts as it runs ("formvis 1.61.9 · layered image editor"), so a copy that missed an update shows it at once, and an unknown command is followed by it. The owner's second bench (1.61.7) is recorded in docs/BENCH.md: on the Apple M5's Metal 3, WebGPU and WebGL2 each 100.00% of values within 4 levels of the CPU's picture, the largest difference 3, so both are correct on real hardware; Automatic's WebGPU never more than 0.9 ms from the fastest path across the two runs and 22 times faster than the CPU with adjustment layers; the first run's section points to it. Checked: help's first line shows the version, an unknown command shows it, the CLI parses. Removed lines taken after the version edit (docs/BENCH.md's with them):
