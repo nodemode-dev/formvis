@@ -6,3 +6,11 @@ pillow-heif
 rawpy
 numpy
 opencv-python-headless
+# Added to requirements.txt over time and missing here until 1.62.1 (the owner's Mac had no httpx, so the engine,
+# which imports local generation at start, could not start); tests/test_requirements.py now keeps the two in step.
+httpx
+keyring
+onnxruntime
+onnx
+psd-tools
+tifffile

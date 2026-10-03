@@ -81,7 +81,10 @@ def models(small: bool, stand_in: bool) -> list[dict]:
     if stand_in:
         return [{"key": key, "name": name, "here": True, "licence": None, "build": "stand-in", "bytes": 0, "installed": True, "runner": StandIn(name)}
                 for key, name in (("krea2", "Krea 2"), ("klein", "FLUX.2 [klein] 4B"))]
-    from app.localgen import klein, krea2
+    try:
+        from app.localgen import klein, krea2
+    except ModuleNotFoundError as err:   # 1.62.1: the owner's Mac lacked httpx (the macOS list had drifted)
+        sys.exit(f"[formvis] formvis's engine is missing the Python package '{err.name}': run ./formvis install, then try again")
 
     out = []
     k_build = krea2.installed_build() or (("mlx-q4" if krea2.machine() == "macos-arm64" else None) if small else krea2.recommended())
