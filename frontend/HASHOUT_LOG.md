@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## A layer as tiles · _v1.62.2 (engine/tiled.ts and engine/tiled.test.ts new; e2e/test_tiled_raster.py new)
+
+DEV_PLAN 26.6a, the first stage of tiled layers (the register's M5 closes with 26.6). A browser canvas holds at most 2^28 pixels, so past 268 MP a layer cannot be one canvas; `TiledRaster` keeps 2,048-pixel tiles made only where something is drawn (an empty tile costs nothing: a 600 MP layer is 150 tiles, held only as they are used), with `read` and `write` across tile edges as one picture, `drawOn` (a drawing call on every tile a rectangle touches, in layer coordinates) and `drawTo` (the layer drawn out through a transform); `tilesIn` is the tile arithmetic, a plain function. Nothing uses it yet: documents up to 2^28 pixels keep their single-canvas layers, and the stages after this give tiled layers to the compositor (26.6b), the disk (c), painting (d), filters and export (e), undo (f) and the GPU display (g), with the 600 MP test (h). Found on the way, and kept in the code's notes rather than hidden: `drawOn` is exact for axis-aligned fills, but not for antialiased paths, because the browser may draw a path cut by a tile's edge another way than the whole path (measured on 1,200 by 800 over white with 64- and 512-pixel tiles: 99.8% of values within 2 levels, at most 45 at a few edge pixels; the differences lie along the shapes' edges, not the tiles', and were first mistaken for a CPU against GPU rasteriser difference, which a run at four tile sizes ruled out), so antialiased drawing will go through one scratch canvas and be written into tiles, which is exact; `drawTo` at a scale other than 1 can seam at tile edges, for 26.6b's one-pixel apron. Also caught while writing the tests: the comment's 144 tiles for 600 MP (it is 15 by 10, 150), and a test write at (4,000, 4,000) said to touch one tile that crosses 4,096 both ways. Verified: unit 194 (the six tile-arithmetic tests new); in the browser, 5 passed: 40 random writes (some partly outside) and reads equal to one canvas over every byte, fills exact, antialiased shapes within 2 levels for at least 99.5% of values over white, drawTo at actual size exact from the same pixels, and a 600 MP layer holding exactly the three tiles written into. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+export const VERSION = '1.62.1';
+```
+
 ## Version only · _v1.62.1
 
 No window code changed in 1.62.1 (the macOS install's missing packages, in the backend's log). Removed lines taken after the version edit:

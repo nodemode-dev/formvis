@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.62.2 · 2026-10-03
+
+### Added
+
+- The groundwork for pictures larger than a browser can hold in one piece (past 268 megapixels): a layer kept as tiles, made only where something is drawn. Nothing uses it yet; the next releases bring it to opening, viewing, painting, filters, export and undo.
+
 ## 1.62.1 · 2026-10-03
 
 ### Fixed

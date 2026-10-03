@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.62.2
+
+No engine code changed in 1.62.2 (tiled layers' first stage, in the window). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.62.1"
+version = "1.62.1"
+version = "1.62.1"
+ "version": "1.62.1",
+```
+
 ## The macOS install's missing packages · _v1.62.1 (requirements_macos.txt; tests/test_requirements.py new; setup/verify_local.py)
 
 The owner's `./formvis verify-local` stopped at `No module named 'httpx'`. A Mac installs from requirements_macos.txt (backend/oc_install, the unpinned macOS base) and every other system from requirements.txt; six packages added to the main list over time never reached the Mac's: httpx (local generation's downloads; the engine imports local generation as it starts, so on a Mac installed this way it could not start), keyring (API keys in the system password store), onnxruntime and onnx (the local models and the style presets, base since 1.53.4 and 1.55.1), psd-tools (Photoshop files) and tifffile (TIFF). The six are added, unpinned as the rest of that list; tests/test_requirements.py fails whenever requirements.txt or requirements_ml.txt names a package its macOS list lacks (it failed with the old list, naming all six); verify-local names a missing package in one line with what to run instead of a traceback. Checked: the new tests pass, and fail with the old list put back; in a Python with no packages, verify-local said "formvis's engine is missing the Python package 'fastapi': run ./formvis install" and exited 1; the stand-in run still completes. Removed lines taken after the version edit:
