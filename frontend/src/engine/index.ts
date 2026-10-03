@@ -18,7 +18,7 @@ import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
 import { TiledRaster } from './tiled';
 import { SelectionMask, type SelectionMode } from './selection';
-import { Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
+import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
@@ -490,7 +490,7 @@ export class Engine {
   /** What a giant document's tiles may hold in memory before the least used go to the engine's store (1.62.4, DEV_PLAN
    *  26.6c): 40% of the memory budget, 512 MB until it is known; `tileShareOverride` sets it for checks. */
   tileShareOverride: number | null = null;
-  private tileShare(): number { return this.tileShareOverride ?? (this.memoryBudget ? this.memoryBudget * 0.4 : 512 * 1048576); }
+  tileShare(): number { return this.tileShareOverride ?? (this.memoryBudget ? this.memoryBudget * 0.4 : 512 * 1048576); }
   private tilePaging = false;
 
   /** Each tiled layer's tiles past the share sent to the store, least recently used first, never one in view; a tile
@@ -581,6 +581,7 @@ export class Engine {
   }
 
   addProject(doc: Doc, name: string, activeId: ID | null = null): Project {
+    for (const l of doc.layers) if (l.tiled && !l.tiled.onMissing) l.tiled.onMissing = (t, key) => this.bringTile(t, key);   // opened giant layers (1.62.8)
     const p = new Project(doc, this.uniqueName(name));
     p.history.entryLimit = this.historyLimits.states;
     p.history.byteLimit = this.historyLimits.bytes;
@@ -3331,6 +3332,7 @@ export class Engine {
     if (!this.deepPaintOk()) return false;   // 16 bits: Brush, Pencil and Eraser paint (1.53.8)
     const p = this.current;
     if (!p || this.stroke || this.waiting()) return false;
+    this.tileFreshLayer(p);   // a fresh layer on a giant document: tiles, not a full-size canvas (1.62.8)
     // What a stroke makes (1.60.5, engine/stroke.ts): its working and paint surfaces, each the layer's size, a third
     // with a selection; and the layer's own pixels when this stroke is the first on it.
     const fresh = p.activeLayer && !p.activeLayer.raster && !p.activeLayer.tiled ? p.doc.width * p.doc.height * 4 : 0;   // a tiled layer is never given one (1.62.3)
@@ -5143,6 +5145,19 @@ export class Engine {
     }
     void this.pageNewest(p);
     return true;
+  }
+
+  /** A fresh pixel layer (no pixels yet) on a giant document, given tiles, empty and transparent, costing nothing, in
+   *  place of the full-size canvas painting would give it, which the browser cannot make (1.62.8). A document is giant
+   *  past one canvas, or once it has a tiled layer (made so past the single-canvas limits). */
+  private tileFreshLayer(p: Project): void {
+    const l = p.activeLayer;
+    if (!l || l.raster || l.tiled || l.isGroup || l.adjustment || l.shape || l.vector || l.smart || liveText(l)) return;
+    const W = p.doc.width, H = p.doc.height;
+    if (W * H <= CANVAS_PIXELS && W <= CANVAS_SIDE && H <= CANVAS_SIDE && !p.doc.layers.some((x) => x.tiled)) return;
+    const t = new TiledRaster(W, H);
+    t.onMissing = (tr, key) => this.bringTile(tr, key);
+    p.updateLayer(l.id, { tiled: t });
   }
 
   /** Whether the active layer is a giant one kept in tiles (1.62.7: the filter panel sends bandable filters there). */

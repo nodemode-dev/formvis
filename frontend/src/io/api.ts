@@ -249,6 +249,14 @@ export const api = {
   async bandsEnd(key: string): Promise<Blob> {
     return (await request(`/bands/png/${key}/end`, { method: 'POST' })).blob();
   },
+  /** An opened project's PNG read by the engine a band of rows at a time (1.62.8): a giant layer's, past what a browser
+   *  can decode. */
+  async bandsReadOpen(session: string, file: string): Promise<{ key: string; width: number; height: number }> {
+    return (await (await request(`/bands/read?session=${encodeURIComponent(session)}&file=${encodeURIComponent(file)}`, { method: 'POST' })).json()) as { key: string; width: number; height: number };
+  },
+  async bandsReadRows(key: string, rows: number): Promise<ArrayBuffer> {
+    return (await request(`/bands/read/${key}?rows=${rows}`)).arrayBuffer();
+  },
   /** The engine's undo store (1.60.8, DEV_PLAN 26.3): bytes kept on its disk under a key, given back, or forgotten. */
   async undoPut(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
     return ((await (await request('/undo', { method: 'POST', body: bytes, headers: { 'Content-Type': 'application/octet-stream' } })).json()) as { key: string }).key;

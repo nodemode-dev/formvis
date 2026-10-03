@@ -5,7 +5,8 @@ import {
 } from '../engine';
 import { artboardFromData } from '../engine/types';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS } from '../engine/adjust-params';
-import type { FilePart } from './api';
+import { api, type FilePart } from './api';
+import { TiledRaster, type TileStore } from '../engine/tiled';
 
 export const FORMAT = 'com.nodemode.formvis';
 export const FORMAT_VERSION = 1;
@@ -50,12 +51,66 @@ function grayToMask(src: ImageBitmap): Raster {
   return r;
 }
 
+/** What a giant layer's tiles need while saved or opened (1.62.8, DEV_PLAN 26.6): the engine's store, its paging and
+ *  the tiles' share of memory, set by the app once the engine answers. */
+export const giantTiles: { store: TileStore | null; page: () => Promise<unknown>; share: () => number } = { store: null, page: async () => 0, share: () => 512 * 1048576 };
+
+const bandRows = (w: number): number => Math.max(16, Math.min(512, Math.floor(4_194_304 / w)));
+
+/** A tiled layer's PNG, written by the engine a band at a time from its tiles (brought back from disk as needed and
+ *  paged out behind), since a browser cannot encode a picture past one canvas. */
+async function tiledPng(t: TiledRaster, ppi: number): Promise<Blob> {
+  const key = await api.bandsBegin(t.width, t.height, ppi), B = bandRows(t.width);
+  for (let y0 = 0; y0 < t.height; y0 += B) {
+    const h = Math.min(B, t.height - y0);
+    if (giantTiles.store) await t.ensure(0, y0, t.width, h, giantTiles.store);
+    await api.bandsPut(key, t.read(0, y0, t.width, h).data as Uint8ClampedArray<ArrayBuffer>);
+    await giantTiles.page();
+  }
+  return api.bandsEnd(key);
+}
+
+/** The engine's reading of an opened project's PNG a band at a time (`deserialize` is given it when opening from the
+ *  engine). */
+export interface BandReader { open(name: string): Promise<{ key: string; width: number; height: number }>; rows(key: string, n: number): Promise<ArrayBuffer> }
+
+/** A tiled layer filled from its PNG a band at a time: a segment that is all the base colour is not written, so an
+ *  untouched white background stays as no tiles (a 600 MP white page would otherwise make all 150), and tiles past the
+ *  share go to the engine's disk as it fills (the document is not open yet, so the engine's paging cannot). */
+async function fillTiled(t: TiledRaster, name: string, read: BandReader): Promise<void> {
+  // Bands a power of two tall, so they divide the tile's 2,048 rows and never straddle two rows of tiles (209-row bands
+  // had made an empty tile where a band's painted part sat in the row above).
+  const { key, width } = await read.open(name), base = t.base ?? [0, 0, 0, 0], B = 2 ** Math.floor(Math.log2(bandRows(width)));
+  for (let y0 = 0; y0 < t.height;) {
+    const buf = new Uint8ClampedArray(await read.rows(key, B)), h = buf.length / (width * 4);
+    if (!h) break;
+    for (let x0 = 0; x0 < width; x0 += t.tile) {
+      const w = Math.min(t.tile, width - x0);
+      let differs = false;
+      for (let yy = 0; yy < h && !differs; yy++) for (let i = (yy * width + x0) * 4, e = i + w * 4; i < e; i += 4) if (buf[i] !== base[0] || buf[i + 1] !== base[1] || buf[i + 2] !== base[2] || buf[i + 3] !== base[3]) { differs = true; break; }
+      if (!differs) continue;
+      const seg = new ImageData(w, h);
+      for (let yy = 0; yy < h; yy++) seg.data.set(buf.subarray((yy * width + x0) * 4, (yy * width + x0 + w) * 4), yy * w * 4);
+      t.write(seg, x0, y0);
+    }
+    y0 += h;
+    const store = giantTiles.store;
+    if (store) while (t.residentBytes > giantTiles.share()) { const k = t.leastUsed(); if (k === null || !(await t.pageOut(k, store))) break; }
+  }
+}
+
 export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
   const files: FilePart[] = [];
   const layers: Json[] = [];
   for (const l of doc.layers) {
     const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
     if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
+    else if (l.tiled && !l.isGroup) {   // a giant layer, written band by band by the engine (1.62.8)
+      const name = `${l.id}.png`;
+      files.push({ name, blob: await tiledPng(l.tiled, doc.resolution ?? 72) });
+      r.imageFile = name;
+      r.tiled = { width: l.tiled.width, height: l.tiled.height, base: l.tiled.base };
+    }
     const ch = l.channels;
     if (ch?.mode === 'rgb' && doc.depth === 32) { const name = `${l.id}.deep32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = ch.width; r.deepHeight = ch.height; }
     else if (ch?.mode === 'rgb') { const name = `${l.id}.deep16`; files.push({ name, blob: new Blob([deepToU16(ch.data).buffer as ArrayBuffer]) }); r.deepFile = name; r.deepWidth = ch.width; r.deepHeight = ch.height; }
@@ -135,7 +190,7 @@ function vectorFrom(raw: unknown): Layer['vector'] {
   return { path, fill, stroke, origin: { x: origin.x, y: origin.y } };
 }
 
-export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null; timeline: Timeline | null }> {
+export async function deserialize(manifest: Json, fetchImage: (name: string) => Promise<Blob>, read: BandReader | null = null): Promise<{ doc: Doc; activeId: ID | null; paths: PathSet | null; timeline: Timeline | null }> {
   // Patterns carried by the project, registered before its layers render.
   if (Array.isArray(manifest.patterns)) {
     for (const raw of manifest.patterns.slice(0, 200)) {
@@ -152,9 +207,20 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
   const records = Array.isArray(manifest.layers) ? manifest.layers.map(obj) : [];
   const names = new Set<string>();
-  for (const r of records) { for (const n of [str(r.imageFile), str(r.maskFile), str(r.smartSourceFile), str(r.smartFilterMaskFile)]) if (n) names.add(n); }
+  for (const r of records) { for (const n of [r.tiled ? null : str(r.imageFile), str(r.maskFile), str(r.smartSourceFile), str(r.smartFilterMaskFile)]) if (n) names.add(n); }
   const bitmaps = new Map<string, ImageBitmap>();
   await Promise.all([...names].map(async (n) => { bitmaps.set(n, await createImageBitmap(await fetchImage(n))); }));
+  // Giant layers (1.62.8): filled band by band by the engine's reader, past what the browser can decode.
+  const tiledById = new Map<string, TiledRaster>();
+  for (const r of records) {
+    const file = str(r.imageFile), tr = obj(r.tiled);
+    if (!r.tiled || !file) continue;
+    if (!read) throw new Error('A layer past 268 megapixels opens only through formvis\'s engine.');
+    const t = new TiledRaster(num(tr.width, width), num(tr.height, height)), b = Array.isArray(tr.base) ? (tr.base as number[]) : null;
+    t.base = b && b.length === 4 ? [b[0], b[1], b[2], b[3]] : null;
+    await fillTiled(t, file, read);
+    tiledById.set(str(r.id) ?? '', t);
+  }
   const deeps = new Map<string, Uint16Array | Float32Array>();   // 16-bit pixels (1.53.6), 32-bit floats (1.53.9)
   await Promise.all(records.map(async (r) => { const n = str(r.deepFile); if (n) { const b = await (await fetchImage(n)).arrayBuffer(); deeps.set(n, n.endsWith('.deep32') ? new Float32Array(b) : new Uint16Array(b)); } }));
   const inks = new Map<string, Float32Array>();
@@ -199,6 +265,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const counts = (Array.isArray(manifest.counts) ? manifest.counts : []).flatMap((c) => { const o = obj(c), x = num(o.x, NaN), y = num(o.y, NaN); return inside(x, y) ? [{ x, y }] : []; }).slice(0, 10000);
   records.forEach((r, i) => { const n = str(r.deepFile), u = n ? deeps.get(n) : undefined, w = num(r.deepWidth, 0), h = num(r.deepHeight, 0); if (u && layers[i] && u.length === w * h * 4) (layers[i] as { channels?: ChannelPixels }).channels = u instanceof Float32Array ? { mode: 'rgb', n: 3, width: w, height: h, data: u } : deepFromU16(u, w, h); });
   if (mode === 'cmyk') records.forEach((r, i) => { const n = str(r.inkFile), u = n ? inks.get(n) : undefined, w = num(r.inkWidth, 0), h = num(r.inkHeight, 0); if (u && layers[i] && u.length === w * h * 5) (layers[i] as { channels?: ChannelPixels }).channels = { mode: 'cmyk', n: 4, width: w, height: h, data: u }; });
+  records.forEach((r, i) => { const t = tiledById.get(str(r.id) ?? ''); if (t && layers[i]) layers[i] = { ...layers[i], raster: null, tiled: t }; });   // giant layers (1.62.8)
   if (mode === 'lab') records.forEach((r, i) => { const n = str(r.inkFile), u = n ? inks.get(n) : undefined, w = num(r.inkWidth, 0), h = num(r.inkHeight, 0); if (u && layers[i] && u.length === w * h * 4) (layers[i] as { channels?: ChannelPixels }).channels = { mode: 'lab', n: 3, width: w, height: h, data: u }; });
   return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
 }

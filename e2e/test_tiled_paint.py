@@ -65,6 +65,28 @@ def test_it_shows_while_painted_and_undoes_and_redoes_exactly(page):
     assert r["changed"] and r["undoneWhite"] and r["redoneSame"], r
 
 
+def test_a_new_layer_on_a_giant_document_gets_tiles_and_paints(page):
+    # 1.62.8: a fresh layer has no pixels; painting gave it a full-size canvas, which the browser cannot make past
+    # 268 MP (and the canvas guard refused). It is given tiles at its first stroke instead.
+    page.evaluate(SETUP)
+    r = page.evaluate("""async () => {
+      const E = await import('/src/engine/index.ts'), e = window.formvis.engine;
+      e.newDocument(20000, 6000, 'Giant', 'white'); const bg = e.current.doc.layers[0];
+      e.addLayer({ name: 'Paint' }); const id = e.current.activeLayer.id;
+      window.__stroke();
+      const l = e.current.layer(id), s = E.createSurface(400, 300), c = E.ctxOf(s);
+      const at = () => { e.compose(s, [1, 0, 0, 1, -2700, -1888], 'high'); return Array.from(c.getImageData(200, 150, 1, 1).data.slice(0, 3)); };
+      const painted = at(), steps = e.current.history.steps.names.slice();
+      const settle = async (n) => { for (let i = 0; i < 100 && (e.draining || e.current.history.steps.current !== n); i++) await new Promise((r) => setTimeout(r, 30)); };
+      const n = e.current.history.steps.current; e.undo(); await settle(n - 1);
+      return { tiled: !!l.tiled, raster: !!l.raster, layerTiles: l.tiled ? l.tiled.tileCount : 0, bgTiles: bg.tiled.tileCount, painted, steps, undone: at() };
+    }""")
+    assert r["tiled"] and not r["raster"] and r["layerTiles"] >= 2, r       # tiles, never a full-size canvas
+    assert r["bgTiles"] == 0, r                                             # the background untouched
+    assert r["painted"] != [255, 255, 255] and r["steps"][-1] == "Brush", r # the stroke over the white background
+    assert r["undone"] == [255, 255, 255], r                               # and undone
+
+
 def test_what_needs_the_whole_layer_declines_before_any_step(page):
     page.evaluate(SETUP)
     r = page.evaluate("""() => {

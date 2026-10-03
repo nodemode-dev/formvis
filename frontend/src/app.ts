@@ -57,7 +57,7 @@ import { VideoTimelinePanel } from './ui/video-timeline';
 import { RenderVideoDialog, type RenderChoice } from './ui/panels/render-video-dialog';
 import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, isProjectFile } from './io/images';
 import { loadSystemFonts } from './ui/fonts';
-import { deserialize, serialize } from './io/project-io';
+import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
 import { CHECKER_CELL, CHECKER_PAIR, applyPrefs, loadPrefs, savePrefs, type Prefs } from './ui/prefs';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
@@ -367,10 +367,11 @@ export function startApp(): void {
   }
 
   async function openOpened(o: OpenedProject, libraryName: string | null): Promise<void> {
+    const reader = { open: (n: string) => api.bandsReadOpen(o.session, n), rows: (k: string, n: number) => api.bandsReadRows(k, n) };   // giant layers (1.62.8)
     const { doc, activeId, paths, timeline } = await deserialize(o.manifest, (name) => {
       const url = o.images[name];
       return url ? api.fetchAsset(url) : Promise.reject(new Error(`${name} is missing from the project.`));
-    });
+    }, reader);
     const p = engine.addProject(doc, o.name, activeId);
     if (paths) engine.setPathsOf(p, paths);
     if (timeline) engine.setTimelineFor(p, timeline);
@@ -1965,6 +1966,7 @@ export function startApp(): void {
     if (c?.memory) { engine.setMemoryBudget(Math.max(512 * 1048576, Math.round(c.memory * 0.45))); status.syncMemory(); }   // the history's limit with it (1.61.3)
     // Older undo kept on the engine's disk past its share of memory (1.60.8, DEV_PLAN 26.3).
     if (c) engine.undoStore = { put: (b) => api.undoPut(b), get: (k) => api.undoGet(k), drop: (k) => api.undoDrop(k) };
+    if (c) Object.assign(giantTiles, { store: engine.undoStore, page: () => engine.pageTiles(), share: () => engine.tileShare() });   // giant layers saved and opened (1.62.8)
     status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop' : ''}` : 'Engine offline');
     if (!c) toast('The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).');
     syncEngineDevice();
@@ -2002,6 +2004,7 @@ export function startApp(): void {
       if (!p.modified && !whole) { if (keptAt.delete(p.id)) await recovery.drop(p.id); continue; }
       const key = `${p.history.revision}:${p.modified}:${p.libraryName ?? ''}:${p.name}`;
       if (keptAt.get(p.id) === key) continue;
+      if (p.doc.layers.some((l) => l.tiled)) continue;   // a giant document: saving it takes minutes, too long to repeat every few seconds (1.62.8)
       try {
         const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
         if (await recovery.keep({ id: p.id, name: p.name, savedAt: Date.now(), manifest, files, modified: p.modified, libraryName: p.libraryName })) keptAt.set(p.id, key);
