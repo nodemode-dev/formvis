@@ -115,7 +115,13 @@ BENCH_JS = """async (frames) => {
   } catch { webgpu = null; }
   const res = await B.runBenchmark(e, frames, 10);
   const checks = await B.checkPaths(e);   // each GPU path's picture against the CPU's (1.61.7)
-  return { res, checks, text: B.benchText(res, webgpu || webgl || 'unknown'), webgl, webgpu, ua: navigator.userAgent };
+  // Whether the window's own display draws a giant document (120 MP, kept in tiles) on the GPU, beside an ordinary one
+  // (1.63.0): its GPU canvas is the one shown when it does.
+  const shown = () => Array.from(document.querySelectorAll('.cv-scene-gpu')).some((c) => !c.hidden);
+  const frame = () => new Promise((r) => setTimeout(r, 800));
+  e.newDocument(1200, 800, 'Ordinary', 'white'); await frame(); const ordinary = shown(); e.closeProject(e.current.id);
+  e.newDocument(20000, 6000, 'Giant', 'white'); await frame(); const giant = shown(); e.closeProject(e.current.id);
+  return { res, checks, giant: { giant, ordinary }, text: B.benchText(res, webgpu || webgl || 'unknown'), webgl, webgpu, ua: navigator.userAgent };
 }"""
 
 
@@ -189,11 +195,14 @@ def main() -> int:
     record = {"formvis": (ROOT / "frontend" / "src" / "version.ts").read_text().split("'")[1], "when": stamp, "machine": m,
               "browser": f"{which} {browser_version}", "background": not args.window, "software": soft, "webgl": got["webgl"], "webgpu": got["webgpu"],
               "user_agent": got["ua"], "frames": args.frames, "rows": got["res"]["rows"], "notes": got["res"]["notes"], "native": native,
-              "matches_cpu": got["checks"]}
+              "matches_cpu": got["checks"], "giant_on_gpu": got["giant"]}
     base.with_suffix(".json").write_text(json.dumps(record, indent=2))
     rows = "\n".join(f"| {r['test']} | {r['path']} | {r['medianMs']} | {r['p90Ms']} | {r['frames']} |" for r in got["res"]["rows"])
     notes = "\n".join(f"- {n}" for n in got["res"]["notes"]) or "- none"
     checks = "\n".join(f"| {c['path']} | {c['maxDiff']} | {c['share'] * 100:.2f}% | {'matches' if c['share'] >= 0.99 else 'DIFFERS'} |" for c in got["checks"]) or "| (no GPU path to check) | | | |"
+    g = got["giant"]   # the window's own display with a giant document (1.63.0)
+    checks += ("\n\nA giant document (120 MP, kept in tiles) is drawn by the window " + ("on the GPU." if g["giant"] else "on the CPU")
+               + ("" if g["giant"] else (", though an ordinary one is drawn on the GPU: worth reporting." if g["ordinary"] else ", as is an ordinary one here (no GPU display).")))
     base.with_suffix(".md").write_text(f"""# formvis benchmark, {stamp}
 
 | | |

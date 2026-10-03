@@ -244,7 +244,9 @@ export const api = {
     return ((await (await request(`/bands/png?width=${width}&height=${height}&ppi=${ppi}`, { method: 'POST' })).json()) as { key: string }).key;
   },
   async bandsPut(key: string, rows: Uint8ClampedArray<ArrayBuffer>): Promise<void> {
-    await request(`/bands/png/${key}`, { method: 'POST', body: rows, headers: { 'Content-Type': 'application/octet-stream' } });
+    // As a Blob (1.63.0): a typed-array body stayed in the page after the upload, past garbage collection (30 uploads
+    // of 16 MB kept about 190 MB); a Blob is handed to the browser and leaves nothing.
+    await request(`/bands/png/${key}`, { method: 'POST', body: new Blob([rows]), headers: { 'Content-Type': 'application/octet-stream' } });
   },
   async bandsEnd(key: string): Promise<Blob> {
     return (await request(`/bands/png/${key}/end`, { method: 'POST' })).blob();
@@ -259,7 +261,15 @@ export const api = {
   },
   /** The engine's undo store (1.60.8, DEV_PLAN 26.3): bytes kept on its disk under a key, given back, or forgotten. */
   async undoPut(bytes: Uint8Array<ArrayBuffer>): Promise<string> {
-    return ((await (await request('/undo', { method: 'POST', body: bytes, headers: { 'Content-Type': 'application/octet-stream' } })).json()) as { key: string }).key;
+    // As a Blob (1.63.0): a typed-array body stayed in the page, so tiles paged to disk still held their memory.
+    return ((await (await request('/undo', { method: 'POST', body: new Blob([bytes]), headers: { 'Content-Type': 'application/octet-stream' } })).json()) as { key: string }).key;
+  },
+  /** Many keys forgotten in one request (1.63.0) rather than one request each, which after a filter over a giant layer
+   *  (tens of thousands of keys) held the window's other requests behind them for minutes. Not awaited. */
+  undoDropMany(keys: string[]): void {
+    for (let i = 0; i < keys.length; i += 20000) {
+      void request('/undo/drop', { method: 'POST', body: JSON.stringify({ keys: keys.slice(i, i + 20000) }), headers: { 'Content-Type': 'application/json' } }).catch(() => undefined);
+    }
   },
   async undoGet(key: string): Promise<ArrayBuffer> {
     return (await request(`/undo/${key}`)).arrayBuffer();

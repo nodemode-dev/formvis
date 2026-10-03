@@ -58,6 +58,29 @@ async def get(key: str) -> Response:
     return Response(data, media_type="application/octet-stream")
 
 
+@router.post("/drop")
+async def drop_many(request: Request) -> dict[str, int]:
+    """Forgets many keys in one request (1.63.0): closing a document whose undo holds a filter over a giant layer drops
+    tens of thousands, and one request each kept the window's other requests (opening a project) waiting behind them
+    for minutes. Keys not in the store's form are skipped."""
+    body = await request.json()
+    keys = body.get("keys") if isinstance(body, dict) else None
+    if not isinstance(keys, list) or len(keys) > 100_000:
+        raise HTTPException(400, 'Expected {"keys": [...]}, at most 100,000 a request.')
+    hexdigits = set("0123456789abcdef")
+    paths = [_dir() / f"{k}.z" for k in keys if isinstance(k, str) and len(k) == 32 and set(k) <= hexdigits]
+
+    def unlink_all() -> int:
+        n = 0
+        for p in paths:
+            if p.exists():
+                p.unlink(missing_ok=True)
+                n += 1
+        return n
+
+    return {"dropped": await asyncio.to_thread(unlink_all)}
+
+
 @router.delete("/{key}")
 async def drop(key: str) -> dict[str, bool]:
     """Forgets what is kept under `key` (a step trimmed from the history, a document closed)."""

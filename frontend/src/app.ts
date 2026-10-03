@@ -1965,7 +1965,7 @@ export function startApp(): void {
     // the system theirs (measured: the page was killed at 3.45 GB of 4 GB with the browser itself near 0.9 GB).
     if (c?.memory) { engine.setMemoryBudget(Math.max(512 * 1048576, Math.round(c.memory * 0.45))); status.syncMemory(); }   // the history's limit with it (1.61.3)
     // Older undo kept on the engine's disk past its share of memory (1.60.8, DEV_PLAN 26.3).
-    if (c) engine.undoStore = { put: (b) => api.undoPut(b), get: (k) => api.undoGet(k), drop: (k) => api.undoDrop(k) };
+    if (c) engine.undoStore = { put: (b) => api.undoPut(b), get: (k) => api.undoGet(k), drop: (k) => api.undoDrop(k), dropMany: (ks) => api.undoDropMany(ks) };
     if (c) Object.assign(giantTiles, { store: engine.undoStore, page: () => engine.pageTiles(), share: () => engine.tileShare() });   // giant layers saved and opened (1.62.8)
     status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop' : ''}` : 'Engine offline');
     if (!c) toast('The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).');

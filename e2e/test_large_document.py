@@ -93,6 +93,88 @@ def test_150_megapixels_painted_filtered_saved(context, tmp_path):
     assert not lost
 
 
+def test_600_megapixels_edited_whole(context, tmp_path):
+    # 1.63.0, DEV_PLAN 26.6h, closing M5: a 30,000 by 20,000 document edited whole on the 4 GB test machine. Fine
+    # stripes on every one of its 150 tiles (real pixels everywhere, which compress well, so the engine's disk holds
+    # them: a photograph would need several GB free), a brush stroke on a second layer, a Gaussian Blur over the whole
+    # background (every tile changed, its undo streamed to disk), undone and redone, saved to the library, reopened,
+    # and exported; at each step the same recorded pixels checked exactly, and the memory budget never exceeded.
+    if not _engine_up():
+        pytest.skip("needs the engine on 8190 (./formvis dev)")
+    page = context.new_page()
+    lost: list[str] = []
+    page.on("crash", lambda: lost.append("the page was lost"))
+    page.on("pageerror", lambda e: lost.append(f"page error: {e}"))
+    open_app(page)
+    page.wait_for_function("window.formvis.engine.undoStore", timeout=60000)
+    t0 = time.time()
+    step = lambda name: print(f"  {name}: {time.time() - t0:.0f} s", flush=True)
+    page.evaluate("""async () => {
+      const F = await import('/src/ui/panels/filter-panel.ts'), e = window.formvis.engine;
+      window.__peak = 0; window.__check = () => { window.__peak = Math.max(window.__peak, e.memoryUse() / e.memoryBudget); };
+      e.newDocument(30000, 20000, 'Giant', 'white'); const bg = e.current.doc.layers[0].tiled;
+      const stripe = document.createElement('canvas'); stripe.width = 8; stripe.height = 1;
+      const sc = stripe.getContext('2d'); sc.fillStyle = '#ffffff'; sc.fillRect(0, 0, 8, 1); sc.fillStyle = '#2050c0'; sc.fillRect(0, 0, 4, 1);
+      for (let ty = 0; ty < bg.rows; ty++) {
+        for (let tx = 0; tx < bg.cols; tx++) {
+          const x = tx * bg.tile, y = ty * bg.tile, w = Math.min(bg.tile, bg.width - x), h = Math.min(bg.tile, bg.height - y);
+          bg.drawOn(x, y, w, h, (c) => { c.fillStyle = c.createPattern(stripe, 'repeat'); c.fillRect(x, y, w, h); });
+        }
+        await e.pageTiles(); window.__check();
+      }
+      e.addLayer({ name: 'Paint' }); e.setTool('brush'); e.brush = { ...e.brush, diameter: 200, hardness: 0.7 }; e.setBrushMode('paint'); e.fg = { r: 230, g: 60, b: 40 };
+      // Across several tiles (a stroke across nearly the whole picture can be cut on a small machine, and says so).
+      window.__notes = []; e.on('notice', (n) => window.__notes.push(n.text));
+      e.beginStroke({ x: 1500, y: 1700 }, false); for (let i = 1; i <= 30; i++) e.strokeTo({ x: 1500 + i * 200, y: 1700 + i * 100 }); e.endStroke();
+      window.__layers = () => e.current.doc.layers.map((l) => l.tiled);
+      window.__pts = [[5, 5], [2047, 2047], [2048, 2048], [14999, 9999], [2400, 2150], [12000, 9400], [29999, 19999], [20001, 4097]];
+      window.__sample = async () => { const out = []; for (const t of window.__layers()) for (const [x, y] of window.__pts) { await t.ensure(x, y, 1, 1, e.undoStore); out.push(Array.from(t.read(x, y, 1, 1).data)); } await e.pageTiles(); window.__check(); return out; };
+      window.__blur = async () => { const s = { ...F.defaultFilterSettings(), radius: 3 }; e.selectLayer(e.current.doc.layers[0].id); return e.bandedFilterTiled('Gaussian Blur', (src) => F.runFilter('gaussianBlur', s, 7, src, 1), F.bandApron('gaussianBlur', s)); };
+      window.__settle = async (n) => { for (let i = 0; i < 20000 && (e.draining || e.current.history.steps.current !== n); i++) await new Promise((r) => setTimeout(r, 50)); };
+    }""")
+    step("striped all 150 tiles and painted a second layer")
+    whole = page.evaluate("""async () => { const t = window.__layers()[1]; await t.ensure(7500, 4700, 1, 1, window.formvis.engine.undoStore);
+      return { cut: window.__notes.filter((n) => n.startsWith('The stroke stopped')), endAlpha: t.read(7500, 4700, 1, 1).data[3] }; }""")
+    assert not whole["cut"] and whole["endAlpha"] > 0, whole                 # the stroke whole, to its end
+    s0 = page.evaluate("window.__sample()")
+    assert page.evaluate("window.__blur()") is True
+    s1 = page.evaluate("window.__sample()")
+    assert s1[:8] != s0[:8]                                                   # the blur changed the stripes
+    step("blurred the whole background")
+    n = page.evaluate("window.formvis.engine.current.history.steps.current")
+    page.evaluate(f"async () => {{ window.formvis.engine.undo(); await window.__settle({n - 1}); }}")
+    assert page.evaluate("window.__sample()") == s0                           # undone, streamed from disk
+    page.evaluate(f"async () => {{ window.formvis.engine.redo(); await window.__settle({n}); }}")
+    assert page.evaluate("window.__sample()") == s1                           # and redone
+    step("undone and redone")
+    page.evaluate("() => { const e = window.formvis.engine; e.current.libraryName = 'giant-600mp'; window.formvis.commands.run('save'); }")
+    _until(page, "Array.from(document.querySelectorAll('.cv-toast')).some((t) => t.textContent.includes('Saved giant-600mp'))", 3600)
+    step("saved")
+    page.evaluate("() => { const e = window.formvis.engine; while (e.projects.length) e.closeProject(e.projects[0].id); window.formvis.commands.run('recent-0'); }")
+    _until(page, "!!window.formvis.engine.current && window.formvis.engine.current.libraryName === 'giant-600mp' && window.formvis.engine.current.doc.layers.length === 2", 3600)
+    assert page.evaluate("window.__sample()") == s1                           # reopened as it was saved
+    step("reopened")
+    want = page.evaluate("""async () => {
+      const E = await import('/src/engine/index.ts'), e = window.formvis.engine, s = E.createSurface(1, 1), c = E.ctxOf(s), out = [];
+      for (const t of window.__layers()) for (const [x, y] of window.__pts) await t.ensure(x, y, 1, 1, e.undoStore);
+      for (const [x, y] of window.__pts) { c.clearRect(0, 0, 1, 1); e.compose(s, [1, 0, 0, 1, -x, -y], 'high'); out.push(Array.from(c.getImageData(0, 0, 1, 1).data)); }
+      return out;
+    }""")
+    with page.expect_download(timeout=3600000) as download:
+        page.evaluate("window.formvis.commands.run('export-png')")
+    png = tmp_path / "giant.png"
+    download.value.save_as(png)
+    pts = page.evaluate("window.__pts")
+    w, h, rows = _png_rows(png, {y for _, y in pts})
+    assert (w, h) == (30000, 20000)
+    assert [list(rows[y][x * 4:x * 4 + 4]) for x, y in pts] == want            # the export, the composite exactly
+    step("exported")
+    peak = page.evaluate("window.__peak")
+    print(f"  memory at its fullest: {peak * 100:.0f} percent of the budget", flush=True)
+    assert peak <= 1.0, peak
+    assert not lost, lost
+
+
 def _png_rows(path, want: set) -> tuple:
     """A PNG (8-bit RGBA, filters None, Sub or Up) streamed a row at a time; {y: row} for the rows in `want`. A 600 MP
     picture is 2.4 GB decoded, more than the test machine can hold beside the browser."""

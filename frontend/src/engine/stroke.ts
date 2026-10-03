@@ -200,7 +200,9 @@ export class PixelStroke {
     const open = this.ww > 1 || this.wh > 1;
     if (open && b.x >= this.ox && b.y >= this.oy && b.x + b.w <= this.ox + this.ww && b.y + b.h <= this.oy + this.wh) return true;
     const u = open ? unionRect({ x: this.ox, y: this.oy, w: this.ww, h: this.wh }, b) as Rect : b;
-    const m = Math.max(512, Math.round(Math.max(u.w, u.h) / 2));   // half again around it, so a stroke regrows rarely
+    // Half again around it, so a stroke regrows rarely; on a giant layer a fixed 1,024 pixels (1.63.0), since half again
+    // of a stroke across a 600 MP picture asked for a window the size of the picture, several times over.
+    const m = this.tiled ? 1024 : Math.max(512, Math.round(Math.max(u.w, u.h) / 2));
     const nx = Math.max(0, u.x - m), ny = Math.max(0, u.y - m), nw = Math.min(L, u.x + u.w + m) - nx, nh = Math.min(H, u.y + u.h + m) - ny;
     if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * 4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0)))) { this.clipped = true; return false; }
     // A tiled layer's original pixels for the whole new window, read once (1.62.5); a tile there on disk stops the

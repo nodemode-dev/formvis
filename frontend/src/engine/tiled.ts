@@ -31,7 +31,7 @@ interface Tile { canvas: Surface; ctx: Ctx2D }
  *  that the view draws until the tile is back. */
 interface PagedTile { key: string; preview: Surface; w: number; h: number }
 /** The store tiles go to: the engine's undo store, as the app hands it to the engine. */
-export interface TileStore { put(bytes: Uint8Array<ArrayBuffer>): Promise<string>; get(key: string): Promise<ArrayBuffer>; drop(key: string): void }
+export interface TileStore { put(bytes: Uint8Array<ArrayBuffer>): Promise<string>; get(key: string): Promise<ArrayBuffer>; drop(key: string): void; dropMany?(keys: string[]): void }
 export const PREVIEW = 16;
 
 export class TiledRaster {
@@ -204,6 +204,10 @@ export class TiledRaster {
     const preview = createSurface(Math.max(1, Math.ceil(w / PREVIEW)), Math.max(1, Math.ceil(h / PREVIEW))), pc = ctxOf(preview);
     pc.imageSmoothingQuality = 'high';
     pc.drawImage(t.canvas, 0, 0, preview.width, preview.height);
+    // Rendered now (1.63.0): the browser records a drawImage and keeps a snapshot of the source, here the whole 16 MB
+    // tile, until the canvas next draws for real, which a tile on disk's preview may never do; a one-pixel read draws it
+    // and lets the snapshot go (paging had kept every tile it sent to disk: 1.8 GB after six rows of 30,000 pixels).
+    pc.getImageData(0, 0, 1, 1);
     const stored = await store.put(new Uint8Array(d.buffer, d.byteOffset, d.length) as Uint8Array<ArrayBuffer>);
     if ((this.tileVersion.get(key) ?? 0) !== v || this.inView.has(key) || this.tiles.get(key) !== t) { store.drop(stored); return false; }
     this.paged.set(key, { key: stored, preview, w, h });
@@ -249,7 +253,8 @@ export class TiledRaster {
 
   /** Every stored tile dropped from the store (its document closing). */
   dropAll(store: TileStore): void {
-    for (const p of this.paged.values()) store.drop(p.key);
+    const keys = [...this.paged.values()].map((p) => p.key);   // in one request where the store can (1.63.0)
+    if (store.dropMany) { if (keys.length) store.dropMany(keys); } else for (const k of keys) store.drop(k);
     for (const key of [...this.levels.keys()]) this.dropLevel(key);
   }
 
@@ -281,6 +286,7 @@ export class TiledRaster {
       const image = createSurface(Math.max(1, Math.round(W / 2 ** k)), Math.max(1, Math.round(H / 2 ** k))), g = ctxOf(image);
       g.imageSmoothingQuality = 'high';
       g.drawImage(t.canvas, 0, 0, image.width, image.height);
+      g.getImageData(0, 0, 1, 1);   // drawn now, letting go of the tile's snapshot (as pageOut's preview, 1.63.0)
       this.levels.set(key, { k, version: v, image });
       return { image, version: v, sx: W / image.width, sy: H / image.height };
     }

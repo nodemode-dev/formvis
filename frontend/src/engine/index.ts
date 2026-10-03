@@ -347,7 +347,16 @@ export class Engine {
 
   /** The engine's undo store (1.60.8, DEV_PLAN 26.3), given by the app once the engine answers; null keeps every undo
    *  tile in the window. */
-  undoStore: { put(bytes: Uint8Array<ArrayBuffer>): Promise<string>; get(key: string): Promise<ArrayBuffer>; drop(key: string): void } | null = null;
+  undoStore: { put(bytes: Uint8Array<ArrayBuffer>): Promise<string>; get(key: string): Promise<ArrayBuffer>; drop(key: string): void; dropMany?(keys: string[]): void } | null = null;
+
+  /** Keys forgotten together, in one request where the store can (1.63.0): a closed document after a filter over a
+   *  giant layer has tens of thousands, and one request each held the window's other requests behind them. */
+  private dropKeys(keys: string[]): void {
+    const s = this.undoStore;
+    if (!s || !keys.length) return;
+    if (s.dropMany) s.dropMany(keys);
+    else for (const k of keys) s.drop(k);
+  }
   /** What a document's undo tiles may hold in the window before the oldest go to the store: 15% of the memory budget
    *  (256 MB while it is unknown); `undoShareOverride` sets it for checks. */
   undoShareOverride: number | null = null;
@@ -712,8 +721,8 @@ export class Engine {
     // Its memory back now (1.60.4, DEV_PLAN 26.2): measured, a closed 150 MP document's canvases stayed in the browser
     // until it collected them, while the count already said free. Each canvas only it keeps (its layers and its undo
     // history; no other open document's) is shrunk to nothing, which frees it at once.
-    for (const e of closing.history.entries()) for (const q of e.patches) if (q.paged) this.undoStore?.drop(q.paged.key);   // its stored undo too (1.60.8)
-    for (const e of closing.history.entries()) for (const q of e.patches) if (q.disk) { this.undoStore?.drop(q.disk.before); this.undoStore?.drop(q.disk.after); }   // and its streamed steps' (1.62.7)
+    // Its stored undo (1.60.8) and its streamed steps' (1.62.7), in one request (1.63.0).
+    this.dropKeys(closing.history.entries().flatMap((e) => e.patches.flatMap((q) => [...(q.paged ? [q.paged.key] : []), ...(q.disk ? [q.disk.before, q.disk.after] : [])])));
     for (const r of this.rastersOf(closing)) { const t = this.pagedRasters.get(r); if (t) { for (const x of t) this.undoStore?.drop(x.key); this.pagedRasters.delete(r); } }   // and its paged layers (1.61.3)
     if (this.undoStore) for (const l of closing.doc.layers) l.tiled?.dropAll(this.undoStore);   // and its stored tiles (1.62.4)
     const kept = new Set<Raster>();
@@ -7535,10 +7544,8 @@ export class Engine {
    *  Move Pixels, Stroke Path...) brings 16-bit and CMYK floats into step here; 32 bits is left to its own guards. */
   /** A step the History trims away has its tiles in the undo store dropped too (1.60.8). */
   private readonly dropHook = (History.onDrop = (e: HistoryEntry): void => {
-    for (const q of e.patches) {
-      if (q.paged) this.undoStore?.drop(q.paged.key);
-      if (q.disk) { this.undoStore?.drop(q.disk.before); this.undoStore?.drop(q.disk.after); }   // a streamed step's (1.62.7)
-    }
+    // A trimmed step's stored pixels, a streamed step's both sides (1.62.7), in one request (1.63.0).
+    this.dropKeys(e.patches.flatMap((q) => [...(q.paged ? [q.paged.key] : []), ...(q.disk ? [q.disk.before, q.disk.after] : [])]));
   });
 
   private readonly stepHook = (History.onStepEnd = (h: History, before: Snapshot, patches: readonly PixelPatch[]): Snapshot | null => {
