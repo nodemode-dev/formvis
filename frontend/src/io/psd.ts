@@ -209,13 +209,19 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
   const contents = new Map<string, Raster | null>();
   for (const lf of psd.linkedFiles ?? []) if (lf.data) contents.set(lf.id, await decodeLinked(lf.data, readPsd));
   const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: 72, layers: [] };
-  const layers: Layer[] = [], notes: string[] = [];
+  const layers: Layer[] = [], notes: string[] = [], links = new Map<number, ID>();
+  const linkOf = (pl: PsdLayer): { link?: ID } => {
+    const g = pl.linkGroup;
+    if (!g || pl.linkGroupEnabled === false) return {};
+    if (!links.has(g)) links.set(g, uid());
+    return { link: links.get(g) as ID };
+  };
   const walk = (children: PsdLayer[] | undefined, parentId: ID | null): void => {
     let base: Layer | null = null;
     for (const pl of children ?? []) {
       const name = pl.name || 'Layer', blend = (pl.blendMode && FROM_PSD.get(pl.blendMode)) ?? 'normal';
       if (pl.children) {
-        const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1 });
+        const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, ...linkOf(pl) });
         walk(pl.children, group.id);
         layers.push(group); // after its children, where formvis keeps a folder's entry
         base = null;
@@ -229,7 +235,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
       // An adjustment layer opens as formvis's own, live, with its mask, opacity, blend and clipping.
       const pr = pl.protected, all = !!(pr?.transparency && pr?.composite && pr?.position);
       const lk = pr && (pr.transparency || pr.composite || pr.position) ? { locks: all ? { all: true } : { ...(pr.transparency ? { transparency: true } : {}), ...(pr.composite ? { pixels: true } : {}), ...(pr.position ? { position: true } : {}) } } : {};
-      const fill = { ...(pl.fillOpacity !== undefined && pl.fillOpacity !== 1 ? { fill: Math.min(1, Math.max(0, pl.fillOpacity)) } : {}), ...lk };
+      const fill = { ...(pl.fillOpacity !== undefined && pl.fillOpacity !== 1 ? { fill: Math.min(1, Math.max(0, pl.fillOpacity)) } : {}), ...lk, ...linkOf(pl) };
       const layer = adj ? newLayer(name, doc, { adjustment: adj, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill })
         : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: pl.left ?? 0, y: pl.top ?? 0 }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill });
       const mk = pl.mask;
@@ -403,7 +409,10 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     maskOnto(l, out);
     return out;
   };
-  const build = (parentId: ID | null): PsdLayer[] => doc.layers.filter((l) => l.parentId === parentId).map(toPsd).filter((x): x is PsdLayer => x !== null);
+  const held = new Map<ID, number>(), linkNo = new Map<ID, number>();
+  for (const l of doc.layers) if (l.link) held.set(l.link, (held.get(l.link) ?? 0) + 1);
+  for (const [k, n] of held) if (n > 1) linkNo.set(k, linkNo.size + 1);
+  const build = (parentId: ID | null): PsdLayer[] => doc.layers.filter((l) => l.parentId === parentId).map((l) => { const o = toPsd(l); if (o && l.link && linkNo.has(l.link)) o.linkGroup = linkNo.get(l.link); return o; }).filter((x): x is PsdLayer => x !== null);
   const flat = canvas(doc.width, doc.height);
   (flat.getContext('2d') as CanvasRenderingContext2D).drawImage(composite as CanvasImageSource, 0, 0);
   const psd: Psd = { width: doc.width, height: doc.height, children: build(null), canvas: flat };

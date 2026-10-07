@@ -62,6 +62,8 @@ export class LayersPanel {
   /** The Paths panel's section, shown in this group's Paths tab (adoptPaths). */
   private paths: HTMLElement | null = null;
   private readonly painted = new WeakMap<HTMLElement, { pixels: string; mask: string }>();
+  /** How many layers hold each link, counted at each render (1.65.3): a row shows its link when another holds it. */
+  private links = new Map<ID, number>();
   private frame = 0;
   private renaming: ID | null = null;
   private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null } | null = null;
@@ -76,7 +78,7 @@ export class LayersPanel {
       `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span></label></div>` +
       `<div class="cv-layer-lockrow"><span class="cv-lock-slot"></span><span class="cv-vsep"></span><label class="cv-opacity" title="Fill: the layer's pixels, not its styles"><span>Fill</span><span class="cv-num"><input class="cv-fill-field" type="text" inputmode="numeric" value="100" aria-label="Fill"><span class="cv-unit">%</span></span></label></div></div>` +
       `<div class="cv-layer-list"><div class="cv-layer-rows" role="listbox" aria-label="Layers"></div><div class="cv-drop-line"></div><div class="cv-layers-empty">No canvas open. Create one or drop images on the stage.</div></div>` +
-      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></div>`);
+      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="link-layers">${icon('link', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></div>`);
     // The Layers group is a panel group (1.49.2, the owner's walkthrough: every panel groups with any other): its Layers
     // tab is this page, Channels and Paths are adopted as tabs, and any of them can move to another group.
     this.page = root.lastElementChild as HTMLElement;
@@ -172,6 +174,8 @@ export class LayersPanel {
     // list jump; browsers do not count movement by transform as a layout shift.
     const count = this.rows.children.length, before = new Map<string, number>();
     for (const r of Array.from(this.rows.children) as HTMLElement[]) before.set(r.dataset.id ?? '', r.getBoundingClientRect().top);
+    this.links = new Map();
+    for (const l of p?.doc.layers ?? []) if (l.link) this.links.set(l.link, (this.links.get(l.link) ?? 0) + 1);
     patchList(this.rows, entries, {
       key: (e) => e.layer.id,
       create: (e) => this.createRow(e),
@@ -194,7 +198,7 @@ export class LayersPanel {
   }
 
   private createRow(e: HierarchyEntry): HTMLElement {
-    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-fx" hidden title="Layer style">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span></span></div>`);
+    const row = el(`<div class="cv-layer" role="option"><button class="cv-layer-eye" type="button" tabindex="-1" aria-label="Show or hide"><span class="cv-eye-on">${icon('eye', 14)}</span><span class="cv-eye-off">${icon('eyeOff', 14)}</span></button><span class="cv-layer-indent"></span><button class="cv-layer-disclose" type="button" tabindex="-1" aria-label="Expand or collapse"><span class="cv-open">${icon('chevronDown', 12)}</span><span class="cv-shut">${icon('chevronRight', 12)}</span></button><canvas class="cv-layer-thumb" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-kind"></span><canvas class="cv-layer-mask" width="${THUMB}" height="${THUMB}"></canvas><span class="cv-layer-name"><span class="cv-layer-clip">${icon('clipMask', 12)}</span><span class="cv-layer-label"></span><span class="cv-layer-fx" hidden title="Layer style">fx</span><span class="cv-layer-smart" hidden title="Smart object: double-click for its filters">${icon('smartObject', 12)}</span><span class="cv-layer-vector" hidden title="Shape layer: double-click for its fill and stroke">${icon('penTool', 12)}</span><span class="cv-layer-linked" hidden title="Linked: moves with the layers linked to it">${icon('link', 12)}</span><span class="cv-layer-locked" hidden title="Locked">${icon('lock', 12)}</span></span></div>`);
     row.dataset.id = e.layer.id;
     this.updateRow(row, e);
     return row;
@@ -222,6 +226,10 @@ export class LayersPanel {
     setClass(q(row, '.cv-layer-fx'), 'is-off', !!l.effects?.hidden);
     setHidden(q(row, '.cv-layer-smart'), !l.smart);
     setHidden(q(row, '.cv-layer-vector'), !l.vector);
+    setHidden(q(row, '.cv-layer-linked'), !l.link || (this.links.get(l.link) ?? 0) < 2);
+    const lk = l.locks ?? {}, locked = !!(lk.all || lk.transparency || lk.pixels || lk.position);
+    setHidden(q(row, '.cv-layer-locked'), !locked);
+    setClass(q(row, '.cv-layer-locked'), 'is-partial', locked && !lk.all);
     setClass(row, 'is-text', this.engine.liveText(l));
     setStyleVar(row, '--depth', String(e.depth));
     if (this.renaming !== l.id) setText(q(row, '.cv-layer-label'), l.name);

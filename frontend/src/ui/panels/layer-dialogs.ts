@@ -1,4 +1,4 @@
-import { BLEND_MODES, canvasBlend, type BlendMode, type Engine } from '../../engine';
+import { BLEND_MODES, canvasBlend, type BlendMode, type Engine, type Layer, type LayerLocks } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { checkRow, selectRow, sliderRow } from './controls';
@@ -148,5 +148,37 @@ export class FindLayersDialog extends Dialog {
     if (!this.name.value.trim()) return;
     this.close();
     this.engine.findLayers(this.name.value);
+  }
+}
+
+const LOCK_ROWS = [['transparency', 'Transparency'], ['pixels', 'Image'], ['position', 'Position'], ['all', 'All']] as const;
+
+/** Layer > Lock Layers (1.65.3), or Lock All Layers in Group with a folder selected: Photoshop's four locks for the
+ *  selected layers (and, for a folder, the layers in it), each ticked when every selected layer has it. */
+export class LockLayersDialog extends Dialog {
+  private readonly state: Required<LayerLocks> = { transparency: false, pixels: false, position: false, all: false };
+  private readonly rows = LOCK_ROWS.map(([k, label]) => checkRow(label, (v) => { this.state[k] = v; }));
+  private deep = false;
+
+  constructor(private readonly engine: Engine) {
+    super('Lock Layers', 320);
+    this.body.append(...this.rows.map((r) => r.el));
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => this.apply());
+  }
+
+  show(deep: boolean): void {
+    const p = this.engine.current;
+    if (this.isOpen || !p || !p.selectedIds.size) return;
+    this.deep = deep;
+    this.setTitle(deep ? 'Lock All Layers in Group' : 'Lock Layers');
+    const ls = [...p.selectedIds].map((id) => p.layer(id)).filter((l): l is Layer => !!l);
+    LOCK_ROWS.forEach(([k], i) => { this.state[k] = ls.length > 0 && ls.every((l) => !!l.locks?.[k]); this.rows[i].set(this.state[k]); });
+    this.open();
+  }
+
+  private apply(): void {
+    this.close();
+    this.engine.setLocks({ ...this.state }, this.deep);
   }
 }

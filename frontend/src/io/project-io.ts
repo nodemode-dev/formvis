@@ -135,6 +135,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.opacity !== 1) r.opacity = l.opacity;
     if (l.fill !== undefined && l.fill !== 1) r.fill = l.fill;
     if (l.locks && Object.values(l.locks).some(Boolean)) r.locks = { ...l.locks };
+    if (l.link) r.linkID = l.link;
     if (l.frame) r.frame = { ...l.frame };
     if (l.blend !== 'normal') r.blendMode = blendLabel(l.blend);
   if (effectsPresent(l.effects)) r.effects = structuredClone(l.effects);
@@ -258,6 +259,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(r.fill !== undefined ? { fill: clamp(num(r.fill, 1), 0, 1) } : {}),
       ...(r.frame && typeof r.frame === 'object' ? (() => { const f = r.frame as Record<string, unknown>; return { frame: { x: num(f.x, 0), y: num(f.y, 0), w: Math.max(2, num(f.w, 2)), h: Math.max(2, num(f.h, 2)), shape: f.shape === 'ellipse' ? 'ellipse' as const : 'rect' as const } }; })() : {}),
       ...(r.locks && typeof r.locks === 'object' ? (() => { const k = r.locks as Record<string, unknown>, out = Object.fromEntries((['transparency', 'pixels', 'position', 'all'] as const).filter((n) => k[n] === true).map((n) => [n, true])); return Object.keys(out).length ? { locks: out } : {}; })() : {}),
+      ...(str(r.linkID) ? { link: (str(r.linkID) as string).slice(0, 120) } : {}),
       blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
     };

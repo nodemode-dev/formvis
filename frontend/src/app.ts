@@ -6,7 +6,7 @@ import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
 import { StrokePathDialog } from './ui/panels/stroke-path-dialog';
-import { DuplicateLayerDialog, FindLayersDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
+import { DuplicateLayerDialog, FindLayersDialog, LockLayersDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
 import { MattingDialog } from './ui/panels/matting-dialog';
 import { LoadSelectionDialog, SaveSelectionDialog, loadSources } from './ui/panels/selection-dialogs';
 import { GlobalLightDialog, ScaleEffectsDialog } from './ui/panels/style-dialogs';
@@ -1370,6 +1370,7 @@ export function startApp(): void {
     amount: new AmountDialog(engine),
     matting: new MattingDialog(engine),
     findLayers: new FindLayersDialog(engine),
+    lockLayers: new LockLayersDialog(engine),
     loadSelection: new LoadSelectionDialog(engine),
     saveSelection: new SaveSelectionDialog(engine),
     globalLight: new GlobalLightDialog(engine),
@@ -1477,6 +1478,7 @@ export function startApp(): void {
   const withPixels = (): boolean => pixel() && !!engine.activeLayer?.raster;
   const selected = (): boolean => !!engine.current?.selection;
   const allHidden = (): boolean => { const p = engine.current; return !!p && p.selectedIds.size > 0 && [...p.selectedIds].every((id) => p.layer(id)?.visible === false); };
+  const folderSelected = (): boolean => { const p = engine.current; return !!p && [...p.selectedIds].some((id) => !!p.layer(id)?.isGroup); };
 
   commands.add(
     { id: 'new', label: 'New Canvas...', keys: ['Alt+Mod+N', 'Mod+N'], run: () => dialogs.newCanvas.show() },
@@ -1649,6 +1651,9 @@ export function startApp(): void {
     { id: 'save-selection', label: 'Save Selection...', enabled: selected, run: () => dialogs.saveSelection.show() },
     { id: 'save-selection-channel', label: 'Save Selection as Channel', enabled: selected, run: () => { engine.saveSelection(); } },
     { id: 'isolate-layers', label: 'Isolate Layers', checked: () => layers.isolated, enabled: () => layers.isolated || (engine.current?.selectedIds.size ?? 0) > 0, run: () => layers.toggleIsolate() },
+    { id: 'lock-layers', label: () => (folderSelected() ? 'Lock All Layers in Group...' : 'Lock Layers...'), keys: ['Mod+/'], enabled: () => (engine.current?.selectedIds.size ?? 0) > 0, run: () => dialogs.lockLayers.show(folderSelected()) },
+    { id: 'link-layers', label: () => (engine.selectionLinked ? 'Unlink Layers' : 'Link Layers'), enabled: () => engine.selectionLinked || (engine.current?.selectedIds.size ?? 0) > 1, run: () => engine.linkLayers() },
+    { id: 'select-linked', label: 'Select Linked Layers', enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].some((id) => { const k = p.layer(id)?.link; return !!k && p.doc.layers.some((l) => l.id !== id && l.link === k); }); }, run: () => engine.selectLinkedLayers() },
     { id: 'rasterize-all', label: 'Rasterize All Layers', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart || l.text || l.vector || l.shape), run: () => engine.rasterizeLayers('all') },
     { id: 'blend-next', label: 'Next Blend Mode', keys: ['Shift+='], enabled: pixel, run: () => engine.cycleBlend(true) },
     { id: 'blend-prev', label: 'Previous Blend Mode', keys: ['Shift+-'], enabled: pixel, run: () => engine.cycleBlend(false) },
@@ -1840,6 +1845,7 @@ export function startApp(): void {
       { label: 'Align', items: ['align-left', 'align-hcenter', 'align-right', '-', 'align-top', 'align-vcenter', 'align-bottom'] },
       { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }, '-',
+      'lock-layers', '-', 'link-layers', 'select-linked', '-',
       'merge', 'merge-visible', 'flatten', '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
@@ -1874,7 +1880,7 @@ export function startApp(): void {
     { label: 'Smart Objects', items: ['convert-smart', 'rasterize', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] }, '-',
-    { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
+    { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
   new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));
 
   const zoomLabel = q(root, '.cv-zoom-label');

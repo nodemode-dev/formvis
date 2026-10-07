@@ -318,11 +318,13 @@ export class Engine {
     return true;
   }
 
-  /** Layers > Lock: the selected layers' locks, as one undo step (Layer Locks). */
-  setLocks(patch: LayerLocks): void {
+  /** Layers > Lock: the selected layers' locks, as one undo step (Layer Locks); `deep` (Layer > Lock All Layers in
+   *  Group) takes the layers inside selected folders too. */
+  setLocks(patch: LayerLocks, deep = false): void {
     this.edit('Layer Locks', (p) => {
       let changed = false;
-      for (const id of p.selectedIds) {
+      const map = deep ? byId(p.doc) : null;
+      for (const id of map ? p.doc.layers.filter((l) => p.selectedIds.has(l.id) || [...p.selectedIds].some((s) => isDescendant(map, l.id, s))).map((l) => l.id) : p.selectedIds) {
         const l = p.layer(id);
         if (!l) continue;
         const next = { ...(l.locks ?? {}), ...patch }, clean = Object.fromEntries(Object.entries(next).filter(([, v]) => v)) as LayerLocks;
@@ -2852,13 +2854,14 @@ export class Engine {
       const given = roots.length === 1 ? name?.trim().slice(0, 200) : undefined;
       let layers = [...p.doc.layers];
       let last: ID | null = null;
+      const links = new Map<ID, ID>();
       for (const id of roots) {
         const src = layers.find((l) => l.id === id);
         if (!src) continue;
         const subtree = [src, ...descendantIds(layers, id).map((d) => layers.find((l) => l.id === d) as Layer)];
         const idMap = new Map<ID, ID>();
         const clones = subtree.map((l) => { const c = this.cloneLayer(l, l === src ? { name: given || `${l.name} copy` } : {}); idMap.set(l.id, c.id); return c; });
-        const fixed = clones.map((c) => ({ ...c, parentId: c.parentId && idMap.has(c.parentId) ? (idMap.get(c.parentId) as ID) : c.parentId, clipId: c.clipId && idMap.has(c.clipId) ? (idMap.get(c.clipId) as ID) : c.clipId }));
+        const fixed = clones.map((c) => ({ ...c, parentId: c.parentId && idMap.has(c.parentId) ? (idMap.get(c.parentId) as ID) : c.parentId, clipId: c.clipId && idMap.has(c.clipId) ? (idMap.get(c.clipId) as ID) : c.clipId, link: c.link && (links.get(c.link) ?? links.set(c.link, uid()).get(c.link)) }));
         layers.splice(layers.indexOf(src) + 1, 0, ...fixed);
         last = fixed[0].id;
       }
@@ -3049,7 +3052,8 @@ export class Engine {
       let records: Layer[];
       if (duplicate) {
         layers = [...p.doc.layers];
-        records = moving.filter((l) => !l.isGroup).map((l) => this.cloneLayer(l, { name: `${l.name} copy`, parentId }));
+        const links = new Map<ID, ID>();
+        records = moving.filter((l) => !l.isGroup).map((l) => this.cloneLayer(l, { name: `${l.name} copy`, parentId, link: l.link && (links.get(l.link) ?? links.set(l.link, uid()).get(l.link)) }));
       } else {
         layers = p.doc.layers.filter((l) => !moving.includes(l));
         records = moving.map((l) => ({ ...l, parentId }));
@@ -4586,10 +4590,53 @@ export class Engine {
     return !!l && !!this.current?.maskTarget && !!l.mask?.raster && !l.mask.linked;
   }
 
+  /** The selected layers and every layer linked to one of them (1.65.3). */
+  private withLinked(p: Project): ReadonlySet<ID> {
+    const links = new Set<ID>();
+    for (const id of p.selectedIds) { const k = p.layer(id)?.link; if (k) links.add(k); }
+    return links.size ? new Set([...p.selectedIds, ...p.doc.layers.filter((l) => l.link && links.has(l.link)).map((l) => l.id)]) : p.selectedIds;
+  }
+
+  /** Whether the selected layers are all of one link that another layer holds too (Link Layers then reads Unlink Layers). */
+  get selectionLinked(): boolean {
+    const p = this.current, ls = p ? [...p.selectedIds].map((id) => p.layer(id)) : [], k = ls[0]?.link;
+    return !!p && !!k && ls.every((l) => l?.link === k) && p.doc.layers.filter((l) => l.link === k).length > 1;
+  }
+
+  /** Layer > Link Layers (1.65.3): the selected layers linked to move together, or unlinked when they are already one
+   *  link; a link left to one layer is dropped. One step. */
+  linkLayers(): void {
+    const p = this.current;
+    if (!p || this.stroke) return;
+    const unlink = this.selectionLinked, link = uid();
+    if (!unlink && p.selectedIds.size < 2) return;
+    this.settle();
+    this.edit(unlink ? 'Unlink Layers' : 'Link Layers', (q) => {
+      const next = q.doc.layers.map((l) => (q.selectedIds.has(l.id) ? { ...l, link: unlink ? undefined : link } : l)), held = new Map<ID, number>();
+      for (const l of next) if (l.link) held.set(l.link, (held.get(l.link) ?? 0) + 1);
+      q.setLayers(next.map((l) => (l.link && (held.get(l.link) ?? 0) < 2 ? { ...l, link: undefined } : l)));
+      return true;
+    });
+  }
+
+  /** Layer > Select Linked Layers (1.65.3): every layer linked to a selected one joins the selection; not a step. */
+  selectLinkedLayers(): void {
+    const p = this.current;
+    if (!p || this.stroke) return;
+    const all = this.withLinked(p);
+    if (all.size === p.selectedIds.size) return;
+    this.settle();
+    p.selectedIds = new Set(all);
+    this.emit('active', null);
+    this.emit('options', null);
+    this.emit('overlay', null);
+  }
+
   /** with more than one layer selected, or a folder, the Move tool transforms the
-   *  visible pixel layers that are selected or inside a selected folder together. */
+   *  visible pixel layers that are selected or inside a selected folder together; linked layers count as selected,
+   *  unless one layer's unlinked mask is targeted, which moves alone. */
   private groupMembers(p: Project): Layer[] {
-    const sel = p.selectedIds;
+    const sel = p.selectedIds.size === 1 && this.transformsMask(p.activeLayer) ? p.selectedIds : this.withLinked(p);
     if (!(sel.size > 1 || (sel.size === 1 && p.activeLayer?.isGroup))) return [];
     const parents = new Map(p.doc.layers.map((l) => [l.id, l.parentId]));
     const visible = new Set(hierarchy(p.doc).filter((e) => e.visible).map((e) => e.layer.id));
@@ -4622,6 +4669,7 @@ export class Engine {
     if (!this.groupMembers(p).length && !this.transformsMask(l)) { const o = this.keyedOffset(p, l.id); start = { x: start.x - o.dx, y: start.y - o.dy }; }
     if (this.locked(l, 'position')) return false;
     const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
+    if (members.some((m) => m.link && !p.selectedIds.has(m.id) && this.locked(m, 'position'))) return false;
     if (box) {
       this.settle();
       this.transformEdit = { project: p, layerId: l.id, original: box, draft: box, mode, start, mask: false, group: { box, originals: new Map(members.map((m) => [m.id, m.transform])) } };
@@ -5165,11 +5213,13 @@ export class Engine {
 
   nudge(dx: number, dy: number): void {
     if (this.locked(this.activeLayer, 'position')) return;
+    const p0 = this.current;
+    if (p0 && [...this.withLinked(p0)].some((id) => !p0.selectedIds.has(id) && this.locked(p0.layer(id), 'position'))) return;
     const sel = this.current?.selectedIds, one = sel && sel.size === 1 ? [...sel][0] : null;   // a keyed layer keys (1.59.9)
     if (one && this.keyMove(one, dx, dy, 'Nudge')) return;
     this.edit('Nudge', (p) => {
       let moved = false;
-      for (const id of p.selectedIds) {
+      for (const id of this.withLinked(p)) {
         const l = p.layer(id);
         if (!l || l.isGroup || !l.raster) continue;
         const t = { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy };

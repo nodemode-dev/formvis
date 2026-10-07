@@ -81,6 +81,9 @@ export interface Layer {
   fill?: number;
   /** Absent is unlocked. */
   locks?: LayerLocks;
+  /** Layer > Link Layers (1.65.3): layers holding the same link move and transform together; a link one layer holds
+   *  alone links nothing. Absent is unlinked. */
+  link?: ID;
   /** A frame (the Frame tool, K, as Photoshop's): a folder whose mask is this shape; an image placed in it covers it. */
   frame?: FrameSpec | null;
   blend: BlendMode;
