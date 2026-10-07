@@ -69,6 +69,11 @@ ask it questions.
   Layer > Mask All Objects finds the objects in the layer and adds a masked folder for each, for adjustments. Layer >
   Matting cleans the edges of a cut-out (Defringe, Remove Black or White Matte, Color Decontaminate), and Layer >
   Rasterize turns type, shapes and smart objects into pixels, the selected ones or All Layers.
+- Layer > Layer Style shows the Layer Style dialog at Blending Options or at any effect, turning that effect on. Bevel
+  and Emboss is Smooth, Chisel Hard or Chisel Soft; inner, outer, emboss, pillow or on the layer's stroke (Stroke
+  Emboss); with a Contour shaping its profile and a Texture pressing a pattern into it. Global Light sets the light
+  that effects using it share; Create Layers turns a style into layers of their own that look the same; Hide All
+  Effects hides every style until Show All Effects; Scale Effects scales a style's sizes and distances.
 - Tools and commands work where Photoshop's do: painting an adjustment layer paints its mask; a text or shape layer
   asks to be rasterized first.
 

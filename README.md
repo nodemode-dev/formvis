@@ -13,7 +13,7 @@
 
 formvis is a layered image editor: stack photos and paintings as layers, group them in folders, mask and clip them, blend them, select, paint and export. It saves its own `.fmv` projects and opens NodeMode canvasor projects, and it runs standalone in a browser, inside NodeMode as a portal app, or as a desktop app for macOS, Linux and Windows.
 
-**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 46,400 lines of TypeScript, 1,300 of CSS, 9,700 of Python and 2,200 of Rust (product code, tests excluded; `./formvis counts` prints this, and `./formvis counts --check` verifies it).
+**Stack.** Vanilla TypeScript 7 and Vite 8 · Python 3.12 and FastAPI · Tauri 2 · about 48,000 lines of TypeScript, 1,400 of CSS, 9,800 of Python and 2,200 of Rust (product code, tests excluded; `./formvis counts` prints this, and `./formvis counts --check` verifies it).
 
 ## Highlights
 
@@ -33,7 +33,7 @@ formvis is a layered image editor: stack photos and paintings as layers, group t
 - **Animation.** A Timeline of frames, each keeping layer visibility, opacity and position with a delay, tweened, reordered by dragging, played in a preview and exported as an animated GIF.
 - **History.** A History panel lists every step kept; clicking one goes back or forward to it. Snapshots keep states to return to at any time.
 - **Photoshop files.** Open layered `.psd` and `.psb` files and export to them, keeping layers, folders, masks, clipping, opacity, blend modes, visibility and live adjustment layers.
-- **Layer styles.** Drop Shadow, Outer Glow, Stroke, Inner Shadow, Inner Glow, Satin, Bevel and Emboss, and Color, Gradient and Pattern Overlay for any pixel layer, drawn from its visible pixels and previewed live; copy, paste and clear them across layers. They save in `.fmv` projects.
+- **Layer styles.** Drop Shadow, Outer Glow, Stroke, Inner Shadow, Inner Glow, Satin, Bevel and Emboss (Smooth or chiselled, Stroke Emboss, with Contour and Texture), and Color, Gradient and Pattern Overlay for any pixel layer, drawn from its visible pixels and previewed live; copy, paste and clear them across layers, scale them, hide them all, set the Global Light, or turn a style into layers of its own. They save in `.fmv` projects.
 - **Graphics processor.** The canvas draws through WebGPU (Metal on macOS, Direct3D 12 on Windows) or WebGL2 (as on Linux), with every blend mode but Dissolve, masks, folders, clipping, adjustment layers and layer styles, falling back to the CPU per document with the reason in the status bar; the engine's models run on CUDA, Core ML (Metal) or the CPU (Preferences > Performance); Help > Performance Benchmark times both paths.
 - **Type.** The Type tool adds editable text layers, typed straight onto the canvas, in any font on this machine (in Chromium, the full system list with your permission), with size, line height, tracking, kerning, alignment, bold, italic and colour, and Warp Text's fifteen styles, kept editable, and type set along a pen path, and paragraph styles kept in the document; painting on type turns it into pixels.
 - **Generative Fill, Expand and Upscale (optional).** Edit > Generative Fill paints a selection from a prompt, or removes what it covers with an empty prompt, through FLUX.1 Fill and Erase on fal; Image > Generative Expand grows the canvas and fills the new border; Image > Upscale enlarges 2 or 4 times with Real-ESRGAN. Set `FAL_KEY` or paste a key into the dialog once; the engine keeps it. Filter > Develop adds Camera Raw-style tone, colour and detail controls.

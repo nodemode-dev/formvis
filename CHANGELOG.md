@@ -4,6 +4,21 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.2 · 2026-10-07
+
+### Added
+
+- Bevel & Emboss has Photoshop's Technique (Smooth, Chisel Hard or Chisel Soft), its Stroke Emboss style, which raises the layer's stroke, and its two elements: Contour, the bevel's profile through a curve over a range, and Texture, a pattern pressed into the surface at a scale and a depth, inverted or not.
+- Layer > Layer Style lists Blending Options and every effect, as Photoshop's does; each opens the Layer Style dialog at that effect and turns it on.
+- Layer > Layer Style > Global Light sets the document's light, the angle and altitude that every effect using Global Light shares.
+- Layer > Layer Style > Create Layers turns the active layer's style into layers of their own that look the same: drop shadows, outer glows and outside strokes below the layer; overlays, satin, inner shadows and glows, inside strokes and an inner bevel clipped to it above; other bevels and center strokes above it, unclipped. The layer keeps no style.
+- Layer > Layer Style > Hide All Effects hides every layer's style without removing it, and Show All Effects brings them back; the Layers panel strikes out the fx mark of a hidden style. Hidden styles stay hidden in `.fmv` projects and PSD files.
+- Layer > Layer Style > Scale Effects scales the selected layers' styles, their sizes, distances and pattern scales, from 1 to 1000 percent.
+
+### Changed
+
+- A PSD layer style switched off in Photoshop now opens hidden, where formvis left it out, and Bevel & Emboss keeps Chisel Hard, Chisel Soft and Stroke Emboss both ways, where formvis drew and wrote Smooth and Inner Bevel. A bevel's Contour and Texture are not read from or written to PSD files yet, and formvis says so when it meets one.
+
 ## 1.65.1 · 2026-10-07
 
 ### Added

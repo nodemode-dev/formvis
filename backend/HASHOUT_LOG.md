@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.65.2
+
+No engine code changed in 1.65.2 (DEV_PLAN 27.5's fifth part, Layer Style, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before, once the README's line counts were brought up to date (its check had found TypeScript at 47,983 lines against the README's 46,400). Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.65.1"
+version = "1.65.1"
+version = "1.65.1"
+ "version": "1.65.1",
+```
+
 ## Agents under MCP 2026-07-28, a busy window, place_image from a path · _v1.65.1 (app/routers/mcp.py; the formvis-editing skill's generated reference)
 
 From the bug bounty of 6 and 7 October 2026, run while rehearsing an agent's edit over MCP against 1.63.0; its patches 0001 to 0003, each read as a description and made again by hand on this code (the file had changed only in apply_filter since). Caching hints: MCP 2026-07-28's caching utility (server/utilities/caching, read at the source) says servers MUST put `ttlMs` (an integer of 0 or more) and `cacheScope` (`public` or `private`) on complete results of server/discover, tools/list and prompts/list (and the resource lists, not served here). `_ok` added `resultType` alone, and Claude Code 2.1.292 refused tools/list ("Invalid result for tools/list": ttlMs undefined, cacheScope not one of its options), so it loaded none of formvis's tools. `_ok(req_id, result, modern, cacheable)` now adds `CACHE_HINTS` (ttlMs 300000, cacheScope public) to those three under 2026-07-28: the lists are the same for every caller and change only with a new formvis version, the case the spec gives for public, and five minutes is its own example. 2025-11-25 replies are unchanged. A busy window: the window does not poll while it works through a call and only polls refreshed `_seen`, so a call past `LIVE` (30 s) made the next one wait 20 s and fail with "formvis is not open", and one past 300 s made the next fail at once. `_taken` holds the calls the window has taken and not answered (set by `bridge_next` as it hands one over, dropped by `bridge_result` and by `_ask` either way); `_live` counts one taken within the last 600 s, as long as `_ask` waits for any call, as a sign of life; an answer refreshes `_seen` as a poll does. place_image: it took base64 alone, so an agent could put a file from disk into a document only by writing its base64 into its own call. It now takes `path`, an absolute path to a .png, .jpg, .jpeg or .webp read here as open_file reads (`_path`'s checks, `_MAX_OPEN`), the layer named after the file's stem (cut to 120) unless named, the call going on to the window with the picture as `data`; data still works, and a call with neither is told to give one. Its description says the picture keeps its size and transform_layer scales it, and a read error says "read". `./formvis agents sync` regenerated the skill's tool reference and its .agents mirror (the place_image section: the description, path added, data no longer required). The window's side of the bounty (remove_background) and the docs' tool count are in the frontend log.
