@@ -5,4 +5,4 @@ opencv/opencv#21326); app/services/contained.py decodes and encodes EXR in a chi
 itself alone (1.54.4, the parity plan's L14).
 """
 
-__version__ = "1.64.9"
+__version__ = "1.65.0"
