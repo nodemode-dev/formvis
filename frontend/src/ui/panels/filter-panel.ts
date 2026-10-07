@@ -9,7 +9,7 @@ import { checkRow, colorRow, matrixRow, selectRow, sliderRow, type Row } from '.
 import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
-import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibValue, type LibValues } from '../../engine/filter-library';
+import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
 import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, type CalibrationState, type CurveChannel, type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 
@@ -287,6 +287,7 @@ export class FilterPanel extends Dialog {
       return { el: node, set: () => undefined };
     }
     if (p.kind === 'image') return this.imageRow(p.label, (v) => put(p.key, v));
+    if (p.kind === 'path') return this.pathRow(p.label, (v) => put(p.key, v));
     if (p.kind === 'color') { const r = colorRow(p.label, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as string) }; }
     const r = matrixRow(p.label, p.size, p.min, p.max, (v) => put(p.key, v));
     return { el: r.el, set: (v) => r.set(v as number[]) };
@@ -313,10 +314,38 @@ export class FilterPanel extends Dialog {
       put(kept);
     });
     return { el: node, set: (v) => {
-      kept = v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+      kept = v && typeof v === 'object' && !Array.isArray(v) && 'rg' in v ? v : null;
       fill();
       const match = kept ? this.engine.projects.find((p) => p.name === kept?.name) : null;
       setValue(sel, kept ? (match ? match.id : 'kept') : '');
+    } };
+  }
+
+  private pathRow(label: string, put: (v: LibPath | null) => void): { el: HTMLElement; set: (v: LibValue) => void } {
+    const node = el('<label class="cv-field"><span></span><select class="cv-input"></select></label>'), sel = q<HTMLSelectElement>(node, 'select');
+    setText(q(node, 'span'), label);
+    let kept: LibPath | null = null;
+    const usable = (): Array<readonly [string, string]> => this.engine.paths.list.filter((n) => !n.shape && n.path.subpaths.some((sp) => sp.anchors.length > 0)).map((n) => [n.id, n.name] as const);
+    const fill = (): void => {
+      const paths = usable(), opts: Array<readonly [string, string]> = [['', 'None: an arc low in the picture'], ...(kept && !paths.some(([, n]) => n === kept?.name) ? [['kept', `${kept.name} (as chosen)`] as const] : []), ...paths];
+      while (sel.options.length > opts.length) sel.remove(sel.options.length - 1);
+      opts.forEach(([v, t], i) => {
+        let o = sel.options[i];
+        if (!o) { o = document.createElement('option'); sel.appendChild(o); }
+        if (o.value !== v) o.value = v;
+        if (o.textContent !== t) o.textContent = t;
+      });
+    };
+    sel.addEventListener('change', () => {
+      if (sel.value === 'kept') return;
+      kept = sel.value ? this.engine.pathLines(sel.value) : null;
+      put(kept);
+    });
+    return { el: node, set: (v) => {
+      kept = v && typeof v === 'object' && !Array.isArray(v) && 'lines' in v ? v : null;
+      fill();
+      const match = kept ? usable().find(([, n]) => n === kept?.name) : null;
+      setValue(sel, kept ? (match ? match[0] : 'kept') : '');
     } };
   }
 
@@ -341,6 +370,7 @@ export class FilterPanel extends Dialog {
     const al = this.engine.current?.activeLayer;
     if (al?.vector && !(this.engine.current?.maskTarget && al.mask)) { toast('This is a shape layer. Rasterize it (Layer > Rasterize Layer) to filter its pixels.'); return; }
     const smart = this.smartTarget();
+    if (isLibKind(kind) && libFilter(kind).fills) this.engine.givePixels();
     if (!smart && !this.engine.targetImage()) { toast('Select a layer with pixels first.'); return; }
     this.kind = kind;
     this.done = false;
@@ -349,6 +379,7 @@ export class FilterPanel extends Dialog {
     this.setTitle(FILTER_LABELS[kind]);
     if (kind === 'shakeReduction' && !smart) this.estimateShake(false);
     if (isLibKind(kind) && !this.sections.has(kind)) this.libSection(kind);
+    if (isLibKind(kind)) for (const key of libPathParams(kind)) ((this.s.lib ??= {})[kind] ??= libValues(kind, undefined))[key] = this.engine.pathLines();
     for (const [k, sec] of this.sections) setHidden(sec.node, k !== kind);
     this.sections.get(kind)?.sync();
     this.previewRow.set(this.preview && !smart);
@@ -386,6 +417,11 @@ export class FilterPanel extends Dialog {
       if (typeof v !== 'string') continue;
       const doc = this.engine.projects.find((p) => p.name === v || p.id === v);
       values[key] = doc ? this.engine.mapImage(doc.id) : null;
+    }
+    for (const key of libPathParams(kind)) {
+      const v = values[key];
+      if (v === undefined) values[key] = this.engine.pathLines();
+      else if (typeof v === 'string') values[key] = this.engine.pathLines(v) ?? v;
     }
     return { ...out, lib: { ...lib, [kind]: values } };
   }
@@ -441,11 +477,14 @@ export class FilterPanel extends Dialog {
     if (!isLibKind(kind)) return false;
     const values = libValues(kind, (settings.lib as Record<string, unknown> | undefined)?.[kind]), gap = libFilter(kind).params.find((p) => p.kind === 'image' && !values[p.key]);
     if (gap) this.engine.notice(`${FILTER_LABELS[kind]} needs its ${gap.label.toLowerCase()}: choose an open document.`);
-    return !!gap;
+    const raw = (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind], named = gap ? undefined : libPathParams(kind).find((k) => typeof raw?.[k] === 'string');
+    if (named) this.engine.notice(`${FILTER_LABELS[kind]}: this document has no path named "${String(raw?.[named])}".`);
+    return !!gap || !!named;
   }
 
   applySettings(kind: FilterKind, given: Record<string, unknown>): Promise<boolean> | boolean {
     if (!(kind in FILTER_LABELS)) return false;
+    if (isLibKind(kind) && libFilter(kind).fills) this.engine.givePixels();
     const settings = this.completed(kind, given);
     if (this.missingImage(kind, settings)) return false;
     if (this.smartTarget()) { this.engine.addSmartFilter(kind, structuredClone(settings)); return true; }

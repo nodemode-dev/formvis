@@ -147,7 +147,7 @@ const light = (v: LibValues): LightSettings => {
 
 export const RENDER_FILTERS: LibFilter[] = [
   {
-    id: 'clouds', label: 'Clouds', group: 'Render', params: [], grows: false, reach: () => 0,
+    id: 'clouds', label: 'Clouds', group: 'Render', params: [], grows: false, reach: () => 0, fills: true,
     run: (src, _v, ctx) => cloudsImage(src, false, ctx.seed, canvasOf(ctx), ctx.scale, ctx.fg, ctx.bg),
   },
   {
@@ -155,7 +155,7 @@ export const RENDER_FILTERS: LibFilter[] = [
     run: (src, _v, ctx) => cloudsImage(src, true, ctx.seed, canvasOf(ctx), ctx.scale, ctx.fg, ctx.bg),
   },
   {
-    id: 'fibers', label: 'Fibers', group: 'Render', grows: false, reach: () => 0,
+    id: 'fibers', label: 'Fibers', group: 'Render', grows: false, reach: () => 0, fills: true,
     params: [
       { key: 'variance', label: 'Variance', kind: 'range', min: 1, max: 64, step: 1, def: 16 },
       { key: 'strength', label: 'Strength', kind: 'range', min: 1, max: 64, step: 1, def: 4 },

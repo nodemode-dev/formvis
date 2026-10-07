@@ -46,7 +46,7 @@ export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
 import { averageImage } from './filters-lib/blur';
-import type { LibFrame, LibImage } from './filter-library';
+import type { LibFrame, LibImage, LibPath } from './filter-library';
 import { sharpenSample } from './filters-more';
 import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
 import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
@@ -5082,7 +5082,7 @@ export class Engine {
       return { x: snap(b.x) + shift, y: snap(b.y) + shift, w: snap(b.w), h: snap(b.h) };
     };
     const canvas = local({ x: 0, y: 0, w: p.doc.width, h: p.doc.height });
-    return { area: p.selection ? local(p.selection.rect) : canvas, canvas };
+    return { area: p.selection ? local(p.selection.rect) : canvas, canvas, doc: { w: p.doc.width, h: p.doc.height } };
   }
 
   private grown(l: Layer, grow: number, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData): { raster: Raster; transform: Transform } {
@@ -5126,6 +5126,10 @@ export class Engine {
   /** Filters on layers past this many pixels run in bands (1.60.9, DEV_PLAN 26.4); settable so a check can force either way. */
   bandFrom = 16_000_000;
 
+  private bandFrame(f: LibFrame, dy: number): LibFrame {
+    return { ...f, area: { ...f.area, y: f.area.y - dy }, canvas: { ...f.canvas, y: f.canvas.y - dy } };
+  }
+
   /** A filter whose effect reaches `apron` pixels and does not depend on where it is, run on a large active layer in
    *  bands of 512 rows (1.60.9, DEV_PLAN 26.4): each read with `apron` rows above and below, so its result is what the
    *  whole layer at once gives, byte for byte; written back in 512-pixel tiles through the selection (each band's own
@@ -5133,10 +5137,6 @@ export class Engine {
    *  undo), and the step's tiles then sent to the undo store. One step. False when this is not a case it handles the
    *  same as the whole-layer path (smaller layers, masks, smart and shape layers, deep, CMYK and Lab documents, a layer
    *  the filter would grow), for the caller to run that path. */
-  private bandFrame(f: LibFrame, dy: number): LibFrame {
-    return { area: { ...f.area, y: f.area.y - dy }, canvas: { ...f.canvas, y: f.canvas.y - dy } };
-  }
-
   bandedFilter(name: string, run: (src: ImageData, frame?: LibFrame) => ImageData, apron: number, grow = 0): boolean | 'refused' {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l?.raster || this.stroke || p.maskTarget || l.smart || l.vector || !this.paintable(l)) return false;
@@ -5337,6 +5337,33 @@ export class Engine {
     }
     s.width = 0; s.height = 0;
     return { name: p.name, w0: W, h0: H, w, h, rg: btoa(bin) };
+  }
+
+  pathLines(which?: string | null): LibPath | null {
+    const p = this.current;
+    if (!p) return null;
+    const set = this.paths, usable = set.list.filter((n) => !n.shape && n.path.subpaths.some((sp) => sp.anchors.length > 0));
+    const n = which ? usable.find((x) => x.id === which || x.name === which) ?? (which.toLowerCase() === 'work' ? usable.find((x) => x.work) : undefined) : usable.find((x) => x.id === set.active) ?? usable.find((x) => x.work) ?? usable[0];
+    if (!n) return null;
+    const subs = n.path.subpaths.filter((sp) => sp.anchors.length > 0).slice(0, 256), sample = (step: number): number[][] => subs.map((sp) => samplePath(sp, step).flatMap((q) => [Math.round(q.x * 100) / 100, Math.round(q.y * 100) / 100]));
+    let lines = sample(2);
+    const count = lines.reduce((s, l) => s + l.length, 0);
+    if (count > 300_000) lines = sample(2 * Math.ceil(count / 300_000));
+    return { name: n.name, w0: p.doc.width, h0: p.doc.height, lines };
+  }
+
+  private emptyPixelLayer(p: Project | null, l: Layer | null | undefined): l is Layer {
+    return !!p && !!l && !l.raster && !l.isGroup && !l.adjustment && !l.tiled && !l.smart && !l.vector && !l.shape && !liveText(l) && !p.maskTarget && (p.doc.depth ?? 8) === 8 && (p.doc.mode ?? 'rgb') === 'rgb';
+  }
+
+  get canGivePixels(): boolean { const p = this.current ?? null; return this.emptyPixelLayer(p, p?.activeLayer); }
+
+  givePixels(): boolean {
+    const p = this.current ?? null, l = p?.activeLayer;
+    if (!p || !this.emptyPixelLayer(p, l) || this.locked(l, 'pixels')) return false;
+    this.ensurePixels(p, l);
+    this.refresh();
+    return true;
   }
 
   averageFill(): void {
