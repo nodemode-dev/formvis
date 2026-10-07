@@ -1,5 +1,7 @@
-/* Pieces the filter library's modules share: pixels as premultiplied floats, an exact separable Gaussian and a running
-   box mean. */
+import { mix32 } from '../filters';
+
+/* Pieces the filter library's modules share: pixels as premultiplied floats, an exact separable Gaussian, a running
+   box mean, the frame a filter works in, and a positional hash for filters with grain or scatter. */
 
 /** RGBA bytes as premultiplied floats (colour times alpha, alpha 0 to 255). */
 export function premul(d: Uint8ClampedArray): Float32Array {
@@ -99,4 +101,23 @@ export function boxMean(src: Float32Array, w: number, h: number, r: number): Flo
     }
   }
   return out;
+}
+
+/** A filter's frame in whole pixels: x0, y0 inclusive, x1, y1 exclusive. */
+export interface Box { x0: number; y0: number; x1: number; y1: number }
+
+export function boxOf(r: { x: number; y: number; w: number; h: number }): Box {
+  const x0 = Math.floor(r.x + 1e-6), y0 = Math.floor(r.y + 1e-6);
+  return { x0, y0, x1: Math.max(x0 + 1, Math.ceil(r.x + r.w - 1e-6)), y1: Math.max(y0 + 1, Math.ceil(r.y + r.h - 1e-6)) };
+}
+
+export function clipBox(b: Box, w: number, h: number): Box | null {
+  const x0 = Math.max(0, b.x0), y0 = Math.max(0, b.y0), x1 = Math.min(w, b.x1), y1 = Math.min(h, b.y1);
+  return x1 > x0 && y1 > y0 ? { x0, y0, x1, y1 } : null;
+}
+
+/** A value in [0, 1) fixed by a position, a channel and a seed, so grain and scatter stay put across previews,
+ *  bands and repeats. */
+export function hash01(x: number, y: number, c: number, seed: number): number {
+  return mix32(mix32(mix32(mix32(seed | 0) + (x | 0)) + (y | 0)) + (c | 0)) / 4294967296;
 }

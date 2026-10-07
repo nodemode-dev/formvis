@@ -1,12 +1,13 @@
 import type { LibFilter } from '../filter-library';
 import { copyImage } from './shared';
 
-/** De-Interlace: the rows of one field (the odd rows, counted from 1 at the image's top, or the even ones) replaced,
- *  by the mean of the rows either side or by the row above (the row below at the top edge). */
-export function deInterlaceImage(img: ImageData, eliminateEven: boolean, interpolate: boolean): ImageData {
+/** De-Interlace: the rows of one field (the odd rows, counted from 1 at the canvas's top, which lies at row `top` of
+ *  this image, or the even ones) replaced, by the mean of the rows either side or by the row above (the row below at
+ *  the top edge). */
+export function deInterlaceImage(img: ImageData, eliminateEven: boolean, interpolate: boolean, top = 0): ImageData {
   const { width: w, height: h } = img, s = img.data, out = copyImage(img), d = out.data, rowLen = w * 4;
   for (let y = 0; y < h; y++) {
-    const oddRow = y % 2 === 0;
+    const oddRow = (((y - top) % 2) + 2) % 2 === 0;
     if (oddRow === eliminateEven) continue;
     const up = y > 0 ? y - 1 : y + 1, down = y < h - 1 ? y + 1 : y - 1;
     if (up < 0 || up >= h) continue;
@@ -44,7 +45,7 @@ export const VIDEO_FILTERS: LibFilter[] = [
       { key: 'createBy', label: 'Create New Fields by', kind: 'select', def: 'interpolation', options: [['interpolation', 'Interpolation'], ['duplication', 'Duplication']] },
     ],
     reach: null,
-    run: (src, v) => deInterlaceImage(src, v.eliminate === 'evenFields', v.createBy !== 'duplication'),
+    run: (src, v, ctx) => deInterlaceImage(src, v.eliminate === 'evenFields', v.createBy !== 'duplication', Math.round(ctx.canvas.y)),
   },
   {
     id: 'ntscColors', label: 'NTSC Colors', group: 'Video', params: [], grows: false,

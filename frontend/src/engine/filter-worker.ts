@@ -15,7 +15,7 @@ onmessage = (e: MessageEvent<FilterJob>) => {
   const s = job.settings;
   let out = src;
   if (isGalleryKind(job.kind)) out = runGallery(job.kind, s.gallery, src, job.scale);
-  else if (isLibKind(job.kind)) out = runLib(job.kind, s.lib?.[job.kind], job.seed, src, job.scale);
+  else if (isLibKind(job.kind)) out = runLib(job.kind, s.lib?.[job.kind], job.seed, src, job.scale, job.frame, s.colors);
   else if (job.kind === 'gaussianBlur') out = gaussianBlur(src, s.radius * job.scale);
   else if (job.kind === 'motionBlur') out = motionBlur(src, s.angle, s.distance * job.scale);
   else if (job.kind === 'addNoise') out = addNoise(src, s.amount, s.gaussian, s.monochromatic, job.seed);

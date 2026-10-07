@@ -3,13 +3,13 @@ import type { DeepPixels } from '../../engine/types';
 import { addNoise, gaussianBlur, gaussianMargin, lensDistort, motionBlur, motionMargin, randomSeed, runFilterOffThread, unsharpMask, defaultDevelopState, developImage, type Engine } from '../../engine';
 import { ScopesView } from './scopes-view';
 import { Dialog } from '../dialogs';
-import { el, setHidden } from '../dom';
+import { el, q, setDisabled, setHidden, setText, setValue } from '../dom';
 import { toast } from '../toast';
 import { checkRow, matrixRow, selectRow, sliderRow, type Row } from './controls';
 import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
-import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libMargin, libValues, runLib, type LibKind, type LibParam, type LibValue, type LibValues } from '../../engine/filter-library';
+import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibValue, type LibValues } from '../../engine/filter-library';
 import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, type CalibrationState, type CurveChannel, type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 
@@ -35,13 +35,14 @@ export function defaultFilterSettings() {
       pathSpeed: 30, pathTaper: 0, pathSx: 20, pathSy: 70, pathBx: 50, pathBy: 30, pathEx: 80, pathEy: 70,
     } as GallerySettings,
     lib: libAllDefaults() as Partial<Record<LibKind, LibValues>>,
+    colors: { fg: [0, 0, 0], bg: [255, 255, 255] } as LibColors,
   };
 }
 export type FilterPanelSettings = ReturnType<typeof defaultFilterSettings>;
 
 /** One filter on `src` with settings `s` (and `seed` for noise), radii scaled by `scale` for a scaled preview: the
  *  Filter dialog's work, shared with smart filters. */
-export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number, src: ImageData, scale: number): ImageData {
+export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number, src: ImageData, scale: number, frame?: LibFrame | null): ImageData {
   switch (kind) {
       case 'gaussianBlur': return gaussianBlur(src, s.radius * scale);
       case 'motionBlur': return motionBlur(src, s.angle, s.distance * scale);
@@ -53,7 +54,7 @@ export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number
       case 'smartSharpen': return smartSharpen(src, s.smart, scale);
       case 'shakeReduction': return shakeReduce(src, s.shake, scale);
       case 'radialBlur': case 'surfaceBlur': case 'fieldBlur': case 'irisBlur': case 'tiltShift': case 'pathBlur': return runGallery(kind, s.gallery, src, scale);
-    default: return isLibKind(kind) ? runLib(kind, s.lib?.[kind], seed, src, scale) : src;
+    default: return isLibKind(kind) ? runLib(kind, s.lib?.[kind], seed, src, scale, frame, s.colors) : src;
   }
 }
 
@@ -279,8 +280,43 @@ export class FilterPanel extends Dialog {
     if (p.kind === 'range') { const r = sliderRow(p.label, p.min, p.max, p.step, (v) => put(p.key, v), { max: p.limit ?? p.max }); return { el: r.el, set: (v) => r.set(v as number) }; }
     if (p.kind === 'select') { const r = selectRow(p.label, p.options, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as string) }; }
     if (p.kind === 'check') { const r = checkRow(p.label, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as boolean) }; }
+    if (p.kind === 'seed') {
+      const node = el('<div class="cv-field"><span></span><button class="cv-btn" type="button">Randomize</button></div>');
+      setText(q(node, 'span'), p.label);
+      q(node, 'button').addEventListener('click', () => put(p.key, randomSeed()));
+      return { el: node, set: () => undefined };
+    }
+    if (p.kind === 'image') return this.imageRow(p.label, (v) => put(p.key, v));
     const r = matrixRow(p.label, p.size, p.min, p.max, (v) => put(p.key, v));
     return { el: r.el, set: (v) => r.set(v as number[]) };
+  }
+
+  private imageRow(label: string, put: (v: LibImage | null) => void): { el: HTMLElement; set: (v: LibValue) => void } {
+    const node = el('<label class="cv-field"><span></span><select class="cv-input"></select></label>'), sel = q<HTMLSelectElement>(node, 'select');
+    setText(q(node, 'span'), label);
+    let kept: LibImage | null = null;
+    const fill = (): void => {
+      const docs = this.engine.projects.map((p) => [p.id, p.name] as const);
+      const opts: Array<readonly [string, string]> = [['', 'Choose an open document'], ...(kept && !docs.some(([, n]) => n === kept?.name) ? [['kept', `${kept.name} (as chosen)`] as const] : []), ...docs];
+      while (sel.options.length > opts.length) sel.remove(sel.options.length - 1);
+      opts.forEach(([v, t], i) => {
+        let o = sel.options[i];
+        if (!o) { o = document.createElement('option'); sel.appendChild(o); }
+        if (o.value !== v) o.value = v;
+        if (o.textContent !== t) o.textContent = t;
+      });
+    };
+    sel.addEventListener('change', () => {
+      if (sel.value === 'kept') return;
+      kept = sel.value ? this.engine.mapImage(sel.value) : null;
+      put(kept);
+    });
+    return { el: node, set: (v) => {
+      kept = v && typeof v === 'object' && !Array.isArray(v) ? v : null;
+      fill();
+      const match = kept ? this.engine.projects.find((p) => p.name === kept?.name) : null;
+      setValue(sel, kept ? (match ? match.id : 'kept') : '');
+    } };
   }
 
   private libSection(kind: LibKind): void {
@@ -303,16 +339,19 @@ export class FilterPanel extends Dialog {
     if (this.isOpen) return;
     const al = this.engine.current?.activeLayer;
     if (al?.vector && !(this.engine.current?.maskTarget && al.mask)) { toast('This is a shape layer. Rasterize it (Layer > Rasterize Layer) to filter its pixels.'); return; }
-    if (!this.engine.targetImage()) { toast('Select a layer with pixels first.'); return; }
+    const smart = this.smartTarget();
+    if (!smart && !this.engine.targetImage()) { toast('Select a layer with pixels first.'); return; }
     this.kind = kind;
     this.done = false;
     this.seed = randomSeed();
+    this.s.colors = this.swatches();
     this.setTitle(FILTER_LABELS[kind]);
-    if (kind === 'shakeReduction') this.estimateShake(false);
+    if (kind === 'shakeReduction' && !smart) this.estimateShake(false);
     if (isLibKind(kind) && !this.sections.has(kind)) this.libSection(kind);
     for (const [k, sec] of this.sections) setHidden(sec.node, k !== kind);
     this.sections.get(kind)?.sync();
-    this.previewRow.set(this.preview);
+    this.previewRow.set(this.preview && !smart);
+    setDisabled(q<HTMLInputElement>(this.previewRow.el, 'input'), smart);
     this.open(this.okBtn);
     this.schedule(0);
   }
@@ -330,7 +369,25 @@ export class FilterPanel extends Dialog {
     if (refresh) { this.sections.get('shakeReduction')?.sync(); this.schedule(0); }
   }
 
-  private run(src: ImageData, scale: number): ImageData { return runFilter(this.kind, this.s, this.seed, src, scale); }
+  private run(src: ImageData, scale: number, frame?: LibFrame): ImageData { return runFilter(this.kind, this.s, this.seed, src, scale, frame); }
+
+  private swatches(): LibColors {
+    const { fg, bg } = this.engine;
+    return { fg: [fg.r, fg.g, fg.b], bg: [bg.r, bg.g, bg.b] };
+  }
+
+  private completed(kind: FilterKind, settings: Record<string, unknown>): Record<string, unknown> {
+    const out: Record<string, unknown> = { ...settings, colors: settings.colors ?? this.swatches() };
+    if (!isLibKind(kind)) return out;
+    const lib = settings.lib && typeof settings.lib === 'object' ? (settings.lib as Record<string, Record<string, unknown> | undefined>) : {}, values = { ...(lib[kind] ?? {}) };
+    for (const key of libImageParams(kind)) {
+      const v = values[key];
+      if (typeof v !== 'string') continue;
+      const doc = this.engine.projects.find((p) => p.name === v || p.id === v);
+      values[key] = doc ? this.engine.mapImage(doc.id) : null;
+    }
+    return { ...out, lib: { ...lib, [kind]: values } };
+  }
 
   private grow(): number { return filterMargin(this.kind, this.s); }
 
@@ -340,7 +397,7 @@ export class FilterPanel extends Dialog {
       if (!this.isOpen) return;
       // Develop's scopes follow the developed preview (1.53.4).
       const scoped = (out: ImageData | Promise<ImageData>): ImageData | Promise<ImageData> => { if (this.kind === 'develop') void Promise.resolve(out).then((img) => this.scopes.draw(img)).catch(() => undefined); return out; };
-      if (this.preview) this.engine.previewImageEdit((src, scale) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src) ?? this.run(src, scale)), this.grow());
+      if (this.preview && !this.smartTarget()) this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow());
       else this.engine.setPreview(null);
     }, delay);
   }
@@ -363,8 +420,9 @@ export class FilterPanel extends Dialog {
 
     private async applyInBackground(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> {
     if (this.deepFilter(kind, settings)) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }   // 16 bits (1.53.7)
+    if (this.missingImage(kind, settings)) return false;
     const s = { ...defaultFilterSettings(), ...(structuredClone(settings) as Partial<FilterPanelSettings>) }, seed = typeof settings.seed === 'number' ? settings.seed : this.seed;
-    const sync = (src: ImageData, scale: number): ImageData => runFilter(kind, s, seed, src, scale);
+    const sync = (src: ImageData, scale: number, frame?: LibFrame): ImageData => runFilter(kind, s, seed, src, scale, frame);
     const apron = bandApron(kind, s);   // a large layer in bands (1.60.9)
     if (apron !== null && this.engine.activeTiled()) {   // a giant layer: in place, its undo on disk (1.62.7)
       const r = await this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src) => sync(src, 1), apron);
@@ -375,16 +433,25 @@ export class FilterPanel extends Dialog {
     const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => sync(src, 1), apron, filterMargin(kind, s)) : false;
     if (banded === 'refused') return Promise.resolve(false);   // not done, and said why
     if (banded) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }
-    return this.engine.applyImageEditAsync(FILTER_LABELS[kind], (src, scale) => runFilterOffThread(kind, s, scale, seed, src) ?? Promise.resolve(sync(src, scale)), filterMargin(kind, s), sync, filterPeak(kind) + 2);   // its peak, and the copies to and from the worker (1.61.1)
+    return this.engine.applyImageEditAsync(FILTER_LABELS[kind], (src, scale, frame) => runFilterOffThread(kind, s, scale, seed, src, frame) ?? Promise.resolve(sync(src, scale, frame)), filterMargin(kind, s), sync, filterPeak(kind) + 2);
   }
 
-  applySettings(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> | boolean {
+  private missingImage(kind: FilterKind, settings: Record<string, unknown>): boolean {
+    if (!isLibKind(kind)) return false;
+    const values = libValues(kind, (settings.lib as Record<string, unknown> | undefined)?.[kind]), gap = libFilter(kind).params.find((p) => p.kind === 'image' && !values[p.key]);
+    if (gap) this.engine.notice(`${FILTER_LABELS[kind]} needs its ${gap.label.toLowerCase()}: choose an open document.`);
+    return !!gap;
+  }
+
+  applySettings(kind: FilterKind, given: Record<string, unknown>): Promise<boolean> | boolean {
     if (!(kind in FILTER_LABELS)) return false;
+    const settings = this.completed(kind, given);
+    if (this.missingImage(kind, settings)) return false;
     if (this.smartTarget()) { this.engine.addSmartFilter(kind, structuredClone(settings)); return true; }
     if (!this.isOpen) return this.applyInBackground(kind, settings);
     this.kind = kind;
     Object.assign(this.s, structuredClone(settings));
-    const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
+    const run = (src: ImageData, scale: number, frame?: LibFrame): ImageData => this.run(src, scale, frame);
     if (this.deepFilter(kind, settings)) return true;   // 16 bits (1.53.7)
     const apron = bandApron(kind, this.s);   // a large layer in bands (1.60.9)
     if (apron !== null && this.engine.activeTiled()) { void this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src) => run(src, 1), apron); return true; }   // a giant layer (1.62.7)
@@ -429,6 +496,7 @@ export class FilterPanel extends Dialog {
 
   private commit(): void {
     window.clearTimeout(this.timer);
+    if (this.missingImage(this.kind, this.settingsOf(this.kind))) return;
     this.done = true;
     const kind = this.kind, settings: Record<string, unknown> = { ...this.settingsOf(kind), seed: this.seed }, editing = this.editing;
     if (this.asking) { const done = this.asking; this.asking = null; this.engine.setPreview(null); this.close(); done(settings); return; }

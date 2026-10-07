@@ -46,6 +46,7 @@ export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
 import { averageImage } from './filters-lib/blur';
+import type { LibFrame, LibImage } from './filter-library';
 import { sharpenSample } from './filters-more';
 import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
 import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
@@ -5074,16 +5075,26 @@ export class Engine {
 
   private canGrow(p: Project, l: Layer): boolean { return !p.selection && !l.mask && !!l.raster; }
 
-  private grown(l: Layer, grow: number, run: (src: ImageData, scale: number) => ImageData): { raster: Raster; transform: Transform } {
+  filterFrame(p: Project, t: Transform, w: number, h: number, shift = 0): LibFrame {
+    const m = invert(placement(t, w, h)), snap = (v: number): number => Math.round(v * 1e6) / 1e6;
+    const local = (r: Rect): Rect => {
+      const b = boundsOf([applyMat(m, r.x, r.y), applyMat(m, r.x + r.w, r.y), applyMat(m, r.x + r.w, r.y + r.h), applyMat(m, r.x, r.y + r.h)]);
+      return { x: snap(b.x) + shift, y: snap(b.y) + shift, w: snap(b.w), h: snap(b.h) };
+    };
+    const canvas = local({ x: 0, y: 0, w: p.doc.width, h: p.doc.height });
+    return { area: p.selection ? local(p.selection.rect) : canvas, canvas };
+  }
+
+  private grown(l: Layer, grow: number, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData): { raster: Raster; transform: Transform } {
     const r = l.raster as Raster, g = Math.ceil(grow);
     const big = new Raster(r.width + 2 * g, r.height + 2 * g);
     big.ctx.drawImage(r.canvas, g, g);
-    big.write(run(big.read(), 1));
+    big.write(run(big.read(), 1, this.current ? this.filterFrame(this.current, l.transform, r.width, r.height, g) : undefined));
     const t = l.transform, sx = t.w / r.width, sy = t.h / r.height;
     return { raster: big, transform: { ...t, x: t.x - g * sx, y: t.y - g * sy, w: t.w + 2 * g * sx, h: t.h + 2 * g * sy } };
   }
 
-  previewImageEdit(run: (src: ImageData, scale: number) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void {
+  previewImageEdit(run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void {
     const token = ++this.previewToken;
     const p = this.current;
     const l = p?.activeLayer ?? null;
@@ -5107,7 +5118,7 @@ export class Engine {
       const t = l.transform, gx = (g / scale) * (t.w / r.width), gy = (g / scale) * (t.h / r.height);
       this.setPreview(l.id, onMask ? 'mask' : 'pixels', s, g ? { ...t, x: t.x - gx, y: t.y - gy, w: t.w + 2 * gx, h: t.h + 2 * gy } : undefined);
     };
-    const out = run(src, scale);
+    const out = run(src, scale, this.filterFrame(p, onMask ? l.mask?.placement ?? l.transform : l.transform, w, h, g));
     if (out instanceof Promise) { void out.then((done) => { if (token === this.previewToken) finish(done); }).catch(() => undefined); return; }
     finish(out);
   }
@@ -5302,6 +5313,27 @@ export class Engine {
     this.emit('history', null);
   }
 
+  mapImage(id: ID, side = 256): LibImage | null {
+    const p = this.projects.find((x) => x.id === id);
+    if (!p) return null;
+    const full = (this.composesFloats(p) ? this.composedRendition(p)?.canvas : null) ?? renderDoc(this.work, p.doc);
+    const W = p.doc.width, H = p.doc.height, k = Math.min(1, side / Math.max(W, H)), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
+    const s = createSurface(w, h), c = ctxOf(s);
+    c.fillStyle = '#808080';
+    c.fillRect(0, 0, w, h);
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(full, 0, 0, w, h);
+    const d = c.getImageData(0, 0, w, h).data;
+    let bin = '';
+    for (let i = 0; i < w * h; i += 4096) {
+      const n = Math.min(4096, w * h - i), part = new Array<number>(n * 2);
+      for (let j = 0; j < n; j++) { part[j * 2] = d[(i + j) * 4]; part[j * 2 + 1] = d[(i + j) * 4 + 1]; }
+      bin += String.fromCharCode(...part);
+    }
+    s.width = 0; s.height = 0;
+    return { name: p.name, w0: W, h0: H, w, h, rg: btoa(bin) };
+  }
+
   averageFill(): void {
     if (!this.room(this.layerBytes() * 3, 'Average')) return;
     const al = this.current?.activeLayer;
@@ -5318,7 +5350,7 @@ export class Engine {
     });
   }
 
-  applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0, peak = 2): void {
+  applyImageEdit(name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData, grow = 0, peak = 2): void {
     // Its peak in layer-sizes, as its caller measured it (1.61.1: the filters peak at 2 to 19; two when unmeasured).
     if (!this.room(this.layerBytes() * peak, name)) return;
     const al = this.current?.activeLayer;
@@ -5341,7 +5373,7 @@ export class Engine {
       const p = this.current as Project;
       const l = p.activeLayer as Layer;
       const src = target === 'mask' ? toGray(raster.read()) : raster.read();
-      const out = run(src, 1);
+      const out = run(src, 1, this.filterFrame(p, target === 'mask' ? l.mask?.placement ?? l.transform : l.transform, raster.width, raster.height));
       const cov = this.coverageFor(p, l, target, raster.width, raster.height);
       let result = cov ? this.blendThrough(src, out, cov) : out;
       if (target === 'mask') result = fromGray(result);
@@ -5354,7 +5386,7 @@ export class Engine {
    *  mask), `run` computes on it in the background while the interface stays live, and the result goes through
    *  applyImageEdit as one undo step. If the layer changed meanwhile nothing is applied; if the pixels applyImageEdit
    *  sees ever differ in size from those computed on, `fallback` recomputes on them there. */
-  async applyImageEditAsync(name: string, run: (src: ImageData, scale: number) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number) => ImageData, peak = 2): Promise<boolean> {
+  async applyImageEditAsync(name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number, frame?: LibFrame) => ImageData, peak = 2): Promise<boolean> {
     if (!this.room(this.layerBytes() * peak, name)) return false;   // its caller's measured peak (1.61.1)
     const al = this.current?.activeLayer;
     if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
@@ -5364,11 +5396,13 @@ export class Engine {
     const onMask = p0.maskTarget && !!l0.mask, raster = onMask ? l0.mask?.raster ?? null : l0.raster;
     if (!raster) { this.applyImageEdit(name, fallback, grow); return true; }
     const growing = grow > 0 && !onMask && this.canGrow(p0, l0);
-    const src = growing ? this.grownSource(l0, grow) : onMask ? toGray(raster.read()) : this.sourceForEdit(p0, l0);
+    const whole = growing || onMask ? null : this.sourceForEdit(p0, l0);
+    const src = whole ? whole.img : growing ? this.grownSource(l0, grow) : toGray(raster.read());
+    const frame = whole ? this.filterFrame(p0, whole.t, src.width, src.height) : growing ? this.filterFrame(p0, l0.transform, raster.width, raster.height, Math.ceil(grow)) : this.filterFrame(p0, l0.mask?.placement ?? l0.transform, raster.width, raster.height);
     const doc0 = p0.doc, version = raster.version;
-    const out = await this.task(() => run(src, 1));
+    const out = await this.task(() => run(src, 1, frame));
     if (this.current !== p0 || p0.doc !== doc0 || raster.version !== version) { this.setPreview(null); this.notice(`The layer changed while ${name} ran, so it was not applied.`); return false; }
-    this.applyImageEdit(name, (s, k) => (s.width === out.width && s.height === out.height ? out : fallback(s, k)), grow);
+    this.applyImageEdit(name, (s, k, f) => (s.width === out.width && s.height === out.height ? out : fallback(s, k, f)), grow);
     return true;
   }
 
@@ -5381,16 +5415,16 @@ export class Engine {
 
   /** The pixels an edit of the whole layer works on: the layer grown to cover the canvas where growLayer would grow
    *  it, else as it is. */
-  private sourceForEdit(p: Project, l: Layer): ImageData {
+  private sourceForEdit(p: Project, l: Layer): { img: ImageData; t: Transform } {
     const r = l.raster as Raster, t = l.transform, W = p.doc.width, H = p.doc.height;
-    if (!isAxisAligned(t, r.width, r.height) || (t.x <= 0 && t.y <= 0 && t.x + t.w >= W && t.y + t.h >= H)) return r.read();
+    if (!isAxisAligned(t, r.width, r.height) || (t.x <= 0 && t.y <= 0 && t.x + t.w >= W && t.y + t.h >= H)) return { img: r.read(), t };
     const u = unionRect({ x: t.x, y: t.y, w: t.w, h: t.h }, { x: 0, y: 0, w: W, h: H });
-    if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return r.read();
+    if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return { img: r.read(), t };
     const m = l.mask;
-    if (m?.raster && (m.placement || m.raster.width !== r.width || m.raster.height !== r.height)) return r.read();
+    if (m?.raster && (m.placement || m.raster.width !== r.width || m.raster.height !== r.height)) return { img: r.read(), t };
     const nr = new Raster(u.w, u.h);
     nr.ctx.drawImage(r.canvas, t.x - u.x, t.y - u.y);
-    return nr.read();
+    return { img: nr.read(), t: { ...t, x: u.x, y: u.y, w: u.w, h: u.h } };
   }
 
   private insertAboveActive(p: Project, layer: Layer): void {

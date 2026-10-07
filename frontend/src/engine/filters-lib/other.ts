@@ -1,6 +1,6 @@
 import type { LibFilter, LibValues } from '../filter-library';
 import { gaussianMargin } from '../filters';
-import { clampInt, copyImage, exactGaussian } from './shared';
+import { boxOf, clampInt, clipBox, copyImage, exactGaussian, type Box } from './shared';
 
 const num = (v: LibValues, k: string): number => v[k] as number;
 const str = (v: LibValues, k: string): string => v[k] as string;
@@ -55,17 +55,19 @@ export function minMaxImage(img: ImageData, radius: number, max: boolean, round:
   return out;
 }
 
-/** Offset: the layer's pixels moved by (dx, dy); what the move uncovers is transparent, the nearest edge pixel, or the
- *  pixels that left on the far side (Wrap Around). */
-export function offsetImage(img: ImageData, dx: number, dy: number, undefinedAreas: string): ImageData {
-  const out = copyImage(img), s = img.data, d = out.data, w = img.width, h = img.height, mx = Math.round(dx), my = Math.round(dy);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    let sx = x - mx, sy = y - my;
+/** Offset: the frame's pixels moved by (dx, dy) within it; what the move uncovers is transparent, the nearest edge
+ *  pixel, or the pixels that left on the far side (Wrap Around). Pixels outside the frame stay. */
+export function offsetImage(img: ImageData, dx: number, dy: number, undefinedAreas: string, area: Box = { x0: 0, y0: 0, x1: img.width, y1: img.height }): ImageData {
+  const out = copyImage(img), b = clipBox(area, img.width, img.height);
+  if (!b) return out;
+  const s = img.data, d = out.data, w = img.width, fw = b.x1 - b.x0, fh = b.y1 - b.y0, mx = Math.round(dx), my = Math.round(dy);
+  for (let y = b.y0; y < b.y1; y++) for (let x = b.x0; x < b.x1; x++) {
+    let sx = x - b.x0 - mx, sy = y - b.y0 - my;
     const o = (y * w + x) * 4;
-    if (undefinedAreas === 'wrap') { sx = ((sx % w) + w) % w; sy = ((sy % h) + h) % h; }
-    else if (undefinedAreas === 'repeat') { sx = clampInt(sx, 0, w - 1); sy = clampInt(sy, 0, h - 1); }
-    else if (sx < 0 || sy < 0 || sx >= w || sy >= h) { d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 0; continue; }
-    const q = (sy * w + sx) * 4;
+    if (undefinedAreas === 'wrap') { sx = ((sx % fw) + fw) % fw; sy = ((sy % fh) + fh) % fh; }
+    else if (undefinedAreas === 'repeat') { sx = clampInt(sx, 0, fw - 1); sy = clampInt(sy, 0, fh - 1); }
+    else if (sx < 0 || sy < 0 || sx >= fw || sy >= fh) { d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 0; continue; }
+    const q = ((sy + b.y0) * w + sx + b.x0) * 4;
     d[o] = s[q]; d[o + 1] = s[q + 1]; d[o + 2] = s[q + 2]; d[o + 3] = s[q + 3];
   }
   return out;
@@ -178,6 +180,6 @@ export const OTHER_FILTERS: LibFilter[] = [
       { key: 'undefinedAreas', label: 'Undefined Areas', kind: 'select', def: 'transparent', options: [['transparent', 'Set to Transparent'], ['repeat', 'Repeat Edge Pixels'], ['wrap', 'Wrap Around']] },
     ],
     reach: null,
-    run: (src, v, ctx) => offsetImage(src, num(v, 'horizontal') * ctx.scale, num(v, 'vertical') * ctx.scale, str(v, 'undefinedAreas')),
+    run: (src, v, ctx) => offsetImage(src, num(v, 'horizontal') * ctx.scale, num(v, 'vertical') * ctx.scale, str(v, 'undefinedAreas'), boxOf(ctx.area)),
   },
 ];

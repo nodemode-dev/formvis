@@ -3,6 +3,9 @@ import { SHARPEN_FILTERS } from './filters-lib/sharpen';
 import { NOISE_FILTERS } from './filters-lib/noise';
 import { OTHER_FILTERS } from './filters-lib/other';
 import { VIDEO_FILTERS } from './filters-lib/video';
+import { DISTORT_FILTERS } from './filters-lib/distort';
+import { PIXELATE_FILTERS } from './filters-lib/pixelate';
+import type { Rect } from './types';
 
 export const LIB_IDS = [
   'blur', 'blurMore', 'boxBlur', 'shapeBlur', 'smartBlur',
@@ -10,20 +13,28 @@ export const LIB_IDS = [
   'despeckle', 'dustAndScratches', 'median', 'reduceNoise',
   'custom', 'hsbHsl', 'highPass', 'maximum', 'minimum', 'offset',
   'deInterlace', 'ntscColors',
+  'displace', 'pinch', 'polarCoordinates', 'ripple', 'shear', 'spherize', 'twirl', 'wave', 'zigZag',
+  'colorHalftone', 'crystallize', 'facet', 'fragment', 'mezzotint', 'mosaic', 'pointillize',
 ] as const;
 
 export type LibKind = (typeof LIB_IDS)[number];
-export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video';
-export type LibValue = number | string | boolean | number[];
+export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video' | 'Distort' | 'Pixelate';
+export interface LibImage { readonly name: string; readonly w0: number; readonly h0: number; readonly w: number; readonly h: number; readonly rg: string }
+export type LibValue = number | string | boolean | number[] | LibImage | null;
 export type LibValues = Record<string, LibValue>;
+export type LibColor = readonly [number, number, number];
+export interface LibFrame { readonly area: Rect; readonly canvas: Rect }
+export interface LibColors { readonly fg: LibColor; readonly bg: LibColor }
 
 export type LibParam =
   | { readonly key: string; readonly label: string; readonly kind: 'range'; readonly min: number; readonly max: number; readonly step: number; readonly def: number; readonly limit?: number }
   | { readonly key: string; readonly label: string; readonly kind: 'select'; readonly options: ReadonlyArray<readonly [string, string]>; readonly def: string }
   | { readonly key: string; readonly label: string; readonly kind: 'check'; readonly def: boolean }
-  | { readonly key: string; readonly label: string; readonly kind: 'matrix'; readonly size: number; readonly min: number; readonly max: number; readonly def: readonly number[] };
+  | { readonly key: string; readonly label: string; readonly kind: 'matrix'; readonly size: number; readonly min: number; readonly max: number; readonly def: readonly number[] }
+  | { readonly key: string; readonly label: string; readonly kind: 'seed'; readonly def: number }
+  | { readonly key: string; readonly label: string; readonly kind: 'image'; readonly def: null };
 
-export interface LibContext { readonly scale: number; readonly seed: number }
+export interface LibContext { readonly scale: number; readonly seed: number; readonly area: Rect; readonly canvas: Rect; readonly fg: LibColor; readonly bg: LibColor }
 
 export interface LibFilter {
   readonly id: LibKind;
@@ -36,7 +47,7 @@ export interface LibFilter {
   readonly run: (src: ImageData, v: LibValues, ctx: LibContext) => ImageData;
 }
 
-export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS];
+export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS];
 
 const BY_ID = new Map<string, LibFilter>(LIBRARY.map((f) => [f.id, f]));
 
@@ -62,6 +73,27 @@ export function libAllDefaults(): Record<LibKind, LibValues> {
   return out;
 }
 
+function saneImage(v: unknown): LibImage | null {
+  if (!v || typeof v !== 'object') return null;
+  const m = v as Record<string, unknown>, int = (x: unknown, hi: number): number => (typeof x === 'number' && Number.isInteger(x) && x >= 1 && x <= hi ? x : 0);
+  const w0 = int(m.w0, 65535), h0 = int(m.h0, 65535), w = int(m.w, 4096), h = int(m.h, 4096);
+  if (!w0 || !h0 || !w || !h || typeof m.rg !== 'string' || m.rg.length !== Math.ceil((w * h * 2) / 3) * 4) return null;
+  return { name: typeof m.name === 'string' ? m.name.slice(0, 200) : '', w0, h0, w, h, rg: m.rg };
+}
+
+const BLACK: LibColor = [0, 0, 0], WHITE: LibColor = [255, 255, 255];
+
+function saneColor(v: unknown, d: LibColor): LibColor {
+  if (!Array.isArray(v) || v.length !== 3 || !v.every((x) => typeof x === 'number' && Number.isFinite(x))) return d;
+  const c = (x: number): number => Math.min(255, Math.max(0, Math.round(x)));
+  return [c(v[0]), c(v[1]), c(v[2])];
+}
+
+export function saneColors(v: unknown): LibColors {
+  const o = v && typeof v === 'object' ? (v as Record<string, unknown>) : {};
+  return { fg: saneColor(o.fg, BLACK), bg: saneColor(o.bg, WHITE) };
+}
+
 function sane(p: LibParam, v: unknown): LibValue {
   if (p.kind === 'range') {
     const n = typeof v === 'number' && Number.isFinite(v) ? v : p.def;
@@ -69,6 +101,8 @@ function sane(p: LibParam, v: unknown): LibValue {
   }
   if (p.kind === 'select') return typeof v === 'string' && p.options.some(([k]) => k === v) ? v : p.def;
   if (p.kind === 'check') return typeof v === 'boolean' ? v : p.def;
+  if (p.kind === 'seed') return typeof v === 'number' && Number.isFinite(v) ? Math.abs(Math.trunc(v)) % 2147483648 : p.def;
+  if (p.kind === 'image') return saneImage(v);
   const arr = Array.isArray(v) ? v : p.def;
   return Array.from({ length: p.size * p.size }, (_, i) => {
     const n = Number(arr[i] ?? 0);
@@ -83,9 +117,12 @@ export function libValues(kind: LibKind, stored: unknown): LibValues {
   return out;
 }
 
-export function runLib(kind: LibKind, stored: unknown, seed: number, src: ImageData, scale: number): ImageData {
-  return libFilter(kind).run(src, libValues(kind, stored), { scale, seed });
+export function runLib(kind: LibKind, stored: unknown, seed: number, src: ImageData, scale: number, frame?: LibFrame | null, colors?: unknown): ImageData {
+  const whole = { x: 0, y: 0, w: src.width, h: src.height }, c = saneColors(colors);
+  return libFilter(kind).run(src, libValues(kind, stored), { scale, seed, area: frame?.area ?? whole, canvas: frame?.canvas ?? whole, fg: c.fg, bg: c.bg });
 }
+
+export const libImageParams = (kind: LibKind): string[] => libFilter(kind).params.filter((p) => p.kind === 'image').map((p) => p.key);
 
 const reachOf = (kind: LibKind, stored: unknown): number | null => libFilter(kind).reach?.(libValues(kind, stored), 1) ?? null;
 

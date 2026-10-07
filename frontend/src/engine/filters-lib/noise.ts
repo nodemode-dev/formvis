@@ -53,9 +53,9 @@ function rings(radius: number): Array<[number, number, number]> {
 
 /** Reduce Noise: brightness smoothed where neighbours are alike (a sampled bilateral filter whose range narrows as
  *  Preserve Details rises, its reach growing with Strength), colour noise blurred in the chroma planes, details
- *  sharpened back by an unsharp mask on brightness, and with Remove JPEG Artifact the 8 by 8 block seams of the image's
- *  grid softened. */
-export function reduceNoiseImage(img: ImageData, o: DenoiseSettings, scale: number): ImageData {
+ *  sharpened back by an unsharp mask on brightness, and with Remove JPEG Artifact the 8 by 8 block seams of the canvas's
+ *  grid (offset `gx`, `gy`) softened. */
+export function reduceNoiseImage(img: ImageData, o: DenoiseSettings, scale: number, gx = 0, gy = 0): ImageData {
   const { width: w, height: h } = img, s = img.data, out = copyImage(img), d = out.data, n = w * h;
   const Y = new Float32Array(n), Cb = new Float32Array(n), Cr = new Float32Array(n);
   for (let i = 0; i < n; i++) {
@@ -83,7 +83,7 @@ export function reduceNoiseImage(img: ImageData, o: DenoiseSettings, scale: numb
   const cs = (o.color / 100) * 4 * scale, cb = gaussPlane(Cb, w, h, cs), cr = gaussPlane(Cr, w, h, cs);
   if (o.jpeg) {
     for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const bx = x % 8, by = y % 8;
+      const bx = (((x - gx) % 8) + 8) % 8, by = (((y - gy) % 8) + 8) % 8;
       if (bx !== 0 && bx !== 7 && by !== 0 && by !== 7) continue;
       const i = y * w + x, l = lum[y * w + clampInt(x - 1, 0, w - 1)], rr = lum[y * w + clampInt(x + 1, 0, w - 1)];
       const u = lum[clampInt(y - 1, 0, h - 1) * w + x], dn = lum[clampInt(y + 1, 0, h - 1) * w + x];
@@ -128,6 +128,6 @@ export const NOISE_FILTERS: LibFilter[] = [
       { key: 'jpeg', label: 'Remove JPEG Artifact', kind: 'check', def: false },
     ],
     reach: (v) => (v.jpeg === true ? null : 40),
-    run: (src, v, ctx) => reduceNoiseImage(src, { strength: num(v, 'strength'), preserve: num(v, 'preserve'), color: num(v, 'color'), sharpen: num(v, 'sharpen'), jpeg: v.jpeg === true }, ctx.scale),
+    run: (src, v, ctx) => reduceNoiseImage(src, { strength: num(v, 'strength'), preserve: num(v, 'preserve'), color: num(v, 'color'), sharpen: num(v, 'sharpen'), jpeg: v.jpeg === true }, ctx.scale, Math.round(ctx.canvas.x), Math.round(ctx.canvas.y)),
   },
 ];
