@@ -1,5 +1,6 @@
 import type { Raster } from './surface';
 import type { TiledRaster } from './tiled';
+import type { SelectionMask } from './selection';
 import { isContour, type ContourId, type GlobalLight } from './style-extras';
 
 export type ID = string;
@@ -123,7 +124,9 @@ export interface DocProfile { name: string; icc: string }
 export interface ChannelPixels { mode: 'rgb' | 'cmyk' | 'lab'; n: 3 | 4; width: number; height: number; data: Float32Array }
 /** The RGB kind of ChannelPixels, as 16- and 32-bit documents hold it. */
 export type DeepPixels = ChannelPixels;
-export interface Doc { depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
+export interface Doc { depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; alphas?: readonly AlphaChannel[] }
+/** An alpha channel (1.65.1): a selection saved with the document, `mask` null when nothing in it is selected. */
+export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null }
 
 export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'mixer' | 'artHistory' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'markup' | 'count' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'idle';
 

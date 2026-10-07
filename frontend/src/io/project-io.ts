@@ -1,9 +1,10 @@
 import { deepFromU16, deepToU16 } from '../engine/deep';
 import type { ChannelPixels, DeepPixels } from '../engine/types';
 import {
-  Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, paragraphStylesFrom, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns,
+  Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, paragraphStylesFrom, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
 } from '../engine';
 import { artboardFromData } from '../engine/types';
+import { alphaGrey, nextAlphaName } from '../engine/alphas';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS } from '../engine/adjust-params';
 import { api, type FilePart } from './api';
 import { TiledRaster, type TileStore } from '../engine/tiled';
@@ -172,6 +173,14 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   if (carried.length) manifest.patterns = carried;
   const frames = timelineData(timeline);
   if (frames) manifest.timeline = frames;
+  const alphas: Json[] = [];
+  for (const [i, a] of (doc.alphas ?? []).entries()) {
+    const file = `alpha-${i + 1}.png`, s = createSurface(doc.width, doc.height);
+    ctxOf(s).putImageData(alphaGrey(a.mask, doc.width, doc.height), 0, 0);
+    files.push({ name: file, blob: await toBlob(s) });
+    alphas.push({ id: a.id, name: a.name, file });
+  }
+  if (alphas.length) manifest.alphas = alphas;
   return { manifest, files };
 }
 
@@ -267,7 +276,24 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   if (mode === 'cmyk') records.forEach((r, i) => { const n = str(r.inkFile), u = n ? inks.get(n) : undefined, w = num(r.inkWidth, 0), h = num(r.inkHeight, 0); if (u && layers[i] && u.length === w * h * 5) (layers[i] as { channels?: ChannelPixels }).channels = { mode: 'cmyk', n: 4, width: w, height: h, data: u }; });
   records.forEach((r, i) => { const t = tiledById.get(str(r.id) ?? ''); if (t && layers[i]) layers[i] = { ...layers[i], raster: null, tiled: t }; });   // giant layers (1.62.8)
   if (mode === 'lab') records.forEach((r, i) => { const n = str(r.inkFile), u = n ? inks.get(n) : undefined, w = num(r.inkWidth, 0), h = num(r.inkHeight, 0); if (u && layers[i] && u.length === w * h * 4) (layers[i] as { channels?: ChannelPixels }).channels = { mode: 'lab', n: 3, width: w, height: h, data: u }; });
-  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
+  const alphas: AlphaChannel[] = [];
+  for (const raw of (Array.isArray(manifest.alphas) ? manifest.alphas : []).slice(0, 100)) {
+    const o = obj(raw), file = str(o.file);
+    if (!file) continue;
+    try {
+      const bmp = await createImageBitmap(await fetchImage(file));
+      if (bmp.width === width && bmp.height === height) {
+        const s = createSurface(width, height), c = ctxOf(s);
+        c.drawImage(bmp, 0, 0);
+        const d = c.getImageData(0, 0, width, height).data, m = new Uint8Array(width * height);
+        for (let i = 0; i < m.length; i++) m[i] = Math.round((d[i * 4] * d[i * 4 + 3]) / 255);
+        const id = str(o.id), name = str(o.name);
+        alphas.push({ id: id && !alphas.some((a) => a.id === id) ? id.slice(0, 120) : uid(), name: name ? name.slice(0, 200) : nextAlphaName(alphas), mask: SelectionMask.cropped(0, 0, width, height, m) });
+      }
+      bmp.close();
+    } catch { /* a channel that cannot be read is left out */ }
+  }
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}), ...(alphas.length ? { alphas } : {}) }, activeId: str(manifest.activeLayerID) };
 }
 
 /** A document's colour profile from a manifest (1.53.5): a name and base64 ICC bytes, or nothing (sRGB). */

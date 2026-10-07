@@ -27,7 +27,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { antialiasMask, wandMask } from './kernels';
 import { Project } from './project';
-import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel } from './types';
 import { allPatterns, patternById } from './patterns';
 
 export * from './types';
@@ -68,6 +68,7 @@ import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
 import { alphaToMask, defringe, removeMatte } from './matting';
+import { alphasMoved, alphasRedrawn, nextAlphaName } from './alphas';
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
@@ -3472,7 +3473,7 @@ export class Engine {
         mask: l.mask?.placement ? { ...l.mask, placement: turn(l.mask.placement) } : l.mask,
         ...(l.artboard ? { artboard: { ...l.artboard, ...rect(l.artboard) } } : {}),
       }));
-      p.doc = { ...p.doc, width: quarters === 2 ? W : H, height: quarters === 2 ? H : W, layers };
+      p.doc = { ...p.doc, width: quarters === 2 ? W : H, height: quarters === 2 ? H : W, layers, ...alphasMoved(p.doc, (m) => m.rotated(quarters, W, H)) };
       if (p.selection) p.selection = p.selection.rotated(quarters, W, H);
       return true;
     });
@@ -3488,6 +3489,7 @@ export class Engine {
         ...(l.artboard ? { artboard: horizontal ? { ...l.artboard, x: W - l.artboard.x - l.artboard.w } : { ...l.artboard, y: H - l.artboard.y - l.artboard.h } } : {}),
       })));
       if (p.selection) p.selection = p.selection.flipped(horizontal, W, H);
+      if (p.doc.alphas?.length) p.doc = { ...p.doc, ...alphasMoved(p.doc, (m) => m.flipped(horizontal, W, H)) };
     });
   }
 
@@ -4061,6 +4063,86 @@ export class Engine {
   /** Select > Reselect: the selection the last Deselect dropped, back as one step. */
   get canReselect(): boolean { const p = this.current; return !!p && !p.selection && this.lastSelections.has(p); }
   reselect(): void { const p = this.current, s = p ? this.lastSelections.get(p) : undefined; if (p && s && !p.selection) this.applySelection(s, 'replace', 'Reselect'); }
+
+  /** The open documents a selection can be saved to or loaded from: this one first, then the others of its size. */
+  alphaDocuments(): Project[] {
+    const p = this.current;
+    return p ? [p, ...this.projects.filter((q) => q !== p && q.doc.width === p.doc.width && q.doc.height === p.doc.height)] : [];
+  }
+
+  /** Select > Save Selection (1.65.1): the selection as a new alpha channel of `doc`, or into `channel` by `op`; one step. */
+  saveSelection(opts: { doc?: ID; channel?: ID | null; name?: string; op?: SelectionMode } = {}): ID | null {
+    const p = this.current;
+    if (!p) return null;
+    this.settle();
+    const sel = p.selection, q = opts.doc ? this.alphaDocuments().find((d) => d.id === opts.doc) : p;
+    if (!sel || !q) return null;
+    if (q.doc.width > CANVAS_SIDE || q.doc.height > CANVAS_SIDE || q.doc.width * q.doc.height > CANVAS_PIXELS) { this.notice('Alpha channels are kept only in documents within one canvas for now.'); return null; }
+    const list = q.doc.alphas ?? [], old = opts.channel ? list.find((a) => a.id === opts.channel) : undefined, name = (opts.name ?? '').trim().slice(0, 200), op = opts.op ?? 'replace';
+    if (opts.channel && !old) return null;
+    const id = old?.id ?? uid();
+    const ok = this.editOn(q, 'Save Selection', () => {
+      if (!old) { q.doc = { ...q.doc, alphas: [...list, { id, name: name || nextAlphaName(list), mask: sel }] }; return true; }
+      const mask = old.mask ? old.mask.combine(sel, op) : op === 'replace' || op === 'add' ? sel : null;
+      q.doc = { ...q.doc, alphas: list.map((a) => (a === old ? { ...a, name: name || a.name, mask } : a)) };
+      return true;
+    });
+    return ok ? id : null;
+  }
+
+  /** Select > Load Selection (1.65.1): an alpha channel, or the active layer's transparency or mask, by `mode`; one step. */
+  loadSelection(source: { doc?: ID; channel: ID | 'transparency' | 'mask' }, invert = false, mode: SelectionMode = 'replace'): void {
+    const p = this.current, q = source.doc ? this.alphaDocuments().find((d) => d.id === source.doc) : p;
+    if (!p || !q) return;
+    let m: SelectionMask | null;
+    if (source.channel === 'transparency' || source.channel === 'mask') {
+      const l = q.activeLayer;
+      if (!l) return;
+      m = this.coverage(q, l, source.channel === 'mask');
+    } else {
+      const a = q.doc.alphas?.find((x) => x.id === source.channel);
+      if (!a) return;
+      m = a.mask;
+    }
+    if (invert) m = m ? m.inverted(p.doc.width, p.doc.height) : SelectionMask.all(p.doc.width, p.doc.height);
+    if (!m && (mode === 'replace' || mode === 'add')) this.notice('That channel selects nothing.');
+    this.applySelection(m, mode, 'Load Selection');
+  }
+
+  /** Layer `l`'s opacity, or with `mask` its mask's white, over the document as a selection. */
+  private coverage(p: Project, l: Layer, mask: boolean): SelectionMask | null {
+    const W = p.doc.width, H = p.doc.height, r = mask ? l.mask?.raster ?? null : l.raster, t = mask ? l.mask?.placement ?? l.transform : l.transform;
+    if (mask ? !!l.mask && !r : !r && !!l.adjustment) return SelectionMask.all(W, H);
+    const b = r ? intersectRect(integral(transformBounds(t)), { x: 0, y: 0, w: W, h: H }) : null;
+    if (!r || !b) return null;
+    const c = ctxOf(createSurface(b.w, b.h));
+    setMat(c, mul(translation(-b.x, -b.y), placement(t, r.width, r.height)));
+    c.drawImage(r.canvas, 0, 0);
+    return SelectionMask.fromAlpha(b.x, b.y, b.w, b.h, c.getImageData(0, 0, b.w, b.h).data);
+  }
+
+  /** The Channels panel's delete and rename of alpha channel `id`, each one step. */
+  deleteAlpha(id: ID): void {
+    this.edit('Delete Channel', (p) => { const list = p.doc.alphas ?? []; if (!list.some((a) => a.id === id)) return false; p.doc = { ...p.doc, alphas: list.filter((a) => a.id !== id) }; return true; });
+  }
+  renameAlpha(id: ID, name: string): void {
+    const n = name.trim().slice(0, 200);
+    if (n) this.edit('Rename Channel', (p) => { const list = p.doc.alphas ?? [], a = list.find((x) => x.id === id); if (!a || a.name === n) return false; p.doc = { ...p.doc, alphas: list.map((x) => (x === a ? { ...a, name: n } : x)) }; return true; });
+  }
+
+  /** The alpha channels the Channels panel shows over the image in red, per document; the view only. */
+  private readonly alphaViews = new WeakMap<Project, Set<ID>>();
+  shownAlphas(p: Project): AlphaChannel[] { const v = this.alphaViews.get(p); return v?.size ? (p.doc.alphas ?? []).filter((a) => v.has(a.id)) : []; }
+  /** `id` shown or hidden over the image; null with `on` false hides them all. */
+  showAlpha(id: ID | null, on: boolean): void {
+    const p = this.current;
+    if (!p) return;
+    const v = this.alphaViews.get(p) ?? new Set<ID>();
+    if (id === null ? !v.size : v.has(id) === on) return;
+    if (id === null) v.clear(); else if (on) v.add(id); else v.delete(id);
+    this.alphaViews.set(p, v);
+    this.emit('overlay', null);
+  }
 
   /** Select > Grow and Similar: pixels within the Magic Wand's tolerance of the range of each channel and alpha among
    *  the selected pixels, joined to the selection (Grow, four-connected) or anywhere (Similar), sampled as the Magic
@@ -6021,7 +6103,7 @@ export class Engine {
         r.ctx.clearRect(dx, dy, oldW, oldH);
         layers = [newLayer('Canvas Extension', { width, height }, { raster: r }), ...layers];
       }
-      p.doc = { ...p.doc, width, height, layers };
+      p.doc = { ...p.doc, width, height, layers, ...alphasMoved(p.doc, (m) => m.translated(dx, dy, width, height)) };
       if (p.selection) p.selection = p.selection.translated(dx, dy, width, height);
       return true;
     });
@@ -6097,6 +6179,7 @@ export class Engine {
           const next = { ...t, x: c.x + lx * cs - ly * sn - t.w / 2, y: c.y + lx * sn + ly * cs - t.h / 2, rotation: t.rotation + turn };
           p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
         }
+        if (p.doc.alphas?.length) p.doc = { ...p.doc, ...alphasRedrawn(p.doc, p.doc.width, p.doc.height, (g, m) => { g.translate(c.x, c.y); g.rotate(a); g.translate(-c.x, -c.y); g.drawImage(m.surface(), m.x, m.y); }) };
       }
       this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
       if (contentAware) this.fillOpenedEdges(p);
@@ -6173,7 +6256,10 @@ export class Engine {
       moved.set(l.id, { raster: w.raster, transform: w.t, mask, shape: null, vector: null, text: null, smart: null });
     }
     return this.edit('Perspective Crop', (p) => {
-      p.doc = { ...p.doc, width: W, height: H, layers: p.doc.layers.map((l) => (moved.has(l.id) ? { ...l, ...moved.get(l.id) } : l)) };
+      p.doc = { ...p.doc, width: W, height: H, layers: p.doc.layers.map((l) => (moved.has(l.id) ? { ...l, ...moved.get(l.id) } : l)), ...alphasRedrawn(p.doc, W, H, (g, m) => {
+        const t = { ...docTransform(m.w, m.h), x: m.x, y: m.y }, w = warpRaster(Raster.from(m.surface(), m.w, m.h), t, cornersOf(t).map(toOut), 1, true);
+        if (w) { setMat(g, placement(w.t, w.raster.width, w.raster.height)); g.drawImage(w.raster.canvas, 0, 0); }
+      }) };
       p.selection = null;
       return true;
     });
@@ -6213,7 +6299,7 @@ export class Engine {
         if (l.channels && raster && !shape) { const ch = resampleDeep(l.channels, raster.width, raster.height); return { ...l, channels: ch, raster: ch.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(ch, p.cmykLut) : rasterFromDeep(ch, p.doc.depth === 32), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }
         return { ...l, raster, mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) };
       });
-      p.doc = { ...p.doc, width, height, resolution, layers };
+      p.doc = { ...p.doc, width, height, resolution, layers, ...alphasRedrawn(p.doc, width, height, (g, m) => { g.imageSmoothingEnabled = sampling !== 'nearest'; g.drawImage(m.surface(), m.x * sx, m.y * sy, m.w * sx, m.h * sy); }) };
       p.selection = null;
       return true;
     });

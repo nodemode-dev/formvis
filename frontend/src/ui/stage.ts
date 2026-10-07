@@ -1,5 +1,5 @@
 import { applyLut } from '../engine/colour-lut';
-import { createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type Engine, type Pt, type Rect, type Surface } from '../engine';
+import { createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
 import type { Project } from '../engine/project';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
 import { isMac, q, setHidden } from './dom';
@@ -387,6 +387,22 @@ export class Stage {
     return c;
   }
 
+  private readonly alphaTints = new WeakMap<AlphaChannel, HTMLCanvasElement>();
+  /** An alpha channel shown from the Channels panel: red at half strength where it selects nothing, as Quick Mask's tint. */
+  private alphaTint(p: Project, a: AlphaChannel): HTMLCanvasElement {
+    const W = p.doc.width, H = p.doc.height, hit = this.alphaTints.get(a);
+    if (hit && hit.width === W && hit.height === H) return hit;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const t = c.getContext('2d') as CanvasRenderingContext2D;
+    t.fillStyle = 'rgba(255, 0, 0, 0.5)';
+    t.fillRect(0, 0, W, H);
+    t.globalCompositeOperation = 'destination-out';
+    if (a.mask) t.drawImage(a.mask.surface() as CanvasImageSource, a.mask.x, a.mask.y);
+    this.alphaTints.set(a, c);
+    return c;
+  }
+
   private renderOverlay(): void {
     this.wantOverlay = false;
     const g = this.octx;
@@ -427,6 +443,10 @@ export class Stage {
       if (r.shape === 'ellipse') g.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, (b.x - a.x) / 2, (b.y - a.y) / 2, 0, 0, Math.PI * 2); else g.rect(a.x + 0.5, a.y + 0.5, b.x - a.x, b.y - a.y);
       g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.moveTo(b.x, a.y); g.lineTo(a.x, b.y);
       g.stroke(); g.restore();
+    }
+    for (const a of this.engine.shownAlphas(p)) {
+      const d = this.dpr;
+      g.setTransform(v.zoom * d, 0, 0, v.zoom * d, v.panX * d, v.panY * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(this.alphaTint(p, a), 0, 0); g.setTransform(1, 0, 0, 1, 0, 0);
     }
     if (this.engine.quickMask || this.engine.quickMaskLive) {
       // Quick Mask, or a Selection Brush stroke in progress: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.

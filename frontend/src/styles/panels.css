@@ -346,11 +346,17 @@
 .cv-channels[hidden] { display: none; }
 .cv-ch-rows { display: flex; flex-direction: column; gap: 4px; }
 .cv-ch-row { display: flex; align-items: center; gap: 10px; height: 44px; padding: 0 10px 0 6px; border: 1px solid var(--line-1); border-radius: 8px; background: var(--surface-2); color: var(--text-primary); font-size: 13px; cursor: pointer; }
+.cv-ch-row[hidden] { display: none; }
 .cv-ch-row.is-on { border-color: var(--accent-line); background: linear-gradient(90deg, var(--accent-soft), var(--accent-glow)); }
 .cv-ch-eye { display: inline-grid; place-items: center; width: 26px; height: 26px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); cursor: pointer; }
 .cv-ch-eye.is-off { opacity: 0.25; }
 .cv-ch-thumb { width: 44px; height: 30px; border-radius: 4px; background: var(--surface-raised); }
 .cv-ch-note { margin: 10px 2px 0; color: var(--text-muted); font-size: 12px; }
+.cv-ch-alphas { margin-top: 4px; }
+.cv-ch-alphas:empty { display: none; }
+.cv-ch-alpha .cv-ch-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-ch-rename { width: 100%; height: 26px; }
+.cv-ch-foot { display: flex; justify-content: flex-end; gap: var(--space-1); margin-top: auto; padding-top: 8px; }
 .cv-stage.has-channel-view .cv-scene, .cv-stage.has-channel-view .cv-scene-gpu { filter: url(#cv-channel-view); }
 /* The panel menu button (the target's •••), before the minimise button. */
 .cv-group-more { display: inline-grid; place-items: center; width: 26px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-muted); cursor: pointer; }

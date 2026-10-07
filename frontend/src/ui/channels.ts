@@ -1,7 +1,7 @@
-import { SelectionMask, type Engine } from '../engine';
+import { SelectionMask, type AlphaChannel, type Engine, type SelectionMode } from '../engine';
 import { composeChannels } from '../engine/channels';
 import { composeFloat } from '../engine/compose-float';
-import { el, setHidden, setText } from './dom';
+import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
 
 /** Channels, as Photoshop's and the target's tab (Phase 21, the owner's walkthrough): RGB, Red, Green and Blue, each
@@ -19,9 +19,14 @@ const LAB_CH: Record<'ll' | 'la' | 'lb', 0 | 1 | 2> = { ll: 0, la: 1, lb: 2 };
 const isLabRow = (id: Ch): id is 'lab' | 'll' | 'la' | 'lb' => id === 'lab' || id in LAB_CH;
 const INK: Record<'c' | 'm' | 'y' | 'k', 0 | 1 | 2 | 3> = { c: 0, m: 1, y: 2, k: 3 };
 const isInk = (id: Ch): id is 'c' | 'm' | 'y' | 'k' => id in INK;
+/** A Cmd- or Ctrl-click's selection mode, as Photoshop's: Shift adds, Alt subtracts, both intersect. */
+const clickMode = (e: MouseEvent): SelectionMode => (e.shiftKey && e.altKey ? 'intersect' : e.shiftKey ? 'add' : e.altKey ? 'subtract' : 'replace');
 
 export class ChannelsPanel {
-  readonly root = el('<section class="cv-channels" aria-label="Channels" hidden><div class="cv-ch-rows"></div><p class="cv-ch-note"></p></section>');
+  readonly root = el(`<section class="cv-channels" aria-label="Channels" hidden><div class="cv-ch-rows"></div><div class="cv-ch-rows cv-ch-alphas" aria-label="Alpha channels"></div><p class="cv-ch-note"></p>` +
+    `<div class="cv-ch-foot"><button class="cv-icon-btn" type="button" data-cmd="load-selection" aria-label="Load Selection">${icon('marquee', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="save-selection-channel" aria-label="Save Selection as Channel">${icon('mask', 16)}</button></div></section>`);
+  private readonly alphaRows = this.root.querySelector('.cv-ch-alphas') as HTMLElement;
+  private readonly drawn = new WeakMap<HTMLElement, { mask: SelectionMask | null; w: number; h: number }>();
   private readonly shown = { r: true, g: true, b: true };
   private solo: 'r' | 'g' | 'b' | null = null;
   private inkSolo: 'c' | 'm' | 'y' | 'k' | null = null;
@@ -45,8 +50,9 @@ export class ChannelsPanel {
         this.apply();
       });
       row.addEventListener('click', (e) => {
-        if (isLabRow(r.id)) { this.labSolo = r.id === 'lab' ? null : r.id; this.engine.setChannelView(this.labSolo ? LAB_CH[this.labSolo] : null); this.apply(); return; }
-        if (e.metaKey || e.ctrlKey) { this.loadSelection(r.id); return; }
+        if (isLabRow(r.id)) { if (r.id === 'lab') this.engine.showAlpha(null, false); this.labSolo = r.id === 'lab' ? null : r.id; this.engine.setChannelView(this.labSolo ? LAB_CH[this.labSolo] : null); this.apply(); return; }
+        if (e.metaKey || e.ctrlKey) { this.loadSelection(r.id, clickMode(e)); return; }
+        if (r.id === 'rgb' || r.id === 'cmyk') this.engine.showAlpha(null, false);
         if (r.id === 'cmyk') this.inkSolo = null;
         else if (isInk(r.id)) this.inkSolo = r.id;
         else if (r.id === 'rgb') { this.solo = null; this.shown.r = this.shown.g = this.shown.b = true; } else { this.solo = r.id; }
@@ -124,7 +130,7 @@ export class ChannelsPanel {
     document.querySelector('#cv-channel-view feColorMatrix')?.setAttribute('values', m.join(' '));
     const plain = cmyk || lab || (!this.solo && this.shown.r && this.shown.g && this.shown.b);
     this.stage.classList.toggle('has-channel-view', !plain);
-    for (const row of this.root.querySelectorAll<HTMLElement>('.cv-ch-row')) {
+    for (const row of this.root.querySelectorAll<HTMLElement>('.cv-ch-row[data-ch]')) {
       const id = row.dataset.ch as Ch, inkRow = id === 'cmyk' || isInk(id), labRow = isLabRow(id);
       setHidden(row, cmyk ? !inkRow : lab ? !labRow : inkRow || labRow);
       if (labRow) { row.classList.toggle('is-on', this.labSolo ? id === this.labSolo : true); row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', !!this.labSolo && id !== this.labSolo); continue; }
@@ -136,10 +142,75 @@ export class ChannelsPanel {
     const native = !!this.stage.querySelector('.cv-scene-native:not([hidden])');
     setText(this.root.querySelector('.cv-ch-note') as HTMLElement, lab ? (this.labSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.labSolo)?.label} alone, as grey (a and b mid-grey where neutral); click Lab to see the colours again.` : 'Lab: Lightness, a and b as greys (a and b mid-grey where neutral). Click one to see it alone on the canvas.') : cmyk ? (this.inkSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.inkSolo)?.label} alone (paper white, full ink black); the Brush, Pencil and Eraser paint it alone.` : 'Click an ink to paint it alone; ⌘- or Ctrl-click loads its light areas as a selection.')
       : native && !plain ? 'The Native GPU renderer draws outside the page: switch the renderer in Preferences to view single channels.' : '⌘- or Ctrl-click a channel to load it as a selection.');
+    this.syncAlphas();
+  }
+
+  /** The document's alpha channels (1.65.1), one row each, patched in place. */
+  private syncAlphas(): void {
+    const p = this.engine.current, shown = new Set(p ? this.engine.shownAlphas(p).map((a) => a.id) : []);
+    patchList<AlphaChannel>(this.alphaRows, p ? [...(p.doc.alphas ?? [])] : [], {
+      key: (a) => a.id,
+      create: (a) => { const row = this.alphaRow(); this.fillAlpha(row, a, shown.has(a.id)); return row; },
+      update: (row, a) => this.fillAlpha(row, a, shown.has(a.id)),
+    });
+  }
+
+  private alphaRow(): HTMLElement {
+    const row = el(`<div class="cv-ch-row cv-ch-alpha" role="button" tabindex="0"><button class="cv-ch-eye" type="button">${icon('eye', 15)}</button><canvas class="cv-ch-thumb" width="44" height="30"></canvas><span class="cv-ch-name"></span><button class="cv-icon-btn cv-ch-delete" type="button" title="Delete channel" aria-label="Delete channel">${icon('delete', 14)}</button></div>`);
+    const id = (): string => row.dataset.key ?? '';
+    q(row, '.cv-ch-eye').addEventListener('click', (e) => { e.stopPropagation(); this.engine.showAlpha(id(), !row.classList.contains('is-on')); this.syncAlphas(); });
+    q(row, '.cv-ch-delete').addEventListener('click', (e) => { e.stopPropagation(); this.engine.deleteAlpha(id()); });
+    q(row, '.cv-ch-name').addEventListener('dblclick', () => this.rename(row));
+    row.addEventListener('click', (e) => {
+      if ((e.target as HTMLElement).closest('input')) return;
+      if (e.metaKey || e.ctrlKey) { this.engine.loadSelection({ channel: id() }, false, clickMode(e)); return; }
+      this.engine.showAlpha(id(), true);
+      this.syncAlphas();
+    });
+    return row;
+  }
+
+  private fillAlpha(row: HTMLElement, a: AlphaChannel, on: boolean): void {
+    const name = q(row, '.cv-ch-name'), eye = q(row, '.cv-ch-eye'), p = this.engine.current;
+    if (!name.querySelector('input')) setText(name, a.name);
+    row.classList.toggle('is-on', on);
+    eye.classList.toggle('is-off', !on);
+    if (eye.getAttribute('aria-label') !== `Show ${a.name}`) eye.setAttribute('aria-label', `Show ${a.name}`);
+    const was = this.drawn.get(row);
+    if (!p || (was && was.mask === a.mask && was.w === p.doc.width && was.h === p.doc.height)) return;
+    this.drawn.set(row, { mask: a.mask, w: p.doc.width, h: p.doc.height });
+    const c = q<HTMLCanvasElement>(row, '.cv-ch-thumb'), g = c.getContext('2d') as CanvasRenderingContext2D;
+    const s = Math.min(c.width / p.doc.width, c.height / p.doc.height), w = Math.max(1, Math.round(p.doc.width * s)), h = Math.max(1, Math.round(p.doc.height * s)), x = (c.width - w) / 2, y = (c.height - h) / 2;
+    g.clearRect(0, 0, c.width, c.height);
+    g.fillStyle = '#000';
+    g.fillRect(x, y, w, h);
+    if (a.mask) g.drawImage(a.mask.surface() as CanvasImageSource, x + a.mask.x * s, y + a.mask.y * s, a.mask.w * s, a.mask.h * s);
+  }
+
+  /** Inline renaming in place of the name; Enter or leaving the field keeps it, Escape cancels. */
+  private rename(row: HTMLElement): void {
+    const p = this.engine.current, a = p?.doc.alphas?.find((x) => x.id === row.dataset.key), name = q(row, '.cv-ch-name');
+    if (!a || name.querySelector('input')) return;
+    const input = el<HTMLInputElement>('<input class="cv-input cv-ch-rename" type="text" maxlength="200" spellcheck="false">');
+    input.value = a.name;
+    name.replaceChildren(input);
+    input.focus();
+    input.select();
+    let done = false;
+    const finish = (keep: boolean): void => {
+      if (done) return;
+      done = true;
+      const value = input.value.trim();
+      name.replaceChildren();
+      setText(name, a.name);
+      if (keep && value) this.engine.renameAlpha(a.id, value);
+    };
+    input.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') finish(true); else if (e.key === 'Escape') finish(false); });
+    input.addEventListener('blur', () => finish(true));
   }
 
   /** The channel's brightness as a selection (RGB: luminosity), weighted by coverage, one undo step. */
-  private loadSelection(id: Ch): void {
+  private loadSelection(id: Ch, mode: SelectionMode = 'replace'): void {
     const e = this.engine;
     if (!e.current) return;
     if (isInk(id)) {
@@ -147,7 +218,7 @@ export class ChannelsPanel {
       if ('error' in ink) { e.notice(ink.error); return; }
       const mask = new Uint8Array(ink.width * ink.height), k = INK[id];
       for (let i = 0, j = 0; j < mask.length; i += 5, j++) mask[j] = Math.round((1 - Math.min(1, Math.max(0, ink.data[i + k]))) * Math.min(1, ink.data[i + 4]) * 255);
-      e.applySelection(SelectionMask.cropped(0, 0, ink.width, ink.height, mask), 'replace', 'Load Selection');
+      e.applySelection(SelectionMask.cropped(0, 0, ink.width, ink.height, mask), mode, 'Load Selection');
       return;
     }
     const src = e.flattened();
@@ -158,6 +229,6 @@ export class ChannelsPanel {
       const v = id === 'rgb' || id === 'cmyk' ? 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2] : d[i + (id === 'r' ? 0 : id === 'g' ? 1 : 2)];
       mask[j] = Math.round((v * d[i + 3]) / 255);
     }
-    e.applySelection(SelectionMask.cropped(0, 0, W, H, mask), 'replace', 'Load Selection');
+    e.applySelection(SelectionMask.cropped(0, 0, W, H, mask), mode, 'Load Selection');
   }
 }

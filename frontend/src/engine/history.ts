@@ -131,7 +131,7 @@ export class History {
       if (l.mask?.raster) live.add(l.mask.raster.id);
     }
     const seen = new Set<string>();
-    const selections = new Set<SelectionMask>();
+    const selections = new Set<SelectionMask>(), liveAlphas = new Set((current.doc.alphas ?? []).map((a) => a.mask));
     let bytes = 0;
     const count = (s: Snapshot): void => {
       for (const l of s.doc.layers) {
@@ -139,7 +139,8 @@ export class History {
           if (r && !live.has(r.id) && !seen.has(r.id)) { seen.add(r.id); bytes += r.canvas.width * r.canvas.height * 4; }   // by its canvas: a paged raster counts nothing (1.61.3)
         }
       }
-      if (s.selection && s.selection !== current.selection && !selections.has(s.selection)) { selections.add(s.selection); bytes += s.selection.bytes; }
+      if (s.selection && s.selection !== current.selection && !liveAlphas.has(s.selection) && !selections.has(s.selection)) { selections.add(s.selection); bytes += s.selection.bytes; }
+      for (const a of s.doc.alphas ?? []) if (a.mask && !liveAlphas.has(a.mask) && !selections.has(a.mask)) { selections.add(a.mask); bytes += a.mask.bytes; }
     };
     for (const e of [...this.past, ...this.future]) {
       count(e.before);
