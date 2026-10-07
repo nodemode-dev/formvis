@@ -44,6 +44,18 @@ export class BackgroundPanel extends Dialog {
     this.preview();
   }
 
+  /** The mask laid down at once with the current settings, as OK lays it, without opening (agents have no one to press OK). */
+  applyNow(layerId: ID, mask: ImageBitmap): boolean {
+    if (this.isOpen || this.engine.activeLayer?.id !== layerId) { mask.close(); return false; }
+    if (this.engine.current?.maskTarget) this.engine.setMaskTarget(false);
+    this.mask = mask;
+    const info = this.engine.targetImage(), m = info && info.layerId === layerId ? this.matte(info.image, 1) : null;
+    if (info && m) this.engine.applySubjectMask(layerId, m, info.width, info.height);
+    this.mask.close();
+    this.mask = null;
+    return m !== null;
+  }
+
   close(): void {
     if (!this.done) this.engine.setPreview(null);
     this.mask?.close();

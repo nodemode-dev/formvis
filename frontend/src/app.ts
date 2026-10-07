@@ -1157,18 +1157,25 @@ export function startApp(): void {
     });
   }
 
-  async function removeBackground(method: 'auto' | 'lite'): Promise<void> {
+  /** `agent`: an agent's call (MCP remove_background), the mask applied at once rather than offered, failures thrown. */
+  async function removeBackground(method: 'auto' | 'lite', agent = false): Promise<void> {
     const l = engine.activeLayer;
-    if (!l?.raster || l.isGroup) { toast('Select a pixel layer first.'); return; }
+    if (!l?.raster || l.isGroup) { if (agent) throw new Error('The active layer has no pixels: choose a pixel layer with set_layer first.'); toast('Select a pixel layer first.'); return; }
     const raster = l.raster;
     await engine.task(async () => {
       try {
         const { mask, method: used } = await api.removeBackground(await toBlob(raster.canvas), method);
         const bitmap = await createImageBitmap(mask);
-        if (engine.activeLayer?.id !== l.id) { bitmap.close(); return; }
+        if (engine.activeLayer?.id !== l.id) { bitmap.close(); if (agent) throw new Error('The active layer changed before the mask was ready.'); return; }
+        const by = used === 'ml' ? 'ML' : 'lightweight';
+        if (agent) {
+          if (!dialogs.background.applyNow(l.id, bitmap)) throw new Error('The mask was not applied: the Remove Background dialog is open in the formvis window. Close it, then retry.');
+          toast(`Background removed with the ${by} engine.`);
+          return;
+        }
         dialogs.background.show(l.id, bitmap);
-        toast(`Subject found with the ${used === 'ml' ? 'ML' : 'lightweight'} engine.`);
-      } catch (err) { toast(message(err), 'error'); }
+        toast(`Subject found with the ${by} engine.`);
+      } catch (err) { if (agent) throw err; toast(message(err), 'error'); }
     });
   }
 
@@ -1417,7 +1424,7 @@ export function startApp(): void {
       return dialogs.filter.applySettings(kind as Parameters<typeof dialogs.filter.applySettings>[0], lib);
     },
     selectSubject: () => selectSubject(false),
-    removeBackground: () => removeBackground('auto'),
+    removeBackground: () => removeBackground('auto', true),
   });
   agents.setEnabled(loadPrefs().agentsAllowed);
   window.addEventListener('formvis:agents', (ev) => agents.setEnabled((ev as CustomEvent<boolean>).detail === true));
