@@ -3,8 +3,10 @@ import { FX_CATEGORIES, galleryReach, runEffects, type FxCategory, type FxDef, t
 import { ARTISTIC_FX } from './fx-artistic';
 import { BRUSH_FX } from './fx-brush';
 import { DISTORT_FX } from './fx-distort';
+import { SKETCH_FX } from './fx-sketch';
+import { TEXTURE_FX } from './fx-texture';
 
-export const GALLERY_FX: readonly FxDef[] = [...ARTISTIC_FX, ...BRUSH_FX, ...DISTORT_FX];
+export const GALLERY_FX: readonly FxDef[] = [...ARTISTIC_FX, ...BRUSH_FX, ...DISTORT_FX, ...SKETCH_FX, ...TEXTURE_FX];
 
 const byKey = new Map<string, FxDef>(GALLERY_FX.map((fx) => [fx.key, fx]));
 
