@@ -5133,7 +5133,11 @@ export class Engine {
    *  undo), and the step's tiles then sent to the undo store. One step. False when this is not a case it handles the
    *  same as the whole-layer path (smaller layers, masks, smart and shape layers, deep, CMYK and Lab documents, a layer
    *  the filter would grow), for the caller to run that path. */
-  bandedFilter(name: string, run: (src: ImageData) => ImageData, apron: number, grow = 0): boolean | 'refused' {
+  private bandFrame(f: LibFrame, dy: number): LibFrame {
+    return { area: { ...f.area, y: f.area.y - dy }, canvas: { ...f.canvas, y: f.canvas.y - dy } };
+  }
+
+  bandedFilter(name: string, run: (src: ImageData, frame?: LibFrame) => ImageData, apron: number, grow = 0): boolean | 'refused' {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l?.raster || this.stroke || p.maskTarget || l.smart || l.vector || !this.paintable(l)) return false;
     if (l.raster.width * l.raster.height <= this.bandFrom || (p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab') return false;
@@ -5144,14 +5148,14 @@ export class Engine {
     // Room: two bands read with their apron, one filtered, its coverage, and the tiles' before pixels until stored.
     if (!this.room((B + 2 * A) * W * 4 * 4 + W * H * 4, name)) return 'refused';   // said so; not done
     this.preview = null;
-    const sel = p.selection, m = sel ? mul(invert(placement(l.transform, W, H)), translation(sel.x, sel.y)) : null;
+    const sel = p.selection, m = sel ? mul(invert(placement(l.transform, W, H)), translation(sel.x, sel.y)) : null, f0 = this.filterFrame(p, l.transform, W, H);
     const source = (y0: number): ImageData => { const a0 = Math.max(0, y0 - A), a1 = Math.min(H, Math.min(H, y0 + B) + A); return r.ctx.getImageData(0, a0, W, a1 - a0); };
     p.history.begin(name, p.snapshot());
     try {
       let src = source(0);
       for (let y0 = 0; y0 < H; y0 += B) {
         const y1 = Math.min(H, y0 + B), h = y1 - y0, a0 = Math.max(0, y0 - A);
-        const out = run(src);
+        const out = run(src, this.bandFrame(f0, a0));
         src = y1 < H ? source(y1) : src;   // the next band's original pixels, before this band is written
         let cov: Uint8ClampedArray | null = null;
         if (sel && m) { const s = createSurface(W, h), c = ctxOf(s); setMat(c, mul(translation(0, -y0), m)); c.drawImage(sel.surface(), 0, 0); cov = c.getImageData(0, 0, W, h).data; }
@@ -5226,7 +5230,7 @@ export class Engine {
    *  sent at once to the engine's store, so the step's undo (up to 2.4 GB a side at 600 MP) never sits in memory: undo
    *  and redo stream it back a tile at a time. Tiles behind are paged out as it goes; edits wait while it runs. A
    *  blur's spill past the canvas is not kept here (an ordinary layer grows to keep it; a giant one cannot). */
-  async bandedFilterTiled(name: string, run: (src: ImageData) => ImageData, apron: number): Promise<boolean | 'refused'> {
+  async bandedFilterTiled(name: string, run: (src: ImageData, frame?: LibFrame) => ImageData, apron: number): Promise<boolean | 'refused'> {
     const p = this.current, l = p?.activeLayer, t = l?.tiled, store = this.undoStore;
     if (!p || !l || !t || this.stroke) return false;
     if (this.waiting() || !this.paintable(l, true)) return 'refused';
@@ -5243,8 +5247,9 @@ export class Engine {
         return { img: t.read(0, a0, W, a1 - a0), a0 };
       };
       let src = await source(0);
+      const f0 = this.filterFrame(p, l.transform, W, H);
       for (let y0 = 0; y0 < H; y0 += B) {
-        const y1 = Math.min(H, y0 + B), h = y1 - y0, out = run(src.img), a0 = src.a0;
+        const y1 = Math.min(H, y0 + B), h = y1 - y0, out = run(src.img, this.bandFrame(f0, src.a0)), a0 = src.a0;
         if (y1 < H) src = await source(y1);   // the next band's originals, before this band is written
         await t.ensure(0, y0, W, h, store);
         for (let x0 = 0; x0 < W; x0 += 512) {
@@ -5273,17 +5278,17 @@ export class Engine {
    *  band of 512 rows at a time, each drawn from the old layer with `apron` rows around it onto transparent at the same
    *  offset, its middle rows written into the larger layer; the same pixels and placement as `grown`, one step, the
    *  old layer kept for undo as there, with no whole-layer copy in or out. */
-  private bandedGrow(name: string, run: (src: ImageData) => ImageData, apron: number, grow: number, p: Project, l: Layer): boolean | 'refused' {
+  private bandedGrow(name: string, run: (src: ImageData, frame?: LibFrame) => ImageData, apron: number, grow: number, p: Project, l: Layer): boolean | 'refused' {
     // Bands of 256 rows (1.61.3): with the new layer beside the old, the peak at 150 MP stays inside a 4 GB computer's budget.
     const r = l.raster as Raster, g = Math.ceil(grow), A = Math.max(g, Math.ceil(apron)), Wb = r.width + 2 * g, Hb = r.height + 2 * g, B = 256;
     if (!this.room(Wb * Hb * 4 + (B + 2 * A) * Wb * 4 * 3, name)) return 'refused';   // said so; not done
     this.preview = null;
-    const big = new Raster(Wb, Hb);
+    const big = new Raster(Wb, Hb), f0 = this.filterFrame(p, l.transform, r.width, r.height, g);
     for (let y0 = 0; y0 < Hb; y0 += B) {
       const y1 = Math.min(Hb, y0 + B), a0 = Math.max(0, y0 - A), a1 = Math.min(Hb, y1 + A);
       const band = createSurface(Wb, a1 - a0), c = ctxOf(band);
       c.drawImage(r.canvas, g, g - a0);
-      const out = run(c.getImageData(0, 0, Wb, a1 - a0));
+      const out = run(c.getImageData(0, 0, Wb, a1 - a0), this.bandFrame(f0, a0));
       big.ctx.putImageData(out, 0, a0, 0, y0 - a0, Wb, y1 - y0);
       band.width = 0; band.height = 0;
     }

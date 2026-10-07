@@ -186,7 +186,8 @@ const areaOf = (ctx: LibContext): Box => boxOf(ctx.area);
 
 export const PIXELATE_FILTERS: LibFilter[] = [
   {
-    id: 'colorHalftone', label: 'Color Halftone', group: 'Pixelate', grows: false, reach: null,
+    id: 'colorHalftone', label: 'Color Halftone', group: 'Pixelate', grows: false,
+    reach: (v, scale) => Math.ceil(6 * Math.max(1, num(v, 'maxRadius') * scale)) + 2,
     params: [
       { key: 'maxRadius', label: 'Max. Radius (px)', kind: 'range', min: 4, max: 127, step: 1, def: 8 },
       { key: 'channel1', label: 'Channel 1 (°)', kind: 'range', min: -360, max: 360, step: 1, def: 108 },
@@ -197,7 +198,8 @@ export const PIXELATE_FILTERS: LibFilter[] = [
     run: (src, v, ctx) => colorHalftoneImage(src, num(v, 'maxRadius') * ctx.scale, [num(v, 'channel1'), num(v, 'channel2'), num(v, 'channel3'), num(v, 'channel4')], areaOf(ctx)),
   },
   {
-    id: 'crystallize', label: 'Crystallize', group: 'Pixelate', grows: false, reach: null,
+    id: 'crystallize', label: 'Crystallize', group: 'Pixelate', grows: false,
+    reach: (v, scale) => Math.ceil(2 * Math.max(2, num(v, 'cellSize') * scale)) + 2,
     params: [{ key: 'cellSize', label: 'Cell Size', kind: 'range', min: 3, max: 300, step: 1, def: 10 }],
     run: (src, v, ctx) => crystallizeImage(src, num(v, 'cellSize') * ctx.scale, ctx.seed, areaOf(ctx)),
   },
@@ -212,17 +214,19 @@ export const PIXELATE_FILTERS: LibFilter[] = [
     run: (src, _v, ctx) => fragmentImage(src, 4 * ctx.scale),
   },
   {
-    id: 'mezzotint', label: 'Mezzotint', group: 'Pixelate', grows: false, reach: null,
+    id: 'mezzotint', label: 'Mezzotint', group: 'Pixelate', grows: false, reach: () => 0,
     params: [{ key: 'type', label: 'Type', kind: 'select', def: 'fineDots', options: [['fineDots', 'Fine Dots'], ['mediumDots', 'Medium Dots'], ['grainyDots', 'Grainy Dots'], ['coarseDots', 'Coarse Dots'], ['shortLines', 'Short Lines'], ['mediumLines', 'Medium Lines'], ['longLines', 'Long Lines'], ['shortStrokes', 'Short Strokes'], ['mediumStrokes', 'Medium Strokes'], ['longStrokes', 'Long Strokes']] }],
     run: (src, v, ctx) => mezzotintImage(src, str(v, 'type'), ctx.seed, boxOf(ctx.canvas)),
   },
   {
-    id: 'mosaic', label: 'Mosaic', group: 'Pixelate', grows: false, reach: null,
+    id: 'mosaic', label: 'Mosaic', group: 'Pixelate', grows: false,
+    reach: (v, scale) => Math.max(1, Math.round(num(v, 'cellSize') * scale)) + 1,
     params: [{ key: 'cellSize', label: 'Cell Size (square)', kind: 'range', min: 2, max: 200, step: 1, def: 10 }],
     run: (src, v, ctx) => mosaicImage(src, num(v, 'cellSize') * ctx.scale, areaOf(ctx)),
   },
   {
-    id: 'pointillize', label: 'Pointillize', group: 'Pixelate', grows: false, reach: null,
+    id: 'pointillize', label: 'Pointillize', group: 'Pixelate', grows: false,
+    reach: (v, scale) => Math.ceil(2 * Math.max(2, num(v, 'cellSize') * scale)) + 2,
     note: 'Dots on the background colour.',
     params: [{ key: 'cellSize', label: 'Cell Size', kind: 'range', min: 3, max: 300, step: 1, def: 5 }],
     run: (src, v, ctx) => pointillizeImage(src, num(v, 'cellSize') * ctx.scale, ctx.seed, areaOf(ctx), ctx.bg),

@@ -43,7 +43,7 @@ import { TypeOnPathDialog } from './ui/panels/type-on-path-dialog';
 import { ParagraphStylesDialog } from './ui/panels/paragraph-styles';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -1716,7 +1716,7 @@ export function startApp(): void {
     ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, ...(kind === 'develop' ? { keys: ['Shift+Mod+A'] } : {}), enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
     ...LIBRARY.map((f) => ({ id: `filter-${f.id}`, label: libHasDialog(f.id) ? `${f.label}...` : f.label, enabled: hasTargetPixels, run: () => {
       if (libHasDialog(f.id)) { dialogs.filter.show(f.id); return; }
-      const settings = { lib: { [f.id]: libDefaults(f.id) }, seed: 0 };
+      const settings = { lib: { [f.id]: libDefaults(f.id) }, seed: randomSeed() };
       dialogs.filter.onApplied?.(f.id, settings);
       void dialogs.filter.applySettings(f.id, settings);
     } })),
@@ -1758,7 +1758,9 @@ export function startApp(): void {
       { label: 'Distort', items: filterGroup('Distort', []) },
       { label: 'Noise', items: filterGroup('Noise', ['filter-addNoise']) },
       { label: 'Pixelate', items: filterGroup('Pixelate', []) },
+      { label: 'Render', items: filterGroup('Render', []) },
       { label: 'Sharpen', items: filterGroup('Sharpen', ['filter-smartSharpen', 'filter-shakeReduction', 'filter-unsharpMask']) },
+      { label: 'Stylize', items: filterGroup('Stylize', []) },
       { label: 'Video', items: filterGroup('Video', []) },
       { label: 'Other', items: filterGroup('Other', []) }, '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['proof-setup', 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',

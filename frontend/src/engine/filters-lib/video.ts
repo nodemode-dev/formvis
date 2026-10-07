@@ -44,7 +44,7 @@ export const VIDEO_FILTERS: LibFilter[] = [
       { key: 'eliminate', label: 'Eliminate', kind: 'select', def: 'oddFields', options: [['oddFields', 'Odd Fields'], ['evenFields', 'Even Fields']] },
       { key: 'createBy', label: 'Create New Fields by', kind: 'select', def: 'interpolation', options: [['interpolation', 'Interpolation'], ['duplication', 'Duplication']] },
     ],
-    reach: null,
+    reach: () => 2,
     run: (src, v, ctx) => deInterlaceImage(src, v.eliminate === 'evenFields', v.createBy !== 'duplication', Math.round(ctx.canvas.y)),
   },
   {

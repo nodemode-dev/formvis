@@ -127,7 +127,7 @@ export const NOISE_FILTERS: LibFilter[] = [
       { key: 'sharpen', label: 'Sharpen Details (%)', kind: 'range', min: 0, max: 100, step: 1, def: 25 },
       { key: 'jpeg', label: 'Remove JPEG Artifact', kind: 'check', def: false },
     ],
-    reach: (v) => (v.jpeg === true ? null : 40),
+    reach: () => 40,
     run: (src, v, ctx) => reduceNoiseImage(src, { strength: num(v, 'strength'), preserve: num(v, 'preserve'), color: num(v, 'color'), sharpen: num(v, 'sharpen'), jpeg: v.jpeg === true }, ctx.scale, Math.round(ctx.canvas.x), Math.round(ctx.canvas.y)),
   },
 ];

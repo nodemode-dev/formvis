@@ -5,7 +5,7 @@ import { ScopesView } from './scopes-view';
 import { Dialog } from '../dialogs';
 import { el, q, setDisabled, setHidden, setText, setValue } from '../dom';
 import { toast } from '../toast';
-import { checkRow, matrixRow, selectRow, sliderRow, type Row } from './controls';
+import { checkRow, colorRow, matrixRow, selectRow, sliderRow, type Row } from './controls';
 import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
@@ -287,6 +287,7 @@ export class FilterPanel extends Dialog {
       return { el: node, set: () => undefined };
     }
     if (p.kind === 'image') return this.imageRow(p.label, (v) => put(p.key, v));
+    if (p.kind === 'color') { const r = colorRow(p.label, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as string) }; }
     const r = matrixRow(p.label, p.size, p.min, p.max, (v) => put(p.key, v));
     return { el: r.el, set: (v) => r.set(v as number[]) };
   }
@@ -425,12 +426,12 @@ export class FilterPanel extends Dialog {
     const sync = (src: ImageData, scale: number, frame?: LibFrame): ImageData => runFilter(kind, s, seed, src, scale, frame);
     const apron = bandApron(kind, s);   // a large layer in bands (1.60.9)
     if (apron !== null && this.engine.activeTiled()) {   // a giant layer: in place, its undo on disk (1.62.7)
-      const r = await this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src) => sync(src, 1), apron);
+      const r = await this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src, frame) => sync(src, 1, frame), apron);
       if (r === true) { this.engine.setPreview(null); this.close(); }
       return r === true;
     }
     if (apron !== null) await this.engine.relieveFor(this.engine.layerBytes() * 1.25);   // undo to disk first if it would not fit (1.61.4)
-    const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => sync(src, 1), apron, filterMargin(kind, s)) : false;
+    const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src, frame) => sync(src, 1, frame), apron, filterMargin(kind, s)) : false;
     if (banded === 'refused') return Promise.resolve(false);   // not done, and said why
     if (banded) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }
     return this.engine.applyImageEditAsync(FILTER_LABELS[kind], (src, scale, frame) => runFilterOffThread(kind, s, scale, seed, src, frame) ?? Promise.resolve(sync(src, scale, frame)), filterMargin(kind, s), sync, filterPeak(kind) + 2);
@@ -454,8 +455,8 @@ export class FilterPanel extends Dialog {
     const run = (src: ImageData, scale: number, frame?: LibFrame): ImageData => this.run(src, scale, frame);
     if (this.deepFilter(kind, settings)) return true;   // 16 bits (1.53.7)
     const apron = bandApron(kind, this.s);   // a large layer in bands (1.60.9)
-    if (apron !== null && this.engine.activeTiled()) { void this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src) => run(src, 1), apron); return true; }   // a giant layer (1.62.7)
-    const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src) => run(src, 1), apron, this.grow()) : false;
+    if (apron !== null && this.engine.activeTiled()) { void this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src, frame) => run(src, 1, frame), apron); return true; }
+    const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src, frame) => run(src, 1, frame), apron, this.grow()) : false;
     if (banded === 'refused') return false;   // not done, and said why
     if (banded) return true;
     this.engine.applyImageEdit(FILTER_LABELS[kind], run, this.grow(), filterPeak(kind));   // its measured peak (1.61.1)

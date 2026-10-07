@@ -5,6 +5,8 @@ import { OTHER_FILTERS } from './filters-lib/other';
 import { VIDEO_FILTERS } from './filters-lib/video';
 import { DISTORT_FILTERS } from './filters-lib/distort';
 import { PIXELATE_FILTERS } from './filters-lib/pixelate';
+import { STYLIZE_FILTERS } from './filters-lib/stylize';
+import { RENDER_FILTERS } from './filters-lib/render';
 import type { Rect } from './types';
 
 export const LIB_IDS = [
@@ -15,10 +17,12 @@ export const LIB_IDS = [
   'deInterlace', 'ntscColors',
   'displace', 'pinch', 'polarCoordinates', 'ripple', 'shear', 'spherize', 'twirl', 'wave', 'zigZag',
   'colorHalftone', 'crystallize', 'facet', 'fragment', 'mezzotint', 'mosaic', 'pointillize',
+  'diffuse', 'emboss', 'extrude', 'findEdges', 'oilPaint', 'solarize', 'tiles', 'traceContour', 'wind',
+  'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'lightingEffects',
 ] as const;
 
 export type LibKind = (typeof LIB_IDS)[number];
-export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video' | 'Distort' | 'Pixelate';
+export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video' | 'Distort' | 'Pixelate' | 'Stylize' | 'Render';
 export interface LibImage { readonly name: string; readonly w0: number; readonly h0: number; readonly w: number; readonly h: number; readonly rg: string }
 export type LibValue = number | string | boolean | number[] | LibImage | null;
 export type LibValues = Record<string, LibValue>;
@@ -32,6 +36,7 @@ export type LibParam =
   | { readonly key: string; readonly label: string; readonly kind: 'check'; readonly def: boolean }
   | { readonly key: string; readonly label: string; readonly kind: 'matrix'; readonly size: number; readonly min: number; readonly max: number; readonly def: readonly number[] }
   | { readonly key: string; readonly label: string; readonly kind: 'seed'; readonly def: number }
+  | { readonly key: string; readonly label: string; readonly kind: 'color'; readonly def: string }
   | { readonly key: string; readonly label: string; readonly kind: 'image'; readonly def: null };
 
 export interface LibContext { readonly scale: number; readonly seed: number; readonly area: Rect; readonly canvas: Rect; readonly fg: LibColor; readonly bg: LibColor }
@@ -47,7 +52,7 @@ export interface LibFilter {
   readonly run: (src: ImageData, v: LibValues, ctx: LibContext) => ImageData;
 }
 
-export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS];
+export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS, ...STYLIZE_FILTERS, ...RENDER_FILTERS];
 
 const BY_ID = new Map<string, LibFilter>(LIBRARY.map((f) => [f.id, f]));
 
@@ -103,6 +108,7 @@ function sane(p: LibParam, v: unknown): LibValue {
   if (p.kind === 'check') return typeof v === 'boolean' ? v : p.def;
   if (p.kind === 'seed') return typeof v === 'number' && Number.isFinite(v) ? Math.abs(Math.trunc(v)) % 2147483648 : p.def;
   if (p.kind === 'image') return saneImage(v);
+  if (p.kind === 'color') return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : p.def;
   const arr = Array.isArray(v) ? v : p.def;
   return Array.from({ length: p.size * p.size }, (_, i) => {
     const n = Number(arr[i] ?? 0);
