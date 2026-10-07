@@ -9,6 +9,7 @@ A project is a zip (`.fmv`; before 0.90.0 `.formvis`, still read) holding `manif
 | `documentID`, `width`, `height` | Document id and canvas size in pixels |
 | `activeLayerID` | The selected layer |
 | `layers` | Bottom-to-top layer records |
+| `alphas` | Alpha channels (1.65.1): each `id`, `name` and `file`, a grayscale PNG the canvas's size in `images/` (white selected); absent when there are none |
 
 | Layer key | Meaning |
 | --- | --- |

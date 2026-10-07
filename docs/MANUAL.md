@@ -78,12 +78,18 @@ ask it questions.
   Selection and Object Selection (hover to see the object it would take).
 - Select > Subject finds the main subject; Select > Color Range selects by colour or by tone; Select > Sky selects the
   sky (its model downloads once, 176 MB); Select > Focus Area selects what is in focus, with a preview to set how much.
-- Select and Mask refines an edge. Expand, Contract, Feather, Border, Smooth and Invert change a selection; selections
-  can be saved and loaded.
+- Select and Mask refines an edge. Expand, Contract, Feather, Border, Smooth and Invert change a selection.
 - Select > Reselect brings back the last selection dropped; Grow and Similar add pixels near the selected colours (the
   Magic Wand's Tolerance), touching the selection or anywhere; Transform Selection moves, scales or rotates the outline
   alone (Enter applies, Escape cancels); Convert to Shape makes a shape layer from it. Find Layers (Alt+Shift+Ctrl+F)
   selects layers by name, and Isolate Layers lists only the selected ones until chosen again.
+- Select > Save Selection keeps the selection with the document as an alpha channel: a new one, or added to,
+  subtracted from or intersected with one already there, in this document or another open one of the same size.
+  Select > Load Selection brings one back, or the active layer's transparency or mask, inverted if you like, as the
+  selection or combined with it. The Channels panel lists the alpha channels below the colour channels: the eye shows
+  one over the picture in red, Ctrl-click (Cmd-click on a Mac) loads it (Shift adds, Alt subtracts, both intersect),
+  a double-click renames it and the bin deletes it. They are saved with the project and follow the canvas when it is
+  turned, flipped, cropped or resized.
 
 ## Painting and retouching
 

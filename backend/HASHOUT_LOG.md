@@ -2,6 +2,28 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Agents under MCP 2026-07-28, a busy window, place_image from a path · _v1.65.1 (app/routers/mcp.py; the formvis-editing skill's generated reference)
+
+From the bug bounty of 6 and 7 October 2026, run while rehearsing an agent's edit over MCP against 1.63.0; its patches 0001 to 0003, each read as a description and made again by hand on this code (the file had changed only in apply_filter since). Caching hints: MCP 2026-07-28's caching utility (server/utilities/caching, read at the source) says servers MUST put `ttlMs` (an integer of 0 or more) and `cacheScope` (`public` or `private`) on complete results of server/discover, tools/list and prompts/list (and the resource lists, not served here). `_ok` added `resultType` alone, and Claude Code 2.1.292 refused tools/list ("Invalid result for tools/list": ttlMs undefined, cacheScope not one of its options), so it loaded none of formvis's tools. `_ok(req_id, result, modern, cacheable)` now adds `CACHE_HINTS` (ttlMs 300000, cacheScope public) to those three under 2026-07-28: the lists are the same for every caller and change only with a new formvis version, the case the spec gives for public, and five minutes is its own example. 2025-11-25 replies are unchanged. A busy window: the window does not poll while it works through a call and only polls refreshed `_seen`, so a call past `LIVE` (30 s) made the next one wait 20 s and fail with "formvis is not open", and one past 300 s made the next fail at once. `_taken` holds the calls the window has taken and not answered (set by `bridge_next` as it hands one over, dropped by `bridge_result` and by `_ask` either way); `_live` counts one taken within the last 600 s, as long as `_ask` waits for any call, as a sign of life; an answer refreshes `_seen` as a poll does. place_image: it took base64 alone, so an agent could put a file from disk into a document only by writing its base64 into its own call. It now takes `path`, an absolute path to a .png, .jpg, .jpeg or .webp read here as open_file reads (`_path`'s checks, `_MAX_OPEN`), the layer named after the file's stem (cut to 120) unless named, the call going on to the window with the picture as `data`; data still works, and a call with neither is told to give one. Its description says the picture keeps its size and transform_layer scales it, and a read error says "read". `./formvis agents sync` regenerated the skill's tool reference and its .agents mirror (the place_image section: the description, path added, data no longer required). The window's side of the bounty (remove_background) and the docs' tool count are in the frontend log.
+
+Verified against the running engine, restarted after each change. tools/list, prompts/list and server/discover under 2026-07-28 each carry resultType, ttlMs 300000 and cacheScope public, tools/list 50 tools; under 2025-11-25 the two lists carry none; ping carries resultType alone. Through the window with agents allowed: Motion Blur at 120 px on a 5000 by 3000 document took 126 s, and a get_document sent 40 s into it waited and answered the moment the filter finished (the code before would have waited 20 s for a poll and then failed it, as the bounty saw; not run again here). place_image placed a PNG, a JPEG with a space in its name and a WebP by path (named astronaut, trails photo, and Named as asked), and base64 as before, one Place step each; no path, a relative path, a .txt and a missing file were each refused with what to do. tests/test_mcp.py and tests/test_agents_setup.py 12 passed after each change; the MCP agents, agent consent and Select Subject browser suites passed. The whole engine suite: 112 passed, 3 failing for this machine as before. The skill's generated reference lost, in each copy, place_image's old description and its required data line, replaced as above. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.65.0"
+    _tool("place_image", "Places a PNG or JPEG image (base64) as a new layer at x, y.", {"data": {"type": "string", "description": "Base64 image data."}, "name": {"type": "string", "maxLength": 120},
+          "x": {"type": "number", "default": 0}, "y": {"type": "number", "default": 0}}, ["data"]),
+def _ok(req_id, result: dict, modern: bool) -> dict:
+    return {"jsonrpc": "2.0", "id": req_id, "result": {**result, **({"resultType": "complete"} if modern else {})}}
+    return time.monotonic() - _seen <= LIVE
+        return _fail(f"Could not {'read' if name == 'open_file' else 'write'} the file: {exc.strerror or exc}.")
+        out = _ok(req_id, {"supportedVersions": VERSIONS, "capabilities": {"tools": {}, "prompts": {}}, "_meta": {"io.modelcontextprotocol/serverInfo": server}, "instructions": INSTRUCTIONS}, True)
+        out = _ok(req_id, {"prompts": PROMPTS}, modern)
+        out = _ok(req_id, {"tools": TOOLS}, modern)
+version = "1.65.0"
+version = "1.65.0"
+ "version": "1.65.0",
+```
+
 ## Version only · _v1.65.0
 
 No engine code changed in 1.65.0 (DEV_PLAN 27.5's third part, the Select menu's commands, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

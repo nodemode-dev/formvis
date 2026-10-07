@@ -4,6 +4,26 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.1 · 2026-10-07
+
+### Added
+
+- Select > Save Selection keeps the selection with the document as an alpha channel: a new channel, named as you like (Alpha 1 and so on otherwise), or one already there, replaced or added to, subtracted from or intersected with. It can go to another open document of the same size.
+- Select > Load Selection loads an alpha channel, or the active layer's transparency or mask, inverted or not, as a new selection or added to, subtracted from or intersected with the selection.
+- The Channels panel lists the document's alpha channels below its colour channels, each with its thumbnail. The eye shows one over the picture in red, as Quick Mask does; Ctrl-click (Cmd-click on a Mac) loads it, Shift adding, Alt subtracting and both intersecting, now for the colour channels too; a double-click renames it and its bin deletes it. The panel's foot has Load Selection and Save Selection as Channel.
+- Alpha channels are saved in `.fmv` projects and recovery copies, and they turn, flip, crop, resize and warp with the canvas.
+- Agents' `place_image` takes `path`, an absolute path to a PNG, JPEG or WebP file, so a picture on disk goes into the document without its base64; the layer is named after the file.
+
+### Fixed
+
+- Claude Code under MCP protocol 2026-07-28 (2.1.292 and later) loaded none of formvis's tools: `tools/list`, `prompts/list` and `server/discover` now carry the caching hints that version requires, `ttlMs` and `cacheScope`.
+- After an agent's long tool call, such as a filter on a large picture, its next call was told formvis was not open. A window working through a call now counts as open, and the next call waits for it.
+- An agent's `remove_background` said it had removed the background but left the layer without a mask and the Remove Background dialog open in the window. It now applies the mask at once with the dialog's settings, as one step, and says so when it cannot.
+- The manual, AGENT_EVALS and LOCAL said agents get 39 tools; they get 50.
+- The Channels panel showed the CMYK rows (since 1.54.2) and the Lab rows (since 1.56.4) in RGB documents.
+
+The four agent fixes and the count come from a bug bounty run on 6 and 7 October 2026 while rehearsing an agent's edit over MCP; each was made again by hand on this code and checked here.
+
 ## 1.65.0 · 2026-10-07
 
 ### Added

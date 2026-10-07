@@ -2,6 +2,52 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Load and Save Selection with alpha channels, 27.5's fourth part; remove_background over MCP · _v1.65.1 (engine/alphas.ts and ui/panels/selection-dialogs.ts new; engine/types.ts, engine/index.ts, engine/history.ts, io/project-io.ts, ui/channels.ts, ui/stage.ts, ui/panels/background-panel.ts, ui/actions.ts, styles/panels.css, app.ts; docs/MANUAL.md, docs/AGENT_EVALS.md, docs/LOCAL.md)
+
+DEV_PLAN 27.5, fourth part, after Photoshop's two dialogs. The document holds its alpha channels as `Doc.alphas`, each an `AlphaChannel` of id, name and `mask`: a `SelectionMask`, null when the channel selects nothing. A save keeps the selection's own immutable mask and a combine makes a new one, and every change replaces the doc, so undo and redo carry the channels with nothing added to the history; `History.retained` counts the bytes of channels the current document no longer holds, and no longer counts a past selection that lives on as a channel. Engine: `alphaDocuments()` is this document, then the open ones of its size. `saveSelection({ doc, channel, name, op })`, after `settle`: refused with a notice in a document past one canvas; with no channel, a new one named as given or "Alpha N", the first number free (`nextAlphaName` in the new `alphas.ts`); into a channel, `SelectionMask.combine`, formvis's own selection arithmetic (its subtract multiplies by the inverse, as the selection tools' does), an empty channel taking the selection for replace and add and staying empty otherwise; one step in the target document through `editOn`, so another document's history takes it. `loadSelection({ doc, channel }, invert, mode)`: an alpha channel's mask, or `coverage` of that document's active layer (its pixels' alpha at their place, or its mask's white at the mask's placement; an adjustment layer, or a mask with no pixels, covers the canvas), inverted over the canvas when asked, through `applySelection` as one Load Selection step; nothing to load says "That channel selects nothing." `deleteAlpha` and `renameAlpha` are Delete Channel and Rename Channel. The view: `alphaViews` per document, `shownAlphas` and `showAlpha(id, on)` (null hides all), emitting overlay, never a step. The canvas operations carry them: `alphasMoved` turns, flips or shifts each mask for Rotate, Flip and every `resizeCanvas` (Canvas Size, Crop, Trim, Reveal All, Generative Expand); `alphasRedrawn` draws each anew for Image Size (scaled, smoothed unless Nearest), Straighten (turned about the frame's centre before the crop, as the layers turn) and Perspective Crop (each mask warped by `warpRaster` as a mask through the same homography). Project file: `serialize` writes each channel as `alpha-N.png`, a grey picture the canvas's size (`alphaGrey`), and `manifest.alphas` its id, name and file; `deserialize` reads up to 100, leaving out one whose file is missing, unreadable or of another size, and giving a repeated id a new one. The engine service keeps any picture in `images/`, so it needed no change; the wiki's Project-Format table gains the key.
+
+The window: `SaveSelectionDialog` (Document, the open ones of this size; Channel, New or one of that document's; Name, for a new one; Operation, its first item reading New Channel, disabled, or Replace Channel) and `LoadSelectionDialog` (Document; Channel, from `loadSources`: the alpha channels, then "<layer> Transparency" for a layer with pixels or an adjustment layer and "<layer> Mask" for one with a mask; Invert; Operation, Add, Subtract and Intersect disabled with nothing selected); their selects kept by `syncOptions`, changing only what differs. Commands: load-selection (enabled when any of those documents has something to load), save-selection and save-selection-channel (the last recordable), Load and Save Selection in the Select menu beside Make Selection from Path, which keeps the menu within a 900 pixel window, now opened from its top. The Channels panel: a second row list, `.cv-ch-alphas`, patched by `syncAlphas` with `patchList` from `apply`, so every event that redraws the panel keeps it; each row is the colour rows' eye, thumbnail and name, with a delete button. Its thumbnail is drawn when the row is made and redrawn in place only when its mask or the canvas size changes (`drawn`), so a new row never shows an empty box. A click shows the channel (never hides it, so a double-click to rename does not flicker the canvas), the eye toggles it, clicking the composite row hides them all; Cmd- or Ctrl-click loads it with Photoshop's modifiers (`clickMode`: Shift adds, Alt subtracts, both intersect), which the colour rows now take too; a double-click renames in place, as the Paths panel does. Its foot holds Load Selection and Save Selection as Channel, wired by their `data-cmd` like other panel buttons. `apply` now walks `.cv-ch-row[data-ch]`, the colour rows alone. The stage draws each shown channel as Quick Mask's tint, red at half strength where it selects nothing (`alphaTint`, cached per channel object), under the ants. Found while looking at the panel: since 1.54.2 its CMYK rows, and since 1.56.4 its Lab rows, showed in RGB documents, the rows' `display: flex` overriding their `hidden` attribute; `.cv-ch-row[hidden]` now hides them.
+
+From the bug bounty of 6 and 7 October 2026 (its 0004 and 0005, each made again by hand on this code): the agents' `remove_background` awaited `removeBackground('auto')`, which found the subject and then opened the Remove Background dialog to wait for OK, so the agent was told the background was removed while the layer had no mask and the dialog sat open. `removeBackground(method, agent)` now, for an agent, lays the mask down through `BackgroundPanel.applyNow` (the dialog's current settings, `matte` at full size and `applySubjectMask`, the same step as OK, the dialog never opened) and throws what fails so the bridge answers it as an error: no pixels on the active layer, the layer changed while the model ran, or the person's own dialog open, which is left as it was. The menu commands still open the dialog. The manual, AGENT_EVALS and LOCAL said agents get 39 tools; tools/list gives 50, and the manual's list names the video timeline.
+
+Verified by scratch probes outside the repository. Engine: Save Selection made Alpha 1 of the 40 by 30 selection, one step, the selection kept; a name trimmed; Add, Subtract, Intersect and Replace into it gave 2,600, 1,100, 100 and 1,500 pixels where they should, each undone; an Intersect that met nothing left an empty channel; Load Selection gave the 1,200 pixels back, inverted 18,800, and added to, subtracted from and intersected with a selection 11,200, 2,400 and 600; a 30 by 20 layer's transparency 600 pixels where it lies, its mask's 10 by 10 white 100, an empty layer nothing with its notice; the channel followed Rotate 90 degrees, both flips, Canvas Size, Crop, Image Size at twice, Straighten at 45 degrees and two perspective crops, each exactly where the canvas took it, and came back on undo; Rename and Delete each one step, a rename to the same name none; another open document of the same size took a saved channel into its own history and gave it back, and one of another size was not offered; a project serialized and read back kept the channel's id, name and pixels, and a manifest naming a missing file and a channel with no file read the rest. In the window: the panel's foot buttons enabled with their names; the footer's save adding a row whose thumbnail showed the channel white on black; a click showing the red tint outside the channel and the eye hiding it; the RGB row hiding all; Cmd-click, Cmd+Shift and Cmd+Alt loading, adding and subtracting; renaming in place, Escape keeping the name, Enter renaming as one step; the Save Selection dialog's fields as described, Add into Sky and a new Ring by name; the Load Selection dialog listing Sky, Ring and Background Transparency with three operations disabled, Ring inverted loaded; Delete and its undo. The Select menu's two items in place, the menu 885 pixels from top 4, unscrolled. Zero flash, under 6x CPU and network throttling after a hard reload: each save added one row, its thumbnail drawn before it was first painted, every other row kept; show, eye, the RGB row and Cmd-click changed only the rows' and eyes' classes; renaming swapped the name for its field and back; a save into an existing channel, the Load dialog and a canvas rotation changed no node; delete and undo removed and added one row; shifts only after input. Over MCP: remove_background on an opened photo answered in 14.5 s with the layer masked (subject 254, corner 0), one Remove Background step, no dialog or preview left; with the person's dialog open the agent was told and nothing applied; on an empty layer it was told to choose a pixel layer. tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine as before. The channels, menus, selection tools, crop, perspective crop, colour modes, session, guides, notes, shortcut and layout suites passed (33) before the fixes, and the MCP agents, agent consent and Select Subject suites (5) after them. The whole browser suite from a freshly started dev server: 507 passed, 3 skipped, 22 failed, each among the 23 failing at 1.65.0 (a docking test of those passed this time).
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.65.0",
+      "version": "1.65.0",
+  "version": "1.65.0",
+  async function removeBackground(method: 'auto' | 'lite'): Promise<void> {
+    if (!l?.raster || l.isGroup) { toast('Select a pixel layer first.'); return; }
+        if (engine.activeLayer?.id !== l.id) { bitmap.close(); return; }
+        toast(`Subject found with the ${used === 'ml' ? 'ML' : 'lightweight'} engine.`);
+      } catch (err) { toast(message(err), 'error'); }
+    removeBackground: () => removeBackground('auto'),
+      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', '-', 'quick-mask', '-', 'path-selection', 'delete-path'] },
+    const selections = new Set<SelectionMask>();
+      if (s.selection && s.selection !== current.selection && !selections.has(s.selection)) { selections.add(s.selection); bytes += s.selection.bytes; }
+import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData } from './types';
+      p.doc = { ...p.doc, width: quarters === 2 ? W : H, height: quarters === 2 ? H : W, layers };
+      p.doc = { ...p.doc, width, height, layers };
+      p.doc = { ...p.doc, width: W, height: H, layers: p.doc.layers.map((l) => (moved.has(l.id) ? { ...l, ...moved.get(l.id) } : l)) };
+      p.doc = { ...p.doc, width, height, resolution, layers };
+export interface Doc { depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[] }
+  Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, paragraphStylesFrom, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns,
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}) }, activeId: str(manifest.activeLayerID) };
+import { SelectionMask, type Engine } from '../engine';
+import { el, setHidden, setText } from './dom';
+  readonly root = el('<section class="cv-channels" aria-label="Channels" hidden><div class="cv-ch-rows"></div><p class="cv-ch-note"></p></section>');
+        if (isLabRow(r.id)) { this.labSolo = r.id === 'lab' ? null : r.id; this.engine.setChannelView(this.labSolo ? LAB_CH[this.labSolo] : null); this.apply(); return; }
+        if (e.metaKey || e.ctrlKey) { this.loadSelection(r.id); return; }
+    for (const row of this.root.querySelectorAll<HTMLElement>('.cv-ch-row')) {
+  private loadSelection(id: Ch): void {
+      e.applySelection(SelectionMask.cropped(0, 0, ink.width, ink.height, mask), 'replace', 'Load Selection');
+    e.applySelection(SelectionMask.cropped(0, 0, W, H, mask), 'replace', 'Load Selection');
+import { createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type Engine, type Pt, type Rect, type Surface } from '../engine';
+export const VERSION = '1.65.0';
+```
+
 ## The Select menu's Reselect, Grow, Similar, Transform Selection, Convert to Shape, Find and Isolate Layers, 27.5's third part · _v1.65.0 (engine/index.ts, engine/selection.ts, ui/layers.ts, ui/panels/layer-dialogs.ts, ui/actions.ts, app.ts; docs/MANUAL.md)
 
 DEV_PLAN 27.5, third part, after Photoshop's Select menu. Reselect: `applySelection` records, per document (`lastSelections`, a WeakMap), the selection a step replaced with none, and `reselect` applies it again as a step named Reselect, enabled (`canReselect`) only while nothing is selected. It takes no key: Photoshop's Shift+Ctrl+D is the key the Keyboard Shortcuts test binds to Duplicate as a free one. Grow and Similar (`growSelection(contiguous)`): the range of each channel and of alpha over the pixels at least half selected, widened by the Magic Wand's Tolerance; Grow floods four-connected from the selection into pixels inside that range, Similar takes every such pixel; the pixels are read as the Magic Wand reads them (the active layer drawn at document size, or the whole picture with Sample All Layers), the result hard-edged then anti-aliased when the wand is. Transform Selection of the outline (`beginOutlineTransform`): the floating-selection machinery that carries selected pixels (`floatSel`) now has an `outline` flag; the selection is drawn into a temporary layer, Selection Outline, at opacity 0 above the active one, so the Move tool's handles, the Properties fields and `floatingOutline`'s live ants all work on it unchanged, while the source layer's pixels are not cut (the render override is skipped). `commitSelectionTransform` draws the selection through the outline's transform into a new selection, removes the temporary layer and closes the step; unchanged, or with Escape, the step is aborted (`restoreSelectionTransform`, its focus now null when no layer was active). Convert to Shape (`selectionToShape`): `traceOutline` takes an optional sink with Path2D's moveTo, lineTo, closePath and rect, so the ants' tracer also gives the loops as points, each run of the pixel staircase a corner; each loop is simplified within 1.5 px (`simplify`), points turning by more than about 51 degrees kept as corners and the rest smoothed (`smoothAnchors`), and filled by the non-zero rule, the tracer's holes running against its outer loops so they cut; a shape layer in the foreground colour, one step. Find Layers (`findLayers`, through `FindLayersDialog`): names holding the text in any case, top first, selected and their folders opened; none found says so. Isolate Layers: the Layers panel keeps, per document, the layers selected when it was chosen (`isolation`), listing them with the folders holding them and what isolated folders hold; choosing it again lists all, and it ends by itself once none of its layers is left; the menu item shows it checked. Reselect, Grow, Similar and Convert to Shape are recordable. Load and Save Selection need the document's alpha channels and come next.
@@ -6030,6 +6076,18 @@ The Filter Gallery's section of the Filter dialog: its own preview, the folders 
 
 The Matting dialog: Defringe's width, or Color Decontaminate's amount and radius. See the release entry "Layer Mask, Mask All Objects, Matting and Rasterize, 27.5's second part" at the top of this log. Nothing was removed.
 
+## src/engine/alphas.ts
+
+### src/engine/alphas.ts · new · _v1.65.1
+
+`nextAlphaName`, `alphasMoved`, `alphasRedrawn` and `alphaGrey`, for the document's alpha channels. See the release entry "Load and Save Selection with alpha channels, 27.5's fourth part; remove_background over MCP" at the top of this log. Nothing was removed.
+
+## src/ui/panels/selection-dialogs.ts
+
+### src/ui/panels/selection-dialogs.ts · new · _v1.65.1
+
+The Save Selection and Load Selection dialogs, and `loadSources`. See the release entry "Load and Save Selection with alpha channels, 27.5's fourth part; remove_background over MCP" at the top of this log. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -6048,6 +6106,7 @@ src/
     app.ts  · mount, commands, menus, input, file flows, reveal gate
     engine/
         adjust.ts  · Hue/Saturation and Grain kernels, adjustment data
+        alphas.ts  · alpha channels: names, carried through canvas operations, grey pictures
         renderer.ts  · rendering pipeline
         distort.ts  · free distort: homography, warp, carried corners
         dpi.ts  · export resolution stamp (PNG pHYs, JPEG JFIF density)
@@ -6148,6 +6207,7 @@ src/
             jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
             live-mask-dialog.ts  · bake-or-unlink choice when deleting a clip base
             matting-dialog.ts  · Layer > Matting's Defringe and Color Decontaminate settings
+            selection-dialogs.ts  · Select > Save Selection and Load Selection
             size-dialogs.ts  · canvas size, image size, expand and contract
         rail.ts  · tool rail and colors
         stage.ts  · scene and overlay canvases
@@ -6172,6 +6232,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [public/splash.html](#publicsplashhtml)
 - [src/app.ts](#srcappts)
 - [src/engine/adjust.ts](#srcengineadjustts)
+- [src/engine/alphas.ts](#srcenginealphasts)
 - [src/engine/renderer.ts](#srcenginerendererts)
 - [src/engine/distort.ts](#srcenginedistortts)
 - [src/engine/dpi.ts](#srcenginedpits)
@@ -6247,6 +6308,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/jpeg-dialog.ts](#srcuipanelsjpeg-dialogts)
 - [src/ui/panels/live-mask-dialog.ts](#srcuipanelslive-mask-dialogts)
 - [src/ui/panels/matting-dialog.ts](#srcuipanelsmatting-dialogts)
+- [src/ui/panels/selection-dialogs.ts](#srcuipanelsselection-dialogsts)
 - [src/ui/panels/size-dialogs.ts](#srcuipanelssize-dialogsts)
 - [src/ui/rail.ts](#srcuirailts)
 - [src/ui/stage.ts](#srcuistagets)
