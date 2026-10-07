@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.2 · 2026-10-07
+
+### Added
+
+- Filter > Stylize: Diffuse, Emboss, Extrude, Find Edges, Oil Paint, Solarize, Tiles, Trace Contour and Wind.
+- Filter > Render: Clouds and Difference Clouds (between the foreground and background colours, a new pattern each time), Fibers (with Randomize), Lens Flare (four lens types) and Lighting Effects (one spot, point or infinite light in any colour, with an optional texture from a channel).
+- Like the filters before them, each previews live, works as a smart filter, records in actions, and can be applied by agents.
+
+### Changed
+
+- On very large layers, more filters now run a strip at a time, with the same result: Color Halftone, Crystallize, De-Interlace, Mezzotint, Mosaic, Pointillize and Reduce Noise with its JPEG option, and most of the new ones.
+
 ## 1.64.1 · 2026-10-07
 
 ### Added
