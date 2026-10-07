@@ -67,8 +67,10 @@ TOOLS = [
     _tool("fill", "Fills the selection (or the whole active layer when nothing is selected) with a colour.", {"color": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$", "description": "#rrggbb"}}, ["color"]),
     _tool("add_adjustment", "Adds an adjustment layer (for example curves, levels, hsv, exposure, splitToning, halation, glow) with optional parameters.",
           {"kind": {"type": "string"}, "params": {"type": "object", "description": "The adjustment's parameters, as its Properties show them."}}, ["kind"]),
-    _tool("place_image", "Places a PNG or JPEG image (base64) as a new layer at x, y.", {"data": {"type": "string", "description": "Base64 image data."}, "name": {"type": "string", "maxLength": 120},
-          "x": {"type": "number", "default": 0}, "y": {"type": "number", "default": 0}}, ["data"]),
+    _tool("place_image", "Places a PNG, JPEG or WebP image as a new layer at x, y, at its own size (transform_layer scales it): from path, an absolute path to a file, or data, base64.",
+          {"path": {"type": "string", "description": "Absolute path to a .png, .jpg, .jpeg or .webp file; use this for files on disk."},
+           "data": {"type": "string", "description": "Base64 image data, when there is no file."}, "name": {"type": "string", "maxLength": 120},
+           "x": {"type": "number", "default": 0}, "y": {"type": "number", "default": 0}}),
     _tool("undo", "Steps back through the document's history.", {"steps": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1}}),
     _tool("redo", "Steps forward through the document's history.", {"steps": {"type": "integer", "minimum": 1, "maximum": 100, "default": 1}}),
     # Generative, local-first (1.53.3): what runs on this computer for free first, fal last (asked, it costs money).
@@ -276,6 +278,14 @@ async def _run(name: str, args: dict) -> dict:
                 return _fail(f"{path.name} is larger than 512 MB.")
             data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
             return await _call("__open", {"name": path.name, "data": data})
+        if name == "place_image" and args.get("path"):
+            path = _path(args.get("path"), {".png", ".jpg", ".jpeg", ".webp"}, True)
+            if path.stat().st_size > _MAX_OPEN:
+                return _fail(f"{path.name} is larger than 512 MB.")
+            data = base64.b64encode(await asyncio.to_thread(path.read_bytes)).decode()
+            args = {**{k: v for k, v in args.items() if k != "path"}, "data": data, "name": args.get("name") or path.stem[:120]}
+        elif name == "place_image" and not args.get("data"):
+            return _fail("Give place_image a path (an absolute path to the image file) or data (base64).")
         if name == "timeline_render":   # 1.59.7, DEV_PLAN 25.5: the window renders, this writes
             path = _path(args.get("path"), {".mp4", ".gif", ".zip"}, False)
             out = await _call("__render", {"format": {".mp4": "mp4", ".gif": "gif", ".zip": "png"}[path.suffix.lower()],
@@ -298,7 +308,7 @@ async def _run(name: str, args: dict) -> dict:
     except ValueError as exc:
         return _fail(str(exc))
     except OSError as exc:
-        return _fail(f"Could not {'read' if name == 'open_file' else 'write'} the file: {exc.strerror or exc}.")
+        return _fail(f"Could not {'read' if name in ('open_file', 'place_image') else 'write'} the file: {exc.strerror or exc}.")
     return await _call(name, args)
 
 

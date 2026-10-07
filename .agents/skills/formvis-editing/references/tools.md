@@ -91,9 +91,10 @@ Adds an adjustment layer (for example curves, levels, hsv, exposure, splitToning
 
 ## place_image
 
-Places a PNG or JPEG image (base64) as a new layer at x, y.
+Places a PNG, JPEG or WebP image as a new layer at x, y, at its own size (transform_layer scales it): from path, an absolute path to a file, or data, base64.
 
-- `data`: string; required; Base64 image data.
+- `path`: string; Absolute path to a .png, .jpg, .jpeg or .webp file; use this for files on disk.
+- `data`: string; Base64 image data, when there is no file.
 - `name`: string
 - `x`: number; default 0
 - `y`: number; default 0
