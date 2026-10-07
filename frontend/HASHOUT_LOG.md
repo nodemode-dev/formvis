@@ -2,6 +2,38 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The filter library and 21 filters · _v1.64.0 (engine/filter-library.ts and engine/filters-lib/ new; engine/index.ts, engine/filter-jobs.ts, engine/filter-worker.ts, ui/panels/filter-panel.ts, ui/panels/controls.ts, ui/panels/actions-dialogs.ts, ui/actions.ts, styles/dialogs.css, app.ts)
+
+DEV_PLAN 27.1, the first stage of Phase 27 (filter and editing parity; the itemized inventory is in the planning sidecar). A filter is now declared rather than wired by hand: `filter-library.ts` holds `LIBRARY`, each `LibFilter` an id, a label, its menu group, its parameters (a range with the slider's span and a typed `limit` past it, a select, a check, or a square integer matrix), `reach` (how far its effect reaches at a given scale, or null when its result depends on where a pixel is, so it never runs in bands), `grows` (whether its effect spills past the layer, so a layer without a selection grows as it does for Gaussian Blur) and `run` on ImageData. Everything else reads the registry: the filter panel builds a dialog section from the parameters the first time a filter opens (`libSection`, inserted before the dialog opens and reused after), the worker runs `runLib`, `bandApron` and `filterMargin` take `libApron` and `libMargin`, the commands and the Filter submenus are generated from it (alphabetical within a group, as Photoshop lists them), so a later filter is one more entry. Settings live under `settings.lib[kind]`; `libValues` holds every stored value to its parameter (a range to its limit, an unknown choice to its default, a matrix cell to an integer in range), so settings from actions, smart filters and agents never reach a kernel out of range, and `settingsOf` keeps only the applied filter's entry in what actions and smart filters store. The kernels (`filters-lib/`): Shape Blur's kernel is its shape's pixels as runs along each row (`spans`), each run summed from running row totals (`spanMean`), so a wide shape costs its height rather than its area; Smart Blur averages the pixels within its radius whose brightness is within the threshold; Median and Dust & Scratches slide a 256-level histogram along each row; Reduce Noise smooths brightness with a sampled bilateral filter in YCbCr (rings of taps, a range that narrows as Preserve Details rises), blurs the chroma planes and sharpens brightness back with an unsharp mask; High Pass is each colour's difference from its exact Gaussian around mid grey; Maximum and Minimum keep a running queue of candidates along each line, so any radius costs the same, Roundness the best of eight rectangles that make a disc; then Offset, Custom's 5 by 5 kernel, HSB/HSL, De-Interlace's fields and NTSC Colors' chroma limit in YIQ (the composite signal kept between -0.1 and 1.0). The blurs work in premultiplied alpha so colours do not darken where opaque meets transparent. Blur, Blur More and the three Sharpen filters use an exact separable Gaussian (`exactGaussian`, `unsharpExact`): formvis's three-box Gaussian does nothing below a sigma of about 0.7, which had left Sharpen changing nothing. Average is an engine operation (`averageFill`), not a library filter: a filter sees the whole layer and the selection only blends its result, but Average needs the selection's own average, weighted by its coverage and alpha. Reduce Noise's JPEG deblocking follows the picture's 8-pixel grid, so with it on the filter's reach is null (the whole layer at once, never bands, whose origins need not fall on the grid). Actions: `filter-average` joins RECORDABLE (it changes the document at once, with no dialog); the Dialog toggle shows only on steps whose filter has a dialog (`asks`). The agent bridge's `applyFilter` wraps a library filter's flat settings as `{ lib: { [kind]: settings } }` and runs `average` through `averageFill`. `matrixRow` is Custom's 5 by 5 grid of number inputs, each labelled by its row and column.
+
+Verified by scratch probes outside the repository. Each kernel against a reference: a box-blurred dot gives 10 throughout its radius; Median removes salt; Dust & Scratches at threshold 255 keeps everything; Maximum and Minimum square and round; Offset wrapping, transparent and repeating; Custom's identity unchanged, and doubled plus 10; HSB and HSL there and back within 3 levels; High Pass of a flat image 128; NTSC red 255,0,0 to 189,28,28; De-Interlace both ways; Smart Blur keeps edges, and Edge Only; Shape Blur's circle 81 taps and square 121 at radius 5; Reduce Noise's deviation 17.2 to 10.0; stored values clamped. In the app: every command's label and state; each filter without settings one step, undone exactly; every dialog's fields, OK one step, Cancel none; the live preview; Average in a selection across red and blue 128,0,128 inside and the outside untouched; smart filters storing only their own settings; an action of Median 2, Box Blur 3, Sharpen and Average recorded, undone and played through the Actions window, equal byte for byte; every bandable library filter on a 300 by 1,100 layer forced into bands equal to the whole-layer result byte for byte, growing ones included; on a 120 MP tiled layer Median and High Pass through `bandedFilterTiled` equal to the direct run, their undo streamed back exactly; in 16 and 32-bit, Lab and CMYK documents Median, Sharpen, Box Blur, HSB/HSL and NTSC Colors each one step that changes the document's own channels, as Lens Blur does; the agent tool applying Box Blur and Average. Zero flash, under 6x CPU and network throttling after a hard reload: the Box Blur, Custom and Shape Blur dialogs opened, reopened and edited; each dialog's box the same in every frame from opening; sliders, matrix cells and the shape choice changed values in place, no rows rebuilt, each section built once before its dialog first opens; the only layout shift, 0.0008, was the status bar's hint as the document opened, before any dialog (noted, not from this change). tsc, the build, 194 unit tests; 111 engine tests passed, 4 failing on this machine (no EXR codec in its OpenCV; the LaMa and SAM ONNX models not downloaded; the SAM device read as onnx); the browser suites for filters, menus, native and panel menus, offered options, the tiled filter, MCP agents, agent editing, smart objects and large documents 18 passed, 3 opt-in skipped, 4 failing on this machine (Export OpenEXR, the codec again; Image > Mode's list, which expects five modes and has had six since Lab at 1.56.4; the tiled filter test, whose 120 MP document fits one canvas on this 8 GB machine, and the same path passed by probe with the budget lowered; generative fill without LaMa).
+
+Noted: Offset inside a selection wraps around the layer, not around the selection's bounds as Photoshop's does; an identity Custom in bands makes no step, since nothing changed; on a giant tiled document the filter commands are disabled and a notice says filters come later, so 1.62.7's tiled filters are reached only through actions and agents. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.63.0",
+      "version": "1.63.0",
+  "version": "1.63.0",
+    applyFilter: (kind, settings) => dialogs.filter.applySettings(kind as Parameters<typeof dialogs.filter.applySettings>[0], settings),
+      { label: 'Blur', items: ['filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur'] },
+      { label: 'Sharpen', items: ['filter-smartSharpen', 'filter-shakeReduction', 'filter-unsharpMask'] },
+      { label: 'Noise', items: ['filter-addNoise'] }, '-', 'remove-bg', 'remove-bg-lite'] },
+export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState; lensRadius: number; lensBrightness: number; lensThreshold: number; smart: SmartSharpenSettings; shake: ShakeSettings; gallery: GallerySettings }
+export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction' | GalleryKind;
+  'paste-layer-style', 'clear-layer-style', 'convert-smart', 'rasterize', 'new-shape-path', 'shape-color', 'reveal-all', 'duplicate', 'merge-down', 'merge-visible', 'flatten',
+        if (s && (s.kind === 'filter' || (s.kind === 'adjustment' && !s.layer))) { if (s.ask) delete s.ask; else s.ask = true; this.store.save(); }
+    const can = s.kind === 'filter' || (s.kind === 'adjustment' && !s.layer), ask = q<HTMLButtonElement>(row, '.cv-step-ask');
+import { checkRow, selectRow, sliderRow, type Row } from './controls';
+  | 'radialBlur' | 'surfaceBlur' | 'fieldBlur' | 'irisBlur' | 'tiltShift' | 'pathBlur';
+  radialBlur: 'Radial Blur', surfaceBlur: 'Surface Blur', fieldBlur: 'Field Blur', irisBlur: 'Iris Blur', tiltShift: 'Tilt-Shift', pathBlur: 'Path Blur' };
+    default: return src;
+    default: return null;
+    : kind === 'radialBlur' ? 2000 : 0;
+    const kind = this.kind, settings: Record<string, unknown> = { ...structuredClone(this.s), seed: this.seed }, editing = this.editing;
+    this.onApplied?.(this.kind, structuredClone(this.s));
+export const VERSION = '1.63.0';
+```
+
 ## 600 MP edited whole: four faults found and fixed · _v1.63.0 (engine/tiled.ts, engine/stroke.ts, engine/index.ts, io/api.ts, app.ts; e2e/test_large_document.py)
 
 DEV_PLAN 26.6h, closing M5. e2e/test_600_megapixels_edited_whole (opt-in, FORMVIS_LARGE=1): fine stripes on all 150 tiles of a 30,000 by 20,000 document, a brush stroke across several tiles on a second layer (checked whole: no stroke-stopped notice, paint at its end), a Gaussian Blur over the whole background, undone and redone, saved to the library, closed, reopened, exported; the same recorded pixels checked exactly at every step. It found four faults, each fixed and measured. (1) A tile sent to disk kept its memory: the browser records a drawImage and keeps a snapshot of its source until the canvas next draws for real, so each preview held its whole 16 MB tile; the page was killed by the system at 2.28 GB while striping. The preview (and the GPU's reduced copy, `levelOf`) is now drawn at once by a one-pixel read: six rows of paging ended at 625 to 708 MB instead of 1,660 to 1,869 (in isolation, paging with a fake store grew the same way, so it was not the network). (2) Uploads of typed arrays stayed in the page past garbage collection (30 uploads of 16 MB kept about 190 MB, measured four ways in fresh browsers: Uint8Array and ArrayBuffer kept it, a Blob by fetch or XMLHttpRequest did not): `undoPut` and `bandsPut` send Blobs. (3) A stroke on a giant layer grew its window by half the stroke's size again on every side, several picture-sized copies for a long stroke (the first run's diagonal stroke was cut unnoticed by the test, though the user is told): a fixed 1,024-pixel margin on tiled layers. (4) Closing a document whose undo held the whole-layer blur dropped about 34,000 stored keys one request each, and a browser's six requests at a time to one server kept the reopen behind them for many minutes (the engine opened the project in 0.15 s, the window reopened it directly in 120 s): `dropKeys` sends them in one request (`undoDropMany`, chunks of 20,000) on closing and on trimming, and a tiled layer's `dropAll` too. The passing run, on the 4 GB test machine: striped and painted 27 s, blurred 661 s, undone and redone exactly by 1,197 s, saved by 1,395 s, reopened exactly, exported equal to the composite at every recorded pixel by 1,704 s; the memory budget at most 65 percent used; no process killed; closing in 3 batch requests. Three earlier runs did not fail but were stopped: twice by the machine resetting between turns, once by my editing version.ts while the run used the development server, which reloaded the page (a rule now: nothing the window's server watches is touched during a browser run). Noted, not fixed: undo of a filter over a whole 600 MP layer takes about 5 minutes each way (many small requests); a stroke across nearly the whole picture can still be cut on a small machine (it says so); a photograph, which compresses far less than these stripes, needs several GB of free disk for a filter over the whole layer. Removed lines taken after the version edit. Removed from frontend:
@@ -5612,6 +5644,18 @@ export class GenerativeDialog extends Dialog {
 }
 ```
 
+## src/engine/filter-library.ts
+
+### src/engine/filter-library.ts · new · _v1.64.0
+
+The filter library (DEV_PLAN 27.1): declared filters, their parameters, reach and run, read by the filter panel, the worker, the commands and the Filter menu. The design and its reasons are in the release entry "The filter library and 21 filters" at the top of this log. Nothing was removed.
+
+## src/engine/filters-lib/
+
+### src/engine/filters-lib/ · new · _v1.64.0
+
+`blur.ts`, `sharpen.ts`, `noise.ts`, `other.ts` and `video.ts` declare the 20 library filters and hold their kernels; `shared.ts` holds premultiplying, the exact Gaussian, unsharp masking on it and box means. See the same release entry. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -5635,6 +5679,14 @@ src/
         dpi.ts  · export resolution stamp (PNG pHYs, JPEG JFIF density)
         filter-jobs.ts  · worker client for filter previews
         filter-worker.ts  · module worker running filter kernels
+        filter-library.ts  · the filter library: declared filters, their parameters, reach and run
+        filters-lib/
+            blur.ts  · Average's kernel, Blur, Blur More, Box Blur, Shape Blur, Smart Blur
+            noise.ts  · Despeckle, Dust & Scratches, Median, Reduce Noise
+            other.ts  · Custom, HSB/HSL, High Pass, Maximum, Minimum, Offset
+            sharpen.ts  · Sharpen, Sharpen More, Sharpen Edges
+            shared.ts  · premultiplying, exact Gaussian, box means
+            video.ts  · De-Interlace, NTSC Colors
         events.ts  · typed emitter
         filters.ts  · blurs, noise, lens, histogram, selection resize
         geometry.ts  · matrices and rectangles
@@ -5733,6 +5785,8 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/dpi.ts](#srcenginedpits)
 - [src/engine/filter-jobs.ts](#srcenginefilter-jobsts)
 - [src/engine/filter-worker.ts](#srcenginefilter-workerts)
+- [src/engine/filter-library.ts](#srcenginefilter-libraryts)
+- [src/engine/filters-lib/](#srcenginefilters-lib)
 - [src/engine/events.ts](#srcengineeventsts)
 - [src/engine/filters.ts](#srcenginefiltersts)
 - [src/engine/geometry.ts](#srcenginegeometryts)

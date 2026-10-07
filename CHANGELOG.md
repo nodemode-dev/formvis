@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.0 · 2026-10-07
+
+### Added
+
+- Twenty-one filters, the first stage of a filter library declared in one place: Filter > Blur gains Average, Blur, Blur More, Box Blur, Shape Blur (nine shapes) and Smart Blur (Normal, Edge Only and Overlay Edge); Filter > Sharpen gains Sharpen, Sharpen More and Sharpen Edges; Filter > Noise gains Despeckle, Dust & Scratches, Median and Reduce Noise (with JPEG artifact removal); a new Filter > Other holds Custom (your own 5 by 5 kernel), HSB/HSL, High Pass, Maximum, Minimum and Offset; a new Filter > Video holds De-Interlace and NTSC Colors.
+- Each previews live, works as a smart filter, records in actions with its settings (Average too), runs on very large layers a strip at a time with the same result, and works in 16 and 32-bit, CMYK and Lab documents. Agents apply them by name through formvis's tools.
+
+### Changed
+
+- The Blur, Noise and Sharpen submenus list their filters alphabetically, as Photoshop does, and Noise now comes before Sharpen.
+- In the Actions window, the Dialog toggle no longer shows on steps for filters that have no dialog.
+
 ## 1.63.0 · 2026-10-03
 
 ### Added

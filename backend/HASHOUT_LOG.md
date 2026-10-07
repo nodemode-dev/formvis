@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## apply_filter takes the filter library's 21 filters · _v1.64.0 (app/routers/mcp.py; the formvis-editing skill's tools.md and its .agents mirror regenerated)
+
+DEV_PLAN 27.1. The agents' `apply_filter` tool lists the stage's 21 filters in its `kind` enum and their settings in its description: average (the selection filled with its average colour), blur, blurMore, sharpen, sharpenMore, sharpenEdges, despeckle and ntscColors with no settings; boxBlur, shapeBlur, smartBlur, dustAndScratches, median, reduceNoise, custom, hsbHsl, highPass, maximum, minimum, offset and deInterlace with theirs, named as the window's filter library names them (the window holds every value to its range and ignores names it does not know). `./formvis agents sync` regenerated the skill's tool reference and its `.agents` mirror, which test_agents_setup checks. Verified: the engine's tests that can run here passed, test_mcp and test_agents_setup among them (111 passed; 4 failing for this machine, none touching agents: no EXR codec in its OpenCV, the LaMa and SAM ONNX models not downloaded, the SAM device read as onnx); through the window, apply_filter with boxBlur and with average applied one step each ("Applied boxBlur to A.", "Applied average to A."). Removed lines taken after the version edit:
+
+```text
+__version__ = "1.63.0"
+    _tool("apply_filter", "Applies a filter to the active layer (inside the selection if there is one). kind and its settings: gaussianBlur {radius}, motionBlur {angle, distance}, addNoise {amount, gaussian, monochromatic}, unsharpMask {usmAmount, usmRadius, threshold}, lensBlur {lensRadius}, surfaceBlur, radialBlur, tiltShift, irisBlur, fieldBlur. Unnamed settings keep their defaults.",
+          {"kind": {"type": "string", "enum": ["gaussianBlur", "motionBlur", "addNoise", "unsharpMask", "lensBlur", "smartSharpen", "surfaceBlur", "radialBlur", "tiltShift", "irisBlur", "fieldBlur"]}, "settings": {"type": "object", "default": {}}}, ["kind"]),
+version = "1.63.0"
+version = "1.63.0"
+ "version": "1.63.0",
+```
+
 ## The undo store's batch drop; the bench's giant-document check · _v1.63.0 (app/routers/undo.py; setup/bench.py)
 
 `POST /api/undo/drop` forgets many keys in one request (up to 100,000; keys not in the store's form skipped, the unlinking off the event loop). Found by DEV_PLAN 26.6h's 600 MP run: closing a document whose undo held a blur over the whole giant layer dropped about 34,000 keys one request each, and a browser runs six requests at a time to one server, so reopening the saved project waited behind them for many minutes (the engine opened it in 0.15 s, and the window, called directly, reopened it in 120 s). Checked through the engine's test client: three keys dropped, a malformed and a repeated one skipped, the others untouched, a body that is not `{"keys": [...]}` refused with 400. `./formvis bench` now also reports whether the window's own display draws a giant document (120 MP, kept in tiles) on the GPU, beside an ordinary one, in its results file and JSON (`giant_on_gpu`), for the check 1.62.9 could not make in a GPU-less browser. Removed lines taken after the version edit:
