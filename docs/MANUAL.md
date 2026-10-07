@@ -60,6 +60,11 @@ ask it questions.
 - Each layer has a blend mode (all 27 of Photoshop's), opacity and fill, a layer mask, and layer styles (Drop Shadow,
   Outer and Inner Glow, Stroke, Inner Shadow, Satin, Bevel and Emboss, overlays).
 - A clipping mask shows a layer only where the layer below it has pixels.
+- The Layer menu arranges layers as Photoshop's does: Arrange > Bring to Front and Send to Back (Shift+Ctrl+] and
+  Shift+Ctrl+[) and Reverse, Group from Layers and Ungroup Layers, Hide Layers, Delete > Delete Hidden Layers, Merge
+  Down, Merge Visible (hidden layers stay) and Flatten Image; Layer > New > Layer via Copy and Layer via Cut (Ctrl+J,
+  Shift+Ctrl+J) lift the selection to a new layer, and Layer from Background makes the Background an ordinary layer.
+  Select > All Layers (Alt+Ctrl+A) and Deselect Layers choose layers.
 - Tools and commands work where Photoshop's do: painting an adjustment layer paints its mask; a text or shape layer
   asks to be rasterized first.
 

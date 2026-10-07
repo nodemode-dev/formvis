@@ -4,6 +4,30 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.8 · 2026-10-07
+
+### Added
+
+- Layer > Arrange > Bring to Front (Shift+Mod+]) and Send to Back (Shift+Mod+[) move the selected layers to the top or bottom of their folder, keeping their order; Reverse swaps the selected layers' places end for end.
+- Layer > Hide Layers hides the selected layers in one step; when they're all hidden it reads Show Layers.
+- Layer > Delete > Delete Hidden Layers removes every hidden layer, with everything a hidden folder holds, in one step. Delete Layer moves into the same submenu.
+- Layer > Merge Visible merges what you see into one layer named after the lowest visible layer, keeping pixels past the canvas. Hidden layers stay; a hidden layer inside a merged folder comes out above the merged layer instead of being lost. Each artboard merges its own visible layers, inside it. It has no key, since Shift+Mod+E is Export PNG here; Keyboard Shortcuts can give it one.
+- Layer > Ungroup Layers puts a folder's layers where the folder was, in their order, and removes the folder; they become the selection, and a hidden folder's layers come out hidden.
+- Layer > New > Layer via Cut (Shift+Mod+J): the selection's pixels move to a new layer in place, cleared from the layer they came from, in one step. Layer via Copy (Mod+J) is now in the same submenu.
+- Layer > New > Group from Layers puts the selected layers in a new folder you name, and Layer from Background turns the Background into an ordinary layer (Layer 0 by default) with the New Layer dialog's mode and opacity, its locks cleared.
+- Select > All Layers (Alt+Mod+A) selects every layer and folder; Select > Deselect Layers leaves none selected.
+
+### Changed
+
+- The Layer menu follows Photoshop's order: Arrange, Align, Distribute and Flip come before Merge Down, Merge Visible and Flatten Image, which end the menu. In a window 900 pixels tall the menu now scrolls to its last rows.
+- Mod+J's command is named Layer via Copy wherever it shows, as in Photoshop; without a selection it still duplicates the layer.
+
+### Fixed
+
+- An artboard now hides what its layers hold past its edges, as it was meant to. Before, a layer reaching past an artboard showed outside it.
+- A submenu that opened under the pointer as its menu appeared could close at once when that menu had been scrolled the time before.
+- The Actions list names a step that toggles (Disable Layer Mask, Hide Layers) as it was when recorded, not as its opposite.
+
 ## 1.64.7 · 2026-10-07
 
 ### Added

@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.64.8
+
+No engine code changed in 1.64.8 (DEV_PLAN 27.5's first part, the Layer and Select operations, is in the window). Agents reach the same results through the tools they have (move_layer, merge_layers, set_layer, delete_layer). Verified: the engine's tests, 112 passed and 3 failing for this machine as before (no EXR codec, LaMa not downloaded, SAM's device reported as onnx). Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.64.7"
+version = "1.64.7"
+version = "1.64.7"
+ "version": "1.64.7",
+```
+
 ## apply_filter's Filter Gallery takes all 47 effects · _v1.64.7 (app/routers/mcp.py; the formvis-editing skill's tools.md and its .agents mirror regenerated)
 
 DEV_PLAN 27.4 closed. `apply_filter`'s description lists the Filter Gallery's Sketch effects (basRelief, chalkCharcoal, charcoal, chrome, conteCrayon, graphicPen, halftonePattern with its three patterns, notePaper, photocopy, plaster, reticulation, stamp, tornEdges, waterPaper) and its Texture effects (craquelure, grain with its ten types, mosaicTiles, patchwork, stainedGlass, texturizer), each with its settings and their ranges, and says the Sketch effects' ink and paper are the foreground and background colours; the kind enum is unchanged. `./formvis agents sync` regenerated the skill's reference and its mirror. Verified: the engine's tests that run here passed, test_mcp and test_agents_setup among them (112 passed, 3 failing for this machine, none touching agents); through the window, apply_filter applied stacks of the new effects by key, by name and with `params`. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
