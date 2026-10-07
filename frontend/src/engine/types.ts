@@ -171,15 +171,20 @@ export interface ColorOverlayEffect { enabled: boolean; color: RGB; opacity: num
 export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; opacity: number; blend: BlendMode; angle: number; style: 'linear' | 'radial'; scale: number; reverse: boolean }
 /** Bevel and Emboss: the silhouette, softened over `size`, taken as a height map and lit from `angle` (as Drop Shadow's)
  *  at `altitude` degrees; slopes facing the light take the highlight, those facing away the shadow. Inner shades inside
- *  the edge, outer outside it, emboss both, pillow both with the outside pressed in; `down` swaps light and dark. */
-export interface BevelEffect { enabled: boolean; style: 'inner' | 'outer' | 'emboss' | 'pillow'; depth: number; down: boolean; size: number; soften: number; angle: number; altitude: number; highlight: RGB; highlightOpacity: number; highlightBlend: BlendMode; shadow: RGB; shadowOpacity: number; shadowBlend: BlendMode; gloss?: ContourId; useGlobal?: boolean }
+ *  the edge, outer outside it, emboss both, pillow both with the outside pressed in, stroke the layer's stroke; `down`
+ *  swaps light and dark; a chisel `technique` slopes evenly from the edge. */
+export interface BevelEffect { enabled: boolean; style: 'inner' | 'outer' | 'emboss' | 'pillow' | 'stroke'; depth: number; down: boolean; size: number; soften: number; angle: number; altitude: number; highlight: RGB; highlightOpacity: number; highlightBlend: BlendMode; shadow: RGB; shadowOpacity: number; shadowBlend: BlendMode; gloss?: ContourId; useGlobal?: boolean; technique?: 'chiselHard' | 'chiselSoft'; contour?: BevelContour; texture?: BevelTexture }
+/** Bevel & Emboss's Contour (1.65.2): the height through `id` over `range` (0.01 to 1). */
+export interface BevelContour { enabled: boolean; id: ContourId; range: number }
+/** Bevel & Emboss's Texture (1.65.2): a pattern's brightness added to the height, tiled from the layer's corner. */
+export interface BevelTexture { enabled: boolean; pattern: string; scale: number; depth: number; invert: boolean }
 /** Satin: the silhouette offset both ways along `angle` by `distance`, each copy softened over `size`, their difference
  *  kept inside the silhouette as a silky shading; `invert` shades where they agree instead. */
 export interface SatinEffect { enabled: boolean; color: RGB; opacity: number; blend: BlendMode; angle: number; distance: number; size: number; invert: boolean }
 /** Pattern Overlay: pattern `pattern` (an id) tiled from the layer's top-left corner at `scale`, kept to its silhouette,
  *  beneath the other overlays as in Photoshop. */
 export interface PatternOverlayEffect { enabled: boolean; pattern: string; opacity: number; blend: BlendMode; scale: number }
-export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect; patternOverlay: PatternOverlayEffect; extra?: EffectExtras }
+export interface LayerEffects { dropShadow: DropShadowEffect; outerGlow: OuterGlowEffect; stroke: StrokeEffect; innerShadow: InnerShadowEffect; innerGlow: InnerGlowEffect; colorOverlay: ColorOverlayEffect; gradientOverlay: GradientOverlayEffect; bevel: BevelEffect; satin: SatinEffect; patternOverlay: PatternOverlayEffect; extra?: EffectExtras; hidden?: boolean }
 /** More instances of the effects Photoshop allows several of (up to ten in all, so nine here), drawn after the main
  *  one, each above the last. */
 export interface EffectExtras { dropShadow?: DropShadowEffect[]; stroke?: StrokeEffect[]; innerShadow?: InnerShadowEffect[]; colorOverlay?: ColorOverlayEffect[]; gradientOverlay?: GradientOverlayEffect[] }
@@ -208,7 +213,13 @@ export function defaultEffects(): LayerEffects {
   };
 }
 
+/** Whether the layer's style draws: some effect is on and the style is not hidden (Hide All Effects, 1.65.2). */
 export function effectsActive(fx: LayerEffects | null | undefined): fx is LayerEffects {
+  return effectsPresent(fx) && !fx.hidden;
+}
+
+/** Whether the layer has a style at all, shown or hidden. */
+export function effectsPresent(fx: LayerEffects | null | undefined): fx is LayerEffects {
   return !!fx && (fx.dropShadow.enabled || fx.outerGlow.enabled || fx.stroke.enabled || fx.innerShadow.enabled || fx.innerGlow.enabled || fx.colorOverlay.enabled || fx.gradientOverlay.enabled || fx.bevel.enabled || fx.satin.enabled || fx.patternOverlay.enabled
     || MULTI_EFFECTS.some((k) => (fx.extra?.[k] ?? []).some((e) => e.enabled)));
 }
@@ -235,7 +246,7 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
     gradientOverlay: { enabled: go.enabled === true, from: rgb(go.from, d.gradientOverlay.from), to: rgb(go.to, d.gradientOverlay.to), opacity: num(go.opacity, 1, 0, 1), blend: blend(go.blend, 'normal'), angle: num(go.angle, 90, -360, 360), style: go.style === 'radial' ? 'radial' : 'linear', scale: num(go.scale, 1, 0.1, 1.5), reverse: go.reverse === true },
     patternOverlay: { enabled: po.enabled === true, pattern: typeof po.pattern === 'string' && po.pattern ? po.pattern.slice(0, 120) : 'builtin:checker', opacity: num(po.opacity, 1, 0, 1), blend: blend(po.blend, 'normal'), scale: num(po.scale, 1, 0.1, 10) },
     satin: { enabled: sa.enabled === true, color: rgb(sa.color, d.satin.color), opacity: num(sa.opacity, 0.5, 0, 1), blend: blend(sa.blend, 'multiply'), angle: num(sa.angle, 19, -360, 360), distance: num(sa.distance, 11, 0, 250), size: num(sa.size, 14, 0, 250), invert: sa.invert !== false },
-    bevel: { enabled: bv.enabled === true, style: bv.style === 'outer' || bv.style === 'emboss' || bv.style === 'pillow' ? bv.style : 'inner', depth: num(bv.depth, 100, 1, 1000), down: bv.down === true, size: num(bv.size, 5, 0, 250), soften: num(bv.soften, 0, 0, 16), angle: num(bv.angle, 120, -360, 360), altitude: num(bv.altitude, 30, 0, 90), highlight: rgb(bv.highlight, d.bevel.highlight), highlightOpacity: num(bv.highlightOpacity, 0.75, 0, 1), highlightBlend: blend(bv.highlightBlend, 'screen'), shadow: rgb(bv.shadow, d.bevel.shadow), shadowOpacity: num(bv.shadowOpacity, 0.75, 0, 1), shadowBlend: blend(bv.shadowBlend, 'multiply') },
+    bevel: { enabled: bv.enabled === true, style: bv.style === 'outer' || bv.style === 'emboss' || bv.style === 'pillow' || bv.style === 'stroke' ? bv.style : 'inner', depth: num(bv.depth, 100, 1, 1000), down: bv.down === true, size: num(bv.size, 5, 0, 250), soften: num(bv.soften, 0, 0, 16), angle: num(bv.angle, 120, -360, 360), altitude: num(bv.altitude, 30, 0, 90), highlight: rgb(bv.highlight, d.bevel.highlight), highlightOpacity: num(bv.highlightOpacity, 0.75, 0, 1), highlightBlend: blend(bv.highlightBlend, 'screen'), shadow: rgb(bv.shadow, d.bevel.shadow), shadowOpacity: num(bv.shadowOpacity, 0.75, 0, 1), shadowBlend: blend(bv.shadowBlend, 'multiply') },
   };
   const contour = (v: unknown): ContourId | undefined => (isContour(v) && v !== 'linear' ? v : undefined);
   for (const [dst, src] of [[fx.dropShadow, s], [fx.outerGlow, g], [fx.innerShadow, is], [fx.innerGlow, ig]] as const) { const c = contour(src.contour); if (c) dst.contour = c; }
@@ -244,6 +255,10 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
   if (bv.useGlobal === true) fx.bevel.useGlobal = true;
   const gloss = contour(bv.gloss);
   if (gloss) fx.bevel.gloss = gloss;
+  if (bv.technique === 'chiselHard' || bv.technique === 'chiselSoft') fx.bevel.technique = bv.technique;
+  const bc = bv.contour && typeof bv.contour === 'object' ? (bv.contour as Record<string, unknown>) : null, bt = bv.texture && typeof bv.texture === 'object' ? (bv.texture as Record<string, unknown>) : null;
+  if (bc) fx.bevel.contour = { enabled: bc.enabled === true, id: isContour(bc.id) ? bc.id : 'linear', range: num(bc.range, 0.5, 0.01, 1) };
+  if (bt) fx.bevel.texture = { enabled: bt.enabled === true, pattern: typeof bt.pattern === 'string' && bt.pattern ? bt.pattern.slice(0, 120) : 'builtin:checker', scale: num(bt.scale, 1, 0.01, 10), depth: num(bt.depth, 1, -10, 10), invert: bt.invert === true };
   if (k.position === 'inside' || k.position === 'center') fx.stroke.position = k.position;
   const ex = o.extra && typeof o.extra === 'object' ? (o.extra as Record<string, unknown>) : null;
   if (ex) {
@@ -259,7 +274,8 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
     }
     if (Object.keys(extra).length) fx.extra = extra;
   }
-  return effectsActive(fx) ? fx : null;
+  if (o.hidden === true) fx.hidden = true;
+  return effectsPresent(fx) ? fx : null;
 }
 
 /** A type layer's text and how it is set. `size` is in document pixels; `lineHeight` multiplies it from one baseline

@@ -1,7 +1,7 @@
 import { deepFromU16, deepToU16 } from '../engine/deep';
 import type { ChannelPixels, DeepPixels } from '../engine/types';
 import {
-  Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsActive, effectsFromData, liveText, textFromData, paragraphStylesFrom, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
+  Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsPresent, effectsFromData, liveText, textFromData, paragraphStylesFrom, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
 } from '../engine';
 import { artboardFromData } from '../engine/types';
 import { alphaGrey, nextAlphaName } from '../engine/alphas';
@@ -137,7 +137,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.locks && Object.values(l.locks).some(Boolean)) r.locks = { ...l.locks };
     if (l.frame) r.frame = { ...l.frame };
     if (l.blend !== 'normal') r.blendMode = blendLabel(l.blend);
-  if (effectsActive(l.effects)) r.effects = structuredClone(l.effects);
+  if (effectsPresent(l.effects)) r.effects = structuredClone(l.effects);
   if (liveText(l) && l.text) { const { rendered: _rendered, ...text } = l.text; r.text = text; }
     if (l.mask) {
       const w = l.mask.raster?.width ?? l.raster?.width ?? Math.max(1, Math.round(l.transform.w));
@@ -161,7 +161,10 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   if (pathRecord) { manifest.paths = pathRecord.list; if (pathRecord.active) manifest.activePath = pathRecord.active; }
   // The patterns this document's styles use travel inside it, so it opens the same where they are not defined.
   const used = new Set<string>();
-  for (const l of doc.layers) { const po = l.effects?.patternOverlay; if (po?.enabled && po.pattern && !po.pattern.startsWith('builtin:')) used.add(po.pattern); }
+  for (const l of doc.layers) {
+    const po = l.effects?.patternOverlay, bt = l.effects?.bevel.enabled ? l.effects.bevel.texture : undefined;
+    for (const id of [po?.enabled ? po.pattern : '', bt?.enabled ? bt.pattern : '']) if (id && !id.startsWith('builtin:')) used.add(id);
+  }
   const carried: Array<{ id: string; name: string; file: string }> = [];
   for (const id of used) {
     const pat = patternById(id);

@@ -1,6 +1,6 @@
 import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, UnitsValue } from 'ag-psd';
 import {
-  Raster, boundsOf, docTransform, effectsActive, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS,
+  Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS,
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { blendIfActive, type BlendIf } from '../engine/types';
@@ -61,13 +61,13 @@ async function decodeLinked(data: Uint8Array, readPsd: typeof import('ag-psd').r
   } catch { return null; }
 }
 
-const BEVEL_TO: Record<LayerEffects['bevel']['style'], 'inner bevel' | 'outer bevel' | 'emboss' | 'pillow emboss'> = { inner: 'inner bevel', outer: 'outer bevel', emboss: 'emboss', pillow: 'pillow emboss' };
+const BEVEL_TO: Record<LayerEffects['bevel']['style'], 'inner bevel' | 'outer bevel' | 'emboss' | 'pillow emboss' | 'stroke emboss'> = { inner: 'inner bevel', outer: 'outer bevel', emboss: 'emboss', pillow: 'pillow emboss', stroke: 'stroke emboss' };
 
 /** A formvis layer style as Photoshop layer effects: each enabled effect in Photoshop's own terms. A pattern used by
  *  Pattern Overlay travels in the PSD's patterns, under a GUID. */
 function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsInfo | null {
   const px = (value: number): UnitsValue => ({ units: 'Pixels', value }), bm = (m: BlendMode): PsdBlend => TO_PSD[m] ?? 'normal', on = { enabled: true, present: true, showInDialog: true };
-  const e: LayerEffectsInfo = {};
+  const e: LayerEffectsInfo = fx.hidden ? { disabled: true } : {};
   const d = fx.dropShadow, is = fx.innerShadow, g = fx.outerGlow, ig = fx.innerGlow, k = fx.stroke, co = fx.colorOverlay, go = fx.gradientOverlay, sa = fx.satin, bv = fx.bevel, po = fx.patternOverlay;
   if (d.enabled) e.dropShadow = [{ ...on, color: d.color, opacity: d.opacity, blendMode: bm(d.blend), angle: d.angle, distance: px(d.distance), size: px(d.size), useGlobalLight: false }];
   if (is.enabled) e.innerShadow = [{ ...on, color: is.color, opacity: is.opacity, blendMode: bm(is.blend), angle: is.angle, distance: px(is.distance), size: px(is.size), useGlobalLight: false }];
@@ -78,7 +78,7 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
   if (go.enabled) e.gradientOverlay = [{ ...on, opacity: go.opacity, blendMode: bm(go.blend), type: go.style, angle: go.angle, scale: go.scale, reverse: go.reverse, align: true,
     gradient: { name: 'formvis', type: 'solid', colorStops: [{ color: go.from, location: 0, midpoint: 0.5 }, { color: go.to, location: 1, midpoint: 0.5 }], opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] } }];
   if (sa.enabled) e.satin = { ...on, color: sa.color, opacity: sa.opacity, blendMode: bm(sa.blend), angle: sa.angle, distance: px(sa.distance), size: px(sa.size), invert: sa.invert };
-  if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: false,
+  if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: bv.technique === 'chiselHard' ? 'chisel hard' : bv.technique === 'chiselSoft' ? 'chisel soft' : 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: false,
     highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend) };
   const pat = po.enabled ? patternById(po.pattern) : null;
   if (pat) {
@@ -167,10 +167,11 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
   if (sa) fx.satin = { enabled: on(sa), color: col(sa.color, fx.satin.color), opacity: op(sa.opacity, 0.5), blend: bm(sa.blendMode, 'multiply'), angle: sa.angle ?? 19, distance: px(sa.distance, 11), size: px(sa.size, 14), invert: sa.invert !== false };
   const bv = info.bevel;
   if (bv) {
-    const style = bv.style === 'outer bevel' ? 'outer' : bv.style === 'emboss' ? 'emboss' : bv.style === 'pillow emboss' ? 'pillow' : 'inner';
+    const style = bv.style === 'outer bevel' ? 'outer' : bv.style === 'emboss' ? 'emboss' : bv.style === 'pillow emboss' ? 'pillow' : bv.style === 'stroke emboss' ? 'stroke' : 'inner';
     fx.bevel = { enabled: on(bv), style, depth: Math.max(1, Math.min(1000, Math.round((bv.strength ?? 1) * 100))), down: bv.direction === 'down', size: px(bv.size, 5), soften: px(bv.soften, 0), angle: bv.angle ?? 120, altitude: bv.altitude ?? 30,
       highlight: col(bv.highlightColor, fx.bevel.highlight), highlightOpacity: op(bv.highlightOpacity, 0.75), highlightBlend: bm(bv.highlightBlendMode, 'screen'), shadow: col(bv.shadowColor, fx.bevel.shadow), shadowOpacity: op(bv.shadowOpacity, 0.75), shadowBlend: bm(bv.shadowBlendMode, 'multiply') };
-    if ((bv.technique && bv.technique !== 'smooth') || bv.style === 'stroke emboss') notes.push(`"${name}" has a Photoshop bevel formvis draws with its smooth technique.`);
+    if (bv.technique === 'chisel hard' || bv.technique === 'chisel soft') fx.bevel.technique = bv.technique === 'chisel hard' ? 'chiselHard' : 'chiselSoft';
+    if (bv.useShape || bv.useTexture) notes.push(`"${name}" has a Photoshop bevel with a Contour or Texture whose settings the file's reader does not give; formvis draws the bevel without them.`);
   }
   const po = info.patternOverlay;
   if (po) {
@@ -185,8 +186,8 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
     } else notes.push(`"${name}" uses a Photoshop pattern the file does not include; formvis shows Checker in its place.`);
     fx.patternOverlay = { enabled: on(po), pattern: id, opacity: op(po.opacity, 1), blend: bm(po.blendMode, 'normal'), scale: Math.max(0.1, Math.min(10, po.scale ?? 1)) };
   }
-  if (info.disabled) { notes.push(`"${name}" has its Photoshop layer style switched off; formvis opened it switched off.`); return null; }
-  return effectsActive(fx) ? fx : null;
+  if (info.disabled) fx.hidden = true;
+  return effectsPresent(fx) ? fx : null;
 }
 
 /** Photoshop's PostScript names for formvis's type families; bold and italic travel as Photoshop's faux styles. */
@@ -358,7 +359,9 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
 
 
     const out: PsdLayer = { name: l.name, left: px.x, top: px.y, canvas: px.c, opacity: l.opacity, ...(l.fill !== undefined && l.fill !== 1 ? { fillOpacity: l.fill } : {}), ...(l.locks ? { protected: { transparency: !!(l.locks.all || l.locks.transparency), composite: !!(l.locks.all || l.locks.pixels), position: !!(l.locks.all || l.locks.position) } } : {}), hidden: !l.visible, blendMode: TO_PSD[l.blend] ?? 'normal', clipping: !!l.clipId, ...toPsdBlending(l) };
-    if (effectsActive(l.effects)) { const e = toPsdEffects(l.effects, psdPatterns); if (e) out.effects = e; }
+    if (effectsPresent(l.effects)) { const e = toPsdEffects(l.effects, psdPatterns); if (e) out.effects = e; }
+    const bv = l.effects?.bevel;
+    if (bv?.enabled && (bv.contour?.enabled || bv.texture?.enabled)) notes.push(`"${l.name}"'s Bevel & Emboss Contour and Texture are not written to the PSD; Photoshop draws the bevel without them.`);
     if (liveText(l) && l.text && l.raster) {
       // Live type goes as Photoshop point type: anchored where formvis anchors it, on the first line's baseline, the
       // layer's placement carried into the text transform so moved, scaled or rotated type lands the same.

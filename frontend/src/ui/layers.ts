@@ -1,4 +1,4 @@
-import { BLEND_MODES, byId, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Project, type Raster, effectsActive } from '../engine';
+import { BLEND_MODES, byId, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Project, type Raster, effectsPresent } from '../engine';
 import { PanelGroup } from './panel-group';
 import type { ChannelsPanel } from './channels';
 import type { LayerLocks } from '../engine/types';
@@ -218,7 +218,8 @@ export class LayersPanel {
     setClass(row, 'is-mask-target', active && p.maskTarget && !!l.mask);
     setClass(row, 'is-pixel-target', active && !p.maskTarget && !!l.mask);
     setClass(row, 'is-clipped', !!l.clipId);
-    setHidden(q(row, '.cv-layer-fx'), !effectsActive(l.effects));
+    setHidden(q(row, '.cv-layer-fx'), !effectsPresent(l.effects));
+    setClass(q(row, '.cv-layer-fx'), 'is-off', !!l.effects?.hidden);
     setHidden(q(row, '.cv-layer-smart'), !l.smart);
     setHidden(q(row, '.cv-layer-vector'), !l.vector);
     setClass(row, 'is-text', this.engine.liveText(l));

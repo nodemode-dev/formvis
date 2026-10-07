@@ -1,4 +1,4 @@
-import { CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, instances, withGlobalLight, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
+import { CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffects, effectsActive, instances, withGlobalLight, type BevelContour, type BevelTexture, type ContourId, type EffectExtras, type Engine, type GlobalLight, type LayerEffects, type MultiEffect, type RGB, allPatterns } from '../../engine';
 import { BLEND_IF_IDENTITY, type BlendIf } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
@@ -6,6 +6,9 @@ import { checkRow, sliderRow } from './controls';
 
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (h: string): RGB => ({ r: parseInt(h.slice(1, 3), 16), g: parseInt(h.slice(3, 5), 16), b: parseInt(h.slice(5, 7), 16) });
+/** The Layer Style submenu's items (1.65.2): the dialog's section each opens, and its first row's label. */
+const SECTIONS = { dropShadow: 'Drop Shadow', outerGlow: 'Outer Glow', stroke: 'Stroke', innerShadow: 'Inner Shadow', innerGlow: 'Inner Glow', colorOverlay: 'Color Overlay', gradientOverlay: 'Gradient Overlay', patternOverlay: 'Pattern Overlay', satin: 'Satin', bevel: 'Bevel & Emboss' } as const;
+export type StyleSection = keyof typeof SECTIONS | 'blending';
 
 /** Layer > Layer Style: the document's Global Light, then Drop Shadow, Outer Glow, Stroke (outside, inside or
  *  center), Inner Shadow, Inner Glow, Satin, Color Overlay, Gradient Overlay, Pattern Overlay and Bevel & Emboss for the
@@ -154,7 +157,8 @@ export class LayerStyleDialog extends Dialog {
     slider('Size (px)', 0, 250, () => fx().satin.size, (v) => { fx().satin.size = v; });
     check('Invert', () => fx().satin.invert, (v) => { fx().satin.invert = v; });
     check('Bevel & Emboss', () => fx().bevel.enabled, (v) => { fx().bevel.enabled = v; });
-    choice('Style', [['inner', 'Inner Bevel'], ['outer', 'Outer Bevel'], ['emboss', 'Emboss'], ['pillow', 'Pillow Emboss']], () => fx().bevel.style, (v) => { fx().bevel.style = v === 'outer' || v === 'emboss' || v === 'pillow' ? v : 'inner'; });
+    choice('Style', [['inner', 'Inner Bevel'], ['outer', 'Outer Bevel'], ['emboss', 'Emboss'], ['pillow', 'Pillow Emboss'], ['stroke', 'Stroke Emboss']], () => fx().bevel.style, (v) => { fx().bevel.style = v === 'outer' || v === 'emboss' || v === 'pillow' || v === 'stroke' ? v : 'inner'; });
+    choice('Technique', [['smooth', 'Smooth'], ['chiselHard', 'Chisel Hard'], ['chiselSoft', 'Chisel Soft']], () => fx().bevel.technique ?? 'smooth', (v) => { if (v === 'chiselHard' || v === 'chiselSoft') fx().bevel.technique = v; else delete fx().bevel.technique; });
     slider('Depth (%)', 1, 1000, () => fx().bevel.depth, (v) => { fx().bevel.depth = v; });
     check('Direction down', () => fx().bevel.down, (v) => { fx().bevel.down = v; });
     slider('Size (px)', 0, 250, () => fx().bevel.size, (v) => { fx().bevel.size = v; });
@@ -167,24 +171,52 @@ export class LayerStyleDialog extends Dialog {
     slider('Highlight opacity (%)', 0, 100, () => Math.round(fx().bevel.highlightOpacity * 100), (v) => { fx().bevel.highlightOpacity = v / 100; });
     colour('Shadow', () => fx().bevel.shadow, (c) => { fx().bevel.shadow = c; });
     slider('Shadow opacity (%)', 0, 100, () => Math.round(fx().bevel.shadowOpacity * 100), (v) => { fx().bevel.shadowOpacity = v / 100; });
+    const bc = (): BevelContour => (fx().bevel.contour ??= { enabled: false, id: 'linear', range: 0.5 }), bt = (): BevelTexture => (fx().bevel.texture ??= { enabled: false, pattern: 'builtin:checker', scale: 1, depth: 1, invert: false });
+    check('Contour', () => !!fx().bevel.contour?.enabled, (v) => { bc().enabled = v; });
+    choice('Contour shape', contours, () => fx().bevel.contour?.id ?? 'linear', (v) => { bc().id = v as ContourId; });
+    slider('Contour range (%)', 1, 100, () => Math.round((fx().bevel.contour?.range ?? 0.5) * 100), (v) => { bc().range = v / 100; });
+    check('Texture', () => !!fx().bevel.texture?.enabled, (v) => { bt().enabled = v; });
+    const texturePick = el<HTMLSelectElement>('<select class="cv-input"></select>');
+    texturePick.addEventListener('change', () => { bt().pattern = texturePick.value; this.changed(); });
+    this.field('Texture pattern', texturePick);
+    this.syncs.push(() => {
+      const want = fx().bevel.texture?.pattern ?? 'builtin:checker', list = allPatterns().map((p) => [p.id, p.name] as [string, string]);
+      if (!list.some(([id]) => id === want)) list.push([want, 'Missing pattern']);
+      while (texturePick.options.length > list.length) texturePick.remove(texturePick.options.length - 1);
+      list.forEach(([id, name], i) => {
+        const o = texturePick.options[i] ?? texturePick.appendChild(document.createElement('option'));
+        if (o.value !== id) o.value = id;
+        if (o.textContent !== name) o.textContent = name;
+      });
+      texturePick.value = want;
+    });
+    slider('Texture scale (%)', 1, 1000, () => Math.round((fx().bevel.texture?.scale ?? 1) * 100), (v) => { bt().scale = v / 100; });
+    slider('Texture depth (%)', -1000, 1000, () => Math.round((fx().bevel.texture?.depth ?? 1) * 100), (v) => { bt().depth = v / 100; });
+    check('Invert texture', () => !!fx().bevel.texture?.invert, (v) => { bt().invert = v; });
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { if (!this.applied) this.engine.previewLayerEffects(null); };
   }
 
-  show(): void {
+  /** Opens on the active layer; with `focus`, scrolled to that section and, for an effect, the effect turned on. */
+  show(focus?: StyleSection): void {
     const layer = this.engine.current?.activeLayer;
     if (!layer || layer.isGroup || layer.adjustment) { this.engine.notice('Select a pixel layer to give it a layer style.'); return; }
     this.layerId = layer.id;
     this.applied = false;
     this.fx = structuredClone(layer.effects ?? defaultEffects());
+    delete this.fx.hidden;
     this.blending = { blendIf: structuredClone(layer.blendIf ?? BLEND_IF_IDENTITY), knockout: layer.knockout ?? 'none' };
     for (const k of MULTI_EFFECTS) { this.inst[k] = instances(this.fx, k); this.sel[k] = 0; (this.fx as unknown as Record<string, unknown>)[k] = this.inst[k][0]; }
     delete this.fx.extra;
+    if (focus && focus !== 'blending') this.fx[focus].enabled = true;
     this.light = { ...(this.engine.current?.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT) };
     for (const sync of this.syncs) sync();
-    this.open();
+    const label = focus && focus !== 'blending' ? SECTIONS[focus] : null, rows = focus ? [...this.body.querySelectorAll<HTMLElement>('.cv-field, .cv-dialog-note')] : [];
+    const row = label ? rows.find((r) => r.querySelector('span')?.textContent === label) : rows.find((r) => r.classList.contains('cv-dialog-note'));
+    this.open((row?.classList.contains('cv-dialog-note') ? row.nextElementSibling : row)?.querySelector<HTMLElement>('input, select'));
     this.changed();
+    if (row) this.body.scrollTop += row.getBoundingClientRect().top - this.body.getBoundingClientRect().top;
   }
 
   /** What the preview shows: the pending light put into effects that use it, those flags then dropped so the

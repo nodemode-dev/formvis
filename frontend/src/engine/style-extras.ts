@@ -66,3 +66,22 @@ export function withGlobalLight(fx: LayerEffects, light: GlobalLight | null | un
     ...(ex ? { extra: { ...ex, ...(ex.dropShadow ? { dropShadow: ex.dropShadow.map(lit) } : {}), ...(ex.innerShadow ? { innerShadow: ex.innerShadow.map(lit) } : {}) } } : {}),
   };
 }
+
+/** The effects' sizes and distances (to whole pixels) and their scales times `k` (Scale Effects, 1.65.2), unclamped. */
+export function scaledEffects(fx: LayerEffects, k: number): LayerEffects {
+  const out = structuredClone(fx), px = (v: number): number => Math.round(v * k);
+  const each = <T>(main: T, extra: T[] | undefined, f: (e: T) => void): void => { for (const e of [main, ...(extra ?? [])]) f(e); };
+  each(out.dropShadow, out.extra?.dropShadow, (e) => { e.distance = px(e.distance); e.size = px(e.size); });
+  each(out.innerShadow, out.extra?.innerShadow, (e) => { e.distance = px(e.distance); e.size = px(e.size); });
+  each(out.stroke, out.extra?.stroke, (e) => { e.size = px(e.size); });
+  each(out.gradientOverlay, out.extra?.gradientOverlay, (e) => { e.scale *= k; });
+  out.outerGlow.size = px(out.outerGlow.size);
+  out.innerGlow.size = px(out.innerGlow.size);
+  out.bevel.size = px(out.bevel.size);
+  out.bevel.soften = px(out.bevel.soften);
+  if (out.bevel.texture) out.bevel.texture.scale *= k;
+  out.satin.distance = px(out.satin.distance);
+  out.satin.size = px(out.satin.size);
+  out.patternOverlay.scale *= k;
+  return out;
+}

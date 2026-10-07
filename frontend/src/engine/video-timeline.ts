@@ -65,7 +65,7 @@ export function stateAt(doc: Doc, vt: VideoTimeline, f: number): Record<ID, Fram
     const t = tint as { color: FadeColor; amount: number } | null;
     if (t && t.amount > 0) {
       const ov = { enabled: true, color: t.color === 'white' ? { r: 255, g: 255, b: 255 } : { r: 0, g: 0, b: 0 }, opacity: t.amount, blend: 'normal' as const };
-      const e = fx ? structuredClone(fx) : defaultEffects();
+      const e = fx && !fx.hidden ? structuredClone(fx) : defaultEffects();
       if (!e.colorOverlay.enabled) e.colorOverlay = ov; else e.extra = { ...(e.extra ?? {}), colorOverlay: [...(e.extra?.colorOverlay ?? []), ov] };
       fx = e;
     }

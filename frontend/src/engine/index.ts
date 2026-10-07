@@ -27,7 +27,7 @@ import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBound
 import { withResolution } from './dpi';
 import { antialiasMask, wandMask } from './kernels';
 import { Project } from './project';
-import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel } from './types';
+import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 
 export * from './types';
@@ -56,7 +56,7 @@ import { puppetImage } from './puppet';
 import { applyH, convexQuadTLTRBRBL, homography as quadHomography, perspectiveImage, straighten, type Plane, type Quad } from './perspective';
 import { findWires } from './distractions';
 import type { SampledTip } from './abr';
-import { DEFAULT_GLOBAL_LIGHT, type GlobalLight } from './style-extras';
+import { DEFAULT_GLOBAL_LIGHT, scaledEffects, type GlobalLight } from './style-extras';
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
 import { UPRIGHT, defaultShape, noDynamics, pressureOption, shapeActive, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
@@ -1232,7 +1232,7 @@ export class Engine {
     this.display.fastEffects = false;
     // Normalised, so a partial style gets every effect's defaults rather than failing later in the renderer.
     const whole = effects ? effectsFromData(JSON.parse(JSON.stringify(effects))) : null;
-    const next = effectsActive(whole) ? whole : null;
+    const next = effectsPresent(whole) ? whole : null;
     const ok = this.edit('Layer Style', (p) => {
       const l = p.layer(id);
       if (!l || l.isGroup || l.adjustment) return false;
@@ -2376,8 +2376,66 @@ export class Engine {
   /** Copy Layer Style: remembers the active layer's effects for Paste Layer Style. */
   copyLayerStyle(): void {
     const l = this.current?.activeLayer;
-    if (!l || !effectsActive(l.effects)) { this.notice('This layer has no layer style to copy.'); return; }
+    if (!l || !effectsPresent(l.effects)) { this.notice('This layer has no layer style to copy.'); return; }
     this.styleClipboard = structuredClone(l.effects);
+  }
+
+  /** Layer Style > Hide All Effects and Show All Effects (1.65.2): every style in the document hidden or shown, one step. */
+  get effectsShown(): boolean { return !!this.current?.doc.layers.some((l) => effectsActive(l.effects)); }
+  setAllEffectsHidden(hidden: boolean): void {
+    this.edit(hidden ? 'Hide All Effects' : 'Show All Effects', (p) => {
+      const layers = p.doc.layers.map((l) => {
+        const fx = l.effects;
+        if (!effectsPresent(fx) || !!fx.hidden === hidden) return l;
+        const next = { ...fx };
+        if (hidden) next.hidden = true; else delete next.hidden;
+        return { ...l, effects: next };
+      });
+      if (layers.every((l, i) => l === p.doc.layers[i])) return false;
+      p.setLayers(layers);
+      return true;
+    });
+  }
+
+  /** Layer Style > Scale Effects (1.65.2): the selected layers' effect sizes, distances and scales times `k`, one step. */
+  scaleEffects(k: number): void {
+    if (!Number.isFinite(k) || k <= 0) return;
+    this.edit('Scale Effects', (p) => {
+      let changed = false;
+      for (const id of p.selectedIds.size ? [...p.selectedIds] : p.activeId ? [p.activeId] : []) {
+        const l = p.layer(id);
+        if (!l || !effectsPresent(l.effects) || k === 1) continue;
+        const next = effectsFromData(scaledEffects(l.effects, k));
+        if (next) { p.updateLayer(id, { effects: next }); changed = true; }
+      }
+      return changed;
+    });
+  }
+
+  /** Layer Style > Create Layers (1.65.2): the active layer's effects become layers of their own, the look kept; those
+   *  kept to its pixels clip to it, the rest stand below or above it unclipped; its style is cleared. One step. */
+  effectsToLayers(): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l) return false;
+    if (!effectsActive(l.effects)) { this.notice('This layer has no shown layer style to turn into layers.'); return false; }
+    if (l.clipId) { this.notice('Create Layers works on a layer that is not clipped to another.'); return false; }
+    const parts = this.work.effectLayers(l, p.doc);
+    if (!parts.length) { this.notice('The layer style draws nothing to turn into layers.'); return false; }
+    if (parts.some((q) => q.above && !q.kept) && p.doc.layers.some((x) => x.clipId === l.id)) { this.notice('This style draws outside the layer above it, which would split the layers clipped to it: unclip them first.'); return false; }
+    return this.edit('Create Layers', (pp) => {
+      const made = (q: (typeof parts)[number]): Layer => {
+        const r = new Raster(q.s.width, q.s.height);
+        r.ctx.drawImage(q.s as CanvasImageSource, 0, 0);
+        r.touch();
+        const blend = BLEND_MODES.find((m) => m.id === q.op)?.id ?? (q.op === 'lighter' ? 'linear-dodge' : 'normal');
+        return newLayer(`${l.name}'s ${q.name}`, pp.doc, { raster: r, transform: { ...docTransform(r.width, r.height), x: q.x, y: q.y }, parentId: l.parentId, blend, opacity: clamp(q.alpha * (q.kept ? 1 : l.opacity), 0, 1), ...(q.kept ? { clipId: l.id } : {}) });
+      };
+      const below = parts.filter((q) => !q.above).map(made), above = parts.filter((q) => q.above).map(made), list = [...pp.doc.layers], at = list.findIndex((x) => x.id === l.id);
+      list.splice(at + 1, 0, ...above);
+      list.splice(at, 0, ...below);
+      pp.setLayers(list.map((x) => (x.id === l.id ? { ...x, effects: null } : x)));
+      return true;
+    });
   }
 
   /** Paste Layer Style: gives every selected pixel layer the copied effects, as one undo step. */

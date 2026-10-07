@@ -9,6 +9,7 @@ import { StrokePathDialog } from './ui/panels/stroke-path-dialog';
 import { DuplicateLayerDialog, FindLayersDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
 import { MattingDialog } from './ui/panels/matting-dialog';
 import { LoadSelectionDialog, SaveSelectionDialog, loadSources } from './ui/panels/selection-dialogs';
+import { GlobalLightDialog, ScaleEffectsDialog } from './ui/panels/style-dialogs';
 import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
@@ -46,7 +47,7 @@ import { TypeOnPathDialog } from './ui/panels/type-on-path-dialog';
 import { ParagraphStylesDialog } from './ui/panels/paragraph-styles';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -1371,6 +1372,8 @@ export function startApp(): void {
     findLayers: new FindLayersDialog(engine),
     loadSelection: new LoadSelectionDialog(engine),
     saveSelection: new SaveSelectionDialog(engine),
+    globalLight: new GlobalLightDialog(engine),
+    scaleEffects: new ScaleEffectsDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
     guide: new GuideDialog(engine),
@@ -1749,9 +1752,16 @@ export function startApp(): void {
     { id: 'shape-color', label: 'Shape Color from Foreground', enabled: () => !!engine.current?.activeLayer?.vector, run: () => engine.recolorShape() },
     { id: 'shape-style', label: 'Shape Fill and Stroke...', enabled: () => !!engine.current?.activeLayer?.vector, run: () => dialogs.shapeStyle.show() },
     { id: 'shape-corners', label: 'Corner Radii...', enabled: () => { const s = engine.current?.activeLayer?.shape; return !!s && s.kind !== 'Ellipse'; }, run: () => dialogs.corners.show() },
-    { id: 'copy-layer-style', label: 'Copy Layer Style', enabled: () => effectsActive(engine.current?.activeLayer?.effects), run: () => engine.copyLayerStyle() },
+    { id: 'copy-layer-style', label: 'Copy Layer Style', enabled: () => effectsPresent(engine.current?.activeLayer?.effects), run: () => engine.copyLayerStyle() },
     { id: 'paste-layer-style', label: 'Paste Layer Style', enabled: () => pixel() && engine.canPasteLayerStyle, run: () => engine.pasteLayerStyle() },
-    { id: 'clear-layer-style', label: 'Clear Layer Style', enabled: () => effectsActive(engine.current?.activeLayer?.effects), run: () => engine.clearLayerStyle() },
+    { id: 'clear-layer-style', label: 'Clear Layer Style', enabled: () => effectsPresent(engine.current?.activeLayer?.effects), run: () => engine.clearLayerStyle() },
+    ...([['style-blending', 'Blending Options...', 'blending'], ['style-bevel', 'Bevel & Emboss...', 'bevel'], ['style-stroke', 'Stroke...', 'stroke'], ['style-inner-shadow', 'Inner Shadow...', 'innerShadow'], ['style-inner-glow', 'Inner Glow...', 'innerGlow'], ['style-satin', 'Satin...', 'satin'],
+      ['style-color-overlay', 'Color Overlay...', 'colorOverlay'], ['style-gradient-overlay', 'Gradient Overlay...', 'gradientOverlay'], ['style-pattern-overlay', 'Pattern Overlay...', 'patternOverlay'], ['style-outer-glow', 'Outer Glow...', 'outerGlow'], ['style-drop-shadow', 'Drop Shadow...', 'dropShadow']] as const)
+      .map(([id, label, section]) => ({ id, label, enabled: () => pixel(), run: () => dialogs.layerStyle.show(section) })),
+    { id: 'global-light', label: 'Global Light...', enabled: has, run: () => dialogs.globalLight.show() },
+    { id: 'create-layers', label: 'Create Layers', enabled: () => effectsActive(engine.current?.activeLayer?.effects) && !engine.current?.activeLayer?.clipId, run: () => { engine.effectsToLayers(); } },
+    { id: 'hide-all-effects', label: () => (engine.effectsShown ? 'Hide All Effects' : 'Show All Effects'), enabled: () => !!engine.current?.doc.layers.some((l) => effectsPresent(l.effects)), run: () => engine.setAllEffectsHidden(engine.effectsShown) },
+    { id: 'scale-effects', label: 'Scale Effects...', enabled: () => effectsPresent(engine.current?.activeLayer?.effects), run: () => dialogs.scaleEffects.show() },
     { id: 'generative-expand', label: 'Generative Expand...', enabled: has, run: () => void dialogs.generative.show('expand') },
     { id: 'upscale-2x', label: 'Upscale 2x...', enabled: has, run: () => void dialogs.generative.show('upscale', 2) },
     { id: 'upscale-4x', label: 'Upscale 4x...', enabled: has, run: () => void dialogs.generative.show('upscale', 4) },
@@ -1820,7 +1830,8 @@ export function startApp(): void {
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard', 'artboard-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
       { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
-      { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
+      { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
+        'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
       { label: 'Smart Objects', items: ['convert-smart', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-smart', '-', 'rasterize', 'rasterize-all'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] }, 'clip', 'mask-all-objects', '-',
