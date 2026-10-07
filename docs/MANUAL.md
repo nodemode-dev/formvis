@@ -65,6 +65,10 @@ ask it questions.
   Down, Merge Visible (hidden layers stay) and Flatten Image; Layer > New > Layer via Copy and Layer via Cut (Ctrl+J,
   Shift+Ctrl+J) lift the selection to a new layer, and Layer from Background makes the Background an ordinary layer.
   Select > All Layers (Alt+Ctrl+A) and Deselect Layers choose layers.
+- Layer > Layer Mask adds a mask revealing or hiding all, or the selection, or made from the layer's transparency;
+  Layer > Mask All Objects finds the objects in the layer and adds a masked folder for each, for adjustments. Layer >
+  Matting cleans the edges of a cut-out (Defringe, Remove Black or White Matte, Color Decontaminate), and Layer >
+  Rasterize turns type, shapes and smart objects into pixels, the selected ones or All Layers.
 - Tools and commands work where Photoshop's do: painting an adjustment layer paints its mask; a text or shape layer
   asks to be rasterized first.
 

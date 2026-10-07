@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The objects in a picture, for Mask All Objects · _v1.64.9 (app/services/background.py, app/routers/ops.py)
+
+DEV_PLAN 27.5, second part. `background.objects(data, limit=24)`, served at `POST /api/ops/objects` (`find_objects`; 501 without ONNX Runtime, 422 for an unreadable or oversized picture, as Remove Background answers): U^2-Net's saliency at a working scale (the picture reduced so its longer side is at most 1024, before the model's own 320), its regions above half the threshold separated by OpenCV's `connectedComponentsWithStats` (8-connected), those of at least 0.05 percent of the picture (16 pixels at least) kept, largest first, at most 24. Every soft value at 8 or more goes to the object nearest it, by `distanceTransformWithLabels` with a label per pixel mapped back to its region (the labels number the regions' pixels in scan order, as `cc[fg == 1]` lists them, checked on a small grid), so touching soft edges are shared out rather than counted twice. Each object is a grey PNG cropped to its box, base64 in the JSON with the working size; the window scales them to the document. OpenCV, not SciPy: SciPy is used elsewhere in the engine but is no declared requirement. Verified: on a 1200 by 800 picture with three shapes on grey, three objects in 1.7 seconds, loading the model included, their boxes where the shapes are at the working scale; through the window, three masked folders matching the shapes. The engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.64.8"
+version = "1.64.8"
+version = "1.64.8"
+ "version": "1.64.8",
+```
+
 ## Version only · _v1.64.8
 
 No engine code changed in 1.64.8 (DEV_PLAN 27.5's first part, the Layer and Select operations, is in the window). Agents reach the same results through the tools they have (move_layer, merge_layers, set_layer, delete_layer). Verified: the engine's tests, 112 passed and 3 failing for this machine as before (no EXR codec, LaMa not downloaded, SAM's device reported as onnx). Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

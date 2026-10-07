@@ -2,6 +2,26 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layer Mask, Mask All Objects, Matting and Rasterize, 27.5's second part · _v1.64.9 (engine/matting.ts and ui/panels/matting-dialog.ts new; engine/index.ts, io/api.ts, ui/actions.ts, app.ts; docs/MANUAL.md)
+
+DEV_PLAN 27.5, second part. Layer Mask takes Photoshop's five ways to add a mask: `addMask(hide, fromSelection)` gains its second argument, so Reveal All and Hide All (`mask-reveal-all`, `mask-hide-all`) ignore a selection where the Layers panel's button, `add-mask`, still uses it; Reveal Selection and Hide Selection need one; the selection stays, as the button leaves it. From Transparency (`maskFromTransparency`): `alphaToMask` in the new `matting.ts` gives the layer's alpha as a mask (white at that alpha, the house form of a mask) and its pixels opaque, both new rasters, so the step's snapshot keeps the old ones; the picture is unchanged and the mask becomes the target. Delete, Apply, Enable and Link were there already. Matting (`matting(kind, width, amount, radius)`, through `regionEdit` with no region, so the whole layer and its patches, declined with a notice while the mask is targeted): Defringe and Remove Black and White Matte, as Photoshop's. Defringe: visible pixels within the width of transparency (alpha 2 or less), by exact Euclidean distance (`distanceSquared`, Meijster's two-pass transform), take the mean colour of their eight neighbours already settled, starting from the pixels further in and growing outward a ring of whole-pixel distance at a time; alpha is kept. Remove Black Matte divides a partly transparent pixel's colour by its alpha; White Matte first takes away the white it was blended with. Color Decontaminate runs Select and Mask's `decontaminate` with the layer's enabled mask, drawn into the layer's pixels, or else its alpha, the radius as its scale over six. The Matting dialog (`MattingDialog`) asks Defringe's width (1 to 200 px) or Decontaminate's amount (0 to 100) and radius (1 to 100 px), keeping the last values; its rows are hidden before it opens. Mask All Objects: `objectSource` gives the layer alone at document size over white (the visible image for a layer without pixels); the engine's `/api/ops/objects` returns the objects at its working scale, each a grey mask over its box; app.ts draws each scaled into a document-size surface, grey turned to alpha, and `maskAllObjects` adds, as one step, a folder Objects above the layer holding an empty folder per object, largest first (Object 1 on top), masked to it; empty folders draw nothing, so the picture is unchanged. Adobe's help page for it did not load here, so the result follows Photoshop's feature as remembered, unchecked: a group with a mask per object. Rasterize (`rasterizeLayers(kind)`): Type, Shape and Smart Object on the selected layers of that kind, Layer on the active one as before (`rasterizeLayer`), and All Layers on every type, shape and smart object layer, each one step; Rasterize Layer moves into the submenu, the Layer menu keeping its length. The commands without dialogs are recordable. Fill Content, Vector Mask and Video wait for fill layers, vector masks and video layers (27.7 and 27.13).
+
+Verified by scratch probes outside the repository. Engine, through the commands: with a selection all five mask commands enabled; Reveal All a mask with no pixels (all shown) despite the selection, Hide All alpha 0 everywhere, Reveal Selection 255 inside and 0 out, Hide Selection the reverse, the two disabled without a selection; From Transparency on a left-to-right alpha ramp: the mask's alpha the ramp's, the pixels opaque, the picture equal to before, the command disabled after, undo restoring both; Remove Black Matte turning a quarter- and three-quarter-transparent orange premultiplied over black back to (255, 128, 0) at their alphas, White Matte the same for orange over white; Defringe at 3 px recolouring a half-transparent green ring three pixels wide around a red square to red, its alpha kept, the inside and the empty pixels unchanged, while at 1 px the outer ring takes the next ring's green; Color Decontaminate with a soft-edged mask moving an edge pixel from blue to (211, 0, 44) toward the red inside, the inside and the outside unchanged; Matting declined on a targeted mask; Rasterize Type on a text and a shape layer selected rasterizing the text only, All Layers both, the picture equal. Mask All Objects on a 1200 by 800 picture of a red ellipse, a blue rectangle and a green disc on grey: one step, a folder Objects holding Object 1, 2 and 3 (the ellipse, the rectangle, the disc), each mask 254 or 255 on its object and 0 on the others and the background, the picture unchanged, undone exactly; the engine found the three in 1.7 seconds, loading its model included. In the window: the Layer menu's Layer Mask, Rasterize and Matting submenus in Photoshop's order, the Arrange row still in view at 900 pixels (779 to 809); the Matting dialog's title and rows for each, its OK one step "Defringe", the width kept. Zero flash, under 6x CPU and network throttling after a hard reload, from the menus: Reveal All, Hide Selection, Remove Black Matte, Defringe through its dialog and Mask All Objects rebuilt no Layers panel row and shifted nothing; the dialog one box from its first frame. tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine as before. From a freshly started dev server the menus, native menus, shortcuts, offered options, Select Subject, locks, no-flash, panel menus, artboards, layer dialogs, folders, mask and PSD adjustment suites passed (32), the offered-options suite failing only as known.
+
+Noted: Mask All Objects finds what U²-Net calls salient, so objects in the background of a busy picture may be missed or joined, and it names objects by size, not kind. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.64.8",
+      "version": "1.64.8",
+  "version": "1.64.8",
+      'rasterize', 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
+      { label: 'Layer Mask', items: ['add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-',
+      'merge', 'merge-visible', 'flatten'] },
+  addMask(hide = false): void {
+      const sel = p.selection;
+export const VERSION = '1.64.8';
+```
+
 ## Layer and Select operations, 27.5's first part · _v1.64.8 (engine/index.ts, engine/renderer.ts, ui/menu.ts, ui/commands.ts, ui/actions.ts, ui/panels/layer-dialogs.ts, app.ts; docs/MANUAL.md)
 
 DEV_PLAN 27.5, first part, built for formvis's flat layer array after Photoshop's behaviour. Engine: `arrangeLayers(how)`, on `selectedRoots`: Bring to Front and Send to Back write each parent's siblings back into the same array slots with the chosen ones last or first, in their order; Reverse writes the chosen roots into their own slots end for end, each taking the parent of the slot it lands in (an artboard is refused a slot inside a folder); `normalizeClips` after each, and no step when nothing moved. `setLayersVisible(visible)`, Hide and Show Layers over `selectedIds`. `deleteHiddenLayers()`: each hidden layer with its descendants, a clip whose base goes unlinked; declined with a notice when every layer would go, a document keeping one as in Photoshop; the active layer stays when it survives, else the top one. `mergeVisible()`: the shown layers (by `hierarchy`'s visibility through their folders) are grouped by container, the document's top level and each top-level artboard; a container merges when it holds two shown layers or a shown folder. Its shown roots and their shown descendants render with `only` (folder masks applied; an artboard's backdrop not drawn, since `only` never holds the artboard) over the canvas united with their bounds, or the artboard's rectangle, clamped to the canvas past `LIMITS`, after `room`. The merged layer takes the lowest root's slot and name; a hidden layer whose parent merged is lifted to the container just above it, its own descendants following by parent. `ungroupLayers()`: each selected plain folder's direct children move to its slot in their order with its parent, hidden when it was, and the folder goes; they become the selection, the top one active. `layerViaCut()`: `selectedPixels` read first, then one outer step holding `clearPixels` on the source and `insertRasterLayer` above it, both nested; declined before any step when `paintable` or `smartLocked` refuses. `backgroundLayer()` (the bottom top-level layer, when named Background) and `layerFromBackground(opts)`: renamed (Layer 0 unless given), with the New Layer dialog's mode and opacity, locks cleared. `selectAllLayers(all)`: every layer selected with the active kept (else the top one), or none selected and none active; not a history step, as choosing a layer is not. `groupLayers(name?)` takes Group from Layers' name. `NewLayerDialog.show(background)` (Layer 0, no clipping row) and `NewGroupDialog.show(fromLayers)` (its title set before it opens). app.ts: bring-front (Shift+Mod+]), send-back (Shift+Mod+[), reverse-layers, hide-layers (labelled Show Layers when every selected layer is hidden), delete-hidden, merge-visible, ungroup, layer-via-cut (Shift+Mod+J), layer-from-background, group-from-layers, select-all-layers (Alt+Mod+A), deselect-layers. Merge Visible and Hide Layers take no key, Photoshop's Shift+Ctrl+E being Export PNG here and its Ctrl+, Preferences; Ungroup none, Shift+Mod+G staying with Move Out of Folder. The duplicate command is labelled Layer via Copy throughout. The Layer menu takes Photoshop's order: New gains its four items, Delete becomes a submenu, and Arrange, Align, Distribute and Flip come before Merge Down, Merge Visible and Flatten Image; Select gains All Layers and Deselect Layers; the layers' context menu Ungroup and Merge Visible. The commands without dialogs are recordable. Found while building Merge Visible: the renderer's artboard rectangle went in as a mask that `cover` treats as revealing outside itself (`covers: false`), so an artboard never clipped what reached past it; now `covers: true`, it cuts outside the rectangle. Found while checking the menus: a `PopupMenu`'s reset to its top on opening sent a scroll event a frame later that closed a submenu opened under the pointer meanwhile, so after a scrolled visit a menu's first submenu row flashed open and shut; the scroll now closes a submenu only when the menu has moved from where it stood when the submenu opened (`subTop`). And `Commands.onRun` receives the label read before the command ran, so the Actions list names a toggle as it was (Hide Layers, Disable Layer Mask), where it had named its opposite.
@@ -5969,6 +5989,18 @@ The Fade dialog. See the release entry "Fade, Last Filter and Spin Blur" at the 
 
 The Filter Gallery's section of the Filter dialog: its own preview, the folders of effects with thumbnails, the chosen effect's settings and the stack of effect layers. See the release entry "The Filter Gallery and its Artistic effects" at the top of this log. Nothing was removed.
 
+## src/engine/matting.ts
+
+### src/engine/matting.ts · new · _v1.64.9
+
+`defringe`, `removeMatte`, `alphaToMask` and `distanceSquared`, for Layer > Matting and Layer Mask > From Transparency. See the release entry "Layer Mask, Mask All Objects, Matting and Rasterize, 27.5's second part" at the top of this log. Nothing was removed.
+
+## src/ui/panels/matting-dialog.ts
+
+### src/ui/panels/matting-dialog.ts · new · _v1.64.9
+
+The Matting dialog: Defringe's width, or Color Decontaminate's amount and radius. See the release entry "Layer Mask, Mask All Objects, Matting and Rasterize, 27.5's second part" at the top of this log. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -6021,6 +6053,7 @@ src/
         index.ts  · Engine API
         kernels.ts  · adjustment and wand kernels
         matte.ts  · Remove Background matte refining: guided filter, shift edge, contrast
+        matting.ts  · Layer > Matting and From Transparency: Defringe, matte removal, alpha to mask
         project.ts  · per-tab project record
         retouch.ts  · Spot Healing, Content-Aware Fill, Smudge and Liquify
         selection.ts  · selection masks, outline tracer
@@ -6085,6 +6118,7 @@ src/
             gallery-view.ts  · the Filter Gallery's section: own preview, effect folders, settings, effect layers
             jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
             live-mask-dialog.ts  · bake-or-unlink choice when deleting a clip base
+            matting-dialog.ts  · Layer > Matting's Defringe and Color Decontaminate settings
             size-dialogs.ts  · canvas size, image size, expand and contract
         rail.ts  · tool rail and colors
         stage.ts  · scene and overlay canvases
@@ -6124,6 +6158,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/index.ts](#srcengineindexts)
 - [src/engine/kernels.ts](#srcenginekernelsts)
 - [src/engine/matte.ts](#srcenginemattets)
+- [src/engine/matting.ts](#srcenginemattingts)
 - [src/engine/project.ts](#srcengineprojectts)
 - [src/engine/retouch.ts](#srcengineretouchts)
 - [src/engine/selection.ts](#srcengineselectionts)
@@ -6182,6 +6217,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/gallery-view.ts](#srcuipanelsgallery-viewts)
 - [src/ui/panels/jpeg-dialog.ts](#srcuipanelsjpeg-dialogts)
 - [src/ui/panels/live-mask-dialog.ts](#srcuipanelslive-mask-dialogts)
+- [src/ui/panels/matting-dialog.ts](#srcuipanelsmatting-dialogts)
 - [src/ui/panels/size-dialogs.ts](#srcuipanelssize-dialogsts)
 - [src/ui/rail.ts](#srcuirailts)
 - [src/ui/stage.ts](#srcuistagets)

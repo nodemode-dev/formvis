@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.9 · 2026-10-07
+
+### Added
+
+- Layer > Layer Mask follows Photoshop's: Reveal All and Hide All (whatever is selected), Reveal Selection and Hide Selection, and From Transparency, which turns the layer's transparency into its mask and makes its pixels opaque, the picture unchanged.
+- Layer > Mask All Objects finds the objects in the layer on this computer and adds, above it, a folder holding an empty folder for each object, masked to that object, ready for adjustments; the picture stays as it was.
+- Layer > Matting: Color Decontaminate (Amount and Radius, by the layer's mask, else its transparency), Defringe (Width), Remove Black Matte and Remove White Matte, each one step on the active layer's pixels.
+- Layer > Rasterize: Type, Shape, Smart Object and Layer for the selected layers of that kind, and All Layers for every type, shape and smart object layer in the document.
+
+### Changed
+
+- Layer > Rasterize Layer moves into the new Rasterize submenu.
+
 ## 1.64.8 · 2026-10-07
 
 ### Added
