@@ -2,6 +2,22 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Filter Gallery's Sketch and Texture effects; 27.4 closed · _v1.64.7 (engine/filters-lib/fx-sketch.ts and fx-texture.ts new; engine/filters-lib/filter-gallery.ts)
+
+DEV_PLAN 27.4 closed. The last twenty effects, registered after Distort's in `GALLERY_FX`, so the gallery holds all 47 in six folders. `fx-sketch.ts`, the Sketch folder, drawn between the foreground (ink) and background (paper) colours the dialog captures (`inkOnPaper`): Bas Relief (the softened luma's rise toward the light, over a little of its own tone), Chalk & Charcoal (charcoal strokes along one diagonal in the shadows and chalk along the other in the light, over the two colours' mid grey), Charcoal (diagonal strokes thresholded at the tone the balance shifts, and the edges), Chrome (a cosine of the softened luma, banded by Detail and lit from the top left, in grey), Conté Crayon (the two crayons either side of a mid colour, with stroke grit, then Texturizer's relief), Graphic Pen (thin strokes along the Stroke Direction thresholded at the tone the balance shifts), Halftone Pattern (dots, rings about the frame's centre or lines, against the softened tone at a contrast), Note Paper and Plaster (a thresholded mask, softened and lit from the top left or the chosen side, with grain on Note Paper), Photocopy (ink where the picture is darker than its blur, by more as Darkness falls), Reticulation (the tone plus clumped grain, thresholded between the two levels), Stamp and Torn Edges (a threshold of the softened tone, Torn Edges roughened by grain first) and Water Paper (colours run along both axes and damped, with fibres, brightness and contrast). `fx-texture.ts`, the Texture folder: Craquelure (cracks along the borders of jittered cells Crack Spacing apart, wobbled by value noise, darkened by Crack Brightness and lit by Crack Depth), Grain (ten grain types, the background colour for Sprinkles, the foreground for Speckle, both for Stippled, after contrast), Mosaic Tiles (tiles of Tile Size in rows staggered at random, the grout of Grout Width lightened by Lighten Grout, the tiles bevelled), Patchwork (squares filled from their centre, softened, bevelled and raised by a random height), Stained Glass (cells around jittered sites filled from their site, brightened toward the frame's centre, leaded in the foreground colour) and Texturizer (the shared relief). Craquelure's cracks are found once per pixel into a height whose slopes light them; the cells' sites are made once for the window (`Cells`), each pixel searching the nine cells around it. Patchwork and Stained Glass sample by document coordinates, mapped into the image's pixels at the preview's scale.
+
+Verified by scratch probes outside the repository. Engine: each of the twenty at its defaults, on a 480 by 320 scene, changed 45.5 (Craquelure, its cracks only) to 100 percent of the pixels, kept every alpha and repeated byte for byte; on a 300 by 400 scene, 48-row bands with the declared apron matched the whole run exactly for all twenty, and for the 27 before them again; a half-scale run against the full result reduced differed by a mean of 0.6 to 19 levels for most, and by 23 to 62 for Halftone Pattern, Charcoal and Graphic Pen, whose fine black and white patterns are drawn at the same size in fewer pixels where the reduced result averages them to grey. The contact sheet was looked at: each reads as its name. In the window: six folders with 15, 8, 3, 14, 1 and 6 thumbnails, Halftone Pattern's settings and note; at 100 percent and a pixel ratio of 1 the preview's pixels equalled the applied result's for its view exactly, for Graphic Pen, Stained Glass, Rough Pastels and Glass. Agents: apply_filter applied stacks of Bas Relief; Chalk & Charcoal by name with Halftone Pattern's rings; Grain's Speckle with Stained Glass; and fifteen at once. Zero flash, under 6x CPU and network throttling after a hard reload: the dialog's five areas kept their boxes in every frame from opening, through edits, and on reopening; nothing outside the dialog changed; the folder and row shifts as at 1.64.6, input when clicked. tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine as before; from a freshly started dev server the filter, agent, smart object, action, shortcut, history and blur gallery suites passed (28), and the offered-options suite failed only as known (the EXR export's 500, six colour modes).
+
+Noted: below 100 percent the preview of the fine black and white Sketch patterns is busier than the result seen reduced, as the half-scale figures show; at 100 and 200 percent it is the result. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.64.6",
+      "version": "1.64.6",
+  "version": "1.64.6",
+export const GALLERY_FX: readonly FxDef[] = [...ARTISTIC_FX, ...BRUSH_FX, ...DISTORT_FX];
+export const VERSION = '1.64.6';
+```
+
 ## The Filter Gallery's Brush Strokes, Distort and Stylize effects · _v1.64.6 (engine/filters-lib/fx-brush.ts and fx-distort.ts new; engine/filters-lib/filter-gallery.ts)
 
 DEV_PLAN 27.4, third part. Twelve more effects, registered after the Artistic folder in `GALLERY_FX`, so the dialog's folders, its effect list, the sanitizer and agents take them with no other change. `fx-brush.ts`, the Brush Strokes folder: Accented Edges (the softened picture, its edges lightened or darkened by Edge Brightness either side of 25), Angled Strokes (the picture run along each diagonal, light tones along one and dark along the other as Direction Balance sets, with stroke texture, then sharpened), Crosshatch (each pass of Strength runs the picture along both diagonals and hatches it with stroke texture, then sharpened), Dark Strokes (short strokes one way darkened in the shadows, long strokes the other way lightened in the light, split at Balance), Ink Outlines (strokes along one diagonal, inked at edges with fine lines in the shadows, darkened and lightened by the two intensities), Spatter and Sprayed Strokes (each pixel taken from a random place up to the Spray Radius away, the offsets softened by Smoothness; Sprayed Strokes then runs along its Stroke Direction) and Sumi-e (softened and run along a diagonal, inked in the shadows by Stroke Pressure, with Contrast). `fx-distort.ts`: Diffuse Glow (the background colour rising through the highlights past Clear Amount, stronger toward the frame's centre, with grain), Glass (pixels moved by the slope of the frosted, blocks, canvas or tiny-lens texture at Scaling, softened by Smoothness, inverted on request, each move at most one and a half times the Distortion), Ocean Ripple (moved by the slope of value noise at Ripple Size by up to the Ripple Magnitude) and, in the Stylize folder, Glowing Edges (the softened picture's edges per channel, widened by Edge Width and brightened on black). Moves are in document pixels, scaled into the image's, and sampled bilinearly within the window, which the reach covers.
@@ -5894,6 +5910,10 @@ The Filter Gallery: `gallery-fx.ts` holds the working window, the effect declara
 
 The Filter Gallery's Brush Strokes folder, and its Distort and Stylize folders. See the release entry "The Filter Gallery's Brush Strokes, Distort and Stylize effects" at the top of this log. Nothing was removed.
 
+### src/engine/filters-lib/fx-sketch.ts, fx-texture.ts · new · _v1.64.7
+
+The Filter Gallery's Sketch and Texture folders, its last. See the release entry "The Filter Gallery's Sketch and Texture effects; 27.4 closed" at the top of this log. Nothing was removed.
+
 ## src/engine/fade.ts
 
 ### src/engine/fade.ts · new · _v1.64.4
@@ -5944,6 +5964,8 @@ src/
             fx-artistic.ts  · the Filter Gallery's Artistic effects
             fx-brush.ts  · the Filter Gallery's Brush Strokes effects
             fx-distort.ts  · the Filter Gallery's Distort effects and Glowing Edges
+            fx-sketch.ts  · the Filter Gallery's Sketch effects, in the foreground and background colours
+            fx-texture.ts  · the Filter Gallery's Texture effects
             gallery-fx.ts  · the Filter Gallery's working window, effect declaration and shared operators
             gallery.ts  · the Blur Gallery's library filters: Spin Blur
             noise.ts  · Despeckle, Dust & Scratches, Median, Reduce Noise

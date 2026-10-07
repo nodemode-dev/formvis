@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.7 · 2026-10-07
+
+### Added
+
+- The Filter Gallery's Sketch folder, in the foreground and background colours (Bas Relief, Chalk & Charcoal, Charcoal, Chrome, Conté Crayon, Graphic Pen, Halftone Pattern, Note Paper, Photocopy, Plaster, Reticulation, Stamp, Torn Edges and Water Paper), and its Texture folder (Craquelure, Grain with ten grain types, Mosaic Tiles, Patchwork, Stained Glass and Texturizer): the gallery now holds all 47 of its effects in six folders.
+
 ## 1.64.6 · 2026-10-07
 
 ### Added
