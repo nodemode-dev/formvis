@@ -1757,7 +1757,7 @@ export function startApp(): void {
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, '-', 'quick-mask', '-', 'path-selection', 'delete-path'] },
-    { label: 'Filter', items: ['filter-last', '-', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
+    { label: 'Filter', items: ['filter-last', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
       { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur', 'filter-spinBlur'] },
       { label: 'Distort', items: filterGroup('Distort', []) },

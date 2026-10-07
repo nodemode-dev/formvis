@@ -9,6 +9,7 @@ import { STYLIZE_FILTERS } from './filters-lib/stylize';
 import { RENDER_FILTERS } from './filters-lib/render';
 import { DRAWN_FILTERS } from './filters-lib/drawn';
 import { GALLERY_FILTERS } from './filters-lib/gallery';
+import { FILTER_GALLERY } from './filters-lib/filter-gallery';
 import type { Rect } from './types';
 
 export const LIB_IDS = [
@@ -21,14 +22,15 @@ export const LIB_IDS = [
   'colorHalftone', 'crystallize', 'facet', 'fragment', 'mezzotint', 'mosaic', 'pointillize',
   'diffuse', 'emboss', 'extrude', 'findEdges', 'oilPaint', 'solarize', 'tiles', 'traceContour', 'wind',
   'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'lightingEffects', 'flame', 'pictureFrame', 'tree',
-  'spinBlur',
+  'spinBlur', 'filterGallery',
 ] as const;
 
 export type LibKind = (typeof LIB_IDS)[number];
-export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video' | 'Distort' | 'Pixelate' | 'Stylize' | 'Render' | 'Blur Gallery';
+export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video' | 'Distort' | 'Pixelate' | 'Stylize' | 'Render' | 'Blur Gallery' | 'Filter Gallery';
 export interface LibImage { readonly name: string; readonly w0: number; readonly h0: number; readonly w: number; readonly h: number; readonly rg: string }
 export interface LibPath { readonly name: string; readonly w0: number; readonly h0: number; readonly lines: readonly (readonly number[])[] }
-export type LibValue = number | string | boolean | number[] | LibImage | LibPath | null;
+export interface LibEffect { readonly filter: string; readonly values: LibValues; readonly visible: boolean }
+export type LibValue = number | string | boolean | number[] | LibImage | LibPath | readonly LibEffect[] | null;
 export type LibValues = Record<string, LibValue>;
 export type LibColor = readonly [number, number, number];
 export interface LibSize { readonly w: number; readonly h: number }
@@ -43,7 +45,8 @@ export type LibParam =
   | { readonly key: string; readonly label: string; readonly kind: 'seed'; readonly def: number }
   | { readonly key: string; readonly label: string; readonly kind: 'color'; readonly def: string }
   | { readonly key: string; readonly label: string; readonly kind: 'image'; readonly def: null }
-  | { readonly key: string; readonly label: string; readonly kind: 'path'; readonly def: null };
+  | { readonly key: string; readonly label: string; readonly kind: 'path'; readonly def: null }
+  | { readonly key: string; readonly label: string; readonly kind: 'effects'; readonly def: readonly LibEffect[]; readonly clean: (v: unknown, sane: (p: LibParam, v: unknown) => LibValue) => LibEffect[] };
 
 export interface LibContext { readonly scale: number; readonly seed: number; readonly area: Rect; readonly canvas: Rect; readonly doc: LibSize; readonly fg: LibColor; readonly bg: LibColor }
 
@@ -56,10 +59,13 @@ export interface LibFilter {
   readonly grows: boolean;
   readonly note?: string;
   readonly fills?: boolean;
+  readonly width?: number;
+  readonly ownPreview?: boolean;
+  readonly invalid?: (v: LibValues) => string | null;
   readonly run: (src: ImageData, v: LibValues, ctx: LibContext) => ImageData;
 }
 
-export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS, ...STYLIZE_FILTERS, ...RENDER_FILTERS, ...DRAWN_FILTERS, ...GALLERY_FILTERS];
+export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS, ...STYLIZE_FILTERS, ...RENDER_FILTERS, ...DRAWN_FILTERS, ...GALLERY_FILTERS, ...FILTER_GALLERY];
 
 const BY_ID = new Map<string, LibFilter>(LIBRARY.map((f) => [f.id, f]));
 
@@ -70,7 +76,7 @@ export const libHasDialog = (kind: LibKind): boolean => libFilter(kind).params.l
 export const libInGroup = (group: LibGroup): LibFilter[] => LIBRARY.filter((f) => f.group === group);
 
 function paramDefault(p: LibParam): LibValue {
-  return p.kind === 'matrix' ? [...p.def] : p.def;
+  return p.kind === 'matrix' ? [...p.def] : p.kind === 'effects' ? structuredClone(p.def) : p.def;
 }
 
 export function libDefaults(kind: LibKind): LibValues {
@@ -129,6 +135,7 @@ function sane(p: LibParam, v: unknown): LibValue {
   if (p.kind === 'image') return saneImage(v);
   if (p.kind === 'path') return sanePath(v);
   if (p.kind === 'color') return typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v) ? v.toLowerCase() : p.def;
+  if (p.kind === 'effects') return p.clean(v, sane);
   const arr = Array.isArray(v) ? v : p.def;
   return Array.from({ length: p.size * p.size }, (_, i) => {
     const n = Number(arr[i] ?? 0);

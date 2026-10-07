@@ -12,6 +12,7 @@ import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
 import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libImageParams, libMargin, libPathParams, libValues, runLib, type LibColors, type LibFrame, type LibImage, type LibKind, type LibParam, type LibPath, type LibValue, type LibValues } from '../../engine/filter-library';
 import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, type CalibrationState, type CurveChannel, type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
+import { GalleryView } from './gallery-view';
 
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction'
   | 'radialBlur' | 'surfaceBlur' | 'fieldBlur' | 'irisBlur' | 'tiltShift' | 'pathBlur' | LibKind;
@@ -289,6 +290,7 @@ export class FilterPanel extends Dialog {
     if (p.kind === 'image') return this.imageRow(p.label, (v) => put(p.key, v));
     if (p.kind === 'path') return this.pathRow(p.label, (v) => put(p.key, v));
     if (p.kind === 'color') { const r = colorRow(p.label, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as string) }; }
+    if (p.kind === 'effects') { const g = new GalleryView(this.engine, () => this.s.colors, (v) => put(p.key, v)); return { el: g.el, set: (v) => g.set(v) }; }
     const r = matrixRow(p.label, p.size, p.min, p.max, (v) => put(p.key, v));
     return { el: r.el, set: (v) => r.set(v as number[]) };
   }
@@ -377,6 +379,9 @@ export class FilterPanel extends Dialog {
     this.seed = randomSeed();
     this.s.colors = this.swatches();
     this.setTitle(FILTER_LABELS[kind]);
+    const lib = isLibKind(kind) ? libFilter(kind) : null;
+    q<HTMLElement>(this.scrim, '.cv-dialog').style.setProperty('--cv-dialog-w', `${lib?.width ?? 440}px`);
+    setHidden(this.previewRow.el, !!lib?.ownPreview);
     if (kind === 'shakeReduction' && !smart) this.estimateShake(false);
     if (isLibKind(kind) && !this.sections.has(kind)) this.libSection(kind);
     if (isLibKind(kind)) for (const key of libPathParams(kind)) ((this.s.lib ??= {})[kind] ??= libValues(kind, undefined))[key] = this.engine.pathLines();
@@ -434,7 +439,7 @@ export class FilterPanel extends Dialog {
       if (!this.isOpen) return;
       // Develop's scopes follow the developed preview (1.53.4).
       const scoped = (out: ImageData | Promise<ImageData>): ImageData | Promise<ImageData> => { if (this.kind === 'develop') void Promise.resolve(out).then((img) => this.scopes.draw(img)).catch(() => undefined); return out; };
-      if (this.preview && !this.smartTarget()) this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow());
+      if (this.preview && !this.smartTarget() && !(isLibKind(this.kind) && libFilter(this.kind).ownPreview)) this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow());
       else this.engine.setPreview(null);
     }, delay);
   }
@@ -484,7 +489,8 @@ export class FilterPanel extends Dialog {
 
   private missingImage(kind: FilterKind, settings: Record<string, unknown>): boolean {
     if (!isLibKind(kind)) return false;
-    const values = libValues(kind, (settings.lib as Record<string, unknown> | undefined)?.[kind]), gap = libFilter(kind).params.find((p) => p.kind === 'image' && !values[p.key]);
+    const values = libValues(kind, (settings.lib as Record<string, unknown> | undefined)?.[kind]), gap = libFilter(kind).params.find((p) => p.kind === 'image' && !values[p.key]), why = libFilter(kind).invalid?.(values);
+    if (why) { this.engine.notice(why); return true; }
     if (gap) this.engine.notice(`${FILTER_LABELS[kind]} needs its ${gap.label.toLowerCase()}: choose an open document.`);
     const raw = (settings.lib as Record<string, Record<string, unknown> | undefined> | undefined)?.[kind], named = gap ? undefined : libPathParams(kind).find((k) => typeof raw?.[k] === 'string');
     if (named) this.engine.notice(`${FILTER_LABELS[kind]}: this document has no path named "${String(raw?.[named])}".`);

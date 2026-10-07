@@ -5046,6 +5046,25 @@ export class Engine {
     return { layerId: l.id, target: onMask ? 'mask' : 'pixels', image: onMask ? toGray(img) : img, width: r.width, height: r.height, unitsPerPixel: t.w / r.width };
   }
 
+  get targetSize(): { width: number; height: number } | null {
+    const p = this.current, l = p?.activeLayer ?? null;
+    if (!p || !l || l.isGroup || l.tiled) return null;
+    const r = p.maskTarget && l.mask ? l.mask.raster : l.raster;
+    return r ? { width: r.width, height: r.height } : null;
+  }
+
+  targetCrop(x: number, y: number, w: number, h: number, scale: number): { image: ImageData; frame: LibFrame } | null {
+    const p = this.current, l = p?.activeLayer ?? null;
+    if (!p || !l || l.isGroup || l.tiled) return null;
+    const onMask = p.maskTarget && !!l.mask, r = onMask ? l.mask?.raster ?? null : l.raster;
+    if (!r || w < 1 || h < 1) return null;
+    const W = Math.max(1, Math.round(w * scale)), H = Math.max(1, Math.round(h * scale)), c = ctxOf(createSurface(W, H));
+    c.drawImage(r.canvas, x, y, w, h, 0, 0, W, H);
+    const img = c.getImageData(0, 0, W, H), f = this.filterFrame(p, onMask ? l.mask?.placement ?? l.transform : l.transform, r.width, r.height);
+    const at = (q: Rect): Rect => ({ x: (q.x - x) * scale, y: (q.y - y) * scale, w: q.w * scale, h: q.h * scale });
+    return { image: onMask ? toGray(img) : img, frame: { area: at(f.area), canvas: at(f.canvas), doc: f.doc } };
+  }
+
   private coverageFor(p: Project, layer: Layer, target: Target, w: number, h: number): Uint8ClampedArray | null {
     const sel = p.selection;
     if (!sel) return null;
