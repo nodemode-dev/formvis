@@ -125,3 +125,28 @@ export class DuplicateLayerDialog extends Dialog {
     this.engine.duplicateLayers(this.name.disabled ? undefined : this.name.value);
   }
 }
+
+/** Select > Find Layers: the layers whose names hold the text typed, selected. */
+export class FindLayersDialog extends Dialog {
+  private readonly name = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="200" spellcheck="false">');
+
+  constructor(private readonly engine: Engine) {
+    super('Find Layers', 360);
+    this.field('Name', this.name);
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => this.apply());
+    enterTo(this.name, () => this.apply());
+  }
+
+  show(): void {
+    if (this.isOpen || !this.engine.current) return;
+    this.open(this.name);
+    this.name.select();
+  }
+
+  private apply(): void {
+    if (!this.name.value.trim()) return;
+    this.close();
+    this.engine.findLayers(this.name.value);
+  }
+}

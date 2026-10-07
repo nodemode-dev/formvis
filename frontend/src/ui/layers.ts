@@ -1,4 +1,4 @@
-import { BLEND_MODES, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Raster, effectsActive } from '../engine';
+import { BLEND_MODES, byId, hierarchy, type Engine, type HierarchyEntry, type ID, type Layer, type Project, type Raster, effectsActive } from '../engine';
 import { PanelGroup } from './panel-group';
 import type { ChannelsPanel } from './channels';
 import type { LayerLocks } from '../engine/types';
@@ -57,6 +57,8 @@ export class LayersPanel {
   private readonly kind: HTMLSelectElement;
   /** The kinds shown; empty shows every kind. */
   private kinds = new Set<KindId>();
+  /** Select > Isolate Layers, per document: the layers listed while isolated. */
+  private readonly isolation = new WeakMap<Project, Set<ID>>();
   /** The Paths panel's section, shown in this group's Paths tab (adoptPaths). */
   private paths: HTMLElement | null = null;
   private readonly painted = new WeakMap<HTMLElement, { pixels: string; mask: string }>();
@@ -144,10 +146,26 @@ export class LayersPanel {
     this.queue();
   }
 
+  get isolated(): boolean { const p = this.engine.current; return !!p && this.isolation.has(p); }
+
+  /** Lists only the selected layers, with the folders holding them and what selected folders hold, or all again. */
+  toggleIsolate(): void {
+    const p = this.engine.current;
+    if (!p) return;
+    if (this.isolation.has(p)) this.isolation.delete(p);
+    else if (p.selectedIds.size) this.isolation.set(p, new Set(p.selectedIds));
+    this.render();
+  }
+
   private render(): void {
     const p = this.engine.current;
     const all = p ? hierarchy(p.doc, true, p.collapsed) : [];
-    const entries = this.kinds.size ? all.filter((e) => e.layer.isGroup || this.kinds.has(kindOf(e.layer))) : all;
+    let iso = p ? this.isolation.get(p) : undefined;
+    const map = iso && p ? byId(p.doc) : null, keep = new Set<ID>();
+    if (p && iso && map && ![...iso].some((id) => map.has(id))) { this.isolation.delete(p); iso = undefined; }
+    if (iso && map) for (const id of iso) for (let l = map.get(id); l; l = l.parentId ? map.get(l.parentId) : undefined) keep.add(l.id);
+    const shown = (l: Layer): boolean => { if (!iso || !map || keep.has(l.id)) return true; for (let a = l.parentId ? map.get(l.parentId) : undefined; a; a = a.parentId ? map.get(a.parentId) : undefined) if (iso.has(a.id)) return true; return false; };
+    const entries = (this.kinds.size ? all.filter((e) => e.layer.isGroup || this.kinds.has(kindOf(e.layer))) : all).filter((e) => shown(e.layer));
     setHidden(this.empty, all.length > 0);
     // Rows moved by a layer arriving or leaving are held where they were by a transform and then eased into place (FLIP),
     // so a layer that arrives with no click just before it (an import, Remove Background finishing) does not make the

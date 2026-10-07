@@ -9,7 +9,8 @@ import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, 
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { newVideoTimeline, sampleToFrames, stateAt, valueAt, type FadeColor, type VideoTimeline } from './video-timeline';
-import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type VectorPath } from './paths';
+import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type SubPath, type VectorPath } from './paths';
+import { simplify, smoothAnchors } from './curve-fit';
 export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
 import { Emitter } from './events';
@@ -17,7 +18,7 @@ import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './hi
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
 import { PREVIEW, TiledRaster } from './tiled';
-import { SelectionMask, type SelectionMode } from './selection';
+import { SelectionMask, traceOutline, type SelectionMode } from './selection';
 import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
@@ -2474,7 +2475,7 @@ export class Engine {
     const fl = this.floating;
     if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.work });
     const fs = this.floatSel;
-    if (fs && fs.project === p) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.base });
+    if (fs && fs.project === p && !fs.outline) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.base });
     if (this.channelView !== null && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
     else if (!this.stroke && this.composesFloats(p)) {
       const composed = this.composedRendition(p);
@@ -4049,9 +4050,105 @@ export class Engine {
       else if (!cur) result = mode === 'add' ? next : null;
       else result = cur.combine(next, mode);
       if (result === cur) return false;
+      if (cur && !result) this.lastSelections.set(p, cur);
       p.selection = result;
       return true;
     });
+  }
+
+  private readonly lastSelections = new WeakMap<Project, SelectionMask>();
+
+  /** Select > Reselect: the selection the last Deselect dropped, back as one step. */
+  get canReselect(): boolean { const p = this.current; return !!p && !p.selection && this.lastSelections.has(p); }
+  reselect(): void { const p = this.current, s = p ? this.lastSelections.get(p) : undefined; if (p && s && !p.selection) this.applySelection(s, 'replace', 'Reselect'); }
+
+  /** Select > Grow and Similar: pixels within the Magic Wand's tolerance of the range of each channel and alpha among
+   *  the selected pixels, joined to the selection (Grow, four-connected) or anywhere (Similar), sampled as the Magic
+   *  Wand samples (the active layer, or all layers). One step. */
+  growSelection(contiguous: boolean): void {
+    const p = this.current, sel = p?.selection;
+    if (!p || !sel) return;
+    const W = p.doc.width, H = p.doc.height;
+    let surface: Surface;
+    if (this.wand.sampleAll) surface = renderDoc(this.work, p.doc);
+    else {
+      const l = p.activeLayer;
+      if (!l) { this.notice('Select a layer first.'); return; }
+      surface = createSurface(W, H);
+      if (l.raster) { const c = ctxOf(surface); setMat(c, placement(l.transform, l.raster.width, l.raster.height)); c.drawImage(l.raster.canvas, 0, 0); }
+    }
+    const d = ctxOf(surface).getImageData(0, 0, W, H).data, n = W * H, on = new Uint8Array(n), lo = [255, 255, 255, 255], hi = [0, 0, 0, 0], tol = this.wand.tolerance;
+    let any = false;
+    for (let y = Math.max(0, sel.y); y < Math.min(H, sel.y + sel.h); y++) for (let x = Math.max(0, sel.x); x < Math.min(W, sel.x + sel.w); x++) {
+      if (sel.data[(y - sel.y) * sel.w + x - sel.x] < 128) continue;
+      const i = y * W + x;
+      on[i] = 1; any = true;
+      for (let c = 0; c < 4; c++) { const v = d[i * 4 + c]; if (v < lo[c]) lo[c] = v; if (v > hi[c]) hi[c] = v; }
+    }
+    if (!any) { this.notice(`${contiguous ? 'Grow' : 'Similar'} needs pixels at least half selected.`); return; }
+    const inside = (i: number): boolean => { for (let c = 0; c < 4; c++) { const v = d[i * 4 + c]; if (v < lo[c] - tol || v > hi[c] + tol) return false; } return true; };
+    if (contiguous) {
+      const stack: number[] = [];
+      for (let i = 0; i < n; i++) if (on[i]) stack.push(i);
+      while (stack.length) {
+        const i = stack.pop() as number, x = i % W;
+        for (const j of [x > 0 ? i - 1 : -1, x < W - 1 ? i + 1 : -1, i - W, i + W]) if (j >= 0 && j < n && !on[j] && inside(j)) { on[j] = 1; stack.push(j); }
+      }
+    } else for (let i = 0; i < n; i++) if (!on[i] && inside(i)) on[i] = 1;
+    const hard = new Uint8Array(n);
+    for (let i = 0; i < n; i++) hard[i] = on[i] ? 255 : 0;
+    this.applySelection(SelectionMask.cropped(0, 0, W, H, this.wand.antialias ? antialiasMask(hard, W, H) : hard), 'replace', contiguous ? 'Grow' : 'Similar');
+  }
+
+  /** Select > Convert to Shape: the selection's outline (where at least half selected), simplified within 1.5 px and
+   *  smoothed except at its corners, as a shape layer in the foreground colour. One step. */
+  selectionToShape(): void {
+    const p = this.current, sel = p?.selection;
+    if (!p || !sel) return;
+    const loops: Pt[][] = [];
+    traceOutline(sel.data, sel.w, sel.h, sel.x, sel.y, 128, {
+      moveTo: (x: number, y: number) => { loops.push([{ x, y }]); },
+      lineTo: (x: number, y: number) => { loops[loops.length - 1]?.push({ x, y }); },
+      closePath: () => undefined,
+      rect: (x: number, y: number, w: number, h: number) => { loops.push([{ x, y }, { x: x + w, y }, { x: x + w, y: y + h }, { x, y: y + h }]); },
+    });
+    const subpaths: SubPath[] = [];
+    for (const raw of loops) {
+      const pts = raw.length > 1 && raw[0].x === raw[raw.length - 1].x && raw[0].y === raw[raw.length - 1].y ? raw.slice(0, -1) : raw;
+      if (pts.length < 3) continue;
+      const kept = simplify([...pts, pts[0]], 1.5).slice(0, -1);
+      if (kept.length < 3) continue;
+      const corners = new Set<number>();
+      kept.forEach((q, i) => {
+        const a = kept[(i - 1 + kept.length) % kept.length], b = kept[(i + 1) % kept.length];
+        const ux = q.x - a.x, uy = q.y - a.y, vx = b.x - q.x, vy = b.y - q.y, l = Math.hypot(ux, uy) * Math.hypot(vx, vy);
+        if (l && (ux * vx + uy * vy) / l < Math.cos(Math.PI / 3.5)) corners.add(i);
+      });
+      subpaths.push({ closed: true, anchors: smoothAnchors(kept, true, corners) });
+    }
+    if (!subpaths.length) { this.notice('The selection is too small to make a shape.'); return; }
+    const path: VectorPath = { subpaths }, look: ShapeStyle = { fill: { ...this.fg }, stroke: null }, r = this.renderShape(path, look);
+    if (!r) return;
+    let k = 1;
+    while (p.doc.layers.some((l) => l.name === `Shape ${k}`)) k++;
+    this.insertRasterLayer(r.raster, `Shape ${k}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'Convert to Shape');
+  }
+
+  /** Select > Find Layers: the layers whose names hold `text` (any case) selected, the top one active. */
+  findLayers(text: string): number {
+    const p = this.current, q = text.trim().toLowerCase();
+    if (!p || !q) return 0;
+    const found = hierarchy(p.doc, true).map((e) => e.layer).filter((l) => l.name.toLowerCase().includes(q));
+    if (!found.length) { this.notice(`No layer's name holds "${text.trim()}".`); return 0; }
+    this.settle();
+    p.activeId = found[0].id;
+    p.selectedIds = new Set(found.map((l) => l.id));
+    p.maskTarget = false;
+    for (const l of found) for (const a of ancestors(byId(p.doc), l)) p.collapsed.delete(a.id);
+    this.emit('active', null);
+    this.emit('doc', null);
+    this.emit('overlay', null);
+    return found.length;
   }
 
   selectAll(): void { const p = this.current; if (p) this.applySelection(SelectionMask.all(p.doc.width, p.doc.height), 'replace', 'Select All'); }
@@ -7520,7 +7617,7 @@ export class Engine {
     this.refresh();
   }
 
-  private floatSel: { project: Project; sourceId: ID; floatingId: ID; base: Surface; region: Rect; selection: SelectionMask; original: Transform } | null = null;
+  private floatSel: { project: Project; sourceId: ID; floatingId: ID; base: Surface; region: Rect; selection: SelectionMask; original: Transform; outline?: boolean } | null = null;
 
   get floatingSelection(): boolean { return this.floatSel !== null; }
 
@@ -7579,7 +7676,18 @@ export class Engine {
     this.floatSel = null;
     const p = fs.project;
     const fl = p.layer(fs.floatingId), src0 = p.layer(fs.sourceId);
-    if (!fl?.raster || !src0?.raster || sameTransform(fl.transform, fs.original)) { this.restoreSelectionTransform(fs); return; }
+    if (fs.outline && fl?.raster && !sameTransform(fl.transform, fs.original)) {
+      const W = p.doc.width, H = p.doc.height, s = createSurface(W, H), sc = ctxOf(s);
+      setMat(sc, placement(fl.transform, fl.raster.width, fl.raster.height));
+      sc.drawImage(fs.selection.surface(), fs.selection.x - fs.region.x, fs.selection.y - fs.region.y);
+      p.setLayers(p.doc.layers.filter((l) => l.id !== fs.floatingId));
+      this.focus(p, fs.sourceId || null);
+      p.selection = SelectionMask.fromAlpha(0, 0, W, H, sc.getImageData(0, 0, W, H).data);
+      p.history.end(p.snapshot());
+      this.refresh();
+      return;
+    }
+    if (fs.outline || !fl?.raster || !src0?.raster || sameTransform(fl.transform, fs.original)) { this.restoreSelectionTransform(fs); return; }
     const draft = fl.transform, M = placement(draft, fl.raster.width, fl.raster.height);
     const oldLocal = placement(src0.transform, src0.raster.width, src0.raster.height), oldW = src0.raster.width, oldH = src0.raster.height;
     const old = src0.raster;
@@ -7621,8 +7729,29 @@ export class Engine {
   private restoreSelectionTransform(fs: NonNullable<Engine['floatSel']>): void {
     const p = fs.project, before = p.history.abort();
     if (before) { p.doc = before.doc; p.selection = before.selection; }
-    this.focus(p, fs.sourceId);
+    this.focus(p, fs.sourceId || null);
     this.refresh();
+  }
+
+  /** Select > Transform Selection: the selection's outline alone takes the Move tool's handles, the pixels staying;
+   *  Enter applies it as one step and Escape cancels, as with selected pixels. */
+  beginOutlineTransform(): boolean {
+    const p = this.current;
+    if (!p?.selection || this.floatSel || this.stroke || this.floating || this.warpState) return false;
+    this.settle();
+    this.setTool('move');
+    const sel = p.selection;
+    if (!sel) return false;
+    p.history.begin('Transform Selection', p.snapshot());
+    const region = integral(sel.rect), piece = new Raster(region.w, region.h), src = p.activeLayer;
+    piece.ctx.drawImage(sel.surface(), sel.x - region.x, sel.y - region.y);
+    piece.touch();
+    const layer = newLayer('Selection Outline', p.doc, { raster: piece, parentId: src?.parentId ?? null, opacity: 0, transform: { ...docTransform(region.w, region.h), x: region.x, y: region.y } });
+    this.insertAboveActive(p, layer);
+    p.selection = null;
+    this.floatSel = { project: p, sourceId: src?.id ?? '', floatingId: layer.id, base: piece.canvas, region, selection: sel, original: layer.transform, outline: true };
+    this.refresh();
+    return true;
   }
 
   /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, from the source the Levels histogram

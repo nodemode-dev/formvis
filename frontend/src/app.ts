@@ -6,7 +6,7 @@ import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
 import { StrokePathDialog } from './ui/panels/stroke-path-dialog';
-import { DuplicateLayerDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
+import { DuplicateLayerDialog, FindLayersDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
 import { MattingDialog } from './ui/panels/matting-dialog';
 import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
@@ -1360,6 +1360,7 @@ export function startApp(): void {
     imageSize: new ImageSizeDialog(engine),
     amount: new AmountDialog(engine),
     matting: new MattingDialog(engine),
+    findLayers: new FindLayersDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
     guide: new GuideDialog(engine),
@@ -1625,6 +1626,13 @@ export function startApp(): void {
     { id: 'rasterize-shape', label: 'Rasterize Shape', enabled: () => [...(engine.current?.selectedIds ?? [])].some((id) => { const l = engine.current?.layer(id); return !!(l?.vector || l?.shape); }), run: () => engine.rasterizeLayers('shape') },
     { id: 'rasterize-smart', label: 'Rasterize Smart Object', enabled: () => [...(engine.current?.selectedIds ?? [])].some((id) => !!engine.current?.layer(id)?.smart), run: () => engine.rasterizeLayers('smart') },
     { id: 'mask-all-objects', label: 'Mask All Objects', enabled: () => !!layer(), run: () => void maskAllObjects() },
+    { id: 'reselect', label: 'Reselect', enabled: () => engine.canReselect, run: () => engine.reselect() },
+    { id: 'grow', label: 'Grow', enabled: selected, run: () => engine.growSelection(true) },
+    { id: 'similar', label: 'Similar', enabled: selected, run: () => engine.growSelection(false) },
+    { id: 'transform-selection', label: 'Transform Selection', enabled: () => selected() && !engine.floatingSelection, run: () => { engine.beginOutlineTransform(); } },
+    { id: 'convert-to-shape', label: 'Convert to Shape', enabled: selected, run: () => engine.selectionToShape() },
+    { id: 'find-layers', label: 'Find Layers...', keys: ['Alt+Shift+Mod+F'], enabled: has, run: () => dialogs.findLayers.show() },
+    { id: 'isolate-layers', label: 'Isolate Layers', checked: () => layers.isolated, enabled: () => layers.isolated || (engine.current?.selectedIds.size ?? 0) > 0, run: () => layers.toggleIsolate() },
     { id: 'rasterize-all', label: 'Rasterize All Layers', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart || l.text || l.vector || l.shape), run: () => engine.rasterizeLayers('all') },
     { id: 'blend-next', label: 'Next Blend Mode', keys: ['Shift+='], enabled: pixel, run: () => engine.cycleBlend(true) },
     { id: 'blend-prev', label: 'Previous Blend Mode', keys: ['Shift+-'], enabled: pixel, run: () => engine.cycleBlend(false) },
@@ -1810,8 +1818,8 @@ export function startApp(): void {
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }, '-',
       'merge', 'merge-visible', 'flatten', '-',
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
-    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'select-all-layers', 'deselect-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
-      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, '-', 'quick-mask', '-', 'path-selection', 'delete-path'] },
+    { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
+      { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', '-', 'quick-mask', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: ['filter-last', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
       { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur', 'filter-spinBlur'] },

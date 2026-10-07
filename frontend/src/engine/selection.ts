@@ -8,8 +8,9 @@ export type SelectionMode = 'replace' | 'add' | 'subtract' | 'intersect';
  *  Boundary edges are first merged into maximal horizontal and vertical runs, each oriented so the selected side lies
  *  to its right (outer loops clockwise, holes counter-clockwise); runs are then linked end to start into loops. Where
  *  two selected pixels touch only at a corner, the right turn is taken, so they stay separate loops. */
-export function traceOutline(mask: Uint8Array, width: number, height: number, ox: number, oy: number, threshold = 128): Path2D {
-  const path = new Path2D();
+export interface OutlineSink { moveTo(x: number, y: number): void; lineTo(x: number, y: number): void; closePath(): void; rect(x: number, y: number, w: number, h: number): void }
+
+export function traceOutline<T extends OutlineSink = Path2D>(mask: Uint8Array, width: number, height: number, ox: number, oy: number, threshold = 128, path: T = new Path2D() as unknown as T): T {
   if (!width || !height) return path;
   const corners = width + 1, on = new Uint8Array(width * height);
   for (let i = 0; i < on.length; i++) on[i] = mask[i] >= threshold ? 1 : 0;
