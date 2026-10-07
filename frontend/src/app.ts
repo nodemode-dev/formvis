@@ -1436,6 +1436,7 @@ export function startApp(): void {
   const pixel = (): boolean => { const l = engine.activeLayer; return !!l && !l.isGroup && !l.adjustment; };
   const withPixels = (): boolean => pixel() && !!engine.activeLayer?.raster;
   const selected = (): boolean => !!engine.current?.selection;
+  const allHidden = (): boolean => { const p = engine.current; return !!p && p.selectedIds.size > 0 && [...p.selectedIds].every((id) => p.layer(id)?.visible === false); };
 
   commands.add(
     { id: 'new', label: 'New Canvas...', keys: ['Alt+Mod+N', 'Mod+N'], run: () => dialogs.newCanvas.show() },
@@ -1554,7 +1555,7 @@ export function startApp(): void {
     { id: 'artboard-from-layers', label: 'Artboard from Layers', enabled: has, run: () => { engine.artboardFromLayers(); } },
     { id: 'artboard-options', label: 'Artboard Options...', enabled: () => !!engine.current?.activeLayer?.artboard, run: () => dialogs.artboard.show() },
     { id: 'export-artboards', label: 'Export Artboards to Files', enabled: () => engine.artboards().length > 0, run: () => void exportArtboards() },
-    { id: 'duplicate', label: () => (engine.current?.selection ? 'Layer via Copy' : 'Duplicate Layer'), keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
+    { id: 'duplicate', label: 'Layer via Copy', keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
     { id: 'duplicate-dialog', label: 'Duplicate Layer...', enabled: () => !!layer(), run: () => dialogs.duplicateLayer.show() },
     { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => void deleteLayersWithChoice() },
     { id: 'rename', label: 'Rename Layer', enabled: () => !!layer(), run: () => { const l = layer(); if (l) layers.startRename(l.id); } },
@@ -1572,6 +1573,19 @@ export function startApp(): void {
     { id: 'flip-layer-v', label: 'Flip Layer Vertical', enabled: withPixels, run: () => engine.flipLayers(false) },
     { id: 'forward', label: 'Bring Forward', keys: ['Mod+]'], enabled: () => !!layer(), run: () => engine.moveActive(1) },
     { id: 'backward', label: 'Send Backward', keys: ['Mod+['], enabled: () => !!layer(), run: () => engine.moveActive(-1) },
+    // Layer and Select operations (1.64.8, DEV_PLAN 27.5).
+    { id: 'bring-front', label: 'Bring to Front', keys: ['Shift+Mod+]'], enabled: () => !!layer(), run: () => engine.arrangeLayers('front') },
+    { id: 'send-back', label: 'Send to Back', keys: ['Shift+Mod+['], enabled: () => !!layer(), run: () => engine.arrangeLayers('back') },
+    { id: 'reverse-layers', label: 'Reverse', enabled: () => (engine.current?.selectedIds.size ?? 0) > 1, run: () => engine.arrangeLayers('reverse') },
+    { id: 'layer-from-background', label: 'Layer from Background...', enabled: () => !!engine.backgroundLayer(), run: () => dialogs.newLayer.show(true) },
+    { id: 'group-from-layers', label: 'Group from Layers...', enabled: () => !!layer(), run: () => dialogs.newGroup.show(true) },
+    { id: 'layer-via-cut', label: 'Layer via Cut', keys: ['Shift+Mod+J'], enabled: () => pixel() && selected(), run: () => engine.layerViaCut() },
+    { id: 'delete-hidden', label: 'Delete Hidden Layers', enabled: () => !!engine.current?.doc.layers.some((l) => !l.visible), run: () => engine.deleteHiddenLayers() },
+    { id: 'ungroup', label: 'Ungroup Layers', enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].some((id) => { const l = p.layer(id); return !!l?.isGroup && !l.artboard; }); }, run: () => engine.ungroupLayers() },
+    { id: 'hide-layers', label: () => (allHidden() ? 'Show Layers' : 'Hide Layers'), enabled: () => !!layer(), run: () => engine.setLayersVisible(allHidden()) },
+    { id: 'merge-visible', label: 'Merge Visible', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => engine.mergeVisible() },
+    { id: 'select-all-layers', label: 'All Layers', keys: ['Alt+Mod+A'], enabled: () => !!engine.current?.doc.layers.length, run: () => engine.selectAllLayers() },
+    { id: 'deselect-layers', label: 'Deselect Layers', enabled: () => !!engine.current && (!!engine.current.activeId || engine.current.selectedIds.size > 0), run: () => engine.selectAllLayers(false) },
     { id: 'blend-next', label: 'Next Blend Mode', keys: ['Shift+='], enabled: pixel, run: () => engine.cycleBlend(true) },
     { id: 'blend-prev', label: 'Previous Blend Mode', keys: ['Shift+-'], enabled: pixel, run: () => engine.cycleBlend(false) },
     { id: 'select-all', label: 'All', keys: ['Mod+A'], enabled: has, run: () => engine.selectAll() },
@@ -1742,20 +1756,20 @@ export function startApp(): void {
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
-      { label: 'New', items: ['new-layer-dialog', 'new-folder-dialog', '-', 'new-artboard', 'artboard-from-layers'] }, 'artboard-options', '-',
+      { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard', 'artboard-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
       { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
-      'duplicate-dialog', 'delete-layer', 'rename', '-',
-      'flatten', '-',
+      'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
       { label: 'Smart Objects', items: ['convert-smart', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       'rasterize', 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-',
-      'group', 'move-out', 'merge', '-',
-      { label: 'Arrange', items: ['forward', 'backward'] },
+      'group', 'ungroup', 'move-out', 'hide-layers', '-',
+      { label: 'Arrange', items: ['bring-front', 'forward', 'backward', 'send-back', '-', 'reverse-layers'] },
       { label: 'Align', items: ['align-left', 'align-hcenter', 'align-right', '-', 'align-top', 'align-vcenter', 'align-bottom'] },
       { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
-      { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }] },
-    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
+      { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }, '-',
+      'merge', 'merge-visible', 'flatten'] },
+    { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'select-all-layers', 'deselect-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, '-', 'quick-mask', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: ['filter-last', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
@@ -1787,7 +1801,7 @@ export function startApp(): void {
     { label: 'Smart Objects', items: ['convert-smart', 'rasterize', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] }, '-',
-    { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-', 'group', 'move-out', 'merge', '-', 'layer-pixels']);
+    { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
   new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));
 
   const zoomLabel = q(root, '.cv-zoom-label');
@@ -1817,7 +1831,7 @@ export function startApp(): void {
     if (b && root.contains(b) && !b.disabled) commands.run(b.dataset.cmd ?? '');
   });
   // Recording: commands that change the document, filters with their settings, and size changes.
-  commands.onRun = (cmd) => { if (RECORDABLE.has(cmd.id)) actions.record({ kind: 'command', id: cmd.id, label: typeof cmd.label === 'function' ? cmd.label() : cmd.label }); };
+  commands.onRun = (cmd, label) => { if (RECORDABLE.has(cmd.id)) actions.record({ kind: 'command', id: cmd.id, label }); };
   dialogs.filter.onApplied = (kind, settings) => actions.record({ kind: 'filter', filter: kind, label: FILTER_LABELS[kind], settings });
   // Adjustments applied to the image, or new adjustment layers, record with their settings; edits of an existing
   // adjustment layer do not, since a replay could not know which layer to change.

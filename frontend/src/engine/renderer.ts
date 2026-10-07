@@ -584,7 +584,7 @@ export class Renderer {
       // An artboard shows its contents only inside its rectangle: one white pixel stretched over it, sampled nearest so
       // its edges stay crisp.
       const a = g.artboard;
-      if (a) out.push({ src: whitePixel(), w: 1, h: 1, t: { x: a.x, y: a.y, w: a.w, h: a.h, rotation: 0, flipX: false, flipY: false, sampling: 'nearest' }, covers: false });
+      if (a) out.push({ src: whitePixel(), w: 1, h: 1, t: { x: a.x, y: a.y, w: a.w, h: a.h, rotation: 0, flipX: false, flipY: false, sampling: 'nearest' }, covers: true });
     }
     return out;
   }

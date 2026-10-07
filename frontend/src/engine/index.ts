@@ -2536,6 +2536,20 @@ export class Engine {
     this.emit('overlay', null);
   }
 
+  /** Select > All Layers (Alt+Ctrl+A), or with `all` false Deselect Layers; not history steps. */
+  selectAllLayers(all = true): void {
+    const p = this.current;
+    if (!p || this.stroke || (all ? !p.doc.layers.length : !p.activeId && !p.selectedIds.size)) return;
+    this.settle();
+    const order = hierarchy(p.doc, true).map((e) => e.layer.id);
+    p.activeId = all ? (p.activeId && p.layer(p.activeId) ? p.activeId : order[0]) : null;
+    p.selectedIds = new Set(all ? order : []);
+    p.maskTarget = false;
+    this.emit('active', null);
+    this.emit('options', null);
+    this.emit('overlay', null);
+  }
+
   setMaskTarget(on: boolean): void {
     const p = this.current;
     if (!p) return;
@@ -2658,6 +2672,22 @@ export class Engine {
       layers.splice(active ? layers.indexOf(active) + 1 : layers.length, 0, group);
       p.setLayers(layers);
       this.focus(p, group.id);
+    });
+  }
+
+  /** The bottom layer when it is the document's Background: named so, as a new document and Flatten Image make it. */
+  backgroundLayer(): Layer | null {
+    const l = this.current?.doc.layers.find((x) => !x.parentId) ?? null;
+    return l && !l.isGroup && l.name === 'Background' ? l : null;
+  }
+
+  /** Layer > New > Layer from Background: renamed (Layer 0 unless given), mode and opacity set, locks cleared. One step. */
+  layerFromBackground(opts: { name?: string; blend?: BlendMode; opacity?: number } = {}): void {
+    const id = this.backgroundLayer()?.id;
+    if (!id) return;
+    this.edit('Layer from Background', (p) => {
+      p.updateLayer(id, { name: opts.name?.trim().slice(0, 200) || 'Layer 0', locks: undefined, ...(opts.blend ? { blend: opts.blend } : {}), ...(opts.opacity !== undefined ? { opacity: clamp(opts.opacity, 0, 1) } : {}) });
+      this.focus(p, id);
     });
   }
 
@@ -2814,6 +2844,19 @@ export class Engine {
     });
   }
 
+  /** Layer > Delete > Hidden Layers, with what hidden folders hold. One step. */
+  deleteHiddenLayers(): void {
+    this.edit('Delete Hidden Layers', (p) => {
+      const doomed = new Set<ID>();
+      for (const l of p.doc.layers) if (!l.visible) { doomed.add(l.id); for (const d of descendantIds(p.doc.layers, l.id)) doomed.add(d); }
+      if (!doomed.size) return false;
+      if (doomed.size === p.doc.layers.length) { this.notice('Every layer is hidden, and a document keeps at least one: nothing was deleted.'); return false; }
+      p.setLayers(this.normalizeClips(p.doc.layers.filter((l) => !doomed.has(l.id)).map((l) => (l.clipId && doomed.has(l.clipId) ? { ...l, clipId: null } : l))));
+      if (p.activeId && !doomed.has(p.activeId)) p.selectedIds = new Set([...p.selectedIds].filter((id) => !doomed.has(id)));
+      else this.focus(p, hierarchy(p.doc, true)[0]?.layer.id ?? null);
+    });
+  }
+
   renameLayer(id: ID, name: string): void {
     const clean = name.trim().slice(0, 200);
     if (!clean || this.current?.layer(id)?.name === clean) return;
@@ -2824,6 +2867,15 @@ export class Engine {
     const l = this.current?.layer(id);
     if (!l) return;
     this.edit(l.visible ? 'Hide Layer' : 'Show Layer', (p) => { p.updateLayer(id, { visible: !l.visible }); });
+  }
+
+  /** Layer > Hide Layers or Show Layers: every selected layer hidden, or shown, as one step. */
+  setLayersVisible(visible: boolean): void {
+    this.edit(visible ? 'Show Layers' : 'Hide Layers', (p) => {
+      let changed = false;
+      for (const id of p.selectedIds) { const l = p.layer(id); if (l && l.visible !== visible) { p.updateLayer(id, { visible }); changed = true; } }
+      return changed;
+    });
   }
 
   beginVisibilitySwipe(id: ID): boolean | null {
@@ -2963,7 +3015,33 @@ export class Engine {
     });
   }
 
-  groupLayers(): void {
+  /** Layer > Arrange > Bring to Front, Send to Back and Reverse, on the selected layers. One step. */
+  arrangeLayers(how: 'front' | 'back' | 'reverse'): void {
+    this.edit(how === 'front' ? 'Bring to Front' : how === 'back' ? 'Send to Back' : 'Reverse', (p) => {
+      const roots = new Set(this.selectedRoots(p));
+      if (!roots.size || (how === 'reverse' && roots.size < 2)) return false;
+      const prev = p.doc.layers, layers = [...prev];
+      if (how === 'reverse') {
+        const slots = prev.flatMap((l, i) => (roots.has(l.id) ? [i] : []));
+        if (slots.some((i) => prev[i].artboard) && slots.some((i) => prev[i].parentId)) { this.notice('Reverse cannot move an artboard into a folder.'); return false; }
+        const moved = slots.map((i) => prev[i]).reverse();
+        slots.forEach((i, k) => { layers[i] = moved[k].parentId === prev[i].parentId ? moved[k] : { ...moved[k], parentId: prev[i].parentId }; });
+      } else {
+        for (const parent of new Set(prev.filter((l) => roots.has(l.id)).map((l) => l.parentId))) {
+          const slots = prev.flatMap((l, i) => (l.parentId === parent ? [i] : []));
+          const sibs = slots.map((i) => prev[i]), picked = sibs.filter((l) => roots.has(l.id)), rest = sibs.filter((l) => !roots.has(l.id));
+          const order = how === 'front' ? [...rest, ...picked] : [...picked, ...rest];
+          slots.forEach((i, k) => { layers[i] = order[k]; });
+        }
+      }
+      const next = this.normalizeClips(layers);
+      if (next.every((l, i) => l.id === prev[i].id && l.parentId === prev[i].parentId && l.clipId === prev[i].clipId)) return false;
+      p.setLayers(next);
+    });
+  }
+
+  /** Layer > Group Layers, and New > Group from Layers with the dialog's name. One step. */
+  groupLayers(name?: string): void {
     this.edit('Group Layers', (p) => {
       const map = byId(p.doc);
       const roots = this.selectedRoots(p);
@@ -2973,7 +3051,7 @@ export class Engine {
       const names = new Set(p.doc.layers.map((l) => l.name));
       let n = 1;
       while (names.has(`Folder ${n}`)) n += 1;
-      const group = newLayer(`Folder ${n}`, p.doc, { isGroup: true, parentId: common });
+      const group = newLayer(name?.trim().slice(0, 200) || `Folder ${n}`, p.doc, { isGroup: true, parentId: common });
       const branchIndex = (id: ID): number => {
         let b = map.get(id) as Layer;
         while (b.parentId !== common && b.parentId) b = map.get(b.parentId) as Layer;
@@ -2996,6 +3074,27 @@ export class Engine {
       const layers = p.doc.layers.filter((x) => x.id !== l.id);
       layers.splice(layers.indexOf(g) + 1, 0, { ...l, parentId: g.parentId });
       p.setLayers(this.normalizeClips(layers));
+    });
+  }
+
+  /** Layer > Ungroup Layers: each selected folder's layers out to its place, the folder removed. One step. */
+  ungroupLayers(): void {
+    this.edit('Ungroup Layers', (p) => {
+      const groups = this.selectedRoots(p).map((id) => p.layer(id) as Layer).filter((g) => g.isGroup && !g.artboard);
+      if (!groups.length) return false;
+      let layers = [...p.doc.layers];
+      const freed = new Set<ID>();
+      for (const g of groups) {
+        const kids = layers.filter((l) => l.parentId === g.id).map((l) => ({ ...l, parentId: g.parentId, visible: l.visible && g.visible }));
+        layers = layers.filter((l) => l.parentId !== g.id);
+        layers.splice(layers.findIndex((l) => l.id === g.id), 1, ...kids);
+        for (const l of kids) freed.add(l.id);
+        p.collapsed.delete(g.id);
+      }
+      p.setLayers(this.normalizeClips(layers));
+      const top = hierarchy(p.doc, true).find((e) => freed.has(e.layer.id))?.layer.id ?? hierarchy(p.doc, true)[0]?.layer.id ?? null;
+      this.focus(p, top);
+      if (freed.size) p.selectedIds = freed;
     });
   }
 
@@ -3111,6 +3210,49 @@ export class Engine {
       for (const l of p.doc.layers) { if (l.id === anchor.id) next.push(merged); if (!remove.has(l.id)) next.push(l); }
       p.setLayers(this.normalizeClips(next));
       this.focus(p, merged.id);
+    });
+  }
+
+  /** Layer > Merge Visible: hidden layers stay; each artboard merges on its own. One step. */
+  mergeVisible(): void {
+    this.edit('Merge Visible', (p) => {
+      const map = byId(p.doc), board = (l: Layer | undefined): boolean => !!l?.isGroup && !l.parentId && !!l.artboard;
+      const shown = new Set(hierarchy(p.doc).filter((e) => e.visible).map((e) => e.layer.id));
+      const roots = new Map<ID | null, Layer[]>();
+      for (const l of p.doc.layers) {
+        if (!shown.has(l.id) || board(l) || (l.parentId && !board(map.get(l.parentId)))) continue;
+        roots.set(l.parentId, [...(roots.get(l.parentId) ?? []), l]);
+      }
+      const plans = [...roots].filter(([, list]) => list.length > 1 || list.some((l) => l.isGroup));
+      if (!plans.length) { this.notice('Merge Visible needs two visible layers, or a visible folder.'); return false; }
+      const canvas = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+      const merged = new Map<ID, Layer>(), lifted = new Map<ID, Layer[]>(), gone = new Set<ID>();
+      for (const [parent, list] of plans) {
+        const set = new Set(list.map((l) => l.id));
+        for (const r of list) for (const d of descendantIds(p.doc.layers, r.id)) if (shown.has(d)) set.add(d);
+        const out = p.doc.layers.filter((l) => !set.has(l.id) && !!l.parentId && set.has(l.parentId)).map((l) => ({ ...l, parentId: parent }));
+        const a = parent ? map.get(parent)?.artboard : null;
+        let b: Rect = a ? { x: a.x, y: a.y, w: a.w, h: a.h } : canvas;
+        if (!a) for (const l of p.doc.layers) if (set.has(l.id) && l.raster && !l.isGroup) b = unionRect(b, transformBounds(l.transform));
+        let r = integral(b);
+        if (r.w > LIMITS.side || r.h > LIMITS.side || r.w * r.h > LIMITS.pixels) r = intersectRect(r, canvas) ?? r;
+        if (!this.room(r.w * r.h * 4, 'Merge Visible')) return false;
+        const s = createSurface(r.w, r.h);
+        this.work.render({ doc: p.doc, target: s, view: translation(-r.x, -r.y), only: set, quality: 'high' });
+        merged.set(list[0].id, newLayer(list[0].name, p.doc, { raster: Raster.from(s, r.w, r.h), parentId: parent, transform: { ...docTransform(r.w, r.h), x: r.x, y: r.y } }));
+        lifted.set(list[0].id, out);
+        for (const id of set) gone.add(id);
+        for (const l of out) gone.add(l.id);
+      }
+      const next: Layer[] = [];
+      for (const l of p.doc.layers) {
+        const m = merged.get(l.id);
+        if (m) next.push(m, ...(lifted.get(l.id) ?? []));
+        if (!gone.has(l.id)) next.push(l);
+      }
+      p.setLayers(this.normalizeClips(next));
+      const top = plans.find(([c]) => c === null) ?? plans[0];
+      this.focus(p, (merged.get(top[1][0].id) as Layer).id);
     });
   }
 
@@ -6029,6 +6171,21 @@ export class Engine {
     const got = this.selectedPixels(false);
     if (!got) return;
     this.insertRasterLayer(Raster.from(got.surface, got.region.w, got.region.h), this.nextLayerName(p), got.region.x, got.region.y, {}, 'Layer via Copy');
+  }
+
+  /** Layer > New > Layer via Cut (Shift+Ctrl+J): the selection's pixels moved to a new layer in place. One step. */
+  layerViaCut(): void {
+    const p = this.current;
+    if (!p) return;
+    if (!p.selection) { this.notice('Layer via Cut needs a selection.'); return; }
+    this.settle();
+    const got = this.selectedPixels(false);
+    if (!got || !this.paintable(p.activeLayer) || this.smartLocked(p)) return;
+    const raster = Raster.from(got.surface, got.region.w, got.region.h), name = this.nextLayerName(p);
+    this.edit('Layer via Cut', () => {
+      this.clearPixels();
+      this.insertRasterLayer(raster, name, got.region.x, got.region.y, {}, 'Layer via Cut');
+    });
   }
 
   cutSelection(): void {

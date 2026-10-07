@@ -26,13 +26,18 @@ export class NewLayerDialog extends Dialog {
     enterTo(this.name, () => this.apply());
   }
 
-  show(): void {
+  private background = false;
+
+  /** `background`: Layer > New > Layer from Background, the Background renamed (Layer 0) rather than a layer added. */
+  show(background = false): void {
     const p = this.engine.current;
     if (this.isOpen || !p) return;
     const names = new Set(p.doc.layers.map((l) => l.name));
     let n = 1;
     while (names.has(`Layer ${n}`)) n += 1;
-    this.name.value = `Layer ${n}`;
+    this.background = background;
+    this.name.value = background ? 'Layer 0' : `Layer ${n}`;
+    this.clipRow.el.hidden = background;
     this.blend = 'normal';
     this.opacity = 100;
     this.clip = false;
@@ -45,7 +50,8 @@ export class NewLayerDialog extends Dialog {
 
   private apply(): void {
     this.close();
-    this.engine.addLayer({ name: this.name.value, blend: this.blend, opacity: this.opacity / 100, clip: this.clip });
+    if (this.background) this.engine.layerFromBackground({ name: this.name.value, blend: this.blend, opacity: this.opacity / 100 });
+    else this.engine.addLayer({ name: this.name.value, blend: this.blend, opacity: this.opacity / 100, clip: this.clip });
   }
 }
 
@@ -64,12 +70,17 @@ export class NewGroupDialog extends Dialog {
     enterTo(this.name, () => this.apply());
   }
 
-  show(): void {
+  private fromLayers = false;
+
+  /** `fromLayers`: Layer > New > Group from Layers, the selected layers moved into the new group. */
+  show(fromLayers = false): void {
     const p = this.engine.current;
     if (this.isOpen || !p) return;
     const names = new Set(p.doc.layers.map((l) => l.name));
     let n = 1;
     while (names.has(`Folder ${n}`)) n += 1;
+    this.fromLayers = fromLayers;
+    this.setTitle(fromLayers ? 'New Group from Layers' : 'New Group');
     this.name.value = `Folder ${n}`;
     this.open(this.name);
     this.name.select();
@@ -77,7 +88,8 @@ export class NewGroupDialog extends Dialog {
 
   private apply(): void {
     this.close();
-    this.engine.addFolder(this.name.value);
+    if (this.fromLayers) this.engine.groupLayers(this.name.value);
+    else this.engine.addFolder(this.name.value);
   }
 }
 

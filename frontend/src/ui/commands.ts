@@ -39,8 +39,8 @@ export function formatKeys(combo: string): string {
 }
 
 export class Commands {
-  /** Called after each command runs, for Actions to record it. */
-  onRun: ((cmd: Command) => void) | null = null;
+  /** Called after each command runs, for Actions to record it, with its label as it read before running. */
+  onRun: ((cmd: Command, label: string) => void) | null = null;
   private readonly map = new Map<string, Command>();
   private readonly byKey = new Map<string, Command>();
   private readonly defaults = new Map<string, string[]>();
@@ -98,8 +98,9 @@ export class Commands {
   run(id: string): boolean {
     const cmd = this.map.get(id);
     if (!cmd || !this.enabled(cmd)) return false;
+    const label = this.label(cmd);
     cmd.run();
-    this.onRun?.(cmd);
+    this.onRun?.(cmd, label);
     return true;
   }
 }

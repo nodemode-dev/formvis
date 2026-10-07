@@ -14,6 +14,7 @@ export class PopupMenu {
   private seps: HTMLElement[] = [];
   private key = '';
   private openSub: PopupMenu | null = null;
+  private subTop = 0;
   onClose: (() => void) | null = null;
 
   constructor(private readonly commands: Commands, private readonly parent: PopupMenu | null = null, standalone = false) {
@@ -21,7 +22,7 @@ export class PopupMenu {
     document.getElementById('overlay-root')?.appendChild(this.panel);
     this.panel.addEventListener('contextmenu', (e) => e.preventDefault());
     // A scrolled menu moves its rows, so a submenu opened beside one would no longer line up.
-    this.panel.addEventListener('scroll', () => this.closeSub(), { passive: true });
+    this.panel.addEventListener('scroll', () => { if (this.panel.scrollTop !== this.subTop) this.closeSub(); }, { passive: true });
     // A menu opened on its own (the layers' right-click menu) closes on a press anywhere outside it; the menubar's
     // menus are closed by the menubar, which also owns their buttons.
     if (standalone) document.addEventListener('pointerdown', (e) => { if (this.isOpen && !this.contains(e.target as Node)) this.close(); }, true);
@@ -74,6 +75,7 @@ export class PopupMenu {
     if (this.openSub === menu && menu.isOpen) return;
     this.closeSub();
     this.openSub = menu;
+    this.subTop = this.panel.scrollTop;
     setClass(row, 'is-open', true);
     menu.onClose = () => setClass(row, 'is-open', false);
     const r = row.getBoundingClientRect();
