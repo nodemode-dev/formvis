@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.6 · 2026-10-07
+
+### Added
+
+- The Filter Gallery's Brush Strokes folder (Accented Edges, Angled Strokes, Crosshatch, Dark Strokes, Ink Outlines, Spatter, Sprayed Strokes and Sumi-e), its Distort folder (Diffuse Glow in the background colour, Glass with four textures, Ocean Ripple) and its Stylize folder (Glowing Edges): twelve more effects, 27 of the gallery's 47, each stackable with the others and available to agents.
+
 ## 1.64.5 · 2026-10-07
 
 ### Added
