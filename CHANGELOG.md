@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.0 · 2026-10-07
+
+### Added
+
+- Select > Reselect brings back the selection the last Deselect dropped. It has no key yet; Keyboard Shortcuts can give it Photoshop's Shift+Ctrl+D.
+- Select > Grow and Select > Similar add the pixels within the Magic Wand's Tolerance of the colours selected: those touching the selection (Grow) or anywhere in the picture (Similar), sampled from the layer or all layers as the Magic Wand's options say.
+- Select > Transform Selection puts the Move tool's handles on the selection's outline alone, leaving the pixels where they are; Enter applies it as one step and Escape cancels.
+- Select > Convert to Shape makes a shape layer in the foreground colour from the selection's outline, smoothed, its corners kept and its holes cut.
+- Select > Find Layers (Alt+Shift+Ctrl+F) selects the layers whose names hold what you type, and Select > Isolate Layers lists only the selected layers in the Layers panel until you choose it again.
+
 ## 1.64.9 · 2026-10-07
 
 ### Added

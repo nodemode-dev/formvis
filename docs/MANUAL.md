@@ -80,6 +80,10 @@ ask it questions.
   sky (its model downloads once, 176 MB); Select > Focus Area selects what is in focus, with a preview to set how much.
 - Select and Mask refines an edge. Expand, Contract, Feather, Border, Smooth and Invert change a selection; selections
   can be saved and loaded.
+- Select > Reselect brings back the last selection dropped; Grow and Similar add pixels near the selected colours (the
+  Magic Wand's Tolerance), touching the selection or anywhere; Transform Selection moves, scales or rotates the outline
+  alone (Enter applies, Escape cancels); Convert to Shape makes a shape layer from it. Find Layers (Alt+Shift+Ctrl+F)
+  selects layers by name, and Isolate Layers lists only the selected ones until chosen again.
 
 ## Painting and retouching
 
