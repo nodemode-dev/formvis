@@ -5,6 +5,9 @@ import { Dialog } from '../dialogs';
 import { el, patchList, q, setChecked, setDisabled, setHidden, setText } from '../dom';
 import type { ActionStep } from '../actions';
 import { toast } from '../toast';
+import { isLibKind, libHasDialog } from '../../engine/filter-library';
+
+const asks = (s: ActionStep): boolean => (s.kind === 'filter' && !(isLibKind(s.filter) && !libHasDialog(s.filter))) || (s.kind === 'adjustment' && !s.layer);
 
 /** Keeps a select's options in step with `labels`, changing only what differs. */
 function syncOptions(sel: HTMLSelectElement, labels: string[]): void {
@@ -55,7 +58,7 @@ export class ActionsDialog extends Dialog {
       if (t.closest('.cv-step-ask')) {
         // Pausing for input: the step's dialog opens during playback, with its recorded settings to adjust.
         const s = a.steps[i];
-        if (s && (s.kind === 'filter' || (s.kind === 'adjustment' && !s.layer))) { if (s.ask) delete s.ask; else s.ask = true; this.store.save(); }
+        if (s && asks(s) && (s.kind === 'filter' || s.kind === 'adjustment')) { if (s.ask) delete s.ask; else s.ask = true; this.store.save(); }
       }
       this.picked = i;
       this.sync();
@@ -121,7 +124,7 @@ export class ActionsDialog extends Dialog {
   private fillStep(row: HTMLElement, s: ActionStep, i: number): void {
     setText(q(row, '.cv-step-n'), `${i + 1}.`);
     setText(q(row, '.cv-step-label'), s.kind === 'stop' ? `Stop: ${s.message || 'pause'}${s.allowContinue ? '' : ' (ends here)'}` : s.label);
-    const can = s.kind === 'filter' || (s.kind === 'adjustment' && !s.layer), ask = q<HTMLButtonElement>(row, '.cv-step-ask');
+    const can = asks(s), ask = q<HTMLButtonElement>(row, '.cv-step-ask');
     setHidden(ask, !can);
     ask.setAttribute('aria-pressed', String(can && 'ask' in s && !!s.ask));
     row.classList.toggle('is-picked', i === this.picked);

@@ -183,3 +183,5 @@
 /* Develop's scopes (1.53.4). */
 .cv-scopes { display: flex; flex-direction: column; gap: 4px; margin-bottom: 8px; }
 .cv-scopes-canvas { width: 100%; max-width: 256px; height: auto; aspect-ratio: 2 / 1; background: #111; border-radius: 4px; image-rendering: pixelated; }
+.cv-matrix { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: var(--space-1); }
+.cv-matrix .cv-input { min-width: 0; text-align: center; padding-left: var(--space-1); padding-right: var(--space-1); }

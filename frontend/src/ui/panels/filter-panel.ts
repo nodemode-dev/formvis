@@ -5,17 +5,19 @@ import { ScopesView } from './scopes-view';
 import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { toast } from '../toast';
-import { checkRow, selectRow, sliderRow, type Row } from './controls';
+import { checkRow, matrixRow, selectRow, sliderRow, type Row } from './controls';
 import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
 import { estimateShake } from '../../engine/shake';
 import { runGallery, type GallerySettings } from '../../engine/blur-gallery';
+import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libMargin, libValues, runLib, type LibKind, type LibParam, type LibValue, type LibValues } from '../../engine/filter-library';
 import { HSL_BANDS, buildCurveLut, defaultCalibration, defaultGeometry, defaultGrading, defaultOptics, type CalibrationState, type CurveChannel, type DevelopState, type GeometryState, type GradingState, type HslBand, type HslBandState, type OpticsState } from '../../engine/develop';
 import { curveGraph } from './curve-graph';
 
 export type FilterKind = 'gaussianBlur' | 'motionBlur' | 'addNoise' | 'lensCorrection' | 'unsharpMask' | 'develop' | 'lensBlur' | 'smartSharpen' | 'shakeReduction'
-  | 'radialBlur' | 'surfaceBlur' | 'fieldBlur' | 'irisBlur' | 'tiltShift' | 'pathBlur';
+  | 'radialBlur' | 'surfaceBlur' | 'fieldBlur' | 'irisBlur' | 'tiltShift' | 'pathBlur' | LibKind;
 export const FILTER_LABELS: Record<FilterKind, string> = { gaussianBlur: 'Gaussian Blur', motionBlur: 'Motion Blur', addNoise: 'Add Noise', lensCorrection: 'Lens Correction', unsharpMask: 'Unsharp Mask', develop: 'Develop', lensBlur: 'Lens Blur', smartSharpen: 'Smart Sharpen', shakeReduction: 'Shake Reduction',
-  radialBlur: 'Radial Blur', surfaceBlur: 'Surface Blur', fieldBlur: 'Field Blur', irisBlur: 'Iris Blur', tiltShift: 'Tilt-Shift', pathBlur: 'Path Blur' };
+  radialBlur: 'Radial Blur', surfaceBlur: 'Surface Blur', fieldBlur: 'Field Blur', irisBlur: 'Iris Blur', tiltShift: 'Tilt-Shift', pathBlur: 'Path Blur',
+  ...(Object.fromEntries(LIBRARY.map((f) => [f.id, f.label])) as Record<LibKind, string>) };
 
 export function defaultFilterSettings() {
   return {
@@ -32,6 +34,7 @@ export function defaultFilterSettings() {
       tiltBlur: 15, tiltY: 50, tiltAngle: 0, tiltFocus: 10, tiltTransition: 20,
       pathSpeed: 30, pathTaper: 0, pathSx: 20, pathSy: 70, pathBx: 50, pathBy: 30, pathEx: 80, pathEy: 70,
     } as GallerySettings,
+    lib: libAllDefaults() as Partial<Record<LibKind, LibValues>>,
   };
 }
 export type FilterPanelSettings = ReturnType<typeof defaultFilterSettings>;
@@ -50,7 +53,7 @@ export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number
       case 'smartSharpen': return smartSharpen(src, s.smart, scale);
       case 'shakeReduction': return shakeReduce(src, s.shake, scale);
       case 'radialBlur': case 'surfaceBlur': case 'fieldBlur': case 'irisBlur': case 'tiltShift': case 'pathBlur': return runGallery(kind, s.gallery, src, scale);
-    default: return src;
+    default: return isLibKind(kind) ? runLib(kind, s.lib?.[kind], seed, src, scale) : src;
   }
 }
 
@@ -71,7 +74,7 @@ export function bandApron(kind: FilterKind, s: FilterPanelSettings): number | nu
     // (Smart Sharpen runs whole: banded, its result was not the whole layer's, so its effect is wider than its margin.)
     case 'gaussianBlur': case 'motionBlur': case 'lensBlur': case 'surfaceBlur': return filterMargin(kind, s);
     case 'unsharpMask': return gaussianMargin(s.usmRadius) + 2;
-    default: return null;
+    default: return isLibKind(kind) ? libApron(kind, s.lib?.[kind]) : null;
   }
 }
 
@@ -81,7 +84,7 @@ export function filterMargin(kind: FilterKind, s: FilterPanelSettings): number {
     : kind === 'surfaceBlur' ? Math.ceil(s.gallery.surfaceRadius) + 1 : kind === 'pathBlur' ? Math.ceil(s.gallery.pathSpeed) + 2
     : kind === 'fieldBlur' ? gaussianMargin(Math.max(s.gallery.pin1blur, s.gallery.pin2blur, s.gallery.pin3blur, s.gallery.pin4blur))
     : kind === 'irisBlur' ? gaussianMargin(s.gallery.irisBlur) : kind === 'tiltShift' ? gaussianMargin(s.gallery.tiltBlur)
-    : kind === 'radialBlur' ? 2000 : 0;
+    : kind === 'radialBlur' ? 2000 : isLibKind(kind) ? libMargin(kind, s.lib?.[kind]) : 0;
 }
 
 export class FilterPanel extends Dialog {
@@ -272,6 +275,30 @@ export class FilterPanel extends Dialog {
     this.sections.set(kind, { node, sync });
   }
 
+  private libRow(p: LibParam, put: (key: string, v: LibValue) => void): { el: HTMLElement; set: (v: LibValue) => void } {
+    if (p.kind === 'range') { const r = sliderRow(p.label, p.min, p.max, p.step, (v) => put(p.key, v), { max: p.limit ?? p.max }); return { el: r.el, set: (v) => r.set(v as number) }; }
+    if (p.kind === 'select') { const r = selectRow(p.label, p.options, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as string) }; }
+    if (p.kind === 'check') { const r = checkRow(p.label, (v) => put(p.key, v)); return { el: r.el, set: (v) => r.set(v as boolean) }; }
+    const r = matrixRow(p.label, p.size, p.min, p.max, (v) => put(p.key, v));
+    return { el: r.el, set: (v) => r.set(v as number[]) };
+  }
+
+  private libSection(kind: LibKind): void {
+    const f = libFilter(kind), s = this.s;
+    const values = (): LibValues => { const lib = (s.lib ??= {}); return (lib[kind] ??= libValues(kind, undefined)); };
+    const rows = f.params.map((p) => this.libRow(p, (key, v) => { values()[key] = v; this.schedule(); }));
+    const node = el('<div class="cv-panel-section" hidden></div>');
+    node.append(...rows.map((r) => r.el));
+    if (f.note) { const note = el('<p class="cv-note"></p>'); note.textContent = f.note; node.appendChild(note); }
+    this.body.insertBefore(node, this.previewRow.el);
+    this.sections.set(kind, { node, sync: () => { const v = libValues(kind, s.lib?.[kind]); (s.lib ??= {})[kind] = v; f.params.forEach((p, i) => rows[i].set(v[p.key])); } });
+  }
+
+  private settingsOf(kind: FilterKind): Record<string, unknown> {
+    const { lib, ...rest } = structuredClone(this.s);
+    return isLibKind(kind) ? { ...rest, lib: { [kind]: libValues(kind, lib?.[kind]) } } : rest;
+  }
+
   show(kind: FilterKind): void {
     if (this.isOpen) return;
     const al = this.engine.current?.activeLayer;
@@ -282,6 +309,7 @@ export class FilterPanel extends Dialog {
     this.seed = randomSeed();
     this.setTitle(FILTER_LABELS[kind]);
     if (kind === 'shakeReduction') this.estimateShake(false);
+    if (isLibKind(kind) && !this.sections.has(kind)) this.libSection(kind);
     for (const [k, sec] of this.sections) setHidden(sec.node, k !== kind);
     this.sections.get(kind)?.sync();
     this.previewRow.set(this.preview);
@@ -402,10 +430,10 @@ export class FilterPanel extends Dialog {
   private commit(): void {
     window.clearTimeout(this.timer);
     this.done = true;
-    const kind = this.kind, settings: Record<string, unknown> = { ...structuredClone(this.s), seed: this.seed }, editing = this.editing;
+    const kind = this.kind, settings: Record<string, unknown> = { ...this.settingsOf(kind), seed: this.seed }, editing = this.editing;
     if (this.asking) { const done = this.asking; this.asking = null; this.engine.setPreview(null); this.close(); done(settings); return; }
     if (editing) { this.close(); editing(settings); return; }
-    this.onApplied?.(this.kind, structuredClone(this.s));
+    this.onApplied?.(this.kind, this.settingsOf(kind));
     if (this.smartTarget()) { this.engine.setPreview(null); this.close(); this.engine.addSmartFilter(kind, settings); return; }
     // The preview stays on the canvas until the result replaces it, computed off the main thread.
     this.close();

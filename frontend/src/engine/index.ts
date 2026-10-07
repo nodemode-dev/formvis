@@ -45,6 +45,7 @@ export type { FilterSettings } from './filter-jobs';
 export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
 import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
+import { averageImage } from './filters-lib/blur';
 import { sharpenSample } from './filters-more';
 import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
 import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
@@ -5299,6 +5300,22 @@ export class Engine {
       q.before = new ImageData(1, 1);
     }
     this.emit('history', null);
+  }
+
+  averageFill(): void {
+    if (!this.room(this.layerBytes() * 3, 'Average')) return;
+    const al = this.current?.activeLayer;
+    if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return; }
+    const p0 = this.current, l0 = p0?.activeLayer ?? null;
+    if (!p0 || !this.paintable(l0)) { this.notice('Select a pixel layer first.'); return; }
+    this.regionEdit('Average', ({ raster, target, rect }) => {
+      const p = this.current as Project, l = p.activeLayer as Layer;
+      const src = target === 'mask' ? toGray(raster.read()) : raster.read();
+      const cov = this.coverageFor(p, l, target, raster.width, raster.height), out = averageImage(src, cov);
+      let result = cov ? this.blendThrough(src, out, cov) : out;
+      if (target === 'mask') result = fromGray(result);
+      raster.ctx.putImageData(result, 0, 0, rect.x, rect.y, rect.w, rect.h);
+    });
   }
 
   applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0, peak = 2): void {

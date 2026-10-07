@@ -3,6 +3,7 @@ import { addNoise, gaussianBlur, lensDistort, motionBlur, unsharpMask } from './
 import { developImage } from './develop';
 import { lensBlur, shakeReduce, smartSharpen } from './filters-more';
 import { isGalleryKind, runGallery } from './blur-gallery';
+import { isLibKind, runLib } from './filter-library';
 import type { FilterJob } from './filter-jobs';
 
 /** Filters run here, off the main thread: formvis's kernels are JavaScript, so the
@@ -14,6 +15,7 @@ onmessage = (e: MessageEvent<FilterJob>) => {
   const s = job.settings;
   let out = src;
   if (isGalleryKind(job.kind)) out = runGallery(job.kind, s.gallery, src, job.scale);
+  else if (isLibKind(job.kind)) out = runLib(job.kind, s.lib?.[job.kind], job.seed, src, job.scale);
   else if (job.kind === 'gaussianBlur') out = gaussianBlur(src, s.radius * job.scale);
   else if (job.kind === 'motionBlur') out = motionBlur(src, s.angle, s.distance * job.scale);
   else if (job.kind === 'addNoise') out = addNoise(src, s.amount, s.gaussian, s.monochromatic, job.seed);

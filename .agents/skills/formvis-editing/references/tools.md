@@ -308,9 +308,9 @@ Selects pixels near a colour (#rrggbb) in the active layer; fuzziness 0 to 200 w
 
 ## apply_filter
 
-Applies a filter to the active layer (inside the selection if there is one). kind and its settings: gaussianBlur {radius}, motionBlur {angle, distance}, addNoise {amount, gaussian, monochromatic}, unsharpMask {usmAmount, usmRadius, threshold}, lensBlur {lensRadius}, surfaceBlur, radialBlur, tiltShift, irisBlur, fieldBlur. Unnamed settings keep their defaults.
+Applies a filter to the active layer (inside the selection if there is one). kind and its settings: gaussianBlur {radius}, motionBlur {angle, distance}, addNoise {amount, gaussian, monochromatic}, unsharpMask {usmAmount, usmRadius, threshold}, lensBlur {lensRadius}, surfaceBlur, radialBlur, tiltShift, irisBlur, fieldBlur; with no settings: average (the selection filled with its average colour), blur, blurMore, sharpen, sharpenMore, sharpenEdges, despeckle, ntscColors; boxBlur {radius}, shapeBlur {radius, shape: circle|ring|square|diamond|triangle|hexagon|star|heart|cross}, smartBlur {radius, threshold, quality: high|medium|low, mode: normal|edgeOnly|overlayEdge}, dustAndScratches {radius, threshold}, median {radius}, reduceNoise {strength 0 to 10, preserve, color, sharpen (percent), jpeg}, custom {kernel (25 integers, row by row), scale, offset}, hsbHsl {input, output: rgb|hsb|hsl}, highPass {radius}, maximum and minimum {radius, preserve: squareness|roundness}, offset {horizontal, vertical, undefinedAreas: transparent|repeat|wrap}, deInterlace {eliminate: oddFields|evenFields, createBy: interpolation|duplication}. Unnamed settings keep their defaults.
 
-- `kind`: string (gaussianBlur | motionBlur | addNoise | unsharpMask | lensBlur | smartSharpen | surfaceBlur | radialBlur | tiltShift | irisBlur | fieldBlur); required
+- `kind`: string (gaussianBlur | motionBlur | addNoise | unsharpMask | lensBlur | smartSharpen | surfaceBlur | radialBlur | tiltShift | irisBlur | fieldBlur | average | blur | blurMore | boxBlur | shapeBlur | smartBlur | sharpen | sharpenMore | sharpenEdges | despeckle | dustAndScratches | median | reduceNoise | custom | hsbHsl | highPass | maximum | minimum | offset | deInterlace | ntscColors); required
 - `settings`: object; default {}
 
 ## set_adjustment

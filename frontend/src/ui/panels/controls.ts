@@ -48,6 +48,21 @@ export function colorRow(label: string, onChange: (hex: string) => void): Row<st
   return { el: node, set: (v) => setValue(input, v) };
 }
 
+export function matrixRow(label: string, size: number, min: number, max: number, onInput: (v: number[]) => void): Row<number[]> {
+  const node = el('<div class="cv-field"><span></span><div class="cv-matrix"></div></div>');
+  setText(q(node, 'span'), label);
+  const grid = q(node, '.cv-matrix');
+  const cells = Array.from({ length: size * size }, (_, i) => {
+    const input = el<HTMLInputElement>(`<input class="cv-input" type="number" min="${min}" max="${max}" step="1">`);
+    input.setAttribute('aria-label', `${label} row ${Math.floor(i / size) + 1} column ${(i % size) + 1}`);
+    grid.appendChild(input);
+    return input;
+  });
+  const read = (): number[] => cells.map((c) => { const v = Math.round(Number(c.value)); return Number.isFinite(v) ? clamp(v, min, max) : 0; });
+  for (const c of cells) c.addEventListener('input', () => onInput(read()));
+  return { el: node, set: (v) => { cells.forEach((c, i) => setValue(c, String(v[i] ?? 0))); } };
+}
+
 export function numberRow(label: string, min: number, max: number, step: number, onChange: (v: number) => void): Row<number> & { input: HTMLInputElement } {
   const node = el(`<label class="cv-field"><span></span><input class="cv-input" type="number" min="${min}" max="${max}" step="${step}"></label>`);
   setText(q(node, 'span'), label);

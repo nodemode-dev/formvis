@@ -107,6 +107,7 @@ import { HomeScreen } from './ui/home';
 import { ALL_PANELS, Dock, registerPanel, unregisterPanel } from './ui/dock';
 import { AdjustPanel } from './ui/panels/adjust-panel';
 import { FILTER_LABELS, FilterPanel, type FilterKind, runFilter, defaultFilterSettings, type FilterPanelSettings, filterMargin } from './ui/panels/filter-panel';
+import { LIBRARY, isLibKind, libDefaults, libHasDialog, libInGroup, type LibGroup } from './engine/filter-library';
 import { NeuralFiltersDialog } from './ui/panels/neural-dialog';
 import { ContentAwareScaleDialog } from './ui/panels/content-aware-scale';
 import { WideAngleDialog } from './ui/panels/wide-angle-dialog';
@@ -1378,7 +1379,11 @@ export function startApp(): void {
     openFile: (f) => openFiles([f]),
     renderVideo: (c) => renderVideoBlob(c),   // 1.59.7, DEV_PLAN 25.5: timeline_render
     projectBlob: async () => { const p = engine.current; if (!p) return null; engine.settle(); const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p)); return api.package(manifest, files); },
-    applyFilter: (kind, settings) => dialogs.filter.applySettings(kind as Parameters<typeof dialogs.filter.applySettings>[0], settings),
+    applyFilter: (kind, settings) => {
+      if (kind === 'average') { engine.averageFill(); return true; }
+      const lib = isLibKind(kind) && !('lib' in settings) ? { lib: { [kind]: settings }, seed: typeof settings.seed === 'number' ? settings.seed : 0 } : settings;
+      return dialogs.filter.applySettings(kind as Parameters<typeof dialogs.filter.applySettings>[0], lib);
+    },
     selectSubject: () => selectSubject(false),
     removeBackground: () => removeBackground('auto'),
   });
@@ -1709,8 +1714,17 @@ export function startApp(): void {
     { id: 'gamut-warning', label: 'Gamut Warning', keys: ['Shift+Mod+Y'], enabled: () => has() && !!colourView.setup, checked: () => colourView.gamut, run: () => { colourView.gamut = !colourView.gamut; if (colourView.gamut) colourView.proof = true; void colourView.refresh(); } },
     { id: 'flatten', label: 'Flatten Image', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => { engine.flattenImage(); } },
     ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, ...(kind === 'develop' ? { keys: ['Shift+Mod+A'] } : {}), enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
+    ...LIBRARY.map((f) => ({ id: `filter-${f.id}`, label: libHasDialog(f.id) ? `${f.label}...` : f.label, enabled: hasTargetPixels, run: () => {
+      if (libHasDialog(f.id)) { dialogs.filter.show(f.id); return; }
+      const settings = { lib: { [f.id]: libDefaults(f.id) }, seed: 0 };
+      dialogs.filter.onApplied?.(f.id, settings);
+      void dialogs.filter.applySettings(f.id, settings);
+    } })),
+    { id: 'filter-average', label: 'Average', enabled: hasTargetPixels, run: () => engine.averageFill() },
   );
 
+  const filterName = (id: string): string => (id === 'filter-average' ? 'Average' : FILTER_LABELS[id.slice('filter-'.length) as FilterKind] ?? id);
+  const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
@@ -1739,10 +1753,12 @@ export function startApp(): void {
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, '-', 'quick-mask', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: ['filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
-      { label: 'Blur', items: ['filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur'] },
+      { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
       { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur'] },
-      { label: 'Sharpen', items: ['filter-smartSharpen', 'filter-shakeReduction', 'filter-unsharpMask'] },
-      { label: 'Noise', items: ['filter-addNoise'] }, '-', 'remove-bg', 'remove-bg-lite'] },
+      { label: 'Noise', items: filterGroup('Noise', ['filter-addNoise']) },
+      { label: 'Sharpen', items: filterGroup('Sharpen', ['filter-smartSharpen', 'filter-shakeReduction', 'filter-unsharpMask']) },
+      { label: 'Video', items: filterGroup('Video', []) },
+      { label: 'Other', items: filterGroup('Other', []) }, '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: ['proof-setup', 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
