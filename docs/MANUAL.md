@@ -65,6 +65,10 @@ ask it questions.
   Down, Merge Visible (hidden layers stay) and Flatten Image; Layer > New > Layer via Copy and Layer via Cut (Ctrl+J,
   Shift+Ctrl+J) lift the selection to a new layer, and Layer from Background makes the Background an ordinary layer.
   Select > All Layers (Alt+Ctrl+A) and Deselect Layers choose layers.
+- Layer > Link Layers links the selected layers so they move and transform together, each marked with a chain in the
+  Layers panel; Select Linked Layers selects all of a link. Layer > Lock Layers (Ctrl+/) locks the transparency, the
+  pixels, the position or all of every selected layer at once, or of every layer in a folder (Lock All Layers in
+  Group); a lock in the Layers panel marks each locked layer.
 - Layer > Layer Mask adds a mask revealing or hiding all, or the selection, or made from the layer's transparency;
   Layer > Mask All Objects finds the objects in the layer and adds a masked folder for each, for adjustments. Layer >
   Matting cleans the edges of a cut-out (Defringe, Remove Black or White Matte, Color Decontaminate), and Layer >

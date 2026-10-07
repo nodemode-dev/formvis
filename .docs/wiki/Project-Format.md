@@ -21,6 +21,7 @@ A project is a zip (`.fmv`; before 0.90.0 `.formvis`, still read) holding `manif
 | `opacity`, `blendMode` | 0 to 1; blend label such as `Multiply` or `Color Dodge` |
 | `maskFile`, `maskEnabled`, `maskLinked`, `maskPlacement` | Grayscale mask PNG (white shows), on or off, follows the layer or not, where an unlinked mask sits |
 | `maskSourceID` | The layer this one is clipped to |
+| `linkID` | Layer > Link Layers (1.65.3): layers with the same value move and transform together; absent is unlinked, and a value no other layer holds links nothing |
 | `effects` | The layer style: each effect by name (`dropShadow`, `outerGlow`, `stroke`, `innerShadow`, `innerGlow`, `colorOverlay`, `gradientOverlay`, `patternOverlay`, `satin`, `bevel`), `extra` holding further instances; from 1.65.2 `hidden` (Hide All Effects), Bevel & Emboss's `technique`, `contour` and `texture`, and its `style` `stroke`, which older projects lack and older formvis reads as no flag, Smooth and Inner Bevel |
 | `adjustment` | Kept verbatim; `kind` is `Hue/Saturation`, `Levels`, `Curves`, `Exposure`, `Gradient Map` or `Grain` |
 | `shape` | Shape description, kept verbatim |

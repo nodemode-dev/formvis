@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.65.3
+
+No engine code changed in 1.65.3 (DEV_PLAN 27.5's sixth part, Lock Layers and linked layers, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.65.2"
+version = "1.65.2"
+version = "1.65.2"
+ "version": "1.65.2",
+```
+
 ## Version only · _v1.65.2
 
 No engine code changed in 1.65.2 (DEV_PLAN 27.5's fifth part, Layer Style, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before, once the README's line counts were brought up to date (its check had found TypeScript at 47,983 lines against the README's 46,400). Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

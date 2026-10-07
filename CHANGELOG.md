@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.3 · 2026-10-07
+
+### Added
+
+- Layer > Link Layers links the selected layers so they move together, as Photoshop's linked layers do: dragging, nudging or transforming one moves the others, and a position lock on any of them stops the move. With linked layers selected it reads Unlink Layers. Layers duplicated together are linked to each other, not to the layers they copy.
+- Layer > Select Linked Layers adds every layer linked to the selected ones to the selection.
+- Layer > Lock Layers (Ctrl+/, Cmd+/ on a Mac) sets Transparency, Image, Position and All for all the selected layers at once; with a folder selected it is Lock All Layers in Group, for every layer in it.
+- The Layers panel marks linked layers with a chain and locked layers with a lock (dimmed when only part is locked), and its foot starts with Link Layers, as Photoshop's does. The layers' context menu has Link Layers and Select Linked Layers.
+- Links are saved in `.fmv` projects and travel to and from Photoshop as its linked layers.
+
 ## 1.65.2 · 2026-10-07
 
 ### Added
