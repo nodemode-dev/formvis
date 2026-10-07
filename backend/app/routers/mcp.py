@@ -195,8 +195,12 @@ def _local_origin(origin: str | None) -> bool:
     return host in ("localhost", "127.0.0.1", "::1", "tauri.localhost") or origin.startswith("tauri://")
 
 
-def _ok(req_id, result: dict, modern: bool) -> dict:
-    return {"jsonrpc": "2.0", "id": req_id, "result": {**result, **({"resultType": "complete"} if modern else {})}}
+CACHE_HINTS = {"ttlMs": 300_000, "cacheScope": "public"}
+
+
+def _ok(req_id, result: dict, modern: bool, cacheable: bool = False) -> dict:
+    extra = {"resultType": "complete", **(CACHE_HINTS if cacheable else {})} if modern else {}
+    return {"jsonrpc": "2.0", "id": req_id, "result": {**result, **extra}}
 
 
 def _err(req_id, code: int, message: str) -> dict:
@@ -344,18 +348,18 @@ async def mcp(request: Request) -> Response:
     if version not in VERSIONS and method != "initialize":
         out = _err(req_id, -32602, f"Unsupported protocol version {version}; supported: {', '.join(VERSIONS)}")
     elif method == "server/discover":
-        out = _ok(req_id, {"supportedVersions": VERSIONS, "capabilities": {"tools": {}, "prompts": {}}, "_meta": {"io.modelcontextprotocol/serverInfo": server}, "instructions": INSTRUCTIONS}, True)
+        out = _ok(req_id, {"supportedVersions": VERSIONS, "capabilities": {"tools": {}, "prompts": {}}, "_meta": {"io.modelcontextprotocol/serverInfo": server}, "instructions": INSTRUCTIONS}, True, cacheable=True)
     elif method == "initialize":
         asked = params.get("protocolVersion")
         out = _ok(req_id, {"protocolVersion": asked if asked in VERSIONS else "2025-11-25", "capabilities": {"tools": {}, "prompts": {}}, "serverInfo": server, "instructions": INSTRUCTIONS}, False)
     elif method == "ping":
         out = _ok(req_id, {}, modern)
     elif method == "prompts/list":
-        out = _ok(req_id, {"prompts": PROMPTS}, modern)
+        out = _ok(req_id, {"prompts": PROMPTS}, modern, cacheable=True)
     elif method == "prompts/get":
         out = _ok(req_id, {"description": PROMPTS[0]["description"], "messages": [{"role": "user", "content": {"type": "text", "text": STRATEGY}}]}, modern) if params.get("name") == "edit_strategy" else _err(req_id, -32602, f"No prompt named {params.get('name')}")
     elif method == "tools/list":
-        out = _ok(req_id, {"tools": TOOLS}, modern)
+        out = _ok(req_id, {"tools": TOOLS}, modern, cacheable=True)
     elif method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
         out = _ok(req_id, await _run(name, args), modern) if name in NAMES and isinstance(args, dict) else _err(req_id, -32602, f"No tool named {name}")
