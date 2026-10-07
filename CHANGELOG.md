@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.3 · 2026-10-07
+
+### Added
+
+- Filter > Render: Flame (six flame types along the path you choose, or an arc low in the picture when there is none), Picture Frame (sixteen frames) and Tree (19 kinds of tree), listed first in the submenu as in Photoshop. Each has a Randomize for its arrangement, previews live, works as a smart filter, records in actions (Flame with its path, so the action still plays after the path is gone), and can be applied by agents.
+
+### Changed
+
+- Clouds, Fibers, Flame, Picture Frame and Tree now work on a new, empty layer, which is given pixels for them, as Photoshop draws clouds or a tree onto a new layer (in 8-bit RGB documents). Filters that change the pixels already there, Difference Clouds, Lens Flare and Lighting Effects among them, still need some.
+
 ## 1.64.2 · 2026-10-07
 
 ### Added
