@@ -397,6 +397,11 @@ export const api = {
     const res = await request('/ops/remove-background', { method: 'POST', body: form({ method }, [{ name: 'layer.png', blob: image }], 'file') });
     return { mask: await res.blob(), method: res.headers.get('X-Method') ?? method };
   },
+  /** Mask All Objects: the objects found in `image`, largest first, each a grey mask (base64 PNG) over its box at the
+   *  working size given. */
+  async findObjects(image: Blob): Promise<{ width: number; height: number; objects: Array<{ box: [number, number, number, number]; mask: string }> }> {
+    return (await (await request('/ops/objects', { method: 'POST', body: form({}, [{ name: 'layer.png', blob: image }], 'file') })).json()) as { width: number; height: number; objects: Array<{ box: [number, number, number, number]; mask: string }> };
+  },
   /** Click-to-select (SAM 2.1): the object at `points` ([x, y, 1] on it, [x, y, 0] not) in the image under `key`. The image
    *  is sent only when `withImage` asks for it or the engine answers 409 (it no longer holds the key), then once more
    *  with it; `image` makes the pixels only when they are needed. */

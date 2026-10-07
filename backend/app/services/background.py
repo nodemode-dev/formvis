@@ -132,3 +132,44 @@ def remove(data: bytes, method: str = "auto") -> tuple[bytes, str]:
     out = io.BytesIO()
     mask.save(out, format="PNG")
     return out.getvalue(), chosen
+
+
+def objects(data: bytes, limit: int = 24) -> dict:
+    """Layer > Mask All Objects (1.64.9): U^2-Net's salient regions as separate objects, largest first, each a soft mask
+    cropped to its box at a working scale (the longer side at most 1024); every soft edge goes to the nearest object."""
+    import base64
+
+    import cv2
+    import numpy as np
+
+    if not available()["ml"]:
+        raise Unavailable("Mask All Objects needs the engine's ONNX Runtime (./formvis install).")
+    try:
+        with Image.open(io.BytesIO(data)) as image:
+            image.load()
+            rgb = image.convert("RGB")
+    except Exception as exc:
+        raise BackgroundError("The image could not be read.") from exc
+    w, h = rgb.size
+    if w * h > config.MAX_PIXELS:
+        raise BackgroundError(f"The image exceeds the {config.MAX_PIXELS // 1_000_000}-megapixel limit.")
+    k = min(1.0, 1024 / max(w, h))
+    sw, sh = max(1, round(w * k)), max(1, round(h * k))
+    sal = np.asarray(_u2net_onnx(rgb.resize((sw, sh), Image.Resampling.LANCZOS) if k < 1 else rgb), dtype=np.uint8)
+    fg = (sal > 127).astype(np.uint8)
+    n, cc, stats, _ = cv2.connectedComponentsWithStats(fg, connectivity=8)
+    floor = max(16.0, 0.0005 * sw * sh)
+    keep = sorted((i for i in range(1, n) if stats[i, cv2.CC_STAT_AREA] >= floor), key=lambda i: -stats[i, cv2.CC_STAT_AREA])[:limit]
+    found = []
+    if keep:
+        _, near = cv2.distanceTransformWithLabels(1 - fg, cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
+        owner = np.concatenate([np.zeros(1, np.int32), cc[fg == 1].astype(np.int32)])
+        nearest = owner[near]
+        for i in keep:
+            m = np.where((nearest == i) & (sal >= 8), sal, 0).astype(np.uint8)
+            ys, xs = np.nonzero(m)
+            x0, y0, x1, y1 = int(xs.min()), int(ys.min()), int(xs.max()) + 1, int(ys.max()) + 1
+            buf = io.BytesIO()
+            Image.fromarray(m[y0:y1, x0:x1], "L").save(buf, format="PNG")
+            found.append({"box": [x0, y0, x1 - x0, y1 - y0], "mask": base64.b64encode(buf.getvalue()).decode("ascii")})
+    return {"width": sw, "height": sh, "objects": found}

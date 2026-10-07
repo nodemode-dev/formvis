@@ -66,6 +66,7 @@ import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, 
 import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
+import { alphaToMask, defringe, removeMatte } from './matting';
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
@@ -1472,6 +1473,19 @@ export class Engine {
       // Live shapes too (1.53.3): a plain filled rectangle or ellipse keeps its pixels and becomes an ordinary layer.
       if (!l || (!l.smart && !l.text && !l.vector && !l.shape)) return false;
       p.updateLayer(l.id, { smart: null, text: null, vector: null, shape: null });
+    });
+  }
+
+  /** Layer > Rasterize > Type, Shape, Smart Object or Layer on the selected layers of that kind, or All Layers on every
+   *  type, shape and smart object layer in the document. One step. */
+  rasterizeLayers(kind: 'type' | 'shape' | 'smart' | 'layer' | 'all'): void {
+    const of = (l: Layer): boolean => (kind === 'type' ? !!l.text : kind === 'shape' ? !!(l.vector || l.shape) : kind === 'smart' ? !!l.smart : !!(l.smart || l.text || l.vector || l.shape));
+    const name = { type: 'Rasterize Type', shape: 'Rasterize Shape', smart: 'Rasterize Smart Object', layer: 'Rasterize Layer', all: 'Rasterize All Layers' }[kind];
+    this.edit(name, (p) => {
+      const ids = p.doc.layers.filter((l) => of(l) && (kind === 'all' || p.selectedIds.has(l.id))).map((l) => l.id);
+      if (!ids.length) return false;
+      for (const id of ids) p.updateLayer(id, { smart: null, text: null, vector: null, shape: null });
+      return true;
     });
   }
 
@@ -3295,13 +3309,13 @@ export class Engine {
     });
   }
 
-  addMask(hide = false): void {
+  addMask(hide = false, fromSelection = true): void {
     this.edit(hide ? 'Add Mask Hiding All' : 'Add Layer Mask', (p) => {
       const l = p.activeLayer;
       if (!l || l.mask) return false;
       const w = l.raster?.width ?? Math.max(1, Math.round(l.transform.w)), h = l.raster?.height ?? Math.max(1, Math.round(l.transform.h));
       let raster: Raster | null = null;
-      const sel = p.selection;
+      const sel = fromSelection ? p.selection : null;
       if (sel) {
         raster = new Raster(w, h);
         setMat(raster.ctx, mul(invert(placement(l.transform, w, h)), translation(sel.x, sel.y)));
@@ -3318,6 +3332,74 @@ export class Engine {
       p.updateLayer(l.id, { mask: { raster, enabled: true, linked: true, placement: null } });
       p.maskTarget = true;
     });
+  }
+
+  /** Layer > Layer Mask > From Transparency: the layer's alpha becomes its mask and its pixels opaque. One step. */
+  maskFromTransparency(): void {
+    this.edit('Add Layer Mask', (p) => {
+      const l = p.activeLayer;
+      if (!l || l.mask || !this.paintable(l) || l.adjustment || !l.raster || this.smartLocked(p)) return false;
+      const { mask, opaque } = alphaToMask(l.raster.read());
+      const m = new Raster(l.raster.width, l.raster.height);
+      m.write(mask);
+      const r = new Raster(l.raster.width, l.raster.height);
+      r.write(opaque);
+      p.updateLayer(l.id, { raster: r, mask: { raster: m, enabled: true, linked: true, placement: null } });
+      p.maskTarget = true;
+      return true;
+    });
+  }
+
+  /** What Mask All Objects reads: a layer with pixels drawn alone at document size over white, else the visible image. */
+  objectSource(id: ID): Surface | null {
+    const p = this.current, l = p?.layer(id);
+    if (!p || !l) return null;
+    if (!l.raster) return this.flattened();
+    const s = createSurface(p.doc.width, p.doc.height);
+    this.work.render({ doc: p.doc, target: s, view: translation(0, 0), only: new Set([id]), background: '#ffffff', quality: 'high' });
+    return s;
+  }
+
+  /** Layer > Mask All Objects: above the layer, a folder holding an empty folder per object found (largest first), each
+   *  masked to its object (`masks`, document size, white with the mask as alpha), for adjustments to go in. One step. */
+  maskAllObjects(layerId: ID, masks: readonly Surface[]): void {
+    this.edit('Mask All Objects', (p) => {
+      const l = p.layer(layerId);
+      if (!l || !masks.length) return false;
+      const outer = newLayer('Objects', p.doc, { isGroup: true, parentId: l.parentId });
+      const inner = masks.map((s, i) => newLayer(`Object ${i + 1}`, p.doc, { isGroup: true, parentId: outer.id, mask: { raster: Raster.from(s, s.width, s.height), enabled: true, linked: true, placement: null } }));
+      const layers = [...p.doc.layers];
+      layers.splice(layers.indexOf(l) + 1, 0, ...inner.reverse(), outer);
+      p.setLayers(layers);
+      this.focus(p, outer.id);
+      return true;
+    });
+  }
+
+  /** Layer > Matting: Defringe (`width` px), Remove Black Matte, Remove White Matte, and Color Decontaminate (`amount`
+   *  percent over `radius` px, by the layer's mask when it has one, else its alpha), on the whole layer. One step. */
+  matting(kind: 'defringe' | 'black' | 'white' | 'decontaminate', width = 1, amount = 100, radius = 6): void {
+    const p0 = this.current, l0 = p0?.activeLayer;
+    if (p0?.maskTarget && l0?.mask) { this.notice('Matting changes a layer\'s pixels: click the layer\'s thumbnail, not its mask.'); return; }
+    const name = { defringe: 'Defringe', black: 'Remove Black Matte', white: 'Remove White Matte', decontaminate: 'Color Decontaminate' }[kind];
+    this.regionEdit(name, ({ raster, rect }) => {
+      const img = raster.read(rect.x, rect.y, rect.w, rect.h), l = this.current?.activeLayer as Layer;
+      let out: ImageData;
+      if (kind === 'defringe') out = defringe(img, clamp(Math.round(width), 1, 200));
+      else if (kind !== 'decontaminate') out = removeMatte(img, kind === 'white');
+      else {
+        const m = l.mask?.enabled && l.mask.raster ? l.mask : null, a = new Float32Array(rect.w * rect.h);
+        if (m?.raster) {
+          const s = createSurface(raster.width, raster.height), c = ctxOf(s);
+          setMat(c, mul(invert(placement(l.transform, raster.width, raster.height)), placement(m.placement ?? l.transform, m.raster.width, m.raster.height)));
+          c.drawImage(m.raster.canvas, 0, 0);
+          const md = c.getImageData(rect.x, rect.y, rect.w, rect.h).data;
+          for (let i = 0; i < a.length; i++) a[i] = md[i * 4 + 3] / 255;
+        } else for (let i = 0; i < a.length; i++) a[i] = img.data[i * 4 + 3] / 255;
+        out = decontaminate(img, a, clamp(amount, 0, 100), clamp(radius, 1, 100) / 6);
+      }
+      raster.write(out, rect.x, rect.y);
+    }, null);
   }
 
   deleteMask(apply: boolean): void {

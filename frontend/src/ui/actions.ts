@@ -23,6 +23,8 @@ export const RECORDABLE: ReadonlySet<string> = new Set([
   'forward', 'backward', 'blend-next', 'blend-prev', 'select-all', 'deselect', 'inverse', 'path-selection', 'fill-path', 'stroke-path',
   'paste-layer-style', 'clear-layer-style', 'convert-smart', 'rasterize', 'new-shape-path', 'shape-color', 'reveal-all', 'duplicate', 'merge-down', 'merge-visible', 'flatten', 'filter-average',
   'bring-front', 'send-back', 'reverse-layers', 'layer-via-cut', 'delete-hidden', 'ungroup', 'hide-layers', 'select-all-layers', 'deselect-layers',
+  'mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', 'matting-black', 'matting-white',
+  'rasterize-type', 'rasterize-shape', 'rasterize-smart', 'rasterize-all',
 ]);
 
 const KEY = 'formvis.actions';

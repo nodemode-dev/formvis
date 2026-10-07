@@ -7,6 +7,7 @@ import { ArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
 import { StrokePathDialog } from './ui/panels/stroke-path-dialog';
 import { DuplicateLayerDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
+import { MattingDialog } from './ui/panels/matting-dialog';
 import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
@@ -1235,6 +1236,30 @@ export function startApp(): void {
     });
   }
 
+  async function maskAllObjects(): Promise<void> {
+    const p = engine.current, l = p?.activeLayer, src = l ? engine.objectSource(l.id) : null;
+    if (!p || !l || !src) return;
+    await engine.task(async () => {
+      try {
+        const found = await api.findObjects(await toBlob(src));
+        if (engine.current !== p) return;
+        if (!found.objects.length) { toast('No objects were found in this layer.'); return; }
+        const W = p.doc.width, H = p.doc.height, kx = W / found.width, ky = H / found.height, masks: ReturnType<typeof createSurface>[] = [];
+        for (const o of found.objects) {
+          const bitmap = await createImageBitmap(await (await fetch(`data:image/png;base64,${o.mask}`)).blob()), s = createSurface(W, H), c = ctxOf(s);
+          c.drawImage(bitmap, o.box[0] * kx, o.box[1] * ky, o.box[2] * kx, o.box[3] * ky);
+          bitmap.close();
+          const img = c.getImageData(0, 0, W, H), d = img.data;
+          for (let i = 0; i < d.length; i += 4) { d[i + 3] = d[i]; d[i] = d[i + 1] = d[i + 2] = 255; }
+          c.putImageData(img, 0, 0);
+          masks.push(s);
+        }
+        engine.maskAllObjects(l.id, masks);
+        toast(`${masks.length} ${masks.length === 1 ? 'object' : 'objects'} masked, each a folder to put adjustments in.`);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function sendToHost(): Promise<void> {
     const p = engine.current;
     const blob = p ? await engine.exportBlob('image/png') : null;
@@ -1334,6 +1359,7 @@ export function startApp(): void {
     canvasSize: new CanvasSizeDialog(engine),
     imageSize: new ImageSizeDialog(engine),
     amount: new AmountDialog(engine),
+    matting: new MattingDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
     guide: new GuideDialog(engine),
@@ -1586,6 +1612,20 @@ export function startApp(): void {
     { id: 'merge-visible', label: 'Merge Visible', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => engine.mergeVisible() },
     { id: 'select-all-layers', label: 'All Layers', keys: ['Alt+Mod+A'], enabled: () => !!engine.current?.doc.layers.length, run: () => engine.selectAllLayers() },
     { id: 'deselect-layers', label: 'Deselect Layers', enabled: () => !!engine.current && (!!engine.current.activeId || engine.current.selectedIds.size > 0), run: () => engine.selectAllLayers(false) },
+    { id: 'mask-reveal-all', label: 'Reveal All', enabled: () => !!layer() && !layer()?.mask, run: () => engine.addMask(false, false) },
+    { id: 'mask-hide-all', label: 'Hide All', enabled: () => !!layer() && !layer()?.mask, run: () => engine.addMask(true, false) },
+    { id: 'mask-reveal-selection', label: 'Reveal Selection', enabled: () => !!layer() && !layer()?.mask && selected(), run: () => engine.addMask(false) },
+    { id: 'mask-hide-selection', label: 'Hide Selection', enabled: () => !!layer() && !layer()?.mask && selected(), run: () => engine.addMask(true) },
+    { id: 'mask-from-transparency', label: 'From Transparency', enabled: () => withPixels() && !layer()?.mask, run: () => engine.maskFromTransparency() },
+    { id: 'matting-decontaminate', label: 'Color Decontaminate...', enabled: withPixels, run: () => dialogs.matting.show('decontaminate') },
+    { id: 'matting-defringe', label: 'Defringe...', enabled: withPixels, run: () => dialogs.matting.show('defringe') },
+    { id: 'matting-black', label: 'Remove Black Matte', enabled: withPixels, run: () => engine.matting('black') },
+    { id: 'matting-white', label: 'Remove White Matte', enabled: withPixels, run: () => engine.matting('white') },
+    { id: 'rasterize-type', label: 'Rasterize Type', enabled: () => [...(engine.current?.selectedIds ?? [])].some((id) => !!engine.current?.layer(id)?.text), run: () => engine.rasterizeLayers('type') },
+    { id: 'rasterize-shape', label: 'Rasterize Shape', enabled: () => [...(engine.current?.selectedIds ?? [])].some((id) => { const l = engine.current?.layer(id); return !!(l?.vector || l?.shape); }), run: () => engine.rasterizeLayers('shape') },
+    { id: 'rasterize-smart', label: 'Rasterize Smart Object', enabled: () => [...(engine.current?.selectedIds ?? [])].some((id) => !!engine.current?.layer(id)?.smart), run: () => engine.rasterizeLayers('smart') },
+    { id: 'mask-all-objects', label: 'Mask All Objects', enabled: () => !!layer(), run: () => void maskAllObjects() },
+    { id: 'rasterize-all', label: 'Rasterize All Layers', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart || l.text || l.vector || l.shape), run: () => engine.rasterizeLayers('all') },
     { id: 'blend-next', label: 'Next Blend Mode', keys: ['Shift+='], enabled: pixel, run: () => engine.cycleBlend(true) },
     { id: 'blend-prev', label: 'Previous Blend Mode', keys: ['Shift+-'], enabled: pixel, run: () => engine.cycleBlend(false) },
     { id: 'select-all', label: 'All', keys: ['Mod+A'], enabled: has, run: () => engine.selectAll() },
@@ -1761,14 +1801,15 @@ export function startApp(): void {
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
       { label: 'Smart Objects', items: ['convert-smart', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
-      'rasterize', 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
-      { label: 'Layer Mask', items: ['add-mask', 'add-mask-hide', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', '-',
+      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-smart', '-', 'rasterize', 'rasterize-all'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
+      { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
       { label: 'Arrange', items: ['bring-front', 'forward', 'backward', 'send-back', '-', 'reverse-layers'] },
       { label: 'Align', items: ['align-left', 'align-hcenter', 'align-right', '-', 'align-top', 'align-vcenter', 'align-bottom'] },
       { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }, '-',
-      'merge', 'merge-visible', 'flatten'] },
+      'merge', 'merge-visible', 'flatten', '-',
+      { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'select-all-layers', 'deselect-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, '-', 'quick-mask', '-', 'path-selection', 'delete-path'] },
     { label: 'Filter', items: ['filter-last', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',

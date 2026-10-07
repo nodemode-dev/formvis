@@ -20,6 +20,16 @@ def remove_background(file: UploadFile = File(...), method: str = Form("auto")) 
     return Response(mask, media_type="image/png", headers={"X-Method": used})
 
 
+@router.post("/objects")
+def find_objects(file: UploadFile = File(...)) -> dict:
+    try:
+        return background.objects(file.file.read())
+    except background.Unavailable as exc:
+        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except background.BackgroundError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.post("/select-object")
 def select_object(key: str = Form(...), points: str = Form(...), box: str | None = Form(None), file: UploadFile | None = File(None)) -> Response:
     """Click-to-select with SAM 2.1: the image is sent once per key (a layer and its revision) and encoded; clicks send the
