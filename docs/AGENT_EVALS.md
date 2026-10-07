@@ -9,7 +9,7 @@ evaluations with results you can check, and the skill's trigger test.
 
 1. In the formvis folder, run `./formvis agents install` (or open the formvis repository itself in the client, which
    carries `.mcp.json`, `.cursor/mcp.json` and `.codex/config.toml`). Restart the client.
-2. The client lists a `formvis` MCP server with 39 tools (Claude Code: `/mcp`; Codex: `codex mcp list`; Cursor:
+2. The client lists a `formvis` MCP server with 50 tools (Claude Code: `/mcp`; Codex: `codex mcp list`; Cursor:
    Settings > MCP). In Claude Code a project server first shows as waiting for your approval: approve it.
 3. With formvis closed, ask: "What is open in formvis?" formvis's engine starts and a formvis window opens in your
    browser (the desktop app, if that is what you run, is the window itself).
