@@ -2,6 +2,26 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Fade, Last Filter and Spin Blur · _v1.64.4 (engine/fade.ts, engine/filters-lib/gallery.ts and ui/panels/fade-dialog.ts new; engine/history.ts, engine/index.ts, engine/filter-library.ts, ui/panels/filter-panel.ts, app.ts)
+
+DEV_PLAN 27.4, first part. Edit > Fade (Shift+Mod+F): `History.last` gives the newest kept step, and `Engine.fadeStep` accepts it while it is still the document's state (its `afterRev` is the revision) and changed only the active layer's own pixels: every patch on that layer's raster and none paged to disk or streamed, the layer list the same length, and the raster either the same object, patched in place, or replaced by one at the same pixel scale with no rotation or flip (a filter that grew the layer); 8-bit RGB documents, pixels rather than a mask. `fadeSource` rebuilds the pixels before the step at the layer's present size: a replaced raster is drawn at its offset (the grown margin transparent); otherwise each patch's `before` is written back over the present pixels, newest first, so the oldest wins where they overlap. `fadeImages` mixes before and after in premultiplied alpha by the opacity; for another mode it first blends the step's result over the before as the Layers panel would (the canvas's operation for its 17 modes, `blendPixels` for the other 10) and mixes toward that, and Dissolve keeps a pixel of the result with a chance equal to the opacity. The Fade dialog shows Opacity, Mode and Preview, previews through `previewImageEdit` with the before scaled once to the preview's size, and OK applies through `applyImageEdit` as one step named "Fade" and the step's name; the Edit menu's label names the step too. Filter > Last Filter: the Filter panel keeps the last kind and settings it applied (`last`, set by `commit` and `applySettings`, so dialogs, filters without one, actions and agents all count), and `applyLast` applies them again with a fresh seed, so filters that draw on chance give a new pattern while their own parameters repeat (Wave's or Tree's seed among them); the command shows the filter's name at the top of the Filter menu and is bound to Mod+F, Photoshop's long-standing key. Alt+Mod+F, Photoshop's present key, was tried first: the Keyboard Shortcuts test binds Flatten to it as a free key, so it failed there, and the test is left as it is. Spin Blur: inside an ellipse placed in percent of the frame's area, sized in percent of its shorter side and turned by its Rotation, each pixel becomes the premultiplied mean of bilinear samples along the ellipse's own arc through it (about one a pixel of arc, 3 to 240), at full strength inside and fading to nothing a tenth of the radius beyond the rim; one spin set by sliders, where Photoshop places several on the canvas. `LibGroup` gains 'Blur Gallery', whose submenu is listed by hand, Spin Blur after Path Blur.
+
+Verified by scratch probes outside the repository. Spin Blur: a Blur Angle of 0 and a flat picture change nothing, nothing outside the ellipse changes, on a one-pixel white line, at radius 30 with Blur Angle 90 the value is 5 on the line and at 30 degrees, and 0 at 60 and 90 (an arc of 45 degrees each way), alpha stays 255, and inside a left-half frame nothing on the right changes; agents applied it. Fade: after Box Blur in a selection the label reads "Fade Box Blur...", the dialog previews, Opacity 0 gives the before exactly and 100 the after exactly, 50 the alpha-weighted average within 1.5 levels where at least half opaque (canvas storage rounds low alpha further), Multiply at 100 within 1 level of before times after over 255, Linear Burn exact; after a Gaussian Blur that grew the layer from 200 by 150 to 238 by 188, Fade at 0 gives the original pixels in place and a transparent margin; undoing the fade returns the blurred result; Fade is disabled after New Layer and offered after a fill. Last Filter: it shows "Box Blur" after Box Blur, and applying it gives the same pixels as Box Blur twice by hand, byte for byte; after Clouds it reads "Clouds"; Mod+F repeated Sharpen and Shift+Mod+F opened Fade. Menus: the Filter menu begins with the last filter's name and a separator, Blur Gallery ends with Spin Blur..., Edit has Fade... after Redo. Zero flash, under 6x CPU and network throttling after a hard reload: Fade opened with its box the same in every frame, its slider and number changed no nodes and choosing Screen changed only the dropdown's label; Spin Blur opened (362 pixels). tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine (no EXR codec; LaMa not downloaded; the SAM device read as onnx); 88 browser tests across the 1.64.3 suites and the shortcut editor, fill and history fill suites: 78 passed, 3 skipped, 7 failing as at 1.64.2, the same way on v1.64.1 or for this machine.
+
+Noted: after undoing a step, Fade offers the step before it while that is the document's state; Last Filter covers the Filter dialog's filters, not Liquify or the workspaces. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.64.3",
+      "version": "1.64.3",
+  "version": "1.64.3",
+    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
+    { label: 'Filter', items: ['filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
+      { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur'] },
+export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video' | 'Distort' | 'Pixelate' | 'Stylize' | 'Render';
+export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS, ...STYLIZE_FILTERS, ...RENDER_FILTERS, ...DRAWN_FILTERS];
+export const VERSION = '1.64.3';
+```
+
 ## Flame, Picture Frame and Tree; Render on empty layers · _v1.64.3 (engine/filters-lib/drawn.ts new; engine/filter-library.ts, filters-lib/render.ts, engine/index.ts, ui/panels/filter-panel.ts, app.ts)
 
 DEV_PLAN 27.3 closed: Flame, Picture Frame and Tree, each a drawing built from marks: round-ended strokes whose radius runs from one end to the other (a dot where the ends meet), their edges softened, each in a colour with an opacity, painted in order on a clear sheet and laid over the layer in straight alpha (`paint`). Each drawing is built in document pixels and mapped into the pixels of the image the run receives (`drawn`): the frame now carries the document's size (`LibFrame.doc`, `LibContext.doc`, from `Engine.filterFrame`), so sizes, the tree's branching and the flame's noise follow the document, and a reduced preview is the same drawing scaled rather than another tree. Tree and Picture Frame fit the selection's bounds or the canvas (the frame's area), as the earlier Render filters place themselves; Flame follows a path. A `path` parameter kind joins the library (`LibPath`: the path's name, the document's size when taken, and each subpath sampled about 2 pixels a step in document pixels, to 0.01 pixel, at most 256 subpaths, a coarser step past 300,000 numbers), held by `libValues` (`sanePath`). The dialog's Path row lists "None" and the document's paths and starts on the path selected in the Paths panel, taken by `Engine.pathLines` each time the dialog opens; the choice goes into the settings, so an action replays along the same path after the path is deleted and a smart filter keeps it; agents name a path (`completed` resolves the name; a name the document lacks is refused with the reason, in `missingImage`). With no path the flame follows an arc low in the area, Candle Light starts from a point in it. Picture Frame draws sixteen designs of its own (a vine with flowers, a vine, a leaf garland, a flower border, berries, a ribbon, waves, a zigzag, dots, rope, scallops, lines, stars, hearts, snowflakes and bamboo) and Tree nineteen kinds, grown by form (broad crowns branch, conifers tier, columns rise narrow, palms fan, bamboo stands in canes, shrubs spread low, weeping crowns hang). The Render submenu lists Flame, Picture Frame and Tree first, then a separator, as Photoshop's does (`drawnFirst`). Filters that draw their own pixels (`LibFilter.fills`: Clouds, Fibers and the three) now work on an empty layer, as in Photoshop: their commands are enabled on an empty pixel layer in an 8-bit RGB document (`Engine.canGivePixels`), and opening the dialog or applying the settings first gives the layer a transparent canvas-sized raster (`Engine.givePixels`, outside history, so undo leaves the layer empty); filters that change what is there stay disabled, Difference Clouds, Lens Flare and Lighting Effects among them. Chance comes from the positional hash (`hash01`) keyed by the seed; counts that could grow without bound (flames along a path, frame ornaments, branches) are capped. Found while reading the band code for this release: 1.64.2 had put `bandFrame` between `bandedFilter` and its doc comment, which then described the wrong method; `bandFrame` now sits above the comment, and keeps the frame's document size.
@@ -5822,6 +5842,22 @@ The Stylize filters and the first five Render filters of DEV_PLAN 27.3. See the 
 
 Flame, Picture Frame and Tree, closing DEV_PLAN 27.3. See the release entry "Flame, Picture Frame and Tree; Render on empty layers" at the top of this log. Nothing was removed.
 
+### src/engine/filters-lib/gallery.ts · new · _v1.64.4
+
+Spin Blur, the Blur Gallery's first library filter. See the release entry "Fade, Last Filter and Spin Blur" at the top of this log. Nothing was removed.
+
+## src/engine/fade.ts
+
+### src/engine/fade.ts · new · _v1.64.4
+
+`fadeImages`, Edit > Fade's arithmetic. See the release entry "Fade, Last Filter and Spin Blur" at the top of this log. Nothing was removed.
+
+## src/ui/panels/fade-dialog.ts
+
+### src/ui/panels/fade-dialog.ts · new · _v1.64.4
+
+The Fade dialog. See the release entry "Fade, Last Filter and Spin Blur" at the top of this log. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -5850,6 +5886,7 @@ src/
             blur.ts  · Average's kernel, Blur, Blur More, Box Blur, Shape Blur, Smart Blur
             distort.ts  · the remap, Displace, Pinch, Polar Coordinates, Ripple, Shear, Spherize, Twirl, Wave, ZigZag
             drawn.ts  · Flame, Picture Frame, Tree: shapes built in document pixels and drawn into the image
+            gallery.ts  · the Blur Gallery's library filters: Spin Blur
             noise.ts  · Despeckle, Dust & Scratches, Median, Reduce Noise
             other.ts  · Custom, HSB/HSL, High Pass, Maximum, Minimum, Offset
             pixelate.ts  · Color Halftone, Crystallize, Facet, Fragment, Mezzotint, Mosaic, Pointillize
@@ -5859,6 +5896,7 @@ src/
             stylize.ts  · Diffuse, Emboss, Extrude, Find Edges, Oil Paint, Solarize, Tiles, Trace Contour, Wind
             video.ts  · De-Interlace, NTSC Colors
         events.ts  · typed emitter
+        fade.ts  · Edit > Fade's arithmetic: a step's result faded back toward its before, by opacity and mode
         filters.ts  · blurs, noise, lens, histogram, selection resize
         geometry.ts  · matrices and rectangles
         history.ts  · undo stack
@@ -5924,6 +5962,7 @@ src/
             background-panel.ts  · Remove Background panel: Basic, Advanced refine, preview
             color-picker.ts  · Photoshop-style color picker with canvas sampling
             controls.ts  · slider, select, check, color and number rows
+            fade-dialog.ts  · Edit > Fade: opacity and mode with a live preview
             filter-panel.ts  · filter dialog with scaled preview
             jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
             live-mask-dialog.ts  · bake-or-unlink choice when deleting a clip base
@@ -5959,6 +5998,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/filter-library.ts](#srcenginefilter-libraryts)
 - [src/engine/filters-lib/](#srcenginefilters-lib)
 - [src/engine/events.ts](#srcengineeventsts)
+- [src/engine/fade.ts](#srcenginefadets)
 - [src/engine/filters.ts](#srcenginefiltersts)
 - [src/engine/geometry.ts](#srcenginegeometryts)
 - [src/engine/history.ts](#srcenginehistoryts)
@@ -6018,6 +6058,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/background-panel.ts](#srcuipanelsbackground-panelts)
 - [src/ui/panels/color-picker.ts](#srcuipanelscolor-pickerts)
 - [src/ui/panels/controls.ts](#srcuipanelscontrolsts)
+- [src/ui/panels/fade-dialog.ts](#srcuipanelsfade-dialogts)
 - [src/ui/panels/filter-panel.ts](#srcuipanelsfilter-panelts)
 - [src/ui/panels/jpeg-dialog.ts](#srcuipanelsjpeg-dialogts)
 - [src/ui/panels/live-mask-dialog.ts](#srcuipanelslive-mask-dialogts)

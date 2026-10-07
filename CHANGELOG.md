@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.4 · 2026-10-07
+
+### Added
+
+- Edit > Fade (Shift+Mod+F): right after a filter, an adjustment, a fill or a brush stroke on a layer's pixels, fade its result back toward what was there, with an opacity and any of the 27 blend modes, previewed live; one undo step named after what it fades. In 8-bit RGB documents.
+- Filter > Last Filter (Mod+F, Photoshop's long-standing key; Keyboard Shortcuts can move it to Alt+Mod+F, its current one): the first item of the Filter menu repeats the last filter you applied, with the same settings, and shows its name.
+- Filter > Blur Gallery > Spin Blur: blurs along arcs around a centre, inside an ellipse whose size, rotation and blur angle you set; it previews live, works as a smart filter, records in actions, and can be applied by agents.
+
 ## 1.64.3 · 2026-10-07
 
 ### Added
