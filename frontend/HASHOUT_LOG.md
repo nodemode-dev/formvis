@@ -2,6 +2,30 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Filter Gallery and its Artistic effects · _v1.64.5 (engine/filters-lib/gallery-fx.ts, fx-artistic.ts, filter-gallery.ts and ui/panels/gallery-view.ts new; engine/filter-library.ts, engine/index.ts, ui/panels/filter-panel.ts, styles/dialogs.css, app.ts)
+
+DEV_PLAN 27.4, second part. The Filter Gallery is one library filter, `filterGallery`, whose single parameter is the stack: a new parameter kind, `effects`, holding effect layers `{filter, values, visible}` (`LibEffect`, now one of the `LibValue`s). The parameter carries its own sanitizer, `clean`, handed the library's `sane` so each effect's values are checked as any filter's are; that keeps the gallery's catalogue out of `filter-library.ts` and its imports one way. The sanitizer takes an effect by key or by name, its values from `values`, from `params` or beside `filter`, keeps at most 64 layers and drops unknown ones; no stack at all becomes one Colored Pencil layer. Being a library filter, the gallery takes the Filter dialog's whole apply path: smart filters, actions, Last Filter, Fade, the worker, bands (its reach is the sum of its shown effects' reaches) and agents. `LibFilter` gains `width` (the dialog's width while it shows that filter), `ownPreview` (the filter previews inside its dialog, so the Filter dialog skips the canvas preview and hides its Preview check box) and `invalid` (a reason the settings cannot apply, given as the notice and refusing the apply in `missingImage`: an empty stack lists the keys, a stack with every layer hidden says so). Each effect paints a `Plate`: the window's colour, straight and in floats from 0 to 1, with the alpha kept aside, in the image's own pixels, where the window lies in the document, the frame's centre and the swatches; sizes given in document pixels are multiplied by the preview's scale, and every grain, stroke, texture and cell is a function of document coordinates measured from the canvas's origin, so bands and previews draw the same pattern. Under partly or wholly transparent pixels the colour is that of what lies around them, so effects that read neighbours do not pull in black. An effect declares how far it reads (`reach`), the sum of its blurs' three deviations, its runs' half lengths and its moves; nothing reads the window as a whole, so the gallery runs in bands. `gallery-fx.ts` holds the shared operators: a Gaussian exact to a deviation of 2.5 and three box passes beyond (`soften`), running means along rows, columns and either diagonal (`streak`), Sobel slopes, Kuwahara smoothing over box means (`flatten`), unsharp masking, positional grain, value noise and its octaves, stroke textures made from grain softened and run along a direction and rescaled to one spread whatever their sizes (`noiseField`, `strokesOf`), relief shading of the procedural surfaces (canvas, brick, burlap, sandstone) lit from the eight directions (`texturize`, supersampled when a preview shrinks them), jittered cells with each point's distance to its cell's border (`Cells`) and drawing between the ink and paper colours. The Artistic folder: Colored Pencil, Cutout, Dry Brush, Film Grain, Fresco, Neon Glow, Paint Daubs, Palette Knife, Plastic Wrap, Poster Edges, Rough Pastels, Smudge Stick, Sponge, Underpainting and Watercolor, with Photoshop's parameters, ranges and defaults; the foreground and background colours the dialog captures stand for Photoshop's (Colored Pencil's paper, Neon Glow's shades). The section, `GalleryView`: a preview pane drawn from the target's pixels through `Engine.targetCrop` (a region of the layer or its mask at a scale, with that region's frame) and `targetSize`, which, unlike `paintable`, never ask to rasterize or post a notice; at Fit in View or 25 to 200 percent, rendered in the worker at the device's pixel ratio (capped at 2) with an apron of the stack's reach at that scale, and dragged by pointer to pan. The folders hold a thumbnail per effect, made on the main thread a few per frame from a quarter-width crop of the layer's middle at 160 by 112. Settings sections are built when an effect is first chosen and kept, one shown at a time. The effect layers are a list patched in place, top first, with New (a copy above the selected), Delete, Move Up, Move Down and the eye. The four areas have fixed sizes, so nothing in the dialog moves as effects, layers and settings change; the preview and thumbnails are cleared while the dialog is hidden and drawn once ready. Filter > Filter Gallery... heads the dialog filters after Last Filter.
+
+Verified by scratch probes outside the repository. Engine: each of the 15 at its defaults, on a 480 by 320 scene, changed 50 (Smudge Stick, its darker half) to 100 percent of the pixels, kept every alpha and repeated byte for byte; on a 300 by 400 scene, 48-row bands with the declared apron matched the whole run exactly for all 15; a half-scale run against the full result reduced differed by a mean of 0.1 to 9.2 levels, and by 12 to 14 for Colored Pencil, Sponge and Rough Pastels (their fine strokes, pores and relief alias at half scale); warm on 3 MP, 0.37 seconds (Smudge Stick) to 1.7 (Underpainting). A contact sheet of the 15 was looked at: each reads as its name. In the window: the dialog was 1060 by 712 in a 1440 by 900 window with 15 thumbnails drawn and the preview at 100 percent; a thumbnail turned the layer into Cutout, New copied it above, Neon Glow showed its three settings and note, the eye hid a layer, Move Down, Delete selecting the one below, Move Up disabled at the top; OK made one step "Filter Gallery"; Last Filter another; Fade offered "Fade Filter Gallery...". A three-effect stack on 900 by 700 gave the same pixels with bands forced (`bandFrom` 1) as whole; inside a 200 by 150 selection only selected pixels changed; Fit could not be dragged and 200 percent could, a real mouse drag panning and drawing anew on release; with every layer hidden OK kept the dialog open and made no step, Cancel none; on a smart object OK added the smart filter, and Edit from Layer > Smart Filters opened the gallery with its stack and OK made "Edit Smart Filter". Agents: apply_filter with filterGallery applied a stack by key, by name and with `params`; a hidden stack, an unknown name and an empty list were refused with their reasons and changed nothing; tools/list carries the kind. Zero flash, under 6x CPU and network throttling after a hard reload: the dialog and its preview, folders, settings, layers and buttons kept the same boxes in every frame from opening, through every edit, and on reopening; the canvases kept their sizes; nothing outside the dialog changed during the edits; inside, only the rows, the settings sections built on first use, the eye and folder icons, the dropdowns' labels and the time text; one shift of 0.0004 as New put a row above the other (from a scripted click; a real click counts as input). tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine as before. The whole browser suite: 506 passed, 3 skipped, 23 failed, each failing the same on v1.64.4 run from an extracted copy on port 5192 (the four docking tests, the workspaces test, type anti-aliasing, five giant-document tests) or for this machine (LaMa and Real-ESRGAN not downloaded, no EXR codec, the 120 MP document not tiled here), as known (six colour modes, test_sixteen_bit, the status hint's 0.0008 shift), or, for test_preferences_sections, only on the dev server that had served this session's edits: its dynamic import of stage.ts reached a second copy of the module, and it passed once the server restarted.
+
+Noted: thumbnails show the effects' sizes large against the picture (a quarter-width crop at 160 by 112, the effect at full size); the preview shows the stack over its whole view, the selection limiting only the result; while dragging, the area brought into view stays empty until release; Rough Pastels' texture aliases at reduced zooms. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.64.4",
+      "version": "1.64.4",
+  "version": "1.64.4",
+    { label: 'Filter', items: ['filter-last', '-', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
+  'spinBlur',
+export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video' | 'Distort' | 'Pixelate' | 'Stylize' | 'Render' | 'Blur Gallery';
+export type LibValue = number | string | boolean | number[] | LibImage | LibPath | null;
+  | { readonly key: string; readonly label: string; readonly kind: 'path'; readonly def: null };
+export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS, ...STYLIZE_FILTERS, ...RENDER_FILTERS, ...DRAWN_FILTERS, ...GALLERY_FILTERS];
+  return p.kind === 'matrix' ? [...p.def] : p.def;
+      if (this.preview && !this.smartTarget()) this.engine.previewImageEdit((src, scale, frame) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src, frame) ?? this.run(src, scale, frame)), this.grow());
+    const values = libValues(kind, (settings.lib as Record<string, unknown> | undefined)?.[kind]), gap = libFilter(kind).params.find((p) => p.kind === 'image' && !values[p.key]);
+export const VERSION = '1.64.4';
+```
+
 ## Fade, Last Filter and Spin Blur · _v1.64.4 (engine/fade.ts, engine/filters-lib/gallery.ts and ui/panels/fade-dialog.ts new; engine/history.ts, engine/index.ts, engine/filter-library.ts, ui/panels/filter-panel.ts, app.ts)
 
 DEV_PLAN 27.4, first part. Edit > Fade (Shift+Mod+F): `History.last` gives the newest kept step, and `Engine.fadeStep` accepts it while it is still the document's state (its `afterRev` is the revision) and changed only the active layer's own pixels: every patch on that layer's raster and none paged to disk or streamed, the layer list the same length, and the raster either the same object, patched in place, or replaced by one at the same pixel scale with no rotation or flip (a filter that grew the layer); 8-bit RGB documents, pixels rather than a mask. `fadeSource` rebuilds the pixels before the step at the layer's present size: a replaced raster is drawn at its offset (the grown margin transparent); otherwise each patch's `before` is written back over the present pixels, newest first, so the oldest wins where they overlap. `fadeImages` mixes before and after in premultiplied alpha by the opacity; for another mode it first blends the step's result over the before as the Layers panel would (the canvas's operation for its 17 modes, `blendPixels` for the other 10) and mixes toward that, and Dissolve keeps a pixel of the result with a chance equal to the opacity. The Fade dialog shows Opacity, Mode and Preview, previews through `previewImageEdit` with the before scaled once to the preview's size, and OK applies through `applyImageEdit` as one step named "Fade" and the step's name; the Edit menu's label names the step too. Filter > Last Filter: the Filter panel keeps the last kind and settings it applied (`last`, set by `commit` and `applySettings`, so dialogs, filters without one, actions and agents all count), and `applyLast` applies them again with a fresh seed, so filters that draw on chance give a new pattern while their own parameters repeat (Wave's or Tree's seed among them); the command shows the filter's name at the top of the Filter menu and is bound to Mod+F, Photoshop's long-standing key. Alt+Mod+F, Photoshop's present key, was tried first: the Keyboard Shortcuts test binds Flatten to it as a free key, so it failed there, and the test is left as it is. Spin Blur: inside an ellipse placed in percent of the frame's area, sized in percent of its shorter side and turned by its Rotation, each pixel becomes the premultiplied mean of bilinear samples along the ellipse's own arc through it (about one a pixel of arc, 3 to 240), at full strength inside and fading to nothing a tenth of the radius beyond the rim; one spin set by sliders, where Photoshop places several on the canvas. `LibGroup` gains 'Blur Gallery', whose submenu is listed by hand, Spin Blur after Path Blur.
@@ -5846,6 +5870,10 @@ Flame, Picture Frame and Tree, closing DEV_PLAN 27.3. See the release entry "Fla
 
 Spin Blur, the Blur Gallery's first library filter. See the release entry "Fade, Last Filter and Spin Blur" at the top of this log. Nothing was removed.
 
+### src/engine/filters-lib/gallery-fx.ts, fx-artistic.ts, filter-gallery.ts · new · _v1.64.5
+
+The Filter Gallery: `gallery-fx.ts` holds the working window, the effect declaration and the operators the effects share; `fx-artistic.ts` the Artistic folder's fifteen effects; `filter-gallery.ts` the effect registry, the stack's sanitizer and the `filterGallery` library filter. See the release entry "The Filter Gallery and its Artistic effects" at the top of this log. Nothing was removed.
+
 ## src/engine/fade.ts
 
 ### src/engine/fade.ts · new · _v1.64.4
@@ -5857,6 +5885,12 @@ Spin Blur, the Blur Gallery's first library filter. See the release entry "Fade,
 ### src/ui/panels/fade-dialog.ts · new · _v1.64.4
 
 The Fade dialog. See the release entry "Fade, Last Filter and Spin Blur" at the top of this log. Nothing was removed.
+
+## src/ui/panels/gallery-view.ts
+
+### src/ui/panels/gallery-view.ts · new · _v1.64.5
+
+The Filter Gallery's section of the Filter dialog: its own preview, the folders of effects with thumbnails, the chosen effect's settings and the stack of effect layers. See the release entry "The Filter Gallery and its Artistic effects" at the top of this log. Nothing was removed.
 
 ## Org-navi-map
 
@@ -5886,6 +5920,9 @@ src/
             blur.ts  · Average's kernel, Blur, Blur More, Box Blur, Shape Blur, Smart Blur
             distort.ts  · the remap, Displace, Pinch, Polar Coordinates, Ripple, Shear, Spherize, Twirl, Wave, ZigZag
             drawn.ts  · Flame, Picture Frame, Tree: shapes built in document pixels and drawn into the image
+            filter-gallery.ts  · the Filter Gallery: its effects by key, the stack's sanitizer, the filterGallery filter
+            fx-artistic.ts  · the Filter Gallery's Artistic effects
+            gallery-fx.ts  · the Filter Gallery's working window, effect declaration and shared operators
             gallery.ts  · the Blur Gallery's library filters: Spin Blur
             noise.ts  · Despeckle, Dust & Scratches, Median, Reduce Noise
             other.ts  · Custom, HSB/HSL, High Pass, Maximum, Minimum, Offset
@@ -5964,6 +6001,7 @@ src/
             controls.ts  · slider, select, check, color and number rows
             fade-dialog.ts  · Edit > Fade: opacity and mode with a live preview
             filter-panel.ts  · filter dialog with scaled preview
+            gallery-view.ts  · the Filter Gallery's section: own preview, effect folders, settings, effect layers
             jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
             live-mask-dialog.ts  · bake-or-unlink choice when deleting a clip base
             size-dialogs.ts  · canvas size, image size, expand and contract
@@ -6060,6 +6098,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/controls.ts](#srcuipanelscontrolsts)
 - [src/ui/panels/fade-dialog.ts](#srcuipanelsfade-dialogts)
 - [src/ui/panels/filter-panel.ts](#srcuipanelsfilter-panelts)
+- [src/ui/panels/gallery-view.ts](#srcuipanelsgallery-viewts)
 - [src/ui/panels/jpeg-dialog.ts](#srcuipanelsjpeg-dialogts)
 - [src/ui/panels/live-mask-dialog.ts](#srcuipanelslive-mask-dialogts)
 - [src/ui/panels/size-dialogs.ts](#srcuipanelssize-dialogsts)

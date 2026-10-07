@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.5 · 2026-10-07
+
+### Added
+
+- Filter > Filter Gallery: a wide dialog with its own preview (Fit in View, 25% to 200%, dragged to look around), the effects in folders with thumbnails made from your picture, the chosen effect's settings, and a stack of effect layers: add one (a copy of the selected, above it), delete, move up or down, and show or hide each; the stack applies bottom first as one undo step. This release brings the Artistic folder's fifteen effects: Colored Pencil, Cutout, Dry Brush, Film Grain, Fresco, Neon Glow, Paint Daubs, Palette Knife, Plastic Wrap, Poster Edges, Rough Pastels, Smudge Stick, Sponge, Underpainting and Watercolor. Like the other filters it works inside a selection, as a smart filter, with Last Filter and Fade, in actions, on large layers in bands, and for agents (apply_filter with filterGallery).
+
 ## 1.64.4 · 2026-10-07
 
 ### Added
