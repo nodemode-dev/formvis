@@ -5366,6 +5366,38 @@ export class Engine {
     return true;
   }
 
+  private fadeStep(): { name: string; was: Layer; layer: Layer; patches: readonly PixelPatch[] } | null {
+    const p = this.current, l = p?.activeLayer, e = p?.history.last;
+    if (!p || !l?.raster || !e || e.streamed || e.afterRev !== p.history.revision || p.maskTarget || l.tiled || l.smart || l.vector || (p.doc.depth ?? 8) !== 8 || (p.doc.mode ?? 'rgb') !== 'rgb') return null;
+    const r = l.raster, was = e.before.doc.layers.find((x) => x.id === l.id);
+    if (!was?.raster || e.before.doc.layers.length !== p.doc.layers.length || e.patches.some((q) => q.raster !== r || q.paged || q.disk)) return null;
+    if (was.raster === r) return e.patches.length ? { name: e.name, was, layer: l, patches: e.patches } : null;
+    const t0 = was.transform, t1 = l.transform, flat = (t: Transform): boolean => !t.rotation && !t.flipX && !t.flipY;
+    const same = flat(t0) && flat(t1) && Math.abs(t0.w / was.raster.width - t1.w / r.width) < 1e-9 && Math.abs(t0.h / was.raster.height - t1.h / r.height) < 1e-9;
+    return same ? { name: e.name, was, layer: l, patches: e.patches } : null;
+  }
+
+  get fadeName(): string | null { return this.fadeStep()?.name ?? null; }
+
+  fadeSource(): { name: string; before: ImageData } | null {
+    const f = this.fadeStep();
+    if (!f) return null;
+    const r = f.layer.raster as Raster, wr = f.was.raster as Raster;
+    if (wr !== r) {
+      const t0 = f.was.transform, t1 = f.layer.transform, s = createSurface(r.width, r.height), c = ctxOf(s);
+      c.drawImage(wr.canvas, Math.round((t0.x - t1.x) / (t1.w / r.width)), Math.round((t0.y - t1.y) / (t1.h / r.height)));
+      const before = c.getImageData(0, 0, r.width, r.height);
+      s.width = 0; s.height = 0;
+      return { name: f.name, before };
+    }
+    const before = r.read();
+    for (let i = f.patches.length - 1; i >= 0; i--) {
+      const q = f.patches[i], pb = q.before, w = Math.min(pb.width, r.width - q.x);
+      for (let y = 0; y < pb.height && q.y + y < r.height; y++) before.data.set(pb.data.subarray(y * pb.width * 4, (y * pb.width + w) * 4), ((q.y + y) * r.width + q.x) * 4);
+    }
+    return { name: f.name, before };
+  }
+
   averageFill(): void {
     if (!this.room(this.layerBytes() * 3, 'Average')) return;
     const al = this.current?.activeLayer;

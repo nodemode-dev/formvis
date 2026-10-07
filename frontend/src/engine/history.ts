@@ -34,6 +34,7 @@ export class History {
 
   get canUndo(): boolean { return this.depth === 0 && this.past.length > 0; }
   get canRedo(): boolean { return this.depth === 0 && this.future.length > 0; }
+  get last(): HistoryEntry | null { return this.depth === 0 ? this.past[this.past.length - 1] ?? null : null; }
   get undoName(): string { return this.past[this.past.length - 1]?.name ?? ''; }
   get redoName(): string { return this.future[this.future.length - 1]?.name ?? ''; }
   /** Every step kept, oldest first, undone ones after the done ones; `current` is how many are done. */

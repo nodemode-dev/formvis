@@ -442,6 +442,15 @@ export class FilterPanel extends Dialog {
   /** Called when the dialog applies a filter, with its kind and settings, for Actions to record it. */
   onApplied: ((kind: FilterKind, settings: Record<string, unknown>) => void) | null = null;
 
+  private last: { kind: FilterKind; settings: Record<string, unknown> } | null = null;
+
+  get lastFilter(): FilterKind | null { return this.last?.kind ?? null; }
+
+  applyLast(): Promise<boolean> | boolean {
+    const l = this.last;
+    return l ? this.applySettings(l.kind, { ...structuredClone(l.settings), seed: randomSeed() }) : false;
+  }
+
   /** Applies `kind` with `settings` straight away, without the dialog, as Actions replay a recorded filter. */
   /** Applies `kind` with `settings` (the noise seed among them) off the main thread, the interface staying live. */
 /** Gaussian Blur, Unsharp Mask and Add Noise in a 16-bit document, at 16 bits (1.53.7), with these settings. */
@@ -487,6 +496,7 @@ export class FilterPanel extends Dialog {
     if (isLibKind(kind) && libFilter(kind).fills) this.engine.givePixels();
     const settings = this.completed(kind, given);
     if (this.missingImage(kind, settings)) return false;
+    this.last = { kind, settings: structuredClone(settings) };
     if (this.smartTarget()) { this.engine.addSmartFilter(kind, structuredClone(settings)); return true; }
     if (!this.isOpen) return this.applyInBackground(kind, settings);
     this.kind = kind;
@@ -541,6 +551,7 @@ export class FilterPanel extends Dialog {
     const kind = this.kind, settings: Record<string, unknown> = { ...this.settingsOf(kind), seed: this.seed }, editing = this.editing;
     if (this.asking) { const done = this.asking; this.asking = null; this.engine.setPreview(null); this.close(); done(settings); return; }
     if (editing) { this.close(); editing(settings); return; }
+    this.last = { kind, settings: structuredClone(settings) };
     this.onApplied?.(this.kind, this.settingsOf(kind));
     if (this.smartTarget()) { this.engine.setPreview(null); this.close(); this.engine.addSmartFilter(kind, settings); return; }
     // The preview stays on the canvas until the result replaces it, computed off the main thread.

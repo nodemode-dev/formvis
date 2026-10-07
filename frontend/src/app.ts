@@ -1,5 +1,6 @@
 import { ErrorLog } from './ui/errors';
 import { FillDialog } from './ui/panels/fill-dialog';
+import { FadeDialog } from './ui/panels/fade-dialog';
 import { ExportDialog } from './ui/panels/export-dialog';
 import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog } from './ui/panels/artboard-dialog';
@@ -1326,6 +1327,7 @@ export function startApp(): void {
     benchmark: new BenchmarkDialog(async () => benchText(await runBenchmark(engine), gpuProbed ? detectedName(gpuProbe) ?? 'none found' : 'not detected yet')),
     adjust: new AdjustPanel(engine),
     filter: new FilterPanel(engine),
+    fade: new FadeDialog(engine),
     neural: new NeuralFiltersDialog(engine),
     contentAwareScale: new ContentAwareScaleDialog(engine),
     wideAngle: new WideAngleDialog(engine),
@@ -1493,6 +1495,7 @@ export function startApp(): void {
     { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W', 'Alt+Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
+    { id: 'fade', label: () => { const n = engine.fadeName; return n ? `Fade ${n}...` : 'Fade...'; }, keys: ['Shift+Mod+F'], enabled: () => !!engine.fadeName, run: () => dialogs.fade.show() },
     { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
     { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
     { id: 'fill-dialog', label: 'Fill...', keys: ['Shift+F5'], enabled: pixel, run: () => dialogs.fill.show() },
@@ -1721,6 +1724,7 @@ export function startApp(): void {
       void dialogs.filter.applySettings(f.id, settings);
     } })),
     { id: 'filter-average', label: 'Average', enabled: hasTargetPixels, run: () => engine.averageFill() },
+    { id: 'filter-last', label: () => { const k = dialogs.filter.lastFilter; return k ? FILTER_LABELS[k] : 'Last Filter'; }, keys: ['Mod+F'], enabled: () => !!dialogs.filter.lastFilter && hasTargetPixels(), run: () => { void dialogs.filter.applyLast(); } },
   );
 
   const filterName = (id: string): string => (id === 'filter-average' ? 'Average' : FILTER_LABELS[id.slice('filter-'.length) as FilterKind] ?? id);
@@ -1730,7 +1734,7 @@ export function startApp(): void {
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
-    { label: 'Edit', items: ['undo', 'redo', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
+    { label: 'Edit', items: ['undo', 'redo', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
@@ -1753,9 +1757,9 @@ export function startApp(): void {
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'inverse', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, '-', 'quick-mask', '-', 'path-selection', 'delete-path'] },
-    { label: 'Filter', items: ['filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
+    { label: 'Filter', items: ['filter-last', '-', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
-      { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur'] },
+      { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur', 'filter-spinBlur'] },
       { label: 'Distort', items: filterGroup('Distort', []) },
       { label: 'Noise', items: filterGroup('Noise', ['filter-addNoise']) },
       { label: 'Pixelate', items: filterGroup('Pixelate', []) },

@@ -8,6 +8,7 @@ import { PIXELATE_FILTERS } from './filters-lib/pixelate';
 import { STYLIZE_FILTERS } from './filters-lib/stylize';
 import { RENDER_FILTERS } from './filters-lib/render';
 import { DRAWN_FILTERS } from './filters-lib/drawn';
+import { GALLERY_FILTERS } from './filters-lib/gallery';
 import type { Rect } from './types';
 
 export const LIB_IDS = [
@@ -20,10 +21,11 @@ export const LIB_IDS = [
   'colorHalftone', 'crystallize', 'facet', 'fragment', 'mezzotint', 'mosaic', 'pointillize',
   'diffuse', 'emboss', 'extrude', 'findEdges', 'oilPaint', 'solarize', 'tiles', 'traceContour', 'wind',
   'clouds', 'differenceClouds', 'fibers', 'lensFlare', 'lightingEffects', 'flame', 'pictureFrame', 'tree',
+  'spinBlur',
 ] as const;
 
 export type LibKind = (typeof LIB_IDS)[number];
-export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video' | 'Distort' | 'Pixelate' | 'Stylize' | 'Render';
+export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video' | 'Distort' | 'Pixelate' | 'Stylize' | 'Render' | 'Blur Gallery';
 export interface LibImage { readonly name: string; readonly w0: number; readonly h0: number; readonly w: number; readonly h: number; readonly rg: string }
 export interface LibPath { readonly name: string; readonly w0: number; readonly h0: number; readonly lines: readonly (readonly number[])[] }
 export type LibValue = number | string | boolean | number[] | LibImage | LibPath | null;
@@ -57,7 +59,7 @@ export interface LibFilter {
   readonly run: (src: ImageData, v: LibValues, ctx: LibContext) => ImageData;
 }
 
-export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS, ...STYLIZE_FILTERS, ...RENDER_FILTERS, ...DRAWN_FILTERS];
+export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS, ...DISTORT_FILTERS, ...PIXELATE_FILTERS, ...STYLIZE_FILTERS, ...RENDER_FILTERS, ...DRAWN_FILTERS, ...GALLERY_FILTERS];
 
 const BY_ID = new Map<string, LibFilter>(LIBRARY.map((f) => [f.id, f]));
 
