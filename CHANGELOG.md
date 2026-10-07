@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.64.1 · 2026-10-07
+
+### Added
+
+- Filter > Distort: Displace (with any open document as the map), Pinch, Polar Coordinates, Ripple, Shear, Spherize, Twirl, Wave (with Randomize) and ZigZag. As in Photoshop, they work around the selection's bounds, or the whole canvas without one.
+- Filter > Pixelate: Color Halftone, Crystallize, Facet, Fragment, Mezzotint, Mosaic and Pointillize (its dots sit on the background colour).
+- Like the filters before them, each previews live, works as a smart filter, records in actions, and can be applied by agents.
+
+### Fixed
+
+- Filters with a dialog now work on a smart object from the Filter menu: they're added as smart filters. Before, formvis asked to rasterize the object instead. Editing a smart filter from the Smart Filters window had the same problem and now works too.
+- Offset now wraps inside the selection, or inside the canvas without one, as Photoshop's does. It used to wrap around the whole layer.
+- De-Interlace's odd and even lines, and Reduce Noise's JPEG grid, now line up with the document, even on a layer that has been moved.
+
 ## 1.64.0 · 2026-10-07
 
 ### Added

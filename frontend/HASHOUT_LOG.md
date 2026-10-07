@@ -2,6 +2,86 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Distort and Pixelate; the filter's frame · _v1.64.1 (engine/filters-lib/distort.ts and pixelate.ts new; engine/filter-library.ts, filters-lib/shared.ts, other.ts, video.ts, noise.ts, engine/filter-jobs.ts, filter-worker.ts, engine/index.ts, ui/panels/filter-panel.ts, app.ts)
+
+DEV_PLAN 27.2: nine Distort filters (Displace, Pinch, Polar Coordinates, Ripple, Shear, Spherize, Twirl, Wave, ZigZag) and seven Pixelate filters (Color Halftone, Crystallize, Facet, Fragment, Mezzotint, Mosaic, Pointillize). Photoshop centres a distortion on the selection's bounds, or the canvas without one, and leaves pixels outside them alone; a filter in formvis sees the whole layer, so it needs to be told that rectangle. That is the frame: `LibFrame` (`area`, the selection's bounds or the canvas, and `canvas`), in the pixels of exactly the image the filter receives, made by `Engine.filterFrame` from the target's placement and handed to every run: the scaled preview (`previewImageEdit`, scaled with the preview and shifted by its growth), the whole-layer paths (`applyImageEdit`'s region, `grown`, and `applyImageEditAsync`, where `sourceForEdit` now also returns the placement of the pixels it made, the layer or the layer grown to the canvas), and the worker (`FilterJob.frame`). Runs without one (bands, smart filters, the smart object being its own picture) take the whole image. `LibContext` gains `area`, `canvas` and the swatches `fg` and `bg` (Pointillize's dots sit on the background colour, as in Photoshop); the swatches are captured in the settings when the dialog opens or a recorded filter runs (`completed`), so a smart filter re-renders and an action replays with the colours it was made with. Two parameter kinds join the library: `seed` (Wave's Randomize, a stored number, so an action replays the same waves) and `image` (Displace's map: an open document chosen in the dialog, captured by `Engine.mapImage` as its red and green channels at most 256 pixels a side over mid grey, base64 in the settings, so the map travels with actions and smart filters; `libValues` checks its sizes; agents name a document and `completed` captures it). A filter that needs an image and has none is refused with the reason (an engine notice, which agents receive as their error) and the dialog stays open. The remap (`remap`) is a backward map sampled bilinearly in premultiplied alpha with Photoshop's undefined-area choices, folding taps into the area; Wave's sideways shift depends on the row only and its vertical shift on the column only, so each is summed once per row and column (Wave allows 999 generators, which per pixel would be far too slow). Color Halftone caches each screen cell's mean, and a dot covers the share of its cell that mean asks for (`DOTS`, the radius whose circle, less the caps the cell's sides cut off past the inscribed circle, covers that share). Facet takes the commonest colour family (16 levels a channel) within its radius and that family's mean colour, so like colours settle into flat facets. Position-bound filters (all of Distort, Color Halftone, Crystallize, Mezzotint, Mosaic, Pointillize) declare no reach and run whole; Facet and Fragment are local and run in bands. Using the frame, Offset now wraps within the selection or the canvas (it wrapped around the layer, as 1.64.0 noted), and De-Interlace's fields and Reduce Noise's JPEG grid follow the canvas's origin. Found while checking smart filters: the Filter dialog would not open on a smart object (the engine's `targetImage`, through `paintable`, asked to rasterize it), so filters with a dialog could not become smart filters from the menu, and editing one from the Smart Filters window failed the same way; `show` skips that check for a smart target, which shows no live preview (its Preview box unchecked and disabled, as editing a smart filter already worked), and Shake Reduction's estimate is skipped there. A comment on a line this release changed (`filterPeak(kind) + 2`, "its peak, and the copies to and from the worker (1.61.1)") moved here.
+
+Verified by scratch probes outside the repository. Each kernel against a reference: Twirl at 90 degrees moves a point at radius 20 exactly where the formula puts it, the centre and corners kept; Pinch within 1 level of the formula; Spherize exact, and Horizontal only keeps rows; Ripple exact; Polar Coordinates keeps a flat colour to the corners, its bottom row stretched into them; a one-generator square Wave shifts rows by exactly 5 pixels; ZigZag at 0 changes nothing; Shear's middle row moves a quarter of the width and wraps; Displace with a mid-grey map stays within 1 level, a white map at 100 percent moves exactly 128 pixels, no map changes nothing; Color Halftone keeps white white, black black and grey at 127 to 130; Crystallize keeps a flat colour, and a gradient's mean at 127.5; Facet keeps a flat picture and a hard edge; Fragment puts four quarter-strength copies 4 pixels out; Mezzotint gives only 0 and 255 with grey's mean at 126 to 130 across its types; Mosaic's cells are their block's mean; Pointillize leaves background between dots; Offset and Twirl inside a frame leave everything outside it alone; every filter runs at half scale; sanitised seeds, maps and colours. In the app: all 16 commands with their dialogs and fields, each one step undone exactly (Shear's straight default changes nothing); Twirl inside an 80 by 60 selection changes 2,819 pixels inside and none outside, previewed within 0.4 s; Displace lists the open documents, refuses OK without a map with its reason and stays open, applies with one; an action of Twirl, Wave (Randomize), Mosaic and Facet replayed through the Actions window equal byte for byte; on a smart object Gaussian Blur and Pinch opened and became smart filters, and Edit reopened Twirl with its value and changed it; worker and main-thread results equal byte for byte with a frame; Facet and Fragment banded equal to whole; in a 16-bit document Twirl, Mosaic, Facet and Crystallize each one step changing its channels; agents applied Twirl, Mosaic, Facet, Pointillize, Wave and Displace by a document's name, and Displace without a map answered with its reason. The 1.64.0 checks rerun: every bandable filter banded equal to whole, the action replay equal. Zero flash, under 6x CPU and network throttling after a hard reload: Wave, Displace and Color Halftone opened, reopened and edited, each dialog's box the same in every frame; Randomize and the sliders changed no nodes; a document opened between two Displace dialogs added one option in place before the dialog showed; the only layout shift the status bar's known 0.0008 before any dialog. tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine (no EXR codec; LaMa not downloaded; the SAM device read as onnx); 52 browser tests across filters, offered options, menus, panel and native menus, smart and linked smart objects, MCP agents, agent editing, the Blur Gallery, Develop, Camera Raw and adjustments: 49 passed, 3 failing on this machine as at 1.64.0 (OpenEXR export, Image > Mode's list, generative fill without LaMa).
+
+Noted: Crystallize, Pointillize and Mezzotint take the dialog's random seed, so each application differs, as Photoshop's do; a recorded one replays with a new pattern. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.64.0",
+      "version": "1.64.0",
+  "version": "1.64.0",
+import type { LibKind, LibValues } from './filter-library';
+export interface FilterSettings { radius: number; angle: number; distance: number; amount: number; gaussian: boolean; monochromatic: boolean; distortion: number; usmAmount: number; usmRadius: number; threshold: number; develop: DevelopState; lensRadius: number; lensBrightness: number; lensThreshold: number; smart: SmartSharpenSettings; shake: ShakeSettings; gallery: GallerySettings; lib?: Partial<Record<LibKind, LibValues>> }
+export interface FilterJob { id: number; kind: FilterKind; settings: FilterSettings; scale: number; seed: number; width: number; height: number; pixels: ArrayBuffer }
+export function runFilterOffThread(kind: FilterKind, settings: FilterSettings, scale: number, seed: number, src: ImageData): Promise<ImageData> | null {
+  const job: FilterJob = { id, kind, settings, scale, seed, width: src.width, height: src.height, pixels: copy.buffer as ArrayBuffer };
+export type LibGroup = 'Blur' | 'Sharpen' | 'Noise' | 'Other' | 'Video';
+export type LibValue = number | string | boolean | number[];
+  | { readonly key: string; readonly label: string; readonly kind: 'matrix'; readonly size: number; readonly min: number; readonly max: number; readonly def: readonly number[] };
+export interface LibContext { readonly scale: number; readonly seed: number }
+export const LIBRARY: readonly LibFilter[] = [...BLUR_FILTERS, ...SHARPEN_FILTERS, ...NOISE_FILTERS, ...OTHER_FILTERS, ...VIDEO_FILTERS];
+export function runLib(kind: LibKind, stored: unknown, seed: number, src: ImageData, scale: number): ImageData {
+  return libFilter(kind).run(src, libValues(kind, stored), { scale, seed });
+  else if (isLibKind(job.kind)) out = runLib(job.kind, s.lib?.[job.kind], job.seed, src, job.scale);
+ *  sharpened back by an unsharp mask on brightness, and with Remove JPEG Artifact the 8 by 8 block seams of the image's
+ *  grid softened. */
+export function reduceNoiseImage(img: ImageData, o: DenoiseSettings, scale: number): ImageData {
+      const bx = x % 8, by = y % 8;
+    run: (src, v, ctx) => reduceNoiseImage(src, { strength: num(v, 'strength'), preserve: num(v, 'preserve'), color: num(v, 'color'), sharpen: num(v, 'sharpen'), jpeg: v.jpeg === true }, ctx.scale),
+import { clampInt, copyImage, exactGaussian } from './shared';
+/** Offset: the layer's pixels moved by (dx, dy); what the move uncovers is transparent, the nearest edge pixel, or the
+ *  pixels that left on the far side (Wrap Around). */
+export function offsetImage(img: ImageData, dx: number, dy: number, undefinedAreas: string): ImageData {
+  const out = copyImage(img), s = img.data, d = out.data, w = img.width, h = img.height, mx = Math.round(dx), my = Math.round(dy);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let sx = x - mx, sy = y - my;
+    if (undefinedAreas === 'wrap') { sx = ((sx % w) + w) % w; sy = ((sy % h) + h) % h; }
+    else if (undefinedAreas === 'repeat') { sx = clampInt(sx, 0, w - 1); sy = clampInt(sy, 0, h - 1); }
+    else if (sx < 0 || sy < 0 || sx >= w || sy >= h) { d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 0; continue; }
+    const q = (sy * w + sx) * 4;
+    run: (src, v, ctx) => offsetImage(src, num(v, 'horizontal') * ctx.scale, num(v, 'vertical') * ctx.scale, str(v, 'undefinedAreas')),
+/* Pieces the filter library's modules share: pixels as premultiplied floats, an exact separable Gaussian and a running
+   box mean. */
+/** De-Interlace: the rows of one field (the odd rows, counted from 1 at the image's top, or the even ones) replaced,
+ *  by the mean of the rows either side or by the row above (the row below at the top edge). */
+export function deInterlaceImage(img: ImageData, eliminateEven: boolean, interpolate: boolean): ImageData {
+    const oddRow = y % 2 === 0;
+    run: (src, v) => deInterlaceImage(src, v.eliminate === 'evenFields', v.createBy !== 'duplication'),
+  private grown(l: Layer, grow: number, run: (src: ImageData, scale: number) => ImageData): { raster: Raster; transform: Transform } {
+    big.write(run(big.read(), 1));
+  previewImageEdit(run: (src: ImageData, scale: number) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void {
+    const out = run(src, scale);
+  applyImageEdit(name: string, run: (src: ImageData, scale: number) => ImageData, grow = 0, peak = 2): void {
+      const out = run(src, 1);
+  async applyImageEditAsync(name: string, run: (src: ImageData, scale: number) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number) => ImageData, peak = 2): Promise<boolean> {
+    const src = growing ? this.grownSource(l0, grow) : onMask ? toGray(raster.read()) : this.sourceForEdit(p0, l0);
+    const out = await this.task(() => run(src, 1));
+    this.applyImageEdit(name, (s, k) => (s.width === out.width && s.height === out.height ? out : fallback(s, k)), grow);
+  private sourceForEdit(p: Project, l: Layer): ImageData {
+    if (!isAxisAligned(t, r.width, r.height) || (t.x <= 0 && t.y <= 0 && t.x + t.w >= W && t.y + t.h >= H)) return r.read();
+    if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return r.read();
+    if (m?.raster && (m.placement || m.raster.width !== r.width || m.raster.height !== r.height)) return r.read();
+    return nr.read();
+import { el, setHidden } from '../dom';
+import { LIBRARY, isLibKind, libAllDefaults, libApron, libFilter, libMargin, libValues, runLib, type LibKind, type LibParam, type LibValue, type LibValues } from '../../engine/filter-library';
+export function runFilter(kind: FilterKind, s: FilterPanelSettings, seed: number, src: ImageData, scale: number): ImageData {
+    default: return isLibKind(kind) ? runLib(kind, s.lib?.[kind], seed, src, scale) : src;
+    if (!this.engine.targetImage()) { toast('Select a layer with pixels first.'); return; }
+    if (kind === 'shakeReduction') this.estimateShake(false);
+    this.previewRow.set(this.preview);
+  private run(src: ImageData, scale: number): ImageData { return runFilter(this.kind, this.s, this.seed, src, scale); }
+      if (this.preview) this.engine.previewImageEdit((src, scale) => scoped(runFilterOffThread(this.kind, this.s, scale, this.seed, src) ?? this.run(src, scale)), this.grow());
+    const sync = (src: ImageData, scale: number): ImageData => runFilter(kind, s, seed, src, scale);
+    return this.engine.applyImageEditAsync(FILTER_LABELS[kind], (src, scale) => runFilterOffThread(kind, s, scale, seed, src) ?? Promise.resolve(sync(src, scale)), filterMargin(kind, s), sync, filterPeak(kind) + 2);   // its peak, and the copies to and from the worker (1.61.1)
+  applySettings(kind: FilterKind, settings: Record<string, unknown>): Promise<boolean> | boolean {
+    const run = (src: ImageData, scale: number): ImageData => this.run(src, scale);
+export const VERSION = '1.64.0';
+```
+
 ## The filter library and 21 filters · _v1.64.0 (engine/filter-library.ts and engine/filters-lib/ new; engine/index.ts, engine/filter-jobs.ts, engine/filter-worker.ts, ui/panels/filter-panel.ts, ui/panels/controls.ts, ui/panels/actions-dialogs.ts, ui/actions.ts, styles/dialogs.css, app.ts)
 
 DEV_PLAN 27.1, the first stage of Phase 27 (filter and editing parity; the itemized inventory is in the planning sidecar). A filter is now declared rather than wired by hand: `filter-library.ts` holds `LIBRARY`, each `LibFilter` an id, a label, its menu group, its parameters (a range with the slider's span and a typed `limit` past it, a select, a check, or a square integer matrix), `reach` (how far its effect reaches at a given scale, or null when its result depends on where a pixel is, so it never runs in bands), `grows` (whether its effect spills past the layer, so a layer without a selection grows as it does for Gaussian Blur) and `run` on ImageData. Everything else reads the registry: the filter panel builds a dialog section from the parameters the first time a filter opens (`libSection`, inserted before the dialog opens and reused after), the worker runs `runLib`, `bandApron` and `filterMargin` take `libApron` and `libMargin`, the commands and the Filter submenus are generated from it (alphabetical within a group, as Photoshop lists them), so a later filter is one more entry. Settings live under `settings.lib[kind]`; `libValues` holds every stored value to its parameter (a range to its limit, an unknown choice to its default, a matrix cell to an integer in range), so settings from actions, smart filters and agents never reach a kernel out of range, and `settingsOf` keeps only the applied filter's entry in what actions and smart filters store. The kernels (`filters-lib/`): Shape Blur's kernel is its shape's pixels as runs along each row (`spans`), each run summed from running row totals (`spanMean`), so a wide shape costs its height rather than its area; Smart Blur averages the pixels within its radius whose brightness is within the threshold; Median and Dust & Scratches slide a 256-level histogram along each row; Reduce Noise smooths brightness with a sampled bilateral filter in YCbCr (rings of taps, a range that narrows as Preserve Details rises), blurs the chroma planes and sharpens brightness back with an unsharp mask; High Pass is each colour's difference from its exact Gaussian around mid grey; Maximum and Minimum keep a running queue of candidates along each line, so any radius costs the same, Roundness the best of eight rectangles that make a disc; then Offset, Custom's 5 by 5 kernel, HSB/HSL, De-Interlace's fields and NTSC Colors' chroma limit in YIQ (the composite signal kept between -0.1 and 1.0). The blurs work in premultiplied alpha so colours do not darken where opaque meets transparent. Blur, Blur More and the three Sharpen filters use an exact separable Gaussian (`exactGaussian`, `unsharpExact`): formvis's three-box Gaussian does nothing below a sigma of about 0.7, which had left Sharpen changing nothing. Average is an engine operation (`averageFill`), not a library filter: a filter sees the whole layer and the selection only blends its result, but Average needs the selection's own average, weighted by its coverage and alpha. Reduce Noise's JPEG deblocking follows the picture's 8-pixel grid, so with it on the filter's reach is null (the whole layer at once, never bands, whose origins need not fall on the grid). Actions: `filter-average` joins RECORDABLE (it changes the document at once, with no dialog); the Dialog toggle shows only on steps whose filter has a dialog (`asks`). The agent bridge's `applyFilter` wraps a library filter's flat settings as `{ lib: { [kind]: settings } }` and runs `average` through `averageFill`. `matrixRow` is Custom's 5 by 5 grid of number inputs, each labelled by its row and column.
@@ -5656,6 +5736,10 @@ The filter library (DEV_PLAN 27.1): declared filters, their parameters, reach an
 
 `blur.ts`, `sharpen.ts`, `noise.ts`, `other.ts` and `video.ts` declare the 20 library filters and hold their kernels; `shared.ts` holds premultiplying, the exact Gaussian, unsharp masking on it and box means. See the same release entry. Nothing was removed.
 
+### src/engine/filters-lib/distort.ts, pixelate.ts · new · _v1.64.1
+
+The Distort and Pixelate filters of DEV_PLAN 27.2, and in `shared.ts` boxes, clipping, a position hash (`hash01`, from `mix32`) and luma. See the release entry "Distort and Pixelate; the filter's frame" at the top of this log. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -5682,8 +5766,10 @@ src/
         filter-library.ts  · the filter library: declared filters, their parameters, reach and run
         filters-lib/
             blur.ts  · Average's kernel, Blur, Blur More, Box Blur, Shape Blur, Smart Blur
+            distort.ts  · the remap, Displace, Pinch, Polar Coordinates, Ripple, Shear, Spherize, Twirl, Wave, ZigZag
             noise.ts  · Despeckle, Dust & Scratches, Median, Reduce Noise
             other.ts  · Custom, HSB/HSL, High Pass, Maximum, Minimum, Offset
+            pixelate.ts  · Color Halftone, Crystallize, Facet, Fragment, Mezzotint, Mosaic, Pointillize
             sharpen.ts  · Sharpen, Sharpen More, Sharpen Edges
             shared.ts  · premultiplying, exact Gaussian, box means
             video.ts  · De-Interlace, NTSC Colors

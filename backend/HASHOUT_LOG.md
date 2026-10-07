@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## apply_filter takes Distort and Pixelate · _v1.64.1 (app/routers/mcp.py; the formvis-editing skill's tools.md and its .agents mirror regenerated)
+
+DEV_PLAN 27.2. `apply_filter`'s `kind` enum gains the nine Distort and seven Pixelate filters, and its description their settings, named as the window's library names them; it says distortions centre on the selection's bounds (else the canvas), that Displace's `map` is the name of an open document and is required, and that Pointillize's dots sit on the background colour. `./formvis agents sync` regenerated the skill's reference and its mirror. Verified: the engine's tests that run here passed, test_mcp and test_agents_setup among them (112 passed, 3 failing for this machine, none touching agents); through the window, Twirl, Mosaic, Facet, Pointillize, Wave and Displace (its map named "Ripples") applied one step each, and Displace without a map answered "Displace needs its map: choose an open document.". Removed lines taken after the version edit:
+
+```text
+__version__ = "1.64.0"
+    _tool("apply_filter", "Applies a filter to the active layer (inside the selection if there is one). kind and its settings: gaussianBlur {radius}, motionBlur {angle, distance}, addNoise {amount, gaussian, monochromatic}, unsharpMask {usmAmount, usmRadius, threshold}, lensBlur {lensRadius}, surfaceBlur, radialBlur, tiltShift, irisBlur, fieldBlur; with no settings: average (the selection filled with its average colour), blur, blurMore, sharpen, sharpenMore, sharpenEdges, despeckle, ntscColors; boxBlur {radius}, shapeBlur {radius, shape: circle|ring|square|diamond|triangle|hexagon|star|heart|cross}, smartBlur {radius, threshold, quality: high|medium|low, mode: normal|edgeOnly|overlayEdge}, dustAndScratches {radius, threshold}, median {radius}, reduceNoise {strength 0 to 10, preserve, color, sharpen (percent), jpeg}, custom {kernel (25 integers, row by row), scale, offset}, hsbHsl {input, output: rgb|hsb|hsl}, highPass {radius}, maximum and minimum {radius, preserve: squareness|roundness}, offset {horizontal, vertical, undefinedAreas: transparent|repeat|wrap}, deInterlace {eliminate: oddFields|evenFields, createBy: interpolation|duplication}. Unnamed settings keep their defaults.",
+                                               "custom", "hsbHsl", "highPass", "maximum", "minimum", "offset", "deInterlace", "ntscColors"]}, "settings": {"type": "object", "default": {}}}, ["kind"]),
+version = "1.64.0"
+version = "1.64.0"
+ "version": "1.64.0",
+```
+
 ## apply_filter takes the filter library's 21 filters · _v1.64.0 (app/routers/mcp.py; the formvis-editing skill's tools.md and its .agents mirror regenerated)
 
 DEV_PLAN 27.1. The agents' `apply_filter` tool lists the stage's 21 filters in its `kind` enum and their settings in its description: average (the selection filled with its average colour), blur, blurMore, sharpen, sharpenMore, sharpenEdges, despeckle and ntscColors with no settings; boxBlur, shapeBlur, smartBlur, dustAndScratches, median, reduceNoise, custom, hsbHsl, highPass, maximum, minimum, offset and deInterlace with theirs, named as the window's filter library names them (the window holds every value to its range and ignores names it does not know). `./formvis agents sync` regenerated the skill's tool reference and its `.agents` mirror, which test_agents_setup checks. Verified: the engine's tests that can run here passed, test_mcp and test_agents_setup among them (111 passed; 4 failing for this machine, none touching agents: no EXR codec in its OpenCV, the LaMa and SAM ONNX models not downloaded, the SAM device read as onnx); through the window, apply_filter with boxBlur and with average applied one step each ("Applied boxBlur to A.", "Applied average to A."). Removed lines taken after the version edit:
