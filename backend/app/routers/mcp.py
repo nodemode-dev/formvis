@@ -169,6 +169,7 @@ _waiting: dict[str, asyncio.Future] = {}
 _ids = itertools.count(1)
 _seen = 0.0
 LIVE = 30.0
+_taken: dict[str, float] = {}   # requests the window took and has not answered yet: id, when taken
 # Seamless start (1.53.3): the window polls whether or not agents are allowed, saying which; with agents not allowed
 # the first request asks the person in the window; with no window, formvis is opened in the browser and waited for.
 _allowed = False
@@ -208,7 +209,9 @@ def _err(req_id, code: int, message: str) -> dict:
 
 
 def _live() -> bool:
-    return time.monotonic() - _seen <= LIVE
+    """A window polled lately, or is working through a call it took (for as long as _ask waits, 600 s)."""
+    now = time.monotonic()
+    return now - _seen <= LIVE or any(now - t < 600 for t in _taken.values())
 
 
 def _fail(text: str) -> dict:
@@ -241,6 +244,7 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
         return None
     finally:
         _waiting.pop(rid, None)
+        _taken.pop(rid, None)
 
 
 # Files at absolute paths (1.53.3): read and written here, the window doing the picture's part.
@@ -398,13 +402,17 @@ async def bridge_next(request: Request) -> Response:
         if await request.is_disconnected():
             _put(item, front=True)
             return Response(status_code=204)
+        _taken[str(item.get("id"))] = time.monotonic()
         return Response(content=json.dumps(item), media_type="application/json")
     return Response(status_code=204)
 
 
 @router.post("/api/mcp/bridge/result")
 async def bridge_result(request: Request) -> dict:
+    global _seen
     body = await request.json()
+    _seen = time.monotonic()
+    _taken.pop(str(body.get("id")), None)
     fut = _waiting.get(str(body.get("id")))
     if fut and not fut.done():
         fut.set_result(body.get("result") or {"content": [{"type": "text", "text": "formvis gave no result."}], "isError": True})
