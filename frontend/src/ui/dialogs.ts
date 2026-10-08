@@ -75,19 +75,22 @@ export class Dialog {
  *  right. Closing it any other way is Cancel, so nothing is ever discarded by accident. */
 class SaveChanges extends Dialog {
   private readonly question = el('<p class="cv-save-q">Save changes to <strong></strong>?</p>');
+  private readonly all = el('<label class="cv-field cv-check" hidden><span>Apply to All</span><input type="checkbox"></label>');
   private readonly saveBtn: HTMLButtonElement;
-  private resolve: ((v: 'save' | 'discard' | 'cancel') => void) | null = null;
+  private resolve: ((v: { choice: 'save' | 'discard' | 'cancel'; all: boolean }) => void) | null = null;
   constructor() {
     super('Unsaved Changes', 460);
     q<HTMLElement>(this.scrim, '.cv-dialog').classList.add('cv-savechanges');
-    this.body.append(this.question, el('<p class="cv-note">Your changes will be lost if you don’t save them.</p>'));
+    this.body.append(this.question, el('<p class="cv-note">Your changes will be lost if you don’t save them.</p>'), this.all);
     this.button('Don’t Save', 'ghost', () => this.finish('discard')).classList.add('cv-btn-apart');
     this.button('Cancel', 'ghost', () => this.finish('cancel'));
     this.saveBtn = this.button('Save', 'primary', () => this.finish('save'));
     this.onClose = () => this.finish('cancel');
   }
-  ask(name: string): Promise<'save' | 'discard' | 'cancel'> {
+  ask(name: string, many: boolean): Promise<{ choice: 'save' | 'discard' | 'cancel'; all: boolean }> {
     setText(this.question.querySelector('strong') as HTMLElement, name);
+    this.all.hidden = !many;
+    q<HTMLInputElement>(this.all, 'input').checked = false;
     this.open(this.saveBtn);
     return new Promise((r) => { this.resolve = r; });
   }
@@ -95,7 +98,7 @@ class SaveChanges extends Dialog {
     const r = this.resolve;
     this.resolve = null;
     if (this.isOpen) this.close();
-    r?.(v);
+    r?.({ choice: v, all: !this.all.hidden && q<HTMLInputElement>(this.all, 'input').checked });
   }
 }
 
@@ -103,7 +106,14 @@ let saveChangesDialog: SaveChanges | null = null;
 /** Asks whether to save a document's changes before it closes: 'save', 'discard' or 'cancel'. */
 export function askSaveChanges(name: string): Promise<'save' | 'discard' | 'cancel'> {
   saveChangesDialog ??= new SaveChanges();
-  return saveChangesDialog.ask(name);
+  return saveChangesDialog.ask(name, false).then((a) => a.choice);
+}
+
+/** The same with Apply to All (Close All and Close Others, 1.65.8, as Photoshop's): `all` when it was ticked, so the
+ *  answer stands for the documents after this one. */
+export function askSaveChangesAll(name: string): Promise<{ choice: 'save' | 'discard' | 'cancel'; all: boolean }> {
+  saveChangesDialog ??= new SaveChanges();
+  return saveChangesDialog.ask(name, true);
 }
 
 class Confirm extends Dialog {

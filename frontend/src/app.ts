@@ -26,6 +26,7 @@ import { ColorRangeDialog } from './ui/panels/color-range-dialog';
 import { ArbitraryRotationDialog, DuplicateImageDialog } from './ui/panels/image-dialogs';
 import { ReplaceColorDialog } from './ui/panels/replace-color-dialog';
 import { StrokeDialog } from './ui/panels/stroke-dialog';
+import { SaveCopyDialog } from './ui/panels/save-copy-dialog';
 import { HistoryPanel } from './ui/history';
 import { StopDialog } from './ui/panels/stop-dialog';
 import { TweenDialog } from './ui/panels/tween-dialog';
@@ -118,13 +119,13 @@ import { LIBRARY, isLibKind, libDefaults, libHasDialog, libInGroup, type LibGrou
 import { NeuralFiltersDialog } from './ui/panels/neural-dialog';
 import { ContentAwareScaleDialog } from './ui/panels/content-aware-scale';
 import { WideAngleDialog } from './ui/panels/wide-angle-dialog';
-import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
+import { AmountDialog, CanvasSizeDialog, FitImageDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
 import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel } from './ui/panels/background-panel';
 import { ColorPickerDialog } from './ui/panels/color-picker';
 import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
 import { Commands } from './ui/commands';
-import { anyDialogOpen, askSaveChanges, confirmAction, promptName } from './ui/dialogs';
+import { anyDialogOpen, askSaveChanges, askSaveChangesAll, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
 import { icon } from './ui/icons';
 import { brandMark } from './ui/brand';
@@ -374,12 +375,18 @@ export function startApp(): void {
     window.setTimeout(() => URL.revokeObjectURL(url), 60000);
   }
 
-  async function openOpened(o: OpenedProject, libraryName: string | null): Promise<void> {
-    const reader = { open: (n: string) => api.bandsReadOpen(o.session, n), rows: (k: string, n: number) => api.bandsReadRows(k, n) };   // giant layers (1.62.8)
-    const { doc, activeId, paths, timeline } = await deserialize(o.manifest, (name) => {
+  /** A project from the engine read into a document, its giant layers through the engine's bands (1.62.8), for Open
+   *  and for Revert (1.65.8). */
+  function readOpened(o: OpenedProject): ReturnType<typeof deserialize> {
+    const reader = { open: (n: string) => api.bandsReadOpen(o.session, n), rows: (k: string, n: number) => api.bandsReadRows(k, n) };
+    return deserialize(o.manifest, (name) => {
       const url = o.images[name];
       return url ? api.fetchAsset(url) : Promise.reject(new Error(`${name} is missing from the project.`));
     }, reader);
+  }
+
+  async function openOpened(o: OpenedProject, libraryName: string | null): Promise<void> {
+    const { doc, activeId, paths, timeline } = await readOpened(o);
     const p = engine.addProject(doc, o.name, activeId);
     if (paths) engine.setPathsOf(p, paths);
     if (timeline) engine.setTimelineFor(p, timeline);
@@ -589,6 +596,44 @@ export function startApp(): void {
         toast(message(err), 'error');
         return false;
       }
+    });
+  }
+
+  /** File > Save a Copy (Alt+Mod+S; 1.65.8, as Photoshop's): the document saved to the library as `name`, whole or
+   *  without `layers` flattened, while the one in its tab keeps its name, its library file and its unsaved state. */
+  async function saveCopy(name: string, layers: boolean): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    const doc = layers ? p.doc : engine.mergedDoc();
+    if (!doc) return;
+    const taken = (await api.library().catch(() => [])).some((i) => i.name === name);
+    if (taken && !(await confirmAction('Replace project?', `${name} already exists in the library.`, 'Replace', true))) return;
+    await engine.task(async () => {
+      try {
+        const { manifest, files } = await serialize(doc, layers ? p.activeId : doc.layers[0]?.id ?? null, engine.pathsOf(p), layers ? engine.timelineFor(p) : null);
+        const res = await api.save(name, manifest, files, name === p.libraryName ? p.libraryVersion ?? '' : '');
+        if (name === p.libraryName && !res.conflict) p.libraryVersion = res.version ?? null;
+        if (res.conflict) toast(`${res.kept ?? name} changed elsewhere since you opened it (another device or window), so it was kept as it is; the copy was saved beside it as ${res.name}.`, 'info');
+        else toast(`Saved a copy as ${res.name}.`);
+        noteRecent(res.name);
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
+  /** File > Revert (F12 in the desktop app; 1.65.8, as Photoshop's): the library's copy of the document read back into
+   *  its tab as one step that Undo takes back (engine.revertTo). */
+  async function revert(): Promise<void> {
+    const p = engine.current, name = p?.libraryName;
+    if (!p || !name || !p.modified) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const o = await api.openLibrary(name), { doc, activeId, paths, timeline } = await readOpened(o);
+        if (!engine.projects.includes(p)) return;
+        if (engine.current !== p) engine.switchTo(p.id);
+        if (engine.revertTo(doc, activeId, paths, timeline)) p.libraryVersion = o.version ?? null;
+      } catch (err) { toast(message(err), 'error'); }
     });
   }
 
@@ -897,6 +942,7 @@ export function startApp(): void {
     }
     if (s.kind === 'layerStyle') return engine.applyLayerStyle(s.effects ? effectsFromData(s.effects) : null);
     if (s.kind === 'adjustment') return dialogs.adjust.applySettings(s.adj as AdjustmentKind, s.data as Parameters<typeof dialogs.adjust.applySettings>[1], s.layer);
+    if (s.kind === 'fitImage') return engine.fitImage(s.w, s.h, s.enlarge, true);
     const doc = engine.current?.doc, follow = relative && !!doc && !!s.fromW && !!s.fromH;
     if (s.kind === 'imageSize') {
       // Following each image: the same proportion of this document as of the one the step was recorded on.
@@ -1286,19 +1332,43 @@ export function startApp(): void {
     toast('Sent to the NodeMode canvas.');
   }
 
-  async function requestClose(id: string): Promise<void> {
+  /** Closes a document as Close Tab does, asking about unsaved changes unless `answer` already says (Close All's Apply
+   *  to All, 1.65.8); true once it is closed. */
+  async function requestClose(id: string, answer: 'save' | 'discard' | null = null): Promise<boolean> {
     const p = engine.projects.find((x) => x.id === id);
-    if (!p) return;
+    if (!p) return true;
     if (p.modified) {
       // As the target's Unsaved Changes: Save closes only once the save succeeds; Cancel keeps the document open.
-      const choice = await askSaveChanges(p.name);
-      if (choice === 'cancel') return;
+      const choice = answer ?? await askSaveChanges(p.name);
+      if (choice === 'cancel') return false;
       if (choice === 'save') {
         if (engine.current !== p) engine.switchTo(p.id);
-        if (!(await save(false))) return;
+        if (!(await save(false))) return false;
       }
     }
     engine.closeProject(id);
+    return !engine.projects.includes(p);
+  }
+
+  /** File > Close All and Close Others (1.65.8, as Photoshop's): every document, or every one but `keep`, closed in
+   *  turn as Close Tab closes it; one with unsaved changes is brought forward and asked about, with Apply to All when
+   *  more are waiting, and Cancel stops there. */
+  async function closeMany(keep: string | null): Promise<void> {
+    let answer: 'save' | 'discard' | null = null;
+    for (const p of engine.projects.filter((x) => x.id !== keep)) {
+      if (!engine.projects.includes(p)) continue;
+      let choice = answer;
+      if (p.modified && !choice) {
+        if (engine.current !== p) engine.switchTo(p.id);
+        const more = engine.projects.some((x) => x !== p && x.id !== keep && x.modified);
+        const a = more ? await askSaveChangesAll(p.name) : { choice: await askSaveChanges(p.name), all: false };
+        if (a.choice === 'cancel') return;
+        if (a.all) answer = a.choice;
+        choice = a.choice;
+      }
+      if (!(await requestClose(p.id, choice))) return;
+    }
+    if (keep && engine.current?.id !== keep) engine.switchTo(keep);
   }
 
   const imageInput = el<HTMLInputElement>(`<input type="file" multiple accept="${IMAGE_ACCEPT}" data-role="import-images" hidden>`);
@@ -1370,6 +1440,8 @@ export function startApp(): void {
     wideAngle: new WideAngleDialog(engine),
     canvasSize: new CanvasSizeDialog(engine),
     imageSize: new ImageSizeDialog(engine),
+    fitImage: new FitImageDialog(engine),
+    saveCopy: new SaveCopyDialog(engine, (n, layers) => void saveCopy(n, layers)),
     amount: new AmountDialog(engine),
     matting: new MattingDialog(engine),
     findLayers: new FindLayersDialog(engine),
@@ -1501,6 +1573,8 @@ export function startApp(): void {
     { id: 'render-video', label: 'Render Video...', enabled: () => !!engine.video, run: () => renderDialog.show() },   // 1.59.6
     { id: 'save', label: 'Save', keys: ['Mod+S'], enabled: has, run: () => void save(false) },
     { id: 'save-as', label: 'Save As...', keys: ['Shift+Mod+S'], enabled: has, run: () => void save(true) },
+    { id: 'save-copy', label: 'Save a Copy...', keys: ['Alt+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.saveCopy.show(); } },
+    { id: 'revert', label: 'Revert', keys: '__TAURI_INTERNALS__' in window ? ['F12'] : [], enabled: () => !!engine.current?.libraryName && !!engine.current?.modified, run: () => void revert() },
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
@@ -1534,6 +1608,7 @@ export function startApp(): void {
     { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
+    { id: 'fit-image', label: 'Fit Image...', enabled: has, run: () => dialogs.fitImage.show() },
     { id: 'photomerge', label: 'Photomerge...', run: () => photomergeDialog.show() },   // 1.58.2
     { id: 'merge-hdr', label: 'Merge to HDR...', run: () => hdrMergeDialog.show() },
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
@@ -1542,8 +1617,10 @@ export function startApp(): void {
     { id: 'send-comfyui', label: 'Send to ComfyUI...', enabled: has, run: () => sendComfyUI.show() },   // 1.50.9
     { id: 'comfyui-run', label: 'Run ComfyUI Workflow...', enabled: has, run: () => runWorkflow.show() },   // 1.51.1
     // the File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
-    // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W too.
-    { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W', 'Alt+Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
+    // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W, and Alt+Mod+W is Close All there.
+    { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
+    { id: 'close-all', label: 'Close All', keys: '__TAURI_INTERNALS__' in window ? ['Alt+Mod+W'] : [], enabled: has, run: () => void closeMany(null) },
+    { id: 'close-others', label: 'Close Others', keys: ['Alt+Mod+P'], enabled: () => engine.projects.length > 1, run: () => { const p = engine.current; if (p) void closeMany(p.id); } },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
     { id: 'toggle-last-state', label: 'Toggle Last State', keys: ['Alt+Mod+Z'], enabled: () => !!engine.current?.history.canUndo || !!engine.current?.history.canRedo, run: () => engine.toggleLastState() },
@@ -1861,9 +1938,9 @@ export function startApp(): void {
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
+    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
-      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
@@ -1959,6 +2036,7 @@ export function startApp(): void {
   dialogs.layerStyle.onApplied = (fx) => actions.record({ kind: 'layerStyle', label: fx ? 'Layer Style' : 'Clear Layer Style', effects: fx as unknown as Record<string, unknown> | null });
   dialogs.adjust.onApplied = (v) => { if (!v.layer || v.made) actions.record({ kind: 'adjustment', adj: v.kind, label: v.layer ? `New ${ADJUSTMENT_LABELS[v.kind]} Layer` : ADJUSTMENT_LABELS[v.kind], data: v.data as Record<string, unknown>, layer: v.layer }); };
   dialogs.imageSize.onApplied = (v) => actions.record({ kind: 'imageSize', label: `Image Size ${v.w} x ${v.h}`, ...v });
+  dialogs.fitImage.onApplied = (v) => actions.record({ kind: 'fitImage', label: `Fit Image ${v.w} x ${v.h}${v.enlarge ? '' : ', no enlarging'}`, ...v });
   dialogs.canvasSize.onApplied = (v) => actions.record({ kind: 'canvasSize', label: `Canvas Size ${v.w} x ${v.h}`, ...v });
   root.addEventListener('cv:edit-layer-style', () => dialogs.layerStyle.show());
   root.addEventListener('cv:smart-filters', () => dialogs.smartFilters.show());

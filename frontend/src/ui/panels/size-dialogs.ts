@@ -152,6 +152,48 @@ export class ImageSizeDialog extends Dialog {
   }
 }
 
+/** File > Automate > Fit Image (1.65.8), Photoshop's: a width and a height in pixels to constrain the image within, and
+ *  Don't Enlarge; OK resamples it to fit with its proportions kept (engine.fitImage), and Actions record the box. The
+ *  box offered is the last one used, at first the image's own size. */
+export class FitImageDialog extends Dialog {
+  /** Called on OK, for Actions to record the step. */
+  onApplied: ((v: { w: number; h: number; enlarge: boolean }) => void) | null = null;
+  private box: { w: number; h: number } | null = null;
+  private noEnlarge = false;
+  private readonly note = el('<p class="cv-note"></p>');
+  private readonly width = numberRow('Width (px)', 1, 30000, 1, () => undefined);
+  private readonly height = numberRow('Height (px)', 1, 30000, 1, () => undefined);
+  private readonly keep = checkRow('Don’t Enlarge', (v) => { this.noEnlarge = v; });
+
+  constructor(private readonly engine: Engine) {
+    super('Fit Image', 360);
+    this.body.append(this.note, this.width.el, this.height.el, this.keep.el);
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => this.apply());
+    enterTo(this.width.input, () => this.apply());
+    enterTo(this.height.input, () => this.apply());
+  }
+
+  show(): void {
+    const p = this.engine.current;
+    if (!p || this.isOpen) return;
+    setText(this.note, `Current size: ${p.doc.width} × ${p.doc.height} px. Constrain within:`);
+    this.width.set(this.box?.w ?? p.doc.width);
+    this.height.set(this.box?.h ?? p.doc.height);
+    this.keep.set(this.noEnlarge);
+    this.open(this.width.input);
+    this.width.input.select();
+  }
+
+  private apply(): void {
+    const w = Math.round(Number(this.width.input.value)), h = Math.round(Number(this.height.input.value));
+    if (!(w >= 1 && w <= 30000 && h >= 1 && h <= 30000)) { this.engine.notice('Enter a width and a height from 1 to 30,000 pixels.'); return; }
+    this.box = { w, h };
+    this.close();
+    if (this.engine.fitImage(w, h, !this.noEnlarge)) this.onApplied?.({ w, h, enlarge: !this.noEnlarge });
+  }
+}
+
 export class AmountDialog extends Dialog {
   private expand = true;
   private readonly amount = numberRow('Amount (px)', 1, 500, 1, () => undefined);

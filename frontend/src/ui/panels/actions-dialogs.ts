@@ -118,7 +118,7 @@ export class ActionsDialog extends Dialog {
     setDisabled(this.deleteBtn, !a);
     setDisabled(this.exportBtn, !a);
     setText(this.note, this.store.recording ? `Recording "${this.store.recording.name}". File > Stop Recording ends it.`
-      : 'Recording captures commands that change the document, filters with their settings, and Image and Canvas Size. Naming a new action starts it; otherwise Record adds to the one chosen.');
+      : 'Recording captures commands that change the document, filters with their settings, and Image Size, Canvas Size and Fit Image. Naming a new action starts it; otherwise Record adds to the one chosen.');
   }
 
   private fillStep(row: HTMLElement, s: ActionStep, i: number): void {

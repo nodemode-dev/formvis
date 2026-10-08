@@ -752,6 +752,32 @@ export class Engine {
     this.emit('history', null);
   }
 
+  /** File > Revert (1.65.8, as Photoshop's): the current document as last saved, read back by the app, in
+   *  place of what it holds now as one Revert step that also carries its paths and timeline, so Undo brings every change
+   *  back; the tab, its name and the view stay (fitted again when the size differs), and it counts as saved. */
+  revertTo(doc: Doc, activeId: ID | null, paths: PathSet | null, timeline: Timeline | null): boolean {
+    const p = this.current;
+    if (!p || this.stroke || this.waiting()) return false;
+    this.settle();
+    for (const l of doc.layers) if (l.tiled && !l.tiled.onMissing) l.tiled.onMissing = (t, key) => this.bringTile(t, key);
+    const was = this.timelineFor(p), next = timeline ?? { frames: [], current: null, loops: 0 }, set = paths ?? { list: [], active: null }, sized = doc.width !== p.doc.width || doc.height !== p.doc.height;
+    const film = (t: Timeline): unknown => structuredClone({ frames: t.frames, current: t.current, loops: t.loops });
+    p.history.begin('Revert', { ...p.snapshot(), paths: structuredClone(this.pathSet(p)), video: structuredClone(was.video ?? null), frames: film(was) });
+    p.doc = { ...doc, id: p.doc.id };
+    p.selection = null;
+    this.pathSets.set(p, { list: set.list, active: set.list.some((n) => n.id === set.active) ? set.active : null });
+    this.timelines.set(p, next);
+    this.focus(p, activeId && doc.layers.some((l) => l.id === activeId) ? activeId : doc.layers[doc.layers.length - 1]?.id ?? null);
+    p.history.end({ ...p.snapshot(), paths: structuredClone(this.pathSet(p)), video: structuredClone(next.video ?? null), frames: film(next) });
+    p.history.markSaved();
+    this.pathsChanged(p);
+    this.emit('timeline', null);
+    this.emit('projects', null);
+    this.refresh();
+    if (sized) this.fit();
+    return true;
+  }
+
   newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
     // Past what one canvas may hold here (a side past 30,000, or more pixels than the budget) but within 65,535 a side,
     // a tiled document (1.62.3, DEV_PLAN 26.6b): its background costs nothing until drawn into. Before 1.62.3 refused.
@@ -3781,6 +3807,19 @@ export class Engine {
     return p && l ? this.coverageFor(p, l, t.target, t.width, t.height) : null;
   }
 
+  /** The current document as Flatten Image would make it, in one Background layer, its size, resolution, mode, guides,
+   *  notes and alpha channels kept, as a new document's (Duplicate's Merged Layers Only; File > Save a Copy without
+   *  Layers, 1.65.8); null past 268 megapixels a layer, which is not flattened yet. */
+  mergedDoc(): Doc | null {
+    const p = this.current;
+    if (!p) return null;
+    if (p.doc.layers.some((l) => l.tiled)) { this.notice('A document with layers past 268 megapixels cannot be flattened into a copy yet.'); return null; }
+    const flat = this.flattened();
+    if (!flat) return null;
+    const layer = newLayer('Background', p.doc, { raster: Raster.from(flat as CanvasImageSource, p.doc.width, p.doc.height) });
+    return { ...p.doc, id: uid(), layers: [layer] };
+  }
+
   /** Image > Duplicate (1.65.5): a new document holding a copy of this one, its layers' pixels and masks copied (or,
    *  `merged`, the picture as Flatten Image makes it, in one layer), named `name`, with its paths and, unmerged, its
    *  timeline. */
@@ -3789,12 +3828,11 @@ export class Engine {
     if (!p) return null;
     if (p.doc.layers.some((l) => l.tiled)) { this.notice('A document with layers past 268 megapixels cannot be duplicated yet: save it and open the copy.'); return null; }
     this.settle();
-    const title = name.trim().slice(0, 200) || `${p.name} copy`, flat = merged ? this.flattened() : null;
+    const title = name.trim().slice(0, 200) || `${p.name} copy`, flat = merged ? this.mergedDoc() : null;
     let doc: Doc, active: ID | null = p.activeId;
     if (flat) {
-      const layer = newLayer('Background', p.doc, { raster: Raster.from(flat as CanvasImageSource, p.doc.width, p.doc.height) });
-      doc = { ...p.doc, id: uid(), layers: [layer] };
-      active = layer.id;
+      doc = flat;
+      active = flat.layers[0].id;
     } else doc = { ...this.copyDoc(p.doc), id: uid() };
     const paths = this.pathSet(p), tl = !flat && this.timelines.has(p) ? structuredClone(this.timelineFor(p)) : null;
     const q = this.addProject(doc, title, active);
@@ -6738,6 +6776,7 @@ export class Engine {
   resampleImage(width: number, height: number, sampling: Transform['sampling'], resolution: number): boolean {
     const p0 = this.current;
     if (!p0 || !this.sizeOk(width, height)) return false;
+    if (p0.doc.layers.some((l) => l.tiled)) { this.notice('A document with layers past 268 megapixels cannot be resampled yet.'); return false; }
     const sx0 = width / p0.doc.width, sy0 = height / p0.doc.height;
     const used = p0.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0);
     if (used * sx0 * sy0 > LIMITS.pixels) { this.notice(`The resized layers would exceed the ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel document limit.`, 'error'); return false; }
@@ -6769,6 +6808,22 @@ export class Engine {
     });
     if (ok) this.fit();
     return ok;
+  }
+
+  /** File > Automate > Fit Image (1.65.8, as Photoshop's): the image resampled, its proportions kept, to
+   *  fit within `width` by `height` pixels, smaller or (with `enlarge`) larger, as one Fit Image step at the same
+   *  resolution. True when it fits afterwards, resized or not; `quiet` keeps one that already fits from saying so. */
+  fitImage(width: number, height: number, enlarge = true, quiet = false): boolean {
+    const p = this.current;
+    if (!p || !(width >= 1) || !(height >= 1)) return false;
+    const W = p.doc.width, H = p.doc.height, k = Math.min(width / W, height / H), w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k));
+    if ((k > 1 && !enlarge) || (w === W && h === H)) {
+      if (!quiet) this.notice(`The image already fits within ${width} × ${height} px.`);
+      return true;
+    }
+    this.settle();
+    p.history.begin('Fit Image', p.snapshot());
+    try { return this.resampleImage(w, h, 'high', p.doc.resolution); } finally { p.history.end(p.snapshot()); }
   }
 
   resizeSelection(delta: number): void {
