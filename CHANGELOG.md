@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.4 · 2026-10-08
+
+### Added
+
+- Layer > Combine Shapes, as Photoshop's: with several shape layers selected, Unite Shapes, Subtract Front Shape, Intersect Shape Areas and Exclude Overlapping Shapes make them one shape layer, the front shapes joining the back one with that operation and staying editable; with one shape layer of several outlines, its outlines after the first take the operation. Merge Shape Components bakes the operations into plain outlines. Shapes moved, scaled or turned combine where they are.
+- Layer > New > Artboard... asks for the new artboard's name, size and background; Layer > New > Artboard from Group... makes a folder an artboard over its contents, named and sized as you like.
+- Layer > New > Frame from Layers puts each selected layer in a frame fitted to its pixels, as the Frame tool makes them.
+
+### Fixed
+
+- Shape Color from Foreground, Shape Fill and Stroke and editing a shape's path dropped the path operations of its outlines, so a shape with a hole, such as one from a PSD, came back filled.
+
 ## 1.65.3 · 2026-10-07
 
 ### Added

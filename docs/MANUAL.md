@@ -144,6 +144,11 @@ ask it questions.
 - The Pen draws Bézier paths, or in Shape mode makes a shape layer from each path it closes; with Auto Add/Delete on,
   clicking a path adds a point and clicking a point deletes it. Path Selection and Direct Selection move and reshape
   paths, and a path can become a selection, be filled or be stroked.
+- Layer > Combine Shapes joins the selected shape layers into one: Unite Shapes, Subtract Front Shape, Intersect Shape
+  Areas or Exclude Overlapping Shapes, the front shapes keeping their outlines; on one shape layer it sets how its
+  outlines after the first join. Merge Shape Components turns the result into plain outlines.
+- Layer > New > Artboard... makes an artboard of the name, size and background you give; Artboard from Group... makes
+  a folder an artboard over what it holds; Frame from Layers puts each selected layer in a frame of its size.
 
 ## Adjustments, filters and looks
 

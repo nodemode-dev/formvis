@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.65.4
+
+No engine code changed in 1.65.4 (DEV_PLAN 27.5's last part, Combine Shapes and the artboard and frame commands, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.65.3"
+version = "1.65.3"
+version = "1.65.3"
+ "version": "1.65.3",
+```
+
 ## Version only · _v1.65.3
 
 No engine code changed in 1.65.3 (DEV_PLAN 27.5's sixth part, Lock Layers and linked layers, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
