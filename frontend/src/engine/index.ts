@@ -30,7 +30,8 @@ import { Project } from './project';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
-import type { FillContent } from './types';
+import type { FillContent, VectorMask } from './types';
+import { boxChange, followVector, hasOutline, movedVector, vectorCoverage } from './vector-mask';
 
 export * from './types';
 export * from './geometry';
@@ -1163,6 +1164,13 @@ export class Engine {
       return m && msrc ? { image: msrc, version: xo?.maskSource ? -1 : (m.raster as Raster).version, width: msrc.width, height: msrc.height,
         matrix: placement(xo?.maskPlacement ?? m.placement ?? xo?.transform ?? x.transform, msrc.width, msrc.height) } : undefined;
     };
+    // A vector mask (1.66.1) as the CPU renderer's vectorOf draws it: its coverage over the canvas, going with a linked
+    // layer's live move or transform (`t`).
+    const vecFor = (x: Layer, t: Transform = x.transform): GpuMaskSpec[] => {
+      const v = x.vectorMask, c = v?.enabled ? vectorCoverage(v, p.doc.width, p.doc.height) : null;
+      const along = !!v?.linked && t !== x.transform && !sameTransform(t, x.transform) && x.transform.w > 0 && x.transform.h > 0;
+      return c ? [{ image: c.surface, version: c.version, width: p.doc.width, height: p.doc.height, matrix: along ? boxChange(x.transform, t) : [1, 0, 0, 1, 0, 0] }] : [];
+    };
     // A clipping base, as the CPU renderer's clipCoverage reads it: its pixels at its opacity through its own mask (its
     // visibility and folder masks do not enter); null where it cannot clip (a folder, no pixels), which hides the
     // clipped layer; a base that is itself clipped stays on the CPU.
@@ -1181,19 +1189,21 @@ export class Engine {
       // The masks of the folders around it, as the CPU renderer's folderMasks lists them (their pixels as they are, their
       // own placement, else the folder's), one array per parent folder so its layers share one coverage on the GPU.
       if (!fchains.has(l.parentId ?? null)) {
-        const chain = ancestors(map, l).flatMap((g) => g.mask?.enabled && g.mask.raster ? [{ image: g.mask.raster.canvas, version: g.mask.raster.version, width: g.mask.raster.width, height: g.mask.raster.height,
-          matrix: placement(g.mask.placement ?? g.transform, g.mask.raster.width, g.mask.raster.height) }] : []);
+        const chain = ancestors(map, l).flatMap((g) => [...(g.mask?.enabled && g.mask.raster ? [{ image: g.mask.raster.canvas, version: g.mask.raster.version, width: g.mask.raster.width, height: g.mask.raster.height,
+          matrix: placement(g.mask.placement ?? g.transform, g.mask.raster.width, g.mask.raster.height) }] : []), ...vecFor(g)]);
         fchains.set(l.parentId ?? null, chain.length ? chain : undefined);
       }
-      const folders = fchains.get(l.parentId ?? null);
-      if (folders && l.clipId) return { reason: 'a clipped layer inside a masked folder' };
+      // A layer's own vector mask (1.66.1) joins its folders' masks, one array of its own.
+      const own = vecFor(l, o?.transform), folders = own.length ? [...(fchains.get(l.parentId ?? null) ?? []), ...own] : fchains.get(l.parentId ?? null);
+      if (folders && l.clipId) return { reason: 'a clipped layer with a vector mask or inside a masked folder' };
       if (visible && (blendIfActive(l.blendIf) || (l.knockout && l.knockout !== 'none'))) return { reason: 'Blend If or Knockout' };
       const mask = maskFor(l, o);
       let clip: GpuClipSpec | undefined;
       if (l.clipId) {
         if (!clips.has(l.clipId)) clips.set(l.clipId, clipOf(l.clipId));
-        const c = clips.get(l.clipId);
+        const c = clips.get(l.clipId), cb = map.get(l.clipId);
         if (c === 'nested') return { reason: 'nested clipping masks' };
+        if (cb && vecFor(cb).length) return { reason: 'a clipping base with a vector mask' };
         if (!c) continue;
         clip = c;
       }
@@ -1214,7 +1224,7 @@ export class Engine {
       // layer as the CPU draws them; where the CPU draws effects per render instead, the document stays on the CPU.
       let fxParts: ReturnType<Renderer['gpuEffectParts']> = [];
       if (effectsActive(o?.effects ?? l.effects)) {
-        if (clip || folders) return { reason: 'layer styles on a clipped layer or inside a masked folder' };
+        if (clip || folders) return { reason: 'layer styles on a clipped layer, a vector mask or inside a masked folder' };
         fxParts = this.display.gpuEffectParts(l, o, p.doc);
         if (!fxParts) return { reason: 'layer styles on a layer being edited' };
       }
@@ -2047,8 +2057,22 @@ export class Engine {
   private selectedPath(p: Project): NamedPath | null {
     const set = this.pathSet(p);
     if (set.active?.startsWith('shape:')) return this.shapeEntry(p)?.id === set.active ? this.shapeEntry(p) : null;
+    if (set.active?.startsWith('vmask:')) return this.maskEntry(p)?.id === set.active ? this.maskEntry(p) : null;
     return set.list.find((n) => n.id === set.active) ?? null;
   }
+
+  /** The active layer's vector mask as a path entry (1.66.1), its outline in document pixels, reshaped in place by the
+   *  path tools as a shape's outline is. */
+  private maskEntry(p: Project): NamedPath | null {
+    const l = p.activeLayer, v = l?.vectorMask;
+    if (!l || !v) return null;
+    const e = this.maskEdit;
+    if (!e || e.project !== p || e.layerId !== l.id || e.layer !== l) this.maskEdit = { project: p, layerId: l.id, layer: l, path: structuredClone(v.path) };
+    return { id: `vmask:${l.id}`, name: `${l.name} Vector Mask`, path: (this.maskEdit as { path: VectorPath }).path, work: false, shape: true, mask: true };
+  }
+
+  /** The working copy of the active layer's vector mask path that the tools change in place, as `shapeEdit` is. */
+  private maskEdit: { project: Project; layerId: ID; layer: Layer; path: VectorPath } | null = null;
 
   /** The working copy of the active shape layer's path, and the layer object it matches: a copy the tools hold during
    *  a drag, rebuilt only when the layer changes some other way (a move, an undo, a recolour). */
@@ -2101,7 +2125,7 @@ export class Engine {
     this.settle();
     // A work path's edits are undoable too (1.49.3: they never were): the step carries the paths before and after.
     this.pathGestureWork = !entry.shape;
-    p.history.begin(entry.shape ? 'Edit Shape Path' : 'Edit Path', entry.shape ? p.snapshot() : { ...p.snapshot(), paths: structuredClone(this.pathSet(p)) });
+    p.history.begin(entry.mask ? 'Edit Vector Mask' : entry.shape ? 'Edit Shape Path' : 'Edit Path', entry.shape ? p.snapshot() : { ...p.snapshot(), paths: structuredClone(this.pathSet(p)) });
     this.pathGesture = p;
   }
   private pathGestureWork = false;
@@ -2291,8 +2315,8 @@ export class Engine {
   get paths(): PathSet {
     const p = this.current;
     if (!p) return { list: [], active: null };
-    const set = this.pathSet(p), shape = this.shapeEntry(p);
-    return shape ? { list: [shape, ...set.list], active: set.active } : set;
+    const set = this.pathSet(p), own = [this.shapeEntry(p), this.maskEntry(p)].filter((n): n is NamedPath => !!n);
+    return own.length ? { list: [...own, ...set.list], active: set.active } : set;
   }
 
   /** The selected path, which the Pen, Direct Selection and the path commands work on; null when none is selected. */
@@ -2304,6 +2328,21 @@ export class Engine {
     const p = this.current;
     if (!p) return;
     const set = this.pathSet(p), entry = this.selectedPath(p), has = !!vp && vp.subpaths.some((sp) => sp.anchors.length);
+    if (entry?.mask) {
+      // Reshaping a vector mask (1.66.1): live within a gesture's undo step, or one step of its own from the keyboard;
+      // an outline taken down to nothing leaves the empty mask, which shows (or, inverted, hides) everything.
+      const l = p.activeLayer, v = l?.vectorMask;
+      if (l && v) {
+        const write = (q: Project): void => q.updateLayer(l.id, { vectorMask: { ...v, path: vp && has ? structuredClone(vp) : { subpaths: [] } } });
+        if (this.pathGesture === p) write(p);
+        else this.edit('Edit Vector Mask', (q) => write(q));
+        const e = this.maskEdit, now = p.layer(l.id);
+        if (e && e.project === p && e.layerId === l.id && now) { e.layer = now; if (vp) e.path = vp; }
+        this.refresh();
+      }
+      this.pathsChanged(p);
+      return;
+    }
     if (entry?.shape) {
       // Reshaping a shape layer: live within a gesture's undo step, or one step of its own from the keyboard.
       const l = p.activeLayer;
@@ -2332,7 +2371,7 @@ export class Engine {
     const p = this.current;
     if (!p) return;
     const set = this.pathSet(p);
-    set.active = id && (set.list.some((n) => n.id === id) || this.shapeEntry(p)?.id === id) ? id : null;
+    set.active = id && (set.list.some((n) => n.id === id) || this.shapeEntry(p)?.id === id || this.maskEntry(p)?.id === id) ? id : null;
     this.pathsChanged(p);
   }
 
@@ -2363,6 +2402,7 @@ export class Engine {
     if (!p) return;
     const set = this.pathSet(p), target = id ?? set.active;
     if (!target) return;
+    if (target === this.maskEntry(p)?.id) { this.changeVectorMask('delete'); return; }
     set.list = set.list.filter((n) => n.id !== target);
     if (set.active === target) set.active = null;
     this.pathsChanged(p);
@@ -3654,6 +3694,62 @@ export class Engine {
     });
   }
 
+  /** Layer > Vector Mask (1.66.1, Photoshop's): Reveal All and Hide All give the active layer an empty vector mask
+   *  showing or hiding all of it, Current Path one from the selected path (the layer showing inside it). One step. */
+  addVectorMask(kind: 'reveal' | 'hide' | 'path'): boolean {
+    const p0 = this.current, l0 = p0?.activeLayer, path = kind === 'path' ? this.workPath : null;
+    if (!p0 || !l0 || l0.vectorMask) return false;
+    if (kind === 'path' && (!path || !hasOutline(path))) { this.notice('Select a path with an outline first: Current Path makes the vector mask from it.'); return false; }
+    return this.edit(kind === 'hide' ? 'Add Vector Mask Hiding All' : 'Add Vector Mask', (p) => {
+      const l = p.activeLayer;
+      if (!l || l.vectorMask) return false;
+      p.updateLayer(l.id, { vectorMask: { path: path ? structuredClone(path) : { subpaths: [] }, enabled: true, linked: true, inverted: kind === 'hide' } });
+      return true;
+    });
+  }
+
+  /** Layer > Vector Mask > Delete, Enable or Disable, Link or Unlink (1.66.1), on the active layer's vector mask. */
+  changeVectorMask(change: 'delete' | 'enable' | 'link'): boolean {
+    const v0 = this.current?.activeLayer?.vectorMask;
+    if (!v0) return false;
+    const name = change === 'delete' ? 'Delete Vector Mask' : change === 'enable' ? (v0.enabled ? 'Disable Vector Mask' : 'Enable Vector Mask') : v0.linked ? 'Unlink Vector Mask' : 'Link Vector Mask';
+    return this.edit(name, (p) => {
+      const l = p.activeLayer, v = l?.vectorMask;
+      if (!l || !v) return false;
+      p.updateLayer(l.id, { vectorMask: change === 'delete' ? null : change === 'enable' ? { ...v, enabled: !v.enabled } : { ...v, linked: !v.linked } });
+      return true;
+    });
+  }
+
+  /** Layer > Rasterize > Vector Mask (1.66.1, Photoshop's): the vector mask drawn into the layer mask, made for it if
+   *  there is none, and kept where both hid; a disabled vector mask is dropped unchanged. One step. */
+  rasterizeVectorMask(): boolean {
+    const p0 = this.current, l0 = p0?.activeLayer;
+    if (!p0 || !l0?.vectorMask) return false;
+    return this.edit('Rasterize Vector Mask', (p) => {
+      const l = p.activeLayer, v = l?.vectorMask;
+      if (!l || !v) return false;
+      const cov = v.enabled ? vectorCoverage(v, p.doc.width, p.doc.height) : null;
+      if (!cov) { p.updateLayer(l.id, { vectorMask: null }); return true; }
+      const m = l.mask, mr = m?.raster ?? null, place = m?.placement ?? l.transform;
+      const w = mr?.width ?? l.raster?.width ?? Math.max(1, Math.round(l.transform.w)), h = mr?.height ?? l.raster?.height ?? Math.max(1, Math.round(l.transform.h));
+      const out = mr ? mr.clone() : Raster.filled(w, h, '#ffffff');
+      setMat(out.ctx, invert(placement(place, w, h)));
+      out.ctx.globalCompositeOperation = 'destination-in';
+      out.ctx.drawImage(cov.surface as CanvasImageSource, 0, 0);
+      out.ctx.globalCompositeOperation = 'source-over';
+      out.ctx.setTransform(1, 0, 0, 1, 0, 0);
+      out.touch();
+      p.updateLayer(l.id, { vectorMask: null, mask: m ? { ...m, raster: out } : { raster: out, enabled: true, linked: true, placement: null } });
+      return true;
+    });
+  }
+
+  /** Every vector mask in `layers` carried by `f`, a change of the whole canvas (1.66.1): linked or not, they move with it. */
+  private carryVectors(layers: readonly Layer[], f: (x: number, y: number) => Pt): Layer[] {
+    return layers.map((l) => (l.vectorMask ? { ...l, vectorMask: movedVector(l.vectorMask, f) } : l));
+  }
+
   flipLayers(horizontal: boolean): void {
     this.lastTransform = { flip: horizontal };
     this.edit(horizontal ? 'Flip Layer Horizontal' : 'Flip Layer Vertical', (p) => {
@@ -3661,8 +3757,8 @@ export class Engine {
       for (const id of p.selectedIds) {
         const l = p.layer(id);
         if (!l || l.isGroup || !l.raster) continue;
-        const t = l.transform;
-        p.updateLayer(id, { transform: horizontal ? { ...t, flipX: !t.flipX, rotation: -t.rotation } : { ...t, flipY: !t.flipY, rotation: -t.rotation } });
+        const t = l.transform, next = horizontal ? { ...t, flipX: !t.flipX, rotation: -t.rotation } : { ...t, flipY: !t.flipY, rotation: -t.rotation };
+        p.updateLayer(id, { transform: next, vectorMask: followVector(l, next) });
         any = true;
       }
       return any;
@@ -3689,7 +3785,8 @@ export class Engine {
         mask: l.mask?.placement ? { ...l.mask, placement: turn(l.mask.placement) } : l.mask,
         ...(l.artboard ? { artboard: { ...l.artboard, ...rect(l.artboard) } } : {}),
       }));
-      p.doc = { ...p.doc, width: quarters === 2 ? W : H, height: quarters === 2 ? H : W, layers, ...alphasMoved(p.doc, (m) => m.rotated(quarters, W, H)) };
+      const spun = this.carryVectors(layers, (x, y) => (quarters === 1 ? { x: H - y, y: x } : quarters === 2 ? { x: W - x, y: H - y } : { x: y, y: W - x }));
+      p.doc = { ...p.doc, width: quarters === 2 ? W : H, height: quarters === 2 ? H : W, layers: spun, ...alphasMoved(p.doc, (m) => m.rotated(quarters, W, H)) };
       if (p.selection) p.selection = p.selection.rotated(quarters, W, H);
       return true;
     });
@@ -3698,12 +3795,12 @@ export class Engine {
   flipCanvas(horizontal: boolean): void {
     this.edit(horizontal ? 'Flip Canvas Horizontal' : 'Flip Canvas Vertical', (p) => {
       const { width: W, height: H } = p.doc;
-      p.setLayers(p.doc.layers.map((l) => ({
+      p.setLayers(this.carryVectors(p.doc.layers.map((l) => ({
         ...l,
         transform: mirrored(l.transform, horizontal, W, H),
         mask: l.mask?.placement ? { ...l.mask, placement: mirrored(l.mask.placement, horizontal, W, H) } : l.mask,
         ...(l.artboard ? { artboard: horizontal ? { ...l.artboard, x: W - l.artboard.x - l.artboard.w } : { ...l.artboard, y: H - l.artboard.y - l.artboard.h } } : {}),
-      })));
+      })), (x, y) => (horizontal ? { x: W - x, y } : { x, y: H - y })));
       if (p.selection) p.selection = p.selection.flipped(horizontal, W, H);
       if (p.doc.alphas?.length) p.doc = { ...p.doc, ...alphasMoved(p.doc, (m) => m.flipped(horizontal, W, H)) };
     });
@@ -3742,7 +3839,8 @@ export class Engine {
         return { ...moved, raster: r, transform: docTransform(W2, H2) };
       });
       const spin = (g: Ctx2D): void => { g.translate(W2 / 2, H2 / 2); g.rotate(a); g.translate(-W / 2, -H / 2); };
-      p.doc = { ...p.doc, width: W2, height: H2, layers, ...alphasRedrawn(p.doc, W2, H2, (g, m) => { spin(g); g.drawImage(m.surface(), m.x, m.y); }) };
+      const spun = this.carryVectors(layers, (x, y) => ({ x: c.x + (x - c.x) * cs - (y - c.y) * sn + dx, y: c.y + (x - c.x) * sn + (y - c.y) * cs + dy }));
+      p.doc = { ...p.doc, width: W2, height: H2, layers: spun, ...alphasRedrawn(p.doc, W2, H2, (g, m) => { spin(g); g.drawImage(m.surface(), m.x, m.y); }) };
       if (p.selection) {
         const s = createSurface(W2, H2), g = ctxOf(s), sel = p.selection;
         spin(g);
@@ -5109,7 +5207,7 @@ export class Engine {
           const t = following(orig, g.box, next);
           if (!l || !(t.w >= 1 && t.h >= 1) || ![t.x, t.y, t.w, t.h, t.rotation].every(Number.isFinite)) continue;
           const redraw = !!l.shape && (Math.round(t.w) !== l.raster?.width || Math.round(t.h) !== l.raster?.height);
-          p.updateLayer(id, { transform: t, mask: followMask(l, t), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, t.w, t.h) } : {}) });
+          p.updateLayer(id, { transform: t, mask: followMask(l, t), vectorMask: followVector(l, t), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, t.w, t.h) } : {}) });
           moved = true;
         }
         // A moved artboard takes its rectangle along, mapped as its contents are (artboards do not rotate).
@@ -5144,7 +5242,7 @@ export class Engine {
       const l = p.layer(te.layerId);
       if (!l) return false;
       const redraw = !!l.shape && (Math.round(next.w) !== l.raster?.width || Math.round(next.h) !== l.raster?.height);
-      p.updateLayer(l.id, { transform: next, mask: followMask(l, next), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, next.w, next.h) } : {}) });
+      p.updateLayer(l.id, { transform: next, mask: followMask(l, next), vectorMask: followVector(l, next), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, next.w, next.h) } : {}) });
       return true;
     });
   }
@@ -5267,7 +5365,7 @@ export class Engine {
       const warp = [[m, m], [m + src.width, m], [m + src.width, m + src.height], [m, m + src.height]].map(([x, y]) => project(H, x / Rw, y / Rh));
       const w = this.warpedSmart(sm.R, m, src, warp), dm = this.smartDistortMask(sl, sm.start, d.corners, 1);
       const smart = sl.smart, mask = sl.mask && dm ? { ...sl.mask, raster: dm.warped?.raster ?? sl.mask.raster, placement: dm.placement } : sl.mask;
-      if (w) this.edit(step, (q) => q.updateLayer(sl.id, { raster: w.raster, transform: w.t, smart: { ...smart, warp, warpAt: w.t }, mask }));
+      if (w) this.edit(step, (q) => q.updateLayer(sl.id, { raster: w.raster, transform: w.t, smart: { ...smart, warp, warpAt: w.t }, mask, vectorMask: this.distortVector(sl, sm.start, d.corners) }));
       return;
     }
     const updates: Array<[ID, Partial<Layer>]> = [];
@@ -5280,9 +5378,18 @@ export class Engine {
       if (mask && dm?.warped && !dm.placement) mask = { ...mask, raster: crop ? cropWarp(dm.warped, crop).raster : dm.warped.raster };
       else if (mask && dm?.warped) mask = { ...mask, raster: dm.warped.raster, placement: dm.placement };
       else if (mask && dm) mask = { ...mask, placement: dm.placement };
-      updates.push([id, { raster: pixels.raster, transform: pixels.t, mask, shape: null }]);
+      updates.push([id, { raster: pixels.raster, transform: pixels.t, mask, shape: null, vectorMask: this.distortVector(l, cornersOf(l.transform), q) }]);
     }
     if (updates.length) this.edit(d.members ? `${step} Layers` : step, (q) => { for (const [id, patch] of updates) q.updateLayer(id, patch); });
+  }
+
+  /** A linked vector mask carried through a distortion from corners `from` to `to` (1.66.1): its anchors and handles
+   *  through the same perspective. Unlinked, or with a shape the perspective cannot take, it stays as it is. */
+  private distortVector(l: Layer, from: Pt[], to: Pt[]): VectorMask | null | undefined {
+    const v = l.vectorMask, back = v?.linked ? inverse3(homography(from)) : null;
+    if (!v || !back) return v;
+    const on = homography(to);
+    return movedVector(v, (x, y) => { const u = project(back, x, y); return project(on, u.x, u.y); });
   }
 
   cancelDistort(): void {
@@ -5603,7 +5710,7 @@ export class Engine {
         }
       }, name);
       const fx = tr.keys.x?.length ? 0 : dx, fy = tr.keys.y?.length ? 0 : dy;
-      if (fx || fy) this.edit(name, (q) => { const ll = q.layer(id); if (!ll) return false; const t = { ...ll.transform, x: ll.transform.x + fx, y: ll.transform.y + fy }; q.updateLayer(id, { transform: t, mask: followMask(ll, t) }); return true; });
+      if (fx || fy) this.edit(name, (q) => { const ll = q.layer(id); if (!ll) return false; const t = { ...ll.transform, x: ll.transform.x + fx, y: ll.transform.y + fy }; q.updateLayer(id, { transform: t, mask: followMask(ll, t), vectorMask: followVector(ll, t) }); return true; });
     } finally {
       p.history.end({ ...p.snapshot(), video: structuredClone(this.video) });
       this.refresh();
@@ -5623,7 +5730,7 @@ export class Engine {
         const l = p.layer(id);
         if (!l || l.isGroup || !l.raster) continue;
         const t = { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy };
-        p.updateLayer(id, { transform: t, mask: followMask(l, t) });
+        p.updateLayer(id, { transform: t, mask: followMask(l, t), vectorMask: followVector(l, t) });
         moved = true;
       }
       return moved;
@@ -5657,7 +5764,7 @@ export class Engine {
           const l = p.layer(id);
           if (!l) continue;
           const t = { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy };
-          p.updateLayer(id, { transform: t, mask: followMask(l, t) });
+          p.updateLayer(id, { transform: t, mask: followMask(l, t), vectorMask: followVector(l, t) });
           moved = true;
         }
       }
@@ -6686,7 +6793,7 @@ export class Engine {
       const { width: oldW, height: oldH } = p.doc;
       if (width === oldW && height === oldH && !dx && !dy) return false;
       const shift = (t: Transform): Transform => ({ ...t, x: t.x + dx, y: t.y + dy });
-      let layers: Layer[] = p.doc.layers.map((l) => ({ ...l, transform: shift(l.transform), mask: l.mask?.placement ? { ...l.mask, placement: shift(l.mask.placement) } : l.mask, ...(l.artboard ? { artboard: { ...l.artboard, x: l.artboard.x + dx, y: l.artboard.y + dy } } : {}) }));
+      let layers: Layer[] = this.carryVectors(p.doc.layers.map((l) => ({ ...l, transform: shift(l.transform), mask: l.mask?.placement ? { ...l.mask, placement: shift(l.mask.placement) } : l.mask, ...(l.artboard ? { artboard: { ...l.artboard, x: l.artboard.x + dx, y: l.artboard.y + dy } } : {}) })), (x, y) => ({ x: x + dx, y: y + dy }));
       if (fill && (width > oldW || height > oldH)) {
         const r = Raster.filled(width, height, rgbCss(fill));
         r.ctx.clearRect(dx, dy, oldW, oldH);
@@ -6768,6 +6875,7 @@ export class Engine {
           const next = { ...t, x: c.x + lx * cs - ly * sn - t.w / 2, y: c.y + lx * sn + ly * cs - t.h / 2, rotation: t.rotation + turn };
           p.updateLayer(l.id, { transform: next, mask: followMask(l, next) });
         }
+        if (p.doc.layers.some((l) => l.vectorMask)) p.setLayers(this.carryVectors(p.doc.layers, (x, y) => ({ x: c.x + (x - c.x) * cs - (y - c.y) * sn, y: c.y + (x - c.x) * sn + (y - c.y) * cs })));
         if (p.doc.alphas?.length) p.doc = { ...p.doc, ...alphasRedrawn(p.doc, p.doc.width, p.doc.height, (g, m) => { g.translate(c.x, c.y); g.rotate(a); g.translate(-c.x, -c.y); g.drawImage(m.surface(), m.x, m.y); }) };
       }
       this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
@@ -6845,7 +6953,7 @@ export class Engine {
       moved.set(l.id, { raster: w.raster, transform: w.t, mask, shape: null, vector: null, text: null, smart: null });
     }
     return this.edit('Perspective Crop', (p) => {
-      p.doc = { ...p.doc, width: W, height: H, layers: p.doc.layers.map((l) => (moved.has(l.id) ? { ...l, ...moved.get(l.id) } : l)), ...alphasRedrawn(p.doc, W, H, (g, m) => {
+      p.doc = { ...p.doc, width: W, height: H, layers: this.carryVectors(p.doc.layers.map((l) => (moved.has(l.id) ? { ...l, ...moved.get(l.id) } : l)), (x, y) => toOut({ x, y })), ...alphasRedrawn(p.doc, W, H, (g, m) => {
         const t = { ...docTransform(m.w, m.h), x: m.x, y: m.y }, w = warpRaster(Raster.from(m.surface(), m.w, m.h), t, cornersOf(t).map(toOut), 1, true);
         if (w) { setMat(g, placement(w.t, w.raster.width, w.raster.height)); g.drawImage(w.raster.canvas, 0, 0); }
       }) };
@@ -6889,7 +6997,7 @@ export class Engine {
         if (l.channels && raster && !shape) { const ch = resampleDeep(l.channels, raster.width, raster.height); return { ...l, channels: ch, raster: ch.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(ch, p.cmykLut) : rasterFromDeep(ch, p.doc.depth === 32), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }
         return { ...l, raster, mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) };
       });
-      p.doc = { ...p.doc, width, height, resolution, layers, ...alphasRedrawn(p.doc, width, height, (g, m) => { g.imageSmoothingEnabled = sampling !== 'nearest'; g.drawImage(m.surface(), m.x * sx, m.y * sy, m.w * sx, m.h * sy); }) };
+      p.doc = { ...p.doc, width, height, resolution, layers: this.carryVectors(layers, (x, y) => ({ x: x * sx, y: y * sy })), ...alphasRedrawn(p.doc, width, height, (g, m) => { g.imageSmoothingEnabled = sampling !== 'nearest'; g.drawImage(m.surface(), m.x * sx, m.y * sy, m.w * sx, m.h * sy); }) };
       p.selection = null;
       return true;
     });
@@ -8199,7 +8307,7 @@ export class Engine {
       const next: Transform = { ...l.transform, ...patch };
       if (!(next.w >= 1 && next.h >= 1) || ![next.x, next.y, next.w, next.h, next.rotation].every(Number.isFinite) || sameTransform(next, l.transform)) return false;
       const redraw = !!l.shape && (Math.round(next.w) !== l.raster.width || Math.round(next.h) !== l.raster.height);
-      p.updateLayer(l.id, { transform: next, mask: followMask(l, next), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, next.w, next.h) } : {}) });
+      p.updateLayer(l.id, { transform: next, mask: followMask(l, next), vectorMask: followVector(l, next), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, next.w, next.h) } : {}) });
       this.lastTransform = { from: l.transform, to: next };
       return true;
     });
@@ -9130,7 +9238,7 @@ export class Engine {
     if (!p || !a?.artboard) return null;
     const map = byId(p.doc), keep = p.doc.layers.filter((l) => l.id === id || isDescendant(map, l.id, id));
     const r = a.artboard, pad = { x: Math.min(0, r.x), y: Math.min(0, r.y) };
-    const doc: Doc = { ...p.doc, width: Math.max(p.doc.width, r.x + r.w) - pad.x, height: Math.max(p.doc.height, r.y + r.h) - pad.y, layers: pad.x || pad.y ? keep.map((l) => ({ ...l, transform: { ...l.transform, x: l.transform.x - pad.x, y: l.transform.y - pad.y }, mask: l.mask?.placement ? { ...l.mask, placement: { ...l.mask.placement, x: l.mask.placement.x - pad.x, y: l.mask.placement.y - pad.y } } : l.mask, ...(l.artboard ? { artboard: { ...l.artboard, x: l.artboard.x - pad.x, y: l.artboard.y - pad.y } } : {}) })) : keep };
+    const doc: Doc = { ...p.doc, width: Math.max(p.doc.width, r.x + r.w) - pad.x, height: Math.max(p.doc.height, r.y + r.h) - pad.y, layers: pad.x || pad.y ? keep.map((l) => ({ ...l, transform: { ...l.transform, x: l.transform.x - pad.x, y: l.transform.y - pad.y }, mask: l.mask?.placement ? { ...l.mask, placement: { ...l.mask.placement, x: l.mask.placement.x - pad.x, y: l.mask.placement.y - pad.y } } : l.mask, ...(l.artboard ? { artboard: { ...l.artboard, x: l.artboard.x - pad.x, y: l.artboard.y - pad.y } } : {}) })).map((l) => (l.vectorMask ? { ...l, vectorMask: movedVector(l.vectorMask, (x, y) => ({ x: x - pad.x, y: y - pad.y })) } : l)) : keep };
     const full = renderDoc(this.work, doc), out = createSurface(r.w, r.h);
     ctxOf(out).drawImage(full, r.x - pad.x, r.y - pad.y, r.w, r.h, 0, 0, r.w, r.h);
     return out;

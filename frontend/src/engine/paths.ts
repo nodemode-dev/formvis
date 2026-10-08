@@ -161,8 +161,9 @@ export function splitSegment(sp: SubPath, index: number, t: number): Anchor {
   return added;
 }
 
-/** A document's paths: at most one temporary Work Path and any number of named ones, and which is selected. */
-export interface NamedPath { id: ID; name: string; path: VectorPath; work: boolean; shape?: boolean }
+/** A document's paths: at most one temporary Work Path and any number of named ones, and which is selected. `shape`
+ *  marks the active layer's own outline (a shape's, or with `mask` its vector mask's), listed but not saved here. */
+export interface NamedPath { id: ID; name: string; path: VectorPath; work: boolean; shape?: boolean; mask?: boolean }
 export interface PathSet { list: NamedPath[]; active: ID | null }
 
 /** A document's paths as project-file data; null when there are none. A named path saves even when empty. */

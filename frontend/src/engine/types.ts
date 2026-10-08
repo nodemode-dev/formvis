@@ -38,6 +38,10 @@ export function samplingFromLabel(label: unknown): Sampling { return label === '
 
 export interface Transform { x: number; y: number; w: number; h: number; rotation: number; flipX: boolean; flipY: boolean; sampling: Sampling }
 export interface Mask { raster: Raster | null; enabled: boolean; linked: boolean; placement: Transform | null }
+/** A vector mask (1.66.1, Photoshop's): a path in document pixels showing the layer only inside it, or only outside it
+ *  when `inverted`, its edge anti-aliased; with no outlines it shows all, or inverted hides all (Hide All). Linked, it
+ *  moves and transforms with the layer; canvas changes carry it either way. */
+export interface VectorMask { path: import('./paths').VectorPath; enabled: boolean; linked: boolean; inverted: boolean }
 export type AdjustmentKind = 'hsv' | 'levels' | 'curves' | 'exposure' | 'gradientMap' | 'grain' | import('./adjust-params').ParamKind;
 export interface Adjustment { kind: AdjustmentKind; data: Record<string, unknown> }
 /** Photoshop's layer locks (the target's Lock row): transparency (paint only where there are pixels), image pixels
@@ -88,6 +92,8 @@ export interface Layer {
   frame?: FrameSpec | null;
   /** A fill layer's content (1.66.0); `raster` is its rendering over the whole canvas, drawn again when it changes. */
   fillContent?: FillContent | null;
+  /** Layer > Vector Mask (1.66.1), beside `mask`; absent or null for none. */
+  vectorMask?: VectorMask | null;
   blend: BlendMode;
   mask: Mask | null;
   clipId: ID | null;

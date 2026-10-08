@@ -120,6 +120,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     else if (ch?.mode === 'lab') { const name = `${l.id}.lab32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
     if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.fillContent && l.raster) r.fillContent = structuredClone(l.fillContent);
+    if (l.vectorMask) r.vectorMask = { enabled: l.vectorMask.enabled, linked: l.vectorMask.linked, inverted: l.vectorMask.inverted, subpaths: pathData(l.vectorMask.path)?.subpaths ?? [] };
     if (l.smart && !l.isGroup) {
       const name = `${l.id}.source.png`;
       files.push({ name, blob: await toBlob(l.smart.source.canvas) });
@@ -265,6 +266,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
       ...(raster && r.fillContent ? { fillContent: fillContentFrom(r.fillContent) } : {}),
+      ...(r.vectorMask && typeof r.vectorMask === 'object' ? { vectorMask: { path: pathFrom(r.vectorMask) ?? { subpaths: [] }, enabled: (r.vectorMask as Record<string, unknown>).enabled !== false, linked: (r.vectorMask as Record<string, unknown>).linked !== false, inverted: (r.vectorMask as Record<string, unknown>).inverted === true } } : {}),
     };
   });
   for (const b of bitmaps.values()) b.close();

@@ -5,8 +5,9 @@ import { CONTOURS, applyContour, contourLut, withGlobalLight, type ContourId } f
 import { canvasBlend, compositeOp, instances, type BlendMode, type Doc, type ID, type Layer, type Sampling, type Transform, effectsActive, type LayerEffects, type RGB, type Rect, type BlendIf, blendIfActive, type BevelContour, type BevelTexture, type Pt } from './types';
 import { distanceSquared } from './matting';
 import { createSurface, ctxOf, rasterOf, sizeSurface, type Ctx2D, type Raster, type Surface } from './surface';
-import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, type Mat } from './geometry';
+import { translation, IDENTITY, applyMat, invert, matScale, mul, placement, scaling, setMat, boundsOf, integral, intersectRect, sameTransform, type Mat } from './geometry';
 import { ancestors, hierarchy } from './tree';
+import { boxChange, vectorCoverage } from './vector-mask';
 import { adjustmentKernel, type Kernel } from './kernels';
 import { grainFromData, grainKernel, hsvFromData, hsvKernel } from './adjust';
 import type { Adjustment } from './types';
@@ -65,7 +66,7 @@ export interface RenderJob {
 interface Slot { s: Surface; c: Ctx2D }
 /** `k`: the resolution the part was computed at, 1 for full; a smaller part is drawn scaled back up to its place. */
 interface FxPart { s: Surface; x: number; y: number; k: number; alpha: number; op: GlobalCompositeOperation; above: boolean; name: string; kept: boolean }
-interface MaskInfo { src: Surface; w: number; h: number; t: Transform; covers: boolean }
+interface MaskInfo { src: Surface; w: number; h: number; t: Transform; covers: boolean; mat?: Mat }
 
 let white: Surface | null = null;
 /** One opaque white pixel, made once. */
@@ -214,7 +215,7 @@ export class Renderer {
       // Fill: the pixels at opacity times fill; the effects (drawn from the layer's silhouette) at the opacity.
       const pix = opacity * (layer.fill ?? 1);
       const t = ov?.transform ?? layer.transform;
-      const folders = job.ignoreFolderMasks ? [] : this.folderMasks(map, layer);
+      const vm = this.vectorOf(layer, job.doc, t), folders = [...(job.ignoreFolderMasks ? [] : this.folderMasks(map, layer, job.doc)), ...(vm ? [vm] : [])];
       const own = this.maskOf(layer, ov, t);
       const base = layer.clipId ? map.get(layer.clipId) ?? null : null;
       if (layer.adjustment) { this.adjust(job, ctx, layer, own, folders, base, map, clipCache, W, H, pix); continue; }
@@ -654,11 +655,21 @@ export class Renderer {
     return { src, w: src.width, h: src.height, t: placed ?? t, covers: !placed && !layer.adjustment };
   }
 
-  private folderMasks(map: ReadonlyMap<ID, Layer>, layer: Layer): MaskInfo[] {
+  /** A layer's vector mask (1.66.1) as a mask over the canvas, its coverage at document size; null when it is off or
+   *  shows everything. While a move or transform is live (`t`, the layer's box in it), a linked one goes with it. */
+  private vectorOf(layer: Layer, doc: Doc, t: Transform = layer.transform): MaskInfo | null {
+    const v = layer.vectorMask, cov = v?.enabled ? vectorCoverage(v, doc.width, doc.height) : null;
+    if (!cov) return null;
+    const along = v?.linked && t !== layer.transform && !sameTransform(t, layer.transform) && layer.transform.w > 0 && layer.transform.h > 0;
+    return { src: cov.surface, w: doc.width, h: doc.height, t: { x: 0, y: 0, w: doc.width, h: doc.height, rotation: 0, flipX: false, flipY: false, sampling: 'smooth' }, covers: true, ...(along ? { mat: boxChange(layer.transform, t) } : {}) };
+  }
+
+  private folderMasks(map: ReadonlyMap<ID, Layer>, layer: Layer, doc: Doc): MaskInfo[] {
     const out: MaskInfo[] = [];
     for (const g of ancestors(map, layer)) {
-      const m = g.mask;
+      const m = g.mask, vm = this.vectorOf(g, doc);
       if (m?.enabled && m.raster) out.push({ src: m.raster.canvas, w: m.raster.width, h: m.raster.height, t: m.placement ?? g.transform, covers: false });
+      if (vm) out.push(vm);
       // An artboard shows its contents only inside its rectangle: one white pixel stretched over it, sampled nearest so
       // its edges stay crisp.
       const a = g.artboard;
@@ -707,7 +718,7 @@ export class Renderer {
   }
 
   private cover(c: Ctx2D, mk: MaskInfo, view: Mat, W: number, H: number): void {
-    const m = mul(view, placement(mk.t, mk.w, mk.h));
+    const m = mul(view, mk.mat ?? placement(mk.t, mk.w, mk.h));
     if (mk.covers) {
       c.save();
       setMat(c, m);
@@ -756,8 +767,9 @@ export class Renderer {
     this.prepare(slot, W, H);
     this.draw(slot.c, src, mul(job.view, placement(t, src.width, src.height)), t.sampling, ov?.opacity ?? base.opacity, 'source-over', job.quality);
     if (ov?.patch) this.patchIn(slot.c, ov.patch, mul(job.view, placement(t, src.width, src.height)), t.sampling, ov?.opacity ?? base.opacity, job.quality);   // 1.60.6
-    const own = this.maskOf(base, ov, t);
+    const own = this.maskOf(base, ov, t), vm = this.vectorOf(base, job.doc, t);
     if (own) this.cover(slot.c, own, job.view, W, H);
+    if (vm) this.cover(slot.c, vm, job.view, W, H);
     if (base.clipId) {
       const up = map.get(base.clipId);
       const cov = up ? this.clipCoverage(job, up, map, W, H, depth + 1) : null;

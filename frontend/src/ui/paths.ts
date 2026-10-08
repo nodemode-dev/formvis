@@ -70,7 +70,7 @@ export class PathsPanel {
     row.classList.toggle('is-work', n.work || !!n.shape);
     row.classList.toggle('is-active', n.id === active);
     row.setAttribute('aria-selected', String(n.id === active));
-    row.title = n.shape ? 'The shape layer\'s outline: reshape it with Direct Selection' : n.work ? 'Work Path: double-click to name and keep it' : 'Double-click to rename';
+    row.title = n.mask ? 'The layer\'s vector mask: reshape it with Direct Selection or the Pen' : n.shape ? 'The shape layer\'s outline: reshape it with Direct Selection' : n.work ? 'Work Path: double-click to name and keep it' : 'Double-click to rename';
   }
 
   /** Inline renaming in place of the name; Enter or leaving the field keeps the name, Escape cancels. */
