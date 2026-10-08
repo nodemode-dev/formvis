@@ -26,6 +26,7 @@ export const RECORDABLE: ReadonlySet<string> = new Set([
   'mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', 'matting-black', 'matting-white',
   'rasterize-type', 'rasterize-shape', 'rasterize-smart', 'rasterize-all', 'reselect', 'grow', 'similar', 'convert-to-shape',
   'save-selection-channel', 'create-layers', 'hide-all-effects', 'link-layers', 'select-linked',
+  'frame-from-layers', 'shapes-unite', 'shapes-subtract', 'shapes-intersect', 'shapes-exclude', 'shapes-merge',
 ]);
 
 const KEY = 'formvis.actions';

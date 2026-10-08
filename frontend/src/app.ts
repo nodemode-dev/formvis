@@ -3,7 +3,7 @@ import { FillDialog } from './ui/panels/fill-dialog';
 import { FadeDialog } from './ui/panels/fade-dialog';
 import { ExportDialog } from './ui/panels/export-dialog';
 import { GuideDialog } from './ui/panels/guide-dialog';
-import { ArtboardDialog } from './ui/panels/artboard-dialog';
+import { ArtboardDialog, NewArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
 import { StrokePathDialog } from './ui/panels/stroke-path-dialog';
 import { DuplicateLayerDialog, FindLayersDialog, LockLayersDialog, NewGroupDialog, NewLayerDialog } from './ui/panels/layer-dialogs';
@@ -1379,6 +1379,7 @@ export function startApp(): void {
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
     guide: new GuideDialog(engine),
     artboard: new ArtboardDialog(engine),
+    newArtboard: new NewArtboardDialog(engine),
     corners: new CornersDialog(engine),
     strokePath: new StrokePathDialog(engine),
     newLayer: new NewLayerDialog(engine),
@@ -1595,6 +1596,11 @@ export function startApp(): void {
     { id: 'new-folder-dialog', label: 'Group...', enabled: has, run: () => dialogs.newGroup.show() },
     { id: 'new-artboard', label: 'New Artboard', enabled: has, run: () => { engine.newArtboard(); } },
     { id: 'artboard-from-layers', label: 'Artboard from Layers', enabled: has, run: () => { engine.artboardFromLayers(); } },
+    { id: 'new-artboard-dialog', label: 'Artboard...', enabled: has, run: () => dialogs.newArtboard.show(false) },
+    { id: 'artboard-from-group', label: 'Artboard from Group...', enabled: () => { const l = engine.current?.activeLayer; return !!l?.isGroup && !l.parentId && !l.artboard && !l.frame; }, run: () => dialogs.newArtboard.show(true) },
+    { id: 'frame-from-layers', label: 'Frame from Layers', enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].some((id) => { const l = p.layer(id); return !!l?.raster && !l.isGroup && !l.adjustment; }); }, run: () => engine.frameFromLayers() },
+    ...([['shapes-unite', 'Unite Shapes', 'combine'], ['shapes-subtract', 'Subtract Front Shape', 'subtract'], ['shapes-intersect', 'Intersect Shape Areas', 'intersect'], ['shapes-exclude', 'Exclude Overlapping Shapes', 'exclude'], ['shapes-merge', 'Merge Shape Components', 'merge']] as const)
+      .map(([id, label, op]) => ({ id, label, enabled: () => { const p = engine.current, s = p ? p.doc.layers.filter((l) => p.selectedIds.has(l.id) && !!l.vector) : []; return s.length > 1 || (s.length === 1 && ((s[0].vector?.path.subpaths.length ?? 0) > 1 || (op === 'merge' && !!s[0].vector?.path.subpaths.some((sp) => sp.op && sp.op !== 'combine')))); }, run: () => engine.combineShapes(op) })),
     { id: 'artboard-options', label: 'Artboard Options...', enabled: () => !!engine.current?.activeLayer?.artboard, run: () => dialogs.artboard.show() },
     { id: 'export-artboards', label: 'Export Artboards to Files', enabled: () => engine.artboards().length > 0, run: () => void exportArtboards() },
     { id: 'duplicate', label: 'Layer via Copy', keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
@@ -1832,7 +1838,7 @@ export function startApp(): void {
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
-      { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard', 'artboard-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
+      { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
       { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
@@ -1842,6 +1848,7 @@ export function startApp(): void {
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
       { label: 'Arrange', items: ['bring-front', 'forward', 'backward', 'send-back', '-', 'reverse-layers'] },
+      { label: 'Combine Shapes', items: ['shapes-unite', 'shapes-subtract', 'shapes-intersect', 'shapes-exclude', '-', 'shapes-merge'] },
       { label: 'Align', items: ['align-left', 'align-hcenter', 'align-right', '-', 'align-top', 'align-vcenter', 'align-bottom'] },
       { label: 'Distribute', items: ['distribute-left', 'distribute-hcenter', 'distribute-right', '-', 'distribute-top', 'distribute-vcenter', 'distribute-bottom', '-', 'distribute-hspace', 'distribute-vspace'] },
       { label: 'Flip', items: ['flip-layer-h', 'flip-layer-v'] }, '-',

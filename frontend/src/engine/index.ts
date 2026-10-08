@@ -9,7 +9,7 @@ import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, 
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { newVideoTimeline, sampleToFrames, stateAt, valueAt, type FadeColor, type VideoTimeline } from './video-timeline';
-import { fillVector, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathSet, type SubPath, type VectorPath } from './paths';
+import { fillVector, mapPath, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathOp, type PathSet, type SubPath, type VectorPath } from './paths';
 import { simplify, smoothAnchors } from './curve-fit';
 export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
@@ -2197,6 +2197,58 @@ export class Engine {
     this.edit('Shape Style', (p) => this.reshape(p, l.id, shiftPath(v.path, dx, dy), structuredClone(style)));
   }
 
+  /** A shape layer's outline where its pixels are now: its path, drawn at `origin`, carried through the layer's placement
+   *  (a move, scale, turn or flip). */
+  private placedPath(l: Layer): VectorPath | null {
+    const v = l.vector, r = l.raster;
+    if (!v || !r) return null;
+    const m = placement(l.transform, r.width, r.height);
+    return mapPath(v.path, (q) => applyMat(m, q.x - v.origin.x, q.y - v.origin.y));
+  }
+
+  /** The plain outline of what `path` fills, its operations baked in: its coverage drawn at up to 4 times and traced. */
+  private mergedOutline(path: VectorPath): VectorPath | null {
+    const b = pathBounds(path);
+    if (!b) return null;
+    const k = Math.max(1, Math.min(4, Math.sqrt(16e6 / ((b.w + 4) * (b.h + 4))))), x0 = Math.floor(b.x) - 2, y0 = Math.floor(b.y) - 2;
+    const w = Math.ceil((b.w + 6) * k), h = Math.ceil((b.h + 6) * k), s = createSurface(w, h), c = ctxOf(s);
+    c.setTransform(k, 0, 0, k, -x0 * k, -y0 * k);
+    c.fillStyle = '#ffffff';
+    fillVector(c, path);
+    const d = c.getImageData(0, 0, w, h).data, a = new Uint8Array(w * h);
+    for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
+    const subpaths = this.tracedOutline(a, w, h, 0, 0);
+    return subpaths.length ? mapPath({ subpaths }, (q) => ({ x: x0 + q.x / k, y: y0 + q.y / k })) : null;
+  }
+
+  /** Layer > Combine Shapes (1.65.4), as Photoshop's: with several shape layers selected, the front ones' outlines join
+   *  the back one's, each taking `op` (Unite Shapes keeps their own), and the front layers go; with one, its outlines
+   *  after the first take `op`. Merge Shape Components ('merge') unites them and bakes every operation into plain
+   *  outlines. The back layer keeps its fill, stroke, mask and style. One step. */
+  combineShapes(op: PathOp | 'merge'): void {
+    const p = this.current;
+    if (!p || this.stroke) return;
+    const shapes = p.doc.layers.filter((l) => p.selectedIds.has(l.id) && !!l.vector && !!l.raster);
+    if (!shapes.length) { this.notice('Select one or more shape layers first.'); return; }
+    const paths = shapes.map((l) => this.placedPath(l) as VectorPath);
+    let subpaths = paths[0].subpaths;
+    if (shapes.length > 1) subpaths = [...subpaths, ...paths.slice(1).flatMap((vp) => (op === 'merge' || op === 'combine' ? vp.subpaths : vp.subpaths.map((sp) => ({ ...sp, op }))))];
+    else if (op !== 'merge') {
+      if (subpaths.length < 2) { this.notice('Combine Shapes needs two shapes: select two shape layers, or a shape with two outlines.'); return; }
+      subpaths = subpaths.map((sp, i) => (i === 0 ? sp : op === 'combine' ? { closed: sp.closed, anchors: sp.anchors } : { ...sp, op }));
+    }
+    const path = op === 'merge' ? this.mergedOutline({ subpaths }) : { subpaths };
+    if (!path) { this.notice('The shapes fill nothing to merge.'); return; }
+    const back = shapes[0].id, gone = new Set(shapes.slice(1).map((l) => l.id));
+    this.settle();
+    this.edit(op === 'merge' ? 'Merge Shape Components' : 'Combine Shapes', (q) => {
+      if (gone.size) q.setLayers(this.normalizeClips(q.doc.layers.filter((l) => !gone.has(l.id))));
+      this.reshape(q, back, path);
+      this.focus(q, back);
+      return true;
+    });
+  }
+
   private pathsChanged(p: Project): void {
     if (p === this.current) { this.emit('overlay', null); this.emit('options', null); }
     this.emit('paths', null);
@@ -2772,20 +2824,30 @@ export class Engine {
     return p ? p.doc.layers.filter((l) => l.isGroup && !l.parentId && l.artboard).reverse() : [];
   }
 
-  /** Layer > New > Artboard: the whole canvas when there is none yet; otherwise the last one's size, 100 px to the
-   *  right of the rightmost, the canvas widened to hold it as Photoshop's grows. White by default. One step. */
-  newArtboard(rect: { x: number; y: number; w: number; h: number } | null = null, background: RGB | null = { r: 255, g: 255, b: 255 }): ID | null {
+  /** Where the next artboard goes: over the whole canvas when there is none yet; otherwise the last one's size, 100 px
+   *  to the right of the rightmost; `size` given, that size there instead. */
+  nextArtboardRect(size?: { w: number; h: number }): Rect | null {
     const p = this.current;
     if (!p) return null;
     const existing = this.artboards(p).map((l) => l.artboard as Artboard);
-    let r = rect;
-    if (!r) {
-      if (!existing.length) r = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
-      else {
-        const last = existing[0], right = Math.max(...existing.map((a) => a.x + a.w));
-        r = { x: right + 100, y: last.y, w: last.w, h: last.h };
-      }
-    }
+    if (!existing.length) return { x: 0, y: 0, w: size?.w ?? p.doc.width, h: size?.h ?? p.doc.height };
+    const last = existing[0], right = Math.max(...existing.map((a) => a.x + a.w));
+    return { x: right + 100, y: last.y, w: size?.w ?? last.w, h: size?.h ?? last.h };
+  }
+
+  /** The first free name of the form Artboard N. */
+  nextArtboardName(): string {
+    const names = new Set(this.current?.doc.layers.map((l) => l.name) ?? []);
+    let n = 1;
+    while (names.has(`Artboard ${n}`)) n += 1;
+    return `Artboard ${n}`;
+  }
+
+  /** Layer > New > Artboard: at `nextArtboardRect` unless `rect` is given, the canvas widened to hold it as
+   *  Photoshop's grows, named `name` or Artboard N. White by default. One step. */
+  newArtboard(rect: { x: number; y: number; w: number; h: number } | null = null, background: RGB | null = { r: 255, g: 255, b: 255 }, name?: string): ID | null {
+    const p = this.current, r = rect ?? this.nextArtboardRect();
+    if (!p || !r) return null;
     const want = { w: Math.max(p.doc.width, r.x + r.w), h: Math.max(p.doc.height, r.y + r.h) };
     let created: ID | null = null;
     this.edit('New Artboard', (q) => {
@@ -2793,10 +2855,7 @@ export class Engine {
         if (!this.sizeOk(want.w, want.h)) return false;
         q.doc = { ...q.doc, width: want.w, height: want.h };
       }
-      const names = new Set(q.doc.layers.map((l) => l.name));
-      let n = 1;
-      while (names.has(`Artboard ${n}`)) n += 1;
-      const board = newLayer(`Artboard ${n}`, q.doc, { isGroup: true, parentId: null, artboard: { ...(r as Rect), background } });
+      const board = newLayer(name?.trim().slice(0, 200) || this.nextArtboardName(), q.doc, { isGroup: true, parentId: null, artboard: { ...r, background } });
       q.setLayers([...q.doc.layers, board]);
       this.focus(q, board.id);
       created = board.id;
@@ -2830,6 +2889,66 @@ export class Engine {
       return true;
     });
     return created;
+  }
+
+  /** The document bounds of the visible pixels of layer `id` and of the layers inside it; null when they have none. */
+  contentBounds(id: ID, p: Project | null = this.current): Rect | null {
+    if (!p) return null;
+    const map = byId(p.doc);
+    let box: Rect | null = null;
+    for (const l of p.doc.layers) {
+      if (l.isGroup || !l.raster || (l.id !== id && !isDescendant(map, l.id, id))) continue;
+      const r = l.raster, vb = visibleBounds(r);
+      if (!vb) continue;
+      const m = placement(l.transform, r.width, r.height);
+      const b = boundsOf([applyMat(m, vb.x, vb.y), applyMat(m, vb.x + vb.w, vb.y), applyMat(m, vb.x + vb.w, vb.y + vb.h), applyMat(m, vb.x, vb.y + vb.h)]);
+      box = box ? unionRect(box, b) : b;
+    }
+    return box ? integral(box) : null;
+  }
+
+  /** Layer > New > Artboard from Group (1.65.4): a folder outside any other made an artboard over its contents (or
+   *  the canvas when it holds no pixels), `w` by `h` when given, renamed when `name` is given; transparent behind, as
+   *  Artboard from Layers makes them. One step. */
+  artboardFromGroup(id: ID, opts: { name?: string; w?: number; h?: number } = {}): boolean {
+    const p = this.current, g = p?.layer(id);
+    if (!p || !g?.isGroup || g.parentId || g.artboard || g.frame) { this.notice('Select a folder outside any other folder, artboard or frame first.'); return false; }
+    const b = this.contentBounds(id, p) ?? { x: 0, y: 0, w: p.doc.width, h: p.doc.height }, name = opts.name?.trim().slice(0, 200);
+    const w = Math.max(1, Math.min(30000, Math.round(opts.w ?? b.w))), h = Math.max(1, Math.min(30000, Math.round(opts.h ?? b.h)));
+    return this.edit('Artboard from Group', (q) => {
+      q.updateLayer(id, { artboard: { x: b.x, y: b.y, w, h, background: null }, ...(name ? { name } : {}) });
+      this.focus(q, id);
+      return true;
+    });
+  }
+
+  /** Layer > New > Frame from Layers (1.65.4): each selected pixel layer put in a new rectangular frame fitted to its
+   *  visible pixels, where it lies, as the Frame tool makes them. One step. */
+  frameFromLayers(): void {
+    const p = this.current;
+    if (!p) return;
+    const picks = p.doc.layers.filter((l) => p.selectedIds.has(l.id) && !l.isGroup && !!l.raster && !l.adjustment && !(l.parentId && p.layer(l.parentId)?.frame) && !!this.contentBounds(l.id, p));
+    if (!picks.length) { this.notice('Select layers with pixels, outside any frame, first.'); return; }
+    this.settle();
+    this.edit('Frame from Layers', (q) => {
+      let layers = [...q.doc.layers], last: ID | null = null, n = layers.filter((l) => l.frame).length + 1;
+      for (const l of picks) {
+        const b = this.contentBounds(l.id, q);
+        if (!b) continue;
+        while (layers.some((x) => x.name === `Frame ${n}`)) n += 1;
+        const mask = new Raster(q.doc.width, q.doc.height), fw = Math.max(2, b.w), fh = Math.max(2, b.h);
+        mask.ctx.fillStyle = '#ffffff';
+        mask.ctx.fillRect(b.x, b.y, fw, fh);
+        const frame = newLayer(`Frame ${n}`, q.doc, { isGroup: true, parentId: l.parentId, frame: { x: b.x, y: b.y, w: fw, h: fh, shape: 'rect' }, mask: { raster: mask, enabled: true, linked: true, placement: null } });
+        layers = layers.map((x) => (x.id === l.id ? { ...x, parentId: frame.id } : x));
+        layers.splice(layers.findIndex((x) => x.id === l.id) + 1, 0, frame);
+        last = frame.id;
+      }
+      if (!last) return false;
+      q.setLayers(this.normalizeClips(layers));
+      this.focus(q, last);
+      return true;
+    });
   }
 
   /** Artboard Options: its rectangle and background, checked, as one step. */
@@ -4249,8 +4368,20 @@ export class Engine {
   selectionToShape(): void {
     const p = this.current, sel = p?.selection;
     if (!p || !sel) return;
+    const subpaths = this.tracedOutline(sel.data, sel.w, sel.h, sel.x, sel.y);
+    if (!subpaths.length) { this.notice('The selection is too small to make a shape.'); return; }
+    const path: VectorPath = { subpaths }, look: ShapeStyle = { fill: { ...this.fg }, stroke: null }, r = this.renderShape(path, look);
+    if (!r) return;
+    let k = 1;
+    while (p.doc.layers.some((l) => l.name === `Shape ${k}`)) k++;
+    this.insertRasterLayer(r.raster, `Shape ${k}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'Convert to Shape');
+  }
+
+  /** The outline of coverage `data` (`w` by `h` at `x`, `y`, at least half covered), each loop simplified within 1.5 of
+   *  its units and smoothed except at its corners, holes wound against their outer loops. */
+  private tracedOutline(data: Uint8Array, w: number, h: number, x: number, y: number): SubPath[] {
     const loops: Pt[][] = [];
-    traceOutline(sel.data, sel.w, sel.h, sel.x, sel.y, 128, {
+    traceOutline(data, w, h, x, y, 128, {
       moveTo: (x: number, y: number) => { loops.push([{ x, y }]); },
       lineTo: (x: number, y: number) => { loops[loops.length - 1]?.push({ x, y }); },
       closePath: () => undefined,
@@ -4270,12 +4401,7 @@ export class Engine {
       });
       subpaths.push({ closed: true, anchors: smoothAnchors(kept, true, corners) });
     }
-    if (!subpaths.length) { this.notice('The selection is too small to make a shape.'); return; }
-    const path: VectorPath = { subpaths }, look: ShapeStyle = { fill: { ...this.fg }, stroke: null }, r = this.renderShape(path, look);
-    if (!r) return;
-    let k = 1;
-    while (p.doc.layers.some((l) => l.name === `Shape ${k}`)) k++;
-    this.insertRasterLayer(r.raster, `Shape ${k}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'Convert to Shape');
+    return subpaths;
   }
 
   /** Select > Find Layers: the layers whose names hold `text` (any case) selected, the top one active. */
