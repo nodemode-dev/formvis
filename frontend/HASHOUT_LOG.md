@@ -2,6 +2,73 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The Image menu's Auto Tone, Contrast and Color, Desaturate, Equalize, Replace Color, Arbitrary, Crop and Duplicate, 27.6's first part · _v1.65.5 (ui/panels/image-dialogs.ts and ui/panels/replace-color-dialog.ts new; engine/adjust.ts, engine/index.ts, ui/panels/adjust-panel.ts, ui/actions.ts, app.ts; docs/MANUAL.md)
+
+DEV_PLAN 27.6, first part, after Photoshop's Image menu. adjust.ts: `autoLevels` and its `LevelRangeData` moved here from adjust-panel.ts unchanged but for the first line of its doc comment, which had lost its start and now says what it is, so the Levels dialog's Auto (adjust-panel.ts imports it) and the Image menu's Auto commands share one function. `desaturatePixels(d)`: each pixel grey at (max + min) / 2, Hue/Saturation's grey at -100. `equalizePixels(d, cov)`: one histogram over the R, G and B values of the visible pixels, each weighted by `cov`'s alpha when given (the selected area's), its cumulative count mapped so the first filled level is black and the last white, the same table for every channel (histogram equalisation, a soft selection edge weighing its pixels by its coverage). `ReplaceColorSettings` and `replaceColorPixels(d, o, apply)`: each pixel scored as Select > Color Range scores sampled colours (the nearest of `plus` full, none at `fuzziness` levels of distance over the square root of three, less the score from `minus`), and by that score its hue turned and its saturation and lightness pushed toward full or none (`toward`: that share of the way to 1, or to 0 for a negative percentage); with `apply` false only scored; returns the scores. `replacementFor(from, to)`: the Hue, Saturation and Lightness, in whole steps, that turn one colour into another through that push, for the dialog's Result picker.
+
+Engine: `autoAdjust(kind)` builds a Levels kernel from `autoLevels` over the active layer's histogram, weighted by the selection's coverage when there is one (`targetCoverage`, `coverageFor` of the pixels `targetImage` read), so a selection's own histogram sets the levels as in Photoshop, and applies it through `applyImageEdit` within the selection: Auto Tone per channel ('color'), Auto Contrast one range for all three ('contrast'), Auto Color per channel with neutral midtones ('neutral'), each its own step name. `pixelAdjust('desaturate' | 'equalize')` the same way, Equalize with the coverage. `replaceColor(o, preview)` runs `replaceColorPixels` through `previewImageEdit` or `applyImageEdit` (Replace Color); `replaceColorScores(o, boxW, boxH)` scores the active layer's pixels (its mask's when targeted) fitted in a box, with no notices, for the dialog's preview. `rotateCanvasBy(deg)`: whole quarter turns go to `rotateCanvas`; a document with artboards is refused with a notice; otherwise the canvas grows to the turned canvas's bounds (`sizeOk` checked), every layer's transform (and a placed mask's) turns about the old canvas's centre and moves with the growth, its pixels untouched as `rotateCanvas` leaves them; the Background (by `backgroundLayer`, when unmasked and plain pixels, without float channels, smart object or vector) is redrawn canvas-sized over the background colour, turned, so the corners the turn opens take that colour, as Photoshop's do; alpha channels are redrawn turned (`alphasRedrawn`) and the selection drawn turned into a new mask; one Rotate Canvas step, the view fitted after. `cropToSelection()` crops to the selection's bounds through `cropTo` (one Crop step), or says to make a selection. `duplicateDocument(name, merged)`: refused for documents with tiled layers; the name trimmed to 200, else the document's with " copy"; merged, `flattened()` (the float composition in deep documents) as one Background layer, as Flatten Image makes it; else `copyDoc`, pixels and masks copied and the rest shared as history snapshots share it, under a new document id, the layer ids kept as opening one project twice keeps them; the paths copied, and unmerged the timeline when it has frames or a video timeline; `addProject` makes the copy current under a unique name, its history new.
+
+The window: image-dialogs.ts holds `ArbitraryRotationDialog` (Rotate Canvas: Angle in degrees to the hundredth, Clockwise or Counter Clockwise, the last of each offered again, Enter applying, an angle past 359.99 noticed) and `DuplicateImageDialog` (Duplicate Image: the document's name, As with the default "name copy" selected, Duplicate Merged Layers Only, disabled with one layer; Enter applying). replace-color-dialog.ts holds `ReplaceColorDialog`: opened on a layer `targetImage` accepts, with the foreground colour sampled and the last Fuzziness, Hue, Saturation and Lightness kept; canvas clicks pass through the scrim (`cv-scrim-through`) to a capture-phase listener that samples the active layer (`sampleOriginal(pt, false)`; Shift adds, Alt takes away), as Color Range's does; Color is a colour input that sets the sample; the box, a 320 by 160 canvas filled black when made, shows the scores in grey, drawn in the same task as the dialog opens and then once a frame at most; Result shows the first sample replaced and, picked, sets the three sliders through `replacementFor`; Preview previews on the canvas; OK applies when something would change, and closing clears the preview. Commands: auto-tone (Shift+Mod+L), auto-contrast (Alt+Shift+Mod+L), auto-color (Shift+Mod+B), desaturate (Shift+Mod+U), equalize and replace-color, for a pixel layer; rotate-arbitrary (Arbitrary...); image-crop (Crop, with a selection); duplicate-image (Duplicate...). The Image menu: Auto Tone, Auto Contrast and Auto Color after Adjustments; Adjustments ends Desaturate, Replace Color..., Equalize after Invert; Image Rotation gains Arbitrary... after its quarter turns; Crop before Trim; Duplicate... after Reveal All, as Photoshop orders them. The Auto commands, Desaturate, Equalize and Crop are recordable.
+
+Verified by scratch probes outside the repository. On a 200 by 100 gradient from (100, 80, 120) to (150, 130, 170): Auto Tone and Auto Color gave 0 to 255 in each channel, middle grey 128 at the centre; Auto Contrast mapped 80 to 170 for all three, giving (57, 0, 113) to (198, 142, 255); each its own step, undone to the original. With the left half selected, Auto Tone stretched the left half to 0 and 255 by its own histogram and left x 150 at its original (138, 118, 158). Desaturate turned (255, 0, 0) into 128 grey; Equalize turned halves of 100 and 110 grey into black and white. Replace Color: the dialog with the foreground's black sampled; red sampled in Color and Hue 120 previewed on the canvas (the layer itself unchanged), the box white over the red half and black over the blue, Result #00ff00; OK turned red to (0, 255, 0) and left blue, one Replace Color step, the preview cleared; Result #0000ff with red sampled set Hue -120; Escape left the layer and cleared the preview. Crop disabled without a selection; with (20, 10, 60, 50) one Crop step to 60 by 50. Rotate Canvas at 30 degrees clockwise on 400 by 300 with a 100 px red square at the centre and the background colour (10, 20, 30): 497 by 460, the Background redrawn at that size with rotation 0, the top layer turned 30 degrees and moved by (48.5, 80), the corner (10, 20, 30) and the centre red, the selection and its saved channel both at (180, 161, 137, 138), one Rotate Canvas step undone to 400 by 300; 90 and -90 went to the quarter turns; -45 gave 495 by 495 at 315 degrees; the dialog then offered 30 again. Duplicate: the dialog showed "Duplicate: Rot" and "Rot copy"; the copy had both layers and the same picture, its history new, and painting it left the original; merged, with a half-opaque layer and a hidden one, the copy was one Background of the visible picture; with one layer the box was disabled. The menus as listed above. Zero flash, under 6x CPU and network throttling after a hard reload, each from the menus: Replace Color's dialog 380 by 577 from its first frame through a real click sampling the canvas, Hue, Fuzziness, Result and Preview, and its OK, with no element added or removed inside it; Auto Tone and Desaturate; Rotate Canvas's dialog 320 by 204 and its Enter; Crop; the Duplicate Image dialog 360 by 235 and its OK, the copy's rows kept; every Layers row kept, nothing shifted. tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine as before. The whole browser suite from a freshly started dev server and engine: 506 passed, 3 skipped, 23 failed, the 22 failing at 1.65.2 and the tiled paint suite's undo of tiles paged to disk, which read a tile still on disk (the race seen at 1.65.3); run alone after, it passed six times in seven, the one failure the first run after the servers started. The menu walk (test_every_menu_command_runs) ran every new command without an error, its one error export-exr's 500 as before.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.65.4",
+      "version": "1.65.4",
+  "version": "1.65.4",
+      { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
+      'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
+import { antialiasMask, wandMask } from './kernels';
+import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
+import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
+import { bandCentered, bandExclude, bandHandles, bandInclude, bandSetHandle, bandWeight, hsvAdjust, hueResponse } from '../../engine/adjust';
+type LevelRangeData = { black: number; gamma: number; white: number; outputBlack: number; outputWhite: number };
+
+/** each end clips 0.1% of a channel's histogram. Contrast shares one master interval
+ *  across R, G and B so channel relationships hold; Color sets each channel; Color + neutral midtones also sets
+ *  each channel's gamma so its mean maps to middle gray. `bins` is `histogram()`: composite, then R, G, B. */
+function autoLevels(bins: Float64Array, mode: 'contrast' | 'color' | 'neutral'): LevelRangeData[] {
+  const fresh = (black = 0, white = 255): LevelRangeData => ({ black, gamma: 1, white, outputBlack: 0, outputWhite: 255 });
+  const ranges = [fresh(), fresh(), fresh(), fresh()];
+  const endpoints = (c: number): [number, number] | null => {
+    const o = c * 256;
+    let total = 0;
+    for (let i = 0; i < 256; i++) total += bins[o + i];
+    if (!(total > 0)) return null;
+    let sum = 0, low = 0, high = 255;
+    for (let i = 0; i < 256; i++) { sum += bins[o + i]; if (sum > total * 0.001) { low = i; break; } }
+    sum = 0;
+    for (let i = 255; i >= 0; i--) { sum += bins[o + i]; if (sum > total * 0.001) { high = i; break; } }
+    return low < high ? [low, high] : null;
+  };
+  if (mode === 'contrast') {
+    const lims = [1, 2, 3].map(endpoints).filter((x): x is [number, number] => x !== null);
+    if (lims.length) {
+      const low = Math.min(...lims.map((x) => x[0])), high = Math.max(...lims.map((x) => x[1]));
+      if (low < high) ranges[0] = fresh(low, high);
+    }
+    return ranges;
+  }
+  for (let c = 1; c <= 3; c++) {
+    const e = endpoints(c);
+    if (!e) continue;
+    const r = fresh(e[0], e[1]);
+    if (mode === 'neutral') {
+      let total = 0, acc = 0;
+      for (let i = 0; i < 256; i++) { const w = bins[c * 256 + i]; total += w; acc += Math.min(1, Math.max(0, (i - r.black) / (r.white - r.black))) * w; }
+      const mean = acc / total;
+      if (mean > 0 && mean < 1) r.gamma = Math.min(9.99, Math.max(0.1, Math.log(mean) / Math.log(0.5)));
+    }
+    ranges[c] = r;
+  }
+  return ranges;
+}
+
+export const VERSION = '1.65.4';
+```
+
 ## Combine Shapes, New Artboard, Artboard from Group and Frame from Layers, 27.5 closed · _v1.65.4 (engine/paths.ts, engine/index.ts, ui/panels/artboard-dialog.ts, ui/actions.ts, app.ts; docs/MANUAL.md)
 
 DEV_PLAN 27.5, its seventh and last part, after Photoshop's Layer > Combine Shapes (the operation of a shape's outlines after the first; Merge Shape Components tracing the coverage back into outlines) and Layer > New. paths.ts: `mapPath(vp, map)` takes every anchor and handle of a path through a point map, keeping each subpath's operation; `shiftPath` is now `mapPath` with a shift. The old `shiftPath` built each subpath from `closed` and `anchors` alone and so dropped `op`; every shape command that rebuilds the layer from its stored path through it (`recolorShape`, `setShapeStyle`, and `shapeEntry`, the working copy Direct Selection edits) lost the outlines' operations, a PSD shape's hole coming back filled. Found while combining shapes, whose operations must survive. Engine: `placedPath(l)` is a shape layer's outline where its pixels are now, the stored path less `origin` taken through `placement` of its transform, so a moved, scaled, turned or flipped shape (whose stored path no longer matches its pixels) combines where it is drawn. `combineShapes(op)` (op a `PathOp` or 'merge'): with several shape layers selected, the back (lowest) one's outlines first, then each front layer's in stacking order, each front outline taking `op`, except Unite (combine) and Merge, which keep the front outlines' own; with one layer, its outlines after the first take `op`, Unite removing it, and fewer than two outlines is refused with a notice. The front layers are removed (`normalizeClips` after), and the back layer is redrawn through `reshape`, so it keeps its name, fill, stroke, mask and style, as one Combine Shapes step; which layer's look Photoshop keeps was not checked here, and the back one is the shape the others act on. Merge Shape Components ('merge') unites them so and then `mergedOutline` bakes the operations: the path filled by `fillVector` at up to 4 times (16 megapixels at most), its alpha traced by `tracedOutline` and mapped back, one Merge Shape Components step. `tracedOutline` is Convert to Shape's loop, the tracer's loops each simplified within 1.5 of its units and smoothed except at corners, moved out of `selectionToShape` (which now calls it) unchanged; at 4 times the 1.5 is under 0.4 px of the document.
@@ -6263,6 +6330,18 @@ The Save Selection and Load Selection dialogs, and `loadSources`. See the releas
 
 The Global Light and Scale Layer Effects dialogs. See the release entry "Layer Style complete, 27.5's fifth part" at the top of this log. Nothing was removed.
 
+## src/ui/panels/image-dialogs.ts
+
+### src/ui/panels/image-dialogs.ts · new · _v1.65.5
+
+The Rotate Canvas (Image Rotation > Arbitrary) and Duplicate Image dialogs. See the release entry "The Image menu's Auto Tone, Contrast and Color, Desaturate, Equalize, Replace Color, Arbitrary, Crop and Duplicate, 27.6's first part" at the top of this log. Nothing was removed.
+
+## src/ui/panels/replace-color-dialog.ts
+
+### src/ui/panels/replace-color-dialog.ts · new · _v1.65.5
+
+The Replace Color dialog: sampling on the canvas, the chosen colours' box, Hue, Saturation and Lightness, the Result picker and the live preview. See the release entry "The Image menu's Auto Tone, Contrast and Color, Desaturate, Equalize, Replace Color, Arbitrary, Crop and Duplicate, 27.6's first part" at the top of this log. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -6280,7 +6359,7 @@ public/
 src/
     app.ts  · mount, commands, menus, input, file flows, reveal gate
     engine/
-        adjust.ts  · Hue/Saturation and Grain kernels, adjustment data
+        adjust.ts  · Hue/Saturation and Grain kernels, adjustment data, Auto levels, Desaturate, Equalize, Replace Color
         alphas.ts  · alpha channels: names, carried through canvas operations, grey pictures
         renderer.ts  · rendering pipeline
         distort.ts  · free distort: homography, warp, carried corners
@@ -6379,9 +6458,11 @@ src/
             fade-dialog.ts  · Edit > Fade: opacity and mode with a live preview
             filter-panel.ts  · filter dialog with scaled preview
             gallery-view.ts  · the Filter Gallery's section: own preview, effect folders, settings, effect layers
+            image-dialogs.ts  · Image Rotation > Arbitrary's Rotate Canvas and Image > Duplicate
             jpeg-dialog.ts  · JPEG export sheet with quality and encoded preview
             live-mask-dialog.ts  · bake-or-unlink choice when deleting a clip base
             matting-dialog.ts  · Layer > Matting's Defringe and Color Decontaminate settings
+            replace-color-dialog.ts  · Image > Adjustments > Replace Color
             selection-dialogs.ts  · Select > Save Selection and Load Selection
             size-dialogs.ts  · canvas size, image size, expand and contract
             style-dialogs.ts  · Layer Style's Global Light and Scale Effects
@@ -6481,9 +6562,11 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/fade-dialog.ts](#srcuipanelsfade-dialogts)
 - [src/ui/panels/filter-panel.ts](#srcuipanelsfilter-panelts)
 - [src/ui/panels/gallery-view.ts](#srcuipanelsgallery-viewts)
+- [src/ui/panels/image-dialogs.ts](#srcuipanelsimage-dialogsts)
 - [src/ui/panels/jpeg-dialog.ts](#srcuipanelsjpeg-dialogts)
 - [src/ui/panels/live-mask-dialog.ts](#srcuipanelslive-mask-dialogts)
 - [src/ui/panels/matting-dialog.ts](#srcuipanelsmatting-dialogts)
+- [src/ui/panels/replace-color-dialog.ts](#srcuipanelsreplace-color-dialogts)
 - [src/ui/panels/selection-dialogs.ts](#srcuipanelsselection-dialogsts)
 - [src/ui/panels/size-dialogs.ts](#srcuipanelssize-dialogsts)
 - [src/ui/panels/style-dialogs.ts](#srcuipanelsstyle-dialogsts)

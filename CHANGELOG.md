@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.5 · 2026-10-08
+
+### Added
+
+- Image > Auto Tone (Shift+Ctrl+L), Auto Contrast (Alt+Shift+Ctrl+L) and Auto Color (Shift+Ctrl+B), as Photoshop's: Levels set from the active layer's own histogram, each channel stretched, the three stretched together so colours keep their balance, or each channel stretched with neutral midtones. Within a selection the selected part's histogram sets them and only that part changes.
+- Image > Adjustments > Desaturate (Shift+Ctrl+U) turns the layer grey at each pixel's lightness; Equalize spreads its tones evenly from black to white; Replace Color... changes the colours clicked in the picture (Shift-click adds one, Alt-click takes one away, or pick it in Color) by Hue, Saturation and Lightness, with Fuzziness for how close counts, a box showing what is chosen, a Result colour you can also pick, and a live preview.
+- Image > Image Rotation > Arbitrary... turns the canvas by any angle, clockwise or counter clockwise: the canvas grows to hold it, the Background's new corners take the background colour, and alpha channels and the selection turn with it.
+- Image > Crop cuts the canvas to the selection's bounds.
+- Image > Duplicate... opens a copy of the document under a name you give, with its paths and timeline, or with Duplicate Merged Layers Only as one layer of the picture as it shows.
+- Auto Tone, Auto Contrast, Auto Color, Desaturate, Equalize and Crop can be recorded in actions.
+
 ## 1.65.4 · 2026-10-08
 
 ### Added

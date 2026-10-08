@@ -167,7 +167,15 @@ ask it questions.
 - Image > Content-Aware Scale changes a layer's width or height by removing or adding the least important seams,
   so the parts that matter keep their shape; tick Protect skin tones or Protect the selection to keep those whole. It
   goes from a quarter to twice the size in one step. Image > Image Rotation turns the whole canvas by 90 or 180
-  degrees without resampling a pixel.
+  degrees without resampling a pixel, or by any angle with Arbitrary..., the canvas growing to hold it and the
+  Background's new corners filled with the background colour. Image > Crop cuts the canvas to the selection's bounds;
+  Image > Duplicate... makes a copy of the document in a new tab, in one layer with Duplicate Merged Layers Only.
+- Image > Auto Tone, Auto Contrast and Auto Color set Levels from the layer's own histogram (from the selected part,
+  within a selection): Auto Tone stretches each channel, Auto Contrast the three together so colours keep their
+  balance, Auto Color each channel with neutral midtones. Image > Adjustments > Desaturate turns the layer grey,
+  Equalize spreads its tones evenly from black to white, and Replace Color changes the colours you click in the
+  picture (Shift-click adds one, Alt-click takes one away; Fuzziness sets how close counts) by Hue, Saturation and
+  Lightness, or to the colour you pick as Result.
 - Edit > Perspective Warp straightens or changes the perspective of what is in a picture. In Layout, drag to draw a
   plane over a surface (a wall, a road, a box side) and move its corners onto the surface's corners; draw more planes
   beside it, their corners snapping together. Then choose Warp in the options bar and move the corners: the picture
