@@ -2,6 +2,78 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Fill layers: New Fill Layer, Layer Content Options and Rasterize Fill Content, 27.7's first part · _v1.66.0 (engine/fill-layers.ts and ui/panels/fill-layer-dialog.ts new; engine/types.ts, engine/history.ts, engine/index.ts, io/project-io.ts, io/psd.ts, ui/layers.ts, automation/agent-bridge.ts, app.ts; docs/MANUAL.md, .docs/wiki/Project-Format.md, the project-format skill, NOTICE.md)
+
+DEV_PLAN 27.7's first part, after Photoshop's Layer > New Fill Layer (Solid Color, Gradient and Pattern layers that fill the whole canvas, stay editable through Layer Content Options and come with a mask). fill-layers.ts: `gradientPosition(style, angle, scale, reverse, offset, frame)`, where a point falls along a gradient fill: the gradient runs through the frame's centre moved by the offset (fractions of the frame) at the angle, counter-clockwise from the right, and at 100 percent spans the frame's whole extent along that angle (its width times the cosine plus its height times the sine), Linear from one end of it to the other, Reflected out both ways from the centre, Radial and Diamond to half of it, Angle once round counter-clockwise from the angle, as Photoshop's documentation describes its angle gradient; its trigonometry is worked out once per drawing (a first version recomputed it per pixel); `ditherAt`, a fixed value per pixel from `mix32`, half a level either way; `fillFrame(l, W, H)`, the frame a fill is laid out in: with Align with Layer (a gradient) or Link with Layer (a pattern), the bounds of what the layer's mask shows, else the canvas; `renderFill(c, W, H, frame)`, the fill over a W by H canvas (a gradient through a 4,096 entry table of `colorAt` over its stops, dithered when asked; a pattern as a canvas pattern turned and scaled from the frame's corner when linked, moved by its phase), null when the pattern is not defined; `fillName` (Color Fill, Gradient Fill, Pattern Fill, as Photoshop names them); `fillContentFrom`, a saved fill read back with every field checked and clamped, null when it is not one.
+
+Engine: `Layer.fillContent` (types.ts: `FillContent`, a solid colour, a gradient with `FillStop`s, style, angle, scale, reverse, dither, align and offset, or a pattern with its id, scale, angle, link and phase; Photoshop's own fields, so they travel in PSD files), the layer's `raster` being its drawing over the whole canvas at `docTransform`. `History.amend(snap)` replaces the last step's result while nothing is undone or open, and `dropRedo()` forgets the undone steps. index.ts: `newFillLayer(content)`, one New Fill Layer step: the layer above the active one, named as Photoshop numbers them, with Photoshop's default mask as the target, revealing all (a mask without pixels) or, with a selection, drawn from it on a canvas-sized mask, the selection used up; `previewFill(id, content)` shows a fill through the renderer's `source` override without recording anything, in a CMYK document through its inks (`deriveWhole`, `rasterFromChannels`); `setFillContent(id, content)`, one Modify Fill Layer step, nothing when unchanged; `amendNewFill(id, content, name)` puts the dialog's fill and name into the New Fill Layer step just made (`History.amend`), its floats or inks brought into step first as `edit` brings them (the first probe in CMYK showed the ink of the default black under a green fill, which a move then showed); `dropNewFill(id)` takes that step back with `undoNow` and `dropRedo`, as though never made. Fill layers are endless as Photoshop's: `pinFills(p)`, run by the step hook at the end of every step before the channels are derived, draws again every fill layer that was moved or transformed (back at `docTransform`, its mask taking the old place as its placement when it had none, so the mask moves and the fill stays over the canvas) or whose drawing is stale; `fillKeys` notes on each drawn raster what it was drawn for (`fillKey`: the content, the canvas size and, when the mask lays it out, the mask's state), so a raster read from a file, or one whose content, canvas or laying-out mask changed, is drawn again (`drawFill`); `deriveChannels` keeps that note on a fill layer's CMYK rendition (`shown`), which had otherwise been drawn again at every step. Painting: `paintable` lets a fill layer paint its mask when the mask is the target, and otherwise asks to rasterize it as a type or shape layer does ("Rasterize this fill layer?"); `smartLocked`, `averageFill`, `applyImageEdit` and `applyImageEditAsync` say `FILL_NOTICE` (Layer Content Options, the mask, or Rasterize > Fill Content); `bandedFilter` and `fadeStep` leave fill layers alone; Warp, Puppet Warp and Perspective Warp name fill layers among those to rasterize first. `rasterizeLayer` and `rasterizeLayers('fill' | 'layer' | 'all')` (Rasterize Fill Content) clear `fillContent`, as do Convert to Smart Object and Apply Redactions.
+
+The window: `FillLayerDialog` (fill-layer-dialog.ts), titled Solid Color, Gradient Fill or Pattern Fill, its rows for the fill's kind chosen before it shows so it opens at its size: the name (for a new layer), and the colour; or Gradient (Current gradient when editing, then every preset, its stops resolved with the colours as they are), Style, Angle, Scale, Reverse, Dither and Align with Layer; or Pattern (with Missing pattern when the layer's is not defined here), Angle, Scale and Link with Layer. `showNew(kind)` makes the layer at once (the foreground colour, the Gradient tool's gradient at 90 degrees, or the Pattern Stamp's pattern) and shows the dialog over it; `showEdit(id)` shows the layer's own fill. Each change previews on the canvas at most once a frame; OK (or Enter in a text field) records it, Cancel or Escape takes a new layer back or ends the preview. app.ts: commands new-fill-solid, new-fill-gradient and new-fill-pattern (Solid Color..., Gradient..., Pattern...), layer-content-options (on a fill layer the dialog, on an adjustment layer its settings, as Edit Adjustment did) and rasterize-fill; Rasterize Layer and Rasterize All Layers count fill layers; the Layer menu has New Fill Layer before New Adjustment Layer and Layer Content Options after it, where Edit Adjustment... stood (the command stays, in Search and Keyboard Shortcuts), as Photoshop's; Rasterize has Fill Content after Shape; `cv:fill-options` shows the dialog. layers.ts: a fill layer's row is `is-fill`, counted with adjustments by the kind filter as Photoshop's, and a double-click on it outside its name and mask shows Layer Content Options. agent-bridge.ts: `get_document` names a fill layer's kind `fill:solid`, `fill:gradient` or `fill:pattern`. project-io.ts: `fillContent` written beside the layer's pixels, a pattern fill's pattern carried with the patterns the styles use, and read back through `fillContentFrom` on a layer with pixels. psd.ts: `psdPattern`, Pattern Overlay's adding of a pattern to the PSD's patterns made shared; `toPsdFill` writes a fill as Photoshop's `vectorFill` (a colour, a gradient with colour and opacity stops, style, angle, scale, reverse, dither, align and offset, or a pattern with its phase), noting a pattern fill's scale and angle, which it cannot write, and an unlinked pattern, since ag-psd's writer fails on the link flag ("Invalid integer value: true, key: Lnkd"); `fromPsdFill` reads one back (a gradient's opacity stops interpolated onto its colour stops; a pattern registered from the file's patterns), noting a noise gradient or a missing pattern, which open as pixels; a PSD layer with a fill and no shape path or stroke opens as a fill layer, drawn over the canvas when the file has no pixels for it.
+
+Verified by scratch probes outside the repository, on a 400 by 300 document with a layer above the Background. New Fill Layer's three commands enabled with a document; Layer Content Options and Rasterize Fill Content not without a fill layer. Solid Color: the dialog 380 by 204, Name "Color Fill 1" and the foreground's black; red previewed on the canvas with nothing recorded; OK one New Fill Layer step, the layer 400 by 300 at 0, 0 with a mask without pixels as the target; Undo removed it and Redo brought it back red. Gradient: Cancel left the steps, the layers and Redo as they were; black to white at 90 degrees read 0 at the bottom row, 127 halfway and 255 at the top; Layer Content Options (380 by 369, Current gradient) to Radial, 50 percent, Reverse read 253 at the centre, 42 at 62 pixels out and 0 at the corner, one Modify Fill Layer step. Pattern: the checker from the canvas's corner. From a 100 by 100 selection at 100, 50: the mask drawn from it, the selection used up, the 0 degree gradient fitted to the selection (1 at its left edge, 129 halfway, 254 at its right); moved 50 pixels: the layer back at 0, 0, the mask placed at 50, the gradient laid out again (1, 129 and 254 at 150, 200 and 249). With the content as the target a brush stroke asked "Rasterize this fill layer?"; with the mask as the target it painted, one Brush step; Invert said the fill layer's notice. Canvas Size to 500 wide drew the red over the new area, Image Size to 250 by 150 drew it at that size; Rasterize Fill Content cleared the fill, one step. A project serialized and read back kept the four fills and their kinds; a PSD written and read back kept the solid colour, both gradients (Radial, 90, 50 percent, reversed; Linear, 0) and the pattern as fill layers, with no notes. In CMYK a green solid fill showed its CMYK rendition (102, 180, 56) after OK, kept its pixels through another step, was drawn again at the same rendition when moved and left alone after; at 16 and 32 bits and in Lab a fill kept its colour and was drawn again only when moved. No page errors. Screenshots: an Angle spectrum gradient previewed inside a selection while its dialog was open, the Pattern Fill dialog, and a checker at 300 percent turned 30 degrees, with the gradient fill's row showing its mask. Zero flash, under 6x CPU and network throttling after a hard reload, through the menus: Solid Color's dialog 380 by 204 from its first frame to its last, the new row added and the other two kept; the colour previewed and OK keeping the three rows; Gradient's dialog 380 by 409 throughout, its Style and Scale previewed keeping the four rows, Cancel removing only the new row (the rows below it moved by `patchList`, which removes a row that went only after placing the rest, kept as they were, as when any top layer goes); a double-click on Color Fill 1's thumbnail showing Layer Content Options at 380 by 164, the colour previewed and OK keeping every row, one Modify Fill Layer step; Layer Content Options from the menu and Escape the same; Pattern's dialog 380 by 312, its Scale previewed and Enter keeping the rows; Rasterize Fill Content changing its row's class in place; no layout shift anywhere. tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine as before. The whole browser suite from a freshly started dev server and engine: 506 passed, 3 skipped, 23 failed, the 22 failing at 1.65.2 and the tiled paging race of 1.65.6; the menu walk failed only on Export EXR's 500 as before, every new command run; the lock test that failed once at 1.65.9 passed. A first run was stopped at 15 percent: `deriveChannels` was edited while it ran (after the CMYK probe), which the dev server would have served to the tests mid-run, so the suite ran again from the start on the final code.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.65.9",
+      "version": "1.65.9",
+  "version": "1.65.9",
+    { id: 'rasterize-all', label: 'Rasterize All Layers', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart || l.text || l.vector || l.shape), run: () => engine.rasterizeLayers('all') },
+    { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || !!l.vector || !!l.shape || liveText(l)); }, run: () => engine.rasterizeLayer() },
+      { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
+      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-smart', '-', 'rasterize', 'rasterize-all'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
+            layers: d.layers.map((l) => ({ id: l.id, name: l.name, kind: l.isGroup ? 'group' : l.adjustment ? `adjustment:${l.adjustment.kind}` : l.text ? 'text' : l.shape ? 'shape' : l.smart ? 'smart object' : 'pixels',
+    if (!(l?.smart || l?.vector) || (p.maskTarget && l.mask)) return false;
+    this.notice(l.vector ? SHAPE_NOTICE : SMART_NOTICE);
+      p.updateLayer(l.id, { smart: { source: l.raster, filters: [] }, text: null, shape: null });
+      if (!l || (!l.smart && !l.text && !l.vector && !l.shape)) return false;
+      p.updateLayer(l.id, { smart: null, text: null, vector: null, shape: null });
+  /** Layer > Rasterize > Type, Shape, Smart Object or Layer on the selected layers of that kind, or All Layers on every
+   *  type, shape and smart object layer in the document. One step. */
+  rasterizeLayers(kind: 'type' | 'shape' | 'smart' | 'layer' | 'all'): void {
+    const of = (l: Layer): boolean => (kind === 'type' ? !!l.text : kind === 'shape' ? !!(l.vector || l.shape) : kind === 'smart' ? !!l.smart : !!(l.smart || l.text || l.vector || l.shape));
+    const name = { type: 'Rasterize Type', shape: 'Rasterize Shape', smart: 'Rasterize Smart Object', layer: 'Rasterize Layer', all: 'Rasterize All Layers' }[kind];
+      for (const id of ids) p.updateLayer(id, { smart: null, text: null, vector: null, shape: null });
+        q.updateLayer(l.id, { raster: copy, text: null, vector: null, shape: null, smart: null });
+   *  Photoshop paints): a group says so; a locked layer says why; an adjustment layer paints its mask; a type, shape or
+   *  smart-object layer asks to be rasterized first (and is, on OK, so the next action paints). A refusal's own message
+   *  stands alone: the caller's generic one is held back (lockedAt). */
+    if (l.adjustment) return true;
+    const kind = liveText(l) ? 'type layer' : l.smart ? 'Smart Object' : l.vector || l.shape ? 'shape layer' : null;
+    if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
+    if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Puppet Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
+    if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Perspective Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
+    if (!p || !l?.raster || this.stroke || p.maskTarget || l.smart || l.vector || !this.paintable(l)) return false;
+    if (!p || !l?.raster || !e || e.streamed || e.afterRev !== p.history.revision || p.maskTarget || l.tiled || l.smart || l.vector || (p.doc.depth ?? 8) !== 8 || (p.doc.mode ?? 'rgb') !== 'rgb') return null;
+    if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return; }
+    if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return; }
+    if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
+   *  the floats; a pixel layer without floats takes them whole. Replaced rasters, in-place patches and new layers. */
+        return { ...l, channels: ch, raster: lut ? rasterFromChannels(ch, lut) : l.raster };
+        return { ...l, channels: ch, raster: lut ? rasterFromChannels(ch, lut) : l.raster };
+    if (!p || !(p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || (p.doc.depth ?? 8) > 8)) return null;
+    return this.deriveChannels(p, new Map(before.doc.layers.map((l) => [l.id, l])), patches) ? p.snapshot() : null;
+    const po = l.effects?.patternOverlay, bt = l.effects?.bevel.enabled ? l.effects.bevel.texture : undefined;
+    for (const id of [po?.enabled ? po.pattern : '', bt?.enabled ? bt.pattern : '']) if (id && !id.startsWith('builtin:')) used.add(id);
+import type { BlendMode as PsdBlend, Layer as PsdLayer, LayerEffectsInfo, LinkedFile, PatternInfo, Psd, UnitsValue } from 'ag-psd';
+  const pat = po.enabled ? patternById(po.pattern) : null;
+  if (pat) {
+    let info = patterns.find((x) => x.name === pat.name && (x as PatternInfo & { formvis?: string }).formvis === pat.id);
+    if (!info) {
+      const w = pat.surface.width, h = pat.surface.height, rgba = ctxOf(pat.surface).getImageData(0, 0, w, h).data;
+      info = { name: pat.name, id: guid(), x: 0, y: 0, bounds: { x: 0, y: 0, w, h }, data: new Uint8Array(rgba) };
+      (info as PatternInfo & { formvis?: string }).formvis = pat.id;
+      patterns.push(info);
+    }
+    e.patternOverlay = { ...on, opacity: po.opacity, blendMode: bm(po.blend), scale: po.scale, pattern: { name: info.name, id: info.id }, align: true };
+  }
+      if (!adj && (!pl.canvas || !pl.canvas.width || !pl.canvas.height)) continue;
+      const w = pl.canvas?.width ?? 0, h = pl.canvas?.height ?? 0, raster = adj || !pl.canvas ? null : Raster.from(pl.canvas, w, h);
+        : newLayer(name, doc, { raster, parentId, transform: { ...docTransform(w, h), x: pl.left ?? 0, y: pl.top ?? 0 }, visible: !pl.hidden, opacity: pl.opacity ?? 1, blend, ...fill });
+const kindOf = (l: Layer): KindId => (l.adjustment ? 'adjustment' : l.text ? 'type' : l.vector ? 'shape' : l.smart ? 'smart' : 'pixel');
+export const VERSION = '1.65.9';
+```
+
 ## Edit > Search, the command palette, and the Keyboard Shortcuts list in place, closing 27.6 · _v1.65.9 (ui/command-palette.ts new; app.ts, ui/app-dialogs.ts, styles/dialogs.css; docs/MANUAL.md, .docs/wiki/Keyboard-Shortcuts.md, NOTICE.md)
 
 DEV_PLAN 27.6's last part, after Photoshop's Edit > Search. command-palette.ts: `fuzzyScore(query, text)`, how well a query names a text, or null when its letters are not all in it in order (case ignored): the best placing of the letters, found by a small dynamic programme over the two, each letter scoring 1, 7 more when it directly follows the one before and 5 more at a word's start (after a space or a mark, or a capital after a small letter), a hundredth less the further in it lies, less an eighth of the text's length so shorter names rank first. `CommandPalette`, a Dialog titled Search holding a field and a list. `show()` takes each command's place in the menus from the menu definitions (`pathsOf`: the first place a command appears, submenus joined with " > ", File's Open Recent as it reads then). `render()` scores each command on its name (a trailing "..." dropped), or failing that 10 behind on its name and menu path together, so a name match comes before a path match ("blur" puts Blur before Average, where one text of name and path together would tie them and order them by name); tools on their name and "tool", 2 ahead while something is typed; with nothing typed, what was last run from the palette first (twelve at most, newest first) and the rest by name; sorted by score, then name; the twelve best. The rows are twelve slots keyed by position, each filled in place (the name; the menu path and the keys after an interpunct; a tool's icon; dimmed with `is-off` and aria-disabled when the command cannot run, not the disabled attribute, since a disabled button swallows the press and the dialog took the focus from the field), so only trailing slots come and go. Up and Down move the selection (is-selected, aria-selected); Enter or a click runs the selected row when it can run, the palette closing first so a dialog the command shows takes the focus; a press in the list keeps the focus in the field. Escape and closing are the Dialog's. The first version keyed the rows by command, and under throttling typing moved the rows that stayed (layout shifts of 0.0051 and 0.0032, attributed to input); with slots, and the path in a fixed 250 pixel column aligned right, there were none.
@@ -6523,6 +6595,18 @@ The File > Save a Copy dialog: the copy's name and Layers. See the release entry
 
 Edit > Search, the command palette, and `fuzzyScore`, its ranking. See the release entry "Edit > Search, the command palette, and the Keyboard Shortcuts list in place, closing 27.6" at the top of this log. Nothing was removed. Its first draft was written as `ui/palette.ts`, a name the stage colours already hold; the write replaced that file, its reply said so, and it was restored from the last commit before anything else ran, the palette taking this name.
 
+## src/engine/fill-layers.ts
+
+### src/engine/fill-layers.ts · new · _v1.66.0
+
+Fill layers' drawing: where a point falls along a gradient fill (`gradientPosition`), its dither (`ditherAt`) and the pattern's placement, the frame a fill is laid out in (`fillFrame`), the drawing over the canvas (`renderFill`), the default names (`fillName`) and the checked reading of saved fills (`fillContentFrom`). See the release entry "Fill layers: New Fill Layer, Layer Content Options and Rasterize Fill Content, 27.7's first part" at the top of this log. Nothing was removed.
+
+## src/ui/panels/fill-layer-dialog.ts
+
+### src/ui/panels/fill-layer-dialog.ts · new · _v1.66.0
+
+The Solid Color, Gradient Fill and Pattern Fill dialog of Layer > New Fill Layer and Layer Content Options, with its preview on the canvas. See the release entry "Fill layers: New Fill Layer, Layer Content Options and Rasterize Fill Content, 27.7's first part" at the top of this log. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -6570,6 +6654,7 @@ src/
             video.ts  · De-Interlace, NTSC Colors
         events.ts  · typed emitter
         fade.ts  · Edit > Fade's arithmetic: a step's result faded back toward its before, by opacity and mode
+        fill-layers.ts  · fill layers: the gradient fill's geometry and dither, pattern placement, drawing, saved fills
         filters.ts  · blurs, noise, lens, histogram, selection resize
         geometry.ts  · matrices and rectangles
         history.ts  · undo stack
@@ -6638,6 +6723,7 @@ src/
             color-picker.ts  · Photoshop-style color picker with canvas sampling
             controls.ts  · slider, select, check, color and number rows
             fade-dialog.ts  · Edit > Fade: opacity and mode with a live preview
+            fill-layer-dialog.ts  · Layer > New Fill Layer and Layer Content Options on a fill layer
             filter-panel.ts  · filter dialog with scaled preview
             gallery-view.ts  · the Filter Gallery's section: own preview, effect folders, settings, effect layers
             image-dialogs.ts  · Image Rotation > Arbitrary's Rotate Canvas and Image > Duplicate
@@ -6683,6 +6769,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/engine/filters-lib/](#srcenginefilters-lib)
 - [src/engine/events.ts](#srcengineeventsts)
 - [src/engine/fade.ts](#srcenginefadets)
+- [src/engine/fill-layers.ts](#srcenginefill-layersts)
 - [src/engine/filters.ts](#srcenginefiltersts)
 - [src/engine/geometry.ts](#srcenginegeometryts)
 - [src/engine/history.ts](#srcenginehistoryts)
@@ -6745,6 +6832,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/color-picker.ts](#srcuipanelscolor-pickerts)
 - [src/ui/panels/controls.ts](#srcuipanelscontrolsts)
 - [src/ui/panels/fade-dialog.ts](#srcuipanelsfade-dialogts)
+- [src/ui/panels/fill-layer-dialog.ts](#srcuipanelsfill-layer-dialogts)
 - [src/ui/panels/filter-panel.ts](#srcuipanelsfilter-panelts)
 - [src/ui/panels/gallery-view.ts](#srcuipanelsgallery-viewts)
 - [src/ui/panels/image-dialogs.ts](#srcuipanelsimage-dialogsts)

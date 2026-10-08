@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.0 · 2026-10-08
+
+### Added
+
+- Layer > New Fill Layer > Solid Color..., Gradient... and Pattern..., as Photoshop's: a layer of one colour, a gradient or a pattern that covers the whole canvas and stays editable. It is made at once, in the foreground colour, the Gradient tool's gradient or the Pattern Stamp's pattern, with a dialog over it whose every change shows on the canvas: the name, and the colour; or the gradient, Style (Linear, Radial, Angle, Reflected, Diamond), Angle, Scale, Reverse, Dither and Align with Layer; or the pattern, Angle, Scale and Link with Layer. OK keeps it as one New Fill Layer step; Cancel takes it back, leaving nothing to redo. It comes with Photoshop's layer mask as the target, revealing all, or made from the selection, which an aligned gradient or a linked pattern then fits; painting it paints the mask.
+- Layer > Layer Content Options... shows that dialog again for a fill layer, as does a double-click on its thumbnail, and changes it as one Modify Fill Layer step; on an adjustment layer it shows the adjustment's settings.
+- A fill layer stays endless, as Photoshop's: moved or transformed, it is drawn again over the canvas and its mask moves instead; Canvas Size and Image Size draw it again at the new size. Filters, adjustments and warps say how to change it instead (Layer Content Options, its mask, or rasterizing it), and painting its own content asks to rasterize it first.
+- Layer > Rasterize > Rasterize Fill Content turns the selected fill layers into pixel layers, keeping their masks; Rasterize Layer and All Layers include them.
+- Projects keep fill layers live, and PSD files carry them both ways as Photoshop's Solid Color, Gradient and Pattern fill layers: a gradient with its stops, style, angle, scale, Reverse, Dither and Align with Layer; a pattern with its pattern, which the PSD's patterns hold. A pattern fill's scale and angle, which the PSD writer cannot keep, are noted on saving.
+- Fill layers work in 16-bit, 32-bit, Lab and CMYK documents, their floats or inks taken from each drawing; in CMYK the dialog's preview shows the fill as its inks will. Agents' get_document names their kind (fill:solid, fill:gradient or fill:pattern).
+
 ## 1.65.9 · 2026-10-08
 
 ### Added

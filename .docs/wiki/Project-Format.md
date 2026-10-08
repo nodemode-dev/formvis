@@ -10,7 +10,7 @@ A project is a zip (`.fmv`; before 0.90.0 `.formvis`, still read) holding `manif
 | `activeLayerID` | The selected layer |
 | `layers` | Bottom-to-top layer records |
 | `alphas` | Alpha channels (1.65.1): each `id`, `name` and `file`, a grayscale PNG the canvas's size in `images/` (white selected); absent when there are none |
-| `patterns` | The patterns the layer styles use that are not built in, so the project opens the same elsewhere: each `id`, `name` and `file`, a PNG in `images/`; Pattern Overlay's, and from 1.65.2 Bevel & Emboss's Texture's |
+| `patterns` | The patterns the layer styles use that are not built in, so the project opens the same elsewhere: each `id`, `name` and `file`, a PNG in `images/`; Pattern Overlay's, from 1.65.2 Bevel & Emboss's Texture's, and from 1.66.0 pattern fill layers' |
 
 | Layer key | Meaning |
 | --- | --- |
@@ -25,6 +25,7 @@ A project is a zip (`.fmv`; before 0.90.0 `.formvis`, still read) holding `manif
 | `effects` | The layer style: each effect by name (`dropShadow`, `outerGlow`, `stroke`, `innerShadow`, `innerGlow`, `colorOverlay`, `gradientOverlay`, `patternOverlay`, `satin`, `bevel`), `extra` holding further instances; from 1.65.2 `hidden` (Hide All Effects), Bevel & Emboss's `technique`, `contour` and `texture`, and its `style` `stroke`, which older projects lack and older formvis reads as no flag, Smooth and Inner Bevel |
 | `adjustment` | Kept verbatim; `kind` is `Hue/Saturation`, `Levels`, `Curves`, `Exposure`, `Gradient Map` or `Grain` |
 | `shape` | Shape description, kept verbatim |
+| `fillContent` | A fill layer (1.66.0), its pixels as drawn in `imageFile`: `kind` `solid` with `color` `{r, g, b}`; `gradient` with `stops` (each `at` 0 to 1, `color`, `alpha`), `style` (`linear`, `radial`, `angle`, `reflected` or `diamond`), `angle` in degrees, `scale` (1 is 100 percent), `reverse`, `dither`, `align` and `offset` `{x, y}`; or `pattern` with `pattern` (a pattern id), `scale`, `angle`, `link` and `phase` `{x, y}`. Older formvis opens it as a pixel layer |
 
 ## Contract
 

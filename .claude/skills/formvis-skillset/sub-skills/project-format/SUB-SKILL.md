@@ -21,6 +21,7 @@ A project is `manifest.json` plus `images/`. formvis writes `com.nodemode.formvi
 - `blendMode` labels: `Normal`, `Multiply`, `Screen`, `Overlay`, `Darken`, `Lighten`, `Difference`, `Color Dodge`, `Color Burn`, `Hue`, `Saturation`, `Color`, `Luminosity`.
 - Masks are grayscale PNGs where white shows; in memory the value sits in the alpha channel.
 - `adjustment` and `shape` records survive verbatim, including fields formvis does not use.
+- `fillContent` (1.66.0) describes a fill layer whose pixels, as drawn, are its `imageFile`; the reader checks and clamps every field (`fillContentFrom` in `engine/fill-layers.ts`) and drops it from a layer without pixels.
 - Clipping is `maskSourceID`; folders are `isGroup` with children pointing at them through `parentID`.
 
 ## Changing the format

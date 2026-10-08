@@ -59,8 +59,8 @@ ask it questions.
 
 ## Layers
 
-- Kinds: pixel layers, text, shapes, smart objects (their original kept, with filters that stay editable), adjustment
-  layers and groups (folders, which pass their contents through to what is below).
+- Kinds: pixel layers, text, shapes, smart objects (their original kept, with filters that stay editable), fill
+  layers, adjustment layers and groups (folders, which pass their contents through to what is below).
 - Each layer has a blend mode (all 27 of Photoshop's), opacity and fill, a layer mask, and layer styles (Drop Shadow,
   Outer and Inner Glow, Stroke, Inner Shadow, Satin, Bevel and Emboss, overlays).
 - A clipping mask shows a layer only where the layer below it has pixels.
@@ -82,14 +82,20 @@ ask it questions.
 - Layer > Layer Mask adds a mask revealing or hiding all, or the selection, or made from the layer's transparency;
   Layer > Mask All Objects finds the objects in the layer and adds a masked folder for each, for adjustments. Layer >
   Matting cleans the edges of a cut-out (Defringe, Remove Black or White Matte, Color Decontaminate), and Layer >
-  Rasterize turns type, shapes and smart objects into pixels, the selected ones or All Layers.
+  Rasterize turns type, shapes, fill layers and smart objects into pixels, the selected ones or All Layers.
+- Layer > New Fill Layer makes a Solid Color, Gradient or Pattern layer: a fill that covers the whole canvas however
+  the layer is moved or the canvas changes, and stays editable. Layer > Layer Content Options, or a double-click on
+  its thumbnail, changes the colour, the gradient (its style, angle, scale, Reverse, Dither and Align with Layer) or
+  the pattern (its angle, scale and Link with Layer). It comes with a layer mask, made from the selection when there
+  is one, and painting it paints the mask; Layer > Rasterize > Rasterize Fill Content turns it into pixels.
 - Layer > Layer Style shows the Layer Style dialog at Blending Options or at any effect, turning that effect on. Bevel
   and Emboss is Smooth, Chisel Hard or Chisel Soft; inner, outer, emboss, pillow or on the layer's stroke (Stroke
   Emboss); with a Contour shaping its profile and a Texture pressing a pattern into it. Global Light sets the light
   that effects using it share; Create Layers turns a style into layers of their own that look the same; Hide All
   Effects hides every style until Show All Effects; Scale Effects scales a style's sizes and distances.
-- Tools and commands work where Photoshop's do: painting an adjustment layer paints its mask; a text or shape layer
-  asks to be rasterized first.
+- Tools and commands work where Photoshop's do: painting an adjustment layer paints its mask, as does painting a fill
+  layer while its mask is the target; a text or shape layer, or a fill layer's own content, asks to be rasterized
+  first.
 
 ## Selecting
 

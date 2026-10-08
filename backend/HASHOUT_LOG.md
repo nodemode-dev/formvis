@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.66.0
+
+No engine code changed in 1.66.0 (DEV_PLAN 27.7's first part, fill layers, is in the window; a project's `fillContent` passes `project_format.validate`, which checks asset names and links, not a layer's other fields). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.65.9"
+version = "1.65.9"
+version = "1.65.9"
+ "version": "1.65.9",
+```
+
 ## Version only · _v1.65.9
 
 No engine code changed in 1.65.9 (DEV_PLAN 27.6's last part, Edit > Search and the Keyboard Shortcuts list, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
