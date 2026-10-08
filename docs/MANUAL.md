@@ -15,6 +15,10 @@ ask it questions.
   strip at a time. Opening needs memory for the whole picture once, about 4 bytes a pixel; the dialog says how much.
 - Save: File > Save keeps everything editable in a .fmv project: layers, masks, adjustments, text, paths and history
   snapshots.
+- File > Save a Copy (Alt+Ctrl+S) puts a copy of the document in the library under another name, in one layer with
+  Layers off, and leaves the document in its tab as it was. File > Revert goes back to the document as last saved, as
+  one step that Undo takes back (F12 in the desktop app). File > Close All and Close Others close every document, or
+  every one but the current, asking about each one with unsaved changes; Apply to All answers for the rest.
 - The documents open when formvis closes reopen at the next start, saved or not, in their tab order (Preferences >
   File Handling). With that off, only unsaved work is kept, and formvis asks to recover it after a crash.
 - The engine: some features (library saves, HEIC and TIFF import, background removal, generative tools, sending to
@@ -180,6 +184,9 @@ ask it questions.
   degrees without resampling a pixel, or by any angle with Arbitrary..., the canvas growing to hold it and the
   Background's new corners filled with the background colour. Image > Crop cuts the canvas to the selection's bounds;
   Image > Duplicate... makes a copy of the document in a new tab, in one layer with Duplicate Merged Layers Only.
+- File > Automate > Fit Image... resamples the image, its proportions kept, to fit within a width and a height in
+  pixels; Don't Enlarge leaves a smaller one as it is. Actions record it with its sizes, so a Batch fits every file it
+  runs on.
 - Image > Auto Tone, Auto Contrast and Auto Color set Levels from the layer's own histogram (from the selected part,
   within a selection): Auto Tone stretches each channel, Auto Contrast the three together so colours keep their
   balance, Auto Color each channel with neutral midtones. Image > Adjustments > Desaturate turns the layer grey,

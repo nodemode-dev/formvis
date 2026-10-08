@@ -2,6 +2,50 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## File > Close All, Close Others, Save a Copy, Revert and Automate > Fit Image, 27.6's fourth part · _v1.65.8 (ui/panels/save-copy-dialog.ts new; engine/index.ts, app.ts, ui/dialogs.ts, ui/panels/size-dialogs.ts, ui/actions.ts, ui/panels/actions-dialogs.ts; docs/MANUAL.md, .docs/wiki/Keyboard-Shortcuts.md)
+
+DEV_PLAN 27.6, fourth part, after Photoshop's File menu (Close All and Close Others closing documents without asking; Revert reading the saved file back as one history step that keeps the document's identity and tab name and leaves it saved; Save a Copy writing the document, or its flattened image, elsewhere; Fit Image scaling by the smaller of the two ratios through Image Size, refusing to enlarge when Don't Enlarge is ticked). Engine: `revertTo(doc, activeId, paths, timeline)` puts a document read back from the library in place of the current one's as one Revert step, built with the history's own begin and end so the step carries the paths and the timeline (frames and video) on both sides, as path and timeline steps do, and Undo brings every one back; the document keeps its id (filters' displacement maps name documents by it), its tiled layers get the engine's tile reader as opening gives them, the selection goes, the active layer is the saved one, the history is marked saved after the step, and the view is fitted again only when the size differs. `mergedDoc()`: the document flattened into one Background layer with everything else of it kept, refused past 268 megapixels a layer; `duplicateDocument` now takes its merged copy from it (the same layer and document as before). `fitImage(width, height, enlarge, quiet)`: the smaller of the two ratios, rounded sides at least one pixel; when the image already fits (or would only grow without `enlarge`) it says so unless `quiet` and answers true, so an action plays on; otherwise one Fit Image step around `resampleImage` (high quality, the same resolution; the history's nesting names it), after settling anything pending. `resampleImage` now refuses a document with a tiled layer: the first probe of Fit Image on a 40,000 by 30,000 document showed Image Size making the canvas 10,000 by 7,500 while the tiled layer kept its 40,000 by 30,000 tiles under a 10,000 by 7,500 transform.
+
+The window: the Unsaved Changes question (dialogs.ts) gains an Apply to All check, hidden unless asked for before the dialog shows, so it opens at its final size; `ask(name, many)` answers the choice and whether it was ticked; `askSaveChanges` keeps its answer, and `askSaveChangesAll` asks with the check. `SaveCopyDialog` (save-copy-dialog.ts): the copy's name ("<name> copy" first) and Layers (ticked); Save, or Enter in the name, hands both to the app. `FitImageDialog` (size-dialogs.ts): Width and Height in pixels (the image's own size first, then the last box) and Don't Enlarge; OK closes, fits and reports the box for Actions, whether or not the image changed. app.ts: `readOpened(o)`, open's reading of a project from the engine moved out so Revert reads the same way; `saveCopy(name, layers)` saves the document or `mergedDoc()` under a new name after asking to replace one taken, leaving the document's name, library name and unsaved state alone, and moves the document's library version on only when it saved over its own file without a conflict; `revert()` reads the library's copy and hands it to `revertTo`, bringing the document forward if another took its place meanwhile, and takes the version read; `requestClose(id, answer)` now answers whether the document closed and takes an answer already given; `closeMany(keep)` closes every document but `keep` in turn, bringing each with unsaved changes forward and asking, with Apply to All when another is waiting, stopping at Cancel or a failed save, and brings `keep` back. Commands: save-copy (Alt+Mod+S), revert (F12 in the desktop app only, since browsers keep F12 for their developer tools; enabled for a library document with unsaved changes), close-all (Alt+Mod+W in the desktop app, where Close Tab keeps Mod+W alone; no key in browsers, where Alt+Mod+W is Close Tab), close-others (Alt+Mod+P; two documents or more) and fit-image. The File menu: Save a Copy and Revert after Save As; Close All and Close Others after Close Tab; Fit Image first in Automate's second group, as Photoshop orders them. Actions: the `fitImage` step (`w`, `h`, `enlarge`), read back from storage and JSON with its checks, played quietly by `runStep`; the Actions dialog's note names Fit Image.
+
+Verified by scratch probes outside the repository. In a browser the keys are Close Tab Alt+Mod+W, Close All none, Close Others Alt+Mod+P, Save a Copy Alt+Mod+S, Revert none; with no document the five are disabled. Fit Image on a 400 by 300 white document with a red 200 by 150 block at its corner: 200 by 200 made 200 by 150, one Fit Image step, red at (50, 30) and white at (150, 100), undone to 400 by 300; 800 by 800 without enlarging left it and said "The image already fits within 800 × 800 px."; with enlarging 800 by 600; 400 by 300 added no step; 1000 by 150 made 200 by 150. Its dialog offered Width 400, Height 300 and Don't Enlarge off; 120 by 120 made 120 by 90 and was recorded as "Fit Image 120 x 120"; played from the Actions dialog on a 1000 by 500 document it made 120 by 60 ("Played "Fit probe", 1 step."), and on a 100 by 80 one 120 by 96; the dialog then offered 120 by 120 again. Save a Copy on a two-layer library document, 300 by 200, changed since its save: the dialog offered "<name> copy" with Layers ticked; Save said "Saved a copy as <name> copy.", the library's copy 300 by 200 with two layers, the document still named as before, changed, its library name unchanged; Layers off saved a one-layer copy; the same name again asked "Replace project?" and Cancel saved nothing. Revert on it: the square drawn since the save gone (white at (110, 110)), the saved blue at (20, 20), one Revert step, not changed, Revert disabled, the Art layer active; Undo brought the square back, changed, Revert enabled; Redo reverted again. After Image Size to 150 by 100 and a path added: Revert gave 300 by 200, no paths, the view fitted (zoom 2.35), and Undo 150 by 100 with the path. Close Others among eight documents, six changed: the first changed one (not the current) came forward and was asked about with Apply to All; Cancel left all eight; again from an unchanged one, Apply to All ticked and Don't Save: only that one left, no second question. Close All with one unchanged and one changed: the unchanged one closed, the changed one asked about without Apply to All; Don't Save left none, and Close All and Close Others disabled. A screenshot showed the question with Apply to All under its note, and the Save a Copy and Fit Image dialogs. Zero flash, under 6x CPU and network throttling after a hard reload, from the menus: the Save a Copy dialog 360 by 234 from its first frame, Layers unticked and Save keeping every Layers row; Revert, its Undo and its Redo keeping every row (the saved file's layer ids are the document's, so the rows update in place); the Fit Image dialog 360 by 259 and its OK keeping every row; Close Others' question 460 by 239 from its first frame with Apply to All, the rows those of the document asked about and then of the one kept; Close All's 460 by 211 without it, Cancel keeping everything; no shift. A second probe: Save a Copy, flattened, under the document's own library name asked to replace it and saved one layer there, the document still two layers and changed; Revert then read that one layer; after Undo, Save said "Saved <name>." with no conflict (the version moved on with the copy) and the library held two layers again; with the library file deleted, Revert said "Project not found." and changed nothing. On a 40,000 by 30,000 document Image Size now refused ("A document with layers past 268 megapixels cannot be resampled yet."), Fit Image answered false with no step, and Save a Copy without Layers refused to flatten. tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine as before. The whole browser suite from a freshly started dev server and engine: 506 passed, 3 skipped, 23 failed, the 22 failing at 1.65.2 and the tiled paging race of 1.65.6; the menu walk ran the new commands without an error (export-exr's 500 its one, as before), Revert joining the commands none of its states enables (TEST_PLAN section 45).
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.65.7",
+      "version": "1.65.7",
+  "version": "1.65.7",
+import { AmountDialog, CanvasSizeDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
+import { anyDialogOpen, askSaveChanges, confirmAction, promptName } from './ui/dialogs';
+  async function openOpened(o: OpenedProject, libraryName: string | null): Promise<void> {
+    const reader = { open: (n: string) => api.bandsReadOpen(o.session, n), rows: (k: string, n: number) => api.bandsReadRows(k, n) };   // giant layers (1.62.8)
+    const { doc, activeId, paths, timeline } = await deserialize(o.manifest, (name) => {
+  async function requestClose(id: string): Promise<void> {
+    if (!p) return;
+      const choice = await askSaveChanges(p.name);
+      if (choice === 'cancel') return;
+        if (!(await save(false))) return;
+    // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W too.
+    { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W', 'Alt+Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
+    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
+    const title = name.trim().slice(0, 200) || `${p.name} copy`, flat = merged ? this.flattened() : null;
+      const layer = newLayer('Background', p.doc, { raster: Raster.from(flat as CanvasImageSource, p.doc.width, p.doc.height) });
+      doc = { ...p.doc, id: uid(), layers: [layer] };
+      active = layer.id;
+ *  command that changes the document without asking anything, a filter with its settings, or an Image or Canvas Size
+ *  change with its numbers. Actions are kept in this browser's storage and move between machines as JSON. */
+  | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number };
+  private resolve: ((v: 'save' | 'discard' | 'cancel') => void) | null = null;
+    this.body.append(this.question, el('<p class="cv-note">Your changes will be lost if you don’t save them.</p>'));
+  ask(name: string): Promise<'save' | 'discard' | 'cancel'> {
+    r?.(v);
+  return saveChangesDialog.ask(name);
+      : 'Recording captures commands that change the document, filters with their settings, and Image and Canvas Size. Naming a new action starts it; otherwise Record adds to the one chosen.');
+export const VERSION = '1.65.7';
+```
+
 ## Toggle Last State, Paste Special and Edit > Stroke, 27.6's third part · _v1.65.7 (ui/panels/stroke-dialog.ts new; engine/index.ts, app.ts; docs/MANUAL.md, .docs/wiki/Keyboard-Shortcuts.md)
 
 DEV_PLAN 27.6, third part, after Photoshop's Edit menu (Toggle Last State: redo when there is one, else undo; Paste Into: pasted centred on the selection's bounds behind a mask from the selection or its inverse, unlinked; Stroke: a band along the selection's edge). Engine: `toggleLastState()` redoes when the history can, else undoes. `pasteInto(outside, image)`: formvis's own clipboard, or a picture from another app given as `image`, pasted as a new layer (`newLayer`, `parentForNew`, `insertAboveActive`, as `insertRasterLayer` places one) centred on the selection's bounds, with a layer mask the size of the canvas (the selection drawn into it, or a white canvas with the selection cut out for Paste Outside), unlinked and placed at the canvas (`docTransform`), so the picture moves behind a mask that stays; the selection is used up, as Photoshop's; one Paste Into or Paste Outside step; without a selection or anything to paste, a notice. `strokeSelection(o)`: the edge is the selection's, or with none the active layer's pixels drawn into the work area through their placement, either taken at half coverage (128); the work area is the edge's bounds grown by the width and two pixels, past the canvas too, so pixels beyond the canvas count as outside and Select All strokes the canvas's border inside it; `distanceSquared` (matting.ts) from every inside pixel to the nearest outside one and from every outside pixel to the nearest inside one; a pixel's coverage is its distance within the band's reach (the width, or half of it for Center, on each side) plus one, clamped, so on a straight edge a whole width is exactly that many pixels (the edge lies half a pixel from each centre) and outer corners round; filled through `fillWith` with the band as its region, so mode, opacity, Preserve Transparency and a mask target behave as Edit > Fill's; one Stroke step; the selection stays. The first version took the band from `resizeMask` (Select > Modify's expand and contract), whose half-pixel soft edge left a half-covered pixel at every inner and outer edge; measured at 4 px on a rectangle it gave x 100 to 103 red and 104 half, and now 104 is untouched.
@@ -6429,6 +6473,12 @@ The Replace Color dialog: sampling on the canvas, the chosen colours' box, Hue, 
 
 The Edit > Stroke dialog. See the release entry "Toggle Last State, Paste Special and Edit > Stroke, 27.6's third part" at the top of this log. Nothing was removed.
 
+## src/ui/panels/save-copy-dialog.ts
+
+### src/ui/panels/save-copy-dialog.ts · new · _v1.65.8
+
+The File > Save a Copy dialog: the copy's name and Layers. See the release entry "File > Close All, Close Others, Save a Copy, Revert and Automate > Fit Image, 27.6's fourth part" at the top of this log. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -6550,8 +6600,9 @@ src/
             live-mask-dialog.ts  · bake-or-unlink choice when deleting a clip base
             matting-dialog.ts  · Layer > Matting's Defringe and Color Decontaminate settings
             replace-color-dialog.ts  · Image > Adjustments > Replace Color
+            save-copy-dialog.ts  · File > Save a Copy
             selection-dialogs.ts  · Select > Save Selection and Load Selection
-            size-dialogs.ts  · canvas size, image size, expand and contract
+            size-dialogs.ts  · canvas size, image size, Fit Image, expand and contract
             stroke-dialog.ts  · Edit > Stroke
             style-dialogs.ts  · Layer Style's Global Light and Scale Effects
         rail.ts  · tool rail and colors
@@ -6655,6 +6706,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/live-mask-dialog.ts](#srcuipanelslive-mask-dialogts)
 - [src/ui/panels/matting-dialog.ts](#srcuipanelsmatting-dialogts)
 - [src/ui/panels/replace-color-dialog.ts](#srcuipanelsreplace-color-dialogts)
+- [src/ui/panels/save-copy-dialog.ts](#srcuipanelssave-copy-dialogts)
 - [src/ui/panels/selection-dialogs.ts](#srcuipanelsselection-dialogsts)
 - [src/ui/panels/size-dialogs.ts](#srcuipanelssize-dialogsts)
 - [src/ui/panels/stroke-dialog.ts](#srcuipanelsstroke-dialogts)

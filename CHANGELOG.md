@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.8 · 2026-10-08
+
+### Added
+
+- File > Save a Copy... (Alt+Ctrl+S) saves a copy of the document to the library under another name, with Layers, or flattened into one layer without them, as Photoshop's; the document in its tab keeps its name, its library file and its unsaved changes.
+- File > Revert puts back the document as last saved, read again from the library into the same tab, as one step that Undo takes back (with its paths and timeline), as Photoshop's; F12 in the desktop app, where browsers keep F12 for their developer tools.
+- File > Close All and Close Others close every document, or every one but the current, in turn: each with unsaved changes is brought forward and asked about, with Apply to All when more are waiting, and Cancel stops there. Close Others is Alt+Ctrl+P; in the desktop app Close All is Alt+Ctrl+W, as Photoshop's, and Close Tab keeps Ctrl+W.
+- File > Automate > Fit Image... resamples the image, its proportions kept, to fit within a width and a height in pixels, with Don't Enlarge, as one step; actions record it with its box, so Batch fits every file to it.
+
+### Fixed
+
+- Image Size and Fit Image on a document with a layer past 268 megapixels now say they cannot resample it yet; Image Size had made the canvas smaller and left that layer at its full size.
+
 ## 1.65.7 · 2026-10-08
 
 ### Added

@@ -6,9 +6,11 @@ Mod is Command on macOS and Ctrl elsewhere. Help, Keyboard Shortcuts shows the s
 | --- | --- |
 | New canvas | Mod+Alt+N (Mod+N in the desktop app) |
 | Open project, Import images | Mod+O, Mod+Shift+O |
-| Save, Save As | Mod+S, Mod+Shift+S |
+| Save, Save As, Save a Copy | Mod+S, Mod+Shift+S, Alt+Mod+S |
+| Revert | F12 (desktop app; browsers keep F12) |
 | Export PNG | Mod+Shift+E |
-| Close tab | Mod+Alt+W |
+| Close tab | Mod+Alt+W (Mod+W in the desktop app) |
+| Close All, Close Others | Alt+Mod+W in the desktop app, Alt+Mod+P |
 | Undo, Redo | Mod+Z, Mod+Shift+Z or Mod+Y |
 | Toggle Last State | Alt+Mod+Z |
 | Paste in Place, Paste Into | Shift+Mod+V, Alt+Shift+Mod+V |
