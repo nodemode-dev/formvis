@@ -19,9 +19,11 @@ function editable(ctx: ToolContext): Transform | null {
   return e.transformsMask(l) ? l.mask?.placement ?? l.transform : seen(l.id, l.transform);
 }
 
-/** the free distort: the corner under the pointer in handle order (top-left, top-right, bottom-right,
- *  bottom-left): any corner of a pending distortion, or with Cmd held a corner handle of the transform box. */
+/** the free distort: the handle under the pointer, 0 to 3 the corners in handle order (top-left, top-right,
+ *  bottom-right, bottom-left), 4 to 7 the middles of the top, right, bottom and left sides of a pending distortion; or
+ *  with Cmd held a corner handle of the transform box. With where the drag began and the corners then (1.65.6). */
 let cornerDrag: number | null = null;
+let distortFrom: { start: { x: number; y: number }; corners: Array<{ x: number; y: number }> } | null = null;
 /** The warp control point being dragged, and the one under the pointer while a warp is pending. */
 let warpDrag: number | null = null;
 /** The Puppet Warp pin being dragged. */
@@ -63,19 +65,24 @@ function distortCorner(ctx: ToolContext, p: ToolPointer): number | null {
     const s = v.toScreen(pts[i]);
     if (Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= HANDLE_PX) return i;
   }
+  if (d) for (let k = 0; k < 4; k++) {
+    const a = pts[k], b = pts[(k + 1) % 4], s = v.toScreen({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+    if (Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= HANDLE_PX) return 4 + k;
+  }
   return null;
 }
 
 function hit(ctx: ToolContext, p: ToolPointer): DragMode | null {
-  const t = editable(ctx);
+  const t = editable(ctx), only = ctx.engine.transformConstraint;
   if (!t) return null;
   if (ctx.engine.showTransformControls) {
     const v = ctx.view();
     for (let i = 0; i < HANDLES.length; i++) {
       const s = v.toScreen(unitPoint(t, HANDLES[i].x, HANDLES[i].y));
-      if (Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= HANDLE_PX) return { kind: 'resize', handle: i };
+      if (Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= HANDLE_PX) return only === 'rotate' ? { kind: 'rotate' } : { kind: 'resize', handle: i };
     }
-    if (!contains(t, p.doc)) {
+    if (!contains(t, p.doc) && only === 'rotate') return { kind: 'rotate' };
+    if (!contains(t, p.doc) && only !== 'scale') {
       for (const c of corners(t)) {
         const s = v.toScreen(c);
         if (Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= ROTATE_PX) return { kind: 'rotate' };
@@ -98,10 +105,16 @@ let pixelStart: { x: number; y: number } | null = null;
 
 const ALIGN_NAMES = { left: 'Left Edges', hcenter: 'Horizontal Centers', right: 'Right Edges', top: 'Top Edges', vcenter: 'Vertical Centers', bottom: 'Bottom Edges' } as const;
 
+const DISTORT_HINTS = {
+  distort: 'Distort · Drag a corner or a side anywhere · Enter applies · Escape cancels',
+  skew: 'Skew · Drag a side to slant it, a corner along a side · Enter applies · Escape cancels',
+  perspective: 'Perspective · Drag a corner along a side, its partner moving the other way · Enter applies · Escape cancels',
+} as const;
+
 export const moveTool: Tool = {
   id: 'move', label: 'Move', key: 'V', order: 10,
   icon: () => 'tMove',
-  hint: (eng) => (eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity'),
+  hint: (eng) => (eng.distortEdit ? DISTORT_HINTS[eng.distortEdit.mode] : eng.transformConstraint === 'scale' ? 'Scale · Drag a handle to scale · Shift keeps or frees the proportions · Alt scales from the center · Enter or Escape ends' : eng.transformConstraint === 'rotate' ? 'Rotate · Drag a handle or outside the box to turn · Shift turns by 15° · Enter or Escape ends' : eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity'),
   cursor(ctx, p) {
     if (!p) return 'default';
     const m = hit(ctx, p);
@@ -126,7 +139,7 @@ export const moveTool: Tool = {
       return;
     }
     const corner = distortCorner(ctx, p);
-    if (corner !== null && (e.distortEdit || e.beginDistort())) { cornerDrag = corner; return; }
+    if (corner !== null && (e.distortEdit || e.beginDistort())) { cornerDrag = corner; distortFrom = { start: { ...p.doc }, corners: (e.distortEdit?.corners ?? []).map((c) => ({ ...c })) }; return; }
     if (e.distortEdit) return;
     const sel = e.current?.selection;
     if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && e.beginPixelMove(p.alt)) { pixelStart = p.doc; return; }
@@ -144,7 +157,7 @@ export const moveTool: Tool = {
     if (planeStart) { planeEnd = p.doc; ctx.engine.emit('overlay', null); return; }
     if (pinDrag !== null) { ctx.engine.movePuppetPin(pinDrag, p.doc); return; }
     if (warpDrag !== null) { ctx.engine.moveMeshWarpPoint(warpDrag, p.doc); return; }
-    if (cornerDrag !== null) { ctx.engine.moveDistortCorner(cornerDrag, p.doc); return; }
+    if (cornerDrag !== null && distortFrom) { ctx.engine.moveDistortHandle(cornerDrag, distortFrom.corners, p.doc.x - distortFrom.start.x, p.doc.y - distortFrom.start.y); return; }
     if (pixelStart) {
       let dx = p.doc.x - pixelStart.x, dy = p.doc.y - pixelStart.y;
       if (p.shift) { if (Math.abs(dx) >= Math.abs(dy)) dy = 0; else dx = 0; }
@@ -166,7 +179,7 @@ export const moveTool: Tool = {
     if (pinDrag !== null) { pinDrag = null; return; }
     if (warpDrag !== null) { warpDrag = null; return; }
     if (ctx.engine.meshWarpEdit || ctx.engine.puppetEdit) return;
-    if (cornerDrag !== null) { cornerDrag = null; return; }
+    if (cornerDrag !== null) { cornerDrag = null; distortFrom = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.endPixelMove(); return; }
     ctx.engine.endTransform();
   },
@@ -174,7 +187,7 @@ export const moveTool: Tool = {
     if (perspDrag || planeStart) { perspDrag = null; planeStart = planeEnd = null; ctx.engine.emit('overlay', null); return; }
     if (pinDrag !== null) { pinDrag = null; return; }
     if (warpDrag !== null) { warpDrag = null; return; }
-    if (cornerDrag !== null) { cornerDrag = null; return; }
+    if (cornerDrag !== null) { cornerDrag = null; distortFrom = null; return; }
     if (pixelStart) { pixelStart = null; ctx.engine.cancelPixelMove(); return; }
     ctx.engine.cancelTransform();
   },
@@ -196,9 +209,11 @@ export const moveTool: Tool = {
     if (e.key === 'Escape' && eng.distortEdit) { eng.cancelDistort(); return true; }
     if (e.key === 'Escape' && pixelStart) { pixelStart = null; eng.cancelPixelMove(); return true; }
     if (e.key === 'Escape' && eng.transformEdit) { eng.cancelTransform(); return true; }
+    const ended = (e.key === 'Enter' || e.key === 'Escape') && !!eng.transformConstraint;
+    if (ended) eng.endTransformMode();
     if (e.key === 'Escape' && eng.floatingSelection) { eng.cancelSelectionTransform(); return true; }
     if (e.key === 'Enter' && eng.floatingSelection) { eng.commitSelectionTransform(); return true; }
-    return false;
+    return ended;
   },
   overlay(ctx, g) {
     const e = ctx.engine;
@@ -286,7 +301,7 @@ export const moveTool: Tool = {
       for (let i = 1; i < 4; i++) g.lineTo(cs[i].x, cs[i].y);
       g.closePath();
       g.stroke();
-      for (const s of cs) {
+      for (const s of [...cs, ...cs.map((a, k) => ({ x: (a.x + cs[(k + 1) % 4].x) / 2, y: (a.y + cs[(k + 1) % 4].y) / 2 }))]) {
         g.fillStyle = pal.handle;
         g.fillRect(Math.round(s.x) - 4, Math.round(s.y) - 4, 8, 8);
         g.strokeRect(Math.round(s.x) - 3.5, Math.round(s.y) - 3.5, 7, 7);

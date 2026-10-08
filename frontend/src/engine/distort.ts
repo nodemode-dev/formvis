@@ -162,3 +162,39 @@ export function maskEdgeTone(r: Raster): number {
   for (let y = 1; y < h - 1; y++) { add(0, y); add(w - 1, y); }
   return count && sum / count >= 127.5 ? 255 : 0;
 }
+
+/** Edit > Transform's Distort, Skew and Perspective (1.65.6), the free distort's three ways to drag a handle. */
+export type DistortMode = 'distort' | 'skew' | 'perspective';
+
+/** The corners after dragging handle `handle` by (dx, dy) from `from` (handles 0 to 3 the corners in handle order, 4
+ *  to 7 the middles of the top, right, bottom and left sides), as Photoshop's modes drag them: Distort moves a corner
+ *  or a side freely; Skew moves a corner along one of its two sides, whichever the drag follows more, and slides a side
+ *  along itself; Perspective moves a corner so and the other corner of that side as far the opposite way, its sides
+ *  sliding as in Skew. */
+export function distortDragged(from: readonly Pt[], handle: number, dx: number, dy: number, mode: DistortMode): Pt[] {
+  const c = from.map((p) => ({ ...p }));
+  const unit = (a: Pt, b: Pt): Pt => { const x = b.x - a.x, y = b.y - a.y, n = Math.hypot(x, y) || 1; return { x: x / n, y: y / n }; };
+  const shift = (i: number, x: number, y: number): void => { c[i] = { x: from[i].x + x, y: from[i].y + y }; };
+  if (handle >= 4) {
+    const a = handle - 4, b = (a + 1) % 4, u = unit(from[a], from[b]), t = dx * u.x + dy * u.y;
+    const [x, y] = mode === 'distort' ? [dx, dy] : [u.x * t, u.y * t];
+    shift(a, x, y); shift(b, x, y);
+    return c;
+  }
+  if (mode === 'distort') { shift(handle, dx, dy); return c; }
+  const across = [1, 0, 3, 2][handle], down = [3, 2, 1, 0][handle], uh = unit(from[across], from[handle]), uv = unit(from[down], from[handle]);
+  const th = dx * uh.x + dy * uh.y, tv = dx * uv.x + dy * uv.y, [u, t, partner] = Math.abs(th) >= Math.abs(tv) ? [uh, th, across] : [uv, tv, down];
+  shift(handle, u.x * t, u.y * t);
+  if (mode === 'perspective') shift(partner, -u.x * t, -u.y * t);
+  return c;
+}
+
+/** Edit > Transform > Again for a distortion (1.65.6): `corners` taken through the perspective, in document space,
+ *  that took corners `from` to `to`, as Photoshop repeats a transform's own matrix; null when `from` cannot be
+ *  inverted. */
+export function againQuad(from: readonly Pt[], to: readonly Pt[], corners: readonly Pt[]): Pt[] | null {
+  const back = inverse3(homography(from)), on = homography(to);
+  if (!back) return null;
+  const H = [0, 1, 2].flatMap((r) => [0, 1, 2].map((k) => on[r * 3] * back[k] + on[r * 3 + 1] * back[3 + k] + on[r * 3 + 2] * back[6 + k]));
+  return corners.map((p) => project(H, p.x, p.y));
+}

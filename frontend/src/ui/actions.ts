@@ -28,6 +28,7 @@ export const RECORDABLE: ReadonlySet<string> = new Set([
   'save-selection-channel', 'create-layers', 'hide-all-effects', 'link-layers', 'select-linked',
   'frame-from-layers', 'shapes-unite', 'shapes-subtract', 'shapes-intersect', 'shapes-exclude', 'shapes-merge',
   'auto-tone', 'auto-contrast', 'auto-color', 'desaturate', 'equalize', 'image-crop',
+  'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw',
 ]);
 
 const KEY = 'formvis.actions';

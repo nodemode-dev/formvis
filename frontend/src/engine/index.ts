@@ -23,7 +23,7 @@ import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, toBlob, type 
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
-import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped, imageCorners, homography, project, inverse3 } from './distort';
+import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type DistortMode, type Warped, imageCorners, homography, project, inverse3 } from './distort';
 import { withResolution } from './dpi';
 import { antialiasMask, levelsKernel, wandMask } from './kernels';
 import { Project } from './project';
@@ -1032,7 +1032,7 @@ export class Engine {
     }
     if (this.stroke) return;
     this.settle();
-    if (this.tool !== id) { this.tool = id; this.emit('tool', null); }
+    if (this.tool !== id) { this.tool = id; this.transformConstraint = null; this.emit('tool', null); }
     this.emit('overlay', null);
   }
 
@@ -3621,6 +3621,7 @@ export class Engine {
   }
 
   flipLayers(horizontal: boolean): void {
+    this.lastTransform = { flip: horizontal };
     this.edit(horizontal ? 'Flip Layer Horizontal' : 'Flip Layer Vertical', (p) => {
       let any = false;
       for (const id of p.selectedIds) {
@@ -4911,6 +4912,71 @@ export class Engine {
     return b ? { x: b.x, y: b.y, w: Math.max(1, b.w), h: Math.max(1, b.h), rotation: 0, flipX: false, flipY: false, sampling: 'high' } : null;
   }
 
+  /** The last transform, for Edit > Transform > Again (1.65.6): a box changed (moved, scaled, turned, flipped by a
+   *  handle), a flip, or a distortion's corners before and after. */
+  private lastTransform: { from: Transform; to: Transform } | { flip: boolean } | { quadFrom: Pt[]; quadTo: Pt[] } | null = null;
+
+  get canTransformAgain(): boolean { return !!this.lastTransform && !!this.activeLayer && !this.floatSel && !this.distortEdit && !this.meshWarpEdit && !this.puppetEdit && !this.perspectiveEdit; }
+
+  /** Edit > Transform > Again (1.65.6), as Photoshop's: the last transform's own matrix, in document space, applied
+   *  again to what is selected now, so a turn about a point keeps turning about it: a box change through `following`,
+   *  a flip as the same flip, a distortion's perspective through `againQuad`; with `copy` on a duplicate of the
+   *  selected layers (Photoshop's Alt+Shift+Ctrl+T). One Transform Again step. */
+  transformAgain(copy = false): boolean {
+    const last = this.lastTransform, l = this.activeLayer;
+    if (!this.canTransformAgain || !last || !l) { if (!last) this.notice('There is no transform to repeat yet.'); return false; }
+    if (this.locked(l, 'position')) return false;
+    return this.edit('Transform Again', () => {
+      if (copy) this.duplicateLayers();
+      if ('flip' in last) { this.flipLayers(last.flip); return true; }
+      if ('quadFrom' in last) {
+        if (!this.beginDistort()) return false;
+        const d = this.distortEdit, q = d ? againQuad(last.quadFrom, last.quadTo, d.corners) : null;
+        if (!d || !q || !distortUsable(q)) { this.cancelDistort(); return false; }
+        d.corners = q;
+        this.applyDistort();
+        return true;
+      }
+      if (!this.beginTransform({ kind: 'resize', handle: 0 }, { x: 0, y: 0 }) || !this.transformEdit) return false;
+      this.transformEdit.draft = following(this.transformEdit.original, last.from, last.to);
+      this.endTransform('Transform Again');
+      return true;
+    });
+  }
+
+  /** Edit > Transform > Rotate 180°, 90° Clockwise and 90° Counter Clockwise (1.65.6): the selected layer, or the
+   *  selected layers together, turned about the box's centre as a handle turns them, its mask following; no pixel is
+   *  resampled. */
+  rotateLayers(quarters: 1 | 2 | 3): boolean {
+    if (!this.beginTransform({ kind: 'rotate' }, { x: 0, y: 0 }) || !this.transformEdit) return false;
+    const te = this.transformEdit, r = te.original.rotation + quarters * 90;
+    te.draft = { ...te.original, rotation: r - 360 * Math.ceil((r - 180) / 360) };
+    this.endTransform(quarters === 1 ? 'Rotate 90° Clockwise' : quarters === 2 ? 'Rotate 180°' : 'Rotate 90° Counter Clockwise');
+    return true;
+  }
+
+  /** Edit > Transform > Scale and Rotate (1.65.6): Free Transform with the Move tool's handles only scaling, or with
+   *  them and the space outside the box only turning, until the tool changes or Enter or Escape ends it. */
+  transformConstraint: 'scale' | 'rotate' | null = null;
+
+  beginTransformMode(kind: 'scale' | 'rotate'): void {
+    if (this.distortEdit || this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) { this.notice('Apply or cancel the transform under way first (Enter or Escape).'); return; }
+    this.transformCommand();
+    this.transformConstraint = kind;
+    this.emit('options', null);
+  }
+
+  endTransformMode(): void { if (this.transformConstraint) { this.transformConstraint = null; this.emit('options', null); } }
+
+  /** Edit > Transform > Skew, Distort and Perspective (1.65.6): the free distort begun in that mode on the Move tool,
+   *  or one under way switched to it with its corners kept. */
+  beginDistortMode(mode: DistortMode): boolean {
+    if (this.distortEdit) { this.distortEdit.mode = mode; this.emit('options', null); this.emit('overlay', null); return true; }
+    if (this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) { this.notice('Apply or cancel the transform under way first (Enter or Escape).'); return false; }
+    if (this.tool !== 'move') this.setTool('move');
+    return this.beginDistort(mode);
+  }
+
   beginTransform(mode: DragMode, start: Pt): boolean {
     const p = this.current;
     const l = p?.activeLayer;
@@ -4945,7 +5011,8 @@ export class Engine {
     this.emit('options', null);
   }
 
-  endTransform(): void {
+  /** Commits the box being edited; `name`, when given, names the step (a command's) in place of the drag's. */
+  endTransform(name?: string): void {
     const te = this.transformEdit;
     if (!te) return;
     this.transformEdit = null;
@@ -4953,10 +5020,11 @@ export class Engine {
     const next = rounded(te.draft);
     if (sameTransform(next, te.original) || this.current !== te.project) { this.emit('render', null); return; }
     if (this.floatSel?.project === te.project && this.floatSel.floatingId === te.layerId) { te.project.updateLayer(te.layerId, { transform: next }); this.refresh(); return; }
+    this.lastTransform = { from: te.original, to: next };
     if (te.group) {
       // the group commit: each member follows the box, its mask following it, as one Transform Layers step.
       const g = te.group;
-      this.edit('Transform Layers', (p) => {
+      this.edit(name ?? 'Transform Layers', (p) => {
         let moved = false;
         for (const [id, orig] of g.originals) {
           const l = p.layer(id);
@@ -4981,7 +5049,7 @@ export class Engine {
     if (te.mask) {
       // the mask takes the new placement, its pixels untouched; a placement equal to
       // the layer's own is stored as none.
-      this.edit('Transform Layer Mask', (p) => {
+      this.edit(name ?? 'Transform Layer Mask', (p) => {
         const l = p.layer(te.layerId);
         if (!l?.mask) return false;
         p.updateLayer(l.id, { mask: { ...l.mask, placement: sameTransform(next, l.transform) ? null : next } });
@@ -4989,12 +5057,12 @@ export class Engine {
       });
       return;
     }
-    const name = te.mode.kind === 'move' ? 'Move Layer' : te.mode.kind === 'rotate' ? 'Rotate Layer' : 'Transform Layer';
+    const step = name ?? (te.mode.kind === 'move' ? 'Move Layer' : te.mode.kind === 'rotate' ? 'Rotate Layer' : 'Transform Layer');
     if (te.mode.kind === 'move' && !te.group) {   // a layer with Position keyframes keys its new place (1.59.9)
       const l0 = te.project.layer(te.layerId);
-      if (l0 && this.keyMove(te.layerId, next.x - l0.transform.x, next.y - l0.transform.y, name)) return;
+      if (l0 && this.keyMove(te.layerId, next.x - l0.transform.x, next.y - l0.transform.y, step)) return;
     }
-    this.edit(name, (p) => {
+    this.edit(step, (p) => {
       const l = p.layer(te.layerId);
       if (!l) return false;
       const redraw = !!l.shape && (Math.round(next.w) !== l.raster?.width || Math.round(next.h) !== l.raster?.height);
@@ -5005,11 +5073,11 @@ export class Engine {
 
   /** the free distort (Cmd-drag a corner handle): the four corners of the Move tool's box move on their own,
    *  pending until applied (Enter) or cancelled (Escape). The box is the active layer's, or with several layers or a
-   *  folder selected the group box, each member carried by the same perspective. */
-  distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; smart?: { R: Raster; t: Transform; margin: number; start: Pt[] }; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
+   *  folder selected the group box, each member carried by the same perspective. `mode` says how a handle drags. */
+  distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; mode: DistortMode; smart?: { R: Raster; t: Transform; margin: number; start: Pt[] }; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
   private distortFrame = 0;
 
-  beginDistort(): boolean {
+  beginDistort(mode: DistortMode = 'distort'): boolean {
     if (this.current?.activeLayer?.vector) { this.notice(SHAPE_NOTICE); return false; }
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit) return false;
@@ -5026,7 +5094,7 @@ export class Engine {
         const H = homography(warp), ex = margin / l.smart.source.width, ey = margin / l.smart.source.height;
         corners = [[-ex, -ey], [1 + ex, -ey], [1 + ex, 1 + ey], [-ex, 1 + ey]].map(([u, v]) => project(H, u, v));
       }
-      this.distortEdit = { project: p, layerId: l.id, box: rt, members: null, corners, previews: new Map(), smart: { R, t: rt, margin, start: corners.map((c) => ({ ...c })) } };
+      this.distortEdit = { project: p, layerId: l.id, box: rt, members: null, corners, mode, previews: new Map(), smart: { R, t: rt, margin, start: corners.map((c) => ({ ...c })) } };
       this.emit('render', null);
       this.emit('options', null);
       return true;
@@ -5034,7 +5102,7 @@ export class Engine {
     if (!box && (l.isGroup || !l.raster || l.adjustment || this.transformsMask(l))) return false;
     this.settle();
     const t = box ?? l.transform;
-    this.distortEdit = { project: p, layerId: l.id, box: t, members: box ? members.map((m) => m.id) : null, corners: cornersOf(t), previews: new Map() };
+    this.distortEdit = { project: p, layerId: l.id, box: t, members: box ? members.map((m) => m.id) : null, corners: cornersOf(t), mode, previews: new Map() };
     this.emit('render', null);
     this.emit('options', null);
     return true;
@@ -5075,12 +5143,13 @@ export class Engine {
     return w ? { warped: w, placement: w.t } : null;
   }
 
-  /** Moves one corner (handle order: top-left, top-right, bottom-right, bottom-left); a twisted or collapsed shape
-   *  is ignored. The preview is re-warped once per frame. */
-  moveDistortCorner(i: number, pt: Pt): void {
+  /** Drags handle `handle` (0 to 3 the corners in handle order, 4 to 7 the sides' middles) by (dx, dy) from the
+   *  corners `from` the drag began with, as the distortion's mode drags it (`distortDragged`, 1.65.6); a twisted or
+   *  collapsed shape is ignored. The preview is re-warped once per frame. */
+  moveDistortHandle(handle: number, from: readonly Pt[], dx: number, dy: number): void {
     const d = this.distortEdit;
-    if (!d) return;
-    const next = d.corners.map((c, k) => (k === i ? { x: pt.x, y: pt.y } : c));
+    if (!d || from.length !== 4) return;
+    const next = distortDragged(from, handle, dx, dy, d.mode);
     if (!distortUsable(next)) return;
     d.corners = next;
     if (!this.distortFrame) this.distortFrame = requestAnimationFrame(() => { this.distortFrame = 0; this.previewDistort(); });
@@ -5103,13 +5172,15 @@ export class Engine {
 
   /** each distorted layer's pixels resampled into its shape at full resolution and trimmed to what
    *  is visible, leaving upright layers, its mask handled by `distortMask` (a linked mask cropped with the pixels), as
-   *  one Distort step, or Distort Layers for a group. */
+   *  one step named by the mode (Distort, Skew or Perspective), with Layers after it for a group. */
   applyDistort(): void {
     const d = this.distortEdit;
     if (!d) return;
     this.dropDistort();
-    const p = d.project;
+    const p = d.project, step = { distort: 'Distort', skew: 'Skew', perspective: 'Perspective' }[d.mode];
     if (p !== this.current) return;
+    const start = d.smart?.start ?? cornersOf(d.box);
+    if (d.corners.some((c, i) => c.x !== start[i].x || c.y !== start[i].y)) this.lastTransform = { quadFrom: start, quadTo: d.corners.map((c) => ({ ...c })) };
     const sm = d.smart, sl = sm ? p.layer(d.layerId) : null;
     if (sm && sl?.smart) {
       // The new corners of the undistorted render give the perspective; the source's own corners, inside its padding,
@@ -5118,7 +5189,7 @@ export class Engine {
       const warp = [[m, m], [m + src.width, m], [m + src.width, m + src.height], [m, m + src.height]].map(([x, y]) => project(H, x / Rw, y / Rh));
       const w = this.warpedSmart(sm.R, m, src, warp), dm = this.smartDistortMask(sl, sm.start, d.corners, 1);
       const smart = sl.smart, mask = sl.mask && dm ? { ...sl.mask, raster: dm.warped?.raster ?? sl.mask.raster, placement: dm.placement } : sl.mask;
-      if (w) this.edit('Distort', (q) => q.updateLayer(sl.id, { raster: w.raster, transform: w.t, smart: { ...smart, warp, warpAt: w.t }, mask }));
+      if (w) this.edit(step, (q) => q.updateLayer(sl.id, { raster: w.raster, transform: w.t, smart: { ...smart, warp, warpAt: w.t }, mask }));
       return;
     }
     const updates: Array<[ID, Partial<Layer>]> = [];
@@ -5133,7 +5204,7 @@ export class Engine {
       else if (mask && dm) mask = { ...mask, placement: dm.placement };
       updates.push([id, { raster: pixels.raster, transform: pixels.t, mask, shape: null }]);
     }
-    if (updates.length) this.edit(d.members ? 'Distort Layers' : 'Distort', (q) => { for (const [id, patch] of updates) q.updateLayer(id, patch); });
+    if (updates.length) this.edit(d.members ? `${step} Layers` : step, (q) => { for (const [id, patch] of updates) q.updateLayer(id, patch); });
   }
 
   cancelDistort(): void {
@@ -7930,6 +8001,7 @@ export class Engine {
       if (!(next.w >= 1 && next.h >= 1) || ![next.x, next.y, next.w, next.h, next.rotation].every(Number.isFinite) || sameTransform(next, l.transform)) return false;
       const redraw = !!l.shape && (Math.round(next.w) !== l.raster.width || Math.round(next.h) !== l.raster.height);
       p.updateLayer(l.id, { transform: next, mask: followMask(l, next), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, next.w, next.h) } : {}) });
+      this.lastTransform = { from: l.transform, to: next };
       return true;
     });
   }
@@ -8072,6 +8144,7 @@ export class Engine {
   }
 
   transformCommand(): void {
+    this.endTransformMode();
     if (this.canTransformSelection) { this.beginSelectionTransform(); return; }
     this.settle();
     if (!this.showTransformControls) this.update({ showTransformControls: true });
