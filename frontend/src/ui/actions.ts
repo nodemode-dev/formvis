@@ -27,6 +27,7 @@ export const RECORDABLE: ReadonlySet<string> = new Set([
   'rasterize-type', 'rasterize-shape', 'rasterize-smart', 'rasterize-all', 'reselect', 'grow', 'similar', 'convert-to-shape',
   'save-selection-channel', 'create-layers', 'hide-all-effects', 'link-layers', 'select-linked',
   'frame-from-layers', 'shapes-unite', 'shapes-subtract', 'shapes-intersect', 'shapes-exclude', 'shapes-merge',
+  'auto-tone', 'auto-contrast', 'auto-color', 'desaturate', 'equalize', 'image-crop',
 ]);
 
 const KEY = 'formvis.actions';

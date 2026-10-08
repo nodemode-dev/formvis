@@ -25,7 +25,7 @@ import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree'
 import { dragged, following, rounded, type DragMode } from './transform';
 import { carried, cornersOf, cropWarp, distortUsable, maskEdgeTone, visibleBounds, warpRaster, type Warped, imageCorners, homography, project, inverse3 } from './distort';
 import { withResolution } from './dpi';
-import { antialiasMask, wandMask } from './kernels';
+import { antialiasMask, levelsKernel, wandMask } from './kernels';
 import { Project } from './project';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
@@ -44,8 +44,8 @@ export { hierarchy, byId } from './tree';
 export { runFilterOffThread } from './filter-jobs';
 export type { FilterSettings } from './filter-jobs';
 export type { Entry as HierarchyEntry } from './tree';
-import { ADJUSTMENT_LABELS, defaultAdjustmentData } from './adjust';
-import { fromGray, gaussianBlur, resizeMask, toGray } from './filters';
+import { ADJUSTMENT_LABELS, autoLevels, defaultAdjustmentData, desaturatePixels, equalizePixels, replaceColorPixels, type ReplaceColorSettings } from './adjust';
+import { fromGray, gaussianBlur, histogram, resizeMask, toGray } from './filters';
 import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
 import { sharpenSample } from './filters-more';
@@ -3672,6 +3672,131 @@ export class Engine {
       if (p.selection) p.selection = p.selection.flipped(horizontal, W, H);
       if (p.doc.alphas?.length) p.doc = { ...p.doc, ...alphasMoved(p.doc, (m) => m.flipped(horizontal, W, H)) };
     });
+  }
+
+  /** Image > Image Rotation > Arbitrary (1.65.5): every layer turned `deg` degrees clockwise (counter-clockwise when
+   *  negative) about the canvas's centre, the canvas grown to hold the turned canvas; the Background, when there is
+   *  one, is redrawn canvas-sized over the background colour, which fills the corners the turn opens, as Photoshop's.
+   *  Alpha channels and the selection turn with it. Whole quarter turns go to `rotateCanvas`. One step. */
+  rotateCanvasBy(deg: number): boolean {
+    const p0 = this.current;
+    if (!p0 || !Number.isFinite(deg)) return false;
+    const turn = ((deg % 360) + 360) % 360;
+    if (!turn) return false;
+    if (turn % 90 === 0) { this.rotateCanvas((turn / 90) as 1 | 2 | 3); return true; }
+    if (p0.doc.layers.some((l) => l.artboard)) { this.notice('Artboards stay upright: turn the layers in them with Free Transform instead.'); return false; }
+    const a = (turn * Math.PI) / 180, cs = Math.cos(a), sn = Math.sin(a), W = p0.doc.width, H = p0.doc.height;
+    const W2 = Math.ceil(Math.abs(W * cs) + Math.abs(H * sn) - 1e-6), H2 = Math.ceil(Math.abs(W * sn) + Math.abs(H * cs) - 1e-6);
+    if (!this.sizeOk(W2, H2)) return false;
+    const c = { x: W / 2, y: H / 2 }, dx = (W2 - W) / 2, dy = (H2 - H) / 2, bg = this.backgroundLayer(), fill = { ...this.bg };
+    this.settle();
+    const ok = this.edit('Rotate Canvas', (p) => {
+      const turned = (t: Transform): Transform => {
+        const lx = t.x + t.w / 2 - c.x, ly = t.y + t.h / 2 - c.y;
+        return { ...t, x: c.x + lx * cs - ly * sn - t.w / 2 + dx, y: c.y + lx * sn + ly * cs - t.h / 2 + dy, rotation: t.rotation + turn };
+      };
+      const layers = p.doc.layers.map((l) => {
+        if (l.isGroup) return l;
+        const t = turned(l.transform), moved = { ...l, transform: t, mask: l.mask?.placement ? { ...l.mask, placement: turned(l.mask.placement) } : l.mask };
+        if (l.id !== bg?.id || !l.raster || l.mask || l.channels || l.smart || l.vector) return moved;
+        const r = Raster.filled(W2, H2, rgbCss(fill));
+        setMat(r.ctx, placement(t, l.raster.width, l.raster.height));
+        r.ctx.drawImage(l.raster.canvas, 0, 0);
+        r.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        r.touch();
+        return { ...moved, raster: r, transform: docTransform(W2, H2) };
+      });
+      const spin = (g: Ctx2D): void => { g.translate(W2 / 2, H2 / 2); g.rotate(a); g.translate(-W / 2, -H / 2); };
+      p.doc = { ...p.doc, width: W2, height: H2, layers, ...alphasRedrawn(p.doc, W2, H2, (g, m) => { spin(g); g.drawImage(m.surface(), m.x, m.y); }) };
+      if (p.selection) {
+        const s = createSurface(W2, H2), g = ctxOf(s), sel = p.selection;
+        spin(g);
+        g.drawImage(sel.surface() as CanvasImageSource, sel.x, sel.y);
+        p.selection = SelectionMask.fromAlpha(0, 0, W2, H2, ctxOf(s).getImageData(0, 0, W2, H2).data);
+      }
+      return true;
+    });
+    if (ok) this.fit();
+    return ok;
+  }
+
+  /** Image > Crop (1.65.5): the canvas cut to the selection's bounds, as the Crop tool's crop. */
+  cropToSelection(): boolean {
+    const s = this.current?.selection;
+    if (!s) { this.notice('Make a selection first: Image > Crop cuts the canvas to its bounds.'); return false; }
+    return this.cropTo(s.rect);
+  }
+
+  /** Image > Auto Tone, Auto Contrast and Auto Color (1.65.5): Levels set from the histogram of the active layer (of
+   *  its selected area, when there is a selection) by `autoLevels` (per channel; one range for all three; per channel
+   *  with neutral midtones) and applied to it, within the selection, as one step. */
+  autoAdjust(kind: 'tone' | 'contrast' | 'color'): void {
+    const t = this.targetImage();
+    if (!t) { this.notice('Select a layer with pixels first.'); return; }
+    const bins = histogram(t.image, this.targetCoverage(t));
+    const k = levelsKernel({ ranges: autoLevels(bins, kind === 'tone' ? 'color' : kind === 'contrast' ? 'contrast' : 'neutral') });
+    this.applyImageEdit({ tone: 'Auto Tone', contrast: 'Auto Contrast', color: 'Auto Color' }[kind], (src, scale) => {
+      const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      k(out.data, { width: src.width, height: src.height, originX: 0, originY: 0, unitsPerPixel: 1 / scale });
+      return out;
+    });
+  }
+
+  /** Image > Adjustments > Desaturate, Equalize and Replace Color (1.65.5) on the active layer within the selection,
+   *  each one step; Replace Color's settings are its dialog's. */
+  pixelAdjust(kind: 'desaturate' | 'equalize'): void {
+    const t = kind === 'equalize' ? this.targetImage() : null, cov = t ? this.targetCoverage(t) : null;
+    this.applyImageEdit(kind === 'desaturate' ? 'Desaturate' : 'Equalize', (src) => {
+      const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      if (kind === 'desaturate') desaturatePixels(out.data); else equalizePixels(out.data, cov && cov.length === out.data.length ? cov : null);
+      return out;
+    });
+  }
+  replaceColor(o: ReplaceColorSettings, preview = false): void {
+    const run = (src: ImageData): ImageData => {
+      const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+      replaceColorPixels(out.data, o);
+      return out;
+    };
+    if (preview) this.previewImageEdit(run); else this.applyImageEdit('Replace Color', run);
+  }
+
+  /** Replace Color's preview (1.65.5): the active layer's pixels (its mask's, when the mask is the target), fitted in
+   *  `boxW` by `boxH`, scored as `replaceColor` scores them. */
+  replaceColorScores(o: ReplaceColorSettings, boxW: number, boxH: number): { mask: Uint8Array; w: number; h: number } | null {
+    const p = this.current, l = p?.activeLayer, r = !l || l.isGroup || l.tiled ? null : p?.maskTarget && l.mask ? l.mask.raster : l.raster;
+    if (!r) return null;
+    const k = Math.min(1, boxW / r.width, boxH / r.height), w = Math.max(1, Math.round(r.width * k)), h = Math.max(1, Math.round(r.height * k)), c = ctxOf(createSurface(w, h));
+    c.drawImage(r.canvas as CanvasImageSource, 0, 0, w, h);
+    return { mask: replaceColorPixels(c.getImageData(0, 0, w, h).data, o, false), w, h };
+  }
+
+  /** The selection's coverage of the pixels `targetImage` read, or null with no selection. */
+  private targetCoverage(t: { target: Target; width: number; height: number }): Uint8ClampedArray | null {
+    const p = this.current, l = p?.activeLayer;
+    return p && l ? this.coverageFor(p, l, t.target, t.width, t.height) : null;
+  }
+
+  /** Image > Duplicate (1.65.5): a new document holding a copy of this one, its layers' pixels and masks copied (or,
+   *  `merged`, the picture as Flatten Image makes it, in one layer), named `name`, with its paths and, unmerged, its
+   *  timeline. */
+  duplicateDocument(name: string, merged = false): Project | null {
+    const p = this.current;
+    if (!p) return null;
+    if (p.doc.layers.some((l) => l.tiled)) { this.notice('A document with layers past 268 megapixels cannot be duplicated yet: save it and open the copy.'); return null; }
+    this.settle();
+    const title = name.trim().slice(0, 200) || `${p.name} copy`, flat = merged ? this.flattened() : null;
+    let doc: Doc, active: ID | null = p.activeId;
+    if (flat) {
+      const layer = newLayer('Background', p.doc, { raster: Raster.from(flat as CanvasImageSource, p.doc.width, p.doc.height) });
+      doc = { ...p.doc, id: uid(), layers: [layer] };
+      active = layer.id;
+    } else doc = { ...this.copyDoc(p.doc), id: uid() };
+    const paths = this.pathSet(p), tl = !flat && this.timelines.has(p) ? structuredClone(this.timelineFor(p)) : null;
+    const q = this.addProject(doc, title, active);
+    if (paths.list.length) this.pathSets.set(q, structuredClone(paths));
+    if (tl && (tl.frames.length || tl.video)) this.setTimelineFor(q, tl);
+    return q;
   }
 
   /** Whether a layer can take paint, as Photoshop decides (1.50.2, the owner's walkthrough: tools refused layers

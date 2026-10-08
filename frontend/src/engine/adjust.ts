@@ -306,3 +306,112 @@ export function defaultAdjustmentData(kind: AdjustmentKind): Json {
   else if (isParamKind(kind)) data.params = paramValues(kind, {});
   return data;
 }
+
+export type LevelRangeData = { black: number; gamma: number; white: number; outputBlack: number; outputWhite: number };
+
+/** Levels set from a histogram, as the Levels dialog's Auto and Image > Auto Tone, Contrast and Color set them: each
+ *  end clips 0.1% of a channel's histogram. Contrast shares one master interval across R, G and B so channel
+ *  relationships hold; Color sets each channel; Color + neutral midtones also sets each channel's gamma so its mean
+ *  maps to middle gray. `bins` is `histogram()`: composite, then R, G, B. */
+export function autoLevels(bins: Float64Array, mode: 'contrast' | 'color' | 'neutral'): LevelRangeData[] {
+  const fresh = (black = 0, white = 255): LevelRangeData => ({ black, gamma: 1, white, outputBlack: 0, outputWhite: 255 });
+  const ranges = [fresh(), fresh(), fresh(), fresh()];
+  const endpoints = (c: number): [number, number] | null => {
+    const o = c * 256;
+    let total = 0;
+    for (let i = 0; i < 256; i++) total += bins[o + i];
+    if (!(total > 0)) return null;
+    let sum = 0, low = 0, high = 255;
+    for (let i = 0; i < 256; i++) { sum += bins[o + i]; if (sum > total * 0.001) { low = i; break; } }
+    sum = 0;
+    for (let i = 255; i >= 0; i--) { sum += bins[o + i]; if (sum > total * 0.001) { high = i; break; } }
+    return low < high ? [low, high] : null;
+  };
+  if (mode === 'contrast') {
+    const lims = [1, 2, 3].map(endpoints).filter((x): x is [number, number] => x !== null);
+    if (lims.length) {
+      const low = Math.min(...lims.map((x) => x[0])), high = Math.max(...lims.map((x) => x[1]));
+      if (low < high) ranges[0] = fresh(low, high);
+    }
+    return ranges;
+  }
+  for (let c = 1; c <= 3; c++) {
+    const e = endpoints(c);
+    if (!e) continue;
+    const r = fresh(e[0], e[1]);
+    if (mode === 'neutral') {
+      let total = 0, acc = 0;
+      for (let i = 0; i < 256; i++) { const w = bins[c * 256 + i]; total += w; acc += Math.min(1, Math.max(0, (i - r.black) / (r.white - r.black))) * w; }
+      const mean = acc / total;
+      if (mean > 0 && mean < 1) r.gamma = Math.min(9.99, Math.max(0.1, Math.log(mean) / Math.log(0.5)));
+    }
+    ranges[c] = r;
+  }
+  return ranges;
+}
+
+/** Image > Adjustments > Desaturate (1.65.5): each pixel grey at its HSL lightness, (max + min) / 2, the grey
+ *  Hue/Saturation gives at -100, in place. */
+export function desaturatePixels(d: Uint8ClampedArray): void {
+  for (let i = 0; i < d.length; i += 4) { const v = Math.round((Math.max(d[i], d[i + 1], d[i + 2]) + Math.min(d[i], d[i + 1], d[i + 2])) / 2); d[i] = d[i + 1] = d[i + 2] = v; }
+}
+
+/** Image > Adjustments > Equalize (1.65.5): histogram equalisation of the R, G and B values of the visible pixels
+ *  counted together (each weighted by `cov`'s alpha when given, the selected area's). A level goes to the share of
+ *  values at or below it, scaled so the darkest level present is black and the brightest white, and that one table
+ *  is applied to every channel, in place. A picture of one level is left alone. */
+export function equalizePixels(d: Uint8ClampedArray, cov: Uint8ClampedArray | null = null): void {
+  const count = new Float64Array(256);
+  for (let i = 0; i < d.length; i += 4) {
+    const weight = !d[i + 3] ? 0 : cov ? cov[i + 3] / 255 : 1;
+    if (weight > 0) { count[d[i]] += weight; count[d[i + 1]] += weight; count[d[i + 2]] += weight; }
+  }
+  const below = new Float64Array(256);
+  for (let v = 0, run = 0; v < 256; v++) { run += count[v]; below[v] = run; }
+  const darkest = count.findIndex((c) => c > 0), floor = darkest < 0 ? 0 : below[darkest], span = below[255] - floor;
+  if (!(span > 0)) return;
+  const table = new Uint8ClampedArray(256);
+  for (let v = 0; v < 256; v++) table[v] = Math.round(((below[v] - floor) / span) * 255);
+  for (let i = 0; i < d.length; i += 4) { d[i] = table[d[i]]; d[i + 1] = table[d[i + 1]]; d[i + 2] = table[d[i + 2]]; }
+}
+
+/** Replace Color's settings: the sampled colours (`plus`, and `minus` taken away), Fuzziness (0 to 200 levels), and
+ *  the replacement's Hue (degrees, -180 to 180), Saturation and Lightness (percent, -100 to 100). */
+export interface ReplaceColorSettings { plus: Array<{ r: number; g: number; b: number }>; minus: Array<{ r: number; g: number; b: number }>; fuzziness: number; hue: number; saturation: number; lightness: number }
+
+/** Image > Adjustments > Replace Color (1.65.5): each pixel scored as Select > Color Range scores sampled colours (full
+ *  at the nearest of `plus`, none `fuzziness` away, less the score `minus` gives it), and by that score its hue turned
+ *  by `hue` degrees and its saturation and lightness pushed `saturation` and `lightness` percent toward full or none;
+ *  in place unless `apply` is false. Returns the scores, the dialog's preview. */
+export function replaceColorPixels(d: Uint8ClampedArray, o: ReplaceColorSettings, apply = true): Uint8Array {
+  const scores = new Uint8Array(d.length / 4), reach = Math.max(1, o.fuzziness) * Math.sqrt(3), change = apply && !!(o.hue || o.saturation || o.lightness);
+  const closeness = (list: ReplaceColorSettings['plus'], r: number, g: number, b: number): number => {
+    if (!list.length) return 0;
+    let nearest = Infinity;
+    for (const c of list) nearest = Math.min(nearest, Math.hypot(r - c.r, g - c.g, b - c.b));
+    return Math.max(0, 1 - nearest / reach);
+  };
+  for (let p = 0, j = 0; j < d.length; p++, j += 4) {
+    if (!d[j + 3]) continue;
+    const score = Math.max(0, closeness(o.plus, d[j], d[j + 1], d[j + 2]) - closeness(o.minus, d[j], d[j + 1], d[j + 2]));
+    scores[p] = Math.round(score * 255);
+    if (!change || !score) continue;
+    const [h, s, l] = hslOf(d[j] / 255, d[j + 1] / 255, d[j + 2] / 255);
+    const turned = rgbOf((((h + o.hue) % 360) + 360) % 360, clamp(toward(s, o.saturation), 0, 1), clamp(toward(l, o.lightness), 0, 1));
+    for (let c = 0; c < 3; c++) d[j + c] = Math.round(d[j + c] + (turned[c] * 255 - d[j + c]) * score);
+  }
+  return scores;
+}
+
+/** A share `v` (0 to 1) moved `by` percent of the way to 1, or to 0 when `by` is negative. */
+const toward = (v: number, by: number): number => (by >= 0 ? v + (1 - v) * (by / 100) : v * (1 + by / 100));
+
+/** How far, in percent, `toward` must move share `a` to reach `b`. */
+const towardBy = (a: number, b: number): number => (b >= a ? (a < 1 ? ((b - a) / (1 - a)) * 100 : 0) : a > 0 ? ((b - a) / a) * 100 : 0);
+
+/** The Hue, Saturation and Lightness with which Replace Color turns `from` into `to` (its Result picker), in whole
+ *  steps. */
+export function replacementFor(from: { r: number; g: number; b: number }, to: { r: number; g: number; b: number }): { hue: number; saturation: number; lightness: number } {
+  const [h1, s1, l1] = hslOf(from.r / 255, from.g / 255, from.b / 255), [h2, s2, l2] = hslOf(to.r / 255, to.g / 255, to.b / 255);
+  return { hue: Math.round(((((h2 - h1) % 360) + 540) % 360) - 180), saturation: Math.round(towardBy(s1, s2)), lightness: Math.round(towardBy(l1, l2)) };
+}

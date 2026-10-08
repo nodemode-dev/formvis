@@ -23,6 +23,8 @@ import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery, type RecoveryRecord } from './io/recovery';
 import { TrimDialog } from './ui/panels/trim-dialog';
 import { ColorRangeDialog } from './ui/panels/color-range-dialog';
+import { ArbitraryRotationDialog, DuplicateImageDialog } from './ui/panels/image-dialogs';
+import { ReplaceColorDialog } from './ui/panels/replace-color-dialog';
 import { HistoryPanel } from './ui/history';
 import { StopDialog } from './ui/panels/stop-dialog';
 import { TweenDialog } from './ui/panels/tween-dialog';
@@ -1380,6 +1382,9 @@ export function startApp(): void {
     guide: new GuideDialog(engine),
     artboard: new ArtboardDialog(engine),
     newArtboard: new NewArtboardDialog(engine),
+    rotateCanvas: new ArbitraryRotationDialog(engine),
+    duplicateImage: new DuplicateImageDialog(engine),
+    replaceColor: new ReplaceColorDialog(engine),
     corners: new CornersDialog(engine),
     strokePath: new StrokePathDialog(engine),
     newLayer: new NewLayerDialog(engine),
@@ -1590,6 +1595,15 @@ export function startApp(): void {
     { id: 'rotate-90-ccw', label: '90° Counter Clockwise', enabled: has, run: () => engine.rotateCanvas(3) },
     { id: 'flip-canvas-h', label: 'Flip Canvas Horizontal', enabled: has, run: () => engine.flipCanvas(true) },
     { id: 'flip-canvas-v', label: 'Flip Canvas Vertical', enabled: has, run: () => engine.flipCanvas(false) },
+    { id: 'rotate-arbitrary', label: 'Arbitrary...', enabled: has, run: () => dialogs.rotateCanvas.show() },
+    { id: 'auto-tone', label: 'Auto Tone', keys: ['Shift+Mod+L'], enabled: pixel, run: () => engine.autoAdjust('tone') },
+    { id: 'auto-contrast', label: 'Auto Contrast', keys: ['Alt+Shift+Mod+L'], enabled: pixel, run: () => engine.autoAdjust('contrast') },
+    { id: 'auto-color', label: 'Auto Color', keys: ['Shift+Mod+B'], enabled: pixel, run: () => engine.autoAdjust('color') },
+    { id: 'desaturate', label: 'Desaturate', keys: ['Shift+Mod+U'], enabled: pixel, run: () => engine.pixelAdjust('desaturate') },
+    { id: 'equalize', label: 'Equalize', enabled: pixel, run: () => engine.pixelAdjust('equalize') },
+    { id: 'replace-color', label: 'Replace Color...', enabled: pixel, run: () => dialogs.replaceColor.show() },
+    { id: 'image-crop', label: 'Crop', enabled: selected, run: () => { engine.cropToSelection(); } },
+    { id: 'duplicate-image', label: 'Duplicate...', enabled: has, run: () => dialogs.duplicateImage.show() },
     { id: 'new-layer', label: 'New Layer', enabled: has, run: () => engine.addLayer() },
     { id: 'new-layer-dialog', label: 'Layer...', keys: ['Shift+Mod+N'], enabled: has, run: () => dialogs.newLayer.show() },
     { id: 'new-folder', label: 'New Folder', enabled: has, run: () => engine.addFolder() },
@@ -1834,9 +1848,10 @@ export function startApp(): void {
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', { label: 'Transform', items: ['transform', 'transform-warp'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
-      { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert'] }, '-',
+      { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
+      'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'trim', 'reveal-all', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
+      'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
       { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-adjustment', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
