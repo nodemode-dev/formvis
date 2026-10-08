@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.1 · 2026-10-08
+
+### Added
+
+- Layer > Vector Mask: Reveal All, Hide All, Current Path, Delete, Enable or Disable and Link or Unlink; Layer > Rasterize > Vector Mask draws it into the layer mask. A linked vector mask follows the layer's moves and transforms, every canvas change carries it, and the Paths panel lists it for the path tools to reshape. Saved in projects.
+
+### Changed
+
+- The history from 1.64.0 was rewritten: formvis's own code and docs throughout, the commits' authors, dates and order kept, the tags moved.
+
 ## 1.66.0 · 2026-10-08
 
 ### Added
