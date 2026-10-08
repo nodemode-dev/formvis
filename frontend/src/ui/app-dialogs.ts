@@ -707,28 +707,36 @@ export class ShortcutsDialog extends Dialog {
 
   private render(): void {
     const q2 = this.search.value.trim().toLowerCase();
-    const rows = this.commands.all().map((c) => ({ id: c.id, label: this.commands.label(c).replace(/\.\.\.$/, ''), keys: (c.keys ?? []).map(formatKeys).join(', ') }))
+    const rows: Array<{ id: string; label: string; keys: string; tool: boolean }> = this.commands.all().map((c) => ({ id: c.id, label: this.commands.label(c).replace(/\.\.\.$/, ''), keys: (c.keys ?? []).map(formatKeys).join(', '), tool: false }))
       .filter((r) => r.label && (!q2 || r.label.toLowerCase().includes(q2) || r.keys.toLowerCase().includes(q2))).sort((a, b) => a.label.localeCompare(b.label));
-    const nodes: HTMLElement[] = rows.map((r) => {
-      const n = el('<div class="cv-list-row cv-keys-row"><span class="cv-list-name"></span><span class="cv-list-meta"></span><button type="button" class="cv-btn cv-btn-ghost">Change</button><button type="button" class="cv-btn cv-btn-ghost">Remove</button></div>');
-      n.dataset.command = r.id;
-      setText(q(n, '.cv-list-name'), r.label);
-      setText(q(n, '.cv-list-meta'), this.capturing === r.id ? 'Press the new keys (Esc cancels)' : r.keys || 'none');
-      const [change, remove] = [...n.querySelectorAll('button')] as HTMLButtonElement[];
-      change.setAttribute('aria-label', `Change ${r.label}`); remove.setAttribute('aria-label', `Remove ${r.label}`); remove.disabled = !r.keys;
-      change.addEventListener('click', () => { this.capturing = r.id; this.focusId = r.id; this.pending = null; this.say(''); this.render(); });
-      remove.addEventListener('click', () => { this.focusId = r.id; this.commands.setKeys(r.id, []); this.save(); this.render(); });
-      return n;
+    for (const [label, keys] of TOOL_KEYS) if (!q2 || label.toLowerCase().includes(q2)) rows.push({ id: `tool:${label}`, label: `${label} (tool)`, keys, tool: true });
+    patchList(this.list, rows, {
+      key: (r) => r.id,
+      create: (r) => {
+        if (r.tool) { const t = el('<div class="cv-list-row cv-keys-row is-tool"><span class="cv-list-name"></span><span class="cv-list-meta"></span></div>'); setText(q(t, '.cv-list-name'), r.label); setText(q(t, '.cv-list-meta'), r.keys); return t; }
+        const n = el('<div class="cv-list-row cv-keys-row"><span class="cv-list-name"></span><span class="cv-list-meta"></span><button type="button" class="cv-btn cv-btn-ghost">Change</button><button type="button" class="cv-btn cv-btn-ghost">Remove</button></div>');
+        n.dataset.command = r.id;
+        const [change, remove] = [...n.querySelectorAll('button')] as HTMLButtonElement[];
+        change.addEventListener('click', () => { this.capturing = r.id; this.focusId = r.id; this.pending = null; this.say(''); this.render(); });
+        remove.addEventListener('click', () => { this.focusId = r.id; this.commands.setKeys(r.id, []); this.save(); this.render(); });
+        this.fillRow(n, r);
+        return n;
+      },
+      update: (n, r) => { if (!r.tool) this.fillRow(n, r); },
     });
-    for (const [label, keys] of TOOL_KEYS) if (!q2 || label.toLowerCase().includes(q2)) {
-      const n = el('<div class="cv-list-row cv-keys-row is-tool"><span class="cv-list-name"></span><span class="cv-list-meta"></span></div>');
-      setText(q(n, '.cv-list-name'), `${label} (tool)`); setText(q(n, '.cv-list-meta'), keys);
-      nodes.push(n);
-    }
-    this.list.replaceChildren(...nodes);
-    // Focus back on the row just edited: re-rendering removed the focused button, and focus falling out of the dialog
-    // left Escape unable to close it (1.53.4).
-    if (this.focusId) (this.list.querySelector(`.cv-keys-row[data-command="${CSS.escape(this.focusId)}"] button`) as HTMLButtonElement | null)?.focus();
+    // Focus back on the row just edited, should the list have moved it (a moved node loses focus): focus falling out
+    // of the dialog left Escape unable to close it (1.53.4).
+    const btn = this.focusId ? this.list.querySelector(`.cv-keys-row[data-command="${CSS.escape(this.focusId)}"] button`) as HTMLButtonElement | null : null;
+    if (btn && !btn.parentElement?.contains(document.activeElement)) btn.focus();
+  }
+
+  /** A command's row brought up to date in place: its name, its keys (or the prompt while capturing) and its buttons. */
+  private fillRow(n: HTMLElement, r: { id: string; label: string; keys: string }): void {
+    setText(q(n, '.cv-list-name'), r.label);
+    setText(q(n, '.cv-list-meta'), this.capturing === r.id ? 'Press the new keys (Esc cancels)' : r.keys || 'none');
+    const [change, remove] = [...n.querySelectorAll('button')] as HTMLButtonElement[];
+    if (change.getAttribute('aria-label') !== `Change ${r.label}`) { change.setAttribute('aria-label', `Change ${r.label}`); remove.setAttribute('aria-label', `Remove ${r.label}`); }
+    setDisabled(remove, !r.keys);
   }
 }
 
