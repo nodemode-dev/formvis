@@ -29,7 +29,7 @@ const LOCKS = [
   { id: 'position', title: 'position', icon: 'moveSel' },
   { id: 'all', title: 'all', icon: 'lock' },
 ] as const;
-const kindOf = (l: Layer): KindId => (l.adjustment ? 'adjustment' : l.text ? 'type' : l.vector ? 'shape' : l.smart ? 'smart' : 'pixel');
+const kindOf = (l: Layer): KindId => (l.adjustment || l.fillContent ? 'adjustment' : l.text ? 'type' : l.vector ? 'shape' : l.smart ? 'smart' : 'pixel');
 
 /** The blend modes in Photoshop's groups (the target's list, s21), as <optgroup>s; any mode not named falls in Other. */
 const BLEND_GROUPS: ReadonlyArray<[string, readonly string[]]> = [
@@ -217,6 +217,7 @@ export class LayersPanel {
     setClass(row, 'is-group', l.isGroup);
     setClass(row, 'is-collapsed', collapsed);
     setClass(row, 'is-adjust', !!l.adjustment);
+    setClass(row, 'is-fill', !!l.fillContent);
     setClass(row, 'has-mask', !!l.mask);
     setClass(row, 'mask-off', !!l.mask && !l.mask.enabled);
     setClass(row, 'is-mask-target', active && p.maskTarget && !!l.mask);
@@ -486,6 +487,7 @@ export class LayersPanel {
       else if (t.closest('.cv-layer-name')) this.startRename(row.dataset.id);
       else if (row.classList.contains('is-text')) document.dispatchEvent(new CustomEvent('cv:type', { detail: { layerId: row.dataset.id } }));
       else if (row.classList.contains('is-adjust')) row.dispatchEvent(new CustomEvent('cv:edit-adjustment', { bubbles: true, detail: row.dataset.id }));
+      else if (row.classList.contains('is-fill') && !t.closest('.cv-layer-mask')) row.dispatchEvent(new CustomEvent('cv:fill-options', { bubbles: true, detail: row.dataset.id }));
     });
     this.list.addEventListener('contextmenu', (e) => {
       e.preventDefault();

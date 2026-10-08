@@ -29,6 +29,8 @@ import { antialiasMask, levelsKernel, wandMask } from './kernels';
 import { Project } from './project';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
+import { fillFrame, fillName, renderFill } from './fill-layers';
+import type { FillContent } from './types';
 
 export * from './types';
 export * from './geometry';
@@ -128,6 +130,7 @@ interface DistortedMask { warped: Warped | null; placement: Transform | null }
 /** Why a smart object's pixels cannot be changed directly, and what to do instead. */
 const SHAPE_NOTICE = 'This is a shape layer. Reshape it with Direct Selection on its Shape Path, or rasterize it (Layer > Rasterize Layer) to change its pixels.';
 const SMART_NOTICE = 'This layer is a smart object. Rasterize it (Layer > Rasterize Layer) to change its pixels; its filters stay editable in Layer > Smart Filters.';
+const FILL_NOTICE = 'This is a fill layer. Change it in Layer > Layer Content Options, paint its mask, or rasterize it (Layer > Rasterize > Fill Content) to change its pixels.';
 
 /** Tools that paint with a PixelStroke, whose surfaces are warmed when the tool is chosen. */
 const PAINT_TOOLS: ReadonlySet<ToolId> = new Set<ToolId>(['brush', 'mixer', 'cloneStamp', 'healingBrush', 'spotHealing', 'remove']);
@@ -1425,8 +1428,8 @@ export class Engine {
    *  mask. Checked before any history step opens. */
   private smartLocked(p: Project): boolean {
     const l = p.activeLayer;
-    if (!(l?.smart || l?.vector) || (p.maskTarget && l.mask)) return false;
-    this.notice(l.vector ? SHAPE_NOTICE : SMART_NOTICE);
+    if (!(l?.smart || l?.vector || l?.fillContent) || (p.maskTarget && l.mask)) return false;
+    this.notice(l.vector ? SHAPE_NOTICE : l.fillContent ? FILL_NOTICE : SMART_NOTICE);
     return true;
   }
 
@@ -1495,7 +1498,7 @@ export class Engine {
     this.edit('Convert to Smart Object', (p) => {
       const l = p.activeLayer;
       if (!l || l.isGroup || l.adjustment || l.smart || !l.raster) { this.notice('Select a pixel layer to convert.'); return false; }
-      p.updateLayer(l.id, { smart: { source: l.raster, filters: [] }, text: null, shape: null });
+      p.updateLayer(l.id, { smart: { source: l.raster, filters: [] }, text: null, shape: null, fillContent: null });
     });
   }
 
@@ -1504,20 +1507,20 @@ export class Engine {
     this.edit('Rasterize Layer', (p) => {
       const l = p.activeLayer;
       // Live shapes too (1.53.3): a plain filled rectangle or ellipse keeps its pixels and becomes an ordinary layer.
-      if (!l || (!l.smart && !l.text && !l.vector && !l.shape)) return false;
-      p.updateLayer(l.id, { smart: null, text: null, vector: null, shape: null });
+      if (!l || (!l.smart && !l.text && !l.vector && !l.shape && !l.fillContent)) return false;
+      p.updateLayer(l.id, { smart: null, text: null, vector: null, shape: null, fillContent: null });
     });
   }
 
-  /** Layer > Rasterize > Type, Shape, Smart Object or Layer on the selected layers of that kind, or All Layers on every
-   *  type, shape and smart object layer in the document. One step. */
-  rasterizeLayers(kind: 'type' | 'shape' | 'smart' | 'layer' | 'all'): void {
-    const of = (l: Layer): boolean => (kind === 'type' ? !!l.text : kind === 'shape' ? !!(l.vector || l.shape) : kind === 'smart' ? !!l.smart : !!(l.smart || l.text || l.vector || l.shape));
-    const name = { type: 'Rasterize Type', shape: 'Rasterize Shape', smart: 'Rasterize Smart Object', layer: 'Rasterize Layer', all: 'Rasterize All Layers' }[kind];
+  /** Layer > Rasterize > Type, Shape, Fill Content, Smart Object or Layer on the selected layers of that kind, or All
+   *  Layers on every type, shape, fill and smart object layer in the document. One step. */
+  rasterizeLayers(kind: 'type' | 'shape' | 'fill' | 'smart' | 'layer' | 'all'): void {
+    const of = (l: Layer): boolean => (kind === 'type' ? !!l.text : kind === 'shape' ? !!(l.vector || l.shape) : kind === 'fill' ? !!l.fillContent : kind === 'smart' ? !!l.smart : !!(l.smart || l.text || l.vector || l.shape || l.fillContent));
+    const name = { type: 'Rasterize Type', shape: 'Rasterize Shape', fill: 'Rasterize Fill Content', smart: 'Rasterize Smart Object', layer: 'Rasterize Layer', all: 'Rasterize All Layers' }[kind];
     this.edit(name, (p) => {
       const ids = p.doc.layers.filter((l) => of(l) && (kind === 'all' || p.selectedIds.has(l.id))).map((l) => l.id);
       if (!ids.length) return false;
-      for (const id of ids) p.updateLayer(id, { smart: null, text: null, vector: null, shape: null });
+      for (const id of ids) p.updateLayer(id, { smart: null, text: null, vector: null, shape: null, fillContent: null });
       return true;
     });
   }
@@ -2172,7 +2175,7 @@ export class Engine {
         copy.ctx.fillStyle = '#000';
         for (const r of rects) copy.ctx.fillRect(r.x - l.transform.x, r.y - l.transform.y, r.w, r.h);
         copy.touch();
-        q.updateLayer(l.id, { raster: copy, text: null, vector: null, shape: null, smart: null });
+        q.updateLayer(l.id, { raster: copy, text: null, vector: null, shape: null, smart: null, fillContent: null });
         burned += 1;
       }
       boxes.forEach((bx, i) => q.updateLayer(bx.id, { vector: null, name: `Redacted ${i + 1}` }));
@@ -2614,6 +2617,8 @@ export class Engine {
     if (tx && tx.project === p) m.set(tx.layerId, { ...(m.get(tx.layerId) ?? {}), hidden: true });
     const ep = this.effectPreview;
     if (ep && ep.project === p) m.set(ep.layerId, { ...(m.get(ep.layerId) ?? {}), effects: ep.effects });
+    const fp = this.fillPreview;
+    if (fp && fp.project === p) m.set(fp.layerId, { ...(m.get(fp.layerId) ?? {}), source: fp.source });
     const fl = this.floating;
     if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.work });
     const fs = this.floatSel;
@@ -3842,17 +3847,18 @@ export class Engine {
   }
 
   /** Whether a layer can take paint, as Photoshop decides (1.50.2, the owner's walkthrough: tools refused layers
-   *  Photoshop paints): a group says so; a locked layer says why; an adjustment layer paints its mask; a type, shape or
-   *  smart-object layer asks to be rasterized first (and is, on OK, so the next action paints). A refusal's own message
-   *  stands alone: the caller's generic one is held back (lockedAt). */
+   *  Photoshop paints): a group says so; a locked layer says why; an adjustment layer paints its mask, and a fill layer
+   *  its mask when that is the target (1.66.0); a type, shape, fill or smart-object layer asks to be rasterized first
+   *  (and is, on OK, so the next action paints). A refusal's own message stands alone: the caller's generic one is held
+   *  back (lockedAt). */
   private paintable(l: Layer | null, allowTiled = false): l is Layer {   // allowTiled: the plain stroke (1.62.5)
     if (!l) return false;
     if (l.isGroup) { this.notice(`"${l.name}" is a group: choose a layer inside it.`); this.lockedAt = performance.now(); return false; }
     // A layer past 268 MP, kept in tiles (1.62.3): painting it had given it a full-size canvas the browser cannot make.
     if (l.tiled && !allowTiled) { this.notice(`"${l.name}" is past 268 megapixels and kept in tiles: the brush, pencil and eraser paint it; this comes in a later release.`); this.lockedAt = performance.now(); return false; }
     if (this.locked(l, 'pixels')) return false;
-    if (l.adjustment) return true;
-    const kind = liveText(l) ? 'type layer' : l.smart ? 'Smart Object' : l.vector || l.shape ? 'shape layer' : null;
+    if (l.adjustment || (l.fillContent && l.mask && this.current?.maskTarget)) return true;
+    const kind = liveText(l) ? 'type layer' : l.smart ? 'Smart Object' : l.vector || l.shape ? 'shape layer' : l.fillContent ? 'fill layer' : null;
     if (kind) {
       this.lockedAt = performance.now();
       if (!this.asking && this.askRasterize) {
@@ -5292,7 +5298,7 @@ export class Engine {
   beginMeshWarp(): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.perspectiveEdit) return false;
-    if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
+    if (l.vector || l.smart || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Warp works on a pixel layer. Rasterize shape layers, fill layers and smart objects first.'); return false; }
     this.settle();
     const r = l.raster, c = cornersOf(l.transform), gw = 4, gh = 4, points: P2[] = [];
     for (let j = 0; j < gh; j++) for (let i = 0; i < gw; i++) {
@@ -5360,7 +5366,7 @@ export class Engine {
   beginPuppetWarp(): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) return false;
-    if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Puppet Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
+    if (l.vector || l.smart || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Puppet Warp works on a pixel layer. Rasterize shape layers, fill layers and smart objects first.'); return false; }
     this.settle();
     const r = l.raster, m = placement(l.transform, r.width, r.height);
     this.puppetEdit = { project: p, layerId: l.id, from: [], to: [], source: r.read(), toLocal: invert(m), box: transformBounds(l.transform), preview: null };
@@ -5435,7 +5441,7 @@ export class Engine {
   beginPerspectiveWarp(): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l || this.stroke || this.transformEdit || this.distortEdit || this.meshWarpEdit || this.puppetEdit || this.perspectiveEdit) return false;
-    if (l.vector || l.smart || l.isGroup || l.adjustment || !l.raster) { this.notice('Perspective Warp works on a pixel layer. Rasterize shape layers and smart objects first.'); return false; }
+    if (l.vector || l.smart || l.fillContent || l.isGroup || l.adjustment || !l.raster) { this.notice('Perspective Warp works on a pixel layer. Rasterize shape layers, fill layers and smart objects first.'); return false; }
     this.settle();
     const r = l.raster, m = placement(l.transform, r.width, r.height);
     this.perspectiveEdit = { project: p, layerId: l.id, phase: 'layout', planes: [], source: r.read(), toLocal: invert(m), box: transformBounds(l.transform), preview: null };
@@ -6063,7 +6069,7 @@ export class Engine {
    *  the filter would grow), for the caller to run that path. */
   bandedFilter(name: string, run: (src: ImageData, frame?: LibFrame) => ImageData, apron: number, grow = 0): boolean | 'refused' {
     const p = this.current, l = p?.activeLayer;
-    if (!p || !l?.raster || this.stroke || p.maskTarget || l.smart || l.vector || !this.paintable(l)) return false;
+    if (!p || !l?.raster || this.stroke || p.maskTarget || l.smart || l.vector || l.fillContent || !this.paintable(l)) return false;
     if (l.raster.width * l.raster.height <= this.bandFrom || (p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab') return false;
     if (grow > 0 && this.canGrow(p, l)) return this.bandedGrow(name, run, apron, grow, p, l);   // as applyImageEdit grows
     // Bands at least as tall as the apron, and each band's source read before the band above it is written, so the
@@ -6292,7 +6298,7 @@ export class Engine {
 
   private fadeStep(): { name: string; was: Layer; layer: Layer; patches: readonly PixelPatch[] } | null {
     const p = this.current, l = p?.activeLayer, e = p?.history.last;
-    if (!p || !l?.raster || !e || e.streamed || e.afterRev !== p.history.revision || p.maskTarget || l.tiled || l.smart || l.vector || (p.doc.depth ?? 8) !== 8 || (p.doc.mode ?? 'rgb') !== 'rgb') return null;
+    if (!p || !l?.raster || !e || e.streamed || e.afterRev !== p.history.revision || p.maskTarget || l.tiled || l.smart || l.vector || l.fillContent || (p.doc.depth ?? 8) !== 8 || (p.doc.mode ?? 'rgb') !== 'rgb') return null;
     const r = l.raster, was = e.before.doc.layers.find((x) => x.id === l.id);
     if (!was?.raster || e.before.doc.layers.length !== p.doc.layers.length || e.patches.some((q) => q.raster !== r || q.paged || q.disk)) return null;
     if (was.raster === r) return e.patches.length ? { name: e.name, was, layer: l, patches: e.patches } : null;
@@ -6325,7 +6331,7 @@ export class Engine {
   averageFill(): void {
     if (!this.room(this.layerBytes() * 3, 'Average')) return;
     const al = this.current?.activeLayer;
-    if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return; }
+    if ((al?.smart || al?.vector || al?.fillContent) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : al.fillContent ? FILL_NOTICE : SMART_NOTICE); return; }
     const p0 = this.current, l0 = p0?.activeLayer ?? null;
     if (!p0 || !this.paintable(l0)) { this.notice('Select a pixel layer first.'); return; }
     this.regionEdit('Average', ({ raster, target, rect }) => {
@@ -6342,7 +6348,7 @@ export class Engine {
     // Its peak in layer-sizes, as its caller measured it (1.61.1: the filters peak at 2 to 19; two when unmeasured).
     if (!this.room(this.layerBytes() * peak, name)) return;
     const al = this.current?.activeLayer;
-    if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return; }
+    if ((al?.smart || al?.vector || al?.fillContent) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : al.fillContent ? FILL_NOTICE : SMART_NOTICE); return; }
     this.preview = null;
     const p0 = this.current;
     const l0 = p0?.activeLayer ?? null;
@@ -6377,7 +6383,7 @@ export class Engine {
   async applyImageEditAsync(name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => Promise<ImageData>, grow: number, fallback: (src: ImageData, scale: number, frame?: LibFrame) => ImageData, peak = 2): Promise<boolean> {
     if (!this.room(this.layerBytes() * peak, name)) return false;   // its caller's measured peak (1.61.1)
     const al = this.current?.activeLayer;
-    if ((al?.smart || al?.vector) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : SMART_NOTICE); return false; }
+    if ((al?.smart || al?.vector || al?.fillContent) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : al.fillContent ? FILL_NOTICE : SMART_NOTICE); return false; }
     const p0 = this.current, l0 = p0?.activeLayer ?? null;
     if (!p0 || !this.paintable(l0)) { this.notice('Select a pixel layer first.'); return false; }
     this.settle();
@@ -6577,6 +6583,87 @@ export class Engine {
       created = layer.id;
     });
     return created;
+  }
+
+  /** Layer > New Fill Layer (1.66.0, Photoshop's): a fill layer over the whole canvas above the active layer, named as
+   *  Photoshop names them, with Photoshop's default layer mask (revealing all, or with a selection only it, the
+   *  selection used up) as the target, so painting it paints the mask. One New Fill Layer step; the dialog that follows
+   *  sets its content into that step (amendNewFill) or takes it back (dropNewFill). */
+  newFillLayer(content: FillContent): ID | null {
+    let made: ID | null = null;
+    this.edit('New Fill Layer', (p) => {
+      const W = p.doc.width, H = p.doc.height, base = fillName(content), sel = p.selection;
+      let n = 1;
+      while (p.doc.layers.some((l) => l.name === `${base} ${n}`)) n += 1;
+      let mask: Mask = { raster: null, enabled: true, linked: true, placement: null };
+      if (sel) { const r = new Raster(W, H); r.ctx.drawImage(sel.surface(), sel.x, sel.y); r.touch(); mask = { ...mask, raster: r }; }
+      const shell = newLayer(`${base} ${n}`, p.doc, { fillContent: content, mask, parentId: this.parentForNew(p) }), raster = this.drawFill(shell, W, H);
+      if (!raster) { this.notice('That pattern is not defined in this window.'); return false; }
+      this.insertAboveActive(p, { ...shell, raster });
+      p.maskTarget = true;
+      p.selection = null;
+      made = shell.id;
+      return true;
+    });
+    return made;
+  }
+
+  /** What a fill layer's dialog shows on the canvas before anything is recorded (previewFill). */
+  private fillPreview: { project: Project; layerId: ID; source: Surface } | null = null;
+
+  /** Shows `content` on fill layer `id` without recording anything, while its dialog changes it, in a CMYK document
+   *  as its inks will show; null ends it. */
+  previewFill(id: ID | null, content: FillContent | null = null): void {
+    const p = this.current, l = p && id ? p.layer(id) : null;
+    let r = p && l && content ? renderFill(content, p.doc.width, p.doc.height, fillFrame({ ...l, fillContent: content }, p.doc.width, p.doc.height)) : null;
+    const t = r && p?.doc.mode === 'cmyk' ? this.deriveTables(p) : null;
+    if (r && t && p?.cmykLut) r = rasterFromChannels(deriveWhole(r.read(), t, false, false), p.cmykLut);
+    this.fillPreview = p && l && r ? { project: p, layerId: l.id, source: r.canvas } : null;
+    this.emit('render', null);
+  }
+
+  /** Layer > Layer Content Options on a fill layer: its content set to `content` and drawn again, one Modify Fill Layer
+   *  step; nothing when it is unchanged. */
+  setFillContent(id: ID, content: FillContent): boolean {
+    this.fillPreview = null;
+    const ok = this.edit('Modify Fill Layer', (p) => {
+      const l = p.layer(id);
+      if (!l?.fillContent || JSON.stringify(l.fillContent) === JSON.stringify(content)) return false;
+      const r = this.drawFill({ ...l, fillContent: content }, p.doc.width, p.doc.height);
+      if (!r) { this.notice('That pattern is not defined in this window.'); return false; }
+      p.updateLayer(id, { fillContent: content, raster: r });
+      return true;
+    });
+    this.emit('render', null);
+    return ok;
+  }
+
+  /** The New Fill Layer step just made given the dialog's `content` and `name` in place, so making the layer and
+   *  setting it stay one step, its inks or floats brought into step as `edit` brings them; false when that step is no
+   *  longer the last. */
+  amendNewFill(id: ID, content: FillContent, name: string): boolean {
+    const p = this.current, l = p?.layer(id);
+    this.fillPreview = null;
+    if (!p || !l?.fillContent || p.history.last?.name !== 'New Fill Layer' || this.stroke) { this.emit('render', null); return false; }
+    const same = JSON.stringify(l.fillContent) === JSON.stringify(content), title = name.trim().slice(0, 200) || l.name;
+    const r = same ? l.raster : this.drawFill({ ...l, fillContent: content }, p.doc.width, p.doc.height);
+    if (!r) { this.emit('render', null); return false; }
+    if (same && title === l.name) { this.emit('render', null); return true; }
+    const before = new Map(p.doc.layers.map((x) => [x.id, x]));
+    p.updateLayer(id, { fillContent: content, raster: r, name: title });
+    if ((p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab') this.deriveChannels(p, before, []);
+    p.history.amend(p.snapshot());
+    this.refresh();
+    return true;
+  }
+
+  /** The New Fill Layer step just made taken back as though never made (its dialog cancelled), leaving nothing to redo. */
+  dropNewFill(id: ID): void {
+    const p = this.current;
+    this.fillPreview = null;
+    if (p?.layer(id) && p.history.last?.name === 'New Fill Layer' && !this.stroke) { this.undoNow(); p.history.dropRedo(); }
+    this.emit('render', null);
+    this.emit('history', null);
   }
 
   insertRasterLayer(raster: Raster, name: string, x: number | null, y: number | null, extra: Partial<Layer> = {}, undoName = 'Paste'): void {
@@ -8627,11 +8714,18 @@ export class Engine {
 
   /** Generated pixels through the table (1.55.9, DEV_PLAN 22.7): after a step at 16 bits or in CMYK, a layer whose
    *  8-bit pixels changed while its floats did not is brought into step (engine/derive.ts), its rendition redrawn from
-   *  the floats; a pixel layer without floats takes them whole. Replaced rasters, in-place patches and new layers. */
+   *  the floats; a pixel layer without floats takes them whole. Replaced rasters, in-place patches and new layers. A
+   *  fill layer's CMYK rendition keeps the note of what its pixels were drawn for (1.66.0), so pinFills leaves it. */
   private deriveChannels(p: Project, before: ReadonlyMap<ID, Layer>, patches: readonly PixelPatch[]): boolean {
     const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab', linear = p.doc.depth === 32, t = cmyk ? this.deriveTables(p) : null, lut = cmyk ? p.cmykLut : null;
     if (cmyk && !t) return false;
     let changed = false;
+    const shown = (r: Raster, ch: ChannelPixels): Raster => {
+      if (!lut) return r;
+      const out = rasterFromChannels(ch, lut), k = this.fillKeys.get(r);
+      if (k) this.fillKeys.set(out, k);
+      return out;
+    };
     const layers = p.doc.layers.map((l) => {
       if (!l.raster || l.isGroup || l.adjustment) return l;
       const o = before.get(l.id);
@@ -8639,14 +8733,14 @@ export class Engine {
         if (l.channels) return l;
         changed = true;
         const ch = deriveWhole(l.raster.read(), t, lab, linear);
-        return { ...l, channels: ch, raster: lut ? rasterFromChannels(ch, lut) : l.raster };
+        return { ...l, channels: ch, raster: shown(l.raster, ch) };
       }
       if (l.channels !== o.channels) return l;
       if (l.raster !== o.raster) {
         changed = true;
         const same = l.raster.width === o.raster.width && l.raster.height === o.raster.height && JSON.stringify(l.transform) === JSON.stringify(o.transform);
         const ch = same ? deriveRegion(o.channels, 0, 0, o.raster.read(), l.raster.read(), t, linear) : deriveWhole(l.raster.read(), t, lab, linear);
-        return { ...l, channels: ch, raster: lut ? rasterFromChannels(ch, lut) : l.raster };
+        return { ...l, channels: ch, raster: shown(l.raster, ch) };
       }
       const mine = patches.filter((q) => q.raster === l.raster);
       if (!mine.length) return l;
@@ -8682,9 +8776,46 @@ export class Engine {
 
   private readonly stepHook = (History.onStepEnd = (h: History, before: Snapshot, patches: readonly PixelPatch[]): Snapshot | null => {
     const p = this.projects.find((q) => q.history === h);
-    if (!p || !(p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || (p.doc.depth ?? 8) > 8)) return null;
-    return this.deriveChannels(p, new Map(before.doc.layers.map((l) => [l.id, l])), patches) ? p.snapshot() : null;
+    if (!p) return null;
+    const pinned = this.pinFills(p);
+    if (!(p.doc.mode === 'cmyk' || p.doc.mode === 'lab' || (p.doc.depth ?? 8) > 8)) return pinned ? p.snapshot() : null;
+    return this.deriveChannels(p, new Map(before.doc.layers.map((l) => [l.id, l])), patches) || pinned ? p.snapshot() : null;
   });
+
+  /** What each fill layer's pixels were drawn for (1.66.0): its content, the canvas and, when its mask lays it out, the
+   *  mask; a raster not drawn here (opened from a file) is drawn again at the next step. */
+  private readonly fillKeys = new WeakMap<Raster, string>();
+  private fillKey(l: Layer, W: number, H: number): string {
+    const c = l.fillContent, m = l.mask, laid = c?.kind === 'gradient' ? c.align : c?.kind === 'pattern' ? c.link : false;
+    return JSON.stringify([c, W, H, laid && m ? [m.enabled, m.raster?.id ?? null, m.raster?.version ?? 0, m.placement ?? l.transform] : null]);
+  }
+
+  /** A fill layer's pixels for `l` as it stands, noted with what they were drawn for; null when its pattern is gone. */
+  private drawFill(l: Layer, W: number, H: number): Raster | null {
+    const r = l.fillContent ? renderFill(l.fillContent, W, H, fillFrame(l, W, H)) : null;
+    if (r) this.fillKeys.set(r, this.fillKey(l, W, H));
+    return r;
+  }
+
+  /** Fill layers kept over the whole canvas at the end of every step (1.66.0), as Photoshop's are endless: one moved,
+   *  transformed or left short by a canvas change is drawn again over the canvas at its place, its mask staying where
+   *  the change took it; one whose content, canvas or laying-out mask changed is drawn again. True when one was. */
+  private pinFills(p: Project): boolean {
+    const W = p.doc.width, H = p.doc.height, at = docTransform(W, H);
+    let changed = false;
+    const layers = p.doc.layers.map((l) => {
+      if (!l.fillContent) return l;
+      const moved = !sameTransform(l.transform, at);
+      if (!moved && l.raster && this.fillKeys.get(l.raster) === this.fillKey(l, W, H)) return l;
+      const next: Layer = moved ? { ...l, transform: at, mask: l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask } : l;
+      const r = this.drawFill(next, W, H);
+      if (!r) return l;
+      changed = true;
+      return { ...next, raster: r };
+    });
+    if (changed) p.setLayers(layers);
+    return changed;
+  }
 
   private deriveTables(p: Project): DeriveTables | null {
     const out = p.cmykLut, inn = p.cmykIn;

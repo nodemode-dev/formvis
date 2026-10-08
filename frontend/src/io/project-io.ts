@@ -4,6 +4,7 @@ import {
   Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsPresent, effectsFromData, liveText, textFromData, paragraphStylesFrom, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
 } from '../engine';
 import { artboardFromData } from '../engine/types';
+import { fillContentFrom } from '../engine/fill-layers';
 import { alphaGrey, nextAlphaName } from '../engine/alphas';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS } from '../engine/adjust-params';
 import { api, type FilePart } from './api';
@@ -118,6 +119,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     else if (ch?.mode === 'cmyk') { const name = `${l.id}.cmyk32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
     else if (ch?.mode === 'lab') { const name = `${l.id}.lab32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
     if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
+    if (l.fillContent && l.raster) r.fillContent = structuredClone(l.fillContent);
     if (l.smart && !l.isGroup) {
       const name = `${l.id}.source.png`;
       files.push({ name, blob: await toBlob(l.smart.source.canvas) });
@@ -163,8 +165,8 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
   // The patterns this document's styles use travel inside it, so it opens the same where they are not defined.
   const used = new Set<string>();
   for (const l of doc.layers) {
-    const po = l.effects?.patternOverlay, bt = l.effects?.bevel.enabled ? l.effects.bevel.texture : undefined;
-    for (const id of [po?.enabled ? po.pattern : '', bt?.enabled ? bt.pattern : '']) if (id && !id.startsWith('builtin:')) used.add(id);
+    const po = l.effects?.patternOverlay, bt = l.effects?.bevel.enabled ? l.effects.bevel.texture : undefined, fc = l.fillContent;
+    for (const id of [po?.enabled ? po.pattern : '', bt?.enabled ? bt.pattern : '', fc?.kind === 'pattern' ? fc.pattern : '']) if (id && !id.startsWith('builtin:')) used.add(id);
   }
   const carried: Array<{ id: string; name: string; file: string }> = [];
   for (const id of used) {
@@ -262,6 +264,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(str(r.linkID) ? { link: (str(r.linkID) as string).slice(0, 120) } : {}),
       blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
+      ...(raster && r.fillContent ? { fillContent: fillContentFrom(r.fillContent) } : {}),
     };
   });
   for (const b of bitmaps.values()) b.close();

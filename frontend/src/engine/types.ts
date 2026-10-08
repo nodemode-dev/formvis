@@ -86,12 +86,23 @@ export interface Layer {
   link?: ID;
   /** A frame (the Frame tool, K, as Photoshop's): a folder whose mask is this shape; an image placed in it covers it. */
   frame?: FrameSpec | null;
+  /** A fill layer's content (1.66.0); `raster` is its rendering over the whole canvas, drawn again when it changes. */
+  fillContent?: FillContent | null;
   blend: BlendMode;
   mask: Mask | null;
   clipId: ID | null;
   adjustment: Adjustment | null;
   shape: Record<string, unknown> | null;
 }
+/** Layer > New Fill Layer (1.66.0), as Photoshop's: a solid colour; a gradient (its stops resolved to colours, laid
+ *  out across the canvas, or across what the layer's mask shows when `align`, at `angle` degrees, `scale` and `offset`
+ *  as fractions of that frame); or a pattern (`scale` a fraction, `angle` degrees, its origin at the frame's corner
+ *  when `link`, moved by `phase` pixels). Photoshop's own fields, so they travel in PSD files. */
+export type FillContent =
+  | { kind: 'solid'; color: RGB }
+  | { kind: 'gradient'; stops: FillStop[]; style: 'linear' | 'radial' | 'angle' | 'reflected' | 'diamond'; angle: number; scale: number; reverse: boolean; dither: boolean; align: boolean; offset: Pt }
+  | { kind: 'pattern'; pattern: ID; scale: number; angle: number; link: boolean; phase: Pt };
+export interface FillStop { at: number; color: RGB; alpha: number }
 /** A ruler guide: `axis: 'x'` is a vertical guide at x = `at`, `'y'` a horizontal one, in document pixels. */
 export interface Artboard { x: number; y: number; w: number; h: number; background: RGB | null }
 

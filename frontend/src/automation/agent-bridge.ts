@@ -85,7 +85,7 @@ export class AgentBridge {
           const data = { name: p.name, width: d.width, height: d.height, resolution: d.resolution ?? 72, mode: d.mode ?? 'rgb', depth: d.depth ?? 8, profile: d.profile?.name ?? (d.mode === 'cmyk' ? null : 'sRGB'), activeLayerId: p.activeId,
             selection: s ? { x: s.x, y: s.y, width: s.w, height: s.h } : null,
             documents: e.projects.map((q) => ({ id: q.id, name: q.name, active: q === p })),
-            layers: d.layers.map((l) => ({ id: l.id, name: l.name, kind: l.isGroup ? 'group' : l.adjustment ? `adjustment:${l.adjustment.kind}` : l.text ? 'text' : l.shape ? 'shape' : l.smart ? 'smart object' : 'pixels',
+            layers: d.layers.map((l) => ({ id: l.id, name: l.name, kind: l.isGroup ? 'group' : l.adjustment ? `adjustment:${l.adjustment.kind}` : l.fillContent ? `fill:${l.fillContent.kind}` : l.text ? 'text' : l.shape ? 'shape' : l.smart ? 'smart object' : 'pixels',
               visible: l.visible !== false, opacity: l.opacity, blend: l.blend ?? 'normal', parentId: l.parentId ?? null })) };
           return text(JSON.stringify(data), data);
         }

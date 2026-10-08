@@ -93,6 +93,18 @@ export class History {
     return p ? { before: p.before, patches: p.patches } : null;
   }
 
+  /** The last step's result replaced by `snap` while nothing is undone or open (1.66.0: a fill layer made, then set
+   *  in its dialog, stays one step); false when there is no such step. */
+  amend(snap: Snapshot): boolean {
+    const e = this.past[this.past.length - 1];
+    if (!e || this.depth > 0 || this.future.length) return false;
+    e.after = snap;
+    return true;
+  }
+
+  /** Forgets the steps undone (1.66.0: a fill layer's dialog cancelled leaves no step to redo). */
+  dropRedo(): void { this.future = []; }
+
   /** The oldest kept state and every pixel patch done since, oldest first, for rebuilding pixels as they were
    *  (Edit > Fill with History). Undone steps are excluded, since undoing already wrote their pixels back. */
   origin(): { first: Snapshot | null; patches: PixelPatch[] } {
