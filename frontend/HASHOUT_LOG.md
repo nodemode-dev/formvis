@@ -2,6 +2,33 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Toggle Last State, Paste Special and Edit > Stroke, 27.6's third part · _v1.65.7 (ui/panels/stroke-dialog.ts new; engine/index.ts, app.ts; docs/MANUAL.md, .docs/wiki/Keyboard-Shortcuts.md)
+
+DEV_PLAN 27.6, third part, after Photoshop's Edit menu (Toggle Last State: redo when there is one, else undo; Paste Into: pasted centred on the selection's bounds behind a mask from the selection or its inverse, unlinked; Stroke: a band along the selection's edge). Engine: `toggleLastState()` redoes when the history can, else undoes. `pasteInto(outside, image)`: formvis's own clipboard, or a picture from another app given as `image`, pasted as a new layer (`newLayer`, `parentForNew`, `insertAboveActive`, as `insertRasterLayer` places one) centred on the selection's bounds, with a layer mask the size of the canvas (the selection drawn into it, or a white canvas with the selection cut out for Paste Outside), unlinked and placed at the canvas (`docTransform`), so the picture moves behind a mask that stays; the selection is used up, as Photoshop's; one Paste Into or Paste Outside step; without a selection or anything to paste, a notice. `strokeSelection(o)`: the edge is the selection's, or with none the active layer's pixels drawn into the work area through their placement, either taken at half coverage (128); the work area is the edge's bounds grown by the width and two pixels, past the canvas too, so pixels beyond the canvas count as outside and Select All strokes the canvas's border inside it; `distanceSquared` (matting.ts) from every inside pixel to the nearest outside one and from every outside pixel to the nearest inside one; a pixel's coverage is its distance within the band's reach (the width, or half of it for Center, on each side) plus one, clamped, so on a straight edge a whole width is exactly that many pixels (the edge lies half a pixel from each centre) and outer corners round; filled through `fillWith` with the band as its region, so mode, opacity, Preserve Transparency and a mask target behave as Edit > Fill's; one Stroke step; the selection stays. The first version took the band from `resizeMask` (Select > Modify's expand and contract), whose half-pixel soft edge left a half-covered pixel at every inner and outer edge; measured at 4 px on a rectangle it gave x 100 to 103 red and 104 half, and now 104 is untouched.
+
+The window: `StrokeDialog` (stroke-dialog.ts): Width (1 to 250 px), Color (the foreground's when it opens), Location (Inside, Center, Outside; Center first), Mode (the blend modes Edit > Fill offers), Opacity and Preserve Transparency, the rest kept between uses; OK, or Enter in Width, strokes. Commands: toggle-last-state (Alt+Mod+Z; enabled when there is a step to undo or redo), paste-in-place (Shift+Mod+V; the same as Paste, which already puts formvis's own copy where it was), paste-into (Alt+Shift+Mod+V) and paste-outside, both with a selection, and stroke-dialog (with a selection, or a layer with pixels). `pasteFromMenu(outside)` and `pasteExternal(file, outside)` take Paste Into's or Paste Outside's side, reading the system clipboard as Paste does and falling back to formvis's own; `pasteInto` names its own refusals, so the menu adds none. The Edit menu: Toggle Last State after Redo; a Paste Special submenu after Paste; Stroke... after the Fill submenu, as Photoshop orders them. The Edit menu is now taller than the browser suite's 900 pixel window and scrolls, as the Layer menu has since 1.64.8.
+
+Verified by scratch probes outside the repository, on a 400 by 300 document. Toggle Last State after a fill undid it (white) and again redid it (red). With a 60 by 40 red block copied and a 100 by 100 selection at (200, 150): Paste Into made Pasted Layer at (220, 180), its mask unlinked, enabled, 400 by 300 at (0, 0), the selection gone, one Paste Into step; red inside both, white outside the selection; moved to x 150, the picture hid outside the selection and showed inside; undone twice, two layers and the selection back. Paste Outside hid the picture inside the selection, one Paste Outside step. Without a selection both were disabled and refused. Stroke on a 100 by 80 selection at (100, 100): the dialog with Width 1, the foreground's colour, Center, Normal, 100 and no Preserve; 4 px Inside: x 100 to 103 red, 104 and 99 untouched, the top and bottom rows red, the middle untouched, the selection kept, one Stroke step; 4 px Outside in blue: x 96 to 99 blue, 95 and 100 untouched, the corner at (96, 96) untouched (rounded); 4 px Center in green at 50 percent: x 98 to 101 half green, 97 and 102 untouched; Select All, 3 px Inside in black: x 0 to 2 black at the left and the right and bottom edges black, x 3 untouched. No selection, on the layer with the red block: 2 px Outside black at x 18 and 19, 17 untouched, 21 still red. The menus as listed above (the Edit menu 892 pixels tall, scrolling 956). Zero flash, under 6x CPU and network throttling after a hard reload, each from the menus: Paste Into added its row and kept the others; Toggle Last State twice removed it and brought it back, the other rows kept; the Stroke dialog 360 by 356 from its first frame and its OK, every row kept; Paste in Place added its row; nothing shifted. tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine as before. The whole browser suite from a freshly started dev server and engine: 506 passed, 3 skipped, 23 failed, the 22 failing at 1.65.2 and the tiled paging race of 1.65.6; the menu walk ran the new commands without an error (export-exr's 500 its one, as before), and the menu tests passed with the Edit menu scrolling.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.65.6",
+      "version": "1.65.6",
+  "version": "1.65.6",
+  async function pasteExternal(file: File): Promise<void> {
+        if (!engine.current) engine.insertImages([img]);
+  async function pasteFromMenu(): Promise<void> {
+          if (text === `formvis:${engine.clipboard.stamp}`) { engine.pasteClipboard(); return; }
+        if (type) { await pasteExternal(new File([await item.getType(type)], 'Pasted.png', { type })); return; }
+      if (!engine.pasteClipboard()) toast('Nothing to paste. Use the keyboard shortcut to paste from other apps.');
+    if (!engine.pasteClipboard()) toast('Nothing to paste.');
+    { label: 'Edit', items: ['undo', 'redo', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
+import { alphaToMask, defringe, removeMatte } from './matting';
+export const VERSION = '1.65.6';
+```
+
 ## Edit > Transform: Again, Scale, Rotate, Skew, Distort, Perspective and the layer's quarter turns, 27.6's second part · _v1.65.6 (engine/distort.ts, engine/index.ts, extensions/tools/move.ts, ui/actions.ts, app.ts; docs/MANUAL.md, .docs/wiki/Tools.md and Keyboard-Shortcuts.md)
 
 DEV_PLAN 27.6, second part, after Photoshop's Edit > Transform (Scale, Rotate, Skew, Distort and Perspective each a way of dragging the same transform's handles; Again repeating the last transform). distort.ts: `DistortMode` and `distortDragged(from, handle, dx, dy, mode)`, the corners after dragging a handle (0 to 3 the corners in handle order, 4 to 7 the middles of the top, right, bottom and left sides) from the corners the drag began with: Distort moves a corner, or both corners of a side, by the drag; Skew slides a side along itself (the drag projected on the side) and a corner along one of its two sides, whichever the drag follows more (the larger projection); Perspective moves a corner so and the other corner of that same side by as much the opposite way, its sides sliding as in Skew. `againQuad(from, to, corners)`: `corners` through the perspective that took `from` to `to`, in document space (the two homographies composed). Engine: `distortEdit` gains `mode` and `beginDistort(mode)`, default distort, so a Cmd-drag on a corner is as before; `moveDistortHandle(handle, from, dx, dy)` replaces `moveDistortCorner(i, pt)`, the Move tool keeping where the drag and the corners began, so constrained drags are measured from the start; `applyDistort` names its step by the mode (Distort, Skew, Perspective; with Layers after it for a group) and remembers the corners before and after. `beginDistortMode(mode)` switches a pending distortion's mode with its corners kept, or begins one on the Move tool; with a warp, puppet warp or perspective warp pending it says to finish that first.
@@ -6396,6 +6423,12 @@ The Rotate Canvas (Image Rotation > Arbitrary) and Duplicate Image dialogs. See 
 
 The Replace Color dialog: sampling on the canvas, the chosen colours' box, Hue, Saturation and Lightness, the Result picker and the live preview. See the release entry "The Image menu's Auto Tone, Contrast and Color, Desaturate, Equalize, Replace Color, Arbitrary, Crop and Duplicate, 27.6's first part" at the top of this log. Nothing was removed.
 
+## src/ui/panels/stroke-dialog.ts
+
+### src/ui/panels/stroke-dialog.ts · new · _v1.65.7
+
+The Edit > Stroke dialog. See the release entry "Toggle Last State, Paste Special and Edit > Stroke, 27.6's third part" at the top of this log. Nothing was removed.
+
 ## Org-navi-map
 
 ```text
@@ -6519,6 +6552,7 @@ src/
             replace-color-dialog.ts  · Image > Adjustments > Replace Color
             selection-dialogs.ts  · Select > Save Selection and Load Selection
             size-dialogs.ts  · canvas size, image size, expand and contract
+            stroke-dialog.ts  · Edit > Stroke
             style-dialogs.ts  · Layer Style's Global Light and Scale Effects
         rail.ts  · tool rail and colors
         stage.ts  · scene and overlay canvases
@@ -6623,6 +6657,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/ui/panels/replace-color-dialog.ts](#srcuipanelsreplace-color-dialogts)
 - [src/ui/panels/selection-dialogs.ts](#srcuipanelsselection-dialogsts)
 - [src/ui/panels/size-dialogs.ts](#srcuipanelssize-dialogsts)
+- [src/ui/panels/stroke-dialog.ts](#srcuipanelsstroke-dialogts)
 - [src/ui/panels/style-dialogs.ts](#srcuipanelsstyle-dialogsts)
 - [src/ui/rail.ts](#srcuirailts)
 - [src/ui/stage.ts](#srcuistagets)

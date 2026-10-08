@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.7 · 2026-10-08
+
+### Added
+
+- Edit > Toggle Last State (Alt+Ctrl+Z) undoes the last step, or brings back the one just undone, as Photoshop's.
+- Edit > Paste Special: Paste in Place (Shift+Ctrl+V) puts the clipboard where it was copied from; Paste Into (Alt+Shift+Ctrl+V) pastes it as a new layer centred on the selection with a canvas-sized layer mask showing it only inside the selection, unlinked so the picture moves behind it; Paste Outside does the same with the mask showing it only outside. The selection becomes the mask. Pictures copied in other apps paste the same way.
+- Edit > Stroke... strokes the selection's edge, or with no selection the edge of the layer's pixels: Width, Color, Location (Inside, Center, Outside), Mode, Opacity and Preserve Transparency, as Photoshop's dialog. A whole width on a straight edge is crisp; corners outside are rounded; a selection on the canvas's border is stroked inside it.
+
 ## 1.65.6 · 2026-10-08
 
 ### Added

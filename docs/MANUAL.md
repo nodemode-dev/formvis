@@ -105,6 +105,10 @@ ask it questions.
   one over the picture in red, Ctrl-click (Cmd-click on a Mac) loads it (Shift adds, Alt subtracts, both intersect),
   a double-click renames it and the bin deletes it. They are saved with the project and follow the canvas when it is
   turned, flipped, cropped or resized.
+- Edit > Stroke draws a band along the selection's edge (with none, around the layer's pixels), inside, centred on
+  or outside it, in a colour, blend mode and opacity. Edit > Paste Special > Paste Into pastes as a new layer shown
+  only inside the selection, through a mask that stays put when you move the picture; Paste Outside shows it only
+  outside; Paste in Place puts it where it was copied from.
 
 ## Painting and retouching
 
@@ -374,7 +378,8 @@ ask it questions.
 ## Keyboard shortcuts
 
 - Help > Keyboard Shortcuts lists every shortcut. Most follow Photoshop's: tools by their letters, and Ctrl (Cmd on a
-  Mac) with Z to undo, with S to save, with J for Layer via Copy, and with a comma for Preferences.
+  Mac) with Z to undo, with S to save, with J for Layer via Copy, and with a comma for Preferences. Edit > Toggle
+  Last State (Alt+Ctrl+Z) undoes the last step, or brings back the one just undone.
 
 ## When something goes wrong
 

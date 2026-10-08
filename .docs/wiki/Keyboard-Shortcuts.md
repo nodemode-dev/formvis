@@ -10,6 +10,8 @@ Mod is Command on macOS and Ctrl elsewhere. Help, Keyboard Shortcuts shows the s
 | Export PNG | Mod+Shift+E |
 | Close tab | Mod+Alt+W |
 | Undo, Redo | Mod+Z, Mod+Shift+Z or Mod+Y |
+| Toggle Last State | Alt+Mod+Z |
+| Paste in Place, Paste Into | Shift+Mod+V, Alt+Shift+Mod+V |
 | Fill with foreground, background | Alt+Backspace, Mod+Backspace |
 | Delete (clears the selection, or deletes the layer) | Backspace or Delete |
 | Invert | Mod+I |
