@@ -69,6 +69,12 @@ ask it questions.
   Layers panel; Select Linked Layers selects all of a link. Layer > Lock Layers (Ctrl+/) locks the transparency, the
   pixels, the position or all of every selected layer at once, or of every layer in a folder (Lock All Layers in
   Group); a lock in the Layers panel marks each locked layer.
+- Edit > Transform Layer (Alt+Ctrl+T) shows the Move tool's handles. Edit > Transform's Scale and Rotate make every
+  handle scale, or every handle and the space outside the box turn, until Enter or Escape; Skew, Distort and
+  Perspective pull the corners and the middles of the sides as Photoshop's do (a side slides along itself in Skew, a
+  corner and its partner move apart in Perspective), applied with Enter. Rotate 180° and the 90° turns turn the
+  selected layers about their centre, and Again (Shift+Ctrl+T in the desktop app) repeats the last transform, on a
+  copy with Alt+Shift+Ctrl+T.
 - Layer > Layer Mask adds a mask revealing or hiding all, or the selection, or made from the layer's transparency;
   Layer > Mask All Objects finds the objects in the layer and adds a masked folder for each, for adjustments. Layer >
   Matting cleans the edges of a cut-out (Defringe, Remove Black or White Matte, Color Decontaminate), and Layer >

@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.65.6
+
+No engine code changed in 1.65.6 (DEV_PLAN 27.6's second part, Edit > Transform's Again, Scale, Rotate, Skew, Distort, Perspective and the layer's quarter turns, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.65.5"
+version = "1.65.5"
+version = "1.65.5"
+ "version": "1.65.5",
+```
+
 ## Version only · _v1.65.5
 
 No engine code changed in 1.65.5 (DEV_PLAN 27.6's first part, the Image menu's Auto Tone, Auto Contrast and Auto Color, Desaturate, Equalize and Replace Color, Arbitrary rotation, Crop and Duplicate, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

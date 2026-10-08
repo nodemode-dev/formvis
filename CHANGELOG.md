@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.6 · 2026-10-08
+
+### Added
+
+- Edit > Transform > Again (Shift+Ctrl+T in the desktop app, where browsers keep that key) repeats the last transform, as Photoshop's: the same move, scale, turn, flip or distortion applied again in the same place, so a layer turned about a point keeps turning about it. Alt+Shift+Ctrl+T repeats it on a copy of the selected layers, for step and repeat. A move, a handle's scale or turn, the options bar's values, a flip and a Skew, Distort or Perspective all count.
+- Edit > Transform > Scale and Rotate: the Move tool's handles only scale, or every handle and the space outside the box turn the layer, until Enter or Escape (the status bar says which).
+- Edit > Transform > Skew, Distort and Perspective: the free distort with handles at its corners and the middles of its sides; Skew slides a side along itself and a corner along one of its sides, Distort moves either anywhere, Perspective moves a corner and the other corner of that side apart; switching between them keeps the shape; Enter applies, as a step named after the mode.
+- Edit > Transform > Rotate 180°, Rotate 90° Clockwise and Rotate 90° Counter Clockwise turn the selected layer, or the selected layers together, about their centre without resampling; the flips are in the same submenu. The quarter turns can be recorded in actions.
+- Edit > Transform Layer, Free Transform, stands above the Transform submenu as in Photoshop.
+
 ## 1.65.5 · 2026-10-08
 
 ### Added

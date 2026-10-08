@@ -39,6 +39,8 @@ Mod is Command on macOS and Ctrl elsewhere. Help, Keyboard Shortcuts shows the s
 | Selection tools (Marquee, Lasso, Magic Wand) | arrows nudge the selection outline 1 px, Shift+arrows 10 px |
 | Layers panel | Option-click a row's lower edge clips it to the layer below (again releases); Option-drag a row duplicates it; Option-drag a mask thumbnail onto a layer copies the mask |
 | Transform Selection or Layer | Alt+Mod+T (browsers keep Mod+T for a new tab), Mod+T on the desktop; Enter applies a floating selection, Escape cancels |
+| Transform Again, and again on a copy | Shift+Mod+T (on the desktop; browsers keep it for reopening a tab), Alt+Shift+Mod+T |
+| Auto Tone, Auto Contrast, Auto Color, Desaturate | Shift+Mod+L, Alt+Shift+Mod+L, Shift+Mod+B, Shift+Mod+U |
 | Crop and Gradient | Enter applies, Escape cancels |
 | Colors | X swap, D default |
 | Brush | [ and ] size, Shift+[ and ] hardness, 1 to 0 opacity |
