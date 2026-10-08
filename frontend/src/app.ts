@@ -25,6 +25,7 @@ import { TrimDialog } from './ui/panels/trim-dialog';
 import { ColorRangeDialog } from './ui/panels/color-range-dialog';
 import { ArbitraryRotationDialog, DuplicateImageDialog } from './ui/panels/image-dialogs';
 import { ReplaceColorDialog } from './ui/panels/replace-color-dialog';
+import { StrokeDialog } from './ui/panels/stroke-dialog';
 import { HistoryPanel } from './ui/history';
 import { StopDialog } from './ui/panels/stop-dialog';
 import { TweenDialog } from './ui/panels/tween-dialog';
@@ -1383,6 +1384,7 @@ export function startApp(): void {
     artboard: new ArtboardDialog(engine),
     newArtboard: new NewArtboardDialog(engine),
     rotateCanvas: new ArbitraryRotationDialog(engine),
+    stroke: new StrokeDialog(engine),
     duplicateImage: new DuplicateImageDialog(engine),
     replaceColor: new ReplaceColorDialog(engine),
     corners: new CornersDialog(engine),
@@ -1544,6 +1546,7 @@ export function startApp(): void {
     { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W', 'Alt+Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
+    { id: 'toggle-last-state', label: 'Toggle Last State', keys: ['Alt+Mod+Z'], enabled: () => !!engine.current?.history.canUndo || !!engine.current?.history.canRedo, run: () => engine.toggleLastState() },
     { id: 'fade', label: () => { const n = engine.fadeName; return n ? `Fade ${n}...` : 'Fade...'; }, keys: ['Shift+Mod+F'], enabled: () => !!engine.fadeName, run: () => dialogs.fade.show() },
     { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
     { id: 'fill-bg', label: 'Fill with Background', keys: ['Mod+Backspace', 'Mod+Delete'], enabled: pixel, run: () => engine.fill('bg') },
@@ -1717,31 +1720,34 @@ export function startApp(): void {
     } catch { return; }
   }
 
-  async function pasteExternal(file: File): Promise<void> {
+  /** `outside` set: Paste Into (false) or Paste Outside (true) against the selection (1.65.7). */
+  async function pasteExternal(file: File, outside: boolean | null = null): Promise<void> {
     await engine.task(async () => {
       try {
         const img = await decodeImage(file, file.name || 'Pasted.png');
-        if (!engine.current) engine.insertImages([img]);
+        if (outside !== null) engine.pasteInto(outside, { raster: Raster.from(img.source, img.width, img.height), name: stripExt(img.name) });
+        else if (!engine.current) engine.insertImages([img]);
         else engine.insertRasterLayer(Raster.from(img.source, img.width, img.height), stripExt(img.name), null, null);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
 
-  async function pasteFromMenu(): Promise<void> {
+  async function pasteFromMenu(outside: boolean | null = null): Promise<void> {
+    const own = (): boolean => (outside === null ? engine.pasteClipboard() : engine.pasteInto(outside) || true);
     try {
       for (const item of await navigator.clipboard.read()) {
         if (item.types.includes('text/plain') && engine.clipboard) {
           const text = await (await item.getType('text/plain')).text();
-          if (text === `formvis:${engine.clipboard.stamp}`) { engine.pasteClipboard(); return; }
+          if (text === `formvis:${engine.clipboard.stamp}`) { own(); return; }
         }
         const type = item.types.find((t) => t.startsWith('image/'));
-        if (type) { await pasteExternal(new File([await item.getType(type)], 'Pasted.png', { type })); return; }
+        if (type) { await pasteExternal(new File([await item.getType(type)], 'Pasted.png', { type }), outside); return; }
       }
     } catch {
-      if (!engine.pasteClipboard()) toast('Nothing to paste. Use the keyboard shortcut to paste from other apps.');
+      if (!own()) toast('Nothing to paste. Use the keyboard shortcut to paste from other apps.');
       return;
     }
-    if (!engine.pasteClipboard()) toast('Nothing to paste.');
+    if (!own()) toast('Nothing to paste.');
   }
 
   const hasTargetPixels = (): boolean => {
@@ -1757,6 +1763,10 @@ export function startApp(): void {
     { id: 'copy', label: 'Copy', keys: ['Mod+C'], enabled: pixel, run: () => { if (engine.copySelection(false)) writeClipboard(); } },
     { id: 'copy-merged', label: 'Copy Merged', keys: ['Shift+Mod+C'], enabled: has, run: () => { if (engine.copySelection(true)) writeClipboard(); } },
     { id: 'paste', label: 'Paste', keys: ['Mod+V'], run: () => void pasteFromMenu() },
+    { id: 'paste-in-place', label: 'Paste in Place', keys: ['Shift+Mod+V'], run: () => void pasteFromMenu() },
+    { id: 'paste-into', label: 'Paste Into', keys: ['Alt+Shift+Mod+V'], enabled: selected, run: () => void pasteFromMenu(false) },
+    { id: 'paste-outside', label: 'Paste Outside', enabled: selected, run: () => void pasteFromMenu(true) },
+    { id: 'stroke-dialog', label: 'Stroke...', enabled: () => pixel() && (selected() || !!engine.activeLayer?.raster), run: () => dialogs.stroke.show() },
     { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Alt+Mod+T', 'Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
     { id: 'content-fill', label: 'Quick Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
     { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: () => void dialogs.generative.show() },
@@ -1854,8 +1864,8 @@ export function startApp(): void {
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab'] },
-    { label: 'Edit', items: ['undo', 'redo', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', 'clear', '-',
-      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
+    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-',
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',

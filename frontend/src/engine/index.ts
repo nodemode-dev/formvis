@@ -67,7 +67,7 @@ import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, 
 import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
-import { alphaToMask, defringe, removeMatte } from './matting';
+import { alphaToMask, defringe, distanceSquared, removeMatte } from './matting';
 import { alphasMoved, alphasRedrawn, nextAlphaName } from './alphas';
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
@@ -981,6 +981,9 @@ export class Engine {
   }
 
   redo(): void { this.historyOp('redo'); }
+
+  /** Edit > Toggle Last State (1.65.7), as Photoshop's: undoes the last step, or redoes the one just undone. */
+  toggleLastState(): void { if (this.current?.history.canRedo) this.redo(); else this.undo(); }
 
   private redoNow(): void {
     const p = this.current;
@@ -4148,6 +4151,37 @@ export class Engine {
     }, opts.region);
   }
 
+  /** Edit > Stroke (1.65.7), as Photoshop's: a band `width` pixels wide along the selection's edge (with no selection,
+   *  along the edge of the active layer's pixels, each taken at half coverage), inside it, centred on it or outside it,
+   *  each pixel covered as far as its centre lies within the band (the distance to the nearest pixel across the edge,
+   *  less half a pixel), so a whole width on a straight edge is crisp; worked out over the edge's bounds grown by the
+   *  width (past the canvas too, so an edge on the canvas's border is stroked inside it), and filled with `color` at
+   *  `blend` and `opacity`, keeping the layer's transparency when `preserve`, as Edit > Fill fills. One Stroke step. */
+  strokeSelection(o: { width: number; color: RGB; location: 'inside' | 'center' | 'outside'; blend: BlendMode; opacity: number; preserve: boolean }): void {
+    const p = this.current, l = p?.activeLayer, sel = p?.selection ?? null;
+    if (!p || !l) return;
+    if (!sel && (!l.raster || l.isGroup)) { this.notice('Make a selection first, or choose a layer with pixels to stroke around.'); return; }
+    const w = Math.max(1, Math.min(250, o.width)), b = sel ? sel.rect : transformBounds(l.transform), pad = Math.ceil(w) + 2;
+    const R = { x: Math.floor(b.x) - pad, y: Math.floor(b.y) - pad, w: Math.ceil(b.w) + 2 * pad + 1, h: Math.ceil(b.h) + 2 * pad + 1 };
+    if (R.w * R.h > LIMITS.pixels) { this.notice('That edge is too long to stroke here.'); return; }
+    const c = ctxOf(createSurface(R.w, R.h));
+    if (sel) c.drawImage(sel.surface() as CanvasImageSource, sel.x - R.x, sel.y - R.y);
+    else if (l.raster) { setMat(c, mul(translation(-R.x, -R.y), placement(l.transform, l.raster.width, l.raster.height))); c.drawImage(l.raster.canvas as CanvasImageSource, 0, 0); }
+    const d = c.getImageData(0, 0, R.w, R.h).data, inside = new Uint8Array(R.w * R.h), outside = new Uint8Array(R.w * R.h);
+    for (let i = 0; i < inside.length; i++) { const on = d[i * 4 + 3] >= 128 ? 1 : 0; inside[i] = on; outside[i] = 1 - on; }
+    const toOut = o.location === 'outside' ? null : distanceSquared(outside, R.w, R.h), toIn = o.location === 'inside' ? null : distanceSquared(inside, R.w, R.h);
+    const reach = o.location === 'center' ? w / 2 : w, band = new Uint8Array(inside.length);
+    let any = false;
+    for (let i = 0; i < band.length; i++) {
+      const dist = inside[i] ? (toOut ? Math.sqrt(toOut[i]) : Infinity) : (toIn ? Math.sqrt(toIn[i]) : Infinity);
+      const v = Math.round(clamp(reach + 1 - dist, 0, 1) * 255);
+      band[i] = v;
+      if (v) any = true;
+    }
+    if (!any) { this.notice('There is no edge to stroke.'); return; }
+    this.fillWith({ color: o.color }, o.blend, Math.max(0, Math.min(1, o.opacity)), o.preserve, { name: 'Stroke', region: SelectionMask.cropped(R.x, R.y, R.w, R.h, band) });
+  }
+
   /** A mask feathered as Select > Modify > Feather feathers: a Gaussian of half the radius over its values, on the
    *  current document. Masks are trimmed to their pixels, so the blur runs over a region grown by its reach, clipped to
    *  the canvas. Used by Fill Path and by the Marquee and Lasso's Feather. The input is untouched. */
@@ -6898,6 +6932,29 @@ export class Engine {
     }
     this.insertRasterLayer(Raster.from(cb.surface, cb.w, cb.h), 'Pasted Layer', cb.x, cb.y);
     return true;
+  }
+
+  /** Edit > Paste Special > Paste Into and Paste Outside (1.65.7), as Photoshop's: formvis's own clipboard, or `image`
+   *  from another app, pasted as a new layer centred on the selection's bounds, with a layer mask the size of the
+   *  canvas showing it only inside the selection (or only outside it), unlinked so the picture can be moved behind it;
+   *  the selection is used up. One step. */
+  pasteInto(outside: boolean, image: { raster: Raster; name: string } | null = null): boolean {
+    const p = this.current, sel = p?.selection, cb = this.clipboard;
+    if (!p || !sel) { this.notice('Make a selection first: Paste Into and Paste Outside paste against it.'); return false; }
+    const src = image?.raster ?? (cb ? Raster.from(cb.surface, cb.w, cb.h) : null);
+    if (!src) { this.notice('Nothing to paste.'); return false; }
+    const b = sel.rect, x = Math.round(b.x + b.w / 2 - src.width / 2), y = Math.round(b.y + b.h / 2 - src.height / 2);
+    return this.edit(outside ? 'Paste Outside' : 'Paste Into', (q) => {
+      const W = q.doc.width, H = q.doc.height, m = outside ? Raster.filled(W, H, '#ffffff') : new Raster(W, H);
+      m.ctx.globalCompositeOperation = outside ? 'destination-out' : 'source-over';
+      m.ctx.drawImage(sel.surface(), sel.x, sel.y);
+      m.ctx.globalCompositeOperation = 'source-over';
+      m.touch();
+      const layer = newLayer(image?.name ?? 'Pasted Layer', q.doc, { raster: src, parentId: this.parentForNew(q), transform: { ...docTransform(src.width, src.height), x, y }, mask: { raster: m, enabled: true, linked: false, placement: docTransform(W, H) } });
+      this.insertAboveActive(q, layer);
+      q.selection = null;
+      return true;
+    });
   }
 
   beginGradient(pt: Pt): boolean {
