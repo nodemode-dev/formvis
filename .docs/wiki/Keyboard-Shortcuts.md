@@ -37,6 +37,7 @@ Mod is Command on macOS and Ctrl elsewhere. Help, Keyboard Shortcuts shows the s
 | Select and Mask | Alt+Mod+R |
 | Zoom in, out, fit, actual pixels | Mod+=, Mod+-, Mod+0, Mod+1 |
 | Settings, Shortcuts | Mod+,, Shift+/ |
+| Search commands and tools | Mod+K |
 | Tools | V Move, M Marquee, L Lasso, W Magic Wand, C Crop, B Brush, E Eraser, J Spot Healing, S Clone Stamp, R Smear, G Gradient, U Shape, I Eyedropper, H Hand, Z Zoom |
 | Tool variants | Shift+M marquee shape, Shift+L lasso mode, Shift+U shape kind, Alt-click sets the Clone Stamp source |
 | Content-Aware Fill | Shift+Backspace |

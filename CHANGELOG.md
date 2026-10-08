@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.65.9 · 2026-10-08
+
+### Added
+
+- Edit > Search... (Ctrl+K) finds any command or tool from a few letters of its name in order (gblur for Gaussian Blur), as Photoshop's Search does: the twelve best are listed with where each sits in the menus and its keys, names matching before menu paths; the arrow keys and Enter, or a click, run one, and a command that cannot run now shows dimmed; with nothing typed, what was last run from it comes first.
+
+### Fixed
+
+- Help > Keyboard Shortcuts: since 1.53.4 each row's name had been squeezed into a narrow column and its Remove button pushed under the next row, where it could not be clicked; the name, the keys and both buttons now have their own columns. Searching the list and changing a shortcut update its rows in place rather than building the list again.
+
 ## 1.65.8 · 2026-10-08
 
 ### Added

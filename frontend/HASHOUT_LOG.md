@@ -2,6 +2,44 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Edit > Search, the command palette, and the Keyboard Shortcuts list in place, closing 27.6 · _v1.65.9 (ui/command-palette.ts new; app.ts, ui/app-dialogs.ts, styles/dialogs.css; docs/MANUAL.md, .docs/wiki/Keyboard-Shortcuts.md, NOTICE.md)
+
+DEV_PLAN 27.6's last part, after Photoshop's Edit > Search. command-palette.ts: `fuzzyScore(query, text)`, how well a query names a text, or null when its letters are not all in it in order (case ignored): the best placing of the letters, found by a small dynamic programme over the two, each letter scoring 1, 7 more when it directly follows the one before and 5 more at a word's start (after a space or a mark, or a capital after a small letter), a hundredth less the further in it lies, less an eighth of the text's length so shorter names rank first. `CommandPalette`, a Dialog titled Search holding a field and a list. `show()` takes each command's place in the menus from the menu definitions (`pathsOf`: the first place a command appears, submenus joined with " > ", File's Open Recent as it reads then). `render()` scores each command on its name (a trailing "..." dropped), or failing that 10 behind on its name and menu path together, so a name match comes before a path match ("blur" puts Blur before Average, where one text of name and path together would tie them and order them by name); tools on their name and "tool", 2 ahead while something is typed; with nothing typed, what was last run from the palette first (twelve at most, newest first) and the rest by name; sorted by score, then name; the twelve best. The rows are twelve slots keyed by position, each filled in place (the name; the menu path and the keys after an interpunct; a tool's icon; dimmed with `is-off` and aria-disabled when the command cannot run, not the disabled attribute, since a disabled button swallows the press and the dialog took the focus from the field), so only trailing slots come and go. Up and Down move the selection (is-selected, aria-selected); Enter or a click runs the selected row when it can run, the palette closing first so a dialog the command shows takes the focus; a press in the list keeps the focus in the field. Escape and closing are the Dialog's. The first version keyed the rows by command, and under throttling typing moved the rows that stayed (layout shifts of 0.0051 and 0.0032, attributed to input); with slots, and the path in a fixed 250 pixel column aligned right, there were none.
+
+app.ts: the search command (Search..., Mod+K, the key command palettes commonly take; Photoshop's Ctrl+F is formvis's Last Filter since 1.64.4) and `dialogs.palette`, made with the commands, a getter for the menus and the engine; the Edit menu has Search after Clear, between separators, as Photoshop's. Keyboard Shortcuts (app-dialogs.ts): `render()` built every row again with `replaceChildren` on each keystroke of its search and each change, as found at 1.64.9; it now patches the rows by command id (tool rows by their name) through `patchList`, a command's row brought up to date in place by `fillRow` (its name, its keys or the capture prompt, its buttons' labels and Remove's state), its Change and Remove handlers bound once when the row is made; the focus goes back to the row's first button only when it is not already in that row. Found while checking it, not from this release: since 1.53.4 the rows had no columns of their own and took the list rows' three (an 18 pixel icon column, the name, an auto column) for four children, so each name was squeezed into 18 pixels over several lines and Remove fell to a second grid line under the next row, where a pointer could not reach it (the probe's click on it timed out, the next row intercepting it); `.cv-keys-row` now has its own (the name, the keys in a fixed 210 pixels aligned right, the two buttons), tool rows two.
+
+Verified by scratch probes outside the repository. Ctrl+K: the dialog 560 by 558, the field focused, twelve rows, by name from "16 Bits/Channel" with nothing typed. "gblur": Gaussian Blur first (Filter > Blur). "fit": Fit Image (File > Automate), then Fit on Screen (View · Ctrl+0), the two tied and ordered by name. "brush": Brush Tool (Tool · B) first; chosen with the arrows and run with Enter, the tool became the Brush; Ctrl+K again with nothing typed: Brush Tool first. "invert": Invert (Image > Adjustments · Ctrl+I); Enter applied it, one Invert step. "zzqx": no rows and "No command or tool matches.", the dialog the same size. "revert" on a document never saved: Revert dimmed and selected; Enter and a click left the palette as it was, the focus in the field. Escape closed it. The Edit menu: Clear Selection Pixels, a separator, Search... Ctrl+K, a separator, the Fill submenu; Search from it showed the palette; "image size" and a click showed Image Size. Ranking: "blur" Blur, Blur More, Box Blur, Field Blur, Gaussian Blur, Iris Blur; "hue" Hue/Saturation; "save" Save, Save As, Save a Copy; "rot 90" the two quarter turns; "lev" Levels. Keyboard Shortcuts: 467 rows; "fill" left 9, the same 9 nodes; Remove on Fill with Foreground showed "none", disabled Remove and put the focus on Change, all 9 kept; Change showed the prompt and Alt+Backspace set it back, all 9 kept; a screenshot showed each row on one line with both buttons. Zero flash, under 6x CPU and network throttling after a hard reload: Ctrl+K, typing g, a and u, Backspace, Down and Up, "invert" and Enter, Ctrl+K again and Escape: the dialog 560 by 558 from its first frame to its last, the twelve rows kept at every keystroke ("invert" left eight, the last four going; the next showing added four back), the Layers rows kept, no shift; Keyboard Shortcuts 620 by 468 throughout, typing "fill" keeping the nine rows that stayed, and Remove, Change and the new key keeping all nine, no shift. tsc, the build, 194 unit tests; 112 engine tests passed, 3 failing on this machine as before. The whole browser suite from a freshly started dev server and engine: 505 passed, 3 skipped, 24 failed, the 22 failing at 1.65.2, the tiled paging race of 1.65.6, and test_locked_pixels_refuse_painting_and_say_why, which reads the lock button's pressed state right after its click while the Layers panel draws on the next frame: it passed three times run alone, and nothing in this release touches the panel.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.65.8",
+      "version": "1.65.8",
+  "version": "1.65.8",
+    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-',
+    const rows = this.commands.all().map((c) => ({ id: c.id, label: this.commands.label(c).replace(/\.\.\.$/, ''), keys: (c.keys ?? []).map(formatKeys).join(', ') }))
+    const nodes: HTMLElement[] = rows.map((r) => {
+      const n = el('<div class="cv-list-row cv-keys-row"><span class="cv-list-name"></span><span class="cv-list-meta"></span><button type="button" class="cv-btn cv-btn-ghost">Change</button><button type="button" class="cv-btn cv-btn-ghost">Remove</button></div>');
+      n.dataset.command = r.id;
+      setText(q(n, '.cv-list-name'), r.label);
+      setText(q(n, '.cv-list-meta'), this.capturing === r.id ? 'Press the new keys (Esc cancels)' : r.keys || 'none');
+      const [change, remove] = [...n.querySelectorAll('button')] as HTMLButtonElement[];
+      change.setAttribute('aria-label', `Change ${r.label}`); remove.setAttribute('aria-label', `Remove ${r.label}`); remove.disabled = !r.keys;
+      change.addEventListener('click', () => { this.capturing = r.id; this.focusId = r.id; this.pending = null; this.say(''); this.render(); });
+      remove.addEventListener('click', () => { this.focusId = r.id; this.commands.setKeys(r.id, []); this.save(); this.render(); });
+      return n;
+    for (const [label, keys] of TOOL_KEYS) if (!q2 || label.toLowerCase().includes(q2)) {
+      const n = el('<div class="cv-list-row cv-keys-row is-tool"><span class="cv-list-name"></span><span class="cv-list-meta"></span></div>');
+      setText(q(n, '.cv-list-name'), `${label} (tool)`); setText(q(n, '.cv-list-meta'), keys);
+      nodes.push(n);
+    }
+    this.list.replaceChildren(...nodes);
+    // Focus back on the row just edited: re-rendering removed the focused button, and focus falling out of the dialog
+    // left Escape unable to close it (1.53.4).
+    if (this.focusId) (this.list.querySelector(`.cv-keys-row[data-command="${CSS.escape(this.focusId)}"] button`) as HTMLButtonElement | null)?.focus();
+export const VERSION = '1.65.8';
+```
+
 ## File > Close All, Close Others, Save a Copy, Revert and Automate > Fit Image, 27.6's fourth part · _v1.65.8 (ui/panels/save-copy-dialog.ts new; engine/index.ts, app.ts, ui/dialogs.ts, ui/panels/size-dialogs.ts, ui/actions.ts, ui/panels/actions-dialogs.ts; docs/MANUAL.md, .docs/wiki/Keyboard-Shortcuts.md)
 
 DEV_PLAN 27.6, fourth part, after Photoshop's File menu (Close All and Close Others closing documents without asking; Revert reading the saved file back as one history step that keeps the document's identity and tab name and leaves it saved; Save a Copy writing the document, or its flattened image, elsewhere; Fit Image scaling by the smaller of the two ratios through Image Size, refusing to enlarge when Don't Enlarge is ticked). Engine: `revertTo(doc, activeId, paths, timeline)` puts a document read back from the library in place of the current one's as one Revert step, built with the history's own begin and end so the step carries the paths and the timeline (frames and video) on both sides, as path and timeline steps do, and Undo brings every one back; the document keeps its id (filters' displacement maps name documents by it), its tiled layers get the engine's tile reader as opening gives them, the selection goes, the active layer is the saved one, the history is marked saved after the step, and the view is fitted again only when the size differs. `mergedDoc()`: the document flattened into one Background layer with everything else of it kept, refused past 268 megapixels a layer; `duplicateDocument` now takes its merged copy from it (the same layer and document as before). `fitImage(width, height, enlarge, quiet)`: the smaller of the two ratios, rounded sides at least one pixel; when the image already fits (or would only grow without `enlarge`) it says so unless `quiet` and answers true, so an action plays on; otherwise one Fit Image step around `resampleImage` (high quality, the same resolution; the history's nesting names it), after settling anything pending. `resampleImage` now refuses a document with a tiled layer: the first probe of Fit Image on a 40,000 by 30,000 document showed Image Size making the canvas 10,000 by 7,500 while the tiled layer kept its 40,000 by 30,000 tiles under a 10,000 by 7,500 transform.
@@ -6479,6 +6517,12 @@ The Edit > Stroke dialog. See the release entry "Toggle Last State, Paste Specia
 
 The File > Save a Copy dialog: the copy's name and Layers. See the release entry "File > Close All, Close Others, Save a Copy, Revert and Automate > Fit Image, 27.6's fourth part" at the top of this log. Nothing was removed.
 
+## src/ui/command-palette.ts
+
+### src/ui/command-palette.ts · new · _v1.65.9
+
+Edit > Search, the command palette, and `fuzzyScore`, its ranking. See the release entry "Edit > Search, the command palette, and the Keyboard Shortcuts list in place, closing 27.6" at the top of this log. Nothing was removed. Its first draft was written as `ui/palette.ts`, a name the stage colours already hold; the write replaced that file, its reply said so, and it was restored from the last commit before anything else ran, the palette taking this name.
+
 ## Org-navi-map
 
 ```text
@@ -6579,6 +6623,7 @@ src/
     ui/
         app-dialogs.ts  · new canvas, open, settings, shortcuts, about
  brand.ts · the inline app mark
+        command-palette.ts  · Edit > Search: commands and tools by a few letters
         commands.ts  · command registry and key labels
         dialogs.ts  · dialog base, confirm, prompt
         dom.ts  · NodeMode dom-stable plus setters
@@ -6686,6 +6731,7 @@ vite.config.ts  · ports 5190 and 5191, host false, /api proxy
 - [src/styles/tokens.css](#srcstylestokenscss)
 - [src/ui/app-dialogs.ts](#srcuiapp-dialogsts)
 - [src/ui/brand.ts](#srcuibrandts)
+- [src/ui/command-palette.ts](#srcuicommand-palettets)
 - [src/ui/commands.ts](#srcuicommandsts)
 - [src/ui/dialogs.ts](#srcuidialogsts)
 - [src/ui/dom.ts](#srcuidomts)

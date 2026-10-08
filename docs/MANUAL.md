@@ -387,6 +387,8 @@ ask it questions.
 - Help > Keyboard Shortcuts lists every shortcut. Most follow Photoshop's: tools by their letters, and Ctrl (Cmd on a
   Mac) with Z to undo, with S to save, with J for Layer via Copy, and with a comma for Preferences. Edit > Toggle
   Last State (Alt+Ctrl+Z) undoes the last step, or brings back the one just undone.
+- Edit > Search (Ctrl+K) finds a command or a tool from a few letters of its name, in order (gblur for Gaussian
+  Blur), showing where each sits in the menus and its keys; the arrow keys choose one and Enter runs it.
 
 ## When something goes wrong
 

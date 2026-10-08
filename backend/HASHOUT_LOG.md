@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.65.9
+
+No engine code changed in 1.65.9 (DEV_PLAN 27.6's last part, Edit > Search and the Keyboard Shortcuts list, is in the window). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.65.8"
+version = "1.65.8"
+version = "1.65.8"
+ "version": "1.65.8",
+```
+
 ## Version only · _v1.65.8
 
 No engine code changed in 1.65.8 (DEV_PLAN 27.6's fourth part, File > Close All, Close Others, Save a Copy, Revert and Automate > Fit Image, is in the window; Save a Copy and Revert use the library's existing save and open). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
