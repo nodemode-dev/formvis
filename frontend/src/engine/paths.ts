@@ -191,5 +191,13 @@ export function pathSetFrom(raw: unknown, active: unknown, legacy: unknown): Pat
 
 /** The path moved by `dx`, `dy`, as a new path. */
 export function shiftPath(vp: VectorPath, dx: number, dy: number): VectorPath {
-  return { subpaths: vp.subpaths.map((s) => ({ closed: s.closed, anchors: s.anchors.map((a) => ({ x: a.x + dx, y: a.y + dy, inX: a.inX + dx, inY: a.inY + dy, outX: a.outX + dx, outY: a.outY + dy })) })) };
+  return mapPath(vp, (p) => ({ x: p.x + dx, y: p.y + dy }));
+}
+
+/** The path with every anchor and handle taken through `map`, as a new path, each subpath keeping its operation. */
+export function mapPath(vp: VectorPath, map: (p: Pt) => Pt): VectorPath {
+  return { subpaths: vp.subpaths.map((s) => ({ closed: s.closed, ...(s.op && s.op !== 'combine' ? { op: s.op } : {}), anchors: s.anchors.map((a) => {
+    const q = map(a), i = map({ x: a.inX, y: a.inY }), o = map({ x: a.outX, y: a.outY });
+    return { x: q.x, y: q.y, inX: i.x, inY: i.y, outX: o.x, outY: o.y };
+  }) })) };
 }
