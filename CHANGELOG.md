@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.7 · 2026-10-12
+
+### Changed
+
+- The rest of formvis's core editing engine that came from its first release is now new code written independently from a behaviour description, behaving as before: the event plumbing, view commands (fit, zoom, pan), renaming, hiding, opacity and blend mode of layers, the brush stroke's start, region repaint, finish and cancel, Select All, Deselect and Inverse, the entry points of transforms, free distort, warps, gradients, shapes, pixel moves and selection transforms, the Eyedropper, the Clone Stamp's source and preview, the retouch tools' start, Spot Healing, new layers from pasted pixels, Crop, Cut, the selection nudge, the sample ring and export.
+
 ## 1.66.6 · 2026-10-12
 
 ### Changed

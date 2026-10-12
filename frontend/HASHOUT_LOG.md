@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Every remaining early-era block of engine/index.ts rewritten by gap fill, DEV_PLAN 28.0 batches 12 to 14 · _v1.66.7 (engine/index.ts)
+
+The gap-fill method of batches 10 and 11, now block by block over the whole file: each blank-line-separated block holding early-era lines (by `git blame -w` against the 0.1.0 to 0.33.0 commits) is shown with those lines redacted into numbered gaps and a behaviour note per gap; the implementer, barred from the repository, returns the whole blocks; a script checks every shown line came back byte for byte and extracts each gap's new text. Specs: `cleanroom/batch-12-engine-a-gapfill.md` (lines 1 to 2,700: imports, re-exports, events, module helpers, the Engine's first fields, refresh, uniqueName, focus, restore, the tip drag, colours, fit, zoom, pan, compose, overrides), `batch-13-engine-b-gapfill.md` (2,700 to 5,400: toggleCollapsed, renameLayer, toggleVisibility, the opacity edit, setBlend, cycleBlend, beginStroke, strokeTo, strokeShow, endStroke, cancelStroke, selectAll, deselect, invertSelection, the transform and distort entry points, cancelTransform, sampleColor, the preview fields, commitLive, setPreview, canGrow), `batch-14-engine-c-gapfill.md` (5,400 to the end: parentForNew, insertRasterLayer, sizeOk, cropTo, layerViaCopy, cutSelection, the gradient, shape, warp, pixel move and selection transform entry points, the Clone Stamp source, offset, point and preview, beginRetouchStroke, healPatch, outlineShift, canTransformSelection, transformCommand, the sample ring, nudgeSelection, exportBlob).
+
+Gaps: 48 + 59 + 72 = 179. 121 came back identical to the current lines (braces, signatures, calls the notes name) and are left as they are; 58 were placed by hand. Review sent back declarations and measured behaviour only: batch 12's previews are a Map; batch 14's pasted layer box measured at the document's size instead of the raster's, `Raster.canvas` (not `surface`), `SelectionMask.translated`. Behaviour notes: a selection nudged wholly off the canvas now leaves the selection as it was (returns false) instead of deselecting; `invertSelection`'s edit returns nothing on success (the step is kept, as before). Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; 59 browser tests over brushes, flow and modes, clone slots and source, crop size, shapes and shape modes, custom shapes, export formats, the eyedropper sample size, the History Brush, layer locks and groups, the move bar, paint targets, painting tools, selection tools, tiled painting, warp and the Remove tool: 54 pass, 4 skip, and `test_dock_layers::test_the_layers_panel_moves_and_keeps_the_space` fails identically on the unchanged tree. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.66.6",
+      "version": "1.66.6",
+  "version": "1.66.6",
+export const VERSION = '1.66.6';
+```
+
 ## Transform entry points written fresh, and early lines inside 34 core methods rewritten by gap fill, DEV_PLAN 28.0 batches 9 to 11 · _v1.66.6 (engine/transform-entry.ts new; engine/index.ts)
 
 Batch 9 (`cleanroom/batch-09-transform-entry.md`): `engine/transform-entry.ts` with `EntryHost`, the state types the Engine now holds (`TransformEditState`, `DistortEditState`, `WarpDrag`, `SelectionShift`, `DistortedMask`) and `transformsMask`, `groupMembers` (visibility through enclosing folders, from `hierarchy`), `groupBox`, `beginTransform`, `updateTransform`, `beginDistort` (the shape notice passed in), `moveDistortHandle`, `previewDistort`, `distortMask`, `applyDistort`, `cancelDistort`, `beginWarp`, `warpTo`, `cancelWarp`, the selection shift trio, `resizeLayerTo`, `scaleLayerTo`, `floatingOutline`. The smart-object distort (later formvis code) moved unchanged into `entryHost` (`smartStart`, `applySmartDistort`, `smartPreview`). `distortQuad`, `distortMask`, `previewDistort` and `dropDistort` left the Engine.
