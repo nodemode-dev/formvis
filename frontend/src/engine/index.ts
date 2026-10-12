@@ -28,6 +28,7 @@ import { withResolution } from './dpi';
 import { antialiasMask, levelsKernel, wandMask } from './kernels';
 import { Project } from './project';
 import * as LS from './layer-structure';
+import * as LM from './layer-masks';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
@@ -2733,6 +2734,16 @@ export class Engine {
     };
   }
 
+  private get maskHost(): LM.MaskHost {
+    return {
+      current: this.current,
+      edit: (label, fn) => this.edit(label, fn),
+      focus: (p, id) => this.focus(p, id),
+      notice: (m) => this.notice(m),
+      applySelection: (sel, mode, label) => this.applySelection(sel, mode, label),
+    };
+  }
+
   selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void { LS.selectLayer(this.structHost, id, how); }
 
   /** Select > All Layers (Alt+Ctrl+A), or with `all` false Deselect Layers; not history steps. */
@@ -3166,19 +3177,7 @@ export class Engine {
   /** the Option-drag from a mask thumbnail: a copy of the source's mask on the target, sitting where it sits
    *  on the document and replacing any mask the target had, as one step; the target becomes active with its mask
    *  targeted. The raster is copied, so painting one mask never changes the other. */
-  copyMask(source: ID, target: ID): void {
-    const p = this.current, to = p?.layer(target);
-    if (!p || !to || to.isGroup || source === target) return;
-    this.edit(to.mask ? 'Replace Layer Mask' : 'Copy Layer Mask', (q) => {
-      const from = q.layer(source), dest = q.layer(target);
-      const m = from?.mask;
-      if (!from || !m || !dest || dest.isGroup) return false;
-      q.updateLayer(target, { mask: { ...m, raster: m.raster ? Raster.from(m.raster.canvas, m.raster.width, m.raster.height) : null, placement: m.placement ?? from.transform } });
-      this.focus(q, target);
-      q.maskTarget = true;
-      return true;
-    });
-  }
+  copyMask(source: ID, target: ID): void { LM.copyMask(this.maskHost, source, target); }
 
   copyLayerToProject(id: ID, targetKey: string): boolean { return LS.copyLayerToProject(this.structHost, id, targetKey); }
 
@@ -3268,30 +3267,7 @@ export class Engine {
     });
   }
 
-  addMask(hide = false, fromSelection = true): void {
-    this.edit(hide ? 'Add Mask Hiding All' : 'Add Layer Mask', (p) => {
-      const l = p.activeLayer;
-      if (!l || l.mask) return false;
-      const w = l.raster?.width ?? Math.max(1, Math.round(l.transform.w)), h = l.raster?.height ?? Math.max(1, Math.round(l.transform.h));
-      let raster: Raster | null = null;
-      const sel = fromSelection ? p.selection : null;
-      if (sel) {
-        raster = new Raster(w, h);
-        setMat(raster.ctx, mul(invert(placement(l.transform, w, h)), translation(sel.x, sel.y)));
-        raster.ctx.drawImage(sel.surface(), 0, 0);
-        raster.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        if (hide) {
-          const inv = Raster.filled(w, h, '#ffffff');
-          inv.ctx.globalCompositeOperation = 'destination-out';
-          inv.ctx.drawImage(raster.canvas, 0, 0);
-          inv.ctx.globalCompositeOperation = 'source-over';
-          raster = inv;
-        }
-      } else if (hide) raster = new Raster(w, h);
-      p.updateLayer(l.id, { mask: { raster, enabled: true, linked: true, placement: null } });
-      p.maskTarget = true;
-    });
-  }
+  addMask(hide = false, fromSelection = true): void { LM.addMask(this.maskHost, hide, fromSelection); }
 
   /** Layer > Layer Mask > From Transparency: the layer's alpha becomes its mask and its pixels opaque. One step. */
   maskFromTransparency(): void {
@@ -3361,40 +3337,11 @@ export class Engine {
     }, null);
   }
 
-  deleteMask(apply: boolean): void {
-    this.edit(apply ? 'Apply Layer Mask' : 'Delete Layer Mask', (p) => {
-      const l = p.activeLayer;
-      if (!l?.mask) return false;
-      if (apply && l.raster && l.mask.raster && l.mask.enabled) {
-        const r = l.raster.clone();
-        const m = l.mask;
-        setMat(r.ctx, mul(invert(placement(l.transform, r.width, r.height)), placement(m.placement ?? l.transform, (m.raster as Raster).width, (m.raster as Raster).height)));
-        r.ctx.globalCompositeOperation = 'destination-in';
-        r.ctx.drawImage((m.raster as Raster).canvas, 0, 0);
-        r.ctx.globalCompositeOperation = 'source-over';
-        r.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        p.updateLayer(l.id, { raster: r, mask: null });
-      } else p.updateLayer(l.id, { mask: null });
-      p.maskTarget = false;
-    });
-  }
+  deleteMask(apply: boolean): void { LM.deleteMask(this.maskHost, apply); }
 
-  toggleMaskEnabled(): void {
-    this.edit('Toggle Layer Mask', (p) => {
-      const l = p.activeLayer;
-      if (!l?.mask) return false;
-      p.updateLayer(l.id, { mask: { ...l.mask, enabled: !l.mask.enabled } });
-    });
-  }
+  toggleMaskEnabled(): void { LM.toggleMaskEnabled(this.maskHost); }
 
-  toggleMaskLink(): void {
-    this.edit('Link Layer Mask', (p) => {
-      const l = p.activeLayer;
-      if (!l?.mask) return false;
-      const m = l.mask;
-      p.updateLayer(l.id, { mask: m.linked ? { ...m, linked: false, placement: m.placement ?? l.transform } : { ...m, linked: true } });
-    });
-  }
+  toggleMaskLink(): void { LM.toggleMaskLink(this.maskHost); }
 
   /** Layer > Vector Mask (1.66.1, Photoshop's): Reveal All and Hide All give the active layer an empty vector mask
    *  showing or hiding all of it, Current Path one from the selected path (the layer showing inside it). One step. */
@@ -6774,23 +6721,7 @@ export class Engine {
     this.applySelection(SelectionMask.cropped(region.x, region.y, w, h, out), 'replace', kind === 'feather' ? 'Feather Selection' : kind === 'border' ? 'Border Selection' : 'Smooth Selection');
   }
 
-  selectMaskBlack(): void {
-    const p = this.current;
-    const l = p?.activeLayer;
-    if (!p || !l?.mask) { this.notice('The active layer has no mask.'); return; }
-    const m = l.mask;
-    const t = m.placement ?? l.transform;
-    const b = m.raster ? intersectRect(integral(transformBounds(t)), { x: 0, y: 0, w: p.doc.width, h: p.doc.height }) : null;
-    if (!m.raster || !b) { this.applySelection(null, 'replace', "Mask's Black Areas"); return; }
-    const s = createSurface(b.w, b.h);
-    const c = ctxOf(s);
-    setMat(c, mul(translation(-b.x, -b.y), placement(t, m.raster.width, m.raster.height)));
-    c.fillStyle = '#ffffff';
-    c.fillRect(0, 0, m.raster.width, m.raster.height);
-    c.globalCompositeOperation = 'destination-out';
-    c.drawImage(m.raster.canvas, 0, 0);
-    this.applySelection(SelectionMask.fromAlpha(b.x, b.y, b.w, b.h, c.getImageData(0, 0, b.w, b.h).data), 'replace', "Mask's Black Areas");
-  }
+  selectMaskBlack(): void { LM.selectMaskBlack(this.maskHost); }
 
   /** The active layer's pixels (or its mask as gray, or with `merged` the visible image) inside the selection, or the
    *  whole canvas without one, rendered over the selection's region. Copy and Layer via Copy share it. */
@@ -8309,21 +8240,7 @@ export class Engine {
   /** Lays a subject mask (0 to 1 per layer pixel, 1 over the subject) on a layer as one Remove Background step. An
    *  existing mask of the same size is kept too, multiplied in: what either hides stays hidden (the
    *  `subjectMask`). The pixels themselves stay, so the background can be painted back. */
-  applySubjectMask(id: ID, levels: Float32Array, width: number, height: number): void {
-    this.edit('Remove Background', (p) => {
-      const l = p.layer(id);
-      if (!l || l.isGroup || !l.raster || levels.length !== width * height) return false;
-      const m = l.mask?.raster, old = m && !l.mask?.placement && m.width === width && m.height === height ? m.read().data : null;
-      const r = new Raster(width, height), img = r.read(), d = img.data;
-      for (let i = 0, j = 0; i < levels.length; i++, j += 4) {
-        d[j] = 255; d[j + 1] = 255; d[j + 2] = 255;
-        d[j + 3] = Math.round(Math.min(1, Math.max(0, levels[i])) * (old ? old[j + 3] : 255));
-      }
-      r.write(img);
-      p.updateLayer(id, { mask: { raster: r, enabled: true, linked: true, placement: null } });
-      return true;
-    });
-  }
+  applySubjectMask(id: ID, levels: Float32Array, width: number, height: number): void { LM.applySubjectMask(this.maskHost, id, levels, width, height); }
 
   /** the sample ring: while a drag samples the canvas, the new color shows on the ring's top half and the
    *  color before the drag on its bottom half. `showsSampleRing` is the Eyedropper's Sample Ring option. */
@@ -8346,24 +8263,7 @@ export class Engine {
     return true;
   }
 
-  setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void {
-    this.edit(name, (p) => {
-      const l = p.layer(id);
-      if (!l || l.isGroup) return false;
-      const r = Raster.from(source, width, height);
-      const img = r.read();
-      const d = img.data;
-      for (let i = 0; i < d.length; i += 4) {
-        const v = Math.round(((d[i] + d[i + 1] + d[i + 2]) / 3) * (d[i + 3] / 255));
-        d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; d[i + 3] = v;
-      }
-      r.write(img);
-      p.updateLayer(id, { mask: { raster: r, enabled: true, linked: true, placement: null } });
-      this.focus(p, id);
-      p.maskTarget = true;
-      return true;
-    });
-  }
+  setMaskFromImage(id: ID, source: CanvasImageSource, width: number, height: number, name: string): void { LM.setMaskFromImage(this.maskHost, id, source, width, height, name); }
 
   /** Whether the current document's flattened picture goes out in bands (1.61.2, DEV_PLAN 26.4): an 8-bit RGB
    *  document past the band size, composed by the ordinary renderer. */
