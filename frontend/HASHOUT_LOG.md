@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Transform entry points written fresh, and early lines inside 34 core methods rewritten by gap fill, DEV_PLAN 28.0 batches 9 to 11 · _v1.66.6 (engine/transform-entry.ts new; engine/index.ts)
+
+Batch 9 (`cleanroom/batch-09-transform-entry.md`): `engine/transform-entry.ts` with `EntryHost`, the state types the Engine now holds (`TransformEditState`, `DistortEditState`, `WarpDrag`, `SelectionShift`, `DistortedMask`) and `transformsMask`, `groupMembers` (visibility through enclosing folders, from `hierarchy`), `groupBox`, `beginTransform`, `updateTransform`, `beginDistort` (the shape notice passed in), `moveDistortHandle`, `previewDistort`, `distortMask`, `applyDistort`, `cancelDistort`, `beginWarp`, `warpTo`, `cancelWarp`, the selection shift trio, `resizeLayerTo`, `scaleLayerTo`, `floatingOutline`. The smart-object distort (later formvis code) moved unchanged into `entryHost` (`smartStart`, `applySmartDistort`, `smartPreview`). `distortQuad`, `distortMask`, `previewDistort` and `dropDistort` left the Engine.
+
+Batches 10 and 11 (`cleanroom/batch-10-core-gapfill.md`, `batch-11-plumbing-gapfill.md`): a new clean-room method for methods that are mostly later code. The implementer sees the method with its early-era lines (by `git blame -w`) redacted into numbered gaps and a behaviour note per gap, and returns the whole method; a script checks every shown line came back byte for byte. 11 of 34 came back byte-identical to the current code (the gaps held a signature, a brace or calls the notes name) and are left as they are; 23 were placed by hand: `task`, `addProject` (its selection a Set: a type correction by hand), `switchTo`, `closeProject`, `updateTipDrag`, `setBrush` (keeps any other brush fields), `newDocument`, `setMaskTarget`, `beginVisibilitySwipe`, `swipeVisibility`, `flipCanvas`, `ensurePixels`, `ensureMask`, `target`, `insertImages`, `cancelLive`, `coverageFor` (returns a copy of the bytes), `insertAboveActive`, `addAdjustmentLayer`, `copySelection`, `nextLayerName`, `layerViaCopy`, `shapeRaster`. Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; batch 9's 43 browser tests and a probe of eight operations (distort, skew, a group perspective, a group move, smudge, liquify, a selection shift, the resize and scale fields) identical to the earlier code; batches 10 and 11's 59 browser tests; `test_tool_audit_2::test_type_anti_aliasing_colour_and_the_selected_layer` fails identically on the unchanged tree. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.66.5",
+      "version": "1.66.5",
+  "version": "1.66.5",
+export const VERSION = '1.66.5';
+```
+
 ## Selection and pixel commands, the pixel-edit pipeline, Canvas Size and Image Size written fresh, DEV_PLAN 28.0 batches 6 to 8 · _v1.66.5 (engine/select-ops.ts, engine/image-edit.ts and engine/document-size.ts new; engine/index.ts)
 
 Clean-room batches 6, 7 and 8 (specs `cleanroom/batch-06-select-pixels.md`, `batch-07-image-edit.md`, `batch-08-document-size.md` with `types-sheet.md`, in the sidecar).

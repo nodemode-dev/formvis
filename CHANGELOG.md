@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.6 · 2026-10-12
+
+### Changed
+
+- More of formvis is new code written independently from a behaviour description, behaving as before: starting a move, transform or free distort of a layer, a mask or a group of layers (with its preview), Smudge and Liquify strokes, dragging a selection's outline, the options bar's W, H and scale fields, and the small pieces of opening, closing and switching documents, undo and redo, tools and the brush's right-drag, importing images, new adjustment layers, Copy, Layer via Copy, Flip Canvas, the eye column's drag and live dialog steps.
+
 ## 1.66.5 · 2026-10-12
 
 ### Changed
