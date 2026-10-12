@@ -2,6 +2,40 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.66.2
+
+No engine code changed in 1.66.2 (DEV_PLAN 28.A, `./build_app`). The engine froze with PyInstaller and passed its `--selfcheck` inside `./build_app`'s run, and the frozen engine answered from the built `.deb`. The first full build let cargo rewrite `src-tauri/Cargo.lock` in its own order (the `formvis` and `formvis-render` entries moved, their dependency lists sorted, nothing added or changed in version), so those entries count as removed and re-added. Removed lines taken after the version edit; the desktop shell's lines are quoted here too. Removed:
+
+```text
+__version__ = "1.66.1"
+[[package]]
+name = "formvis"
+version = "1.66.1"
+dependencies = [
+ "fontdb",
+ "regex",
+ "serde",
+ "serde_json",
+ "formvis-render",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-shell",
+ "tauri-plugin-updater",
+]
+[[package]]
+name = "formvis-render"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "pollster",
+ "sysinfo",
+ "wgpu",
+]
+version = "1.66.1"
+ "version": "1.66.1",
+```
+
 ## Version only · _v1.66.0
 
 No engine code changed in 1.66.0 (DEV_PLAN 27.7's first part, fill layers, is in the window; a project's `fillContent` passes `project_format.validate`, which checks asset names and links, not a layer's other fields). Verified: the engine's tests, 112 passed and 3 failing for this machine as before. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

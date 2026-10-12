@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.66.2
+
+No window code changed in 1.66.2 (DEV_PLAN 28.A, `./build_app`, is a root script logged in the sidecar's root HASHOUT_LOG). The window built clean inside `./build_app`'s run. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.66.1",
+      "version": "1.66.1",
+  "version": "1.66.1",
+export const VERSION = '1.66.1';
+```
+
 ## Vector masks, 27.7's second part · _v1.66.1 (engine/vector-mask.ts new; engine/index.ts, engine/renderer.ts, engine/types.ts, engine/paths.ts, ui/paths.ts, io/project-io.ts, app.ts)
 
 DEV_PLAN 27.7. `Layer.vectorMask` (`VectorMask`: path in document pixels, enabled, linked, inverted). Document pixels rather than the layer's own, so operations that grow or re-render a layer's raster in place (filters that spread, smart object re-renders) never move it; the cost is that the linked case is carried explicitly: `followVector` at each user transform (move, nudge, align and distribute, flips, Free Transform), `distortVector` through Distort's homography, and `carryVectors` over every canvas change (crop, straighten, canvas and image size, the three rotations, flips, perspective crop, an artboard's export). While a move or transform is live, the renderers draw the cached coverage through `boxChange` (a matrix on `MaskInfo.mat`, and the GPU mask's matrix), so nothing is redrawn per frame. `vectorCoverage` caches one coverage per mask object and canvas size; empty and not inverted shows all (null), empty and inverted (Hide All) hides all. The Paths panel lists it (`maskEntry`, a `vmask:` id) over a working copy (`maskEdit`) that the tools change in place, so the stored path, shared with undo, is never mutated. Rasterize intersects the coverage into the layer mask in the mask's own pixels. Project records carry `vectorMask` with `pathData` subpaths.

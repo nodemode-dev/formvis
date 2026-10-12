@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.2 · 2026-10-12
+
+### Added
+
+- `./build_app` at the root builds the desktop app in one command on macOS and Linux: it checks Python, Node, Rust and (on Linux) the WebKitGTK libraries, installs whatever is missing, builds the window, freezes the engine into the app's sidecar, compiles the Tauri shell and bundles it, as `formvis.app` copied to Applications with a `.dmg` beside it on macOS, or a `.deb` on Linux. `--no-install`, `--install`, `--open` and `--clean` change what happens at the end; every step's output goes to `build_app.log`.
+
 ## 1.66.1 · 2026-10-08
 
 ### Added
