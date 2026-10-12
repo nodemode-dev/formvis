@@ -8,13 +8,15 @@ export function modeFor(e: Engine, p: ToolPointer): SelectionMode {
   return e.selectionMode;
 }
 
-/** Arrow keys nudge the selection outline in the selection tools: 1 px, or 10 with Shift; with Cmd,
- *  Ctrl or Alt held the key is left for other commands. True when the key was used. */
+/** Arrow keys nudge the selection outline (1 pixel, 10 with Shift); false for anything else so other commands see it. */
 export function nudgeSelectionKey(ctx: ToolContext, e: KeyboardEvent): boolean {
   if (e.metaKey || e.ctrlKey || e.altKey) return false;
   const step = e.shiftKey ? 10 : 1;
-  const d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
-  return d ? ctx.engine.nudgeSelection(d[0], d[1]) : false;
+  if (e.key === 'ArrowLeft') return ctx.engine.nudgeSelection(-step, 0);
+  if (e.key === 'ArrowRight') return ctx.engine.nudgeSelection(step, 0);
+  if (e.key === 'ArrowUp') return ctx.engine.nudgeSelection(0, -step);
+  if (e.key === 'ArrowDown') return ctx.engine.nudgeSelection(0, step);
+  return false;
 }
 
 export function modeSegment(e: Engine): OptionSpec {
@@ -22,6 +24,6 @@ export function modeSegment(e: Engine): OptionSpec {
     kind: 'segment', label: 'Mode',
     choices: [{ id: 'replace', label: 'New' }, { id: 'add', label: 'Add' }, { id: 'subtract', label: 'Subtract' }, { id: 'intersect', label: 'Intersect' }],
     get: () => e.selectionMode,
-    set: (v) => e.update({ selectionMode: v as SelectionMode }),
+    set: (id) => e.update({ selectionMode: id as SelectionMode })
   };
 }

@@ -1,15 +1,15 @@
 import { hexOf, type RGB } from '../../engine';
 import type { Tool, ToolContext, ToolPointer } from '../registry';
 
-/** The color a drag started from, shown on the sample ring's lower half. */
+/** The colour a drag began from; the lower half of the sample ring shows it. Null between drags. */
 let original: RGB | null = null;
 
 function sample(ctx: ToolContext, p: ToolPointer): void {
-  const c = ctx.engine.sampleColor(p.doc);
+  const e = ctx.engine, c = e.sampleColor(p.doc);
   if (!c) return;
-  if (p.alt) ctx.engine.setColors(undefined, c);
-  else ctx.engine.setColors(c);
-  if (original) ctx.engine.setSampleRing({ at: p.doc, sampled: c, original });
+  if (p.alt) e.setColors(undefined, c);
+  else e.setColors(c);
+  if (original) e.setSampleRing({ at: p.doc, sampled: c, original });
 }
 
 function finish(ctx: ToolContext): void {
@@ -20,7 +20,7 @@ function finish(ctx: ToolContext): void {
 export const eyedropperTool: Tool = {
   id: 'eyedropper', label: 'Eyedropper', key: 'I', order: 80,
   icon: () => 'tEyedropper',
-  hint: () => 'Click or drag to sample the foreground color from the visible image · Alt-click samples the background color',
+  hint: () => 'Click or drag to sample the foreground colour from the visible image · Alt-click samples the background colour',
   cursor: () => 'crosshair',
   down(ctx, p) {
     if (p.button !== 0) return;
@@ -37,6 +37,6 @@ export const eyedropperTool: Tool = {
     { kind: 'select', label: 'Sample', choices: [{ id: 'current', label: 'Current Layer' }, { id: 'below', label: 'Current & Below' }, { id: 'all', label: 'All Layers' }], get: () => e.eyedropperSample, set: (v: string) => { e.eyedropperSample = v as typeof e.eyedropperSample; e.emit('options', null); } },
     { kind: 'readout', label: 'Foreground', get: () => hexOf(e.fg) },
     { kind: 'readout', label: 'Background', get: () => hexOf(e.bg) },
-    { kind: 'toggle', label: 'Sample Ring', get: () => e.showsSampleRing, set: (v) => { e.showsSampleRing = v; e.emit('options', null); } },
-  ],
+    { kind: 'toggle', label: 'Sample Ring', get: () => e.showsSampleRing, set: (v) => { e.showsSampleRing = v; e.emit('options', null); } }
+  ]
 };

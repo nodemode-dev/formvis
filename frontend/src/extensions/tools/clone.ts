@@ -9,7 +9,7 @@ let picking = false;
 export const cloneTool: Tool = {
   id: 'cloneStamp', label: 'Clone Stamp', key: 'S', order: 60,
   icon: () => 'tStamp',
-  hint: () => 'Alt-click to set the source, then paint to copy from it · Aligned keeps the offset between strokes · Sample all layers copies what you see · [ ] size',
+  hint: () => 'Alt-click sets the source, then paint to copy from it · Aligned keeps the offset between strokes · Sample All Layers copies what you see · [ ] size',
   cursor: () => 'none',
   down(ctx, p) {
     if (p.button !== 0) return;
@@ -49,9 +49,9 @@ export const cloneTool: Tool = {
       }
     }
     drawBrushCursor(ctx, g, hover);
-    const sp = hover ? ctx.engine.clonePoint(hover) : ctx.engine.cloneSource;
+    const sp = hover ? e.clonePoint(hover) : e.cloneSource;
     if (!sp) return;
-    const s = ctx.view().toScreen(sp), pal = ctx.paint();
+    const pal = ctx.paint(), s = v.toScreen(sp);
     g.save();
     g.lineWidth = 1;
     g.strokeStyle = pal.antsA;
@@ -77,6 +77,6 @@ export const cloneTool: Tool = {
     { kind: 'toggle', label: 'Clipped', get: () => e.cloneOverlay.clipped, set: (v) => { e.cloneOverlay.clipped = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
     { kind: 'range', label: 'Overlay opacity', min: 0, max: 100, unit: '%', get: () => Math.round(e.cloneOverlay.opacity * 100), set: (v) => { e.cloneOverlay.opacity = v / 100; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
     { kind: 'toggle', label: 'Auto Hide', get: () => e.cloneOverlay.autoHide, set: (v) => { e.cloneOverlay.autoHide = v; e.emit('options', null); e.emit('overlay', null); }, when: () => e.cloneOverlay.show },
-    ...brushOptions(e),
-  ],
+    ...brushOptions(e)
+  ]
 };

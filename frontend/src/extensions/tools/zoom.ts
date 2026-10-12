@@ -8,16 +8,18 @@ export const zoomTool: Tool = {
   icon: () => 'tZoom',
   hint: () => 'Click zooms in · Alt-click zooms out · Drag right or left to zoom smoothly · Space pans',
   cursor: (_ctx, p) => (p?.alt ? 'zoom-out' : 'zoom-in'),
-  down(ctx, p) { drag = { start: p.screen, z0: ctx.engine.current?.viewport.zoom ?? 1, moved: false, alt: p.alt }; },
+  down(ctx, p) {
+    drag = { start: p.screen, z0: ctx.engine.current?.viewport.zoom ?? 1, moved: false, alt: p.alt };
+  },
   move(ctx, p) {
     if (!drag) return;
     const dx = p.screen.x - drag.start.x;
-    // Right zooms in, left out, doubling for every 100 points dragged.
-    if (Math.abs(dx) >= 3) drag.moved = true;
-    if (drag.moved) ctx.engine.zoomTo(drag.z0 * Math.pow(2, dx / 100), drag.start);
+    if (!drag.moved && Math.abs(dx) < 3) return;
+    drag.moved = true;
+    ctx.engine.zoomTo(drag.z0 * Math.pow(2, dx / 100), drag.start);
   },
   up(ctx, p) {
-    if (drag && !drag.moved) ctx.engine.zoomTo(drag.z0 * (drag.alt ? 0.5 : 2), p.screen);
+    if (drag && !drag.moved) ctx.engine.zoomTo((ctx.engine.current?.viewport.zoom ?? 1) * (drag.alt ? 0.5 : 2), p.screen);
     drag = null;
   },
   cancel() { drag = null; },
@@ -28,5 +30,5 @@ export const zoomTool: Tool = {
     { kind: 'button', label: '100%', run: () => e.zoomTo(1) },
     { kind: 'button', label: 'Fit', icon: 'fitView', run: () => e.fit() },
     { kind: 'button', label: 'Fill Screen', run: () => e.fillScreen() },
-  ],
+  ]
 };

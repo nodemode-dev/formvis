@@ -5,10 +5,10 @@ import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 export const wandTool: Tool = {
   id: 'wand', label: 'Magic Wand', key: 'W', order: 40,
   icon: () => 'tWand',
-  hint: () => 'Click to select similar colors · Shift adds · Alt subtracts · Tolerance sets how similar · Arrows nudge the outline',
+  hint: () => 'Click to select similar colours · Shift adds · Alt subtracts · Tolerance sets how alike · Arrows nudge the outline',
   cursor: () => 'crosshair',
   down(ctx, p) { if (p.button === 0) ctx.engine.magicWand(p.doc, modeFor(ctx.engine, p)); },
-  keydown(ctx, e) { return nudgeSelectionKey(ctx, e); },
+  keydown: (ctx, e) => nudgeSelectionKey(ctx, e),
   options: (e) => [
     { kind: 'title', text: 'Magic Wand' },
     { kind: 'range', label: 'Tolerance', min: 0, max: 255, get: () => e.wand.tolerance, set: (v) => e.setWand({ tolerance: v }) },
@@ -20,5 +20,5 @@ export const wandTool: Tool = {
     modeSegment(e),
     { kind: 'button', label: 'Select Subject', run: () => toolHost.run('select-subject') },
     { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
-  ],
+  ]
 };

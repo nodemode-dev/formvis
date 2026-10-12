@@ -8,18 +8,18 @@ const SMEAR_ICONS: Record<string, string> = { blur: 'tBlur', sharpen: 'tSharpen'
 const SMEAR_NAMES = { blur: 'Blur', sharpen: 'Sharpen', smudge: 'Smudge', liquify: 'Liquify Brush' } as const;
 
 let hover: Pt | null = null;
-const HINTS = {
-  liquify: 'Drag to push pixels along with the brush, most at its center · Strength sets how far they move',
-  blur: 'Paint to soften; a new stroke over the same area softens it further · The blur follows the brush size',
+const HINTS: Record<string, string> = {
+  liquify: 'Drag to push pixels along with the brush, most at its centre · Strength sets how far they move',
+  blur: 'Paint to soften; another stroke over the same place softens more · The blur follows the brush size',
   sharpen: 'Paint to crisp up edges; a new stroke over the same area sharpens it further · Lower Strength for subtle work',
-  smudge: 'Drag to smear color along the stroke · Strength sets how far the color carries',
+  smudge: 'Drag to smear colour along the stroke · Strength sets how far the colour carries',
 };
 
 export const smearTool: Tool = {
   id: 'smear', label: 'Smear', key: '', order: 65,   // no shortcut, as Photoshop's Blur, Sharpen and Smudge; R is Rotate View's
   icon: (e) => SMEAR_ICONS[e.retouch.smearMode] ?? 'tSmudge',
   variants: (e) => (['blur', 'sharpen', 'smudge', 'liquify'] as const).map((m) => ({ id: m, label: SMEAR_NAMES[m], icon: SMEAR_ICONS[m], active: () => e.retouch.smearMode === m, pick: () => { e.retouch.smearMode = m; e.emit('options', null); } })),
-  hint: (e) => `${HINTS[e.retouch.smearMode]} · [ ] size`,
+  hint: (e) => (HINTS[e.retouch.smearMode] ?? '') + ' · [ ] size',
   cursor: () => 'none',
   down(ctx, p) {
     if (p.button !== 0) return;
@@ -56,6 +56,6 @@ export const smearTool: Tool = {
       : []),
     ...(e.retouch.smearMode === 'sharpen' ? [{ kind: 'toggle' as const, label: 'Protect Detail', get: () => e.retouch.protectDetail, set: (v: boolean) => { e.retouch.protectDetail = v; e.emit('options', null); } }] : []),
     ...(e.retouch.smearMode === 'smudge' ? [{ kind: 'toggle' as const, label: 'Finger Painting', get: () => e.retouch.fingerPainting, set: (v: boolean) => { e.retouch.fingerPainting = v; e.emit('options', null); } }] : []),
-    ...brushOptions(e, 'Strength'),
-  ],
+    ...brushOptions(e, 'Strength')
+  ]
 };

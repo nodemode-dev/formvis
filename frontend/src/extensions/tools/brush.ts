@@ -10,7 +10,7 @@ let airbrush = false, airTimer = 0, smoothing = 0, steady: { x: number; y: numbe
 export const brushTool: Tool = {
   id: 'brush', label: 'Brush', key: 'B', order: 50,
   icon: (e) => (e.brushMode === 'erase' ? 'tEraser' : 'tBrush'),
-  hint: (e) => `${e.brushMode === 'erase' ? 'Drag to erase' : 'Drag to paint'} · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans`,
+  hint: (e) => (e.brushMode === 'erase' ? 'Drag to erase' : 'Drag to paint') + ' · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans',
   cursor: () => 'none',
   // Smoothing (1.50.3, the tool audit), as Photoshop's: the stroke follows a steadied point that trails the pointer, and
   // catches up to where it is released.
@@ -31,15 +31,15 @@ export const brushTool: Tool = {
   hover(ctx, p) { hoverPt = p ? p.doc : null; ctx.engine.emit('overlay', null); },
   cancel(ctx) { clearInterval(airTimer); ctx.engine.cancelStroke(); },
   keydown(ctx, e) {
-    const eng = ctx.engine;
     if (e.metaKey || e.ctrlKey || e.altKey) return false;
+    const eng = ctx.engine;
     if (e.code === 'BracketLeft' || e.code === 'BracketRight') {
       const up = e.code === 'BracketRight';
       if (e.shiftKey) eng.setBrush({ hardness: clamp(eng.brush.hardness + (up ? 0.25 : -0.25), 0, 1) });
       else {
         const d = eng.brush.diameter;
         const step = d < 10 ? 1 : d < 50 ? 5 : d < 100 ? 10 : d < 300 ? 25 : 50;
-        eng.setBrush({ diameter: d + (up ? step : -step) });
+        eng.setBrush({ diameter: Math.max(1, d + (up ? step : -step)) });
       }
       return true;
     }
@@ -51,24 +51,21 @@ export const brushTool: Tool = {
   overlay(ctx, g) {
     const at = ctx.engine.tipDrag?.at ?? hoverPt;
     if (!at) return;
-    const v = ctx.view();
-    const pal = ctx.paint();
-    const c = v.toScreen(at);
+    const v = ctx.view(), pal = ctx.paint(), c = v.toScreen(at);
     const r = Math.max(0.5, (ctx.engine.brush.diameter * v.zoom) / 2);
     g.save();
     g.lineWidth = 1;
     g.strokeStyle = pal.antsA;
-    g.beginPath();
-    g.arc(c.x, c.y, r, 0, Math.PI * 2);
-    g.stroke();
+    g.beginPath(); g.arc(c.x, c.y, r, 0, Math.PI * 2); g.stroke();
     g.strokeStyle = pal.antsB;
-    g.beginPath();
-    g.arc(c.x, c.y, r + 1, 0, Math.PI * 2);
-    g.stroke();
+    g.beginPath(); g.arc(c.x, c.y, r + 1, 0, Math.PI * 2); g.stroke();
     if (r < 6) {
+      g.strokeStyle = pal.antsA;
       g.beginPath();
-      g.moveTo(c.x - 8, c.y); g.lineTo(c.x - 3, c.y); g.moveTo(c.x + 3, c.y); g.lineTo(c.x + 8, c.y);
-      g.moveTo(c.x, c.y - 8); g.lineTo(c.x, c.y - 3); g.moveTo(c.x, c.y + 3); g.lineTo(c.x, c.y + 8);
+      g.moveTo(c.x - 8, c.y); g.lineTo(c.x - 3, c.y);
+      g.moveTo(c.x + 3, c.y); g.lineTo(c.x + 8, c.y);
+      g.moveTo(c.x, c.y - 8); g.lineTo(c.x, c.y - 3);
+      g.moveTo(c.x, c.y + 3); g.lineTo(c.x, c.y + 8);
       g.stroke();
     }
     g.restore();
@@ -91,5 +88,5 @@ export const brushTool: Tool = {
     { kind: 'range', label: 'Min size', min: 0, max: 100, unit: '%', get: () => Math.round((e.brushDynamics.size.enabled ? e.brushDynamics.size.min : 0.2) * 100), set: (v) => { if (e.brushDynamics.size.enabled) e.brushDynamics.size = pressureOption(v / 100); e.brushPresetId = null; e.emit('options', null); } },
     { kind: 'toggle', label: 'Pressure: flow', get: () => e.brushDynamics.flow.enabled, set: (v) => { e.brushDynamics.flow = v ? pressureOption(e.brushDynamics.flow.enabled ? e.brushDynamics.flow.min : 0.2) : identityOption(); e.brushPresetId = null; e.emit('options', null); } },
     { kind: 'range', label: 'Min flow', min: 0, max: 100, unit: '%', get: () => Math.round((e.brushDynamics.flow.enabled ? e.brushDynamics.flow.min : 0.2) * 100), set: (v) => { if (e.brushDynamics.flow.enabled) e.brushDynamics.flow = pressureOption(v / 100); e.brushPresetId = null; e.emit('options', null); } },
-  ],
+  ]
 };
