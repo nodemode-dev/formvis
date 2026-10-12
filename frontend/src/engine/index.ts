@@ -352,10 +352,12 @@ export class Engine {
   get busy(): boolean { return this.busyCount > 0; }
 
   async task<T>(fn: () => Promise<T>): Promise<T> {
-    this.busyCount += 1;
+    this.busyCount++;
     if (this.busyCount === 1) this.emit('busy', true);
-    try { return await fn(); } finally {
-      this.busyCount -= 1;
+    try {
+      return await fn();
+    } finally {
+      this.busyCount--;
       if (this.busyCount === 0) this.emit('busy', false);
     }
   }
@@ -614,11 +616,10 @@ export class Engine {
     const p = new Project(doc, this.uniqueName(name));
     p.history.entryLimit = this.historyLimits.states;
     p.history.byteLimit = this.historyLimits.bytes;
-    p.viewport.width = this.viewSize.w;
-    p.viewport.height = this.viewSize.h;
+    p.viewport.resize(this.viewSize.w, this.viewSize.h);
     p.viewport.fit(doc.width, doc.height);
-    p.activeId = activeId && doc.layers.some((l) => l.id === activeId) ? activeId : doc.layers[doc.layers.length - 1]?.id ?? null;
-    if (p.activeId) p.selectedIds = new Set([p.activeId]);
+    p.activeId = doc.layers.some((l) => l.id === activeId) ? activeId : doc.layers[doc.layers.length - 1]?.id ?? null;
+    p.selectedIds = new Set(p.activeId ? [p.activeId] : []);
     this.projects.push(p);
     this.openingSnapshot(p);
     this.switchTo(p.id);
@@ -718,7 +719,7 @@ export class Engine {
   }
 
   switchTo(id: string): void {
-    if (this.stroke || !this.projects.some((p) => p.id === id)) return;
+    if (this.stroke || !this.projects.some((q) => q.id === id)) return;
     this.settle();
     this.currentId = id;
     this.emit('projects', null);
@@ -728,13 +729,13 @@ export class Engine {
   }
 
   closeProject(id: string): void {
-    const i = this.projects.findIndex((p) => p.id === id);
+    const i = this.projects.findIndex((q) => q.id === id);
     if (i < 0 || this.stroke || this.waiting()) return;
-    if (this.transformEdit?.project.id === id) this.transformEdit = null;
-    if (this.floatSel?.project.id === id) this.floatSel = null;
+    if (this.transformEdit && this.transformEdit.project === this.projects[i]) this.transformEdit = null;
+    if (this.floatSel && this.floatSel.project === this.projects[i]) this.floatSel = null;
     const closing = this.projects[i];
     this.projects.splice(i, 1);
-    if (this.currentId === id) this.currentId = this.projects[Math.min(i, this.projects.length - 1)]?.id ?? null;
+    if (this.currentId === id) this.currentId = (this.projects[i] ?? this.projects[this.projects.length - 1])?.id ?? null;
     this.emit('projects', null);
     this.emit('viewport', null);
     this.refresh();
@@ -813,8 +814,8 @@ export class Engine {
       return null;
     }
     const base: Doc = { id: uid(), width, height, resolution: Number.isFinite(resolution) && resolution >= 1 && resolution <= 10000 ? resolution : 72, layers: [] };
-    let layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', base);
-    if (fill !== 'transparent') layer = { ...layer, raster: Raster.filled(width, height, fill === 'white' ? '#ffffff' : rgbCss(this.bg)) };
+    const layer = newLayer(fill === 'transparent' ? 'Layer 1' : 'Background', base);
+    if (fill !== 'transparent') layer.raster = Raster.filled(width, height, fill === 'white' ? '#ffffff' : rgbCss(this.bg));
     return this.addProject({ ...base, layers: [layer] }, name, layer.id);
   }
 
@@ -1091,11 +1092,15 @@ export class Engine {
   }
 
   updateTipDrag(screenX: number, shift: boolean): void {
-    const d = this.tipDrag;
-    if (!d) return;
-    const dx = screenX - d.startX, zoom = Math.max(0.0001, this.current?.viewport.zoom ?? 1);
-    if (shift) this.setBrush({ hardness: Math.min(1, Math.max(0, d.hardness + dx / 200)), diameter: d.diameter });
-    else this.setBrush({ diameter: Math.min(2000, Math.max(1, Math.round(d.diameter + (2 * dx) / zoom))), hardness: d.hardness });
+    const t = this.tipDrag;
+    if (!t) return;
+    const dx = screenX - t.startX;
+    if (shift) {
+      this.setBrush({ hardness: Math.min(1, Math.max(0, t.hardness + dx / 200)), diameter: t.diameter });
+    } else {
+      const zoom = this.current ? Math.max(0.0001, this.current.viewport.zoom) : 1;
+      this.setBrush({ diameter: Math.min(2000, Math.max(1, Math.round(t.diameter + (2 * dx) / zoom))), hardness: t.hardness });
+    }
   }
 
   endTipDrag(): void {
@@ -1106,9 +1111,10 @@ export class Engine {
 
   setBrush(patch: Partial<BrushSettings>): void {
     this.brush = {
-      diameter: Math.round(clamp(patch.diameter ?? this.brush.diameter, 1, 5000)),
-      hardness: clamp(patch.hardness ?? this.brush.hardness, 0, 1),
-      opacity: clamp(patch.opacity ?? this.brush.opacity, 0.01, 1),
+      ...this.brush,
+      diameter: Math.min(5000, Math.max(1, Math.round(patch.diameter ?? this.brush.diameter))),
+      hardness: Math.min(1, Math.max(0, patch.hardness ?? this.brush.hardness)),
+      opacity: Math.min(1, Math.max(0.01, patch.opacity ?? this.brush.opacity)),
       tip: 'tip' in patch ? patch.tip ?? null : this.brush.tip ?? null,
     };
     this.emit('options', null);
@@ -2770,9 +2776,9 @@ export class Engine {
   setMaskTarget(on: boolean): void {
     const p = this.current;
     if (!p) return;
-    const next = on && !!p.activeLayer?.mask;
-    if (p.maskTarget === next) return;
-    p.maskTarget = next;
+    const v = on && !!p.activeLayer?.mask;
+    if (p.maskTarget === v) return;
+    p.maskTarget = v;
     this.emit('active', null);
   }
 
@@ -3047,19 +3053,20 @@ export class Engine {
     const l = p?.layer(id);
     if (!p || !l || this.stroke) return null;
     this.settle();
-    const v = !l.visible;
-    p.history.begin(v ? 'Show Layer' : 'Hide Layer', p.snapshot());
+    const next = !l.visible;
+    p.history.begin(next ? 'Show Layer' : 'Hide Layer', p.snapshot());
     this.swipeOpen = p;
-    p.updateLayer(id, { visible: v });
+    p.updateLayer(id, { visible: next });
     this.emit('doc', null);
     this.emit('render', null);
-    return v;
+    return next;
   }
 
   swipeVisibility(id: ID, visible: boolean): void {
     const p = this.swipeOpen;
-    const l = p?.layer(id);
-    if (!p || !l || l.visible === visible) return;
+    if (!p) return;
+    const l = p.layer(id);
+    if (!l || l.visible === visible) return;
     p.updateLayer(id, { visible });
     this.emit('doc', null);
     this.emit('render', null);
@@ -3437,11 +3444,11 @@ export class Engine {
 
   flipCanvas(horizontal: boolean): void {
     this.edit(horizontal ? 'Flip Canvas Horizontal' : 'Flip Canvas Vertical', (p) => {
-      const { width: W, height: H } = p.doc;
+      const W = p.doc.width, H = p.doc.height;
       p.setLayers(this.carryVectors(p.doc.layers.map((l) => ({
         ...l,
         transform: mirrored(l.transform, horizontal, W, H),
-        mask: l.mask?.placement ? { ...l.mask, placement: mirrored(l.mask.placement, horizontal, W, H) } : l.mask,
+        ...(l.mask?.placement ? { mask: { ...l.mask, placement: mirrored(l.mask.placement, horizontal, W, H) } } : {}),
         ...(l.artboard ? { artboard: horizontal ? { ...l.artboard, x: W - l.artboard.x - l.artboard.w } : { ...l.artboard, y: H - l.artboard.y - l.artboard.h } } : {}),
       })), (x, y) => (horizontal ? { x: W - x, y } : { x, y: H - y })));
       if (p.selection) p.selection = p.selection.flipped(horizontal, W, H);
@@ -3616,22 +3623,21 @@ export class Engine {
   private asking = false;
 
   private ensurePixels(p: Project, layer: Layer): Raster {
-    const { width: W, height: H } = p.doc;
     if (!layer.raster) {
-      const r = new Raster(W, H);
-      p.updateLayer(layer.id, { raster: r, transform: docTransform(W, H) });
+      const r = new Raster(p.doc.width, p.doc.height);
+      p.updateLayer(layer.id, { raster: r, transform: docTransform(p.doc.width, p.doc.height) });
       return r;
     }
-    return this.growLayer(p, layer, { x: 0, y: 0, w: W, h: H });
+    const canvasRect = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
+    return this.growLayer(p, layer, canvasRect);
   }
 
   private growLayer(p: Project, layer: Layer, want: Rect): Raster { return PO.growLayer(p, layer, want); }
 
   private ensureMask(p: Project, layer: Layer): Raster {
-    const m = layer.mask as Mask;
+    const m = layer.mask as NonNullable<Layer['mask']>;
     if (m.raster) return m.raster;
-    const w = layer.raster?.width ?? p.doc.width, h = layer.raster?.height ?? p.doc.height;
-    const r = Raster.filled(w, h, '#ffffff');
+    const r = Raster.filled(layer.raster ? layer.raster.width : p.doc.width, layer.raster ? layer.raster.height : p.doc.height, '#ffffff');
     p.updateLayer(layer.id, { mask: { ...m, raster: r } });
     return r;
   }
@@ -3644,7 +3650,7 @@ export class Engine {
     const la = p.layer(l0.id) as Layer, target: Target = la.adjustment || (p.maskTarget && la.mask) ? 'mask' : 'pixels';
     const raster = target === 'mask' ? this.ensureMask(p, la) : this.ensurePixels(p, la);
     const l = p.layer(l0.id) as Layer;
-    const t = target === 'mask' ? l.mask?.placement ?? l.transform : l.transform;
+    const t = target === 'mask' ? (l.mask?.placement ?? l.transform) : l.transform;
     return { layer: l, target, raster, local: placement(t, raster.width, raster.height) };
   }
 
@@ -5140,17 +5146,15 @@ export class Engine {
       this.addProject({ id: uid(), width: f.width, height: f.height, resolution: 72, layers: [], ...(f.profile ? { profile: f.profile } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5)
     }
     this.edit(images.length > 1 ? 'Import Images' : 'Import Image', (p) => {
-      let used = p.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0);
-      let added = false;
+      let pixels = p.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0), added = 0;
       for (const img of images) {
-        if (img.width > LIMITS.side || img.height > LIMITS.side || used + img.width * img.height > LIMITS.pixels) {
+        if (img.width > LIMITS.side || img.height > LIMITS.side || pixels + img.width * img.height > LIMITS.pixels) {
           this.notice(`${img.name} was skipped: it would exceed the 30,000 px side or the ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel document limit.`, 'error');
           continue;
         }
-        used += img.width * img.height;
+        pixels += img.width * img.height;
         const c = at ?? { x: p.doc.width / 2, y: p.doc.height / 2 };
-        const active = p.activeLayer;
-        const parentId = active?.isGroup ? active.id : active?.parentId ?? null;
+        const act = p.activeLayer, parentId = act ? (act.isGroup ? act.id : act.parentId) : null;
         // Into a frame, the image covers it, centred, as Photoshop fills a frame; elsewhere it lands at its own size.
         const fr = parentId ? p.layer(parentId)?.frame : null, cover = fr ? Math.max(fr.w / img.width, fr.h / img.height) : 1;
         const layer = newLayer(stripExt(img.name), p.doc, {
@@ -5161,9 +5165,9 @@ export class Engine {
         });
         p.setLayers([...p.doc.layers, layer]);
         this.focus(p, layer.id);
-        added = true;
+        added++;
       }
-      return added;
+      return added > 0;
     });
   }
 
@@ -5303,9 +5307,9 @@ export class Engine {
   cancelLive(): void {
     const p = this.liveOpen;
     if (!p) return;
+    const snap = p.history.abort();
     this.liveOpen = null;
-    const before = p.history.abort();
-    if (before) { p.doc = before.doc; p.selection = before.selection; }
+    if (snap) { p.doc = snap.doc; p.selection = snap.selection; }
     this.refresh();
   }
 
@@ -5340,12 +5344,11 @@ export class Engine {
   private coverageFor(p: Project, layer: Layer, target: Target, w: number, h: number): Uint8ClampedArray | null {
     const sel = p.selection;
     if (!sel) return null;
-    const t = target === 'mask' ? layer.mask?.placement ?? layer.transform : layer.transform;
-    const s = createSurface(w, h);
-    const c = ctxOf(s);
+    const t = target === 'mask' ? (layer.mask?.placement ?? layer.transform) : layer.transform;
+    const s = createSurface(w, h), c = ctxOf(s);
     setMat(c, mul(invert(placement(t, w, h)), translation(sel.x, sel.y)));
     c.drawImage(sel.surface(), 0, 0);
-    return c.getImageData(0, 0, w, h).data;
+    return new Uint8ClampedArray(c.getImageData(0, 0, w, h).data);
   }
 
   private blendThrough(src: ImageData, out: ImageData, cov: Uint8ClampedArray): ImageData { return IE.blendThrough(src, out, new ImageData(new Uint8ClampedArray(cov), src.width, src.height)); }
@@ -5704,12 +5707,15 @@ export class Engine {
   }
 
   private insertAboveActive(p: Project, layer: Layer): void {
-    const active = p.activeLayer;
-    const layers = [...p.doc.layers];
-    let index = active ? layers.indexOf(active) + 1 : layers.length;
-    if (active?.isGroup) layers.forEach((l, i) => { if (l.parentId === active.id) index = Math.max(index, i + 1); });
-    layers.splice(index, 0, layer);
-    p.setLayers(layers);
+    const a = p.activeLayer, list = p.doc.layers.slice();
+    let pos = list.length;
+    if (a) {
+      const at = list.findIndex((l) => l.id === a.id);
+      pos = at + 1;
+      if (a.isGroup) list.forEach((l, k) => { if (l.parentId === a.id && k >= pos) pos = k + 1; });
+    }
+    list.splice(pos, 0, layer);
+    p.setLayers(list);
     this.focus(p, layer.id);
   }
 
@@ -5858,13 +5864,14 @@ export class Engine {
   }
 
   addAdjustmentLayer(kind: AdjustmentKind): ID | null {
-    let created: ID | null = null;
-    this.edit(`New ${ADJUSTMENT_LABELS[kind]} Layer`, (p) => {
-      const layer = newLayer(ADJUSTMENT_LABELS[kind], p.doc, { adjustment: { kind, data: defaultAdjustmentData(kind) }, parentId: this.parentForNew(p) });
+    const label = ADJUSTMENT_LABELS[kind];
+    let id: ID | null = null;
+    this.edit(`New ${label} Layer`, (p) => {
+      const layer = newLayer(label, p.doc, { adjustment: { kind, data: defaultAdjustmentData(kind) }, parentId: this.parentForNew(p) });
       this.insertAboveActive(p, layer);
-      created = layer.id;
+      id = layer.id;
     });
-    return created;
+    return id;
   }
 
   /** Layer > New Fill Layer (1.66.0, Photoshop's): a fill layer over the whole canvas above the active layer, named as
@@ -6189,18 +6196,18 @@ export class Engine {
   private selectedPixels(merged: boolean): { surface: Surface; region: Rect } | null { return SO.selectedPixels(this.selectHost, merged); }
 
   copySelection(merged: boolean): boolean {
-    const got = this.selectedPixels(merged);
-    if (!got) return false;
-    const { surface: s, region } = got;
-    this.clipboard = { surface: s, x: region.x, y: region.y, w: region.w, h: region.h, stamp: uid() };
+    const s = this.selectedPixels(merged);
+    if (!s) return false;
+    const { surface, region: { x, y, w, h } } = s;
+    this.clipboard = { surface, x, y, w, h, stamp: uid() };
     this.emit('options', null);
     return true;
   }
 
   private nextLayerName(p: Project): string {
-    const names = new Set(p.doc.layers.map((l) => l.name));
+    const used = new Set(p.doc.layers.map((l) => l.name));
     let n = 1;
-    while (names.has(`Layer ${n}`)) n += 1;
+    while (used.has(`Layer ${n}`)) n++;
     return `Layer ${n}`;
   }
 
@@ -6211,9 +6218,10 @@ export class Engine {
     if (!p) return;
     if (!p.selection) { this.duplicateLayers(); return; }
     this.settle();
-    const got = this.selectedPixels(false);
-    if (!got) return;
-    this.insertRasterLayer(Raster.from(got.surface, got.region.w, got.region.h), this.nextLayerName(p), got.region.x, got.region.y, {}, 'Layer via Copy');
+    const s = this.selectedPixels(false);
+    if (!s) return;
+    const { surface, region: { x, y, w, h } } = s;
+    this.insertRasterLayer(Raster.from(surface, w, h), this.nextLayerName(p), x, y, {}, 'Layer via Copy');
   }
 
   /** Layer > New > Layer via Cut (Shift+Ctrl+J): the selection's pixels moved to a new layer in place. One step. */
@@ -6447,8 +6455,8 @@ export class Engine {
   private shapeRaster(style: Record<string, unknown>, w: number, h: number): Raster {
     const r = new Raster(Math.max(1, Math.round(w)), Math.max(1, Math.round(h)));
     const c = r.ctx;
-    const ch = (v: unknown): number => Math.round(clamp(Number(v) || 0, 0, 1) * 255);
-    c.fillStyle = `rgb(${ch(style.red)},${ch(style.green)},${ch(style.blue)})`;
+    const ch = (v: unknown) => Math.round(clamp(Number(v) || 0, 0, 1) * 255);
+    c.fillStyle = `rgb(${ch(style.red)}, ${ch(style.green)}, ${ch(style.blue)})`;
     c.beginPath();
     if (style.kind === 'Ellipse') c.ellipse(r.width / 2, r.height / 2, r.width / 2, r.height / 2, 0, 0, Math.PI * 2);
     else {
