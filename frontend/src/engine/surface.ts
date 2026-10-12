@@ -20,29 +20,33 @@ export function createSurface(w: number, h: number): Surface {
   return canvas;
 }
 
+/** The surface's 2D context; throws when the browser gives none. */
 export function ctxOf(s: Surface): Ctx2D {
-  const ctx = (s as HTMLCanvasElement).getContext('2d') as Ctx2D | null;
-  if (!ctx) throw new Error('2D canvas is unavailable');
+  const ctx = s.getContext('2d') as Ctx2D | null;
+  if (!ctx) throw new Error('The 2D canvas is unavailable');
   return ctx;
 }
 
+/** Resizes a surface, touching each side only when it changes (assigning clears a canvas). */
 export function sizeSurface(s: Surface, w: number, h: number): void {
   const width = Math.max(1, Math.ceil(w)), height = Math.max(1, Math.ceil(h));
   if (s.width !== width) s.width = width;
   if (s.height !== height) s.height = height;
 }
 
+/** Encodes a surface to an image blob. */
 export function toBlob(s: Surface, type = 'image/png', quality?: number): Promise<Blob> {
-  if ('convertToBlob' in s) return (s as OffscreenCanvas).convertToBlob({ type, quality });
-  return new Promise((resolve, reject) => {
-    (s as HTMLCanvasElement).toBlob((b) => (b ? resolve(b) : reject(new Error('encoding failed'))), type, quality);
+  if (typeof OffscreenCanvas !== 'undefined' && s instanceof OffscreenCanvas) return s.convertToBlob({ type, quality });
+  return new Promise<Blob>((resolve, reject) => {
+    (s as HTMLCanvasElement).toBlob((b) => (b ? resolve(b) : reject(new Error('Encoding the image produced nothing'))), type, quality);
   });
 }
 
-/** The raster that owns a canvas, so a renderer given only the canvas can read its version. */
-const owners = new WeakMap<Surface, Raster>();
-export const rasterOf = (canvas: CanvasImageSource): Raster | undefined => owners.get(canvas as Surface);
+// Remembers which Raster owns each surface, so a bare canvas can be traced back to its raster.
+const owners = new WeakMap<object, Raster>();
+export const rasterOf = (canvas: CanvasImageSource): Raster | undefined => owners.get(canvas as object);
 
+/** A pixel buffer: a surface with its context and a version counter bumped whenever the pixels change. */
 export class Raster {
   readonly id = uid();
   version = 0;
@@ -55,12 +59,14 @@ export class Raster {
     owners.set(this.canvas, this);
   }
 
+  /** A raster of the given size with src drawn scaled over all of it. */
   static from(src: CanvasImageSource, width: number, height: number): Raster {
     const r = new Raster(width, height);
-    r.ctx.drawImage(src, 0, 0, width, height);
+    (r.ctx as CanvasRenderingContext2D).drawImage(src, 0, 0, width, height);
     return r;
   }
 
+  /** A raster filled with a css style. */
   static filled(width: number, height: number, style: string): Raster {
     const r = new Raster(width, height);
     r.ctx.fillStyle = style;
@@ -68,9 +74,13 @@ export class Raster {
     return r;
   }
 
-  clone(): Raster { return Raster.from(this.canvas, this.width, this.height); }
+  clone(): Raster {
+    const r = new Raster(this.width, this.height);
+    (r.ctx as CanvasRenderingContext2D).drawImage(this.canvas as CanvasImageSource, 0, 0);
+    return r;
+  }
   read(x = 0, y = 0, w = this.width, h = this.height): ImageData { return this.ctx.getImageData(x, y, w, h); }
-  write(data: ImageData, x = 0, y = 0): void { this.ctx.putImageData(data, x, y); this.version += 1; }
-  touch(): void { this.version += 1; }
+  write(data: ImageData, x = 0, y = 0): void { this.ctx.putImageData(data, x, y); this.version++; }
+  touch(): void { this.version++; }
   get bytes(): number { return this.width * this.height * 4; }
 }
