@@ -2,9 +2,9 @@ import { HANDLES, contains, corners, unitPoint, type DragMode, type Transform } 
 import { meshSurfacePoint, type P2 } from '../../engine/mesh-warp';
 import { digitOf, type OptionSpec, type Tool, type ToolContext, type ToolPointer } from '../registry';
 
-const HANDLE_PX = 7;
-const ROTATE_PX = 24;
-const CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize'];
+const HANDLE_PX = 7; // screen points within which a handle is hit
+const ROTATE_PX = 24; // how far outside a corner a drag still rotates
+const CURSORS = ['ew-resize', 'nwse-resize', 'ns-resize', 'nesw-resize']; // resize cursors by direction
 
 function editable(ctx: ToolContext): Transform | null {
   const e = ctx.engine, te = e.transformEdit, p = e.current;
@@ -12,10 +12,10 @@ function editable(ctx: ToolContext): Transform | null {
   // the pointer back by the same offset, so the edit itself is in the layer's own coordinates.
   const seen = (id: string, t: Transform): Transform => { if (!p) return t; const o = e.keyedOffset(p, id); return o.dx || o.dy ? { ...t, x: t.x + o.dx, y: t.y + o.dy } : t; };
   if (te) return te.group || te.mask ? te.draft : seen(te.layerId, te.draft);
-  const box = e.groupBox();
-  if (box) return box;
+  const gb = e.groupBox();
+  if (gb) return gb;
   const l = e.activeLayer;
-  if (!l || l.isGroup || !l.raster) return null;
+  if (!l || !l.raster) return null;
   return e.transformsMask(l) ? l.mask?.placement ?? l.transform : seen(l.id, l.transform);
 }
 
@@ -55,11 +55,12 @@ function warpPoint(ctx: ToolContext, p: ToolPointer): number | null {
 }
 function distortCorner(ctx: ToolContext, p: ToolPointer): number | null {
   const e = ctx.engine, v = ctx.view(), d = e.distortEdit;
-  let pts = d ? [...d.corners] : null;
-  if (!pts) {
+  let pts: Array<{ x: number; y: number }>;
+  if (d) pts = d.corners;
+  else {
     const t = editable(ctx);
     if (!t || !e.showTransformControls || !p.mod) return null;
-    pts = [0, 2, 4, 6].map((k) => unitPoint(t, HANDLES[k].x, HANDLES[k].y));
+    pts = [0, 2, 4, 6].map((i) => unitPoint(t, HANDLES[i].x, HANDLES[i].y));
   }
   for (let i = 0; i < 4; i++) {
     const s = v.toScreen(pts[i]);
@@ -92,14 +93,15 @@ function hit(ctx: ToolContext, p: ToolPointer): DragMode | null {
   return { kind: 'move' };
 }
 
+/** The cursor for a handle: its direction from the box centre, turned by the box's rotation, snapped to 45 degrees. */
 function resizeCursor(t: Transform, handle: number): string {
   const h = HANDLES[handle];
-  const angle = Math.atan2((h.y - 0.5) * t.h, (h.x - 0.5) * t.w) * (180 / Math.PI) + t.rotation;
-  const step = ((Math.round(angle / 45) % 4) + 4) % 4;
-  return CURSORS[step];
+  const deg = (Math.atan2((h.y - 0.5) * t.h, (h.x - 0.5) * t.w) * 180) / Math.PI + (t.rotation || 0);
+  const k = ((Math.round(deg / 45) % 8) + 8) % 8;
+  return CURSORS[k % 4];
 }
 
-const fmt = (n: number): string => (Math.round(n * 10) / 10).toString();
+const fmt = (n: number): string => String(Math.round(n * 10) / 10);
 
 let pixelStart: { x: number; y: number } | null = null;
 
@@ -117,10 +119,11 @@ export const moveTool: Tool = {
   hint: (eng) => (eng.distortEdit ? DISTORT_HINTS[eng.distortEdit.mode] : eng.transformConstraint === 'scale' ? 'Scale · Drag a handle to scale · Shift keeps or frees the proportions · Alt scales from the center · Enter or Escape ends' : eng.transformConstraint === 'rotate' ? 'Rotate · Drag a handle or outside the box to turn · Shift turns by 15° · Enter or Escape ends' : eng.floatingSelection ? 'Transform Selection · Drag to move · Handles resize · Outside a corner rotates · Shift constrains · Enter applies · Escape cancels' : 'Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity'),
   cursor(ctx, p) {
     if (!p) return 'default';
-    const m = hit(ctx, p);
-    const t = editable(ctx);
+    const m = hit(ctx, p), t = editable(ctx);
     if (!m || !t) return 'default';
-    return m.kind === 'move' ? 'move' : m.kind === 'rotate' ? 'alias' : resizeCursor(t, m.handle);
+    if (m.kind === 'move') return 'move';
+    if (m.kind === 'rotate') return 'alias';
+    return resizeCursor(t, m.handle);
   },
   down(ctx, p) {
     if (p.button !== 0) return;
@@ -142,7 +145,7 @@ export const moveTool: Tool = {
     if (corner !== null && (e.distortEdit || e.beginDistort())) { cornerDrag = corner; distortFrom = { start: { ...p.doc }, corners: (e.distortEdit?.corners ?? []).map((c) => ({ ...c })) }; return; }
     if (e.distortEdit) return;
     const sel = e.current?.selection;
-    if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && e.beginPixelMove(p.alt)) { pixelStart = p.doc; return; }
+    if (sel && sel.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128 && e.beginPixelMove(p.alt)) { pixelStart = { x: p.doc.x, y: p.doc.y }; return; }
     if (p.mod || e.autoSelect) {
       // Auto-Select Target Group selects the top-most folder holding the layer, as Photoshop's.
       let id = e.layerAt(p.doc);
@@ -195,10 +198,12 @@ export const moveTool: Tool = {
     const eng = ctx.engine;
     if (e.metaKey || e.ctrlKey) return false;
     const step = e.shiftKey ? 10 : 1;
-    const arrows: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
-    if (arrows[e.key]) { eng.nudge(arrows[e.key][0], arrows[e.key][1]); return true; }
+    if (e.key === 'ArrowLeft') { eng.nudge(-step, 0); return true; }
+    if (e.key === 'ArrowRight') { eng.nudge(step, 0); return true; }
+    if (e.key === 'ArrowUp') { eng.nudge(0, -step); return true; }
+    if (e.key === 'ArrowDown') { eng.nudge(0, step); return true; }
     const digit = digitOf(e);
-    if (digit !== null && !e.shiftKey && !e.altKey) { eng.setOpacity(digit === 0 ? 1 : digit / 10); return true; }
+    if (typeof digit === 'number' && digit >= 0 && !e.shiftKey && !e.altKey) { eng.setOpacity(digit === 0 ? 1 : digit / 10); return true; }
     if (e.key === 'Enter' && eng.perspectiveEdit) { eng.applyPerspectiveWarp(); return true; }
     if (e.key === 'Escape' && eng.perspectiveEdit) { eng.cancelPerspectiveWarp(); return true; }
     if (e.key === 'Enter' && eng.puppetEdit) { eng.applyPuppetWarp(); return true; }
@@ -217,16 +222,15 @@ export const moveTool: Tool = {
   },
   overlay(ctx, g) {
     const e = ctx.engine;
-    const guides = e.snapGuides;
-    if (guides && e.transformEdit) {
+    if (e.transformEdit && e.snapGuides) {
       const v = ctx.view(), pal = ctx.paint();
       g.save();
       g.strokeStyle = pal.accent;
       g.lineWidth = 1;
       g.setLineDash([4, 3]);
       g.beginPath();
-      for (const x of guides.xs) { const s = Math.round(v.toScreen({ x, y: 0 }).x) + 0.5; g.moveTo(s, 0); g.lineTo(s, v.height); }
-      for (const y of guides.ys) { const s = Math.round(v.toScreen({ x: 0, y }).y) + 0.5; g.moveTo(0, s); g.lineTo(v.width, s); }
+      for (const x of e.snapGuides.xs) { const sx = Math.round(v.toScreen({ x, y: 0 }).x) + 0.5; g.moveTo(sx, 0); g.lineTo(sx, v.height); }
+      for (const y of e.snapGuides.ys) { const sy = Math.round(v.toScreen({ x: 0, y }).y) + 0.5; g.moveTo(0, sy); g.lineTo(v.width, sy); }
       g.stroke();
       g.restore();
     }
@@ -290,48 +294,42 @@ export const moveTool: Tool = {
       for (const [x, y] of mw.points) { const s = v.toScreen({ x, y }); g.fillRect(s.x - 3.5, s.y - 3.5, 7, 7); g.strokeRect(s.x - 3.5, s.y - 3.5, 7, 7); }
       g.restore();
     }
-    const dz = e.distortEdit;
-    if (dz) {
-      const v = ctx.view(), pal = ctx.paint(), cs = dz.corners.map((c) => v.toScreen(c));
+    const dd = e.distortEdit;
+    if (dd) {
+      const v = ctx.view(), pal = ctx.paint(), cs = dd.corners.map((c) => v.toScreen(c));
       g.save();
-      g.lineWidth = 1;
       g.strokeStyle = pal.accent;
-      g.beginPath();
-      g.moveTo(cs[0].x, cs[0].y);
-      for (let i = 1; i < 4; i++) g.lineTo(cs[i].x, cs[i].y);
-      g.closePath();
-      g.stroke();
+      g.lineWidth = 1;
+      g.beginPath(); cs.forEach((s, i) => (i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y))); g.closePath(); g.stroke();
+      g.fillStyle = pal.handle;
       for (const s of [...cs, ...cs.map((a, k) => ({ x: (a.x + cs[(k + 1) % 4].x) / 2, y: (a.y + cs[(k + 1) % 4].y) / 2 }))]) {
-        g.fillStyle = pal.handle;
         g.fillRect(Math.round(s.x) - 4, Math.round(s.y) - 4, 8, 8);
         g.strokeRect(Math.round(s.x) - 3.5, Math.round(s.y) - 3.5, 7, 7);
       }
       g.restore();
       return;
     }
-    const t = editable(ctx);
-    if (!t || !e.showTransformControls) return;
-    const v = ctx.view();
-    const pal = ctx.paint();
-    const cs = corners(t).map((c) => v.toScreen(c));
+    const bx = editable(ctx);
+    if (!bx || !e.showTransformControls) return;
+    const v = ctx.view(), pal = ctx.paint(), cs = corners(bx).map((c) => v.toScreen(c));
     g.save();
-    g.lineWidth = 1;
     g.strokeStyle = pal.accent;
-    g.beginPath();
-    g.moveTo(cs[0].x, cs[0].y);
-    for (let i = 1; i < 4; i++) g.lineTo(cs[i].x, cs[i].y);
-    g.closePath();
-    g.stroke();
+    g.lineWidth = 1;
+    g.beginPath(); cs.forEach((s, i) => (i ? g.lineTo(s.x, s.y) : g.moveTo(s.x, s.y))); g.closePath(); g.stroke();
+    g.fillStyle = pal.handle;
     for (const h of HANDLES) {
-      const s = v.toScreen(unitPoint(t, h.x, h.y));
-      g.fillStyle = pal.handle;
+      const s = v.toScreen(unitPoint(bx, h.x, h.y));
       g.fillRect(Math.round(s.x) - 4, Math.round(s.y) - 4, 8, 8);
       g.strokeRect(Math.round(s.x) - 3.5, Math.round(s.y) - 3.5, 7, 7);
     }
     g.restore();
   },
   options(e) {
-    const t = (): Transform | null => { const l = e.activeLayer; return l && !l.isGroup && l.raster ? e.transformEdit?.draft ?? l.transform : null; };
+    const t = (): Transform | null => {
+      if (e.transformEdit) return e.transformEdit.draft;
+      const l = e.activeLayer;
+      return l && l.raster ? l.transform : null;
+    };
     const editing = (): boolean => !!e.transformEdit;
     return [
       { kind: 'title', text: 'Move' },

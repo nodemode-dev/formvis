@@ -1,13 +1,21 @@
 import { HANDLES, hierarchy, transformBounds, type Engine, type Pt, type Rect } from '../../engine';
-import type { Tool, ToolContext, ToolPointer } from '../registry';
+import { type Tool, type ToolContext, type ToolPointer } from '../registry';
 import { CROP_OVERLAYS, ORIENTED, overlayLines, type CropOverlay } from './crop-overlays';
 
+/** The aspect choices in the options bar; a value is width over height, null leaves the frame free. */
 const RATIOS: ReadonlyArray<{ id: string; label: string; value: number | 'original' | null }> = [
-  { id: 'free', label: 'Free', value: null }, { id: 'original', label: 'Original', value: 'original' }, { id: '1:1', label: '1:1', value: 1 },
-  { id: '4:3', label: '4:3', value: 4 / 3 }, { id: '3:2', label: '3:2', value: 3 / 2 }, { id: '16:9', label: '16:9', value: 16 / 9 },
-  { id: '3:4', label: '3:4', value: 3 / 4 }, { id: '2:3', label: '2:3', value: 2 / 3 }, { id: '9:16', label: '9:16', value: 9 / 16 },
+  { id: 'free', label: 'Free', value: null },
+  { id: 'original', label: 'Original', value: 'original' },
+  { id: '1:1', label: '1:1', value: 1 },
+  { id: '4:3', label: '4:3', value: 4 / 3 },
+  { id: '3:2', label: '3:2', value: 3 / 2 },
+  { id: '16:9', label: '16:9', value: 16 / 9 },
+  { id: '3:4', label: '3:4', value: 3 / 4 },
+  { id: '2:3', label: '2:3', value: 2 / 3 },
+  { id: '9:16', label: '9:16', value: 9 / 16 },
   { id: 'size', label: 'W × H × Res', value: null },
 ];
+/** The id of the ratio in force. */
 let ratioId = 'free';
 /** W × H × Resolution, as Photoshop's Crop menu has it: the size the crop is resampled to, in a unit, at a resolution
  *  in ppi (inches and centimetres become pixels through it). Saved crop presets live on this device. */
@@ -43,7 +51,9 @@ function sizeChanged(e: Engine): void {
   e.emit('options', null);
   e.emit('overlay', null);
 }
+/** The crop rectangle in document coordinates, or null while none is open. */
 let frame: Rect | null = null;
+/** The gesture in progress: what it does, which handle it holds, where the pointer went down and the frame then. */
 let drag: { mode: 'create' | 'move' | 'resize'; handle: number; start: Pt; origin: Rect } | null = null;
 /** Straighten: degrees the image turns about the frame's centre on commit; `leveling` arms a drag that measures a
  *  line meant to be level (or plumb) and sets the angle from it. Content-Aware fills what the turn or a frame past
@@ -72,60 +82,72 @@ export function levelAngle(a: Pt, b: Pt): number {
   return -(((deg + 45) % 90 + 90) % 90 - 45);
 }
 
+/** The width over height the frame keeps, or null when it is free. */
 function ratioOf(e: Engine): number | null {
   if (ratioId === 'size') { const px = sizePx(); return px ? px.w / px.h : null; }
   const v = RATIOS.find((r) => r.id === ratioId)?.value ?? null;
-  if (v !== 'original') return v;
-  const d = e.current?.doc;
-  return d ? d.width / d.height : null;
+  if (v === 'original') { const d = e.current?.doc; return d ? d.width / d.height : null; }
+  return v;
 }
-const norm = (r: Rect): Rect => ({ x: Math.min(r.x, r.x + r.w), y: Math.min(r.y, r.y + r.h), w: Math.abs(r.w), h: Math.abs(r.h) });
+/** The same area with a non-negative width and height. */
+function norm(r: Rect): Rect {
+  return { x: Math.min(r.x, r.x + r.w), y: Math.min(r.y, r.y + r.h), w: Math.abs(r.w), h: Math.abs(r.h) };
+}
+/** The normalised rectangle with every edge on a whole pixel, at least one pixel each way. */
 function whole(r: Rect): Rect {
-  const n = norm(r), x = Math.round(n.x), y = Math.round(n.y);
-  return { x, y, w: Math.max(1, Math.round(n.x + n.w) - x), h: Math.max(1, Math.round(n.y + n.h) - y) };
+  const n = norm(r);
+  const x0 = Math.round(n.x), y0 = Math.round(n.y), x1 = Math.round(n.x + n.w), y1 = Math.round(n.y + n.h);
+  return { x: x0, y: y0, w: Math.max(1, x1 - x0), h: Math.max(1, y1 - y0) };
 }
 
+/** The frame dragged from a to b; a ratio makes the short side grow to match, and symmetric makes a the centre. */
 function create(a: Pt, b: Pt, ratio: number | null, symmetric: boolean): Rect {
-  let w = b.x - a.x, h = b.y - a.y;
+  let dx = b.x - a.x, dy = b.y - a.y;
   if (ratio) {
-    const sw = Math.sign(w) || 1, sh = Math.sign(h) || 1;
-    if (Math.abs(w) / Math.max(Math.abs(h), 1e-6) > ratio) h = (sh * Math.abs(w)) / ratio;
-    else w = sw * Math.abs(h) * ratio;
+    const sx = dx < 0 ? -1 : 1, sy = dy < 0 ? -1 : 1;
+    let ax = Math.abs(dx), ay = Math.abs(dy);
+    if (ax / ratio > ay) ay = ax / ratio; else ax = ay * ratio;
+    dx = sx * ax;
+    dy = sy * ay;
   }
-  return symmetric ? { x: a.x - w, y: a.y - h, w: 2 * w, h: 2 * h } : { x: a.x, y: a.y, w, h };
+  return symmetric ? norm({ x: a.x - dx, y: a.y - dy, w: dx * 2, h: dy * 2 }) : norm({ x: a.x, y: a.y, w: dx, h: dy });
 }
 
+/** The frame o with the edges of a handle moved to p (mirrored about the centre when symmetric), then held to a ratio. */
 function resize(o: Rect, handle: number, p: Pt, ratio: number | null, symmetric: boolean): Rect {
-  const hd = HANDLES[handle];
-  let x0 = o.x, y0 = o.y, x1 = o.x + o.w, y1 = o.y + o.h;
+  const h = HANDLES[handle];
   const cx = o.x + o.w / 2, cy = o.y + o.h / 2;
-  if (hd.x === 0) x0 = p.x;
-  if (hd.x === 1) x1 = p.x;
-  if (hd.y === 0) y0 = p.y;
-  if (hd.y === 1) y1 = p.y;
-  if (symmetric) {
-    if (hd.x === 0) x1 = 2 * cx - x0;
-    if (hd.x === 1) x0 = 2 * cx - x1;
-    if (hd.y === 0) y1 = 2 * cy - y0;
-    if (hd.y === 1) y0 = 2 * cy - y1;
+  let l = o.x, t = o.y, r = o.x + o.w, b = o.y + o.h;
+  if (h.x === 0) { l = p.x; if (symmetric) r = cx * 2 - p.x; }
+  else if (h.x === 1) { r = p.x; if (symmetric) l = cx * 2 - p.x; }
+  if (h.y === 0) { t = p.y; if (symmetric) b = cy * 2 - p.y; }
+  else if (h.y === 1) { b = p.y; if (symmetric) t = cy * 2 - p.y; }
+  let out = norm({ x: l, y: t, w: r - l, h: b - t });
+  if (ratio) {
+    if (h.x !== 0.5 && h.y !== 0.5) {
+      const nh = out.w / ratio;
+      out = { x: out.x, y: h.y === 0 ? o.y + o.h - nh : o.y, w: out.w, h: nh };
+    } else if (h.x === 0.5) {
+      const nw = out.h * ratio;
+      out = { x: cx - nw / 2, y: out.y, w: nw, h: out.h };
+    } else {
+      const nh = out.w / ratio;
+      out = { x: out.x, y: cy - nh / 2, w: out.w, h: nh };
+    }
   }
-  const n = norm({ x: x0, y: y0, w: x1 - x0, h: y1 - y0 });
-  if (!ratio) return n;
-  if (hd.x !== 0.5 && hd.y !== 0.5) { const h = n.w / ratio; return { x: n.x, y: hd.y === 0 ? n.y + n.h - h : n.y, w: n.w, h }; }
-  if (hd.x === 0.5) { const w = n.h * ratio; return { x: n.x + n.w / 2 - w / 2, y: n.y, w, h: n.h }; }
-  const h = n.w / ratio;
-  return { x: n.x, y: n.y + n.h / 2 - h / 2, w: n.w, h };
+  return out;
 }
 
-/** the canvas edges and the rounded bounds of every visible pixel layer. */
+/** The edges the frame snaps to: the canvas edges and the edges of every visible layer that has pixels. */
 function snapTargets(ctx: ToolContext): { xs: number[]; ys: number[] } {
+  const xs: number[] = [], ys: number[] = [];
   const d = ctx.engine.current?.doc;
-  if (!d) return { xs: [], ys: [] };
-  const xs = [0, d.width], ys = [0, d.height];
-  for (const e of hierarchy(d)) {
-    const l = e.layer;
-    if (!e.visible || l.isGroup || !l.raster) continue;
-    const b = transformBounds(l.transform);
+  if (!d) return { xs, ys };
+  xs.push(0, d.width);
+  ys.push(0, d.height);
+  for (const row of hierarchy(d)) {
+    if (!row.visible || !row.layer.raster) continue;
+    const b = transformBounds(row.layer.transform);
     xs.push(Math.round(b.x), Math.round(b.x + b.w));
     ys.push(Math.round(b.y), Math.round(b.y + b.h));
   }
@@ -133,43 +155,48 @@ function snapTargets(ctx: ToolContext): { xs: number[]; ys: number[] } {
 }
 
 const nearest = (v: number, targets: number[], tol: number): number | null => {
-  let best: number | null = null;
-  for (const t of targets) if (Math.abs(t - v) <= tol && (best === null || Math.abs(t - v) < Math.abs(best - v))) best = t;
+  let best: number | null = null, bd = tol;
+  for (const t of targets) { const d = Math.abs(t - v); if (d <= bd) { best = t; bd = d; } }
   return best;
 };
 
-/** the CropSnap.apply (8 screen points): moving snaps the closest edges and keeps the size; creating or
- *  resizing snaps only the edge on the pointer's side; with a fixed ratio only moves snap. */
+/** Pulls the frame onto the canvas and layer edges, within 8 screen points. Moving keeps the size; with a fixed ratio
+ *  nothing else snaps; creating or resizing moves only the edge nearer the pointer on each axis the gesture changes. */
 function snap(ctx: ToolContext, r: Rect, mode: 'create' | 'move' | 'resize', handle: number, point: Pt, ratio: number | null): Rect {
-  const { xs, ys } = snapTargets(ctx), tol = 8 / ctx.view().zoom, n = norm(r);
-  if (mode === 'move') {
-    const shift = (edges: number[], targets: number[]): number => {
-      const deltas = edges.map((e) => { const t = nearest(e, targets, tol); return t === null ? null : t - e; }).filter((v): v is number => v !== null);
-      return deltas.length ? deltas.reduce((a, b) => (Math.abs(b) < Math.abs(a) ? b : a)) : 0;
-    };
-    return { ...n, x: n.x + shift([n.x, n.x + n.w], xs), y: n.y + shift([n.y, n.y + n.h], ys) };
+  const tol = 8 / Math.max(0.01, ctx.view().zoom);
+  const { xs, ys } = snapTargets(ctx);
+  const offset = (edges: number[], targets: number[]): number => {
+    let best = 0, bd = Infinity;
+    for (const e of edges) {
+      const s = nearest(e, targets, tol);
+      if (s !== null && Math.abs(s - e) < bd) { best = s - e; bd = Math.abs(s - e); }
+    }
+    return best;
+  };
+  if (mode === 'move') return { x: r.x + offset([r.x, r.x + r.w], xs), y: r.y + offset([r.y, r.y + r.h], ys), w: r.w, h: r.h };
+  if (ratio) return r;
+  const hd = mode === 'resize' ? HANDLES[handle] : null;
+  let l = r.x, rt = r.x + r.w, t = r.y, b = r.y + r.h;
+  if (!hd || hd.x !== 0.5) {
+    if (Math.abs(point.x - l) <= Math.abs(point.x - rt)) { const s = nearest(l, xs, tol); if (s !== null && s < rt) l = s; }
+    else { const s = nearest(rt, xs, tol); if (s !== null && s > l) rt = s; }
   }
-  if (ratio) return n;
-  const horizontal = mode === 'create' || HANDLES[handle].x !== 0.5, vertical = mode === 'create' || HANDLES[handle].y !== 0.5;
-  let { x, y, w, h } = n;
-  if (horizontal) {
-    if (Math.abs(point.x - x) <= Math.abs(point.x - (x + w))) { const t = nearest(x, xs, tol); if (t !== null && t < x + w) { w = x + w - t; x = t; } }
-    else { const t = nearest(x + w, xs, tol); if (t !== null && t > x) w = t - x; }
+  if (!hd || hd.y !== 0.5) {
+    if (Math.abs(point.y - t) <= Math.abs(point.y - b)) { const s = nearest(t, ys, tol); if (s !== null && s < b) t = s; }
+    else { const s = nearest(b, ys, tol); if (s !== null && s > t) b = s; }
   }
-  if (vertical) {
-    if (Math.abs(point.y - y) <= Math.abs(point.y - (y + h))) { const t = nearest(y, ys, tol); if (t !== null && t < y + h) { h = y + h - t; y = t; } }
-    else { const t = nearest(y + h, ys, tol); if (t !== null && t > y) h = t - y; }
-  }
-  return { x, y, w, h };
+  return { x: l, y: t, w: rt - l, h: b - t };
 }
 
+/** The index of the frame's handle within 8 screen points of the pointer, or -1. */
 function hitHandle(ctx: ToolContext, p: ToolPointer): number {
   if (!frame) return -1;
-  const f = norm(frame), v = ctx.view();
-  return HANDLES.findIndex((hd) => { const s = v.toScreen({ x: f.x + f.w * hd.x, y: f.y + f.h * hd.y }); return Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= 8; });
+  const v = ctx.view(), f = norm(frame);
+  return HANDLES.findIndex((h) => { const s = v.toScreen({ x: f.x + f.w * h.x, y: f.y + f.h * h.y }); return Math.hypot(s.x - p.screen.x, s.y - p.screen.y) <= 8; });
 }
-const inside = (r: Rect, p: Pt): boolean => { const n = norm(r); return p.x >= n.x && p.y >= n.y && p.x <= n.x + n.w && p.y <= n.y + n.h; };
+const inside = (r: Rect, p: Pt): boolean => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 
+/** Crops to the open frame. */
 function commit(e: Engine): void {
   if (perspective && quad) {
     const q = quad;
@@ -194,12 +221,12 @@ function commit(e: Engine): void {
 export const cropTool: Tool = {
   id: 'crop', label: 'Crop', key: 'C', order: 45,
   icon: () => 'tCrop',
-  hint: () => 'Drag a frame · Drag inside to move it · Handles resize · Alt keeps the center · Edges snap to the canvas and layer edges · Enter crops · Escape cancels',
+  hint: () => 'Drag a frame · Drag inside to move it · Handles resize · Alt keeps the centre · Edges snap to the canvas and layer edges · Enter crops · Escape cancels',
   cursor(ctx, p) {
     if (!p || !frame) return 'crosshair';
     const h = hitHandle(ctx, p);
-    if (h >= 0) { const hd = HANDLES[h]; return hd.x === 0.5 ? 'ns-resize' : hd.y === 0.5 ? 'ew-resize' : (hd.x === hd.y ? 'nwse-resize' : 'nesw-resize'); }
-    return inside(frame, p.doc) ? 'move' : 'crosshair';
+    if (h >= 0) return h === 1 || h === 5 ? 'ns-resize' : h === 3 || h === 7 ? 'ew-resize' : h === 0 || h === 4 ? 'nwse-resize' : 'nesw-resize';
+    return inside(norm(frame), p.doc) ? 'move' : 'crosshair';
   },
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
@@ -207,7 +234,7 @@ export const cropTool: Tool = {
     if (perspective && quad) { cornerDrag = hitCorner(ctx, p); if (cornerDrag >= 0) return; quad = null; }
     const h = hitHandle(ctx, p);
     if (frame && h >= 0) drag = { mode: 'resize', handle: h, start: p.doc, origin: norm(frame) };
-    else if (frame && inside(frame, p.doc)) drag = { mode: 'move', handle: -1, start: p.doc, origin: norm(frame) };
+    else if (frame && inside(norm(frame), p.doc)) drag = { mode: 'move', handle: -1, start: p.doc, origin: norm(frame) };
     else { drag = { mode: 'create', handle: -1, start: p.doc, origin: { x: p.doc.x, y: p.doc.y, w: 0, h: 0 } }; frame = null; }
     ctx.engine.emit('overlay', null);
   },
@@ -216,10 +243,11 @@ export const cropTool: Tool = {
     if (cornerDrag >= 0 && quad) { quad[cornerDrag] = { x: p.doc.x, y: p.doc.y }; ctx.engine.emit('overlay', null); return; }
     if (!drag) return;
     const ratio = ratioOf(ctx.engine);
-    if (drag.mode === 'create') frame = create(drag.start, p.doc, ratio, p.alt);
-    else if (drag.mode === 'move') frame = { ...drag.origin, x: drag.origin.x + p.doc.x - drag.start.x, y: drag.origin.y + p.doc.y - drag.start.y };
-    else frame = resize(drag.origin, drag.handle, p.doc, ratio, p.alt);
-    frame = snap(ctx, frame, drag.mode, drag.handle, p.doc, ratio);
+    let r: Rect;
+    if (drag.mode === 'create') r = create(drag.start, p.doc, ratio, p.alt);
+    else if (drag.mode === 'move') r = { x: drag.origin.x + p.doc.x - drag.start.x, y: drag.origin.y + p.doc.y - drag.start.y, w: drag.origin.w, h: drag.origin.h };
+    else r = resize(drag.origin, drag.handle, p.doc, ratio, p.alt);
+    frame = snap(ctx, norm(r), drag.mode, drag.handle, p.doc, ratio);
     ctx.engine.emit('overlay', null);
     ctx.engine.emit('options', null);
   },
@@ -236,7 +264,7 @@ export const cropTool: Tool = {
     if (cornerDrag >= 0) { cornerDrag = -1; ctx.engine.emit('overlay', null); return; }
     if (!drag) return;
     drag = null;
-    if (frame) { const n = norm(frame); frame = n.w >= 1 && n.h >= 1 ? whole(frame) : null; }
+    if (frame) { const f = norm(frame); frame = f.w < 1 || f.h < 1 ? null : whole(f); }
     if (perspective && frame) quad = quadOf(frame);
     ctx.engine.emit('overlay', null);
     ctx.engine.emit('options', null);
@@ -282,10 +310,7 @@ export const cropTool: Tool = {
     const a = v.toScreen({ x: f.x, y: f.y }), b = v.toScreen({ x: f.x + f.w, y: f.y + f.h });
     g.save();
     g.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    g.beginPath();
-    g.rect(0, 0, v.width, v.height);
-    g.rect(a.x, a.y, b.x - a.x, b.y - a.y);
-    g.fill('evenodd');
+    g.beginPath(); g.rect(0, 0, v.width, v.height); g.rect(a.x, a.y, b.x - a.x, b.y - a.y); g.fill('evenodd');
     g.strokeStyle = pal.antsB;
     g.globalAlpha = 0.5;
     g.beginPath();
@@ -297,18 +322,22 @@ export const cropTool: Tool = {
     g.globalAlpha = 1;
     g.strokeStyle = pal.accent;
     g.lineWidth = 1;
-    g.strokeRect(Math.round(a.x) + 0.5, Math.round(a.y) + 0.5, Math.round(b.x - a.x), Math.round(b.y - a.y));
+    g.strokeRect(Math.round(a.x) + 0.5, Math.round(a.y) + 0.5, Math.round(b.x) - Math.round(a.x), Math.round(b.y) - Math.round(a.y));
     g.fillStyle = pal.handle;
-    for (const hd of HANDLES) { const x = a.x + (b.x - a.x) * hd.x, y = a.y + (b.y - a.y) * hd.y; g.fillRect(Math.round(x) - 4, Math.round(y) - 4, 8, 8); g.strokeRect(Math.round(x) - 3.5, Math.round(y) - 3.5, 7, 7); }
+    for (const h of HANDLES) {
+      const x = Math.round(a.x + (b.x - a.x) * h.x), y = Math.round(a.y + (b.y - a.y) * h.y);
+      g.fillRect(x - 4, y - 4, 8, 8);
+      g.strokeRect(x - 3.5, y - 3.5, 7, 7);
+    }
     g.restore();
   },
   options: (e) => [
     { kind: 'title', text: 'Crop' },
-    { kind: 'segment', label: 'Ratio', choices: RATIOS.map((r) => ({ id: r.id, label: r.label })), get: () => ratioId, set: (id) => {
+    { kind: 'segment', label: 'Ratio', choices: RATIOS.map((r) => ({ id: r.id, label: r.label })), get: () => ratioId, set: (id: string) => {
       ratioId = id;
       if (id === 'size' && !sizePx()) frontImage(e);
       const ratio = ratioOf(e);
-      if (frame && ratio) { const f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2; const w = Math.min(f.w, f.h * ratio), h = w / ratio; frame = whole({ x: cx - w / 2, y: cy - h / 2, w, h }); }
+      if (ratio && frame) { const f = norm(frame), cx = f.x + f.w / 2, cy = f.y + f.h / 2, w = Math.min(f.w, f.h * ratio), h = w / ratio; frame = whole({ x: cx - w / 2, y: cy - h / 2, w, h }); }
       e.emit('options', null);
       e.emit('overlay', null);
     } },
@@ -331,8 +360,8 @@ export const cropTool: Tool = {
       presetId = '';
       e.emit('options', null);
     }, when: () => ratioId === 'size' },
-    { kind: 'readout', label: 'Size', get: () => (frame ? `${Math.round(norm(frame).w)} \u00d7 ${Math.round(norm(frame).h)}` : '') },
-    { kind: 'range', label: 'Straighten', min: -45, max: 45, step: 0.1, unit: '\u00b0', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
+    { kind: 'readout', label: 'Size', get: () => (frame ? `${Math.round(Math.abs(frame.w))} × ${Math.round(Math.abs(frame.h))}` : '') },
+    { kind: 'range', label: 'Straighten', min: -45, max: 45, step: 0.1, unit: '°', get: () => Math.round(angle * 10) / 10, set: (v) => { angle = v; const d = e.current?.doc; if (angle && !frame && d) frame = { x: 0, y: 0, w: d.width, h: d.height }; e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'button', label: 'Level line', icon: 'rotate', run: () => { leveling = true; e.emit('tool', null); e.emit('options', null); } },
     { kind: 'select', label: 'Overlay', choices: CROP_OVERLAYS, get: () => overlayKind, set: (v: string) => { overlayKind = (CROP_OVERLAYS.find((o) => o.id === v)?.id ?? 'thirds'); e.emit('options', null); e.emit('overlay', null); } },
     { kind: 'toggle', label: 'Delete Cropped Pixels', get: () => e.cropDeletePixels, set: (v) => { e.cropDeletePixels = v; e.emit('options', null); } },
