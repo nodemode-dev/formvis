@@ -35,6 +35,7 @@ import * as PO from './paint-ops';
 import * as SO from './select-ops';
 import * as IE from './image-edit';
 import * as DS from './document-size';
+import * as TE from './transform-entry';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
@@ -254,8 +255,8 @@ export class Engine {
   /** Auto-Select's target, as Photoshop's: the layer under the pointer, or the top-most folder holding it. */
   autoSelectTarget: 'layer' | 'group' = 'layer';
   lockRatio = true;
-  transformEdit: { project: Project; layerId: ID; original: Transform; draft: Transform; mode: DragMode; start: Pt; mask: boolean; group: { box: Transform; originals: Map<ID, Transform> } | null } | null = null;
-  selectionShift: { project: Project; dx: number; dy: number } | null = null;
+  transformEdit: TE.TransformEditState | null = null;
+  selectionShift: TE.SelectionShift | null = null;
   private currentId: string | null = null;
   private viewSize = { w: 800, h: 600 };
   private readonly display = new Renderer();
@@ -4486,34 +4487,20 @@ export class Engine {
 
   magicWand(pt: Pt, mode: SelectionMode): void { SO.magicWand(this.selectHost, pt, mode); }
 
-  beginSelectionShift(): void {
-    const p = this.current;
-    if (!p?.selection || this.stroke) return;
-    this.settle();
-    this.selectionShift = { project: p, dx: 0, dy: 0 };
-  }
+  beginSelectionShift(): void { this.selectionShift = TE.beginSelectionShift(this.entryHost); }
 
-  updateSelectionShift(dx: number, dy: number): void {
-    if (!this.selectionShift) return;
-    this.selectionShift.dx = Math.round(dx);
-    this.selectionShift.dy = Math.round(dy);
-    this.emit('overlay', null);
-  }
+  updateSelectionShift(dx: number, dy: number): void { if (this.selectionShift) TE.updateSelectionShift(this.entryHost, this.selectionShift, dx, dy); }
 
   endSelectionShift(): void {
     const s = this.selectionShift;
     if (!s) return;
     this.selectionShift = null;
-    if ((!s.dx && !s.dy) || this.current !== s.project) { this.emit('overlay', null); return; }
-    this.edit('Move Selection', (p) => { if (!p.selection) return false; p.selection = p.selection.translated(s.dx, s.dy, p.doc.width, p.doc.height); return true; });
+    TE.endSelectionShift(this.entryHost, s);
   }
 
   /** the rule for moving a mask on its own: with the mask targeted and unlinked, the Move tool transforms the
-   *  mask's placement instead of the layer. A linked mask moves with its layer, and a solid (never painted) mask covers
-   *  everything wherever it sits, so neither qualifies. */
-  transformsMask(l: Layer | null | undefined): boolean {
-    return !!l && !!this.current?.maskTarget && !!l.mask?.raster && !l.mask.linked;
-  }
+   *  mask's placement instead of the layer. */
+  transformsMask(l: Layer | null | undefined): boolean { return !!this.current && TE.transformsMask(this.current, l); }
 
   /** The selected layers and every layer linked to one of them (1.65.3). */
   private withLinked(p: Project): ReadonlySet<ID> {
@@ -4560,30 +4547,10 @@ export class Engine {
   /** with more than one layer selected, or a folder, the Move tool transforms the
    *  visible pixel layers that are selected or inside a selected folder together; linked layers count as selected,
    *  unless one layer's unlinked mask is targeted, which moves alone. */
-  private groupMembers(p: Project): Layer[] {
-    const sel = p.selectedIds.size === 1 && this.transformsMask(p.activeLayer) ? p.selectedIds : this.withLinked(p);
-    if (!(sel.size > 1 || (sel.size === 1 && p.activeLayer?.isGroup))) return [];
-    const parents = new Map(p.doc.layers.map((l) => [l.id, l.parentId]));
-    const visible = new Set(hierarchy(p.doc).filter((e) => e.visible).map((e) => e.layer.id));
-    return p.doc.layers.filter((l) => {
-      if (!l.raster || l.isGroup || !visible.has(l.id)) return false;
-      let cur: ID | null = l.id;
-      for (let i = 0; i < 64 && cur; i++) {
-        if (sel.has(cur)) return true;
-        cur = parents.get(cur) ?? null;
-      }
-      return false;
-    });
-  }
+  private groupMembers(p: Project): Layer[] { return TE.groupMembers(this.entryHost, p); }
 
-  /** The group's handle box: the upright bounds of every member's corners (). */
-  groupBox(): Transform | null {
-    const p = this.current;
-    if (!p) return null;
-    let b: Rect | null = null;
-    for (const l of this.groupMembers(p)) b = unionRect(b, transformBounds(l.transform));
-    return b ? { x: b.x, y: b.y, w: Math.max(1, b.w), h: Math.max(1, b.h), rotation: 0, flipX: false, flipY: false, sampling: 'high' } : null;
-  }
+  /** The group's handle box: the upright bounds of every member's box. */
+  groupBox(): Transform | null { return TE.groupBox(this.entryHost); }
 
   /** The last transform, for Edit > Transform > Again (1.65.6): a box changed (moved, scaled, turned, flipped by a
    *  handle), a flip, or a distortion's corners before and after. */
@@ -4651,38 +4618,12 @@ export class Engine {
   }
 
   beginTransform(mode: DragMode, start: Pt): boolean {
-    const p = this.current;
-    const l = p?.activeLayer;
-    if (!p || !l || this.stroke) return false;
-    // A keyed layer is edited in its own coordinates (1.59.9): its box is shown where the keys place it, so the
-    // pointer is taken back by that offset here and in updateTransform; the display adds it once.
-    if (!this.groupMembers(p).length && !this.transformsMask(l)) { const o = this.keyedOffset(p, l.id); start = { x: start.x - o.dx, y: start.y - o.dy }; }
-    if (this.locked(l, 'position')) return false;
-    const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
-    if (members.some((m) => m.link && !p.selectedIds.has(m.id) && this.locked(m, 'position'))) return false;
-    if (box) {
-      this.settle();
-      this.transformEdit = { project: p, layerId: l.id, original: box, draft: box, mode, start, mask: false, group: { box, originals: new Map(members.map((m) => [m.id, m.transform])) } };
-      return true;
-    }
-    if (l.isGroup || !l.raster) return false;
-    this.settle(this.floatSel?.floatingId === l.id);
-    const mask = this.transformsMask(l);
-    const tbox = mask ? l.mask?.placement ?? l.transform : l.transform;
-    this.transformEdit = { project: p, layerId: l.id, original: tbox, draft: tbox, mode, start, mask, group: null };
-    return true;
+    const te = TE.beginTransform(this.entryHost, mode, start);
+    if (te) this.transformEdit = te;
+    return !!te;
   }
 
-  updateTransform(pt: Pt, shift: boolean, alt: boolean): void {
-    const te = this.transformEdit;
-    if (!te) return;
-    if (!te.group && !te.mask) { const o = this.keyedOffset(te.project, te.layerId); pt = { x: pt.x - o.dx, y: pt.y - o.dy }; }   // 1.59.9
-    te.draft = dragged(te.original, te.start, pt, te.mode, this.lockRatio, shift, alt);
-    if (te.mode.kind === 'move' && this.snapping) te.draft = this.snapMove(te.project, te.layerId, te.draft, te.group ? new Set(te.group.originals.keys()) : undefined);
-    else this.snapGuides = null;
-    this.emit('render', null);
-    this.emit('options', null);
-  }
+  updateTransform(pt: Pt, shift: boolean, alt: boolean): void { if (this.transformEdit) TE.updateTransform(this.entryHost, this.transformEdit, pt, shift, alt); }
 
   /** Commits the box being edited; `name`, when given, names the step (a command's) in place of the drag's. */
   endTransform(name?: string): void {
@@ -4696,46 +4637,18 @@ export class Engine {
   /** the free distort (Cmd-drag a corner handle): the four corners of the Move tool's box move on their own,
    *  pending until applied (Enter) or cancelled (Escape). The box is the active layer's, or with several layers or a
    *  folder selected the group box, each member carried by the same perspective. `mode` says how a handle drags. */
-  distortEdit: { project: Project; layerId: ID; box: Transform; members: ID[] | null; corners: Pt[]; mode: DistortMode; smart?: { R: Raster; t: Transform; margin: number; start: Pt[] }; previews: Map<ID, { pixels: Warped | null; mask: DistortedMask | null }> } | null = null;
+  distortEdit: TE.DistortEditState | null = null;
   private distortFrame = 0;
 
   beginDistort(mode: DistortMode = 'distort'): boolean {
-    if (this.current?.activeLayer?.vector) { this.notice(SHAPE_NOTICE); return false; }
-    const p = this.current, l = p?.activeLayer;
-    if (!p || !l || this.stroke || this.transformEdit) return false;
-    const members = this.groupMembers(p), box = members.length ? this.groupBox() : null;
-    if (members.some((m) => m.smart || m.vector)) { this.notice('Smart objects and shape layers are distorted one at a time, not with other layers.'); return false; }
-    if (l.smart && !box) {
-      if (!l.raster) return false;
-      // A smart object distorts from its undistorted render, starting from its current warp, which the new one replaces.
-      this.settle();
-      const warp = this.smartWarpNow(l), margin = this.smartMargin(l.smart.filters);
-      const R = warp ? this.renderSmart(l.smart.source, l.smart.filters, l.smart.filterMaskEnabled !== false ? l.smart.filterMask ?? null : null) : l.raster, rt = warp ? docTransform(R.width, R.height) : l.transform;
-      let corners = cornersOf(rt);
-      if (warp) {
-        const H = homography(warp), ex = margin / l.smart.source.width, ey = margin / l.smart.source.height;
-        corners = [[-ex, -ey], [1 + ex, -ey], [1 + ex, 1 + ey], [-ex, 1 + ey]].map(([u, v]) => project(H, u, v));
-      }
-      this.distortEdit = { project: p, layerId: l.id, box: rt, members: null, corners, mode, previews: new Map(), smart: { R, t: rt, margin, start: corners.map((c) => ({ ...c })) } };
-      this.emit('render', null);
-      this.emit('options', null);
-      return true;
-    }
-    if (!box && (l.isGroup || !l.raster || l.adjustment || this.transformsMask(l))) return false;
-    this.settle();
-    const t = box ?? l.transform;
-    this.distortEdit = { project: p, layerId: l.id, box: t, members: box ? members.map((m) => m.id) : null, corners: cornersOf(t), mode, previews: new Map() };
-    this.emit('render', null);
-    this.emit('options', null);
-    return true;
+    if (this.transformEdit) return false;
+    const d = TE.beginDistort(this.entryHost, mode, SHAPE_NOTICE);
+    if (d) this.distortEdit = d;
+    return !!d;
   }
 
   /** Where the distortion takes one layer: the corners themselves for a single layer, a member's own corners carried
    *  through the box's perspective; null when that shape is unusable (the member is then left alone). */
-  private distortQuad(d: NonNullable<Engine['distortEdit']>, l: Layer): Pt[] | null {
-    const q = d.members ? carried(l.transform, d.box, d.corners) : d.corners;
-    return distortUsable(q) ? q : null;
-  }
 
   /** A layer's mask through a distortion to `quad`: linked on the layer, it warps with the pixels;
    *  linked but placed apart, it takes the same perspective over its own bounds with its edge tone outside;
@@ -4755,41 +4668,12 @@ export class Engine {
     return w ? { warped: w, placement: w.t } : null;
   }
 
-  private distortMask(l: Layer, quad: Pt[], scale: number): DistortedMask | null {
-    const m = l.mask;
-    if (!m?.raster) return null;
-    if (!m.linked) return { warped: null, placement: m.placement ?? l.transform };
-    if (!m.placement) return { warped: warpRaster(m.raster, l.transform, quad, scale, true), placement: null };
-    const mq = carried(m.placement, l.transform, quad);
-    const w = distortUsable(mq) ? warpRaster(m.raster, m.placement, mq, scale, true, maskEdgeTone(m.raster)) : null;
-    return w ? { warped: w, placement: w.t } : null;
-  }
-
-  /** Drags handle `handle` (0 to 3 the corners in handle order, 4 to 7 the sides' middles) by (dx, dy) from the
-   *  corners `from` the drag began with, as the distortion's mode drags it (`distortDragged`, 1.65.6); a twisted or
-   *  collapsed shape is ignored. The preview is re-warped once per frame. */
+  /** Drags handle `handle` (0 to 3 the corners, 4 to 7 the sides' middles) by (dx, dy) from the corners `from` the drag
+   *  began with, as the distortion's mode drags it (`distortDragged`); the preview is re-warped once per frame. */
   moveDistortHandle(handle: number, from: readonly Pt[], dx: number, dy: number): void {
     const d = this.distortEdit;
     if (!d || from.length !== 4) return;
-    const next = distortDragged(from, handle, dx, dy, d.mode);
-    if (!distortUsable(next)) return;
-    d.corners = next;
-    if (!this.distortFrame) this.distortFrame = requestAnimationFrame(() => { this.distortFrame = 0; this.previewDistort(); });
-    this.emit('render', null);
-  }
-
-  private previewDistort(): void {
-    const d = this.distortEdit;
-    if (!d) return;
-    const xs = d.corners.map((c) => c.x), ys = d.corners.map((c) => c.y);
-    const scale = Math.min(1, 640 / Math.max(1, Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)));
-    d.previews.clear();
-    for (const id of d.members ?? [d.layerId]) {
-      const l = d.project.layer(id), q = l?.raster ? this.distortQuad(d, l) : null;
-      const sm = d.smart && id === d.layerId ? d.smart : null;
-      if (l?.raster && q) d.previews.set(id, sm ? { pixels: warpRaster(sm.R, sm.t, q, scale), mask: this.smartDistortMask(l, sm.start, q, scale) } : { pixels: warpRaster(l.raster, l.transform, q, scale), mask: this.distortMask(l, q, scale) });
-    }
-    this.emit('render', null);
+    TE.moveDistortHandle(this.entryHost, d, handle, [...from], dx, dy, (f, h, x, y, m) => distortDragged(f, h, x, y, m));
   }
 
   /** each distorted layer's pixels resampled into its shape at full resolution and trimmed to what
@@ -4798,35 +4682,8 @@ export class Engine {
   applyDistort(): void {
     const d = this.distortEdit;
     if (!d) return;
-    this.dropDistort();
-    const p = d.project, step = { distort: 'Distort', skew: 'Skew', perspective: 'Perspective' }[d.mode];
-    if (p !== this.current) return;
-    const start = d.smart?.start ?? cornersOf(d.box);
-    if (d.corners.some((c, i) => c.x !== start[i].x || c.y !== start[i].y)) this.lastTransform = { quadFrom: start, quadTo: d.corners.map((c) => ({ ...c })) };
-    const sm = d.smart, sl = sm ? p.layer(d.layerId) : null;
-    if (sm && sl?.smart) {
-      // The new corners of the undistorted render give the perspective; the source's own corners, inside its padding,
-      // are carried through it and kept as the warp.
-      const H = homography(imageCorners(d.corners, sm.t.flipX, sm.t.flipY)), src = sl.smart.source, m = sm.margin, Rw = sm.R.width, Rh = sm.R.height;
-      const warp = [[m, m], [m + src.width, m], [m + src.width, m + src.height], [m, m + src.height]].map(([x, y]) => project(H, x / Rw, y / Rh));
-      const w = this.warpedSmart(sm.R, m, src, warp), dm = this.smartDistortMask(sl, sm.start, d.corners, 1);
-      const smart = sl.smart, mask = sl.mask && dm ? { ...sl.mask, raster: dm.warped?.raster ?? sl.mask.raster, placement: dm.placement } : sl.mask;
-      if (w) this.edit(step, (q) => q.updateLayer(sl.id, { raster: w.raster, transform: w.t, smart: { ...smart, warp, warpAt: w.t }, mask, vectorMask: this.distortVector(sl, sm.start, d.corners) }));
-      return;
-    }
-    const updates: Array<[ID, Partial<Layer>]> = [];
-    for (const id of d.members ?? [d.layerId]) {
-      const l = p.layer(id), q = l?.raster ? this.distortQuad(d, l) : null;
-      const full = l?.raster && q ? warpRaster(l.raster, l.transform, q) : null;
-      if (!l || !q || !full) continue;
-      const crop = visibleBounds(full.raster), pixels = crop ? cropWarp(full, crop) : full, dm = this.distortMask(l, q, 1);
-      let mask = l.mask;
-      if (mask && dm?.warped && !dm.placement) mask = { ...mask, raster: crop ? cropWarp(dm.warped, crop).raster : dm.warped.raster };
-      else if (mask && dm?.warped) mask = { ...mask, raster: dm.warped.raster, placement: dm.placement };
-      else if (mask && dm) mask = { ...mask, placement: dm.placement };
-      updates.push([id, { raster: pixels.raster, transform: pixels.t, mask, shape: null, vectorMask: this.distortVector(l, cornersOf(l.transform), q) }]);
-    }
-    if (updates.length) this.edit(d.members ? `${step} Layers` : step, (q) => { for (const [id, patch] of updates) q.updateLayer(id, patch); });
+    this.distortEdit = null;
+    TE.applyDistort(this.entryHost, d);
   }
 
   /** A linked vector mask carried through a distortion from corners `from` to `to` (1.66.1): its anchors and handles
@@ -4839,7 +4696,10 @@ export class Engine {
   }
 
   cancelDistort(): void {
-    if (this.distortEdit) this.dropDistort();
+    const d = this.distortEdit;
+    if (!d) return;
+    this.distortEdit = null;
+    TE.cancelDistort(this.entryHost, d);
   }
 
   /** Edit > Transform > Warp: a 4 x 4 control grid over the active layer's corners, pending until applied (Enter) or
@@ -5115,14 +4975,6 @@ export class Engine {
     if (this.meshFrame) cancelAnimationFrame(this.meshFrame);
     this.meshFrame = 0;
     this.meshWarpEdit = null;
-    this.emit('render', null);
-    this.emit('options', null);
-  }
-
-  private dropDistort(): void {
-    if (this.distortFrame) cancelAnimationFrame(this.distortFrame);
-    this.distortFrame = 0;
-    this.distortEdit = null;
     this.emit('render', null);
     this.emit('options', null);
   }
@@ -6498,6 +6350,60 @@ export class Engine {
     };
   }
 
+  private get entryHost(): TE.EntryHost {
+    return {
+      current: this.current,
+      busy: !!this.stroke,
+      settle: (keep) => this.settle(keep),
+      notice: (m) => this.notice(m),
+      emit: (what) => this.emit(what, null),
+      refresh: () => this.refresh(),
+      edit: (label, fn) => this.edit(label, fn),
+      positionLocked: (l) => this.locked(l ?? null, 'position'),
+      linkedOf: (p) => this.withLinked(p),
+      keyedOffset: (p, id) => this.keyedOffset(p, id),
+      floatingId: (p) => (this.floatSel?.project === p ? this.floatSel.floatingId : null),
+      snapping: this.snapping,
+      lockRatio: this.lockRatio,
+      snapMove: (p, id, t, moving) => this.snapMove(p, id, t, moving),
+      clearSnapGuides: () => { this.snapGuides = null; },
+      setLayerTransform: (patch, label) => this.setLayerTransform(patch, label),
+      smartStart: (l) => {
+        if (!l.smart || !l.raster) return null;
+        const warp = this.smartWarpNow(l), margin = this.smartMargin(l.smart.filters);
+        const R = warp ? this.renderSmart(l.smart.source, l.smart.filters, l.smart.filterMaskEnabled !== false ? l.smart.filterMask ?? null : null) : l.raster, t = warp ? docTransform(R.width, R.height) : l.transform;
+        let corners = cornersOf(t);
+        if (warp) {
+          const H = homography(warp), ex = margin / l.smart.source.width, ey = margin / l.smart.source.height;
+          corners = [[-ex, -ey], [1 + ex, -ey], [1 + ex, 1 + ey], [-ex, 1 + ey]].map(([u, v]) => project(H, u, v));
+        }
+        return { R, t, margin, corners };
+      },
+      applySmartDistort: (d, label) => {
+        const sm = d.smart, sl = sm ? d.project.layer(d.layerId) : null;
+        if (!sm || !sl?.smart) return;
+        const H = homography(imageCorners(d.corners, sm.t.flipX, sm.t.flipY)), src = sl.smart.source, m = sm.margin, Rw = sm.R.width, Rh = sm.R.height;
+        const warp = [[m, m], [m + src.width, m], [m + src.width, m + src.height], [m, m + src.height]].map(([x, y]) => project(H, x / Rw, y / Rh));
+        const w = this.warpedSmart(sm.R, m, src, warp), dm = this.smartDistortMask(sl, sm.start, d.corners, 1);
+        const smart = sl.smart, mask = sl.mask && dm ? { ...sl.mask, raster: dm.warped?.raster ?? sl.mask.raster, placement: dm.placement } : sl.mask;
+        if (w) this.edit(label, (q) => q.updateLayer(sl.id, { raster: w.raster, transform: w.t, smart: { ...smart, warp, warpAt: w.t }, mask, vectorMask: this.distortVector(sl, sm.start, d.corners) }));
+      },
+      smartPreview: (l, d, quad, scale) => (d.smart ? { pixels: warpRaster(d.smart.R, d.smart.t, quad, scale), mask: this.smartDistortMask(l, d.smart.start, quad, scale) } : { pixels: null, mask: null }),
+      vectorThrough: (l, from, to) => this.distortVector(l, from, to),
+      setLastQuads: (from, to) => { this.lastTransform = { quadFrom: from, quadTo: to }; },
+      requestFrame: (fn) => { if (!this.distortFrame) this.distortFrame = requestAnimationFrame(() => { this.distortFrame = 0; fn(); }); },
+      cancelFrame: () => { if (this.distortFrame) cancelAnimationFrame(this.distortFrame); this.distortFrame = 0; },
+      canPaint: (p) => this.paintable(p.activeLayer) && !this.smartLocked(p),
+      target: (p) => this.target(p),
+      composite: (p) => renderDoc(this.work, p.doc),
+      layerSample: (p, l) => this.layerSample(p, l),
+      brush: this.brush,
+      smudge: { sampleAll: this.retouch.smearSampleAll, fingerPainting: this.retouch.fingerPainting },
+      fg: this.fg,
+      css: (c, a) => rgbCss(c, a),
+    };
+  }
+
   beginGradient(pt: Pt): boolean {
     const g = PO.beginGradient(this.paintHost, pt);
     this.gradient = g;
@@ -6585,7 +6491,7 @@ export class Engine {
    *  would copy it; its opacity; Auto Hide hides it while painting (KelbyOne's Planet Photoshop; Ben Willmore). */
   cloneOverlay = { show: true, clipped: true, opacity: 1, autoHide: false };
   private cloneFullCache: { key: string; image: Surface } | null = null;
-  private warpState: { project: Project; layerId: ID; stroke: WarpStroke; surface: Surface; image: ImageData } | null = null;
+  private warpState: TE.WarpDrag | null = null;
 
   get warping(): boolean { return this.warpState !== null; }
 
@@ -7061,44 +6967,13 @@ export class Engine {
   }
 
   beginWarp(mode: 'smudge' | 'liquify', pt: Pt): boolean {
-    const p = this.current;
-    if (!p || this.stroke || this.warpState) return false;
-    this.settle();
-    const l0 = p.activeLayer;
-    // An empty layer takes what Smudge samples from all layers (1.51.4), as Photoshop's; otherwise there is nothing to move.
-    const fromAll = mode === 'smudge' && this.retouch.smearSampleAll;
-    if (!this.paintable(l0) || (!l0.raster && !fromAll)) { this.notice('Select a layer with pixels first.'); return false; }
-    if (this.smartLocked(p)) return false;
-    if (p.maskTarget && l0.mask) { this.notice('Smudge and Liquify work on layer pixels. Click the layer thumbnail to target them.'); return false; }
-    p.history.begin(mode === 'smudge' ? 'Smudge' : 'Liquify', p.snapshot());
-    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
-    const W = p.doc.width, H = p.doc.height;
-    // Smudge's Sample All Layers (the composite, written back only where the stroke passes) and Finger Painting (a dab
-    // of the foreground where the stroke starts, which it then drags), as Photoshop's (1.51.4).
-    const surface = mode === 'smudge' && this.retouch.smearSampleAll ? renderDoc(this.work, p.doc) : this.layerSample(p, pick.layer);
-    if (mode === 'smudge' && this.retouch.fingerPainting) {
-      const c = ctxOf(surface), r = Math.max(1, this.brush.diameter / 2), g = c.createRadialGradient(pt.x, pt.y, r * Math.min(0.99, this.brush.hardness), pt.x, pt.y, r);
-      g.addColorStop(0, rgbCss(this.fg)); g.addColorStop(1, rgbCss(this.fg, 0));
-      c.fillStyle = g; c.beginPath(); c.arc(pt.x, pt.y, r, 0, Math.PI * 2); c.fill();
-    }
-    const image = ctxOf(surface).getImageData(0, 0, W, H);
-    const stroke = new WarpStroke(premultiply(image.data), W, H, mode, this.brush.diameter, this.brush.hardness, this.brush.opacity);
-    this.warpState = { project: p, layerId: pick.layer.id, stroke, surface, image };
-    stroke.append(pt);
-    this.emit('render', null);
-    return true;
+    if (this.warpState) return false;
+    const w = TE.beginWarp(this.entryHost, mode, pt);
+    this.warpState = w;
+    return !!w;
   }
 
-  warpTo(pt: Pt): void {
-    const w = this.warpState;
-    if (!w) return;
-    const r = w.stroke.append(pt);
-    if (!r) return;
-    const W = w.stroke.width;
-    for (let y = r.y; y < r.y + r.h; y++) unpremultiply(w.stroke.pixels, w.image.data, (y * W + r.x) * 4, (y * W + r.x + r.w) * 4);
-    ctxOf(w.surface).putImageData(w.image, 0, 0, r.x, r.y, r.w, r.h);
-    this.emit('render', null);
-  }
+  warpTo(pt: Pt): void { if (this.warpState) TE.warpTo(this.entryHost, this.warpState, pt); }
 
   endWarp(): void {
     const w = this.warpState;
@@ -7111,9 +6986,7 @@ export class Engine {
     const w = this.warpState;
     if (!w) return;
     this.warpState = null;
-    const before = w.project.history.abort();
-    if (before) { w.project.doc = before.doc; w.project.selection = before.selection; }
-    this.refresh();
+    TE.cancelWarp(this.entryHost, w);
   }
 
   /** Generative Fill: paints the selection from `prompt`, or removes what it covers when the prompt is empty, through
@@ -7411,21 +7284,9 @@ export class Engine {
 
   setLayerTransform(patch: Partial<Transform>, name = 'Transform Layer'): void { TC.setLayerTransform(this.commitHost, patch, name); }
 
-  resizeLayerTo(value: number, width: boolean): void {
-    const l = this.activeLayer;
-    if (!l || l.isGroup || !l.raster || !(value >= 1)) return;
-    const t = l.transform, ratio = t.w / t.h;
-    const w = width ? value : this.lockRatio ? value * ratio : t.w;
-    const h = width ? (this.lockRatio ? value / ratio : t.h) : value;
-    this.setLayerTransform({ w, h, x: t.x + t.w / 2 - w / 2, y: t.y + t.h / 2 - h / 2 }, 'Resize Layer');
-  }
+  resizeLayerTo(value: number, width: boolean): void { TE.resizeLayerTo(this.entryHost, value, width); }
 
-  scaleLayerTo(percent: number): void {
-    const l = this.activeLayer;
-    if (!l || l.isGroup || !l.raster || !(percent > 0)) return;
-    const t = l.transform, w = (l.raster.width * percent) / 100, h = (l.raster.height * percent) / 100;
-    this.setLayerTransform({ w, h, x: t.x + t.w / 2 - w / 2, y: t.y + t.h / 2 - h / 2 }, 'Scale Layer');
-  }
+  scaleLayerTo(percent: number): void { TE.scaleLayerTo(this.entryHost, percent); }
 
   private floating: PM.FloatingPixels | null = null;
 
@@ -7435,12 +7296,11 @@ export class Engine {
    *  matrix carrying it with the floating pixels' transform (the live draft while dragging), so the ants keep matching
    *  them. Null when no affine map fits: a pending or applied distortion of the floating pixels. */
   floatingOutline(p: Project): { selection: SelectionMask; m: Mat } | null {
-    const f = this.floatSel, l = f && f.project === p ? p.layer(f.floatingId) : null, dz = this.distortEdit;
-    if (!f || !l?.raster || l.raster.width !== f.region.w || l.raster.height !== f.region.h) return null;
-    if (dz && dz.project === p && (dz.layerId === f.floatingId || dz.members?.includes(f.floatingId))) return null;
-    const te = this.transformEdit;
-    const now = te && te.project === p && te.layerId === f.floatingId && !te.mask && !te.group ? te.draft : l.transform;
-    return { selection: f.selection, m: mul(placement(now, f.region.w, f.region.h), invert(placement(f.original, f.region.w, f.region.h))) };
+    const f = this.floatSel, dz = this.distortEdit, te = this.transformEdit;
+    if (!f || f.project !== p) return null;
+    const distorting = !!dz && dz.project === p && (dz.layerId === f.floatingId || !!dz.members?.includes(f.floatingId));
+    const draft = te && te.project === p && te.layerId === f.floatingId && !te.mask && !te.group ? te.draft : null;
+    return TE.floatingOutline(p, f, draft, distorting);
   }
 
   outlineShift(p: Project): { dx: number; dy: number } | null {
