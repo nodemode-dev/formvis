@@ -8,6 +8,7 @@ Layered image editor for the web and the desktop in the NodeMode design system: 
 - `frontend/src/engine/` never touches the DOM. UI code lives in `frontend/src/ui/`; tools live in `frontend/src/extensions/tools/` and register through `frontend/src/extensions/registry.ts`.
 - `backend/formvis_engine.py` is the PyInstaller entry for the desktop sidecar, not a dev server. Use `./formvis backend` or `./formvis boot` for development.
 - `src-tauri/binaries/` receives the frozen engine from `setup/freeze_backend`; git ignores it.
+- `./build_app` at the root builds the desktop app start to finish (tools check, installs, window, frozen engine, `tauri build`, bundle) and logs to `build_app.log`; it is the one command for a desktop build.
 - Planning documents (DEV_PLAN, BUILD_NOTES, TEST_PLAN, the root HASHOUT_LOG) ship in the planning sidecar zip, not in this tree. The living logs `frontend/HASHOUT_LOG.md` and `backend/HASHOUT_LOG.md` are in the tree: read them before editing.
 
 ## Skills

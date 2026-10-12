@@ -32,3 +32,22 @@ cv_target_triple() {
   rustc -vV | awk '/^host:/ {print $2}'
 }
 cv_exe() { [ "$(cv_os)" = windows ] && echo ".exe" || echo ""; }
+cv_rust_env() {
+  [ -d "$HOME/.cargo/bin" ] && PATH="$HOME/.cargo/bin:$PATH"
+  export PATH
+  unset RUSTC RUSTC_WORKSPACE_WRAPPER RUSTFLAGS CARGO_ENCODED_RUSTFLAGS CARGO_BUILD_RUSTFLAGS CARGO_BUILD_TARGET CARGO_TARGET_DIR CARGO_BUILD_TARGET_DIR CARGO_BUILD_RUSTC
+  export RUSTC_WRAPPER="" CARGO_BUILD_RUSTC_WRAPPER=""
+  if command -v rustup >/dev/null 2>&1 && rustup toolchain list 2>/dev/null | grep -q '^stable'; then
+    export RUSTUP_TOOLCHAIN="${FORMVIS_RUST_TOOLCHAIN:-stable}"
+  fi
+}
+cv_rust_fresh() {
+  local target="$FORMVIS_ROOT/src-tauri/target" now
+  now="$(rustc -vV 2>/dev/null | tr '\n' ' ')"
+  if [ -d "$target/release" ] && [ "$(cat "$target/.formvis-rustc" 2>/dev/null)" != "$now" ]; then
+    cv_say "the Rust compiler differs from the one that built src-tauri/target; cleaning it"
+    ( cd "$FORMVIS_ROOT/src-tauri" && cargo clean )
+  fi
+  mkdir -p "$target"
+  printf '%s' "$now" > "$target/.formvis-rustc"
+}

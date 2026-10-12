@@ -1029,6 +1029,32 @@ dependencies = [
 ]
 
 [[package]]
+name = "formvis"
+version = "1.66.1"
+dependencies = [
+ "fontdb",
+ "formvis-render",
+ "regex",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-dialog",
+ "tauri-plugin-shell",
+ "tauri-plugin-updater",
+]
+
+[[package]]
+name = "formvis-render"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "pollster",
+ "sysinfo",
+ "wgpu",
+]
+
+[[package]]
 name = "futures-channel"
 version = "0.3.34"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3664,32 +3690,6 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "formvis"
-version = "1.66.1"
-dependencies = [
- "fontdb",
- "regex",
- "serde",
- "serde_json",
- "formvis-render",
- "tauri",
- "tauri-build",
- "tauri-plugin-dialog",
- "tauri-plugin-shell",
- "tauri-plugin-updater",
-]
-
-[[package]]
-name = "formvis-render"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "pollster",
- "sysinfo",
- "wgpu",
 ]
 
 [[package]]

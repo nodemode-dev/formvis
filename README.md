@@ -69,7 +69,7 @@ formvis.bat install
 formvis.bat boot
 ```
 
-`./formvis install` installs formvis with ONNX Runtime, so Object Selection (SAM 2.1), Select Subject and Remove Background (U²-Net), LaMa and Real-ESRGAN need nothing else: each fetches its model on first use, pinned to its checksum, or from Preferences > Plugins > Local models. The optional extras (rembg, and torch for SAM 2.1 on a GPU) come with `./formvis install-ml`; `./formvis install --lite` skips them. `./formvis install-desktop`, then `./formvis desktop dev` or `./formvis desktop build`, for the desktop app. `./formvis help` lists every command.
+`./formvis install` installs formvis with ONNX Runtime, so Object Selection (SAM 2.1), Select Subject and Remove Background (U²-Net), LaMa and Real-ESRGAN need nothing else: each fetches its model on first use, pinned to its checksum, or from Preferences > Plugins > Local models. The optional extras (rembg, and torch for SAM 2.1 on a GPU) come with `./formvis install-ml`; `./formvis install --lite` skips them. For the desktop app in one step, run `./build_app` (macOS and Linux): it installs whatever is missing, freezes the engine, compiles the Tauri shell and leaves `formvis.app` in Applications (macOS, with a `.dmg`) or a `.deb` (Linux), logging to `build_app.log`; `./build_app --help` lists its options. Step by step it is `./formvis install-desktop`, then `./formvis desktop dev` or `./formvis desktop build`. `./formvis help` lists every command.
 
 | Service | URL | Notes |
 | --- | --- | --- |
