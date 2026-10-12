@@ -3019,8 +3019,8 @@ export class Engine {
   /** Layer > Duplicate Layer; the dialog passes a name, used when one layer or folder is duplicated. One step. */
   duplicateLayers(name?: string): void { LS.duplicateLayers(this.structHost, name); }
 
-  /** the live masks: layers that stay but are clipped to a layer being deleted. Deleting their base asks
-   *  whether to bake their masked look into their pixels or remove the links; `deleteLayers(true)` bakes. */
+  /** The layers that stay but are clipped to a layer that is being deleted. Deleting their base asks whether to bake
+   *  their masked look into their pixels or to drop the links; `deleteLayers(true)` bakes. */
   liveMaskDependents(): ID[] { return LS.liveMaskDependents(this.structHost); }
 
   deleteLayers(bake = false): void { LS.deleteLayers(this.structHost, bake); }
@@ -3039,15 +3039,16 @@ export class Engine {
   }
 
   renameLayer(id: ID, name: string): void {
-    const clean = name.trim().slice(0, 200);
-    if (!clean || this.current?.layer(id)?.name === clean) return;
-    this.edit('Rename Layer', (p) => { if (!p.layer(id)) return false; p.updateLayer(id, { name: clean }); });
+    const n = name.trim().slice(0, 200);
+    if (!n || !this.current || this.current.layer(id)?.name === n) return;
+    this.edit('Rename Layer', (p) => { if (!p.layer(id)) return false; p.updateLayer(id, { name: n }); });
   }
 
   toggleVisibility(id: ID): void {
     const l = this.current?.layer(id);
     if (!l) return;
-    this.edit(l.visible ? 'Hide Layer' : 'Show Layer', (p) => { p.updateLayer(id, { visible: !l.visible }); });
+    const was = l.visible;
+    this.edit(was ? 'Hide Layer' : 'Show Layer', (p) => { p.updateLayer(id, { visible: !was }); });
   }
 
   /** Layer > Hide Layers or Show Layers: every selected layer hidden, or shown, as one step. */
@@ -3140,7 +3141,7 @@ export class Engine {
   cycleBlend(forward: boolean): void {
     const l = this.activeLayer;
     if (!l || l.isGroup) return;
-    const i = BLEND_MODES.findIndex((b) => b.id === l.blend), n = BLEND_MODES.length;
+    const n = BLEND_MODES.length, i = BLEND_MODES.findIndex((m) => m.id === l.blend);
     this.setBlend(BLEND_MODES[(i + (forward ? 1 : n - 1)) % n].id);
   }
 
@@ -3199,9 +3200,9 @@ export class Engine {
     });
   }
 
-  /** the Option-drag from a mask thumbnail: a copy of the source's mask on the target, sitting where it sits
-   *  on the document and replacing any mask the target had, as one step; the target becomes active with its mask
-   *  targeted. The raster is copied, so painting one mask never changes the other. */
+  /** The Option-drag from a mask thumbnail: puts a copy of the source's mask on the target, where it sits on the
+   *  document, replacing any mask the target had, as one step. The target becomes active with its mask targeted.
+   *  The raster is copied, so painting one mask never changes the other. */
   copyMask(source: ID, target: ID): void { LM.copyMask(this.maskHost, source, target); }
 
   copyLayerToProject(id: ID, targetKey: string): boolean { return LS.copyLayerToProject(this.structHost, id, targetKey); }
@@ -3697,7 +3698,7 @@ export class Engine {
     const pick: { layer: Layer; target: Target; raster: Raster | TiledRaster; local: Mat } = lt
       ? { layer: al, target: 'pixels', raster: lt, local: placement(al.transform, lt.width, lt.height) }
       : this.target(p) as NonNullable<ReturnType<Engine['target']>>;
-    const white = pick.target === 'mask' && luminance(this.fg) >= 0.5 !== (this.brushMode === 'erase');
+    const white = pick.target === 'mask' && ((luminance(this.fg) >= 0.5) !== (this.brushMode === 'erase'));
     // Lock Transparency: paint only where the layer has pixels (source-atop); the Eraser then paints the background
     // colour, as Photoshop's does, since it may not make pixels transparent.
     const keepAlpha = pick.target !== 'mask' && !!p.activeLayer?.locks?.transparency;
@@ -3724,8 +3725,8 @@ export class Engine {
     return true;
   }
 
-  /** Redraws of the whole scene are the default; a stroke reports just the region it changed, so the stage repaints
-   *  that alone. Off, every stroke frame redraws everything. */
+  /** By default a stroke frame repaints only the region it changed;
+   *  switched off, every frame redraws the whole scene. */
   dirtyRendering = true;
 
   strokeTo(pt: Pt, pressure = 1, pose: PenPose = UPRIGHT): void {
@@ -3751,13 +3752,14 @@ export class Engine {
     if (!f) return;
     if (st.quick) { this.emit('selection', null); return; }   // Quick Mask: the tint follows the stroke; no layer repaints
     const l = st.project.layer(st.layerId), r = st.target === 'mask' ? l?.mask?.raster : l?.raster;
-    const t = st.target === 'mask' ? l?.mask?.placement ?? l?.transform : l?.transform;
+    const t = st.target === 'mask' ? (l?.mask?.placement ?? l?.transform) : l?.transform;
     // Styled layers' effects are cached at document resolution, so a region repaint shows them whole; the layer being
     // painted, clipped layers and layers in folders draw their effects per render, so those repaint whole.
     const styled = st.project.doc.layers.some((x) => effectsActive(x.effects) && (x.id === st.layerId || !!x.clipId || x.parentId !== null));
     if (!this.dirtyRendering || !l || !r || !t || styled) { this.emit('render', null); return; }
     const m = placement(t, r.width, r.height);
-    this.emit('render', boundsOf([applyMat(m, f.x, f.y), applyMat(m, f.x + f.w, f.y), applyMat(m, f.x + f.w, f.y + f.h), applyMat(m, f.x, f.y + f.h)]));
+    const corners = [applyMat(m, f.x, f.y), applyMat(m, f.x + f.w, f.y), applyMat(m, f.x + f.w, f.y + f.h), applyMat(m, f.x, f.y + f.h)];
+    this.emit('render', boundsOf(corners));
   }
 
   endStroke(): void {
@@ -3811,7 +3813,7 @@ export class Engine {
     }
     st.project.history.end(st.project.snapshot());
     const lp = st.s.lastPoint;
-    if (lp) this.lastBrush = { layerId: st.layerId, target: st.target, p: lp };
+    if (lp) this.lastBrush = { layerId: st.layerId, target: st.target, p: lp };   // shift-click draws a line from here
     this.refresh();
     st.s.release();
   }
@@ -3820,8 +3822,8 @@ export class Engine {
     const st = this.stroke;
     if (!st) return;
     this.stroke = null;
-    const before = st.project.history.abort();
-    if (before) { st.project.doc = before.doc; st.project.selection = before.selection; }
+    const snap = st.project.history.abort();
+    if (snap) { st.project.doc = snap.doc; st.project.selection = snap.selection; }
     this.refresh();
     st.s.release();
   }
@@ -4271,9 +4273,9 @@ export class Engine {
     return found.length;
   }
 
-  selectAll(): void { const p = this.current; if (p) this.applySelection(SelectionMask.all(p.doc.width, p.doc.height), 'replace', 'Select All'); }
+  selectAll(): void { if (this.current) this.applySelection(SelectionMask.all(this.current.doc.width, this.current.doc.height), 'replace', 'Select All'); }
   deselect(): void { if (this.current?.selection) this.applySelection(null, 'replace', 'Deselect'); }
-  invertSelection(): void { this.edit('Inverse Selection', (p) => { if (!p.selection) return false; p.selection = p.selection.inverted(p.doc.width, p.doc.height); return true; }); }
+  invertSelection(): void { this.edit('Inverse Selection', (p) => { if (!p.selection) return false; p.selection = p.selection.inverted(p.doc.width, p.doc.height); }); }
 
   selectLayerPixels(id?: ID): void { SO.selectLayerPixels(this.selectHost, id); }
 
@@ -4515,7 +4517,7 @@ export class Engine {
     TE.endSelectionShift(this.entryHost, s);
   }
 
-  /** the rule for moving a mask on its own: with the mask targeted and unlinked, the Move tool transforms the
+  /** Whether the Move tool moves a mask by itself: with the mask targeted and unlinked, the Move tool transforms the
    *  mask's placement instead of the layer. */
   transformsMask(l: Layer | null | undefined): boolean { return !!this.current && TE.transformsMask(this.current, l); }
 
@@ -4561,7 +4563,7 @@ export class Engine {
     this.emit('overlay', null);
   }
 
-  /** with more than one layer selected, or a folder, the Move tool transforms the
+  /** The layers the Move tool carries as one: with more than one layer selected, or a folder, the Move tool transforms the
    *  visible pixel layers that are selected or inside a selected folder together; linked layers count as selected,
    *  unless one layer's unlinked mask is targeted, which moves alone. */
   private groupMembers(p: Project): Layer[] { return TE.groupMembers(this.entryHost, p); }
@@ -4651,8 +4653,8 @@ export class Engine {
     TC.commitTransform(this.commitHost, te, name);
   }
 
-  /** the free distort (Cmd-drag a corner handle): the four corners of the Move tool's box move on their own,
-   *  pending until applied (Enter) or cancelled (Escape). The box is the active layer's, or with several layers or a
+  /** The free distort (Cmd-drag a corner handle) moves the four corners of the Move tool's box each on its own, pending
+   *  until applied (Enter) or cancelled (Escape). The box is the active layer's, or with several layers or a
    *  folder selected the group box, each member carried by the same perspective. `mode` says how a handle drags. */
   distortEdit: TE.DistortEditState | null = null;
   private distortFrame = 0;
@@ -4664,12 +4666,12 @@ export class Engine {
     return !!d;
   }
 
-  /** Where the distortion takes one layer: the corners themselves for a single layer, a member's own corners carried
-   *  through the box's perspective; null when that shape is unusable (the member is then left alone). */
+  /** The corners a distortion hands one layer: the corners themselves for a single layer, or a member's own corners
+   *  carried through the box's perspective; null when the shape is unusable and the member is left alone. */
 
-  /** A layer's mask through a distortion to `quad`: linked on the layer, it warps with the pixels;
-   *  linked but placed apart, it takes the same perspective over its own bounds with its edge tone outside;
-   *  unlinked, it stays where it is on the document. */
+  /** A layer's mask through a distortion to a quad: linked on the layer it warps with the pixels; linked but placed
+   *  apart it takes the same perspective over its own bounds with its edge tone outside; unlinked it stays where it
+   *  is on the document. */
   /** A smart object's mask through a distortion from `start` to `quad`: an unlinked mask stays put; otherwise its frame
    *  (its own placement, or the layer's when tied to the pixels) follows the same change of perspective, and the mask
    *  keeps a placement of its own from then on, so later re-renders of the object leave it where it belongs. */
@@ -4693,8 +4695,8 @@ export class Engine {
     TE.moveDistortHandle(this.entryHost, d, handle, [...from], dx, dy, (f, h, x, y, m) => distortDragged(f, h, x, y, m));
   }
 
-  /** each distorted layer's pixels resampled into its shape at full resolution and trimmed to what
-   *  is visible, leaving upright layers, its mask handled by `distortMask` (a linked mask cropped with the pixels), as
+  /** Applies the free distort: each distorted layer's pixels resampled into its shape at full resolution and trimmed
+   *  to what is visible, leaving upright layers, its mask handled by `distortMask` (a linked mask cropped with the pixels), as
    *  one step named by the mode (Distort, Skew or Perspective), with Layers after it for a group. */
   applyDistort(): void {
     const d = this.distortEdit;
@@ -5184,8 +5186,8 @@ export class Engine {
 
   private liveOpen: Project | null = null;
   preview: { project: Project; layerId: ID; target: Target; surface: Surface; transform?: Transform } | null = null;
-  /** Bumped for every preview request and every clear, so a filter result that arrives from the worker after a newer
-   *  request, or after the preview is switched off, is dropped instead of painted. */
+  /** Counted up for every preview request and every clear, so a worker's late result
+   *  for an older request is dropped. */
   private previewToken = 0;
   gradient: PO.GradientDrag | null = null;
   /** The Gradient tool's settings: Shape, Colors (style), Reverse, Opacity, and Mode and Dither as Photoshop's options
@@ -5325,9 +5327,9 @@ export class Engine {
   }
 
   setPreview(layerId: ID | null, target: Target = 'pixels', surface: Surface | null = null, transform?: Transform): void {
-    if (!layerId) this.previewToken += 1;
+    if (!layerId) this.previewToken++;
     const p = this.current;
-    this.preview = p && layerId && surface ? { project: p, layerId, target, surface, transform } : null;
+    this.preview = p && layerId && surface ? { project: p, layerId, target, surface, ...(transform ? { transform } : {}) } : null;
     this.emit('render', null);
   }
 
@@ -5730,9 +5732,10 @@ export class Engine {
     this.focus(p, layer.id);
   }
 
+  /** The folder a new layer lands in: the active layer when it is a folder, else that layer's parent, else the root. */
   private parentForNew(p: Project): ID | null {
-    const active = p.activeLayer;
-    return active?.isGroup ? active.id : active?.parentId ?? null;
+    const a = p.activeLayer;
+    return a ? (a.isGroup ? a.id : a.parentId) : null;
   }
 
   /** Layer > Color Match (1.51.3, the capability plan): a layer's colours matched to the picture beneath it, or to a band
@@ -5966,11 +5969,13 @@ export class Engine {
     this.emit('history', null);
   }
 
+  /** Adds a raster as a new layer above the active one, inside the folder `parentForNew` picks. A null x or y centres it
+   *  on the canvas along that axis (whole pixels, rounded down); `extra` is laid over the layer's other fields. */
   insertRasterLayer(raster: Raster, name: string, x: number | null, y: number | null, extra: Partial<Layer> = {}, undoName = 'Paste'): void {
     this.edit(undoName, (p) => {
-      const px = x ?? Math.floor((p.doc.width - raster.width) / 2), py = y ?? Math.floor((p.doc.height - raster.height) / 2);
-      const layer = newLayer(name, p.doc, { raster, parentId: this.parentForNew(p), transform: { ...docTransform(raster.width, raster.height), x: px, y: py }, ...extra });
-      this.insertAboveActive(p, layer);
+      const base = newLayer(name, p.doc, { raster, parentId: this.parentForNew(p) });
+      const tx = x ?? Math.floor((p.doc.width - raster.width) / 2), ty = y ?? Math.floor((p.doc.height - raster.height) / 2);
+      this.insertAboveActive(p, { ...base, transform: { ...docTransform(raster.width, raster.height), x: tx, y: ty }, ...extra });
     });
   }
 
@@ -6202,8 +6207,8 @@ export class Engine {
 
   selectMaskBlack(): void { LM.selectMaskBlack(this.maskHost); }
 
-  /** The active layer's pixels (or its mask as gray, or with `merged` the visible image) inside the selection, or the
-   *  whole canvas without one, rendered over the selection's region. Copy and Layer via Copy share it. */
+  /** The pixels inside the selection: the active layer's own, its mask as gray, or with `merged` the visible image;
+   *  the whole canvas when nothing is selected. Rendered over the selection's region, shared by Copy and Layer via Copy. */
   private selectedPixels(merged: boolean): { surface: Surface; region: Rect } | null { return SO.selectedPixels(this.selectHost, merged); }
 
   copySelection(merged: boolean): boolean {
@@ -6222,8 +6227,8 @@ export class Engine {
     return `Layer ${n}`;
   }
 
-  /** the Cmd-J: with a selection, its pixels on the active layer (or its mask, as gray) become a new layer in
-   *  place as one Layer via Copy step, leaving the clipboard alone; without a selection the layer is duplicated. */
+  /** Cmd-J: with a selection, its pixels on the active layer (or its mask as gray) become a new layer in place, as one
+   *  Layer via Copy step and without touching the clipboard; with no selection the layer is duplicated. */
   layerViaCopy(): void {
     const p = this.current;
     if (!p) return;
@@ -6483,8 +6488,7 @@ export class Engine {
   createShape(rect: Rect, color: RGB = this.fg): void {
     const r = integral(rect);
     if (r.w < 1 || r.h < 1 || !this.current) return;
-    const st = this.shapeSettings;
-    const kind = st.kind === 'ellipse' ? 'Ellipse' : 'Rectangle';
+    const st = this.shapeSettings, kind = st.kind === 'ellipse' ? 'Ellipse' : 'Rectangle';
     const style = { kind, red: color.r / 255, green: color.g / 255, blue: color.b / 255, cornerRadius: st.kind === 'rectangle' ? st.cornerRadius : 0 };
     this.insertRasterLayer(this.shapeRaster(style, r.w, r.h), kind, r.x, r.y, { shape: style }, kind);
   }
@@ -6512,7 +6516,8 @@ export class Engine {
   private cloneFullCache: { key: string; image: Surface } | null = null;
   private warpState: TE.WarpDrag | null = null;
 
-  get warping(): boolean { return this.warpState !== null; }
+  /** True while a smudge or liquify drag is in progress. */
+  get warping(): boolean { return !!this.warpState; }
 
   setCloneSource(pt: Pt): void {
     this.cloneSource = { x: pt.x, y: pt.y };
@@ -6564,32 +6569,37 @@ export class Engine {
   }
 
   cloneStrokeOffset(pt: Pt): Pt | null {
-    const src = this.cloneSource;
-    if (!src) return null;
-    return (this.retouch.cloneAligned ? this.cloneOffset : null) ?? { x: Math.round(src.x - pt.x), y: Math.round(src.y - pt.y) };
+    if (!this.cloneSource) return null;
+    if (this.retouch.cloneAligned && this.cloneOffset) return this.cloneOffset;
+    return { x: Math.round(this.cloneSource.x - pt.x), y: Math.round(this.cloneSource.y - pt.y) };
   }
 
-  /** what a Clone Stamp click at `at` would stamp, the source around `clonePoint(at)`
-   *  rendered for just the brush circle at `scale` screen pixels per document pixel (from the whole document or the
-   *  active layer alone, as the stroke samples), faded by the brush tip as hardness sets it. Reused until the sample
-   *  point, brush, zoom, layer, sampling mode or document changes. Null with no source, or during a stroke. */
+  /** What a Clone Stamp click at `at` would stamp: the source around `clonePoint(at)`, rendered for only the brush
+   *  circle at `scale` screen pixels per document pixel, from the whole document or the active layer according to how
+   *  the stroke samples, faded by the brush tip as the hardness sets. Reused until the sample point, brush, zoom, layer,
+   *  sampling mode or document changes; null with no source or while a stroke is under way. */
   private clonePreviewCache: { key: string; surface: Surface } | null = null;
 
   clonePreview(at: Pt, scale: number): Surface | null {
     const p = this.current, l = p?.activeLayer, sp = this.clonePoint(at);
     if (!p || !l || !sp || this.stroke) return null;
-    const d = this.brush.diameter, side = Math.min(1024, Math.max(1, Math.ceil(d * scale)));
+    const d = this.brush.diameter, side = clamp(Math.ceil(d * scale), 1, 1024);
     const r0 = this.retouch, key = [sp.x.toFixed(2), sp.y.toFixed(2), d, this.brush.hardness, side, r0.cloneSample, l.id, p.history.revision, r0.cloneScale, r0.cloneAngle, r0.cloneFlipH, r0.cloneFlipV].join('|');
     if (this.clonePreviewCache?.key === key) return this.clonePreviewCache.surface;
     const s = createSurface(side, side), c = ctxOf(s), per = side / d, tm = this.cloneTransform(sp);
     const view = mul(mul(scaling(per, per), translation(d / 2 - sp.x, d / 2 - sp.y)), tm ?? [1, 0, 0, 1, 0, 0]);
     if (this.retouch.cloneSample !== 'current') this.work.render({ doc: p.doc, target: s, view, quality: 'medium', ...(this.retouch.cloneSample === 'below' ? { overrides: this.belowOverrides(p, l) } : {}) });
-    else if (l.raster) { setMat(c, mul(view, placement(l.transform, l.raster.width, l.raster.height))); c.drawImage(l.raster.canvas, 0, 0); c.setTransform(1, 0, 0, 1, 0, 0); }
-    const r = side / 2, tip = c.createRadialGradient(r, r, r * Math.min(0.999, Math.max(0, this.brush.hardness)), r, r, r);
-    tip.addColorStop(0, 'rgba(0,0,0,1)');
-    tip.addColorStop(1, 'rgba(0,0,0,0)');
+    else if (l.raster) {
+      setMat(c, mul(view, placement(l.transform, l.raster.width, l.raster.height)));
+      c.drawImage(l.raster.canvas as CanvasImageSource, 0, 0);
+      c.setTransform(1, 0, 0, 1, 0, 0);
+    }
+    const rad = side / 2, hard = clamp(this.brush.hardness, 0, 0.999), fade = c.createRadialGradient(rad, rad, 0, rad, rad, rad);
+    fade.addColorStop(0, 'rgba(0,0,0,1)');
+    fade.addColorStop(hard, 'rgba(0,0,0,1)');
+    fade.addColorStop(1, 'rgba(0,0,0,0)');
     c.globalCompositeOperation = 'destination-in';
-    c.fillStyle = tip;
+    c.fillStyle = fade;
     c.fillRect(0, 0, side, side);
     c.globalCompositeOperation = 'source-over';
     this.clonePreviewCache = { key, surface: s };
@@ -6637,9 +6647,9 @@ export class Engine {
     if (!p || this.stroke || this.warpState) return false;
     this.settle();
     const l0 = p.activeLayer;
-    if (!this.paintable(l0)) { this.notice('Select a pixel layer first.'); return false; }
+    if (!l0 || !this.paintable(l0)) { this.notice('Select a pixel layer first.'); return false; }
     if (this.smartLocked(p)) return false;
-    const onMask = p.maskTarget && !!l0.mask;
+    const onMask = !!p.maskTarget && !!l0.mask;
     if (onMask && kind !== 'blur') { this.notice('This tool works on layer pixels. Click the layer thumbnail to target them.'); return false; }
     let texture: { surface: Surface; dx: number; dy: number } | null = null;
     if (kind === 'clone' || kind === 'healBrush') {
@@ -7309,11 +7319,12 @@ export class Engine {
 
   private floating: PM.FloatingPixels | null = null;
 
-  get movingPixels(): boolean { return this.floating !== null; }
+  /** True while a pixel move is under way. */
+  get movingPixels(): boolean { return !!this.floating; }
 
-  /** the mapPath for Transform Selection: while selected pixels float, the selection they came from and the
-   *  matrix carrying it with the floating pixels' transform (the live draft while dragging), so the ants keep matching
-   *  them. Null when no affine map fits: a pending or applied distortion of the floating pixels. */
+  /** For Transform Selection: while selected pixels float, the selection they came from plus the matrix that carries it
+   *  with the floating pixels' transform (the live draft while dragging), so the marching ants keep matching them.
+   *  Null when no affine map fits, i.e. a distortion of the floating pixels is pending or applied. */
   floatingOutline(p: Project): { selection: SelectionMask; m: Mat } | null {
     const f = this.floatSel, dz = this.distortEdit, te = this.transformEdit;
     if (!f || f.project !== p) return null;
@@ -7323,9 +7334,9 @@ export class Engine {
   }
 
   outlineShift(p: Project): { dx: number; dy: number } | null {
-    if (this.selectionShift?.project === p) return this.selectionShift;
-    const f = this.floating;
-    return f && f.project === p ? { dx: f.dx, dy: f.dy } : null;
+    if (this.selectionShift?.project === p) return { dx: this.selectionShift.dx, dy: this.selectionShift.dy };
+    if (this.floating?.project === p) return { dx: this.floating.dx, dy: this.floating.dy };
+    return null;
   }
 
   beginPixelMove(duplicate: boolean): boolean {
@@ -7352,11 +7363,13 @@ export class Engine {
 
   private floatSel: PM.FloatingSelection | null = null;
 
-  get floatingSelection(): boolean { return this.floatSel !== null; }
+  /** True while a selection transform is under way. */
+  get floatingSelection(): boolean { return !!this.floatSel; }
 
   get canTransformSelection(): boolean {
     const p = this.current, l = p?.activeLayer;
-    return !!p && !!p.selection && !this.floatSel && !this.stroke && !this.floating && !this.warpState && !!l && this.paintable(l) && !!l.raster && !(p.maskTarget && l.mask);
+    if (!p || !p.selection || this.floatSel || this.stroke || this.floating || this.warpState) return false;
+    return !!l && this.paintable(l) && !!l.raster && !(p.maskTarget && l.mask);
   }
 
   transformCommand(): void {
@@ -7396,34 +7409,36 @@ export class Engine {
     return !!fs;
   }
 
-  /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, from the source the Levels histogram
-   *  reads: the target layer's own pixels (or its mask's, when the mask is targeted), or with `composite` the flattened
-   *  document. the Levels eyedroppers sample the edit's original image the same way. */
+  /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, read from the same source the Levels
+   *  histogram uses: the target layer's own pixels, its mask's when the mask is targeted, or with `composite` the
+   *  flattened document. The Levels eyedroppers sample the edit's original image the same way. */
   sampleOriginal(pt: Pt, composite: boolean): [number, number, number] | null { return PM.sampleOriginal(this.moveHost, pt, composite); }
 
   /** Lays a subject mask (0 to 1 per layer pixel, 1 over the subject) on a layer as one Remove Background step. An
-   *  existing mask of the same size is kept too, multiplied in: what either hides stays hidden (the
-   *  `subjectMask`). The pixels themselves stay, so the background can be painted back. */
+   *  existing mask of the same size is multiplied in, so whatever either hides stays hidden; the pixels themselves
+   *  stay, so the background can be painted back. */
   applySubjectMask(id: ID, levels: Float32Array, width: number, height: number): void { LM.applySubjectMask(this.maskHost, id, levels, width, height); }
 
-  /** the sample ring: while a drag samples the canvas, the new color shows on the ring's top half and the
-   *  color before the drag on its bottom half. `showsSampleRing` is the Eyedropper's Sample Ring option. */
+  /** While a drag samples the canvas, the ring shows the new colour on its top half and the colour from before the
+   *  drag on its bottom half; `showsSampleRing` is the Eyedropper's Sample Ring option. */
   showsSampleRing = true;
   sampleRing: { at: Pt; sampled: RGB; original: RGB } | null = null;
 
   setSampleRing(ring: { at: Pt; sampled: RGB; original: RGB } | null): void {
     if (!ring && !this.sampleRing) return;
-    this.sampleRing = ring && this.showsSampleRing ? ring : null;
+    this.sampleRing = this.showsSampleRing ? ring : null;
     this.emit('overlay', null);
   }
 
-  /** the arrow-key nudge for selection tools: the outline moves 1 px (10 with Shift at the caller), each
-   *  press one Move Selection step; the pixels stay. Returns false when there is no selection to move. */
+  /** The arrow-key nudge for selection tools: the outline moves by the given amount, each press one Move Selection
+   *  step, while the pixels stay put. False when there is no selection to move. */
   nudgeSelection(dx: number, dy: number): boolean {
-    const p = this.current, s = p?.selection;
-    if (!p || !s || (!dx && !dy)) return false;
+    const p = this.current;
+    if (!p || !p.selection || (!dx && !dy)) return false;
     this.settle();
-    this.applySelection(s.translated(dx, dy, p.doc.width, p.doc.height), 'replace', 'Move Selection');
+    const moved = p.selection.translated(dx, dy, p.doc.width, p.doc.height);
+    if (!moved) return false;
+    this.applySelection(moved, 'replace', 'Move Selection');
     return true;
   }
 
@@ -7471,7 +7486,8 @@ export class Engine {
   async exportBlob(type: 'image/png' | 'image/jpeg' | 'image/webp', quality = 0.92): Promise<Blob | null> {
     const p = this.current;
     if (!p) return null;
-    return withResolution(await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality), p.doc.resolution);
+    const blob = await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality);
+    return blob ? withResolution(blob, p.doc.resolution) : null;
   }
 
   flattened(): Surface | null {
