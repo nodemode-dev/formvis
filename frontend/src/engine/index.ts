@@ -27,6 +27,7 @@ import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable,
 import { withResolution } from './dpi';
 import { antialiasMask, levelsKernel, wandMask } from './kernels';
 import { Project } from './project';
+import * as LS from './layer-structure';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
@@ -2714,29 +2715,25 @@ export class Engine {
     return r;
   }
 
-  selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void {
-    const p = this.current;
-    if (!p || this.stroke || !p.layer(id)) return;
-    this.settle();
-    if (how === 'toggle') {
-      const s = new Set(p.selectedIds);
-      if (s.has(id) && s.size > 1) { s.delete(id); if (p.activeId === id) p.activeId = [...s][s.size - 1]; }
-      else { s.add(id); p.activeId = id; }
-      p.selectedIds = s;
-    } else if (how === 'range' && p.activeId) {
-      const order = hierarchy(p.doc, true, p.collapsed).map((e) => e.layer.id);
-      const a = order.indexOf(p.activeId), b = order.indexOf(id);
-      if (a >= 0 && b >= 0) p.selectedIds = new Set(order.slice(Math.min(a, b), Math.max(a, b) + 1));
-      p.activeId = id;
-    } else {
-      p.activeId = id;
-      p.selectedIds = new Set([id]);
-    }
-    p.maskTarget = false;
-    this.emit('active', null);
-    this.emit('options', null);
-    this.emit('overlay', null);
+  private get structHost(): LS.StructHost {
+    return {
+      current: this.current,
+      projects: this.projects,
+      busy: !!this.stroke,
+      settle: () => this.settle(),
+      emit: (what) => this.emit(what, null),
+      edit: (label, fn) => this.edit(label, fn),
+      focus: (p, id) => this.focus(p, id),
+      notice: (m) => this.notice(m),
+      room: (bytes, what) => this.room(bytes, what),
+      switchTo: (key) => this.switchTo(key),
+      clipCoverage: (doc, baseId) => this.work.clipCoverageOf(doc, baseId),
+      renderOnly: (doc, target, view, only) => this.work.render({ doc, target, view, only, quality: 'high', ignoreFolderMasks: true }),
+      deleteMask: () => this.deleteMask(false),
+    };
   }
+
+  selectLayer(id: ID, how: 'replace' | 'toggle' | 'range' = 'replace'): void { LS.selectLayer(this.structHost, id, how); }
 
   /** Select > All Layers (Alt+Ctrl+A), or with `all` false Deselect Layers; not history steps. */
   selectAllLayers(all = true): void {
@@ -2769,32 +2766,11 @@ export class Engine {
     this.emit('doc', null);
   }
 
-  private selectedRoots(p: Project): ID[] {
-    const map = byId(p.doc);
-    const sel = [...p.selectedIds].filter((id) => map.has(id));
-    const roots = new Set(sel.filter((id) => !sel.some((o) => o !== id && isDescendant(map, id, o))));
-    return p.doc.layers.filter((l) => roots.has(l.id)).map((l) => l.id);
-  }
+  private selectedRoots(p: Project): ID[] { return LS.selectedRoots(p); }
 
-  private normalizeClips(layers: Layer[]): Layer[] {
-    const out = [...layers];
-    const lastBase = new Map<ID | null, Layer | null>();
-    for (let i = 0; i < out.length; i++) {
-      const l = out[i];
-      if (l.clipId) {
-        const base = lastBase.get(l.parentId) ?? null;
-        if (!base || base.id !== l.clipId) {
-          out[i] = { ...l, clipId: null };
-          lastBase.set(l.parentId, l.isGroup || l.adjustment ? null : out[i]);
-        }
-      } else lastBase.set(l.parentId, l.isGroup || l.adjustment ? null : l);
-    }
-    return out;
-  }
+  private normalizeClips(layers: Layer[]): Layer[] { return LS.normalizeClips(layers); }
 
-  private cloneLayer(l: Layer, patch: Partial<Layer> = {}): Layer {
-    return { ...l, raster: l.raster ? l.raster.clone() : null, mask: l.mask ? { ...l.mask, raster: l.mask.raster ? l.mask.raster.clone() : null } : null, ...patch, id: uid() };
-  }
+  private cloneLayer(l: Layer, patch: Partial<Layer> = {}): Layer { return LS.cloneLayer(l, patch); }
 
   /** Layer > New > Layer; the New Layer dialog passes its name, blending mode, opacity and whether to clip the new layer
    *  to the one below (Use Previous Layer to Create Clipping Mask). One step either way. */
@@ -2840,42 +2816,10 @@ export class Engine {
     return r ? r.width * r.height * 4 : p ? p.doc.width * p.doc.height * 4 : 0;
   }
 
-  addLayer(opts: { name?: string; blend?: BlendMode; opacity?: number; clip?: boolean } = {}): void {
-    // No room asked (1.60.2): a new layer holds no pixels until painted, and the first stroke's check counts them.
-    this.edit('New Layer', (p) => {
-      const names = new Set(p.doc.layers.map((l) => l.name));
-      let n = 1;
-      while (names.has(`Layer ${n}`)) n += 1;
-      const active = p.activeLayer;
-      const parentId = active?.isGroup ? active.id : active?.parentId ?? null;
-      const name = opts.name?.trim().slice(0, 200) || `Layer ${n}`;
-      // Clipped to the layer below it: that layer's own base when it is already clipped, else that layer.
-      const clipId = opts.clip && active && !active.isGroup ? active.clipId ?? active.id : null;
-      const layer = newLayer(name, p.doc, { parentId, clipId, ...(opts.blend ? { blend: opts.blend } : {}), ...(opts.opacity !== undefined ? { opacity: clamp(opts.opacity, 0, 1) } : {}) });
-      const layers = [...p.doc.layers];
-      let index = active ? layers.indexOf(active) + 1 : layers.length;
-      if (active?.isGroup) layers.forEach((l, i) => { if (l.parentId === active.id) index = Math.max(index, i + 1); });
-      layers.splice(index, 0, layer);
-      p.setLayers(layers);
-      if (parentId) p.collapsed.delete(parentId);
-      this.focus(p, layer.id);
-    });
-  }
+  addLayer(opts: { name?: string; blend?: BlendMode; opacity?: number; clip?: boolean } = {}): void { LS.addLayer(this.structHost, opts); }
 
   /** Layer > New > Group; the New Group dialog passes a name. One step. */
-  addFolder(name?: string): void {
-    this.edit('New Folder', (p) => {
-      const names = new Set(p.doc.layers.map((l) => l.name));
-      let n = 1;
-      while (names.has(`Folder ${n}`)) n += 1;
-      const active = p.activeLayer;
-      const group = newLayer(name?.trim().slice(0, 200) || `Folder ${n}`, p.doc, { isGroup: true, parentId: active?.parentId ?? null });
-      const layers = [...p.doc.layers];
-      layers.splice(active ? layers.indexOf(active) + 1 : layers.length, 0, group);
-      p.setLayers(layers);
-      this.focus(p, group.id);
-    });
-  }
+  addFolder(name?: string): void { LS.addFolder(this.structHost, name); }
 
   /** The bottom layer when it is the document's Background: named so, as a new document and Flatten Image make it. */
   backgroundLayer(): Layer | null {
@@ -3038,81 +2982,13 @@ export class Engine {
   }
 
   /** Layer > Duplicate Layer; the dialog passes a name, used when one layer or folder is duplicated. One step. */
-  duplicateLayers(name?: string): void {
-    const p0 = this.current;   // room for the copies (1.60.2)
-    if (p0 && !this.room([...p0.selectedIds].reduce((n, id) => { const r = p0.layer(id)?.raster; return n + (r ? r.width * r.height * 4 : 0); }, 0), 'Duplicating')) return;
-    this.edit('Duplicate Layer', (p) => {
-      const roots = this.selectedRoots(p);
-      if (!roots.length) return false;
-      const given = roots.length === 1 ? name?.trim().slice(0, 200) : undefined;
-      let layers = [...p.doc.layers];
-      let last: ID | null = null;
-      const links = new Map<ID, ID>();
-      for (const id of roots) {
-        const src = layers.find((l) => l.id === id);
-        if (!src) continue;
-        const subtree = [src, ...descendantIds(layers, id).map((d) => layers.find((l) => l.id === d) as Layer)];
-        const idMap = new Map<ID, ID>();
-        const clones = subtree.map((l) => { const c = this.cloneLayer(l, l === src ? { name: given || `${l.name} copy` } : {}); idMap.set(l.id, c.id); return c; });
-        const fixed = clones.map((c) => ({ ...c, parentId: c.parentId && idMap.has(c.parentId) ? (idMap.get(c.parentId) as ID) : c.parentId, clipId: c.clipId && idMap.has(c.clipId) ? (idMap.get(c.clipId) as ID) : c.clipId, link: c.link && (links.get(c.link) ?? links.set(c.link, uid()).get(c.link)) }));
-        layers.splice(layers.indexOf(src) + 1, 0, ...fixed);
-        last = fixed[0].id;
-      }
-      layers = this.normalizeClips(layers);
-      p.setLayers(layers);
-      this.focus(p, last);
-    });
-  }
+  duplicateLayers(name?: string): void { LS.duplicateLayers(this.structHost, name); }
 
   /** the live masks: layers that stay but are clipped to a layer being deleted. Deleting their base asks
    *  whether to bake their masked look into their pixels or remove the links; `deleteLayers(true)` bakes. */
-  liveMaskDependents(): ID[] {
-    const p = this.current;
-    if (!p || (p.maskTarget && p.activeLayer?.mask && p.selectedIds.size <= 1)) return [];
-    const doomed = this.doomedBy(p);
-    return p.doc.layers.filter((l) => !doomed.has(l.id) && !!l.clipId && doomed.has(l.clipId)).map((l) => l.id);
-  }
+  liveMaskDependents(): ID[] { return LS.liveMaskDependents(this.structHost); }
 
-  private doomedBy(p: Project): Set<ID> {
-    const doomed = new Set<ID>();
-    for (const id of this.selectedRoots(p)) { doomed.add(id); for (const d of descendantIds(p.doc.layers, id)) doomed.add(d); }
-    return doomed;
-  }
-
-  deleteLayers(bake = false): void {
-    const p0 = this.current;
-    if (!p0) return;
-    if (p0.maskTarget && p0.activeLayer?.mask && p0.selectedIds.size <= 1) { this.deleteMask(false); return; }
-    this.edit('Delete Layer', (p) => {
-      const roots = this.selectedRoots(p);
-      if (!roots.length) return false;
-      const doomed = this.doomedBy(p);
-      const order = hierarchy(p.doc, true).map((e) => e.layer.id);
-      const first = Math.min(...roots.map((id) => order.indexOf(id)));
-      // the Bake and Delete: a layer clipped to a deleted base keeps its current masked look in its own
-      // pixels, through the same coverage the renderer clips it with; adjustments and folders just unlink.
-      const baked = new Map<ID, Raster>();
-      if (bake) {
-        for (const l of p.doc.layers) {
-          if (doomed.has(l.id) || !l.clipId || !doomed.has(l.clipId) || !l.raster || l.adjustment || l.isGroup) continue;
-          const cov = this.work.clipCoverageOf(p.doc, l.clipId), r = l.raster.clone(), c = r.ctx;
-          c.save();
-          if (cov) {
-            setMat(c, invert(placement(l.transform, r.width, r.height)));
-            c.globalCompositeOperation = 'destination-in';
-            c.drawImage(cov, 0, 0);
-          } else c.clearRect(0, 0, r.width, r.height);
-          c.restore();
-          r.touch();
-          baked.set(l.id, r);
-        }
-      }
-      const kept = p.doc.layers.filter((l) => !doomed.has(l.id)).map((l) => (l.clipId && doomed.has(l.clipId) ? { ...l, clipId: null, ...(baked.has(l.id) ? { raster: baked.get(l.id) as Raster } : {}) } : l));
-      p.setLayers(this.normalizeClips(kept));
-      const remaining = order.filter((id) => !doomed.has(id));
-      this.focus(p, remaining[Math.min(Math.max(0, first), remaining.length - 1)] ?? null);
-    });
-  }
+  deleteLayers(bake = false): void { LS.deleteLayers(this.structHost, bake); }
 
   /** Layer > Delete > Hidden Layers, with what hidden folders hold. One step. */
   deleteHiddenLayers(): void {
@@ -3232,59 +3108,9 @@ export class Engine {
     this.setBlend(BLEND_MODES[(i + (forward ? 1 : n - 1)) % n].id);
   }
 
-  moveLayers(ids: ID[], targetId: ID, where: 'above' | 'below' | 'inside', duplicate = false): void {
-    this.edit(duplicate ? 'Duplicate Layers' : 'Move Layers', (p) => {
-      const map = byId(p.doc);
-      const target = map.get(targetId);
-      if (!target || (where === 'inside' && !target.isGroup)) return false;
-      const moving = p.doc.layers.filter((l) => ids.includes(l.id) && !ids.some((o) => o !== l.id && isDescendant(map, l.id, o)));
-      if (!moving.length || moving.some((l) => l.id === targetId)) return false;
-      const parentId = where === 'inside' ? target.id : target.parentId;
-      if (parentId && moving.some((l) => l.id === parentId || isDescendant(map, parentId, l.id))) return false;
-      let layers: Layer[];
-      let records: Layer[];
-      if (duplicate) {
-        layers = [...p.doc.layers];
-        const links = new Map<ID, ID>();
-        records = moving.filter((l) => !l.isGroup).map((l) => this.cloneLayer(l, { name: `${l.name} copy`, parentId, link: l.link && (links.get(l.link) ?? links.set(l.link, uid()).get(l.link)) }));
-      } else {
-        layers = p.doc.layers.filter((l) => !moving.includes(l));
-        records = moving.map((l) => ({ ...l, parentId }));
-      }
-      if (!records.length) return false;
-      let index: number;
-      if (where === 'inside') {
-        index = layers.indexOf(target) + 1;
-        layers.forEach((l, i) => { if (l.parentId === target.id) index = Math.max(index, i + 1); });
-        p.collapsed.delete(target.id);
-      } else {
-        const ti = layers.indexOf(target);
-        if (ti < 0) return false;
-        index = where === 'above' ? ti + 1 : ti;
-      }
-      layers.splice(index, 0, ...records);
-      const next = this.normalizeClips(layers);
-      const prev = p.doc.layers;
-      if (!duplicate && next.length === prev.length && next.every((l, i) => l.id === prev[i].id && l.parentId === prev[i].parentId && l.clipId === prev[i].clipId)) return false;
-      p.setLayers(next);
-      if (duplicate) this.focus(p, records[records.length - 1].id);
-    });
-  }
+  moveLayers(ids: ID[], targetId: ID, where: 'above' | 'below' | 'inside', duplicate = false): void { LS.moveLayers(this.structHost, ids, targetId, where, duplicate); }
 
-  moveActive(by: 1 | -1): void {
-    this.edit('Reorder Layers', (p) => {
-      const l = p.activeLayer;
-      if (!l) return false;
-      const sibs = p.doc.layers.filter((x) => x.parentId === l.parentId);
-      const other = sibs[sibs.indexOf(l) + by];
-      if (!other) return false;
-      const layers = [...p.doc.layers];
-      const a = layers.indexOf(l), b = layers.indexOf(other);
-      layers[a] = other;
-      layers[b] = l;
-      p.setLayers(this.normalizeClips(layers));
-    });
-  }
+  moveActive(by: 1 | -1): void { LS.moveActive(this.structHost, by); }
 
   /** Layer > Arrange > Bring to Front, Send to Back and Reverse, on the selected layers. One step. */
   arrangeLayers(how: 'front' | 'back' | 'reverse'): void {
@@ -3312,41 +3138,9 @@ export class Engine {
   }
 
   /** Layer > Group Layers, and New > Group from Layers with the dialog's name. One step. */
-  groupLayers(name?: string): void {
-    this.edit('Group Layers', (p) => {
-      const map = byId(p.doc);
-      const roots = this.selectedRoots(p);
-      if (!roots.length) return false;
-      const chains = roots.map((id) => [...ancestors(map, map.get(id) as Layer).map((a) => a.id), null] as Array<ID | null>);
-      const common = chains[0].find((c) => chains.every((ch) => ch.includes(c))) ?? null;
-      const names = new Set(p.doc.layers.map((l) => l.name));
-      let n = 1;
-      while (names.has(`Folder ${n}`)) n += 1;
-      const group = newLayer(name?.trim().slice(0, 200) || `Folder ${n}`, p.doc, { isGroup: true, parentId: common });
-      const branchIndex = (id: ID): number => {
-        let b = map.get(id) as Layer;
-        while (b.parentId !== common && b.parentId) b = map.get(b.parentId) as Layer;
-        return p.doc.layers.indexOf(b);
-      };
-      const at = Math.max(...roots.map(branchIndex)) + 1;
-      const layers = p.doc.layers.map((l) => (roots.includes(l.id) ? { ...l, parentId: group.id } : l));
-      layers.splice(at, 0, group);
-      p.setLayers(this.normalizeClips(layers));
-      this.focus(p, group.id);
-    });
-  }
+  groupLayers(name?: string): void { LS.groupLayers(this.structHost, name); }
 
-  moveOutOfFolder(): void {
-    this.edit('Move Out of Folder', (p) => {
-      const l = p.activeLayer;
-      if (!l?.parentId) return false;
-      const g = p.layer(l.parentId);
-      if (!g) return false;
-      const layers = p.doc.layers.filter((x) => x.id !== l.id);
-      layers.splice(layers.indexOf(g) + 1, 0, { ...l, parentId: g.parentId });
-      p.setLayers(this.normalizeClips(layers));
-    });
-  }
+  moveOutOfFolder(): void { LS.moveOutOfFolder(this.structHost); }
 
   /** Layer > Ungroup Layers: each selected folder's layers out to its place, the folder removed. One step. */
   ungroupLayers(): void {
@@ -3386,103 +3180,11 @@ export class Engine {
     });
   }
 
-  /** the copyLayer(into:): a layer, with a folder's contents, copied into another open project as one Copy
-   *  Layers from Project step there: new ids, cloned pixels, parent and clip links kept inside the copy and dropped
-   *  outside it, centered on the target canvas, on top of its stack; the target becomes current. Refused past
-   *  the target's pixel budget (LIMITS.pixels). */
-  copyLayerToProject(id: ID, targetKey: string): boolean {
-    const src = this.projects.find((q) => !!q.layer(id)), dst = this.projects.find((q) => q.id === targetKey);
-    const head = src?.layer(id);
-    if (!src || !dst || !head || src === dst || this.stroke) return false;
-    this.settle();
-    const included = new Set<ID>([id]);
-    for (let grew = true; grew;) {
-      grew = false;
-      for (const l of src.doc.layers) if (l.parentId && included.has(l.parentId) && !included.has(l.id)) { included.add(l.id); grew = true; }
-    }
-    const copied = src.doc.layers.filter((l) => included.has(l.id));
-    const pixels = (ls: readonly Layer[]): number => ls.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0);
-    if (pixels(dst.doc.layers) + pixels(copied) > LIMITS.pixels) { this.notice(`The copied layers exceed this project's ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`); return false; }
-    const dx = dst.doc.width / 2 - (head.transform.x + head.transform.w / 2), dy = dst.doc.height / 2 - (head.transform.y + head.transform.h / 2);
-    const ids = new Map(copied.map((l) => [l.id, uid()]));
-    const layers: Layer[] = copied.map((l) => ({
-      ...l,
-      id: ids.get(l.id) as ID,
-      parentId: l.parentId ? ids.get(l.parentId) ?? null : null,
-      clipId: l.clipId ? ids.get(l.clipId) ?? null : null,
-      transform: { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy },
-      raster: l.raster ? l.raster.clone() : null,
-      mask: l.mask ? { ...l.mask, raster: l.mask.raster ? l.mask.raster.clone() : null, placement: l.mask.placement ? { ...l.mask.placement, x: l.mask.placement.x + dx, y: l.mask.placement.y + dy } : null } : null,
-    }));
-    this.switchTo(dst.id);
-    this.edit('Copy Layers from Project', (p) => {
-      p.setLayers([...p.doc.layers, ...layers]);
-      this.focus(p, ids.get(id) as ID);
-      return true;
-    });
-    return true;
-  }
+  copyLayerToProject(id: ID, targetKey: string): boolean { return LS.copyLayerToProject(this.structHost, id, targetKey); }
 
-  toggleClip(id?: ID): void {
-    this.edit('Clipping Mask', (p) => {
-      const l = p.layer(id ?? p.activeId ?? '');
-      if (!l || l.isGroup) return false;
-      if (l.clipId) { p.updateLayer(l.id, { clipId: null }); p.setLayers(this.normalizeClips([...p.doc.layers])); return true; }
-      const sibs = p.doc.layers.filter((x) => x.parentId === l.parentId);
-      let j = sibs.indexOf(l) - 1;
-      while (j >= 0 && sibs[j].clipId) j -= 1;
-      const base = sibs[j];
-      if (!base || base.isGroup || base.adjustment) { this.notice('A clipping mask needs a pixel layer directly below.'); return false; }
-      p.updateLayer(l.id, { clipId: base.id });
-      return true;
-    });
-  }
+  toggleClip(id?: ID): void { LS.toggleClip(this.structHost, id); }
 
-  mergeLayers(): void {
-    const p0 = this.current;
-    const active = p0?.activeLayer;
-    if (!p0 || !active) return;
-    let ids: ID[];
-    let remove: Set<ID>;
-    let anchor: Layer;
-    let title: string;
-    if (p0.selectedIds.size > 1) {
-      const roots = this.selectedRoots(p0);
-      remove = new Set<ID>();
-      for (const id of roots) { remove.add(id); for (const d of descendantIds(p0.doc.layers, id)) remove.add(d); }
-      ids = [...remove];
-      anchor = p0.doc.layers.filter((l) => roots.includes(l.id)).pop() as Layer;
-      title = 'Merge Layers';
-    } else if (active.isGroup) {
-      ids = descendantIds(p0.doc.layers, active.id);
-      remove = new Set([active.id, ...ids]);
-      anchor = active;
-      title = 'Merge Group';
-    } else {
-      const sibs = p0.doc.layers.filter((l) => l.parentId === active.parentId);
-      const below = sibs[sibs.indexOf(active) - 1];
-      if (!below || below.isGroup) { this.notice('Merge Down needs a layer directly below.'); return; }
-      ids = [below.id, active.id];
-      remove = new Set(ids);
-      anchor = below;
-      title = 'Merge Down';
-    }
-    this.edit(title, (p) => {
-      const set = new Set(ids);
-      let b: Rect | null = null;
-      for (const l of p.doc.layers) if (set.has(l.id) && l.raster && !l.isGroup) b = unionRect(b, transformBounds(l.transform));
-      if (!b) return false;
-      let r = integral(b);
-      if (r.w > LIMITS.side || r.h > LIMITS.side || r.w * r.h > LIMITS.pixels) r = intersectRect(r, { x: 0, y: 0, w: p.doc.width, h: p.doc.height }) ?? r;
-      const s = createSurface(r.w, r.h);
-      this.work.render({ doc: p.doc, target: s, view: translation(-r.x, -r.y), only: set, quality: 'high', ignoreFolderMasks: true });
-      const merged = newLayer(anchor.name, p.doc, { raster: Raster.from(s, r.w, r.h), parentId: anchor.parentId, transform: { ...docTransform(r.w, r.h), x: r.x, y: r.y } });
-      const next: Layer[] = [];
-      for (const l of p.doc.layers) { if (l.id === anchor.id) next.push(merged); if (!remove.has(l.id)) next.push(l); }
-      p.setLayers(this.normalizeClips(next));
-      this.focus(p, merged.id);
-    });
-  }
+  mergeLayers(): void { LS.mergeLayers(this.structHost); }
 
   /** Layer > Merge Visible: hidden layers stay; each artboard merges on its own. One step. */
   mergeVisible(): void {
