@@ -112,30 +112,28 @@ export interface ImportedImage { source: CanvasImageSource; width: number; heigh
 type Target = 'pixels' | 'mask';
 type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'autoSelectTarget' | 'lockRatio'>;
 
-export const luminance = (c: RGB): number => (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
-export const rgbCss = (c: RGB, a = 1): string => `rgba(${c.r},${c.g},${c.b},${a})`;
-export const hexOf = (c: RGB): string => '#' + [c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join('');
-export const stripExt = (name: string): string => name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled';
+export function luminance(c: RGB): number { return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255; }
+export function rgbCss(c: RGB, a = 1): string { return `rgba(${c.r},${c.g},${c.b},${a})`; }
+export function hexOf(c: RGB): string { return '#' + [c.r, c.g, c.b].map((v) => Math.round(v).toString(16).padStart(2, '0')).join(''); }
+export function stripExt(name: string): string { return name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled'; }
 
 function followMask(l: Layer, next: Transform): Mask | null {
-  const m = l.mask;
-  if (!m || !m.placement || !m.linked) return m;
-  const o = l.transform;
-  if (o.w === next.w && o.h === next.h && o.rotation === next.rotation && o.flipX === next.flipX && o.flipY === next.flipY) {
-    return { ...m, placement: { ...m.placement, x: m.placement.x + next.x - o.x, y: m.placement.y + next.y - o.y } };
-  }
-  return m;
+  const m = l.mask, t = l.transform;
+  if (!m || !m.linked || !m.placement) return m;
+  if (t.w !== next.w || t.h !== next.h || t.rotation !== next.rotation || t.flipX !== next.flipX || t.flipY !== next.flipY) return m;
+  return { ...m, placement: { ...m.placement, x: m.placement.x + (next.x - t.x), y: m.placement.y + (next.y - t.y) } };
 }
 
 function mirrored(t: Transform, horizontal: boolean, W: number, H: number): Transform {
   return horizontal
-    ? { ...t, x: W - t.x - t.w, flipX: !t.flipX, rotation: -t.rotation }
-    : { ...t, y: H - t.y - t.h, flipY: !t.flipY, rotation: -t.rotation };
+    ? { ...t, x: W - (t.x + t.w), flipX: !t.flipX, rotation: -t.rotation }
+    : { ...t, y: H - (t.y + t.h), flipY: !t.flipY, rotation: -t.rotation };
 }
 
-/** A layer mask through a distortion: warped pixels (for a linked mask), and where it is placed (for a mask placed
- *  apart, its warped bounds; for an unlinked mask, where it stays). */
-interface DistortedMask { warped: Warped | null; placement: Transform | null }
+interface DistortedMask {
+  warped: Warped | null;
+  placement: Transform | null;
+}
 
 /** Why a smart object's pixels cannot be changed directly, and what to do instead. */
 const SHAPE_NOTICE = 'This is a shape layer. Reshape it with Direct Selection on its Shape Path, or rasterize it (Layer > Rasterize Layer) to change its pixels.';
@@ -246,8 +244,6 @@ export class Engine {
   lassoFeather = 0;
   lassoKind: 'freehand' | 'polygonal' | 'magnetic' = 'freehand';
   wand = { tolerance: 32, contiguous: true, sampleAll: false, sampleSize: 0, antialias: true };
-  /** smooth Lasso and elliptical Marquee edges (rectangles snap to whole pixels and
-   *  the Magic Wand's edges follow pixels exactly, so neither changes). On by default. */
   selectionAntialiased = true;
   showPixelGrid = true;
   showTransformControls = true;
@@ -363,7 +359,7 @@ export class Engine {
   }
 
   private refresh(): void {
-    for (const key of ['doc', 'selection', 'active', 'history', 'render', 'options'] as const) this.emit(key, null);
+    for (const k of ['doc', 'selection', 'active', 'history', 'render', 'options'] as const) this.emit(k, null);
     this.schedulePaging();   // 1.60.8
   }
 
@@ -604,11 +600,11 @@ export class Engine {
   }
 
   private uniqueName(name: string): string {
-    const taken = new Set(this.projects.map((p) => p.name));
-    if (!taken.has(name)) return name;
-    let n = 2;
-    while (taken.has(`${name} ${n}`)) n += 1;
-    return `${name} ${n}`;
+    const taken = (n: string): boolean => this.projects.some((p) => p.name === n);
+    if (!taken(name)) return name;
+    let i = 2;
+    while (taken(`${name} ${i}`)) i++;
+    return `${name} ${i}`;
   }
 
   addProject(doc: Doc, name: string, activeId: ID | null = null): Project {
@@ -1051,7 +1047,7 @@ export class Engine {
       this.timelines.set(p, { ...this.timelineOf(p), video: v });
       this.emit('timeline', null);
     }
-    this.focus(p, s.activeId && s.doc.layers.some((l) => l.id === s.activeId) ? s.activeId : null);
+    this.focus(p, s.doc.layers.some((l) => l.id === s.activeId) ? s.activeId : null);
     this.refresh();
   }
 
@@ -1079,9 +1075,6 @@ export class Engine {
     this.emit('overlay', null);
   }
 
-  /** the right-drag with a brush tool: left and right resize the brush from its size at the press, the
-   *  circle's edge following the pointer (each screen point widens the radius by a screen point), or with Shift change
-   *  its hardness (the full range across 200 points). The brush circle stays where the press was. */
   tipDrag: { at: Pt; startX: number; diameter: number; hardness: number } | null = null;
 
   beginTipDrag(at: Pt, screenX: number): boolean {
@@ -1138,13 +1131,22 @@ export class Engine {
   /** The Eyedropper's Sample (1.50.7), as Photoshop's: the active layer, it and those below, or everything shown. */
   eyedropperSample: HealSample = 'all';
   setTone(patch: Partial<Engine['tone']>): void { this.tone = { ...this.tone, ...patch }; this.emit('options', null); }
-  setColors(fg?: RGB, bg?: RGB): void { if (fg) this.fg = fg; if (bg) this.bg = bg; this.emit('colors', null); this.emit('options', null); }
+  setColors(fg?: RGB, bg?: RGB): void {
+    if (fg) this.fg = fg;
+    if (bg) this.bg = bg;
+    this.emit('colors', null); this.emit('options', null);
+  }
   swapColors(): void { this.setColors(this.bg, this.fg); }
   defaultColors(): void { this.setColors({ r: 0, g: 0, b: 0 }, { r: 255, g: 255, b: 255 }); }
 
   /** View > Fill Screen (1.50.7, the Zoom tool's bar): the image covering the visible area, centred. */
   fillScreen(): void { const p = this.current; if (!p) return; p.viewport.fill(p.doc.width, p.doc.height); this.emit('viewport', null); this.emit('render', null); }
-  fit(): void { const p = this.current; if (!p) return; p.viewport.fit(p.doc.width, p.doc.height); this.emit('viewport', null); this.emit('render', null); }
+  fit(): void {
+    const p = this.current;
+    if (!p) return;
+    p.viewport.fit(p.doc.width, p.doc.height);
+    this.emit('viewport', null); this.emit('render', null);
+  }
   zoomTo(z: number, at?: Pt): void {
     const v = this.current?.viewport;
     if (!v) return;
@@ -1153,12 +1155,22 @@ export class Engine {
     this.emit('viewport', null);
     this.emit('render', null);
   }
-  zoomStep(inward: boolean, at?: Pt): void { const z = this.current?.viewport.zoom ?? 1; this.zoomTo(inward ? z * 1.25 : z / 1.25, at); }
-  pan(dx: number, dy: number): void { const v = this.current?.viewport; if (!v) return; v.panBy(dx, dy); this.emit('viewport', null); this.emit('render', null); }
+  zoomStep(inward: boolean, at?: Pt): void {
+    const z = this.current?.viewport.zoom ?? 1;
+    this.zoomTo(inward ? z * 1.25 : z / 1.25, at);
+  }
+  pan(dx: number, dy: number): void {
+    const v = this.current?.viewport;
+    if (!v) return;
+    v.panBy(dx, dy);
+    this.emit('viewport', null);
+    this.emit('render', null);
+  }
 
   compose(target: Surface, view: Mat, quality: ImageSmoothingQuality = 'high'): void {
     const p = this.current;
-    if (p) this.display.render({ doc: p.doc, target, view, overrides: this.overrides(p), quality });
+    if (!p) return;
+    this.display.render({ doc: p.doc, target, view, overrides: this.overrides(p), quality });
   }
 
   /** The GPU display's view of the current document (Phase 18.2b): its visible layers bottom to top, each with its
@@ -2647,14 +2659,13 @@ export class Engine {
       if (te.group) for (const [id, orig] of te.group.originals) m.set(id, { ...(m.get(id) ?? {}), transform: keyed(id, following(orig, te.group.box, te.draft)) });
       else m.set(te.layerId, { ...(m.get(te.layerId) ?? {}), ...(te.mask ? { maskPlacement: te.draft } : { transform: keyed(te.layerId, te.draft) }) });
     }
-    const dz = this.distortEdit;
-    if (dz && dz.project === p) {
-      for (const [id, pv] of dz.previews) {
-        if (!pv.pixels) continue;
-        const mk = pv.mask;
-        m.set(id, { ...(m.get(id) ?? {}), source: pv.pixels.raster.canvas, transform: pv.pixels.t,
-          ...(mk?.warped ? { maskSource: mk.warped.raster.canvas } : {}), ...(mk?.placement ? { maskPlacement: mk.placement } : {}) });
-      }
+    const de = this.distortEdit;
+    if (de && de.project === p) for (const [id, v] of de.previews) {
+      if (!v.pixels) continue;
+      const o: LayerOverride = { source: v.pixels.raster.canvas, transform: v.pixels.t };
+      if (v.mask?.warped) o.maskSource = v.mask.warped.raster.canvas;
+      if (v.mask?.placement) o.maskPlacement = v.mask.placement;
+      m.set(id, { ...(m.get(id) ?? {}), ...o });
     }
     const pv = this.preview;
     const mw = this.meshWarpEdit;
@@ -2666,8 +2677,8 @@ export class Engine {
     if (pv && pv.project === p) m.set(pv.layerId, { ...(m.get(pv.layerId) ?? {}), ...(pv.target === 'pixels' ? { source: pv.surface } : { maskSource: pv.surface }), ...(pv.transform ? { transform: pv.transform } : {}) });
     const gr = this.gradient;
     if (gr && gr.project === p) m.set(gr.layerId, { ...(m.get(gr.layerId) ?? {}), ...(gr.target === 'pixels' ? { source: gr.surface } : { maskSource: gr.surface }) });
-    const wp = this.warpState;
-    if (wp && wp.project === p) m.set(wp.layerId, { ...(m.get(wp.layerId) ?? {}), source: wp.surface, transform: docTransform(p.doc.width, p.doc.height) });
+    const ws = this.warpState;
+    if (ws && ws.project === p) m.set(ws.layerId, { ...(m.get(ws.layerId) ?? {}), source: ws.surface, transform: docTransform(p.doc.width, p.doc.height) });
     const tx = this.textEditing;
     if (tx && tx.project === p) m.set(tx.layerId, { ...(m.get(tx.layerId) ?? {}), hidden: true });
     const ep = this.effectPreview;
