@@ -32,6 +32,9 @@ import * as LM from './layer-masks';
 import * as PM from './pixel-move';
 import * as TC from './transform-commit';
 import * as PO from './paint-ops';
+import * as SO from './select-ops';
+import * as IE from './image-edit';
+import * as DS from './document-size';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
@@ -3805,34 +3808,7 @@ export class Engine {
     st.s.release();
   }
 
-  private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void, region?: SelectionMask | null): void {
-    this.edit(name, (p) => {
-      if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer first.'); return false; }
-      if (this.smartLocked(p)) return false;
-      const pick = this.target(p);
-      if (!pick) return false;
-      const { raster } = pick;
-      let rect: Rect = { x: 0, y: 0, w: raster.width, h: raster.height };
-      let cover: Surface | null = null;
-      const sel = region !== undefined ? region : p.selection;
-      if (sel) {
-        const toLocal = mul(invert(pick.local), translation(sel.x, sel.y));
-        const b = integral(boundsOf([applyMat(toLocal, 0, 0), applyMat(toLocal, sel.w, 0), applyMat(toLocal, sel.w, sel.h), applyMat(toLocal, 0, sel.h)]));
-        const r = intersectRect({ x: b.x - 1, y: b.y - 1, w: b.w + 2, h: b.h + 2 }, rect);
-        if (!r) return false;
-        rect = r;
-        cover = createSurface(rect.w, rect.h);
-        const c = ctxOf(cover);
-        setMat(c, mul(translation(-rect.x, -rect.y), toLocal));
-        c.drawImage(sel.surface(), 0, 0);
-      }
-      const before = raster.read(rect.x, rect.y, rect.w, rect.h);
-      try { apply({ raster, target: pick.target, rect, cover }); } catch (err) { raster.write(before, rect.x, rect.y); raster.touch(); throw err; }
-      if (pick.target === 'pixels' && p.layer(pick.layer.id)?.shape) p.updateLayer(pick.layer.id, { shape: null });
-      raster.touch();
-      p.history.addPatch({ raster, x: rect.x, y: rect.y, before, after: raster.read(rect.x, rect.y, rect.w, rect.h) });
-    });
-  }
+  private regionEdit(name: string, apply: (a: { raster: Raster; target: Target; rect: Rect; cover: Surface | null }) => void, region?: SelectionMask | null): void { IE.regionEdit(this.editHost, name, apply, region); }
 
   /** A pattern tiled from the raster's corner over `rect`, kept to `cover` (the Paint Bucket's Pattern source). */
   private patternTint(rect: Rect, tile: Surface, cover: Surface | null): Surface {
@@ -3842,14 +3818,7 @@ export class Engine {
     return s;
   }
 
-  private tint(rect: Rect, style: string, cover: Surface | null): Surface {
-    const s = createSurface(rect.w, rect.h);
-    const c = ctxOf(s);
-    c.fillStyle = style;
-    c.fillRect(0, 0, rect.w, rect.h);
-    if (cover) { c.globalCompositeOperation = 'destination-in'; c.drawImage(cover, 0, 0); }
-    return s;
-  }
+  private tint(rect: Rect, style: string, cover: Surface | null): Surface { return IE.tint(rect, style, cover); }
 
   /** Edit > Fill: the selection, or the whole layer, filled with a colour or a pattern (tiled from the layer's corner)
    *  in a blend mode at an opacity, optionally keeping transparent pixels transparent, as one step. On a mask the
@@ -4096,56 +4065,11 @@ export class Engine {
     }
   }
 
-  clearPixels(): void {
-    this.regionEdit('Clear', ({ raster, target, rect, cover }) => {
-      const c = raster.ctx;
-      const t = this.tint(rect, '#ffffff', cover);
-      c.save();
-      c.setTransform(1, 0, 0, 1, 0, 0);
-      c.globalCompositeOperation = 'destination-out';
-      c.drawImage(t, rect.x, rect.y);
-      const v = target === 'mask' ? luminance(this.bg) : 0;
-      if (v > 0) { c.globalCompositeOperation = 'lighter'; c.globalAlpha = v; c.drawImage(t, rect.x, rect.y); }
-      c.restore();
-    });
-  }
+  clearPixels(): void { SO.clearPixels(this.selectHost); }
 
-  invertPixels(): void {
-    const mask = !!(this.current?.maskTarget && this.activeLayer?.mask);
-    this.regionEdit(mask ? 'Invert Mask' : 'Invert', ({ raster, target, rect, cover }) => {
-      const img = raster.read(rect.x, rect.y, rect.w, rect.h);
-      const d = img.data;
-      const cv = cover ? ctxOf(cover).getImageData(0, 0, rect.w, rect.h).data : null;
-      for (let i = 0; i < d.length; i += 4) {
-        const k = cv ? cv[i + 3] / 255 : 1;
-        if (k <= 0) continue;
-        if (target === 'mask') {
-          d[i + 3] = d[i + 3] + (255 - 2 * d[i + 3]) * k;
-          d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
-        } else if (d[i + 3]) {
-          d[i] += (255 - 2 * d[i]) * k;
-          d[i + 1] += (255 - 2 * d[i + 1]) * k;
-          d[i + 2] += (255 - 2 * d[i + 2]) * k;
-        }
-      }
-      raster.ctx.putImageData(img, rect.x, rect.y);
-    });
-  }
+  invertPixels(): void { SO.invertPixels(this.selectHost); }
 
-  applySelection(next: SelectionMask | null, mode: SelectionMode, name: string): void {
-    this.edit(name, (p) => {
-      const cur = p.selection;
-      let result: SelectionMask | null;
-      if (mode === 'replace') result = next;
-      else if (!next) result = cur;
-      else if (!cur) result = mode === 'add' ? next : null;
-      else result = cur.combine(next, mode);
-      if (result === cur) return false;
-      if (cur && !result) this.lastSelections.set(p, cur);
-      p.selection = result;
-      return true;
-    });
-  }
+  applySelection(next: SelectionMask | null, mode: SelectionMode, name: string): void { SO.applySelection(this.selectHost, next, mode, name); }
 
   private readonly lastSelections = new WeakMap<Project, SelectionMask>();
 
@@ -4333,18 +4257,7 @@ export class Engine {
   deselect(): void { if (this.current?.selection) this.applySelection(null, 'replace', 'Deselect'); }
   invertSelection(): void { this.edit('Inverse Selection', (p) => { if (!p.selection) return false; p.selection = p.selection.inverted(p.doc.width, p.doc.height); return true; }); }
 
-  selectLayerPixels(id?: ID): void {
-    const p = this.current;
-    const l = p?.layer(id ?? p.activeId ?? '');
-    if (!p || !l?.raster) return;
-    const b = intersectRect(integral(transformBounds(l.transform)), { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
-    if (!b) { this.applySelection(null, 'replace', "Select Layer's Pixels"); return; }
-    const s = createSurface(b.w, b.h);
-    const c = ctxOf(s);
-    setMat(c, mul(translation(-b.x, -b.y), placement(l.transform, l.raster.width, l.raster.height)));
-    c.drawImage(l.raster.canvas, 0, 0);
-    this.applySelection(SelectionMask.fromAlpha(b.x, b.y, b.w, b.h, c.getImageData(0, 0, b.w, b.h).data), 'replace', "Select Layer's Pixels");
-  }
+  selectLayerPixels(id?: ID): void { SO.selectLayerPixels(this.selectHost, id); }
 
   /** Paint Bucket: the area of similar colour around `pt`, found as Magic Wand finds it with the bucket's own settings,
    *  its edge softened by a pixel when anti-aliased, kept within any selection, filled with the foreground colour at the
@@ -4571,29 +4484,7 @@ export class Engine {
     this.emit('render', null);
   }
 
-  magicWand(pt: Pt, mode: SelectionMode): void {
-    const p = this.current;
-    if (!p) return;
-    const { width: W, height: H } = p.doc;
-    const x = Math.floor(pt.x), y = Math.floor(pt.y);
-    if (x < 0 || y < 0 || x >= W || y >= H) return;
-    let surface: Surface;
-    if (this.wand.sampleAll) surface = renderDoc(this.work, p.doc);
-    else {
-      const l = p.activeLayer;
-      if (!l) { this.notice('Select a layer first.'); return; }
-      surface = createSurface(W, H);   // an empty layer is transparent (1.50.2), as Photoshop's
-      if (l.raster) {
-        const c = ctxOf(surface);
-        setMat(c, placement(l.transform, l.raster.width, l.raster.height));
-        c.drawImage(l.raster.canvas, 0, 0);
-      }
-    }
-    const data = ctxOf(surface).getImageData(0, 0, W, H).data;
-    const hard = wandMask(data, W, H, x, y, this.wand.tolerance, this.wand.contiguous, this.wand.sampleSize);
-    const mask = this.wand.antialias ? antialiasMask(hard, W, H) : hard;
-    this.applySelection(SelectionMask.cropped(0, 0, W, H, mask), mode, 'Magic Wand');
-  }
+  magicWand(pt: Pt, mode: SelectionMode): void { SO.magicWand(this.selectHost, pt, mode); }
 
   beginSelectionShift(): void {
     const p = this.current;
@@ -5573,17 +5464,7 @@ export class Engine {
     this.emit('render', null);
   }
 
-  targetImage(): { layerId: ID; target: Target; image: ImageData; width: number; height: number; unitsPerPixel: number } | null {
-    const p = this.current;
-    const l = p?.activeLayer ?? null;
-    if (!p || !this.paintable(l)) return null;
-    const onMask = p.maskTarget && !!l.mask;
-    const r = onMask ? l.mask?.raster ?? null : l.raster;
-    if (!r) return null;
-    const t = onMask ? l.mask?.placement ?? l.transform : l.transform;
-    const img = r.read();
-    return { layerId: l.id, target: onMask ? 'mask' : 'pixels', image: onMask ? toGray(img) : img, width: r.width, height: r.height, unitsPerPixel: t.w / r.width };
-  }
+  targetImage(): { layerId: ID; target: Target; image: ImageData; width: number; height: number; unitsPerPixel: number } | null { return IE.targetImage(this.editHost); }
 
   get targetSize(): { width: number; height: number } | null {
     const p = this.current, l = p?.activeLayer ?? null;
@@ -5615,21 +5496,7 @@ export class Engine {
     return c.getImageData(0, 0, w, h).data;
   }
 
-  private blendThrough(src: ImageData, out: ImageData, cov: Uint8ClampedArray): ImageData {
-    const res = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-    const d = res.data, o = out.data;
-    for (let i = 0; i < d.length; i += 4) {
-      const k = cov[i + 3] / 255;
-      if (k <= 0) continue;
-      const sa = d[i + 3], oa = o[i + 3], a = sa + (oa - sa) * k;
-      for (let c = 0; c < 3; c++) {
-        const v = d[i + c] * sa + (o[i + c] * oa - d[i + c] * sa) * k;
-        d[i + c] = a > 0 ? v / a : 0;
-      }
-      d[i + 3] = a;
-    }
-    return res;
-  }
+  private blendThrough(src: ImageData, out: ImageData, cov: Uint8ClampedArray): ImageData { return IE.blendThrough(src, out, new ImageData(new Uint8ClampedArray(cov), src.width, src.height)); }
 
   private canGrow(p: Project, l: Layer): boolean { return !p.selection && !l.mask && !!l.raster; }
 
@@ -5643,43 +5510,7 @@ export class Engine {
     return { area: p.selection ? local(p.selection.rect) : canvas, canvas, doc: { w: p.doc.width, h: p.doc.height } };
   }
 
-  private grown(l: Layer, grow: number, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData): { raster: Raster; transform: Transform } {
-    const r = l.raster as Raster, g = Math.ceil(grow);
-    const big = new Raster(r.width + 2 * g, r.height + 2 * g);
-    big.ctx.drawImage(r.canvas, g, g);
-    big.write(run(big.read(), 1, this.current ? this.filterFrame(this.current, l.transform, r.width, r.height, g) : undefined));
-    const t = l.transform, sx = t.w / r.width, sy = t.h / r.height;
-    return { raster: big, transform: { ...t, x: t.x - g * sx, y: t.y - g * sy, w: t.w + 2 * g * sx, h: t.h + 2 * g * sy } };
-  }
-
-  previewImageEdit(run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void {
-    const token = ++this.previewToken;
-    const p = this.current;
-    const l = p?.activeLayer ?? null;
-    if (!p || !this.paintable(l)) { this.setPreview(null); return; }
-    const onMask = p.maskTarget && !!l.mask;
-    const r = onMask ? l.mask?.raster ?? null : l.raster;
-    if (!r) { this.setPreview(null); return; }
-    const scale = Math.min(1, Math.sqrt(maxPixels / (r.width * r.height)));
-    const w = Math.max(1, Math.round(r.width * scale)), h = Math.max(1, Math.round(r.height * scale));
-    const g = grow > 0 && !onMask && this.canGrow(p, l) ? Math.ceil(grow * scale) : 0;
-    const s = createSurface(w + 2 * g, h + 2 * g);
-    const c = ctxOf(s);
-    c.drawImage(r.canvas, g, g, w, h);
-    let src = c.getImageData(0, 0, w + 2 * g, h + 2 * g);
-    if (onMask) src = toGray(src);
-    const finish = (out: ImageData): void => {
-      const cov = g ? null : this.coverageFor(p, l, onMask ? 'mask' : 'pixels', w, h);
-      let result = cov ? this.blendThrough(src, out, cov) : out;
-      if (onMask) result = fromGray(result);
-      c.putImageData(result, 0, 0);
-      const t = l.transform, gx = (g / scale) * (t.w / r.width), gy = (g / scale) * (t.h / r.height);
-      this.setPreview(l.id, onMask ? 'mask' : 'pixels', s, g ? { ...t, x: t.x - gx, y: t.y - gy, w: t.w + 2 * gx, h: t.h + 2 * gy } : undefined);
-    };
-    const out = run(src, scale, this.filterFrame(p, onMask ? l.mask?.placement ?? l.transform : l.transform, w, h, g));
-    if (out instanceof Promise) { void out.then((done) => { if (token === this.previewToken) finish(done); }).catch(() => undefined); return; }
-    finish(out);
-  }
+  previewImageEdit(run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData | Promise<ImageData>, grow = 0, maxPixels = 2_000_000): void { ++this.previewToken; IE.previewImageEdit(this.editHost, run, grow, maxPixels); }
 
   /** Filters on layers past this many pixels run in bands (1.60.9, DEV_PLAN 26.4); settable so a check can force either way. */
   bandFrom = 16_000_000;
@@ -5972,36 +5803,7 @@ export class Engine {
     });
   }
 
-  applyImageEdit(name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData, grow = 0, peak = 2): void {
-    // Its peak in layer-sizes, as its caller measured it (1.61.1: the filters peak at 2 to 19; two when unmeasured).
-    if (!this.room(this.layerBytes() * peak, name)) return;
-    const al = this.current?.activeLayer;
-    if ((al?.smart || al?.vector || al?.fillContent) && !(this.current?.maskTarget && al.mask)) { this.notice(al.vector ? SHAPE_NOTICE : al.fillContent ? FILL_NOTICE : SMART_NOTICE); return; }
-    this.preview = null;
-    const p0 = this.current;
-    const l0 = p0?.activeLayer ?? null;
-    if (!p0 || !this.paintable(l0)) { this.notice('Select a pixel layer first.'); this.emit('render', null); return; }
-    if (grow > 0 && !(p0.maskTarget && l0.mask) && this.canGrow(p0, l0)) {
-      this.edit(name, (p) => {
-        const l = p.layer(l0.id);
-        if (!l?.raster) return false;
-        const g = this.grown(l, grow, run);
-        p.updateLayer(l.id, { raster: g.raster, transform: g.transform, shape: null });
-        return true;
-      });
-      return;
-    }
-    this.regionEdit(name, ({ raster, target, rect }) => {
-      const p = this.current as Project;
-      const l = p.activeLayer as Layer;
-      const src = target === 'mask' ? toGray(raster.read()) : raster.read();
-      const out = run(src, 1, this.filterFrame(p, target === 'mask' ? l.mask?.placement ?? l.transform : l.transform, raster.width, raster.height));
-      const cov = this.coverageFor(p, l, target, raster.width, raster.height);
-      let result = cov ? this.blendThrough(src, out, cov) : out;
-      if (target === 'mask') result = fromGray(result);
-      raster.ctx.putImageData(result, 0, 0, rect.x, rect.y, rect.w, rect.h);
-    });
-  }
+  applyImageEdit(name: string, run: (src: ImageData, scale: number, frame?: LibFrame) => ImageData, grow = 0, peak = 2): void { IE.applyImageEdit(this.editHost, name, run, grow, peak); }
 
   /** applyImageEdit with the work done off the main thread: the source is prepared as the synchronous path prepares
    *  it (padded for a filter that reaches past the layer, grown to the canvas as painting grows a layer, grey for a
@@ -6308,25 +6110,7 @@ export class Engine {
     return ok;
   }
 
-  resizeCanvas(width: number, height: number, dx: number, dy: number, fill: RGB | null = null, name = 'Canvas Size'): boolean {
-    if (!this.current || !this.sizeOk(width, height)) return false;
-    const ok = this.edit(name, (p) => {
-      const { width: oldW, height: oldH } = p.doc;
-      if (width === oldW && height === oldH && !dx && !dy) return false;
-      const shift = (t: Transform): Transform => ({ ...t, x: t.x + dx, y: t.y + dy });
-      let layers: Layer[] = this.carryVectors(p.doc.layers.map((l) => ({ ...l, transform: shift(l.transform), mask: l.mask?.placement ? { ...l.mask, placement: shift(l.mask.placement) } : l.mask, ...(l.artboard ? { artboard: { ...l.artboard, x: l.artboard.x + dx, y: l.artboard.y + dy } } : {}) })), (x, y) => ({ x: x + dx, y: y + dy }));
-      if (fill && (width > oldW || height > oldH)) {
-        const r = Raster.filled(width, height, rgbCss(fill));
-        r.ctx.clearRect(dx, dy, oldW, oldH);
-        layers = [newLayer('Canvas Extension', { width, height }, { raster: r }), ...layers];
-      }
-      p.doc = { ...p.doc, width, height, layers, ...alphasMoved(p.doc, (m) => m.translated(dx, dy, width, height)) };
-      if (p.selection) p.selection = p.selection.translated(dx, dy, width, height);
-      return true;
-    });
-    if (ok) this.fit();
-    return ok;
-  }
+  resizeCanvas(width: number, height: number, dx: number, dy: number, fill: RGB | null = null, name = 'Canvas Size'): boolean { return DS.resizeCanvas(this.sizeHost, width, height, dx, dy, fill, name); }
 
   /** Image > Trim: crops away the border of transparent pixels, or of pixels the colour of the top-left or bottom-right
    *  pixel, judged on the flattened image, as one undo step. */
@@ -6489,42 +6273,7 @@ export class Engine {
     return this.resizeCanvas(r.w, r.h, -r.x, -r.y, null, 'Crop');
   }
 
-  resampleImage(width: number, height: number, sampling: Transform['sampling'], resolution: number): boolean {
-    const p0 = this.current;
-    if (!p0 || !this.sizeOk(width, height)) return false;
-    if (p0.doc.layers.some((l) => l.tiled)) { this.notice('A document with layers past 268 megapixels cannot be resampled yet.'); return false; }
-    const sx0 = width / p0.doc.width, sy0 = height / p0.doc.height;
-    const used = p0.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0);
-    if (used * sx0 * sy0 > LIMITS.pixels) { this.notice(`The resized layers would exceed the ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel document limit.`, 'error'); return false; }
-    const scaleRaster = (r: Raster, w: number, h: number): Raster => {
-      const out = new Raster(w, h);
-      out.ctx.imageSmoothingEnabled = sampling !== 'nearest';
-      if (sampling !== 'nearest') out.ctx.imageSmoothingQuality = sampling === 'smooth' ? 'medium' : 'high';
-      out.ctx.drawImage(r.canvas, 0, 0, w, h);
-      return out;
-    };
-    const ok = this.edit('Image Size', (p) => {
-      const sx = width / p.doc.width, sy = height / p.doc.height;
-      if (sx === 1 && sy === 1 && resolution === p.doc.resolution) return false;
-      const scaleT = (t: Transform): Transform => ({ ...t, x: t.x * sx, y: t.y * sy, w: t.w * sx, h: t.h * sy });
-      const layers = p.doc.layers.map((l) => {
-        const t = scaleT(l.transform);
-        const radii = l.shape ? cornerRadiiOf(l.shape) : null;
-        const shape = l.shape ? { ...l.shape, cornerRadius: (Number(l.shape.cornerRadius) || 0) * Math.min(sx, sy), ...(radii ? { cornerRadii: radii.map((v) => v * Math.min(sx, sy)) } : {}) } : null;
-        const raster = shape ? this.shapeRaster(shape, t.w, t.h) : l.raster ? scaleRaster(l.raster, Math.max(1, Math.round(l.raster.width * sx)), Math.max(1, Math.round(l.raster.height * sy))) : null;
-        const mr = l.mask?.raster ?? null;
-        const mask = l.mask ? { ...l.mask, raster: mr ? scaleRaster(mr, Math.max(1, Math.round(mr.width * sx)), Math.max(1, Math.round(mr.height * sy))) : null, placement: l.mask.placement ? scaleT(l.mask.placement) : null } : null;
-        // A 16-bit layer's pixels resampled at 16 bits, its 8-bit rendition from them (1.53.7).
-        if (l.channels && raster && !shape) { const ch = resampleDeep(l.channels, raster.width, raster.height); return { ...l, channels: ch, raster: ch.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(ch, p.cmykLut) : rasterFromDeep(ch, p.doc.depth === 32), mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) }; }
-        return { ...l, raster, mask, shape, transform: t, ...(l.artboard ? { artboard: { ...l.artboard, x: Math.round(l.artboard.x * sx), y: Math.round(l.artboard.y * sy), w: Math.max(1, Math.round(l.artboard.w * sx)), h: Math.max(1, Math.round(l.artboard.h * sy)) } } : {}) };
-      });
-      p.doc = { ...p.doc, width, height, resolution, layers: this.carryVectors(layers, (x, y) => ({ x: x * sx, y: y * sy })), ...alphasRedrawn(p.doc, width, height, (g, m) => { g.imageSmoothingEnabled = sampling !== 'nearest'; g.drawImage(m.surface(), m.x * sx, m.y * sy, m.w * sx, m.h * sy); }) };
-      p.selection = null;
-      return true;
-    });
-    if (ok) this.fit();
-    return ok;
-  }
+  resampleImage(width: number, height: number, sampling: Transform['sampling'], resolution: number): boolean { return DS.resampleImage(this.sizeHost, width, height, sampling, resolution); }
 
   /** File > Automate > Fit Image (1.65.8, as Photoshop's): the image resampled, its proportions kept, to
    *  fit within `width` by `height` pixels, smaller or (with `enlarge`) larger, as one Fit Image step at the same
@@ -6585,37 +6334,7 @@ export class Engine {
 
   /** The active layer's pixels (or its mask as gray, or with `merged` the visible image) inside the selection, or the
    *  whole canvas without one, rendered over the selection's region. Copy and Layer via Copy share it. */
-  private selectedPixels(merged: boolean): { surface: Surface; region: Rect } | null {
-    const p = this.current;
-    if (!p) return null;
-    const docRect = { x: 0, y: 0, w: p.doc.width, h: p.doc.height };
-    const region = p.selection ? intersectRect(integral(p.selection.rect), docRect) : docRect;
-    if (!region) return null;
-    const s = createSurface(region.w, region.h);
-    const c = ctxOf(s);
-    if (merged) this.work.render({ doc: p.doc, target: s, view: translation(-region.x, -region.y), quality: 'high' });
-    else {
-      const l = p.activeLayer;
-      if (!l || l.isGroup || l.adjustment) { this.notice('Select a pixel layer to copy.'); return null; }
-      const onMask = p.maskTarget && !!l.mask;
-      const r = onMask ? l.mask?.raster ?? null : l.raster;
-      if (onMask && !r) { c.fillStyle = '#ffffff'; c.fillRect(0, 0, region.w, region.h); }
-      else if (r) {
-        const t = onMask ? l.mask?.placement ?? l.transform : l.transform;
-        setMat(c, mul(translation(-region.x, -region.y), placement(t, r.width, r.height)));
-        c.drawImage(r.canvas, 0, 0);
-        c.setTransform(1, 0, 0, 1, 0, 0);
-        if (onMask) c.putImageData(toGray(c.getImageData(0, 0, region.w, region.h)), 0, 0);
-      }
-    }
-    if (p.selection) {
-      c.setTransform(1, 0, 0, 1, 0, 0);
-      c.globalCompositeOperation = 'destination-in';
-      c.drawImage(p.selection.surface(), p.selection.x - region.x, p.selection.y - region.y);
-      c.globalCompositeOperation = 'source-over';
-    }
-    return { surface: s, region };
-  }
+  private selectedPixels(merged: boolean): { surface: Surface; region: Rect } | null { return SO.selectedPixels(this.selectHost, merged); }
 
   copySelection(merged: boolean): boolean {
     const got = this.selectedPixels(merged);
@@ -6665,17 +6384,7 @@ export class Engine {
     if (this.copySelection(false)) this.clearPixels();
   }
 
-  pasteClipboard(): boolean {
-    const cb = this.clipboard;
-    if (!cb) return false;
-    if (!this.current) {
-      this.addProject({ id: uid(), width: cb.w, height: cb.h, resolution: 72, layers: [] }, 'Pasted');
-      this.insertRasterLayer(Raster.from(cb.surface, cb.w, cb.h), 'Pasted Layer', 0, 0);
-      return true;
-    }
-    this.insertRasterLayer(Raster.from(cb.surface, cb.w, cb.h), 'Pasted Layer', cb.x, cb.y);
-    return true;
-  }
+  pasteClipboard(): boolean { return SO.pasteClipboard(this.selectHost); }
 
   /** Edit > Paste Special > Paste Into and Paste Outside (1.65.7), as Photoshop's: formvis's own clipboard, or `image`
    *  from another app, pasted as a new layer centred on the selection's bounds, with a layer mask the size of the
@@ -6727,6 +6436,65 @@ export class Engine {
       vectorFollowing: (l, t) => followVector(l, t),
       setFlipAgain: (horizontal) => { this.lastTransform = { flip: horizontal }; },
       applySelection: (sel, mode, label) => this.applySelection(sel, mode, label),
+    };
+  }
+
+  private get selectHost(): SO.SelectHost {
+    return {
+      current: this.current,
+      edit: (label, fn) => this.edit(label, fn),
+      notice: (m) => this.notice(m),
+      rememberDeselected: (p, sel) => { this.lastSelections.set(p, sel); },
+      regionEdit: (label, apply) => this.regionEdit(label, apply),
+      tint: (rect, css, cover) => this.tint(rect, css, cover),
+      bg: this.bg,
+      luminance: (c) => luminance(c),
+      composite: (p) => renderDoc(this.work, p.doc),
+      renderInto: (p, target, view) => this.work.render({ doc: p.doc, target, view, quality: 'high' }),
+      wand: this.wand,
+      clipboard: this.clipboard,
+      newDocumentFor: (w, h, name) => { this.addProject({ id: uid(), width: w, height: h, resolution: 72, layers: [] }, name); },
+      insertRasterLayer: (r, name, x, y) => { this.insertRasterLayer(r, name, x, y); },
+    };
+  }
+
+  private get editHost(): IE.EditHost {
+    return {
+      current: this.current,
+      edit: (label, fn) => this.edit(label, fn),
+      notice: (m) => this.notice(m),
+      emit: (what) => this.emit(what, null),
+      canPaint: (p) => this.paintable(p.activeLayer) && !this.smartLocked(p),
+      paintable: (l) => this.paintable(l),
+      target: (p) => this.target(p),
+      coverage: (p, l, target, w, h) => this.coverageFor(p, l, target, w, h),
+      frame: (p, t, w, h, shift) => this.filterFrame(p, t, w, h, shift),
+      setPreview: (id, target, surface, transform) => this.setPreview(id, target, surface ?? null, transform),
+      clearPreview: () => { this.preview = null; },
+      room: (bytes, what) => this.room(bytes, what),
+      layerBytes: () => this.layerBytes(),
+      refusal: (l, maskTargeted) => ((l.smart || l.vector || l.fillContent) && !maskTargeted ? (l.vector ? SHAPE_NOTICE : l.fillContent ? FILL_NOTICE : SMART_NOTICE) : null),
+    };
+  }
+
+  private get sizeHost(): DS.SizeHost {
+    return {
+      current: this.current,
+      edit: (label, fn) => this.edit(label, fn),
+      notice: (m, kind) => this.notice(m, kind),
+      sizeOk: (w, h) => this.sizeOk(w, h),
+      fit: () => this.fit(),
+      css: (c) => rgbCss(c),
+      carryVectors: (layers, map) => this.carryVectors(layers, map),
+      alphasShifted: (doc, dx, dy, w, h) => alphasMoved(doc, (m) => m.translated(dx, dy, w, h)),
+      alphasScaled: (doc, w, h, sx, sy, smooth) => alphasRedrawn(doc, w, h, (g, m) => { g.imageSmoothingEnabled = smooth; g.drawImage(m.surface(), m.x * sx, m.y * sy, m.w * sx, m.h * sy); }),
+      shapeScaled: (shape, k) => { const radii = cornerRadiiOf(shape); return { ...shape, cornerRadius: (Number(shape.cornerRadius) || 0) * k, ...(radii ? { cornerRadii: radii.map((v) => v * k) } : {}) }; },
+      shapeRaster: (shape, w, h) => this.shapeRaster(shape, w, h),
+      deepResampled: (p, l, w, h) => {
+        if (!l.channels) return null;
+        const ch = resampleDeep(l.channels, w, h);
+        return { channels: ch, raster: ch.mode === 'cmyk' && p.cmykLut ? rasterFromChannels(ch, p.cmykLut) : rasterFromDeep(ch, p.doc.depth === 32) };
+      },
     };
   }
 
@@ -6911,45 +6679,10 @@ export class Engine {
     return { x: pt.x + off.x, y: pt.y + off.y };
   }
 
-  private layerSample(p: Project, layer: Layer, sigma = 0): Surface {
-    const W = p.doc.width, H = p.doc.height;
-    const s = createSurface(W, H);
-    const c = ctxOf(s);
-    if (layer.raster) { setMat(c, placement(layer.transform, layer.raster.width, layer.raster.height)); c.drawImage(layer.raster.canvas, 0, 0); c.setTransform(1, 0, 0, 1, 0, 0); }
-    if (sigma > 0) c.putImageData(gaussianBlur(c.getImageData(0, 0, W, H), sigma), 0, 0);
-    return s;
-  }
+  private layerSample(p: Project, layer: Layer, sigma = 0): Surface { return IE.layerSample(p, layer, sigma); }
 
-  /** the blurSample for a mask: the mask as the canvas shows it at document size (white, the level in alpha),
-   *  softened by `sigma`. Past its pixels a mask keeps its edge tone, white or black by whether its border averages
-   *  half or more (`LayerMask.background`), so blurring near its edge does not pull in the wrong value. */
-  private maskBlurSample(p: Project, layer: Layer, sigma: number): Surface {
-    const W = p.doc.width, H = p.doc.height, m = layer.mask, r = m?.raster;
-    const s = createSurface(W, H), c = ctxOf(s);
-    let edge = 1;
-    if (r) {
-      const d = r.read().data, w = r.width, h = r.height;
-      let total = 0, count = 0;
-      for (let y = 0; y < h; y++) {
-        for (let x = 0; x < w; x++) {
-          if (y !== 0 && y !== h - 1 && x !== 0 && x !== w - 1) continue;
-          total += d[(y * w + x) * 4 + 3];
-          count++;
-        }
-      }
-      edge = total * 2 >= count * 255 ? 1 : 0;
-    }
-    c.fillStyle = `rgba(255, 255, 255, ${edge})`;
-    c.fillRect(0, 0, W, H);
-    if (m && r) {
-      setMat(c, placement(m.placement ?? layer.transform, r.width, r.height));
-      c.clearRect(0, 0, r.width, r.height);
-      c.drawImage(r.canvas, 0, 0);
-      c.setTransform(1, 0, 0, 1, 0, 0);
-    }
-    if (sigma > 0) c.putImageData(gaussianBlur(c.getImageData(0, 0, W, H), sigma), 0, 0);
-    return s;
-  }
+  /** the blurSample for a mask: the mask as the canvas shows it at document size, its edge tone kept past its pixels. */
+  private maskBlurSample(p: Project, layer: Layer, sigma: number): Surface { return IE.maskBlurSample(p, layer, sigma); }
 
   /** The Mixer Brush (1.56.2, the parity plan's L4): its settings, what it holds between strokes, and the colour
    *  source each stroke paints with (engine/mixer.ts). The canvas it picks up from is read once as the stroke starts:
@@ -7566,26 +7299,7 @@ export class Engine {
     return { x0, y0, w, h, inside };
   }
 
-  contentAwareFill(): void {
-    const p0 = this.current;
-    if (!p0?.selection) { this.notice('Content-Aware Fill needs a selection.'); return; }
-    if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
-    this.regionEdit('Content-Aware Fill', ({ raster, target, rect }) => {
-      const p = this.current as Project, l = p.activeLayer as Layer;
-      const cov = this.coverageFor(p, l, target, raster.width, raster.height);
-      if (!cov) return;
-      const src = target === 'mask' ? toGray(raster.read()) : raster.read();
-      const pm = premultiply(src.data);
-      const mask = new Uint8Array(raster.width * raster.height);
-      for (let i = 0; i < mask.length; i++) mask[i] = cov[i * 4 + 3] ? 1 : 0;
-      if (!contentFill(pm, mask, raster.width, raster.height)) { this.notice('There is nothing opaque around the selection to fill from.'); return; }
-      const out = new ImageData(raster.width, raster.height);
-      unpremultiply(pm, out.data);
-      let result = this.blendThrough(src, out, cov);
-      if (target === 'mask') result = fromGray(result);
-      raster.ctx.putImageData(result, 0, 0, rect.x, rect.y, rect.w, rect.h);
-    });
-  }
+  contentAwareFill(): void { IE.contentAwareFill(this.editHost); }
 
   /** The Content-Aware Fill workspace's OK: fills the selection on the active layer, sampling only from `allowDoc`
    *  (1 where sampling is allowed, over the whole canvas) when given, and sends the result to the current layer, a
