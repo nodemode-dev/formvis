@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.8 · 2026-10-12
+
+### Changed
+
+- More of formvis is new code written independently from a behaviour description, behaving as before: the engine's geometry, the layer tree, events, canvas surfaces and the print resolution written into exported PNG and JPEG files, the tool registry, and the Magic Wand, Hand, Zoom, Spot Healing, Eyedropper, Smear, Clone Stamp, Brush, Gradient, Shape, Lasso and Marquee tools. Their status-bar hints are reworded.
+
 ## 1.66.7 · 2026-10-12
 
 ### Changed

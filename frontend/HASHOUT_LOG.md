@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Engine foundations and seventeen tool and registry modules rewritten by gap fill, DEV_PLAN 28.0 batches 15 to 17 · _v1.66.8 (engine/geometry.ts, dpi.ts, tree.ts, events.ts, surface.ts; extensions/registry.ts; tools wand, hand, zoom, select-common, heal, eyedropper, brush-common, index, smear, clone, brush, gradient, shape, lasso, marquee)
+
+The block gap fill of batches 12 to 14 carried past the engine, several files to a spec (`cleanroom/batch-15-engine-foundations-gapfill.md`, `batch-16-tools-a-gapfill.md`, `batch-17-tools-b-gapfill.md`). The five foundation modules were nearly all early lines, so batch 15 is in effect a rewrite from notes with every exported name and signature kept. 185 gaps over 908 early lines: 96 identical (imports, ids, labels, the registry's declarations, the matrix product and inverse) and left; 89 placed, by hand, as single-region edits or, for modules replaced almost whole (geometry, dpi, tree, events, surface, wand, hand, zoom, select-common, heal, eyedropper), one whole-file write each. `ui/dom.ts` and `ui/themes.ts` are the NodeMode design system's own files (their headers name stylized-nodemode) and are left out of the rewrite.
+
+Review feedback, as declarations and measured behaviour only: a JFIF JPEG's density goes into its existing header (bytes 6 to 10 hold the identifier), the sample ring's `sampled` field, retouch strokes take no pen pressure, a lasso outline is checked before `reset` empties it, the Marquee hint names the shape in use, ellipse radii absolute; lint: no `any`, no non-null assertion. Behaviour notes: the Brush's small-tip crosshair draws in the first ants colour; the duplicate-tool error reads `Tool "id" is already registered`; status-bar hints reworded. Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; a probe of `withResolution` over five file kinds at five resolutions, 25 of 25 outputs byte-identical to the earlier code; 60 browser tests after batches 15 and 16 (60 pass, 4 skip) and 52 after batch 17 (48 pass, 3 skip, `test_tool_audit_2::test_type_anti_aliasing_colour_and_the_selected_layer` failing as on the unchanged tree). A dev server left running across edits served a second copy of `registry.ts` to tests that import it themselves (five false failures); restarted, they pass. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.66.7",
+      "version": "1.66.7",
+  "version": "1.66.7",
+export const VERSION = '1.66.7';
+```
+
 ## Every remaining early-era block of engine/index.ts rewritten by gap fill, DEV_PLAN 28.0 batches 12 to 14 · _v1.66.7 (engine/index.ts)
 
 The gap-fill method of batches 10 and 11, now block by block over the whole file: each blank-line-separated block holding early-era lines (by `git blame -w` against the 0.1.0 to 0.33.0 commits) is shown with those lines redacted into numbered gaps and a behaviour note per gap; the implementer, barred from the repository, returns the whole blocks; a script checks every shown line came back byte for byte and extracts each gap's new text. Specs: `cleanroom/batch-12-engine-a-gapfill.md` (lines 1 to 2,700: imports, re-exports, events, module helpers, the Engine's first fields, refresh, uniqueName, focus, restore, the tip drag, colours, fit, zoom, pan, compose, overrides), `batch-13-engine-b-gapfill.md` (2,700 to 5,400: toggleCollapsed, renameLayer, toggleVisibility, the opacity edit, setBlend, cycleBlend, beginStroke, strokeTo, strokeShow, endStroke, cancelStroke, selectAll, deselect, invertSelection, the transform and distort entry points, cancelTransform, sampleColor, the preview fields, commitLive, setPreview, canGrow), `batch-14-engine-c-gapfill.md` (5,400 to the end: parentForNew, insertRasterLayer, sizeOk, cropTo, layerViaCopy, cutSelection, the gradient, shape, warp, pixel move and selection transform entry points, the Clone Stamp source, offset, point and preview, beginRetouchStroke, healPatch, outlineShift, canTransformSelection, transformCommand, the sample ring, nudgeSelection, exportBlob).
