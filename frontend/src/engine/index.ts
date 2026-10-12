@@ -29,6 +29,8 @@ import { antialiasMask, levelsKernel, wandMask } from './kernels';
 import { Project } from './project';
 import * as LS from './layer-structure';
 import * as LM from './layer-masks';
+import * as PM from './pixel-move';
+import * as TC from './transform-commit';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
@@ -2662,9 +2664,9 @@ export class Engine {
     const fp = this.fillPreview;
     if (fp && fp.project === p) m.set(fp.layerId, { ...(m.get(fp.layerId) ?? {}), source: fp.source });
     const fl = this.floating;
-    if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.work });
+    if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.preview });
     const fs = this.floatSel;
-    if (fs && fs.project === p && !fs.outline) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.base });
+    if (fs && fs.project === p && !fs.outline) m.set(fs.sourceId, { ...(m.get(fs.sourceId) ?? {}), source: fs.hole });
     if (this.channelView !== null && (p.doc.mode === 'cmyk' || p.doc.mode === 'lab')) { for (const l of p.doc.layers) if (l.channels && !m.get(l.id)?.source) m.set(l.id, { ...(m.get(l.id) ?? {}), source: this.channelGrey(l.channels, this.channelView).canvas }); }
     else if (!this.stroke && this.composesFloats(p)) {
       const composed = this.composedRendition(p);
@@ -4842,58 +4844,7 @@ export class Engine {
     if (!te) return;
     this.transformEdit = null;
     this.snapGuides = null;
-    const next = rounded(te.draft);
-    if (sameTransform(next, te.original) || this.current !== te.project) { this.emit('render', null); return; }
-    if (this.floatSel?.project === te.project && this.floatSel.floatingId === te.layerId) { te.project.updateLayer(te.layerId, { transform: next }); this.refresh(); return; }
-    this.lastTransform = { from: te.original, to: next };
-    if (te.group) {
-      // the group commit: each member follows the box, its mask following it, as one Transform Layers step.
-      const g = te.group;
-      this.edit(name ?? 'Transform Layers', (p) => {
-        let moved = false;
-        for (const [id, orig] of g.originals) {
-          const l = p.layer(id);
-          const t = following(orig, g.box, next);
-          if (!l || !(t.w >= 1 && t.h >= 1) || ![t.x, t.y, t.w, t.h, t.rotation].every(Number.isFinite)) continue;
-          const redraw = !!l.shape && (Math.round(t.w) !== l.raster?.width || Math.round(t.h) !== l.raster?.height);
-          p.updateLayer(id, { transform: t, mask: followMask(l, t), vectorMask: followVector(l, t), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, t.w, t.h) } : {}) });
-          moved = true;
-        }
-        // A moved artboard takes its rectangle along, mapped as its contents are (artboards do not rotate).
-        for (const id of this.selectedRoots(p)) {
-          const a = p.layer(id)?.artboard;
-          if (!a) continue;
-          const t = following({ x: a.x, y: a.y, w: a.w, h: a.h, rotation: 0, flipX: false, flipY: false, sampling: 'smooth' }, g.box, next);
-          const r = artboardFromData({ ...a, x: t.x, y: t.y, w: t.w, h: t.h });
-          if (r) { p.updateLayer(id, { artboard: r }); moved = true; }
-        }
-        return moved;
-      });
-      return;
-    }
-    if (te.mask) {
-      // the mask takes the new placement, its pixels untouched; a placement equal to
-      // the layer's own is stored as none.
-      this.edit(name ?? 'Transform Layer Mask', (p) => {
-        const l = p.layer(te.layerId);
-        if (!l?.mask) return false;
-        p.updateLayer(l.id, { mask: { ...l.mask, placement: sameTransform(next, l.transform) ? null : next } });
-        return true;
-      });
-      return;
-    }
-    const step = name ?? (te.mode.kind === 'move' ? 'Move Layer' : te.mode.kind === 'rotate' ? 'Rotate Layer' : 'Transform Layer');
-    if (te.mode.kind === 'move' && !te.group) {   // a layer with Position keyframes keys its new place (1.59.9)
-      const l0 = te.project.layer(te.layerId);
-      if (l0 && this.keyMove(te.layerId, next.x - l0.transform.x, next.y - l0.transform.y, step)) return;
-    }
-    this.edit(step, (p) => {
-      const l = p.layer(te.layerId);
-      if (!l) return false;
-      const redraw = !!l.shape && (Math.round(next.w) !== l.raster?.width || Math.round(next.h) !== l.raster?.height);
-      p.updateLayer(l.id, { transform: next, mask: followMask(l, next), vectorMask: followVector(l, next), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, next.w, next.h) } : {}) });
-      return true;
-    });
+    TC.commitTransform(this.commitHost, te, name);
   }
 
   /** the free distort (Cmd-drag a corner handle): the four corners of the Move tool's box move on their own,
@@ -7581,40 +7532,7 @@ export class Engine {
     const w = this.warpState;
     if (!w) return;
     this.warpState = null;
-    const p = w.project;
-    const l = p.layer(w.layerId);
-    if (!l?.raster || !w.stroke.points.length) {
-      const before = p.history.abort();
-      if (before) { p.doc = before.doc; p.selection = before.selection; }
-      this.refresh();
-      return;
-    }
-    const W = p.doc.width, H = p.doc.height;
-    const cov = createSurface(W, H);
-    const cc = ctxOf(cov);
-    cc.fillStyle = '#ffffff';
-    for (const q of w.stroke.points) { cc.beginPath(); cc.arc(q.x, q.y, w.stroke.radius, 0, Math.PI * 2); cc.fill(); }
-    if (p.selection) { cc.globalCompositeOperation = 'destination-in'; cc.drawImage(p.selection.surface(), p.selection.x, p.selection.y); }
-    const piece = createSurface(W, H);
-    const pc = ctxOf(piece);
-    pc.drawImage(w.surface, 0, 0);
-    pc.globalCompositeOperation = 'destination-in';
-    pc.drawImage(cov, 0, 0);
-    const r = l.raster;
-    const before = r.read();
-    const c = r.ctx;
-    c.save();
-    setMat(c, invert(placement(l.transform, r.width, r.height)));
-    c.globalCompositeOperation = 'destination-out';
-    c.drawImage(cov, 0, 0);
-    c.globalCompositeOperation = 'source-over';
-    c.drawImage(piece, 0, 0);
-    c.restore();
-    r.touch();
-    p.history.addPatch({ raster: r, x: 0, y: 0, before, after: r.read() });
-    if (l.shape) p.updateLayer(l.id, { shape: null });
-    p.history.end(p.snapshot());
-    this.refresh();
+    TC.commitWarpStroke(this.commitHost, { project: w.project, layerId: w.layerId, stroke: w.stroke, surface: { canvas: w.surface } });
   }
 
   cancelWarp(): void {
@@ -7896,55 +7814,49 @@ export class Engine {
     return boundsOf([applyMat(m, vb.x, vb.y), applyMat(m, vb.x + vb.w, vb.y), applyMat(m, vb.x + vb.w, vb.y + vb.h), applyMat(m, vb.x, vb.y + vb.h)]);
   }
 
-  private snapMove(p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform {
-    const tol = 6 / p.viewport.zoom;
-    const xs = [0, p.doc.width / 2, p.doc.width], ys = [0, p.doc.height / 2, p.doc.height];
-    for (const e of hierarchy(p.doc)) {
-      const l = e.layer;
-      if (!e.visible || l.isGroup || !l.raster || l.id === id || moving?.has(l.id)) continue;
-      const b = this.snapBox(l, l.transform);
-      xs.push(Math.round(b.x), Math.round(b.x + b.w / 2), Math.round(b.x + b.w));
-      ys.push(Math.round(b.y), Math.round(b.y + b.h / 2), Math.round(b.y + b.h));
-    }
-    const self = p.layer(id), b = self ? this.snapBox(self, t) : transformBounds(t);
-    if (this.view.guides) for (const g of p.doc.guides ?? []) (g.axis === 'x' ? xs : ys).push(g.at);
-    if (this.view.grid) {
-      const sub = Math.max(1, this.view.gridSpacing / Math.max(1, this.view.gridSubdivisions));
-      for (const e of [b.x, b.x + b.w / 2, b.x + b.w]) xs.push(Math.round(e / sub) * sub);
-      for (const e of [b.y, b.y + b.h / 2, b.y + b.h]) ys.push(Math.round(e / sub) * sub);
-    }
-    const pick = (edges: number[], targets: number[]): { d: number; at: number } | null => {
-      let best: { d: number; at: number } | null = null;
-      for (const edge of edges) for (const g of targets) {
-        const d = g - edge;
-        if (Math.abs(d) <= tol && (!best || Math.abs(d) < Math.abs(best.d))) best = { d, at: g };
-      }
-      return best;
+  private get moveHost(): PM.MoveHost {
+    return {
+      current: this.current,
+      busy: !!this.stroke || !!this.floating || !!this.warpState || !!this.floatSel,
+      settle: () => this.settle(),
+      notice: (m) => this.notice(m),
+      emit: (what) => this.emit(what, null),
+      refresh: () => this.refresh(),
+      canPaint: (p) => this.paintable(p.activeLayer) && !this.smartLocked(p),
+      target: (p) => this.target(p) as NonNullable<ReturnType<Engine['target']>>,
+      setTool: (id) => this.setTool(id),
+      insertAboveActive: (p, layer) => this.insertAboveActive(p, layer),
+      focus: (p, id) => this.focus(p, id),
+      growLayer: (p, l, rect) => this.growLayer(p, l, rect),
+      flattened: () => this.flattened(),
+      snapBox: (l, t) => this.snapBox(l, t),
+      view: this.view,
+      setSnapGuides: (g) => { this.snapGuides = g; },
     };
-    const sx = pick([b.x, b.x + b.w / 2, b.x + b.w], xs), sy = pick([b.y, b.y + b.h / 2, b.y + b.h], ys);
-    this.snapGuides = sx || sy ? { xs: sx ? [sx.at] : [], ys: sy ? [sy.at] : [] } : null;
-    return sx || sy ? { ...t, x: t.x + (sx?.d ?? 0), y: t.y + (sy?.d ?? 0) } : t;
   }
 
-  setLayerTransform(patch: Partial<Transform>, name = 'Transform Layer'): void {
-    if (this.locked(this.activeLayer, 'position')) return;
-    const fs = this.floatSel, cur = this.current;
-    if (fs && cur === fs.project && cur.activeId === fs.floatingId) {
-      const l = cur.activeLayer, next: Transform | null = l ? { ...l.transform, ...patch } : null;
-      if (l && next && next.w >= 1 && next.h >= 1 && [next.x, next.y, next.w, next.h, next.rotation].every(Number.isFinite) && !sameTransform(next, l.transform)) { cur.updateLayer(l.id, { transform: next }); this.refresh(); }
-      return;
-    }
-    this.edit(name, (p) => {
-      const l = p.activeLayer;
-      if (!l || l.isGroup || !l.raster) return false;
-      const next: Transform = { ...l.transform, ...patch };
-      if (!(next.w >= 1 && next.h >= 1) || ![next.x, next.y, next.w, next.h, next.rotation].every(Number.isFinite) || sameTransform(next, l.transform)) return false;
-      const redraw = !!l.shape && (Math.round(next.w) !== l.raster.width || Math.round(next.h) !== l.raster.height);
-      p.updateLayer(l.id, { transform: next, mask: followMask(l, next), vectorMask: followVector(l, next), ...(redraw && l.shape ? { raster: this.shapeRaster(l.shape, next.w, next.h) } : {}) });
-      this.lastTransform = { from: l.transform, to: next };
-      return true;
-    });
+  private get commitHost(): TC.CommitHost {
+    return {
+      current: this.current,
+      activeLayer: this.activeLayer,
+      edit: (label, fn) => this.edit(label, fn),
+      emit: (what) => this.emit(what, null),
+      refresh: () => this.refresh(),
+      floatingId: (p) => (this.floatSel?.project === p ? this.floatSel.floatingId : null),
+      setLastTransform: (from, to) => { this.lastTransform = { from, to }; },
+      maskFollowing: (l, t) => followMask(l, t),
+      vectorFollowing: (l, t) => followVector(l, t),
+      shapeRaster: (shape, w, h) => this.shapeRaster(shape, w, h),
+      selectedRoots: (p) => this.selectedRoots(p),
+      artboardFrom: (data) => artboardFromData(data),
+      keyMove: (id, dx, dy, label) => this.keyMove(id, dx, dy, label),
+      positionLocked: () => this.locked(this.activeLayer, 'position'),
+    };
   }
+
+  private snapMove(p: Project, id: ID, t: Transform, moving?: ReadonlySet<ID>): Transform { return PM.snapMove(this.moveHost, p, id, t, moving); }
+
+  setLayerTransform(patch: Partial<Transform>, name = 'Transform Layer'): void { TC.setLayerTransform(this.commitHost, patch, name); }
 
   resizeLayerTo(value: number, width: boolean): void {
     const l = this.activeLayer;
@@ -7962,7 +7874,7 @@ export class Engine {
     this.setLayerTransform({ w, h, x: t.x + t.w / 2 - w / 2, y: t.y + t.h / 2 - h / 2 }, 'Scale Layer');
   }
 
-  private floating: { project: Project; layerId: ID; raster: Raster; local: Mat; base: Surface; work: Surface; piece: Surface; region: Rect; dx: number; dy: number; selection: SelectionMask; duplicate: boolean } | null = null;
+  private floating: PM.FloatingPixels | null = null;
 
   get movingPixels(): boolean { return this.floating !== null; }
 
@@ -7985,96 +7897,28 @@ export class Engine {
   }
 
   beginPixelMove(duplicate: boolean): boolean {
-    const p = this.current;
-    const sel = p?.selection;
-    if (!p || !sel || this.stroke || this.floating || this.warpState) return false;
-    this.settle();
-    const l0 = p.activeLayer;
-    if (!this.paintable(l0) || !l0.raster || (p.maskTarget && l0.mask)) { this.notice('Moving selected pixels works on a layer with pixels.'); return false; }
-    if (this.smartLocked(p)) return false;
-    p.history.begin(duplicate ? 'Duplicate Pixels' : 'Move Pixels', p.snapshot());
-    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
-    const r = pick.raster;
-    const region = intersectRect(integral(sel.rect), { x: 0, y: 0, w: p.doc.width, h: p.doc.height }) ?? sel.rect;
-    const piece = createSurface(region.w, region.h);
-    const pc = ctxOf(piece);
-    setMat(pc, mul(translation(-region.x, -region.y), pick.local));
-    pc.drawImage(r.canvas, 0, 0);
-    pc.setTransform(1, 0, 0, 1, 0, 0);
-    pc.globalCompositeOperation = 'destination-in';
-    pc.drawImage(sel.surface(), sel.x - region.x, sel.y - region.y);
-    const base = createSurface(r.width, r.height);
-    const bc = ctxOf(base);
-    bc.drawImage(r.canvas, 0, 0);
-    if (!duplicate) {
-      setMat(bc, mul(invert(pick.local), translation(sel.x, sel.y)));
-      bc.globalCompositeOperation = 'destination-out';
-      bc.drawImage(sel.surface(), 0, 0);
-    }
-    this.floating = { project: p, layerId: pick.layer.id, raster: r, local: pick.local, base, work: createSurface(r.width, r.height), piece, region, dx: 0, dy: 0, selection: sel, duplicate };
-    this.renderFloating();
-    return true;
+    const f = PM.beginPixelMove(this.moveHost, duplicate);
+    this.floating = f;
+    return !!f;
   }
 
-  private renderFloating(): void {
-    const f = this.floating;
-    if (!f) return;
-    const c = ctxOf(f.work);
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.globalCompositeOperation = 'copy';
-    c.drawImage(f.base, 0, 0);
-    c.globalCompositeOperation = 'source-over';
-    setMat(c, mul(invert(f.local), translation(f.region.x + f.dx, f.region.y + f.dy)));
-    c.drawImage(f.piece, 0, 0);
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    this.emit('render', null);
-    this.emit('overlay', null);
-  }
-
-  movePixelsBy(dx: number, dy: number): void {
-    const f = this.floating;
-    if (!f) return;
-    f.dx = Math.round(dx);
-    f.dy = Math.round(dy);
-    this.renderFloating();
-  }
+  movePixelsBy(dx: number, dy: number): void { if (this.floating) PM.movePixels(this.moveHost, this.floating, dx, dy); }
 
   endPixelMove(): void {
     const f = this.floating;
     if (!f) return;
     this.floating = null;
-    const p = f.project;
-    if (!f.dx && !f.dy) {
-      const before = p.history.abort();
-      if (before) { p.doc = before.doc; p.selection = before.selection; }
-      this.refresh();
-      return;
-    }
-    const before = f.raster.read();
-    const c = f.raster.ctx;
-    c.save();
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.globalCompositeOperation = 'copy';
-    c.drawImage(f.work, 0, 0);
-    c.restore();
-    f.raster.touch();
-    p.history.addPatch({ raster: f.raster, x: 0, y: 0, before, after: f.raster.read() });
-    p.selection = f.selection.translated(f.dx, f.dy, p.doc.width, p.doc.height);
-    if (p.layer(f.layerId)?.shape) p.updateLayer(f.layerId, { shape: null });
-    p.history.end(p.snapshot());
-    this.refresh();
+    PM.endPixelMove(this.moveHost, f);
   }
 
   cancelPixelMove(): void {
     const f = this.floating;
     if (!f) return;
     this.floating = null;
-    const before = f.project.history.abort();
-    if (before) { f.project.doc = before.doc; f.project.selection = before.selection; }
-    this.refresh();
+    PM.cancelPixelMove(this.moveHost, f);
   }
 
-  private floatSel: { project: Project; sourceId: ID; floatingId: ID; base: Surface; region: Rect; selection: SelectionMask; original: Transform; outline?: boolean } | null = null;
+  private floatSel: PM.FloatingSelection | null = null;
 
   get floatingSelection(): boolean { return this.floatSel !== null; }
 
@@ -8092,150 +7936,38 @@ export class Engine {
   }
 
   beginSelectionTransform(): boolean {
-    const p = this.current;
-    if (!p || !this.canTransformSelection) return false;
-    if (this.smartLocked(p)) return false;
-    this.settle();
-    this.setTool('move');
-    if (!p.selection) return false;
-    const sel = p.selection;
-    p.history.begin('Transform Selection', p.snapshot());
-    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
-    const r = pick.raster, src = pick.layer;
-    const region = intersectRect(integral(sel.rect), { x: 0, y: 0, w: p.doc.width, h: p.doc.height }) ?? integral(sel.rect);
-    const piece = new Raster(region.w, region.h);
-    const pc = piece.ctx;
-    setMat(pc, mul(translation(-region.x, -region.y), pick.local));
-    pc.drawImage(r.canvas, 0, 0);
-    pc.setTransform(1, 0, 0, 1, 0, 0);
-    pc.globalCompositeOperation = 'destination-in';
-    pc.drawImage(sel.surface(), sel.x - region.x, sel.y - region.y);
-    pc.globalCompositeOperation = 'source-over';
-    piece.touch();
-    const base = createSurface(r.width, r.height);
-    const bc = ctxOf(base);
-    bc.drawImage(r.canvas, 0, 0);
-    setMat(bc, mul(invert(pick.local), translation(sel.x, sel.y)));
-    bc.globalCompositeOperation = 'destination-out';
-    bc.drawImage(sel.surface(), 0, 0);
-    bc.setTransform(1, 0, 0, 1, 0, 0);
-    bc.globalCompositeOperation = 'source-over';
-    const layer = newLayer('Floating Selection', p.doc, { raster: piece, parentId: src.parentId, opacity: src.opacity, blend: src.blend, transform: { ...docTransform(region.w, region.h), x: region.x, y: region.y } });
-    this.insertAboveActive(p, layer);
-    p.selection = null;
-    this.floatSel = { project: p, sourceId: src.id, floatingId: layer.id, base, region, selection: sel, original: layer.transform };
-    this.refresh();
-    return true;
+    if (!this.current || !this.canTransformSelection) return false;
+    const fs = PM.beginSelectionTransform(this.moveHost);
+    this.floatSel = fs;
+    return !!fs;
   }
 
   commitSelectionTransform(): void {
     const fs = this.floatSel;
     if (!fs) return;
     this.floatSel = null;
-    const p = fs.project;
-    const fl = p.layer(fs.floatingId), src0 = p.layer(fs.sourceId);
-    if (fs.outline && fl?.raster && !sameTransform(fl.transform, fs.original)) {
-      const W = p.doc.width, H = p.doc.height, s = createSurface(W, H), sc = ctxOf(s);
-      setMat(sc, placement(fl.transform, fl.raster.width, fl.raster.height));
-      sc.drawImage(fs.selection.surface(), fs.selection.x - fs.region.x, fs.selection.y - fs.region.y);
-      p.setLayers(p.doc.layers.filter((l) => l.id !== fs.floatingId));
-      this.focus(p, fs.sourceId || null);
-      p.selection = SelectionMask.fromAlpha(0, 0, W, H, sc.getImageData(0, 0, W, H).data);
-      p.history.end(p.snapshot());
-      this.refresh();
-      return;
-    }
-    if (fs.outline || !fl?.raster || !src0?.raster || sameTransform(fl.transform, fs.original)) { this.restoreSelectionTransform(fs); return; }
-    const draft = fl.transform, M = placement(draft, fl.raster.width, fl.raster.height);
-    const oldLocal = placement(src0.transform, src0.raster.width, src0.raster.height), oldW = src0.raster.width, oldH = src0.raster.height;
-    const old = src0.raster;
-    const r = this.growLayer(p, src0, integral(transformBounds(draft)));
-    const src = p.layer(fs.sourceId) as Layer;
-    const local = placement(src.transform, r.width, r.height);
-    const before = r === old ? r.read() : null;
-    const c = r.ctx;
-    c.save();
-    setMat(c, mul(invert(local), oldLocal));
-    c.clearRect(0, 0, oldW, oldH);
-    c.drawImage(fs.base, 0, 0);
-    setMat(c, mul(invert(local), M));
-    c.imageSmoothingEnabled = draft.sampling !== 'nearest';
-    c.imageSmoothingQuality = 'high';
-    c.drawImage(fl.raster.canvas, 0, 0);
-    c.restore();
-    r.touch();
-    if (before) p.history.addPatch({ raster: r, x: 0, y: 0, before, after: r.read() });
-    if (src.shape) p.updateLayer(src.id, { shape: null });
-    p.setLayers(p.doc.layers.filter((l) => l.id !== fs.floatingId));
-    this.focus(p, fs.sourceId);
-    const W = p.doc.width, H = p.doc.height, s = createSurface(W, H), sc = ctxOf(s);
-    setMat(sc, M);
-    sc.drawImage(fs.selection.surface(), fs.selection.x - fs.region.x, fs.selection.y - fs.region.y);
-    sc.setTransform(1, 0, 0, 1, 0, 0);
-    p.selection = SelectionMask.fromAlpha(0, 0, W, H, sc.getImageData(0, 0, W, H).data);
-    p.history.end(p.snapshot());
-    this.refresh();
+    PM.commitSelectionTransform(this.moveHost, fs);
   }
 
   cancelSelectionTransform(): void {
     const fs = this.floatSel;
     if (!fs) return;
     this.floatSel = null;
-    this.restoreSelectionTransform(fs);
-  }
-
-  private restoreSelectionTransform(fs: NonNullable<Engine['floatSel']>): void {
-    const p = fs.project, before = p.history.abort();
-    if (before) { p.doc = before.doc; p.selection = before.selection; }
-    this.focus(p, fs.sourceId || null);
-    this.refresh();
+    PM.cancelSelectionTransform(this.moveHost, fs);
   }
 
   /** Select > Transform Selection: the selection's outline alone takes the Move tool's handles, the pixels staying;
    *  Enter applies it as one step and Escape cancels, as with selected pixels. */
   beginOutlineTransform(): boolean {
-    const p = this.current;
-    if (!p?.selection || this.floatSel || this.stroke || this.floating || this.warpState) return false;
-    this.settle();
-    this.setTool('move');
-    const sel = p.selection;
-    if (!sel) return false;
-    p.history.begin('Transform Selection', p.snapshot());
-    const region = integral(sel.rect), piece = new Raster(region.w, region.h), src = p.activeLayer;
-    piece.ctx.drawImage(sel.surface(), sel.x - region.x, sel.y - region.y);
-    piece.touch();
-    const layer = newLayer('Selection Outline', p.doc, { raster: piece, parentId: src?.parentId ?? null, opacity: 0, transform: { ...docTransform(region.w, region.h), x: region.x, y: region.y } });
-    this.insertAboveActive(p, layer);
-    p.selection = null;
-    this.floatSel = { project: p, sourceId: src?.id ?? '', floatingId: layer.id, base: piece.canvas, region, selection: sel, original: layer.transform, outline: true };
-    this.refresh();
-    return true;
+    const fs = PM.beginOutlineTransform(this.moveHost);
+    this.floatSel = fs;
+    return !!fs;
   }
 
   /** Unpremultiplied RGB (0 to 1) of the original pixels under a document point, from the source the Levels histogram
    *  reads: the target layer's own pixels (or its mask's, when the mask is targeted), or with `composite` the flattened
    *  document. the Levels eyedroppers sample the edit's original image the same way. */
-  sampleOriginal(pt: Pt, composite: boolean): [number, number, number] | null {
-    const p = this.current;
-    if (!p) return null;
-    let px: Uint8ClampedArray;
-    if (composite) {
-      const flat = this.flattened(), x = Math.floor(pt.x), y = Math.floor(pt.y);
-      if (!flat || x < 0 || y < 0 || x >= flat.width || y >= flat.height) return null;
-      px = ctxOf(flat).getImageData(x, y, 1, 1).data;
-    } else {
-      const l = p.activeLayer;
-      if (!l || !this.paintable(l)) return null;
-      const onMask = p.maskTarget && !!l.mask;
-      const r = onMask ? l.mask?.raster ?? null : l.raster;
-      if (!r) return null;
-      const t = onMask ? l.mask?.placement ?? l.transform : l.transform;
-      const q = applyMat(invert(placement(t, r.width, r.height)), pt.x, pt.y), x = Math.floor(q.x), y = Math.floor(q.y);
-      if (x < 0 || y < 0 || x >= r.width || y >= r.height) return null;
-      px = r.ctx.getImageData(x, y, 1, 1).data;
-    }
-    return px[3] ? [px[0] / 255, px[1] / 255, px[2] / 255] : null;
-  }
+  sampleOriginal(pt: Pt, composite: boolean): [number, number, number] | null { return PM.sampleOriginal(this.moveHost, pt, composite); }
 
   /** Lays a subject mask (0 to 1 per layer pixel, 1 over the subject) on a layer as one Remove Background step. An
    *  existing mask of the same size is kept too, multiplied in: what either hides stays hidden (the
