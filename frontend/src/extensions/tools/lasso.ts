@@ -37,16 +37,15 @@ let hover: Pt | null = null;
 
 function reset(ctx: ToolContext): void { pts = []; live = []; fasteners = []; edges = null; active = false; ctx.engine.emit('overlay', null); }
 
+/** Turns the finished outline into a selection in the mode chosen at its start. */
 function commit(ctx: ToolContext): void {
-  const e = ctx.engine;
-  const doc = e.current?.doc;
+  const e = ctx.engine, doc = e.current?.doc;
   const poly = ctx.engine.lassoKind === 'magnetic' ? [...pts, ...live.slice(1)] : pts;
   reset(ctx);
   if (!doc || poly.length < 3) return;
   const hard = SelectionMask.fromPath(doc.width, doc.height, boundsOf(poly), (c) => {
     c.beginPath();
-    c.moveTo(poly[0].x, poly[0].y);
-    for (let i = 1; i < poly.length; i++) c.lineTo(poly[i].x, poly[i].y);
+    poly.forEach((q, i) => (i ? c.lineTo(q.x, q.y) : c.moveTo(q.x, q.y)));
     c.closePath();
     c.fill();
   }, e.selectionAntialiased);
@@ -65,7 +64,7 @@ export const lassoTool: Tool = {
   hint: (e) => (e.lassoKind === 'magnetic'
     ? 'Click an edge, then move along it: points fasten themselves · Click to fasten one · Click the start, double-click or press Enter to close · Backspace removes the last point · Escape cancels'
     : e.lassoKind === 'polygonal'
-    ? 'Click corners · Click the start, double-click or press Enter to close · Backspace removes the last corner · Escape cancels · Shift+L switches mode'
+    ? 'Click the corners · Click the start, double-click or press Enter to close · Backspace removes the last corner · Escape cancels · Shift+L switches mode'
     : 'Drag around an area · Shift adds · Alt subtracts · Shift+L switches to polygonal'),
   cursor: () => 'crosshair',
   down(ctx, p) {
@@ -89,13 +88,13 @@ export const lassoTool: Tool = {
   move(ctx, p) {
     hover = p.doc;
     if (ctx.engine.lassoKind === 'magnetic' && active) { traceSoon(ctx, p.doc); return; }
-    if (ctx.engine.lassoKind !== 'freehand' || !active) return;
-    const last = pts[pts.length - 1];
-    const z = ctx.view().zoom;
-    if (Math.hypot((p.doc.x - last.x) * z, (p.doc.y - last.y) * z) >= 2) pts.push(p.doc);
+    if (!active || ctx.engine.lassoKind !== 'freehand') return;
+    const last = ctx.view().toScreen(pts[pts.length - 1]);
+    if (Math.hypot(last.x - p.screen.x, last.y - p.screen.y) < 2) return;
+    pts.push(p.doc);
     ctx.engine.emit('overlay', null);
   },
-  up(ctx) { if (ctx.engine.lassoKind === 'freehand' && active) commit(ctx); },
+  up(ctx) { if (active && ctx.engine.lassoKind === 'freehand') commit(ctx); },
   hover(ctx, p) { hover = p?.doc ?? null; if (active && ctx.engine.lassoKind === 'magnetic' && hover) traceSoon(ctx, hover); else if (active) ctx.engine.emit('overlay', null); },
   keydown(ctx, e) {
     if (!active || ctx.engine.lassoKind === 'freehand') return nudgeSelectionKey(ctx, e);
@@ -106,7 +105,12 @@ export const lassoTool: Tool = {
     }
     if (e.key === 'Enter') { commit(ctx); return true; }
     if (e.key === 'Escape') { reset(ctx); return true; }
-    if (e.key === 'Backspace' || e.key === 'Delete') { pts.pop(); if (!pts.length) active = false; ctx.engine.emit('overlay', null); return true; }
+    if (e.key === 'Backspace' || e.key === 'Delete') {
+      pts.pop();
+      if (!pts.length) active = false;
+      ctx.engine.emit('overlay', null);
+      return true;
+    }
     return false;
   },
   cancel(ctx) { reset(ctx); },
@@ -117,8 +121,7 @@ export const lassoTool: Tool = {
     if (ctx.engine.lassoKind === 'polygonal' && hover) screen.push(v.toScreen(hover));
     if (ctx.engine.lassoKind === 'magnetic') for (const q of live.slice(1)) screen.push(v.toScreen(q));
     dashed(ctx, g, () => {
-      g.moveTo(screen[0].x, screen[0].y);
-      for (let i = 1; i < screen.length; i++) g.lineTo(screen[i].x, screen[i].y);
+      screen.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
     });
     if (ctx.engine.lassoKind === 'magnetic') {   // the fastening points, as Photoshop's small squares
       const pal = ctx.paint();

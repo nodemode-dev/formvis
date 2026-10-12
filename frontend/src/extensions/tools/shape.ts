@@ -41,7 +41,7 @@ export const shapeTool: Tool = {
     ctx.engine.drawShape(d.anchor, lineLike(ctx.engine.shapeSettings.kind) ? snapped(d) : d.point, r);
   },
   keydown(ctx, e) {
-    if (!(e.shiftKey && e.code === 'KeyU' && !e.metaKey && !e.ctrlKey && !e.altKey)) return false;
+    if (e.code !== 'KeyU' || !e.shiftKey || e.metaKey || e.ctrlKey || e.altKey) return false;
     const s = ctx.engine.shapeSettings;
     s.kind = KINDS[(KINDS.indexOf(s.kind) + 1) % KINDS.length];
     ctx.engine.emit('options', null);

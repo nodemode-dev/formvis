@@ -7,13 +7,15 @@ interface Draft { anchor: Pt; point: Pt; mode: SelectionMode; shiftAtPress: bool
 let draft: Draft | null = null;
 let moving: Pt | null = null;
 
-/** One drag step toward document point `doc`: the moved outline follows, or the box's corner with the
- *  marqueeConstrainArmed rule (a modifier held from the press sets the mode, not a constraint, until it is released
- *  during the drag; pressed again, it constrains). Pointer moves and autoscroll ticks both call it. */
+/** One drag step to a document point; pointer moves and autoscroll ticks both come through here. */
 function follow(ctx: ToolContext, doc: Pt, shift: boolean, alt: boolean): void {
-  if (moving) { ctx.engine.updateSelectionShift(doc.x - moving.x, doc.y - moving.y); return; }
+  if (moving) {
+    ctx.engine.updateSelectionShift(doc.x - moving.x, doc.y - moving.y);
+    return;
+  }
   if (!draft) return;
   draft.point = doc;
+  // A modifier held since the press picks the mode, not a constraint, until it is let go mid-drag.
   if (!shift) draft.shiftAtPress = false;
   if (!alt) draft.altAtPress = false;
   draft.square = shift && !draft.shiftAtPress;
@@ -21,13 +23,17 @@ function follow(ctx: ToolContext, doc: Pt, shift: boolean, alt: boolean): void {
   ctx.engine.emit('overlay', null);
 }
 
-/** the marquee autoscroll: past a 12 px margin inside the view, each 60 Hz tick pans toward the pointer at
- *  min(40, 2 + 0.4 x the distance past), and the drag follows the document point that is now under the pointer. */
+/**
+ * Dragging near the view's edge scrolls it: past a 12-point margin inside the view, every 60 Hz tick pans toward the
+ * pointer by 2 plus 0.4 times the distance past the margin (at most 40), and the drag follows the document point now under it.
+ */
 let scroll: { at: Pt; shift: boolean; alt: boolean; timer: number } | null = null;
 
 function scrollDelta(ctx: ToolContext, at: Pt): Pt {
-  const v = ctx.view(), m = 12, speed = (past: number): number => (past <= 0 ? 0 : Math.min(40, 2 + past * 0.4));
-  return { x: speed(m - at.x) - speed(at.x - (v.width - m)), y: speed(m - at.y) - speed(at.y - (v.height - m)) };
+  const v = ctx.view(), margin = 12;
+  const speed = (past: number): number => Math.min(40, 2 + 0.4 * past);
+  const axis = (pos: number, size: number): number => (pos < margin ? speed(margin - pos) : pos > size - margin ? -speed(pos - (size - margin)) : 0);
+  return { x: axis(at.x, v.width), y: axis(at.y, v.height) };
 }
 
 function stopScroll(): void {
@@ -39,25 +45,26 @@ function autoscroll(ctx: ToolContext, p: ToolPointer): void {
   const d = scrollDelta(ctx, p.screen);
   if (!d.x && !d.y) { stopScroll(); return; }
   if (scroll) { scroll.at = p.screen; scroll.shift = p.shift; scroll.alt = p.alt; return; }
-  const state = { at: p.screen, shift: p.shift, alt: p.alt, timer: 0 };
-  state.timer = window.setInterval(() => {
-    const delta = scrollDelta(ctx, state.at);
-    if ((!delta.x && !delta.y) || (!draft && !moving)) { stopScroll(); return; }
-    ctx.engine.pan(delta.x, delta.y);
-    follow(ctx, ctx.view().toDoc(state.at), state.shift, state.alt);
+  const st = { at: p.screen, shift: p.shift, alt: p.alt, timer: 0 };
+  st.timer = window.setInterval(() => {
+    const dd = scrollDelta(ctx, st.at);
+    if ((!dd.x && !dd.y) || (!draft && !moving)) { stopScroll(); return; }
+    ctx.engine.pan(dd.x, dd.y);
+    follow(ctx, ctx.view().toDoc(st.at), st.shift, st.alt);
   }, 1000 / 60);
-  scroll = state;
+  scroll = st;
 }
 
+/** The box from anchor a to point b: square makes both sides the longer one, centred puts a in the middle; whole pixels. */
 export function dragRect(a: Pt, b: Pt, square: boolean, center: boolean): Rect {
   let dx = b.x - a.x, dy = b.y - a.y;
-  if (square) { const s = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * s; dy = Math.sign(dy || 1) * s; }
+  if (square) { const s = Math.max(Math.abs(dx), Math.abs(dy)); dx = (dx < 0 ? -1 : 1) * s; dy = (dy < 0 ? -1 : 1) * s; }
   const x0 = center ? a.x - dx : a.x, y0 = center ? a.y - dy : a.y, x1 = a.x + dx, y1 = a.y + dy;
-  const l = Math.round(Math.min(x0, x1)), t = Math.round(Math.min(y0, y1));
-  return { x: l, y: t, w: Math.round(Math.max(x0, x1)) - l, h: Math.round(Math.max(y0, y1)) - t };
+  const l = Math.round(Math.min(x0, x1)), t = Math.round(Math.min(y0, y1)), r = Math.round(Math.max(x0, x1)), bt = Math.round(Math.max(y0, y1));
+  return { x: l, y: t, w: r - l, h: bt - t };
 }
 
-const inside = (ctx: ToolContext, p: ToolPointer): boolean => (ctx.engine.current?.selection?.valueAt(p.doc.x, p.doc.y) ?? 0) >= 128;
+const inside = (ctx: ToolContext, p: ToolPointer): boolean => { const s = ctx.engine.current?.selection; return !!s && s.valueAt(Math.floor(p.doc.x), Math.floor(p.doc.y)) >= 128; };
 
 /** The marquee's rectangle for its Style, as Photoshop's options bar sets it: as dragged (Normal); held to the width to
  *  height ratio, growing from the press or, with Alt, from its centre (Fixed Ratio); or the set size placed at the
@@ -80,7 +87,7 @@ export const marqueeTool: Tool = {
     { id: 'row', label: 'Single Row Marquee', icon: 'tRowMarquee', active: () => e.marqueeKind === 'row', pick: () => e.update({ marqueeKind: 'row' }) },
     { id: 'column', label: 'Single Column Marquee', icon: 'tColMarquee', active: () => e.marqueeKind === 'column', pick: () => e.update({ marqueeKind: 'column' }) },
   ],
-  hint: (e) => `Drag ${e.marqueeKind === 'ellipse' ? 'an ellipse' : 'a rectangle'} · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the center · Drag inside to move the outline · Shift+M switches shape · Cmd or Ctrl+D deselects`,
+  hint: (e) => (e.marqueeKind === 'ellipse' ? 'Drag an ellipse' : 'Drag a rectangle') + ' · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · Cmd or Ctrl+D deselects',
   cursor: (ctx, p) => (p && !p.shift && !p.alt && ctx.engine.selectionMode === 'replace' && inside(ctx, p) ? 'move' : 'crosshair'),
   down(ctx, p) {
     const e = ctx.engine;
@@ -97,13 +104,14 @@ export const marqueeTool: Tool = {
     }
     if (mode === 'replace' && inside(ctx, p)) { moving = p.doc; e.beginSelectionShift(); return; }
     draft = { anchor: p.doc, point: p.doc, mode, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
+    e.emit('overlay', null);
   },
   move(ctx, p) {
     if (!moving && !draft) return;
     follow(ctx, p.doc, p.shift, p.alt);
     autoscroll(ctx, p);
   },
-  keydown(ctx, e) { return nudgeSelectionKey(ctx, e); },
+  keydown: (ctx, e) => nudgeSelectionKey(ctx, e),
   up(ctx) {
     stopScroll();
     const e = ctx.engine;
@@ -113,7 +121,10 @@ export const marqueeTool: Tool = {
     const doc = e.current?.doc;
     if (!d || !doc) return;
     const r = styledRect(e, d);
-    if (r.w < 1 || r.h < 1) { if (d.mode === 'replace') e.deselect(); else e.emit('overlay', null); return; }
+    if (r.w < 1 || r.h < 1) {
+      if (d.mode === 'replace') e.deselect(); else e.emit('overlay', null);
+      return;
+    }
     const ellipse = e.marqueeKind === 'ellipse';
     const hard = SelectionMask.fromPath(doc.width, doc.height, r, (c) => {
       c.beginPath();
@@ -126,19 +137,18 @@ export const marqueeTool: Tool = {
   },
   cancel(ctx) {
     stopScroll();
-    if (moving) { moving = null; ctx.engine.updateSelectionShift(0, 0); ctx.engine.endSelectionShift(); }
+    if (moving) { ctx.engine.updateSelectionShift(0, 0); ctx.engine.endSelectionShift(); moving = null; }
     draft = null;
     ctx.engine.emit('overlay', null);
   },
   overlay(ctx, g) {
     if (!draft) return;
     const r = styledRect(ctx.engine, draft);
-    const v = ctx.view();
-    const a = v.toScreen({ x: r.x, y: r.y }), b = v.toScreen({ x: r.x + r.w, y: r.y + r.h });
-    const ellipse = ctx.engine.marqueeKind === 'ellipse';
+    const v = ctx.view(), a = v.toScreen({ x: r.x, y: r.y }), b = v.toScreen({ x: r.x + r.w, y: r.y + r.h });
+    const ax = Math.round(a.x), ay = Math.round(a.y), bx = Math.round(b.x), by = Math.round(b.y);
     dashed(ctx, g, () => {
-      if (ellipse) g.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, 0, Math.PI * 2);
-      else g.rect(Math.round(a.x) + 0.5, Math.round(a.y) + 0.5, Math.round(b.x - a.x), Math.round(b.y - a.y));
+      if (ctx.engine.marqueeKind === 'ellipse') g.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, Math.abs(b.x - a.x) / 2, Math.abs(b.y - a.y) / 2, 0, 0, Math.PI * 2);
+      else g.rect(ax + 0.5, ay + 0.5, bx - ax, by - ay);
     });
   },
   options: (e) => [

@@ -49,25 +49,27 @@ export interface Tool {
   options?(engine: Engine): OptionSpec[];
 }
 
-const tools = new Map<ToolId, Tool>();
+const registry = new Map<ToolId, Tool>();
 
 export function registerTool(tool: Tool): void {
-  if (tools.has(tool.id)) throw new Error(`duplicate tool: ${tool.id}`);
-  tools.set(tool.id, tool);
+  if (registry.has(tool.id)) throw new Error(`Tool "${tool.id}" is already registered`);
+  registry.set(tool.id, tool);
 }
-export const toolList = (): Tool[] => [...tools.values()].sort((a, b) => a.order - b.order);
-export const getTool = (id: ToolId): Tool | undefined => tools.get(id);
+export const toolList = (): Tool[] => [...registry.values()].sort((a, b) => a.order - b.order);
+export const getTool = (id: ToolId): Tool | undefined => registry.get(id);
 export const toolForKey = (key: string): Tool | undefined => toolList().find((t) => t.key === key.toUpperCase());
 /** Every tool on a key, in toolbar order: J holds Spot Healing, the Healing Brush and Patch, cycled with Shift. */
 export const toolsForKey = (key: string): Tool[] => toolList().filter((t) => t.key === key.toUpperCase());
 
+/** The digit of a top-row number key, or null for any other key. */
 export function digitOf(e: KeyboardEvent): number | null {
-  return e.code.startsWith('Digit') ? Number(e.code.slice(5)) : null;
+  const m = /^Digit([0-9])$/.exec(e.code);
+  return m ? Number(m[1]) : null;
 }
 
+/** Marching ants: one traced path stroked twice in alternating colours, the dashes offset by the animation phase. */
 export function dashed(ctx: ToolContext, g: CanvasRenderingContext2D, trace: () => void): void {
-  const pal = ctx.paint();
-  const phase = ctx.antsPhase();
+  const pal = ctx.paint(), phase = ctx.antsPhase();
   g.save();
   g.lineWidth = 1;
   g.setLineDash([4, 4]);
