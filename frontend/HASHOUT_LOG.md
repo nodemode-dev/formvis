@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layer structure and layer masks written fresh, DEV_PLAN 28.0 batches 1 and 2 · _v1.66.3 (engine/layer-structure.ts and engine/layer-masks.ts new; engine/index.ts)
+
+The owner's provenance rewrite (sprint 28, `PROVENANCE_AUDIT.md` in the sidecar): code that dates from the first release is replaced by modules written clean-room, from behaviour-only specifications (`cleanroom/batch-01-layer-structure.md`, `batch-02-layer-masks.md` in the sidecar) by an implementer that never read the earlier code, then wired in by hand.
+
+`engine/layer-structure.ts`: `StructHost` (what the Engine lends: current and open documents, `busy`, `settle`, `emit`, `edit`, `focus`, `notice`, `room`, `switchTo`, `clipCoverage`, `renderOnly`, `deleteMask`) and `selectLayer`, `selectedRoots`, `normalizeClips`, `cloneLayer`, `addLayer`, `addFolder`, `duplicateLayers`, `liveMaskDependents`, `deleteLayers`, `moveLayers`, `moveActive`, `groupLayers`, `moveOutOfFolder`, `copyLayerToProject`, `toggleClip`, `mergeLayers`. A folder moves, reorders and leaves its folder as a block with everything inside it. `engine/layer-masks.ts`: `MaskHost` and `addMask`, `deleteMask`, `toggleMaskEnabled`, `toggleMaskLink`, `copyMask`, `selectMaskBlack`, `applySubjectMask`, `setMaskFromImage`; `copyMask` keeps every field of the source mask (a review correction: the first version unlinked the copy). The Engine keeps each method's signature as a one-line delegation through `structHost` and `maskHost`.
+
+Removed code: the 24 earlier method bodies (about 450 lines) are not quoted here, by the Phase 13 rule (quoting would copy them again); git history holds them until the history is rebuilt on the clean root. Verified: tsc clean; unit 194 of 194; browser tests on layers, groups, clipping, masks, Select Subject, locks and paint targets, 37 passed; two failures in test_dock_layers and test_gpu_clip fail identically on the unchanged tree. Similarity of each new function to the old one (identifier-blind token structure and word order) recorded in `PROVENANCE_AUDIT.md`. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.66.2",
+      "version": "1.66.2",
+  "version": "1.66.2",
+export const VERSION = '1.66.2';
+```
+
 ## Version only · _v1.66.2
 
 No window code changed in 1.66.2 (DEV_PLAN 28.A, `./build_app`, is a root script logged in the sidecar's root HASHOUT_LOG). The window built clean inside `./build_app`'s run. Removed lines taken after the version edit. Removed from frontend:

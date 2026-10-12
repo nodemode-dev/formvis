@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.3 · 2026-10-12
+
+### Changed
+
+- The layer-structure and layer-mask operations are new code written independently from a behaviour description: New Layer and New Folder, Duplicate, Delete (and Bake and Delete for clipped layers), moving and reordering in the Layers panel, Group, Move Out of Folder, Clipping Mask, Merge Down, Merge Layers and Merge Group, copying a layer to another open document, layer selection, and Add, Apply, Delete, Enable, Link and copy Layer Mask, Select > the mask's black areas, Remove Background's mask and masks made from a picture. They behave as before.
+
 ## 1.66.2 · 2026-10-12
 
 ### Added
