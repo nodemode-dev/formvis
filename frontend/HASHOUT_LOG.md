@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Selection and pixel commands, the pixel-edit pipeline, Canvas Size and Image Size written fresh, DEV_PLAN 28.0 batches 6 to 8 · _v1.66.5 (engine/select-ops.ts, engine/image-edit.ts and engine/document-size.ts new; engine/index.ts)
+
+Clean-room batches 6, 7 and 8 (specs `cleanroom/batch-06-select-pixels.md`, `batch-07-image-edit.md`, `batch-08-document-size.md` with `types-sheet.md`, in the sidecar).
+
+`engine/select-ops.ts`: `SelectHost`, `applySelection` (replace, add, subtract, intersect; a dropped selection remembered for Reselect), `clearPixels`, `invertPixels` (a mask's value is its alpha, RGB staying white), `selectLayerPixels`, `magicWand`, `selectedPixels`, `pasteClipboard`. `engine/image-edit.ts`: `EditHost`, `Target`, `Run`, `tint`, `regionEdit` (restores the rect exactly if the edit throws), `blendThrough` (coverage taken as ImageData; the Engine wraps its byte array at the call site), `targetImage`, `previewImageEdit` (its own latest-call-wins token; the Engine's `previewToken` still advances for the code that reads it), `applyImageEdit` (synchronous, its step complete on return; the grown-margin path converts the margin to document units by the layer's own scale), `contentAwareFill`, `layerSample`, `maskBlurSample`. `engine/document-size.ts`: `SizeHost`, `resizeCanvas`, `resampleImage`; the vector, saved-selection, live-shape and high-depth parts come through the host (`carryVectors`, `alphasMoved`, `alphasRedrawn`, `cornerRadiiOf`, `resampleDeep` with its renditions).
+
+Engine wiring: `selectHost`, `editHost`, `sizeHost`; 18 methods became delegations; `tint`, `blendThrough`, `layerSample`, `maskBlurSample` and `selectedPixels` keep their private names for their other callers; `grown` went with `applyImageEdit`. Removed code: the earlier bodies (about 330 lines) are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; 49 browser tests on filters, adjustments, blur gallery, wand, selections, bucket, content fill, crop and canvas size, PSD adjustments, GPU adjustments, select mask and 16-bit documents passed; three (a 16-bit PNG through an adjustment, a 32-bit EXR, the giant-layer blur) fail identically on the unchanged tree here. A probe outside the repo ran seven operations (Clear, Invert and Content-Aware Fill in a selection, Clear and Invert on a mask, Magic Wand, Canvas Size with fill, Image Size) with this code and the code before it: identical in every sample. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.66.4",
+      "version": "1.66.4",
+  "version": "1.66.4",
+export const VERSION = '1.66.4';
+```
+
 ## Moving pixels, transform commits, the Gradient tool and paint operations written fresh, DEV_PLAN 28.0 batches 3 to 5 · _v1.66.4 (engine/pixel-move.ts, engine/transform-commit.ts and engine/paint-ops.ts new; engine/index.ts)
 
 Clean-room batches 3, 4 and 5 (specs `cleanroom/batch-03-pixel-move.md`, `batch-04-transform-commit.md`, `batch-05-gradient-fill-misc.md` and the declarations-only `types-sheet.md`, in the sidecar).

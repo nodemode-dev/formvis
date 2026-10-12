@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.5 · 2026-10-12
+
+### Changed
+
+- More of formvis is new code written independently from a behaviour description, behaving as before: selection changes (new, add, subtract, intersect, Deselect and Reselect), Edit > Clear, Image > Adjustments > Invert, Select Layer's Pixels, the Magic Wand, Copy and Paste, the path every filter and adjustment takes to preview and apply (within a selection, on masks, growing past the layer's edge), Content-Aware Fill, and Image > Canvas Size and Image Size.
+
 ## 1.66.4 · 2026-10-12
 
 ### Changed
