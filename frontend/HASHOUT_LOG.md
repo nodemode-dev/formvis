@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Moving pixels, transform commits, the Gradient tool and paint operations written fresh, DEV_PLAN 28.0 batches 3 to 5 · _v1.66.4 (engine/pixel-move.ts, engine/transform-commit.ts and engine/paint-ops.ts new; engine/index.ts)
+
+Clean-room batches 3, 4 and 5 (specs `cleanroom/batch-03-pixel-move.md`, `batch-04-transform-commit.md`, `batch-05-gradient-fill-misc.md` and the declarations-only `types-sheet.md`, in the sidecar).
+
+`engine/pixel-move.ts`: `FloatingPixels` (with `preview`, the raster-sized surface the renderer shows in place of the layer while selected pixels move) and `FloatingSelection` (with `hole`, the source layer with the lifted pixels removed), `MoveHost`, `beginPixelMove`, `movePixels`, `endPixelMove`, `cancelPixelMove`, `beginSelectionTransform`, `beginOutlineTransform`, `commitSelectionTransform`, `cancelSelectionTransform`, `snapMove`, `sampleOriginal`. The layer's own raster changes only at commit, so a cancel or a zero-offset end is a plain history abort. `engine/transform-commit.ts`: `TransformEdit`, `CommitHost`, `commitTransform` (a layer, a group box with its artboards, or a mask's placement; keyed moves through `keyMove`), `setLayerTransform`, `commitWarpStroke` (Smudge and Liquify; its input takes anything with a `canvas`, a wiring correction made by hand). `engine/paint-ops.ts`: `PaintHost`, `GradientDrag`, `beginGradient`, `updateGradient` (also the Engine's `renderGradient`), `commitGradient`, `cancelGradient`, `fill`, `flipLayers`, `growLayer`, `nudge`, `layerAt`, `resizeSelection`; the target's `local` maps raster pixels to document points, gradients draw in document space under its inverse, the diamond evaluates each pixel at its top-left corner, dither spreads each channel over minus one to plus one level before rounding.
+
+Engine wiring: `floating`, `floatSel` and `gradient` take the modules' types; `layerOverrides` reads `preview` and `hole`; `moveHost`, `commitHost` and `paintHost` lend what each module needs; 27 methods became delegations. Removed code: the 27 earlier bodies (about 600 lines) are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; 43 browser tests on moving, selection, snapping, retouching, smudge, liquify, the tool audits, eyedropper, artboards, gradients, fills and selection modify, passed; two probes outside the repo (Move Pixels with cancel, commit, undo and redo, and Free Transform of selected pixels; the five gradient shapes on a moved and rotated layer, identical to the earlier code in all 192 samples each). Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.66.3",
+      "version": "1.66.3",
+  "version": "1.66.3",
+export const VERSION = '1.66.3';
+```
+
 ## Layer structure and layer masks written fresh, DEV_PLAN 28.0 batches 1 and 2 · _v1.66.3 (engine/layer-structure.ts and engine/layer-masks.ts new; engine/index.ts)
 
 The owner's provenance rewrite (sprint 28, `PROVENANCE_AUDIT.md` in the sidecar): code that dates from the first release is replaced by modules written clean-room, from behaviour-only specifications (`cleanroom/batch-01-layer-structure.md`, `batch-02-layer-masks.md` in the sidecar) by an implementer that never read the earlier code, then wired in by hand.

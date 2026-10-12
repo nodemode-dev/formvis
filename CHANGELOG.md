@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.4 · 2026-10-12
+
+### Changed
+
+- More of formvis is new code written independently from a behaviour description, behaving as before: moving and duplicating selected pixels with the Move tool, Free Transform of selected pixels, Select > Transform Selection, snapping while moving, committing a move, rotation or transform of a layer, a group of layers or a mask, setting the transform by number, committing Smudge and Liquify strokes, the Gradient tool (all five shapes, dither, masks), Edit > Fill with Foreground or Background, Flip Layer, Nudge, picking the layer under a click, and Select > Modify > Expand and Contract.
+
 ## 1.66.3 · 2026-10-12
 
 ### Changed
