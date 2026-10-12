@@ -31,6 +31,7 @@ import * as LS from './layer-structure';
 import * as LM from './layer-masks';
 import * as PM from './pixel-move';
 import * as TC from './transform-commit';
+import * as PO from './paint-ops';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
@@ -3401,20 +3402,7 @@ export class Engine {
     return layers.map((l) => (l.vectorMask ? { ...l, vectorMask: movedVector(l.vectorMask, f) } : l));
   }
 
-  flipLayers(horizontal: boolean): void {
-    this.lastTransform = { flip: horizontal };
-    this.edit(horizontal ? 'Flip Layer Horizontal' : 'Flip Layer Vertical', (p) => {
-      let any = false;
-      for (const id of p.selectedIds) {
-        const l = p.layer(id);
-        if (!l || l.isGroup || !l.raster) continue;
-        const t = l.transform, next = horizontal ? { ...t, flipX: !t.flipX, rotation: -t.rotation } : { ...t, flipY: !t.flipY, rotation: -t.rotation };
-        p.updateLayer(id, { transform: next, vectorMask: followVector(l, next) });
-        any = true;
-      }
-      return any;
-    });
-  }
+  flipLayers(horizontal: boolean): void { PO.flipLayers(this.paintHost, horizontal); }
 
   /** Image > Image Rotation (1.55.3, DEV_PLAN 22.4): the canvas turned by quarter turns. Every layer's box turns about
    *  the document's centre and its rotation follows, masks and artboards with it, the selection too; no pixel is
@@ -3633,25 +3621,7 @@ export class Engine {
     return this.growLayer(p, layer, { x: 0, y: 0, w: W, h: H });
   }
 
-  private growLayer(p: Project, layer: Layer, want: Rect): Raster {
-    const t = layer.transform, r = layer.raster as Raster;
-    if (!isAxisAligned(t, r.width, r.height)) return r;
-    if (t.x <= want.x && t.y <= want.y && t.x + t.w >= want.x + want.w && t.y + t.h >= want.y + want.h) return r;
-    const u = unionRect({ x: t.x, y: t.y, w: t.w, h: t.h }, want);
-    if (u.w > LIMITS.side || u.h > LIMITS.side || u.w * u.h > LIMITS.pixels) return r;
-    let mask = layer.mask;
-    if (mask?.raster) {
-      if (mask.placement || mask.raster.width !== r.width || mask.raster.height !== r.height) return r;
-      const nm = Raster.filled(u.w, u.h, '#ffffff');
-      nm.ctx.clearRect(t.x - u.x, t.y - u.y, r.width, r.height);
-      nm.ctx.drawImage(mask.raster.canvas, t.x - u.x, t.y - u.y);
-      mask = { ...mask, raster: nm };
-    }
-    const nr = new Raster(u.w, u.h);
-    nr.ctx.drawImage(r.canvas, t.x - u.x, t.y - u.y);
-    p.updateLayer(layer.id, { raster: nr, transform: { ...t, x: u.x, y: u.y, w: u.w, h: u.h }, mask });
-    return nr;
-  }
+  private growLayer(p: Project, layer: Layer, want: Rect): Raster { return PO.growLayer(p, layer, want); }
 
   private ensureMask(p: Project, layer: Layer): Raster {
     const m = layer.mask as Mask;
@@ -4018,22 +3988,7 @@ export class Engine {
     });
   }
 
-  fill(which: 'fg' | 'bg'): void {
-    const color = which === 'fg' ? this.fg : this.bg;
-    this.regionEdit(which === 'fg' ? 'Fill with Foreground' : 'Fill with Background', ({ raster, target, rect, cover }) => {
-      const c = raster.ctx;
-      c.save();
-      c.setTransform(1, 0, 0, 1, 0, 0);
-      if (target === 'mask') {
-        const t = this.tint(rect, '#ffffff', cover);
-        const v = luminance(color);
-        c.globalCompositeOperation = 'destination-out';
-        c.drawImage(t, rect.x, rect.y);
-        if (v > 0) { c.globalCompositeOperation = 'lighter'; c.globalAlpha = v; c.drawImage(t, rect.x, rect.y); }
-      } else c.drawImage(this.tint(rect, rgbCss(color), cover), rect.x, rect.y);
-      c.restore();
-    });
-  }
+  fill(which: 'fg' | 'bg'): void { PO.fill(this.paintHost, which); }
 
   /** The Background Eraser (E; 1.49.5, the owner's tool list), as Photoshop's: erases, within the brush, the pixels of
    *  the active layer whose colour is within Tolerance of the colour sampled under the brush's centre (at every dab, or
@@ -5318,24 +5273,7 @@ export class Engine {
     return true;
   }
 
-  nudge(dx: number, dy: number): void {
-    if (this.locked(this.activeLayer, 'position')) return;
-    const p0 = this.current;
-    if (p0 && [...this.withLinked(p0)].some((id) => !p0.selectedIds.has(id) && this.locked(p0.layer(id), 'position'))) return;
-    const sel = this.current?.selectedIds, one = sel && sel.size === 1 ? [...sel][0] : null;   // a keyed layer keys (1.59.9)
-    if (one && this.keyMove(one, dx, dy, 'Nudge')) return;
-    this.edit('Nudge', (p) => {
-      let moved = false;
-      for (const id of this.withLinked(p)) {
-        const l = p.layer(id);
-        if (!l || l.isGroup || !l.raster) continue;
-        const t = { ...l.transform, x: l.transform.x + dx, y: l.transform.y + dy };
-        p.updateLayer(id, { transform: t, mask: followMask(l, t), vectorMask: followVector(l, t) });
-        moved = true;
-      }
-      return moved;
-    });
-  }
+  nudge(dx: number, dy: number): void { PO.nudge(this.paintHost, dx, dy); }
 
   /** The selected layers and folders as units to align, each with the document bounds of its visible pixels. */
   private alignItems(p: Project): Array<{ ids: ID[]; box: Rect }> {
@@ -5417,24 +5355,7 @@ export class Engine {
     }));
   }
 
-  layerAt(pt: Pt): ID | null {
-    const p = this.current;
-    if (!p) return null;
-    const probe = createSurface(1, 1);
-    const c = ctxOf(probe);
-    const entries = hierarchy(p.doc).filter((e) => e.visible && !e.layer.isGroup && e.layer.raster).reverse();
-    for (const e of entries) {
-      const l = e.layer;
-      const r = l.raster as Raster;
-      if (!contains(l.transform, pt)) continue;
-      c.setTransform(1, 0, 0, 1, 0, 0);
-      c.clearRect(0, 0, 1, 1);
-      setMat(c, mul(translation(-Math.floor(pt.x), -Math.floor(pt.y)), placement(l.transform, r.width, r.height)));
-      c.drawImage(r.canvas, 0, 0);
-      if (c.getImageData(0, 0, 1, 1).data[3] > 8) return l.id;
-    }
-    return null;
-  }
+  layerAt(pt: Pt): ID | null { return PO.layerAt(this.paintHost, pt); }
 
   /** The Eyedropper's Sample Size, as Photoshop's options bar has it: 1 is Point Sample, otherwise the side of the
    *  square averaged (3, 5, 11, 31, 51 or 101). */
@@ -5508,7 +5429,7 @@ export class Engine {
   /** Bumped for every preview request and every clear, so a filter result that arrives from the worker after a newer
    *  request, or after the preview is switched off, is dropped instead of painted. */
   private previewToken = 0;
-  gradient: { project: Project; layerId: ID; target: Target; start: Pt; end: Pt; raster: Raster; local: Mat; surface: Surface } | null = null;
+  gradient: PO.GradientDrag | null = null;
   /** The Gradient tool's settings: Shape, Colors (style), Reverse, Opacity, and Mode and Dither as Photoshop's options
    *  bar has them (Dither off by default here: no source fetched gives Photoshop's default). */
   /** transparency and method (1.50.6, the tool audit), as Photoshop's: the stops' own transparency honoured or not;
@@ -6621,19 +6542,7 @@ export class Engine {
     try { return this.resampleImage(w, h, 'high', p.doc.resolution); } finally { p.history.end(p.snapshot()); }
   }
 
-  resizeSelection(delta: number): void {
-    const p = this.current;
-    const sel = p?.selection;
-    if (!p || !sel || !delta || Math.abs(delta) > 500) return;
-    const pad = delta > 0 ? Math.ceil(delta) + 2 : 1;
-    let region: Rect | null = { x: sel.x - pad, y: sel.y - pad, w: sel.w + 2 * pad, h: sel.h + 2 * pad };
-    if (delta > 0) region = intersectRect(region, { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
-    if (!region) return;
-    const src = new Uint8Array(region.w * region.h);
-    for (let j = 0; j < region.h; j++) for (let i = 0; i < region.w; i++) src[j * region.w + i] = sel.valueAt(region.x + i, region.y + j);
-    const out = resizeMask(src, region.w, region.h, delta);
-    this.applySelection(SelectionMask.cropped(region.x, region.y, region.w, region.h, out), 'replace', delta > 0 ? 'Expand Selection' : 'Contract Selection');
-  }
+  resizeSelection(delta: number): void { PO.resizeSelection(this.paintHost, delta); }
 
   /** Select > Modify. Feather blurs the selection's edge with a Gaussian of half the radius (so the edge fades over
    *  about the radius each way); Border keeps a band `amount` wide centred on the edge; Smooth rounds off corners
@@ -6791,128 +6700,58 @@ export class Engine {
     });
   }
 
-  beginGradient(pt: Pt): boolean {
-    const p = this.current;
-    if (!p || this.stroke) return false;
-    this.settle();
-    if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer for the gradient.'); return false; }
-    if (this.smartLocked(p)) return false;
-    p.history.begin('Gradient', p.snapshot());
-    const pick = this.target(p) as NonNullable<ReturnType<Engine['target']>>;
-    this.gradient = { project: p, layerId: pick.layer.id, target: pick.target, start: pt, end: pt, raster: pick.raster, local: pick.local, surface: createSurface(pick.raster.width, pick.raster.height) };
-    this.renderGradient();
-    return true;
-  }
-
-  updateGradient(start?: Pt, end?: Pt): void {
-    const g = this.gradient;
-    if (!g) return;
-    if (start) g.start = start;
-    if (end) g.end = end;
-    this.renderGradient();
-  }
-
-  renderGradient(): void {
-    const g = this.gradient;
-    if (!g) return;
-    const { raster, local } = g;
-    const w = raster.width, h = raster.height;
-    const c = ctxOf(g.surface);
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.globalAlpha = 1;
-    c.globalCompositeOperation = 'source-over';
-    c.clearRect(0, 0, w, h);
-    const mask = g.target === 'mask';
-    if (mask) c.putImageData(toGray(raster.read()), 0, 0);
-    else c.drawImage(raster.canvas, 0, 0);
-    const layer = createSurface(w, h);
-    const lc = ctxOf(layer);
-    setMat(lc, invert(local));
+  private get paintHost(): PO.PaintHost {
     const st = this.gradientSettings;
-    const tone = (col: RGB): RGB => { const v = Math.round(luminance(col) * 255); return { r: v, g: v, b: v }; };
-    const fg = mask ? tone(this.fg) : this.fg, bg = mask ? tone(this.bg) : this.bg;
-    const stops = gradientMethod(resolveStops(presetById(st.style), fg, bg, st.reversed).map((x) => (st.transparency ? x : { ...x, alpha: 1 })), st.method);
-    const a = g.start, b = g.end;
-    const len = Math.max(0.5, Math.hypot(b.x - a.x, b.y - a.y));
-    const bb = boundsOf([applyMat(local, 0, 0), applyMat(local, w, 0), applyMat(local, w, h), applyMat(local, 0, h)]);
-    if (st.shape === 'diamond') {
-      const img = new ImageData(w, h);
-      diamondFill(img, (x, y) => applyMat(local, x, y), a, b, stops);
-      lc.save();
-      lc.setTransform(1, 0, 0, 1, 0, 0);
-      lc.putImageData(img, 0, 0);
-      lc.restore();
-    } else {
-      const grad = st.shape === 'radial' ? lc.createRadialGradient(a.x, a.y, 0, a.x, a.y, len)
-        : st.shape === 'angle' ? lc.createConicGradient(Math.atan2(b.y - a.y, b.x - a.x), a.x, a.y)
-        : st.shape === 'reflected' ? lc.createLinearGradient(2 * a.x - b.x, 2 * a.y - b.y, b.x, b.y)
-        : lc.createLinearGradient(a.x, a.y, len > 0.5 ? b.x : a.x + 0.5, b.y);
-      for (const s of st.shape === 'reflected' ? reflectStops(stops) : stops) grad.addColorStop(s.at, rgbCss(s.rgb, s.alpha));
-      lc.fillStyle = grad;
-      lc.fillRect(bb.x - 1, bb.y - 1, bb.w + 2, bb.h + 2);
-    }
-    if (st.dither) {
-      // Dither: each colour channel moved by up to one level either way, by a fixed hash of the pixel so the preview and
-      // the commit agree. The canvas has already rounded the gradient to whole levels, so smaller offsets would round
-      // back; a level of grain breaks the steps of a slow gradient into grain too fine to see as bands.
-      const img = lc.getImageData(0, 0, w, h), d = img.data;
-      for (let i = 0; i < w * h; i++) {
-        let hsh = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b);
-        for (let ch = 0; ch < 3; ch++) {
-          hsh = Math.imul(hsh ^ (hsh >>> 13), 0xc2b2ae35);
-          const k = i * 4 + ch, v = d[k] + 2 * ((hsh >>> 8) / 16777216 - 0.5);
-          d[k] = Math.max(0, Math.min(255, Math.round(v)));
-        }
-      }
-      lc.putImageData(img, 0, 0);
-    }
-    const sel = g.project.selection;
-    if (sel) {
-      setMat(lc, mul(invert(local), translation(sel.x, sel.y)));
-      lc.globalCompositeOperation = 'destination-in';
-      lc.drawImage(sel.surface(), 0, 0);
-    }
-    c.globalAlpha = st.opacity;
-    c.globalCompositeOperation = mask ? 'source-over' : compositeOp(st.blend);
-    c.drawImage(layer, 0, 0);
-    c.globalAlpha = 1;
-    c.globalCompositeOperation = 'source-over';
-    if (mask) c.putImageData(fromGray(c.getImageData(0, 0, w, h)), 0, 0);
-    this.emit('render', null);
-    this.emit('overlay', null);
+    return {
+      current: this.current,
+      busy: !!this.stroke,
+      settle: () => this.settle(),
+      notice: (m) => this.notice(m),
+      emit: (what) => this.emit(what, null),
+      refresh: () => this.refresh(),
+      canPaint: (p) => this.paintable(p.activeLayer) && !this.smartLocked(p),
+      target: (p) => this.target(p) as NonNullable<ReturnType<Engine['target']>>,
+      edit: (label, fn) => this.edit(label, fn),
+      regionEdit: (label, apply) => this.regionEdit(label, apply),
+      tint: (rect, css, cover) => this.tint(rect, css, cover),
+      fg: this.fg,
+      bg: this.bg,
+      luminance: (c) => luminance(c),
+      css: (c, a) => rgbCss(c, a),
+      gradient: { shape: st.shape, opacity: st.opacity, blend: st.blend, dither: st.dither },
+      gradientStops: (fg, bg) => gradientMethod(resolveStops(presetById(st.style), fg, bg, st.reversed).map((x) => (st.transparency ? x : { ...x, alpha: 1 })), st.method),
+      positionLocked: (id) => this.locked(id ? this.current?.layer(id) ?? null : this.activeLayer, 'position'),
+      linkedOf: (p) => this.withLinked(p),
+      keyMove: (id, dx, dy, label) => this.keyMove(id, dx, dy, label),
+      maskFollowing: (l, t) => followMask(l, t),
+      vectorFollowing: (l, t) => followVector(l, t),
+      setFlipAgain: (horizontal) => { this.lastTransform = { flip: horizontal }; },
+      applySelection: (sel, mode, label) => this.applySelection(sel, mode, label),
+    };
   }
+
+  beginGradient(pt: Pt): boolean {
+    const g = PO.beginGradient(this.paintHost, pt);
+    this.gradient = g;
+    return !!g;
+  }
+
+  updateGradient(start?: Pt, end?: Pt): void { if (this.gradient) PO.updateGradient(this.paintHost, this.gradient, start, end); }
+
+  renderGradient(): void { if (this.gradient) PO.updateGradient(this.paintHost, this.gradient); }
 
   commitGradient(): void {
     const g = this.gradient;
     if (!g) return;
     this.gradient = null;
-    if (Math.hypot(g.end.x - g.start.x, g.end.y - g.start.y) < 1) {
-      const before = g.project.history.abort();
-      if (before) { g.project.doc = before.doc; g.project.selection = before.selection; }
-      this.refresh();
-      return;
-    }
-    const r = g.raster;
-    const before = r.read();
-    r.ctx.save();
-    r.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    r.ctx.globalCompositeOperation = 'copy';
-    r.ctx.drawImage(g.surface, 0, 0);
-    r.ctx.restore();
-    r.touch();
-    g.project.history.addPatch({ raster: r, x: 0, y: 0, before, after: r.read() });
-    if (g.target === 'pixels' && g.project.layer(g.layerId)?.shape) g.project.updateLayer(g.layerId, { shape: null });
-    g.project.history.end(g.project.snapshot());
-    this.refresh();
+    PO.commitGradient(this.paintHost, g);
   }
 
   cancelGradient(): void {
     const g = this.gradient;
     if (!g) return;
     this.gradient = null;
-    const before = g.project.history.abort();
-    if (before) { g.project.doc = before.doc; g.project.selection = before.selection; }
-    this.refresh();
+    PO.cancelGradient(this.paintHost, g);
   }
 
   /** Live corners: a rectangle shape layer's four radii (top left, top right, bottom right, bottom left, in pixels),
