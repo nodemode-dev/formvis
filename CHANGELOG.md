@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.67.7 · 2026-10-13
+
+### Changed
+
+- More of formvis is new code written independently from descriptions of what it does: adjustments, filters and the layer renderer, the project file format and its routes, and the desktop app's start-up.
+- Unsharp Mask leaves fully transparent pixels as they are and rounds its result; an adjustment layer's result is rounded per channel.
+
+### Fixed
+
+- The Image Size and Canvas Size fields ignore a value that is not a number instead of applying it.
+
 ## 1.67.6 · 2026-10-13
 
 ### Added

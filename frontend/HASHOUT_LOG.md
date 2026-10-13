@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Adjustments, filters and the renderer rewritten from behaviour specs, and the last logic gaps of earlier batches, DEV_PLAN 28.0 batches 27 and 29 · _v1.67.7 (engine/adjust.ts, filters.ts, renderer.ts, dpi.ts; extensions/tools/select-common.ts; ui/panels/size-dialogs.ts)
+
+Specs `cleanroom/batch-27-engine-adjust-filters-renderer.md` (141 gaps) and `batch-29-earlier-logic-gaps.md` (7 gaps), notes tagged Interface, Behaviour or Close, with implementers who had not seen the old lines. Batch 29 holds the gaps the earlier batches' identical-gap review found to be logic rather than interface: the CRC-32 in `dpi.ts`, the selection mode from modifier keys, the size dialogs' apply, the viewport matrix, transform following, the move tool's pixel move and the command catalogue's add; the last four came back the same as the old lines because the notes and the code around them fix them, and are left. Similarity, measured before placing: batch 27, 104 of 141 gaps identical, all of them interface, closing or set by the canvas calls around them but one (the HSV band's range weight, a three-line formula the behaviour states exactly); batch 29, 4 of 7. Review feedback, as compiler errors only: gap 140 had to close the `Renderer` class, and `draw` takes `src: CanvasImageSource`. Placed by hand to match the assembled proposal; renderer.ts as single-region edits.
+
+Small behaviour changes, in the CHANGELOG: Unsharp Mask leaves fully transparent pixels as they are and rounds its result; the halved copies used to draw a layer below half size are each made from the previous halving at its exact size; the size dialogs ignore a value that is not a number instead of applying it; an adjustment layer's result is rounded per channel, and its kernel's units per pixel are the length of one screen pixel's step in document space (the same as before for any view that scales evenly). Coverage for an adjustment layer is now built even with no mask (a cost, not a change in the result); `clipCoverageOf` finds the base through the laid-out hierarchy. Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; 58 browser tests over filters, adjustments (new kinds, GPU, PSD), clipping, masks, layer fill, groups and styles, select and mask, brush and flow, the move bar, crop size, export formats and the tool audit, 56 passing and two failing identically on the unchanged tree (`test_gpu_clip`'s masked-folder case and `test_tiled_filter`). Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.67.6",
+      "version": "1.67.6",
+  "version": "1.67.6",
+export const VERSION = '1.67.6';
+```
+
 ## Release 1.67.6: brushes, colour part 2 and the sprint's close joined · _v1.67.6
 
 The sections below were written by the three engineers who built them this turn; this one records the lead's checks. After the joins: tsc clean; unit 194 of 194; 34 browser tests over brushes (flow, dynamics, tip, history brush), colour management, profiles, modes, no-scrollbars, menus, filters and the shortcut editor pass; `counts --check` accurate; `agents sync --check` in step. Measured by the brush engineer on pixel values: Opacity 50 and Flow 10 scrubbed 1, 3 and 9 times in one stroke peak at 32.9, 49.8 and 49.8 percent; Flow 20 at 1, 10 and 25 percent spacing within 0.3 points; a 0.1 to 1 pressure ramp widens 14 to 36 px; a light press repeated stays at 43.9 percent while a hard pass reaches 100. Open: Fade has no options-bar control yet (the model only); `test_brush_flow`'s comments still describe the old 8-bit stall; the macOS and Windows display-profile paths, DCP on real camera profiles and the Develop Profile select in a live window are unverified. Removed from frontend:

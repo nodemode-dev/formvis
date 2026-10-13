@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The project format, the project routes and the desktop shell's start rewritten from behaviour specs, DEV_PLAN 28.0 batch 28 · _v1.67.7 (app/services/project_format.py, app/routers/projects.py; src-tauri/src/main.rs)
+
+Spec `cleanroom/batch-28-project-format-routes-shell.md`, 54 gaps, notes tagged Interface, Behaviour or Close, with an implementer who had not seen the old lines. Similarity, measured before placing: 21 of 54 identical, none of them a behaviour gap (route declarations, `close_splash`, `fn main` and the builder's run, all fixed by their interface). `project_format.py` as one whole-file write (about 85 percent changed), `projects.py` and `main.rs` as single-region edits. Review feedback as a compiler error only: the error dialog builder has no `title` before `message`; the line was removed in the repo by hand. Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: engine tests fail only as on the unchanged tree (the seven model and EXR cases); `cargo check` in `src-tauri` clean; the four browser test files that save, open or call the project routes pass but for `test_an_agent_edits_saves_exports_and_reopens`, which stops at its generative step for want of a local model or key here, before any project call. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.67.6"
+version = "1.67.6"
+version = "1.67.6"
+ "version": "1.67.6",
+```
+
 ## Release 1.67.6: DCP, display profile, presets and the sprint's close · _v1.67.6
 
 The sections below were written by the engineers who built them this turn. Lead's checks after the joins: engine tests fail only as on the unchanged tree (seven: models absent here and this OpenCV's missing EXR codec); `cargo check` in `src-tauri` clean. Colour accuracy (Delta E 2000, 1,000 colours a pair, formvis against LittleCMS's own transform): every exact pair at or under 0.0028 except FOGRA39 to Lab D50 at 0.30, all under the 1.0 target; the 33-point RGB display table 0.79 to 1.17 at most (mean about 0.18); the 17-point FOGRA39 display table 2.05 at most on uniform random ink, over the 2.0 target, and 1.58 within 330 percent total ink. `FOGRA39L_coated.icc` matches TeX Live's colorprofiles copy; its copyright tag reads "free of known copyright restrictions" and CTAN gives zlib/libpng terms, so it ships (recorded in `NOTICE.md`). Removed:
