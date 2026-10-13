@@ -1,10 +1,12 @@
 import type { Engine } from '../../engine';
-import { exportLayout, BUILTIN_EXPORT_PRESETS, DPX_BITS, DPX_TRANSFERS, EXPORT_FORMATS, LOSSY, clampSettings, exportName, exportSize, presetsFromStorage, type DpxBits, type DpxTransfer, type ExportFormat, type ExportPreset, type ExportSettings } from '../../io/export-presets';
+import { exportLayout, BUILTIN_EXPORT_PRESETS, DPX_BITS, DPX_TRANSFERS, EXPORT_FORMATS, EXPORT_INTENTS, LOSSY, clampSettings, exportName, exportSize, presetsFromStorage, type DpxBits, type DpxTransfer, type ExportFormat, type ExportIntent, type ExportPreset, type ExportSettings } from '../../io/export-presets';
+import { api } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { toast } from '../toast';
-import { selectRow, sliderRow, type Row } from './controls';
-import type { SpaceId } from '../../engine/icc';
+import { checkRow, selectRow, sliderRow, type Row } from './controls';
+
+const BUILT_IN_PROFILES: ReadonlyArray<readonly [string, string]> = [['srgb', 'sRGB (web)'], ['display-p3', 'Display P3'], ['adobe-rgb', 'Adobe RGB (1998)']];
 
 const KEY = 'formvis.exportPresets';
 
@@ -21,6 +23,9 @@ export class ExportDialog extends Dialog {
   private readonly qualityRow: Row<number>;
   private readonly scaleRow: Row<number>;
   private readonly profileRow: Row<string>;
+  private readonly intentRow: Row<string>;
+  private readonly bpcRow: Row<boolean>;
+  private readonly embedRow: Row<boolean>;
   private readonly sizeRow: Row<string>;
   private readonly labelRow: Row<string>;
   private readonly dpxBitsRow: Row<string>;
@@ -38,7 +43,10 @@ export class ExportDialog extends Dialog {
     this.formatRow = selectRow('Format', EXPORT_FORMATS, (v) => { this.s = clampSettings({ ...this.s, format: v as ExportFormat }); this.custom(); });
     this.qualityRow = sliderRow('Quality (%)', 1, 100, 1, (v) => { this.s = clampSettings({ ...this.s, quality: v }); this.custom(); });
     this.scaleRow = sliderRow('Scale (%)', 10, 400, 1, (v) => { this.s = clampSettings({ ...this.s, scale: v }); this.custom(); }, { min: 1, max: 1000 });
-    this.profileRow = selectRow('Colour profile', [['srgb', 'sRGB (web)'], ['display-p3', 'Display P3'], ['adobe-rgb', 'Adobe RGB (1998)']], (v) => { this.s = clampSettings({ ...this.s, profile: v as SpaceId }); this.custom(); });
+    this.profileRow = selectRow('Colour profile', BUILT_IN_PROFILES, (v) => { this.s = clampSettings({ ...this.s, profile: v as ExportSettings['profile'] }); this.custom(); });
+    this.intentRow = selectRow('Intent', EXPORT_INTENTS, (v) => { this.s = clampSettings({ ...this.s, intent: v as ExportIntent }); this.custom(); });
+    this.bpcRow = checkRow('Black point compensation', (v) => { this.s = clampSettings({ ...this.s, bpc: v }); this.custom(); });
+    this.embedRow = checkRow('Embed the profile', (v) => { this.s = clampSettings({ ...this.s, embed: v }); this.custom(); });
     // Size and the AI label (1.51.8): Scale as before, Fit Within a width and height, or a Frame of exactly that size.
     this.sizeRow = selectRow('Size', [['scale', 'Scale (%)'], ['fit', 'Fit Within'], ['frame', 'Frame']], (v) => { this.s = clampSettings({ ...this.s, size: v === 'scale' ? undefined : v as 'fit' | 'frame', boxW: this.s.boxW ?? 1920, boxH: this.s.boxH ?? 1080 }); this.custom(); });
     (this.boxRow.lastElementChild as HTMLElement).append(this.boxW, el('<span>x</span>'), this.boxH);
@@ -53,7 +61,7 @@ export class ExportDialog extends Dialog {
     this.deleteBtn.addEventListener('click', () => this.deletePreset());
     const manage = el('<div class="cv-field"><span></span><div class="cv-row-actions"></div></div>');
     (manage.lastElementChild as HTMLElement).append(this.nameInput, save, this.deleteBtn);
-    this.body.append(this.presetRow.el, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.profileRow.el, this.dpxBitsRow.el, this.dpxTransferRow.el, this.labelRow.el, this.sizeNote, manage);
+    this.body.append(this.presetRow.el, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.profileRow.el, this.intentRow.el, this.bpcRow.el, this.embedRow.el, this.dpxBitsRow.el, this.dpxTransferRow.el, this.labelRow.el, this.sizeNote, manage);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Export', 'primary', () => { this.close(); this.run({ ...this.s }); });
   }
@@ -63,6 +71,18 @@ export class ExportDialog extends Dialog {
     this.load();
     this.sync();
     this.open();
+    void this.listProfiles();
+  }
+
+  /** The RGB profiles on this computer join the built-in ones, patched in place so the row keeps its nodes. */
+  private async listProfiles(): Promise<void> {
+    const sel = this.profileRow.el.querySelector('select') as HTMLSelectElement;
+    let listed: Array<readonly [string, string]> = [];
+    try { listed = (await api.colourProfiles()).profiles.filter((p) => p.space === 'RGB').map((p) => [`id:${p.id}`, p.name] as const); } catch { /* the built-in ones only */ }
+    const want = [...BUILT_IN_PROFILES, ...listed];
+    while (sel.options.length > want.length) sel.remove(sel.options.length - 1);
+    want.forEach(([v, t], i) => { const o = sel.options[i] ?? sel.appendChild(document.createElement('option')); if (o.value !== v) o.value = v; if (o.textContent !== t) o.textContent = t; });
+    this.profileRow.set(this.s.profile ?? 'srgb');
   }
 
   private all(): ExportPreset[] { return [...BUILTIN_EXPORT_PRESETS, ...this.saved]; }
@@ -79,7 +99,7 @@ export class ExportDialog extends Dialog {
   }
 
   private store(): void {
-    try { localStorage.setItem(KEY, JSON.stringify(this.saved.map(({ id, name, format, quality, scale, profile, size, boxW, boxH, aiLabel, dpxBits, dpxTransfer }) => ({ id, name, format, quality, scale, ...(profile ? { profile } : {}), ...(size ? { size, boxW, boxH } : {}), ...(aiLabel ? { aiLabel } : {}), ...(dpxBits ? { dpxBits, dpxTransfer } : {}) })))); } catch { toast('Presets cannot be saved in this browser.', 'error'); }
+    try { localStorage.setItem(KEY, JSON.stringify(this.saved.map(({ id, name, format, quality, scale, profile, intent, bpc, embed, size, boxW, boxH, aiLabel, dpxBits, dpxTransfer }) => ({ id, name, format, quality, scale, ...(profile ? { profile } : {}), ...(intent ? { intent } : {}), ...(bpc === false ? { bpc } : {}), ...(embed === false ? { embed } : {}), ...(size ? { size, boxW, boxH } : {}), ...(aiLabel ? { aiLabel } : {}), ...(dpxBits ? { dpxBits, dpxTransfer } : {}) })))); } catch { toast('Presets cannot be saved in this browser.', 'error'); }
   }
 
   private pick(id: string): void {
@@ -128,6 +148,15 @@ export class ExportDialog extends Dialog {
     if (document.activeElement !== this.boxW) this.boxW.value = String(s.boxW ?? 1920);
     if (document.activeElement !== this.boxH) this.boxH.value = String(s.boxH ?? 1080);
     this.profileRow.set(s.profile ?? 'srgb');
+    this.intentRow.set(s.intent ?? 'relative');
+    this.bpcRow.set(s.bpc !== false);
+    this.embedRow.set(s.embed !== false);
+    const listedProfile = !!s.profile?.startsWith('id:'), carries = s.format !== 'pdf';
+    this.intentRow.el.classList.toggle('is-off', !listedProfile);
+    this.bpcRow.el.classList.toggle('is-off', !listedProfile);
+    this.embedRow.el.classList.toggle('is-off', !carries);
+    for (const i of [...this.intentRow.el.querySelectorAll('select'), ...this.bpcRow.el.querySelectorAll('input')]) i.disabled = !listedProfile;
+    for (const i of this.embedRow.el.querySelectorAll('input')) i.disabled = !carries;
     this.dpxBitsRow.set(String(s.dpxBits ?? 10));
     this.dpxTransferRow.set(s.dpxTransfer ?? 'log');
     this.dpxBitsRow.el.classList.toggle('is-off', s.format !== 'dpx');

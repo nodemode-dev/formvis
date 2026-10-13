@@ -8,6 +8,7 @@ use tauri_plugin_shell::process::{CommandChild, CommandEvent};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_updater::UpdaterExt;
 
+mod display;
 mod native;
 
 struct Backend(Mutex<Option<CommandChild>>);
@@ -99,6 +100,7 @@ fn main() {
         .manage(native::NativeState::default())
         .invoke_handler(tauri::generate_handler![
             system_fonts,
+            display::display_profile,
             native::native_start,
             native::native_stop,
             native::native_doc,

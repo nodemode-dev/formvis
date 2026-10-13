@@ -1,7 +1,8 @@
 import type { Engine } from '../../engine';
 import { api, ApiError } from '../../io/api';
 import { BUILTIN_COLOUR_PRESETS, INTENT_CHOICES, POLICIES, cleanColour, mismatchPref, type ColourPreset, type ColourSettings, type Policy } from '../colour-settings';
-import type { Intent } from '../colour';
+import type { ColourView, Intent } from '../colour';
+import { displayLine } from '../colour-display';
 import type { Commands } from '../commands';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
@@ -47,6 +48,8 @@ export class ColorSettingsDialog extends Dialog {
   private readonly intentRow: Row<string>;
   private readonly bpcRow: Row<boolean>;
   private readonly ditherRow: Row<boolean>;
+  private readonly displayRow: Row<boolean>;
+  private readonly displayNote = el('<p class="cv-note"></p>');
   private readonly tac = readout('Total ink limit');
   private readonly black = readout('Black ink limit');
   private readonly generation = readout('Black generation');
@@ -55,7 +58,7 @@ export class ColorSettingsDialog extends Dialog {
   private readonly nameInput = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="60" placeholder="Preset name">');
   private readonly deleteBtn: HTMLButtonElement;
 
-  constructor(private readonly engine: Engine) {
+  constructor(private readonly engine: Engine, private readonly view: () => ColourView | null = () => null) {
     super('Color Settings', 520);
     const set = (patchIt: Partial<ColourSettings>): void => { this.s = cleanColour({ ...this.s, ...patchIt }); this.presetId = ''; this.sync(); };
     this.presetRow = selectRow('Settings', [['', 'Custom']], (v) => this.pick(v));
@@ -71,6 +74,7 @@ export class ColorSettingsDialog extends Dialog {
     this.intentRow = selectRow('Intent', INTENT_CHOICES, (v) => set({ intent: v as Intent }));
     this.bpcRow = checkRow('Use Black Point Compensation', (v) => set({ bpc: v }));
     this.ditherRow = checkRow('Use Dither (8-bit/channel)', (v) => set({ dither: v }));
+    this.displayRow = checkRow('Draw the canvas through the monitor profile', (v) => set({ useDisplay: v }));
     const save = el<HTMLButtonElement>('<button class="cv-btn" type="button">Save Preset</button>');
     this.deleteBtn = el<HTMLButtonElement>('<button class="cv-btn" type="button">Delete Preset</button>');
     save.addEventListener('click', () => this.savePreset());
@@ -80,6 +84,7 @@ export class ColorSettingsDialog extends Dialog {
     this.body.append(this.presetRow.el, heading('Working Spaces'), this.rgbRow.el, this.cmykRow.el, this.grayRow.el,
       heading('Color Management Policies'), this.policyRows.rgb.el, this.policyRows.cmyk.el, this.policyRows.gray.el, this.askMismatch.el, this.askMissing.el,
       heading('Conversion Options'), this.engineRow.el, this.intentRow.el, this.bpcRow.el, this.ditherRow.el,
+      heading('Display'), this.displayRow.el, this.displayNote,
       heading('CMYK Profile'), this.tac.el, this.black.el, this.generation.el, this.doc, manage, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.ok());
@@ -95,6 +100,7 @@ export class ColorSettingsDialog extends Dialog {
     await this.fill();
     this.sync();
     this.open();
+    void this.view()?.detect().then(() => this.sync());
   }
 
   private all(): ColourPreset[] { return [...BUILTIN_COLOUR_PRESETS, ...this.saved]; }
@@ -133,6 +139,10 @@ export class ColorSettingsDialog extends Dialog {
     this.policyRows.rgb.set(s.rgbPolicy); this.policyRows.cmyk.set(s.cmykPolicy); this.policyRows.gray.set(s.grayPolicy);
     this.askMismatch.set(s.askMismatch); this.askMissing.set(s.askMissing);
     this.engineRow.set('lcms'); this.intentRow.set(s.intent); this.bpcRow.set(s.bpc); this.ditherRow.set(s.dither);
+    const monitor = this.view()?.display ?? null;
+    this.displayRow.set(s.useDisplay);
+    for (const i of this.displayRow.el.querySelectorAll('input')) i.disabled = !monitor?.icc;
+    setText(this.displayNote, displayLine(monitor, s.useDisplay));
     this.deleteBtn.disabled = !this.saved.some((x) => x.id === this.presetId);
     const p = this.engine.current;
     setText(this.doc, p ? `This document: ${p.doc.profile?.name ?? (p.doc.mode === 'lab' ? 'Lab (D50)' : 'sRGB IEC61966-2.1')} · ${p.doc.depth ?? 8}-bit` : '');
@@ -163,6 +173,7 @@ export class ColorSettingsDialog extends Dialog {
   private store(): void {
     const prefs = loadPrefs();
     savePrefs({ ...prefs, colour: this.s, colourPresets: this.saved, profileMismatch: mismatchPref(this.s) });
+    void this.view()?.refresh();
   }
 
   private savePreset(): void {
@@ -199,8 +210,8 @@ export class ColorSettingsDialog extends Dialog {
 
 /** Registers Edit > Color Settings as the command `colour.settings` (Shift+Mod+K, Photoshop's key) and returns the
  *  dialogs, so the opening path can show the missing-profile prompt when the settings ask for it. */
-export function installColorSettings(commands: Commands, engine: Engine): { settings: ColorSettingsDialog; missing: MissingProfileDialog } {
-  const settings = new ColorSettingsDialog(engine), missing = new MissingProfileDialog();
+export function installColorSettings(commands: Commands, engine: Engine, view: () => ColourView | null = () => null): { settings: ColorSettingsDialog; missing: MissingProfileDialog } {
+  const settings = new ColorSettingsDialog(engine, view), missing = new MissingProfileDialog();
   commands.add({ id: 'colour.settings', label: 'Color Settings...', keys: ['Shift+Mod+K'], run: () => void settings.show() });
   return { settings, missing };
 }

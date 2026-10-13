@@ -20,6 +20,8 @@ export interface ColourSettings {
   intent: Intent;
   bpc: boolean;
   dither: boolean;
+  /** Draw the canvas through the monitor's own profile (the desktop app reads it from the system). */
+  useDisplay: boolean;
 }
 export interface ColourPreset { id: string; name: string; settings: ColourSettings; builtin: boolean }
 
@@ -28,7 +30,7 @@ export const INTENT_CHOICES: ReadonlyArray<readonly [Intent, string]> = [['perce
 
 export const DEFAULT_COLOUR: ColourSettings = {
   rgb: 'srgb', cmyk: 'default', gray: 'id:builtin:gray-g22', rgbPolicy: 'convert', cmykPolicy: 'preserve', grayPolicy: 'preserve',
-  askMismatch: false, askMissing: false, intent: 'relative', bpc: true, dither: false,
+  askMismatch: false, askMissing: false, intent: 'relative', bpc: true, dither: false, useDisplay: true,
 };
 
 export const BUILTIN_COLOUR_PRESETS: ReadonlyArray<ColourPreset> = [
@@ -48,6 +50,7 @@ export function cleanColour(v: unknown): ColourSettings {
     rgbPolicy: one(r.rgbPolicy, POLICIES.map(([p]) => p), d.rgbPolicy), cmykPolicy: one(r.cmykPolicy, POLICIES.map(([p]) => p), d.cmykPolicy), grayPolicy: one(r.grayPolicy, POLICIES.map(([p]) => p), d.grayPolicy),
     askMismatch: typeof r.askMismatch === 'boolean' ? r.askMismatch : d.askMismatch, askMissing: typeof r.askMissing === 'boolean' ? r.askMissing : d.askMissing,
     intent: one(r.intent, INTENT_CHOICES.map(([i]) => i), d.intent), bpc: typeof r.bpc === 'boolean' ? r.bpc : d.bpc, dither: typeof r.dither === 'boolean' ? r.dither : d.dither,
+    useDisplay: typeof r.useDisplay === 'boolean' ? r.useDisplay : d.useDisplay,
   };
 }
 

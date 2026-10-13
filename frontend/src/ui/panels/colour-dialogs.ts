@@ -6,7 +6,8 @@ import { iccProfile } from '../../engine/icc';
 import { loadPrefs } from '../prefs';
 import { api, ApiError } from '../../io/api';
 import { toBase64 } from '../../io/icc-read';
-import type { ColourView, Intent } from '../colour';
+import type { ColourView, Intent, ProofSetup } from '../colour';
+import { displayLine } from '../colour-display';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 
@@ -179,6 +180,12 @@ export class ProofSetupDialog extends Dialog {
   private readonly intent = el<HTMLSelectElement>('<select class="cv-input" aria-label="Rendering Intent"></select>');
   private readonly bpc = el<HTMLInputElement>('<input type="checkbox" aria-label="Black Point Compensation" checked>');
   private readonly file = el<HTMLInputElement>('<input type="file" accept=".icc,.icm" hidden data-role="load-profile">');
+  private readonly paper = el<HTMLInputElement>('<input type="checkbox" aria-label="Simulate Paper Color">');
+  private readonly ink = el<HTMLInputElement>('<input type="checkbox" aria-label="Simulate Black Ink">');
+  private readonly presetSel = el<HTMLSelectElement>('<select class="cv-input" aria-label="Preset"></select>');
+  private readonly presetName = el<HTMLInputElement>('<input class="cv-input" type="text" maxlength="60" placeholder="Preset name" aria-label="Preset name">');
+  private readonly deleteBtn = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Delete Preset</button>');
+  private readonly monitor = el('<p class="cv-note"></p>');
   private readonly note = el('<p class="cv-note" role="status"></p>');
   constructor(private readonly colour: ColourView) {
     super('Proof Setup', 480);
@@ -186,11 +193,70 @@ export class ProofSetupDialog extends Dialog {
     const load = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Load Profile...</button>');
     load.addEventListener('click', () => this.file.click());
     this.file.addEventListener('change', () => void this.load());
-    this.body.append(row('Device to Simulate', this.sel), load, this.file, row('Rendering Intent', this.intent), row('Black Point Compensation', this.bpc), this.note);
+    const save = el<HTMLButtonElement>('<button type="button" class="cv-btn cv-btn-ghost">Save Preset</button>');
+    save.addEventListener('click', () => this.savePreset());
+    this.deleteBtn.addEventListener('click', () => this.deletePreset());
+    this.presetSel.addEventListener('change', () => this.pickPreset());
+    this.paper.addEventListener('change', () => this.terms());
+    const manage = el('<div class="cv-dialog-row"><span></span></div>');
+    manage.append(this.presetName, save, this.deleteBtn);
+    this.body.append(row('Preset', this.presetSel), manage, row('Device to Simulate', this.sel), load, this.file, row('Rendering Intent', this.intent), row('Black Point Compensation', this.bpc),
+      row('Simulate Paper Color', this.paper), row('Simulate Black Ink', this.ink), this.monitor, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.ok());
   }
-  async show(): Promise<void> { await this.list(this.colour.setup?.id); setText(this.note, ''); if (this.colour.setup) { this.intent.value = this.colour.setup.intent; this.bpc.checked = this.colour.setup.bpc; } this.open(); }
+  async show(): Promise<void> {
+    await this.list(this.colour.setup?.id); setText(this.note, '');
+    const s = this.colour.setup;
+    if (s) this.apply(s);
+    this.terms();
+    this.fillPresets(s ? this.colour.presets.find((p) => JSON.stringify(p.setup) === JSON.stringify({ ...s, name: p.setup.name }))?.id ?? '' : '');
+    setText(this.monitor, displayLine(this.colour.display, loadPrefs().colour.useDisplay));
+    this.open();
+  }
+  /** Paper white needs the absolute intent and the press's own black, so those controls give way to it. */
+  private terms(): void {
+    const paper = this.paper.checked;
+    if (paper) this.ink.checked = true;
+    this.ink.disabled = paper; this.intent.disabled = paper; this.bpc.disabled = paper || this.ink.checked;
+  }
+  private apply(s: ProofSetup): void {
+    if ([...this.sel.options].some((o) => o.value === s.id)) this.sel.value = s.id;
+    this.intent.value = s.intent; this.bpc.checked = s.bpc; this.paper.checked = !!s.paper; this.ink.checked = !!s.ink;
+    this.terms();
+  }
+  private current(): ProofSetup | null {
+    if (!this.sel.value) return null;
+    return { id: this.sel.value, name: (this.sel.selectedOptions[0]?.textContent ?? '').replace(/ \((RGB|CMYK|GRAY|LAB)\)$/, ''), intent: this.intent.value as Intent, bpc: this.bpc.checked, ...(this.paper.checked ? { paper: true } : {}), ...(this.ink.checked ? { ink: true } : {}) };
+  }
+  private fillPresets(pick: string): void {
+    options(this.presetSel, [['', 'Custom'], ...this.colour.presets.map((p) => [p.id, p.name] as [string, string])]);
+    this.presetSel.value = pick;
+    this.deleteBtn.disabled = !pick;
+  }
+  private pickPreset(): void {
+    const p = this.colour.presets.find((x) => x.id === this.presetSel.value);
+    this.deleteBtn.disabled = !p;
+    if (!p) return;
+    this.apply(p.setup);
+    setText(this.note, [...this.sel.options].some((o) => o.value === p.setup.id) ? '' : `The profile ${p.setup.name} is not on this computer: Load Profile adds it.`);
+  }
+  private savePreset(): void {
+    const name = this.presetName.value.trim(), setup = this.current();
+    if (!name) { setText(this.note, 'Name the preset first.'); this.presetName.focus(); return; }
+    if (!setup) { setText(this.note, 'Choose a device to simulate first.'); return; }
+    const existing = this.colour.presets.find((p) => p.name.toLowerCase() === name.toLowerCase()), preset = { id: existing?.id ?? `proof-${Date.now().toString(36)}`, name, setup };
+    this.colour.savePresets(existing ? this.colour.presets.map((p) => (p.id === existing.id ? preset : p)) : [...this.colour.presets, preset]);
+    this.presetName.value = '';
+    this.fillPresets(preset.id);
+    setText(this.note, `Saved the preset "${name}".`);
+  }
+  private deletePreset(): void {
+    const id = this.presetSel.value;
+    if (!id) return;
+    this.colour.savePresets(this.colour.presets.filter((p) => p.id !== id));
+    this.fillPresets('');
+  }
   private async list(pick?: string): Promise<void> {
     try {
       const all = (await api.colourProfiles()).profiles;
@@ -205,8 +271,9 @@ export class ProofSetupDialog extends Dialog {
     try { const p = await api.addColourProfile(f); await this.list(p.id); setText(this.note, `Added ${p.name}.`); } catch (err) { setText(this.note, msg(err)); }
   }
   private ok(): void {
-    if (!this.sel.value) { setText(this.note, 'Choose a device to simulate, or load its profile.'); return; }
-    this.colour.saveSetup({ id: this.sel.value, name: (this.sel.selectedOptions[0]?.textContent ?? '').replace(/ \((RGB|CMYK|GRAY|LAB)\)$/, ''), intent: this.intent.value as Intent, bpc: this.bpc.checked });
+    const setup = this.current();
+    if (!setup) { setText(this.note, 'Choose a device to simulate, or load its profile.'); return; }
+    this.colour.saveSetup(setup);
     this.colour.proof = true;
     void this.colour.refresh();
     this.close();

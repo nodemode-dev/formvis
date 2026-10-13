@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from app.core import config
-from app.services import dpx, imaging
+from app.services import camera_profiles, dpx, imaging
 
 router = APIRouter(tags=["io"])
 EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif|dpx)$", re.IGNORECASE)
@@ -395,13 +395,24 @@ def encode_cmyk(file: UploadFile = File(...), width: int = Form(...), height: in
 
 
 @router.post("/decode")
-def decode(file: UploadFile = File(...), page: int = Form(0)) -> Response:
+def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: str = Form("auto")) -> Response:
     data = file.file.read()
     try:
-        png, width, height = imaging.decode_to_png(data, file.filename or "", page)
+        png, width, height = imaging.decode_to_png(data, file.filename or "", page, camera_profile)
     except imaging.DecodeError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     return Response(content=png, media_type="image/png", headers={"X-Width": str(width), "X-Height": str(height)})
+
+
+@router.post("/camera-profiles")
+def camera_profile_list(file: UploadFile = File(...)) -> dict:
+    """The camera a RAW file came from and the DNG camera profiles in the profile folders that are made for it (Develop's
+    Profile list), with the one the file opens with when none is chosen."""
+    camera = camera_profiles.camera_of(file.file.read(8 * 1024 * 1024))
+    found = camera_profiles.for_camera(camera)
+    auto = camera_profiles.automatic(camera)
+    return {"camera": camera, "profiles": [{"id": e["id"], "name": e["name"], "camera": e["camera"], "file": e["file"]} for e in found], "auto": auto["id"] if auto else None,
+            "folders": [str(d) for d in camera_profiles.folders()]}
 
 
 @router.post("/export")

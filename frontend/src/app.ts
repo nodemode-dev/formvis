@@ -16,8 +16,9 @@ import { ContentFillDialog } from './ui/panels/content-fill-dialog';
 import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
 import { pickLinkSource, placeLinked, relink, updateLinked } from './io/links';
 import { importAbr, loadImportedBrushes } from './io/brush-library';
-import { SPACES, convertPixels, iccProfile } from './engine/icc';
+import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
+import { dpxBlob } from './io/dpx';
 import { exportLayout, ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery, type RecoveryRecord } from './io/recovery';
@@ -109,7 +110,7 @@ import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './en
 import type { Lut3x4, Lut4 } from './engine/colour-lut';
 import type { ChannelPixels, DocProfile, ID } from './engine/types';
 import { HdrToningDialog } from './ui/panels/hdr-toning';
-import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog } from './ui/panels/colour-dialogs';
+import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog, convertDocumentDeep, type Space } from './ui/panels/colour-dialogs';
 import { embeddedProfile, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
 import { toolHost } from './extensions/registry';
 import { Viewport } from './engine/viewport';
@@ -238,7 +239,7 @@ export function startApp(): void {
   const errorLog = new ErrorLog((t) => toast(t, 'error'), () => engine.failures);
   errorLog.install();
   const commands = new Commands();
-  installColorSettings(commands, engine);
+  const colourSettingsDialogs = installColorSettings(commands, engine, () => colourView);
   const contextMenu = new PopupMenu(commands, null, true);
   // Panel menus (the target's •••): each group's own commands, opened below its button.
   const panelMenu = new PopupMenu(commands, null, true);
@@ -512,6 +513,10 @@ export function startApp(): void {
     });
   }
 
+  /** Camera RAW files placed as layers (DEV_PLAN 28.2), with the camera profile each was developed with ('auto' is what the
+   *  engine chose at import), so Develop's Profile list can develop the file again. */
+  const rawLayers = new Map<string, { file: File; profile: string }>();
+
   async function importFiles(files: File[], at?: Pt): Promise<void> {
     const projects = files.filter(isProjectFile);
     const images = files.filter((f) => !isProjectFile(f) && isImageFile(f));
@@ -531,9 +536,9 @@ export function startApp(): void {
             try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { toast(message(err), 'error'); continue; }
           }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
-          if (/\.(png|tiff?|hdr|exr)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+          if (/\.(png|tiff?|hdr|exr|dpx)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
-            if (png16 || /\.(tiff?|hdr|exr)$/i.test(f.name)) {
+            if (png16 || /\.(tiff?|hdr|exr|dpx)$/i.test(f.name)) {
               try {
                 const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, '');
                 if (d.depth === 32) { engine.openDeep(name, { mode: 'rgb', n: 3, width: d.width, height: d.height, data: d.data as Float32Array }, 32); continue; }
@@ -545,6 +550,10 @@ export function startApp(): void {
           let profile: { name: string; icc: string } | undefined;
           if (/\.(png|jpe?g|webp)$/i.test(f.name)) {
             const icc = await embeddedProfile(f).catch(() => null), pname = icc ? profileName(icc) : '';
+            if (!icc && !engine.current && decoded.length === 0) {
+              const assumed = await missingProfile(f.name);
+              if (assumed) { try { const raw = await decodeImage(f, f.name, true); raw.profile = assumed; decoded.push(raw); continue; } catch { /* decoded as before */ } }
+            }
             if (icc && !isSrgbName(pname)) {
               const pref = loadPrefs().profileMismatch, how = pref === 'ask' ? await colourDialogs.mismatch.ask(f.name, pname) : pref;
               // Kept only when the image opens as its own document: placed into an open document, it is converted (as Photoshop places).
@@ -559,6 +568,10 @@ export function startApp(): void {
           }
         }
         engine.insertImages(decoded, at);
+        for (const img of decoded) {
+          const file = RAW_FILE.test(img.name) ? images.find((f) => f.name === img.name) : undefined, layer = file ? [...(engine.current?.doc.layers ?? [])].reverse().find((l) => l.name === stripExt(img.name)) : undefined;
+          if (file && layer) rawLayers.set(layer.id, { file, profile: 'auto' });
+        }
         // A single camera RAW opens into Develop, as Photoshop opens RAW files into Camera Raw.
         if (decoded.length === 1 && RAW_FILE.test(decoded[0].name)) commands.run('filter-develop');
       });
@@ -676,6 +689,11 @@ export function startApp(): void {
     engine.settle();
     await engine.task(async () => {
       try {
+        if (s.format === 'dpx') {
+          const dpx = await dpxBlob(engine, s);
+          if (dpx) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame') toast('DPX is written at the document\'s own size.', 'info'); await deliver(dpx, exportName(p.name, s)); }
+          return;
+        }
         const base = await engine.exportBlob('image/png');
         if (!base) return;
         // By Scale, Fit Within or a Frame (1.51.8): a frame's margins are transparent, or white in JPEG.
@@ -687,12 +705,23 @@ export function startApp(): void {
         // Colour: formvis works in sRGB; another profile converts the pixels, and every format but PDF carries the
         // profile (WebP through the engine when it is not sRGB, as the browser's WebP encoder cannot embed one).
         // A document with its own profile (1.53.5) is exported in it, the profile embedded as it is.
-        const own = engine.current?.doc.profile, space = own ? 'srgb' : s.profile ?? 'srgb', icc = own ? fromBase64(own.icc) : iccProfile(space);
-        if (space !== 'srgb') { const img = x.getImageData(0, 0, z.w, z.h); convertPixels(img.data, 'srgb', space); x.putImageData(img, 0, 0); }
-        const viaEngine = ENGINE_FORMATS.has(s.format) || (s.format === 'webp' && space !== 'srgb');
-        const blob = viaEngine ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, s.format === 'pdf' || (s.format === 'webp' && space === 'srgb') ? null : icc)
-          : s.format === 'png' ? await embedPng(await toBlob(c, 'image/png'), icc, SPACES[space].label)
-          : s.format === 'jpg' ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), icc)
+        // Colour export presets: any RGB profile the engine lists converts exactly through LittleCMS (intent and black
+        // point compensation as the preset says), and `embed: false` leaves the profile out of the file.
+        const own = engine.current?.doc.profile, listed = !own && !!s.profile?.startsWith('id:') ? (s.profile as string).slice(3) : null;
+        const space: SpaceId = own || listed ? 'srgb' : (s.profile as SpaceId | undefined) ?? 'srgb';
+        const icc = own ? fromBase64(own.icc) : listed ? await api.colourProfileBytes(listed) : iccProfile(space), label = listed ? profileName(icc) : SPACES[space].label;
+        if (listed) {
+          const img = x.getImageData(0, 0, z.w, z.h), f = new Float32Array(img.data.length);
+          for (let i = 0; i < f.length; i++) f[i] = img.data[i] / 255;
+          const out = await api.convertDeep(f, z.w, z.h, 'rgb', '', toBase64(icc), { intent: s.intent ?? 'relative', bpc: s.bpc !== false, bits: 8 });
+          for (let i = 0; i < f.length; i++) if (i % 4 !== 3) img.data[i] = Math.round(out.data[i] * 255);
+          x.putImageData(img, 0, 0);
+        } else if (space !== 'srgb') { const img = x.getImageData(0, 0, z.w, z.h); convertPixels(img.data, 'srgb', space); x.putImageData(img, 0, 0); }
+        const tagged = !!own || !!listed || space !== 'srgb', keep = s.embed !== false && s.format !== 'pdf' && (tagged || s.format !== 'webp') ? icc : null;
+        const viaEngine = ENGINE_FORMATS.has(s.format) || (s.format === 'webp' && tagged && !!keep);
+        const blob = viaEngine ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep)
+          : s.format === 'png' ? (keep ? await embedPng(await toBlob(c, 'image/png'), keep, label) : await toBlob(c, 'image/png'))
+          : s.format === 'jpg' ? (keep ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), keep) : await toBlob(c, 'image/jpeg', s.quality / 100))
           : await toBlob(c, 'image/webp', s.quality / 100);
         // The AI label (1.51.8), in PNG, JPEG and WebP.
         await deliver(s.aiLabel && s.aiLabel !== 'none' ? await withAiLabel(blob, s.format, s.aiLabel) : blob, exportName(p.name, s));
@@ -726,6 +755,19 @@ export function startApp(): void {
     engine.setDepth(depth);
   }
 
+  /** Image > Mode at 16 bits (DEV_PLAN 28.2): every layer's own floats through LittleCMS in double precision, rounded
+   *  once to 16 bits, in one step; true when the document changed. */
+  async function deepMode(space: Space, choice: string, profile: DocProfile | null, intent?: string, bpc?: boolean): Promise<boolean> {
+    const c = loadPrefs().colour;
+    return engine.task(async () => {
+      try { return await convertDocumentDeep(engine, choice, profile, space, { intent: intent ?? c.intent, bpc: bpc ?? c.bpc, dither: c.dither }, (pr) => cmykLutFor(pr)); } catch (err) { toast(message(err), 'error'); return false; }
+    });
+  }
+  async function toGray(): Promise<boolean> {
+    const ref = loadPrefs().colour.gray, id = ref.startsWith('id:') ? ref.slice(3) : 'builtin:gray-g22';
+    const hit = (await api.colourProfiles().catch(() => null))?.profiles.find((x) => x.id === id);
+    return deepMode('gray', `id:${id}`, await cmykProfileOf(id, hit?.name ?? 'Gray Gamma 2.2'));
+  }
   /** Before a mode that starts from RGB (1.57.3, 1.57.5): a deeper document is brought down first, from 32 bits with
    *  HDR Toning as Image > Mode does; true when the document is then at `depth` or less. */
   async function downTo(depth: 8 | 16): Promise<boolean> {
@@ -748,7 +790,8 @@ export function startApp(): void {
   /** A CMYK or Lab document to RGB first (1.57.5), for Bitmap, Indexed Color and (from Lab) CMYK; true when it is RGB. */
   async function toRgbFirst(): Promise<boolean> {
     const m = engine.current?.doc.mode ?? 'rgb';
-    if (m === 'cmyk') await cmykToRgb();
+    if ((m === 'cmyk' || m === 'lab') && engine.current?.doc.depth === 16) await deepMode('rgb', loadPrefs().colour.rgb, await workingRgb());
+    else if (m === 'cmyk') await cmykToRgb();
     else if (m === 'lab') engine.setRgbFromLab();
     return (engine.current?.doc.mode ?? 'rgb') !== 'cmyk' && engine.current?.doc.mode !== 'lab';
   }
@@ -775,6 +818,22 @@ export function startApp(): void {
   }
   for (const ev of ['projects', 'active', 'doc'] as const) engine.on(ev, () => void ensureCmykTables());
   async function cmykProfileOf(id: string, name: string): Promise<DocProfile> { return { name, icc: toBase64(await api.colourProfileBytes(id)) }; }
+  /** Color Settings' working RGB as a document profile (null for sRGB, the canvas's own space). */
+  async function workingRgb(): Promise<DocProfile | null> {
+    const ref = loadPrefs().colour.rgb;
+    if (ref === 'display-p3' || ref === 'adobe-rgb') return { name: SPACES[ref].label, icc: toBase64(iccProfile(ref)) };
+    if (!ref.startsWith('id:')) return null;
+    try { const hit = (await api.colourProfiles()).profiles.find((x) => `id:${x.id}` === ref); return hit ? await cmykProfileOf(hit.id, hit.name) : null; } catch { return null; }
+  }
+  /** A picture with no embedded profile (Color Settings): read in the working space, or left as its numbers when the
+   *  person says so; the answer is the profile to give the new document, or null for none. */
+  async function missingProfile(file: string): Promise<DocProfile | null> {
+    const c = loadPrefs().colour;
+    if (c.rgbPolicy === 'off') return null;
+    const working = await workingRgb();
+    if (!c.askMissing) return working;
+    return (await colourSettingsDialogs.missing.ask(file, working?.name ?? 'sRGB IEC61966-2.1')) === 'assume' ? working : null;
+  }
   async function toCmyk(profile: DocProfile, intent: string, bpc: boolean): Promise<void> {
     const p = engine.current;
     if (!p || p.doc.mode === 'cmyk') return;
@@ -1489,7 +1548,10 @@ export function startApp(): void {
   engine.askRasterize = (name, kind) => confirmAction(`Rasterize this ${kind}?`, `"${name}" must be rasterized before it can be painted on. Its ${kind === 'type layer' ? 'text' : kind === 'Smart Object' ? 'contents' : 'shape'} will no longer be editable.`, 'Rasterize');
   const noteDialog = new NoteDialog(engine);
   const modeDialog = new ModeDialog(engine);
-  modeDialog.onCmyk = async (id, name, intent, bpc) => { await toCmyk(await cmykProfileOf(id, name), intent, bpc); };
+  modeDialog.onCmyk = async (id, name, intent, bpc) => {
+    const profile = await cmykProfileOf(id, name);
+    if (engine.current?.doc.depth === 16) await deepMode('cmyk', `id:${id}`, profile, intent, bpc); else await toCmyk(profile, intent, bpc);
+  };
   dialogs.neural.onSuperZoom = (factor) => { commands.run(factor === 4 ? 'upscale-4x' : 'upscale-2x'); };
   const sendNodeMode = new SendDialog(engine, (t) => toast(t));
   const sendComfyUI = new SendDialog(engine, (t) => toast(t), 'comfyui');
@@ -1537,6 +1599,24 @@ export function startApp(): void {
   const vanishingDialog = new VanishingPointDialog(engine);   // 1.58.3
   const videoDialog = new VideoImportDialog(engine);   // 1.58.9
   const convertDialog = new ConvertProfileDialog(engine, (pr) => cmykLutFor(pr));   // CMYK's tables (1.57.9)
+  dialogs.filter.rawProfile = {
+    async options() {
+      const l = engine.current?.activeLayer, raw = l ? rawLayers.get(l.id) : undefined;
+      if (!raw) return null;
+      const info = await api.cameraProfiles(raw.file, raw.file.name);
+      return { list: [['none', info.profiles.length ? 'Default (camera matrix)' : 'Default (no profile for this camera)'], ...info.profiles.map((e) => [e.id, e.name] as const)], current: raw.profile === 'auto' ? info.auto ?? 'none' : raw.profile };
+    },
+    async choose(id) {
+      const l = engine.current?.activeLayer, raw = l ? rawLayers.get(l.id) : undefined;
+      if (!l || !raw) return false;
+      try {
+        const bmp = await createImageBitmap(await api.decode(raw.file, raw.file.name, 0, id));
+        if (!engine.redevelopLayer(l.id, { source: bmp, width: bmp.width, height: bmp.height, name: raw.file.name }, 'Camera Profile')) { toast('The picture could not be developed with that profile here (the layer was changed, or the document is not 8-bit).'); return false; }
+        raw.profile = id;
+        return true;
+      } catch (err) { toast(message(err), 'error'); return false; }
+    },
+  };
   const colourDialogs = { assign: new AssignProfileDialog(engine, (pr) => cmykLutFor(pr), () => convertDialog.show()), convert: convertDialog, proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
   void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
@@ -1938,10 +2018,10 @@ export function startApp(): void {
     { id: 'canvas-size', label: 'Canvas Size...', keys: ['Alt+Mod+C'], enabled: has, run: () => dialogs.canvasSize.show() },
     { id: 'image-size', label: 'Image Size...', keys: ['Alt+Mod+I'], enabled: has, run: () => dialogs.imageSize.show() },
     // Image > Mode and Layer > Flatten Image (1.50.2, the owner's walkthrough), as Photoshop's.
-    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { if (engine.current?.doc.mode === 'cmyk') void cmykToRgb(); else if (engine.current?.doc.mode === 'lab') engine.setRgbFromLab(); else engine.convertMode('rgb'); } },
-    { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (engine.current?.doc.mode !== 'lab') void downTo(16).then((ok) => { if (ok) engine.setLab(); }); } },
-    { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && ['rgb', 'cmyk', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode !== 'cmyk') void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('cmyk'); }); } },
-    { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { const m = engine.current?.doc.mode; if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
+    { id: 'mode-rgb', label: 'RGB Color', enabled: has, checked: () => (engine.current?.doc.mode ?? 'rgb') === 'rgb', run: () => { const m = engine.current?.doc.mode; if (m === 'cmyk' || m === 'lab') void toRgbFirst(); else engine.convertMode('rgb'); } },
+    { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (engine.current?.doc.mode !== 'lab') void downTo(16).then((ok) => { if (!ok) return; if (engine.current?.doc.depth === 16) void deepMode('lab', 'lab', null); else engine.setLab(); }); } },
+    { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && ['rgb', 'cmyk', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode === 'cmyk') return; void ((engine.current?.doc.depth ?? 8) > 8 ? downTo(16) : toRgbFirst().then((rgb) => (rgb ? downTo(8) : false))).then((ok) => { if (ok) modeDialog.show('cmyk'); }); } },
+    { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { const m = engine.current?.doc.mode; if (engine.current?.doc.depth === 16 && m !== 'grayscale') void toGray(); else if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('bitmap'); }) },
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('indexed'); }) },
     // Bit depth (1.53.6, H1).

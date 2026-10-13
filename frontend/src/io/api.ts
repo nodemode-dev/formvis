@@ -200,8 +200,12 @@ export const api = {
     f.append('scale', String(scale));
     return (await request('/generative/upscale', { method: 'POST', body: f })).blob();
   },
-  async decode(file: Blob, name: string, page = 0): Promise<Blob> {
-    return (await request('/io/decode', { method: 'POST', body: form(page ? { page: String(page) } : {}, [{ name, blob: file }], 'file') })).blob();
+  async decode(file: Blob, name: string, page = 0, cameraProfile?: string): Promise<Blob> {
+    return (await request('/io/decode', { method: 'POST', body: form({ ...(page ? { page: String(page) } : {}), ...(cameraProfile ? { camera_profile: cameraProfile } : {}) }, [{ name, blob: file }], 'file') })).blob();
+  },
+  /** The camera a RAW file came from and the DNG camera profiles on this computer that are made for it (DEV_PLAN 28.2). */
+  async cameraProfiles(file: Blob, name: string): Promise<{ camera: { make: string; model: string; unique: string }; profiles: Array<{ id: string; name: string; camera: string; file: string }>; auto: string | null; folders: string[] }> {
+    return (await (await request('/io/camera-profiles', { method: 'POST', body: form({}, [{ name, blob: file.slice(0, 8 * 1024 * 1024) }], 'file') })).json()) as { camera: { make: string; model: string; unique: string }; profiles: Array<{ id: string; name: string; camera: string; file: string }>; auto: string | null; folders: string[] };
   },
   /** A picture's pixels at their own depth (1.53.6, H1): RGBA, 16 bits a channel, and whether the file held 16. */
   async decodeDeep(file: Blob, name: string): Promise<{ width: number; height: number; depth: number; data: Uint16Array | Float32Array }> {

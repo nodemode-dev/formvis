@@ -7,7 +7,11 @@ export const DPX_BITS: ReadonlyArray<readonly [string, string]> = [['10', '10-bi
 export const DPX_TRANSFERS: ReadonlyArray<readonly [DpxTransfer, string]> = [['log', 'Logarithmic (Cineon)'], ['density', 'Printing density'], ['linear', 'Linear']];
 /** size (1.51.8): by Scale, or Fit Within boxW by boxH keeping the shape, or a Frame of exactly boxW by boxH with the
  *  picture centred; aiLabel: the IPTC Digital Source Type written into PNG, JPEG and WebP. */
-export interface ExportSettings { format: ExportFormat; quality: number; scale: number; profile?: SpaceId; size?: 'scale' | 'fit' | 'frame'; boxW?: number; boxH?: number; aiLabel?: 'none' | 'generated' | 'edited'; dpxBits?: DpxBits; dpxTransfer?: DpxTransfer }
+export type ExportIntent = 'perceptual' | 'relative' | 'saturation' | 'absolute';
+export const EXPORT_INTENTS: ReadonlyArray<readonly [ExportIntent, string]> = [['relative', 'Relative Colorimetric'], ['perceptual', 'Perceptual'], ['saturation', 'Saturation'], ['absolute', 'Absolute Colorimetric']];
+/** `profile` is a built-in space or `id:` and a profile listed by the engine; `intent` and `bpc` steer the conversion
+ *  into a listed profile (relative and on when left out); `embed` false leaves the profile out of the file. */
+export interface ExportSettings { format: ExportFormat; quality: number; scale: number; profile?: SpaceId | `id:${string}`; intent?: ExportIntent; bpc?: boolean; embed?: boolean; size?: 'scale' | 'fit' | 'frame'; boxW?: number; boxH?: number; aiLabel?: 'none' | 'generated' | 'edited'; dpxBits?: DpxBits; dpxTransfer?: DpxTransfer }
 export interface ExportPreset extends ExportSettings { id: string; name: string; builtin: boolean }
 
 export const EXPORT_FORMATS: ReadonlyArray<readonly [ExportFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['webp', 'WebP'], ['avif', 'AVIF'], ['tiff', 'TIFF'], ['dpx', 'DPX'], ['pdf', 'PDF']];
@@ -30,7 +34,10 @@ export const clampSettings = (s: ExportSettings): ExportSettings => ({
   format: EXPORT_FORMATS.some(([f]) => f === s.format) ? s.format : 'png',
   quality: Math.round(Math.min(100, Math.max(1, Number.isFinite(s.quality) ? s.quality : 90))),
   scale: Math.round(Math.min(1000, Math.max(1, Number.isFinite(s.scale) ? s.scale : 100))),
-  ...(s.profile && s.profile in SPACES && s.profile !== 'srgb' ? { profile: s.profile } : {}),
+  ...(s.profile && ((s.profile in SPACES && s.profile !== 'srgb') || /^id:[A-Za-z0-9:_-]{1,64}$/.test(s.profile)) ? { profile: s.profile } : {}),
+  ...(EXPORT_INTENTS.some(([i]) => i === s.intent) && s.intent !== 'relative' ? { intent: s.intent } : {}),
+  ...(s.bpc === false ? { bpc: false } : {}),
+  ...(s.embed === false ? { embed: false } : {}),
   ...(s.size === 'fit' || s.size === 'frame' ? { size: s.size, boxW: box(s.boxW), boxH: box(s.boxH) } : {}),
   ...(s.aiLabel === 'generated' || s.aiLabel === 'edited' ? { aiLabel: s.aiLabel } : {}),
   ...(s.format === 'dpx' ? { dpxBits: ([8, 10, 12, 16] as const).find((b) => b === Number(s.dpxBits)) ?? 10, dpxTransfer: DPX_TRANSFERS.find(([t]) => t === s.dpxTransfer)?.[0] ?? 'log' } : {}),
@@ -52,7 +59,7 @@ export function presetsFromStorage(raw: string | null): ExportPreset[] {
   return v.flatMap((r) => {
     const o = r && typeof r === 'object' ? (r as Record<string, unknown>) : null;
     if (!o || typeof o.id !== 'string' || typeof o.name !== 'string' || !o.name.trim()) return [];
-    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale), profile: o.profile as SpaceId | undefined, size: o.size as ExportSettings['size'], boxW: Number(o.boxW), boxH: Number(o.boxH), aiLabel: o.aiLabel as ExportSettings['aiLabel'], dpxBits: Number(o.dpxBits) as DpxBits, dpxTransfer: o.dpxTransfer as DpxTransfer });
+    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale), profile: o.profile as ExportSettings['profile'], intent: o.intent as ExportIntent, bpc: o.bpc as boolean | undefined, embed: o.embed as boolean | undefined, size: o.size as ExportSettings['size'], boxW: Number(o.boxW), boxH: Number(o.boxH), aiLabel: o.aiLabel as ExportSettings['aiLabel'], dpxBits: Number(o.dpxBits) as DpxBits, dpxTransfer: o.dpxTransfer as DpxTransfer });
     return [{ id: o.id, name: o.name.trim().slice(0, 60), ...s, builtin: false }];
   });
 }

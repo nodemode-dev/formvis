@@ -25,6 +25,10 @@ fontdb = "0.24"
 formvis-render = { path = "../native/formvis-render" }
 serde = { version = "1", features = ["derive"] }
 
+# The monitor's ICC profile (display.rs): the X11 root window's _ICC_PROFILE on Linux, through libX11 opened at run time (MIT; already in the tree through tao).
+[target.'cfg(target_os = "linux")'.dependencies]
+x11-dl = "2"
+
 [profile.release]
 codegen-units = 1
 lto = true
