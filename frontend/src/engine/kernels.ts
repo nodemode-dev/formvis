@@ -158,10 +158,10 @@ export function wandMask(rgba: Uint8ClampedArray, width: number, height: number,
   for (let y = ya; y <= yb; y++) for (let x = xa; x <= xb; x++) for (let c = 0; c < 4; c++) sum[c] += rgba[(y * width + x) * 4 + c];
   const n = (xb - xa + 1) * (yb - ya + 1);
   const ref = sum.map((s) => Math.round(s / n));
-  const tol = clamp(Math.round(tolerance), 0, 255);
+  const tol = Math.min(255, Math.max(0, Math.round(tolerance)));
   const near = (p: number): boolean => {
-    const o = p * 4;
-    return Math.abs(rgba[o] - ref[0]) <= tol && Math.abs(rgba[o + 1] - ref[1]) <= tol && Math.abs(rgba[o + 2] - ref[2]) <= tol && Math.abs(rgba[o + 3] - ref[3]) <= tol;
+    for (let c = 0; c < 4; c++) if (Math.abs(rgba[p * 4 + c] - ref[c]) > tol) return false;
+    return true;
   };
   if (!contiguous) {
     for (let p = 0; p < out.length; p++) if (near(p)) out[p] = 255;
@@ -175,7 +175,7 @@ export function wandMask(rgba: Uint8ClampedArray, width: number, height: number,
   const push = (y: number, l: number, r: number, dy: number): void => { if (y + dy >= 0 && y + dy < height) stack.push(y, l, r, dy); };
   push(seedY, seedX, seedX, 1);
   push(seedY + 1, seedX, seedX, -1);
-  while (stack.length) {
+  while (stack.length > 0) {
     const dy = stack.pop() as number, r = stack.pop() as number, l = stack.pop() as number;
     const y = (stack.pop() as number) + dy;
     let x = l;

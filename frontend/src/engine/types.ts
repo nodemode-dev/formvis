@@ -9,8 +9,8 @@ export interface Rect { x: number; y: number; w: number; h: number }
 export interface RGB { r: number; g: number; b: number }
 
 export type BlendMode =
-  | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'difference'
-  | 'color-dodge' | 'color-burn' | 'hue' | 'saturation' | 'color' | 'luminosity'
+  | 'normal' | 'multiply' | 'screen' | 'overlay' | 'darken' | 'lighten' | 'difference' | 'color-dodge' | 'color-burn'
+  | 'hue' | 'saturation' | 'color' | 'luminosity'
   | 'linear-dodge' | 'soft-light' | 'hard-light' | 'exclusion'
   | 'dissolve' | 'linear-burn' | 'darker-color' | 'lighter-color' | 'vivid-light' | 'linear-light' | 'pin-light' | 'hard-mix' | 'subtract' | 'divide';
 
@@ -29,12 +29,12 @@ export const BLEND_MODES: ReadonlyArray<{ id: BlendMode; label: string }> = [
 const CANVAS_BLENDS: ReadonlySet<BlendMode> = new Set(['normal', 'multiply', 'screen', 'overlay', 'darken', 'lighten', 'difference', 'color-dodge', 'color-burn', 'hue', 'saturation', 'color', 'luminosity', 'linear-dodge', 'soft-light', 'hard-light', 'exclusion']);
 export const canvasBlend = (mode: BlendMode): boolean => CANVAS_BLENDS.has(mode);
 export function compositeOp(mode: BlendMode): GlobalCompositeOperation { return mode === 'normal' || !CANVAS_BLENDS.has(mode) ? 'source-over' : mode === 'linear-dodge' ? 'lighter' : (mode as GlobalCompositeOperation); }
-export function blendFromLabel(label: unknown): BlendMode { return BLEND_MODES.find((b) => b.label === label)?.id ?? 'normal'; }
-export function blendLabel(mode: BlendMode): string { return BLEND_MODES.find((b) => b.id === mode)?.label ?? 'Normal'; }
+export function blendFromLabel(label: unknown): BlendMode { return BLEND_MODES.find((m) => m.label === label)?.id ?? 'normal'; }
+export function blendLabel(mode: BlendMode): string { return BLEND_MODES.find((m) => m.id === mode)?.label ?? 'Normal'; }
 
 export type Sampling = 'nearest' | 'smooth' | 'high';
 export const SAMPLING_LABELS: Record<Sampling, string> = { nearest: 'Nearest', smooth: 'Smooth', high: 'High quality' };
-export function samplingFromLabel(label: unknown): Sampling { return label === 'Nearest' ? 'nearest' : label === 'Smooth' ? 'smooth' : 'high'; }
+export function samplingFromLabel(label: unknown): Sampling { return (Object.keys(SAMPLING_LABELS) as Sampling[]).find((k) => SAMPLING_LABELS[k] === label) ?? 'high'; }
 
 export interface Transform { x: number; y: number; w: number; h: number; rotation: number; flipX: boolean; flipY: boolean; sampling: Sampling }
 export interface Mask { raster: Raster | null; enabled: boolean; linked: boolean; placement: Transform | null }
@@ -154,25 +154,26 @@ export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'c
 export const LIMITS: { readonly side: number; pixels: number; readonly layers: number; readonly depth: number } = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 };
 export function setPixelBudget(pixels: number): void { if (Number.isFinite(pixels) && pixels >= 100_000_000) LIMITS.pixels = Math.min(250_000_000, Math.round(pixels)); }
 
-let counter = 0;
+let idCounter = 0;
 export function uid(): ID {
-  const c = (globalThis as { crypto?: Crypto }).crypto;
-  if (c && typeof c.randomUUID === 'function') return c.randomUUID().toUpperCase();
-  counter += 1;
-  return `ID-${Date.now().toString(36)}-${counter.toString(36)}-${Math.random().toString(36).slice(2, 10)}`.toUpperCase();
+  const g = globalThis as { crypto?: { randomUUID?: () => string } };
+  if (g.crypto?.randomUUID) return g.crypto.randomUUID().toUpperCase();
+  idCounter += 1;
+  return 'ID-' + (Date.now().toString(36) + idCounter.toString(36) + Math.random().toString(36).slice(2, 8)).toUpperCase();
 }
 
-export const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
+export function clamp(v: number, lo: number, hi: number): number { return Math.min(hi, Math.max(lo, v)); }
 
 export function docTransform(w: number, h: number): Transform {
   return { x: 0, y: 0, w, h, rotation: 0, flipX: false, flipY: false, sampling: 'high' };
 }
 
 export function newLayer(name: string, size: { width: number; height: number }, patch: Partial<Layer> = {}): Layer {
-  return {
-    id: uid(), name, raster: null, transform: docTransform(size.width, size.height), visible: true, parentId: null,
-    isGroup: false, opacity: 1, blend: 'normal', mask: null, clipId: null, adjustment: null, shape: null, ...patch,
+  const base: Layer = {
+    id: uid(), name, raster: null, transform: docTransform(size.width, size.height), visible: true, parentId: null, isGroup: false,
+    opacity: 1, blend: 'normal', mask: null, clipId: null, adjustment: null, shape: null,
   };
+  return { ...base, ...patch };
 }
 
 /** Layer styles, drawn beneath a layer from its visible silhouette. Sizes and distances are document pixels; the drop

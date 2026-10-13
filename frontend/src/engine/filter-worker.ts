@@ -7,8 +7,8 @@ import { isLibKind, runLib } from './filter-library';
 import type { FilterJob } from './filter-jobs';
 
 /** Filters run here, off the main thread: formvis's kernels are JavaScript, so the
- *  interactive preview runs here instead, leaving the interface responsive while a slider is dragged. The pixels
- *  arrive and leave as transferred buffers, so nothing is copied. */
+ *  live preview would stall the page if it ran there; working here keeps it responsive,
+ *  and pixels move as transferred buffers rather than copies. */
 onmessage = (e: MessageEvent<FilterJob>) => {
   const job = e.data;
   const src = new ImageData(new Uint8ClampedArray(job.pixels), job.width, job.height);

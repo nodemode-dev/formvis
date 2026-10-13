@@ -113,7 +113,7 @@ function solveMembrane(v: Float32Array, state: Uint8Array, w: number, h: number)
       if (x < w - 1 && state[p + 1] !== EXCLUDED) { const o = (p + 1) * 4; r += v[o]; g += v[o + 1]; b += v[o + 2]; a += v[o + 3]; n++; }
       if (p >= w && state[p - w] !== EXCLUDED) { const o = (p - w) * 4; r += v[o]; g += v[o + 1]; b += v[o + 2]; a += v[o + 3]; n++; }
       if (p + w < last && state[p + w] !== EXCLUDED) { const o = (p + w) * 4; r += v[o]; g += v[o + 1]; b += v[o + 2]; a += v[o + 3]; n++; }
-      if (!n) continue;
+      if (n === 0) continue;
       const o = p * 4;
       v[o] += omega * (r / n - v[o]);
       v[o + 1] += omega * (g / n - v[o + 1]);

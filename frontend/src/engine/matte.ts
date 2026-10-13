@@ -6,7 +6,7 @@
 
 export interface MatteSettings { quality: 'basic' | 'advanced'; refineEdges: number; matteContrast: number; shiftEdge: number }
 
-/** Basic, Refine 12 px (0 to 40), Contrast 25% (0 to 100), Shift Edge 0 px (-10 to 10). */
+/** The starting Select Subject matte settings. */
 export const DEFAULT_MATTE: MatteSettings = { quality: 'basic', refineEdges: 12, matteContrast: 25, shiftEdge: 0 };
 
 /** Box means along one axis: `lines` runs of `length` values `stride` apart, starting at `origin(line)`. Each output is
@@ -82,7 +82,7 @@ function gaussianSmooth(src: Float32Array, w: number, h: number, sigma: number):
  *  returns the model's mask unchanged. */
 export function refineMatte(mask: Float32Array, guide: Float32Array, w: number, h: number, s: MatteSettings, scale = 1): Float32Array {
   if (s.quality !== 'advanced') return mask;
-  let m = mask;
+  let m: Float32Array = mask;
   if (s.refineEdges > 0) m = guidedFilter(m, guide, w, h, Math.max(1, Math.round(s.refineEdges * scale)), 1e-4);
   if (s.shiftEdge !== 0) {
     const cut = s.shiftEdge > 0 ? 0.25 : 0.75, soft = gaussianSmooth(m, w, h, (Math.abs(s.shiftEdge) / 2) * scale);

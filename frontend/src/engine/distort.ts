@@ -52,8 +52,8 @@ export function homography(c: readonly Pt[]): number[] {
 
 /** Where a unit point lands under a projective matrix. */
 export function project(m: readonly number[], x: number, y: number): Pt {
-  const w = m[6] * x + m[7] * y + m[8];
-  return { x: (m[0] * x + m[1] * y + m[2]) / w, y: (m[3] * x + m[4] * y + m[5]) / w };
+  const den = m[6] * x + m[7] * y + m[8];
+  return { x: (m[0] * x + m[1] * y + m[2]) / den, y: (m[3] * x + m[4] * y + m[5]) / den };
 }
 
 /** Where `inner`'s corners (handle order) land when the perspective taking `box`'s corners to `quad` is applied around
@@ -115,7 +115,7 @@ export function warpRaster(src: Raster, t: Transform, quad: readonly Pt[], scale
           const o = texel(ix + dx, iy + dy);
           if (mask) { a += weight * sd[o + 3]; continue; }
           const k = weight * sd[o + 3];
-          r += sd[o] * k; g += sd[o + 1] * k; b += sd[o + 2] * k; a += k;
+          r += k * sd[o]; g += k * sd[o + 1]; b += k * sd[o + 2]; a += k;
         }
       }
       const o = (j * ow + i) * 4;
@@ -147,9 +147,9 @@ export function visibleBounds(r: Raster): Rect | null {
 /** A full-resolution warp cut down to `crop` (in its pixels), its transform moved to match. */
 export function cropWarp(wp: Warped, crop: Rect): Warped {
   const raster = new Raster(crop.w, crop.h);
-  raster.ctx.drawImage(wp.raster.canvas, crop.x, crop.y, crop.w, crop.h, 0, 0, crop.w, crop.h);
-  raster.touch();
-  return { raster, t: { ...wp.t, x: wp.t.x + crop.x, y: wp.t.y + crop.y, w: crop.w, h: crop.h } };
+  raster.write(wp.raster.read(crop.x, crop.y, crop.w, crop.h));
+  const { t } = wp;
+  return { raster, t: { ...t, x: t.x + crop.x, y: t.y + crop.y, w: crop.w, h: crop.h } };
 }
 
 /** The tone a mask shows beyond its own pixels: white (255) when its border is light on average, else black (0). A
