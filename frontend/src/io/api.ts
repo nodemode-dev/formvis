@@ -1,7 +1,6 @@
 import { lutFrom, lut4From, lut3x4From, type ColourLut, type Lut4, type Lut3x4 } from '../engine/colour-lut';
 export interface Capabilities { pixelBudget?: number; memory?: number;
-  name: string;
-  version: string;
+  name: string; version: string;
   desktop: boolean;
   decode: { heic: boolean; tiff: boolean; engine: string; raw?: boolean; rawEngine?: string };
   removeBackground: { ml: boolean; lite: boolean; default: 'ml' | 'lite' | null; model: string };
@@ -27,9 +26,12 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
     throw new ApiError('The formvis engine is not reachable. Start it with ./formvis boot.', 0);
   }
   if (!res.ok) {
-    let detail = res.statusText || `Request failed (${res.status})`;
-    try { const j = (await res.json()) as { detail?: unknown }; if (typeof j.detail === 'string') detail = j.detail; } catch { detail = res.statusText || detail; }
-    throw new ApiError(detail, res.status);
+    let detail = '';
+    try {
+      const body = (await res.json()) as { detail?: unknown };
+      if (typeof body?.detail === 'string') detail = body.detail;
+    } catch { /* the body was not JSON */ }
+    throw new ApiError(detail || res.statusText || `Request failed (${res.status})`, res.status);
   }
   return res;
 }
@@ -38,10 +40,10 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 export interface CmykPsd { width: number; height: number; icc: Uint8Array | null; layers: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean; blend: string; ink: Uint8Array }> }
 
 function form(fields: Record<string, string>, files: FilePart[] = [], key = 'files'): FormData {
-  const f = new FormData();
-  for (const [k, v] of Object.entries(fields)) f.append(k, v);
-  for (const part of files) f.append(key, part.blob, part.name);
-  return f;
+  const body = new FormData();
+  for (const [name, value] of Object.entries(fields)) body.append(name, value);
+  for (const part of files) body.append(key, part.blob, part.name);
+  return body;
 }
 
 export const api = {
@@ -377,7 +379,9 @@ export const api = {
     return (await (await request('/projects/folder', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ folder, move }) })).json()) as LibraryFolder & { moved: number };
   },
   async package(manifest: object, files: FilePart[], root = ''): Promise<Blob> {
-    return (await request('/projects/package', { method: 'POST', body: form({ manifest: JSON.stringify(manifest), ...(root ? { root } : {}) }, files) })).blob();
+    const fields: Record<string, string> = { manifest: JSON.stringify(manifest) };
+    if (root) fields.root = root;
+    return (await request('/projects/package', { method: 'POST', body: form(fields, files) })).blob();
   },
   async openLibrary(name: string): Promise<OpenedProject> {
     return (await (await request(`/projects/library/${encodeURIComponent(name)}`)).json()) as OpenedProject;
@@ -386,16 +390,16 @@ export const api = {
     await request(`/projects/library/${encodeURIComponent(name)}`, { method: 'DELETE' });
   },
   async importProject(files: File[], paths: string[] = []): Promise<OpenedProject> {
-    const f = new FormData();
-    files.forEach((file, i) => { f.append('files', file, file.name); if (paths.length) f.append('paths', paths[i] ?? file.name); });
-    return (await (await request('/projects/import', { method: 'POST', body: f })).json()) as OpenedProject;
+    const body = form({}, files.map((f) => ({ name: f.name, blob: f })), 'files');
+    if (paths.length) files.forEach((f, i) => body.append('paths', paths[i] ?? f.name));
+    return (await (await request('/projects/import', { method: 'POST', body })).json()) as OpenedProject;
   },
   async fetchAsset(url: string): Promise<Blob> {
-    return (await request(url.replace(/^\/api/, ''))).blob();
+    return (await request(url.startsWith('/api') ? url.slice(4) : url)).blob();
   },
   async removeBackground(image: Blob, method: 'auto' | 'ml' | 'lite'): Promise<{ mask: Blob; method: string }> {
-    const res = await request('/ops/remove-background', { method: 'POST', body: form({ method }, [{ name: 'layer.png', blob: image }], 'file') });
-    return { mask: await res.blob(), method: res.headers.get('X-Method') ?? method };
+    const r = await request('/ops/remove-background', { method: 'POST', body: form({ method }, [{ name: 'layer.png', blob: image }], 'file') });
+    return { mask: await r.blob(), method: r.headers.get('X-Method') ?? method };
   },
   /** Mask All Objects: the objects found in `image`, largest first, each a grey mask (base64 PNG) over its box at the
    *  working size given. */
@@ -422,6 +426,7 @@ export const api = {
     return (await request('/io/encode', { method: 'POST', body })).blob();
   },
   async exportFile(blob: Blob, name: string): Promise<string> {
-    return ((await (await request('/io/export', { method: 'POST', body: form({ name }, [{ name, blob }], 'file') })).json()) as { path: string }).path;
+    const r = await request('/io/export', { method: 'POST', body: form({ name }, [{ name, blob }], 'file') });
+    return ((await r.json()) as { path: string }).path;
   },
 };

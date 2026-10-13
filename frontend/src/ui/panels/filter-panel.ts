@@ -108,21 +108,21 @@ export class FilterPanel extends Dialog {
   constructor(private readonly engine: Engine) {
     super('Filter', 440);
     const s = this.s;
-    const radius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.radius = v; this.schedule(); }, { max: 250 });
-    this.section('gaussianBlur', [radius.el], () => radius.set(s.radius));
-    const angle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { s.angle = v; this.schedule(); });
-    const distance = sliderRow('Distance (px)', 1, 500, 1, (v) => { s.distance = v; this.schedule(); }, { max: 2000 });
-    this.section('motionBlur', [angle.el, distance.el], () => { angle.set(s.angle); distance.set(s.distance); });
-    const amount = sliderRow('Amount (%)', 0.1, 400, 0.1, (v) => { s.amount = v; this.schedule(); });
-    const distribution = selectRow('Distribution', [['uniform', 'Uniform'], ['gaussian', 'Gaussian']], (v) => { s.gaussian = v === 'gaussian'; this.schedule(); });
-    const mono = checkRow('Monochromatic', (v) => { s.monochromatic = v; this.schedule(); });
-    this.section('addNoise', [amount.el, distribution.el, mono.el], () => { amount.set(s.amount); distribution.set(s.gaussian ? 'gaussian' : 'uniform'); mono.set(s.monochromatic); });
-    const distortion = sliderRow('Distortion', -100, 100, 1, (v) => { s.distortion = v; this.schedule(); });
-    this.section('lensCorrection', [distortion.el, el('<p class="cv-note">Positive values correct barrel distortion, negative values pincushion.</p>')], () => distortion.set(s.distortion));
-    const usmAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { s.usmAmount = v; this.schedule(); });
-    const usmRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 250 });
-    const threshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); });
-    this.section('unsharpMask', [usmAmount.el, usmRadius.el, threshold.el], () => { usmAmount.set(s.usmAmount); usmRadius.set(s.usmRadius); threshold.set(s.threshold); });
+    const gbRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.radius = v; this.schedule(); }, { max: 250 });
+    this.section('gaussianBlur', [gbRadius.el], () => gbRadius.set(s.radius));
+    const mbAngle = sliderRow('Angle (\u00b0)', -90, 90, 1, (v) => { s.angle = v; this.schedule(); });
+    const mbDistance = sliderRow('Distance (px)', 1, 500, 1, (v) => { s.distance = v; this.schedule(); }, { max: 2000 });
+    this.section('motionBlur', [mbAngle.el, mbDistance.el], () => { mbAngle.set(s.angle); mbDistance.set(s.distance); });
+    const nzAmount = sliderRow('Amount (%)', 0.1, 400, 0.1, (v) => { s.amount = v; this.schedule(); });
+    const nzKind = selectRow('Distribution', [['uniform', 'Uniform'], ['gaussian', 'Gaussian']], (v) => { s.gaussian = v === 'gaussian'; this.schedule(); });
+    const nzMono = checkRow('Monochromatic', (v) => { s.monochromatic = v; this.schedule(); });
+    this.section('addNoise', [nzAmount.el, nzKind.el, nzMono.el], () => { nzAmount.set(s.amount); nzKind.set(s.gaussian ? 'gaussian' : 'uniform'); nzMono.set(s.monochromatic); });
+    const lcDistortion = sliderRow('Distortion', -100, 100, 1, (v) => { s.distortion = v; this.schedule(); });
+    this.section('lensCorrection', [lcDistortion.el, el('<p class="cv-note">Positive values correct barrel distortion, negative values pincushion.</p>')], () => lcDistortion.set(s.distortion));
+    const usAmount = sliderRow('Amount (%)', 1, 500, 1, (v) => { s.usmAmount = v; this.schedule(); });
+    const usRadius = sliderRow('Radius (px)', 0.1, 100, 0.1, (v) => { s.usmRadius = v; this.schedule(); }, { max: 250 });
+    const usThreshold = sliderRow('Threshold (levels)', 0, 255, 1, (v) => { s.threshold = v; this.schedule(); });
+    this.section('unsharpMask', [usAmount.el, usRadius.el, usThreshold.el], () => { usAmount.set(s.usmAmount); usRadius.set(s.usmRadius); usThreshold.set(s.threshold); });
     const lensR = sliderRow('Radius (px)', 1, 100, 1, (v) => { s.lensRadius = v; this.schedule(); });
     const lensB = sliderRow('Specular brightness', 0, 100, 1, (v) => { s.lensBrightness = v; this.schedule(); });
     const lensT = sliderRow('Specular threshold', 0, 255, 1, (v) => { s.lensThreshold = v; this.schedule(); });
@@ -263,16 +263,17 @@ export class FilterPanel extends Dialog {
     }
     this.section('develop', devNodes, () => { for (const f of devSync) f(); });
     this.previewRow = checkRow('Preview', (v) => { this.preview = v; this.schedule(0); });
-    this.body.appendChild(this.previewRow.el);
+    this.body.append(this.previewRow.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => this.commit());
     this.onClose = () => this.abandon();
   }
 
   private section(kind: FilterKind, nodes: HTMLElement[], sync: () => void): void {
-    const node = el('<div class="cv-panel-section" hidden></div>');
+    const node = el('<div class="cv-panel-section"></div>');
     node.append(...nodes);
-    this.body.appendChild(node);
+    setHidden(node, true);
+    this.body.append(node);
     if (kind === 'develop') node.prepend(this.scopes.el);   // Develop's scopes (1.53.4)
     this.sections.set(kind, { node, sync });
   }

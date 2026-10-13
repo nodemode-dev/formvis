@@ -15,7 +15,7 @@ export const FORMAT_VERSION = 1;
 
 type Json = Record<string, unknown>;
 const KINDS: Record<string, AdjustmentKind> = { 'Hue/Saturation': 'hsv', Levels: 'levels', Curves: 'curves', Exposure: 'exposure', 'Gradient Map': 'gradientMap', Grain: 'grain', ...Object.fromEntries(PARAM_KINDS.map((k) => [PARAM_ADJUSTMENTS[k].label, k])) };
-const KIND_LABELS = Object.fromEntries(Object.entries(KINDS).map(([k, v]) => [v, k])) as Record<AdjustmentKind, string>;
+const KIND_LABELS = Object.fromEntries(Object.entries(KINDS).map(([label, kind]) => [kind, label])) as Record<AdjustmentKind, string>;
 const obj = (v: unknown): Json => (v && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
 const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
 const pair = (v: unknown): [number, number] | null => (Array.isArray(v) && v.length === 2 && typeof v[0] === 'number' && typeof v[1] === 'number' ? [v[0], v[1]] : null);
@@ -26,31 +26,32 @@ export function transformRecord(t: Transform): Json {
 }
 
 export function transformFrom(raw: unknown, w: number, h: number): Transform {
-  const o = obj(raw);
-  const origin = pair(o.origin) ?? [0, 0];
-  const size = pair(o.size) ?? [w, h];
-  return { x: origin[0], y: origin[1], w: Math.max(1, size[0]), h: Math.max(1, size[1]), rotation: num(o.rotation, 0), flipX: o.flipX === true, flipY: o.flipY === true, sampling: samplingFromLabel(o.sampling) };
+  const o = obj(raw), at = pair(o.origin) ?? [0, 0], extent = pair(o.size) ?? [w, h];
+  return { x: at[0], y: at[1], w: Math.max(1, extent[0]), h: Math.max(1, extent[1]), rotation: num(o.rotation, 0), flipX: o.flipX === true, flipY: o.flipY === true, sampling: samplingFromLabel(o.sampling) };
 }
 
 function maskToGray(r: Raster): ReturnType<typeof createSurface> {
-  const img = r.read();
-  const d = img.data;
-  for (let i = 0; i < d.length; i += 4) { const a = d[i + 3]; d[i] = a; d[i + 1] = a; d[i + 2] = a; d[i + 3] = 255; }
-  const s = createSurface(r.width, r.height);
-  ctxOf(s).putImageData(img, 0, 0);
-  return s;
+  const px = r.read(), surface = createSurface(r.width, r.height), ctx = ctxOf(surface), out = ctx.createImageData(r.width, r.height);
+  for (let i = 0; i < px.data.length; i += 4) {
+    const a = px.data[i + 3];
+    out.data[i] = a; out.data[i + 1] = a; out.data[i + 2] = a; out.data[i + 3] = 255;
+  }
+  ctx.putImageData(out, 0, 0);
+  return surface;
 }
 
 function grayToMask(src: ImageBitmap): Raster {
-  const r = Raster.from(src, src.width, src.height);
-  const img = r.read();
-  const d = img.data;
+  const surface = createSurface(src.width, src.height), ctx = ctxOf(surface);
+  ctx.drawImage(src, 0, 0);
+  const img = ctx.getImageData(0, 0, src.width, src.height), d = img.data;
   for (let i = 0; i < d.length; i += 4) {
-    const v = Math.round(((d[i] + d[i + 1] + d[i + 2]) / 3) * (d[i + 3] / 255));
-    d[i] = 255; d[i + 1] = 255; d[i + 2] = 255; d[i + 3] = v;
+    const grey = (d[i] + d[i + 1] + d[i + 2]) / 3;
+    d[i + 3] = Math.round((grey * d[i + 3]) / 255);
+    d[i] = 255; d[i + 1] = 255; d[i + 2] = 255;
   }
-  r.write(img);
-  return r;
+  const mask = Raster.from(src, src.width, src.height);
+  mask.write(img);
+  return mask;
 }
 
 /** What a giant layer's tiles need while saved or opened (1.62.8, DEV_PLAN 26.6): the engine's store, its paging and
@@ -102,8 +103,7 @@ async function fillTiled(t: TiledRaster, name: string, read: BandReader): Promis
 }
 
 export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | null = null, timeline: Timeline | null = null): Promise<{ manifest: Json; files: FilePart[] }> {
-  const files: FilePart[] = [];
-  const layers: Json[] = [];
+  const files: FilePart[] = [], layers: Json[] = [];
   for (const l of doc.layers) {
     const r: Json = { id: l.id, name: l.name, isVisible: l.visible, transform: transformRecord(l.transform) };
     if (l.raster && !l.isGroup) { const name = `${l.id}.png`; files.push({ name, blob: await toBlob(l.raster.canvas) }); r.imageFile = name; }
@@ -221,7 +221,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     }
   }
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
-  const records = Array.isArray(manifest.layers) ? manifest.layers.map(obj) : [];
+  const records = (Array.isArray(manifest.layers) ? manifest.layers : []).map((x) => obj(x));
   const names = new Set<string>();
   for (const r of records) { for (const n of [r.tiled ? null : str(r.imageFile), str(r.maskFile), str(r.smartSourceFile), str(r.smartFilterMaskFile)]) if (n) names.add(n); }
   const bitmaps = new Map<string, ImageBitmap>();
@@ -242,23 +242,28 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const inks = new Map<string, Float32Array>();
   await Promise.all(records.map(async (r) => { const n = str(r.inkFile); if (n) inks.set(n, new Float32Array(await (await fetchImage(n)).arrayBuffer())); }));
   const layers: Layer[] = records.map((r) => {
-    const image = bitmaps.get(str(r.imageFile) ?? '');
-    const raster = image ? Raster.from(image, image.width, image.height) : null;
+    const picture = bitmaps.get(str(r.imageFile) ?? '');
+    const raster = picture ? Raster.from(picture, picture.width, picture.height) : null;
     const sourceImage = bitmaps.get(str(r.smartSourceFile) ?? '');
     const vector = raster ? vectorFrom(r.vector) : null;
     const sw = obj(r.smart), warpPts = Array.isArray(sw.warp) && sw.warp.length === 4 && sw.warp.every((q) => finite(obj(q).x) && finite(obj(q).y)) ? (sw.warp as Array<{ x: number; y: number }>).map((q) => ({ x: q.x, y: q.y })) : null;
     const fmImage = bitmaps.get(str(r.smartFilterMaskFile) ?? ''), fmOk = !!fmImage && !!sourceImage && fmImage.width === sourceImage.width && fmImage.height === sourceImage.height;
     const lk = obj(sw.link), link = str(lk.id) && str(lk.name) && finite(lk.size) && finite(lk.lastModified) ? { id: str(lk.id) as string, name: str(lk.name) as string, size: lk.size as number, lastModified: lk.lastModified as number } : null;
     const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link } : null;
-    const maskImage = bitmaps.get(str(r.maskFile) ?? '');
-    const mask: Mask | null = maskImage
-      ? { raster: grayToMask(maskImage), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskImage.width, maskImage.height) : null }
+    const maskPicture = bitmaps.get(str(r.maskFile) ?? '');
+    const mask: Mask | null = maskPicture
+      ? { raster: grayToMask(maskPicture), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskPicture.width, maskPicture.height) : null }
       : null;
-    const adj = obj(r.adjustment);
-    const kind = KINDS[String(adj.kind)];
+    const adj = obj(r.adjustment), kind = KINDS[str(adj.kind) ?? ''] ?? null;
     return {
-      id: str(r.id) ?? uid(), name: str(r.name) ?? 'Layer', raster, transform: transformFrom(r.transform, raster?.width ?? width, raster?.height ?? height),
-      visible: r.isVisible !== false, parentId: str(r.parentID), isGroup: r.isGroup === true, opacity: clamp(num(r.opacity, 1), 0, 1),
+      id: str(r.id) ?? uid(),
+      name: str(r.name) ?? 'Layer',
+      raster,
+      transform: transformFrom(r.transform, raster?.width ?? width, raster?.height ?? height),
+      visible: r.isVisible !== false,
+      parentId: str(r.parentID),
+      isGroup: r.isGroup === true,
+      opacity: clamp(num(r.opacity, 1), 0, 1),
       ...(r.fill !== undefined ? { fill: clamp(num(r.fill, 1), 0, 1) } : {}),
       ...(r.frame && typeof r.frame === 'object' ? (() => { const f = r.frame as Record<string, unknown>; return { frame: { x: num(f.x, 0), y: num(f.y, 0), w: Math.max(2, num(f.w, 2)), h: Math.max(2, num(f.h, 2)), shape: f.shape === 'ellipse' ? 'ellipse' as const : 'rect' as const } }; })() : {}),
       ...(r.locks && typeof r.locks === 'object' ? (() => { const k = r.locks as Record<string, unknown>, out = Object.fromEntries((['transparency', 'pixels', 'position', 'all'] as const).filter((n) => k[n] === true).map((n) => [n, true])); return Object.keys(out).length ? { locks: out } : {}; })() : {}),

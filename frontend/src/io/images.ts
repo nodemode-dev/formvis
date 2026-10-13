@@ -19,15 +19,18 @@ function viaElement(blob: Blob): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const url = URL.createObjectURL(blob);
     const img = new Image();
-    img.onload = () => { URL.revokeObjectURL(url); resolve(img); };
-    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+    const settle = (finish: () => void): void => { URL.revokeObjectURL(url); finish(); };
+    img.onload = () => settle(() => resolve(img));
+    img.onerror = () => settle(() => reject(new Error('decode failed')));
     img.src = url;
   });
 }
 
 async function bitmapOf(blob: Blob, raw = false): Promise<ImportedImage['source'] & { width: number; height: number }> {
   if (raw) return createImageBitmap(blob, { colorSpaceConversion: 'none' });   // the numbers as stored, for a kept profile (1.53.5)
-  try { return await createImageBitmap(blob, { imageOrientation: 'from-image' }); } catch {
+  try {
+    return await createImageBitmap(blob, { imageOrientation: 'from-image' });
+  } catch {
     const img = await viaElement(blob);
     if (!img.naturalWidth || !img.naturalHeight) { img.width = 1024; img.height = 1024; }
     return img;
