@@ -2,6 +2,7 @@ import { allPatterns, type Engine } from '../../engine';
 import { defaultShape, type BrushShape } from '../../engine/brush-dynamics';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
+import { recalled, remembered } from '../prefs';
 import { checkRow, selectRow, sliderRow } from './controls';
 
 type Row = { el: HTMLElement; sync: () => void };
@@ -12,11 +13,26 @@ type Row = { el: HTMLElement; sync: () => void };
  *  back to the plain round brush. */
 export class BrushSettingsDialog extends Dialog {
   private readonly rows: Row[] = [];
+  private saveShape: () => void = () => undefined;
 
   constructor(private readonly engine: Engine) {
     super('Brush Settings', 440);
     const s = (): BrushShape => this.engine.brushShape;
-    const put = (patch: Partial<BrushShape>): void => { this.engine.brushShape = { ...s(), ...patch }; };
+    // The shape last set stays across reloads: it is put back here, when the app builds, so the first stroke uses it.
+    const kept = recalled('Brush Settings', 'shape');
+    if (typeof kept === 'string') {
+      try {
+        const got = JSON.parse(kept) as Record<string, unknown>, base = defaultShape() as unknown as Record<string, unknown>, out: Record<string, unknown> = { ...base };
+        for (const [k, v] of Object.entries(got)) {
+          if (!(k in base) || typeof v !== typeof base[k]) continue;
+          out[k] = v && typeof v === 'object' && !Array.isArray(v) && base[k] && typeof base[k] === 'object' ? { ...(base[k] as object), ...(v as object) } : v;
+        }
+        this.engine.brushShape = out as unknown as BrushShape;
+      } catch { /* the plain round brush stands */ }
+    }
+    const save = (): void => { const text = JSON.stringify(this.engine.brushShape); if (text.length <= 1900) remembered('Brush Settings', 'shape', text); };
+    this.saveShape = save;
+    const put = (patch: Partial<BrushShape>): void => { this.engine.brushShape = { ...s(), ...patch }; save(); };
     const heading = (t: string): void => { this.body.append(el(`<h3 class="cv-prefs-sub">${t}</h3>`)); };
     const slide = (label: string, min: number, max: number, step: number, read: () => number, write: (v: number) => void): void => {
       const r = sliderRow(label, min, max, step, write);
@@ -87,7 +103,7 @@ export class BrushSettingsDialog extends Dialog {
     check('Noise', () => !!s().noise, (v) => put({ noise: v }));
     check('Wet Edges', () => !!s().wetEdges, (v) => put({ wetEdges: v }));
 
-    this.button('Reset', 'ghost', () => { this.engine.brushShape = defaultShape(); this.sync(); });
+    this.button('Reset', 'ghost', () => { this.engine.brushShape = defaultShape(); this.saveShape(); this.sync(); });
     this.button('Done', 'primary', () => this.close());
   }
 

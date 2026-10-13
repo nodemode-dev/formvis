@@ -23,6 +23,7 @@ export class ContentAwareScaleDialog extends Dialog {
     w.set(100); h.set(100); skin.set(true); sel.set(true);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
+    this.remember();
   }
 
   show(): void {

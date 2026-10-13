@@ -216,6 +216,7 @@ export class BatchDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Run', 'primary', () => void this.go());
     this.file.addEventListener('change', () => { this.files = [...(this.file.files ?? [])]; this.file.value = ''; this.sync(); });
+    this.remember([this.pick]);   // the format and the JPEG quality; the action is chosen from the list as it stands
   }
 
   show(): void { this.files = []; this.sync(); this.open(); }

@@ -259,6 +259,11 @@ export const api = {
     const body = form({ width: String(width), height: String(height), bits: String(o.bits ?? 10), transfer: o.transfer ?? 'log', big_endian: o.bigEndian === false ? 'false' : 'true', name: o.name ?? '' }, [{ name: 'pixels.raw', blob: new Blob([new Uint16Array(data)]) }], 'file');
     return (await request('/io/encode-dpx', { method: 'POST', body })).blob();
   },
+  /** A Netpbm file (DEV_PLAN 34.1) from RGBA at 16 bits a channel, for a 16-bit document: P4, P5, P6 or P7, maxval 65535. */
+  async encodePnm(data: Uint16Array, width: number, height: number, kind: string): Promise<Blob> {
+    const body = form({ width: String(width), height: String(height), kind }, [{ name: 'pixels.raw', blob: new Blob([new Uint16Array(data)]) }], 'file');
+    return (await request('/io/encode-pnm', { method: 'POST', body })).blob();
+  },
   /** CMYK documents (1.54.0, H1): the display table from a CMYK profile (base64 ICC or a listed id). */
   async cmykLut(profile: { icc?: string; id?: string }): Promise<Lut4> {
     const r = await request('/color/cmyk-lut', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile }) });
@@ -470,8 +475,8 @@ export const api = {
       throw err;
     }
   },
-  async encode(png: Blob, format: 'tiff' | 'pdf' | 'webp' | 'avif', quality = 90, dpi = 72, icc: Uint8Array | null = null): Promise<Blob> {
-    const body = form({ format, quality: String(quality), dpi: String(dpi) }, [{ name: 'image.png', blob: png }], 'file');
+  async encode(png: Blob, format: 'tiff' | 'pdf' | 'webp' | 'avif' | 'qoi' | 'pnm' | 'tga' | 'ico', quality = 90, dpi = 72, icc: Uint8Array | null = null, options: Record<string, unknown> | null = null): Promise<Blob> {
+    const body = form({ format, quality: String(quality), dpi: String(dpi), ...(options ? { options: JSON.stringify(options) } : {}) }, [{ name: 'image.png', blob: png }], 'file');
     if (icc) body.append('icc', new Blob([icc as Uint8Array<ArrayBuffer>], { type: 'application/vnd.iccprofile' }), 'profile.icc');
     return (await request('/io/encode', { method: 'POST', body })).blob();
   },

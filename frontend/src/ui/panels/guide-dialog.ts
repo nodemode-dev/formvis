@@ -16,6 +16,7 @@ export class GuideDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.pos.input, () => this.apply());
+    this.remember([this.pos.input]);   // the orientation; the position starts at the middle of the document
   }
 
   show(): void {

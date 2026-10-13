@@ -5,6 +5,7 @@ import { ScopesView } from './scopes-view';
 import { Dialog } from '../dialogs';
 import { el, q, setDisabled, setHidden, setText, setValue } from '../dom';
 import { toast } from '../toast';
+import { recalled, remembered } from '../prefs';
 import { checkRow, colorRow, matrixRow, selectRow, sliderRow, type Row } from './controls';
 import { lensBlur, lensBlurMargin, shakeMargin, shakeReduce, smartSharpen, smartSharpenMargin, type SharpenRemove, type ShakeSettings } from '../../engine/filters-more';
 import { estimateShake } from '../../engine/shake';
@@ -381,6 +382,36 @@ export class FilterPanel extends Dialog {
     return isLibKind(kind) ? { ...rest, lib: { [kind]: libValues(kind, lib?.[kind]) } } : rest;
   }
 
+  /** What OK last applied for `kind`, as the settings that differ from the defaults, kept in the preferences. */
+  private keepSettings(kind: FilterKind, settings: Record<string, unknown>): void {
+    const base = defaultFilterSettings() as Record<string, unknown>, out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(settings)) {
+      if (k === 'seed' || k === 'colors' || k === 'lib') continue;
+      if (JSON.stringify(v) !== JSON.stringify(base[k])) out[k] = v;
+    }
+    const lib = (settings.lib as Record<string, unknown> | undefined)?.[kind];
+    if (lib && typeof lib === 'object') out.lib = { [kind]: lib };
+    const text = JSON.stringify(out);
+    if (text.length <= 1900) remembered('Filters', kind, text);
+  }
+
+  private recallSettings(kind: FilterKind): void {
+    const saved = recalled('Filters', kind);
+    if (typeof saved !== 'string') return;
+    try {
+      const got = JSON.parse(saved) as Record<string, unknown>, base = defaultFilterSettings() as Record<string, unknown>;
+      for (const [k, v] of Object.entries(got)) {
+        if (k === 'lib') {
+          if (!isLibKind(kind)) continue;
+          const l = (v as Record<string, unknown> | null)?.[kind];
+          if (l && typeof l === 'object') (this.s.lib ??= {})[kind] = libValues(kind, l as never);
+          continue;
+        }
+        if (k in base && typeof v === typeof base[k]) (this.s as Record<string, unknown>)[k] = v;
+      }
+    } catch { /* the defaults stand */ }
+  }
+
   show(kind: FilterKind): void {
     if (this.isOpen) return;
     const al = this.engine.current?.activeLayer;
@@ -392,6 +423,7 @@ export class FilterPanel extends Dialog {
     this.done = false;
     this.seed = randomSeed();
     this.s.colors = this.swatches();
+    this.recallSettings(kind);
     this.setTitle(FILTER_LABELS[kind]);
     const lib = isLibKind(kind) ? libFilter(kind) : null;
     q<HTMLElement>(this.scrim, '.cv-dialog').style.setProperty('--cv-dialog-w', `${lib?.width ?? 440}px`);
@@ -593,6 +625,7 @@ export class FilterPanel extends Dialog {
     if (this.missingImage(this.kind, this.settingsOf(this.kind))) return;
     this.done = true;
     const kind = this.kind, settings: Record<string, unknown> = { ...this.settingsOf(kind), seed: this.seed }, editing = this.editing;
+    this.keepSettings(kind, settings);
     if (this.asking) { const done = this.asking; this.asking = null; this.engine.setPreview(null); this.close(); done(settings); return; }
     if (editing) { this.close(); editing(settings); return; }
     this.last = { kind, settings: structuredClone(settings) };

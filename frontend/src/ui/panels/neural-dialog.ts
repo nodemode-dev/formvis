@@ -42,6 +42,7 @@ export class NeuralFiltersDialog extends Dialog {
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { window.clearTimeout(this.timer); this.engine.setPreview(null); this.backdrop = null; };
     this.showRows();
+    this.remember(Array.from(pick.el.querySelectorAll('select')));   // the filter is the command's; each filter's settings are kept
   }
 
   show(kind: NeuralKind = this.kind): void {

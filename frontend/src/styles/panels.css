@@ -81,7 +81,8 @@
 .cv-menu-item:hover:not(:disabled) .cv-menu-keys { color: var(--text-on-accent); }
 .cv-menu-sep { height: 1px; margin: var(--space-1) var(--space-2); background: var(--border-color); }
 
-.cv-toast { max-width: 380px; padding: var(--space-2) var(--space-3); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); color: var(--text-primary); font-size: var(--fs-12); pointer-events: auto; }
+.cv-toast { max-width: 380px; padding: var(--space-2) var(--space-3); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); color: var(--text-primary); font-size: var(--fs-12); pointer-events: none; transition: opacity 120ms ease; }
+.cv-toast.is-away { opacity: 0; }
 .cv-toast.is-error { border-color: var(--danger-fill); color: var(--danger-text); }
 
 .cv-pick { display: flex; gap: var(--space-3); align-items: flex-start; }

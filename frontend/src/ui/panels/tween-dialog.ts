@@ -19,6 +19,7 @@ export class TweenDialog extends Dialog {
     this.body.appendChild(this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
+    this.remember();   // the frames, what is stepped and the easing stay for the next tween
   }
 
   show(): void {

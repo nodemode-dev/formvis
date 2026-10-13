@@ -29,6 +29,7 @@ export class LargePictureDialog extends Dialog {
     for (const c of [this.how, this.tile]) c.addEventListener('change', () => this.sync());
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Open', 'primary', () => void this.go());
+    this.remember([this.rx, this.ry, this.rw, this.rh]);   // the region is placed in this picture
   }
 
   show(pic: LargePictureError): void {

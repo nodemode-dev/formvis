@@ -15,6 +15,7 @@ export class TrimDialog extends Dialog {
       this.close();
       this.engine.trim(b);
     });
+    this.remember();
   }
 
   show(): void { if (this.engine.current) this.open(); }

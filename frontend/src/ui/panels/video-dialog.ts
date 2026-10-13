@@ -28,6 +28,7 @@ export class VideoImportDialog extends Dialog {
     this.body.append(choose, this.input, this.about, row('From (seconds)', this.from), row('To (seconds)', this.to), row('Every Nth frame', this.every), row('Make Frame Animation', this.animate), this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
+    this.remember([this.from, this.to]);   // the range belongs to the clip chosen
   }
 
   show(): void { this.file = null; this.info = null; this.input.value = ''; setText(this.about, 'No video chosen yet.'); setText(this.note, ''); this.open(); }

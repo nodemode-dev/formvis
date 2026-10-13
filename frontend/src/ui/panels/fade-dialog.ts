@@ -26,6 +26,7 @@ export class FadeDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.okBtn = this.button('OK', 'primary', () => this.commit());
     this.onClose = () => { window.clearTimeout(this.timer); this.source = null; this.scaled = null; if (!this.done) this.engine.setPreview(null); };
+    this.remember();
   }
 
   show(): void {

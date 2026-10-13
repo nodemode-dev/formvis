@@ -25,6 +25,7 @@ export class RenderVideoDialog extends Dialog {
     this.body.append(row('Format', this.format), row('Range', this.range), this.rows, row('Size', this.size), this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Render', 'primary', () => void this.apply());
+    this.remember([this.from, this.to]);   // the frame numbers belong to this video
   }
 
   show(): void {

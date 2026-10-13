@@ -2,6 +2,7 @@ import { createSurface, ctxOf, type Engine, type ID } from '../../engine';
 import { DEFAULT_MATTE, levelsOf, refineMatte, type MatteSettings } from '../../engine/matte';
 import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
+import { recalled, remembered } from '../prefs';
 import { selectRow, sliderRow } from './controls';
 
 /**
@@ -15,10 +16,10 @@ export class BackgroundPanel extends Dialog {
   private mask: ImageBitmap | null = null;   // the model's bitmap
   private done = false;                      // OK was pressed
   private queued = false;                    // a preview is waiting for a frame
-  private readonly quality = selectRow('Quality', [['basic', 'Basic'], ['advanced', 'Advanced']], (v) => { this.settings.quality = v as MatteSettings['quality']; this.sync(); this.preview(); });
-  private readonly refine = sliderRow('Refine (px)', 0, 40, 1, (v) => { this.settings.refineEdges = v; this.preview(); });
-  private readonly contrast = sliderRow('Contrast (%)', 0, 100, 1, (v) => { this.settings.matteContrast = v; this.preview(); });
-  private readonly shift = sliderRow('Shift Edge (px)', -10, 10, 1, (v) => { this.settings.shiftEdge = v; this.preview(); });
+  private readonly quality = selectRow('Quality', [['basic', 'Basic'], ['advanced', 'Advanced']], (v) => { this.settings.quality = v as MatteSettings['quality']; this.keep(); this.sync(); this.preview(); });
+  private readonly refine = sliderRow('Refine (px)', 0, 40, 1, (v) => { this.settings.refineEdges = v; this.keep(); this.preview(); });
+  private readonly contrast = sliderRow('Contrast (%)', 0, 100, 1, (v) => { this.settings.matteContrast = v; this.keep(); this.preview(); });
+  private readonly shift = sliderRow('Shift Edge (px)', -10, 10, 1, (v) => { this.settings.shiftEdge = v; this.keep(); this.preview(); });
 
   constructor(private readonly engine: Engine) {
     super('Remove Background', 420);
@@ -28,7 +29,21 @@ export class BackgroundPanel extends Dialog {
     );
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.commit());
+    // The last settings stay across reloads (and so reach Remove Background without the panel, too).
+    const q = recalled('Remove Background', 'settings');
+    if (typeof q === 'string') {
+      try {
+        const s = JSON.parse(q) as Partial<MatteSettings>;
+        const n = (v: unknown, lo: number, hi: number, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+        if (s.quality === 'basic' || s.quality === 'advanced') this.settings.quality = s.quality;
+        this.settings.refineEdges = n(s.refineEdges, 0, 40, this.settings.refineEdges);
+        this.settings.matteContrast = n(s.matteContrast, 0, 100, this.settings.matteContrast);
+        this.settings.shiftEdge = n(s.shiftEdge, -10, 10, this.settings.shiftEdge);
+      } catch { /* the defaults stand */ }
+    }
   }
+
+  private keep(): void { remembered('Remove Background', 'settings', JSON.stringify(this.settings)); }
 
   /** Open for a layer with the model's mask; a request for a layer that is no longer active releases the bitmap. */
   show(layerId: ID, mask: ImageBitmap): void {

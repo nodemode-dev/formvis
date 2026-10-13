@@ -11,6 +11,9 @@
 .cv-field.is-off { opacity: 0.45; }
 .cv-row-actions { display: flex; gap: var(--space-2); align-items: center; min-width: 0; }
 .cv-row-actions .cv-input { flex: 1 1 auto; min-width: 0; }
+.cv-size-checks { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-3); align-items: center; min-width: 0; }
+.cv-size-checks label { display: inline-flex; align-items: center; gap: var(--space-1); }
+.cv-size-checks input { margin: 0; accent-color: var(--accent-color); }
 .cv-liquify-tools { flex-wrap: wrap; }
 .cv-grad-bar, .cv-grad-strip { display: block; width: 560px; max-width: 100%; border-radius: var(--radius-sm); }
 .cv-grad-bar { height: 28px; border: 1px solid var(--border-color); }
@@ -21,6 +24,16 @@
 .cv-input:focus { outline: none; border-color: var(--accent-color); }
 .cv-note { color: var(--text-muted); font-size: var(--fs-11); }
 .cv-note-head { color: var(--text-secondary); font-size: var(--fs-11); font-weight: 600; padding-top: var(--space-2); }
+/* Help > What's New: releases newest first, each addition a row with its Show Me button. */
+.cv-new-release { display: grid; gap: var(--space-2); }
+.cv-new-head { display: flex; align-items: baseline; gap: var(--space-2); margin: 0; font-size: var(--fs-13); font-weight: 600; color: var(--text-primary); }
+.cv-new-ver { color: var(--accent-color); font-variant-numeric: tabular-nums; }
+.cv-new-name { color: var(--text-secondary); font-weight: 500; }
+.cv-new-list { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.cv-new-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; column-gap: var(--space-3); padding: var(--space-2) var(--space-2); border-radius: var(--radius-sm); }
+.cv-new-row:hover { background: var(--bg-hover); }
+.cv-new-text { display: grid; gap: 2px; min-width: 0; }
+.cv-new-title { font-size: var(--fs-12); font-weight: 600; color: var(--text-primary); }
 /* Help > Performance Benchmark: the results, as copyable plain text. */
 .cv-bench-out { display: block; margin: 8px 0; padding: 8px 10px; max-height: 50vh; overflow: auto; white-space: pre; font: var(--fs-11)/1.5 var(--font-mono); background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; }
 .cv-bench-out[hidden] { display: none; }
@@ -230,3 +243,11 @@
 .cv-fg-layer.is-off .cv-fg-name { color: var(--text-muted); }
 .cv-fg-tools { display: flex; align-items: center; gap: var(--space-1); }
 .cv-fg-tools > :nth-child(3) { margin-left: auto; }
+/* File > File Info: every row is always there, so the dialog is one size from its first frame. */
+.cv-meta-top { align-items: start; }
+.cv-meta-top > span { padding-top: var(--space-2); }
+.cv-meta-desc { height: 72px; min-height: 72px; padding: var(--space-2); resize: none; font: inherit; font-size: var(--fs-12); line-height: 1.4; }
+.cv-meta-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-3); min-height: var(--fs-14); }
+.cv-meta-pairs { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-2) var(--space-4); }
+.cv-meta-pairs .cv-field { grid-template-columns: 84px minmax(0, 1fr); }
+.cv-meta-value { display: block; min-height: var(--ctl-md); line-height: var(--ctl-md); overflow: hidden; color: var(--text-primary); text-overflow: ellipsis; white-space: nowrap; user-select: text; -webkit-user-select: text; }

@@ -21,6 +21,7 @@ export class FilmLayerDialog extends Dialog {
     this.body.append(this.leakRows, this.frameRows);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.make());
+    this.remember();   // each of the two looks (kept under its own title) opens as it was last made
   }
 
   show(kind: 'leak' | 'frame'): void {

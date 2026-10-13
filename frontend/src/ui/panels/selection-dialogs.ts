@@ -92,6 +92,7 @@ export class LoadSelectionDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.doc.addEventListener('change', () => this.sync());
+    this.remember([this.doc, this.channel]);   // the document and channel are this document's; Invert and how it joins are kept
   }
 
   show(): void {

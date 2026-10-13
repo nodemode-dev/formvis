@@ -43,6 +43,7 @@ export class ContentFillDialog extends Dialog {
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0; this.image = null; this.hole = null; this.allow = null; this.result = null; };
     this.bindCanvas();
+    this.remember();
   }
 
   private sync: () => void = () => undefined;

@@ -20,7 +20,7 @@ Tools: `get_document`, `get_image`, `new_document`, `open_file`, `switch_documen
 
 Layer `kind` values: `pixels`, `text`, `shape`, `smart object`, `group`, `adjustment:[kind]` (for example `adjustment:curves`), `fill:[kind]`.
 
-`open_file` takes PNG, JPEG, WebP, AVIF, GIF, BMP, TIFF, HEIC and HEIF, camera raw (DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2), and the projects `.fmv`, `.psd`, `.psb` and `.ora`, up to 512 MB. Camera raw is developed with the camera's white balance. A multi-page TIFF opens its first page through this tool.
+`open_file` takes PNG, JPEG, WebP, AVIF, GIF, BMP, TIFF, HEIC and HEIF, QOI, TGA, ICO (its largest size), PBM, PGM, PPM and PAM, camera raw (DNG, CR2, CR3, NEF, ARW, RAF, ORF, RW2), and the projects `.fmv`, `.psd`, `.psb` and `.ora`, up to 512 MB. Camera raw is developed with the camera's white balance. A multi-page TIFF opens its first page through this tool.
 
 ## Recipes
 

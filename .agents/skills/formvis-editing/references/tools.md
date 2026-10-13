@@ -161,7 +161,7 @@ Removes the active layer's background on this computer, keeping the subject (a m
 
 ## open_file
 
-Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, camera raw) or a project (.fmv, .psd, .psb, .ora) from an absolute path as a new document. Use when the person gives a path to a picture or project to work on.
+Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw) or a project (.fmv, .psd, .psb, .ora) from an absolute path as a new document. Use when the person gives a path to a picture or project to work on.
 
 - `path`: string; required; Absolute path, e.g. /Users/me/Pictures/beach.jpg
 

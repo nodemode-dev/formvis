@@ -4,12 +4,15 @@ import { el, setHidden, setText } from './dom';
 import { icon } from './icons';
 
 /** The Home screen, as Photoshop's (sourced in WORKSPACE_RESEARCH.md, section 15): New and Open, and the recent
- *  projects, shown over the canvas when no document is open (unless Preferences > General turns Auto Show off) and at
- *  any time from the brand mark, as Photoshop's Home button; Esc leaves it while a document is open. Recent projects
- *  show their names and when they were saved; Photoshop's thumbnails are not built. */
+ *  projects, shown over the canvas at launch while no document is open (Preferences > General, "Show Home screen at
+ *  launch") and, once a document has been open, when the last one closes only if "Show Home screen when the last
+ *  document closes" is on (off by default: closing leaves the empty workspace with its panels). The brand mark is
+ *  its Home button at any time, as Photoshop's; Esc leaves it while a document is open. Recent projects show their
+ *  names and when they were saved; Photoshop's thumbnails are not built. */
 export interface HomeDeps {
   engine: Engine;
   autoShow: () => boolean;
+  afterClose: () => boolean;
   recent: () => string[];
   openRecent: (name: string) => void;
   run: (command: string) => void;
@@ -23,6 +26,7 @@ export class HomeScreen {
   private readonly recentBox = el('<div class="cv-home-main" hidden><h2 class="cv-home-title">Recent</h2></div>');
   private forced = false;
   private lastCount = 0;
+  private hadDocument = false;
   private listKey = '';
 
   /** The start screen as the target's (UI_SPEC.md section 3): the whole window below the title bar, black; a centred
@@ -61,12 +65,14 @@ export class HomeScreen {
   /** The Home button: shows the Home screen over whatever is open. */
   show(): void { this.forced = true; this.sync(); }
 
-  /** Shown while forced (until a document opens or Esc), or with no document open when Auto Show is on. */
+  /** Shown while forced (until a document opens or Esc); with no document open, at launch when "at launch" is on and
+   *  after a document has been open when "when the last document closes" is on. */
   sync(): void {
     const n = this.d.engine.projects.length;
     if (n > this.lastCount) this.forced = false;
     this.lastCount = n;
-    const on = this.forced || (n === 0 && this.d.autoShow());
+    if (n > 0) this.hadDocument = true;
+    const on = this.forced || (n === 0 && (this.hadDocument ? this.d.afterClose() : this.d.autoShow()));
     if (on && this.root.hidden) void this.fill();
     setHidden(this.root, !on);
   }

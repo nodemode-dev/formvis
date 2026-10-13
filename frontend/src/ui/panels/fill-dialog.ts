@@ -45,6 +45,7 @@ export class FillDialog extends Dialog {
     this.body.append(this.contentsRow.el, this.colorRowEl.el, this.patternRow.el, this.modeRow.el, this.opacityRow.el, this.preserveRow.el, this.featherRow.el, this.antialiasRow.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
+    this.remember();
   }
 
   /** Edit > Fill, or with `path` the Paths panel's Fill Path, which adds Feather Radius and Anti-aliased. */

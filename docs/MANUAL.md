@@ -8,7 +8,7 @@ ask it questions.
 
 - New document: File > New sets the size, resolution, colour mode (RGB, Grayscale or Bitmap) and background.
 - Open: File > Open Project opens formvis projects (.fmv), Photoshop files (.psd, .psb), OpenRaster files (.ora) and
-  images (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, camera raw and more). Dropping files on the window opens them too.
+  images (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO, PBM, PGM, PPM, PAM, camera raw and more). Dropping files on the window opens them too.
 - A picture larger than formvis edits in one piece (over 30,000 pixels a side or 100 megapixels, up to 65,535 a
   side) opens as a reduced copy that fits, a region at full size, or tiles at full size, each tile its own document.
   File > Export > Assemble Tiles puts the edited tiles back together as one full-size PNG, written by the engine a
@@ -34,6 +34,17 @@ ask it questions.
 - Workspaces arrange the panels for a kind of work, and the lock keeps an arrangement from being changed by accident.
 - Preferences (Edit > Preferences, Ctrl+comma) has Photoshop's sections: General, Interface, Performance, Workspace, Tools, History
   & Cache, File Handling, Cursors, Transparency & Gamut, Units & Rulers, Guides & Grid, and Plugins.
+- The Home screen is optional. Preferences > General has Show Home screen at launch (on) and Show Home screen when
+  the last document closes (off): with it off, closing the last document leaves the empty workspace with its panels
+  where they were. Both are commands too (pref-home-launch, pref-home-last-close).
+- Nothing floats over the picture. Notices sit in the bottom corner, let every click through and fade away from a
+  pointer that comes near them over the canvas; the menus, the panel flyouts and the dialogs open only when asked for.
+- Settings stick. Every tool's options and the last values of the dialogs (Canvas Size, Fill, Stroke, the filters,
+  Remove Background, Export and the rest) are kept across restarts, in Preferences; Reset All Preferences puts
+  them back to the defaults. What describes the open document (a size, a position, a colour taken from the
+  foreground) starts fresh each time.
+- Help > What's New lists what the recent releases added. Each row's Show Me closes the list and runs the feature;
+  the list opens once after an update (turn that off in the list itself or with pref-whats-new-auto).
 - The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included: choose
   it in Preferences > File Handling, with your projects moved there. If a project changed in the library since you
   opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.
@@ -387,7 +398,7 @@ ask it questions.
 
 ## Exporting
 
-- File > Export As chooses the format (PNG, JPEG, WebP, AVIF, TIFF, PDF), quality, colour profile and size: a Scale in
+- File > Export As chooses the format (PNG, JPEG, WebP, AVIF, TIFF, DPX, QOI, PNM, TGA, ICO, PDF), quality, colour profile and size: a Scale in
   percent, Fit Within a width and height, or a Frame of exactly that size with the picture centred. Settings can be
   saved as presets.
 - AI label: Made with AI or Edited with AI writes the standard machine-readable marking of AI content (IPTC's Digital
@@ -395,6 +406,17 @@ ask it questions.
 - DPX (the film scan format) opens like any picture and exports from File > Export As with a bit depth of 8, 10, 12
   or 16 and a transfer (printing density, linear or log); both are kept in presets. A 16-bit document exports at 16
   bits without rounding.
+- QOI, the Netpbm family, TGA and Windows icons export from File > Export As, each with a Format options row (and, for
+  ICO, the sizes). QOI is read and written as RGB or RGBA, with the sRGB or all-linear flag (the flag only labels the
+  file; the numbers are kept as stored). PNM reads PBM, PGM and PPM in text and raw forms and PAM with GRAYSCALE, RGB
+  and their alpha forms; it writes PPM (P6), PGM (P5), PBM (P4, thresholded at half brightness) and PAM (P7, choosing
+  grayscale or colour and alpha from what the file holds). Transparency is laid on white in PBM, PGM and PPM. A PGM,
+  PPM or PAM above 8 bits becomes a 16-bit document, and a 16-bit document goes out to PNM at 16 bits. TGA reads
+  uncompressed and run-length colour-mapped, 8-bit grey, 15/16, 24 and 32-bit images from any corner, and writes 24 or
+  32 bits, run-length or not. An ICO holding several sizes asks which one to take (the biggest, each size as a
+  document, or every size as a layer); exporting an ICO resamples the document into each size you tick (16, 24, 32, 48,
+  64, 128, 256), fitted in a square with transparent margins, as PNG for 256 and BMP for the smaller sizes or as PNG
+  for all. QOI, TGA and ICO hold 8 bits, so a deeper document is written at 8 bits, said so.
 - File > Export also writes Photoshop files (layers, masks, groups and more) and OpenRaster files for Krita, GIMP and
   MyPaint. Adjustment layers have no OpenRaster form and are left out, said so.
 - File > Export > Layers to Files writes every layer as its own image, at the document's size (or cut to its pixels
@@ -403,6 +425,15 @@ ask it questions.
   Only, the type (PNG, JPEG or WebP with a quality, TIFF, PSD) and Include ICC Profile. The desktop app writes the files
   into a folder you name inside its exports folder; the browser gives one zip. Artboards to Files does the same for each
   artboard, holding only what is inside it.
+- File > File Info (Alt+Shift+Ctrl+I) holds the document's metadata: Document Title, Author, Author Title, Description,
+  Rating (0 to 5 stars), Description Writer, Keywords (separated by commas or semicolons), Copyright Status (Unknown,
+  Copyrighted, Public Domain), Copyright Notice and Copyright Info URL. For a photo with Exif it also shows the camera's
+  record (make, model, lens, exposure, aperture, ISO, focal length, date taken) read only, and the Created and Modified
+  dates. OK is one step in History called File Info. The fields are saved in the project, and Copyrighted puts the
+  copyright symbol before the title in the document tab. They are written as standard XMP into PNG, JPEG, TIFF, WebP and
+  PSD files (Export As, the Export menu and Export > Photoshop), and read back when such a file is opened. Agents set
+  them with the `file-info` command and parameters (title, author, author_title, description, rating,
+  description_writer, keywords, copyright_status, copyright_notice, copyright_url), no dialog needed.
 
 ## The assistant and outside agents
 

@@ -42,6 +42,8 @@ export class WideAngleDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { window.clearTimeout(this.timer); this.engine.setPreview(null); };
+    // The lens correction is what stays; strength, scale and rotation are this picture's, and start at nothing.
+    this.remember(Array.from([this.strength, this.scale, this.rotation]).flatMap((r) => Array.from(r.el.querySelectorAll('input'))));
   }
 
   show(): void {

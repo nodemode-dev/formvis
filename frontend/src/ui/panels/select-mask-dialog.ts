@@ -76,6 +76,7 @@ export class SelectMaskDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0; this.image = null; this.guide = null; this.mask = null; };
+    this.remember();
   }
 
   private syncRows: () => void = () => undefined;

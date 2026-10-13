@@ -1,5 +1,11 @@
 import { el, q, setText } from './dom';
 import { icon } from './icons';
+import { loadPrefs, updatePrefs, type DialogValue } from './prefs';
+
+/** A value a remembered dialog holds outside its form controls. */
+export interface RememberedExtra { read(): Record<string, DialogValue>; write(values: Record<string, DialogValue>): void; onChange(notify: () => void): void }
+
+const REMEMBERED ='input[type="range"], input[type="number"], input[type="checkbox"], input[type="color"], select';
 
 /** How many dialogs are showing right now. */
 let openCount = 0;
@@ -39,9 +45,83 @@ export class Dialog {
   get isOpen(): boolean { return !this.scrim.hidden; }
   setTitle(title: string): void { setText(this.title, title); }
 
+  private memory: { skip: ReadonlySet<Element>; busy: boolean; queued: boolean; extra: RememberedExtra | null } | null = null;
+
+  /** DEV_PLAN 35.1: the dialog's settings stick. Call once the controls are built: every slider, number, check box,
+   *  colour and select in the body (not text fields, which hold names and prompts) is put back to its last value when
+   *  the app has been built and again each time the dialog opens, firing the controls' own handlers so the dialog's
+   *  state follows, and kept in Preferences as it changes. `skip` lists controls that show the document (a size, a
+   *  position) and so must not be put back. `extra` carries a value no form control holds (an anchor, a tool in a
+   *  button row): `read` returns it, `write` takes it back, and `onChange` hands over what the dialog calls when it moves.
+   *  Keyed by the dialog's title and the control's label. */
+  remember(skip: readonly Element[] = [], extra: RememberedExtra | null = null): void {
+    if (this.memory) return;
+    const m = { skip: new Set<Element>(skip), busy: false, queued: false, extra };
+    this.memory = m;
+    const later = (): void => {
+      if (m.busy || m.queued) return;
+      m.queued = true;
+      queueMicrotask(() => { m.queued = false; this.saveRemembered(); });
+    };
+    const queue = (e: Event): void => { if (e.target instanceof Element && e.target.matches(REMEMBERED) && !m.skip.has(e.target)) later(); };
+    this.scrim.addEventListener('input', queue);
+    this.scrim.addEventListener('change', queue);
+    if (extra) extra.onChange(later);
+    queueMicrotask(() => this.restoreRemembered());   // after the app has finished building, so the handlers find everything defined
+  }
+
+  /** The body's remembered controls with the names they are kept under: the label, the kind, and a count for repeats. */
+  private rememberedControls(): Array<[string, HTMLInputElement | HTMLSelectElement]> {
+    const seen = new Map<string, number>(), out: Array<[string, HTMLInputElement | HTMLSelectElement]> = [];
+    const skip = this.memory?.skip;
+    Array.from(this.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>(REMEMBERED)).forEach((c, i) => {
+      if (skip?.has(c) || c.closest('[data-forget]')) return;
+      const host = c.closest('label, .cv-field, .cv-dialog-row'), text = (c.getAttribute('aria-label') || host?.querySelector('span')?.textContent || host?.textContent || '').trim().slice(0, 60);
+      const base = `${c instanceof HTMLSelectElement ? 'select' : c.type}:${text || `#${i}`}`, n = (seen.get(base) ?? 0) + 1;
+      seen.set(base, n);
+      out.push([n === 1 ? base : `${base}#${n}`, c]);
+    });
+    return out;
+  }
+
+  private saveRemembered(): void {
+    const values: Record<string, DialogValue> = {};
+    for (const [name, c] of this.rememberedControls()) values[name] = c instanceof HTMLInputElement && c.type === 'checkbox' ? c.checked : c.value;
+    for (const [k, v] of Object.entries(this.memory?.extra?.read() ?? {})) values[`~${k}`] = v;
+    const key = this.title.textContent ?? '', cur = loadPrefs().dialogValues;
+    updatePrefs({ dialogValues: { ...cur, [key]: values } });
+  }
+
+  private restoreRemembered(): void {
+    const m = this.memory, saved = loadPrefs().dialogValues[this.title.textContent ?? ''];
+    if (!m || !saved) return;
+    m.busy = true;
+    try {
+      for (const [name, c] of this.rememberedControls()) {
+        const v = saved[name];
+        if (v === undefined) continue;
+        if (c instanceof HTMLInputElement && c.type === 'checkbox') { if (typeof v !== 'boolean' || c.checked === v) continue; c.checked = v; }
+        else {
+          if (typeof v !== 'string' || c.value === v) continue;
+          if (c instanceof HTMLSelectElement && !Array.from(c.options).some((o) => o.value === v && !o.disabled)) continue;
+          c.value = v;
+          if (c.value !== v) continue;
+        }
+        c.dispatchEvent(new Event('input', { bubbles: true }));
+        c.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+      if (m.extra) {
+        const mine: Record<string, DialogValue> = {};
+        for (const [k, v] of Object.entries(saved)) if (k.startsWith('~')) mine[k.slice(1)] = v;
+        if (Object.keys(mine).length) m.extra.write(mine);
+      }
+    } finally { m.busy = false; }
+  }
+
   /** Shows the dialog and moves focus into it: to `focus` if given, else to the first field or primary button. */
   open(focus?: HTMLElement | null): void {
     if (this.isOpen) return;
+    this.restoreRemembered();
     this.lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.getElementById('overlay-root')?.appendChild(this.scrim);
     this.scrim.hidden = false;

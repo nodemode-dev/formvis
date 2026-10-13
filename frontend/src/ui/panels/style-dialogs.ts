@@ -45,6 +45,7 @@ export class ScaleEffectsDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.scale.input, () => this.apply());
+    this.remember();
   }
 
   show(): void {

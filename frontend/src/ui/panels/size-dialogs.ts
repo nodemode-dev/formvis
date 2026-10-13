@@ -37,7 +37,7 @@ export class CanvasSizeDialog extends Dialog {
     const grid = el('<div class="cv-anchor-grid" role="group" aria-label="Anchor"></div>');
     for (let i = 0; i < 9; i++) {
       const b = el(`<button type="button" class="cv-anchor" aria-label="Anchor ${i + 1}"></button>`) as HTMLButtonElement;
-      b.addEventListener('click', () => { this.anchor = i; this.syncAnchor(); });
+      b.addEventListener('click', () => { this.anchor = i; this.syncAnchor(); this.anchorMoved(); });
       this.anchors.push(b);
       grid.append(b);
     }
@@ -48,7 +48,15 @@ export class CanvasSizeDialog extends Dialog {
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.width.input, () => this.apply());
     enterTo(this.height.input, () => this.apply());
+    // The sizes show the document; the unit, the anchor and the extension colour are what the dialog remembers.
+    this.remember([this.width.input, this.height.input], {
+      read: () => ({ anchor: String(this.anchor) }),
+      write: (v) => { const a = Number(v.anchor); if (Number.isInteger(a) && a >= 0 && a <= 8) { this.anchor = a; this.syncAnchor(); } },
+      onChange: (notify) => { this.anchorMoved = notify; },
+    });
   }
+
+  private anchorMoved: () => void = () => undefined;
 
   show(): void {
     const d = this.engine.current?.doc;
@@ -120,6 +128,7 @@ export class ImageSizeDialog extends Dialog {
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.width.input, () => this.apply());
     enterTo(this.height.input, () => this.apply());
+    this.remember([this.width.input, this.height.input, this.resolution.input]);   // the sizes and the resolution show the document
   }
 
   show(): void {
@@ -182,6 +191,7 @@ export class FitImageDialog extends Dialog {
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.width.input, () => this.apply());
     enterTo(this.height.input, () => this.apply());
+    this.remember();   // the box offered is the last one used
   }
 
   show(): void {
@@ -214,6 +224,7 @@ export class AmountDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.amount.input, () => this.apply());
+    this.remember();   // each mode (Expand, Contract, Feather, Border, Smooth) under its own title
   }
 
   private modify: 'feather' | 'border' | 'smooth' | null = null;

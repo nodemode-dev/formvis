@@ -2,13 +2,14 @@ import { headerSize } from './image-size';
 import { FORMER_PROJECT_EXTENSIONS } from './legacy';
 import { LIMITS, type ImportedImage } from '../engine';
 import { api } from './api';
+import { readFileMeta } from './xmp';
 
-const NATIVE = /\.(png|jpe?g|gif|webp|bmp|avif|svg|ico)$/i;
+const NATIVE = /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i;
 /** Camera RAW (decoded by the engine's LibRaw, then opened into Develop, as Photoshop opens them into Camera Raw). */
 export const RAW_FILE = /\.(dng|cr2|cr3|crw|nef|nrw|arw|srf|sr2|raf|orf|rw2|pef|srw|x3f|3fr|iiq|rwl|mrw|kdc|dcr|erf|mef|mos)$/i;
-const SERVER = /\.(heic|heif|hif|tiff?|dpx)$/i;
+const SERVER = /\.(heic|heif|hif|tiff?|dpx|qoi|tga|icb|vda|vst|ico|pbm|pgm|ppm|pnm|pam)$/i;   // QOI, TGA, ICO and the Netpbm family are read by the engine (DEV_PLAN 34.1); ICO leaves the browser so the largest size opens
 const RAW_ACCEPT = '.dng,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.raf,.orf,.rw2,.pef,.srw,.x3f,.3fr,.iiq,.rwl,.mrw,.kdc,.dcr,.erf,.mef,.mos';
-export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,.hdr,.exr,.dpx,${RAW_ACCEPT},image/*`;   // .hdr, .exr: 32 bits (1.53.9); .dpx: film scans, 16 bits from the engine
+export const IMAGE_ACCEPT = `.png,.jpg,.jpeg,.gif,.webp,.bmp,.avif,.svg,.heic,.heif,.tif,.tiff,.hdr,.exr,.dpx,.qoi,.tga,.ico,.pbm,.pgm,.ppm,.pnm,.pam,${RAW_ACCEPT},image/*`;   // .hdr, .exr: 32 bits (1.53.9); .dpx: film scans, 16 bits from the engine
 export const PROJECT_ACCEPT = ['.fmv', ...FORMER_PROJECT_EXTENSIONS, '.canvasor', '.comp', '.zip', '.psd', '.psb', '.ora'].join(',');   // OpenRaster (1.51.7)
 
 export const isImageFile = (f: File): boolean => f.type.startsWith('image/') || NATIVE.test(f.name) || SERVER.test(f.name) || RAW_FILE.test(f.name) || /\.(hdr|exr)$/i.test(f.name);
@@ -54,5 +55,6 @@ export async function decodeImage(file: Blob, name: string, raw = false): Promis
   if (source.width > LIMITS.side || source.height > LIMITS.side || source.width * source.height > LIMITS.pixels) {
     throw new Error(`${name} exceeds the 30,000 px side or ${Math.round(LIMITS.pixels / 1_000_000)}-megapixel limit.`);
   }
-  return { source, width: source.width, height: source.height, name };
+  const meta = await readFileMeta(file);   // File Info and the camera's record (29.2)
+  return { source, width: source.width, height: source.height, name, ...(meta ? { meta } : {}) };
 }

@@ -21,7 +21,8 @@ import { importAbr, loadImportedBrushes } from './io/brush-library';
 import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
 import { dpxBlob } from './io/dpx';
-import { exportLayout, ENGINE_FORMATS, exportName, exportSize, type ExportSettings } from './io/export-presets';
+import { exportLayout, ENGINE_FORMATS, exportName, exportSize, formatOptions, PROFILELESS, type ExportSettings } from './io/export-presets';
+import { pnmDeepBlob } from './io/pnm';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { recovery, type RecoveryRecord } from './io/recovery';
 import { TrimDialog } from './ui/panels/trim-dialog';
@@ -48,6 +49,8 @@ import { zipFiles } from './io/zip';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
+import { withXmp } from './io/xmp';
+import { FileInfoDialog } from './ui/panels/file-info-dialog';
 import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { BrushSettingsDialog } from './ui/panels/brush-settings';
@@ -56,7 +59,7 @@ import { TypeOnPathDialog } from './ui/panels/type-on-path-dialog';
 import { ParagraphStylesDialog } from './ui/panels/paragraph-styles';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -72,7 +75,8 @@ import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, is
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
-import { CHECKER_CELL, CHECKER_PAIR, applyPrefs, loadPrefs, savePrefs, type Prefs } from './ui/prefs';
+import { CHECKER_CELL, CHECKER_PAIR, applyPrefs, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
+import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
 import { GpuDisplay, type ScreenDisplay } from './gpu/display';
 import { benchText, runBenchmark } from './gpu/bench';
@@ -101,6 +105,9 @@ import { installAgentConnect } from './ui/panels/agent-connect';
 import { installColorSettings } from './ui/panels/colour-settings-dialog';
 import { TerminalDock } from './ui/terminal-dock';
 import { HelpDialog } from './ui/panels/help';
+import { VERSION } from './version';
+import { WhatsNewDialog } from './ui/panels/whats-new';
+import { RELEASES } from './ui/panels/whats-new-data';
 import { PluginHost } from './plugins/host';
 import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
@@ -229,6 +236,7 @@ async function readEntry(entry: FileSystemEntry, prefix: string, out: { files: F
 
 export function startApp(): void {
   registerBuiltinTools();
+  const freshProfile = (() => { try { return !Object.keys(localStorage).some((k) => k.startsWith('formvis.')); } catch { return true; } })();
   const appHost = document.getElementById('app');
   if (!appHost) return;
   mountOnce(appHost, SHELL);
@@ -368,6 +376,7 @@ export function startApp(): void {
   });
   dock.locked = dock.locked;
   new Rail(q(root, '.cv-rail'), engine);
+  installOptionMemory(engine);   // every tool option sticks (DEV_PLAN 35.1), before the bar and the catalogue read the options
   new OptionsBar(q(root, '.cv-options'), engine);
   const status = new StatusBar(q(root, '.cv-status'), engine);
   const hostLink = new HostLink(() => undefined, () => undefined);
@@ -429,7 +438,7 @@ export function startApp(): void {
 
   // The Home screen over the canvas; the brand mark is its Home button, as Photoshop's.
   const home = new HomeScreen(q(root, '.cv-stage'), {
-    engine, autoShow: () => loadPrefs().autoShowHome, recent: () => recent,
+    engine, autoShow: () => loadPrefs().autoShowHome, afterClose: () => loadPrefs().homeOnLastClose, recent: () => recent,
     openRecent: (name) => { void openLibrary(name); }, run: (c) => { commands.run(c); },
   });
   const brand = q(root, '.cv-brand');
@@ -533,14 +542,14 @@ export function startApp(): void {
           // A Lab TIFF opened as a new document is a Lab document (1.58.1), tried before the page count (which refuses it).
           if (/\.tiff?$/i.test(f.name) && !engine.current && decoded.length === 0) { const lab = await api.decodeLab(f, f.name).catch(() => null); if (lab) { openLab(f.name.replace(/\.[^.]+$/, ''), lab); continue; } }
           // A TIFF with several pages asks how to open them (1.53.4).
-          if (/\.tiff?$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
+          if (/\.(tiff?|ico)$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
           if (/\.(jpe?g|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { toast(message(err), 'error'); continue; }
           }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
-          if (/\.(png|tiff?|hdr|exr|dpx)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+          if (/\.(png|tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
-            if (png16 || /\.(tiff?|hdr|exr|dpx)$/i.test(f.name)) {
+            if (png16 || /\.(tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam)$/i.test(f.name)) {
               try {
                 const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, '');
                 if (d.depth === 32) { engine.openDeep(name, { mode: 'rgb', n: 3, width: d.width, height: d.height, data: d.data as Float32Array }, 32); continue; }
@@ -696,6 +705,10 @@ export function startApp(): void {
           if (dpx) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame') toast('DPX is written at the document\'s own size.', 'info'); await deliver(dpx, exportName(p.name, s)); }
           return;
         }
+        if (s.format === 'pnm') {
+          const deep = await pnmDeepBlob(engine, s);
+          if (deep) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame') toast('A 16-bit PNM file is written at the document\'s own size.', 'info'); await deliver(deep, exportName(p.name, s)); return; }
+        } else if ((p.doc.depth ?? 8) > 8 && (s.format === 'qoi' || s.format === 'tga' || s.format === 'ico')) toast(`${s.format.toUpperCase()} holds 8 bits a channel, so the ${p.doc.depth}-bit picture is written at 8 bits.`, 'info');
         const base = await engine.exportBlob('image/png');
         if (!base) return;
         // By Scale, Fit Within or a Frame (1.51.8): a frame's margins are transparent, or white in JPEG.
@@ -721,12 +734,15 @@ export function startApp(): void {
         } else if (space !== 'srgb') { const img = x.getImageData(0, 0, z.w, z.h); convertPixels(img.data, 'srgb', space); x.putImageData(img, 0, 0); }
         const tagged = !!own || !!listed || space !== 'srgb', keep = s.embed !== false && s.format !== 'pdf' && (tagged || s.format !== 'webp') ? icc : null;
         const viaEngine = ENGINE_FORMATS.has(s.format) || (s.format === 'webp' && tagged && !!keep);
-        const blob = viaEngine ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep)
+        if (PROFILELESS.has(s.format) && (own || listed || space !== 'srgb')) toast(`${s.format.toUpperCase()} carries no colour profile; the pixels are written in ${listed ? label : own ? 'the document\'s profile' : SPACES[space].label}.`, 'info');
+        const blob = viaEngine ? await api.encode(await toBlob(c), s.format as 'avif' | 'tiff' | 'pdf' | 'webp', s.quality, p.doc.resolution ?? 72, keep, formatOptions(s))
           : s.format === 'png' ? (keep ? await embedPng(await toBlob(c, 'image/png'), keep, label) : await toBlob(c, 'image/png'))
           : s.format === 'jpg' ? (keep ? await embedJpeg(await toBlob(c, 'image/jpeg', s.quality / 100), keep) : await toBlob(c, 'image/jpeg', s.quality / 100))
           : await toBlob(c, 'image/webp', s.quality / 100);
         // The AI label (1.51.8), in PNG, JPEG and WebP.
-        await deliver(s.aiLabel && s.aiLabel !== 'none' ? await withAiLabel(blob, s.format, s.aiLabel) : blob, exportName(p.name, s));
+        // File Info (29.2) goes in as XMP, the AI label inside the same packet; with no File Info the label is written alone.
+        const ai = s.aiLabel && s.aiLabel !== 'none' ? s.aiLabel : undefined;
+        await deliver(metaWritable(p.doc.meta) ? await withXmp(blob, s.format, p.doc.meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob, exportName(p.name, s));
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -989,7 +1005,7 @@ export function startApp(): void {
         const blob = deep ? (p.doc.depth === 32 && kind === 'tiff' ? await api.encodeDeep(deep.data, deep.width, deep.height, 'tiff32') : await api.encodeDeep(deepToU16(p.doc.depth === 32 ? deepToned({ mode: 'rgb', n: 3, ...deep }, 0, 1).data : deep.data), deep.width, deep.height, kind as 'png' | 'tiff')) : kind === 'png' || kind === 'jpg' ? await engine.exportBlob(kind === 'png' ? 'image/png' : 'image/jpeg', quality)
           : kind === 'webp' ? await engine.exportBlob('image/webp', quality)
           : await (async () => { const png = await engine.exportBlob('image/png'); return png ? api.encode(png, kind, Math.round(quality * 100), p.doc.resolution ?? 72) : null; })();
-        if (blob) await deliver(blob, `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);
+        if (blob) await deliver(await withXmp(blob, kind, p.doc.meta), `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);   // File Info as XMP (29.2)
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -1238,6 +1254,32 @@ export function startApp(): void {
         toast(`Exported ${n}${left} as a zip.`, 'info');
       } catch (err) { toast(message(err), 'error'); }
     });
+  }
+
+  /** File Info from a person (the dialog) or an agent (any parameter given sets those fields at once, as one step). */
+  const FILE_INFO_PARAMS: Record<string, CommandParam> = {
+    title: { type: 'string', description: 'Document Title. A single space clears the field.' },
+    author: { type: 'string', description: 'Author. A single space clears the field.' },
+    author_title: { type: 'string', description: 'Author Title (the author\'s position). A single space clears the field.' },
+    description: { type: 'string', description: 'Description. A single space clears the field.' },
+    rating: { type: 'integer', min: 0, max: 5, description: 'Rating in stars, 0 for none.' },
+    description_writer: { type: 'string', description: 'Description Writer. A single space clears the field.' },
+    keywords: { type: 'string', description: 'Keywords separated by commas or semicolons; replaces the list. A single space clears it.' },
+    copyright_status: { type: 'string', enum: ['unknown', 'copyrighted', 'public_domain'], description: 'Copyright Status; copyrighted puts the copyright symbol before the title in the document tab.' },
+    copyright_notice: { type: 'string', description: 'Copyright Notice. A single space clears the field.' },
+    copyright_url: { type: 'string', description: 'Copyright Info URL. A single space clears the field.' },
+  };
+  function fileInfoRun(a?: Record<string, unknown>): unknown {
+    if (!a || !Object.keys(a).length) { dialogs.fileInfo.show(); return undefined; }
+    const text = (k: string): string | undefined => (a[k] === undefined ? undefined : String(a[k]));
+    const status = text('copyright_status');
+    const changed = engine.setMeta({
+      title: text('title'), author: text('author'), authorTitle: text('author_title'), description: text('description'), descriptionWriter: text('description_writer'),
+      keywords: text('keywords'), notice: text('copyright_notice'), url: text('copyright_url'), rating: a.rating === undefined ? undefined : Number(a.rating),
+      copyright: status === undefined ? undefined : status === 'public_domain' ? 'public' : status === 'copyrighted' ? 'copyrighted' : 'unknown',
+    });
+    const m = engine.current?.doc.meta;
+    return { changed, title: m?.title ?? '', author: m?.author ?? '', rating: m?.rating ?? 0, keywords: [...(m?.keywords ?? [])], copyright_status: m?.copyright === 'public' ? 'public_domain' : m?.copyright ?? 'unknown' };
   }
 
   /** Layers to Files from a person (the dialog) or an agent (any parameter given runs it at once). */
@@ -1561,6 +1603,7 @@ export function startApp(): void {
     loadSelection: new LoadSelectionDialog(engine),
     saveSelection: new SaveSelectionDialog(engine),
     globalLight: new GlobalLightDialog(engine),
+    fileInfo: new FileInfoDialog(engine),
     scaleEffects: new ScaleEffectsDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
@@ -1631,6 +1674,11 @@ export function startApp(): void {
   // The assistant (1.52.2) acts through the same bridge, whether or not outside agents are allowed.
   const assistant = new AssistantPanel(engine, agents);
   const help = new HelpDialog();
+  // Help > What's New: Show Me runs the row's command through the catalogue once the dialog has closed.
+  const whatsNew = new WhatsNewDialog({
+    run: (id) => { void catalogue.runCommand(id).then((r) => { if (!r.ok) toast(r.error ?? 'That could not run now.', 'error'); }); },
+    enabled: (id) => catalogue.describeCommand(id)?.enabled === true,
+  });
   // Plugins (1.52.6): the plugins folder's plugins, each in a sandboxed frame; their commands in the Plugins menu.
   const pluginHost = new PluginHost(engine, agents, commands, (t, kind) => toast(t, kind ?? 'info'));
   const pluginsDialog = new PluginsDialog(pluginHost, (title, text, ok) => confirmAction(title, text, ok));
@@ -1721,6 +1769,7 @@ export function startApp(): void {
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
+    { id: 'file-info', label: 'File Info...', keys: ['Alt+Shift+Mod+I'], enabled: has, params: FILE_INFO_PARAMS, run: (a) => fileInfoRun(a) },
     { id: 'toggle-rulers', label: () => (engine.view.rulers ? 'Hide Rulers' : 'Show Rulers'), keys: ['Mod+R'], enabled: has, run: () => engine.setView({ rulers: !engine.view.rulers }) },
     { id: 'toggle-guides', label: () => (engine.view.guides ? 'Hide Guides' : 'Show Guides'), keys: ['Mod+;'], enabled: has, run: () => engine.setView({ guides: !engine.view.guides }) },
     { id: 'toggle-grid', label: () => (engine.view.grid ? 'Hide Grid' : 'Show Grid'), keys: ["Mod+'"], enabled: has, run: () => engine.setView({ grid: !engine.view.grid }) },
@@ -1733,6 +1782,10 @@ export function startApp(): void {
     { id: 'terminal.new', label: 'New Terminal', run: () => void termDock.newTerminal() },
     { id: 'agent.claude.open', label: 'Claude Code', checked: () => claudePanel.isOpen(), run: () => claudePanel.toggle() },
     { id: 'help', label: 'formvis Help', keys: ['F1'], run: () => help.show() },   // 1.52.3, as Photoshop's F1
+    { id: 'whats-new', label: 'What\'s New...', run: () => whatsNew.show() },
+    { id: 'pref-home-launch', label: 'Show Home Screen at Launch', checked: () => loadPrefs().autoShowHome, run: () => { updatePrefs({ autoShowHome: !loadPrefs().autoShowHome }); home.sync(); } },
+    { id: 'pref-home-last-close', label: 'Show Home Screen When the Last Document Closes', checked: () => loadPrefs().homeOnLastClose, run: () => { updatePrefs({ homeOnLastClose: !loadPrefs().homeOnLastClose }); home.sync(); } },
+    { id: 'pref-whats-new-auto', label: 'Show What\'s New Once After an Update', checked: () => loadPrefs().whatsNewAuto, run: () => { updatePrefs({ whatsNewAuto: !loadPrefs().whatsNewAuto }); } },
     { id: 'manage-plugins', label: 'Manage Plugins...', run: () => void pluginsDialog.show() },   // 1.52.6
     { id: 'place-3d', label: 'Place 3D Model...', enabled: has, run: () => model3dInput.click() },   // 1.51.9
     { id: 'assemble-tiles', label: 'Assemble Tiles...', enabled: () => engine.projects.some((p) => p.tile), run: () => void assembleTiles() },   // 1.52.7
@@ -2104,7 +2157,7 @@ export function startApp(): void {
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-layers', 'export-artboards-files', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'photomerge', 'merge-hdr'] },
-      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'export-layers', 'export-artboards-files'] },...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab', 'close-all', 'close-others'] },
+      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },
@@ -2150,7 +2203,7 @@ export function startApp(): void {
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: ['assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
-    { label: 'Help', items: ['help', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
+    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   // The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.
@@ -2476,5 +2529,15 @@ export function startApp(): void {
   if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { errorLog, keepModified, offerRecovery, setRecoveryDelay: (ms: number) => { recoveryDelay = ms; } });
 
   const faces = Promise.all(['400', '500', '600'].map((w) => document.fonts.load(`${w} 12px Inter`))).catch(() => undefined);
-  void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => { revealApp(); void offerRecovery(); }));
+  // What's New once after an update, never again for the same version: not on a first start (nothing was updated), not
+  // for an automated browser, and after any recovery question has been answered.
+  function offerWhatsNew(): void {
+    const p = loadPrefs();
+    if (!p.whatsNewAuto || p.whatsNewSeen === VERSION || !RELEASES.length) return;
+    if (freshProfile && p.whatsNewSeen === '') { updatePrefs({ whatsNewSeen: VERSION }); return; }
+    if (navigator.webdriver || anyDialogOpen()) return;
+    updatePrefs({ whatsNewSeen: VERSION });
+    whatsNew.show();
+  }
+  void Promise.race([faces, new Promise((r) => window.setTimeout(r, 2500))]).then(() => requestAnimationFrame(() => { revealApp(); void offerRecovery().then(offerWhatsNew); }));
 }

@@ -24,6 +24,7 @@ export class StrokePathDialog extends Dialog {
     this.body.append(this.toolRow.el, this.widthRow.el, colorRow, this.pressureRow.el, el('<p class="cv-note">The stroke uses the tool\'s hardness and opacity at this width and colour; Clone Stamp and the retouch tools paint what they sample. Your brush size and foreground colour are left as they were.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
+    this.remember([this.color, ...Array.from(this.widthRow.el.querySelectorAll('input'))]);   // the width and colour start at the brush's size and the foreground
   }
 
   show(): void {

@@ -31,6 +31,7 @@ export class MergeDialog extends Dialog {
     layout.set('auto'); crop.set(false);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.apply());
+    this.remember([this.input]);   // the layout and the crop; the photos themselves are chosen each time
   }
 
   show(): void { this.files = []; this.input.value = ''; this.describe(); setText(this.note, ''); this.open(); }

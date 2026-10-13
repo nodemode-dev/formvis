@@ -42,6 +42,7 @@ export class ReplaceColorDialog extends Dialog {
     this.button('OK', 'primary', () => this.apply());
     const c = this.box.getContext('2d');
     if (c) { c.fillStyle = '#000000'; c.fillRect(0, 0, BOX_W, BOX_H); }
+    this.remember([this.colour, this.result]);   // the colours are sampled from the picture
   }
 
   /** Test hook as much as a user path: sample a colour as a click would. */

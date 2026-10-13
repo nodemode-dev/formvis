@@ -11,7 +11,13 @@ export interface Prefs { profileMismatch: MismatchPref; colour: ColourSettings; 
      Units & Rulers, Guides & Grid; every one acts on something real. */
   zoomWheel: boolean; autoFirstSnapshot: boolean; snapshotMB: number; narrowCollapse: boolean;
   paintCursor: PaintCursor; cursorCrosshair: boolean; checkerSize: CheckerSize; checkerColors: CheckerColors;
-  rulerUnits: RulerUnits; guideColor: string; gridColor: string; gridSpacing: number; gridSubdivisions: number }
+  rulerUnits: RulerUnits; guideColor: string; gridColor: string; gridSpacing: number; gridSubdivisions: number;
+  /* The workspace charter (DEV_PLAN 35.1): the Home screen when the last document closes, What's New after an update,
+     and the values that stick: every tool option, and each dialog's last controls. */
+  homeOnLastClose: boolean; whatsNewAuto: boolean; whatsNewSeen: string;
+  toolOptions: Record<string, ToolOptionValue>; dialogValues: Record<string, Record<string, DialogValue>> }
+export type ToolOptionValue = string | number | boolean;
+export type DialogValue = string | boolean;
 export type PaintCursor = 'tip' | 'precise' | 'standard';
 export type CheckerSize = 'none' | 'small' | 'medium' | 'large';
 export type CheckerColors = 'light' | 'medium' | 'dark';
@@ -30,11 +36,35 @@ export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [[
 
 export const DEFAULT_PREFS: Prefs = { profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
-  checkerSize: 'medium', checkerColors: 'light', rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4 };
+  checkerSize: 'medium', checkerColors: 'light', rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {} };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
 const num = (v: unknown, lo: number, hi: number, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
+
+const plain = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 'object' && !Array.isArray(v);
+
+/** Tool options by `tool.option`, oldest change first (the order they are put back in); only scalars are kept. */
+function cleanToolOptions(v: unknown): Record<string, ToolOptionValue> {
+  const out: Record<string, ToolOptionValue> = {};
+  if (!plain(v)) return out;
+  for (const [k, x] of Object.entries(v).slice(0, 600)) if (typeof x === 'string' ? x.length <= 200 : typeof x === 'boolean' || (typeof x === 'number' && Number.isFinite(x))) out[k.slice(0, 120)] = x as ToolOptionValue;
+  return out;
+}
+
+/** Each dialog's last control values, by dialog and control name. */
+function cleanDialogValues(v: unknown): Record<string, Record<string, DialogValue>> {
+  const out: Record<string, Record<string, DialogValue>> = {};
+  if (!plain(v)) return out;
+  for (const [d, vals] of Object.entries(v).slice(0, 200)) {
+    if (!plain(vals)) continue;
+    const row: Record<string, DialogValue> = {};
+    for (const [k, x] of Object.entries(vals).slice(0, 80)) if ((typeof x === 'string' && x.length <= 2000) || typeof x === 'boolean') row[k.slice(0, 120)] = x;
+    out[d.slice(0, 120)] = row;
+  }
+  return out;
+}
 
 export function loadPrefs(): Prefs {
   try {
@@ -72,12 +102,34 @@ export function loadPrefs(): Prefs {
       gridColor: typeof r.gridColor === 'string' && /^(#[0-9a-f]{6})?$/i.test(r.gridColor) ? r.gridColor : DEFAULT_PREFS.gridColor,
       gridSpacing: Math.round(num(r.gridSpacing, 2, 5000, DEFAULT_PREFS.gridSpacing)),
       gridSubdivisions: Math.round(num(r.gridSubdivisions, 1, 64, DEFAULT_PREFS.gridSubdivisions)),
+      homeOnLastClose: typeof r.homeOnLastClose === 'boolean' ? r.homeOnLastClose : DEFAULT_PREFS.homeOnLastClose,
+      whatsNewAuto: typeof r.whatsNewAuto === 'boolean' ? r.whatsNewAuto : DEFAULT_PREFS.whatsNewAuto,
+      whatsNewSeen: typeof r.whatsNewSeen === 'string' ? r.whatsNewSeen.slice(0, 32) : DEFAULT_PREFS.whatsNewSeen,
+      toolOptions: cleanToolOptions(r.toolOptions),
+      dialogValues: cleanDialogValues(r.dialogValues),
     };
   } catch { return { ...DEFAULT_PREFS }; }
 }
 
 export function savePrefs(p: Prefs): void {
   try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* kept for this session only */ }
+}
+
+/** A value a dialog kept under `name` (see `Dialog.remember`), for dialogs that hold their settings as an object. */
+export const recalled = (dialog: string, name: string): DialogValue | undefined => loadPrefs().dialogValues[dialog]?.[name];
+
+/** Keeps `value` for a dialog under `name`; nothing is written when it is already what is kept. */
+export function remembered(dialog: string, name: string, value: DialogValue): void {
+  const cur = loadPrefs().dialogValues;
+  if (cur[dialog]?.[name] === value) return;
+  updatePrefs({ dialogValues: { ...cur, [dialog]: { ...cur[dialog], [name]: value } } });
+}
+
+/** Changes some preferences and keeps them: what a tool option, a dialog or What's New remembers goes through here. */
+export function updatePrefs(patch: Partial<Prefs>): Prefs {
+  const p = { ...loadPrefs(), ...patch };
+  savePrefs(p);
+  return p;
 }
 
 /** Puts the engine-side preferences into effect; the recovery delay is read by the app when it schedules a save. */

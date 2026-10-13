@@ -18,6 +18,7 @@ export class ColorMatchDialog extends Dialog {
     this.body.append(row('Match to', this.to), row('Amount', this.amount, this.amountText), this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Apply', 'primary', () => this.apply());
+    this.remember();
   }
 
   /** The layer to match: the active one, or the one a Color Match layer is clipped to. */

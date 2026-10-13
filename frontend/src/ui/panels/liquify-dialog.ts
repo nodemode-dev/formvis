@@ -74,6 +74,12 @@ export class LiquifyDialog extends Dialog {
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => this.release();
     this.bindCanvas();
+    // The brush size, pressure and tool stay; the face sliders belong to the faces found in this picture.
+    this.remember(Array.from(this.faceRows.values()).flatMap((r) => Array.from(r.el.querySelectorAll('input'))), {
+      read: () => ({ tool: String(this.tool) }),
+      write: (v) => { const t = TOOLS.find(([id]) => id === v.tool); if (t) { this.tool = t[0]; this.syncTools(); } },
+      onChange: (notify) => { for (const b of this.toolButtons) b.addEventListener('click', notify); },
+    });
   }
 
   show(): void {

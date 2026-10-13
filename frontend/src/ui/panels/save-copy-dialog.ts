@@ -19,6 +19,7 @@ export class SaveCopyDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Save', 'primary', () => this.apply());
     this.name.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.apply(); } });
+    this.remember();
   }
 
   show(): void {

@@ -18,6 +18,7 @@ export class MattingDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     for (const r of [this.width, this.amount, this.radius]) enterTo(r.input, () => this.apply());
+    this.remember();   // Defringe and Color Decontaminate each under their own title
   }
 
   show(kind: 'defringe' | 'decontaminate'): void {

@@ -27,6 +27,7 @@ export class FocusAreaDialog extends Dialog {
     range.set(this.s.range); noise.set(this.s.noise); soften.set(this.s.soften);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
+    this.remember();
   }
 
   show(): void {

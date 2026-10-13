@@ -13,6 +13,7 @@ export class HdrToningDialog extends Dialog {
     this.body.append(this.info, row('Exposure', this.exposure), row('Gamma', this.gamma));
     this.button('Cancel', 'ghost', () => this.finish(null));
     this.button('OK', 'primary', () => this.finish({ exposure: Number(this.exposure.value) || 0, gamma: Math.max(0.1, Number(this.gamma.value) || 1) }));
+    this.remember();
   }
   ask(bits: number): Promise<{ exposure: number; gamma: number } | null> {
     setText(this.info, `Method: Exposure and Gamma. Brighter than white is clipped at ${bits} bits; lower the exposure to keep highlights.`);

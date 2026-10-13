@@ -18,6 +18,7 @@ export class ArbitraryRotationDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.angle.input, () => this.apply());
+    this.remember();
   }
 
   show(): void {
@@ -52,6 +53,7 @@ export class DuplicateImageDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
+    this.remember();
   }
 
   show(): void {

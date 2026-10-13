@@ -84,6 +84,7 @@ export class AssignProfileDialog extends Dialog {
     this.body.append(el('<p class="cv-note">The numbers stay; how they look changes. Use Convert to Profile to keep the look.</p>'), row('Profile', this.sel), this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.ok());
+    this.remember();
   }
   async show(): Promise<void> {
     // Lab (1.57.9): its colours are absolute, so a profile is given to them by converting into it.
@@ -119,6 +120,7 @@ export class ConvertProfileDialog extends Dialog {
     this.body.append(from, row('Destination', this.sel), row('Intent', this.intent), row('Use Black Point Compensation', this.bpc), row('Use Dither (8-bit/channel)', this.dither), this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => void this.ok());
+    this.remember([this.intent, this.bpc, this.dither]);   // the intent, compensation and dither are Color Settings' (Preferences)
   }
   async show(): Promise<void> {
     const mode = this.engine.current?.doc.mode, depth = this.engine.current?.doc.depth ?? 8, saved = loadPrefs().colour;

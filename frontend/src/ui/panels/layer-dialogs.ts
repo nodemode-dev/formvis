@@ -24,6 +24,7 @@ export class NewLayerDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     enterTo(this.name, () => this.apply());
+    this.remember();
   }
 
   private background = false;

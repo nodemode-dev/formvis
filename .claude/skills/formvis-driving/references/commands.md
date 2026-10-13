@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (761 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (766 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 42
-- File: 47
+- File: 48
 - Filter: 77
 - Image: 67
 - Layer: 156
@@ -16,7 +16,7 @@ Generated from the window's command catalogue (761 commands) by `./formvis agent
 - Tools: 48
 - Type: 4
 - View: 21
-- Window: 37
+- Window: 41
 
 ## Edit
 
@@ -95,6 +95,7 @@ Generated from the window's command catalogue (761 commands) by `./formvis agent
 | `export-psd` | Export PSD... |  | Exports the document as a Photoshop PSD. (asks first) |
 | `export-tiff` | Export TIFF |  | Exports the picture as TIFF. (asks first) |
 | `export-webp` | Export WebP |  | Exports the flattened picture as WebP. (asks first) |
+| `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
 | `fit-image` | Fit Image... |  | Opens Fit Image to scale within a width and height. (changes the picture) |
 | `generate-image` | Generate Image... |  | Opens Generate Image. (changes the picture) |
 | `import` | Import Images... | Shift+Mod+O | Opens the file picker to place images as layers. (changes the picture) |
@@ -880,6 +881,9 @@ Generated from the window's command catalogue (761 commands) by `./formvis agent
 | `panel-swatches` | Swatches |  | Shows or hides the Swatches panel. |
 | `panel-timeline` | Timeline |  | Shows or hides the Timeline panel. |
 | `play-animation` | Play Animation |  | Plays or stops the frame animation. |
+| `pref-home-last-close` | Show Home Screen When the Last Document Closes |  | Turns the Home screen after the last document closes on or off (Preferences > General); off, closing the last document leaves the empty workspace. |
+| `pref-home-launch` | Show Home Screen at Launch |  | Turns the Home screen at launch on or off (Preferences > General); on shows it while no document is open at start. |
+| `pref-whats-new-auto` | Show What's New Once After an Update |  | Turns on or off opening What's New once after an update (Preferences > General). |
 | `reset-panels` | Reset Panels |  | Restores the default panel layout. |
 | `search` | Search... | Mod+K | Opens the command palette. |
 | `settings` | Preferences... | Mod+, | Opens Preferences. |
@@ -890,3 +894,4 @@ Generated from the window's command catalogue (761 commands) by `./formvis agent
 | `terminal.new` | New Terminal |  | Opens a new terminal tab. |
 | `terminal.toggle` | Terminal | Mod+J | Shows or hides the terminal dock. |
 | `tween-frames` | Tween... |  | Opens the Tween dialog to add in-between frames. (changes the picture) |
+| `whats-new` | What's New... |  | Opens What's New: the additions of the current and recent releases, each with a Show Me button that runs its command. |

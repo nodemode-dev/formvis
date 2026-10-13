@@ -42,6 +42,7 @@ export class GenerateImageDialog extends Dialog {
     this.body.append(this.prompt, this.improver.el, row, this.keyRow, this.refs.el, this.status);
     this.button('Cancel', 'ghost', () => { this.stopped = true; this.close(); });
     this.button('Generate', 'primary', () => void this.generate());
+    this.remember();   // the model chosen and the reference settings; the prompt and the key are text
   }
 
   async show(): Promise<void> {

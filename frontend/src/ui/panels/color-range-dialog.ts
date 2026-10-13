@@ -30,6 +30,7 @@ export class ColorRangeDialog extends Dialog {
     for (const c of [this.pick, this.fuzz, this.invert]) c.addEventListener('input', () => this.refresh());
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => { const o = this.options(); this.close(); this.engine.selectColorRange(o); });
+    this.remember();
   }
 
   private options(): Parameters<Engine['colorRangeMask']>[0] {

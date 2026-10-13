@@ -35,6 +35,7 @@ export class LayerExportDialog extends Dialog {
     this.body.append(this.destRow, this.prefixRow, this.visibleRow.el, this.formatRow.el, this.qualityRow.el, this.trimRow.el, this.iccRow.el, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Export', 'primary', () => { this.close(); this.run({ ...this.s, prefix: this.s.prefix.trim(), folder: this.s.folder.trim() }); });
+    this.remember();   // the type, quality, visible-only, trim and profile; the name and folder come from the document
   }
 
   /** Opens for the layers (`artboards` false) or for the artboards of the open document. */

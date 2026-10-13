@@ -12,7 +12,7 @@ import { icon } from './icons';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
 import { toast } from './toast';
-import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, RECOVERY_CHOICES, RULER_UNITS, loadPrefs, savePrefs, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type RulerUnits } from './prefs';
+import { CHECKER_COLORS, CHECKER_SIZES, ENGINE_CHOICES, PAINT_CURSORS, RECOVERY_CHOICES, RULER_UNITS, loadPrefs, recalled, remembered, savePrefs, type CheckerColors, type CheckerSize, type EngineDevice, type PaintCursor, type Prefs, type RulerUnits } from './prefs';
 import { RENDERER_CHOICES, type GpuRenderer } from '../gpu/probe';
 import { checkRow, selectRow, sliderRow } from './panels/controls';
 
@@ -173,6 +173,7 @@ export class NewCanvasDialog extends Dialog {
 
   show(): void {
     this.name.value = `Untitled-${this.engine.projects.length + 1}`;
+    this.recall();
     this.renderCards();
     this.open(this.name);
     this.name.select();
@@ -181,7 +182,32 @@ export class NewCanvasDialog extends Dialog {
   private mode!: HTMLSelectElement;
   private modeNote!: HTMLElement;
 
+  /** The last document made sets the next one's size, unit, resolution, mode, background and artboards (not the name). */
+  private recall(): void {
+    const get = (k: string): string | boolean | undefined => recalled('New Document', k);
+    const w = Number(get('w')), h = Number(get('h')), res = get('res'), unit = get('unit'), mode = get('mode'), fill = get('fill');
+    const has = (s: HTMLSelectElement, v: unknown): v is string => typeof v === 'string' && [...s.options].some((o) => o.value === v);
+    if (has(this.unit, unit)) this.unit.value = unit;
+    if (has(this.fill, fill)) this.fill.value = fill;
+    if (has(this.mode, mode)) { this.mode.value = mode; this.mode.dispatchEvent(new Event('change')); }
+    if (typeof res === 'string' && Number.isFinite(parseFloat(res))) this.res.value = res;
+    if (typeof get('artboards') === 'boolean') this.artboards.checked = get('artboards') as boolean;
+    const linked = get('link');
+    if (typeof linked === 'boolean') { this.link.classList.toggle('is-on', linked); this.link.setAttribute('aria-pressed', String(linked)); }
+    if (w >= 1 && h >= 1 && w <= LIMITS.side && h <= LIMITS.side) { this.px = { w: Math.round(w), h: Math.round(h) }; this.picked = null; }
+    const cat = get('category');
+    if (typeof cat === 'string' && PRESET_GROUPS.some((g) => g.id === cat)) this.category = cat;
+    this.sync();
+  }
+
+  private keepValues(): void {
+    const set = (k: string, v: string | boolean): void => remembered('New Document', k, v);
+    set('w', String(this.px.w)); set('h', String(this.px.h)); set('unit', this.unit.value); set('res', String(this.ppi()));
+    set('mode', this.mode.value); set('fill', this.fill.value); set('artboards', this.artboards.checked); set('link', this.linked()); set('category', this.category);
+  }
+
   private create(): void {
+    this.keepValues();
     const fill = this.fill.value as 'transparent' | 'white' | 'background';
     const p = this.engine.newDocument(this.px.w, this.px.h, this.name.value.trim() || 'Untitled', fill, this.ppi());
     if (!p) return;
@@ -319,7 +345,9 @@ export class SettingsDialog extends Dialog {
   private readonly memoryAutoRow = checkRow('History memory set automatically from this computer\'s memory', (v) => this.change({ historyAuto: v }));
   private readonly redrawRow = checkRow('Redraw only what a brush stroke changed', (v) => this.change({ regionRedraws: v }));
   private readonly recoveryRow = selectRow('Keep recovery information after changes, within', RECOVERY_CHOICES, (v) => this.change({ recoverySeconds: Number(v) }));
-  private readonly homeRow = checkRow('Auto show the Home Screen', (v) => this.change({ autoShowHome: v }));
+  private readonly homeRow = checkRow('Show Home screen at launch', (v) => this.change({ autoShowHome: v }));
+  private readonly homeCloseRow = checkRow('Show Home screen when the last document closes', (v) => this.change({ homeOnLastClose: v }));
+  private readonly whatsNewRow = checkRow('Show What\'s New once after an update', (v) => this.change({ whatsNewAuto: v }));
   /* Photoshop's other sections (the owner's walkthrough), each acting on something real. */
   private readonly wheelRow = checkRow('Zoom with Scroll Wheel', (v) => this.change({ zoomWheel: v }));
   private readonly firstSnapRow = checkRow('Automatically Create First Snapshot', (v) => this.change({ autoFirstSnapshot: v }));
@@ -379,7 +407,7 @@ export class SettingsDialog extends Dialog {
     accentRow.appendChild(this.accent);
     const reset = el<HTMLButtonElement>('<button class="cv-btn" type="button">Reset All Preferences...</button>');
     reset.addEventListener('click', () => { void confirmAction('Reset all preferences?', 'Every preference, the panel arrangement and the tools shown go back to how formvis comes; your documents and library are kept. formvis reloads.', 'Reset').then((ok) => { if (!ok) return; for (const k of Object.keys(localStorage)) if (k.startsWith('formvis.') || k === 'nodemode_ui_settings') localStorage.removeItem(k); location.reload(); }); });
-    add('General', this.homeRow.el, reset, el('<p class="cv-note">With it on, the Home screen shows whenever no document is open. The brand mark at the top left opens it at any time; Esc leaves it.</p>'));
+    add('General', this.homeRow.el, this.homeCloseRow.el, this.whatsNewRow.el, reset, el('<p class="cv-note">The Home screen covers the canvas area. At launch it shows while no document is open; closing the last document leaves the empty workspace with its panels unless the second choice is on. The brand mark at the top left opens it at any time; Esc leaves it. What\'s New (Help menu) lists the recent additions, each with a Show Me button; with the third choice on it opens once after an update.</p>'));
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, accentRow, this.intensityRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.</p>'));
     add('Performance', this.budgetNote, this.redrawRow.el,
@@ -492,6 +520,8 @@ export class SettingsDialog extends Dialog {
     this.restoreBox.checked = this.prefs.restoreSession;
     this.mismatchSel.value = this.prefs.profileMismatch;
     this.homeRow.set(this.prefs.autoShowHome);
+    this.homeCloseRow.set(this.prefs.homeOnLastClose);
+    this.whatsNewRow.set(this.prefs.whatsNewAuto);
     this.gpuUseRow.set(this.prefs.useGpu);
     this.rendererRow.set(this.prefs.renderer);
     this.gpuMemoryRow.set(this.prefs.gpuMemoryMB);
@@ -627,7 +657,8 @@ export class SettingsDialog extends Dialog {
   }
 
   private change(patch: Partial<Prefs>): void {
-    this.prefs = { ...this.prefs, ...patch };
+    const kept = loadPrefs();   // what tool options and dialogs remembered since this dialog opened is not overwritten
+    this.prefs = { ...this.prefs, ...patch, toolOptions: kept.toolOptions, dialogValues: kept.dialogValues, whatsNewSeen: kept.whatsNewSeen };
     savePrefs(this.prefs);
     this.onPrefs(this.prefs);
   }

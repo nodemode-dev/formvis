@@ -77,6 +77,7 @@ export class GenerativeDialog extends Dialog {
     this.forget = this.button('Forget key', 'ghost', () => void this.forgetKey());
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Generate', 'primary', () => void this.generate());
+    this.remember();   // the model, influence and expand margins, each mode under its own title
   }
 
   private number(label: string): HTMLInputElement {

@@ -28,6 +28,7 @@ export class StrokeDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.widthRow.input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); this.apply(); } });
+    this.remember([this.colorRowEl.el.querySelector('input') as HTMLInputElement]);   // the colour starts at the foreground's
   }
 
   show(): void {

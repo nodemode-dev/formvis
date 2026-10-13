@@ -15,6 +15,7 @@ export class GifDialog extends Dialog {
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Export', 'primary', () => { const k = Number(this.size.value) || 1; this.close(); void this.run(k); });
     this.size.addEventListener('change', () => this.describe());
+    this.remember();
   }
 
   show(): void {

@@ -22,11 +22,15 @@ export class TiffPagesDialog extends Dialog {
     this.body.append(this.info, row, this.note);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Open', 'primary', () => void this.go());
+    this.remember();   // how pages are opened (kept under TIFF Pages and Icon Sizes alike)
   }
 
   show(file: File, pages: Page[]): void {
     this.file = file; this.pages = pages;
-    setText(this.info, `${file.name} has ${pages.length} pages: ${pages.map((p) => `${p.width} by ${p.height}`).join(', ')}.`);
+    const icon = /\.ico$/i.test(file.name);   // an icon's sizes are offered the way a TIFF's pages are (DEV_PLAN 34.1), largest first
+    this.setTitle(icon ? 'Icon Sizes' : 'TIFF Pages');
+    [`The largest ${icon ? 'size' : 'page'} only`, `Each ${icon ? 'size' : 'page'} as a document`, `Every ${icon ? 'size' : 'page'} as a layer`].forEach((t, i) => setText(this.how.options[i], t));
+    setText(this.info, `${file.name} has ${pages.length} ${icon ? 'sizes' : 'pages'}: ${pages.map((p) => `${p.width} by ${p.height}`).join(', ')}.`);
     setText(this.note, '');
     this.how.value = 'largest';
     this.open();
