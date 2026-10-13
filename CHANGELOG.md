@@ -4,6 +4,26 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.67.6 · 2026-10-13
+
+### Added
+
+- Brushes behave as in Photoshop through the whole stroke: Flow lays the same build-up at any spacing, Opacity can follow pen pressure or Fade with each pixel kept at the highest opacity reached in the stroke (a hard press over a light one goes darker, repeated light presses never pass the light value), Fade on size, opacity and flow, and the start of a stroke eases in instead of jumping. The Brush tool starts with size following pen pressure, and the options bar has a pressure-for-opacity toggle.
+- The desktop app reads the monitor's colour profile and draws the canvas through it (Linux, macOS, Windows); the browser build says it assumes an sRGB display.
+- DNG camera profiles (`.dcp`) in Develop and on Camera Raw import, with a Profile choice.
+- Proof Setup presets (profile, intent, black point compensation, paper and ink) and colour export presets.
+- Docs and wiki pages for the terminal, agents, colour and brushes.
+
+### Changed
+
+- Changing a 16-bit document's mode to CMYK, Lab or Grayscale keeps 16 bits; DPX opens and exports at 16 bits; opening a file whose profile is missing or differs from the working space asks, as Color Settings says.
+- One scrollbar sheet everywhere, plug-in panels included.
+
+### Fixed
+
+- Radial Blur grew the layer by 2,000 pixels on every side whatever its settings, so Surface Blur after it ran on a picture many times larger and the window froze; the growth now follows the blur's settings.
+- Three small layout shifts: the Claude Code panel's log on opening and on reload, and the status bar's GPU and memory readouts.
+
 ## 1.67.5 · 2026-10-13
 
 ### Added

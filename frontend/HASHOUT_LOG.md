@@ -2,6 +2,75 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.67.6: brushes, colour part 2 and the sprint's close joined · _v1.67.6
+
+The sections below were written by the three engineers who built them this turn; this one records the lead's checks. After the joins: tsc clean; unit 194 of 194; 34 browser tests over brushes (flow, dynamics, tip, history brush), colour management, profiles, modes, no-scrollbars, menus, filters and the shortcut editor pass; `counts --check` accurate; `agents sync --check` in step. Measured by the brush engineer on pixel values: Opacity 50 and Flow 10 scrubbed 1, 3 and 9 times in one stroke peak at 32.9, 49.8 and 49.8 percent; Flow 20 at 1, 10 and 25 percent spacing within 0.3 points; a 0.1 to 1 pressure ramp widens 14 to 36 px; a light press repeated stays at 43.9 percent while a hard pass reaches 100. Open: Fade has no options-bar control yet (the model only); `test_brush_flow`'s comments still describe the old 8-bit stall; the macOS and Windows display-profile paths, DCP on real camera profiles and the Develop Profile select in a live window are unverified. Removed from frontend:
+
+```text
+  "version": "1.67.5",
+      "version": "1.67.5",
+  "version": "1.67.5",
+export const VERSION = '1.67.5';
+```
+
+## Brush strokes on a deep buffer: flow by spacing, opacity per dab, pressure for size and opacity, DEV_PLAN 28.1 · _v1.67.6 (engine/dab-buffer.ts new, stroke.ts, brush-dynamics.ts, deep.ts, index.ts; extensions/tools/brush.ts)
+
+Photoshop's model. `PixelStroke` lays each dab into a `StrokeBuffer` (`dab-buffer.ts`): coverage as a `Float32Array` over the stroke's window, and, only when the Opacity control follows pressure or Fade, a `Uint8Array` of the highest opacity any dab reached at each pixel. The tip's alpha is read once per stroke (`TipAlpha`, with a halving chain so a small dab samples a level near its size) and each dab is rasterised by inverse mapping, a separable fast path when the placement has no rotation. `compose()` draws the 8-bit paint surface from the buffer over the rectangle it updates, through a small scratch canvas (`putImageData` straight into a 4000 by 3000 canvas cost 28 ms a call, the scratch draw 0.1 ms), and the working copy takes it at full alpha: opacity is no longer a `globalAlpha` on the compose. A pixel shows min(coverage, ceiling); the ceiling is the stroke's Opacity, times the Opacity control, rounded down to a level so 50 percent never shows as 50.2.
+
+Flow: each dab adds `1 - (1 - flow) ^ (spacing / quarter of the diameter)` times the tip's alpha, so a Flow lays the same build-up per quarter diameter of travel at 1, 10 or 25 percent spacing; Flow 100 is 1, which is the old dab exactly. The Airbrush's rest dabs count as a quarter diameter each. Pencil and Block dabs fill whole pixels of coverage 1. Strokes whose dabs differ in colour (Mixer, Color Dynamics) keep an `ink` canvas of the dab colours drawn as before, the buffer supplying alpha only. `ensure`, `toFull` and `release` carry the buffer and the ink with the window; a windowed stroke across 4,100 by 3,910 equals the same stroke on a layer under the window threshold, byte for byte, for plain, opacity-by-pressure, Fade and Color Dynamics strokes.
+
+Dynamics: `BrushDynamics` gains `opacity`; the sensor `fade` (steps per spec, `fadeOption(steps, min, max)`) counts dabs, full at the first, the option's minimum after `steps`; PaintInfo carries `fade`. Built-in presets keep their size and flow dynamics, with Opacity off. Pen pressure is eased over a tenth of the diameter of travel (`smooth`), so a pen's first and last readings move the line gradually and a path's sparse samples pass as they are (a three-sample average had lagged Stroke Path's simulated taper). The engine starts with size following pressure (`pressureOption(0.1)`; 0.2 broke the Stroke Path taper test, whose end must be under 10 px); the Brush options gain `Pressure: opacity`. 16-bit documents: `strokeDeep` takes `cover`, the stroke's laid alpha (`PixelStroke.coverFor`), for plain strokes with the source-over or destination-out operation, in place of estimating coverage from the 8-bit before and after; 32-bit and CMYK still derive from the 8-bit result, which now carries the model.
+
+Measured: Opacity 50, Flow 10, one stroke scrubbed 1, 3 and 9 times peaks at 32.9, 49.8 and 49.8 percent, by engine calls and by real pen events; Flow 20 at 1, 10 and 25 percent spacing and the default: 57.7, 57.8, 57.7, 57.7 (hard), 48.6, 48.6, 48.5, 48.6 (hardness 50); a pressure ramp 0.1 to 1 gives widths 14, 20, 26, 30, 36 px; pressure 0.3 once or nine times in one stroke 43.9 percent, then pressure 1 in the same stroke 100. `test_brush_flow.py` and the rest pass unchanged; its comments still describe the old 8-bit stall.
+
+Removed from stroke.ts, index.ts and deep.ts:
+
+```text
+    setMat(this.paintCtx, this.toWin);
+    if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
+    const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
+    this.paintCtx.drawImage(this.dabTip(p.x, p.y), p.x - rx, p.y - ry, rx * 2, ry * 2);
+    this.wetMark(this.toWin, p.x, p.y, rx, ry);
+    if (flow < 1) this.paintCtx.globalAlpha = 1;
+      setMat(this.paintCtx, mul(place, [1, 0, 0, round, 0, 0]));
+      if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
+      this.paintCtx.drawImage(this.dabTip(x, y), -rx, -ry, rx * 2, ry * 2);
+      this.wetMark(mul(place, [1, 0, 0, round, 0, 0]), 0, 0, rx, ry);
+      if (flow < 1) this.paintCtx.globalAlpha = 1;
+    const ctx = this.paintCtx, col = this.style.color;
+    ctx.setTransform(1, 0, 0, 1, -this.ox, -this.oy);
+    ctx.fillStyle = `rgb(${col.r}, ${col.g}, ${col.b})`;
+    w.globalAlpha = this.style.opacity;
+    c.drawImage(this.paint, this.ox, this.oy);   // the window's paint at its place (1.60.6)
+  brushDynamics: BrushDynamics = noDynamics();
+    if (!this.room(first * (p.selection ? 3 : 2) + fresh, 'This stroke')) return false;
+```
+
+## Hidden scrollbars once, a throttled walk, and the Radial Blur freeze, DEV_PLAN 28.7 (styles/tokens.css, shell.css, panels.css, terminal.css; plugins/host.ts; ui/panels/filter-panel.ts, agent-panel.ts)
+
+Scrollbars: `styles/scrollbars.css` is the one sheet; the copies in `tokens.css`, `shell.css` and `panels.css` are gone (the `overflow` each rule carried stays). Plug-in frames are sandboxed documents with no access to the page's sheets, so `plugins/host.ts` puts the same rules in a `<style>` (`FRAME_STYLE`) at the head of each frame's `srcdoc`.
+
+The throttled walk (Chromium with `--hide-scrollbars` left off, so a drawn bar would measure; the iframe control without the sheet measured 15 px; CPU 4x, 400 ms and 62,500 B/s, cache off; a production build, since the dev server's hundreds of module requests are not what a person waits for): hard reload dark 0, light theme 0.0008 and with the dock and Claude panel left open 0.0030 before the fixes below; theme background `rgb(17, 17, 17)` and `rgb(236, 235, 230)` on the first revealed frame, Inter (400, 500, 600) and JetBrains Mono loaded at the reveal. All ten menus with their submenus, 17 dialogs and the Agent Connect panel 0. No element with a drawn or unhidden scrollbar in any state, with 50 layers in the Layers panel. Found and fixed: the Claude Code panel's log moved when the status line arrived and wrapped, or the install row appeared (the status row reserves two lines, the log is `visibility: hidden` until the first status, `is-loaded`; 0.0040 on open, 0.0011 twice on reload); the status bar's GPU and memory readouts had no width, so the hint beside them moved when they arrived (`min-width` 84 and 140 px). Not fixed, and not flashes: Window > panel toggles move the panels below (Navigator 0.030, Swatches 0.016, Properties 0.028, Brushes 0.036), and the terminal dock opening or closing moves the bottom-anchored colour swatches and the Home card (0.034 and 0.050 with the Home screen up, 0.003 to 0.007 over a document); with a real click or key Chromium flags every one `hadRecentInput`, so each is the re-layout the person asked for, in one frame. Opened by a command with no input before it (as an agent does), the same moves count. A tried `flex: none` on `.cv-tool` was taken out again: the rail's tools are 28 px by a later rule and never shrank.
+
+Radial Blur then Surface Blur froze the window. Cause: `filterMargin` returned a fixed 2000 for Radial Blur, the distance the filter reaches past the layer, so applying it at the default Amount of 10 grew an 800 by 600 layer to 4,800 by 4,600 (22 million pixels, `[-2000, -2000]` offset) and ran the filter on all of it (33 s here); Surface Blur then ran its per-pixel loop on that layer (69 s). Each alone ran; Radial Blur after Surface Blur only grew the already small layer. Fix: `radialMargin(amount, method)` takes the reach from the settings (a spin moves a sample by at most `2 sin(k pi / 12)` of the distance from the centre, a zoom by `(k / 2) / (1 - k / 2)`, for content up to 2,000 px out); the default now grows the layer by 107 px and the pair runs in 4.4 s and 5.5 s. Removed from `ui/panels/filter-panel.ts`:
+
+```text
+    : kind === 'radialBlur' ? 2000 : isLibKind(kind) ? libMargin(kind, s.lib?.[kind]) : 0;
+```
+
+Removed from the sheets:
+
+```text
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { display: none; width: 0; height: 0; }
+.cv-tab-strip::-webkit-scrollbar { display: none; }
+.cv-options::-webkit-scrollbar { display: none; }
+.cv-rail::-webkit-scrollbar { display: none; }
+.cv-rail-tools::-webkit-scrollbar { display: none; }
+.cv-menu::-webkit-scrollbar { display: none; }
+(and `scrollbar-width: none;` from the .cv-tab-strip, .cv-options, .cv-rail, .cv-rail-tools, .cv-menu rules and the two in the narrow-screen block)
+```
+
 ## Release 1.67.5: the catalogue, Agent Connect and colour part 1 joined · _v1.67.5 (app.ts, automation/command-meta.ts)
 
 The three sections below were written by the engineers who built them; this one records the lead's joins and review. `app.ts`: imports and one call each for `installColorSettings(commands, engine)` (after the `Commands` is made) and `installAgentConnect(commands, engine)` (after the Claude panel), `colour.settings` after `convert-profile` in the Edit menu, `agent.connect.open` after `agent.claude.open` in the Window menu. `command-meta.ts`: metadata rows for those two ids. Left for the next release, as the colour engineer reported: `mode-cmyk` and `mode-lab` still convert through the 8-bit path (16-bit mode changes go through Convert to Profile), `.dpx` is not yet in the two 16-bit open tests in `app.ts`, Export As to DPX does not yet call `dpxBlob`, and the missing-profile prompt is not yet raised on open. Found by the catalogue engineer and not fixed: Radial Blur followed by Surface Blur at default settings freezes the window (also through the old `apply_filter`); each alone runs.

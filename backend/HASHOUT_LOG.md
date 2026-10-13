@@ -2,6 +2,30 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.67.6: DCP, display profile, presets and the sprint's close · _v1.67.6
+
+The sections below were written by the engineers who built them this turn. Lead's checks after the joins: engine tests fail only as on the unchanged tree (seven: models absent here and this OpenCV's missing EXR codec); `cargo check` in `src-tauri` clean. Colour accuracy (Delta E 2000, 1,000 colours a pair, formvis against LittleCMS's own transform): every exact pair at or under 0.0028 except FOGRA39 to Lab D50 at 0.30, all under the 1.0 target; the 33-point RGB display table 0.79 to 1.17 at most (mean about 0.18); the 17-point FOGRA39 display table 2.05 at most on uniform random ink, over the 2.0 target, and 1.58 within 330 percent total ink. `FOGRA39L_coated.icc` matches TeX Live's colorprofiles copy; its copyright tag reads "free of known copyright restrictions" and CTAN gives zlib/libpng terms, so it ships (recorded in `NOTICE.md`). Removed:
+
+```text
+__version__ = "1.67.5"
+version = "1.67.5"
+version = "1.67.5"
+ "version": "1.67.5",
+```
+
+## Every skill mirrored, references generated from the live catalogue, and the old skill pack removed, DEV_PLAN 28.8 and 28.9 (setup/agents.py; .claude/skills; AGENTS.md, CLAUDE.md, README.md, docs, .docs/wiki, NOTICE.md)
+
+`setup/agents.py`: `sync` now mirrors every folder under `.claude/skills` that holds a `SKILL.md` into `.agents/skills` (and removes a `formvis-*` mirror whose skill is gone), and `install` copies every skill, not only `formvis-editing`, to `~/.claude/skills` and `~/.agents/skills`. Generated, so they cannot drift: `formvis-editing/references/tools.md` (the MCP catalogue, as before), `formvis-harness/references/tool-map.md` (each MCP tool, what it reads or changes, and the driving sub-skills that name it, `none` when no sub-skill does), and, from the window's mirror in `<data dir>/commands-catalogue.json` (the file `GET /api/commands` serves), `formvis-driving/references/commands.md` (every command: id, name, keys, what it does, and the exact parameters of the seven actions) and `formvis-harness/references/command-map.md` (counts per group with the harness sub-skill that owns it, and id families). Plug-in commands and the ten `recent-N` rows are left out and the labels that follow state (`undo`, `redo`, `toggle-*`) are written as the id, so the files do not change with what is open. With no catalogue file the two commands files are left as they are and a line says to open the window once. `sync --check` exits 1 on drift in any of these, in any mirror, and on a skill file that breaks the upload gates (a front matter name over 64 characters or description over 1024, an XML tag in either, an emoji, U+2014 anywhere in `.claude/skills`); all pass today.
+
+`.claude/skills/formvis-skillset` (SKILL.md and eight sub-skills) is deleted: `grep -rn formvis-skillset` found only these logs, after `AGENTS.md`, `README.md`, `CLAUDE.md` and `docs/AGENT_EVALS.md` were pointed at `formvis-harness` and `formvis-driving`. Text brought up to date: `terminal-operator` (the dock, PTYs, the Claude Code panel and Agent Connect exist), `formvis-driving` (the command catalogue, `paint.stroke`), its `terminal` and `painting-and-brushes` sub-skills, `formvis-harness` `SKILL.md`. Docs: README features (terminal, Claude Code, command catalogue and CLI, DPX and Color Settings, Brushes, the native renderer), `docs/MANUAL.md` sections Terminal, Agents, The command line and Brushes plus Colour and Export bullets, wiki pages Terminal, Agents, Colour and Brushes with the sidebar and Home links, `NOTICE.md` rows for xterm.js and its fit addon, ptyprocess and pywinpty (LittleCMS and the 144 Rust crates were already listed; the crate rows match `cargo metadata` for `native/formvis-render`).
+
+Removed from setup/agents.py:
+
+```text
+SKILL = ROOT / ".claude" / "skills" / "formvis-editing"
+MIRROR = ROOT / ".agents" / "skills" / "formvis-editing"
+```
+
 ## Release 1.67.5: review of the catalogue routes, the agent bridge and colour part 1 · _v1.67.5 (app/routers/commands.py)
 
 The three sections below were written by the engineers who built them. Review: `POST /api/commands/catalogue` and `POST /api/commands/{cid}` now call `require_local` (the terminal router's loopback Host and Origin rule), because a cross-site form post with no JSON body would otherwise have reached `run`; the CLI, which sends no Origin from 127.0.0.1, still passes. Process breach, recorded as the colour engineer disclosed it: `convert_deep` and `profile_info` were appended to `app/services/colour.py` with a shell heredoc rather than a hand edit, against SEDO; the content was reviewed and kept. `tests/test_colour.py::test_rgb_documents_only_for_now` was changed by that engineer to expect a CMYK source to convert (it asserted the old refusal); no new test was written. Unverified here: black preservation between two different press profiles (only FOGRA39 ships), Gray and Lab against a reference, Follow Agent's view movement, and real Codex and Cursor clients.
