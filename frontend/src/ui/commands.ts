@@ -3,6 +3,7 @@ import { isMac } from './dom';
 export interface Command {
   id: string;
   label: string | (() => string);
+  /** Key combos; the first is the one menus show. */
   keys?: string[];
   icon?: string;
   run: () => void;
@@ -10,30 +11,34 @@ export interface Command {
   checked?: () => boolean;
 }
 
+/** Names given to some physical key codes inside a combo. */
 const CODE_KEYS: Record<string, string> = {
-  BracketLeft: '[', BracketRight: ']', Equal: '=', Minus: '-', NumpadAdd: '=', NumpadSubtract: '-', Backspace: 'Backspace', Delete: 'Delete',
-  Enter: 'Enter', Escape: 'Escape', Space: 'Space', ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Slash: '/', Tab: 'Tab',
+  BracketLeft: '[', BracketRight: ']', Equal: '=', Minus: '-', NumpadAdd: '=', NumpadSubtract: '-',
+  Backspace: 'Backspace', Delete: 'Delete', Enter: 'Enter', Escape: 'Escape', Space: 'Space',
+  ArrowUp: 'Up', ArrowDown: 'Down', ArrowLeft: 'Left', ArrowRight: 'Right', Slash: '/', Tab: 'Tab',
 };
 
+/** The combo text a key event stands for, in the form saved bindings use, e.g. 'Alt+Shift+Mod+S'. */
 export function comboOf(e: KeyboardEvent): string {
-  const c = e.code;
-  const key = c.startsWith('Key') ? c.slice(3) : c.startsWith('Digit') ? c.slice(5) : c.startsWith('Numpad') && /\d$/.test(c) ? c.slice(6) : CODE_KEYS[c] ?? e.key;
-  const parts: string[] = [];
-  if (e.altKey) parts.push('Alt');
-  if (e.shiftKey) parts.push('Shift');
-  if (isMac ? e.metaKey : e.ctrlKey) parts.push('Mod');
-  parts.push(key);
-  return parts.join('+');
+  let key: string;
+  if (/^Key[A-Z]$/.test(e.code)) key = e.code.slice(3);
+  else if (/^Digit\d$/.test(e.code)) key = e.code.slice(5);
+  else if (/^Numpad\d$/.test(e.code)) key = e.code.slice(6);
+  else if (e.code in CODE_KEYS) key = CODE_KEYS[e.code];
+  else key = e.key;
+  const mod = isMac ? e.metaKey : e.ctrlKey;
+  return (e.altKey ? 'Alt+' : '') + (e.shiftKey ? 'Shift+' : '') + (mod ? 'Mod+' : '') + key;
 }
 
+/** Glyphs for the Apple menu style. */
 const GLYPHS: Record<string, string> = {
-  Mod: '\u2318', Shift: '\u21e7', Alt: '\u2325', Backspace: '\u232b', Delete: '\u2326', Enter: '\u21a9',
-  Up: '\u2191', Down: '\u2193', Left: '\u2190', Right: '\u2192', Escape: 'Esc',
+  Mod: '⌘', Shift: '⇧', Alt: '⌥', Backspace: '⌫', Delete: '⌦', Enter: '↩',
+  Up: '↑', Down: '↓', Left: '←', Right: '→', Escape: 'Esc',
 };
 
+/** Renders a combo for display; a combo ending in '++' means the plus key itself. */
 export function formatKeys(combo: string): string {
-  const parts = combo.split('+');
-  if (combo.endsWith('++')) { parts.pop(); parts[parts.length - 1] = '+'; }
+  const parts = combo.endsWith('++') ? [...combo.slice(0, -2).split('+'), '+'] : combo.split('+');
   if (isMac) return parts.map((p) => GLYPHS[p] ?? p).join('');
   return parts.map((p) => (p === 'Mod' ? 'Ctrl' : p)).join('+');
 }
@@ -92,7 +97,7 @@ export class Commands {
   /** What the document allows before a command's own test (1.53.6: a 16-bit document allows its 16-bit commands). */
   gate: ((cmd: Command) => boolean) | null = null;
   enabled(cmd: Command): boolean { return (!this.gate || this.gate(cmd)) && (cmd.enabled ? cmd.enabled() : true); }
-  keyLabel(cmd: Command): string { const k = cmd.keys?.[0]; return k ? formatKeys(k) : ''; }
+  keyLabel(cmd: Command): string { return cmd.keys && cmd.keys.length ? formatKeys(cmd.keys[0]) : ''; }
   forEvent(e: KeyboardEvent): Command | undefined { return this.byKey.get(comboOf(e)); }
 
   run(id: string): boolean {
