@@ -2,13 +2,17 @@ import type { Mat } from './geometry';
 import { clamp, type Pt } from './types';
 
 export class Viewport {
+  /** Zoom limits. */
   static readonly MIN = 0.01;
   static readonly MAX = 64;
   zoom = 1;
+  /** Where the document origin sits on screen. */
   panX = 0;
   panY = 0;
+  /** The view's size in pixels. */
   width = 800;
   height = 600;
+  /** True while the view is fitted to the document. */
   fitted = true;
   /** Rotate View (1.49.9): the view turned by this many degrees about the stage's centre; the image is not. */
   rotation = 0;
@@ -22,6 +26,7 @@ export class Viewport {
   toDoc(sx: number, sy: number): Pt { return { x: (sx - this.panX) / this.zoom, y: (sy - this.panY) / this.zoom }; }
   toScreen(x: number, y: number): Pt { return { x: x * this.zoom + this.panX, y: y * this.zoom + this.panY }; }
 
+  /** Changes the view's size, keeping its centre over the same document point. */
   resize(w: number, h: number): void {
     this.panX += (w - this.width) / 2;
     this.panY += (h - this.height) / 2;
@@ -48,14 +53,17 @@ export class Viewport {
     this.fitted = false;
   }
 
+  /** Zooms to `z` (held to the limits), keeping the document point under the screen point (sx, sy) in place. */
   zoomAt(z: number, sx: number, sy: number): void {
+    const next = clamp(z, Viewport.MIN, Viewport.MAX);
     const p = this.toDoc(sx, sy);
-    this.zoom = clamp(z, Viewport.MIN, Viewport.MAX);
-    this.panX = sx - p.x * this.zoom;
-    this.panY = sy - p.y * this.zoom;
+    this.zoom = next;
+    this.panX = sx - p.x * next;
+    this.panY = sy - p.y * next;
     this.fitted = false;
   }
 
+  /** Moves the pan by the given screen offsets. */
   panBy(dx: number, dy: number): void {
     this.panX += dx;
     this.panY += dy;

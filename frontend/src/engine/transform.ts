@@ -90,5 +90,5 @@ export function following(t: Transform, from: Transform, to: Transform): Transfo
 
 /** The box snapped to whole units and whole degrees, at least one unit a side. */
 export function rounded(t: Transform): Transform {
-  return { ...t, x: Math.round(t.x), y: Math.round(t.y), w: Math.max(1, Math.round(t.w)), h: Math.max(1, Math.round(t.h)), rotation: Math.round(t.rotation) };
+  return { ...t, x: Math.round(t.x), y: Math.round(t.y), rotation: Math.round(t.rotation), w: Math.max(1, Math.round(t.w)), h: Math.max(1, Math.round(t.h)) };
 }

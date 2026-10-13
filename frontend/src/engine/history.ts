@@ -22,8 +22,11 @@ export class History {
   /** Called as any step ends (1.55.9): the engine brings floats into step with the step's 8-bit pixels and returns the
    *  snapshot to keep, or null when nothing changed. One engine per window, so one hook. */
   static onStepEnd: ((h: History, before: Snapshot, patches: readonly PixelPatch[]) => Snapshot | null) | null = null;
+  /** Most steps kept. */
   entryLimit = 100;
+  /** Most bytes the steps may hold beyond what the live document uses. */
   byteLimit = 256 * 1024 * 1024;
+  /** Names the document's state; equal revisions mean the same state. */
   revision = 0;
   private past: HistoryEntry[] = [];
   private future: HistoryEntry[] = [];
@@ -35,8 +38,8 @@ export class History {
   get canUndo(): boolean { return this.depth === 0 && this.past.length > 0; }
   get canRedo(): boolean { return this.depth === 0 && this.future.length > 0; }
   get last(): HistoryEntry | null { return this.depth === 0 ? this.past[this.past.length - 1] ?? null : null; }
-  get undoName(): string { return this.past[this.past.length - 1]?.name ?? ''; }
-  get redoName(): string { return this.future[this.future.length - 1]?.name ?? ''; }
+  get undoName(): string { return this.canUndo ? this.past[this.past.length - 1].name : ''; }
+  get redoName(): string { return this.canRedo ? this.future[this.future.length - 1].name : ''; }
   /** Every step kept, oldest first, undone ones after the done ones; `current` is how many are done. */
   get steps(): { names: string[]; current: number } {
     return { names: [...this.past.map((e) => e.name), ...[...this.future].reverse().map((e) => e.name)], current: this.past.length };
@@ -46,19 +49,19 @@ export class History {
   markSaved(): void { this.saved = this.revision; }
   markUnsaved(): void { this.saved = -1; }
 
+  /** Opens a step. Only the outermost call starts one; nested calls just count deeper. */
   begin(name: string, snap: Snapshot): void {
-    if (this.depth === 0) this.pending = { name, before: snap, patches: [] };
-    this.depth += 1;
+    if (this.depth++ === 0) this.pending = { name, before: snap, patches: [] };
   }
 
-  addPatch(patch: PixelPatch): void { this.pending?.patches.push(patch); }
+  addPatch(patch: PixelPatch): void { if (this.pending) this.pending.patches.push(patch); }
 
   /** The in-place pixel patches of the step being built (1.55.9), so a 16-bit or CMYK layer's floats can follow them. */
   get pendingPatches(): readonly PixelPatch[] { return this.pending?.patches ?? []; }
 
   end(snap: Snapshot): boolean {
     if (this.depth === 0) return false;
-    this.depth -= 1;
+    this.depth--;
     if (this.depth > 0 || !this.pending) return false;
     const p = this.pending;
     this.pending = null;
@@ -70,17 +73,17 @@ export class History {
     const pathsSame = !p.before.paths || JSON.stringify(p.before.paths) === JSON.stringify(snap.paths);
     const videoSame = p.before.video === undefined || JSON.stringify(p.before.video) === JSON.stringify(snap.video);
     if (!p.patches.length && p.before.doc === snap.doc && p.before.selection === snap.selection && pathsSame && videoSame && framesSame) return false;
-    const beforeRev = this.revision;
-    this.counter += 1;
-    this.revision = this.counter;
-    this.past.push({ name: p.name, before: p.before, after: snap, patches: p.patches, beforeRev, afterRev: this.revision });
+    const beforeRev = this.revision, afterRev = ++this.counter;
+    this.revision = afterRev;
+    this.past.push({ name: p.name, before: p.before, after: snap, patches: p.patches, beforeRev, afterRev });
     this.future = [];
     this.trim(snap);
     return true;
   }
 
+  /** Throws the open step away, however deeply nested; gives back the snapshot it began with. */
   abort(): Snapshot | null {
-    const before = this.pending?.before ?? null;
+    const before = this.pending ? this.pending.before : null;
     this.pending = null;
     this.depth = 0;
     return before;
@@ -111,17 +114,19 @@ export class History {
     return { first: this.past[0]?.before ?? null, patches: this.past.flatMap((e) => e.patches) };
   }
 
+  /** Takes back the last step, if allowed, and returns it. */
   undo(): HistoryEntry | null {
     if (!this.canUndo) return null;
-    const e = this.past.pop() as HistoryEntry;
+    const e = this.past.pop()!;
     this.future.push(e);
     this.revision = e.beforeRev;
     return e;
   }
 
+  /** Makes the next undone step again, if allowed, and returns it. */
   redo(): HistoryEntry | null {
     if (!this.canRedo) return null;
-    const e = this.future.pop() as HistoryEntry;
+    const e = this.future.pop()!;
     this.past.push(e);
     this.revision = e.afterRev;
     return e;
@@ -136,18 +141,18 @@ export class History {
     return out;
   }
 
+  /** Bytes the kept steps hold on top of what the current state already uses. */
   retained(current: Snapshot): number {
-    const live = new Set<string>();
+    const live = new Set<ID>(), seen = new Set<ID>();
     for (const l of current.doc.layers) {
       if (l.raster) live.add(l.raster.id);
       if (l.mask?.raster) live.add(l.mask.raster.id);
     }
-    const seen = new Set<string>();
     const selections = new Set<SelectionMask>(), liveAlphas = new Set((current.doc.alphas ?? []).map((a) => a.mask));
     let bytes = 0;
     const count = (s: Snapshot): void => {
       for (const l of s.doc.layers) {
-        for (const r of [l.raster, l.mask?.raster ?? null]) {
+        for (const r of [l.raster, l.mask?.raster]) {
           if (r && !live.has(r.id) && !seen.has(r.id)) { seen.add(r.id); bytes += r.canvas.width * r.canvas.height * 4; }   // by its canvas: a paged raster counts nothing (1.61.3)
         }
       }
@@ -157,13 +162,14 @@ export class History {
     for (const e of [...this.past, ...this.future]) {
       count(e.before);
       count(e.after);
-      for (const p of e.patches) bytes += p.before.data.length + p.after.data.length;
+      for (const q of e.patches) bytes += q.before.data.length + q.after.data.length;
     }
     return bytes;
   }
 
+  /** Drops the oldest steps while there are too many or they hold too much. */
   private trim(current: Snapshot): void {
-    while ((this.past.length || this.future.length) && (this.past.length + this.future.length > this.entryLimit || this.retained(current) > this.byteLimit)) {
+    while (this.past.length + this.future.length > 0 && (this.past.length + this.future.length > this.entryLimit || this.retained(current) > this.byteLimit)) {
       const gone = this.past.length ? this.past.shift() : this.future.shift();
       if (gone) History.onDrop?.(gone);   // its tiles in the engine's undo store dropped too (1.60.8)
     }

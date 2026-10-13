@@ -79,138 +79,156 @@ export function traceOutline<T extends OutlineSink = Path2D>(mask: Uint8Array, w
   return path;
 }
 
+/** A selection: 8-bit coverage (0 unselected, 255 fully selected) over a rectangle of the document. */
 export class SelectionMask {
-  private surfaceCache: Surface | null = null;
-  private outlineCache: Path2D | null = null;
+  private surf: Surface | null = null;
+  private traced: Path2D | null = null;
 
   constructor(readonly x: number, readonly y: number, readonly w: number, readonly h: number, readonly data: Uint8Array) {}
 
   get bytes(): number { return this.data.length; }
   get rect(): Rect { return { x: this.x, y: this.y, w: this.w, h: this.h }; }
 
+  /** Coverage at a document point; 0 outside the mask's rectangle. */
   valueAt(px: number, py: number): number {
-    const ix = Math.floor(px) - this.x, iy = Math.floor(py) - this.y;
-    if (ix < 0 || iy < 0 || ix >= this.w || iy >= this.h) return 0;
-    return this.data[iy * this.w + ix];
+    const i = Math.floor(px) - this.x, j = Math.floor(py) - this.y;
+    if (i < 0 || j < 0 || i >= this.w || j >= this.h) return 0;
+    return this.data[j * this.w + i];
   }
 
+  /** The mask as a surface: white everywhere, the coverage in the alpha channel. Built once, then kept. */
   surface(): Surface {
-    if (this.surfaceCache) return this.surfaceCache;
-    const s = createSurface(this.w, this.h);
-    const c = ctxOf(s);
-    const img = c.createImageData(this.w, this.h);
-    const d = img.data;
-    for (let i = 0, j = 0; i < this.data.length; i++, j += 4) { d[j] = 255; d[j + 1] = 255; d[j + 2] = 255; d[j + 3] = this.data[i]; }
-    c.putImageData(img, 0, 0);
-    this.surfaceCache = s;
+    if (this.surf) return this.surf;
+    const s = createSurface(this.w, this.h), ctx = ctxOf(s);
+    const img = ctx.createImageData(this.w, this.h), px = img.data;
+    for (let i = 0; i < this.data.length; i++) {
+      const o = i * 4;
+      px[o] = 255;
+      px[o + 1] = 255;
+      px[o + 2] = 255;
+      px[o + 3] = this.data[i];
+    }
+    ctx.putImageData(img, 0, 0);
+    this.surf = s;
     return s;
   }
 
+  /** The outline of the selected area as a path in document coordinates. Traced once, then kept. */
   outline(): Path2D {
-    if (!this.outlineCache) this.outlineCache = traceOutline(this.data, this.w, this.h, this.x, this.y);
-    return this.outlineCache;
+    if (!this.traced) this.traced = traceOutline(this.data, this.w, this.h, this.x, this.y);
+    return this.traced;
   }
 
+  /** A mask over the given rectangle trimmed to the bounding box of its non-zero values; null when nothing is selected. */
   static cropped(x: number, y: number, w: number, h: number, data: Uint8Array): SelectionMask | null {
     let x0 = w, y0 = h, x1 = -1, y1 = -1;
     for (let j = 0; j < h; j++) {
-      const row = j * w;
       for (let i = 0; i < w; i++) {
-        if (!data[row + i]) continue;
+        if (!data[j * w + i]) continue;
         if (i < x0) x0 = i;
         if (i > x1) x1 = i;
         if (j < y0) y0 = j;
-        y1 = j;
+        if (j > y1) y1 = j;
       }
     }
     if (x1 < 0) return null;
-    if (x0 === 0 && y0 === 0 && x1 === w - 1 && y1 === h - 1) return new SelectionMask(x, y, w, h, data);
-    const cw = x1 - x0 + 1, ch = y1 - y0 + 1;
-    const out = new Uint8Array(cw * ch);
-    for (let j = 0; j < ch; j++) out.set(data.subarray((j + y0) * w + x0, (j + y0) * w + x0 + cw), j * cw);
-    return new SelectionMask(x + x0, y + y0, cw, ch, out);
+    const nw = x1 - x0 + 1, nh = y1 - y0 + 1;
+    if (nw === w && nh === h) return new SelectionMask(x, y, w, h, data);
+    const out = new Uint8Array(nw * nh);
+    for (let j = 0; j < nh; j++) {
+      const from = (y0 + j) * w + x0;
+      out.set(data.subarray(from, from + nw), j * nw);
+    }
+    return new SelectionMask(x + x0, y + y0, nw, nh, out);
   }
 
+  /** Coverage taken from the alpha channel of RGBA pixels; with `hard`, alpha of 128 or more is fully selected. */
   static fromAlpha(x: number, y: number, w: number, h: number, rgba: Uint8ClampedArray, hard = false): SelectionMask | null {
-    const out = new Uint8Array(w * h);
-    for (let i = 0; i < out.length; i++) { const a = rgba[i * 4 + 3]; out[i] = hard ? (a >= 128 ? 255 : 0) : a; }
-    return SelectionMask.cropped(x, y, w, h, out);
+    const data = new Uint8Array(w * h);
+    for (let i = 0; i < data.length; i++) { const a = rgba[i * 4 + 3]; data[i] = hard ? (a >= 128 ? 255 : 0) : a; }
+    return SelectionMask.cropped(x, y, w, h, data);
   }
 
+  /** Rasterises whatever `draw` paints (in document coordinates) inside `bounds` into a mask. */
   static fromPath(docW: number, docH: number, bounds: Rect, draw: (ctx: Ctx2D) => void, antialias = true): SelectionMask | null {
-    const b = integral({ x: bounds.x - 1, y: bounds.y - 1, w: bounds.w + 2, h: bounds.h + 2 });
-    const r = intersectRect(b, { x: 0, y: 0, w: docW, h: docH });
-    if (!r) return null;
-    const s = createSurface(r.w, r.h);
-    const c = ctxOf(s);
-    c.translate(-r.x, -r.y);
-    c.fillStyle = '#ffffff';
-    draw(c);
-    return SelectionMask.fromAlpha(r.x, r.y, r.w, r.h, c.getImageData(0, 0, r.w, r.h).data, !antialias);
+    const grown = integral({ x: bounds.x - 1, y: bounds.y - 1, w: bounds.w + 2, h: bounds.h + 2 });
+    const r = intersectRect(grown, { x: 0, y: 0, w: docW, h: docH });
+    if (!r || r.w <= 0 || r.h <= 0) return null;
+    const s = createSurface(r.w, r.h), ctx = ctxOf(s);
+    ctx.translate(-r.x, -r.y);
+    ctx.fillStyle = '#fff';
+    ctx.strokeStyle = '#fff';
+    draw(ctx);
+    const px = ctx.getImageData(0, 0, r.w, r.h).data;
+    return SelectionMask.fromAlpha(r.x, r.y, r.w, r.h, px, !antialias);
   }
 
   static all(w: number, h: number): SelectionMask { return new SelectionMask(0, 0, w, h, new Uint8Array(w * h).fill(255)); }
 
+  /** This mask merged with `other` by the given mode. */
   combine(other: SelectionMask, mode: SelectionMode): SelectionMask | null {
     if (mode === 'replace') return other;
     let r: Rect | null;
     if (mode === 'add') {
-      const x = Math.min(this.x, other.x), y = Math.min(this.y, other.y);
-      r = { x, y, w: Math.max(this.x + this.w, other.x + other.w) - x, h: Math.max(this.y + this.h, other.y + other.h) - y };
-    } else if (mode === 'subtract') r = this.rect;
-    else r = intersectRect(this.rect, other.rect);
-    if (!r) return null;
+      const x0 = Math.min(this.x, other.x), y0 = Math.min(this.y, other.y);
+      const x1 = Math.max(this.x + this.w, other.x + other.w), y1 = Math.max(this.y + this.h, other.y + other.h);
+      r = { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
+    } else if (mode === 'subtract') {
+      r = this.rect;
+    } else {
+      r = intersectRect(this.rect, other.rect);
+    }
+    if (!r || r.w <= 0 || r.h <= 0) return null;
     const out = new Uint8Array(r.w * r.h);
     for (let j = 0; j < r.h; j++) {
-      const py = r.y + j;
       for (let i = 0; i < r.w; i++) {
-        const px = r.x + i;
-        const ax = px - this.x, ay = py - this.y, bx = px - other.x, by = py - other.y;
-        const a = ax >= 0 && ay >= 0 && ax < this.w && ay < this.h ? this.data[ay * this.w + ax] : 0;
-        const b = bx >= 0 && by >= 0 && bx < other.w && by < other.h ? other.data[by * other.w + bx] : 0;
-        out[j * r.w + i] = mode === 'add' ? Math.max(a, b) : mode === 'subtract' ? ((a * (255 - b) + 127) / 255) | 0 : Math.min(a, b);
+        const a = this.valueAt(r.x + i, r.y + j), b = other.valueAt(r.x + i, r.y + j);
+        out[j * r.w + i] = mode === 'add' ? Math.max(a, b) : mode === 'subtract' ? Math.round((a * (255 - b)) / 255) : Math.min(a, b);
       }
     }
     return SelectionMask.cropped(r.x, r.y, r.w, r.h, out);
   }
 
+  /** The complement over the whole document. */
   inverted(docW: number, docH: number): SelectionMask | null {
     const out = new Uint8Array(docW * docH).fill(255);
     for (let j = 0; j < this.h; j++) {
-      const y = this.y + j;
-      if (y < 0 || y >= docH) continue;
+      const dy = this.y + j;
+      if (dy < 0 || dy >= docH) continue;
       for (let i = 0; i < this.w; i++) {
-        const x = this.x + i;
-        if (x < 0 || x >= docW) continue;
-        out[y * docW + x] = 255 - this.data[j * this.w + i];
+        const dx = this.x + i;
+        if (dx < 0 || dx >= docW) continue;
+        out[dy * docW + dx] = 255 - this.data[j * this.w + i];
       }
     }
     return SelectionMask.cropped(0, 0, docW, docH, out);
   }
 
+  /** The mask moved by (dx, dy), clipped to the document. */
   translated(dx: number, dy: number, docW: number, docH: number): SelectionMask | null {
-    const moved = new SelectionMask(this.x + dx, this.y + dy, this.w, this.h, this.data);
-    const r = intersectRect(moved.rect, { x: 0, y: 0, w: docW, h: docH });
-    if (!r) return null;
+    const nx = this.x + dx, ny = this.y + dy;
+    const r = intersectRect({ x: nx, y: ny, w: this.w, h: this.h }, { x: 0, y: 0, w: docW, h: docH });
+    if (!r || r.w <= 0 || r.h <= 0) return null;
     const out = new Uint8Array(r.w * r.h);
     for (let j = 0; j < r.h; j++) {
-      const sy = r.y + j - moved.y, sx = r.x - moved.x;
-      out.set(this.data.subarray(sy * this.w + sx, sy * this.w + sx + r.w), j * r.w);
+      const from = (r.y - ny + j) * this.w + (r.x - nx);
+      out.set(this.data.subarray(from, from + r.w), j * r.w);
     }
     return SelectionMask.cropped(r.x, r.y, r.w, r.h, out);
   }
 
+  /** The mask mirrored across the document: left to right, or top to bottom. */
   flipped(horizontal: boolean, docW: number, docH: number): SelectionMask {
-    const out = new Uint8Array(this.w * this.h);
-    for (let j = 0; j < this.h; j++) {
-      for (let i = 0; i < this.w; i++) {
-        const si = horizontal ? this.w - 1 - i : i, sj = horizontal ? j : this.h - 1 - j;
-        out[j * this.w + i] = this.data[sj * this.w + si];
+    const { w, h, data } = this, out = new Uint8Array(w * h);
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const si = horizontal ? w - 1 - i : i, sj = horizontal ? j : h - 1 - j;
+        out[j * w + i] = data[sj * w + si];
       }
     }
-    return horizontal
-      ? new SelectionMask(docW - this.x - this.w, this.y, this.w, this.h, out)
-      : new SelectionMask(this.x, docH - this.y - this.h, this.w, this.h, out);
+    const nx = horizontal ? docW - this.x - w : this.x;
+    const ny = horizontal ? this.y : docH - this.y - h;
+    return new SelectionMask(nx, ny, w, h, out);
   }
 
   /** The selection turned with the canvas (1.55.3, Image Rotation): `quarters` clockwise quarter turns of a document
