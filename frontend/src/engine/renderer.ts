@@ -17,36 +17,44 @@ export function kernelFor(adj: Adjustment | null): Kernel | null {
   if (!adj) return null;
   const hit = kernelCache.get(adj.data);
   if (hit !== undefined) return hit;
-  const k = adj.kind === 'hsv' ? hsvKernel(hsvFromData(adj.data)) : adj.kind === 'grain' ? grainKernel(grainFromData(adj.data)) : adjustmentKernel(adj);
-  kernelCache.set(adj.data, k);
-  return k;
+  const made = adj.kind === 'hsv' ? hsvKernel(hsvFromData(adj.data)) : adj.kind === 'grain' ? grainKernel(grainFromData(adj.data)) : adjustmentKernel(adj);
+  kernelCache.set(adj.data, made);
+  return made;
 }
 
-/** an image drawn at under half size is drawn from a copy halved exactly 2x at a time,
- *  so the last reduction left to the canvas is at most 2x; a one-step reduction comes out soft or grainy (in WebKit
- *  especially). Halvings for `factor` output pixels per image pixel: the most that still leave the copy at least
- *  that large, up to 6. Copies are kept per raster and dropped when its version changes, since painting is in place. */
-const MAX_HALVINGS = 6;
-const halvings = (factor: number): number => (factor > 0 && factor < 0.5 ? Math.min(MAX_HALVINGS, Math.floor(Math.log2(1 / factor))) : 0);
-const halvedCache = new WeakMap<Raster, { version: number; levels: Surface[] }>();
+/** An image drawn at under half size goes through copies that are each halved exactly twice over (one step of 2x at a
+ *  time), so the canvas never reduces by more than 2x in a single step; one big step comes out soft or grainy,
+ *  in WebKit especially. Copies are cached per raster and dropped when its `version` changes. */
+const halfCache = new WeakMap<Raster, { version: number; levels: Map<number, Surface> }>();
+/** How many halvings suit an output of `factor` pixels per image pixel: as many as still leave the copy at least that
+ *  large, at most 6, and none at half size or more. */
+function halvingsFor(factor: number): number {
+  if (!(factor > 0) || factor >= 0.5) return 0;
+  let n = 1;
+  while (n < 6 && 1 / 2 ** (n + 1) >= factor) n++;
+  return n;
+}
 
+/** The raster's canvas halved `level` times, each step drawn from the one before; `scale` says how much smaller it is. */
 function halved(r: Raster, level: number): { surface: Surface; scale: number } {
-  let e = halvedCache.get(r);
-  if (!e || e.version !== r.version) { e = { version: r.version, levels: [] }; halvedCache.set(r, e); }
-  let prev: Surface = r.canvas;
-  for (let k = 1; k <= level; k++) {
-    let s = e.levels[k - 1];
-    if (!s) {
-      s = createSurface(Math.max(1, Math.ceil(prev.width / 2)), Math.max(1, Math.ceil(prev.height / 2)));
-      const c = ctxOf(s);
-      c.imageSmoothingEnabled = true;
-      c.imageSmoothingQuality = 'high';
-      c.drawImage(prev, 0, 0, prev.width, prev.height, 0, 0, prev.width / 2, prev.height / 2);
-      e.levels[k - 1] = s;
-    }
-    prev = s;
+  const scale = 2 ** level;
+  if (level <= 0) return { surface: r.canvas, scale: 1 };
+  let entry = halfCache.get(r);
+  if (!entry || entry.version !== r.version) {
+    entry = { version: r.version, levels: new Map() };
+    halfCache.set(r, entry);
   }
-  return { surface: prev, scale: 2 ** level };
+  let surface = entry.levels.get(level);
+  if (!surface) {
+    const prev = halved(r, level - 1).surface;
+    surface = createSurface(Math.max(1, Math.ceil(prev.width / 2)), Math.max(1, Math.ceil(prev.height / 2)));
+    const c = ctxOf(surface);
+    c.imageSmoothingEnabled = true;
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(prev, 0, 0, surface.width, surface.height);
+    entry.levels.set(level, surface);
+  }
+  return { surface, scale };
 }
 
 export interface LayerOverride { source?: Surface; transform?: Transform; maskSource?: Surface; maskPlacement?: Transform; hidden?: boolean; blend?: BlendMode; opacity?: number; effects?: LayerEffects | null; patch?: LayerPatch }
@@ -63,6 +71,7 @@ export interface RenderJob {
   background?: string | null;
   ignoreFolderMasks?: boolean;
 }
+/** A scratch canvas and its drawing context. */
 interface Slot { s: Surface; c: Ctx2D }
 /** `k`: the resolution the part was computed at, 1 for full; a smaller part is drawn scaled back up to its place. */
 interface FxPart { s: Surface; x: number; y: number; k: number; alpha: number; op: GlobalCompositeOperation; above: boolean; name: string; kept: boolean }
@@ -155,38 +164,40 @@ function textureHeight(H: Float32Array, w: number, h: number, t: BevelTexture, s
 }
 
 export class Renderer {
-  private slots: Slot[] = [];
+  private readonly slots: Slot[] = [];
   private readonly fxCache = new Map<ID, { key: string; parts: FxPart[] }>();
   /** While a style is being previewed, effects over large regions are computed at reduced resolution (about 1.5
    *  megapixels) and drawn scaled up, so dragging a slider stays quick; the style applied is computed in full. */
   fastEffects = false;
-  private clipPool = new Map<ID, Slot>();
+  private readonly clipPool = new Map<ID, Slot>();
 
+  /** Resizes a scratch slot, puts its context back to a plain state and clears it. */
   private prepare(slot: Slot, w: number, h: number): Slot {
     sizeSurface(slot.s, w, h);
-    const c = slot.c;
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.globalAlpha = 1;
-    c.globalCompositeOperation = 'source-over';
-    c.clearRect(0, 0, w, h);
+    slot.c.setTransform(1, 0, 0, 1, 0, 0);
+    slot.c.globalAlpha = 1;
+    slot.c.globalCompositeOperation = 'source-over';
+    slot.c.clearRect(0, 0, w, h);
     return slot;
   }
 
+  /** The i-th scratch slot, created on first use, cleared at the given size. */
   private slot(i: number, w: number, h: number): Slot {
-    let slot = this.slots[i];
-    if (!slot) { const s = createSurface(w, h); slot = { s, c: ctxOf(s) }; this.slots[i] = slot; }
-    return this.prepare(slot, w, h);
+    let found: Slot | undefined = this.slots[i];
+    if (!found) { const s = createSurface(w, h); found = this.slots[i] = { s, c: ctxOf(s) }; }
+    return this.prepare(found, w, h);
   }
 
   render(job: RenderJob): void {
-    const W = job.target.width, H = job.target.height;
-    const ctx = ctxOf(job.target);
+    const ctx = ctxOf(job.target), W = job.target.width, H = job.target.height;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
     ctx.clearRect(0, 0, W, H);
     if (job.background) { ctx.fillStyle = job.background; ctx.fillRect(0, 0, W, H); }
-    const map = new Map(job.doc.layers.map((l) => [l.id, l]));
+    const entries = hierarchy(job.doc);
+    const map = new Map<ID, Layer>();
+    for (const e of entries) map.set(e.layer.id, e.layer);
     const clipCache = new Map<ID, Surface | null>();
     if (this.clipPool.size > 24) this.clipPool.clear();
     const backed = new Set<ID>();
@@ -202,7 +213,7 @@ export class Renderer {
       ctx.fillRect(a.artboard.x, a.artboard.y, a.artboard.w, a.artboard.h);
       ctx.restore();
     };
-    for (const entry of hierarchy(job.doc)) {
+    for (const entry of entries) {
       const layer = entry.layer;
       if (layer.isGroup) { if (entry.visible && layer.artboard) backdrop(layer); continue; }
       if (!entry.visible) continue;
@@ -211,7 +222,7 @@ export class Renderer {
       const ov = job.overrides?.get(layer.id);
       if (ov?.hidden) continue;
       const opacity = ov?.opacity ?? layer.opacity;
-      if (opacity <= 0) continue;
+      if (!(opacity > 0)) continue;
       // Fill: the pixels at opacity times fill; the effects (drawn from the layer's silhouette) at the opacity.
       const pix = opacity * (layer.fill ?? 1);
       const t = ov?.transform ?? layer.transform;
@@ -258,19 +269,21 @@ export class Renderer {
       }
       let cov: Surface | null = null;
       if (base) {
-        cov = clipCache.has(base.id) ? clipCache.get(base.id) ?? null : this.clipCoverage(job, base, map, W, H, 0);
-        clipCache.set(base.id, cov);
+        if (clipCache.has(base.id)) cov = clipCache.get(base.id) ?? null;
+        else { cov = this.clipCoverage(job, base, map, W, H, 0); clipCache.set(base.id, cov); }
         if (!cov) continue;
       }
       const a = this.slot(0, W, H);
       this.draw(a.c, src, m, t.sampling, 1, 'source-over', job.quality);
       if (ov?.patch) this.patchIn(a.c, ov.patch, m, t.sampling, 1, job.quality);   // a windowed stroke (1.60.6)
       if (own) this.cover(a.c, own, job.view, W, H);
-      for (const g of folders) this.cover(a.c, g, job.view, W, H);
+      for (const f of folders) this.cover(a.c, f, job.view, W, H);
       if (cov) {
+        a.c.save();
+        a.c.setTransform(1, 0, 0, 1, 0, 0);
         a.c.globalCompositeOperation = 'destination-in';
         a.c.drawImage(cov, 0, 0);
-        a.c.globalCompositeOperation = 'source-over';
+        a.c.restore();
       }
       if (blendIf) this.blendIf(a, ctx, blendIf, W, H);
       if (knock) this.knockout(job, ctx, a, layer, map, W, H, opacity);
@@ -632,27 +645,36 @@ export class Renderer {
     c.restore();
   }
 
+  /** Draws `src` under matrix `m`; an image shown at under half size comes from its halved copy so no single step
+   *  reduces by more than 2x. */
   private draw(c: Ctx2D, src: CanvasImageSource, m: Mat, sampling: Sampling, alpha: number, op: GlobalCompositeOperation, quality?: ImageSmoothingQuality): void {
-    let img = src, mm = m;
-    const level = sampling === 'nearest' ? 0 : halvings(matScale(m)), r = level ? rasterOf(src) : undefined;
-    if (r) { const h = halved(r, level); img = h.surface; mm = mul(m, scaling(h.scale, h.scale)); }
     c.save();
-    setMat(c, mm);
     c.globalAlpha = alpha;
     c.globalCompositeOperation = op;
-    c.imageSmoothingEnabled = sampling !== 'nearest';
-    if (c.imageSmoothingEnabled) c.imageSmoothingQuality = sampling === 'smooth' ? 'low' : quality ?? 'high';
-    c.drawImage(img, 0, 0);
+    let image: CanvasImageSource = src, matrix = m;
+    if (sampling === 'nearest') c.imageSmoothingEnabled = false;
+    else {
+      c.imageSmoothingEnabled = true;
+      c.imageSmoothingQuality = sampling === 'smooth' ? 'low' : quality ?? 'high';
+      const raster = rasterOf(src), level = raster ? halvingsFor(matScale(m)) : 0;
+      if (raster && level > 0) {
+        const h = halved(raster, level);
+        image = h.surface;
+        matrix = mul(m, scaling(h.scale, h.scale));
+      }
+    }
+    setMat(c, matrix);
+    c.drawImage(image, 0, 0);
     c.restore();
   }
 
+  /** The mask a layer carries, or null when it has none enabled with pixels. */
   private maskOf(layer: Layer, ov: LayerOverride | undefined, t: Transform): MaskInfo | null {
-    const m = layer.mask;
-    if (!m || !m.enabled) return null;
-    const src = ov?.maskSource ?? m.raster?.canvas;
-    if (!src || !m.raster) return null;
-    const placed = ov?.maskPlacement ?? m.placement;
-    return { src, w: src.width, h: src.height, t: placed ?? t, covers: !placed && !layer.adjustment };
+    const mk = layer.mask;
+    if (!mk || !mk.enabled || !mk.raster) return null;
+    const src = ov?.maskSource ?? mk.raster.canvas;
+    const apart = ov?.maskPlacement ?? mk.placement;
+    return { src, w: src.width, h: src.height, t: apart ?? t, covers: !apart && !layer.adjustment };
   }
 
   /** A layer's vector mask (1.66.1) as a mask over the canvas, its coverage at document size; null when it is off or
@@ -668,7 +690,7 @@ export class Renderer {
     const out: MaskInfo[] = [];
     for (const g of ancestors(map, layer)) {
       const m = g.mask, vm = this.vectorOf(g, doc);
-      if (m?.enabled && m.raster) out.push({ src: m.raster.canvas, w: m.raster.width, h: m.raster.height, t: m.placement ?? g.transform, covers: false });
+      if (m && m.enabled && m.raster) out.push({ src: m.raster.canvas, w: m.raster.width, h: m.raster.height, t: m.placement ?? g.transform, covers: false });
       if (vm) out.push(vm);
       // An artboard shows its contents only inside its rectangle: one white pixel stretched over it, sampled nearest so
       // its edges stay crisp.
@@ -719,8 +741,8 @@ export class Renderer {
 
   private cover(c: Ctx2D, mk: MaskInfo, view: Mat, W: number, H: number): void {
     const m = mul(view, mk.mat ?? placement(mk.t, mk.w, mk.h));
+    c.save();
     if (mk.covers) {
-      c.save();
       setMat(c, m);
       c.globalCompositeOperation = 'destination-in';
       c.imageSmoothingEnabled = mk.t.sampling !== 'nearest';
@@ -728,33 +750,38 @@ export class Renderer {
       c.restore();
       return;
     }
-    const b = this.slot(1, W, H);
-    b.c.fillStyle = '#ffffff';
-    b.c.fillRect(0, 0, W, H);
-    setMat(b.c, m);
-    b.c.globalCompositeOperation = 'destination-out';
-    b.c.fillRect(0, 0, mk.w, mk.h);
-    b.c.globalCompositeOperation = 'source-over';
-    b.c.imageSmoothingEnabled = mk.t.sampling !== 'nearest';
-    b.c.drawImage(mk.src, 0, 0);
-    c.save();
+    // Placed apart: white everywhere, the mask's own rectangle punched out and the mask drawn in it, so outside its
+    // bounds the layer shows.
+    const k = this.slot(1, W, H);
+    k.c.fillStyle = '#fff';
+    k.c.fillRect(0, 0, W, H);
+    k.c.save();
+    setMat(k.c, m);
+    k.c.globalCompositeOperation = 'destination-out';
+    k.c.fillRect(0, 0, mk.w, mk.h);
+    k.c.globalCompositeOperation = 'source-over';
+    k.c.imageSmoothingEnabled = mk.t.sampling !== 'nearest';
+    k.c.drawImage(mk.src, 0, 0);
+    k.c.restore();
     c.setTransform(1, 0, 0, 1, 0, 0);
     c.globalCompositeOperation = 'destination-in';
-    c.drawImage(b.s, 0, 0);
+    c.drawImage(k.s, 0, 0);
     c.restore();
   }
 
-  /** The coverage a clip base lends the layers clipped to it, at document size and in document space, copied out of
-   *  the pool: what each of those live masks shows through. Deleting the base can bake it into their pixels. */
+  /** The coverage a clip base lends the layers clipped to it: its pixels, masks and opacity at document size in
+   *  document space, as a fresh copy. Null when the base is missing or lends none. */
   clipCoverageOf(doc: Doc, baseId: ID): Surface | null {
-    const base = doc.layers.find((l) => l.id === baseId);
+    const map = new Map<ID, Layer>();
+    for (const e of hierarchy(doc)) map.set(e.layer.id, e.layer);
+    const base = map.get(baseId);
     if (!base) return null;
-    const map = new Map(doc.layers.map((l) => [l.id, l]));
-    const cov = this.clipCoverage({ doc, target: createSurface(1, 1), view: IDENTITY, quality: 'high' }, base, map, doc.width, doc.height, 0);
+    const job: RenderJob = { doc, target: createSurface(1, 1), view: IDENTITY, quality: 'high' };
+    const cov = this.clipCoverage(job, base, map, doc.width, doc.height, 0);
     if (!cov) return null;
-    const out = createSurface(doc.width, doc.height);
-    ctxOf(out).drawImage(cov, 0, 0);
-    return out;
+    const copy = createSurface(cov.width, cov.height);
+    ctxOf(copy).drawImage(cov, 0, 0);
+    return copy;
   }
 
   private clipCoverage(job: RenderJob, base: Layer, map: ReadonlyMap<ID, Layer>, W: number, H: number, depth: number): Surface | null {
@@ -770,48 +797,53 @@ export class Renderer {
     const own = this.maskOf(base, ov, t), vm = this.vectorOf(base, job.doc, t);
     if (own) this.cover(slot.c, own, job.view, W, H);
     if (vm) this.cover(slot.c, vm, job.view, W, H);
-    if (base.clipId) {
-      const up = map.get(base.clipId);
-      const cov = up ? this.clipCoverage(job, up, map, W, H, depth + 1) : null;
-      if (!cov) return null;
+    const under = base.clipId ? map.get(base.clipId) : undefined;
+    if (under) {
+      const inner = this.clipCoverage(job, under, map, W, H, depth + 1);
+      if (!inner) return null;
+      slot.c.save();
+      slot.c.setTransform(1, 0, 0, 1, 0, 0);
       slot.c.globalCompositeOperation = 'destination-in';
-      slot.c.drawImage(cov, 0, 0);
-      slot.c.globalCompositeOperation = 'source-over';
+      slot.c.drawImage(inner, 0, 0);
+      slot.c.restore();
     }
     return slot.s;
   }
 
+  /** An adjustment layer applied to what lies beneath on the target: the kernel runs on a copy of the pixels, the
+   *  layer's coverage (own mask, folder masks, clip base) limits it, and each visible pixel moves toward the adjusted
+   *  value by coverage times opacity. */
   private adjust(job: RenderJob, ctx: Ctx2D, layer: Layer, own: MaskInfo | null, folders: MaskInfo[], base: Layer | null, map: ReadonlyMap<ID, Layer>, clipCache: Map<ID, Surface | null>, W: number, H: number, opacity: number): void {
-    const kernel = kernelFor(layer.adjustment);
-    if (!kernel) return;
-    const img = ctx.getImageData(0, 0, W, H);
-    const src = img.data;
-    const adj = new Uint8ClampedArray(src);
-    const origin = applyMat(invert(job.view), 0, 0);
-    kernel(adj, { width: W, height: H, originX: origin.x, originY: origin.y, unitsPerPixel: 1 / matScale(job.view) });
-    let cov: Uint8ClampedArray | null = null;
-    if (own || folders.length || base) {
-      const b = this.slot(2, W, H);
-      b.c.fillStyle = '#ffffff';
-      b.c.fillRect(0, 0, W, H);
-      if (own) this.cover(b.c, own, job.view, W, H);
-      for (const g of folders) this.cover(b.c, g, job.view, W, H);
-      if (base) {
-        const clip = clipCache.has(base.id) ? clipCache.get(base.id) ?? null : this.clipCoverage(job, base, map, W, H, 0);
-        clipCache.set(base.id, clip);
-        if (!clip) return;
-        b.c.globalCompositeOperation = 'destination-in';
-        b.c.drawImage(clip, 0, 0);
-        b.c.globalCompositeOperation = 'source-over';
-      }
-      cov = b.c.getImageData(0, 0, W, H).data;
+    const kernel = kernelFor(layer.adjustment ?? null);
+    if (!kernel || !(opacity > 0)) return;
+    let cov: Surface | null = null;
+    if (base) {
+      if (clipCache.has(base.id)) cov = clipCache.get(base.id) ?? null;
+      else { cov = this.clipCoverage(job, base, map, W, H, 0); clipCache.set(base.id, cov); }
+      if (!cov) return;
     }
-    for (let i = 0; i < src.length; i += 4) {
-      const k = (cov ? cov[i + 3] / 255 : 1) * opacity;
-      if (k <= 0 || !src[i + 3]) continue;
-      src[i] += (adj[i] - src[i]) * k;
-      src[i + 1] += (adj[i + 1] - src[i + 1]) * k;
-      src[i + 2] += (adj[i + 2] - src[i + 2]) * k;
+    const k = this.slot(2, W, H);
+    k.c.fillStyle = '#fff';
+    k.c.fillRect(0, 0, W, H);
+    if (own) this.cover(k.c, own, job.view, W, H);
+    for (const f of folders) this.cover(k.c, f, job.view, W, H);
+    if (cov) {
+      k.c.save();
+      k.c.setTransform(1, 0, 0, 1, 0, 0);
+      k.c.globalCompositeOperation = 'destination-in';
+      k.c.drawImage(cov, 0, 0);
+      k.c.restore();
+    }
+    const reach = k.c.getImageData(0, 0, W, H).data;
+    const img = ctx.getImageData(0, 0, W, H), px = img.data;
+    const adjusted = new Uint8ClampedArray(px);
+    const inv = invert(job.view) ?? IDENTITY;
+    const p0 = applyMat(inv, 0, 0), p1 = applyMat(inv, 1, 0);
+    kernel(adjusted, { width: W, height: H, originX: p0.x, originY: p0.y, unitsPerPixel: Math.hypot(p1.x - p0.x, p1.y - p0.y) });
+    for (let i = 0; i < px.length; i += 4) {
+      if (px[i + 3] === 0 || reach[i + 3] === 0) continue;
+      const f = (reach[i + 3] / 255) * opacity;
+      for (let c = 0; c < 3; c++) px[i + c] = Math.round(px[i + c] + (adjusted[i + c] - px[i + c]) * f);
     }
     ctx.putImageData(img, 0, 0);
   }
@@ -824,8 +856,9 @@ function fxReach(fx: LayerEffects): number {
     on(instances(fx, 'dropShadow'), (d) => d.distance + d.size * 1.5), on(instances(fx, 'stroke'), (k) => k.size), on(instances(fx, 'innerShadow'), (s) => s.distance + s.size * 1.5));
 }
 
+/** The whole document rendered at its own size with no view transform, in high quality, on the given background. */
 export function renderDoc(renderer: Renderer, doc: Doc, background: string | null = null): Surface {
-  const s = createSurface(doc.width, doc.height);
-  renderer.render({ doc, target: s, view: IDENTITY, background, quality: 'high' });
-  return s;
+  const target = createSurface(doc.width, doc.height);
+  renderer.render({ doc, target, view: IDENTITY, quality: 'high', background });
+  return target;
 }

@@ -22,7 +22,7 @@ function premultiply(rgba: Uint8ClampedArray): Float32Array {
 /** Premultiplied floats back to straight RGBA bytes; anything under half a level of alpha becomes transparent. */
 function unpremultiply(p: Float32Array, width: number, height: number): ImageData {
   const img = new ImageData(width, height), d = img.data;
-  for (let i = 0; i < p.length; i += 4) {
+  for (let i = 0; i < d.length; i += 4) {
     const a = p[i + 3];
     if (!(a >= 0.5)) continue;
     const k = 255 / a;
@@ -90,7 +90,7 @@ export function gaussianBlur(img: ImageData, sigma: number): ImageData {
 }
 
 /** How far a Gaussian blur reaches past a layer's edge, in pixels. */
-export const gaussianMargin = (sigma: number): number => Math.ceil(sigma * 3) + 1;
+export function gaussianMargin(sigma: number): number { return Math.ceil(3 * sigma) + 1; }
 
 /** Adds the bilinear sample of premultiplied `p` at (x, y) into `acc`, channel by channel. */
 function addBilinear(p: Float32Array, w: number, h: number, x: number, y: number, acc: Float64Array): void {
@@ -132,18 +132,20 @@ export function motionBlur(img: ImageData, angleDeg: number, distance: number): 
 }
 
 /** How far a motion blur reaches past a layer's edge, in pixels. */
-export const motionMargin = (distance: number): number => Math.ceil(distance / 2) + 1;
+export function motionMargin(distance: number): number { return Math.ceil(distance / 2) + 1; }
 
-/** Unsharp Mask, the classic sharpen: each colour channel is pushed away from its Gaussian-blurred value by `amount`
- *  percent wherever the two differ by at least `threshold` levels; alpha is untouched. `radius` is the blur's sigma. */
+/** Unsharp Mask: each colour channel is pushed away from its Gaussian-blurred value (radius as the sigma, at least
+ *  0.1) by `amount` percent wherever the two differ by at least `threshold` levels; alpha is unchanged. */
 export function unsharpMask(img: ImageData, amount: number, radius: number, threshold: number): ImageData {
-  const blur = gaussianBlur(img, Math.max(0.1, radius)), s = img.data, b = blur.data, out = new ImageData(img.width, img.height), o = out.data, k = amount / 100;
-  for (let i = 0; i < s.length; i += 4) {
+  const soft = gaussianBlur(img, Math.max(0.1, radius)).data;
+  const out = new ImageData(new Uint8ClampedArray(img.data), img.width, img.height), d = out.data;
+  const gain = amount / 100;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i + 3] === 0) continue;
     for (let c = 0; c < 3; c++) {
-      const d = s[i + c] - b[i + c];
-      o[i + c] = Math.abs(d) >= threshold ? s[i + c] + k * d : s[i + c];
+      const diff = d[i + c] - soft[i + c];
+      if (Math.abs(diff) >= threshold) d[i + c] = Math.round(clamp(d[i + c] + diff * gain, 0, 255));
     }
-    o[i + 3] = s[i + 3];
   }
   return out;
 }
@@ -259,7 +261,7 @@ function distanceField(inside: (i: number) => boolean, w: number, h: number): Fl
 
 /** Expand (positive `delta`) or contract a selection mask by `delta` pixels, with a one-pixel soft edge. */
 export function resizeMask(mask: Uint8Array, w: number, h: number, delta: number): Uint8Array {
-  const out = new Uint8Array(w * h);
+  const out = new Uint8Array(mask.length);
   if (delta > 0) {
     const dist = distanceField((i) => mask[i] >= 128, w, h);
     for (let i = 0; i < out.length; i++) out[i] = mask[i] >= 128 ? 255 : Math.round(clamp(delta + 0.5 - dist[i], 0, 1) * 255);
@@ -285,7 +287,7 @@ export function fromGray(img: ImageData): ImageData {
   const out = new ImageData(img.width, img.height), s = img.data, d = out.data;
   for (let i = 0; i < s.length; i += 4) {
     d[i] = d[i + 1] = d[i + 2] = 255;
-    d[i + 3] = Math.round(((s[i] + s[i + 1] + s[i + 2]) / 3) * (s[i + 3] / 255));
+    d[i + 3] = Math.round((((s[i] + s[i + 1] + s[i + 2]) / 3) * s[i + 3]) / 255);
   }
   return out;
 }

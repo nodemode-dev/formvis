@@ -1,6 +1,7 @@
 import type { Engine, SelectionMode } from '../../engine';
 import type { OptionSpec, ToolContext, ToolPointer } from '../registry';
 
+/** The mode a press selects with: Shift+Alt intersects, Shift adds, Alt subtracts, else the options bar's mode. */
 export function modeFor(e: Engine, p: ToolPointer): SelectionMode {
   if (p.shift && p.alt) return 'intersect';
   if (p.shift) return 'add';

@@ -230,8 +230,9 @@ export class AmountDialog extends Dialog {
   }
 
   private apply(): void {
-    const n = clamp(Math.round(Number(this.amount.input.value)), 1, 500);
-    if (!Number.isFinite(n)) return;
+    const typed = Number(this.amount.input.value);
+    if (!Number.isFinite(typed)) return;
+    const n = Math.min(500, Math.max(1, Math.round(typed)));
     const m = this.modify;
     if (m) { this.engine.selectionAmounts[m] = n; this.close(); this.engine.modifySelection(m, n); return; }
     if (this.expand) this.engine.selectionAmounts.expand = n;

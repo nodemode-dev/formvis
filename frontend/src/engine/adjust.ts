@@ -38,7 +38,7 @@ export const DEFAULT_BANDS: Record<ColorRange, HueBand> = {
 type Json = Record<string, unknown>;
 const record = (v: unknown): Json => (v !== null && typeof v === 'object' && !Array.isArray(v) ? (v as Json) : {});
 const finite = (v: unknown, fallback: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : fallback);
-const isRange = (v: unknown): v is ColorRange => typeof v === 'string' && (COLOR_RANGES as readonly string[]).includes(v);
+const isRange = (v: unknown): v is ColorRange => (COLOR_RANGES as readonly unknown[]).includes(v);
 
 /** Entries of a dictionary stored either as an object or as an alternating [key, value, key, value] array. */
 function entriesOf(v: unknown): Array<[string, unknown]> {
@@ -48,10 +48,10 @@ function entriesOf(v: unknown): Array<[string, unknown]> {
   return out;
 }
 
-/** Degrees from `from` forward to `to`, always 0 to 360. */
+/** Degrees from `from` forward (increasing) to `to`, always at least 0 and under 360. */
 export function bandForward(from: number, to: number): number {
-  const d = (to - from) % 360;
-  return d < 0 ? d + 360 : d;
+  const gap = (to - from) % 360;
+  return (gap < 0 ? gap + 360 : gap) % 360;
 }
 const onWheel = (v: number): number => bandForward(0, v);
 
@@ -69,7 +69,7 @@ export function bandWeight(b: HueBand, hue: number): number {
   return fall > 0 ? (total - at) / fall : 1;
 }
 
-export const bandHandles = (b: HueBand): number[] => [b.falloffStart, b.rangeStart, b.rangeEnd, b.falloffEnd];
+export function bandHandles(b: HueBand): number[] { return [b.falloffStart, b.rangeStart, b.rangeEnd, b.falloffEnd]; }
 
 /** The band with every handle on the wheel and its extent kept to 350 degrees at most. */
 function tidyBand(b: HueBand): HueBand {
@@ -87,7 +87,7 @@ export function bandCentered(b: HueBand, hue: number): HueBand {
 
 /** The Add eyedropper: stretch the nearer core edge to reach `hue`, carrying its shoulder along. */
 export function bandInclude(b: HueBand, hue: number): HueBand {
-  if (bandWeight(b, hue) >= 1) return b;
+  if (bandForward(b.rangeStart, hue) <= bandForward(b.rangeStart, b.rangeEnd)) return b;
   const lead = bandForward(b.falloffStart, b.rangeStart), trail = bandForward(b.rangeEnd, b.falloffEnd);
   const nearerStart = bandForward(hue, b.rangeStart) <= bandForward(b.rangeEnd, hue);
   return tidyBand(nearerStart ? hueBand(hue - lead, hue, b.rangeEnd, b.falloffEnd) : hueBand(b.falloffStart, b.rangeStart, hue, hue + trail));
@@ -95,7 +95,7 @@ export function bandInclude(b: HueBand, hue: number): HueBand {
 
 /** The Remove eyedropper: pull the nearer outer edge in just past `hue`, carrying the core edge with it. */
 export function bandExclude(b: HueBand, hue: number): HueBand {
-  if (bandWeight(b, hue) <= 0) return b;
+  if (bandForward(b.falloffStart, hue) > bandForward(b.falloffStart, b.falloffEnd)) return b;
   const lead = bandForward(b.falloffStart, b.rangeStart), trail = bandForward(b.rangeEnd, b.falloffEnd);
   const nearerStart = bandForward(b.falloffStart, hue) <= bandForward(hue, b.falloffEnd);
   return tidyBand(nearerStart ? hueBand(hue + 1, hue + 1 + lead, b.rangeEnd, b.falloffEnd) : hueBand(b.falloffStart, b.rangeStart, hue - 1 - trail, hue - 1));
@@ -113,7 +113,7 @@ export function bandSetHandle(b: HueBand, index: number, degrees: number): HueBa
 }
 
 export function defaultHsv(): HsvSettings {
-  return { range: 'Master', colorize: false, invertRange: false, adjustments: {}, bands: { ...DEFAULT_BANDS } };
+  return { range: 'Master', colorize: false, invertRange: false, adjustments: {}, bands: Object.fromEntries(COLOR_RANGES.map((r) => [r, { ...DEFAULT_BANDS[r] }])) as Record<ColorRange, HueBand> };
 }
 
 const rangeAdjustment = (v: unknown): RangeAdjustment => { const a = record(v); return { hue: finite(a.hue, 0), saturation: finite(a.saturation, 0), lightness: finite(a.lightness, 0) }; };
@@ -122,14 +122,14 @@ const rangeAdjustment = (v: unknown): RangeAdjustment => { const a = record(v); 
 export function hsvFromData(d: Json): HsvSettings {
   const s = defaultHsv();
   if (!d.hsvSettings) {
-    s.colorize = d.colorize === true;
+    if (d.colorize === true) s.colorize = true;
     s.adjustments.Master = rangeAdjustment(d);
     return s;
   }
   const raw = record(d.hsvSettings);
   if (isRange(raw.range)) s.range = raw.range;
-  s.colorize = raw.colorize === true;
-  s.invertRange = raw.invertRange === true;
+  if (raw.colorize === true) s.colorize = true;
+  if (raw.invertRange === true) s.invertRange = true;
   for (const [key, value] of entriesOf(raw.adjustments)) if (isRange(key)) s.adjustments[key] = rangeAdjustment(value);
   for (const [key, value] of entriesOf(raw.bands)) {
     if (!isRange(key)) continue;
@@ -274,8 +274,8 @@ export function grainKernel(g: GrainSettings): Kernel {
     const rows = px.length / 4 / width;
     for (let y = 0; y < rows; y++) {
       const v = oy + (y + 0.5) * unit, cy = Math.floor(v / cell), ty = smoothstep(v / cell - cy), fy = Math.floor(v);
-      for (let x = 0; x < width; x++) {
-        const i = (y * width + x) * 4;
+      const rowStart = y * width * 4;
+      for (let x = 0, i = rowStart; x < width; x++, i += 4) {
         if (px[i + 3] === 0) continue;
         const u = ox + (x + 0.5) * unit, cx = Math.floor(u / cell), tx = smoothstep(u / cell - cx);
         const a = latticeValue(cx, cy, g.seed), b = latticeValue(cx + 1, cy, g.seed), c = latticeValue(cx, cy + 1, g.seed), d = latticeValue(cx + 1, cy + 1, g.seed);
@@ -289,7 +289,7 @@ export function grainKernel(g: GrainSettings): Kernel {
   };
 }
 
-export const randomSeed = (): number => (Math.random() * 0x100000000) >>> 0;
+export function randomSeed(): number { return Math.floor(Math.random() * 4294967296) >>> 0; }
 
 /** The data a new adjustment layer starts with, in the project file's field layout. */
 export function defaultAdjustmentData(kind: AdjustmentKind): Json {

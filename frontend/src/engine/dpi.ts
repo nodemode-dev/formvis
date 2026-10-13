@@ -14,9 +14,9 @@ const CRC_TABLE: Uint32Array = (() => {
 })();
 
 function crc32(bytes: Uint8Array): number {
-  let c = 0xffffffff;
-  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
-  return (c ^ 0xffffffff) >>> 0;
+  let acc = 0xffffffff;
+  for (let i = 0; i < bytes.length; i++) acc = CRC_TABLE[(acc ^ bytes[i]) & 0xff] ^ (acc >>> 8);
+  return (acc ^ 0xffffffff) >>> 0;
 }
 
 const latin1 = (b: Uint8Array, from: number, to: number): string => String.fromCharCode(...b.subarray(from, to));
