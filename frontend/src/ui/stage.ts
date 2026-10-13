@@ -503,6 +503,23 @@ export class Stage {
     else if (!need && this.antsTimer) { window.clearInterval(this.antsTimer); this.antsTimer = 0; }
   }
 
+  /** Pressure from 0 to 1 (DEV_PLAN 28.1): a pen's own; a touch's when the screen reports force; a Force Touch
+   *  trackpad's in WebKit (the macOS app), read from `webkitForce`, where 1 is the click and 2 the deep press; else 1. */
+  static pressureOf(e: MouseEvent, pen: boolean): number {
+    const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+    const pe = e as PointerEvent;
+    if (pen) return clamp01(pe.pressure);
+    if (pe.pointerType === 'touch' && pe.pressure > 0 && pe.pressure !== 0.5) return clamp01(pe.pressure);
+    // A plain mouse in WebKit also reports a force of exactly 1 at every click, so the trackpad's reading is used only
+    // once a press past the click has shown the device measures force.
+    const force = (e as MouseEvent & { webkitForce?: number }).webkitForce;
+    if (typeof force === 'number' && force > 1.001) Stage.forceSeen = true;
+    if (Stage.forceSeen && typeof force === 'number' && force >= 1) return clamp01(force - 1);
+    return 1;
+  }
+
+  private static forceSeen = false;
+
   private pointer(e: MouseEvent, clicks = 0): ToolPointer {
     const r = this.rect ?? this.host.getBoundingClientRect();
     const v = this.engine.current?.viewport;
@@ -510,7 +527,7 @@ export class Stage {
     // every tool lands where it points at any angle.
     const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0);
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
-    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: pen ? Math.min(1, Math.max(0, (e as PointerEvent).pressure)) : 1,
+    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: Stage.pressureOf(e, pen),
       pose: pen ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
   }
 
