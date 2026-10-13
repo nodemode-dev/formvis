@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.67.2 · 2026-10-13
+
+### Changed
+
+- More of formvis is new code written independently from a behaviour description, behaving as before: keyboard shortcuts and their display, the dialog frame with its confirm and name prompts, the menus and menubar, the tool options bar, the tool rail's colour well, and the link to a hosting NodeMode page.
+
+### Fixed
+
+- The foreground and background swatches no longer repaint on every refresh when a colour has fractional channels.
+
 ## 1.67.1 · 2026-10-13
 
 ### Changed

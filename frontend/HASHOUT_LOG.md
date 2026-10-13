@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Commands, dialogs, menus, the options bar, the rail's colour well and the host link rewritten by gap fill, DEV_PLAN 28.0 batches 22 and 23 · _v1.67.2 (ui/commands.ts, dialogs.ts, menu.ts, options.ts, rail.ts; host.ts)
+
+Specs `cleanroom/batch-22-dialogs-menus-commands-gapfill.md` and `batch-23-options-rail-host-gapfill.md`, each with a zero-flash house-rules section for the implementer. commands.ts and dialogs.ts as one whole-file write each (the Unsaved Changes dialog, written after the reference period, kept as it was); menu.ts, options.ts, rail.ts and host.ts as single-region edits. Batch 23: 36 gaps, 20 identical (imports, braces, constructor and field declarations, the host's interface and post) and left, 16 placed by hand; two doc comments the implementer put on the declaration's own line were moved above it, and the range row's number box keeps clamping an emptied entry to the minimum as before. Behaviour change, recorded as a fix in the CHANGELOG: the swatch check rounds channels before comparing with the computed style. Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; menu, dialog, shortcut editor, unsaved changes, options, rail, swatch and tool audit browser tests, failing only where the unchanged tree fails too (`test_save_saves_then_closes`, the type anti-aliasing audit, three of `test_offered_options` on the engine's 422 replies, which vary between runs). Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.67.1",
+      "version": "1.67.1",
+  "version": "1.67.1",
+export const VERSION = '1.67.1';
+```
+
 ## The small dialogs and panels rewritten by gap fill, DEV_PLAN 28.0 batches 20 and 21 · _v1.67.1 (ui/panels/color-picker.ts, jpeg-dialog.ts, live-mask-dialog.ts, size-dialogs.ts, background-panel.ts, controls.ts; ui/toast.ts, status.ts, tabs.ts)
 
 Specs `cleanroom/batch-20-small-dialogs-gapfill.md` and `batch-21-panels-gapfill.md`, each with a zero-flash house-rules section for the implementer. 113 gaps: 58 identical (imports, the palette's custom-property map, user text the notes quote) and left, 55 placed; color-picker.ts, jpeg-dialog.ts, live-mask-dialog.ts, controls.ts and size-dialogs.ts as one whole-file write each, the rest as single-region edits. `ui/brand.ts` is left out: its SVG mark is formvis's own artwork, the desktop icon's. The old picker's doc comment, which had kept a gap where the reference app's name had been removed, is gone. Review feedback as a declaration (the sample ring), compiler errors (two duplicate fields, the zoom on the viewport) and measured behaviour (Canvas Size's White and Black extension colours, the anchor offset for odd size changes, the zoom readout's format). Behaviour change, recorded as a fix in the CHANGELOG: field and strip drags in the Color Picker keep a CMYK document's inks in step. Removed code: the earlier lines are not quoted, by the Phase 13 rule.
