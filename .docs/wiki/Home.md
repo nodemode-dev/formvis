@@ -7,6 +7,10 @@ formvis is a layered image editor for the web and the desktop, built in the Node
 | [Getting Started](Getting-Started) | Install, boot, every dispatcher command, ports |
 | [Engine](Engine) | The document engine in `frontend/src/engine/` |
 | [Tools](Tools) | The tool registry and the tool modules |
+| [Brushes](Brushes) | Strokes, dynamics, `.abr` brushes, pen pressure |
+| [Colour](Colour) | Modes, depth, profiles, LittleCMS, Color Settings, DPX |
+| [Terminal](Terminal) | The terminal dock and the Claude Code panel |
+| [Agents](Agents) | MCP tools, the command catalogue and CLI, Agent Connect, the skills |
 | [UI Shell](UI-Shell) | Stage, panels, menus, dialogs, themes, the zero-flash rules |
 | [Engine Service](Engine-Service) | The FastAPI engine in `backend/` |
 | [Project Format](Project-Format) | The `.fmv` manifest, field by field |

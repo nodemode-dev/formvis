@@ -5,7 +5,7 @@ description: Painting in formvis through its MCP tools, and what cannot be paint
 
 # painting-and-brushes
 
-The MCP catalogue has no brush, pencil, eraser, smudge, healing or clone tool and no brush settings. Brush strokes need a pointer and pen pressure, which agents do not have. What an agent can do is fill areas with flat colour and draw shapes. Be upfront about this when the request is for hand painting.
+The MCP picture tools have no brush, pencil, eraser, smudge, healing or clone tool and no brush settings, but the command catalogue does: `run_command` with `paint.stroke` draws one stroke through points (with pressure) using the active painting tool, after `tool.select.brush` or a `tool` parameter, and `tool.options.<tool>.<option>` sets size, hardness and the rest. Read `list_commands` with `text: "brush"` first. What an agent can do is fill areas with flat colour and draw shapes. Be upfront about this when the request is for hand painting.
 
 ## Tools that paint
 

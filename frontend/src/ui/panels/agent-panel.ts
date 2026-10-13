@@ -86,6 +86,7 @@ export class AgentPanel {
     this.offline = this.info === null;
     if (this.info) { this.running = this.info.running; this.state = this.info.state; if (this.mode.value !== this.info.mode && this.info.running) this.mode.value = this.info.mode; }
     this.paint();
+    this.el.classList.add('is-loaded');
   }
 
   private paint(): void {

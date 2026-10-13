@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """./formvis agents (1.53.3): natural-language editing with Claude Code, Codex and Cursor.
 
-  sync [--check]            generate the editing skill's tool reference from the engine's catalogue and mirror the
-                            skill from .claude/skills to .agents/skills (Codex, Cursor); --check: exit 1 if drifted
+  sync [--check]            generate the references that follow the code (the tool reference from the MCP catalogue,
+                            the command reference and command map from the window's command catalogue, the tool map),
+                            mirror every skill under .claude/skills to .agents/skills (Codex, Cursor) and check the
+                            skill files against the upload gates; --check: exit 1 if anything drifted or fails
   install [--user] [--dry-run] [claude|codex|cursor ...]
                             set the three up for this user account (all by default; --user says so): the MCP server
                             (./formvis mcp at this folder's absolute path; Claude Code's user scope when the claude
-                            command is on the path) and the editing skill; files backed up before changing; running
+                            command is on the path) and every skill; files backed up before changing; running
                             it again changes nothing
 """
 
@@ -20,9 +22,20 @@ import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-SKILL = ROOT / ".claude" / "skills" / "formvis-editing"
-MIRROR = ROOT / ".agents" / "skills" / "formvis-editing"
+SKILLS = ROOT / ".claude" / "skills"
+MIRRORS = ROOT / ".agents" / "skills"
 LAUNCH = str(ROOT / "formvis")
+CATALOGUE = Path(os.environ.get("FORMVIS_DATA_DIR") or Path.home() / "Formvis").expanduser() / "commands-catalogue.json"
+EMOJI = re.compile("[" + "-".join(chr(c) for c in (0x1F000, 0x1FAFF)) + chr(0x2600) + "-" + chr(0x27BF) + chr(0x2B00) + "-" + chr(0x2BFF) + chr(0xFE0F) + chr(0x200D) + "]")
+GROUP_OWNER = {
+    "File": "io-formats", "Edit": "command-author", "Image": "engine-builder", "Layer": "engine-builder", "Select": "engine-builder",
+    "Filter": "filter-library", "View": "ui-builder", "Window": "ui-builder", "Type": "tool-builder", "Paths": "tool-builder",
+    "Tools": "tool-builder", "Tool options": "tool-builder", "Paint": "brush-engine",
+}
+
+
+def skill_names() -> list[str]:
+    return sorted(p.name for p in SKILLS.iterdir() if (p / "SKILL.md").is_file())
 
 
 def tools_reference() -> str:
@@ -61,29 +74,158 @@ def tools_reference() -> str:
     return "\n".join(out)
 
 
+def _cell(text: object) -> str:
+    return " ".join(str(text or "").split()).replace("|", "/")
+
+
+def _catalogue() -> list[dict] | None:
+    try:
+        rows = json.loads(CATALOGUE.read_text(encoding="utf-8")).get("commands", [])
+    except (OSError, ValueError):
+        return None
+    rows = [c for c in rows if not str(c.get("id", "")).startswith(("plugin.", "recent-")) and c.get("kind") != "plugin"]
+    for c in rows:
+        if c["id"] in ("undo", "redo", "hide-all-effects") or c["id"].startswith("toggle-"):
+            c["label"] = c["id"].replace("-", " ").title()
+    return sorted(rows, key=lambda c: (str(c.get("group", "")), c["id"])) or None
+
+
+def _param(name: str, p: dict) -> str:
+    kind = p.get("type", "any") + (f" ({' | '.join(map(str, p['enum']))})" if "enum" in p and len(p["enum"]) <= 12 else "")
+    bounds = f" {p['min']} to {p['max']}" if "min" in p and "max" in p else ""
+    return f"`{name}`: {kind}{bounds}{'; required' if p.get('required') else ''}; {_cell(p.get('description'))}"
+
+
+def commands_reference(rows: list[dict]) -> str:
+    groups: dict[str, list[dict]] = {}
+    for c in rows:
+        groups.setdefault(c.get("group") or "Other", []).append(c)
+    out = ["# formvis commands", "",
+           f"Generated from the window's command catalogue ({len(rows)} commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.", "",
+           "## Contents", ""]
+    out += [f"- {g}: {len(v)}" for g, v in groups.items()]
+    out.append("")
+    for g, items in groups.items():
+        out += [f"## {g}", "", "| Id | Name | Keys | Does |", "| --- | --- | --- | --- |"]
+        for c in items:
+            flags = (" (changes the picture)" if c.get("mutates") else "") + (" (asks first)" if c.get("risky") else "")
+            out.append(f"| `{c['id']}` | {_cell(c.get('label'))} | {_cell(' '.join(c.get('keys') or []))} | {_cell(c.get('description'))}{flags} |")
+        out.append("")
+        for c in items:
+            if c.get("params") and c.get("kind") == "action":
+                out += [f"### {c['id']} parameters", ""] + [f"- {_param(k, v)}" for k, v in c["params"].items()] + [""]
+    return "\n".join(out)
+
+
+def command_map(rows: list[dict]) -> str:
+    groups: dict[str, list[dict]] = {}
+    for c in rows:
+        groups.setdefault(c.get("group") or "Other", []).append(c)
+    kinds = {}
+    for c in rows:
+        kinds[c.get("kind", "command")] = kinds.get(c.get("kind", "command"), 0) + 1
+    out = ["# Command map", "",
+           f"Generated from the window's command catalogue ({len(rows)} commands: " + ", ".join(f"{n} {k}" for k, n in sorted(kinds.items())) + ") by `./formvis agents sync`; do not edit by hand.", "",
+           "Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.", "",
+           "| Group | Commands | Harness sub-skill | First ids |", "| --- | --- | --- | --- |"]
+    for g, items in groups.items():
+        out.append(f"| {g} | {len(items)} | `{GROUP_OWNER.get(g, 'command-author')}` | " + ", ".join(f"`{c['id']}`" for c in items[:4]) + " |")
+    out += ["", "## Id families", ""]
+    fam: dict[str, int] = {}
+    for c in rows:
+        head = c["id"].split(".")[0] if "." in c["id"] else c["id"].split("-")[0]
+        fam[head] = fam.get(head, 0) + 1
+    out.append(", ".join(f"`{k}` {n}" for k, n in sorted(fam.items(), key=lambda kv: (-kv[1], kv[0]))[:40]))
+    out.append("")
+    return "\n".join(out)
+
+
+def tool_map() -> str:
+    sys.path.insert(0, str(ROOT / "backend"))
+    from app.routers.mcp import TOOLS
+    sub = {p.parent.name: p.read_text(encoding="utf-8") for p in sorted((SKILLS / "formvis-driving" / "sub-skills").glob("*/SUB-SKILL.md"))}
+    out = ["# Tool map", "",
+           f"Generated from the MCP catalogue ({len(TOOLS)} tools, `TOOLS` in `backend/app/routers/mcp.py`) and the `formvis-driving` sub-skills by `./formvis agents sync`; do not edit by hand. A tool no sub-skill names reads `none` and needs a line in the sub-skill that covers its family.", "",
+           "| Tool | Reads or changes | Driving sub-skills that name it |", "| --- | --- | --- |"]
+    for t in TOOLS:
+        a = t["annotations"]
+        kind = "reads only" if a["readOnlyHint"] else ("replaces or removes" if a["destructiveHint"] else "adds or changes")
+        names = [n for n, text in sub.items() if f"`{t['name']}`" in text]
+        out.append(f"| `{t['name']}` | {kind} | " + (", ".join(f"`{n}`" for n in names) or "none") + " |")
+    out.append("")
+    return "\n".join(out)
+
+
+def generated() -> dict[Path, str]:
+    want = {SKILLS / "formvis-editing" / "references" / "tools.md": tools_reference(), SKILLS / "formvis-harness" / "references" / "tool-map.md": tool_map()}
+    rows = _catalogue()
+    if rows:
+        want[SKILLS / "formvis-driving" / "references" / "commands.md"] = commands_reference(rows)
+        want[SKILLS / "formvis-harness" / "references" / "command-map.md"] = command_map(rows)
+    return want
+
+
+def skill_problems() -> list[str]:
+    bad = []
+    for p in sorted(SKILLS.rglob("*")):
+        if not p.is_file() or p.suffix not in (".md", ".json"):
+            continue
+        rel, text = str(p.relative_to(ROOT)), p.read_text(encoding="utf-8")
+        if chr(0x2014) in text:
+            bad.append(f"{rel}: contains U+2014")
+        if EMOJI.search(text):
+            bad.append(f"{rel}: contains an emoji")
+        if p.name in ("SKILL.md", "SUB-SKILL.md"):
+            head = re.match(r"---\n(.*?)\n---\n", text, re.S)
+            fields = dict(re.findall(r"^(name|description): *(.*)$", head.group(1), re.M)) if head else {}
+            if not fields.get("name") or not fields.get("description"):
+                bad.append(f"{rel}: front matter needs a name and a description")
+                continue
+            if len(fields["name"]) > 64:
+                bad.append(f"{rel}: name over 64 characters")
+            if len(fields["description"]) > 1024:
+                bad.append(f"{rel}: description over 1024 characters")
+            if re.search(r"</?[A-Za-z][^>]*>", fields["name"] + fields["description"]):
+                bad.append(f"{rel}: an XML tag in the front matter")
+    return bad
+
+
 def _files(folder: Path) -> dict:
     return {str(p.relative_to(folder)): p.read_bytes() for p in sorted(folder.rglob("*")) if p.is_file()}
 
 
 def sync(check: bool) -> int:
-    ref = SKILL / "references" / "tools.md"
-    want = tools_reference()
     drift = []
-    if not ref.exists() or ref.read_text(encoding="utf-8") != want:
-        drift.append(str(ref.relative_to(ROOT)))
+    for ref, want in generated().items():
+        if not ref.exists() or ref.read_text(encoding="utf-8") != want:
+            drift.append(str(ref.relative_to(ROOT)))
+            if not check:
+                ref.parent.mkdir(parents=True, exist_ok=True)
+                ref.write_text(want, encoding="utf-8")
+    names = skill_names()
+    for name in names:
+        mirror = MIRRORS / name
+        if not mirror.exists() or _files(mirror) != _files(SKILLS / name):
+            drift.append(str(mirror.relative_to(ROOT)))
+            if not check:
+                shutil.rmtree(mirror, ignore_errors=True)
+                shutil.copytree(SKILLS / name, mirror)
+    for stale in sorted(p for p in MIRRORS.glob("formvis-*") if p.name not in names):
+        drift.append(str(stale.relative_to(ROOT)) + " (removed skill)")
         if not check:
-            ref.parent.mkdir(parents=True, exist_ok=True)
-            ref.write_text(want, encoding="utf-8")
-    if not MIRROR.exists() or _files(MIRROR) != _files(SKILL):
-        drift.append(str(MIRROR.relative_to(ROOT)))
-        if not check:
-            shutil.rmtree(MIRROR, ignore_errors=True)
-            shutil.copytree(SKILL, MIRROR)
+            shutil.rmtree(stale, ignore_errors=True)
+    problems = skill_problems()
+    if CATALOGUE.exists() is False:
+        print("agents: no command catalogue in " + str(CATALOGUE.parent) + " (open the formvis window once); commands.md and command-map.md left as they are")
     if check:
         print("agents: in step" if not drift else "agents: drifted: " + ", ".join(drift) + " (run ./formvis agents sync)")
-        return 1 if drift else 0
+        for line in problems:
+            print("agents: " + line)
+        return 1 if drift or problems else 0
     print("agents: " + ("updated " + ", ".join(drift) if drift else "already in step"))
-    return 0
+    for line in problems:
+        print("agents: " + line)
+    return 1 if problems else 0
 
 
 def _backup(path: Path, dry: bool) -> None:
@@ -91,15 +233,17 @@ def _backup(path: Path, dry: bool) -> None:
         shutil.copy2(path, path.with_name(path.name + f".bak-{time.strftime('%Y%m%d-%H%M%S')}"))
 
 
-def _copy_skill(to: Path, dry: bool, said: list) -> None:
-    if to.exists() and _files(to) == _files(SKILL):
-        said.append(f"  skill already at {to}")
-        return
-    said.append(f"  skill -> {to}")
-    if not dry:
-        shutil.rmtree(to, ignore_errors=True)
-        to.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copytree(SKILL, to)
+def _copy_skill(root: Path, dry: bool, said: list) -> None:
+    for name in skill_names():
+        to = root / name
+        if to.exists() and _files(to) == _files(SKILLS / name):
+            said.append(f"  skill already at {to}")
+            continue
+        said.append(f"  skill -> {to}")
+        if not dry:
+            shutil.rmtree(to, ignore_errors=True)
+            to.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copytree(SKILLS / name, to)
 
 
 def install_claude(home: Path, dry: bool, said: list) -> None:
@@ -117,7 +261,7 @@ def install_claude(home: Path, dry: bool, said: list) -> None:
                 subprocess.run([claude, "mcp", "add", "--scope", "user", "formvis", "--", LAUNCH, "mcp"], check=True, capture_output=True)
     else:
         said.append(f"  the claude command is not installed here; once it is, run: claude mcp add --scope user formvis -- {LAUNCH} mcp")
-    _copy_skill(home / ".claude" / "skills" / "formvis-editing", dry, said)
+    _copy_skill(home / ".claude" / "skills", dry, said)
 
 
 def install_codex(home: Path, dry: bool, said: list) -> None:
@@ -135,7 +279,7 @@ def install_codex(home: Path, dry: bool, said: list) -> None:
             cfg.parent.mkdir(parents=True, exist_ok=True)
             new = text[:found.start()] + block + "\n" + text[found.end():] if found else (text.rstrip("\n") + "\n\n" if text.strip() else "") + block
             cfg.write_text(new, encoding="utf-8")
-    _copy_skill(home / ".agents" / "skills" / "formvis-editing", dry, said)
+    _copy_skill(home / ".agents" / "skills", dry, said)
 
 
 def install_cursor(home: Path, dry: bool, said: list) -> None:
@@ -152,7 +296,7 @@ def install_cursor(home: Path, dry: bool, said: list) -> None:
             data.setdefault("mcpServers", {})["formvis"] = entry
             cfg.parent.mkdir(parents=True, exist_ok=True)
             cfg.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
-    _copy_skill(home / ".agents" / "skills" / "formvis-editing", dry, said)   # Cursor reads ~/.agents/skills
+    _copy_skill(home / ".agents" / "skills", dry, said)   # Cursor reads ~/.agents/skills
 
 
 def main(argv: list[str]) -> int:

@@ -1,16 +1,21 @@
 ---
 name: terminal-operator
-description: Terminals, pseudo-terminals and child processes in formvis. Use when asked to add a terminal panel, a PTY, or a Claude Code spawner inside formvis, or when touching the code that already starts processes: the model runner's terminal echo in backend/app/localgen/local_runner.py, process waiting in processes.py, the contained EXR child, the Tauri sidecar spawn, or the engine auto-start of ./formvis mcp. States plainly that no PTY or spawner exists as of 1.67.3.
+description: Terminals, pseudo-terminals, the Claude Code panel, Agent Connect and child processes in formvis. Use when changing the terminal dock (xterm in the window, PTYs in the engine), the Claude Code panel and its stream, the Agent Connect panel and its approvals, or code that already starts processes: the model runner's terminal echo, process waiting in processes.py, the contained EXR child, the Tauri sidecar spawn, or the engine auto-start of ./formvis mcp. Lists the real files and the rules a process feature must follow.
 ---
 
 # terminal-operator
 
-As of 1.67.3 formvis has no terminal panel, no PTY layer and no code that spawns Claude Code, in the frontend, the engine service or the Tauri shell. A search for `pty`, `openpty` and `xterm` across `backend/app`, `frontend/src`, `src-tauri/src` and `setup` finds nothing relevant. Do not describe one as existing, and do not invent its API. This skill records what process code does exist, and the rules a new terminal feature must follow.
+Since 1.67.4 formvis has a terminal dock, a Claude Code panel and (1.67.5) Agent Connect. The engine owns every process; the window only draws and sends keys. This skill records where each piece lives and the rules process code must follow.
 
-## What exists today
+## What exists
 
 | Where | What it does |
 | --- | --- |
+| `backend/app/services/terminal.py`, `routers/terminal.py` | PTY sessions (`ptyprocess`, `pywinpty` on Windows) with a 256 KiB scrollback, resize, restart and close under `/api/terminal`; output on a WebSocket at `/api/terminal/{sid}/stream`. Every route and socket passes `origin_ok` (loopback Host, known Origin) |
+| `backend/app/services/claude_code.py`, `routers/claude_code.py` | Finds `claude` (`FORMVIS_CLAUDE_BIN`, PATH), starts it in stream-JSON with the project's `.mcp.json`, streams its messages on `/api/agent/claude/stream`, answers Ask-mode permissions, mirrors bash calls into a read-only terminal tab |
+| `backend/app/routers/agents.py` | Agent Connect: master switch, a policy per agent, approvals, the activity feed and Stop under `/api/agents`, with a WebSocket at `/api/agents/stream` |
+| `frontend/src/ui/terminal-dock.ts`, `styles/terminal.css` | The dock: xterm with the fit addon, a tab per PTY, open state and height on `documentElement` attributes set by a boot script in `index.html` before first paint; xterm's own scrollbar elements hidden |
+| `frontend/src/ui/panels/agent-panel.ts`, `agent-connect.ts` | The Claude Code panel and the Agent Connect panel, each built once and patched in place |
 | `backend/app/localgen/local_runner.py` | `run(...)` and `_run(...)` start a local model as a subprocess, pump its output through `_pump` and a queue, enforce time limits and cancellation, and end it with `_end`. `_Terminal` echoes the model's own output (a tqdm bar) into the terminal the engine was started from, sized with `COLUMNS` and `LINES`; it is a mirror to a console, not an interactive terminal |
 | `backend/app/localgen/processes.py` | `communicate(process, data, timeout, cancelled)` waits for a process in 0.25 second steps so a cancel or a timeout can stop it |
 | `backend/app/services/contained.py` | Runs OpenEXR decode and encode in a child interpreter (`multiprocessing`) with `TIMEOUT_S` 60 so a crash or hang cannot take the engine down; `OPENCV_IO_ENABLE_OPENEXR` is turned on only in the child |
@@ -20,9 +25,9 @@ As of 1.67.3 formvis has no terminal panel, no PTY layer and no code that spawns
 
 Agents already reach formvis the other way round: Claude Code, Codex and Cursor start `./formvis mcp` themselves and call tools (see `agent-bridge`). That path needs no terminal inside formvis.
 
-## If a terminal feature is requested
+## Rules for terminal and process code
 
-Treat it as a new subsystem and plan it before coding. Constraints that already bind the project:
+Constraints that bind every change to the above:
 
 1. Where it runs: process control belongs to the engine service (Python) or the Tauri shell (Rust), never to page code. The page may only talk to the engine over `/api` through `frontend/src/io/api.ts`.
 2. Security: the engine binds loopback only and checks the Origin header on `/mcp`; a PTY endpoint is remote code execution, so it needs the same loopback and Origin checks, an explicit opt-in in Preferences (off by default, like `Prefs.agentsAllowed`), and a consent prompt in the window. In the desktop app, adding Tauri shell or process permissions needs a capability review in `src-tauri/capabilities/`.
@@ -31,10 +36,11 @@ Treat it as a new subsystem and plan it before coding. Constraints that already 
 5. Frontend: any new panel obeys the zero-DOM-flash law and the z-index scale (see `ui-builder`); terminal output is appended to an existing node, never rebuilt. Register the panel with `registerPanel` in `frontend/src/ui/dock.ts` and add a Window menu command (see `command-author`).
 6. Dependencies: no GPL code in the frozen engine (see `references/desktop-and-embedding.md`); check any PTY library's licence before adding it to `backend/requirements.txt`.
 7. Agents: if a spawner starts Claude Code, it must pass the project's `.mcp.json` unchanged so the spawned agent uses the same consent flow, and it must not auto-approve the consent prompt.
-8. Record the plan in the planning sidecar's `DEV_PLAN.md` and, when built, in `frontend/HASHOUT_LOG.md` and `backend/HASHOUT_LOG.md`. Then update this skill with the real file paths and function names, and add a `terminal` entry to `formvis-driving` only if an MCP tool is added for it.
+8. Record the change in `frontend/HASHOUT_LOG.md` and `backend/HASHOUT_LOG.md`, and update this skill's table with any new file. `formvis-driving` gets a `terminal` entry only if an MCP tool is added for it.
 
 ## Do not
 
 - Do not shell out from a request handler with `shell=True` or an unvalidated string.
 - Do not copy a terminal emulator from another project without checking its licence.
-- Do not claim an interactive terminal exists because `_Terminal` is named so; it only mirrors output.
+- Do not mistake `_Terminal` in `local_runner.py` for the dock: it only mirrors a model's output to the console the engine started from.
+- Do not auto-approve an agent's permission request on the person's behalf.

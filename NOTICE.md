@@ -18,6 +18,9 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | Inter, JetBrains Mono (via @fontsource) | SIL OFL 1.1 fonts, MIT packaging | bundled font files |
 | ag-psd, with pako and base64-js | MIT (pako: MIT and Zlib) | layered PSD open and export, loaded on first use |
 | three.js | MIT | Place 3D Model (.glb and .gltf), loaded on first use |
+| xterm.js (@xterm/xterm 6.0.0) and its fit addon (@xterm/addon-fit 0.11.0) | MIT | the terminal dock (Window > Terminal) |
+| ptyprocess 0.7.0 | ISC | engine, the pseudo-terminals behind the terminal dock on macOS and Linux |
+| pywinpty 3.0.5 | MIT | engine, the same on Windows (ConPTY) |
 | tauri, tauri-plugin-shell, tauri-plugin-dialog, regex | Apache-2.0 or MIT | desktop shell |
 | fastapi, uvicorn, python-multipart | MIT, BSD-3-Clause, Apache-2.0 | engine |
 | keyring, with jaraco.classes, jaraco.context, jaraco.functools, more-itertools, jeepney and SecretStorage | MIT (SecretStorage: BSD-3-Clause) | API keys in the system's password store |
@@ -64,10 +67,14 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | LittleCMS (through Pillow's ImageCms) | MIT | Colour management: profile conversion, proofing and the gamut warning |
 | psd-tools (Kota Yamaguchi) | MIT | CMYK PSD files read and written with their layers (1.56.1) |
 | tifffile (Christoph Gohlke) | BSD-3-Clause | 16-bit CMYK and Lab TIFF files written (1.57.8) |
+| x11-dl (Daniel Collin, Erik Lundin, Jason Orendorff and others) | MIT | desktop shell on Linux (`src-tauri/src/display.rs`): opens libX11 at run time to read the `_ICC_PROFILE` property of the X root window, the monitor's profile; already in the tree through tao. macOS (CoreGraphics `CGDisplayCopyColorSpace` and `CGColorSpaceCopyICCData`) and Windows (GDI `GetICMProfileW`) are called directly through declared system functions, with no package; on Linux without that property the engine asks colord's `colormgr` if it is installed |
+| Adobe DNG Specification 1.6 (the published document) | read as a format reference only | `backend/app/services/dcp.py` reads and applies DNG camera profiles (`.dcp`) from the tag definitions and chapter 6 of the specification; no Adobe code, profile or data file is included, and formvis ships no `.dcp` file. The profiles it finds in `~/Formvis/CameraProfiles` or Adobe's CameraProfiles folder are the user's own and keep their own terms |
 
 ## The shipped CMYK profile (1.54.0)
 
 `backend/app/profiles/FOGRA39L_coated.icc` is the working CMYK profile a CMYK document uses when no other is chosen. It is the colord profile of the FOGRA39L characterisation data (offset printing on coated paper, ISO 12647-2:2004/Amd 1), Copyright Kai-Uwe Behrmann, Marti Maria, Photogamut, Graeme Gill and ColorSolutions, under the zlib/libpng License, as generated for the CTAN colorprofiles package by Peter Selinger, who waived his rights to the generated file; the profile itself carries the statement "This profile is free of known copyright restrictions". ECI's ISO Coated v2 profiles, built from the same data, are not shipped: ECI's terms require its permission to bundle them.
+
+Redistribution check (2026-10-13, DEV_PLAN 28.2): the file is byte for byte the one TeX Live installs at `texmf-dist/tex/generic/colorprofiles/FOGRA39L_coated.icc` (Debian's `texlive-base`), and its own `cprt` tag reads "This profile is free of known copyright restrictions". The package's licence text (the `README` of `support/colorprofiles` on CTAN, which this machine's texlive packages do not include, so it was read there) separates the parts: `colorprofiles.tex` and `.sty` are under the LaTeX Project Public License 1.2 or later (Ross Moore), `sRGB.icc` is Graeme Gill's MIT-style notice, `FOGRA39L_coated.icc` carries the zlib/libpng terms of the colord data (the origin must not be misrepresented, a changed copy must be marked as changed, the notice stays) with Peter Selinger's waiver of his rights in the generated file, and CTAN lists the package itself as "Free license not otherwise listed". Those terms allow shipping and modifying the profile in an Apache-2.0 application, so no replacement is needed; formvis includes the file unchanged, with this notice. LPPL covers only the TeX files, which formvis does not include.
 
 ## The native renderer's crates (native/formvis-render 0.8.0)
 

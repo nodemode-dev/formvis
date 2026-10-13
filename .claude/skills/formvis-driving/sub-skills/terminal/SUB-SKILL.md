@@ -1,11 +1,11 @@
 ---
 name: terminal
-description: Terminals, shells and running commands in relation to formvis when an agent is driving it. Use when the person asks for a terminal inside formvis, to run a shell command from formvis, to have formvis start Claude Code, or asks how to start, stop or reconnect formvis itself so the MCP tools work. formvis has no terminal tool or panel; this explains how to start the engine and what to ask the person to run.
+description: Terminals, shells and running commands in relation to formvis when an agent is driving it. Use when the person asks for a terminal inside formvis, to run a shell command from formvis, to have formvis start Claude Code, or asks how to start, stop or reconnect formvis itself so the MCP tools work. formvis has a terminal dock (Mod+J) for the person but no MCP terminal tool; this explains how to start the engine, what to ask the person to run, and the command line that runs formvis commands.
 ---
 
 # terminal
 
-formvis's MCP catalogue has no terminal, shell or command tool, and the app has no terminal panel (as of 1.67.3). An agent drives formvis only through the 50 picture tools. Do not claim to run commands "inside formvis".
+The formvis window has a terminal dock (Window > Terminal, Mod+J), a Claude Code panel and Agent Connect for the person, but the MCP catalogue has no terminal or shell tool: an agent drives formvis through the picture tools and the command tools (`list_commands`, `describe_command`, `run_command`, `run_commands`). Do not claim to run shell commands "inside formvis". From a shell, `./formvis cli` lists and runs the same commands against the open window.
 
 ## What the person may need to run
 
@@ -32,6 +32,6 @@ These are commands for the person to run in the formvis folder, or for you to ru
 
 ## What to say when asked for more
 
-- A shell inside formvis, or formvis launching an agent: not built; the agent runs outside and formvis is driven through MCP. Offer to do the picture task directly with the tools.
+- A shell inside formvis, or formvis launching an agent: the person has the dock and the Claude Code panel; those are theirs to use, not tools. The agent drives formvis through MCP. Offer to do the picture task directly with the tools.
 - Scripting many pictures: formvis has batch processing and Actions in the window (File > Automate); an agent can instead repeat the tool recipe per file with `open_file` and `export_image`.
 - For changing formvis's code to add such a feature, that is a development task: use `formvis-harness`.

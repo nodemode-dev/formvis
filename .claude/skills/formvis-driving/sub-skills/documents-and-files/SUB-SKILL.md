@@ -5,7 +5,7 @@ description: Opening, creating, inspecting and switching documents in formvis th
 
 # documents-and-files
 
-Tools: `get_document`, `get_image`, `new_document`, `open_file`, `switch_document`, `undo`, `redo`. Saving and exporting are in `export`.
+Tools: `get_document`, `get_image`, `new_document`, `open_file`, `switch_document`, `undo`, `redo`. Saving and exporting are in `export`. Two narrower reads: `get_selection` (the selection's bounds and mode) and `get_layer_tree` (the layers nested as folders hold them). Anything else the window can do is a command: see the command catalogue in `formvis-driving` and the `terminal` sub-skill.
 
 ## What each tool does
 

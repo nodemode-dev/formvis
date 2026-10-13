@@ -151,6 +151,22 @@ ask it questions.
   along; Paste size sets how much of the plane it covers); Stamp clones in perspective (Alt-click a source, then
   paint). OK applies it as one step.
 
+## Brushes
+
+- The Brush (B), Pencil, Eraser, Mixer Brush and the retouching brushes paint through one engine. Size and hardness
+  are in the options bar, or by keys; right-drag resizes the brush on the canvas (Shift also sets hardness).
+- Window > Brush Settings sets the tip: angle, roundness, spacing as a percentage of the diameter, then Shape
+  Dynamics (size, angle and roundness varied by pen pressure, tilt, rotation or at random), Scattering, Texture,
+  Dual Brush, Color Dynamics, Transfer, Noise and Wet Edges. A setting that is off leaves the stroke exactly as a plain
+  round brush paints it.
+- The Brushes panel lists presets and imports Photoshop `.abr` files, whose sampled tips become brushes you can size
+  and rotate like any other.
+- A pen's pressure (and tilt and twist where the pen reports them) drives size and flow. A touch screen's force does
+  the same, and so does a Force Touch trackpad's press on a Mac; a plain mouse paints at full pressure.
+- Smoothing steers the stroke behind the pointer and catches up when you lift; Airbrush builds colour while you hold.
+- A stroke stays inside the selection if there is one. It is one undo step, drawn live and kept to the area it touches, so a very large picture paints without
+  holding a second copy of itself.
+
 ## Type, shapes and paths
 
 - The Type tool adds editable text: point text or a paragraph in a box, horizontal or vertical, with font style,
@@ -283,6 +299,16 @@ ask it questions.
   Warning (Shift+Ctrl+Y) greys out the colours it cannot print. Neither changes the document.
 - Opening an image with an embedded profile other than sRGB converts it to sRGB and says so. Preferences > File
   Handling can keep the embedded profile instead, or ask each time.
+- Edit > Color Settings (Shift+Ctrl+K, Shift+Cmd+K on a Mac) chooses the working RGB, CMYK and Gray profiles and what
+  to do when a file's profile differs from the working one: Preserve it, Convert to the working profile, or Off
+  (discard it). It also sets the rendering intent, black point compensation and dither used by conversions, shows
+  LittleCMS as the colour engine, and reads out the chosen CMYK profile's total ink limit and black generation.
+  Settings can be saved as presets.
+- Convert to Profile lists RGB, CMYK, Gray and Lab destinations. 16-bit documents, any change of mode, Lab, and
+  conversions with dither on are converted by LittleCMS in the engine at full precision, every layer in one step;
+  the result is rounded to 16 bits once, with a small dither if you chose it, which is off by default so plain
+  conversions stay exact. 8-bit RGB to RGB and CMYK to CMYK keep the faster table path. 32-bit documents convert
+  between RGB spaces only.
 
 ## CMYK documents
 
@@ -358,6 +384,9 @@ ask it questions.
   saved as presets.
 - AI label: Made with AI or Edited with AI writes the standard machine-readable marking of AI content (IPTC's Digital
   Source Type) into PNG, JPEG and WebP. AVIF, TIFF and PDF do not carry it yet.
+- DPX (the film scan format) opens like any picture and exports from File > Export As with a bit depth of 8, 10, 12
+  or 16 and a transfer (printing density, linear or log); both are kept in presets. A 16-bit document exports at 16
+  bits without rounding.
 - File > Export also writes Photoshop files (layers, masks, groups and more) and OpenRaster files for Krita, GIMP and
   MyPaint. Adjustment layers have no OpenRaster form and are left out, said so.
 
@@ -375,6 +404,46 @@ ask it questions.
   first.
 - Either way, every change is an undoable step, anything that costs money asks you first, your keys are never shown,
   and only this computer can connect.
+
+## Terminal
+
+- Window > Terminal (Ctrl+J, Cmd+J on a Mac) opens a terminal dock along the foot of the window; the same key or the
+  hide button closes it, and the shells keep running while it is hidden. Drag the grip above it to resize; its
+  height and whether it is open are remembered, and the window opens as you left it without moving.
+- Each tab is a shell started in the formvis folder by the engine on this computer, with formvis's own command
+  (`./formvis`) first on the path. The plus button (or Window > New Terminal) opens another tab, the restart button
+  starts a tab's shell again, and the cross on a tab ends it.
+- Only the formvis window on this computer can attach to a terminal; nothing else can read or type into one.
+- Window > Claude Code opens a panel that runs it, if it is installed here and signed in, on the open document: type
+  a request, and it edits layers, selections and text through the same tools outside agents use. Choose Ask (each
+  request that could change something waits for Allow or Deny), Auto-accept edits, or Plan (it proposes, you decide);
+  Stop ends the turn. Its shell commands appear in a read-only tab of the terminal dock. Install it or sign in from
+  any terminal tab; the panel says which is missing.
+
+## Agents
+
+- Window > Agent Connect is where you decide what outside agents (any client that speaks MCP) may do. The master
+  switch turns all of them off or on; each agent that has called formvis gets a row with its own policy: Allow, Ask (the default: a step that writes a file or that undo could not reverse waits in the panel
+  for Approve or Deny, and times out after two minutes) or Deny.
+- The activity feed lists what each agent did, newest first. Follow Agent moves the view to the layer or selection a step
+  touched, so you watch the edit happen. Stop cancels what the agent is doing and refuses its next steps until you
+  allow it again.
+- Agents see formvis through the same picture tools the assistant has and through the command catalogue (see The
+  command line). `./formvis agents install` gives all three clients the skills that teach them both:
+  `formvis-driving` for editing pictures and `formvis-colour-science` for profile, intent, CMYK and Lab questions.
+
+## The command line
+
+- Everything the menus, tool rail and options bar can do is a command with an id. `./formvis cli list [text]` finds
+  commands (`--group Filter` narrows by menu), `./formvis cli describe <id>` says what one does and what it takes,
+  and `./formvis cli run <id> key=value ...` runs it in the open window as an undoable step. A command whose result
+  undo cannot reverse (a file overwritten, say) runs only with `--yes`.
+- The window has to be open (`./formvis boot`) and outside agents allowed (Preferences > Plugins). Exact actions take
+  values: `filter.apply kind=gaussianBlur radius=8`, `adjust.apply kind=levels`, `select.rect x=0 y=0 width=200
+  height=100`, `layer.set opacity=0.5`, and `paint.stroke` along a list of points.
+- The same list is what agents read with `list_commands` and `describe_command` and run with `run_command` and
+  `run_commands`; a list of commands is a single undo step.
+- `./formvis counts --commands` prints how many commands the catalogue holds and any that lack a description.
 
 ## Plugins
 

@@ -26,7 +26,7 @@ usage: ./formvis [command] [options]
   verify-local [--small]  run Krea 2 and FLUX.2 [klein] once here (licences and downloads asked first); writes bench-results/
   mcp                 formvis over MCP's stdio transport, for Claude Desktop and other MCP clients
   cli list|describe|run  the command catalogue of the open window: list [text], describe <id>, run <id> key=value ...
-  agents install|sync  set up Claude Code, Codex and Cursor for editing in plain language (install), or refresh the editing skill (sync)
+  agents install|sync  set up Claude Code, Codex and Cursor for editing in plain language (install), or refresh every skill and its generated references (sync [--check])
   clean [--all]       remove build output (--all also venv and node_modules)
   help                this text
 EOF

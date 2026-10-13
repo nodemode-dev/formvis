@@ -38,7 +38,8 @@
 .ft-agent-head { flex: none; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); }
 .ft-agent-title { font-weight: 600; font-size: var(--fs-13); }
 .ft-agent-spacer { flex: 1; }
-.ft-agent-status { flex: none; min-height: 34px; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); color: var(--text-secondary); font-size: var(--fs-12); line-height: 1.4; }
+.ft-agent:not(.is-loaded) .ft-agent-log { visibility: hidden; }
+.ft-agent-status { flex: none; min-height: calc(2.8em + 2 * var(--space-2)); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); color: var(--text-secondary); font-size: var(--fs-12); line-height: 1.4; }
 .ft-agent-install { flex: none; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); }
 .ft-agent-install[hidden], .ft-agent-tool-out[hidden] { display: none; }
 .ft-agent-install code { flex: 1; min-width: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--bg-input); font-family: var(--font-mono); font-size: var(--fs-11); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }

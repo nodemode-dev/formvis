@@ -44,7 +44,7 @@ nothing downloaded and no fal key the agent should relay the error's instruction
 
 ## Trigger test for the skill
 
-Should bring in `formvis-editing`:
+Should bring in `formvis-driving`:
 
 - "Remove the watermark from this picture in formvis."
 - "Make me a YouTube thumbnail with the title Launch Day."
@@ -54,7 +54,7 @@ Should bring in `formvis-editing`:
 
 Should not (near misses):
 
-- "Add a new filter to formvis's code." (changing formvis itself: formvis-skillset)
+- "Add a new filter to formvis's code." (changing formvis itself: formvis-harness)
 - "Why does the formvis engine fail to start in tests?" (development)
 - "Write a Python script that resizes every JPEG in a folder." (a script, not formvis)
 - "Explain how Gaussian blur works." (a question, no editing)

@@ -15,7 +15,7 @@ Every tool in the formvis MCP catalogue (`TOOLS` in `backend/app/routers/mcp.py`
 | `generation-and-ai` | `generative_fill`, `generative_expand`, `generate_image`, `upscale` |
 | `timeline-and-video` | `timeline_get`, `timeline_create`, `timeline_delete`, `timeline_set`, `timeline_go_to`, `timeline_clip`, `timeline_split`, `timeline_keyframe`, `timeline_transition`, `timeline_frame_image`, `timeline_render` |
 | `export` | `export_image`, `save_project`, `timeline_render` |
-| `terminal` | none; the catalogue has no terminal tool |
+| `terminal` | `list_commands`, `describe_command`, `run_command`, `run_commands` (the command catalogue); no terminal tool |
 
 The server also offers one prompt, `edit_strategy`: the ten-step decision tree for these tools.
 

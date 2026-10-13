@@ -36,7 +36,7 @@ Agents never touch pixels. They call MCP tools on the engine service; the engine
 3. A tool that changes the document does it through `engine.edit`, so it is one step and `undo` takes it back. A multi-step tool wraps its steps in one `edit`.
 4. Update `INSTRUCTIONS` or `STRATEGY` only if the decision tree changes.
 5. In `setup/agents.py` the generated reference groups tools in `tools_reference()`; a new tool appears under "Other" until it is added to a group there.
-6. Run `PATH=$PWD/backend/venv/bin:$PATH ./formvis agents sync` so `.claude/skills/formvis-editing/references/tools.md` and its `.agents/skills` mirror follow; `./formvis agents sync --check` must pass (the backend test `test_the_skill_is_in_step_with_the_catalogue` fails otherwise). Never edit `tools.md` by hand.
+6. Run `PATH=$PWD/backend/venv/bin:$PATH ./formvis agents sync` (the window having run once, so its command catalogue is mirrored) so `formvis-editing/references/tools.md`, `formvis-driving/references/commands.md`, `formvis-harness/references/command-map.md` and `tool-map.md`, and the `.agents/skills` mirrors follow; `./formvis agents sync --check` must pass (the backend test `test_the_skill_is_in_step_with_the_catalogue` fails otherwise). Never edit those generated files by hand.
 7. Update the tool count and the Edit-by-asking highlight in `README.md` (currently 50 tools) and `docs/AGENT_EVALS.md` if behaviour changes; add the new tool to the driving skill's matching sub-skill in `formvis-driving`.
 8. Tests that exist: `backend/tests/test_mcp.py`, `backend/tests/test_agents_setup.py`, `e2e/test_mcp_agents.py`, `e2e/test_agent_consent.py`, `e2e/test_agent_editing.py`.
 

@@ -247,7 +247,7 @@ body.nm-home .nm-canvas-surface { display: none !important; }
 body.theme-light { color-scheme: light; }
 
 /* ── Liquid glass (the owner's walkthrough): one look for every menu, dropdown and flyout, from the theme's own surface,
-   so it holds in light themes too; scrollbars hidden everywhere while scrolling still works. ── */
+   so it holds in light themes too. ── */
 :root {
   --glass-bg: color-mix(in srgb, var(--surface-2) 82%, transparent);   /* dense enough that nothing behind reads through */
   --glass-border: color-mix(in srgb, var(--text-primary) 16%, transparent);
@@ -262,5 +262,3 @@ body.theme-light { color-scheme: light; }
   -webkit-backdrop-filter: var(--glass-filter);
   backdrop-filter: var(--glass-filter);
 }
-* { scrollbar-width: none; }
-*::-webkit-scrollbar { display: none; width: 0; height: 0; }

@@ -67,8 +67,7 @@
 .cv-layers-empty[hidden] { display: none; }
 .cv-panel-foot { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-1); height: 36px; padding: 0 var(--space-2); border-top: 1px solid var(--border-color); }
 
-.cv-menu { position: fixed; min-width: 232px; max-height: calc(100vh - 8px); overflow-y: auto; overscroll-behavior: contain; scrollbar-width: none; padding: var(--space-1); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-window); }
-.cv-menu::-webkit-scrollbar { display: none; }
+.cv-menu { position: fixed; min-width: 232px; max-height: calc(100vh - 8px); overflow-y: auto; overscroll-behavior: contain; padding: var(--space-1); background: var(--bg-secondary); border: 1px solid var(--border-light); border-radius: var(--radius-md); box-shadow: var(--shadow-window); }
 .cv-menu-sub.is-open:not(:disabled) { background: var(--accent-color); color: var(--text-on-accent); }
 .cv-menu-sub.is-open .cv-menu-keys, .cv-menu-sub:hover .cv-menu-keys { color: var(--text-on-accent); }
 .cv-menu-sub .cv-menu-keys { display: inline-flex; }

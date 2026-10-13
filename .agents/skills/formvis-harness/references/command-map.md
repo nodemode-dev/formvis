@@ -1,0 +1,25 @@
+# Command map
+
+Generated from the window's command catalogue (748 commands: 7 action, 468 command, 225 option, 48 tool) by `./formvis agents sync`; do not edit by hand.
+
+Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.
+
+| Group | Commands | Harness sub-skill | First ids |
+| --- | --- | --- | --- |
+| Edit | 42 | `command-author` | `clear`, `colour.settings`, `content-fill`, `content-fill-workspace` |
+| File | 42 | `io-formats` | `assemble-tiles`, `batch`, `clear-recent`, `close-all` |
+| Filter | 77 | `filter-library` | `filter-addNoise`, `filter-average`, `filter-blur`, `filter-blurMore` |
+| Image | 63 | `engine-builder` | `adj-blackWhite`, `adj-brightnessContrast`, `adj-channelMixer`, `adj-colorBalance` |
+| Layer | 152 | `engine-builder` | `add-filter-mask`, `add-mask`, `add-mask-hide`, `align-bottom` |
+| Paint | 1 | `brush-engine` | `paint.stroke` |
+| Paths | 8 | `tool-builder` | `delete-path`, `fill-path`, `fill-path-dialog`, `new-path` |
+| Select | 28 | `engine-builder` | `border`, `color-range`, `contract`, `convert-to-shape` |
+| Tool options | 225 | `tool-builder` | `tool.options.artHistory.hardness`, `tool.options.artHistory.opacity`, `tool.options.artHistory.size`, `tool.options.artHistory.style` |
+| Tools | 48 | `tool-builder` | `tool.select.artHistory`, `tool.select.backgroundEraser`, `tool.select.brush`, `tool.select.bucket` |
+| Type | 4 | `tool-builder` | `edit-text`, `paragraph-styles`, `type-on-path`, `warp-text` |
+| View | 21 | `ui-builder` | `actual`, `clear-guides`, `fit`, `gamut-warning` |
+| Window | 37 | `ui-builder` | `about`, `action-stop`, `actions`, `agent.claude.open` |
+
+## Id families
+
+`tool` 273, `filter` 77, `new` 38, `adj` 23, `export` 15, `panel` 12, `style` 11, `transform` 11, `select` 10, `layer` 9, `distribute` 8, `delete` 7, `mask` 7, `rasterize` 7, `toggle` 7, `align` 6, `mode` 6, `vmask` 6, `fill` 5, `paste` 5, `save` 5, `shapes` 5, `clear` 4, `copy` 4, `edit` 4, `flip` 4, `matting` 4, `merge` 4, `rotate` 4, `screen` 4, `send` 4, `add` 3, `artboard` 3, `auto` 3, `close` 3, `content` 3, `convert` 3, `depth` 3, `duplicate` 3, `remove` 3

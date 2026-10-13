@@ -80,13 +80,21 @@ export function bandApron(kind: FilterKind, s: FilterPanelSettings): number | nu
   }
 }
 
+/** Radial Blur's reach past the layer, for content up to 2000 px from its centre: a spin moves a sample by a chord of at
+ *  most a twelfth of the amount's turn, a zoom by its scale step; the fixed 2000 it used to take grew every layer to
+ *  4,800 by 4,600 at the default amount, which made the next filter on it take over a minute. */
+function radialMargin(amount: number, method: 'spin' | 'zoom'): number {
+  const k = Math.max(1, Math.min(100, amount)) / 100;
+  return Math.ceil(2000 * (method === 'spin' ? 2 * Math.sin(k * Math.PI / 12) : (k / 2) / (1 - k / 2))) + 2;
+}
+
 /** How far a filter's effect reaches past its input, in pixels. */
 export function filterMargin(kind: FilterKind, s: FilterPanelSettings): number {
   return kind === 'gaussianBlur' ? gaussianMargin(s.radius) : kind === 'motionBlur' ? motionMargin(s.distance) : kind === 'lensBlur' ? lensBlurMargin(s.lensRadius) : kind === 'smartSharpen' ? smartSharpenMargin(s.smart) : kind === 'shakeReduction' ? shakeMargin(s.shake)
     : kind === 'surfaceBlur' ? Math.ceil(s.gallery.surfaceRadius) + 1 : kind === 'pathBlur' ? Math.ceil(s.gallery.pathSpeed) + 2
     : kind === 'fieldBlur' ? gaussianMargin(Math.max(s.gallery.pin1blur, s.gallery.pin2blur, s.gallery.pin3blur, s.gallery.pin4blur))
     : kind === 'irisBlur' ? gaussianMargin(s.gallery.irisBlur) : kind === 'tiltShift' ? gaussianMargin(s.gallery.tiltBlur)
-    : kind === 'radialBlur' ? 2000 : isLibKind(kind) ? libMargin(kind, s.lib?.[kind]) : 0;
+    : kind === 'radialBlur' ? radialMargin(s.gallery.radialAmount, s.gallery.radialMethod) : isLibKind(kind) ? libMargin(kind, s.lib?.[kind]) : 0;
 }
 
 export class FilterPanel extends Dialog {
@@ -104,6 +112,11 @@ export class FilterPanel extends Dialog {
   private readonly sections = new Map<FilterKind, { node: HTMLElement; sync: () => void }>();
   private readonly previewRow: Row<boolean>;
   private readonly okBtn: HTMLButtonElement;
+  /** Develop's Profile list (DEV_PLAN 28.2): for a RAW layer the app answers with the camera profiles on this computer
+   *  that fit its camera, and re-develops the file with the one chosen. */
+  rawProfile: { options(): Promise<{ list: ReadonlyArray<readonly [string, string]>; current: string } | null>; choose(id: string): Promise<boolean> } | null = null;
+  private readonly profileRow = selectRow('Profile', [['none', 'Default']], (v) => void this.chooseProfile(v));
+  private profileSeq = 0;
 
   constructor(private readonly engine: Engine) {
     super('Filter', 440);
@@ -201,7 +214,7 @@ export class FilterPanel extends Dialog {
       ['Texture', -100, 100, 1, () => dt.texture, (v) => { dt.texture = v; }],
       ['Sharpening', 0, 100, 1, () => dt.sharpen, (v) => { dt.sharpen = v; }],
     ];
-    const devNodes: HTMLElement[] = [], devSync: Array<() => void> = [];
+    const devNodes: HTMLElement[] = [this.profileRow.el], devSync: Array<() => void> = [];
     for (const row of devRows) {
       if (typeof row === 'string') { devNodes.push(el(`<p class="cv-note">${row}</p>`)); continue; }
       const [label, min, max, step, read, write] = row;
@@ -390,8 +403,32 @@ export class FilterPanel extends Dialog {
     this.sections.get(kind)?.sync();
     this.previewRow.set(this.preview && !smart);
     setDisabled(q<HTMLInputElement>(this.previewRow.el, 'input'), smart);
+    if (kind === 'develop') for (const i of this.profileRow.el.querySelectorAll('select')) i.disabled = true;
     this.open(this.okBtn);
     this.schedule(0);
+    if (kind === 'develop') void this.fillProfiles();
+  }
+
+  /** The Profile row keeps its place: disabled with "Default" until the app names the camera profiles for a RAW layer. */
+  private async fillProfiles(): Promise<void> {
+    const n = ++this.profileSeq, hook = this.rawProfile;
+    const got = hook ? await hook.options().catch(() => null) : null;
+    if (n !== this.profileSeq || !this.isOpen) return;
+    const sel = this.profileRow.el.querySelector('select') as HTMLSelectElement;
+    const want: ReadonlyArray<readonly [string, string]> = got ? got.list : [['none', 'Default']];
+    while (sel.options.length > want.length) sel.remove(sel.options.length - 1);
+    want.forEach(([v, t], i) => { const o = sel.options[i] ?? sel.appendChild(document.createElement('option')); if (o.value !== v) o.value = v; if (o.textContent !== t) o.textContent = t; });
+    this.profileRow.set(got?.current ?? 'none');
+    sel.disabled = !got || got.list.length < 2;
+  }
+
+  private async chooseProfile(id: string): Promise<void> {
+    const hook = this.rawProfile;
+    if (!hook) return;
+    this.engine.setPreview(null);
+    const ok = await hook.choose(id);
+    await this.fillProfiles();
+    if (ok) this.schedule(0);
   }
 
   private readonly shakeNote = el('<p class="cv-note"></p>');

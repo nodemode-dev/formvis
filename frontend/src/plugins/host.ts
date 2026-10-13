@@ -9,6 +9,8 @@ import type { Commands } from '../ui/commands';
  *  ones back (formvis.putPixels), each change an undoable step. Messages are taken only from a plugin's own frame. */
 const OFF = 'formvis.plugins.off';
 
+const FRAME_STYLE = '<style>*,*::before,*::after{scrollbar-width:none!important;-ms-overflow-style:none!important}*::-webkit-scrollbar,*::-webkit-scrollbar-button,*::-webkit-scrollbar-track,*::-webkit-scrollbar-thumb,*::-webkit-scrollbar-corner{display:none!important;width:0!important;height:0!important;background:transparent!important}html,body{scrollbar-width:none!important}</style>';
+
 const RUNTIME = `<script>
 (() => {
   const pending = new Map(), commands = {}; let n = 0, name = '';
@@ -70,7 +72,7 @@ export class PluginHost {
     frame.setAttribute('sandbox', 'allow-scripts');   // no allow-same-origin: an opaque origin, away from this page
     frame.hidden = true;
     frame.title = `Plugin ${name}`;
-    frame.srcdoc = `<!doctype html><meta charset="utf-8">${RUNTIME}<script>\n${code.replace(/<\/script/gi, '<\\/script')}\n<\/script>`;
+    frame.srcdoc = `<!doctype html><meta charset="utf-8">${FRAME_STYLE}${RUNTIME}<script>\n${code.replace(/<\/script/gi, '<\\/script')}\n<\/script>`;
     this.loaded.set(name, { name, frame, label: name.replace(/\.js$/, ''), commands: [] });
     document.body.appendChild(frame);
   }
