@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Crop, Move and the engine's model modules rewritten by gap fill, DEV_PLAN 28.0 batches 18 and 19 · _v1.66.9 (extensions/tools/crop.ts, move.ts; engine/selection.ts, history.ts, viewport.ts, transform.ts, project.ts)
+
+Specs `cleanroom/batch-18-crop-move-gapfill.md` and `batch-19-engine-model-gapfill.md`. 134 gaps: 69 identical (imports, braces, the handle table, the declarations the app depends on) and left, 65 placed; crop.ts, viewport.ts and project.ts as one whole-file write each, the rest as single-region edits. The comments that named the reference app's own types (its crop snapping and constrain rule) went with the lines that held them. Review feedback as a compiler error only (the title option's `text`). Behaviour notes: Undo and Redo name no step while one is open (`undoName`, `redoName`); the crop frame's straighten readout unit is written as the degree sign itself rather than its escape (same string). Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; 47 crop, move, transform, distort, warp and tool-audit browser tests (one known failure, the type anti-aliasing test); 37 selection, history, view and project tests, 30 passing, 3 skipped, and 4 failing identically on the unchanged tree (two Object Selection tests needing the SAM model, the .sny round trip, Save then Close). Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.66.8",
+      "version": "1.66.8",
+  "version": "1.66.8",
+export const VERSION = '1.66.8';
+```
+
 ## Engine foundations and seventeen tool and registry modules rewritten by gap fill, DEV_PLAN 28.0 batches 15 to 17 · _v1.66.8 (engine/geometry.ts, dpi.ts, tree.ts, events.ts, surface.ts; extensions/registry.ts; tools wand, hand, zoom, select-common, heal, eyedropper, brush-common, index, smear, clone, brush, gradient, shape, lasso, marquee)
 
 The block gap fill of batches 12 to 14 carried past the engine, several files to a spec (`cleanroom/batch-15-engine-foundations-gapfill.md`, `batch-16-tools-a-gapfill.md`, `batch-17-tools-b-gapfill.md`). The five foundation modules were nearly all early lines, so batch 15 is in effect a rewrite from notes with every exported name and signature kept. 185 gaps over 908 early lines: 96 identical (imports, ids, labels, the registry's declarations, the matrix product and inverse) and left; 89 placed, by hand, as single-region edits or, for modules replaced almost whole (geometry, dpi, tree, events, surface, wand, hand, zoom, select-common, heal, eyedropper), one whole-file write each. `ui/dom.ts` and `ui/themes.ts` are the NodeMode design system's own files (their headers name stylized-nodemode) and are left out of the rewrite.

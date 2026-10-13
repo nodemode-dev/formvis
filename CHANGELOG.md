@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.66.9 · 2026-10-13
+
+### Changed
+
+- More of formvis is new code written independently from a behaviour description, behaving as before: the Crop and Move tools, and the engine's selection masks, undo history, view, transform boxes and document model. Undo and Redo name no step while one is still under way.
+
 ## 1.66.8 · 2026-10-12
 
 ### Changed
