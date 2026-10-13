@@ -67,6 +67,30 @@ def check(root: Path = ROOT) -> list[str]:
     modes = blend_modes(root)
     if stated_modes != [str(modes)]:
         problems.append(f"blend modes: README states {stated_modes or 'none'}, the engine has {modes}, stated once")
+    return problems + scrollbar_problems(root)
+
+
+def scrollbar_problems(root: Path = ROOT) -> list[str]:
+    """Any style that could draw a scrollbar (DEV_PLAN 28.7, the owner's zero-scrollbar rule): a scrollbar-width other
+    than none, a scrollbar-color, or a ::-webkit-scrollbar rule that gives the bar a size or shows it; and the shared
+    sheet must be linked from index.html."""
+    problems = []
+    files = subprocess.run(["git", "ls-files", "frontend"], cwd=root, capture_output=True, text=True, check=True).stdout.split("\n")
+    for rel in files:
+        if not rel.endswith((".css", ".html", ".ts")) or rel.endswith(".test.ts"):
+            continue
+        text = re.sub(r"/\*.*?\*/", "", (root / rel).read_text(encoding="utf-8", errors="replace"), flags=re.S)
+        for m in re.finditer(r"scrollbar-width\s*:\s*([^;}\"'`]+)", text):
+            if not m.group(1).strip().startswith("none"):
+                problems.append(f"{rel}: scrollbar-width {m.group(1).strip()}")
+        if re.search(r"scrollbar-color\s*:", text):
+            problems.append(f"{rel}: scrollbar-color sets a visible bar")
+        for m in re.finditer(r"::-webkit-scrollbar[\w-]*[^{]*\{([^}]*)\}", text):
+            body = m.group(1)
+            if re.search(r"(?<![\w-])(width|height)\s*:\s*(?!0\b|0px)\S", body) or re.search(r"display\s*:\s*(?!none)\w", body):
+                problems.append(f"{rel}: a ::-webkit-scrollbar rule shows or sizes the bar")
+    if "/src/styles/scrollbars.css" not in (root / "frontend" / "index.html").read_text(encoding="utf-8"):
+        problems.append("frontend/index.html does not link styles/scrollbars.css")
     return problems
 
 
