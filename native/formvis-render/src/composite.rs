@@ -224,6 +224,8 @@ fn tile_texture(gpu: &Gpu) -> wgpu::Texture {
     })
 }
 
+type Placement = ([f32; 2], [f32; 2], Affine, [f32; 2]);
+
 /// The blend pass, built once and used for every tile.
 pub struct Blender {
     pipeline: wgpu::RenderPipeline,
@@ -369,7 +371,7 @@ impl Blender {
         for l in layers {
             // Pixels with no tile here are transparent here; a table applies everywhere; a placed layer reads its pixels
             // around this tile's footprint, staged into one texture.
-            let mut placed: Option<([f32; 2], [f32; 2], Affine, [f32; 2])> = None;
+            let mut placed: Option<Placement> = None;
             let src: wgpu::Texture = match (&l.source, &l.transform) {
                 (Source::Pixels(layer), Some(t)) => match self.stage(gpu, &mut enc, layer, t, tx, ty) {
                     Some((tex, origin, size)) => {

@@ -67,3 +67,154 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 ## The shipped CMYK profile (1.54.0)
 
 `backend/app/profiles/FOGRA39L_coated.icc` is the working CMYK profile a CMYK document uses when no other is chosen. It is the colord profile of the FOGRA39L characterisation data (offset printing on coated paper, ISO 12647-2:2004/Amd 1), Copyright Kai-Uwe Behrmann, Marti Maria, Photogamut, Graeme Gill and ColorSolutions, under the zlib/libpng License, as generated for the CTAN colorprofiles package by Peter Selinger, who waived his rights to the generated file; the profile itself carries the statement "This profile is free of known copyright restrictions". ECI's ISO Coated v2 profiles, built from the same data, are not shipped: ECI's terms require its permission to bundle them.
+
+## The native renderer's crates (native/formvis-render 0.8.0)
+
+The Rust packages in the dependency tree of `native/formvis-render` (normal and build dependencies, default features, every target platform), as `cargo metadata --format-version 1` reports them. The optional `window` feature adds winit and its tree, which is not listed. Where a package offers a choice of licences, the recipient may use any one.
+
+| Crate | Version | License |
+| --- | --- | --- |
+| adler2 | 2.0.1 | 0BSD OR MIT OR Apache-2.0 |
+| allocator-api2 | 0.2.21 | MIT OR Apache-2.0 |
+| android_system_properties | 0.1.6 | MIT OR Apache-2.0 |
+| arrayvec | 0.7.8 | MIT OR Apache-2.0 |
+| ash | 0.38.0+1.3.281 | MIT OR Apache-2.0 |
+| autocfg | 1.5.1 | Apache-2.0 OR MIT |
+| bit-set | 0.10.0 | Apache-2.0 OR MIT |
+| bit-vec | 0.9.1 | Apache-2.0 OR MIT |
+| bitflags | 2.13.2 | MIT OR Apache-2.0 |
+| block2 | 0.6.2 | MIT |
+| bumpalo | 3.20.3 | MIT OR Apache-2.0 |
+| bytemuck | 1.25.2 | Zlib OR Apache-2.0 OR MIT |
+| bytemuck_derive | 1.12.1 | Zlib OR Apache-2.0 OR MIT |
+| cfg-if | 1.0.5 | MIT OR Apache-2.0 |
+| cfg_aliases | 0.2.2 | MIT |
+| codespan-reporting | 0.13.1 | Apache-2.0 |
+| crc32fast | 1.5.2 | MIT OR Apache-2.0 |
+| crunchy | 0.2.4 | MIT |
+| dispatch2 | 0.3.1 | Zlib OR Apache-2.0 OR MIT |
+| dlib | 0.5.3 | MIT |
+| document-features | 0.2.12 | MIT OR Apache-2.0 |
+| equivalent | 1.0.2 | Apache-2.0 OR MIT |
+| fdeflate | 0.3.7 | MIT OR Apache-2.0 |
+| flate2 | 1.1.10 | MIT OR Apache-2.0 |
+| foldhash | 0.2.0 | Zlib |
+| futures-core | 0.3.34 | MIT OR Apache-2.0 |
+| futures-task | 0.3.34 | MIT OR Apache-2.0 |
+| futures-util | 0.3.34 | MIT OR Apache-2.0 |
+| gl_generator | 0.14.0 | Apache-2.0 |
+| glow | 0.17.0 | MIT OR Apache-2.0 OR Zlib |
+| glutin_wgl_sys | 0.6.1 | Apache-2.0 |
+| gpu-allocator | 0.28.0 | MIT OR Apache-2.0 |
+| half | 2.7.1 | MIT OR Apache-2.0 |
+| hashbrown | 0.16.1 | MIT OR Apache-2.0 |
+| hashbrown | 0.17.1 | MIT OR Apache-2.0 |
+| indexmap | 2.14.2 | Apache-2.0 OR MIT |
+| itoa | 1.0.18 | MIT OR Apache-2.0 |
+| jni-sys | 0.3.1 | MIT OR Apache-2.0 |
+| jni-sys | 0.4.1 | MIT OR Apache-2.0 |
+| jni-sys-macros | 0.4.1 | MIT OR Apache-2.0 |
+| js-sys | 0.3.106 | MIT OR Apache-2.0 |
+| khronos-egl | 6.0.0 | MIT/Apache-2.0 |
+| khronos_api | 3.1.0 | Apache-2.0 |
+| libc | 0.2.189 | MIT OR Apache-2.0 |
+| libloading | 0.8.9 | ISC |
+| libm | 0.2.16 | MIT |
+| litrs | 1.0.0 | MIT OR Apache-2.0 |
+| lock_api | 0.4.14 | MIT OR Apache-2.0 |
+| log | 0.4.34 | MIT OR Apache-2.0 |
+| memchr | 2.8.3 | Unlicense OR MIT |
+| miniz_oxide | 0.8.9 | MIT OR Zlib OR Apache-2.0 |
+| miniz_oxide | 0.9.1 | MIT OR Zlib OR Apache-2.0 |
+| naga | 30.0.1 | MIT OR Apache-2.0 |
+| naga-types | 30.0.1 | MIT OR Apache-2.0 |
+| ndk-sys | 0.6.0+11769913 | MIT OR Apache-2.0 |
+| ntapi | 0.4.3 | Apache-2.0 OR MIT |
+| num-traits | 0.2.19 | MIT OR Apache-2.0 |
+| objc2 | 0.6.4 | MIT |
+| objc2-core-foundation | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-core-graphics | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-encode | 4.1.0 | MIT |
+| objc2-foundation | 0.3.2 | MIT |
+| objc2-io-kit | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-io-surface | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-metal | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| objc2-quartz-core | 0.3.2 | Zlib OR Apache-2.0 OR MIT |
+| once_cell | 1.21.4 | MIT OR Apache-2.0 |
+| ordered-float | 5.5.0 | MIT |
+| parking_lot | 0.12.5 | MIT OR Apache-2.0 |
+| parking_lot_core | 0.9.12 | MIT OR Apache-2.0 |
+| pin-project-lite | 0.2.17 | Apache-2.0 OR MIT |
+| pkg-config | 0.3.34 | MIT OR Apache-2.0 |
+| png | 0.18.1 | MIT OR Apache-2.0 |
+| pollster | 1.0.1 | Apache-2.0/MIT |
+| portable-atomic | 1.15.0 | Apache-2.0 OR MIT |
+| portable-atomic-util | 0.2.8 | Apache-2.0 OR MIT |
+| presser | 0.3.1 | MIT OR Apache-2.0 |
+| proc-macro2 | 1.0.107 | MIT OR Apache-2.0 |
+| profiling | 1.0.18 | MIT OR Apache-2.0 |
+| quote | 1.0.47 | MIT OR Apache-2.0 |
+| range-alloc | 0.1.5 | MIT OR Apache-2.0 |
+| raw-window-handle | 0.6.2 | MIT OR Apache-2.0 OR Zlib |
+| raw-window-metal | 1.1.0 | MIT OR Apache-2.0 |
+| redox_syscall | 0.5.18 | MIT |
+| renderdoc-sys | 1.1.0 | MIT OR Apache-2.0 |
+| rustc-hash | 1.1.0 | Apache-2.0/MIT |
+| rustversion | 1.0.23 | MIT OR Apache-2.0 |
+| scopeguard | 1.2.0 | MIT OR Apache-2.0 |
+| serde | 1.0.229 | MIT OR Apache-2.0 |
+| serde_core | 1.0.229 | MIT OR Apache-2.0 |
+| serde_derive | 1.0.229 | MIT OR Apache-2.0 |
+| serde_json | 1.0.151 | MIT OR Apache-2.0 |
+| simd-adler32 | 0.3.10 | MIT |
+| slab | 0.4.12 | MIT |
+| slotmap | 1.1.1 | Zlib |
+| smallvec | 1.16.2 | MIT OR Apache-2.0 |
+| spirv | 0.4.0+sdk-1.4.341.0 | Apache-2.0 |
+| static_assertions | 1.1.0 | MIT OR Apache-2.0 |
+| syn | 2.0.119 | MIT OR Apache-2.0 |
+| syn | 3.0.6 | MIT OR Apache-2.0 |
+| sysinfo | 0.39.6 | MIT |
+| termcolor | 1.4.1 | Unlicense OR MIT |
+| thiserror | 2.0.21 | MIT OR Apache-2.0 |
+| thiserror-impl | 2.0.21 | MIT OR Apache-2.0 |
+| tokio | 1.53.1 | MIT |
+| unicode-ident | 1.0.26 | (MIT OR Apache-2.0) AND Unicode-3.0 |
+| unicode-width | 0.2.2 | MIT OR Apache-2.0 |
+| version_check | 0.9.5 | MIT/Apache-2.0 |
+| wasm-bindgen | 0.2.129 | MIT OR Apache-2.0 |
+| wasm-bindgen-futures | 0.4.79 | MIT OR Apache-2.0 |
+| wasm-bindgen-macro | 0.2.129 | MIT OR Apache-2.0 |
+| wasm-bindgen-macro-support | 0.2.129 | MIT OR Apache-2.0 |
+| wasm-bindgen-shared | 0.2.129 | MIT OR Apache-2.0 |
+| wayland-sys | 0.31.11 | MIT |
+| web-sys | 0.3.106 | MIT OR Apache-2.0 |
+| wgpu | 30.0.1 | MIT OR Apache-2.0 |
+| wgpu-core | 30.0.1 | MIT OR Apache-2.0 |
+| wgpu-core-deps-apple | 30.0.1 | MIT OR Apache-2.0 |
+| wgpu-core-deps-emscripten | 30.0.1 | MIT OR Apache-2.0 |
+| wgpu-core-deps-windows-linux-android | 30.0.1 | MIT OR Apache-2.0 |
+| wgpu-hal | 30.0.1 | MIT OR Apache-2.0 |
+| wgpu-naga-bridge | 30.0.1 | MIT OR Apache-2.0 |
+| wgpu-types | 30.0.1 | MIT OR Apache-2.0 |
+| winapi | 0.3.9 | MIT/Apache-2.0 |
+| winapi-i686-pc-windows-gnu | 0.4.0 | MIT/Apache-2.0 |
+| winapi-util | 0.1.11 | Unlicense OR MIT |
+| winapi-x86_64-pc-windows-gnu | 0.4.0 | MIT/Apache-2.0 |
+| windows | 0.62.2 | MIT OR Apache-2.0 |
+| windows-collections | 0.3.2 | MIT OR Apache-2.0 |
+| windows-core | 0.62.2 | MIT OR Apache-2.0 |
+| windows-future | 0.3.2 | MIT OR Apache-2.0 |
+| windows-implement | 0.60.2 | MIT OR Apache-2.0 |
+| windows-interface | 0.59.3 | MIT OR Apache-2.0 |
+| windows-link | 0.2.1 | MIT OR Apache-2.0 |
+| windows-numerics | 0.3.1 | MIT OR Apache-2.0 |
+| windows-result | 0.4.1 | MIT OR Apache-2.0 |
+| windows-strings | 0.5.1 | MIT OR Apache-2.0 |
+| windows-sys | 0.61.2 | MIT OR Apache-2.0 |
+| windows-threading | 0.2.1 | MIT OR Apache-2.0 |
+| xml-rs | 0.8.29 | MIT |
+| zerocopy | 0.8.59 | BSD-2-Clause OR Apache-2.0 OR MIT |
+| zerocopy-derive | 0.8.59 | BSD-2-Clause OR Apache-2.0 OR MIT |
+| zlib-rs | 0.6.8 | Zlib |
+| zmij | 1.0.23 | MIT |

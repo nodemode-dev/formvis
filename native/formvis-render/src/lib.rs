@@ -6,6 +6,7 @@
 
 use std::collections::HashMap;
 
+pub mod bench;
 pub mod budget;
 pub mod composite;
 pub mod display;
@@ -69,6 +70,10 @@ impl Gpu {
         Self::build(None).map(|(g, _)| g)
     }
 
+    pub fn describe(&self) -> String {
+        format!("{} ({:?})", self.info.name, self.info.backend)
+    }
+
     /// A device for drawing into a window, with the window's surface: the adapter is chosen to be able to present to it.
     pub fn for_window(target: impl Into<wgpu::SurfaceTarget<'static>>) -> Option<(Gpu, wgpu::Surface<'static>)> {
         let (g, s) = Self::build(Some(target.into()))?;
@@ -129,6 +134,31 @@ impl Gpu {
         });
         Some((Gpu { device, queue, info, limits, adapter, dab, dab_layout }, surface))
     }
+}
+
+/// The renderer started on request: the device and the memory it may use.
+pub struct Native {
+    pub gpu: Gpu,
+    pub budget: budget::Budget,
+}
+
+/// Whether FORMVIS_NATIVE asks for the native renderer.
+pub fn enabled() -> bool {
+    matches!(std::env::var("FORMVIS_NATIVE").as_deref(), Ok("1") | Ok("true") | Ok("on") | Ok("yes"))
+}
+
+/// The renderer when FORMVIS_NATIVE is set and a GPU backend exists; nothing otherwise.
+pub fn native_start() -> Option<Native> {
+    if !enabled() {
+        return None;
+    }
+    native_force()
+}
+
+/// The renderer whether or not FORMVIS_NATIVE is set (probes and the command line).
+pub fn native_force() -> Option<Native> {
+    let gpu = Gpu::new()?;
+    Some(Native { gpu, budget: budget::system_budget() })
 }
 
 /// A layer as tiles: only tiles something was drawn into exist.
