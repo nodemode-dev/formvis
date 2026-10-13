@@ -1,14 +1,14 @@
 # formvis commands
 
-Generated from the window's command catalogue (748 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (761 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 42
-- File: 42
+- File: 47
 - Filter: 77
-- Image: 63
-- Layer: 152
+- Image: 67
+- Layer: 156
 - Paint: 1
 - Paths: 8
 - Select: 28
@@ -79,12 +79,14 @@ Generated from the window's command catalogue (748 commands) by `./formvis agent
 | `create-video-timeline` | Create Video Timeline |  | Creates a video timeline from the document layers. (changes the picture) |
 | `download-project` | Download Project File |  | Downloads the project file through the browser. (asks first) |
 | `export-artboards` | Export Artboards to Files |  | Exports every artboard to its own file. (asks first) |
+| `export-artboards-files` | Artboards to Files... |  | Exports each artboard to its own file in a chosen type and quality; opens the dialog, or runs at once when given any of prefix, format, quality, icc or folder. (asks first) |
 | `export-as` | Export As... | Alt+Shift+Mod+W | Opens Export As with format, size and quality. (asks first) |
 | `export-avif` | Export AVIF |  | Exports the flattened picture as AVIF. (asks first) |
 | `export-exr` | OpenEXR... |  | Exports an OpenEXR file. (asks first) |
 | `export-gif` | Export GIF... |  | Opens the GIF dialog and exports an animated GIF. (asks first) |
 | `export-hdr` | Radiance HDR... |  | Exports a Radiance HDR file. (asks first) |
 | `export-jpg` | Export JPEG... | Alt+Shift+Mod+S | Opens the JPEG quality dialog, then exports a JPEG. (asks first) |
+| `export-layers` | Layers to Files... |  | Exports each layer to its own file named prefix_NNNN_layername, with its effects and mask applied; opens the dialog, or runs at once when given any of prefix, format, quality, visible_only, trim, icc or folder. (asks first) |
 | `export-mp4` | Video (MP4)... |  | Renders the video timeline or animation to an MP4 file. (asks first) |
 | `export-ora` | Export OpenRaster... |  | Exports an OpenRaster file that keeps layers. (asks first) |
 | `export-pdf` | Export PDF |  | Exports the picture as a PDF. (asks first) |
@@ -108,6 +110,9 @@ Generated from the window's command catalogue (748 commands) by `./formvis agent
 | `save` | Save | Mod+S | Saves the document to the library, or asks for a name the first time. (asks first) |
 | `save-as` | Save As... | Shift+Mod+S | Saves the document under a new name in the library. (asks first) |
 | `save-copy` | Save a Copy... | Alt+Mod+S | Saves a copy without changing which file the document belongs to. (asks first) |
+| `script-delete-empty-layers` | Delete All Empty Layers |  | Deletes every pixel layer with no visible pixels and every empty group, and says how many; keeps the Background and adjustment, fill, type, shape and smart object layers. (changes the picture) |
+| `script-flatten-effects` | Flatten All Layer Effects |  | Draws every layer style into its layer's pixels and clears the style; a type, shape or fill layer that carries one is rasterized. (changes the picture) |
+| `script-flatten-masks` | Flatten All Masks |  | Applies every layer mask and vector mask into its layer's pixels and removes it; a type, shape or fill layer that carries one is rasterized. (changes the picture) |
 | `send-comfyui` | Send to ComfyUI... |  | Opens the dialog that sends the picture to ComfyUI. (asks first) |
 | `send-host` | Send to NodeMode Canvas |  | Sends the picture to the NodeMode canvas that hosts formvis. (asks first) |
 | `send-nodemode` | Send to NodeMode... |  | Opens the dialog that sends the picture to NodeMode. (asks first) |
@@ -206,9 +211,11 @@ Generated from the window's command catalogue (748 commands) by `./formvis agent
 | `adj-blackWhite` | Black & White... |  | Opens Black & White and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-brightnessContrast` | Brightness/Contrast... |  | Opens Brightness/Contrast and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-channelMixer` | Channel Mixer... |  | Opens Channel Mixer and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-clarity` | Clarity... |  | Opens Clarity and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-colorBalance` | Color Balance... |  | Opens Color Balance and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-colorLookup` | Color Lookup... |  | Opens Color Lookup and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-curves` | Curves... | Mod+M | Opens Curves and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-dehaze` | Dehaze... |  | Opens Dehaze and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-develop` | Develop... |  | Opens Develop and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-exposure` | Exposure... |  | Opens Exposure and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-glow` | Glow... |  | Opens Glow and applies it to the pixels of the active layer. (changes the picture) |
@@ -219,11 +226,13 @@ Generated from the window's command catalogue (748 commands) by `./formvis agent
 | `adj-hsv` | Hue/Saturation... | Mod+U | Opens Hue/Saturation and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-invert` | Invert... |  | Opens Invert and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-levels` | Levels... | Mod+L | Opens Levels and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-light` | Light... |  | Opens Light and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-photoFilter` | Photo Filter... |  | Opens Photo Filter and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-posterize` | Posterize... |  | Opens Posterize and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-selectiveColor` | Selective Color... |  | Opens Selective Color and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-shadowsHighlights` | Shadows/Highlights... |  | Opens Shadows/Highlights and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-splitToning` | Split Toning... |  | Opens Split Toning and applies it to the pixels of the active layer. (changes the picture) |
+| `adj-texture` | Texture... |  | Opens Texture and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-threshold` | Threshold... |  | Opens Threshold and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-vibrance` | Vibrance... |  | Opens Vibrance and applies it to the pixels of the active layer. (changes the picture) |
 | `adjust.apply` | Apply Adjustment |  | Applies an adjustment with exact values, to the pixels of the active layer or as an adjustment layer. (changes the picture) |
@@ -354,9 +363,11 @@ Generated from the window's command catalogue (748 commands) by `./formvis agent
 | `new-adj-blackWhite` | New Black & White Layer... |  | Adds a Black & White Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-brightnessContrast` | New Brightness/Contrast Layer... |  | Adds a Brightness/Contrast Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-channelMixer` | New Channel Mixer Layer... |  | Adds a Channel Mixer Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-clarity` | New Clarity Layer... |  | Adds a Clarity Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-colorBalance` | New Color Balance Layer... |  | Adds a Color Balance Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-colorLookup` | New Color Lookup Layer... |  | Adds a Color Lookup Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-curves` | New Curves Layer... |  | Adds a Curves Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-dehaze` | New Dehaze Layer... |  | Adds a Dehaze Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-develop` | New Develop Layer... |  | Adds a Develop Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-exposure` | New Exposure Layer... |  | Adds a Exposure Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-glow` | New Glow Layer... |  | Adds a Glow Layer adjustment layer; its dialog opens for the values. (changes the picture) |
@@ -367,11 +378,13 @@ Generated from the window's command catalogue (748 commands) by `./formvis agent
 | `new-adj-hsv` | New Hue/Saturation Layer... |  | Adds a Hue/Saturation Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-invert` | New Invert Layer... |  | Adds a Invert Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-levels` | New Levels Layer... |  | Adds a Levels Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-light` | New Light Layer... |  | Adds a Light Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-photoFilter` | New Photo Filter Layer... |  | Adds a Photo Filter Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-posterize` | New Posterize Layer... |  | Adds a Posterize Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-selectiveColor` | New Selective Color Layer... |  | Adds a Selective Color Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-shadowsHighlights` | New Shadows/Highlights Layer... |  | Adds a Shadows/Highlights Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-splitToning` | New Split Toning Layer... |  | Adds a Split Toning Layer adjustment layer; its dialog opens for the values. (changes the picture) |
+| `new-adj-texture` | New Texture Layer... |  | Adds a Texture Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-threshold` | New Threshold Layer... |  | Adds a Threshold Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-adj-vibrance` | New Vibrance Layer... |  | Adds a Vibrance Layer adjustment layer; its dialog opens for the values. (changes the picture) |
 | `new-artboard` | New Artboard |  | Adds an artboard. (changes the picture) |

@@ -64,6 +64,11 @@ ask it questions.
 - Each layer has a blend mode (all 27 of Photoshop's), opacity and fill, a layer mask, and layer styles (Drop Shadow,
   Outer and Inner Glow, Stroke, Inner Shadow, Satin, Bevel and Emboss, overlays).
 - A clipping mask shows a layer only where the layer below it has pixels.
+- File > Scripts holds Photoshop's housekeeping scripts, each one undoable step: Delete All Empty Layers (pixel layers
+  with nothing visible and empty groups; the Background and adjustment, fill, type, shape and smart object layers, and
+  artboards, stay; it says how many went), Flatten All Layer Effects (every layer style drawn into its layer's pixels;
+  a type, shape or fill layer that has one is rasterized) and Flatten All Masks (every layer mask and vector mask
+  applied into the pixels and removed). Layers to Files and Artboards to Files are in the same menu.
 - The Layer menu arranges layers as Photoshop's does: Arrange > Bring to Front and Send to Back (Shift+Ctrl+] and
   Shift+Ctrl+[) and Reverse, Group from Layers and Ungroup Layers, Hide Layers, Delete > Delete Hidden Layers, Merge
   Down, Merge Visible (hidden layers stay) and Flatten Image; Layer > New > Layer via Copy and Layer via Cut (Ctrl+J,
@@ -191,8 +196,11 @@ ask it questions.
 - Adjustment layers change what is below them without changing its pixels: Levels, Curves, Hue/Saturation, Exposure,
   Brightness/Contrast, Vibrance, Color Balance, Black & White, Photo Filter, Channel Mixer, Invert, Posterize,
   Threshold, Selective Color, Gradient Map, Color Lookup (its own looks, including bleach bypass, cross process and
-  faded film, or a .cube file), Develop (tone, colour and detail, with a vignette), Grain, Split Toning, Halation and
-  Glow.
+  faded film, or a .cube file), Develop (tone, colour and detail, with a vignette), Clarity (midtone local contrast),
+  Dehaze, Texture (fine detail), Light (Brightness, Contrast, Highlights, Shadows, Whites and Blacks), Grain, Split
+  Toning, Halation and Glow. Clarity, Dehaze, Texture and Light are small, maskable slices of Develop; Clarity and
+  Texture scale their radius with the picture, so they look the same at any zoom. Photoshop has no matching layers, so
+  a PSD export drops them as it does Develop.
 - Grain has presets by film speed, ISO 100 to ISO 3200.
 - Layer > New Film Layer adds a Light Leak (warm light from an edge or corner, in Screen blend) or a Frame (a film
   edge, a white border or a thin line), as layers you can move and mask.
@@ -389,6 +397,12 @@ ask it questions.
   bits without rounding.
 - File > Export also writes Photoshop files (layers, masks, groups and more) and OpenRaster files for Krita, GIMP and
   MyPaint. Adjustment layers have no OpenRaster form and are left out, said so.
+- File > Export > Layers to Files writes every layer as its own image, at the document's size (or cut to its pixels
+  with Trim Layers), with its layer style and mask applied, named prefix_NNNN_layername (the number counts from the top
+  of the stack; characters a file name should not have become underscores). Choose the file name prefix, Visible Layers
+  Only, the type (PNG, JPEG or WebP with a quality, TIFF, PSD) and Include ICC Profile. The desktop app writes the files
+  into a folder you name inside its exports folder; the browser gives one zip. Artboards to Files does the same for each
+  artboard, holding only what is inside it.
 
 ## The assistant and outside agents
 
