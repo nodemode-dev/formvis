@@ -1,6 +1,6 @@
 [package]
 name = "formvis"
-version = "1.67.7"
+version = "1.67.8"
 description = "formvis desktop shell"
 authors = ["nodemode-ai"]
 license = "Apache-2.0"
