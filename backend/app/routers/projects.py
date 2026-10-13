@@ -13,7 +13,7 @@ from app.services import project_format as pf
 from app.services import sessions
 
 router = APIRouter(tags=["projects"])
-NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,120}$")
+NAME = re.compile(r'[^/\\:*?"<>|\x00-\x1f\x7f]{1,120}')
 #: The library writes .fmv; projects with the extensions from before the rename (core/legacy.py) are still read, listed,
 #: opened and deleted, and saving one again writes .fmv in its place.
 EXT, OLD_EXTS = ".fmv", legacy.PROJECT_EXTENSIONS
@@ -22,8 +22,8 @@ SUFFIXES = (EXT, *OLD_EXTS, ".canvasor", ".comp", ".zip")
 
 def _library_path(name: str) -> Path:
     clean = name.strip()
-    if not NAME.match(clean) or clean.startswith("."):
-        raise HTTPException(status_code=400, detail="Invalid project name.")
+    if not NAME.fullmatch(clean) or clean.startswith("."):
+        raise HTTPException(400, "Invalid project name.")
     return config.projects_dir() / f"{clean}{EXT}"
 
 
@@ -36,44 +36,47 @@ def _existing(name: str) -> Path:
 
 
 def _project_name(raw: str) -> str:
-    name = Path(raw or "Untitled").name
-    changed = True
-    while changed:
-        changed = False
+    """A project name from a file or folder name, without any known project suffix."""
+    name = raw.replace("\\", "/").rstrip("/").split("/")[-1] or "Untitled"
+    trimmed = True
+    while trimmed:
+        trimmed = False
         for suffix in SUFFIXES:
             if name.lower().endswith(suffix) and len(name) > len(suffix):
-                name, changed = name[: -len(suffix)], True
-    return name or "Untitled"
+                name = name[: -len(suffix)]
+                trimmed = True
+    return name.strip() or "Untitled"
 
 
 def _manifest(raw: str) -> dict:
-    if len(raw.encode("utf-8")) > config.MAX_MANIFEST_BYTES:
-        raise HTTPException(status_code=413, detail="The manifest is too large.")
+    """Parse the manifest field, refusing an oversized or malformed one."""
+    if len(raw.encode("utf-8", "ignore")) > config.MAX_MANIFEST_BYTES:
+        raise HTTPException(413, "The manifest is too large.")
     try:
-        data = json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail="The manifest is not valid JSON.") from exc
-    return data
+        return json.loads(raw)
+    except ValueError:
+        raise HTTPException(400, "The manifest is not valid JSON.") from None
 
 
 def _assets(files: list[UploadFile]) -> dict[str, bytes]:
-    out: dict[str, bytes] = {}
+    """The uploaded images by file name."""
+    found: dict[str, bytes] = {}
     for upload in files:
-        name = Path(upload.filename or "").name
+        name = upload.filename or ""
         if not pf.safe_name(name):
-            raise HTTPException(status_code=400, detail="Unsafe asset name.")
-        data = upload.file.read()
-        if len(data) > config.MAX_ASSET_BYTES:
-            raise HTTPException(status_code=413, detail="An image is larger than 512 MiB.")
-        out[name] = data
-    return out
+            raise HTTPException(400, "Unsafe asset name.")
+        blob = upload.file.read(config.MAX_ASSET_BYTES + 1)
+        if len(blob) > config.MAX_ASSET_BYTES:
+            raise HTTPException(413, "An image is larger than 512 MiB.")
+        found[name] = blob
+    return found
 
 
 def _validated(manifest: dict, assets: dict[str, bytes]) -> None:
     try:
         pf.validate(manifest, set(assets))
     except pf.ProjectError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(422, str(exc)) from exc
 
 
 @router.get("")
@@ -100,17 +103,22 @@ def save(name: str = Form(...), manifest: str = Form(...), files: list[UploadFil
     (another device's copy synced in, or another window saved), the save goes beside it as "name (conflict date time)"
     and the other version is kept. The answer carries the saved file's version for the next save."""
     target = _library_path(name)
-    data, assets = _manifest(manifest), _assets(files)
+    data = _manifest(manifest)
+    assets = _assets(files)
     _validated(data, assets)
     conflict = bool(base) and target.is_file() and _version(target) != base
     if conflict:
         from datetime import datetime
         target = _library_path(f"{target.stem[:80]} (conflict {datetime.now().strftime('%Y-%m-%d %H.%M.%S')})")
     blob = pf.write_zip(data, assets)
-    fd, tmp = tempfile.mkstemp(dir=target.parent, suffix=".tmp")
-    with os.fdopen(fd, "wb") as handle:
-        handle.write(blob)
-    os.replace(tmp, target)
+    fd, tmp_name = tempfile.mkstemp(dir=target.parent, suffix=".tmp")
+    try:
+        with os.fdopen(fd, "wb") as handle:
+            handle.write(blob)
+        os.replace(tmp_name, target)
+    except BaseException:
+        Path(tmp_name).unlink(missing_ok=True)
+        raise
     if not conflict:
         for x in OLD_EXTS:
             target.with_suffix(x).unlink(missing_ok=True)
@@ -188,22 +196,24 @@ def set_folder(body: FolderBody) -> dict:
 
 @router.post("/package")
 def package(manifest: str = Form(...), files: list[UploadFile] = File(default=[]), root: str = Form("")) -> Response:
-    data, assets = _manifest(manifest), _assets(files)
+    """The project as a downloadable zip, optionally inside one named folder."""
+    data = _manifest(manifest)
+    assets = _assets(files)
     _validated(data, assets)
-    if root and (not pf.safe_name(root) or root.startswith(".")):
-        raise HTTPException(status_code=400, detail="Invalid package folder name.")
+    if root and (not NAME.fullmatch(root) or root.startswith(".")):
+        raise HTTPException(400, "Invalid package folder name.")
     return Response(pf.write_zip(data, assets, root), media_type="application/zip")
 
 
 @router.get("/library/{name}")
 def open_library(name: str) -> dict:
     path = _existing(name)
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Project not found.")
     try:
         manifest, assets = pf.read_zip(path.read_bytes())
+    except FileNotFoundError:
+        raise HTTPException(404, "Project not found.") from None
     except pf.ProjectError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(422, str(exc)) from exc
     _validated(manifest, assets)
     return {**sessions.payload(sessions.create(assets), manifest, assets, path.stem), "version": _version(path)}   # 1.58.8
 
@@ -219,16 +229,20 @@ def delete_library(name: str) -> dict:
 
 @router.post("/import")
 def import_project(files: list[UploadFile] = File(...), paths: list[str] = Form(default=[])) -> dict:
+    """Open a packaged project (one zip) or a dropped folder into a new session."""
     try:
         if len(files) == 1 and not paths:
             manifest, assets = pf.read_zip(files[0].file.read())
             name = _project_name(files[0].filename or "")
         else:
-            entries = [((paths[i] if i < len(paths) else "") or (upload.filename or ""), upload.file.read()) for i, upload in enumerate(files)]
-            manifest, assets, root = pf.read_folder(entries)
-            name = _project_name(root)
+            pairs = []
+            for index, upload in enumerate(files):
+                given = paths[index] if index < len(paths) and paths[index] else (upload.filename or "")
+                pairs.append((given, upload.file.read()))
+            manifest, assets, folder = pf.read_folder(pairs)
+            name = _project_name(folder)
     except pf.ProjectError as exc:
-        raise HTTPException(status_code=422, detail=str(exc)) from exc
+        raise HTTPException(422, str(exc)) from exc
     _validated(manifest, assets)
     return sessions.payload(sessions.create(assets), manifest, assets, name)
 
@@ -237,5 +251,5 @@ def import_project(files: list[UploadFile] = File(...), paths: list[str] = Form(
 def session_asset(sid: str, filename: str) -> FileResponse:
     path = sessions.asset_path(sid, filename)
     if path is None:
-        raise HTTPException(status_code=404, detail="Asset not found.")
+        raise HTTPException(404, "Asset not found.")
     return FileResponse(path, media_type="image/png")
