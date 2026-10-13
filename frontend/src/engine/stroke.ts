@@ -6,15 +6,18 @@ import type { PixelPatch } from './history';
 import type { Pt, Rect, RGB } from './types';
 import { UPRIGHT, computeOption, shapeActive, type BrushDynamics, type BrushShape, type PenPose } from './brush-dynamics';
 import type { SampledTip } from './abr';
+import { StrokeBuffer, TipAlpha, levelOf } from './dab-buffer';
 
-/** Painting strokes for formvis. Dabs of a round brush tip are laid along the pointer's path into a separate paint
- *  layer, evenly spaced and carried over between moves; composing lays that layer onto a working copy of the pixels at
- *  the stroke's opacity, so overlapping dabs within one stroke never build past it. A selection limits where paint
- *  lands, a texture (Clone Stamp's source) can stand in for the brush colour, and on an alpha-coded mask the value
- *  under the brush moves toward the paint rather than only gaining coverage. */
+/** Painting strokes for formvis, on Photoshop's model. Dabs of a round brush tip are laid along the pointer's path,
+ *  evenly spaced and carried over between moves, into a deep buffer of coverage (floats, over the stroke's window);
+ *  composing draws the paint layer from it over the area that changed and lays that onto a working copy of the pixels.
+ *  A pixel shows the lesser of its coverage and the highest opacity any dab has reached there, so paint builds with
+ *  flow but never past the stroke's opacity. A selection limits where paint lands, a texture (Clone Stamp's source) can
+ *  stand in for the brush colour, and on an alpha-coded mask the value under the brush moves toward the paint rather
+ *  than only gaining coverage. */
 
-/** `flow` (0 to 1, default 1) is Photoshop's Flow: how much paint each dab lays down, so paint builds within a stroke as
- *  dabs overlap, up to the stroke's `opacity`, which caps the stroke as a whole. */
+/** `flow` (0 to 1, default 1) is Photoshop's Flow: how much paint a quarter of the diameter of travel lays down, whatever
+ *  the spacing, so paint builds within a stroke as dabs overlap, up to `opacity`, which caps the stroke as a whole. */
 /** aliased (the Pencil): dabs are pixel-exact circles, every pixel painted fully or not at all. */
 export interface StrokeStyle { square?: boolean; bg?: RGB; aliased?: boolean; diameter: number; hardness: number; opacity: number; color: RGB; tip?: SampledTip | null; flow?: number; dabColor?: ((x: number, y: number) => RGB | null) | null }
 
@@ -89,6 +92,7 @@ const MAX_SPARE_BYTES = 256 * 1024 * 1024;
 let windowFrom = 16_000_000;
 export function setStrokeWindowFrom(px: number): void { windowFrom = px; }
 export const strokeWindowFrom = (): number => windowFrom;
+let scratch: Surface | null = null;
 const bytesOf = (s: Surface): number => s.width * s.height * 4;
 const drop = (s: Surface | undefined): void => { if (s) { s.width = 0; s.height = 0; } };
 
@@ -127,6 +131,14 @@ export class PixelStroke {
   private paint: Surface;
   private paintCtx: Ctx2D;
   private masked: Surface | null;
+  /** The deep coverage the paint layer is drawn from, the colours of a stroke whose dabs differ (Mixer, Color Dynamics),
+   *  the tip's alpha read once, and how many dabs have been laid (Fade's count). */
+  private buf: StrokeBuffer;
+  private ink: Surface | null = null;
+  private tipA: TipAlpha | null = null;
+  private steps = 0;
+  private eased: number | null = null;
+  private airbrushing = false;
   /** The window (1.60.6, DEV_PLAN 26.2): a large layer's stroke keeps its surfaces only over a window around where it
    *  paints, in layer pixels from (ox, oy), grown as the stroke reaches past it; a smaller layer's window is the whole
    *  layer, as before. `toWin` maps document points into the window's surfaces. */
@@ -181,6 +193,7 @@ export class PixelStroke {
     this.paint = takeSurface(this.ww, this.wh);
     this.paintCtx = ctxOf(this.paint);
     this.masked = selection ? takeSurface(this.ww, this.wh) : null;
+    this.buf = new StrokeBuffer(this.ww, this.wh);
     this.radius = Math.max(0.5, style.diameter / 2);
     // Dabs every 1.5% of the diameter for a hard tip and 2.5% for a soft one; a sampled tip every quarter of its size.
     this.spacing = Math.max(0.5, style.diameter * (style.tip ? 0.25 : style.hardness >= 0.99 ? 0.015 : 0.025));
@@ -189,7 +202,7 @@ export class PixelStroke {
   }
 
   /** The bytes the stroke's surfaces hold (the engine counts them while it lasts). */
-  get bytes(): number { return this.ww * this.wh * 4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0)); }
+  get bytes(): number { return this.ww * this.wh * 4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0) + (this.ink ? 1 : 0)) + this.buf.bytes; }
 
   /** The window grown to hold `box` (layer pixels) with room to spare, its surfaces remade with what they held; false
    *  when growing would pass what the engine allows, and the dab is then not laid (the stroke is cut there). */
@@ -204,7 +217,7 @@ export class PixelStroke {
     // of a stroke across a 600 MP picture asked for a window the size of the picture, several times over.
     const m = this.tiled ? 1024 : Math.max(512, Math.round(Math.max(u.w, u.h) / 2));
     const nx = Math.max(0, u.x - m), ny = Math.max(0, u.y - m), nw = Math.min(L, u.x + u.w + m) - nx, nh = Math.min(H, u.y + u.h + m) - ny;
-    if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * 4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0)))) { this.clipped = true; return false; }
+    if (this.canGrow && !this.canGrow((nw * nh - (open ? this.ww * this.wh : 0)) * (4 * (2 + (this.masked ? 1 : 0) + (this.textured ? 1 : 0) + (this.ink ? 1 : 0)) + (this.buf.ceil ? 5 : 4)))) { this.clipped = true; return false; }
     // A tiled layer's original pixels for the whole new window, read once (1.62.5); a tile there on disk stops the
     // window here, the dab not laid and the area noted for the engine to bring back: never painted over unloaded.
     let fresh: ImageData | null = null;
@@ -233,6 +246,8 @@ export class PixelStroke {
     this.paint = remake(this.paint, false) as Surface; this.paintCtx = ctxOf(this.paint);
     this.masked = remake(this.masked, false);
     this.textured = remake(this.textured, false);
+    this.ink = remake(this.ink, false);
+    this.buf.resize(nw, nh, open, dx, dy);
     this.ox = nx; this.oy = ny; this.ww = nw; this.wh = nh;
     this.toWin = mul(translation(-nx, -ny), this.toLocal);
     return true;
@@ -245,7 +260,9 @@ export class PixelStroke {
   private toFull(): void {
     if (!this.windowed) return;
     const w = this.raster.width, h = this.raster.height;
-    for (const s of [this.working, this.paint, this.masked]) if (s) { s.width = 0; s.height = 0; }
+    for (const s of [this.working, this.paint, this.masked, this.ink]) if (s) { s.width = 0; s.height = 0; }
+    this.ink = null;
+    this.buf = new StrokeBuffer(w, h);
     this.windowed = false; this.ox = 0; this.oy = 0; this.ww = w; this.wh = h; this.toWin = this.toLocal;
     this.working = takeSurface(w, h); this.workingCtx = ctxOf(this.working); this.workingCtx.drawImage(this.layer.canvas, 0, 0);   // never tiled (1.62.5)
     this.paint = takeSurface(w, h); this.paintCtx = ctxOf(this.paint);
@@ -301,10 +318,25 @@ export class PixelStroke {
    *  the way, the distance since the last dab carried into the next move. `pressure` (0 to 1, 1 for a mouse) is
    *  interpolated along the way, so a pen's changes between samples are smooth; `pose` is the pen's tilt and rotation. */
   /** The Airbrush (1.50.4): a dab where the stroke is, so paint builds while the pointer rests. */
-  stamp(pressure = 1): void { if (this.last) this.dab(this.last, Math.min(1, Math.max(0, pressure))); }
+  stamp(pressure = 1): void {
+    if (!this.last) return;
+    this.airbrushing = true;
+    this.dab(this.last, Math.min(1, Math.max(0, pressure)));
+    this.airbrushing = false;
+  }
+
+  /** The pen's pressure eased towards each new reading over a tenth of the diameter of travel, so the jumpy first and
+   *  last readings of a stroke (a pen touching down, lifting off) move the line gradually; samples far apart, as a
+   *  path's are, pass nearly as they are, and a mouse's constant 1 stays 1. */
+  private smooth(pressure: number, travelled: number): number {
+    const v = Math.min(1, Math.max(0, pressure));
+    if (this.eased === null) { this.eased = v; return v; }
+    this.eased += (v - this.eased) * (1 - Math.exp(-travelled / Math.max(2, this.style.diameter * 0.1)));
+    return this.eased;
+  }
 
   to(p: Pt, pressure = 1, pose: PenPose = UPRIGHT): void {
-    const from = this.last, pr = Math.min(1, Math.max(0, pressure));
+    const from = this.last, pr = this.smooth(pressure, from ? Math.hypot(p.x - from.x, p.y - from.y) : 0);
     this.pose = pose;
     if (!from) {
       // One seeded sequence per stroke, from where it starts, so a stroke is laid the same way each time.
@@ -323,21 +355,60 @@ export class PixelStroke {
   }
 
   private dab(p: Pt, pressure = 1): void {
-    if (this.style.aliased) { this.aliasedDab(p, pressure); return; }
-    if (this.shape) { this.shapedDab(p, pressure); return; }
-    const d = this.dynamics, info = { pressure }, r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1) * this.transferAlpha(pressure);
+    if (this.style.aliased) this.aliasedDab(p, pressure);
+    else if (this.shape) this.shapedDab(p, pressure);
+    else this.plainDab(p, pressure);
+    this.steps += 1;
+  }
+
+  private infoFor(pressure: number): { pressure: number; fade: number } { return { pressure, fade: this.steps }; }
+
+  /** What one dab adds under the full tip, from Flow and the spacing, so Flow lays the same build-up per quarter of the
+   *  diameter of travel at any spacing: 1 - (1 - flow) ^ (spacing / quarter diameter). The Airbrush's rest dabs count
+   *  as a quarter diameter each. */
+  private dabAlpha(flow: number): number {
+    const f = Math.min(1, Math.max(0, flow));
+    if (f >= 1) return 1;
+    return 1 - Math.pow(1 - f, this.airbrushing ? 1 : this.spacing / Math.max(0.5, this.style.diameter / 4));
+  }
+
+  /** The opacity this dab reaches, 0 to 255: the stroke's Opacity, times the Opacity control's pressure or fade. */
+  private opacityOf(info: { pressure: number; fade: number }): number {
+    const d = this.dynamics;
+    return levelOf(this.style.opacity * (d ? computeOption(d.opacity, info) : 1));
+  }
+
+  private tipAlphaOf(): TipAlpha {
+    if (!this.tipA) this.tipA = TipAlpha.of(ctxOf(this.tip).getImageData(0, 0, this.tip.width, this.tip.height));
+    return this.tipA;
+  }
+
+  private get varied(): boolean { return !!this.style.dabColor || !!this.colorDyn; }
+
+  private inkCtx(): Ctx2D {
+    this.ink ??= takeSurface(this.ww, this.wh);
+    return ctxOf(this.ink);
+  }
+
+  private plainDab(p: Pt, pressure: number): void {
+    const d = this.dynamics, info = this.infoFor(pressure), r = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1) * this.transferAlpha(pressure);
     // Its bounds first, so a windowed stroke's window can grow to hold it before it is laid (1.60.6).
     const corners = [[-r, -r], [r, -r], [r, r], [-r, r]].map(([ox, oy]) => applyMat(this.toLocal, p.x + ox, p.y + oy));
     const box = integral(boundsOf(corners));
     const hit = intersectRect({ x: box.x - 1, y: box.y - 1, w: box.w + 2, h: box.h + 2 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
     if (!hit) { this.dabTip(p.x, p.y); return; }   // off the layer: its tip still taken, so Color Dynamics' sequence holds
     if (!this.ensure(hit)) return;
-    setMat(this.paintCtx, this.toWin);
-    if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
-    const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
-    this.paintCtx.drawImage(this.dabTip(p.x, p.y), p.x - rx, p.y - ry, rx * 2, ry * 2);
+    if (d?.opacity?.enabled) this.buf.useCeil();
+    const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y, tip = this.tipAlphaOf();
+    this.buf.lay(tip, mul(this.toWin, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, p.x - rx, p.y - ry]), this.dabAlpha(flow), this.opacityOf(info));
+    if (this.varied) {
+      const c = this.inkCtx();
+      setMat(c, this.toWin);
+      c.globalAlpha = Math.min(1, Math.max(0.35, flow));
+      c.drawImage(this.dabTip(p.x, p.y), p.x - rx, p.y - ry, rx * 2, ry * 2);
+      c.globalAlpha = 1;
+    }
     this.wetMark(this.toWin, p.x, p.y, rx, ry);
-    if (flow < 1) this.paintCtx.globalAlpha = 1;
     this.pending = unionRect(this.pending, hit);
     this.touched = unionRect(this.touched, hit);
   }
@@ -396,24 +467,23 @@ export class PixelStroke {
 
   /** The Pencil's dab: a circle of whole pixels in the raster's own grid (no smoothing), filled row by row. */
   private aliasedDab(p: Pt, pressure: number): void {
-    const d = this.dynamics, info = { pressure }, c = applyMat(this.toLocal, p.x, p.y);
+    const d = this.dynamics, info = this.infoFor(pressure), c = applyMat(this.toLocal, p.x, p.y);
     const r = Math.max(0.5, this.radius * matScale(this.toLocal) * (d ? Math.max(0.01, computeOption(d.size, info)) : 1));
     const cx = Math.floor(c.x) + 0.5, cy = Math.floor(c.y) + 0.5, rr = r <= 0.75 ? 0.5 : r;
     // Its bounds first, so a windowed stroke's window can hold it (1.60.6); drawn shifted by the window's whole-pixel origin.
     const pre = intersectRect({ x: Math.floor(cx - rr) - 1, y: Math.floor(cy - rr) - 1, w: Math.ceil(rr * 2) + 3, h: Math.ceil(rr * 2) + 3 }, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
     if (pre && !this.ensure(pre)) return;
-    const ctx = this.paintCtx, col = this.style.color;
-    ctx.setTransform(1, 0, 0, 1, -this.ox, -this.oy);
-    ctx.fillStyle = `rgb(${col.r}, ${col.g}, ${col.b})`;
+    if (d?.opacity?.enabled) this.buf.useCeil();
+    const o = this.opacityOf(info), fill = (fx: number, fy: number, fw: number, fh: number): void => this.buf.fillRect(fx - this.ox, fy - this.oy, fw, fh, o);
     // The Eraser's Block (1.50.3, the tool audit): a pixel-exact square.
     // (In place of the circle, not returning early: the lines after it record the area the dab touched.)
-    if (this.style.square) { const side = Math.max(1, Math.round(rr * 2)); ctx.fillRect(Math.round(cx - side / 2), Math.round(cy - side / 2), side, side); }
+    if (this.style.square) { const side = Math.max(1, Math.round(rr * 2)); fill(Math.round(cx - side / 2), Math.round(cy - side / 2), side, side); }
     else for (let y = Math.floor(cy - rr); y <= Math.ceil(cy + rr); y++) {
       const dy = y + 0.5 - cy, half = rr * rr - dy * dy;
       if (half < 0) continue;
       const w = Math.sqrt(half), x0 = Math.round(cx - w), x1 = Math.round(cx + w);
-      if (x1 > x0) ctx.fillRect(x0, y, x1 - x0, 1);
-      else if (rr <= 0.5) ctx.fillRect(Math.floor(cx), y, 1, 1);
+      if (x1 > x0) fill(x0, y, x1 - x0, 1);
+      else if (rr <= 0.5) fill(Math.floor(cx), y, 1, 1);
     }
     const box = { x: Math.floor(cx - rr) - 1, y: Math.floor(cy - rr) - 1, w: Math.ceil(rr * 2) + 3, h: Math.ceil(rr * 2) + 3 };
     const hit = intersectRect(box, { x: 0, y: 0, w: this.raster.width, h: this.raster.height });
@@ -426,8 +496,10 @@ export class PixelStroke {
    *  shape, its controls and jitters, scattered across the stroke (or on both axes) by Scatter, a percentage of the
    *  diameter; with Dual Brush on, the second tip's marks laid at the same places, scattered by its own Scatter. */
   private shapedDab(p: Pt, pressure: number): void {
-    const sh = this.shape as BrushShape, d = this.dynamics, info = { pressure }, rnd = this.rnd, pose = this.pose;
+    const sh = this.shape as BrushShape, d = this.dynamics, info = this.infoFor(pressure), rnd = this.rnd, pose = this.pose;
     const base = this.radius * (d ? Math.max(0.01, computeOption(d.size, info)) : 1), flow = (this.style.flow ?? 1) * (d ? computeOption(d.flow, info) : 1) * this.transferAlpha(pressure);
+    if (d?.opacity?.enabled) this.buf.useCeil();
+    const tip = this.tipAlphaOf(), alpha = this.dabAlpha(flow), reached = this.opacityOf(info);
     const tilt = Math.min(90, Math.hypot(pose.tiltX, pose.tiltY)), count = Math.max(1, Math.round(sh.count * (1 - (sh.countJitter / 100) * rnd())));
     const across = ((this.dir + 90) * Math.PI) / 180, varied = sh.roundnessJitter > 0 || sh.roundnessControl !== 'off';
     for (let k = 0; k < count; k++) {
@@ -449,12 +521,16 @@ export class PixelStroke {
         else { const t = (rnd() * 2 - 1) * spread; x += Math.cos(across) * t; y += Math.sin(across) * t; }
       }
       const a = (angle * Math.PI) / 180, ca = Math.cos(a), sa = Math.sin(a), place = mul(this.toLocal, [ca, sa, -sa, ca, x, y]);
-      setMat(this.paintCtx, mul(place, [1, 0, 0, round, 0, 0]));
-      if (flow < 1) this.paintCtx.globalAlpha = Math.max(0, flow);
-      const rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
-      this.paintCtx.drawImage(this.dabTip(x, y), -rx, -ry, rx * 2, ry * 2);
-      this.wetMark(mul(place, [1, 0, 0, round, 0, 0]), 0, 0, rx, ry);
-      if (flow < 1) this.paintCtx.globalAlpha = 1;
+      const at = mul(place, [1, 0, 0, round, 0, 0]), rx = r * this.tipAspect.x, ry = r * this.tipAspect.y;
+      this.buf.lay(tip, mul(at, [(2 * rx) / tip.w, 0, 0, (2 * ry) / tip.h, -rx, -ry]), alpha, reached);
+      if (this.varied) {
+        const c = this.inkCtx();
+        setMat(c, at);
+        c.globalAlpha = Math.min(1, Math.max(0.35, flow));
+        c.drawImage(this.dabTip(x, y), -rx, -ry, rx * 2, ry * 2);
+        c.globalAlpha = 1;
+      }
+      this.wetMark(at, 0, 0, rx, ry);
       if (this.dualPaint && this.dualTip) {
         const dc = ctxOf(this.dualPaint), dr = Math.max(0.5, sh.dual.diameter / 2), ds = (sh.dual.scatter / 100) * dr * 2;
         for (let j = 0; j < Math.max(1, sh.dual.count); j++) {
@@ -470,12 +546,29 @@ export class PixelStroke {
     }
   }
 
+  /** The paint layer's pixels over `win` replaced by `img`, put through a small canvas: putImageData straight into a
+   *  large canvas costs about as much as the canvas is big, a draw of a small one does not. */
+  private writePaint(win: Rect, img: ImageData): void {
+    if (!scratch || scratch.width < win.w || scratch.height < win.h) scratch = createSurface(Math.max(win.w, scratch?.width ?? 0), Math.max(win.h, scratch?.height ?? 0));
+    ctxOf(scratch).putImageData(img, 0, 0);
+    const c = this.paintCtx;
+    c.save();
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = 'source-over';
+    c.clearRect(win.x, win.y, win.w, win.h);
+    c.drawImage(scratch, 0, 0, win.w, win.h, win.x, win.y, win.w, win.h);
+    c.restore();
+  }
+
   /** Brings the working copy up to date where dabs landed since the last call; returns that area, or null. */
   compose(): Rect | null {
     const area = this.pending;
     this.pending = null;
     if (!area) return null;
     const win: Rect = { x: area.x - this.ox, y: area.y - this.oy, w: area.w, h: area.h };   // in the window's pixels (1.60.6)
+    const ink = this.ink ? ctxOf(this.ink).getImageData(win.x, win.y, win.w, win.h).data : null;
+    this.writePaint(win, this.buf.paintRegion(win, this.style.color, this.style.opacity, ink));
     // Coverage: the paint layer, shaped by the dual brush (kept only where its marks fell) and the texture (its tile's
     // alpha cut out, tiled at Scale in document space), then cut to the selection when there is one.
     let coverage: Surface = this.paint;
@@ -529,7 +622,6 @@ export class PixelStroke {
     w.clearRect(x, y, aw, ah);
     if (this.orig) w.drawImage(this.orig, lx - this.ox, ly - this.oy, aw, ah, x, y, aw, ah);   // a tiled layer's, kept (1.62.5)
     else w.drawImage((this.raster as Raster).canvas, lx, ly, aw, ah, x, y, aw, ah);
-    w.globalAlpha = this.style.opacity;
     if (this.lerp) {
       // An alpha-coded mask (white, its level in alpha) should move toward the paint: out = old (1 - c) + paint c. Cut
       // the old value by the coverage, then add the paint already scaled by it ('lighter' adds premultiplied white,
@@ -546,7 +638,7 @@ export class PixelStroke {
   /** The stroke's coverage per layer pixel, 0 to 255, cut to the selection. */
   coverageAlpha(): Uint8Array {
     const w = this.raster.width, h = this.raster.height, s = createSurface(w, h), c = ctxOf(s);
-    c.drawImage(this.paint, this.ox, this.oy);   // the window's paint at its place (1.60.6)
+    c.putImageData(this.buf.coverImage(), this.ox, this.oy);   // the window's coverage at its place (1.60.6)
     if (this.selection) {
       c.globalCompositeOperation = 'destination-in';
       setMat(c, mul(this.toLocal, translation(this.selection.x, this.selection.y)));
@@ -554,6 +646,20 @@ export class PixelStroke {
     }
     const d = c.getImageData(0, 0, w, h).data, out = new Uint8Array(w * h);
     for (let p = 0; p < out.length; p++) out[p] = d[p * 4 + 3];
+    return out;
+  }
+
+  /** The alpha the stroke laid (coverage cut to opacity, 0 to 1) over the layer rectangle x, y, w, h, for the 16-bit
+   *  rebuild; null when anything else shaped the paint (a shape, texture, selection, mask, varied colour, blend mode). */
+  coverFor(x: number, y: number, w: number, h: number): Float32Array | null {
+    if (this.shape || this.texture || this.selection || this.lerp || this.tiled || this.wetInner || this.varied || (this.op !== 'source-over' && this.op !== 'destination-out')) return null;
+    const b = this.buf, out = new Float32Array(w * h), top = levelOf(this.style.opacity) / 255;
+    for (let j = 0; j < h; j++) {
+      for (let i = 0; i < w; i++) {
+        const p = (y + j - this.oy) * b.w + (x + i - this.ox), c = b.cov[p], lim = b.ceil ? b.ceil[p] / 255 : top;
+        out[j * w + i] = c < lim ? c : lim;
+      }
+    }
     return out;
   }
 
@@ -565,6 +671,12 @@ export class PixelStroke {
     giveSurface(this.masked);
     giveSurface(this.textured);
     this.textured = null;
+    giveSurface(this.ink);
+    this.ink = null;
+    this.buf = new StrokeBuffer(1, 1);
+    this.tipA = null;
+    drop(scratch ?? undefined);
+    scratch = null;
     giveSurface(this.dualPaint);
     giveSurface(this.shaped);
     giveSurface(this.wetInner);

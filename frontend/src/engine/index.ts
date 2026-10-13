@@ -180,8 +180,9 @@ export class Engine {
     this.historyLimits = { states: Math.round(clamp(states, 1, 1000)), bytes: this.historyBytesChosen ?? auto };
     for (const p of this.projects) { p.history.entryLimit = this.historyLimits.states; p.history.byteLimit = this.historyLimits.bytes; }
   }
-  /** Pen pressure's effect on the Brush's size and flow; neutral until a preset or the options turn it on. */
-  brushDynamics: BrushDynamics = noDynamics();
+  /** Pen pressure's effect on the Brush's size, flow and opacity; size follows pressure from the start (a mouse presses
+   *  at 1, so it paints as always), flow and opacity until a preset or the options turn them on. */
+  brushDynamics: BrushDynamics = { ...noDynamics(), size: pressureOption(0.1) };
   /** Brush Settings (Window > Brush Settings): tip shape, shape dynamics, scattering, texture and dual brush. */
   brushShape: BrushShape = defaultShape();
   /** The preset last applied, for the options bar; cleared by nothing, since changing a value is Photoshop's way too. */
@@ -3679,7 +3680,7 @@ export class Engine {
     // A large layer's stroke works in a window around where it paints, grown within the budget (1.60.6): it asks room
     // here only for a first window around the brush.
     const lb = this.layerBytes(), first = lb / 4 > strokeWindowFrom() ? Math.min(lb, (this.brush.diameter + 1026) ** 2 * 4) : lb;
-    if (!this.room(first * (p.selection ? 3 : 2) + fresh, 'This stroke')) return false;
+    if (!this.room(first * ((p.selection ? 3 : 2) + 1.25) + fresh, 'This stroke')) return false;
     this.settle();
     if (this.quickMask) return this.beginQuickMaskStroke(p, pt, pressure, pose);   // paints the selection, any layer
     if (!this.paintable(p.activeLayer, true)) { this.notice('Select a pixel layer to paint on.'); return false; }
@@ -3796,7 +3797,8 @@ export class Engine {
     const exact = (this.tool === 'brush' || this.tool === 'pencil' || this.tool === 'eraser') && !this.colourDynamics() && st.project.doc.depth !== 32;
     if (patch && exact && dl?.channels?.mode === 'rgb' && dl.raster === patch.raster) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
-      st.project.updateLayer(st.layerId, { channels: strokeDeep(dl.channels, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fg, this.bg) });
+      const erasing = this.brushMode === 'erase' || this.tool === 'eraser', cover = erasing === (st.s.op === 'destination-out') ? st.s.coverFor(patch.x, patch.y, patch.before.width, patch.before.height) : null;
+      st.project.updateLayer(st.layerId, { channels: strokeDeep(dl.channels, patch.before, after, patch.x, patch.y, erasing ? null : this.fg, this.bg, cover) });
     } else if (patch && exact && dl?.channels?.mode === 'cmyk' && dl.raster === patch.raster && st.project.cmykLut) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
       const r = strokeChannels(dl.channels, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fgInk, this.bgInk, st.project.cmykLut, this.paintChannel);
@@ -5181,6 +5183,17 @@ export class Engine {
         added++;
       }
       return added > 0;
+    });
+  }
+
+  /** A pixel layer's pixels replaced by `img` of the same size, as one history step (Develop's camera profile re-develops
+   *  a RAW file under the layer); false where the sizes differ, the layer has none, or the document is deeper than 8 bits. */
+  redevelopLayer(id: ID, img: ImportedImage, name: string): boolean {
+    return this.edit(name, (p) => {
+      const l = p.layer(id);
+      if (!l?.raster || l.channels || (p.doc.depth ?? 8) !== 8 || l.raster.width !== img.width || l.raster.height !== img.height) return false;
+      p.setLayers(p.doc.layers.map((x) => (x.id === id ? { ...x, raster: Raster.from(img.source, img.width, img.height) } : x)));
+      return true;
     });
   }
 
