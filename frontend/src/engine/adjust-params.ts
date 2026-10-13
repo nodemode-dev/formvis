@@ -8,7 +8,7 @@ import type { RGB } from './types';
  *  Colour Balance weights shadows, midtones and highlights by lightness with the usual overlapping ramps; Selective
  *  Colour weights each pixel by how much it belongs to a colour family and moves its ink, relative or absolute. */
 
-export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop' | 'splitToning' | 'halation' | 'glow';
+export type ParamKind = 'brightnessContrast' | 'vibrance' | 'colorBalance' | 'blackWhite' | 'photoFilter' | 'channelMixer' | 'invert' | 'posterize' | 'threshold' | 'selectiveColor' | 'shadowsHighlights' | 'hdrToning' | 'colorLookup' | 'develop' | 'clarity' | 'dehaze' | 'texture' | 'light' | 'splitToning' | 'halation' | 'glow';
 
 export type ParamSpec =
   | { key: string; label: string; kind: 'range'; min: number; max: number; step: number; def: number; group?: string }
@@ -132,6 +132,23 @@ function cubeSample(c: { size: number; data: Float32Array; min: number[]; max: n
     out[0] += wgt * c.data[idx]; out[1] += wgt * c.data[idx + 1]; out[2] += wgt * c.data[idx + 2];
   }
   return out;
+}
+
+/** A kernel that runs Develop's own math with only the named controls set, so Clarity, Dehaze, Texture and Light are
+ *  small focused layers over the same code. `tone` and `detail` name Develop's controls; `pre` runs first on the pixels.
+ *  The detail radii scale by the render's document units per pixel, so the look is the same at any zoom. */
+function developSlice(tone: Partial<Record<string, number>>, detail: Partial<Record<string, number>>, pre?: (px: Uint8ClampedArray) => void): Kernel {
+  const s = defaultDevelopState();
+  Object.assign(s.tone, tone);
+  Object.assign(s.detail, detail);
+  const idle = Object.values(tone).every((x) => !x) && Object.values(detail).every((x) => !x);
+  return (px, ctx) => {
+    if (!ctx) return;
+    pre?.(px);
+    if (idle) return;
+    const out = developImage(new ImageData(new Uint8ClampedArray(px), ctx.width, ctx.height), s, 1 / Math.max(1e-6, ctx.unitsPerPixel));
+    for (let i = 0; i < px.length; i += 4) { px[i] = out.data[i]; px[i + 1] = out.data[i + 1]; px[i + 2] = out.data[i + 2]; }
+  };
 }
 
 const SELECTIVE = ['reds', 'yellows', 'greens', 'cyans', 'blues', 'magentas', 'whites', 'neutrals', 'blacks'] as const;
@@ -342,6 +359,32 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
         const out = developImage(new ImageData(new Uint8ClampedArray(px), ctx.width, ctx.height), s, 1 / Math.max(1e-6, ctx.unitsPerPixel));
         for (let i = 0; i < px.length; i += 4) { px[i] = out.data[i]; px[i + 1] = out.data[i + 1]; px[i + 2] = out.data[i + 2]; }
       };
+    },
+  },
+  // The four presence and tone layers (31.1), each one slice of Develop's math as its own maskable layer.
+  clarity: {
+    label: 'Clarity',
+    params: [range('clarity', 'Clarity', -100, 100)],
+    kernel: (v) => developSlice({}, { clarity: n(v, 'clarity') }),
+  },
+  dehaze: {
+    label: 'Dehaze',
+    params: [range('dehaze', 'Dehaze', -100, 100)],
+    kernel: (v) => developSlice({ dehaze: n(v, 'dehaze') }, {}),
+  },
+  texture: {
+    label: 'Texture',
+    params: [range('texture', 'Texture', -100, 100)],
+    kernel: (v) => developSlice({}, { texture: n(v, 'texture') }),
+  },
+  light: {
+    label: 'Light',
+    params: [range('brightness', 'Brightness', -100, 100), range('contrast', 'Contrast', -100, 100), range('highlights', 'Highlights', -100, 100), range('shadows', 'Shadows', -100, 100), range('whites', 'Whites', -100, 100), range('blacks', 'Blacks', -100, 100)],
+    kernel: (v) => {
+      // Brightness lifts or lowers the midtones and leaves black and white where they are: x + b * x * (1 - x).
+      const b = n(v, 'brightness') / 100;
+      return developSlice({ contrast: n(v, 'contrast'), highlights: n(v, 'highlights'), shadows: n(v, 'shadows'), whites: n(v, 'whites'), blacks: n(v, 'blacks') }, {},
+        b ? (px) => { for (let i = 0; i < px.length; i += 4) for (let c = 0; c < 3; c++) { const x = px[i + c] / 255; px[i + c] = Math.round(cl(x + b * x * (1 - x)) * 255); } } : undefined);
     },
   },
   // Film looks (1.51.6, the capability plan), each an adjustment layer: split toning; halation (the brightest areas
