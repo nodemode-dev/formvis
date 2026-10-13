@@ -45,6 +45,10 @@ app.include_router(nodemode.router)   # Send to NodeMode, standalone (1.50.8); i
 app.include_router(comfyui.router)   # Send to ComfyUI (1.50.9); its prefix is its own
 app.include_router(llm.router)   # prompt improvement (1.51.5); its prefix is its own
 app.include_router(mcp.router)   # the MCP server at /mcp and the window's bridge (1.52.1)
+from app.routers import commands as _commands  # noqa: E402  (the command catalogue, DEV_PLAN 28.3)
+app.include_router(_commands.router)
+from app.routers import agents as _agents_router  # noqa: E402  (Window > Agent Connect, DEV_PLAN 28.4)
+app.include_router(_agents_router.router)
 app.include_router(plugins.router)   # plugins (1.52.6); its prefix is its own
 app.include_router(large.router)   # pictures larger than formvis edits in one piece (1.52.7)
 from app.routers import native as _native  # noqa: E402  (the native renderer's status, DEV_PLAN 28.6)

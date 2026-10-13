@@ -90,9 +90,12 @@ import { FilmLayerDialog } from './ui/panels/film-layer';
 import { Model3DDialog } from './ui/panels/model3d';
 import { AgentConfirmDialog } from './ui/panels/agent-confirm';
 import { AgentBridge } from './automation/agent-bridge';
+import { attachCatalogue, catalogue } from './automation/catalogue';
 import { setPixelBudget } from './engine/types';
 import { AssistantPanel } from './ui/panels/assistant';
 import { AgentPanel } from './ui/panels/agent-panel';
+import { installAgentConnect } from './ui/panels/agent-connect';
+import { installColorSettings } from './ui/panels/colour-settings-dialog';
 import { TerminalDock } from './ui/terminal-dock';
 import { HelpDialog } from './ui/panels/help';
 import { PluginHost } from './plugins/host';
@@ -235,6 +238,7 @@ export function startApp(): void {
   const errorLog = new ErrorLog((t) => toast(t, 'error'), () => engine.failures);
   errorLog.install();
   const commands = new Commands();
+  installColorSettings(commands, engine);
   const contextMenu = new PopupMenu(commands, null, true);
   // Panel menus (the target's •••): each group's own commands, opened below its button.
   const panelMenu = new PopupMenu(commands, null, true);
@@ -1543,6 +1547,7 @@ export function startApp(): void {
   termDock.onChange = () => { window.dispatchEvent(new Event('resize')); };
   const claudePanel = new AgentPanel(() => { void termDock.sync(); });
   document.body.appendChild(claudePanel.el);
+  installAgentConnect(commands, engine);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
   model3dInput.addEventListener('change', () => { const f = model3dInput.files?.[0]; model3dInput.value = ''; if (f) void model3d.load(f); });
   document.body.appendChild(model3dInput);
@@ -1972,7 +1977,7 @@ export function startApp(): void {
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
-      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', '-', 'shortcuts', 'settings'] },
+      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
@@ -2014,7 +2019,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: ['assistant', 'agent.claude.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+    { label: 'Window', items: ['assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
     { label: 'Help', items: ['help', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
@@ -2259,7 +2264,17 @@ export function startApp(): void {
     : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || (engine.current?.doc.depth === 32 && (!DEEP32_NOT.has(c.id) || passes(c)));
   // Rebound keys (1.53.4), applied once every command is registered.
   for (const [id, keys] of Object.entries(loadPrefs().shortcuts)) commands.setKeys(id, keys);
-  if (import.meta.env.DEV) (window as unknown as { formvis: unknown }).formvis = { engine, commands, actions, animation: dialogs.animation, colour: colourView };
+  attachCatalogue({
+    engine, commands,
+    applyFilter: (kind, settings) => {
+      if (kind === 'average') { engine.averageFill(); return true; }
+      const lib = isLibKind(kind) && !('lib' in settings) ? { lib: { [kind]: settings }, seed: typeof settings.seed === 'number' ? settings.seed : 0 } : settings;
+      return dialogs.filter.applySettings(kind as Parameters<typeof dialogs.filter.applySettings>[0], lib);
+    },
+    applyAdjustment: (kind, data, layer) => dialogs.adjust.applySettings(kind as AdjustmentKind, data as Parameters<typeof dialogs.adjust.applySettings>[1], layer),
+  });
+  (window as unknown as { formvis: unknown }).formvis = { catalogue };
+  if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { engine, commands, actions, animation: dialogs.animation, colour: colourView });
 
   // Session restore (1.52.4): every open document is kept on this device (a copy per document, rewritten when it
   // changes, is saved, or moves library entry) with the tab order and the active tab, and reopens at the next start.

@@ -21,9 +21,11 @@ usage: ./formvis [command] [options]
   doctor              check the toolchain, installs and ports
   test [unit|backend|e2e]  run the tests (all three suites by default)
   counts [--check]    the README's code sizes and blend-mode count (--check: exit 1 if README.md has drifted)
+  counts --commands [--check]  the command catalogue's size and any command without metadata (--check: exit 1 under 620 or while any lacks it)
   bench [--frames N]  time formvis's drawing paths on this computer's real graphics; writes bench-results/ to send back
   verify-local [--small]  run Krea 2 and FLUX.2 [klein] once here (licences and downloads asked first); writes bench-results/
   mcp                 formvis over MCP's stdio transport, for Claude Desktop and other MCP clients
+  cli list|describe|run  the command catalogue of the open window: list [text], describe <id>, run <id> key=value ...
   agents install|sync  set up Claude Code, Codex and Cursor for editing in plain language (install), or refresh the editing skill (sync)
   clean [--all]       remove build output (--all also venv and node_modules)
   help                this text
@@ -56,6 +58,7 @@ case "$cmd" in
   verify-local) exec setup/verify_local "$@" ;;
   mcp) exec python3 setup/mcp_stdio.py "$@" ;;
   agents) exec python3 setup/agents.py "$@" ;;
+  cli) exec python3 setup/cli.py "$@" ;;
   clean) exec setup/clean "$@" ;;
   help|-h|--help) usage ;;
   *) printf '[formvis] unknown command: %s\n\n' "$cmd"; usage; exit 2 ;;

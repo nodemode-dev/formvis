@@ -16,6 +16,8 @@ export interface GenerativeStatus { configured: boolean; source: 'environment' |
 /** A generation provider beside fal (1.58.4, L7): OpenAI, Google, Black Forest Labs or Ideogram. */
 export interface ProviderStatus { id: string; name: string; model: string; fill: boolean; configured: boolean; source: 'environment' | 'settings' | null }
 
+export interface ProfileInfo { name: string; space: string; tac: number | null; blackLimit: number | null; blackAtMid: number | null; generation: string | null }
+
 export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
@@ -232,7 +234,26 @@ export const api = {
   },
   async colourLut(req: { source?: { icc?: string; id?: string } | null; dest?: { icc?: string; id?: string } | null; proof?: { id?: string; icc?: string } | null; intent?: string; proofIntent?: string; bpc?: boolean; gamut?: boolean }): Promise<ColourLut> {
     const r = await request('/color/lut', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(req) });
+    if (Number(r.headers.get('X-In') ?? 3) !== 3 || Number(r.headers.get('X-Out') ?? 3) !== 3) throw new ApiError('This conversion is between ink and RGB profiles; it runs on the pixels, not as an RGB table.', 422);
     return lutFrom(await r.arrayBuffer(), Number(r.headers.get('X-Grid') ?? 33), r.headers.get('X-Gamut') === '1');
+  },
+  /** Convert to Profile and mode changes at 16 bits (DEV_PLAN 28.2): the document's float channels (straight alpha last)
+   *  through LittleCMS in double precision, rounded once; `source` and `dest` are base64 ICC text or `id:` and a listed id.
+   *  `space` is what came back: rgb, cmyk, lab or gray (three equal channels). */
+  async convertDeep(data: Float32Array, width: number, height: number, mode: 'rgb' | 'cmyk' | 'lab', source: string, dest: string, o: { intent?: string; bpc?: boolean; dither?: boolean; bits?: 8 | 16 } = {}): Promise<{ data: Float32Array; space: 'rgb' | 'cmyk' | 'lab' | 'gray' }> {
+    const body = form({ mode, width: String(width), height: String(height), source, dest, intent: o.intent ?? 'relative', bpc: o.bpc === false ? 'false' : 'true', dither: o.dither ? 'true' : 'false', bits: String(o.bits ?? 16) }, [{ name: 'pixels.raw', blob: new Blob([new Float32Array(data)]) }], 'file');
+    const r = await request('/color/convert-deep', { method: 'POST', body });
+    return { data: new Float32Array(await r.arrayBuffer()), space: (r.headers.get('X-Space') ?? 'rgb') as 'rgb' | 'cmyk' | 'lab' | 'gray' };
+  },
+  /** A profile's own facts for Color Settings: total ink, black ink and black generation of a CMYK profile (percent). */
+  async profileInfo(profile: { icc?: string; id?: string } | null): Promise<ProfileInfo> {
+    const r = await request('/color/profile-info', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ profile }) });
+    return (await r.json()) as ProfileInfo;
+  },
+  /** A DPX film scan (DEV_PLAN 28.2) from RGBA at 16 bits a channel, sRGB encoded: its bit depth and transfer written. */
+  async encodeDpx(data: Uint16Array, width: number, height: number, o: { bits?: 8 | 10 | 12 | 16; transfer?: 'linear' | 'density' | 'log'; bigEndian?: boolean; name?: string } = {}): Promise<Blob> {
+    const body = form({ width: String(width), height: String(height), bits: String(o.bits ?? 10), transfer: o.transfer ?? 'log', big_endian: o.bigEndian === false ? 'false' : 'true', name: o.name ?? '' }, [{ name: 'pixels.raw', blob: new Blob([new Uint16Array(data)]) }], 'file');
+    return (await request('/io/encode-dpx', { method: 'POST', body })).blob();
   },
   /** CMYK documents (1.54.0, H1): the display table from a CMYK profile (base64 ICC or a listed id). */
   async cmykLut(profile: { icc?: string; id?: string }): Promise<Lut4> {

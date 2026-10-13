@@ -3,6 +3,8 @@
 
   python3 setup/line_counts.py            print the Stack sentence for README.md
   python3 setup/line_counts.py --check    exit 1 if README.md's figures have drifted from the code
+  python3 setup/line_counts.py --commands [--check]   the command catalogue's size and any command or tool without metadata
+                                          (--check: exit 1 while one exists or the size is under 620)
 
 Counted: product code tracked by git, tests excluded: TypeScript and CSS under frontend/src, Python under backend/app
 and backend/formvis_engine.py, Rust under src-tauri/src and native (the native renderer, from 1.44.0). Figures are rounded to hundreds; a figure passes the check within
@@ -12,9 +14,12 @@ equal the entries of BLEND_MODES in frontend/src/engine/types.ts.
 
 from __future__ import annotations
 
+import json
+import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -94,7 +99,41 @@ def scrollbar_problems(root: Path = ROOT) -> list[str]:
     return problems
 
 
+MIN_COMMANDS = 620
+
+
+def catalogue_file() -> Path:
+    raw = os.environ.get("FORMVIS_DATA_DIR")
+    return (Path(raw).expanduser() if raw else Path.home() / "Formvis") / "commands-catalogue.json"
+
+
+def commands_main(strict: bool) -> int:
+    """The command catalogue's size (DEV_PLAN 28.3) and what lacks metadata. The window builds the catalogue from its live
+    registry (generated commands, every tool and tool option included) and the engine keeps the last copy it was sent in
+    the data folder; that file is the count, since the ids are not all written out in source. Open formvis once (./formvis
+    boot) after changing commands, then run this."""
+    path = catalogue_file()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        print(f"No catalogue at {path}: start formvis (./formvis boot), open its window, wait a few seconds, then run this again.")
+        return 1 if strict else 0
+    size, missing = len(data.get("commands", [])), data.get("missing", [])
+    kinds: dict[str, int] = {}
+    for c in data.get("commands", []):
+        kinds[c.get("kind", "command")] = kinds.get(c.get("kind", "command"), 0) + 1
+    print(f"Command catalogue: {size} ids ({', '.join(f'{n} {k}' for k, n in sorted(kinds.items()))}), mirrored from the window at {time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(data.get('at', 0)))}")
+    for m in missing:
+        print(f"no metadata: {m}")
+    problems = len(missing) + (1 if size < MIN_COMMANDS else 0)
+    if size < MIN_COMMANDS:
+        print(f"The catalogue has {size} ids; at least {MIN_COMMANDS} are required.")
+    return 1 if strict and problems else 0
+
+
 if __name__ == "__main__":
+    if "--commands" in sys.argv:
+        sys.exit(commands_main("--check" in sys.argv))
     if "--check" in sys.argv:
         found = check()
         for p in found:
