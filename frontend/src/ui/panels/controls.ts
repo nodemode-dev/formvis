@@ -3,49 +3,54 @@ import { el, q, setChecked, setText, setValue } from '../dom';
 
 export interface Row<T> { el: HTMLElement; set(v: T): void }
 
-export const fmt = (v: number): string => String(Math.round(v * 1000) / 1000);
+export const fmt = (v: number): string => String(Number(v.toFixed(3)));
 
 export function sliderRow(label: string, min: number, max: number, step: number, onInput: (v: number) => void, limits: { min?: number; max?: number } = {}): Row<number> {
   const lo = limits.min ?? min, hi = limits.max ?? max;
-  const node = el(`<div class="cv-field cv-slider"><span></span><div class="cv-slider-ctl"><input type="range" min="${min}" max="${max}" step="${step}"><input class="cv-num" type="number" min="${lo}" max="${hi}" step="${step}"></div></div>`);
-  setText(q(node, 'span'), label);
-  const range = q<HTMLInputElement>(node, 'input[type="range"]');
-  const box = q<HTMLInputElement>(node, 'input[type="number"]');
+  const root = el(`<div class="cv-field cv-slider"><span></span><div class="cv-slider-ctl"><input type="range" min="${min}" max="${max}" step="${step}"><input class="cv-num" type="number" min="${lo}" max="${hi}" step="${step}"></div></div>`);
+  setText(q(root, 'span'), label);
+  const range = q(root, 'input[type="range"]') as HTMLInputElement;
+  const box = q(root, 'input.cv-num') as HTMLInputElement;
   range.setAttribute('aria-label', label); box.setAttribute('aria-label', `${label} value`);   // named for assistive technology (1.53.4)
-  range.addEventListener('input', () => { const v = Number(range.value); setValue(box, fmt(v)); onInput(v); });
-  box.addEventListener('change', () => {
-    const v = clamp(Number(box.value), lo, hi);
-    if (!Number.isFinite(v)) return;
+  range.addEventListener('input', () => {
+    const v = range.valueAsNumber;
     box.value = fmt(v);
-    setValue(range, String(v));
+    onInput(v);
+  });
+  box.addEventListener('change', () => {
+    const raw = box.valueAsNumber;
+    if (!Number.isFinite(raw)) return;
+    const v = clamp(raw, lo, hi);
+    box.value = fmt(v);
+    range.value = String(v);
     onInput(v);
   });
   box.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); box.blur(); } });
-  return { el: node, set: (v) => { setValue(range, String(v)); setValue(box, fmt(v)); } };
+  return { el: root, set(v) { range.value = String(v); setValue(box, fmt(v)); } };
 }
 
 export function selectRow(label: string, options: ReadonlyArray<readonly [string, string]>, onChange: (v: string) => void): Row<string> {
-  const node = el(`<label class="cv-field"><span></span><select class="cv-input">${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`);
-  setText(q(node, 'span'), label);
-  const sel = q<HTMLSelectElement>(node, 'select');
+  const root = el(`<label class="cv-field"><span></span><select class="cv-input">${options.map(([v, t]) => `<option value="${v}">${t}</option>`).join('')}</select></label>`);
+  setText(q(root, 'span'), label);
+  const sel = q(root, 'select') as HTMLSelectElement;
   sel.addEventListener('change', () => onChange(sel.value));
-  return { el: node, set: (v) => setValue(sel, v) };
+  return { el: root, set(v) { if (sel.value !== v) sel.value = v; } };
 }
 
 export function checkRow(label: string, onChange: (v: boolean) => void): Row<boolean> {
-  const node = el('<label class="cv-field cv-check"><span></span><input type="checkbox"></label>');
-  setText(q(node, 'span'), label);
-  const box = q<HTMLInputElement>(node, 'input');
+  const root = el('<label class="cv-field cv-check"><span></span><input type="checkbox"></label>');
+  setText(q(root, 'span'), label);
+  const box = q(root, 'input') as HTMLInputElement;
   box.addEventListener('change', () => onChange(box.checked));
-  return { el: node, set: (v) => setChecked(box, v) };
+  return { el: root, set(v) { setChecked(box, v); } };
 }
 
 export function colorRow(label: string, onChange: (hex: string) => void): Row<string> {
-  const node = el('<label class="cv-field"><span></span><input class="cv-input cv-color" type="color"></label>');
-  setText(q(node, 'span'), label);
-  const input = q<HTMLInputElement>(node, 'input');
-  input.addEventListener('input', () => onChange(input.value));
-  return { el: node, set: (v) => setValue(input, v) };
+  const root = el('<label class="cv-field"><span></span><input class="cv-input cv-color" type="color"></label>');
+  setText(q(root, 'span'), label);
+  const inp = q(root, 'input') as HTMLInputElement;
+  inp.addEventListener('input', () => onChange(inp.value));
+  return { el: root, set(v) { setValue(inp, v); } };
 }
 
 export function matrixRow(label: string, size: number, min: number, max: number, onInput: (v: number[]) => void): Row<number[]> {
@@ -64,9 +69,9 @@ export function matrixRow(label: string, size: number, min: number, max: number,
 }
 
 export function numberRow(label: string, min: number, max: number, step: number, onChange: (v: number) => void): Row<number> & { input: HTMLInputElement } {
-  const node = el(`<label class="cv-field"><span></span><input class="cv-input" type="number" min="${min}" max="${max}" step="${step}"></label>`);
-  setText(q(node, 'span'), label);
-  const input = q<HTMLInputElement>(node, 'input');
-  input.addEventListener('input', () => { const v = Number(input.value); if (Number.isFinite(v)) onChange(v); });
-  return { el: node, input, set: (v) => setValue(input, fmt(v)) };
+  const root = el(`<label class="cv-field"><span></span><input class="cv-input" type="number" min="${min}" max="${max}" step="${step}"></label>`);
+  setText(q(root, 'span'), label);
+  const input = q(root, 'input') as HTMLInputElement;
+  input.addEventListener('input', () => { const v = input.valueAsNumber; if (Number.isFinite(v)) onChange(v); });
+  return { el: root, input, set(v) { setValue(input, fmt(v)); } };
 }

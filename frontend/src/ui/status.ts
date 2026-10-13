@@ -26,8 +26,8 @@ export class StatusBar {
     this.hint = q(root, '.cv-st-hint');
     for (const k of ['viewport', 'projects'] as const) engine.on(k, () => this.syncView());
     for (const k of ['tool', 'options'] as const) engine.on(k, () => this.syncHint());
-    engine.on('busy', (on) => {
-      if (on) this.dismiss = pendingClass(this.busy);
+    engine.on('busy', (on: boolean) => {
+      if (on) { if (!this.dismiss) this.dismiss = pendingClass(this.busy); }
       else { this.dismiss?.(); this.dismiss = null; }
     });
     this.syncView();
@@ -51,7 +51,7 @@ export class StatusBar {
 
   private syncView(): void {
     const p = this.engine.current;
-    setText(this.zoom, p ? `${Math.round(p.viewport.zoom * 1000) / 10}%` : '');
+    setText(this.zoom, p ? `${Number((p.viewport.zoom * 100).toFixed(1))}%` : '');
     setText(this.dims, p ? `${p.doc.width} \u00d7 ${p.doc.height} px` : '');
   }
 

@@ -3,24 +3,30 @@ import { el, patchList, q, setClass, setStyleVar, setText, setTitle } from './do
 import { icon } from './icons';
 
 export class Tabs {
-  private frame = 0;
+  private frame = 0;                       // a pending animation frame
   private activeId: string | null = null;
 
   constructor(private readonly strip: HTMLElement, private readonly engine: Engine, private readonly requestClose: (id: string) => void) {
-    for (const k of ['projects', 'history'] as const) engine.on(k, () => this.queue());
+    engine.on('projects', () => this.queue());
+    engine.on('history', () => this.queue());
+    const tabOf = (e: Event): HTMLElement | null => (e.target as HTMLElement).closest<HTMLElement>('.cv-tab[data-key]');
     strip.addEventListener('pointerdown', (e) => {
-      const tab = (e.target as HTMLElement).closest<HTMLElement>('.cv-tab');
-      if (!tab?.dataset.key) return;
-      if ((e.target as HTMLElement).closest('.cv-tab-close')) return;
-      if (e.button === 0) engine.switchTo(tab.dataset.key);
+      if (e.button !== 0) return;
+      const t = tabOf(e);
+      if (!t || (e.target as HTMLElement).closest('.cv-tab-close')) return;
+      this.engine.switchTo(t.dataset.key as string);
     });
     strip.addEventListener('auxclick', (e) => {
-      const tab = (e.target as HTMLElement).closest<HTMLElement>('.cv-tab');
-      if (e.button === 1 && tab?.dataset.key) { e.preventDefault(); requestClose(tab.dataset.key); }
+      if (e.button !== 1) return;
+      const t = tabOf(e);
+      if (!t) return;
+      e.preventDefault();
+      this.requestClose(t.dataset.key as string);
     });
     strip.addEventListener('click', (e) => {
-      const tab = (e.target as HTMLElement).closest<HTMLElement>('.cv-tab');
-      if (tab?.dataset.key && (e.target as HTMLElement).closest('.cv-tab-close')) requestClose(tab.dataset.key);
+      if (!(e.target as HTMLElement).closest('.cv-tab-close')) return;
+      const t = tabOf(e);
+      if (t) this.requestClose(t.dataset.key as string);
     });
     this.render();
   }
@@ -43,6 +49,7 @@ export class Tabs {
       key: (p) => p.id,
       create: (p) => {
         const n = el(`<div class="cv-tab" role="tab"><span class="cv-tab-dot"></span><span class="cv-tab-name"></span><span class="cv-tab-mode" title="RGB, 8 bits a channel">RGB/8</span><button class="cv-tab-close" type="button" aria-label="Close tab">${icon('close', 12)}</button></div>`);
+        n.dataset.key = p.id;
         this.update(n, p, current);
         return n;
       },
@@ -62,11 +69,11 @@ export class Tabs {
       }
       if (moved.length) requestAnimationFrame(() => { for (const n of moved) { setClass(n, 'is-settling', true); setStyleVar(n, '--flip-x', '0px'); } });
     }
-    const id = current?.id ?? null;
-    if (id !== this.activeId) {
-      this.activeId = id;
-      const n = id ? this.strip.querySelector<HTMLElement>(`[data-key="${id}"]`) : null;
-      n?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    // Keep the tab of the current document in view when it changes.
+    if ((current?.id ?? null) !== this.activeId) {
+      this.activeId = current?.id ?? null;
+      const t = this.activeId ? this.strip.querySelector<HTMLElement>(`.cv-tab[data-key="${this.activeId}"]`) : null;
+      t?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     }
   }
 
@@ -78,9 +85,11 @@ export class Tabs {
     setText(mEl, { rgb: `RGB/${bits}`, grayscale: `Gray/${bits}`, bitmap: 'Bitmap/1', indexed: 'Index', cmyk: `CMYK/${bits}`, lab: `Lab/${bits}` }[md]);
     const tip = { rgb: 'RGB, 8 bits a channel', grayscale: 'Grayscale, 8 bits', bitmap: 'Bitmap, 1 bit', indexed: `Indexed Color, ${p.doc.palette?.length ?? 0} colours`, cmyk: `CMYK, 8 bits a channel, ${p.doc.profile?.name ?? 'no profile'}`, lab: 'Lab, D50, held as floats' }[md];
     if (mEl.getAttribute('title') !== tip) mEl.setAttribute('title', tip);
-    setClass(n, 'is-active', p === current);
-    setClass(n, 'is-dirty', p.modified);
-    n.setAttribute('aria-selected', String(p === current));
+    const active = !!current && p.id === current.id;
+    setClass(n, 'is-active', active);
+    setClass(n, 'is-dirty', !!p.modified);
+    const sel = active ? 'true' : 'false';
+    if (n.getAttribute('aria-selected') !== sel) n.setAttribute('aria-selected', sel);
     setTitle(n, p.libraryName ? `${p.name} · saved in the library` : `${p.name} · not saved yet`);
   }
 }

@@ -4,16 +4,18 @@ import { Dialog } from '../dialogs';
 import { el, setHidden } from '../dom';
 import { selectRow, sliderRow } from './controls';
 
-/** the Remove Background panel: the model's subject mask, as it comes (Basic) or refined against the layer's
- *  own detail (Advanced: Refine, Contrast, Shift Edge), previewed on the layer and laid down as a layer mask on OK.
- *  The settings carry over from one use to the next. */
+/**
+ * The Remove Background panel. Basic uses the model's subject mask as it comes; Advanced refines it against the
+ * layer's own detail, with Refine, Contrast and Shift Edge. The result is previewed on the layer and laid down as
+ * a layer mask on OK. The settings carry over from one use to the next.
+ */
 export class BackgroundPanel extends Dialog {
   private readonly settings: MatteSettings = { ...DEFAULT_MATTE };
   private layerId: ID | null = null;
-  private mask: ImageBitmap | null = null;
-  private done = false;
-  private queued = false;
-  private readonly quality = selectRow('Quality', [['basic', 'Basic'], ['advanced', 'Advanced']], (v) => { this.settings.quality = v === 'advanced' ? 'advanced' : 'basic'; this.sync(); this.preview(); });
+  private mask: ImageBitmap | null = null;   // the model's bitmap
+  private done = false;                      // OK was pressed
+  private queued = false;                    // a preview is waiting for a frame
+  private readonly quality = selectRow('Quality', [['basic', 'Basic'], ['advanced', 'Advanced']], (v) => { this.settings.quality = v as MatteSettings['quality']; this.sync(); this.preview(); });
   private readonly refine = sliderRow('Refine (px)', 0, 40, 1, (v) => { this.settings.refineEdges = v; this.preview(); });
   private readonly contrast = sliderRow('Contrast (%)', 0, 100, 1, (v) => { this.settings.matteContrast = v; this.preview(); });
   private readonly shift = sliderRow('Shift Edge (px)', -10, 10, 1, (v) => { this.settings.shiftEdge = v; this.preview(); });
@@ -28,10 +30,10 @@ export class BackgroundPanel extends Dialog {
     this.button('OK', 'primary', () => this.commit());
   }
 
-  /** Opens on the active layer with the model's raw mask for its pixels; the panel owns the bitmap from here. */
+  /** Open for a layer with the model's mask; a request for a layer that is no longer active releases the bitmap. */
   show(layerId: ID, mask: ImageBitmap): void {
     if (this.isOpen || this.engine.activeLayer?.id !== layerId) { mask.close(); return; }
-    if (this.engine.current?.maskTarget) this.engine.setMaskTarget(false);
+    this.engine.setMaskTarget(false);
     this.layerId = layerId;
     this.mask = mask;
     this.done = false;
@@ -64,6 +66,7 @@ export class BackgroundPanel extends Dialog {
     super.close();
   }
 
+  /** The refinement rows belong to Advanced only. */
   private sync(): void {
     const advanced = this.settings.quality === 'advanced';
     setHidden(this.refine.el, !advanced);
@@ -71,13 +74,15 @@ export class BackgroundPanel extends Dialog {
     setHidden(this.shift.el, !advanced);
   }
 
-  /** The refined mask for pixels at `src`'s size, which is the layer's own size times `scale`. */
+  /** The matte for an image of `src`'s size: the model's bitmap, refined against the image's own detail. */
   private matte(src: ImageData, scale: number): Float32Array | null {
     if (!this.mask) return null;
-    const s = createSurface(src.width, src.height), c = ctxOf(s);
+    const w = src.width, h = src.height;
+    const surface = createSurface(w, h), c = ctxOf(surface);
+    c.imageSmoothingEnabled = true;
     c.imageSmoothingQuality = 'high';
-    c.drawImage(this.mask, 0, 0, src.width, src.height);
-    return refineMatte(levelsOf(c.getImageData(0, 0, src.width, src.height), false), levelsOf(src, true), src.width, src.height, this.settings, scale);
+    c.drawImage(this.mask, 0, 0, w, h);
+    return refineMatte(levelsOf(c.getImageData(0, 0, w, h), false), levelsOf(src, true), w, h, this.settings, scale);
   }
 
   private preview(): void {
@@ -87,19 +92,20 @@ export class BackgroundPanel extends Dialog {
       this.queued = false;
       if (!this.isOpen || !this.layerId) return;
       this.engine.previewImageEdit((src, scale) => {
-        const m = this.matte(src, scale), out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
-        if (m) for (let i = 0; i < m.length; i++) out.data[i * 4 + 3] = Math.round(out.data[i * 4 + 3] * m[i]);
+        const out = new ImageData(new Uint8ClampedArray(src.data), src.width, src.height);
+        const m = this.matte(src, scale);
+        if (m) for (let i = 0, n = src.width * src.height; i < n; i++) out.data[i * 4 + 3] = Math.round(out.data[i * 4 + 3] * m[i]);
         return out;
       });
     });
   }
 
   private commit(): void {
-    const id = this.layerId, info = this.engine.targetImage();
-    const m = id && info && info.layerId === id ? this.matte(info.image, 1) : null;
+    const t = this.engine.targetImage();
+    const m = t && t.layerId === this.layerId ? this.matte(t.image, 1) : null;
     this.done = true;
     this.engine.setPreview(null);
-    if (id && info && m) this.engine.applySubjectMask(id, m, info.width, info.height);
+    if (t && m && this.layerId) this.engine.applySubjectMask(this.layerId, m, t.width, t.height);
     this.close();
   }
 }

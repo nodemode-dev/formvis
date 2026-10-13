@@ -4,38 +4,45 @@ import { el, setClass, setText } from '../dom';
 import { toast } from '../toast';
 import { checkRow, numberRow, selectRow } from './controls';
 
+/** The units a size can be typed in. */
 type Unit = 'px' | 'pct' | 'in' | 'cm';
-const UNITS = [['px', 'Pixels'], ['pct', 'Percent'], ['in', 'Inches'], ['cm', 'Centimeters']] as const;
-const toPx = (v: number, unit: Unit, base: number, res: number): number => (unit === 'px' ? v : unit === 'pct' ? (v * base) / 100 : unit === 'in' ? v * res : (v * res) / 2.54);
-const fromPx = (px: number, unit: Unit, base: number, res: number): number => (unit === 'px' ? px : unit === 'pct' ? (px / base) * 100 : unit === 'in' ? px / res : (px / res) * 2.54);
-const tidy = (v: number, unit: Unit): number => (unit === 'px' ? Math.round(v) : Math.round(v * 100) / 100);
-const enterTo = (input: HTMLInputElement, run: () => void): void => input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
+const UNITS: ReadonlyArray<readonly [string, string]> = [['px', 'Pixels'], ['pct', 'Percent'], ['in', 'Inches'], ['cm', 'Centimeters']];
+/** A value in `unit` to pixels; `base` is the side it is a percentage of, `res` the pixels per inch. */
+const toPx = (v: number, unit: Unit, base: number, res: number): number => unit === 'pct' ? base * v / 100 : unit === 'in' ? v * res : unit === 'cm' ? v * res / 2.54 : v;
+/** Pixels back to `unit`, the inverse of toPx. */
+const fromPx = (px: number, unit: Unit, base: number, res: number): number => unit === 'pct' ? px / base * 100 : unit === 'in' ? px / res : unit === 'cm' ? px * 2.54 / res : px;
+/** Whole numbers for pixels, two decimals for the rest. */
+const tidy = (v: number, unit: Unit): number => unit === 'px' ? Math.round(v) : Math.round(v * 100) / 100;
+/** Run `run` when Enter is pressed in the input, without the key's default. */
+const enterTo = (input: HTMLInputElement, run: () => void): void => {
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); run(); } });
+};
 
 export class CanvasSizeDialog extends Dialog {
   /** Called when the canvas is resized, for Actions to record it. */
   onApplied: ((v: { w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW: number; fromH: number }) => void) | null = null;
   private unit: Unit = 'px';
-  private anchor = 4;
+  private anchor = 4;   // 0 to 8, row by row from the top-left; 4 is the middle
   private w = 1;
   private h = 1;
   private readonly note = el('<p class="cv-note"></p>');
   private readonly width = numberRow('Width', 0, 30000, 1, (v) => { this.w = this.px(v, true); });
   private readonly height = numberRow('Height', 0, 30000, 1, (v) => { this.h = this.px(v, false); });
   private readonly units = selectRow('Units', UNITS, (v) => { this.unit = v as Unit; this.fields(); });
-  private readonly fill = selectRow('Extension', [['none', 'Transparent'], ['fg', 'Foreground color'], ['bg', 'Background color'], ['white', 'White'], ['black', 'Black']], () => undefined);
+  private readonly fill = selectRow('Extension', [['none', 'Transparent'], ['fg', 'Foreground color'], ['bg', 'Background color'], ['white', 'White'], ['black', 'Black']], () => {});
   private readonly anchors: HTMLButtonElement[] = [];
 
   constructor(private readonly engine: Engine) {
     super('Canvas Size', 420);
     const grid = el('<div class="cv-anchor-grid" role="group" aria-label="Anchor"></div>');
     for (let i = 0; i < 9; i++) {
-      const b = el<HTMLButtonElement>(`<button type="button" aria-label="Anchor ${i + 1}"></button>`);
+      const b = el(`<button type="button" class="cv-anchor" aria-label="Anchor ${i + 1}"></button>`) as HTMLButtonElement;
       b.addEventListener('click', () => { this.anchor = i; this.syncAnchor(); });
-      grid.appendChild(b);
       this.anchors.push(b);
+      grid.append(b);
     }
     const anchorRow = el('<div class="cv-field"><span>Anchor</span></div>');
-    anchorRow.appendChild(grid);
+    anchorRow.append(grid);
     this.body.append(this.note, this.width.el, this.height.el, this.units.el, anchorRow, this.fill.el);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
@@ -44,13 +51,13 @@ export class CanvasSizeDialog extends Dialog {
   }
 
   show(): void {
-    const p = this.engine.current;
-    if (!p || this.isOpen) return;
-    this.w = p.doc.width;
-    this.h = p.doc.height;
+    const d = this.engine.current?.doc;
+    if (!d || this.isOpen) return;
+    this.w = d.width;
+    this.h = d.height;
     this.unit = 'px';
     this.anchor = 4;
-    setText(this.note, `Current size: ${p.doc.width} \u00d7 ${p.doc.height} px`);
+    setText(this.note, `Current size: ${d.width} × ${d.height} px`);
     this.units.set('px');
     this.fill.set('none');
     this.fields();
@@ -59,27 +66,29 @@ export class CanvasSizeDialog extends Dialog {
     this.width.input.select();
   }
 
+  /** A value in the current unit as whole pixels along one side. */
   private px(v: number, horizontal: boolean): number {
-    const p = this.engine.current;
-    if (!p) return 1;
-    return Math.round(toPx(v, this.unit, horizontal ? p.doc.width : p.doc.height, p.doc.resolution || 72));
+    const d = this.engine.current?.doc;
+    if (!d) return 1;
+    return clamp(Math.round(toPx(v, this.unit, horizontal ? d.width : d.height, d.resolution || 72)), 1, 30000);
   }
 
+  /** Show the stored size in the current unit. */
   private fields(): void {
-    const p = this.engine.current;
-    if (!p) return;
-    const res = p.doc.resolution || 72;
-    this.width.set(tidy(fromPx(this.w, this.unit, p.doc.width, res), this.unit));
-    this.height.set(tidy(fromPx(this.h, this.unit, p.doc.height, res), this.unit));
+    const d = this.engine.current?.doc;
+    const res = d?.resolution || 72;
+    this.width.set(tidy(fromPx(this.w, this.unit, d?.width ?? this.w, res), this.unit));
+    this.height.set(tidy(fromPx(this.h, this.unit, d?.height ?? this.h, res), this.unit));
   }
 
   private syncAnchor(): void { this.anchors.forEach((b, i) => setClass(b, 'is-active', i === this.anchor)); }
 
   private apply(): void {
-    const p = this.engine.current;
-    if (!p) return;
-    const W = this.w, H = this.h, w0 = p.doc.width, h0 = p.doc.height;
-    const dx = Math.floor(((W - w0) * (this.anchor % 3)) / 2), dy = Math.floor(((H - h0) * Math.floor(this.anchor / 3)) / 2);
+    const doc = this.engine.current?.doc;
+    if (!doc) return;
+    const W = this.w, H = this.h;
+    const dx = Math.floor((this.anchor % 3) * (W - doc.width) / 2);
+    const dy = Math.floor(Math.floor(this.anchor / 3) * (H - doc.height) / 2);
     const choice = this.fill.el.querySelector('select')?.value ?? 'none';
     const colors: Record<string, RGB | null> = { none: null, fg: this.engine.fg, bg: this.engine.bg, white: { r: 255, g: 255, b: 255 }, black: { r: 0, g: 0, b: 0 } };
     const fromW = this.engine.current?.doc.width ?? W, fromH = this.engine.current?.doc.height ?? H;
@@ -114,13 +123,13 @@ export class ImageSizeDialog extends Dialog {
   }
 
   show(): void {
-    const p = this.engine.current;
-    if (!p || this.isOpen) return;
-    this.w = p.doc.width;
-    this.h = p.doc.height;
-    this.res = p.doc.resolution || 72;
+    const d = this.engine.current?.doc;
+    if (!d || this.isOpen) return;
+    this.w = d.width;
+    this.h = d.height;
+    this.res = d.resolution || 72;
     this.unit = 'px';
-    setText(this.note, `Current size: ${p.doc.width} \u00d7 ${p.doc.height} px at ${this.res} ppi`);
+    setText(this.note, `Current size: ${d.width} × ${d.height} px at ${this.res} ppi`);
     this.units.set('px');
     this.resolution.set(this.res);
     this.lock.set(this.constrain);
@@ -130,20 +139,21 @@ export class ImageSizeDialog extends Dialog {
     this.width.input.select();
   }
 
+  /** A typed size in the current unit becomes whole pixels; the other side follows when proportions are held. */
   private setSize(v: number, horizontal: boolean): void {
-    const p = this.engine.current;
-    if (!p) return;
-    const px = Math.round(toPx(v, this.unit, horizontal ? p.doc.width : p.doc.height, this.res));
-    if (horizontal) { this.w = px; if (this.constrain) this.h = Math.max(1, Math.round((px * p.doc.height) / p.doc.width)); }
-    else { this.h = px; if (this.constrain) this.w = Math.max(1, Math.round((px * p.doc.width) / p.doc.height)); }
+    const d = this.engine.current?.doc;
+    if (!d) return;
+    const px = Math.max(1, Math.round(toPx(v, this.unit, horizontal ? d.width : d.height, this.res)));
+    if (horizontal) { this.w = px; if (this.constrain) this.h = Math.max(1, Math.round(px * d.height / d.width)); }
+    else { this.h = px; if (this.constrain) this.w = Math.max(1, Math.round(px * d.width / d.height)); }
     this.fields();
   }
 
+  /** Show the stored size in the current unit, at this dialog's resolution. */
   private fields(): void {
-    const p = this.engine.current;
-    if (!p) return;
-    this.width.set(tidy(fromPx(this.w, this.unit, p.doc.width, this.res), this.unit));
-    this.height.set(tidy(fromPx(this.h, this.unit, p.doc.height, this.res), this.unit));
+    const d = this.engine.current?.doc;
+    this.width.set(tidy(fromPx(this.w, this.unit, d?.width ?? this.w, this.res), this.unit));
+    this.height.set(tidy(fromPx(this.h, this.unit, d?.height ?? this.h, this.res), this.unit));
   }
 
   private apply(): void {
@@ -196,7 +206,7 @@ export class FitImageDialog extends Dialog {
 
 export class AmountDialog extends Dialog {
   private expand = true;
-  private readonly amount = numberRow('Amount (px)', 1, 500, 1, () => undefined);
+  private readonly amount = numberRow('Amount (px)', 1, 500, 1, () => {});
 
   constructor(private readonly engine: Engine) {
     super('Expand Selection', 360);
