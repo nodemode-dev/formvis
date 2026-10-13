@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Settings, sessions, decoding, background removal and the io and ops routes rewritten from behaviour specs, DEV_PLAN 28.0 batch 26b · _v1.67.3 (app/core/config.py, app/services/sessions.py, imaging.py, background.py; app/routers/io.py, ops.py)
+
+Batch 26 was first specced with line-by-line notes and came back mostly identical, so it was not placed. `cleanroom/batch-26b-engine-service-core-gapfill.md` states interfaces exactly (names, routes, status codes, headers, environment variables, messages) and the rest as behaviour, for a new implementer. None of the gaps written from behaviour came back identical; constants, imports, route decorators and the capabilities keys match, as they must. `sessions.py` as one whole-file write, the rest as single-region edits. Behaviour changes: an export name sent with a Windows path keeps only the file name (in the CHANGELOG); the light background engine's inset rounds down rather than to nearest (at most a pixel of the working copy), and GrabCut now receives RGB rather than BGR, which its colour models treat alike. Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: the engine tests fail only where the unchanged tree fails (seven: the LaMa, upscale and SAM models are absent here, and this OpenCV has no EXR codec). Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.67.2"
+version = "1.67.2"
+version = "1.67.2"
+ "version": "1.67.2",
+```
+
 ## Version only · _v1.67.2
 
 No engine code changed in 1.67.2 (DEV_PLAN 28.0 batches 22 and 23 are in the window). Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

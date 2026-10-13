@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Engine types and algorithms, the engine client, project masks and the Filter dialog rewritten from behaviour specs, DEV_PLAN 28.0 batches 24b and 25b · _v1.67.3 (engine/types.ts, kernels.ts, matte.ts, stroke.ts, distort.ts, retouch.ts, filter-jobs.ts, filter-worker.ts; io/api.ts, images.ts, project-io.ts; ui/panels/filter-panel.ts)
+
+Batches 24 and 25 were first specced with line-by-line notes and came back mostly identical to the old lines, so they were not placed (the planning sidecar's provenance audit, § Similarity check). Specs `cleanroom/batch-24b-engine-math-gapfill.md` and `batch-25b-io-filter-panel-gapfill.md` state interfaces exactly and everything else as behaviour, with new implementers who had not seen the first notes. Gaps written from behaviour notes now differ from the old lines; gaps fixed by an interface (signatures, field lists, imports), by the names the following lines read, or by the canvas calls around them still match, as they must. Review feedback: one declaration (the Transform fields) and one measured behaviour (the warp's output must span its bounds exactly, which brought that loop back to the only form that does). Not placed, because each changed behaviour: the Filter dialog's reopen guard, a guessed second shape for the library list, and the size of a stored mask with no pixels. Placed as single-region edits. Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; brush, filter, liquify, warp, wand, Select Subject, project, library, export and mask browser tests pass but for two giant-document tests that fail here on the unchanged tree (`test_tiled_filter`, `test_tiled_project`). Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.67.2",
+      "version": "1.67.2",
+  "version": "1.67.2",
+export const VERSION = '1.67.2';
+```
+
 ## Commands, dialogs, menus, the options bar, the rail's colour well and the host link rewritten by gap fill, DEV_PLAN 28.0 batches 22 and 23 · _v1.67.2 (ui/commands.ts, dialogs.ts, menu.ts, options.ts, rail.ts; host.ts)
 
 Specs `cleanroom/batch-22-dialogs-menus-commands-gapfill.md` and `batch-23-options-rail-host-gapfill.md`, each with a zero-flash house-rules section for the implementer. commands.ts and dialogs.ts as one whole-file write each (the Unsaved Changes dialog, written after the reference period, kept as it was); menu.ts, options.ts, rail.ts and host.ts as single-region edits. Batch 23: 36 gaps, 20 identical (imports, braces, constructor and field declarations, the host's interface and post) and left, 16 placed by hand; two doc comments the implementer put on the declaration's own line were moved above it, and the range row's number box keeps clamping an emptied entry to the minimum as before. Behaviour change, recorded as a fix in the CHANGELOG: the swatch check rounds channels before comparing with the computed style. Removed code: the earlier lines are not quoted, by the Phase 13 rule.

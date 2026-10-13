@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.67.3 · 2026-10-13
+
+### Changed
+
+- More of formvis is new code written independently from a behaviour description, behaving as before: the engine's layer types, the Magic Wand's colour test, the matte, the stroke commit, the perspective warp, the healing solver's neighbours and the filter worker; the link to the engine, picture decoding, how projects store masks and transforms, and the Filter dialog; and the engine service's settings, sessions, picture decoding, Remove Background, export and decode routes.
+
+### Fixed
+
+- Export names sent with a Windows path keep only the file name.
+
 ## 1.67.2 · 2026-10-13
 
 ### Changed
