@@ -1,0 +1,62 @@
+/* The terminal dock and the Claude Code panel (DEV_PLAN 28.5). Open state and size live on documentElement
+   (data-ft-dock, data-ft-dock-h, --ft-dock-size, data-ft-agent), written by index.html before the first paint, so the
+   dock's grid row and the panel's place are known from the first frame and opening moves nothing. */
+:root { --ft-dock-size: 280px; --ft-dock-h: 0px; --ft-agent-w: 360px; }
+:root[data-ft-dock="open"] { --ft-dock-h: min(var(--ft-dock-size), 70vh); }
+:root .cv-app { grid-template-rows: var(--cv-titlebar-h) minmax(0, 1fr) var(--ft-dock-h) var(--cv-status-h); }
+.cv-app.is-screen-menu, .cv-app.is-screen-full { --ft-dock-h: 0px; }
+:root[data-ft-dock="open"] .cv-home { bottom: calc(var(--cv-status-h) + var(--ft-dock-h)); }
+
+.ft-dock { position: relative; display: flex; flex-direction: column; min-height: 0; overflow: hidden; background: var(--bg-primary); border-top: 1px solid var(--border-color); color: var(--text-primary); user-select: none; -webkit-user-select: none; }
+:root:not([data-ft-dock="open"]) .ft-dock, .cv-app.is-screen-menu .ft-dock, .cv-app.is-screen-full .ft-dock { visibility: hidden; border-top-width: 0; }
+.ft-dock-grip { position: absolute; top: 0; left: 0; right: 0; height: 6px; cursor: ns-resize; z-index: var(--z-raised); touch-action: none; }
+.ft-dock-grip:hover { background: var(--accent-line); }
+.ft-dock-head { flex: none; display: flex; align-items: center; gap: var(--space-1); height: var(--ctl-lg); padding: 0 var(--space-2); background: var(--bg-secondary); border-bottom: 1px solid var(--border-color); }
+.ft-dock-tabs { display: flex; align-items: center; gap: var(--space-1); min-width: 0; overflow: hidden; }
+.ft-dock-spacer { flex: 1; }
+.ft-dock-tab { display: inline-flex; align-items: center; gap: var(--space-2); height: var(--ctl-md); padding: 0 var(--space-2) 0 var(--space-3); border: 0; border-radius: var(--radius); background: transparent; color: var(--text-secondary); font: inherit; font-size: var(--fs-12); cursor: pointer; white-space: nowrap; }
+.ft-dock-tab:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ft-dock-tab.is-on { background: var(--bg-tertiary); color: var(--text-primary); }
+.ft-dock-tab.is-agent .ft-dock-tab-title { color: var(--accent-ink); }
+.ft-dock-tab-x { display: inline-grid; place-items: center; width: 16px; height: 16px; border-radius: var(--radius-xs); color: var(--text-muted); }
+.ft-dock-tab-x:hover { background: var(--bg-hover); color: var(--text-primary); }
+.ft-dock-head .cv-icon-btn:disabled { opacity: 0.4; cursor: default; }
+.ft-dock-stage { position: relative; flex: 1; min-height: 0; padding: var(--space-1) var(--space-2) 0; overflow: hidden; background: var(--bg-primary); }
+.ft-term { height: 100%; user-select: text; -webkit-user-select: text; }
+.ft-term[hidden] { display: none; }
+.ft-term .xterm { height: 100%; }
+
+/* The viewport scrolls by wheel, trackpad and keys; no bar is drawn (the global rule's reach, restated for xterm's own
+   scrollbar elements, which scrollbars.css's pseudo-element rules do not name). */
+.ft-term .xterm .xterm-viewport { scrollbar-width: none !important; -ms-overflow-style: none !important; background-color: transparent !important; }
+.ft-term .xterm .xterm-viewport::-webkit-scrollbar { display: none !important; width: 0 !important; height: 0 !important; }
+.ft-term .xterm .scrollbar, .ft-term .xterm .xterm-scrollable-element > .scrollbar, .ft-term .xterm .xterm-scrollable-element > .shadow { display: none !important; }
+
+.ft-agent { position: fixed; top: calc(var(--cv-titlebar-h) + var(--space-2)); right: var(--space-2); bottom: calc(var(--cv-status-h) + var(--ft-dock-h) + var(--space-2)); width: var(--ft-agent-w); max-width: calc(100vw - 16px); z-index: calc(var(--z-companion) + 20);
+  display: none; flex-direction: column; background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: var(--radius-md); box-shadow: var(--shadow-lg); color: var(--text-primary); }
+:root[data-ft-agent="open"] .ft-agent { display: flex; }
+.ft-agent-head { flex: none; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); }
+.ft-agent-title { font-weight: 600; font-size: var(--fs-13); }
+.ft-agent-spacer { flex: 1; }
+.ft-agent-status { flex: none; min-height: 34px; padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); color: var(--text-secondary); font-size: var(--fs-12); line-height: 1.4; }
+.ft-agent-install { flex: none; display: flex; align-items: center; gap: var(--space-2); padding: var(--space-2) var(--space-3); border-bottom: 1px solid var(--border-color); }
+.ft-agent-install[hidden], .ft-agent-tool-out[hidden] { display: none; }
+.ft-agent-install code { flex: 1; min-width: 0; padding: var(--space-1) var(--space-2); border-radius: var(--radius-sm); background: var(--bg-input); font-family: var(--font-mono); font-size: var(--fs-11); overflow-wrap: anywhere; user-select: text; -webkit-user-select: text; }
+.ft-agent-log { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-3); font-size: var(--fs-13); user-select: text; -webkit-user-select: text; }
+.ft-agent-msg { white-space: pre-wrap; line-height: 1.45; overflow-wrap: anywhere; }
+.ft-agent-msg.is-user { align-self: flex-end; max-width: 90%; padding: var(--space-2) var(--space-3); border-radius: var(--radius-md); background: var(--accent-soft); }
+.ft-agent-msg.is-thinking, .ft-agent-msg.is-note { color: var(--text-muted); font-size: var(--fs-12); }
+.ft-agent-msg.is-thinking { font-style: italic; }
+.ft-agent-msg.is-error { color: var(--danger-text); }
+.ft-agent-tool, .ft-agent-ask { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); border: 1px solid var(--border-color); border-radius: var(--radius); background: var(--bg-primary); font-size: var(--fs-12); }
+.ft-agent-tool.is-error { border-color: var(--danger); }
+.ft-agent-ask { border-color: var(--accent-line); }
+.ft-agent-ask.is-done .ft-agent-allow, .ft-agent-ask.is-done .ft-agent-deny { display: none; }
+.ft-agent-tool-head { display: flex; justify-content: space-between; gap: var(--space-2); color: var(--text-secondary); }
+.ft-agent-tool-name { font-weight: 600; color: var(--text-primary); }
+.ft-agent-tool-sum { font-family: var(--font-mono); font-size: var(--fs-11); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-secondary); }
+.ft-agent-tool-out { margin: 0; max-height: 120px; overflow: auto; font-family: var(--font-mono); font-size: var(--fs-11); white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-muted); }
+.ft-agent-foot { flex: none; display: flex; flex-direction: column; gap: var(--space-2); padding: var(--space-2) var(--space-3) var(--space-3); border-top: 1px solid var(--border-color); }
+.ft-agent-input { height: auto; min-height: 64px; padding: var(--space-2); resize: none; font: inherit; font-size: var(--fs-13); line-height: 1.4; user-select: text; -webkit-user-select: text; }
+.ft-agent-row { display: flex; align-items: center; gap: var(--space-2); }
+.ft-agent-ask-state { color: var(--text-muted); }

@@ -46,6 +46,31 @@ function form(fields: Record<string, string>, files: FilePart[] = [], key = 'fil
   return body;
 }
 
+/** The window's terminals and Claude Code (DEV_PLAN 28.5): the engine's PTY sessions, and the agent's status and messages. */
+export interface TerminalInfo { id: string; title: string; cwd: string; alive: boolean; kind: 'shell' | 'agent' }
+export type AgentMode = 'ask' | 'auto-edits' | 'plan';
+export interface ClaudeStatus { installed: boolean; path: string | null; version: string | null; signedIn: boolean | null; install: string; running: boolean; state: string; mode: AgentMode; session: string | null; modes: AgentMode[] }
+export type AgentEvent =
+  | { type: 'state'; running: boolean; state: string; mode: AgentMode; session: string | null }
+  | { type: 'user'; text: string }
+  | { type: 'block'; id: string; kind: 'text' | 'thinking' }
+  | { type: 'delta'; id: string; text: string }
+  | { type: 'tool'; id: string; name: string; summary: string }
+  | { type: 'tool_result'; id: string; text: string; error: boolean }
+  | { type: 'permission'; id: string; tool: string; summary: string }
+  | { type: 'permission_done'; id: string; allowed: boolean }
+  | { type: 'result'; ok: boolean; text: string; costUsd: number | null }
+  | { type: 'notice'; text: string };
+
+/** A WebSocket to one of the engine's streams: same origin in the app and through the dev server's proxy. */
+export function socketTo(path: string): WebSocket {
+  return new WebSocket(`${location.protocol === 'https:' ? 'wss:' : 'ws:'}//${location.host}/api${path}`);
+}
+
+function json(body: unknown): RequestInit {
+  return { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) };
+}
+
 export const api = {
   /** Content-Aware Scale (1.55.4, M4): the layer's PNG, a target size, skin protection and an optional protect mask
    *  PNG (white protects) go to the engine's seam carver; the carved PNG comes back. */
@@ -429,4 +454,19 @@ export const api = {
     const r = await request('/io/export', { method: 'POST', body: form({ name }, [{ name, blob }], 'file') });
     return ((await r.json()) as { path: string }).path;
   },
+  async terminals(): Promise<TerminalInfo[]> {
+    return ((await (await request('/terminal')).json()) as { terminals: TerminalInfo[] }).terminals;
+  },
+  async openTerminal(cols: number, rows: number): Promise<TerminalInfo> {
+    return (await (await request('/terminal', json({ cols, rows }))).json()) as TerminalInfo;
+  },
+  async restartTerminal(id: string): Promise<void> { await request(`/terminal/${id}/restart`, { method: 'POST' }); },
+  async closeTerminal(id: string): Promise<void> { await request(`/terminal/${id}`, { method: 'DELETE' }); },
+  async claudeStatus(fresh = false): Promise<ClaudeStatus | null> {
+    try { return (await (await request(`/agent/claude/status${fresh ? '?fresh=true' : ''}`)).json()) as ClaudeStatus; } catch { return null; }
+  },
+  async claudeStart(mode: AgentMode, fresh = false): Promise<void> { await request('/agent/claude/start', json({ mode, fresh })); },
+  async claudeSend(text: string): Promise<void> { await request('/agent/claude/send', json({ text })); },
+  async claudeStop(): Promise<void> { await request('/agent/claude/stop', { method: 'POST' }); },
+  async claudeAllow(id: string, allow: boolean): Promise<void> { await request('/agent/claude/permission', json({ id, allow })); },
 };

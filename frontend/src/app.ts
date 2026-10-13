@@ -92,6 +92,8 @@ import { AgentConfirmDialog } from './ui/panels/agent-confirm';
 import { AgentBridge } from './automation/agent-bridge';
 import { setPixelBudget } from './engine/types';
 import { AssistantPanel } from './ui/panels/assistant';
+import { AgentPanel } from './ui/panels/agent-panel';
+import { TerminalDock } from './ui/terminal-dock';
 import { HelpDialog } from './ui/panels/help';
 import { PluginHost } from './plugins/host';
 import { PluginsDialog } from './ui/panels/plugins-dialog';
@@ -1534,6 +1536,13 @@ export function startApp(): void {
   const colourDialogs = { assign: new AssignProfileDialog(engine, (pr) => cmykLutFor(pr), () => convertDialog.show()), convert: convertDialog, proof: new ProofSetupDialog(colourView), mismatch: new ProfileMismatchDialog() };
   void pluginHost.loadAll();
   document.body.appendChild(assistant.el);
+  // The terminal dock and the Claude Code panel (DEV_PLAN 28.5): the dock's grid row sits above the status bar and is
+  // reserved by terminal.css from the first frame; the panel is placed by the same attributes.
+  const termDock = new TerminalDock();
+  root.insertBefore(termDock.root, q(root, '.cv-status'));
+  termDock.onChange = () => { window.dispatchEvent(new Event('resize')); };
+  const claudePanel = new AgentPanel(() => { void termDock.sync(); });
+  document.body.appendChild(claudePanel.el);
   const model3dInput = el<HTMLInputElement>('<input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" data-role="place-3d" hidden>');
   model3dInput.addEventListener('change', () => { const f = model3dInput.files?.[0]; model3dInput.value = ''; if (f) void model3d.load(f); });
   document.body.appendChild(model3dInput);
@@ -1591,6 +1600,9 @@ export function startApp(): void {
     { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
     { id: 'assistant', label: 'Assistant', run: () => assistant.toggle() },   // 1.52.2
+    { id: 'terminal.toggle', label: 'Terminal', keys: ['Mod+J'], checked: () => termDock.isOpen(), run: () => termDock.toggle() },   // DEV_PLAN 28.5
+    { id: 'terminal.new', label: 'New Terminal', run: () => void termDock.newTerminal() },
+    { id: 'agent.claude.open', label: 'Claude Code', checked: () => claudePanel.isOpen(), run: () => claudePanel.toggle() },
     { id: 'help', label: 'formvis Help', keys: ['F1'], run: () => help.show() },   // 1.52.3, as Photoshop's F1
     { id: 'manage-plugins', label: 'Manage Plugins...', run: () => void pluginsDialog.show() },   // 1.52.6
     { id: 'place-3d', label: 'Place 3D Model...', enabled: has, run: () => model3dInput.click() },   // 1.51.9
@@ -2002,7 +2014,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: ['assistant', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+    { label: 'Window', items: ['assistant', 'agent.claude.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
     { label: 'Help', items: ['help', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);

@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -6,13 +7,16 @@ from fastapi.staticfiles import StaticFiles
 
 from app.core import config
 from app.routers import comfyui, generative, io, large, llm, mcp, ops, plugins, projects, system, nodemode, colour
-from app.services import sessions
+from app.services import claude_code as _claude_service, sessions, terminal as _terminal_service
 
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     sessions.prune()
+    _terminal_service.bind(asyncio.get_running_loop())
     yield
+    _claude_service.stop(quiet=True)
+    _terminal_service.close_all()
 
 
 app = FastAPI(title=config.APP_NAME, version=config.VERSION, lifespan=lifespan)
@@ -43,6 +47,12 @@ app.include_router(llm.router)   # prompt improvement (1.51.5); its prefix is it
 app.include_router(mcp.router)   # the MCP server at /mcp and the window's bridge (1.52.1)
 app.include_router(plugins.router)   # plugins (1.52.6); its prefix is its own
 app.include_router(large.router)   # pictures larger than formvis edits in one piece (1.52.7)
+from app.routers import native as _native  # noqa: E402  (the native renderer's status, DEV_PLAN 28.6)
+app.include_router(_native.router)
+from app.routers import terminal as _terminal_router  # noqa: E402  (the window's terminals, DEV_PLAN 28.5)
+app.include_router(_terminal_router.router)
+from app.routers import claude_code as _claude_router  # noqa: E402  (Claude Code in the window, DEV_PLAN 28.5)
+app.include_router(_claude_router.router)
 # Local image generation (1.52.9), from formcut's engine: jobs, model downloads, Krea 2, FLUX.2 [klein], LoRAs, checkpoints.
 from app.localgen import checkpoints as _lg_checkpoints, generate as _lg_generate, jobs as _lg_jobs, klein as _lg_klein, krea2 as _lg_krea2, loras as _lg_loras, model_manager as _lg_models  # noqa: E402
 from app.localgen import ai_upscale as _lg_upscale  # noqa: E402  (1.53.1)

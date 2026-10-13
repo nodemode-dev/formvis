@@ -14,3 +14,5 @@ onnxruntime
 onnx
 psd-tools
 tifffile
+ptyprocess
+pywinpty; sys_platform == "win32"
