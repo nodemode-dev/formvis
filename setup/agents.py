@@ -3,10 +3,11 @@
 
   sync [--check]            generate the editing skill's tool reference from the engine's catalogue and mirror the
                             skill from .claude/skills to .agents/skills (Codex, Cursor); --check: exit 1 if drifted
-  install [--dry-run] [claude|codex|cursor ...]
-                            set the three up for this user account (all by default): the MCP server (./formvis mcp at
-                            this folder's absolute path) and the editing skill; files backed up before changing;
-                            running it again changes nothing
+  install [--user] [--dry-run] [claude|codex|cursor ...]
+                            set the three up for this user account (all by default; --user says so): the MCP server
+                            (./formvis mcp at this folder's absolute path; Claude Code's user scope when the claude
+                            command is on the path) and the editing skill; files backed up before changing; running
+                            it again changes nothing
 """
 
 import json
@@ -28,7 +29,7 @@ def tools_reference() -> str:
     sys.path.insert(0, str(ROOT / "backend"))
     from app.routers.mcp import TOOLS   # the catalogue itself, so this cannot drift from it
     out = ["# formvis tools", "", "Generated from the engine's catalogue by `./formvis agents sync`; do not edit by hand.", "", "## Contents", ""]
-    groups = [("Look", {"get_document", "get_image"}), ("Files and documents", {"new_document", "open_file", "save_project", "export_image", "switch_document"}),
+    groups = [("Look", {"get_document", "get_image", "get_selection", "get_layer_tree"}), ("Commands", {"list_commands", "describe_command", "run_command", "run_commands"}),("Files and documents", {"new_document", "open_file", "save_project", "export_image", "switch_document"}),
               ("Size and shape", {"resize_image", "resize_canvas", "crop", "flip_canvas", "upscale", "generative_expand"}),
               ("Layers", {"add_layer", "set_layer", "delete_layer", "transform_layer", "duplicate_layer", "move_layer", "merge_layers", "flatten_image", "rasterize_layer", "place_image"}),
               ("Text and shapes", {"add_text", "draw_shape"}), ("Selecting", {"select", "select_subject", "select_color_range"}),
@@ -161,6 +162,10 @@ def main(argv: list[str]) -> int:
         return sync("--check" in rest)
     if cmd == "install":
         dry = "--dry-run" in rest
+        unknown = [a for a in rest if a.startswith("--") and a not in ("--user", "--dry-run")]
+        if unknown:
+            print(f"agents: unknown option {', '.join(unknown)} (--user or --dry-run)", file=sys.stderr)
+            return 2
         which = [a for a in rest if not a.startswith("--")] or ["claude", "codex", "cursor"]
         bad = [w for w in which if w not in ("claude", "codex", "cursor")]
         if bad:

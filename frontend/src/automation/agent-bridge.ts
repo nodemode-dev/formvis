@@ -25,6 +25,61 @@ const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, 
 const hex = (v: unknown): { r: number; g: number; b: number } | null => { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(v ?? '')); return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : null; };
 const b64 = async (blob: Blob): Promise<string> => { const b = new Uint8Array(await blob.arrayBuffer()); let s = ''; for (let i = 0; i < b.length; i += 0x8000) s += String.fromCharCode(...b.subarray(i, i + 0x8000)); return btoa(s); };
 
+/** The command catalogue (window.formvis.catalogue, DEV_PLAN 28.4's contract with the catalogue): list_commands,
+ *  describe_command, run_command and run_commands go through it, and say so plainly when it is not there. */
+interface CommandMeta { id: string; label: string; group?: string; description?: string; when?: string; params?: unknown; mutates?: boolean; risky?: boolean }
+type CommandRun = { ok: boolean; result?: unknown; error?: string };
+interface CatalogueApi {
+  listCommands(filter?: { group?: string; text?: string }): CommandMeta[];
+  describeCommand(id: string): unknown;
+  runCommand(id: string, params?: Record<string, unknown>): Promise<CommandRun>;
+  runCommands?(list: Array<{ id: string; params?: Record<string, unknown> }>): Promise<unknown>;
+}
+const NO_CATALOGUE = 'The command catalogue is not loaded in the formvis window (it may still be starting, or this build has none). Wait a few seconds and call list_commands again; if it keeps failing, use the typed tools such as add_layer, select or apply_filter.';
+const LIST_CAP = 150;
+const catalogueOf = (): CatalogueApi | null => {
+  const c = (window as unknown as { formvis?: { catalogue?: Partial<CatalogueApi> } }).formvis?.catalogue;
+  return c && typeof c.listCommands === 'function' && typeof c.describeCommand === 'function' && typeof c.runCommand === 'function' ? c as CatalogueApi : null;
+};
+const brief = (v: unknown): string => { let s: string; try { s = JSON.stringify(v) ?? ''; } catch { s = String(v); } return s.length > 4000 ? `${s.slice(0, 4000)}...` : s; };
+
+async function catalogueTool(name: string, a: Record<string, unknown>): Promise<McpResult> {
+  const cat = catalogueOf();
+  if (!cat) return fail(NO_CATALOGUE);
+  const id = typeof a.id === 'string' ? a.id : '', params = a.params && typeof a.params === 'object' ? a.params as Record<string, unknown> : undefined;
+  if (name === 'list_commands') {
+    const all = cat.listCommands({ ...(typeof a.group === 'string' && a.group ? { group: a.group } : {}), ...(typeof a.text === 'string' && a.text ? { text: a.text } : {}) });
+    const shown = all.slice(0, LIST_CAP).map((c) => ({ id: c.id, label: c.label, ...(c.group ? { group: c.group } : {}), ...(c.when ? { when: c.when } : {}), ...(c.params !== undefined ? { params: c.params } : {}), ...(c.risky ? { risky: true } : {}) }));
+    const data = { total: all.length, commands: shown };
+    return text(`${all.length} command${all.length === 1 ? '' : 's'}${all.length > shown.length ? `, the first ${shown.length} shown: narrow with group or text` : ''}. ${brief(shown)}`, data);
+  }
+  if (!id) return fail('Give the command id: call list_commands to find one.');
+  if (name === 'describe_command') {
+    let d = await cat.describeCommand(id);
+    if (d && typeof d === 'object' && 'ok' in d && 'result' in d) d = (d as { result: unknown }).result;
+    if (!d || typeof d !== 'object') return fail(`No command has the id ${id}: call list_commands with text to find the right one.`);
+    return text(brief(d), d as Record<string, unknown>);
+  }
+  if (name === 'run_command') {
+    const r = await cat.runCommand(id, params);
+    return r.ok ? text(`Ran ${id}.${r.result === undefined ? '' : ` ${brief(r.result)}`}`, r.result && typeof r.result === 'object' ? { result: r.result } : undefined)
+      : fail(`${id} did not run: ${r.error ?? 'no reason given'}. Check describe_command for its params, or list_commands for the right id.`);
+  }
+  const list = Array.isArray(a.commands) ? a.commands.filter((c): c is { id: string; params?: Record<string, unknown> } => !!c && typeof (c as { id?: unknown }).id === 'string') : [];
+  if (!list.length) return fail('Give commands as a list of { id, params }: call list_commands for the ids.');
+  if (cat.runCommands) {
+    const r = await cat.runCommands(list);
+    const rows = Array.isArray(r) ? r as CommandRun[] : null, bad = rows ? rows.findIndex((x) => !x.ok) : (r as CommandRun)?.ok === false ? 0 : -1;
+    return bad < 0 ? text(`Ran ${list.length} command${list.length === 1 ? '' : 's'} as one undo step.`)
+      : fail(`Command ${bad + 1} of ${list.length} (${list[bad]?.id}) failed: ${(rows ? rows[bad]?.error : (r as CommandRun).error) ?? 'no reason given'}. Fix it and run the batch again; undo steps back anything that did run.`);
+  }
+  for (let i = 0; i < list.length; i++) {
+    const r = await cat.runCommand(list[i].id, list[i].params);
+    if (!r.ok) return fail(`Command ${i + 1} of ${list.length} (${list[i].id}) failed: ${r.error ?? 'no reason given'}. The ${i} before it ran as separate undo steps: undo ${i} times to put them back.`);
+  }
+  return text(`Ran ${list.length} commands, each its own undo step (this build has no batch grouping).`);
+}
+
 export class AgentBridge {
   private on = false;
   private looping = false;
@@ -77,6 +132,7 @@ export class AgentBridge {
         const q = e.current;
         return text(q ? `Opened ${file.name}: ${q.doc.width} by ${q.doc.height}, ${q.doc.layers.length} layer${q.doc.layers.length === 1 ? '' : 's'}.` : `Could not open ${file.name}.`, q ? { id: q.id, width: q.doc.width, height: q.doc.height } : undefined);
       }
+      if (name === 'list_commands' || name === 'describe_command' || name === 'run_command' || name === 'run_commands') return await catalogueTool(name, a);
       if (!p) return fail('No document is open: call new_document or open_file first.');
       const layerOf = (): NonNullable<ReturnType<typeof p.layer>> => { const l = p.layer(str('id')); if (!l) throw new Error(`No layer has the id ${str('id')}: call get_document for the ids.`); return l; };
       switch (name) {
@@ -414,6 +470,19 @@ export class AgentBridge {
           }
           const ok = await e.task(() => e.upscaleToDocument(scale, local ? localUpscale(scale) : (image) => api.upscale(image, scale)));
           return ok === false ? fail('Upscale did not complete: see the formvis window.') : text(`Upscaled ${scale}x ${local ? 'on this computer' : 'on fal'} into a new document, ${e.current?.doc.width} by ${e.current?.doc.height}, now the one tools act on.`, { id: e.current?.id });
+        }
+        case 'get_selection': {
+          const s = p.selection, data = { selection: s ? { x: s.x, y: s.y, width: s.w, height: s.h } : null };
+          return text(s ? `The selection is ${s.w} by ${s.h} at ${s.x}, ${s.y}.` : 'Nothing is selected.', data);
+        }
+        case 'get_layer_tree': {
+          const doc = (await this.run('get_document', {})).structuredContent as { activeLayerId: string | null; layers: Array<{ id: string; name: string; kind: string; visible: boolean; parentId: string | null }> };
+          type Node = { id: string; name: string; kind: string; visible: boolean; children: Node[] };
+          const nodes = new Map<string, Node>(), roots: Node[] = [];
+          for (const l of doc.layers) nodes.set(l.id, { id: l.id, name: l.name, kind: l.kind, visible: l.visible, children: [] });
+          for (const l of doc.layers) (nodes.get(l.parentId ?? '')?.children ?? roots).push(nodes.get(l.id) as Node);
+          const data = { activeLayerId: doc.activeLayerId, layers: roots };
+          return text(JSON.stringify(data), data);
         }
         default: return fail(`formvis has no tool named ${name}.`);
       }

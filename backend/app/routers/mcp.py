@@ -19,6 +19,7 @@ from app.core import config
 from fastapi import APIRouter, Request, Response
 
 from app import __version__
+from app.services import agents
 
 router = APIRouter()
 VERSIONS = ["2026-07-28", "2025-11-25"]
@@ -27,6 +28,7 @@ INSTRUCTIONS = ("formvis is a layered image editor running on this computer; the
                 "after each change. Every change is one undoable step (undo). Select before generative_fill or fill. Filters need pixels: "
                 "rasterize_layer a text or shape layer first. Generative tools run on this computer first (LaMa, Krea 2, Real-ESRGAN) "
                 "and on fal last, which asks the person. open_file, save_project and export_image take absolute paths. "
+                "When no typed tool fits, list_commands finds a formvis command and run_command runs it (run_commands for a batch that undoes as one). "
                 "For the decision tree, get the edit_strategy prompt.")
 
 # The strategy prompt (1.53.3): the decision tree for these tools, for a client to show or an agent to fetch.
@@ -161,7 +163,80 @@ TOOLS = [
     _tool("timeline_render", "Renders the video timeline to an absolute path: .mp4 (H.264), .gif, or .zip (numbered PNG frames); every frame, or from to to (frames, to excluded); scale 1, 0.5 or 0.25. Replaces a file there.",
           {"path": {"type": "string", "description": "Absolute path ending .mp4, .gif or .zip"}, "from": {"type": "integer", "minimum": 0}, "to": {"type": "integer", "minimum": 1},
            "scale": {"type": "number", "enum": [1, 0.5, 0.25], "default": 1}}, ["path"], destructive=True),
+    _tool("list_commands", "Lists formvis's commands: every menu and palette action, each as id, label, when (what it is for) and params (what it takes). Narrow it with group (a menu or family such as Filter or Layer) or text (words from the label, id or description); an unfiltered list is capped, so filter first.",
+          {"group": {"type": "string", "maxLength": 80}, "text": {"type": "string", "maxLength": 120}}, read=True, idempotent=True),
+    _tool("describe_command", "One command in full: its label, group, description, when to use it, params with types and defaults, and whether it changes the document or is risky (cannot be undone).",
+          {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}}, ["id"], read=True, idempotent=True),
+    _tool("run_command", "Runs one command by id with params, as one undoable step. A command marked risky waits for the person's approval in the formvis window (Window > Agent Connect) unless they allowed all.",
+          {"id": {"type": "string", "maxLength": 120, "description": "A command id from list_commands."}, "params": {"type": "object", "description": "The command's params, as describe_command lists them."}}, ["id"], destructive=True),
+    _tool("run_commands", "Runs several commands in order as one batch and one undo step; it stops at the first failure and says which command failed. A risky command in the batch asks the person first.",
+          {"commands": {"type": "array", "minItems": 1, "maxItems": 50, "items": {"type": "object", "properties": {"id": {"type": "string", "maxLength": 120}, "params": {"type": "object"}}, "required": ["id"], "additionalProperties": False}}}, ["commands"], destructive=True),
+    _tool("get_selection", "The selection: its bounds in pixels (x, y, width, height), or none when nothing is selected.", {}, read=True, idempotent=True),
+    _tool("get_layer_tree", "The layers as a tree, bottom to top, each with id, name, kind, visible and its children (a focused view of get_document's layers, without the document details).", {}, read=True, idempotent=True),
 ]
+USE_WHEN = {
+    "get_document": "you need the document's size, mode, layer ids or documents before any edit.",
+    "get_image": "you need to see the picture, and again after each change to check it.",
+    "new_document": "there is nothing open, or the person wants a blank canvas of a size.",
+    "select": "an edit, fill or generative_fill should act on a region only.",
+    "add_layer": "a change needs its own empty layer to paint or fill on.",
+    "set_layer": "a layer should be renamed, hidden, faded, blended, or made the active one.",
+    "delete_layer": "a layer is no longer wanted.",
+    "fill": "a selection or layer should be one flat colour.",
+    "add_adjustment": "colour or tone should change while staying editable.",
+    "place_image": "another picture file should join the document as a layer.",
+    "undo": "the last change was wrong; call it once per step to remove.",
+    "redo": "an undo went too far.",
+    "generative_fill": "something should be removed from or added to a selected region.",
+    "generative_expand": "the canvas should grow and the new border be painted in.",
+    "generate_image": "a whole new picture is wanted from a description.",
+    "upscale": "the picture needs more pixels with detail kept.",
+    "remove_background": "the subject of the active layer should be kept and its background dropped.",
+    "open_file": "the person gives a path to a picture or project to work on.",
+    "save_project": "the work should be kept with layers still editable.",
+    "export_image": "a flat PNG, JPEG or WebP is the deliverable.",
+    "switch_document": "more than one document is open and another should be edited.",
+    "resize_image": "the whole picture should be scaled to a size.",
+    "resize_canvas": "space should be added or removed around the picture without scaling it.",
+    "crop": "only a rectangle of the picture should remain.",
+    "flip_canvas": "the whole document should be mirrored.",
+    "transform_layer": "a layer should be moved, scaled, rotated or flipped.",
+    "rasterize_layer": "a text, shape or smart object needs pixels before a filter or painting.",
+    "duplicate_layer": "a layer should be copied, for example before a destructive change.",
+    "move_layer": "the stacking order of layers should change.",
+    "merge_layers": "several layers should become one.",
+    "flatten_image": "the person wants everything on a single layer.",
+    "add_text": "words should appear on the picture.",
+    "draw_shape": "a plate, line, arrow or other shape is needed.",
+    "select_subject": "the main subject should be selected without drawing a region.",
+    "select_color_range": "a colour (a sky, a skin tone) should be selected.",
+    "apply_filter": "a blur, sharpen, noise or other filter should change the active layer.",
+    "set_adjustment": "an adjustment layer made earlier needs different settings.",
+    "color_match": "a pasted layer should match the colours around or beneath it.",
+    "add_film_layer": "a light leak, grain or other film look is wanted as its own layer.",
+    "timeline_get": "you need to know the video timeline's state before changing it.",
+    "timeline_create": "the document should become a video with a track per layer.",
+    "timeline_delete": "the video timeline should go and the layers stay.",
+    "timeline_set": "the frame rate, length, work area or loops of the video should change.",
+    "timeline_go_to": "the window should show a moment of the video.",
+    "timeline_clip": "a layer should appear later, last longer or be trimmed in the video.",
+    "timeline_split": "a layer's clip should be cut in two at a frame.",
+    "timeline_keyframe": "a layer's position, opacity or fill should animate.",
+    "timeline_transition": "a clip should fade in or out.",
+    "timeline_frame_image": "you need to see one frame of the video.",
+    "timeline_render": "the video should be written to an mp4, gif or frame zip.",
+    "list_commands": "the typed tools do not cover what the person asked and you need to find the formvis command that does.",
+    "describe_command": "you found a command with list_commands and need its params before running it.",
+    "run_command": "a command from list_commands should run once.",
+    "run_commands": "several commands belong together and should undo as one step.",
+    "get_selection": "you need the selection's bounds before filling, cropping or generating.",
+    "get_layer_tree": "you need the layer ids and nesting without the other document details.",
+}
+for _t in TOOLS:
+    _t["description"] += f" Use when {USE_WHEN[_t['name']]}"
+CORE = {"get_document", "get_image", "get_selection", "get_layer_tree", "new_document", "open_file", "save_project", "export_image", "select", "add_layer", "set_layer",
+        "delete_layer", "fill", "place_image", "undo", "redo", "generative_fill", "remove_background", "resize_image", "crop", "transform_layer", "add_text", "draw_shape",
+        "select_subject", "apply_filter", "add_adjustment", "set_adjustment", "list_commands", "describe_command", "run_command", "run_commands"}
 NAMES = {t["name"] for t in TOOLS}
 
 # The bridge to the window: requests queued here, collected by the window, answered back.
@@ -342,6 +417,57 @@ async def _call(name: str, args: dict) -> dict:
     return out if out is not None else _fail("formvis did not answer in time: it may be busy with a long task. Check the formvis window, then retry.")
 
 
+async def _risk(name: str, args: dict) -> str | None:
+    """Why a call cannot be undone (a file written, or a catalogue command marked risky); None when Undo covers it."""
+    if name in agents.RISKY_TOOLS:
+        return f"{name} {agents.RISKY_TOOLS[name]} at {args.get('path', 'a path')}, which Undo cannot restore"
+    ids = [args.get("id")] if name == "run_command" else [c.get("id") for c in args.get("commands") or [] if isinstance(c, dict)] if name == "run_commands" else []
+    for cid in dict.fromkeys(i for i in ids if isinstance(i, str)):
+        out = await _call("describe_command", {"id": cid})
+        meta = out.get("structuredContent") or {}
+        if not out.get("isError") and meta.get("risky"):
+            return f"the command {meta.get('label') or cid} is marked risky: Undo cannot reverse it"
+    return None
+
+
+async def _agent_call(client: str, name: str, args: dict) -> dict:
+    """A tool call as an outside agent's: refused when agents are off or this client is denied, held for the person's
+    approval when it is risky under the Ask policy, and noted in the activity feed either way."""
+    entry = agents.begin(client, name, args)
+    refusal = agents.admit(client)
+    if refusal:
+        agents.end(entry, "denied", refusal)
+        return _fail(refusal)
+    if agents.policy_of(client) == "ask":
+        why = await _risk(name, args)
+        if why:
+            refusal = await agents.approval(entry, why)
+            if refusal:
+                return _fail(refusal)
+    out = await _run(name, args)
+    first = next((c.get("text", "") for c in out.get("content", []) if c.get("type") == "text"), "")
+    agents.end(entry, "error" if out.get("isError") else "ok", first)
+    return out
+
+
+def _client_of(request: Request, params: dict, sid: str | None) -> tuple[str, str]:
+    info = (params.get("_meta") or {}).get("io.modelcontextprotocol/clientInfo") or params.get("clientInfo")
+    return agents.identity(sid, info, request.headers.get("x-formvis-client") or request.headers.get("user-agent") or "")
+
+
+@router.get("/mcp")
+async def mcp_stream() -> Response:
+    return Response(status_code=405, headers={"Allow": "POST, DELETE"})   # no server-initiated stream: replies come with the POST
+
+
+@router.delete("/mcp")
+async def mcp_end(request: Request) -> Response:
+    if not _local_origin(request.headers.get("origin")):
+        return Response(status_code=403)
+    agents.close_session(request.headers.get("mcp-session-id") or "")
+    return Response(status_code=204)
+
+
 @router.post("/mcp")
 async def mcp(request: Request) -> Response:
     if not _local_origin(request.headers.get("origin")):
@@ -355,6 +481,8 @@ async def mcp(request: Request) -> Response:
     req_id, method, params = msg.get("id"), msg.get("method"), msg.get("params") or {}
     if req_id is None:
         return Response(status_code=202)   # a notification
+    headers: dict[str, str] = {}
+    sid = request.headers.get("mcp-session-id")
     meta = params.get("_meta") or {}
     version = meta.get("io.modelcontextprotocol/protocolVersion") or request.headers.get("mcp-protocol-version") or "2025-11-25"
     modern = version == "2026-07-28"
@@ -365,6 +493,8 @@ async def mcp(request: Request) -> Response:
         out = _ok(req_id, {"supportedVersions": VERSIONS, "capabilities": {"tools": {}, "prompts": {}}, "_meta": {"io.modelcontextprotocol/serverInfo": server}, "instructions": INSTRUCTIONS}, True, cacheable=True)
     elif method == "initialize":
         asked = params.get("protocolVersion")
+        who = _client_of(request, params, None)
+        headers["Mcp-Session-Id"] = agents.open_session(*who)
         out = _ok(req_id, {"protocolVersion": asked if asked in VERSIONS else "2025-11-25", "capabilities": {"tools": {}, "prompts": {}}, "serverInfo": server, "instructions": INSTRUCTIONS}, False)
     elif method == "ping":
         out = _ok(req_id, {}, modern)
@@ -373,13 +503,17 @@ async def mcp(request: Request) -> Response:
     elif method == "prompts/get":
         out = _ok(req_id, {"description": PROMPTS[0]["description"], "messages": [{"role": "user", "content": {"type": "text", "text": STRATEGY}}]}, modern) if params.get("name") == "edit_strategy" else _err(req_id, -32602, f"No prompt named {params.get('name')}")
     elif method == "tools/list":
-        out = _ok(req_id, {"tools": TOOLS}, modern, cacheable=True)
+        core = request.query_params.get("tools") == "core"   # for clients that cap their tools: /mcp?tools=core lists the 31 most used; the rest still answer by name
+        out = _ok(req_id, {"tools": [t for t in TOOLS if t["name"] in CORE] if core else TOOLS}, modern, cacheable=True)
     elif method == "tools/call":
         name, args = params.get("name"), params.get("arguments") or {}
-        out = _ok(req_id, await _run(name, args), modern) if name in NAMES and isinstance(args, dict) else _err(req_id, -32602, f"No tool named {name}")
+        if name in NAMES and isinstance(args, dict):
+            out = _ok(req_id, await _agent_call(_client_of(request, params, sid)[0], name, args), modern)
+        else:
+            out = _err(req_id, -32602, f"No tool named {name}: call tools/list for the names.")
     else:
         out = _err(req_id, -32601, f"Method not found: {method}")
-    return Response(content=json.dumps(out), media_type="application/json")
+    return Response(content=json.dumps(out), media_type="application/json", headers=headers)
 
 
 @router.get("/api/mcp/bridge/next")
@@ -446,4 +580,4 @@ async def bridge_stop() -> dict:
 
 @router.get("/api/mcp/status")
 def status() -> dict:
-    return {"live": _live(), "allowed": _allowed, "endpoint": "http://127.0.0.1:8190/mcp", "tools": len(TOOLS)}
+    return {"live": _live(), "allowed": _allowed, "endpoint": "http://127.0.0.1:8190/mcp", "tools": len(TOOLS), "agents": agents.enabled()}

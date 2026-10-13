@@ -14,16 +14,25 @@ import urllib.request
 URL = os.environ.get("FORMVIS_MCP_URL", "http://127.0.0.1:8190/mcp")
 
 
+TOOLSET = os.environ.get("FORMVIS_MCP_TOOLS", "")   # "core": the 31 most used tools, for clients that cap their tools (Cursor)
+_session = ""   # the engine's Mcp-Session-Id from initialize, which ties later calls to the client's name
+
+
 def forward(line: str) -> str | None:
+    global _session
     try:
         msg = json.loads(line)
     except ValueError:
         return json.dumps({"jsonrpc": "2.0", "id": None, "error": {"code": -32700, "message": "Parse error"}})
     version = ((msg.get("params") or {}).get("_meta") or {}).get("io.modelcontextprotocol/protocolVersion") or (msg.get("params") or {}).get("protocolVersion") or "2025-11-25"
-    req = urllib.request.Request(URL, data=line.encode(), method="POST", headers={"Content-Type": "application/json", "Accept": "application/json", "MCP-Protocol-Version": version})
+    headers = {"Content-Type": "application/json", "Accept": "application/json", "MCP-Protocol-Version": version}
+    if _session:
+        headers["Mcp-Session-Id"] = _session
+    req = urllib.request.Request(URL + ("?tools=" + TOOLSET if TOOLSET and "?" not in URL else ""), data=line.encode(), method="POST", headers=headers)
     try:
         with urllib.request.urlopen(req, timeout=660) as r:
             body = r.read().decode()
+            _session = r.headers.get("Mcp-Session-Id") or _session
     except urllib.error.HTTPError as exc:
         body = exc.read().decode() or ""
     except (urllib.error.URLError, OSError) as exc:
