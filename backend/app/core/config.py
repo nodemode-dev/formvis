@@ -46,16 +46,17 @@ REPO_DIR = BACKEND_DIR.parent
 
 
 def _load_env_file() -> None:
-    env = BACKEND_DIR / ".env"
-    if not env.is_file():
+    env_file = BACKEND_DIR / ".env"
+    if not env_file.is_file():
         return
-    for line in env.read_text(encoding="utf-8").splitlines():
-        line = line.strip()
-        if not line or line.startswith("#") or "=" not in line:
+    for entry in env_file.read_text(encoding="utf-8").splitlines():
+        entry = entry.strip()
+        if not entry or entry.startswith("#") or "=" not in entry:
             continue
-        key, value = line.split("=", 1)
-        if value.strip():
-            os.environ.setdefault(key.strip(), value.strip())
+        key, _, value = entry.partition("=")
+        key, value = key.strip(), value.strip()
+        if key and value:
+            os.environ.setdefault(key, value)
 
 
 _load_env_file()
@@ -108,8 +109,8 @@ def sessions_dir() -> Path:
 
 def dist_dir() -> Path | None:
     raw = os.environ.get("FORMVIS_DIST")
-    candidate = Path(raw) if raw else REPO_DIR / "frontend" / "dist"
-    return candidate if (candidate / "index.html").is_file() else None
+    folder = Path(raw).expanduser() if raw else REPO_DIR / "frontend" / "dist"
+    return folder if (folder / "index.html").is_file() else None
 
 
 def is_desktop() -> bool:
@@ -119,5 +120,5 @@ def is_desktop() -> bool:
 def cors_origins() -> list[str]:
     raw = os.environ.get("FORMVIS_CORS_ORIGINS")
     if raw:
-        return [origin.strip() for origin in raw.split(",") if origin.strip()]
+        return [item.strip() for item in raw.split(",") if item.strip()]
     return [f"http://localhost:{FRONTEND_PORT}", f"http://127.0.0.1:{FRONTEND_PORT}"]

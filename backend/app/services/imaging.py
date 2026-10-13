@@ -55,23 +55,25 @@ def _check(width: int, height: int) -> None:
 
 
 def _png(image: Image.Image) -> tuple[bytes, int, int]:
-    _check(*image.size)
-    image = ImageOps.exif_transpose(image)
-    alpha = "A" in image.getbands() or image.mode in ("P", "PA", "LA") or "transparency" in image.info
-    if image.mode not in ("RGB", "RGBA"):
-        image = image.convert("RGBA" if alpha else "RGB")
+    _check(image.width, image.height)
+    upright = ImageOps.exif_transpose(image)
+    transparent = "A" in upright.getbands() or upright.mode in ("P", "LA", "PA") or "transparency" in upright.info
+    wanted = "RGBA" if transparent else "RGB"
+    if upright.mode != wanted:
+        upright = upright.convert(wanted)
     out = io.BytesIO()
-    image.save(out, format="PNG", compress_level=1)
-    return out.getvalue(), image.size[0], image.size[1]
+    upright.save(out, format="PNG", compress_level=1)
+    return out.getvalue(), upright.width, upright.height
 
 
 def _sips(data: bytes, suffix: str) -> tuple[bytes, int, int]:
-    with tempfile.TemporaryDirectory() as tmp:
-        source, target = Path(tmp) / f"in{suffix}", Path(tmp) / "out.png"
+    with tempfile.TemporaryDirectory() as scratch:
+        source = Path(scratch) / f"source{suffix}"
+        converted = Path(scratch) / "converted.png"
         source.write_bytes(data)
-        subprocess.run(["sips", "-s", "format", "png", str(source), "--out", str(target)], check=True, capture_output=True, timeout=120)
-        with Image.open(target) as image:
-            return _png(image)
+        subprocess.run(["sips", "-s", "format", "png", str(source), "--out", str(converted)], check=True, capture_output=True, timeout=120)
+        with Image.open(converted) as result:
+            return _png(result)
 
 
 def _raw(data: bytes, filename: str) -> tuple[bytes, int, int]:
@@ -105,7 +107,7 @@ def pages(data: bytes, filename: str) -> list[dict]:
 
 
 def decode_to_png(data: bytes, filename: str, page: int = 0) -> tuple[bytes, int, int]:
-    suffix = Path(filename or "").suffix.lower()
+    suffix = Path(filename).suffix.lower()
     if suffix in RAW_SUFFIXES:
         return _raw(data, filename)
     try:
@@ -119,12 +121,13 @@ def decode_to_png(data: bytes, filename: str, page: int = 0) -> tuple[bytes, int
     except DecodeError:
         raise
     except Exception as exc:
+        label = filename or "the image"
         if suffix in HEIF_SUFFIXES and sips_available():
             try:
                 return _sips(data, suffix)
-            except Exception as fallback:
-                raise DecodeError(f"Could not decode {filename}: {fallback}") from fallback
-        raise DecodeError(f"Could not decode {filename or 'the image'}: {exc}") from exc
+            except Exception as retry_exc:
+                raise DecodeError(f"Could not decode {label}: {retry_exc}") from retry_exc
+        raise DecodeError(f"Could not decode {label}: {exc}") from exc
 
 
 ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif"}

@@ -7,31 +7,31 @@ from pathlib import Path
 from app.core import config
 from app.services.project_format import safe_name
 
-SID = re.compile(r"^[a-f0-9]{32}$")
+SID = re.compile(r"\A[0-9a-f]{32}\Z")
 
 
 def prune() -> None:
-    now = time.time()
-    for entry in config.sessions_dir().iterdir():
-        if entry.is_dir() and now - entry.stat().st_mtime > config.SESSION_TTL_SECONDS:
-            shutil.rmtree(entry, ignore_errors=True)
+    cutoff = time.time() - config.SESSION_TTL_SECONDS
+    for folder in config.sessions_dir().iterdir():
+        if folder.is_dir() and folder.stat().st_mtime < cutoff:
+            shutil.rmtree(folder, ignore_errors=True)
 
 
 def create(assets: dict[str, bytes]) -> str:
     prune()
-    sid = secrets.token_hex(16)
-    folder = config.sessions_dir() / sid / "images"
-    folder.mkdir(parents=True)
-    for name, data in assets.items():
-        (folder / name).write_bytes(data)
+    sid = secrets.token_bytes(16).hex()
+    images = config.sessions_dir() / sid / "images"
+    images.mkdir(parents=True, exist_ok=True)
+    for asset_name, blob in assets.items():
+        (images / asset_name).write_bytes(blob)
     return sid
 
 
 def asset_path(sid: str, name: str) -> Path | None:
-    if not SID.match(sid or "") or not safe_name(name):
+    if not sid or not SID.fullmatch(sid) or not safe_name(name):
         return None
-    path = config.sessions_dir() / sid / "images" / name
-    return path if path.is_file() else None
+    found = config.sessions_dir() / sid / "images" / name
+    return found if found.is_file() else None
 
 
 def payload(sid: str, manifest: dict, assets: dict[str, bytes], name: str) -> dict:

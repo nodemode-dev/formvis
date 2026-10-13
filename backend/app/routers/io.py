@@ -380,19 +380,19 @@ def decode(file: UploadFile = File(...), page: int = Form(0)) -> Response:
         png, width, height = imaging.decode_to_png(data, file.filename or "", page)
     except imaging.DecodeError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
-    return Response(png, media_type="image/png", headers={"X-Width": str(width), "X-Height": str(height)})
+    return Response(content=png, media_type="image/png", headers={"X-Width": str(width), "X-Height": str(height)})
 
 
 @router.post("/export")
 def export(file: UploadFile = File(...), name: str = Form(...)) -> dict:
-    clean = Path(name).name.strip()
-    if not EXPORT_NAME.match(clean) or clean.startswith("."):
+    base = Path(name.replace("\\", "/")).name.strip()
+    if base.startswith(".") or not EXPORT_NAME.match(base):
         raise HTTPException(status_code=400, detail="Invalid export file name.")
     folder = config.exports_dir()
-    stem, suffix = Path(clean).stem, Path(clean).suffix
-    target, n = folder / clean, 2
+    target = folder / base
+    number = 2
     while target.exists():
-        target = folder / f"{stem} {n}{suffix}"
-        n += 1
+        target = folder / f"{Path(base).stem} {number}{Path(base).suffix}"
+        number += 1
     target.write_bytes(file.file.read())
     return {"path": str(target)}

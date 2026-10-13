@@ -19,7 +19,7 @@ class Unavailable(BackgroundError):
 def _has(module: str) -> bool:
     try:
         return importlib.util.find_spec(module) is not None
-    except (ImportError, ValueError):
+    except (ImportError, ValueError, AttributeError):
         return False
 
 
@@ -86,8 +86,8 @@ def _ml(image: Image.Image) -> Image.Image:
     from app.services import compute
 
     mask = remove(image.convert("RGB"), session=_session(model_name(), tuple(compute.current()["providers"])), only_mask=True)
-    if not isinstance(mask, Image.Image):
-        mask = Image.open(io.BytesIO(mask))
+    if isinstance(mask, (bytes, bytearray)):
+        mask = Image.open(io.BytesIO(bytes(mask)))
     return mask.convert("L")
 
 
@@ -95,43 +95,45 @@ def _lite(image: Image.Image) -> Image.Image:
     import cv2
     import numpy as np
 
-    rgb = np.asarray(image.convert("RGB"))
-    height, width = rgb.shape[:2]
-    scale = min(1.0, 800.0 / max(width, height))
-    small = cv2.resize(rgb, (max(1, round(width * scale)), max(1, round(height * scale))), interpolation=cv2.INTER_AREA) if scale < 1 else rgb
-    sh, sw = small.shape[:2]
-    mx, my = max(1, round(sw * 0.04)), max(1, round(sh * 0.04))
-    rect = (mx, my, max(1, sw - 2 * mx), max(1, sh - 2 * my))
-    mask = np.zeros((sh, sw), np.uint8)
-    bgd, fgd = np.zeros((1, 65), np.float64), np.zeros((1, 65), np.float64)
-    cv2.grabCut(cv2.cvtColor(small, cv2.COLOR_RGB2BGR), mask, rect, bgd, fgd, 5, cv2.GC_INIT_WITH_RECT)
-    fg = np.where((mask == cv2.GC_FGD) | (mask == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
-    if scale < 1:
-        fg = cv2.resize(fg, (width, height), interpolation=cv2.INTER_LINEAR)
-    fg = cv2.GaussianBlur(fg, (0, 0), sigmaX=max(0.8, 1.2 / scale))
-    return Image.fromarray(fg)
+    rgb = np.array(image.convert("RGB"))
+    full_h, full_w = rgb.shape[:2]
+    shrink = max(1.0, max(full_h, full_w) / 800)
+    if shrink > 1.0:
+        small = cv2.resize(rgb, (max(1, round(full_w / shrink)), max(1, round(full_h / shrink))), interpolation=cv2.INTER_AREA)
+    else:
+        small = rgb
+    h, w = small.shape[:2]
+    dx = max(1, int(w * 0.04))
+    dy = max(1, int(h * 0.04))
+    box = (dx, dy, max(1, w - 2 * dx), max(1, h - 2 * dy))
+    labels = np.zeros((h, w), np.uint8)
+    cv2.grabCut(small, labels, box, np.zeros((1, 65), np.float64), np.zeros((1, 65), np.float64), 5, cv2.GC_INIT_WITH_RECT)
+    soft = np.where((labels == cv2.GC_FGD) | (labels == cv2.GC_PR_FGD), 255, 0).astype(np.uint8)
+    if shrink > 1.0:
+        soft = cv2.resize(soft, (full_w, full_h), interpolation=cv2.INTER_LINEAR)
+    soft = cv2.GaussianBlur(soft, (0, 0), max(0.8, 1.2 / shrink))
+    return Image.fromarray(soft, "L")
 
 
 def remove(data: bytes, method: str = "auto") -> tuple[bytes, str]:
-    caps = available()
-    chosen = caps["default"] if method == "auto" else method
-    if chosen not in ("ml", "lite") or not caps.get(chosen):
+    report = available()
+    engine = report["default"] if method == "auto" else method
+    if engine not in ("ml", "lite") or not report[engine]:
         raise Unavailable("This background engine is not installed. The engine needs ONNX Runtime (./formvis install); the lightweight engine ships with the base install.")
     try:
-        with Image.open(io.BytesIO(data)) as image:
-            image.load()
-            source = image.convert("RGBA")
+        with Image.open(io.BytesIO(data)) as source:
+            image = source.convert("RGBA")
     except Exception as exc:
         raise BackgroundError("The image could not be read.") from exc
-    width, height = source.size
+    width, height = image.size
     if width * height > config.MAX_PIXELS:
         raise BackgroundError(f"The image exceeds the {config.MAX_PIXELS // 1_000_000}-megapixel limit.")
-    mask = _ml(source) if chosen == "ml" else _lite(source)
-    if mask.size != source.size:
-        mask = mask.resize(source.size, Image.Resampling.BILINEAR)
-    out = io.BytesIO()
-    mask.save(out, format="PNG")
-    return out.getvalue(), chosen
+    mask = _ml(image) if engine == "ml" else _lite(image)
+    if mask.size != (width, height):
+        mask = mask.resize((width, height), Image.Resampling.BILINEAR)
+    buffer = io.BytesIO()
+    mask.save(buffer, format="PNG")
+    return buffer.getvalue(), engine
 
 
 def objects(data: bytes, limit: int = 24) -> dict:
