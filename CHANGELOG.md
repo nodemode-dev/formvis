@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.67.1 · 2026-10-13
+
+### Changed
+
+- More of formvis is new code written independently from a behaviour description, behaving as before: the Color Picker, the JPEG export sheet, the live-mask alert, notices, Canvas Size, Image Size, the selection amount dialog, Remove Background, the options' rows, the status bar and the document tabs.
+
+### Fixed
+
+- The Color Picker in a CMYK document: dragging in its field or hue strip now carries the inks along with the colour, so OK sets the colour that was dragged to (typing RGB already did).
+
 ## 1.66.9 · 2026-10-13
 
 ### Changed

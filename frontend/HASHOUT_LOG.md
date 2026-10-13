@@ -2,6 +2,19 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The small dialogs and panels rewritten by gap fill, DEV_PLAN 28.0 batches 20 and 21 · _v1.67.1 (ui/panels/color-picker.ts, jpeg-dialog.ts, live-mask-dialog.ts, size-dialogs.ts, background-panel.ts, controls.ts; ui/toast.ts, status.ts, tabs.ts)
+
+Specs `cleanroom/batch-20-small-dialogs-gapfill.md` and `batch-21-panels-gapfill.md`, each with a zero-flash house-rules section for the implementer. 113 gaps: 58 identical (imports, the palette's custom-property map, user text the notes quote) and left, 55 placed; color-picker.ts, jpeg-dialog.ts, live-mask-dialog.ts, controls.ts and size-dialogs.ts as one whole-file write each, the rest as single-region edits. `ui/brand.ts` is left out: its SVG mark is formvis's own artwork, the desktop icon's. The old picker's doc comment, which had kept a gap where the reference app's name had been removed, is gone. Review feedback as a declaration (the sample ring), compiler errors (two duplicate fields, the zoom on the viewport) and measured behaviour (Canvas Size's White and Black extension colours, the anchor offset for odd size changes, the zoom readout's format). Behaviour change, recorded as a fix in the CHANGELOG: field and strip drags in the Color Picker keep a CMYK document's inks in step. Removed code: the earlier lines are not quoted, by the Phase 13 rule.
+
+Verified: tsc clean; unit 194 of 194; 46 dialog, notice, export, colour, artboard, dock and home-screen browser tests, 33 passing, 5 skipped, 8 failing identically on the unchanged tree (the repeated-notice test, four 16-bit and EXR tests, two colour-management tests, the dock reset). Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.66.9",
+      "version": "1.66.9",
+  "version": "1.66.9",
+export const VERSION = '1.66.9';
+```
+
 ## Crop, Move and the engine's model modules rewritten by gap fill, DEV_PLAN 28.0 batches 18 and 19 · _v1.66.9 (extensions/tools/crop.ts, move.ts; engine/selection.ts, history.ts, viewport.ts, transform.ts, project.ts)
 
 Specs `cleanroom/batch-18-crop-move-gapfill.md` and `batch-19-engine-model-gapfill.md`. 134 gaps: 69 identical (imports, braces, the handle table, the declarations the app depends on) and left, 65 placed; crop.ts, viewport.ts and project.ts as one whole-file write each, the rest as single-region edits. The comments that named the reference app's own types (its crop snapping and constrain rule) went with the lines that held them. Review feedback as a compiler error only (the title option's `text`). Behaviour notes: Undo and Redo name no step while one is open (`undoName`, `redoName`); the crop frame's straighten readout unit is written as the degree sign itself rather than its escape (same string). Removed code: the earlier lines are not quoted, by the Phase 13 rule.
