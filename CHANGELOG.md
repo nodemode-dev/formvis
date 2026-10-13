@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.67.5 · 2026-10-13
+
+### Added
+
+- One catalogue of everything formvis can do: 755 commands, each with a group, a description, when to use it, its parameters and whether Undo can reverse it. `./formvis cli list`, `describe` and `run` drive the open window from a terminal, and the engine serves the catalogue at `/api/commands`.
+- Agents can list, describe and run any of those commands over MCP (`list_commands`, `describe_command`, `run_command`, `run_commands` as one undo step), plus `get_selection` and `get_layer_tree`; every tool says when to use it.
+- Window > Agent Connect: turn outside agents on or off, set each one's policy (Allow all, Ask for risky steps, Deny), approve or decline steps Undo cannot reverse, follow the activity feed, Stop.
+- Edit > Color Settings: working RGB, CMYK and Gray spaces, colour management policies, conversion options and the CMYK profile's ink limits, saved as presets.
+- DPX film scans open and export, with log, printing-density and linear transfers.
+
+### Changed
+
+- Convert to Profile works at 16 bits through LittleCMS, with intent, black point compensation and dither, and a CMYK or grayscale document can now be converted, not only proofed.
+
 ## 1.67.4 · 2026-10-13
 
 ### Added
