@@ -8,31 +8,40 @@ const FIELD = 200, STRIP = 18;
 
 type HSV = { h: number; s: number; v: number };
 
-const toRgb = ({ h, s, v }: HSV): RGB => {
-  const f = (n: number): number => { const k = (n + h / 60) % 6; return Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1)))); };
+function toRgb({ h, s, v }: HSV): RGB {
+  const f = (n: number): number => {
+    const k = (n + h / 60) % 6;
+    return Math.min(255, Math.max(0, Math.round(255 * (v - v * s * Math.max(0, Math.min(k, 4 - k, 1))))));
+  };
   return { r: f(5), g: f(3), b: f(1) };
-};
+}
 
-/** HSV from RGB; a gray keeps the hue it is given, so dragging to gray and back does not lose it. */
-const toHsv = ({ r, g, b }: RGB, hue: number): HSV => {
-  const R = r / 255, G = g / 255, B = b / 255, max = Math.max(R, G, B), d = max - Math.min(R, G, B);
-  let h = hue;
-  if (d > 0) { h = 60 * (max === R ? ((G - B) / d) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4); if (h < 0) h += 360; }
-  return { h, s: max > 0 ? d / max : 0, v: max };
-};
+/** RGB back to HSV. A gray has no hue of its own, so the hue passed in is carried over unchanged; that way a drag
+ *  that passes through gray keeps its place on the strip. */
+function toHsv(c: RGB, hue: number): HSV {
+  const r = c.r / 255, g = c.g / 255, b = c.b / 255;
+  const max = Math.max(r, g, b), d = max - Math.min(r, g, b);
+  if (d === 0) return { h: hue, s: 0, v: max };
+  let h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  h *= 60;
+  if (h < 0) h += 360;
+  return { h, s: d / max, v: max };
+}
 
-const hexOf = (c: RGB): string => `#${[c.r, c.g, c.b].map((x) => x.toString(16).padStart(2, '0')).join('')}`;
+const hexOf = (c: RGB): string => '#' + [c.r, c.g, c.b].map((n) => n.toString(16).padStart(2, '0')).join('');
 
-const parseHex = (text: string): RGB | null => {
-  let t = text.trim().replace(/^#/, '');
-  if (/^[0-9a-f]{3}$/i.test(t)) t = t.split('').map((c) => c + c).join('');
-  if (!/^[0-9a-f]{6}$/i.test(t)) return null;
-  return { r: parseInt(t.slice(0, 2), 16), g: parseInt(t.slice(2, 4), 16), b: parseInt(t.slice(4, 6), 16) };
-};
+function parseHex(text: string): RGB | null {
+  let t = text.trim();
+  if (t.startsWith('#')) t = t.slice(1);
+  if (t.length === 3) t = t.replace(/./g, (ch) => ch + ch);
+  if (!/^[0-9a-fA-F]{6}$/.test(t)) return null;
+  const n = parseInt(t, 16);
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
 
-/** the Photoshop-style picker: a saturation and brightness field, a vertical hue strip, new and current
- * swatches, and RGB and hex entry. The canvas stays clickable to sample a color, as keeps its picker in a
- *  floating panel beside the canvas. The rail's swatches open it through the `cv-pick-color` event. */
+/** The color picker: a saturation and brightness field, a vertical hue strip, a swatch pair (new above, current
+ *  below) and RGB and hex entry. The canvas behind stays clickable so a color can be sampled straight from the
+ *  picture. The rail's swatches open it by dispatching a `cv-pick-color` event. */
 export class ColorPickerDialog extends Dialog {
   private which: 'fg' | 'bg' = 'fg';
   private hsv: HSV = { h: 0, s: 0, v: 0 };
@@ -51,19 +60,25 @@ export class ColorPickerDialog extends Dialog {
 
   constructor(private readonly engine: Engine) {
     super('Color Picker', 420);
-    const side = el('<div class="cv-pick-side"></div>');
+    const side = el<HTMLElement>('<div class="cv-pick-side"></div>');
     side.append(this.swatch, this.red.el, this.green.el, this.blue.el, this.hex, ...this.inks.map((r) => r.el));
-    const row = el('<div class="cv-pick"></div>');
-    row.append(this.sbField, this.strip, side);
-    this.body.append(row, el('<p class="cv-note">Click the canvas to sample a color.</p>'));
+    const wrap = el<HTMLElement>('<div class="cv-pick"></div>');
+    wrap.append(this.sbField, this.strip, side);
+    this.body.append(wrap, el<HTMLElement>('<p class="cv-note">Click the canvas to sample a color.</p>'));
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.commit());
-    this.drag(this.sbField, (x, y) => { this.hsv = { ...this.hsv, s: x, v: 1 - y }; this.sync(); });
-    this.drag(this.strip, (_x, y) => { this.hsv = { ...this.hsv, h: Math.min(359.99, y * 360) }; this.sync(); });
-    const commitHex = (): void => { const c = parseHex(this.hex.value); if (c) this.setRgb(c); else this.hex.value = hexOf(this.rgb()); };
-    this.hex.addEventListener('change', commitHex);
-    this.hex.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); this.hex.blur(); } });
-    document.addEventListener('cv-pick-color', (e) => this.show((e as CustomEvent<'fg' | 'bg'>).detail === 'bg' ? 'bg' : 'fg'));
+    this.drag(this.sbField, (x, y) => this.applyHsv({ ...this.hsv, s: x, v: 1 - y }));
+    this.drag(this.strip, (_x, y) => this.applyHsv({ ...this.hsv, h: Math.min(359.99, y * 360) }));
+    this.hex.addEventListener('change', () => {
+      const c = parseHex(this.hex.value);
+      if (c) this.setRgb(c);
+      else this.hex.value = hexOf(this.rgb());
+    });
+    this.hex.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); this.hex.blur(); }
+    });
+    document.addEventListener('cv-pick-color', (e) => this.show((e as CustomEvent).detail === 'bg' ? 'bg' : 'fg'));
   }
 
   show(which: 'fg' | 'bg'): void {
@@ -78,35 +93,43 @@ export class ColorPickerDialog extends Dialog {
     this.sync();
     this.open();
     this.scrim.classList.add('cv-scrim-through');
-    const sampler = (e: PointerEvent): void => {
-      const stage = document.querySelector('.cv-overlay-canvas'), p = this.engine.current;
-      if (e.button !== 0 || !stage || e.target !== stage || !p) return;
+    const onDown = (e: PointerEvent): void => {
+      const target = e.target as Element | null;
+      if (e.button !== 0 || !target || !target.classList.contains('cv-overlay-canvas') || !this.isOpen) return;
       e.preventDefault();
       e.stopPropagation();
       this.endSampleDrag();
       const original = this.rgb();
-      const at = (ev: PointerEvent): void => {
-        const b = stage.getBoundingClientRect(), v = p.viewport, pt = { x: (ev.clientX - b.left - v.panX) / v.zoom, y: (ev.clientY - b.top - v.panY) / v.zoom };
-        const rgb = this.engine.sampleOriginal(pt, true);
-        if (!rgb) return;
-        const c = { r: Math.round(rgb[0] * 255), g: Math.round(rgb[1] * 255), b: Math.round(rgb[2] * 255) };
-        this.setRgb(c);
-        this.engine.setSampleRing({ at: pt, sampled: c, original });
+      const sample = (ev: PointerEvent): void => {
+        const cur = this.engine.current;
+        if (!cur) return;
+        const box = target.getBoundingClientRect();
+        const pt = {
+          x: (ev.clientX - box.left - cur.viewport.panX) / cur.viewport.zoom,
+          y: (ev.clientY - box.top - cur.viewport.panY) / cur.viewport.zoom,
+        };
+        const s = this.engine.sampleOriginal(pt, true);
+        if (!s) return;
+        const color = { r: Math.round(s[0] * 255), g: Math.round(s[1] * 255), b: Math.round(s[2] * 255) };
+        this.setRgb(color);
+        this.engine.setSampleRing({ at: pt, sampled: color, original });
       };
-      const move = (ev: PointerEvent): void => { ev.preventDefault(); ev.stopPropagation(); at(ev); };
+      sample(e);
+      const move = (ev: PointerEvent): void => { ev.preventDefault(); ev.stopPropagation(); sample(ev); };
       const up = (ev: PointerEvent): void => { ev.stopPropagation(); this.endSampleDrag(); };
       window.addEventListener('pointermove', move, true);
       window.addEventListener('pointerup', up, true);
       this.sampleDrag = { move, up };
-      at(e);
     };
-    window.addEventListener('pointerdown', sampler, true);
-    this.sampler = sampler;
+    this.sampler = onDown;
+    window.addEventListener('pointerdown', onDown, true);
   }
 
   close(): void {
-    if (this.sampler) window.removeEventListener('pointerdown', this.sampler, true);
-    this.sampler = null;
+    if (this.sampler) {
+      window.removeEventListener('pointerdown', this.sampler, true);
+      this.sampler = null;
+    }
     this.endSampleDrag();
     this.scrim.classList.remove('cv-scrim-through');
     super.close();
@@ -123,9 +146,17 @@ export class ColorPickerDialog extends Dialog {
 
   private rgb(): RGB { return toRgb(this.hsv); }
 
+  /** Take a new HSV (from a field or strip drag), refresh the ink in a CMYK document, and redraw. */
+  private applyHsv(next: HSV): void {
+    this.hsv = next;
+    const p = this.engine.current;
+    if (this.ink && p?.cmykIn) this.ink = inkOf(this.rgb(), p.cmykIn);
+    this.sync();
+  }
+
   private setRgb(c: RGB): void {
-    const clamp = (x: number): number => Math.min(255, Math.max(0, Math.round(Number.isFinite(x) ? x : 0)));
-    this.hsv = toHsv({ r: clamp(c.r), g: clamp(c.g), b: clamp(c.b) }, this.hsv.h);
+    const ch = (n: number): number => Math.min(255, Math.max(0, Math.round(Number.isFinite(n) ? n : 0)));
+    this.hsv = toHsv({ r: ch(c.r), g: ch(c.g), b: ch(c.b) }, this.hsv.h);
     const p = this.engine.current;
     if (this.ink && p?.cmykIn) this.ink = inkOf(this.rgb(), p.cmykIn);
     this.sync();
@@ -148,56 +179,67 @@ export class ColorPickerDialog extends Dialog {
     else this.engine.setColors(undefined, c);
   }
 
-  /** A pointer drag across a canvas, reported as 0 to 1 fractions of its box, held by pointer capture. */
+  /** Pointer dragging on one of the canvases: a primary-button press captures the pointer and reports where it is
+   *  as 0 to 1 fractions of the canvas box, held inside that range, until the pointer is released or cancelled. */
   private drag(target: HTMLCanvasElement, apply: (x: number, y: number) => void): void {
-    let on = false;
-    const at = (e: PointerEvent): void => {
-      const b = target.getBoundingClientRect();
-      apply(Math.min(1, Math.max(0, (e.clientX - b.left) / b.width)), Math.min(1, Math.max(0, (e.clientY - b.top) / b.height)));
+    let down = false;
+    const report = (e: PointerEvent): void => {
+      const box = target.getBoundingClientRect();
+      const frac = (n: number, size: number): number => Math.min(1, Math.max(0, size > 0 ? n / size : 0));
+      apply(frac(e.clientX - box.left, box.width), frac(e.clientY - box.top, box.height));
     };
-    target.addEventListener('pointerdown', (e) => { if (e.button !== 0) return; on = true; target.setPointerCapture(e.pointerId); at(e); });
-    target.addEventListener('pointermove', (e) => { if (on) at(e); });
-    target.addEventListener('pointerup', () => { on = false; });
-    target.addEventListener('pointercancel', () => { on = false; });
+    const end = (): void => { down = false; };
+    target.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      down = true;
+      target.setPointerCapture(e.pointerId);
+      report(e);
+    });
+    target.addEventListener('pointermove', (e) => { if (down) report(e); });
+    target.addEventListener('pointerup', end);
+    target.addEventListener('pointercancel', end);
   }
 
   private sync(): void {
-    const c = this.rgb(), f = this.sbField.getContext('2d'), s = this.strip.getContext('2d'), w = this.swatch.getContext('2d');
-    if (f) {
-      f.fillStyle = `hsl(${this.hsv.h} 100% 50%)`;
-      f.fillRect(0, 0, FIELD, FIELD);
-      const white = f.createLinearGradient(0, 0, FIELD, 0);
-      white.addColorStop(0, 'rgba(255, 255, 255, 1)');
-      white.addColorStop(1, 'rgba(255, 255, 255, 0)');
-      f.fillStyle = white;
-      f.fillRect(0, 0, FIELD, FIELD);
-      const black = f.createLinearGradient(0, 0, 0, FIELD);
-      black.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      black.addColorStop(1, 'rgba(0, 0, 0, 1)');
-      f.fillStyle = black;
-      f.fillRect(0, 0, FIELD, FIELD);
-      f.lineWidth = 1.5;
-      f.strokeStyle = this.hsv.v > 0.55 ? 'rgba(0, 0, 0, 0.9)' : 'rgba(255, 255, 255, 0.9)';
-      f.beginPath();
-      f.arc(this.hsv.s * FIELD, (1 - this.hsv.v) * FIELD, 5, 0, Math.PI * 2);
-      f.stroke();
+    const c = this.rgb();
+    const fx = this.sbField.getContext('2d');
+    if (fx) {
+      fx.fillStyle = hexOf(toRgb({ h: this.hsv.h, s: 1, v: 1 }));
+      fx.fillRect(0, 0, FIELD, FIELD);
+      const white = fx.createLinearGradient(0, 0, FIELD, 0);
+      white.addColorStop(0, '#ffffff');
+      white.addColorStop(1, 'rgba(255,255,255,0)');
+      fx.fillStyle = white;
+      fx.fillRect(0, 0, FIELD, FIELD);
+      const black = fx.createLinearGradient(0, 0, 0, FIELD);
+      black.addColorStop(0, 'rgba(0,0,0,0)');
+      black.addColorStop(1, '#000000');
+      fx.fillStyle = black;
+      fx.fillRect(0, 0, FIELD, FIELD);
+      fx.beginPath();
+      fx.arc(this.hsv.s * FIELD, (1 - this.hsv.v) * FIELD, 5, 0, Math.PI * 2);
+      fx.lineWidth = 1.5;
+      fx.strokeStyle = this.hsv.v > 0.55 ? '#000000' : '#ffffff';
+      fx.stroke();
     }
-    if (s) {
-      const g = s.createLinearGradient(0, 0, 0, FIELD);
-      for (let i = 0; i <= 6; i++) g.addColorStop(i / 6, `hsl(${i * 60} 100% 50%)`);
-      s.fillStyle = g;
-      s.fillRect(0, 0, STRIP, FIELD);
-      const y = Math.round((this.hsv.h / 360) * FIELD) + 0.5;
-      s.fillStyle = 'rgba(0, 0, 0, 0.9)';
-      s.fillRect(0, y - 1.5, STRIP, 3);
-      s.fillStyle = 'rgba(255, 255, 255, 0.9)';
-      s.fillRect(0, y - 0.5, STRIP, 1);
+    const sx = this.strip.getContext('2d');
+    if (sx) {
+      const rainbow = sx.createLinearGradient(0, 0, 0, FIELD);
+      for (let i = 0; i <= 6; i++) rainbow.addColorStop(i / 6, hexOf(toRgb({ h: i * 60, s: 1, v: 1 })));
+      sx.fillStyle = rainbow;
+      sx.fillRect(0, 0, STRIP, FIELD);
+      const y = (this.hsv.h / 360) * FIELD;
+      sx.fillStyle = 'rgba(0,0,0,0.75)';
+      sx.fillRect(0, y - 1.5, STRIP, 3);
+      sx.fillStyle = '#ffffff';
+      sx.fillRect(0, y - 0.5, STRIP, 1);
     }
-    if (w) {
-      w.fillStyle = hexOf(c);
-      w.fillRect(0, 0, 56, 28);
-      w.fillStyle = hexOf(this.current);
-      w.fillRect(0, 28, 56, 28);
+    const wx = this.swatch.getContext('2d');
+    if (wx) {
+      wx.fillStyle = hexOf(c);
+      wx.fillRect(0, 0, 56, 28);
+      wx.fillStyle = hexOf(this.current);
+      wx.fillRect(0, 28, 56, 28);
     }
     this.red.set(c.r);
     this.green.set(c.g);

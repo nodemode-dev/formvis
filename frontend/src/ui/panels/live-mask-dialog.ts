@@ -3,11 +3,12 @@ import { el, setText } from '../dom';
 
 export type LiveMaskChoice = 'bake' | 'unlink' | null;
 
-/** the alert for deleting a layer that other layers are clipped to (their live mask): Bake and Delete keeps
- *  their masked look in their own pixels, Remove Links and Delete reveals their pixels; either can be undone. */
+/** The alert shown before deleting a layer that other layers are clipped to. Bake and Delete keeps the dependent
+ *  layers' masked look by writing it into their own pixels; Remove Links and Delete lets their full pixels show.
+ *  Either can be undone. */
 export class LiveMaskDialog extends Dialog {
   private resolve: ((choice: LiveMaskChoice) => void) | null = null;
-  private readonly text = el('<p class="cv-note"></p>');
+  private readonly text = el<HTMLElement>('<p class="cv-note"></p>');
 
   constructor() {
     super('This layer supplies a live mask', 440);
@@ -17,25 +18,25 @@ export class LiveMaskDialog extends Dialog {
     this.button('Bake and Delete', 'primary', () => this.finish('bake'));
   }
 
-  /** Asks for the choice; `many` when more than one layer is being deleted. Resolves null on Cancel or Escape. */
+  /** Ask the person what to do; resolves with their choice, or null when they back out. */
   choose(many: boolean): Promise<LiveMaskChoice> {
     this.setTitle(many ? 'These layers supply live masks' : 'This layer supplies a live mask');
     setText(this.text, "Bake keeps the current masked appearance in the dependent layers' pixels. Remove Links reveals their pixels. You can undo either choice.");
     this.open();
-    return new Promise((r) => { this.resolve = r; });
+    return new Promise<LiveMaskChoice>((resolve) => { this.resolve = resolve; });
   }
 
   close(): void {
-    const r = this.resolve;
+    const resolve = this.resolve;
     this.resolve = null;
     super.close();
-    r?.(null);
+    if (resolve) resolve(null);
   }
 
   private finish(choice: LiveMaskChoice): void {
-    const r = this.resolve;
+    const resolve = this.resolve;
     this.resolve = null;
     super.close();
-    r?.(choice);
+    if (resolve) resolve(choice);
   }
 }
