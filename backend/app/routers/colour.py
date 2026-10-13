@@ -46,7 +46,33 @@ def build_lut(req: LutRequest) -> Response:
         data = colour.lut(req.source, req.dest, req.proof, req.intent, req.bpc, req.proofIntent, req.gamut)
     except colour.ColourError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return Response(data, media_type="application/octet-stream", headers={"X-Grid": str(colour.GRID), "X-Gamut": "1" if req.gamut and req.proof else "0"})
+    n_in, n_out, grid = colour.lut_shape(req.source, req.dest)
+    return Response(data, media_type="application/octet-stream", headers={"X-Grid": str(grid), "X-In": str(n_in), "X-Out": str(n_out), "X-Gamut": "1" if req.gamut and req.proof else "0"})
+
+
+@router.post("/convert-deep")
+def convert_deep(file: UploadFile = File(...), mode: str = Form(...), width: int = Form(...), height: int = Form(...), source: str = Form(""), dest: str = Form(""),
+                 intent: str = Form("relative"), bpc: bool = Form(True), dither: bool = Form(False), bits: int = Form(16), preserve_black: bool = Form(True)) -> Response:
+    """Convert to Profile and mode changes at 16 bits (DEV_PLAN 28.2): float32 channels in, float32 channels out, through
+    LittleCMS in double precision and rounded once; `source` and `dest` are base64 ICC text or `id:` followed by a listed id."""
+    ref = lambda text: None if not text else {"id": text[3:]} if text.startswith("id:") else {"icc": text}
+    try:
+        data, space = colour.convert_deep(file.file.read(), width, height, mode, ref(source), ref(dest), intent, bpc, dither, bits, preserve_black)
+    except colour.ColourError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(data, media_type="application/octet-stream", headers={"X-Space": space})
+
+
+class InfoRequest(BaseModel):
+    profile: dict | None = None
+
+
+@router.post("/profile-info")
+def profile_info(req: InfoRequest) -> dict:
+    try:
+        return colour.profile_info(req.profile)
+    except colour.ColourError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 
 @router.post("/convert-ink")

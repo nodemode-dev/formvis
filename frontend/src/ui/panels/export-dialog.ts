@@ -1,5 +1,5 @@
 import type { Engine } from '../../engine';
-import { exportLayout, BUILTIN_EXPORT_PRESETS, EXPORT_FORMATS, LOSSY, clampSettings, exportName, exportSize, presetsFromStorage, type ExportFormat, type ExportPreset, type ExportSettings } from '../../io/export-presets';
+import { exportLayout, BUILTIN_EXPORT_PRESETS, DPX_BITS, DPX_TRANSFERS, EXPORT_FORMATS, LOSSY, clampSettings, exportName, exportSize, presetsFromStorage, type DpxBits, type DpxTransfer, type ExportFormat, type ExportPreset, type ExportSettings } from '../../io/export-presets';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 import { toast } from '../toast';
@@ -23,6 +23,8 @@ export class ExportDialog extends Dialog {
   private readonly profileRow: Row<string>;
   private readonly sizeRow: Row<string>;
   private readonly labelRow: Row<string>;
+  private readonly dpxBitsRow: Row<string>;
+  private readonly dpxTransferRow: Row<string>;
   private readonly boxW = el('<input class="cv-input" type="number" min="1" max="30000" step="1" aria-label="Width">') as HTMLInputElement;
   private readonly boxH = el('<input class="cv-input" type="number" min="1" max="30000" step="1" aria-label="Height">') as HTMLInputElement;
   private readonly boxRow = el('<label class="cv-field"><span>Width x Height (px)</span><div class="cv-row-actions"></div></label>');
@@ -43,13 +45,15 @@ export class ExportDialog extends Dialog {
     const box = (): void => { this.s = clampSettings({ ...this.s, boxW: Number(this.boxW.value), boxH: Number(this.boxH.value) }); this.custom(); };
     this.boxW.addEventListener('change', box); this.boxH.addEventListener('change', box);
     this.labelRow = selectRow('AI label', [['none', 'None'], ['generated', 'Made with AI'], ['edited', 'Edited with AI']], (v) => { this.s = clampSettings({ ...this.s, aiLabel: v === 'none' ? undefined : v as 'generated' | 'edited' }); this.custom(); });
+    this.dpxBitsRow = selectRow('DPX bit depth', DPX_BITS, (v) => { this.s = clampSettings({ ...this.s, dpxBits: Number(v) as DpxBits }); this.custom(); });
+    this.dpxTransferRow = selectRow('DPX transfer', DPX_TRANSFERS, (v) => { this.s = clampSettings({ ...this.s, dpxTransfer: v as DpxTransfer }); this.custom(); });
     const save = el('<button class="cv-btn" type="button">Save Preset</button>') as HTMLButtonElement;
     this.deleteBtn = el('<button class="cv-btn" type="button">Delete Preset</button>') as HTMLButtonElement;
     save.addEventListener('click', () => this.savePreset());
     this.deleteBtn.addEventListener('click', () => this.deletePreset());
     const manage = el('<div class="cv-field"><span></span><div class="cv-row-actions"></div></div>');
     (manage.lastElementChild as HTMLElement).append(this.nameInput, save, this.deleteBtn);
-    this.body.append(this.presetRow.el, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.profileRow.el, this.labelRow.el, this.sizeNote, manage);
+    this.body.append(this.presetRow.el, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.profileRow.el, this.dpxBitsRow.el, this.dpxTransferRow.el, this.labelRow.el, this.sizeNote, manage);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Export', 'primary', () => { this.close(); this.run({ ...this.s }); });
   }
@@ -75,7 +79,7 @@ export class ExportDialog extends Dialog {
   }
 
   private store(): void {
-    try { localStorage.setItem(KEY, JSON.stringify(this.saved.map(({ id, name, format, quality, scale, profile, size, boxW, boxH, aiLabel }) => ({ id, name, format, quality, scale, ...(profile ? { profile } : {}), ...(size ? { size, boxW, boxH } : {}), ...(aiLabel ? { aiLabel } : {}) })))); } catch { toast('Presets cannot be saved in this browser.', 'error'); }
+    try { localStorage.setItem(KEY, JSON.stringify(this.saved.map(({ id, name, format, quality, scale, profile, size, boxW, boxH, aiLabel, dpxBits, dpxTransfer }) => ({ id, name, format, quality, scale, ...(profile ? { profile } : {}), ...(size ? { size, boxW, boxH } : {}), ...(aiLabel ? { aiLabel } : {}), ...(dpxBits ? { dpxBits, dpxTransfer } : {}) })))); } catch { toast('Presets cannot be saved in this browser.', 'error'); }
   }
 
   private pick(id: string): void {
@@ -124,6 +128,11 @@ export class ExportDialog extends Dialog {
     if (document.activeElement !== this.boxW) this.boxW.value = String(s.boxW ?? 1920);
     if (document.activeElement !== this.boxH) this.boxH.value = String(s.boxH ?? 1080);
     this.profileRow.set(s.profile ?? 'srgb');
+    this.dpxBitsRow.set(String(s.dpxBits ?? 10));
+    this.dpxTransferRow.set(s.dpxTransfer ?? 'log');
+    this.dpxBitsRow.el.classList.toggle('is-off', s.format !== 'dpx');
+    this.dpxTransferRow.el.classList.toggle('is-off', s.format !== 'dpx');
+    for (const i of [...this.dpxBitsRow.el.querySelectorAll('select'), ...this.dpxTransferRow.el.querySelectorAll('select')]) i.disabled = s.format !== 'dpx';
     const lossy = LOSSY.has(s.format);
     this.qualityRow.el.classList.toggle('is-off', !lossy);
     for (const i of this.qualityRow.el.querySelectorAll('input')) i.disabled = !lossy;

@@ -73,6 +73,6 @@ def test_the_proof_matches_littlecms_and_marks_what_the_press_cannot_print(clien
     assert blue[2] < 250 and np.abs(blue - [0, 0, 255]).sum() > 30                  # proofed blue is the press's duller blue
 
 
-def test_rgb_documents_only_for_now(client, fogra):
+def test_a_cmyk_source_converts_to_a_four_dimensional_table(client, fogra):
     r = client.post("/api/color/lut", json={"source": {"id": fogra["id"]}})
-    assert r.status_code == 422 and "CMYK" in r.json()["detail"]
+    assert r.status_code == 200 and r.headers["x-in"] == "4" and len(r.content) == colour.GRID4 ** 4 * 3

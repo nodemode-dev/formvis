@@ -8,10 +8,10 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from app.core import config
-from app.services import imaging
+from app.services import dpx, imaging
 
 router = APIRouter(tags=["io"])
-EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif)$", re.IGNORECASE)
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif|dpx)$", re.IGNORECASE)
 
 
 @router.post("/encode")
@@ -41,6 +41,13 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
     import numpy as np
     from app.services import contained
     raw = file.file.read()
+    if dpx.is_dpx(raw):
+        try:
+            px, info = dpx.read(raw)
+        except dpx.DpxError as exc:
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
+        return Response(np.ascontiguousarray(px).astype("<u2").tobytes(), media_type="application/octet-stream",
+                        headers={"X-Width": str(info["width"]), "X-Height": str(info["height"]), "X-Depth": "16", "X-Transfer": info["transfer"], "X-Bits": str(info["bits"])})
     img = contained.decode_exr(raw) if contained.is_exr(raw) else cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_UNCHANGED)
     if img is None:
         raise HTTPException(status_code=415, detail="The picture could not be read at its depth." if not contained.is_exr(raw) else "The OpenEXR file could not be read; a malformed file is refused outside the engine.")
@@ -94,6 +101,20 @@ def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: in
     if not ok:
         raise HTTPException(status_code=500, detail="The 16-bit file could not be written.")
     return Response(out.tobytes(), media_type={"png": "image/png", "hdr": "image/vnd.radiance", "exr": "image/x-exr"}.get(format, "image/tiff"))
+
+
+@router.post("/encode-dpx")
+def encode_dpx(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), bits: int = Form(10), transfer: str = Form("log"), big_endian: bool = Form(True), name: str = Form("")) -> Response:
+    """A DPX film scan (DEV_PLAN 28.2) from RGBA, 16 bits a channel, little-endian, sRGB encoded: 8, 10, 12 or 16 bits,
+    the transfer (linear, density or log) written into the header and applied to the data."""
+    raw = file.file.read()
+    if width <= 0 or height <= 0 or len(raw) != width * height * 8:
+        raise HTTPException(status_code=422, detail="The pixels do not match the size given.")
+    try:
+        data = dpx.write(np.frombuffer(raw, "<u2").reshape(height, width, 4), bits, transfer, big_endian, name)
+    except dpx.DpxError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(data, media_type="image/x-dpx")
 
 
 _PSD_BLENDS = {"normal": "NORMAL", "multiply": "MULTIPLY", "screen": "SCREEN", "overlay": "OVERLAY", "darken": "DARKEN", "lighten": "LIGHTEN",

@@ -8,6 +8,7 @@ from pathlib import Path
 from PIL import Image, ImageCms, ImageOps
 
 from app.core import config
+from app.services import dpx
 
 Image.MAX_IMAGE_PIXELS = config.MAX_PIXELS
 
@@ -110,6 +111,12 @@ def decode_to_png(data: bytes, filename: str, page: int = 0) -> tuple[bytes, int
     suffix = Path(filename).suffix.lower()
     if suffix in RAW_SUFFIXES:
         return _raw(data, filename)
+    if dpx.is_dpx(data):
+        try:
+            px, _info = dpx.read(data)
+        except dpx.DpxError as exc:
+            raise DecodeError(f"Could not decode {filename or 'the image'}: {exc}") from exc
+        return _png(Image.fromarray(((px.astype("uint32") + 128) // 257).astype("uint8"), "RGBA"))
     try:
         with Image.open(io.BytesIO(data)) as image:
             if page:
@@ -130,7 +137,7 @@ def decode_to_png(data: bytes, filename: str, page: int = 0) -> tuple[bytes, int
         raise DecodeError(f"Could not decode {label}: {exc}") from exc
 
 
-ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif"}
+ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif", "dpx": "image/x-dpx"}
 
 
 def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | None = None) -> bytes:
@@ -158,6 +165,13 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | 
     out = io.BytesIO()
     q = max(1, min(100, int(quality)))
     extra = {"icc_profile": icc} if icc else {}
+    if fmt == "dpx":
+        import numpy as np
+        wide = np.asarray(rgba, dtype=np.uint16) * 257
+        try:
+            return dpx.write(wide, 10, "log", True)
+        except dpx.DpxError as exc:
+            raise DecodeError(str(exc)) from exc
     if fmt == "tiff":
         rgba.save(out, "TIFF", compression="tiff_lzw", dpi=(dpi, dpi), **extra)
     elif fmt == "pdf":

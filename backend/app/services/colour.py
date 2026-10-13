@@ -14,6 +14,7 @@ import numpy as np
 from PIL import Image, ImageCms
 
 from app.core import config
+from app.services import lcms
 
 GRID = 33
 INTENTS = {"perceptual": ImageCms.Intent.PERCEPTUAL, "relative": ImageCms.Intent.RELATIVE_COLORIMETRIC,
@@ -86,10 +87,17 @@ def profiles() -> list[dict]:
                 continue
             seen.add(digest)
             out.append({"id": digest, **info, "file": path.name, "added": d == profile_dirs()[0], "shipped": d == shipped_dir()})
+    if lcms.available():
+        out += [{"id": pid, "name": name, "space": "GRAY", "file": "", "added": False, "shipped": False, "builtin": True} for pid, (name, _g) in lcms.GRAYS.items()]
     return sorted(out, key=lambda p: (p["space"] != "RGB", p["name"].lower()))
 
 
 def _find(pid: str) -> bytes:
+    if pid.startswith("builtin:"):
+        try:
+            return lcms.builtin(pid)
+        except lcms.LcmsError as exc:
+            raise ColourError(str(exc)) from exc
     for d in profile_dirs():
         if not d.is_dir():
             continue
@@ -163,7 +171,11 @@ def lut(source: dict | None, dest: dict | None = None, proof: dict | None = None
     src, src_mode = _profile(source)
     dst, dst_mode = _profile(dest)
     if src_mode != "RGB" or dst_mode != "RGB":
-        raise ColourError("Documents and displays are RGB here; a CMYK profile can be proofed, not converted to yet.")
+        if proof:
+            raise ColourError("Proof Colors starts from an RGB document.")
+        if src_mode == "L" and dst_mode == "RGB":
+            return _gray_table(src, dst, intent, bpc)
+        return _table(src, src_mode, dst, dst_mode, intent, bpc)
     flags = ImageCms.Flags.BLACKPOINTCOMPENSATION if bpc else ImageCms.Flags.NONE
     grid = _grid()
     try:
@@ -181,6 +193,46 @@ def lut(source: dict | None, dest: dict | None = None, proof: dict | None = None
 
 
 GRID4 = 17
+
+
+def lut_shape(source: dict | None, dest: dict | None) -> tuple[int, int, int]:
+    """The channels in and out of the table `lut` builds for these profiles, and its grid size."""
+    n = {"RGB": 3, "CMYK": 4}
+    a, b = _profile(source)[1], _profile(dest)[1]
+    n_in = n.get(a)
+    return (n_in or 3, n.get(b) or 3, GRID4 if n_in == 4 else GRID)
+
+
+def _gray_table(src, dst, intent: str, bpc: bool) -> bytes:
+    """A grayscale document holds equal R, G and B; a gray profile's table depends on R alone, so the GRID^3 table is
+    one gray ramp through the profile, repeated across G and B."""
+    v = np.linspace(0, 255, GRID).round().astype(np.uint8)
+    flags = ImageCms.Flags.BLACKPOINTCOMPENSATION if bpc else ImageCms.Flags.NONE
+    try:
+        t = ImageCms.buildTransform(src, dst, "L", "RGB", renderingIntent=INTENTS[intent], flags=flags)
+        ramp = np.asarray(ImageCms.applyTransform(Image.fromarray(v.reshape(1, -1), "L"), t)).reshape(GRID, 3)
+    except ImageCms.PyCMSError as exc:
+        raise ColourError(f"LittleCMS could not build that transform: {exc}") from exc
+    return np.ascontiguousarray(np.broadcast_to(ramp[:, None, None, :], (GRID, GRID, GRID, 3))).astype(np.uint8).tobytes()
+
+
+def _table(src, src_mode: str, dst, dst_mode: str, intent: str, bpc: bool) -> bytes:
+    """A table between RGB and CMYK profiles in either direction: GRID^3 or GRID4^4 points in (first channel slowest),
+    8-bit values out. Gray and Lab convert pixel by pixel (convert_deep), not through a table."""
+    ends = {"RGB": 3, "CMYK": 4}
+    if src_mode not in ends or dst_mode not in ends:
+        raise ColourError("Gray and Lab profiles convert pixel by pixel, not through a table.")
+    n_in, n_out = ends[src_mode], ends[dst_mode]
+    g = GRID4 if n_in == 4 else GRID
+    v = np.linspace(0, 255, g).round().astype(np.uint8)
+    axes = np.meshgrid(*([v] * n_in), indexing="ij")
+    grid = Image.fromarray(np.stack([a.ravel() for a in axes], axis=1).reshape(1, -1, n_in), src_mode)
+    flags = ImageCms.Flags.BLACKPOINTCOMPENSATION if bpc else ImageCms.Flags.NONE
+    try:
+        t = ImageCms.buildTransform(src, dst, src_mode, dst_mode, renderingIntent=INTENTS[intent], flags=flags)
+        return np.asarray(ImageCms.applyTransform(grid, t)).reshape(-1, n_out).astype(np.uint8).tobytes()
+    except ImageCms.PyCMSError as exc:
+        raise ColourError(f"LittleCMS could not build that transform: {exc}") from exc
 
 
 def cmyk_lut(profile: dict, bpc: bool = True) -> bytes:
@@ -259,3 +311,81 @@ def _gamut(grid, src, prf, prf_mode, proof_intent, flags) -> bytes:
     b = np.asarray(ImageCms.applyTransform(ImageCms.applyTransform(grid, to_dev), dev_lab)).reshape(-1, 3).astype(np.float64)
     d = np.sqrt(((a[:, 0] - b[:, 0]) * 100 / 255) ** 2 + (a[:, 1] - b[:, 1]) ** 2 + (a[:, 2] - b[:, 2]) ** 2)
     return np.where(d > GAMUT_DELTA_E, 255, 0).astype(np.uint8).tobytes()
+
+
+DEEP_CHANNELS = {"RGB": 3, "CMYK": 4, "LAB": 3}
+
+
+def _ref_bytes(ref: dict | None, fallback: str) -> bytes:
+    if ref and ref.get("icc"):
+        return base64.b64decode(ref["icc"])
+    if ref and ref.get("id"):
+        return _find(str(ref["id"]))
+    try:
+        return lcms.builtin(fallback)
+    except lcms.LcmsError as exc:
+        raise ColourError(str(exc)) from exc
+
+
+def convert_deep(raw: bytes, width: int, height: int, mode: str, source: dict | None, dest: dict | None, intent: str = "relative",
+                 bpc: bool = True, dither: bool = False, bits: int = 16, preserve_black: bool = True) -> tuple[bytes, str]:
+    """Convert to Profile and mode changes without an 8-bit step: `raw` is little-endian float32, the document's own
+    channels with straight alpha last (rgb 0 to 1, ink 0 to 1, Lab as formvis encodes it), `mode` rgb, cmyk or lab. The
+    destination profile's space says what comes back: rgb, cmyk, lab, or gray (three equal channels, as a grayscale
+    document holds them). LittleCMS runs in double precision; the result is rounded to `bits` (16, or 8 for an 8-bit
+    document) with optional dither, alpha untouched. Returns the float32 bytes and the space name."""
+    mode = mode.upper()
+    if mode not in DEEP_CHANNELS:
+        raise ColourError("The pixels are rgb, cmyk or lab.")
+    if intent not in INTENTS:
+        raise ColourError("Unknown rendering intent.")
+    if bits not in (8, 16):
+        raise ColourError("Conversion rounds to 8 or 16 bits.")
+    n_in = DEEP_CHANNELS[mode]
+    if width <= 0 or height <= 0 or width > config.MAX_SIDE or height > config.MAX_SIDE or width * height > config.MAX_PIXELS or len(raw) != width * height * (n_in + 1) * 4:
+        raise ColourError("The pixels do not match the size given.")
+    px = np.frombuffer(raw, "<f4").reshape(-1, n_in + 1)
+    try:
+        src_bytes = lcms.builtin("builtin:lab") if mode == "LAB" else _ref_bytes(source, "builtin:srgb")
+        dst_bytes = _ref_bytes(dest, "builtin:srgb")
+        src_space, dst_space = lcms.space_of(src_bytes), lcms.space_of(dst_bytes)
+        if src_space == "GRAY" and mode == "RGB":
+            values, src_kind = px[:, :1], "GRAY"
+        elif src_space == mode:
+            values, src_kind = px[:, :n_in], mode
+        else:
+            raise ColourError(f"The pixels are {mode.lower()} but the source profile is {src_space.lower()}.")
+        if dst_space not in lcms.SPACES:
+            raise ColourError(f"Profiles for {dst_space} are not supported.")
+        if src_bytes == dst_bytes and src_kind == dst_space:
+            result = px[:, :n_in].astype(np.float64)
+        else:
+            result = lcms.from_lcms(lcms.transform(lcms.to_lcms(values, src_kind), src_bytes, src_kind, dst_bytes, dst_space, intent, bpc, False, preserve_black), dst_space)
+        result = lcms.quantise(result, bits, dither)
+        if dst_space == "GRAY":
+            result = np.repeat(result, 3, axis=1)
+    except lcms.LcmsError as exc:
+        raise ColourError(str(exc)) from exc
+    out = np.concatenate([result, px[:, n_in:].astype(np.float64)], axis=1).astype("<f4")
+    return out.tobytes(), dst_space.lower()
+
+
+def profile_info(ref: dict | None) -> dict:
+    """What a profile says about itself, for Color Settings: its name and space and, for a CMYK profile, the total area
+    coverage LittleCMS detects in it, the black ink at the darkest RGB, the black at mid grey and the black generation
+    that implies. Values are percentages, or None when the profile does not tell."""
+    data = _ref_bytes(ref, "builtin:srgb")
+    info = describe(data)
+    out = {"name": info["name"], "space": info["space"], "tac": None, "blackLimit": None, "blackAtMid": None, "generation": None}
+    if info["space"] != "CMYK":
+        return out
+    try:
+        tac = lcms.detect_tac(data)
+        ramp = np.array([[0.0, 0.0, 0.0], [0.5, 0.5, 0.5], [0.25, 0.25, 0.25]])
+        ink = lcms.transform(ramp, lcms.builtin("builtin:srgb"), "RGB", data, "CMYK", "relative", True)
+    except lcms.LcmsError as exc:
+        raise ColourError(str(exc)) from exc
+    k_mid = float(ink[1, 3])
+    out.update(tac=round(tac, 1) if tac > 0 else None, blackLimit=round(float(ink[0, 3]), 1), blackAtMid=round(k_mid, 1),
+               generation="None" if k_mid < 3 else "Light" if k_mid < 15 else "Medium" if k_mid < 40 else "Heavy" if k_mid < 70 else "Maximum")
+    return out

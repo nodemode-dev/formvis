@@ -20,6 +20,7 @@
 .cv-input { height: var(--ctl-md); min-width: 0; padding: 0 var(--space-2); border: 1px solid var(--border-light); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text-primary); font-size: var(--fs-12); }
 .cv-input:focus { outline: none; border-color: var(--accent-color); }
 .cv-note { color: var(--text-muted); font-size: var(--fs-11); }
+.cv-note-head { color: var(--text-secondary); font-size: var(--fs-11); font-weight: 600; padding-top: var(--space-2); }
 /* Help > Performance Benchmark: the results, as copyable plain text. */
 .cv-bench-out { display: block; margin: 8px 0; padding: 8px 10px; max-height: 50vh; overflow: auto; white-space: pre; font: var(--fs-11)/1.5 var(--font-mono); background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 6px; }
 .cv-bench-out[hidden] { display: none; }

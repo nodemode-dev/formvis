@@ -7602,6 +7602,30 @@ export class Engine {
     });
   }
 
+  /** Convert to Profile and mode changes at 16 bits (DEV_PLAN 28.2): each pixel layer's channels replaced by the engine's
+   *  LittleCMS result in `plan.layers` (double precision, rounded once, no 8-bit step), renditions redrawn, the mode,
+   *  profile and depth set; one step. For CMYK the plan carries the new press's display and separation tables. */
+  convertDeepDocument(plan: { mode: DocMode; profile: DocProfile | null; depth: 8 | 16; layers: ReadonlyMap<ID, ChannelPixels>; cmyk?: { lut: Lut4; inLut: Lut3x4 } }): boolean {
+    const p = this.current;
+    if (!p || (plan.mode === 'cmyk' && !plan.cmyk)) return false;
+    if (plan.cmyk) { p.cmykLut = plan.cmyk.lut; p.cmykIn = plan.cmyk.inLut; }
+    const ok = this.edit('Convert to Profile', (pp) => {
+      const layers = pp.doc.layers.map((l) => {
+        const ch = plan.layers.get(l.id);
+        if (!ch) return l;
+        let raster: Raster;
+        if (ch.mode === 'cmyk' && plan.cmyk) raster = rasterFromChannels(ch, plan.cmyk.lut);
+        else if (ch.mode === 'lab') { raster = new Raster(ch.width, ch.height); const img = raster.ctx.createImageData(ch.width, ch.height); renderLab(ch.data, img.data); raster.ctx.putImageData(img, 0, 0); raster.touch(); }
+        else raster = rasterFromDeep(ch);
+        return { ...l, channels: plan.depth === 8 && ch.mode === 'rgb' ? undefined : ch, raster };
+      });
+      pp.doc = { ...pp.doc, layers, mode: plan.mode, profile: plan.profile ?? undefined, depth: plan.depth === 8 ? undefined : plan.depth, palette: undefined };
+      return true;
+    });
+    if (ok && plan.cmyk) this.setCmykTables(p, plan.cmyk.lut, plan.cmyk.inLut);
+    return ok;
+  }
+
   /** Generated pixels through the table (1.55.9, DEV_PLAN 22.7): after a step at 16 bits or in CMYK, a layer whose
    *  8-bit pixels changed while its floats did not is brought into step (engine/derive.ts), its rendition redrawn from
    *  the floats; a pixel layer without floats takes them whole. Replaced rasters, in-place patches and new layers. A
