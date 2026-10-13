@@ -8,17 +8,23 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from app.core import config
-from app.services import camera_profiles, dpx, imaging
+from app.services import camera_profiles, dpx, imaging, pnm
 
 router = APIRouter(tags=["io"])
-EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif|dpx|psd)$", re.IGNORECASE)
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif|dpx|psd|qoi|pbm|pgm|ppm|pam|tga|ico)$", re.IGNORECASE)
 EXPORT_FOLDER = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f. ][^/\\:*?\"<>|\x00-\x1f]{0,99}$")
 
 
 @router.post("/encode")
-def encode(file: UploadFile = File(...), format: str = Form(...), quality: int = Form(90), dpi: int = Form(72), icc: UploadFile | None = File(default=None)) -> Response:
+def encode(file: UploadFile = File(...), format: str = Form(...), quality: int = Form(90), dpi: int = Form(72), icc: UploadFile | None = File(default=None), options: str = Form("")) -> Response:
     try:
-        data = imaging.encode(file.file.read(), format.lower(), quality, dpi, icc.file.read() if icc else None)
+        opts = json.loads(options) if options else {}
+        if not isinstance(opts, dict):
+            raise ValueError
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="The format options must be a JSON object.") from exc
+    try:
+        data = imaging.encode(file.file.read(), format.lower(), quality, dpi, icc.file.read() if icc else None, opts)
     except imaging.DecodeError as exc:
         raise HTTPException(status_code=415, detail=str(exc)) from exc
     return Response(data, media_type=imaging.ENCODINGS[format.lower()])
@@ -49,6 +55,13 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
         return Response(np.ascontiguousarray(px).astype("<u2").tobytes(), media_type="application/octet-stream",
                         headers={"X-Width": str(info["width"]), "X-Height": str(info["height"]), "X-Depth": "16", "X-Transfer": info["transfer"], "X-Bits": str(info["bits"])})
+    if pnm.is_pnm(raw):
+        try:
+            px, bits = pnm.read(raw)
+        except pnm.PnmError as exc:
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
+        return Response(np.ascontiguousarray(px.astype("<u2") * (257 if bits == 8 else 1)).tobytes(), media_type="application/octet-stream",
+                        headers={"X-Width": str(px.shape[1]), "X-Height": str(px.shape[0]), "X-Depth": str(bits)})
     img = contained.decode_exr(raw) if contained.is_exr(raw) else cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_UNCHANGED)
     if img is None:
         raise HTTPException(status_code=415, detail="The picture could not be read at its depth." if not contained.is_exr(raw) else "The OpenEXR file could not be read; a malformed file is refused outside the engine.")
@@ -116,6 +129,19 @@ def encode_dpx(file: UploadFile = File(...), width: int = Form(...), height: int
     except dpx.DpxError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return Response(data, media_type="image/x-dpx")
+
+
+@router.post("/encode-pnm")
+def encode_pnm(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), kind: str = Form("ppm")) -> Response:
+    """A Netpbm file from RGBA at 16 bits a channel, little-endian (a 16-bit document): P4, P5, P6 or P7 with a maxval of 65535."""
+    raw = file.file.read()
+    if width <= 0 or height <= 0 or len(raw) != width * height * 8:
+        raise HTTPException(status_code=422, detail="The pixels do not match the size given.")
+    try:
+        data = pnm.write(np.frombuffer(raw, "<u2").reshape(height, width, 4).astype(np.uint16), kind)
+    except pnm.PnmError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return Response(data, media_type="image/x-portable-anymap")
 
 
 _PSD_BLENDS = {"normal": "NORMAL", "multiply": "MULTIPLY", "screen": "SCREEN", "overlay": "OVERLAY", "darken": "DARKEN", "lighten": "LIGHTEN",

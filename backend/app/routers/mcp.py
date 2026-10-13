@@ -89,7 +89,7 @@ TOOLS = [
           {"scale": {"type": "integer", "enum": [2, 4], "default": 2}, "model": {"type": "string", "enum": ["auto", "local", "fal"], "default": "auto"}}, open=True),
     _tool("remove_background", "Removes the active layer's background on this computer, keeping the subject (a mask on the layer; undoable).", {}),
     # Files, read and written by the engine at absolute paths (~ is expanded).
-    _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, camera raw) or a project (.fmv, .psd, .psb, .ora) from an absolute path as a new document.",
+    _tool("open_file", "Opens a picture (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO (its largest size), PBM, PGM, PPM, PAM, camera raw) or a project (.fmv, .psd, .psb, .ora) from an absolute path as a new document.",
           {"path": {"type": "string", "description": "Absolute path, e.g. /Users/me/Pictures/beach.jpg"}}, ["path"]),
     _tool("save_project", "Saves the document as a formvis project (.fmv: layers, masks, adjustments and text stay editable) at an absolute path, replacing a file there.",
           {"path": {"type": "string", "description": "Absolute path ending .fmv"}}, ["path"], destructive=True),
@@ -325,7 +325,7 @@ async def _ask(name: str, args: dict, timeout: float) -> dict | None:
 
 
 # Files at absolute paths (1.53.3): read and written here, the window doing the picture's part.
-_PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
+_PICTURES = {".png", ".jpg", ".jpeg", ".webp", ".avif", ".gif", ".tif", ".tiff", ".heic", ".heif", ".bmp", ".qoi", ".tga", ".ico", ".pbm", ".pgm", ".ppm", ".pnm", ".pam", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2"}
 _PROJECTS = {".fmv", ".psd", ".psb", ".ora"}
 _EXPORTS = {".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp"}
 _MAX_OPEN = 512 * 1024 * 1024

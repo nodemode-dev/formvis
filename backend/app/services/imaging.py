@@ -9,7 +9,7 @@ import numpy as np
 from PIL import Image, ImageCms, ImageOps
 
 from app.core import config
-from app.services import camera_profiles, dcp, dpx
+from app.services import camera_profiles, dcp, dpx, ico, pnm, qoi, tga
 
 Image.MAX_IMAGE_PIXELS = config.MAX_PIXELS
 
@@ -66,6 +66,32 @@ def _png(image: Image.Image) -> tuple[bytes, int, int]:
     out = io.BytesIO()
     upright.save(out, format="PNG", compress_level=1)
     return out.getvalue(), upright.width, upright.height
+
+
+def _from_rgba(px: np.ndarray, bits: int = 8) -> tuple[bytes, int, int]:
+    """A PNG from the RGBA array one of the pure-Python codecs returned (16 bit samples rounded to 8), RGB when opaque."""
+    if px.dtype == np.uint16:
+        px = ((px.astype(np.uint32) + 128) // 257).astype(np.uint8)
+    image = Image.fromarray(px)
+    if bool((px[..., 3] == 255).all()):
+        image = image.convert("RGB")
+    return _png(image)
+
+
+def _sniffed(data: bytes, suffix: str, page: int) -> tuple[bytes, int, int] | None:
+    """QOI, Netpbm, TGA and ICO, read by the engine's own codecs (qoi.py, pnm.py, tga.py, ico.py); None for anything else."""
+    try:
+        if qoi.is_qoi(data):
+            return _from_rgba(qoi.read(data)[0])
+        if pnm.is_pnm(data):
+            return _from_rgba(pnm.read(data)[0])
+        if ico.is_ico(data) and suffix in (".ico", ".cur"):
+            return _from_rgba(ico.read(data, page))
+        if suffix in (".tga", ".icb", ".vda", ".vst") and tga.looks_like_tga(data):
+            return _from_rgba(tga.read(data))
+    except (qoi.QoiError, pnm.PnmError, tga.TgaError, ico.IcoError) as exc:
+        raise DecodeError(f"Could not decode the image: {exc}") from exc
+    return None
 
 
 def _sips(data: bytes, suffix: str) -> tuple[bytes, int, int]:
@@ -136,6 +162,11 @@ def _raw(data: bytes, filename: str, camera_profile: str = "auto") -> tuple[byte
 def pages(data: bytes, filename: str) -> list[dict]:
     """A TIFF's pages (1.53.4), BigTIFF included: each page's number, size and mode, read without decoding pixels.
     One entry for anything else."""
+    if ico.is_ico(data) and Path(filename).suffix.lower() in (".ico", ".cur"):
+        try:
+            return [{"index": e["index"], "width": e["width"], "height": e["height"], "mode": f"{e['bits']} bit"} for e in ico.listing(data)]
+        except ico.IcoError as exc:
+            raise DecodeError(f"Could not read {filename or 'the icon'}: {exc}") from exc
     try:
         with Image.open(io.BytesIO(data)) as image:
             if image.format != "TIFF":
@@ -159,6 +190,9 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
         except dpx.DpxError as exc:
             raise DecodeError(f"Could not decode {filename or 'the image'}: {exc}") from exc
         return _png(Image.fromarray(((px.astype("uint32") + 128) // 257).astype("uint8"), "RGBA"))
+    own = _sniffed(data, suffix, page)
+    if own is not None:
+        return own
     try:
         with Image.open(io.BytesIO(data)) as image:
             if page:
@@ -179,10 +213,29 @@ def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str
         raise DecodeError(f"Could not decode {label}: {exc}") from exc
 
 
-ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif", "dpx": "image/x-dpx"}
+ENCODINGS = {"tiff": "image/tiff", "pdf": "application/pdf", "webp": "image/webp", "avif": "image/avif", "dpx": "image/x-dpx",
+             "qoi": "image/x-qoi", "pnm": "image/x-portable-anymap", "tga": "image/x-tga", "ico": "image/vnd.microsoft.icon"}
 
 
-def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | None = None) -> bytes:
+def _own_encode(rgba: np.ndarray, fmt: str, options: dict) -> bytes:
+    """QOI (`linear` flag), Netpbm (`kind`: pbm, pgm, ppm or pam), TGA (`bits` 24 or 32, `rle`) and ICO (`sizes`,
+    `png` for PNG entries at every size) from 8-bit RGBA."""
+    try:
+        if fmt == "qoi":
+            return qoi.write(rgba, bool(options.get("linear")))
+        if fmt == "pnm":
+            return pnm.write(rgba, str(options.get("kind", "ppm")))
+        if fmt == "tga":
+            return tga.write(rgba, int(options.get("bits", 32)), bool(options.get("rle")))
+        sizes = options.get("sizes") or list(ico.SIZES)
+        if not isinstance(sizes, list):
+            raise DecodeError("The icon sizes must be a list.")
+        return ico.write(rgba, sizes, bool(options.get("png")))
+    except (qoi.QoiError, pnm.PnmError, tga.TgaError, ico.IcoError, TypeError, ValueError) as exc:
+        raise DecodeError(str(exc)) from exc
+
+
+def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | None = None, options: dict | None = None) -> bytes:
     """Re-encodes a PNG from the editor: TIFF (LZW, alpha kept), PDF (one page at `dpi`, flattened on white, since PDF
     images carry no alpha here), WebP or AVIF (at `quality`, alpha kept). `icc`, an ICC profile the pixels are already
     in, is embedded in TIFF, WebP and AVIF; PDF carries none."""
@@ -207,8 +260,9 @@ def encode(png: bytes, fmt: str, quality: int = 90, dpi: int = 72, icc: bytes | 
     out = io.BytesIO()
     q = max(1, min(100, int(quality)))
     extra = {"icc_profile": icc} if icc else {}
+    if fmt in ("qoi", "pnm", "tga", "ico"):
+        return _own_encode(np.asarray(rgba), fmt, options or {})
     if fmt == "dpx":
-        import numpy as np
         wide = np.asarray(rgba, dtype=np.uint16) * 257
         try:
             return dpx.write(wide, 10, "log", True)
