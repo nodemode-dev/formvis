@@ -5,7 +5,8 @@ import { Dialog } from './dialogs';
 import { icon } from './icons';
 import { rememberTool, slotTool, toolGroups, type ToolGroup } from './tool-groups';
 
-const parseHex = (v: string): RGB => ({ r: parseInt(v.slice(1, 3), 16), g: parseInt(v.slice(3, 5), 16), b: parseInt(v.slice(5, 7), 16) });
+/** Turns a '#rrggbb' string into its red, green and blue channels. */
+function parseHex(v: string): RGB { return { r: parseInt(v.slice(1, 3), 16), g: parseInt(v.slice(3, 5), 16), b: parseInt(v.slice(5, 7), 16) }; }
 
 /** How many entries a group's flyout lists: its tools, a tool with modes counting each mode. */
 function entries(group: ToolGroup): number { return group.tools.reduce((n, t) => n + Math.max(1, (ENGINE && t.variants?.(ENGINE)?.length) || 0), 0); }
@@ -58,23 +59,26 @@ export class Rail {
     this.applyHidden();
     document.addEventListener('pointerdown', (e) => { if (!this.flyout.hidden && !this.flyout.contains(e.target as Node)) this.closeFlyout(); }, true);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !this.flyout.hidden) { e.preventDefault(); this.closeFlyout(); } }, true);
-    const colors = q(root, '.cv-colors');
-    colors.insertAdjacentHTML('beforeend',
-      '<button class="cv-swatch cv-swatch-fg" type="button" title="Foreground color" aria-label="Foreground color"></button>' +
-      '<button class="cv-swatch cv-swatch-bg" type="button" title="Background color" aria-label="Background color"></button>' +
-      `<button class="cv-swap" type="button" title="Swap colors (X)" aria-label="Swap colors">${icon('refresh', 12)}</button>` +
-      `<button class="cv-reset" type="button" title="Default colors (D)" aria-label="Default colors">${icon('theme', 12)}</button>` +
-      '<input class="cv-color-input cv-fg-input" type="color" tabindex="-1" aria-hidden="true"><input class="cv-color-input cv-bg-input" type="color" tabindex="-1" aria-hidden="true">');
-    this.fg = q<HTMLButtonElement>(colors, '.cv-swatch-fg');
-    this.bg = q<HTMLButtonElement>(colors, '.cv-swatch-bg');
-    this.fgInput = q<HTMLInputElement>(colors, '.cv-fg-input');
-    this.bgInput = q<HTMLInputElement>(colors, '.cv-bg-input');
-    this.fg.addEventListener('click', () => this.fg.dispatchEvent(new CustomEvent('cv-pick-color', { bubbles: true, detail: 'fg' })));
-    this.bg.addEventListener('click', () => this.bg.dispatchEvent(new CustomEvent('cv-pick-color', { bubbles: true, detail: 'bg' })));
+    // The colour well: foreground and background swatches, swap and reset, and two hidden native colour inputs.
+    const well = q(root, '.cv-colors');
+    well.insertAdjacentHTML('beforeend',
+      '<button class="cv-swatch cv-swatch-fg" type="button" title="Foreground color" aria-label="Foreground color"></button>'
+      + '<button class="cv-swatch cv-swatch-bg" type="button" title="Background color" aria-label="Background color"></button>'
+      + `<button class="cv-swap" type="button" title="Swap colors (X)" aria-label="Swap colors">${icon('refresh', 12)}</button>`
+      + `<button class="cv-reset" type="button" title="Default colors (D)" aria-label="Default colors">${icon('theme', 12)}</button>`
+      + '<input class="cv-color-input cv-fg-input" type="color" tabindex="-1" aria-hidden="true">'
+      + '<input class="cv-color-input cv-bg-input" type="color" tabindex="-1" aria-hidden="true">');
+    this.fg = q<HTMLButtonElement>(well, '.cv-swatch-fg');
+    this.bg = q<HTMLButtonElement>(well, '.cv-swatch-bg');
+    this.fgInput = q<HTMLInputElement>(well, '.cv-fg-input');
+    this.bgInput = q<HTMLInputElement>(well, '.cv-bg-input');
+    for (const [sw, which] of [[this.fg, 'fg'], [this.bg, 'bg']] as const) {
+      sw.addEventListener('click', () => sw.dispatchEvent(new CustomEvent('cv-pick-color', { bubbles: true, detail: which })));
+    }
     this.fgInput.addEventListener('input', () => engine.setColors(parseHex(this.fgInput.value)));
     this.bgInput.addEventListener('input', () => engine.setColors(undefined, parseHex(this.bgInput.value)));
-    q(colors, '.cv-swap').addEventListener('click', () => engine.swapColors());
-    q(colors, '.cv-reset').addEventListener('click', () => engine.defaultColors());
+    q(well, '.cv-swap').addEventListener('click', () => engine.swapColors());
+    q(well, '.cv-reset').addEventListener('click', () => engine.defaultColors());
     engine.on('tool', () => this.sync());
     engine.on('options', () => this.sync());
     engine.on('colors', () => this.syncColors());
@@ -178,16 +182,18 @@ export class Rail {
 
   private closeFlyout(): void { this.flyout.hidden = true; }
 
+  /** Repaints both swatches and the hidden inputs from the engine's colours. */
   private syncColors(): void {
-    const fg = hexOf(this.engine.fg), bg = hexOf(this.engine.bg);
-    if (this.fg.style.backgroundColor !== this.fgRgb()) this.fg.style.backgroundColor = fg;
-    if (this.bg.style.backgroundColor !== this.bgRgb()) this.bg.style.backgroundColor = bg;
-    setValue(this.fgInput, fg);
-    setValue(this.bgInput, bg);
+    const e = this.engine;
+    const pairs: Array<[HTMLButtonElement, HTMLInputElement, RGB, string]> = [[this.fg, this.fgInput, e.fg, this.fgRgb()], [this.bg, this.bgInput, e.bg, this.bgRgb()]];
+    for (const [sw, inp, c, rgb] of pairs) {
+      if (sw.style.backgroundColor !== rgb) sw.style.backgroundColor = hexOf(c);
+      setValue(inp, hexOf(c));
+    }
   }
 
-  private fgRgb(): string { const c = this.engine.fg; return `rgb(${c.r}, ${c.g}, ${c.b})`; }
-  private bgRgb(): string { const c = this.engine.bg; return `rgb(${c.r}, ${c.g}, ${c.b})`; }
+  private fgRgb(): string { const c = this.engine.fg; return `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`; }
+  private bgRgb(): string { const c = this.engine.bg; return `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`; }
 }
 
 /** Edit Toolbar, as Photoshop's: which tool groups the rail shows; hidden ones stay in its ••• list. */
