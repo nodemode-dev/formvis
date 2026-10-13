@@ -2,6 +2,23 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The terminal dock, the Claude Code panel and pressure from force, DEV_PLAN 28.5 and 28.1 part 1 · _v1.67.4 (ui/terminal-dock.ts, ui/panels/agent-panel.ts, styles/terminal.css, index.html, app.ts, io/api.ts, vite.config.ts, ui/stage.ts)
+
+`TerminalDock` (`ui/terminal-dock.ts`): xterm 6.0.0 with the fit addon in a dock at the window's foot, tabs per engine PTY over `/api/terminal`, toggled by `terminal.toggle` (Mod+J) and Window > Terminal; `terminal.new` opens a tab; open state and height live on `documentElement` attributes, set by a boot script in `index.html` before first paint, so the dock never jumps in. `AgentPanel` (`ui/panels/agent-panel.ts`): Window > Claude Code (`agent.claude.open`), the status line from `/api/claude/status`, the message list fed by the `/api/claude/stream` socket, mode select (Ask, Auto-accept edits, Plan), Allow and Deny for Ask-mode permissions, Stop. `styles/terminal.css` hides xterm's own scrollbar elements and lifts the Home screen's foot while the dock is open. `vite.config.ts` gains `ws: true` on both `/api` proxies, without which the dev server dropped the sockets. `Stage.pressureOf` (`ui/stage.ts`): pen pressure as before; a touch's force when the screen reports a real value; a Force Touch trackpad's `webkitForce` (1 the click, 2 the deep press) once a reading past 1 has shown the device measures force, since a plain mouse in WebKit reports exactly 1 at each click. A first cut of spacing-independent flow was tried and taken out before commit: at fine spacing each dab's alpha falls below one step of the 8-bit paint layer, so low flows stopped building (`test_brush_flow`); 28.1's flow and per-dab opacity need a deeper paint buffer, next.
+
+Verified: tsc clean; unit 194 of 194; the agent's own end-to-end runs (a PTY echo round trip over the socket, Claude Code signed in here streaming a bash call into the mirror tab, Mod+J with no layout shift and the xterm bars computing `display: none`); 35 brush, pencil, eraser, mixer and clone browser tests pass. Not verified here: a Force Touch trackpad (the macOS app only), Ask-mode approval prompts, Plan and Auto-accept modes, light themes. Removed from frontend:
+
+```text
+  "version": "1.67.3",
+      "version": "1.67.3",
+  "version": "1.67.3",
+export const VERSION = '1.67.3';
+    { label: 'Window', items: ['assistant', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: pen ? Math.min(1, Math.max(0, (e as PointerEvent).pressure)) : 1,
+      '/api': { target: `http://127.0.0.1:${BACKEND_PORT}`, changeOrigin: true },
+      '/api': { target: `http://127.0.0.1:${BACKEND_PORT}`, changeOrigin: true },
+```
+
 ## Engine types and algorithms, the engine client, project masks and the Filter dialog rewritten from behaviour specs, DEV_PLAN 28.0 batches 24b and 25b · _v1.67.3 (engine/types.ts, kernels.ts, matte.ts, stroke.ts, distort.ts, retouch.ts, filter-jobs.ts, filter-worker.ts; io/api.ts, images.ts, project-io.ts; ui/panels/filter-panel.ts)
 
 Batches 24 and 25 were first specced with line-by-line notes and came back mostly identical to the old lines, so they were not placed (the planning sidecar's provenance audit, § Similarity check). Specs `cleanroom/batch-24b-engine-math-gapfill.md` and `batch-25b-io-filter-panel-gapfill.md` state interfaces exactly and everything else as behaviour, with new implementers who had not seen the first notes. Gaps written from behaviour notes now differ from the old lines; gaps fixed by an interface (signatures, field lists, imports), by the names the following lines read, or by the canvas calls around them still match, as they must. Review feedback: one declaration (the Transform fields) and one measured behaviour (the warp's output must span its bounds exactly, which brought that loop back to the only form that does). Not placed, because each changed behaviour: the Filter dialog's reopen guard, a guessed second shape for the library list, and the size of a stored mask with no pixels. Placed as single-region edits. Removed code: the earlier lines are not quoted, by the Phase 13 rule.

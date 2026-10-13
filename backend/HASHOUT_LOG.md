@@ -2,6 +2,84 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Terminals, Claude Code, the native renderer, the scrollbar check and the agent kit, DEV_PLAN 28.5, 28.6, 28.7 and 28.8 · _v1.67.4 (app/services/terminal.py, claude_code.py, native.py; app/routers/terminal.py, claude_code.py, native.py; app/main.py; native/formvis-render; setup/line_counts.py; .claude/skills)
+
+`services/terminal.py`: PTY sessions (`ptyprocess`; `pywinpty` on Windows) with scrollback, resize, restart and close, started in the repo root with it first on PATH; `routers/terminal.py` under `/api/terminal`, output on a WebSocket as text frames and control messages as binary frames. Every terminal and Claude route and socket passes `origin_ok`: the Host header must be a loopback name (so a page that rebinds its domain to 127.0.0.1 is refused) and the Origin, when sent, must be a configured CORS origin or a loopback or Tauri one, because WebSockets are not covered by CORS. `services/claude_code.py`: finds `claude` (`FORMVIS_CLAUDE_BIN`, `which`, the install paths Format checks), reports installed, version and signed-in (`claude auth status`), spawns it in stream-JSON with `.mcp.json`'s formvis server and the chosen permission mode, streams its messages, answers Ask-mode permissions, and mirrors each bash call into a read-only terminal session; `routers/claude_code.py` under `/api/claude`. `native/formvis-render` 0.8.0, Format's crate's shape: dependencies pinned with `=`, winit behind a `window` feature, `Gpu::describe`, `native_start` and `enabled` on `FORMVIS_NATIVE`, `src/bench.rs` (the benchmark loop, moved from `bin/brush_bench.rs`, which now calls it), `bin/formvis-render.rs` (`info`, `composite --spec --out`, `bench`); `services/native.py` and `GET /api/native/status`; `NOTICE.md` lists the crate's 144 dependencies with their licences. `setup/line_counts.py` `scrollbar_problems`: `counts --check` fails on a scrollbar-width other than none, a scrollbar-color, a `::-webkit-scrollbar` rule that sizes or shows the bar, or `index.html` without the shared sheet. `.claude/skills`: `formvis-harness` (12 sub-skills), `formvis-driving` (12 sub-skills), `formvis-colour-science`, each with `EVALS.json`; `formvis-editing` is now a pointer to `formvis-driving` (its `references/tools.md` unchanged, still generated); `formvis-skillset` stays while `AGENTS.md`, `README.md` and `docs/AGENT_EVALS.md` name it; `./formvis agents sync` mirrors only `formvis-editing` so far.
+
+Verified: engine tests fail only as on the unchanged tree (seven, models and the EXR codec); `test_agents_setup` 3 of 3; `agents sync --check` in step; `cargo build --release`, `cargo clippy --all-targets -D warnings` and `cargo test` clean, `cargo check` in `src-tauri` clean; `formvis-render info` JSON on llvmpipe, a two-layer multiply and screen composite matching hand values; `origin_ok` refuses a foreign Host and a foreign Origin. Removed lines taken after the version edit. Removed:
+
+```text
+__version__ = "1.67.3"
+version = "1.67.3"
+version = "1.67.3"
+ "version": "1.67.3",
+from app.services import sessions
+version = "0.1.0"
+wgpu = "30"
+pollster = "1"
+bytemuck = { version = "1", features = ["derive"] }
+sysinfo = { version = "0.39", default-features = false, features = ["system"] }
+[dev-dependencies]
+# Only for examples/window.rs, which checks the display in a real window; the desktop shell brings its own window.
+winit = "0.30"
+            let mut placed: Option<([f32; 2], [f32; 2], Affine, [f32; 2])> = None;
+```
+
+From `native/formvis-render/src/bin/brush_bench.rs`, moved into `src/bench.rs`:
+
+```rust
+use formvis_render::composite::{Blender, Stack};
+use formvis_render::{budget, Gpu, TiledLayer, TILE};
+use std::collections::BTreeSet;
+use std::time::Instant;
+const STEP: f32 = 12.0; // pointer movement per update, in pixels
+const RADIUS: f32 = 30.0;
+const SPACING: f32 = 0.25 * 2.0 * RADIUS; // dabs every quarter of the diameter
+    // A full background: every tile of the document holds pixels.
+    let mut background = TiledLayer::new(SIZE, SIZE);
+    let row: Vec<u8> = (0..SIZE).flat_map(|x| [(x % 256) as u8, 128, 200, 255]).collect();
+    for band in (0..SIZE).step_by(TILE as usize) {
+        let h = TILE.min(SIZE - band);
+        let rows: Vec<u8> = (0..h).flat_map(|_| row.iter().copied()).collect();
+        background.write(&gpu, 0, band, SIZE, h, &rows);
+    }
+    let mut paint = TiledLayer::new(SIZE, SIZE);
+    let blender = Blender::new(&gpu);
+    let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+    let mut times = Vec::with_capacity(UPDATES);
+    let (mut last, mut carry) = ([200.0f32, 200.0f32], 0.0f32);
+    for i in 1..=UPDATES {
+        let t = Instant::now();
+        let p = [200.0 + i as f32 * STEP, 200.0 + i as f32 * STEP * 0.6];
+        let (dx, dy) = (p[0] - last[0], p[1] - last[1]);
+        let len = (dx * dx + dy * dy).sqrt();
+        let mut dirty = BTreeSet::new();
+        let mut d = SPACING - carry;
+        while d <= len {
+            let c = [last[0] + dx * d / len, last[1] + dy * d / len];
+            paint.dab(&gpu, c, RADIUS, 0.8, [0.9, 0.2, 0.1, 1.0], 0.7);
+            for ty in ((c[1] - RADIUS).max(0.0) as u32 / TILE)..=((c[1] + RADIUS) as u32 / TILE) {
+                for tx in ((c[0] - RADIUS).max(0.0) as u32 / TILE)..=((c[0] + RADIUS) as u32 / TILE) {
+                    dirty.insert((tx, ty));
+                }
+            }
+            d += SPACING;
+        }
+        carry = len - (d - SPACING);
+        last = p;
+        let layers = [Stack::new(&background, 0, 1.0), Stack::new(&paint, 0, 1.0)];
+        let rendered: Vec<_> = dirty.iter().map(|&(tx, ty)| blender.render_tile(&gpu, &layers, tx, ty)).collect();
+        let _ = gpu.device.poll(wgpu::PollType::wait_indefinitely());
+        drop(rendered);
+        times.push(t.elapsed().as_secs_f64() * 1000.0);
+    }
+    times.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    let q = |f: f64| times[((times.len() - 1) as f64 * f).round() as usize];
+    println!("{UPDATES} pointer updates on a {SIZE} px document: median {:.2} ms, 95th percentile {:.2} ms, worst {:.2} ms", q(0.5), q(0.95), q(1.0));
+```
+
+`.claude/skills/formvis-editing/SKILL.md` (and its identical `.agents/skills` mirror) lost its body to the pointer; the former text, as it stood at 1.67.3, is in the tag `v1.67.3` at that path (`git show v1.67.3:.claude/skills/formvis-editing/SKILL.md`), and `CLAUDE.md` lost its two routing lines naming `formvis-skillset` and `formvis-editing`, replaced by the lines naming the new skills.
+
 ## Settings, sessions, decoding, background removal and the io and ops routes rewritten from behaviour specs, DEV_PLAN 28.0 batch 26b · _v1.67.3 (app/core/config.py, app/services/sessions.py, imaging.py, background.py; app/routers/io.py, ops.py)
 
 Batch 26 was first specced with line-by-line notes and came back mostly identical, so it was not placed. `cleanroom/batch-26b-engine-service-core-gapfill.md` states interfaces exactly (names, routes, status codes, headers, environment variables, messages) and the rest as behaviour, for a new implementer. None of the gaps written from behaviour came back identical; constants, imports, route decorators and the capabilities keys match, as they must. `sessions.py` as one whole-file write, the rest as single-region edits. Behaviour changes: an export name sent with a Windows path keeps only the file name (in the CHANGELOG); the light background engine's inset rounds down rather than to nearest (at most a pixel of the working copy), and GrabCut now receives RGB rather than BGR, which its colour models treat alike. Removed code: the earlier lines are not quoted, by the Phase 13 rule.

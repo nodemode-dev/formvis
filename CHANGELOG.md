@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.67.4 · 2026-10-13
+
+### Added
+
+- A terminal in the window: Window > Terminal or Mod+J opens a dock of real shells at the bottom, with tabs, in the project folder with `./formvis` on the path.
+- Claude Code inside formvis: Window > Claude Code finds your installed, signed-in Claude Code, runs it with formvis's MCP tools attached in Ask, Auto-accept edits or Plan mode, shows its messages, and mirrors every command it runs into a read-only Claude tab in the terminal dock. Without Claude Code installed, the panel says how to install it.
+- The native renderer's command line, `formvis-render` (`info`, `composite`, `bench`), and the engine's `/api/native/status`, used when `FORMVIS_NATIVE` is set.
+- Agent skills for this repository: `formvis-harness` for changing formvis, `formvis-driving` for editing pictures through a running formvis, and `formvis-colour-science`.
+- Pen-like pressure from a touch screen that reports force, and from a Force Touch trackpad in the macOS app.
+
+### Changed
+
+- `./formvis counts --check` also fails when any style could draw a scrollbar.
+
 ## 1.67.3 · 2026-10-13
 
 ### Changed
