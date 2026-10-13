@@ -1,0 +1,24 @@
+{
+  "skill": "formvis-colour-science",
+  "purpose": "Answering profile, rendering intent, CMYK, gamut and Lab questions with formvis's own colour service.",
+  "should_trigger": [
+    { "prompt": "Which rendering intent should I use to convert this sRGB logo to FOGRA39 for print?" },
+    { "prompt": "What does pure sRGB red become in CMYK with the profile formvis ships?" },
+    { "prompt": "Is the colour 20, 120, 200 inside the gamut of the FOGRA39L Coated profile?" },
+    { "prompt": "How big is the delta E between two blues in formvis's colour service?" },
+    { "prompt": "What is the difference between perceptual and relative colorimetric in formvis Convert to Profile?" },
+    { "prompt": "How does the Gamut Warning decide a colour is out of gamut?" },
+    { "prompt": "What profiles does formvis list and which CMYK profile is the default?" },
+    { "prompt": "Why does a CMYK profile fail when I ask the lut route to convert to it?" }
+  ],
+  "should_not_trigger": [
+    { "prompt": "Make this photo warmer and a bit brighter.", "better_fit": "formvis-driving" },
+    { "prompt": "Add a Halftone filter to formvis.", "better_fit": "formvis-harness" },
+    { "prompt": "Export this picture as a JPEG on my Desktop.", "better_fit": "formvis-driving" },
+    { "prompt": "Fix the flicker in the layers panel.", "better_fit": "formvis-harness" },
+    { "prompt": "Pick a nice colour palette for my website.", "better_fit": "none, a design question" },
+    { "prompt": "Calibrate my monitor with a colorimeter.", "better_fit": "none, hardware calibration" },
+    { "prompt": "Bump the version and write the release notes.", "better_fit": "formvis-harness" },
+    { "prompt": "Remove the background from this product photo.", "better_fit": "formvis-driving" }
+  ]
+}

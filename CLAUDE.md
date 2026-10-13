@@ -13,10 +13,12 @@ Layered image editor for the web and the desktop in the NodeMode design system: 
 
 ## Skills
 
-- `formvis-skillset` · the orchestrator for all formvis work: engine, tools, UI shell, engine service, project format, desktop builds, NodeMode embedding and verification. Route through its `SKILL.md` routing table to the specialist `SUB-SKILL.md`.
+- `formvis-harness` · for changing formvis's code: engine, commands, tools, brushes, colour, filters, UI, agent bridge, terminal, native renderer, file formats and releases. Route through its `SKILL.md` routing table to the specialist `SUB-SKILL.md`.
+- `formvis-driving` · for using a running formvis through its MCP tools to edit pictures, with a sub-skill per action family.
+- `formvis-colour-science` · answers profile, intent, CMYK and Lab questions with the engine's own colour service.
 
-Always route work through `.claude/skills/formvis-skillset/SKILL.md` first: it maps the subsystems, the dependency graph and the laws, and loads the right references.
+Always route code work through `.claude/skills/formvis-harness/SKILL.md` first: it maps the subsystems, the dependency graph and the laws, and loads the right references. `formvis-skillset` is the older orchestrator and stays only while `AGENTS.md`, `README.md` and `docs/AGENT_EVALS.md` still point at it.
 
 ## Editing pictures through formvis
 
-When the person wants a picture edited (retouched, an object removed or added, text added, resized, exported), use the `formvis` MCP server's tools with the `formvis-editing` skill (`.claude/skills/formvis-editing`), not formvis's source code. `.mcp.json` starts it (`./formvis mcp`, which starts the engine if it is not running); the first edit asks the person once, in the formvis window, to allow outside agents. After changing the MCP tools in `backend/app/routers/mcp.py`, run `./formvis agents sync` so the skill's tool reference and its `.agents/skills` mirror follow (the engine tests fail until you do).
+When the person wants a picture edited (retouched, an object removed or added, text added, resized, exported), use the `formvis` MCP server's tools with the `formvis-driving` skill (`.claude/skills/formvis-driving`; `formvis-editing` is now only a pointer to it), not formvis's source code. `.mcp.json` starts it (`./formvis mcp`, which starts the engine if it is not running); the first edit asks the person once, in the formvis window, to allow outside agents. After changing the MCP tools in `backend/app/routers/mcp.py`, run `./formvis agents sync` so the tool reference (`formvis-editing/references/tools.md`) and its `.agents/skills` mirror follow (the engine tests fail until you do).

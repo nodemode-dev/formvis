@@ -1,0 +1,24 @@
+{
+  "skill": "formvis-harness",
+  "purpose": "Changing formvis's own source code, scripts and release. Not editing a picture through formvis.",
+  "should_trigger": [
+    { "prompt": "Add a Halftone Screen filter to formvis's Filter menu.", "route": "filter-library" },
+    { "prompt": "Fix the brush code: strokes with pen pressure skip dabs when the pointer moves fast.", "route": "brush-engine" },
+    { "prompt": "Add a command called Flip Selection with the shortcut Alt+Shift+Mod+F and put it in the Select menu.", "route": "command-author" },
+    { "prompt": "Make undo work for the new Crop to Content operation in the formvis engine.", "route": "engine-builder" },
+    { "prompt": "The layers panel flickers when I rename a layer. Find the re-render and fix it without a DOM flash.", "route": "ui-builder" },
+    { "prompt": "Add an MCP tool to formvis that lists the document's guides, and regenerate the tool reference.", "route": "agent-bridge" },
+    { "prompt": "Bump formvis to the next version, write the CHANGELOG entry and the HASHOUT log, then check counts.", "route": "release-keeper" },
+    { "prompt": "formvis fails to read 16-bit TIFFs with an embedded profile; fix the decode route in backend/app/routers/io.py.", "route": "io-formats" }
+  ],
+  "should_not_trigger": [
+    { "prompt": "Blur the background of this photo in formvis and export it as a JPEG.", "better_fit": "formvis-driving" },
+    { "prompt": "Remove the person on the left of the picture that is open in formvis.", "better_fit": "formvis-driving" },
+    { "prompt": "Which rendering intent should I use to convert an sRGB photo to FOGRA39 for print?", "better_fit": "formvis-colour-science" },
+    { "prompt": "Explain how a Gaussian blur works.", "better_fit": "none, a general question" },
+    { "prompt": "Write a Python script that resizes every JPEG in a folder.", "better_fit": "none, a script unrelated to formvis" },
+    { "prompt": "Add a new filter to Photoshop through a UXP plugin.", "better_fit": "none, a different product" },
+    { "prompt": "Make a YouTube thumbnail with the title Launch Day using formvis.", "better_fit": "formvis-driving" },
+    { "prompt": "Review my React app's z-index problems and suggest a scale.", "better_fit": "none, a different codebase" }
+  ]
+}
