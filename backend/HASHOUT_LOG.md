@@ -2,6 +2,21 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.67.8: the first of Phases 29 to 35 · _v1.67.8
+
+Joined and checked after the two builders: engine `tests/test_api.py` 16 passed; the browser tests nearest the change pass but for `test_duplicate_layer_dialog_names_the_copy_and_ctrl_j_stays_quick`, which fails the same on the unchanged 1.67.7 tree. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.67.7"
+version = "1.67.7"
+version = "1.67.7"
+ "version": "1.67.7",
+```
+
+## POST /api/io/export takes a folder, DEV_PLAN 29.1 · _v1.67.8 (app/routers/io.py)
+
+Layers to Files in the desktop app writes many files; an optional `folder` form field (one name, no separators, not starting with a dot or space, 100 characters at most; `EXPORT_FOLDER`) puts them in a folder made inside the exports folder, and a bad name is a 400. `psd` joins the allowed export extensions, which the one-layer PSD of Layers to Files needs. Without `folder` the route is as before.
+
 ## The project format, the project routes and the desktop shell's start rewritten from behaviour specs, DEV_PLAN 28.0 batch 28 · _v1.67.7 (app/services/project_format.py, app/routers/projects.py; src-tauri/src/main.rs)
 
 Spec `cleanroom/batch-28-project-format-routes-shell.md`, 54 gaps, notes tagged Interface, Behaviour or Close, with an implementer who had not seen the old lines. Similarity, measured before placing: 21 of 54 identical, none of them a behaviour gap (route declarations, `close_splash`, `fn main` and the builder's run, all fixed by their interface). `project_format.py` as one whole-file write (about 85 percent changed), `projects.py` and `main.rs` as single-region edits. Review feedback as a compiler error only: the error dialog builder has no `title` before `message`; the line was removed in the repo by hand. Removed code: the earlier lines are not quoted, by the Phase 13 rule.

@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.67.8 · 2026-10-13
+
+### Added
+
+- Clarity, Dehaze, Texture and Light as their own maskable adjustment layers, beside Develop. Light has Brightness, Contrast, Highlights, Shadows, Whites and Blacks; each looks the same at any zoom.
+- File > Scripts: Delete All Empty Layers, Flatten All Layer Effects and Flatten All Masks, each one undoable step.
+- File > Export > Layers to Files and Artboards to Files: prefix, visible layers only, trim, ICC profile, and PNG, JPEG, TIFF, WebP or PSD, with effects and masks applied. In the browser they download as a zip; on the desktop they go to a named folder in the exports folder. Agents can run both without the dialog.
+
 ## 1.67.7 · 2026-10-13
 
 ### Changed
