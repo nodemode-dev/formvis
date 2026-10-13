@@ -29,6 +29,7 @@ import { antialiasMask, levelsKernel, wandMask } from './kernels';
 import { Project } from './project';
 import * as LS from './layer-structure';
 import * as LM from './layer-masks';
+import * as FS from './file-scripts';
 import * as PM from './pixel-move';
 import * as TC from './transform-commit';
 import * as PO from './paint-ops';
@@ -3037,6 +3038,54 @@ export class Engine {
       if (p.activeId && !doomed.has(p.activeId)) p.selectedIds = new Set([...p.selectedIds].filter((id) => !doomed.has(id)));
       else this.focus(p, hierarchy(p.doc, true)[0]?.layer.id ?? null);
     });
+  }
+
+  /** File > Scripts > Delete All Empty Layers (30.1): pixel layers with nothing visible in them and groups left empty,
+   *  deleted; the Background and adjustment, fill, type, shape and smart object layers stay. One step; returns how many
+   *  layers and groups went. */
+  deleteEmptyLayers(): number {
+    let count = 0;
+    this.edit('Delete All Empty Layers', (p) => {
+      const found = FS.emptyLayerIds(p.doc, this.backgroundLayer()?.id ?? null);
+      if (!found.ids.size) { this.notice('There are no empty layers to delete.'); return false; }
+      if (found.ids.size >= p.doc.layers.length) { this.notice('Every layer is empty, and a document keeps at least one: nothing was deleted.'); return false; }
+      const doomed = found.ids;
+      p.setLayers(this.normalizeClips(p.doc.layers.filter((l) => !doomed.has(l.id)).map((l) => (l.clipId && doomed.has(l.clipId) ? { ...l, clipId: null } : l))));
+      if (p.activeId && !doomed.has(p.activeId)) p.selectedIds = new Set([...p.selectedIds].filter((id) => !doomed.has(id)));
+      else this.focus(p, hierarchy(p.doc, true)[0]?.layer.id ?? null);
+      count = doomed.size;
+      this.notice(`Deleted ${found.layers} empty layer${found.layers === 1 ? '' : 's'} and ${found.groups} empty group${found.groups === 1 ? '' : 's'}.`);
+    });
+    return count;
+  }
+
+  /** File > Scripts > Flatten All Layer Effects (30.1): every layer style drawn into its layer's pixels, as Rasterize >
+   *  Layer Style does; a type, shape or fill layer that carries one is rasterized. One step; returns the layers baked. */
+  flattenAllEffects(): number {
+    let count = 0;
+    this.edit('Flatten All Layer Effects', (p) => {
+      const { patches, rasterized } = FS.bakeEffects(p.doc, this.work);
+      if (!patches.size) { this.notice('No layer has a shown layer style to flatten.'); return false; }
+      for (const [id, patch] of patches) p.updateLayer(id, patch);
+      count = patches.size;
+      this.notice(`Flattened the layer styles of ${count} layer${count === 1 ? '' : 's'}${rasterized ? `, rasterizing ${rasterized} type, shape or fill layer${rasterized === 1 ? '' : 's'}` : ''}.`);
+    });
+    return count;
+  }
+
+  /** File > Scripts > Flatten All Masks (30.1): every layer mask and vector mask multiplied into its layer's pixels and
+   *  removed; a type, shape or fill layer that carries one is rasterized. One step; returns the masks applied. */
+  flattenAllMasks(): number {
+    let count = 0;
+    this.edit('Flatten All Masks', (p) => {
+      const { patches, masks, rasterized } = FS.bakeMasks(p.doc);
+      if (!patches.size) { this.notice('No layer has a mask to apply.'); return false; }
+      for (const [id, patch] of patches) p.updateLayer(id, patch);
+      p.maskTarget = false;
+      count = masks;
+      this.notice(`Applied ${masks} mask${masks === 1 ? '' : 's'} on ${patches.size} layer${patches.size === 1 ? '' : 's'}${rasterized ? `, rasterizing ${rasterized} type, shape or fill layer${rasterized === 1 ? '' : 's'}` : ''}.`);
+    });
+    return count;
   }
 
   renameLayer(id: ID, name: string): void {

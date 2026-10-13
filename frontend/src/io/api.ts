@@ -475,8 +475,8 @@ export const api = {
     if (icc) body.append('icc', new Blob([icc as Uint8Array<ArrayBuffer>], { type: 'application/vnd.iccprofile' }), 'profile.icc');
     return (await request('/io/encode', { method: 'POST', body })).blob();
   },
-  async exportFile(blob: Blob, name: string): Promise<string> {
-    const r = await request('/io/export', { method: 'POST', body: form({ name }, [{ name, blob }], 'file') });
+  async exportFile(blob: Blob, name: string, folder = ''): Promise<string> {
+    const r = await request('/io/export', { method: 'POST', body: form(folder ? { name, folder } : { name }, [{ name, blob }], 'file') });
     return ((await r.json()) as { path: string }).path;
   },
   async terminals(): Promise<TerminalInfo[]> {

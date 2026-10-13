@@ -2,6 +2,8 @@ import { ErrorLog } from './ui/errors';
 import { FillDialog } from './ui/panels/fill-dialog';
 import { FadeDialog } from './ui/panels/fade-dialog';
 import { ExportDialog } from './ui/panels/export-dialog';
+import { LayerExportDialog } from './ui/panels/layer-export-dialog';
+import { DEFAULT_LAYER_EXPORT, layerFiles, type LayerExportSettings } from './io/layer-export';
 import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog, NewArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
@@ -132,7 +134,7 @@ import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel } from './ui/panels/background-panel';
 import { ColorPickerDialog } from './ui/panels/color-picker';
 import { LiveMaskDialog } from './ui/panels/live-mask-dialog';
-import { Commands } from './ui/commands';
+import { Commands, type CommandParam } from './ui/commands';
 import { anyDialogOpen, askSaveChanges, askSaveChangesAll, confirmAction, promptName } from './ui/dialogs';
 import { el, mountOnce, q, revealApp, setDisabled, setHidden, setStyleVar, setText, setTitle } from './ui/dom';
 import { icon } from './ui/icons';
@@ -1213,6 +1215,47 @@ export function startApp(): void {
     });
   }
 
+  /** File > Export > Layers to Files and Artboards to Files (29.1): each layer or artboard alone, with its effects and
+   *  mask applied, as prefix_NNNN_name files; in the desktop app written into a folder under the exports folder by the
+   *  engine, in the browser handed over as one zip. */
+  async function exportLayerFiles(set: LayerExportSettings): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const { files, skipped } = await layerFiles(engine, set, !!caps);
+        if (!files.length) { toast(set.artboards ? 'There are no artboards to export.' : 'There are no layers to export.', 'info'); return; }
+        const what = set.artboards ? 'artboard' : 'layer', n = `${files.length} ${what}${files.length === 1 ? '' : 's'}`, left = skipped ? ` (${skipped} with nothing to write skipped)` : '';
+        if (caps?.desktop) {
+          const folder = set.folder.trim() || `${stripExt(p.name)} ${what}s`;
+          let where = '';
+          for (const f of files) where = await api.exportFile(f.blob, f.name, folder);
+          toast(`Exported ${n}${left} to ${where.replace(/[\\/][^\\/]*$/, '')}`, 'info');
+          return;
+        }
+        await deliver(await zipFiles(files), `${stripExt(p.name)} ${what}s.zip`);
+        toast(`Exported ${n}${left} as a zip.`, 'info');
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
+  /** Layers to Files from a person (the dialog) or an agent (any parameter given runs it at once). */
+  const LAYER_EXPORT_PARAMS: Record<string, CommandParam> = {
+    prefix: { type: 'string', description: 'File name prefix; the document name when left out.' },
+    format: { type: 'string', enum: ['png', 'jpg', 'tiff', 'webp', 'psd'], description: 'File type; png when left out.' },
+    quality: { type: 'integer', min: 1, max: 100, description: 'JPEG and WebP quality.' },
+    visible_only: { type: 'boolean', description: 'Only layers that are shown; true when left out. Layers only.' },
+    trim: { type: 'boolean', description: 'Cut each layer to its visible pixels. Layers only.' },
+    icc: { type: 'boolean', description: 'Embed the ICC profile; true when left out.' },
+    folder: { type: 'string', description: 'Desktop app: the folder made inside the exports folder.' },
+  };
+  function layerExportRun(artboards: boolean, a?: Record<string, unknown>): void {
+    if (!a || !Object.keys(a).length) { dialogs.layerExport.show(artboards); return; }
+    const d = DEFAULT_LAYER_EXPORT, f = String(a.format ?? d.format) as LayerExportSettings['format'];
+    void exportLayerFiles({ artboards, prefix: String(a.prefix ?? ''), format: ['png', 'jpg', 'tiff', 'webp', 'psd'].includes(f) ? f : d.format, quality: Number(a.quality ?? d.quality), visibleOnly: a.visible_only === undefined ? d.visibleOnly : a.visible_only === true, trim: a.trim === true, icc: a.icc === undefined ? d.icc : a.icc === true, folder: String(a.folder ?? '') });
+  }
+
   /** File > Export > OpenRaster (1.51.7): layers, groups, positions, opacity, visibility and blend modes, for Krita,
    *  GIMP and MyPaint. */
   /** File > Export > Assemble Tiles (1.52.7): the open tiles of a large picture, each as it looks now, put back together
@@ -1521,6 +1564,7 @@ export function startApp(): void {
     scaleEffects: new ScaleEffectsDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
+    layerExport: new LayerExportDialog(engine, () => !!caps?.desktop, (s) => void exportLayerFiles(s)),
     guide: new GuideDialog(engine),
     artboard: new ArtboardDialog(engine),
     newArtboard: new NewArtboardDialog(engine),
@@ -1808,6 +1852,11 @@ export function startApp(): void {
       .map(([id, label, op]) => ({ id, label, enabled: () => { const p = engine.current, s = p ? p.doc.layers.filter((l) => p.selectedIds.has(l.id) && !!l.vector) : []; return s.length > 1 || (s.length === 1 && ((s[0].vector?.path.subpaths.length ?? 0) > 1 || (op === 'merge' && !!s[0].vector?.path.subpaths.some((sp) => sp.op && sp.op !== 'combine')))); }, run: () => engine.combineShapes(op) })),
     { id: 'artboard-options', label: 'Artboard Options...', enabled: () => !!engine.current?.activeLayer?.artboard, run: () => dialogs.artboard.show() },
     { id: 'export-artboards', label: 'Export Artboards to Files', enabled: () => engine.artboards().length > 0, run: () => void exportArtboards() },
+    { id: 'export-layers', label: 'Layers to Files...', enabled: has, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(false, a) },
+    { id: 'export-artboards-files', label: 'Artboards to Files...', enabled: () => engine.artboards().length > 0, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(true, a) },
+    { id: 'script-delete-empty-layers', label: 'Delete All Empty Layers', enabled: has, run: () => engine.deleteEmptyLayers() },
+    { id: 'script-flatten-effects', label: 'Flatten All Layer Effects', enabled: () => !!engine.current?.doc.layers.some((l) => effectsActive(l.effects)), run: () => engine.flattenAllEffects() },
+    { id: 'script-flatten-masks', label: 'Flatten All Masks', enabled: () => !!engine.current?.doc.layers.some((l) => !!l.mask || !!l.vectorMask), run: () => engine.flattenAllMasks() },
     { id: 'duplicate', label: 'Layer via Copy', keys: ['Mod+J'], enabled: () => !!layer(), run: () => engine.layerViaCopy() },
     { id: 'duplicate-dialog', label: 'Duplicate Layer...', enabled: () => !!layer(), run: () => dialogs.duplicateLayer.show() },
     { id: 'delete-layer', label: 'Delete Layer', enabled: () => !!layer(), run: () => void deleteLayersWithChoice() },
@@ -2053,8 +2102,9 @@ export function startApp(): void {
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', '-',
-      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-artboards'] },
-      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'photomerge', 'merge-hdr'] }, ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab', 'close-all', 'close-others'] },
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-layers', 'export-artboards-files', 'export-artboards'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'photomerge', 'merge-hdr'] },
+      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'export-layers', 'export-artboards-files'] },...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },

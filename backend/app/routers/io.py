@@ -11,7 +11,8 @@ from app.core import config
 from app.services import camera_profiles, dpx, imaging
 
 router = APIRouter(tags=["io"])
-EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif|dpx)$", re.IGNORECASE)
+EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif|dpx|psd)$", re.IGNORECASE)
+EXPORT_FOLDER = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f. ][^/\\:*?\"<>|\x00-\x1f]{0,99}$")
 
 
 @router.post("/encode")
@@ -416,11 +417,17 @@ def camera_profile_list(file: UploadFile = File(...)) -> dict:
 
 
 @router.post("/export")
-def export(file: UploadFile = File(...), name: str = Form(...)) -> dict:
+def export(file: UploadFile = File(...), name: str = Form(...), folder: str = Form("")) -> dict:
     base = Path(name.replace("\\", "/")).name.strip()
     if base.startswith(".") or not EXPORT_NAME.match(base):
         raise HTTPException(status_code=400, detail="Invalid export file name.")
-    folder = config.exports_dir()
+    root = config.exports_dir()
+    sub = folder.strip()
+    if sub and not EXPORT_FOLDER.match(sub):
+        raise HTTPException(status_code=400, detail="Invalid export folder name.")
+    # Layers to Files (30.1): the files of one export share a folder inside the exports folder.
+    folder = root / sub if sub else root
+    folder.mkdir(parents=True, exist_ok=True)
     target = folder / base
     number = 2
     while target.exists():
