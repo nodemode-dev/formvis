@@ -13,12 +13,14 @@ mod native;
 
 struct Backend(Mutex<Option<CommandChild>>);
 
-const FALLBACK_LOGICAL: (f64, f64) = (1323.0, 860.0);
-const MIN_LOGICAL: (f64, f64) = (980.0, 640.0);
+const FALLBACK_SIZE: (f64, f64) = (1323.0, 860.0);
+const MIN_SIZE: (f64, f64) = (980.0, 640.0);
 const SCREEN_FRACTION: f64 = 0.9;
 
 fn kill_backend(handle: &tauri::AppHandle) {
-    if let Some(child) = handle.state::<Backend>().0.lock().unwrap().take() {
+    let state = handle.state::<Backend>();
+    let child = state.0.lock().ok().and_then(|mut slot| slot.take());
+    if let Some(child) = child {
         let _ = child.kill();
     }
 }
@@ -29,31 +31,29 @@ fn close_splash(handle: &tauri::AppHandle) {
     }
 }
 
-/// Checks the GitHub Releases feed once the main window is up, the way the Sparkle appcast did, and asks
-/// before installing. Skipped until a public key is configured in `plugins.updater.pubkey`, so builds made before the
-/// signing key exists never try to verify against an empty key.
+/// Offers an update when the app is configured to verify them: needs a non-empty updater "pubkey".
 fn check_for_updates(handle: tauri::AppHandle) {
     let configured = handle
         .config()
         .plugins
         .0
         .get("updater")
-        .and_then(|updater| updater.get("pubkey"))
+        .and_then(|section| section.get("pubkey"))
         .and_then(|key| key.as_str())
-        .map_or(false, |key| !key.is_empty());
+        .is_some_and(|key| !key.is_empty());
     if !configured {
         return;
     }
     tauri::async_runtime::spawn(async move {
         let Ok(updater) = handle.updater() else { return };
         let Ok(Some(update)) = updater.check().await else { return };
-        let install = handle
+        let accepted = handle
             .dialog()
             .message(format!("formvis {} is available. Install it and restart?", update.version))
             .title("Update available")
             .buttons(MessageDialogButtons::OkCancel)
             .blocking_show();
-        if install && update.download_and_install(|_, _| {}, || {}).await.is_ok() {
+        if accepted && update.download_and_install(|_, _| {}, || {}).await.is_ok() {
             kill_backend(&handle);
             handle.restart();
         }
@@ -116,55 +116,46 @@ fn main() {
         .manage(Backend(Mutex::new(None)))
         .setup(|app| {
             let handle = app.handle().clone();
-            let (mut rx, child) = app
-                .shell()
+            let (mut rx, child) = app.shell()
                 .sidecar("formvis-engine")
-                .expect("sidecar binary is bundled")
+                .expect("the formvis engine sidecar is missing; bundle its binary")
                 .env("FORMVIS_PORT", "0")
                 .spawn()
                 .expect("the formvis engine failed to spawn");
-            app.state::<Backend>().0.lock().unwrap().replace(child);
+            *app.state::<Backend>().0.lock().unwrap() = Some(child);
 
             tauri::async_runtime::spawn(async move {
                 let pattern = regex::Regex::new(r"http://127\.0\.0\.1:(\d+)").unwrap();
                 let mut port: Option<u16> = None;
                 while let Some(event) = rx.recv().await {
-                    let line = match event {
+                    let text = match event {
                         CommandEvent::Stdout(bytes) | CommandEvent::Stderr(bytes) => {
                             String::from_utf8_lossy(&bytes).into_owned()
                         }
                         CommandEvent::Terminated(_) => break,
                         _ => continue,
                     };
-                    if let Some(captures) = pattern.captures(&line) {
-                        port = captures[1].parse().ok();
-                        if port.is_some() {
-                            break;
-                        }
+                    if let Some(found) = pattern.captures(&text).and_then(|c| c[1].parse::<u16>().ok()) {
+                        port = Some(found);
+                        break;
                     }
                 }
                 match port {
-                    Some(found) => {
-                        let url: tauri::Url = format!("http://127.0.0.1:{found}")
-                            .parse()
-                            .expect("loopback url");
+                    Some(port) => {
+                        let url = format!("http://127.0.0.1:{port}");
                         let (width, height) = handle
                             .primary_monitor()
                             .ok()
                             .flatten()
                             .map(|monitor| {
-                                let size = monitor.size();
-                                let scale = monitor.scale_factor();
-                                (
-                                    (size.width as f64 / scale) * SCREEN_FRACTION,
-                                    (size.height as f64 / scale) * SCREEN_FRACTION,
-                                )
+                                let logical = monitor.size().to_logical::<f64>(monitor.scale_factor());
+                                (logical.width * SCREEN_FRACTION, logical.height * SCREEN_FRACTION)
                             })
-                            .unwrap_or(FALLBACK_LOGICAL);
-                        let _ = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url))
+                            .unwrap_or(FALLBACK_SIZE);
+                        let _ = WebviewWindowBuilder::new(&handle, "main", WebviewUrl::External(url.parse().unwrap()))
                             .title("formvis")
                             .inner_size(width, height)
-                            .min_inner_size(MIN_LOGICAL.0, MIN_LOGICAL.1)
+                            .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
                             .center()
                             .build();
                         close_splash(&handle);
@@ -172,19 +163,19 @@ fn main() {
                     }
                     None => {
                         close_splash(&handle);
-                        handle
+                        let _ = handle
                             .dialog()
                             .message("The formvis engine failed to start. Please relaunch the app.")
                             .blocking_show();
                         kill_backend(&handle);
-                        std::process::exit(1);
+                        handle.exit(1);
                     }
                 }
             });
             Ok(())
         })
         .build(tauri::generate_context!())
-        .expect("tauri app should build");
+        .expect("error while building the formvis app");
 
     app.run(|handle, event| {
         if let RunEvent::Exit = event {
