@@ -2,6 +2,7 @@ import type { Raster } from './surface';
 import type { TiledRaster } from './tiled';
 import type { SelectionMask } from './selection';
 import { isContour, type ContourId, type GlobalLight } from './style-extras';
+import type { DocMeta } from './doc-meta';
 
 export type ID = string;
 export interface Pt { x: number; y: number }
@@ -144,7 +145,7 @@ export interface DocProfile { name: string; icc: string }
 export interface ChannelPixels { mode: 'rgb' | 'cmyk' | 'lab'; n: 3 | 4; width: number; height: number; data: Float32Array }
 /** The RGB kind of ChannelPixels, as 16- and 32-bit documents hold it. */
 export type DeepPixels = ChannelPixels;
-export interface Doc { depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; alphas?: readonly AlphaChannel[] }
+export interface Doc { depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
 /** An alpha channel (1.65.1): a selection saved with the document, `mask` null when nothing in it is selected. */
 export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null }
 

@@ -5,7 +5,7 @@ import { VERSION } from '../version';
  *  one edited with it. Written into PNG (an iTXt chunk), JPEG (an APP1 segment) and WebP (an XMP chunk), each from its
  *  format's specification. */
 export type AiLabel = 'generated' | 'edited';
-const SOURCE: Record<AiLabel, string> = { generated: 'trainedAlgorithmicMedia', edited: 'compositeWithTrainedAlgorithmicMedia' };
+export const SOURCE: Record<AiLabel, string> = { generated: 'trainedAlgorithmicMedia', edited: 'compositeWithTrainedAlgorithmicMedia' };
 
 export function xmpPacket(kind: AiLabel): string {
   return '<?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>'

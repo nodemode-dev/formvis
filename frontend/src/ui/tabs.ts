@@ -1,4 +1,4 @@
-import type { Engine, Project } from '../engine';
+import { tabName, type Engine, type Project } from '../engine';
 import { el, patchList, q, setClass, setStyleVar, setText, setTitle } from './dom';
 import { icon } from './icons';
 
@@ -78,7 +78,7 @@ export class Tabs {
   }
 
   private update(n: HTMLElement, p: Project, current: Project | null): void {
-    setText(q(n, '.cv-tab-name'), p.name);
+    setText(q(n, '.cv-tab-name'), tabName(p.name, p.doc.meta));   // the copyright symbol before the title when Copyrighted (29.2)
     // The document's real mode (1.50.2): RGB/8, Gray/8, Bitmap/1 or Index.
     const md = p.doc.mode ?? 'rgb', mEl = q(n, '.cv-tab-mode');
     const bits = p.doc.depth ?? 8;   // the real depth in every mode that has one (1.57.8)

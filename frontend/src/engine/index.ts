@@ -71,6 +71,8 @@ import { findWires } from './distractions';
 import type { SampledTip } from './abr';
 import { DEFAULT_GLOBAL_LIGHT, scaledEffects, type GlobalLight } from './style-extras';
 export { CONTOURS, DEFAULT_GLOBAL_LIGHT, withGlobalLight, type ContourId, type GlobalLight } from './style-extras';
+import { mergeMeta, type DocMeta, type MetaPatch } from './doc-meta';
+export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, metaWritable, mergeMeta, parseKeywords, sameMeta, tabName, type CameraData, type CopyrightStatus, type DocMeta } from './doc-meta';
 import { UPRIGHT, defaultShape, noDynamics, pressureOption, shapeActive, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
@@ -109,7 +111,7 @@ export interface EngineEvents {
   history: null; colors: null; render: Rect | null; overlay: null; busy: boolean; notice: Notice; paths: null; timeline: null;
 }
 export interface BrushSettings { diameter: number; hardness: number; opacity: number; tip?: SampledTip | null }
-export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile }
+export interface ImportedImage { source: CanvasImageSource; width: number; height: number; name: string; profile?: DocProfile; meta?: DocMeta }
 type Target = 'pixels' | 'mask';
 type Settings = Pick<Engine, 'selectionMode' | 'marqueeKind' | 'lassoKind' | 'showPixelGrid' | 'showTransformControls' | 'autoSelect' | 'autoSelectTarget' | 'lockRatio'>;
 
@@ -1286,6 +1288,18 @@ export class Engine {
       const cur = p.doc.globalLight ?? DEFAULT_GLOBAL_LIGHT;
       if (cur.angle === next.angle && cur.altitude === next.altitude) return false;
       p.doc = { ...p.doc, globalLight: next };
+      return true;
+    });
+  }
+
+  /** File > File Info (29.2): the fields named in `patch` set on the document's metadata as one step called File Info;
+   *  false, and no step, when nothing changes. The camera's record and the created date are not set from here. */
+  setMeta(patch: MetaPatch): boolean {
+    return this.edit('File Info', (p) => {
+      const next = mergeMeta(p.doc.meta, patch, new Date().toISOString());
+      if (next === p.doc.meta) return false;
+      const { meta: _gone, ...rest } = p.doc;
+      p.doc = next ? { ...rest, meta: next } : rest;
       return true;
     });
   }
@@ -5207,7 +5221,7 @@ export class Engine {
     if (!images.length) return;
     if (!this.current) {
       const f = images[0];
-      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: 72, layers: [], ...(f.profile ? { profile: f.profile } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5)
+      this.addProject({ id: uid(), width: f.width, height: f.height, resolution: 72, layers: [], ...(f.profile ? { profile: f.profile } : {}), ...(f.meta ? { meta: f.meta } : {}) }, stripExt(f.name));   // its embedded profile kept (1.53.5), its File Info (29.2)
     }
     this.edit(images.length > 1 ? 'Import Images' : 'Import Image', (p) => {
       let pixels = p.doc.layers.reduce((n, l) => n + (l.raster ? l.raster.width * l.raster.height : 0), 0), added = 0;
@@ -7107,7 +7121,7 @@ export class Engine {
   openImage(img: ImportedImage): Project {
     const base: Doc = { id: uid(), width: img.width, height: img.height, resolution: 72, layers: [] };
     const layer = { ...newLayer('Background', base), raster: Raster.from(img.source, img.width, img.height) };
-    return this.addProject({ ...base, ...(img.profile ? { profile: img.profile } : {}), layers: [layer] }, img.name.replace(/\.[^.]+$/, '') || 'Image', layer.id);   // an embedded profile kept (1.53.5)
+    return this.addProject({ ...base, ...(img.profile ? { profile: img.profile } : {}), ...(img.meta ? { meta: img.meta } : {}), layers: [layer] }, img.name.replace(/\.[^.]+$/, '') || 'Image', layer.id);   // an embedded profile kept (1.53.5)
   }
 
   /** Upscale: what the document shows, enlarged `scale` times by `run`, opened as a new document. */

@@ -6,6 +6,8 @@ import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
 import { blendIfActive, type BlendIf } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
 import { addPathResources, readPathResources } from './psd-paths';
+import { buildXmp, metaFromXmp } from './xmp';
+import { metaWritable } from '../engine/doc-meta';
 import type { PathSet, SubPath } from '../engine/paths';
 import { maskEdgeTone } from '../engine/distort';
 import { renderFill } from '../engine/fill-layers';
@@ -264,7 +266,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
   // Smart objects' embedded contents, decoded before the layers are built.
   const contents = new Map<string, Raster | null>();
   for (const lf of psd.linkedFiles ?? []) if (lf.data) contents.set(lf.id, await decodeLinked(lf.data, readPsd));
-  const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: 72, layers: [] };
+  const fileInfo = psd.imageResources?.xmpMetadata ? metaFromXmp(psd.imageResources.xmpMetadata) : null;   // File Info (29.2): the XMP image resource
+  const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: 72, layers: [], ...(fileInfo ? { meta: fileInfo } : {}) };
   const layers: Layer[] = [], notes: string[] = [], links = new Map<number, ID>();
   const linkOf = (pl: PsdLayer): { link?: ID } => {
     const g = pl.linkGroup;
@@ -483,5 +486,6 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const psd: Psd = { width: doc.width, height: doc.height, children: build(null), canvas: flat };
   if (linked.length) psd.linkedFiles = linked;
   if (psdPatterns.length) psd.patterns = psdPatterns;
+  if (metaWritable(doc.meta)) psd.imageResources = { xmpMetadata: buildXmp(doc.meta) };   // File Info (29.2) as the XMP image resource
   return { bytes: addPathResources(writePsd(psd, { generateThumbnail: false, psb }), paths, doc.width, doc.height), notes };
 }
