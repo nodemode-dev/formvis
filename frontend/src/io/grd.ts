@@ -102,7 +102,7 @@ export function readGrd(buf: ArrayBuffer): { gradients: GradientPreset[]; skippe
 }
 
 /** Big-endian byte sink for writeGrd; descriptor keys and IDs use the 4-character form (length 0, then the code). */
-class Sink {
+export class Sink {
   readonly bytes: number[] = [];
   u8(v: number): void { this.bytes.push(v & 255); }
   u16(v: number): void { this.u8(v >> 8); this.u8(v); }

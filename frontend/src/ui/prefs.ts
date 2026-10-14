@@ -22,8 +22,8 @@ export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: 
   /** Image > Analysis > Select Data Points (1.70.7): the Measurement Log columns shown, by data point name. */
   measureDataPoints: string[] }
 /** Every data point Record Measurements can show, in log order, and the ones on by default. */
-export const MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H', 'Circularity'];
-export const DEFAULT_MEASURE_POINTS: readonly string[] = MEASURE_POINTS.filter((n) => n !== 'Circularity');
+export const MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H', 'Gray Value', 'Min Gray', 'Max Gray', 'Integrated Density', 'Centroid X', 'Centroid Y', 'Circularity'];
+export const DEFAULT_MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H'];
 export type ToolOptionValue = string | number | boolean;
 export type DialogValue = string | boolean;
 export type PaintCursor = 'tip' | 'precise' | 'standard';

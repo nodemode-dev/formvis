@@ -158,11 +158,20 @@ export class GlyphsDialog extends Dialog {
   }
 
   private async insert(glyph: string): Promise<void> {
+    // With the in-canvas editor open, the glyph goes in at its caret (replacing the selection) through its own input path.
+    const ed = document.querySelector<HTMLTextAreaElement>('.cv-type-editor:not([hidden])');
     const layer = this.engine.current?.activeLayer;
-    if (!layer || !layer.text || !this.engine.liveText(layer)) { toast('Select a type layer to insert a glyph.', 'info'); return; }
+    if (!ed && (!layer || !layer.text || !this.engine.liveText(layer))) { toast('Select a type layer to insert a glyph.', 'info'); return; }
     this.recent = [glyph, ...this.recent.filter((g) => g !== glyph)].slice(0, RECENT_MAX);
     saveRecent(this.recent);
     this.paintRecent();
+    if (ed) {
+      ed.setRangeText(glyph, ed.selectionStart, ed.selectionEnd, 'end');
+      ed.dispatchEvent(new Event('input', { bubbles: true }));
+      ed.focus();
+      return;
+    }
+    if (!layer || !layer.text) return;
     await this.engine.updateTextLayer(layer.id, { ...layer.text, content: layer.text.content + glyph });
   }
 }

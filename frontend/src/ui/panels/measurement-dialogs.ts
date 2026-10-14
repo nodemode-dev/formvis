@@ -52,6 +52,12 @@ export const MEASURE_COLS:ReadonlyArray<readonly [string, (m: Rec) => string]> =
   ['Count', (m) => (m.count === undefined ? '' : String(m.count))],
   ['W', (m) => opt(m.w)],
   ['H', (m) => opt(m.h)],
+  ['Gray Value', (m) => (m.gray === undefined ? '' : m.gray.toFixed(1))],
+  ['Min Gray', (m) => (m.grayMin === undefined ? '' : m.grayMin.toFixed(1))],
+  ['Max Gray', (m) => (m.grayMax === undefined ? '' : m.grayMax.toFixed(1))],
+  ['Integrated Density', (m) => opt(m.intDen)],
+  ['Centroid X', (m) => opt(m.cx)],
+  ['Centroid Y', (m) => opt(m.cy)],
   ['Circularity', (m) => (m.area === undefined || !m.perimeter ? '' : num((4 * Math.PI * m.area) / (m.perimeter * m.perimeter)))],
 ];
 /** The columns Select Data Points keeps, in log order; Label is always shown. */

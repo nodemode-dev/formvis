@@ -20,9 +20,15 @@ const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'l
 
 /** The OpenType menu (DEV_PLAN 32.6b): each feature marked on or off, a pick toggling it for new text and the selected type layer. */
 function featureChoices(e: Engine): Array<{ id: string; label: string }> {
-  const { family, bold, italic } = e.textSettings, known = featuresKnown(family, !!bold, !!italic);
+  const s = featureSource(e), { family, bold, italic } = s, known = featuresKnown(family, !!bold, !!italic);
   if (known === undefined) void featuresOf(family, !!bold, !!italic).then(() => e.emit('options', null));
-  return [{ id: '', label: 'OpenType' }, ...OT_FEATURES.map((f) => ({ id: f.tag, label: `${featureOn(e.textSettings.features, f.tag) ? '[x]' : '[ ]'} ${f.label}${known && !known.has(f.tag) ? ' (not in font)' : ''}` }))];
+  return [{ id: '', label: 'OpenType' }, ...OT_FEATURES.map((f) => ({ id: f.tag, label: `${featureOn(s.features, f.tag) ? '[x]' : '[ ]'} ${f.label}${known && !known.has(f.tag) ? ' (not in font)' : ''}` }))];
+}
+
+/** The spec the OpenType menu reads: the selected live type layer's, else the settings for new text. */
+function featureSource(e: Engine): TextSpec {
+  const l = e.current?.activeLayer;
+  return l?.text && e.liveText(l) ? l.text : e.textSettings;
 }
 
 export function setType(e: Engine, patch: Partial<TextSpec>): void {
@@ -67,7 +73,19 @@ export const typeTool: Tool = {
     // Anti-aliasing and the Color swatch (1.50.4, the tool audit), as Photoshop's bar; the swatch recolours the selected
     // type layer as well as setting the colour new text takes.
     { kind: 'select', label: 'OpenType', choices: featureChoices(e), live: () => featureChoices(e), get: () => '',
-      set: (v: string) => { if (v) setType(e, { features: withFeature(e.textSettings.features, v, !featureOn(e.textSettings.features, v)) }); } },
+      set: (v: string) => {
+        if (!v) return;
+        const l = e.current?.activeLayer, typing = !!document.querySelector('.cv-type-editor:not([hidden])');
+        if (l?.text && e.liveText(l) && !typing) {
+          // One undo step on the selected layer; the settings for new text follow it.
+          const features = withFeature(l.text.features, v, !featureOn(l.text.features, v));
+          e.textSettings = { ...e.textSettings, features };
+          e.emit('options', null);
+          void e.updateTextLayer(l.id, { ...l.text, features }).then(() => e.emit('options', null));
+          return;
+        }
+        setType(e, { features: withFeature(e.textSettings.features, v, !featureOn(e.textSettings.features, v)) });
+      } },
     { kind: 'select', label: 'Anti-aliasing', choices: [{ id: 'none', label: 'None' }, { id: 'sharp', label: 'Sharp' }, { id: 'smooth', label: 'Smooth' }], get: () => e.textSettings.antialias ?? 'smooth', set: (v: string) => setType(e, { antialias: v === 'none' || v === 'sharp' ? v : 'smooth' }) },
     { kind: 'color', label: 'Color', get: () => e.fg, set: (c) => { e.fg = c; e.emit('options', null); const l = e.activeLayer; if (l?.text) void e.updateTextLayer(l.id, { ...l.text, color: e.fg }); } },
     { kind: 'button', label: 'Warp Text...', run: () => toolHost.run('warp-text') },

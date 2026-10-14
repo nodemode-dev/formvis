@@ -1,7 +1,7 @@
 import type { Engine } from '../engine';
 import type { LayerEffects } from '../engine/types';
 import { defaultEffects, effectsPresent } from '../engine/types';
-import { readAsl } from '../io/asl';
+import { readAsl, writeAsl } from '../io/asl';
 import { promptName } from './dialogs';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
@@ -34,14 +34,14 @@ export class StylesPanel {
   private selected: string | null = null;
   private serial = 0;
 
-  constructor(root: HTMLElement, private readonly engine: Engine) {
+  constructor(root: HTMLElement, private readonly engine: Engine, private readonly deliver: (blob: Blob, name: string) => Promise<void>) {
     const btn = (cmd: string, title: string, glyph: string): string => `<button class="cv-icon-btn" type="button" data-act="${cmd}" title="${title}" aria-label="${title}">${icon(glyph, 16)}</button>`;
     root.insertAdjacentHTML('beforeend',
       `<section class="cv-styles" aria-label="Styles">` +
       `<div class="cv-panel-head"><span class="cv-comps-title">${icon('layers', 14)}<span>Styles</span></span><span></span><span class="cv-comps-count"></span></div>` +
       `<div class="cv-styles-grid" role="listbox" aria-label="Styles"></div>` +
       `<div class="cv-comps-empty">No styles yet. Use New to save the active layer's style.</div>` +
-      `<div class="cv-panel-foot"><button class="cv-icon-btn cv-styles-clear" type="button" data-act="clear" title="Clear the active layer's style" aria-label="Clear Style">Clear Style</button>${btn('delete', 'Delete the selected style', 'delete')}${btn('load', 'Load Styles (.asl or .json)', 'upload')}${btn('new', 'New style from the active layer', 'add')}</div></section>`);
+      `<div class="cv-panel-foot"><button class="cv-icon-btn cv-styles-clear" type="button" data-act="clear" title="Clear the active layer's style" aria-label="Clear Style">Clear Style</button>${btn('delete', 'Delete the selected style', 'delete')}${btn('load', 'Load Styles (.asl or .json)', 'upload')}${btn('export', 'Export Styles (.asl)', 'download')}${btn('new', 'New style from the active layer', 'add')}</div></section>`);
     const section = q(root, '.cv-styles');
     this.grid = q(section, '.cv-styles-grid');
     this.empty = q(section, '.cv-comps-empty');
@@ -53,6 +53,7 @@ export class StylesPanel {
       if (b.dataset.act === 'new') void this.create();
       else if (b.dataset.act === 'delete') this.remove();
       else if (b.dataset.act === 'load') this.load();
+      else if (b.dataset.act === 'export') void this.exportAll();
       else if (b.dataset.act === 'clear') this.engine.applyLayerStyle(null);
     });
     this.grid.addEventListener('click', (e) => {
@@ -77,6 +78,13 @@ export class StylesPanel {
     this.selected = id;
     savePresets(this.presets);
     this.sync();
+  }
+
+  /** Export Styles: every style as one Photoshop .asl through the app's download helper. */
+  private async exportAll(): Promise<void> {
+    if (!this.presets.length) return;
+    const bytes = writeAsl(this.presets.map((p) => ({ name: p.name, effects: p.effects })));
+    await this.deliver(new Blob([bytes as BlobPart], { type: 'application/octet-stream' }), 'formvis-styles.asl');
   }
 
   /** Load Styles: a one-shot hidden file input; .asl through readAsl, .json as a list of { name, effects } (or this panel's own presets). */
@@ -136,7 +144,7 @@ export class StylesPanel {
     setHidden(this.empty, this.presets.length > 0);
     this.foot.forEach((b) => {
       const a = b.dataset.act;
-      const off = a === 'load' ? false : a === 'new' ? !effectsPresent(l?.effects) : a === 'delete' ? !this.selected : !can || !effectsPresent(l?.effects);
+      const off = a === 'load' ? false : a === 'export' ? this.presets.length === 0 : a === 'new' ? !effectsPresent(l?.effects) : a === 'delete' ? !this.selected : !can || !effectsPresent(l?.effects);
       if (b.disabled !== off) b.disabled = off;
     });
     patchList<StylePreset>(this.grid, this.presets, {

@@ -789,6 +789,33 @@ export class Engine {
         }
       }
       if (area > 0) { rec.area = area * k * k; rec.perimeter = edge * k; rec.w = w * k; rec.h = h * k; any = true; }
+      // Gray value, integrated density and centroid (31.6 part d): one pass over the selection's bounds on the flattened composite.
+      const flat = area > 0 ? this.flattened() : null;
+      if (flat) {
+        let x0 = w, y0 = h, x1 = -1, y1 = -1;
+        for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) if (data[j * w + i]) { if (i < x0) x0 = i; if (i > x1) x1 = i; if (j < y0) y0 = j; if (j > y1) y1 = j; }
+        const bw = Math.min(x1 + 1, flat.width) - x0, bh = Math.min(y1 + 1, flat.height) - y0;
+        if (bw > 0 && bh > 0) {
+          const px = ctxOf(flat).getImageData(x0, y0, bw, bh).data;
+          let sum = 0, wt = 0, mn = 255, mx = 0, sx = 0, sy = 0, cw = 0;
+          for (let j = 0; j < bh; j++) {
+            for (let i = 0; i < bw; i++) {
+              const m = data[(y0 + j) * w + x0 + i];
+              if (!m) continue;
+              const wgt = m / 255;
+              sx += (x0 + i + 0.5) * wgt; sy += (y0 + j + 0.5) * wgt; cw += wgt;
+              const o = (j * bw + i) * 4;
+              if (px[o + 3] === 0) continue;
+              const y = 0.299 * px[o] + 0.587 * px[o + 1] + 0.114 * px[o + 2];
+              sum += y * wgt; wt += wgt;
+              if (y < mn) mn = y;
+              if (y > mx) mx = y;
+            }
+          }
+          if (cw > 0) { rec.cx = (sx / cw) * k; rec.cy = (sy / cw) * k; }
+          if (wt > 0 && rec.area !== undefined) { rec.gray = sum / wt; rec.grayMin = mn; rec.grayMax = mx; rec.intDen = rec.area * rec.gray; }
+        }
+      }
     }
     const r = this.measure?.ruler;
     if (r) {
