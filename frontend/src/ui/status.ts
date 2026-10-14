@@ -7,6 +7,7 @@ export class StatusBar {
   private readonly zoom: HTMLElement;
   private readonly dims: HTMLElement;
   private readonly busy: HTMLElement;
+  private readonly par: HTMLElement;
   private readonly engineState: HTMLElement;
   private readonly gpu: HTMLElement;
   private readonly hint: HTMLElement;
@@ -20,6 +21,11 @@ export class StatusBar {
     for (const k of ['doc', 'history', 'projects'] as const) engine.on(k, () => this.syncMemory());
     this.zoom = q(root, '.cv-st-zoom');
     this.dims = q(root, '.cv-st-dims');
+    // Pixel Aspect Ratio note (35.4 part b): built once, updated with textContent through setText.
+    this.par = document.createElement('span');
+    this.par.className = 'cv-st-par';
+    this.dims.after(this.par);
+    for (const k of ['doc', 'overlay', 'projects'] as const) engine.on(k, () => this.syncView());
     this.busy = q(root, '.cv-st-busy');
     this.engineState = q(root, '.cv-st-engine');
     this.gpu = q(root, '.cv-st-gpu');
@@ -53,6 +59,8 @@ export class StatusBar {
     const p = this.engine.current;
     setText(this.zoom, p ? `${Number((p.viewport.zoom * 100).toFixed(1))}%` : '');
     setText(this.dims, p ? `${p.doc.width} \u00d7 ${p.doc.height} px` : '');
+    const par = p?.doc.pixelAspect;
+    setText(this.par, par && par !== 1 ? `PAR ${Number(par.toFixed(3))}${this.engine.view.parCorrection ? ', corrected in the Navigator' : ''}` : '');
   }
 
   private syncHint(): void { setText(this.hint, getTool(this.engine.tool)?.hint(this.engine) ?? ''); }

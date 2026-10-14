@@ -4,6 +4,7 @@ import { createSurface, integral, intersectRect, sizeSurface, translation, union
 import type { Project } from '../engine/project';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
 import { isMac, q, setHidden } from './dom';
+import { stickyModifiers } from './modifier-keys';
 import { paint, type StagePaint } from './palette';
 import type { DisplayLayer, ScreenDisplay } from '../gpu/display';
 import { documentFallback } from '../gpu/fallback';
@@ -567,7 +568,7 @@ export class Stage {
     // every tool lands where it points at any angle.
     const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0);
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
-    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey, alt: e.altKey, mod: isMac ? e.metaKey : e.ctrlKey, clicks, pressure: Stage.pressureOf(e, pen),
+    return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey || stickyModifiers.active('shift'), alt: e.altKey || stickyModifiers.active('alt'), mod: (isMac ? e.metaKey : e.ctrlKey) || stickyModifiers.active('mod'), clicks, pressure: Stage.pressureOf(e, pen),
       pose: pen ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
   }
 
@@ -786,6 +787,7 @@ export class Stage {
       this.dragId = null;
       if (o.hasPointerCapture(e.pointerId)) o.releasePointerCapture(e.pointerId);
       const p = this.pointer(e);
+      stickyModifiers.endGesture();   // a modifier tapped for the next gesture is spent once it ends
       if (this.panLast) { this.panLast = null; this.updateCursor(p); return; }
       if (this.tipDragging) { this.tipDragging = false; this.engine.endTipDrag(); this.updateCursor(p); return; }
       const gd = this.engine.guideDraft;

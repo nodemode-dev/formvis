@@ -1,5 +1,6 @@
 import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, type Lut4 } from './colour-lut';
 import { composeChannels, rasterFromChannels, strokeChannels } from './channels';
+import { trapInk } from './trap';
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
 import { artHistoryTexture, type ArtStyle } from './art-history';
@@ -753,6 +754,17 @@ export class Engine {
     if (!(pixels > 0) || !(length > 0)) { this.notice('The pixel length and the logical length must both be above zero.', 'info'); return; }
     const u = units.trim().slice(0, 12) || 'px';
     this.edit('Set Measurement Scale', (p) => { p.doc = { ...p.doc, measureScale: { pixels, length, units: u } }; return true; });
+  }
+  /** Pixel Aspect Ratio (35.4 part b): width over height of one pixel; 1 drops the field. One undo step. */
+  setPixelAspect(r: number): void {
+    if (!(r >= 0.1 && r <= 10)) { this.notice('The pixel aspect ratio must be between 0.1 and 10.', 'info'); return; }
+    this.edit('Set Pixel Aspect Ratio', (p) => {
+      const cur = p.doc.pixelAspect ?? 1;
+      if (cur === r) return false;
+      const { pixelAspect: _drop, ...rest } = p.doc;
+      p.doc = r === 1 ? rest : { ...rest, pixelAspect: r };
+      return true;
+    });
   }
   recordMeasurements(): number | null {
     const p = this.current;
@@ -6199,7 +6211,7 @@ export class Engine {
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };
 
   /** View > Rulers, Guides, Grid and Lock Guides; the grid's spacing and subdivisions in document pixels. */
-  view = { rulers: false, guides: true, slices: false, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4, patternPreview: false, pixelArt: false };
+  view = { rulers: false, guides: true, slices: false, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4, patternPreview: false, pixelArt: false, parCorrection: false };
   /** A guide being dragged out of a ruler or across the canvas, drawn but not yet in the document. */
   guideDraft: { axis: 'x' | 'y'; at: number; index: number | null } | null = null;
 
@@ -7064,6 +7076,24 @@ export class Engine {
     if (x1 < 0) { this.notice('Trimming would leave nothing.'); return false; }
     if (x0 === 0 && y0 === 0 && x1 === W - 1 && y1 === H - 1) { this.notice('There is nothing to trim.'); return false; }
     return this.resizeCanvas(x1 - x0 + 1, y1 - y0 + 1, -x0, -y0, null, 'Trim');
+  }
+
+  /** Image > Trap (DEV_PLAN 31.5): lighter inks spread `widthPx` under darker ones in a CMYK document, K held back.
+   *  Needs one pixel layer; the inks are rewritten as a new record and the rendition redrawn through the doc's table. */
+  trap(widthPx: number): boolean {
+    const p = this.current;
+    if (!p) return false;
+    if (p.doc.mode !== 'cmyk' || !p.cmykLut) { this.notice('Trap works on CMYK documents: convert with Image > Mode > CMYK Color first.'); return false; }
+    const pixel = p.doc.layers.filter((l) => l.raster && !l.isGroup && !l.adjustment && l.channels?.mode === 'cmyk');
+    if (pixel.length > 1) { this.notice('Flatten the image first: Trap works on one layer.'); return false; }
+    const target = pixel[0];
+    if (!target || !target.channels) return false;
+    const lut = p.cmykLut, src = target.channels, radius = Math.min(10, Math.max(1, Math.round(widthPx)));
+    return this.edit('Trap', (pp) => {
+      const ch: ChannelPixels = { mode: 'cmyk', n: 4, width: src.width, height: src.height, data: trapInk(src.data, src.width, src.height, radius) };
+      pp.doc = { ...pp.doc, layers: pp.doc.layers.map((l) => (l.id === target.id ? { ...l, channels: ch, raster: rasterFromChannels(ch, lut) } : l)) };
+      return true;
+    });
   }
 
   /** Image > Reveal All: grows the canvas to show every layer, parts beyond its edges included, as one undo step. */

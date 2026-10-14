@@ -267,7 +267,8 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
   const contents = new Map<string, Raster | null>();
   for (const lf of psd.linkedFiles ?? []) if (lf.data) contents.set(lf.id, await decodeLinked(lf.data, readPsd));
   const fileInfo = psd.imageResources?.xmpMetadata ? metaFromXmp(psd.imageResources.xmpMetadata) : null;   // File Info (29.2): the XMP image resource
-  const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: 72, layers: [], ...(fileInfo ? { meta: fileInfo } : {}) };
+  const parRead = psd.imageResources?.pixelAspectRatio?.aspect;   // Pixel Aspect Ratio (35.4 part b)
+  const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: 72, layers: [], ...(fileInfo ? { meta: fileInfo } : {}), ...(typeof parRead === 'number' && parRead > 0 && parRead !== 1 ? { pixelAspect: parRead } : {}) };
   const layers: Layer[] = [], notes: string[] = [], links = new Map<number, ID>(), psdIds = new Map<PsdLayer, ID>();
   const linkOf = (pl: PsdLayer): { link?: ID } => {
     const g = pl.linkGroup;
@@ -535,5 +536,6 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   if (linked.length) psd.linkedFiles = linked;
   if (psdPatterns.length) psd.patterns = psdPatterns;
   if (metaWritable(doc.meta)) psd.imageResources = { ...(psd.imageResources ?? {}), xmpMetadata: buildXmp(doc.meta) };   // kept beside the layer comps   // File Info (29.2) as the XMP image resource
+  if (doc.pixelAspect && doc.pixelAspect !== 1) psd.imageResources = { ...(psd.imageResources ?? {}), pixelAspectRatio: { aspect: doc.pixelAspect } };   // Pixel Aspect Ratio (35.4 part b)
   return { bytes: addPathResources(writePsd(psd, { generateThumbnail: false, psb }), paths, doc.width, doc.height), notes };
 }

@@ -162,6 +162,12 @@
 .cv-style-tile.is-active { border-color: var(--accent-color); color: var(--text-primary); }
 .cv-style-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-styles-clear { width: auto; padding: 0 var(--space-2); }
+.cv-modkeys-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--space-2); padding: var(--space-2) var(--space-3); }
+.cv-modkey { height: 28px; padding: 0 var(--space-2); box-sizing: border-box; font: inherit; color: var(--text-secondary); background: var(--bg-tertiary); border: 1px solid var(--border-color); border-radius: 4px; cursor: pointer; }
+.cv-modkey:hover { background: var(--bg-hover); }
+.cv-modkey[aria-pressed="true"] { color: var(--text-primary); border-color: var(--accent-color); }
+.cv-modkey.is-latched { background: var(--accent-color); border-color: var(--accent-color); color: var(--bg-primary); }
+.cv-modkeys-hint { padding: 0 var(--space-3) var(--space-2); color: var(--text-secondary); }
 .cv-measure-wrap { height: 132px; overflow: auto; }
 .cv-measure-table { width: 100%; border-collapse: collapse; color: var(--text-secondary); }
 .cv-measure-table th { text-align: left; padding: 2px var(--space-2); color: var(--text-muted); font-weight: normal; position: sticky; top: 0; background: var(--bg-secondary); }

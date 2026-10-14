@@ -18,7 +18,7 @@ export class NavigatorPanel {
   private readonly slider: HTMLInputElement;
   private timer = 0;
   /** Where the document sits in the preview: its scale and offset, in CSS pixels. */
-  private place = { s: 1, ox: 0, oy: 0 };
+  private place = { s: 1, sx: 1, ox: 0, oy: 0 };
 
   constructor(host: HTMLElement, private readonly engine: Engine) {
     const body = el(`<div class="cv-nav">
@@ -40,13 +40,13 @@ export class NavigatorPanel {
     const move = (e: PointerEvent): void => {
       const p = engine.current, r = this.canvas.getBoundingClientRect();
       if (!p) return;
-      const x = (e.clientX - r.left - this.place.ox) / this.place.s, y = (e.clientY - r.top - this.place.oy) / this.place.s, v = p.viewport;
+      const x = (e.clientX - r.left - this.place.ox) / this.place.sx, y = (e.clientY - r.top - this.place.oy) / this.place.s, v = p.viewport;
       engine.pan(v.centerX - x * v.zoom - v.panX, v.height / 2 - y * v.zoom - v.panY);
     };
     this.canvas.addEventListener('pointerdown', (e) => { dragging = true; this.canvas.setPointerCapture(e.pointerId); move(e); });
     this.canvas.addEventListener('pointermove', (e) => { if (dragging) move(e); });
     this.canvas.addEventListener('pointerup', () => { dragging = false; });
-    for (const ev of ['render', 'viewport', 'projects'] as const) engine.on(ev, () => this.schedule());
+    for (const ev of ['render', 'viewport', 'projects', 'overlay', 'doc'] as const) engine.on(ev, () => this.schedule());
     new ResizeObserver(() => this.schedule()).observe(this.canvas);
     this.schedule();
   }
@@ -65,10 +65,12 @@ export class NavigatorPanel {
     g.clearRect(0, 0, c.width, c.height);
     const p = this.engine.current;
     if (!p) return;
-    const pad = 12, dw = p.doc.width, dh = p.doc.height, s = Math.min((w - pad * 2) / dw, (h - pad * 2) / dh);
-    const ox = (w - dw * s) / 2, oy = (h - dh * s) / 2;
-    this.place = { s, ox, oy };
-    this.engine.compose(c, [s * dpr, 0, 0, s * dpr, ox * dpr, oy * dpr], 'medium');
+    // Pixel Aspect Ratio Correction (35.4 part b): only this preview widens by the pixel shape; the main canvas is untouched.
+    const k = this.engine.view.parCorrection && p.doc.pixelAspect ? p.doc.pixelAspect : 1;
+    const pad = 12, dw = p.doc.width, dh = p.doc.height, s = Math.min((w - pad * 2) / (dw * k), (h - pad * 2) / dh);
+    const ox = (w - dw * k * s) / 2, oy = (h - dh * s) / 2;
+    this.place = { s, sx: s * k, ox, oy };
+    this.engine.compose(c, [s * k * dpr, 0, 0, s * dpr, ox * dpr, oy * dpr], 'medium');
     // A duotone document (31.3) is shown as its inks overprinted, as on the canvas.
     if (p.doc.mode === 'duotone' && p.doc.duotone) {
       const img = g.getImageData(0, 0, c.width, c.height);
@@ -82,7 +84,7 @@ export class NavigatorPanel {
       g.setTransform(dpr, 0, 0, dpr, 0, 0);
       g.strokeStyle = '#e5533c';
       g.lineWidth = 1.5;
-      g.strokeRect(ox + x0 * s, oy + y0 * s, (x1 - x0) * s, (y1 - y0) * s);
+      g.strokeRect(ox + x0 * s * k, oy + y0 * s, (x1 - x0) * s * k, (y1 - y0) * s);
     }
     if (document.activeElement !== this.slider) this.slider.value = String(toSlider(v.zoom));
   }
