@@ -2,6 +2,72 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.7: .asl styles, font feature detection, Select Data Points · _v1.70.7 (ui/panels/measurement-dialogs.ts, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (928 catalogue ids). All three builders finished inside their budgets (19, 15 and 35 calls; one feature each this time). The 1.70.7 entries below are theirs.
+
+Fixes at the join:
+- ui/panels/measurement-dialogs.ts, `MeasureDataPointsDialog`: the rows used `<label class="cv-check">`, which only styles a checkbox inside a `.cv-field`, so labels ran into their boxes and the 340 px dialog's four footer buttons overflowed its edge. Rows are now `this.field(...)` with the `cv-check` class, the dialog 460 px wide, and the `as HTMLInputElement` cast is gone. Replaced:
+
+```ts
+    super('Select Data Points', 340);
+    for (const name of MEASURE_POINTS) {
+      const row = el('<label class="cv-check"><input type="checkbox"><span></span></label>');
+      const box = q(row, 'input') as HTMLInputElement;
+      setText(q(row, 'span'), name === 'W' ? 'Width (W)' : name === 'H' ? 'Height (H)' : name);
+      if (name === 'Label') { box.checked = true; box.disabled = true; }
+      this.boxes.push([name, box]);
+      this.body.append(row);
+    }
+```
+
+- ui/i18n tables: Select Data Points in all four.
+
+Probed: an .asl built byte by byte to the format (a style with a multiply drop shadow, blue, 60 percent, 30 degrees, 7 px distance, 9 px size, and a red 4 px outside stroke, followed by a broken style block) read back exactly those values and counted the broken style as skipped; GSUB and GPOS feature lists read for Inter (salt, ss01 to ss08, cv01 to cv13 and the rest), TeX Gyre Pagella (no swsh or calt) and Latin Modern Mono Slanted, and a missing font gave null; the Glyphs dialog on a Pagella layer hid Swash, Contextual and SS05 to SS09; Select Data Points with Area and Perimeter cleared left the Measurement Log's columns Label, Scale, Length, Angle, Count, W, H.
+
+Release version lines, removed:
+
+```text
+<img src="https://img.shields.io/badge/version-1.70.6-f97316" alt="version 1.70.6">
+  "version": "1.70.6",
+  "version": "1.70.6",
+      "version": "1.70.6",
+export const VERSION = '1.70.6';
+```
+
+## Font feature detection, DEV_PLAN 32.6 part d · _v1.70.7 (engine/opentype.ts, ui/panels/glyphs-dialog.ts, extensions/tools/type.ts)
+
+- engine/opentype.ts: `fontFeatureTags(buf)` reads the sfnt directory (TrueType, OTTO, first font of a ttcf), GSUB and GPOS FeatureLists, bounds-checked. `featuresOf(family, bold, italic)` caches a promise per face (shares the `bytes` cache with `ensureVariant`), null on no source or a failed fetch. `featuresKnown(...)` is the sync read of a finished detection.
+- ui/panels/glyphs-dialog.ts: `altNote` and `detectAlternates()` (run from `show()`) hide the alternate toggles the font lacks with `hidden`; notes: 'Showing the alternates this font has.', 'This font has no alternates.', or the fallback when detection is unavailable. Replaced note, in full:
+
+```ts
+el('<p class="cv-dialog-note">The font is not probed for which alternates it has, so the common set is shown; one the font lacks changes nothing. A click on a glyph adds it to the end of the selected type layer.</p>')
+```
+
+  The click sentence is now its own note.
+- extensions/tools/type.ts: `featureChoices` appends ' (not in font)' to entries the font lacks (the menu already refreshes through `live`) and emits `options` once when detection finishes.
+
+## Photoshop .asl styles read, DEV_PLAN 32.4 part d · _v1.70.7 (io/asl.ts, ui/styles-panel.ts)
+
+- `io/asl.ts` (new): `readAsl(buf)` reads the header ('8BSL'), skips the patterns section, then per style reads the block length, the identity descriptor (`Nm  `) and the style descriptor through `Reader` and `readDescriptor` from `io/atn.ts`; each style is in a try/catch, failures counted in `skipped`, and the reader is moved to the block end (padded to 4) after every style. `mapEffects` starts from `defaultEffects()` and maps DrSh, IrSh, OrGl, IrGl, FrFX, SoFi, GrFl (first and last stop), ChFX and ebbl, scaled by `Scl `.
+- `ui/styles-panel.ts` `StylesPanel`: footer button `load` (title "Load Styles (.asl or .json)", `upload` icon); `load()` makes a one-shot hidden file input, `importFile()` adds presets and ends with `engine.notice` giving the count and skipped. `sync()` keeps the load button always enabled. Replaced, in the constructor footer and in `sync()`:
+
+```ts
+${btn('delete', 'Delete the selected style', 'delete')}${btn('new', 'New style from the active layer', 'add')}
+```
+```ts
+const off = a === 'new' ? !effectsPresent(l?.effects) : a === 'delete' ? !this.selected : !can || !effectsPresent(l?.effects);
+```
+
+## Select Data Points, DEV_PLAN 31.6 part c · _v1.70.7 (ui/prefs.ts, ui/panels/measurement-dialogs.ts, ui/measurement-log.ts, app.ts, automation/command-meta.ts)
+
+- `ui/prefs.ts`: `Prefs.measureDataPoints: string[]`, `MEASURE_POINTS` (Label, Scale, Area, Perimeter, Length, Angle, Count, W, H, Circularity), `DEFAULT_MEASURE_POINTS` (all but Circularity); `loadPrefs` keeps only known names, in log order, and falls back to the default when absent.
+- `ui/panels/measurement-dialogs.ts`: `MEASURE_COLS` gains a derived `Circularity` column (4 pi area / perimeter squared); `visibleMeasureCols()` filters by the pref (Label always shown); new `MeasureDataPointsDialog` (checkbox per point, Select All, Select None, OK saves and fires `MEASURE_COLS_EVENT`); `MeasurementLogDialog` header, rows and `exportCsv` use the visible columns. Removed `const COLS = MEASURE_COLS;`.
+- `ui/measurement-log.ts`: the panel keeps `cols`/`colKey`, rebuilds its header and rows once when the columns change, and exports the CSV with the visible columns.
+- `app.ts`: command `measure-data-points` ('Select Data Points...'), `dialogs.measureDataPoints`, menu item after `'measure-record'`.
+- `automation/command-meta.ts`: `'measure-data-points'` line.
+- `recordMeasurements` is unchanged: every value is still recorded.
+
 ## Release 1.70.6: Character Styles, Interpret Footage, style swatches, active slice, preset files · _v1.70.6 (engine/types.ts, engine/index.ts, io/project-io.ts, ui/panels/interpret-footage.ts, ui/styles-panel.ts, styles/panels.css, ui/stage.ts, app.ts, automation/command-meta.ts, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (927 catalogue ids). No builder added a type cast. The third builder (Interpret Footage, style swatches, active slice) ran out of budget while reading and finished only the slice highlight in the Slice tool; the rest was built at the join.

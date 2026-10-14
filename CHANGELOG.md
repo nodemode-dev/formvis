@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.70.7 · 2026-10-14
+
+### Added
+
+- The Styles panel loads Photoshop `.asl` style files (and formvis style JSON): drop shadow, inner shadow, outer and inner glow, stroke, colour and gradient overlay, satin and bevel come across.
+- OpenType features are read from each font: the Glyphs dialog shows only the alternates the font has, and the Type options mark features the font lacks.
+- Image > Analysis > Select Data Points: choose which columns the Measurement Log and its CSV show (Circularity added, off by default); Record Measurements still keeps every value.
+
 ## 1.70.6 · 2026-10-14
 
 ### Added
