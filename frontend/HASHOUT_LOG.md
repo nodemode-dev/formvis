@@ -2,6 +2,41 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.7: video layers saved, cli process and droplets, Krita read · _v1.69.7 (engine/index.ts, io/kra.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (888 catalogue ids). No builder added a type cast.
+
+Fixes at the join:
+- `videoStore` skipped a raster it had never seen. Painting on the first frame shown after opening a project was therefore lost on the next scrub. A never-seen raster is now stored when it is not the stored frame object itself.
+- The Krita note's article now agrees with its noun ("an adjustment layer").
+
+Probes in Chromium:
+- **Krita .kra:** a hand-built file with Red (normal, LZF tiles), Blue (multiply, 50%, raw tiles, inside group Grp) and a Curves adjustment layer opened 100 by 80. Its layers came in bottom first as Red, Blue in Grp, then Grp. Red read (255, 0, 0) at (15, 10); Blue read alpha 128 at (90, 50); the empty corner stayed clear; Curves was left out with a note.
+- **Video layers in .fmv:** a three-frame clip was saved after frame 1 was painted yellow. It wrote three `vframe` files and one `vorig` file. On reading back, the frames were red, yellow and blue, and the originals red, green and blue.
+- **cli process:** see backend/HASHOUT_LOG.md.
+- No page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.69.6",
+      "version": "1.69.6",
+  "version": "1.69.6",
+export const VERSION = '1.69.6';
+```
+
+## Video layers saved, rendered and replaced, DEV_PLAN 33.4 part b · _v1.69.7 (engine/index.ts, io/project-io.ts, ui/panels/video-layer-file.ts, app.ts, automation/command-meta.ts)
+
+Video layers now survive a .fmv round trip: each painted frame is written as a PNG beside the layer, an original only where it differs from its frame, and the manifest records them under `video`. Saving first stores the painted frame under the playhead. Render Video needed an engine change, because it composed from the one raster on the canvas; `renderVideoFrame` now shows each video layer's own frame for the frame being rendered. Replace Footage swaps a video layer's original and painted frames for a chosen clip and resizes its track, as one undo step. Interpret Footage is deferred.
+
+## File-in, file-out command line and Create Droplet, DEV_PLAN 30.8 and 30.5 · _v1.69.7 (app.ts, automation/command-meta.ts)
+
+New commands `open-image-data` (name and base64 bytes, decoded by `decodeImage` and opened by `engine.openImage`, returns `{ id }`), `export-to-file` (format, quality 0 to 100, name; encodes through the new `imageBlob(kind, quality)` core, saves with `api.exportFile`, returns `{ path }`), `play-action` (finds the action by name, plays it with `playAction`, returns `{ played: true }`) and `close-document` (`requestClose(id, 'discard')`, no prompt). `create-droplet` asks for an action name with `promptName` (first action by default) and delivers `<action>-droplet.sh` built by `dropletScript`, which does `cd "$(dirname "$0")"` and so belongs in the formvis folder; it sits after Batch in File > Automate. `exportImage` is unchanged; `imageBlob` covers png, jpg, webp and tiff of the flattened picture only (no CMYK, Lab or deep-colour routes). Words added in command-meta.ts.
+
+## Krita .kra read, DEV_PLAN 34.5 part a · _v1.69.7 (io/kra.ts, io/images.ts, app.ts)
+
+`readKra` in `io/kra.ts` opens a Krita file as a layered document: it unzips the file, parses maindoc.xml, and walks the layer tree recursively (Krita lists the top first, so the walk is reversed to formvis's bottom-first order). Paint layers decode Krita's 64 by 64 tiles (LZF or raw, planar B, G, R, A) into a raster placed at the layer's x and y; group layers become formvis groups; opacity is the attribute over 255, visibility comes from `visible`, and `compositeop` maps to a formvis blend mode (unknown ones open as Normal, with a note). Filter, adjustment, clone, vector and file layers are left out with a note naming them. A file that is not 8-bit RGBA, or holds no usable paint layers, opens as its mergedimage.png in one layer, with a note. `.kra` joined PROJECT_ACCEPT in `io/images.ts`, and `openFiles` in app.ts routes it beside OpenRaster and PSD. Paint.NET .pdn is deferred.
+
 ## Release 1.69.6: layered TIFF, video layers, Glyphs, Tool Presets · _v1.69.6 (app.ts, ui/option-memory.ts, ui/panels/tool-presets-dialog.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (882 catalogue ids). No builder added a type cast.

@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.69.7 · 2026-10-14
+
+### Added
+
+- Video layers are saved in `.fmv` projects with their painted frames and their original footage, Render Video draws each layer's own frame at every time, and Layer > Video Layers > Replace Footage swaps the clip.
+- `./formvis cli process`: images in, the commands or an action run on each in the open window, files out (PNG, JPEG, WebP or TIFF) beside the inputs or in a folder.
+- `./formvis cli droplet` and File > Automate > Create Droplet: a script that runs an action on the files dropped on it.
+- Krita `.kra` files open with their paint layers, groups, opacity, visibility and blend modes.
+
 ## 1.69.6 · 2026-10-14
 
 ### Added

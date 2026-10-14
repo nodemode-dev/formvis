@@ -2,6 +2,21 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.7 · _v1.69.7 (app/__init__.py)
+
+Probed end to end: with the window open, `./formvis cli process cli_in.png --run invert --format png --out <dir> --suffix _cli --yes` opened the 30 by 20 picture (200, 40, 40), inverted it, exported `cli_in_cli.png` reading (55, 215, 215), moved it beside the input, and closed its document (the window's own two documents stayed open); exit 0. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.69.6"
+version = "1.69.6"
+version = "1.69.6"
+ "version": "1.69.6",
+```
+
+## cli process and droplet · _v1.69.7 (setup/cli.py, formvis)
+
+`./formvis cli process <input...>` reads each file, base64s it into `open-image-data`, runs the `--run id key=value` commands in order, then `--action` through `play-action`, then `export-to-file` named `<stem><suffix>.<format>`, always closes with `close-document`, and moves the exported file from the engine's exports path to `--out` (default beside the input) with `shutil.move`; it prints one line per file, exits 1 if any failed, and refuses risky commands without `--yes`. `./formvis cli droplet <action>` writes an executable `<action>-droplet.sh` with this repo's absolute path baked in, plus a `.cmd` twin calling `python setup\cli.py process %*`. The launcher's usage text names both. The engine is unchanged; the move assumes the CLI and engine share a machine.
+
 ## Version only · _v1.69.6
 
 No engine code changed in 1.69.6. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
