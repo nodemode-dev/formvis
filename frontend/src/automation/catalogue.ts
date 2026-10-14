@@ -28,7 +28,7 @@ const rgbOf = (v: string): { r: number; g: number; b: number } | null => { const
 const TOOL_WHEN: Record<string, string> = {
   move: 'to move, align or transform layers by dragging', marquee: 'to select a rectangle, ellipse or single row or column', lasso: 'to select a freehand, polygon or magnetic outline',
   objectSelect: 'to select an object by drawing a box around it', quickSelect: 'to select by painting over an area', wand: 'to select a region of similar colour with one click',
-  selectionBrush: 'to paint a selection with a soft brush', crop: 'to crop, straighten or extend the canvas by dragging', frame: 'to make a frame placeholder for a picture',
+  selectionBrush: 'to paint a selection with a soft brush', crop: 'to crop, straighten or extend the canvas by dragging', slice: 'to mark rectangles of the picture as web slices by dragging',frame: 'to make a frame placeholder for a picture',
   brush: 'to paint soft strokes with the foreground colour', pencil: 'to draw hard-edged lines', mixer: 'to paint with colours that blend like wet paint',
   spotHealing: 'to remove small blemishes with one click', remove: 'to paint over an object and have it removed', healingBrush: 'to repair texture from a sampled source',
   patch: 'to repair a selected area with pixels from another area', contentAwareMove: 'to move or extend an object and heal the gap', redEye: 'to fix red eyes in a flash photo',

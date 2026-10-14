@@ -52,6 +52,7 @@ import { encodeGif, type GifFrame } from './io/gif';
 import { ShapeStyleDialog } from './ui/panels/shape-style-dialog';
 import { PathsPanel } from './ui/paths';
 import { SmartFiltersDialog } from './ui/panels/smart-filters-dialog';
+import { STACK_MODES } from './engine/stack-modes';
 import { Actions, RECORDABLE, type Action, type ActionStep } from './ui/actions';
 import { ActionsDialog, BatchDialog } from './ui/panels/actions-dialogs';
 import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/image-processor-dialog';
@@ -1923,6 +1924,8 @@ export function startApp(): void {
     { id: 'toggle-grid', label: () => (engine.view.grid ? 'Hide Grid' : 'Show Grid'), keys: ["Mod+'"], enabled: has, run: () => engine.setView({ grid: !engine.view.grid }) },
     { id: 'lock-guides', label: () => (engine.view.guidesLocked ? 'Unlock Guides' : 'Lock Guides'), keys: ['Alt+Mod+;'], enabled: has, run: () => engine.setView({ guidesLocked: !engine.view.guidesLocked }) },
     { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
+    { id: 'toggle-show-slices', label: () => (engine.view.slices ? 'Hide Slices' : 'Show Slices'), enabled: has, run: () => engine.setView({ slices: !engine.view.slices }) },
+    { id: 'clear-slices', label: 'Clear Slices', enabled: () => !!engine.current?.doc.slices?.length, run: () => engine.clearSlices() },
     { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
     { id: 'assistant', label: 'Assistant', run: () => assistant.toggle() },   // 1.52.2
@@ -2400,6 +2403,7 @@ export function startApp(): void {
     { id: 'embed-linked', label: 'Embed Linked', enabled: () => !!engine.current?.activeLayer?.smart?.link, run: () => engine.embedLinked() },
     { id: 'add-filter-mask', label: 'Add Smart Filter Mask', enabled: () => { const s = engine.current?.activeLayer?.smart; return !!s && !s.filterMask; }, run: () => engine.addSmartFilterMask() },
     { id: 'toggle-filter-mask', label: () => (engine.current?.activeLayer?.smart?.filterMaskEnabled === false ? 'Enable Smart Filter Mask' : 'Disable Smart Filter Mask'), enabled: () => !!engine.current?.activeLayer?.smart?.filterMask, run: () => engine.toggleSmartFilterMask() },
+    ...STACK_MODES.map((m) => ({ id: `stack-mode-${m.id}`, label: m.label, checked: () => engine.stackMode === m.id, enabled: () => engine.stackMode !== null, run: () => { engine.setStackMode(m.id); } })),
     { id: 'delete-filter-mask', label: 'Delete Smart Filter Mask', enabled: () => !!engine.current?.activeLayer?.smart?.filterMask, run: () => engine.deleteSmartFilterMask() },
     { id: 'new-shape-path', label: 'New Shape Layer from Path', enabled: () => !!engine.workPath?.subpaths.some((s) => s.anchors.length > 1), run: () => engine.newShapeFromPath() },
     { id: 'apply-redactions', label: 'Apply Redactions', enabled: () => !!engine.current?.doc.layers.some((l) => l.vector && /^Redaction \d+$/.test(l.name)), run: () => { const n = engine.applyRedactions(); if (n) toast(`Redacted: the boxes burned into ${n} layer${n === 1 ? '' : 's'}.`); } },   // 1.60.3
@@ -2446,6 +2450,7 @@ export function startApp(): void {
     { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { const m = engine.current?.doc.mode; if (engine.current?.doc.depth === 16 && m !== 'grayscale') void toGray(); else if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
     { id: 'mode-duotone', label: 'Duotone...', enabled: () => has() && ['grayscale', 'duotone'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'duotone', run: () => dialogs.duotone.show() },   // 31.3a
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('bitmap'); }) },
+    { id: 'mode-multichannel', label: 'Multichannel', enabled: () => has() && (engine.current?.doc.depth ?? 8) === 8 && engine.current?.doc.mode !== 'lab', checked: () => engine.current?.doc.mode === 'multichannel', run: () => { engine.convertMode('multichannel'); } },   // 31.3b
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('indexed'); }) },
     { id: 'color-table', label: 'Color Table...', enabled: () => has() && engine.current?.doc.mode === 'indexed', run: () => dialogs.colorTable.show() },   // 31.4
     // Bit depth (1.53.6, H1).
@@ -2517,7 +2522,7 @@ export function startApp(): void {
     { label: 'Image', items: [
       'apply-image', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
-      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
@@ -2525,7 +2530,7 @@ export function startApp(): void {
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
-      { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
+      { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
       { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] },
@@ -2553,7 +2558,7 @@ export function startApp(): void {
       { label: 'Video', items: filterGroup('Video', []) },
       { label: 'Other', items: filterGroup('Other', []) }, '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
-      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, '-',
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: ['assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
@@ -2568,7 +2573,7 @@ export function startApp(): void {
     engine.on('projects', () => { void native.build().catch(() => undefined); });   // Open Recent and what is enabled
   }
   contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', 'warp-text', '-',
-    { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'smart-export-contents', 'rasterize', 'edit-contents', 'replace-contents', '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
+    { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, 'rasterize', 'edit-contents', 'replace-contents', '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
     { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-delete', '-', 'layer-comp-next', 'layer-comp-previous'] }, '-',

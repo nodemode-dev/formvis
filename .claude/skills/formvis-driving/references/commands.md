@@ -1,21 +1,21 @@
 # formvis commands
 
-Generated from the window's command catalogue (809 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (826 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 49
 - File: 56
 - Filter: 77
-- Image: 74
-- Layer: 168
+- Image: 75
+- Layer: 181
 - Paint: 1
 - Paths: 8
 - Select: 28
 - Tool options: 225
-- Tools: 48
+- Tools: 49
 - Type: 4
-- View: 29
+- View: 31
 - Window: 42
 
 ## Edit
@@ -285,6 +285,7 @@ Generated from the window's command catalogue (809 commands) by `./formvis agent
 | `mode-grayscale` | Grayscale |  | Converts the document to grayscale. (changes the picture) |
 | `mode-indexed` | Indexed Color... |  | Opens the Indexed Color conversion. (changes the picture) |
 | `mode-lab` | Lab Color |  | Converts the document to Lab colour. (changes the picture) |
+| `mode-multichannel` | Multichannel |  | Converts the document to Multichannel: grey spot channels with ink colours, shown overprinted on white. (changes the picture) |
 | `mode-rgb` | RGB Color |  | Converts the document to RGB. (changes the picture) |
 | `remove-bg` | Remove Background |  | Removes the background of the active layer with the neural model. (changes the picture) |
 | `remove-bg-lite` | Remove Background (Lightweight) |  | Removes the background with the lightweight model. (changes the picture) |
@@ -456,6 +457,19 @@ Generated from the window's command catalogue (809 commands) by `./formvis agent
 | `smart-filters-clear` | Clear Smart Filters |  | Removes every smart filter of the active smart object. (changes the picture) |
 | `smart-filters-disable` | Disable Smart Filters |  | Turns every filter of the active smart object off, or back on when all are off. (changes the picture) |
 | `smart-new-via-copy` | New Smart Object via Copy |  | Duplicates the active smart object as a new, independent smart object above it. (changes the picture) |
+| `stack-mode-entropy` | Entropy |  | Set the stack mode of a stacked smart object to Entropy (changes the picture) |
+| `stack-mode-kurtosis` | Kurtosis |  | Set the stack mode of a stacked smart object to Kurtosis (changes the picture) |
+| `stack-mode-majority` | Majority |  | Set the stack mode of a stacked smart object to Majority, the most common value (changes the picture) |
+| `stack-mode-maximum` | Maximum |  | Set the stack mode of a stacked smart object to Maximum (changes the picture) |
+| `stack-mode-mean` | Mean |  | Set the stack mode of a stacked smart object to Mean (changes the picture) |
+| `stack-mode-median` | Median |  | Set the stack mode of a stacked smart object to Median (changes the picture) |
+| `stack-mode-minimum` | Minimum |  | Set the stack mode of a stacked smart object to Minimum (changes the picture) |
+| `stack-mode-none` | None |  | Set the stack mode of a stacked smart object to None, showing the top layer (changes the picture) |
+| `stack-mode-range` | Range |  | Set the stack mode of a stacked smart object to Range (changes the picture) |
+| `stack-mode-skewness` | Skewness |  | Set the stack mode of a stacked smart object to Skewness (changes the picture) |
+| `stack-mode-stddev` | Standard Deviation |  | Set the stack mode of a stacked smart object to Standard Deviation (changes the picture) |
+| `stack-mode-summation` | Summation |  | Set the stack mode of a stacked smart object to Summation (changes the picture) |
+| `stack-mode-variance` | Variance |  | Set the stack mode of a stacked smart object to Variance (changes the picture) |
 | `style-bevel` | Bevel & Emboss... |  | Opens Layer Style at Bevel and Emboss. (changes the picture) |
 | `style-blending` | Blending Options... |  | Opens Layer Style at Blending Options. (changes the picture) |
 | `style-color-overlay` | Color Overlay... |  | Opens Layer Style at Color Overlay. (changes the picture) |
@@ -842,6 +856,7 @@ Generated from the window's command catalogue (809 commands) by `./formvis agent
 | `tool.select.ruler` | Ruler Tool |  | Makes the Ruler tool the active tool (key I). Drag to measure · Drag an end to adjust · Straighten Layer levels the layer along the line |
 | `tool.select.selectionBrush` | Selection Brush Tool |  | Makes the Selection Brush tool the active tool (key W). Paint to add to the selection · Alt-paint to take away · [ ] size · Shift+[ ] hardness |
 | `tool.select.shape` | Shape Tool |  | Makes the Shape tool the active tool (key U). Drag to draw a rectangle (on a new shape layer) · Shift after starting keeps it square · Alt after starting grows from the center · Shift+U switches shape |
+| `tool.select.slice` | Slice Tool |  | Makes the Slice tool the active tool (key C). Drag a rectangle to add a slice · Shift makes it square · Slices are numbered in reading order |
 | `tool.select.smear` | Smear Tool |  | Makes the Smear tool the active tool. Paint to soften; another stroke over the same place softens more · The blur follows the brush size · [ ] size |
 | `tool.select.sponge` | Sponge Tool |  | Makes the Sponge tool the active tool (key O). Paint to take color out, or with Saturate, to strengthen it · [ ] size |
 | `tool.select.spotHealing` | Spot Healing Tool |  | Makes the Spot Healing tool the active tool (key J). Paint over a spot and it heals on release · Content-Aware copies a matching patch nearby · Create Texture fills smoothly with matching grain · Proximity Match prefers the nearest patch · [ ] size |
@@ -864,6 +879,7 @@ Generated from the window's command catalogue (809 commands) by `./formvis agent
 | --- | --- | --- | --- |
 | `actual` | Actual Pixels | Mod+1 | Zooms to 100 percent. |
 | `clear-guides` | Clear Guides |  | Removes every guide. (changes the picture) |
+| `clear-slices` | Clear Slices |  | Removes every user slice. (changes the picture) |
 | `fit` | Fit on Screen | Mod+0 | Zooms so the picture fits the window. |
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
 | `lock-guides` | Lock Guides | Alt+Mod+; | Locks or unlocks guides so they cannot be dragged. |
@@ -888,6 +904,7 @@ Generated from the window's command catalogue (809 commands) by `./formvis agent
 | `toggle-guides` | Toggle Guides | Mod+; | Shows or hides guides. |
 | `toggle-panels` | Toggle Panels | Tab | Shows or hides every panel and the toolbar. |
 | `toggle-rulers` | Toggle Rulers | Mod+R | Shows or hides the rulers. |
+| `toggle-show-slices` | Toggle Show Slices |  | Shows or hides the slice rectangles and their numbers. |
 | `transform-controls` | Transform Controls |  | Shows or hides transform handles on the layer. |
 | `zoom-in` | Zoom In | Mod+= | Zooms in. |
 | `zoom-out` | Zoom Out | Mod+- | Zooms out. |
