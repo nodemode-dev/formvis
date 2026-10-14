@@ -96,6 +96,36 @@ export async function placeLinked(engine: Engine, id: string, source: LinkSource
   engine.placeLinked(raster, meta(id, file), file.name.replace(/\.[^.]+$/, ''));
 }
 
+/** File > Place Embedded: a picked image file becomes an embedded smart object, its pixels kept inside the document. */
+export async function placeEmbedded(engine: Engine, file: File): Promise<void> {
+  const img = await decodeImage(file, file.name), raster = new Raster(img.width, img.height);
+  raster.ctx.drawImage(img.source, 0, 0);
+  engine.placeEmbedded(raster, file.name.replace(/\.[^.]+$/, ''));
+}
+
+/** File > Package: the files behind the document's linked smart objects, named Links/<file name> (repeats numbered).
+ *  Links whose file cannot be reached are listed by name in `missing`. */
+export async function linkedFiles(engine: Engine): Promise<{ files: { name: string; blob: Blob }[]; missing: string[] }> {
+  const p = engine.current, out = { files: [] as { name: string; blob: Blob }[], missing: [] as string[] };
+  if (!p) return out;
+  const seen = new Set<string>(), used = new Set<string>();
+  for (const l of p.doc.layers) {
+    const link = l.smart?.link;
+    if (!link || seen.has(link.id)) continue;
+    seen.add(link.id);
+    const s = await sourceFor(link.id);
+    if (!s) { out.missing.push(link.name); continue; }
+    let file: File;
+    try { file = await s.getFile(); } catch { out.missing.push(link.name); continue; }
+    const dot = file.name.lastIndexOf('.'), stem = dot > 0 ? file.name.slice(0, dot) : file.name, ext = dot > 0 ? file.name.slice(dot) : '';
+    let name = file.name, n = 2;
+    while (used.has(name.toLowerCase())) name = `${stem} ${n++}${ext}`;
+    used.add(name.toLowerCase());
+    out.files.push({ name: `Links/${name}`, blob: file });
+  }
+  return out;
+}
+
 /** Layer > Smart Objects > Convert to Linked: the active embedded smart object's contents are written as a PNG named
  *  after the layer, to a file the person picks where the browser can save to one (kept as a handle, so the link sees
  *  later edits), else held in the link store for the session; the object then links to it. One undo step. */

@@ -1894,6 +1894,10 @@ export class Engine {
   }
 
   /** File > Place Linked: `raster` as a new smart object, centred, linked to a file through `link`. */
+  placeEmbedded(raster: Raster, name: string): void {
+    this.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [] } }, 'Place Embedded');
+  }
+
   placeLinked(raster: Raster, link: SmartLink, name: string): void {
     this.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [], link } }, 'Place Linked');
   }
