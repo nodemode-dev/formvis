@@ -1,21 +1,21 @@
 # formvis commands
 
-Generated from the window's command catalogue (766 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (779 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 42
+- Edit: 45
 - File: 48
 - Filter: 77
 - Image: 67
-- Layer: 156
+- Layer: 158
 - Paint: 1
 - Paths: 8
 - Select: 28
 - Tool options: 225
 - Tools: 48
 - Type: 4
-- View: 21
+- View: 29
 - Window: 41
 
 ## Edit
@@ -48,6 +48,9 @@ Generated from the window's command catalogue (766 commands) by `./formvis agent
 | `paste-outside` | Paste Outside |  | Pastes outside the selection with a mask. (changes the picture) |
 | `perspective-warp` | Perspective Warp |  | Starts Perspective Warp. (changes the picture) |
 | `puppet-warp` | Puppet Warp |  | Starts Puppet Warp with pins on the layer. (changes the picture) |
+| `purge-all` | All |  | Clears the clipboard and the history of every open document after asking. (changes the picture) |
+| `purge-clipboard` | Clipboard |  | Clears formvis's internal clipboard. (changes the picture) |
+| `purge-histories` | Histories |  | Clears the undo and redo history of the current document after asking. (changes the picture) |
 | `redo` | Redo | Shift+Mod+Z Mod+Y | Steps forward one history step. (changes the picture) |
 | `remove-wires` | Remove Wires and Cables |  | Finds wires and cables and removes them. (changes the picture) |
 | `stroke-dialog` | Stroke... |  | Opens the Stroke dialog for the selection. (changes the picture) |
@@ -422,6 +425,8 @@ Generated from the window's command catalogue (766 commands) by `./formvis agent
 | `shapes-subtract` | Subtract Front Shape |  | Cuts the front shape out of the one behind. (changes the picture) |
 | `shapes-unite` | Unite Shapes |  | Unites the selected shape layers into one shape. (changes the picture) |
 | `smart-filters` | Smart Filters... |  | Opens the smart filter stack of the active layer. (changes the picture) |
+| `smart-filters-clear` | Clear Smart Filters |  | Removes every smart filter of the active smart object. (changes the picture) |
+| `smart-filters-disable` | Disable Smart Filters |  | Turns every filter of the active smart object off, or back on when all are off. (changes the picture) |
 | `style-bevel` | Bevel & Emboss... |  | Opens Layer Style at Bevel and Emboss. (changes the picture) |
 | `style-blending` | Blending Options... |  | Opens Layer Style at Blending Options. (changes the picture) |
 | `style-color-overlay` | Color Overlay... |  | Opens Layer Style at Color Overlay. (changes the picture) |
@@ -836,6 +841,14 @@ Generated from the window's command catalogue (766 commands) by `./formvis agent
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
 | `pixel-grid` | Pixel Grid |  | Shows or hides the pixel grid at high zoom. |
 | `proof-colors` | Proof Colors |  | Turns Proof Colors on or off. |
+| `proof-preset-black` | Working Black Plate |  | Shows the working CMYK black plate as a grey image and turns Proof Colors on. |
+| `proof-preset-cmy` | Working CMY Plates |  | Shows the working CMYK cyan, magenta and yellow plates together, without black, and turns Proof Colors on. |
+| `proof-preset-cmyk` | Working CMYK |  | Previews the picture as the working CMYK profile prints it and turns Proof Colors on. |
+| `proof-preset-cyan` | Working Cyan Plate |  | Shows the working CMYK cyan plate as a grey image and turns Proof Colors on. |
+| `proof-preset-deuteranopia` | Color Blindness - Deuteranopia-type |  | Simulates deuteranopia, green-blind colour vision, and turns Proof Colors on. |
+| `proof-preset-magenta` | Working Magenta Plate |  | Shows the working CMYK magenta plate as a grey image and turns Proof Colors on. |
+| `proof-preset-protanopia` | Color Blindness - Protanopia-type |  | Simulates protanopia, red-blind colour vision, and turns Proof Colors on. |
+| `proof-preset-yellow` | Working Yellow Plate |  | Shows the working CMYK yellow plate as a grey image and turns Proof Colors on. |
 | `proof-setup` | Proof Setup... |  | Opens Proof Setup. |
 | `rail-columns` | Tools in Two Columns |  | Lays the toolbar out in one or two columns. |
 | `screen-full` | Full Screen Mode |  | Full screen with no menu bar. |
