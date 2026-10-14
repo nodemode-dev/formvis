@@ -1,4 +1,5 @@
 import { Raster, createSurface, ctxOf } from './surface';
+import { cleanFeatures, ensureVariant, variantFamily } from './opentype';
 import { clamp, type ID, type Layer, type ParagraphStyle, type Pt, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
 
 /** Type layers: text set in a font, drawn into a layer's pixels and kept editable while those pixels are untouched. */
@@ -34,12 +35,14 @@ function lineWidth(c: CanvasRenderingContext2D | OffscreenCanvasRenderingContext
 
 /** The CSS font for a spec, with a sans-serif fallback for named families. */
 export function fontCss(t: TextSpec): string {
-  const family = GENERIC.has(t.family) ? t.family : `"${t.family.replace(/["\\]/g, '')}", sans-serif`;
+  const variant = GENERIC.has(t.family) ? null : variantFamily(t.family, t.bold, t.italic, t.features);
+  const family = variant ? `"${variant}", "${t.family.replace(/["\\]/g, '')}", sans-serif` : GENERIC.has(t.family) ? t.family : `"${t.family.replace(/["\\]/g, '')}", sans-serif`;
   return `${t.italic ? 'italic ' : ''}${t.bold ? 700 : 400} ${t.size}px ${family}`;
 }
 
 /** Waits for the spec's font to load where the browser can, so the first rendering uses it. */
 export async function loadTextFont(t: TextSpec): Promise<void> {
+  if (t.features?.length && !GENERIC.has(t.family)) await ensureVariant(t.family, t.bold, t.italic, t.features);
   try { await document.fonts?.load(fontCss(t), t.content || 'Ag'); } catch { /* the canvas falls back to what it has */ }
 }
 
@@ -344,6 +347,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     ...(o.box && typeof o.box === 'object' ? (() => { const b = o.box as Record<string, unknown>; const w = num(b.w, 0, 0, 30000), h = num(b.h, 0, 0, 30000); return w >= 1 && h >= 1 ? { box: { w, h } } : {}; })() : {}),
     ...(o.direction === 'vertical' ? { direction: 'vertical' as const } : {}),
     ...(o.antialias === 'none' || o.antialias === 'sharp' ? { antialias: o.antialias } : {}),
+    ...(cleanFeatures(o.features).length ? { features: cleanFeatures(o.features) } : {}),
     lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' ? 'none' : 'metrics',
     warp: warpFrom(o.warp), onPath: pathFrom(o.onPath), style: typeof o.style === 'string' && o.style ? o.style : null,
     rendered: textKey(raster),

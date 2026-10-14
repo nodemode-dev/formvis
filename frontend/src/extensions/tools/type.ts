@@ -1,4 +1,5 @@
 import type { Engine, TextSpec } from '../../engine';
+import { OT_FEATURES, featureOn, withFeature } from '../../engine/opentype';
 import { canListSystemFonts, fontFamilies, loadSystemFonts } from '../../ui/fonts';
 import type { Pt } from '../../engine';
 import { dashed, toolHost, type Tool } from '../registry';
@@ -15,7 +16,12 @@ function fontChoices(current: string): Array<{ id: string; label: string }> {
 }
 
 /** Changes the Type settings, shows them in the options bar, and restyles text being typed. */
-const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning'] as const;
+const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'lineHeight', 'tracking', 'kerning', 'features'] as const;
+
+/** The OpenType menu (DEV_PLAN 32.6b): each feature marked on or off, a pick toggling it for new text and the selected type layer. */
+function featureChoices(e: Engine): Array<{ id: string; label: string }> {
+  return [{ id: '', label: 'OpenType' }, ...OT_FEATURES.map((f) => ({ id: f.tag, label: `${featureOn(e.textSettings.features, f.tag) ? '[x]' : '[ ]'} ${f.label}` }))];
+}
 
 export function setType(e: Engine, patch: Partial<TextSpec>): void {
   e.textSettings = { ...e.textSettings, ...patch };
@@ -58,6 +64,8 @@ export const typeTool: Tool = {
     { kind: 'select', label: 'Kerning', choices: [{ id: 'metrics', label: 'Metrics' }, { id: 'none', label: '0' }], get: () => e.textSettings.kerning, set: (v) => setType(e, { kerning: v === 'none' ? 'none' : 'metrics' }) },
     // Anti-aliasing and the Color swatch (1.50.4, the tool audit), as Photoshop's bar; the swatch recolours the selected
     // type layer as well as setting the colour new text takes.
+    { kind: 'select', label: 'OpenType', choices: featureChoices(e), live: () => featureChoices(e), get: () => '',
+      set: (v: string) => { if (v) setType(e, { features: withFeature(e.textSettings.features, v, !featureOn(e.textSettings.features, v)) }); } },
     { kind: 'select', label: 'Anti-aliasing', choices: [{ id: 'none', label: 'None' }, { id: 'sharp', label: 'Sharp' }, { id: 'smooth', label: 'Smooth' }], get: () => e.textSettings.antialias ?? 'smooth', set: (v: string) => setType(e, { antialias: v === 'none' || v === 'sharp' ? v : 'smooth' }) },
     { kind: 'color', label: 'Color', get: () => e.fg, set: (c) => { e.fg = c; e.emit('options', null); const l = e.activeLayer; if (l?.text) void e.updateTextLayer(l.id, { ...l.text, color: e.fg }); } },
     { kind: 'button', label: 'Warp Text...', run: () => toolHost.run('warp-text') },

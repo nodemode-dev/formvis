@@ -39,8 +39,9 @@ export class MeasureScaleDialog extends Dialog {
 }
 
 type Rec = NonNullable<Doc['measurements']>[number];
+export type MeasureRec = Rec;
 
-const COLS: ReadonlyArray<readonly [string, (m: Rec) => string]> = [
+export const MEASURE_COLS:ReadonlyArray<readonly [string, (m: Rec) => string]> = [
   ['Label', (m) => m.label],
   ['Scale', (m) => `${num(m.scale)} ${m.units}/px`],
   ['Area', (m) => opt(m.area)],
@@ -53,6 +54,7 @@ const COLS: ReadonlyArray<readonly [string, (m: Rec) => string]> = [
 ];
 const num = (v: number): string => String(Number(v.toFixed(3)));
 const opt = (v: number | undefined): string => (v === undefined ? '' : num(v));
+const COLS = MEASURE_COLS;
 
 /** Image > Analysis > Measurement Log: the recorded measurements as a table. The shell is built once; only the rows change. */
 export class MeasurementLogDialog extends Dialog {

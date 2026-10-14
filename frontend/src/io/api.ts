@@ -81,6 +81,10 @@ export const api = {
     if (mask) body.append('mask', mask, 'mask.png');
     return (await request('/seam/content-aware-scale', { method: 'POST', body })).blob();
   },
+  /** A font file's bytes (DEV_PLAN 32.6b): the engine finds the family's file on this computer, for OpenType features. */
+  async fontFile(family: string, bold: boolean, italic: boolean): Promise<ArrayBuffer> {
+    return (await request(`/fonts/file?family=${encodeURIComponent(family)}&bold=${bold ? 1 : 0}&italic=${italic ? 1 : 0}`)).arrayBuffer();
+  },
   async capabilities(): Promise<Capabilities | null> {
     try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
   },

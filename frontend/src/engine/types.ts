@@ -324,7 +324,8 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
  *  type stacks upright characters top to bottom in columns from right to left (1.49.7, the owner's tool list). */
 /** antialias (1.50.4, the tool audit): Photoshop's method, of those formvis renders truly: None (every edge pixel on or
  *  off), Sharp (steeper edges) or Smooth (absent). */
-export interface TextSpec { antialias?: 'none' | 'sharp' | 'smooth'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
+/** features (DEV_PLAN 32.6b): OpenType feature tags turned on ('smcp'), and '-liga' or '-calt' for a default feature off. */
+export interface TextSpec { features?: string[] | null; antialias?: 'none' | 'sharp' | 'smooth'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
 /** A paragraph style (Window > Paragraph Styles): a named set of type settings kept in the document; type layers linked
  *  to it by TextSpec.style take its settings, and redefining it updates every one of them. */
 export interface ParagraphStyle { id: ID; name: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning }

@@ -3,7 +3,7 @@ import {
   Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS,
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
-import { blendIfActive, type BlendIf } from '../engine/types';
+import { blendIfActive, type BlendIf, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
 import { addPathResources, readPathResources } from './psd-paths';
 import { buildXmp, metaFromXmp } from './xmp';
@@ -268,7 +268,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
   for (const lf of psd.linkedFiles ?? []) if (lf.data) contents.set(lf.id, await decodeLinked(lf.data, readPsd));
   const fileInfo = psd.imageResources?.xmpMetadata ? metaFromXmp(psd.imageResources.xmpMetadata) : null;   // File Info (29.2): the XMP image resource
   const doc: Doc = { id: uid(), width: psd.width, height: psd.height, resolution: 72, layers: [], ...(fileInfo ? { meta: fileInfo } : {}) };
-  const layers: Layer[] = [], notes: string[] = [], links = new Map<number, ID>();
+  const layers: Layer[] = [], notes: string[] = [], links = new Map<number, ID>(), psdIds = new Map<PsdLayer, ID>();
   const linkOf = (pl: PsdLayer): { link?: ID } => {
     const g = pl.linkGroup;
     if (!g || pl.linkGroupEnabled === false) return {};
@@ -282,6 +282,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
       if (pl.children) {
         const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, ...linkOf(pl) });
         walk(pl.children, group.id);
+        psdIds.set(pl, group.id);
         layers.push(group); // after its children, where formvis keeps a folder's entry
         base = null;
         continue;
@@ -366,10 +367,34 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
       Object.assign(layer, fromPsdBlending(pl));
       if (pl.clipping && base) layer.clipId = base.id;
       else base = layer;
+      psdIds.set(pl, layer.id);
       layers.push(layer);
     }
   };
   walk(psd.children, null);
+  // Layer Comps (33.3 part d): the document's list, then each layer's per-comp settings. Captured info bits are
+  // 1 visibility, 2 position, 4 appearance; a position offset is relative to the layer's own position.
+  const lc = psd.imageResources?.layerComps;
+  if (lc?.list.length) {
+    const compIds = new Map<number, ID>(), byComp = new Map<number, LayerComp>(), byLayer = new Map<ID, Layer>(layers.map((l) => [l.id, l]));
+    const comps: LayerComp[] = lc.list.map((c) => {
+      const id = uid(), comp: LayerComp = { id, name: c.name, comment: c.comment ?? '', useVisibility: (c.capturedInfo & 1) !== 0, usePosition: (c.capturedInfo & 2) !== 0, useAppearance: (c.capturedInfo & 4) !== 0, layers: {} };
+      compIds.set(c.id, id); byComp.set(c.id, comp);
+      return comp;
+    });
+    for (const [pl, lid] of psdIds) {
+      const layer = byLayer.get(lid);
+      for (const s of pl.comps?.settings ?? []) for (const cid of s.compList) {
+        const comp = byComp.get(cid);
+        if (!comp) continue;
+        const entry = comp.layers[lid] ?? (comp.layers[lid] = {});
+        if (comp.useVisibility) entry.visible = s.enabled !== false;
+        if (comp.usePosition && s.offset && layer && !layer.isGroup) { entry.x = layer.transform.x + s.offset.x; entry.y = layer.transform.y + s.offset.y; }
+      }
+    }
+    doc.comps = comps;
+    doc.activeComp = lc.lastApplied !== undefined ? compIds.get(lc.lastApplied) ?? null : null;
+  }
   if (!layers.length && psd.canvas) {
     layers.push(newLayer('Background', doc, { raster: Raster.from(psd.canvas, psd.width, psd.height) }));
     notes.push('This PSD has no layers; it opened as a single one.');
@@ -480,12 +505,35 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const held = new Map<ID, number>(), linkNo = new Map<ID, number>();
   for (const l of doc.layers) if (l.link) held.set(l.link, (held.get(l.link) ?? 0) + 1);
   for (const [k, n] of held) if (n > 1) linkNo.set(k, linkNo.size + 1);
-  const build = (parentId: ID | null): PsdLayer[] => doc.layers.filter((l) => l.parentId === parentId).map((l) => { const o = toPsd(l); if (o && l.link && linkNo.has(l.link)) o.linkGroup = linkNo.get(l.link); return o; }).filter((x): x is PsdLayer => x !== null);
+  const built = new Map<ID, PsdLayer>();
+  const build = (parentId: ID | null): PsdLayer[] => doc.layers.filter((l) => l.parentId === parentId).map((l) => { const o = toPsd(l); if (o) built.set(l.id, o); if (o && l.link && linkNo.has(l.link)) o.linkGroup = linkNo.get(l.link); return o; }).filter((x): x is PsdLayer => x !== null);
   const flat = canvas(doc.width, doc.height);
   (flat.getContext('2d') as CanvasRenderingContext2D).drawImage(composite as CanvasImageSource, 0, 0);
   const psd: Psd = { width: doc.width, height: doc.height, children: build(null), canvas: flat };
+  const comps = doc.comps ?? [];
+  if (comps.length) {
+    const resources = psd.imageResources ?? (psd.imageResources = {});
+    resources.layerComps = {
+      list: comps.map((c, i) => ({ id: i + 1, name: c.name, comment: c.comment, capturedInfo: (c.useVisibility ? 1 : 0) | (c.usePosition ? 2 : 0) | (c.useAppearance ? 4 : 0) })),
+      ...(doc.activeComp ? { lastApplied: comps.findIndex((c) => c.id === doc.activeComp) + 1 || undefined } : {}),
+    };
+    let layerNo = 0;
+    for (const o of built.values()) o.id = ++layerNo;   // ag-psd needs a numeric id on every layer once comps are written
+    for (const [lid, o] of built) {
+      const l = doc.layers.find((x) => x.id === lid);
+      const settings: NonNullable<PsdLayer['comps']>['settings'] = [];
+      comps.forEach((c, i) => {
+        const e = c.layers[lid];
+        if (!e) return;
+        const pos = c.usePosition && l && e.x !== undefined && e.y !== undefined ? { offset: { x: e.x - l.transform.x, y: e.y - l.transform.y } } : {};
+        settings.push({ enabled: c.useVisibility ? e.visible !== false : l?.visible ?? true, compList: [i + 1], ...pos });
+      });
+      if (settings.length) o.comps = { settings };
+    }
+    if (comps.some((c) => c.useAppearance)) notes.push('Layer comp appearance is not written to PSD.');
+  }
   if (linked.length) psd.linkedFiles = linked;
   if (psdPatterns.length) psd.patterns = psdPatterns;
-  if (metaWritable(doc.meta)) psd.imageResources = { xmpMetadata: buildXmp(doc.meta) };   // File Info (29.2) as the XMP image resource
+  if (metaWritable(doc.meta)) psd.imageResources = { ...(psd.imageResources ?? {}), xmpMetadata: buildXmp(doc.meta) };   // kept beside the layer comps   // File Info (29.2) as the XMP image resource
   return { bytes: addPathResources(writePsd(psd, { generateThumbnail: false, psb }), paths, doc.width, doc.height), notes };
 }
