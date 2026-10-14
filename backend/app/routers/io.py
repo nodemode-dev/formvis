@@ -8,7 +8,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import Response
 
 from app.core import config
-from app.services import camera_profiles, dpx, imaging, pnm
+from app.services import camera_profiles, dpx, fits, imaging, pnm
 
 router = APIRouter(tags=["io"])
 EXPORT_NAME = re.compile(r"^[^/\\:*?\"<>|\x00-\x1f]{1,160}\.(png|jpg|jpeg|fmv|formvis|webp|tif|tiff|pdf|avif|dpx|psd|qoi|pbm|pgm|ppm|pam|tga|ico)$", re.IGNORECASE)
@@ -61,6 +61,13 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
         except pnm.PnmError as exc:
             raise HTTPException(status_code=415, detail=str(exc)) from exc
         return Response(np.ascontiguousarray(px.astype("<u2") * (257 if bits == 8 else 1)).tobytes(), media_type="application/octet-stream",
+                        headers={"X-Width": str(px.shape[1]), "X-Height": str(px.shape[0]), "X-Depth": str(bits)})
+    if fits.is_fits(raw):
+        try:
+            px, bits = fits.read(raw)
+        except fits.FitsError as exc:
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
+        return Response(np.ascontiguousarray(px).astype("<f4" if bits == 32 else "<u2").tobytes(), media_type="application/octet-stream",
                         headers={"X-Width": str(px.shape[1]), "X-Height": str(px.shape[0]), "X-Depth": str(bits)})
     img = contained.decode_exr(raw) if contained.is_exr(raw) else cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_UNCHANGED)
     if img is None:
@@ -424,6 +431,17 @@ def encode_cmyk(file: UploadFile = File(...), width: int = Form(...), height: in
 @router.post("/decode")
 def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: str = Form("auto")) -> Response:
     data = file.file.read()
+    if fits.is_fits(data):   # DEV_PLAN 34.7: the stretched reading, scaled to 8 bits
+        import cv2
+        try:
+            px, bits = fits.read(data)
+        except fits.FitsError as exc:
+            raise HTTPException(status_code=415, detail=str(exc)) from exc
+        px8 = (px >> 8).astype(np.uint8) if bits == 16 else np.rint(np.clip(px, 0.0, 1.0) * 255.0).astype(np.uint8)
+        ok, enc = cv2.imencode(".png", cv2.cvtColor(np.ascontiguousarray(px8), cv2.COLOR_RGBA2BGRA))
+        if not ok:
+            raise HTTPException(status_code=415, detail="The FITS picture could not be converted.")
+        return Response(content=enc.tobytes(), media_type="image/png", headers={"X-Width": str(px.shape[1]), "X-Height": str(px.shape[0])})
     try:
         png, width, height = imaging.decode_to_png(data, file.filename or "", page, camera_profile)
     except imaging.DecodeError as exc:

@@ -15,6 +15,7 @@ import { simplify, smoothAnchors } from './curve-fit';
 export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
 import { Emitter } from './events';
+import { bumpMap, heightField, heightFromNormal, normalMap } from './normal-map';
 import * as VR from './variables';
 import type { DocVariable } from './types';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
@@ -1628,19 +1629,77 @@ export class Engine {
   /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
    *  and so is its left edge, centre or right edge, by its alignment. */
   async updateTextLayer(id: ID, spec: TextSpec): Promise<void> {
-    const p = this.current, l = p?.layer(id);
-    if (!p || !l || !liveText(l) || !l.raster || !l.text) return;
-    if (!spec.content.trim()) { this.notice('Type some text, or delete the layer.'); return; }
+    const p = this.current, patch = p ? await this.textPatch(p, id, spec) : null;
+    if (!p || !patch || this.current !== p) return;
+    this.textSettings = { ...spec, content: '', rendered: undefined };
+    this.edit('Edit Type', (pp) => { pp.updateLayer(id, patch); });
+  }
+
+  /** The new pixels, place and name of type layer `id` set to `spec`, rendered but not applied, so several layers can
+   *  change in one undo step (Find and Replace Text, Update All Text Layers). Null when the layer is not live type. */
+  private async textPatch(p: Project, id: ID, spec: TextSpec): Promise<Partial<Layer> | null> {
+    const l = p.layer(id);
+    if (!l || !liveText(l) || !l.raster || !l.text) return null;
+    if (!spec.content.trim()) { this.notice('Type some text, or delete the layer.'); return null; }
     await loadTextFont(spec);
-    if (this.current !== p || !liveText(p.layer(id))) return;
+    if (this.current !== p || !liveText(p.layer(id))) return null;
     const r = renderText(spec), old = l.raster, t = l.transform, before = l.text;
     const nw = r.raster.width * (t.w / old.width), nh = r.raster.height * (t.h / old.height);
     // Vertical type keeps its right edge (its first column); paragraph text its box's corner; point text its alignment.
     const x = spec.box ? t.x : spec.direction === 'vertical' ? t.x + t.w - nw : spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
     const autoName = before.content.split('\n')[0].trim().slice(0, 40) || 'Type';
     const name = l.name === autoName ? spec.content.split('\n')[0].trim().slice(0, 40) || 'Type' : l.name;
-    this.textSettings = { ...spec, content: '', rendered: undefined };
-    this.edit('Edit Type', (pp) => { pp.updateLayer(id, { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, name, text: { ...spec, rendered: textKey(r.raster) } }); });
+    return { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, name, text: { ...spec, rendered: textKey(r.raster) } };
+  }
+
+  /** Several type layers re-rendered to new specs as one undo step named `step`. Returns how many changed. */
+  private async updateTextLayers(changes: ReadonlyArray<{ id: ID; spec: TextSpec }>, step: string): Promise<number> {
+    const p = this.current;
+    if (!p) return 0;
+    const patches: Array<{ id: ID; patch: Partial<Layer> }> = [];
+    for (const c of changes) { const patch = await this.textPatch(p, c.id, c.spec); if (patch) patches.push({ id: c.id, patch }); }
+    if (!patches.length || this.current !== p) return 0;
+    this.edit(step, (pp) => { for (const x of patches) pp.updateLayer(x.id, x.patch); });
+    return patches.length;
+  }
+
+  /** Find and Replace Text: replaces matches in the content of every live type layer (or only the active one) and
+   *  returns the number of replacements, all as one undo step. */
+  async replaceText(find: string, replace: string, opts: { caseSensitive: boolean; wholeWord: boolean; all: boolean }): Promise<number> {
+    const p = this.current;
+    if (!p || !find) return 0;
+    const esc = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const re = new RegExp(opts.wholeWord ? `\\b${esc}\\b` : esc, opts.caseSensitive ? 'g' : 'gi');
+    const layers = opts.all ? p.doc.layers.filter((l) => liveText(l)) : p.activeLayer && liveText(p.activeLayer) ? [p.activeLayer] : [];
+    let count = 0;
+    const changes: Array<{ id: ID; spec: TextSpec }> = [];
+    for (const l of layers) {
+      if (!l.text) continue;
+      let n = 0;
+      const content = l.text.content.replace(re, () => { n++; return replace; });
+      if (!n || content === l.text.content) continue;
+      count += n;
+      changes.push({ id: l.id, spec: { ...l.text, content } });
+    }
+    return (await this.updateTextLayers(changes, 'Find and Replace Text')) ? count : 0;
+  }
+
+  /** Converts the active type layer between point text (no box) and paragraph text (a box around its current size). */
+  async convertTextKind(to: 'point' | 'paragraph'): Promise<boolean> {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l || !liveText(l) || !l.text || !l.raster) return false;
+    if (to === 'point') { if (!l.text.box) return false; await this.updateTextLayer(l.id, { ...l.text, box: null }); return true; }
+    if (l.text.box) return false;
+    await this.updateTextLayer(l.id, { ...l.text, box: { w: l.raster.width + 4, h: l.raster.height + 4 } });
+    return true;
+  }
+
+  /** Re-renders every live type layer with its own spec; returns how many it handled. */
+  async updateAllTextLayers(): Promise<number> {
+    const p = this.current;
+    if (!p) return 0;
+    const changes = p.doc.layers.filter((x) => liveText(x) && !!x.text).map((l) => ({ id: l.id, spec: { ...(l.text as TextSpec) } }));
+    return this.updateTextLayers(changes, 'Update All Text Layers');
   }
 
   /** True, with a notice, when the active layer is a smart object and an edit would change its pixels rather than its
@@ -6522,6 +6581,27 @@ export class Engine {
 
   /** Adds a raster as a new layer above the active one, inside the folder `parentForNew` picks. A null x or y centres it
    *  on the canvas along that axis (whole pixels, rounded down); `extra` is laid over the layer's other fields. */
+  /** Filter > 3D (DEV_PLAN 31.9): a normal, bump or height map of the active layer, added as a new pixel layer above it. */
+  generateMap(kind: 'normal' | 'bump' | 'height', opts: { strength: number; blur: number; invert: boolean; flipY: boolean }): boolean {
+    const p = this.current;
+    const id = p?.activeLayer?.id;
+    if (!p || !id) { this.notice('Select a pixel layer first.'); return false; }
+    const w = p.doc.width, h = p.doc.height;
+    const src = ctxOf(this.renderLayerAlone(id)).getImageData(0, 0, w, h);
+    let bytes: Uint8ClampedArray;
+    if (kind === 'height') {
+      bytes = bumpMap(heightFromNormal(src.data, w, h), w, h, 1);
+    } else {
+      const field = heightField(src.data, w, h, opts.blur, opts.invert);
+      bytes = kind === 'normal' ? normalMap(field, w, h, opts.strength, opts.flipY) : bumpMap(field, w, h, opts.strength);
+    }
+    const raster = new Raster(w, h);
+    raster.write(new ImageData(bytes as Uint8ClampedArray<ArrayBuffer>, w, h));
+    const label = kind === 'normal' ? 'Normal Map' : kind === 'bump' ? 'Bump Map' : 'Height Map';
+    this.insertRasterLayer(raster, label, 0, 0, {}, `Generate ${label}`);
+    return true;
+  }
+
   insertRasterLayer(raster: Raster, name: string, x: number | null, y: number | null, extra: Partial<Layer> = {}, undoName = 'Paste'): void {
     this.edit(undoName, (p) => {
       const base = newLayer(name, p.doc, { raster, parentId: this.parentForNew(p) });
