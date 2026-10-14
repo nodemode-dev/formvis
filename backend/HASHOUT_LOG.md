@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.71.9
+
+No engine code changed in 1.71.9. Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "1.71.8"
+version = "1.71.8"
+version = "1.71.8"
+ "version": "1.71.8",
+```
+
 ## Lab PSD writing, DEV_PLAN 36.11 · _v1.71.8 (routers/io.py, __init__.py)
 
 - `routers/io.py`, new `encode_lab_psd` (`POST /io/encode-lab-psd`) after `encode_cmyk_psd`. psd-tools' own Lab writer converts from RGB, so the document is built as RGBA (keeping each layer's transparency channel), then `header.color_mode = ColorMode.LAB`, `header.channels = 3`, the composite planes set with `image_data.set_data`, and written with `psd._record.write(out)` (`psd.save` redraws the composite as RGB). Bytes as Photoshop stores them: L 0..255 for 0..100, a and b 0..255 with 128 neutral. Nothing replaced.

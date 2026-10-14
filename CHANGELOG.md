@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.71.9 · 2026-10-14
+
+### Added
+
+- Lab documents: choose L, a or b in the Channels panel and the Brush, Pencil and Eraser paint that channel alone.
+- Threshold, Gaussian Blur, Add Noise, Unsharp Mask and the per-pixel part of Develop run on the graphics processor through WebGL2 when it is available; Preferences > Performance > Use the GPU for filters turns it off.
+
+### Changed
+
+- Gaussian Blur on large layers is about a fifth faster.
+- Edit > Purge > Clipboard frees the copied pixels at once; Purge > Histories frees the pixels only the cleared steps kept.
+
 ## 1.71.8 · 2026-10-14
 
 ### Added

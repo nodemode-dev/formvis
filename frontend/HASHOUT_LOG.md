@@ -2,6 +2,80 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.71.9: Lab channel painting, GPU filters, large-file measures · _v1.71.9 (ui/i18n/extra/*.ts)
+
+- `ui/i18n/extra/*.ts`: one key in all 23 tables (402 each), "Use the GPU for filters". The Lab solo note is assembled with the channel name and stays English.
+- Not checked in the window this release: the Lab painting `endStroke` wiring and the Channels panel click (checked only by a direct `strokeLabChannel` call), and the GPU runner on hardware (checked against the CPU on SwiftShader only).
+
+## Painting on one Lab channel, DEV_PLAN 36.11 · _v1.71.9 (engine/channels.ts, engine/index.ts, ui/channels.ts)
+
+- `engine/channels.ts`: imports `renderLab`; new `labGreyValue(c)` and `strokeLabChannel(ch, before, after, x, y, paintRgb, value, erase, k)` after `strokeChannels`. Lab floats are stored encoded (L/100, (a+128)/255, (b+128)/255), so a grey byte v is v/255 on every plane. Coverage is inferred as in `strokeChannels`; only plane k moves, alpha stays, the region is redrawn with `renderLab`. A direct call on a two-pixel layer moved only the targeted plane, and an erase at half coverage mixed halfway toward the background.
+- `engine/index.ts`, import line. Replaced:
+
+```ts
+import { composeChannels, rasterFromChannels, strokeChannels } from './channels';
+```
+
+- `engine/index.ts`: `paintLab: 0 | 1 | 2 | null` beside `paintChannel`; `endStroke` gains a Lab branch before the generic channels branch, painting the foreground's grey (the eraser: the background's), writing the region to the raster and the patch's `after`, then `updateLayer` with the floats.
+- `ui/channels.ts`: the Lab row click sets `engine.paintLab`; leaving a Lab document clears it; the Lab solo note gains "The Brush, Pencil and Eraser paint it alone." Replaced:
+
+```ts
+this.labSolo = r.id === 'lab' ? null : r.id; this.engine.setChannelView(
+if (!lab && this.labSolo) { this.labSolo = null; this.engine.setChannelView(null); }
+```
+
+## GPU filter path, DEV_PLAN 36.10 · _v1.71.9 (gpu/filters.ts, engine/gpu-filters.ts, engine/filter-jobs.ts, engine/develop.ts, engine/adjust-params.ts, ui/prefs.ts, ui/app-dialogs.ts, app.ts)
+
+- `gpu/filters.ts` (new), `GlFilters`: a WebGL2 runner on an offscreen canvas, one fragment shader per filter (Threshold, Add Noise, Gaussian Blur as the CPU's three box passes per axis on premultiplied floats, Unsharp Mask, Develop's per-pixel stages). RGBA32F targets, RGBA16F without EXT_color_buffer_float. Grain uses the CPU's integer mixers, so a seed gives the same grain. Threshold ties at exact luminance are decided by the CPU's double arithmetic.
+- `engine/gpu-filters.ts` (new): `GpuFilterRunner`, `setGpuFilters`, `gpuFilters`, `runFilterOnGpu`, the DOM-free seam that `app.ts` registers.
+- `engine/filter-jobs.ts`, `runFilterOffThread`: the GPU first, the worker after. Replaced:
+
+```ts
+  const w = start();
+  if (!w) return null;
+  const copy
+```
+
+- `engine/develop.ts`, `developPerPixelOnly(s)`: Develop goes to the GPU only when grading, calibration, detail, optics and geometry are at defaults.
+- `engine/adjust-params.ts`, Threshold's kernel tries the GPU. Replaced:
+
+```ts
+kernel: (v) => { const t = n(v, 'level'); return perPixel((r, g, b) => { const x = lum(r, g, b) * 255 >= t ? 1 : 0; return [x, x, x]; }); },
+```
+
+- `ui/prefs.ts`, `gpuFilters` (default true); `ui/app-dialogs.ts`, "Use the GPU for filters" in Performance; `app.ts`, `syncGpuFilters` from `syncGpu`: a runner only with WebGL2 on a hardware adapter (a software one only when WebGL2 is named in Preferences), Use Graphics Processor on, and the renderer not CPU.
+- Compared with the CPU on a 640 by 480 image with three alpha levels: every case within tolerance (max difference 0 to 2 for per-pixel filters, 1 to 3 for blurs). Timings came from SwiftShader under load and say nothing about a hardware GPU.
+
+## Large-file speed and Purge, DEV_PLAN 36.18 · _v1.71.9 (engine/filters.ts, engine/index.ts)
+
+- `engine/filters.ts`, `boxBlur` column pass: the three loops per output row are one walk along the row; the additions run in the same order, so results are identical. Replaced:
+
+```ts
+  for (let i = 0; i < h; i++) {
+    const at = i * row;
+    for (let x = 0; x < row; x++) dst[at + x] = sum[x] * scale;
+    const enter = i + r + 1, leave = i - r;
+    if (enter < h) { const o = enter * row; for (let x = 0; x < row; x++) sum[x] += src[o + x]; }
+    if (leave >= 0) { const o = leave * row; for (let x = 0; x < row; x++) sum[x] -= src[o + x]; }
+  }
+```
+
+- `engine/index.ts`, `Engine.purgeHistories` shrinks the canvases only the forgotten steps kept and drops their paged keys, as closing a document does. Replaced:
+
+```ts
+    let n = 0;
+    for (const p of all ? this.projects : this.current ? [this.current] : []) n += p.history.clear();
+    this.historyOps.length = 0;
+```
+
+- `engine/index.ts`, `Engine.purgeClipboard` shrinks the clipboard surface (a 192 MB copy: heap 522 to 476 MB). Replaced:
+
+```ts
+  purgeClipboard(): boolean { const had = !!this.clipboard; this.clipboard = null; return had; }
+```
+
+- Measured at 8000 by 6000 RGB 8-bit (ms, best of runs): Gaussian Blur 10 px 12109 to 9881 (budget 3000); composite 2449 to 2019 (budget 1000); a stroke's points 41 mean, 610 max at window regrows (budget 100); undo 4 to 149 (budget 100). The 16-bit run could not finish: the sandbox ends the renderer near 4.8 GB, and each whole-layer fill keeps about 366 MB of history.
+
 ## Release 1.71.8: NodeMode ports, Lab PSD, docs · _v1.71.8 (ui/app-dialogs.ts, ui/i18n/extra/*.ts, docs/MANUAL.md)
 
 - `ui/app-dialogs.ts`, Preferences > Language note: it still said panels and dialogs followed later, untrue since 1.71.2. Replaced: `The language of the menus; panels and dialogs follow in later releases.`
