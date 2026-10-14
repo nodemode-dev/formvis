@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.71.3 · 2026-10-14
+
+### Added
+
+- Edit > Toolbar...: drag tools between groups and into Extra Tools to arrange the tool bar; Restore Defaults and Clear Tools. The layout is saved in the preferences.
+- Adjustments, Notes and Histogram panels in the Window menu.
+
+### Changed
+
+- 279 more strings in every language: panel titles, the status bar, tool hints, Preferences sections, Blend If, adjustment and filter names, and search placeholders.
+
 ## 1.71.2 · 2026-10-14
 
 ### Changed

@@ -2,6 +2,100 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.71.3: run-time strings, Edit > Toolbar, three panels · _v1.71.3 (ui/i18n.ts, styles/shell.css, ui/more-panels.ts, ui/i18n/extra/*.ts)
+
+- `ui/i18n.ts`: a third loader map, `EXTRA` (`ui/i18n/extra/<code>.ts`, 279 keys each), loaded beside `LOADERS` and `MORE`; `load` merges `{ ...c, ...b, ...a }` so part a still wins. Replaced:
+
+```
+    const more = MORE[code];
+    const [a, b] = await Promise.all([LOADERS[code](), more ? more() : Promise.resolve({})]);
+    tables.set(code, { ...b, ...a });   // the first part wins where both have a key
+```
+
+- `ui/i18n.ts`: new `SKIP_ATTR` (SKIP without `input` and `textarea`) and `skippedAttr(el)`, so placeholders and titles on inputs translate while their values never do. `translateAttrs` tests `skippedAttr`; the walker calls `translateAttrs` on an input or textarea before rejecting its content. Replaced:
+
+```
+    if (!known(v) || skipped(el)) { recs?.delete(a); continue; }
+  if (!(root instanceof Element) || root.closest(SKIP)) return;
+    acceptNode: (n) => (n instanceof Element && n.matches(SKIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+```
+
+- `styles/shell.css`: `.cv-tb-group` gains `flex: none`, and a new rule `.cv-tb-group > .cv-tb-row, .cv-tb-extra > .cv-tb-row { flex: none; }`; the toolbar dialog's rows shrank and overlapped in a full column.
+- `ui/more-panels.ts`: the histogram's `<dt>Median</dt>` became `<dt>Median value</dt>`, because the key `Median` already names the Median filter (German "Helligkeit interpolieren"). Replaced: `<dt>Median</dt>`.
+- `ui/i18n/extra/*.ts`: 47 keys added to all 23 tables after the German probe: the toolbar dialog and panel words, and 38 labels from the engine's label maps (Levels, Curves, Hue/Saturation, Gradient Map, the Hue/Saturation ranges, the blur, noise and sharpen filters, the AI filters, three "could not be read." messages, Working CMYK).
+
+## Adjustments, Notes and Histogram panels, DEV_PLAN 36.17 · _v1.71.3 (ui/more-panels.ts, ui/dock.ts, app.ts, engine/index.ts, automation/command-meta.ts)
+
+- `ui/more-panels.ts` (new): `createMorePanels(root, engine, run)` builds three sections once and patches them in place. `adjustmentsPanel`: one button per `ADJUSTMENT_KINDS` entry, running `new-adj-<kind>` through `run`. `notesPanel`: `patchList` rows (number, first line, position), a textarea saved on change through `engine.setNote`, Delete, Delete All, and a click pans with `engine.pan`. `histogramPanel`: `histogram()` from `engine/scopes` over a copy of `engine.flattened()` of at most 512 px, drawn into a canvas with mean, standard deviation, median and pixel count; recomputed on 'render' and 'history' by `requestAnimationFrame`, at most every 250 ms, and only while the panel shows.
+- `ui/dock.ts`: `DOCK_PANELS` gains `adjustments`, `notes`, `histogram`; all three join the default `hidden` list. The Window menu's `panel-<id>` commands follow.
+- `app.ts`: imports `createMorePanels`; it is built after `createPresetPanels(...)` with a `run` that calls `catalogue.runCommand` and toasts a failure.
+- `engine/index.ts`: new `Engine.clearNotes()`, one undo step named "Delete All Notes", after `removeNote`.
+- `automation/command-meta.ts`: words for `panel-adjustments`, `panel-notes`, `panel-histogram`.
+- Nothing replaced; the existing dock line was extended. The default hidden list before:
+
+```ts
+hidden: ['timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys']
+```
+
+## Edit > Toolbar, DEV_PLAN 36.22 · _v1.71.3 (ui/prefs.ts, ui/tool-groups.ts, ui/rail.ts, ui/panels/toolbar-dialog.ts, styles/shell.css, app.ts, automation/command-meta.ts)
+
+Photoshop's Customize Toolbar: the person picks the tools the rail shows, their groups and order; kept across sessions. Drag and drop (pointer events), not per-row buttons.
+- ui/prefs.ts: `Prefs.toolbar: ToolbarPref | null` (null = built-in layout), `ToolbarPref { groups: string[][]; hidden: string[] }`, `cleanToolbar` (strings only, each id once), default null.
+- ui/tool-groups.ts: `TOOLBAR_EVENT`, `ToolLayout`, `resolveLayout(pref)`: unknown ids dropped, a repeated id keeps its first place, tools the layout lacks go to the end of their default group.
+- ui/rail.ts: `makeSlot` (a button and its dash, created once, listeners read `slot.group`), `applyLayout` (slots take the groups in order, surplus slots hidden, dashes between families; no node is rebuilt), re-run on `TOOLBAR_EVENT`. `openMore` lists `this.extra` tools, and its last row is now "Toolbar...". Removed `hidden`, `applyHidden`, `setHiddenGroups`, the `formvis.railHidden` storage (the old group-level hide is not migrated) and the `EditToolbar` class, which was:
+```ts
+class EditToolbar extends Dialog {
+  private readonly list = el('<div class="cv-edit-toolbar"></div>');
+  private onChange: ((keys: Set<string>) => void) | null = null;
+  constructor() {
+    super('Edit Toolbar', 420);
+    this.body.append(el('<p class="cv-note">Tools you hide stay one click away in the toolbar\'s ••• list.</p>'), this.list);
+    this.button('Done', 'primary', () => this.close());
+  }
+  show(groups: ToolGroup[], hidden: Set<string>, onChange: (keys: Set<string>) => void): void {
+    this.onChange = onChange;
+    this.list.textContent = '';
+    const now = new Set(hidden);
+    for (const g of groups) {
+      const r = el(`<label class="cv-edit-tool"><input type="checkbox"><span class="cv-edit-tool-name"></span><span class="cv-flyout-key"></span></label>`);
+      const box = r.querySelector('input') as HTMLInputElement;
+      box.checked = !now.has(g.key);
+      setText(r.querySelector('.cv-edit-tool-name') as HTMLElement, g.tools.map((t) => t.label).join(', '));
+      setText(r.querySelector('.cv-flyout-key') as HTMLElement, g.key);
+      box.addEventListener('change', () => { if (box.checked) now.delete(g.key); else now.add(g.key); this.onChange?.(new Set(now)); });
+      this.list.appendChild(r);
+    }
+    this.open();
+  }
+}
+```
+- ui/panels/toolbar-dialog.ts (new): `ToolbarDialog`, `openToolbarDialog(engine)`. Two columns (groups, Extra Tools), rows dragged in place, a drop zone for a new group, Restore Defaults, Clear Tools, Cancel, Done (saves null when the layout equals the built-in one).
+- styles/shell.css: `.cv-tb-*` rules.
+- app.ts: command `customize-toolbar` ("Toolbar...") in the Edit menu before `shortcuts`; import. automation/command-meta.ts: its words.
+
+## Run-time strings through t(), DEV_PLAN 36.32 part c · _v1.71.3 (ui/properties.ts, ui/status.ts, ui/app-dialogs.ts, ui/panels/layer-style-dialog.ts, ui/i18n/extra/*.ts)
+
+- `ui/properties.ts`: the heading is `t('{name} Properties').replace('{name}', t(a.name))` or `t('No layer selected')`; the brush group names go through `t('General Brushes')` and `t('Imported Brushes')`. `onLanguage` re-runs the refreshers and the brush list in place (no DOM rebuild).
+- `ui/status.ts`: `Working` is a text node set from `t('Working')`; the Memory, PAR, engine and GPU readouts keep their raw value and are re-set on `onLanguage`; the tool hint is split on ` · `, each segment through `t()`, and joined again (the Shape tool's `Drag to draw a star (as a path)` is matched and rebuilt from `Drag to draw {shape} ({mode})` with the noun and mode translated).
+- `ui/app-dialogs.ts` (Preferences `add`): the tab label is `t(name)`, set again on `onLanguage`; the English name stays in `tab.dataset.section` so `showSection` still matches.
+- `ui/panels/layer-style-dialog.ts`: the Blend If sliders are `t(`${label}: ${name}`)` (8 keys such as `This Layer: black start`).
+- `ui/i18n/extra/<code>.ts`: 23 new tables (es, pt-BR, fr, de, it, nl, da, fi, nb, sv, ru, pl, cs, hu, uk, tr, zh-CN, zh-TW, ja, ko, id, th, vi); the loader is wired separately.
+
+Replaced code, in full:
+
+```ts
+setText(name, a ? `${a.name} Properties` : 'No layer selected');
+const groups = [{ id: 'general', name: 'General Brushes', ... }, { id: 'imported', name: 'Imported Brushes', ... }];
+slider(`${label}: ${name}`, 0, 255, ...);
+tab.textContent = name;   // and: const on = tab.textContent === name;
+setText(this.hint, getTool(this.engine.tool)?.hint(this.engine) ?? '');
+setText(this.par, par && par !== 1 ? `PAR ${Number(par.toFixed(3))}${this.engine.view.parCorrection ? ', corrected' : ''}` : '');
+setText(this.mem, `Memory ${f(u)} of ${f(b)} ${b >= 1073741824 ? 'GB' : 'MB'}`);
+setGpu(text: string, reason: string): void { setText(this.gpu, text); this.gpu.title = reason; }
+setEngine(text: string): void { setText(this.engineState, text); }
+`<span class="cv-st-busy">${icon('loading', 12)}Working</span>`
+```
+
 ## Release 1.71.2: the interface languages, part b · _v1.71.2 (ui/i18n.ts, ui/i18n/more/*.ts)
 
 - ui/i18n/more/{es,pt-BR,fr,de,it,nl,da,fi,nb,sv,ru,pl,cs,hu,uk,tr,zh-CN,zh-TW,ja,ko,id,th,vi}.ts (new, three Sonnet builders): 1327 more strings each, extracted from the source (filter and adjustment names, dialog titles and fields, buttons, tooltips, placeholders, notes and messages). Checked by me against the master list: all 1327 in every table, none missing, no em dash, nothing empty.
