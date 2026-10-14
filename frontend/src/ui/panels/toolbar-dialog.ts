@@ -71,7 +71,8 @@ class ToolbarDialog extends Dialog {
   private drag(e: PointerEvent, row: HTMLElement): void {
     if (e.button !== 0) return;
     e.preventDefault();
-    row.setPointerCapture(e.pointerId);
+    // The listeners sit on the document, not the row: moving the row in the tree releases a pointer captured on it, and
+    // the rest of the drag would be lost.
     row.classList.add('is-dragging');
     const move = (ev: PointerEvent): void => {
       const over = document.elementFromPoint(ev.clientX, ev.clientY);
@@ -88,14 +89,14 @@ class ToolbarDialog extends Dialog {
     };
     const end = (): void => {
       row.classList.remove('is-dragging');
-      row.removeEventListener('pointermove', move);
-      row.removeEventListener('pointerup', end);
-      row.removeEventListener('pointercancel', end);
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', end);
+      document.removeEventListener('pointercancel', end);
       for (const g of Array.from(this.groups.children)) if (!g.querySelector('.cv-tb-row')) g.remove();
     };
-    row.addEventListener('pointermove', move);
-    row.addEventListener('pointerup', end);
-    row.addEventListener('pointercancel', end);
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', end);
+    document.addEventListener('pointercancel', end);
   }
 
   private ids(box: Element): string[] {
