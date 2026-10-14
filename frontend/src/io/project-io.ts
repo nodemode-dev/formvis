@@ -181,6 +181,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.clipId) r.maskSourceID = l.clipId;
     if (l.adjustment) r.adjustment = { ...l.adjustment.data, kind: KIND_LABELS[l.adjustment.kind] };
     if (l.shape) r.shape = l.shape;
+    if (l.extrude3d && typeof l.extrude3d === 'object') r.extrude3d = l.extrude3d as Json;   // 32.9: a 3D extrusion's settings, to edit it again
     layers.push(r);
   }
   const mcRecords: Json[] = [];   // Multichannel (31.3b): each channel's grey plane as a PNG beside the layers
@@ -316,7 +317,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(r.frame && typeof r.frame === 'object' ? (() => { const f = r.frame as Record<string, unknown>; return { frame: { x: num(f.x, 0), y: num(f.y, 0), w: Math.max(2, num(f.w, 2)), h: Math.max(2, num(f.h, 2)), shape: f.shape === 'ellipse' ? 'ellipse' as const : 'rect' as const } }; })() : {}),
       ...(r.locks && typeof r.locks === 'object' ? (() => { const k = r.locks as Record<string, unknown>, out = Object.fromEntries((['transparency', 'pixels', 'position', 'all'] as const).filter((n) => k[n] === true).map((n) => [n, true])); return Object.keys(out).length ? { locks: out } : {}; })() : {}),
       ...(str(r.linkID) ? { link: (str(r.linkID) as string).slice(0, 120) } : {}),
-      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, ...(r.video && raster ? { video: videoFrom(r.video) } : {}), vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, ...(r.video && raster ? { video: videoFrom(r.video) } : {}), vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null, ...(r.extrude3d && typeof r.extrude3d === 'object' ? { extrude3d: r.extrude3d } : {}),
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
       ...(raster && r.fillContent ? { fillContent: fillContentFrom(r.fillContent) } : {}),
       ...(r.vectorMask && typeof r.vectorMask === 'object' ? { vectorMask: { path: pathFrom(r.vectorMask) ?? { subpaths: [] }, enabled: (r.vectorMask as Record<string, unknown>).enabled !== false, linked: (r.vectorMask as Record<string, unknown>).linked !== false, inverted: (r.vectorMask as Record<string, unknown>).inverted === true } } : {}),

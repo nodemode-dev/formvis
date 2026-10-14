@@ -73,6 +73,8 @@ export interface Layer {
   artboard?: Artboard | null;
   /** A shape layer's outline and fill colour, in document pixels at `origin`; `raster` is their rendering. */
   vector?: VectorLayer | null;
+  /** The settings of a 3D extrusion layer (DEV_PLAN 32.9), kept so it can be re-rendered; read by ui/panels/extrude3d-dialog. */
+  extrude3d?: unknown;
   name: string;
   raster: Raster | null;
   /** A layer past one canvas's 2^28 pixels kept as tiles (1.62.3, DEV_PLAN 26.6b); `raster` is null on it, so code

@@ -8,6 +8,7 @@ import { comboOf, formatKeys, type Commands } from './commands';
 import { LIMITS } from '../engine/types';
 import { Dialog, confirmAction } from './dialogs';
 import { el, patchList, q, setClass, setDisabled, setHidden, setText, setValue } from './dom';
+import { languages, setLanguage, type Lang } from './i18n';
 import { icon } from './icons';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
@@ -358,6 +359,7 @@ export class SettingsDialog extends Dialog {
   private readonly crossRow = checkRow('Show Crosshair in Brush Tip', (v) => this.change({ cursorCrosshair: v }));
   private readonly checkerSizeRow = selectRow('Grid Size', CHECKER_SIZES, (v) => this.change({ checkerSize: v as CheckerSize }));
   private readonly checkerColorsRow = selectRow('Grid Colors', CHECKER_COLORS, (v) => this.change({ checkerColors: v as CheckerColors }));
+  private readonly languageRow = selectRow('Language', languages(), (v) => { this.change({ language: v as Lang }); setLanguage(v as Lang); });
   private readonly rulerRow = selectRow('Rulers', RULER_UNITS, (v) => this.change({ rulerUnits: v as RulerUnits }));
   private readonly gridEveryRow = sliderRow('Gridline Every (px)', 2, 1000, 1, (v) => this.change({ gridSpacing: v }));
   private readonly subdivRow = sliderRow('Subdivisions', 1, 32, 1, (v) => this.change({ gridSubdivisions: v }));
@@ -435,6 +437,7 @@ export class SettingsDialog extends Dialog {
     add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
     add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el('<p class="cv-note">The checkerboard shown behind transparent pixels. None shows it plain.</p>'));
+    add('Language', this.languageRow.el, el('<p class="cv-note">The language of the menus; panels and dialogs follow in later releases.</p>'));
     add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
     add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridEveryRow.el, this.subdivRow.el);
     // Plugins (1.50.8): the other apps formvis sends to, as Photoshop's Plugins section; NodeMode first.
@@ -536,6 +539,7 @@ export class SettingsDialog extends Dialog {
     this.checkerSizeRow.set(this.prefs.checkerSize);
     this.checkerColorsRow.set(this.prefs.checkerColors);
     this.rulerRow.set(this.prefs.rulerUnits);
+    this.languageRow.set(this.prefs.language);
     this.gridEveryRow.set(this.prefs.gridSpacing);
     this.subdivRow.set(this.prefs.gridSubdivisions);
     const css = getComputedStyle(document.documentElement);

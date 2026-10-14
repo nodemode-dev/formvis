@@ -86,6 +86,7 @@ import { UPRIGHT, defaultShape, noDynamics, pressureOption, shapeActive, type Br
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
+import { traceAlpha } from './trace-outline';
 export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { dissolveNoise } from './blend';
@@ -2840,6 +2841,37 @@ export class Engine {
     let n = 1;
     while (p.doc.layers.some((l) => l.name === `Shape ${n}`)) n++;
     this.insertRasterLayer(r.raster, `Shape ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'New Shape Layer');
+  }
+
+  /** Layer > Type > Create Work Path (DEV_PLAN 32.7 part b): the active type layer's outlines, traced from its rendered
+   *  pixels (not read from the font), become the Work Path. Paths sit outside undo, so this is not a history step. Placement
+   *  uses the layer's x, y and size only; rotation is ignored. */
+  typeToWorkPath(): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l || !l.raster || !liveText(l)) { this.notice('Select a type layer first.'); return false; }
+    const r = l.raster, d = r.ctx.getImageData(0, 0, r.width, r.height).data, alpha = new Uint8ClampedArray(r.width * r.height);
+    for (let i = 0; i < alpha.length; i++) alpha[i] = d[i * 4 + 3];
+    const vp = traceAlpha(alpha, r.width, r.height, { scale: l.transform.w / r.width, offsetX: l.transform.x, offsetY: l.transform.y });
+    if (!vp.subpaths.length) { this.notice('This type layer has no outlines to trace.'); return false; }
+    this.selectPath(null);
+    this.setWorkPath(vp);
+    return true;
+  }
+
+  /** Layer > Type > Convert to Shape: Create Work Path, then a shape layer in the text colour above the type layer, which
+   *  is hidden. The shape and the hiding are one undo step. */
+  typeToShape(): boolean {
+    const p = this.current, l = p?.activeLayer, spec = l?.text;
+    if (!p || !l || !spec || !liveText(l)) { this.notice('Select a type layer first.'); return false; }
+    if (!this.typeToWorkPath()) return false;
+    const path = structuredClone(this.workPath as VectorPath), look: ShapeStyle = { fill: { ...spec.color }, stroke: null };
+    const r = this.renderShape(path, look);
+    if (!r) return false;
+    const name = spec.content.replace(/\s+/g, ' ').trim().slice(0, 32) || 'Type Shape', typeId = l.id;
+    return this.edit('Convert to Shape', (q) => {
+      this.insertRasterLayer(r.raster, name, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'Convert to Shape');
+      q.updateLayer(typeId, { visible: false });
+    });
   }
 
   /** File > Open SVG as Layers (DEV_PLAN 34.4): one shape layer per entry, in order, each outline still editable. insertRasterLayer

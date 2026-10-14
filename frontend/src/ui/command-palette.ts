@@ -3,6 +3,7 @@ import { toolList } from '../extensions/registry';
 import type { Commands } from './commands';
 import { Dialog } from './dialogs';
 import { el, patchList, q, setClass, setHidden, setHtml, setText } from './dom';
+import { t } from './i18n';
 import { icon } from './icons';
 import type { MenuDef, MenuItem } from './menu';
 
@@ -106,7 +107,7 @@ export class CommandPalette extends Dialog {
     const query = this.input.value.trim(), hits: Hit[] = [];
     const first = (key: string): number => { const i = this.recent.indexOf(key); return query || i < 0 ? 0 : 1000 - i; };
     for (const c of this.commands.all()) {
-      const label = this.commands.label(c).replace(/\.\.\.$/, ''), path = this.paths.get(c.id) ?? '';
+      const label = t(this.commands.label(c)).replace(/\.\.\.$/, ''), path = this.paths.get(c.id) ?? '';
       if (!label || c.id === 'recent-heading') continue;
       const own = fuzzyScore(query, label), wide = own === null ? fuzzyScore(query, `${label} ${path}`) : null;
       if (own === null && wide === null) continue;

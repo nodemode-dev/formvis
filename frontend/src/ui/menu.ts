@@ -1,6 +1,7 @@
 import { el, q, setClass, setDisabled, setText } from './dom';
 import { icon } from './icons';
 import type { Commands } from './commands';
+import { onLanguage, t } from './i18n';
 
 /** A command id, a separator, or a submenu of further items. */
 export type MenuItem = string | '-' | SubMenu;
@@ -49,7 +50,7 @@ export class PopupMenu {
       if (item === '-') { const sep = el<HTMLElement>('<div class="cv-menu-sep"></div>'); this.seps.push(sep); this.panel.appendChild(sep); continue; }
       if (isSub(item)) {
         const node = el<HTMLButtonElement>(`<button class="cv-menu-item cv-menu-sub" role="menuitem" aria-haspopup="menu" type="button"><span class="cv-menu-check"></span><span class="cv-menu-label"></span><span class="cv-menu-keys">${icon('chevronRight', 12)}</span></button>`);
-        setText(q(node, '.cv-menu-label'), item.label);
+        setText(q(node, '.cv-menu-label'), t(item.label));
         const menu = new PopupMenu(this.commands, this);
         menu.setItems(item.items);
         node.addEventListener('pointerenter', () => this.showSub(menu, node));
@@ -125,10 +126,16 @@ export class PopupMenu {
     for (const r of this.rows) {
       const cmd = this.commands.get(r.id);
       if (!cmd) continue;
-      setText(q(r.node, '.cv-menu-label'), this.commands.label(cmd));
+      setText(q(r.node, '.cv-menu-label'), t(this.commands.label(cmd)));
       setDisabled(r.node, !this.commands.enabled(cmd));
       setClass(r.node, 'is-checked', !!cmd.checked?.());
     }
+  }
+
+  /** Re-labels every row and submenu in place after a language change; only text changes, no node is rebuilt. */
+  relabel(): void {
+    this.refresh();
+    for (const s of this.subs) { setText(q(s.node, '.cv-menu-label'), t(s.sub.label)); s.menu.relabel(); }
   }
 
   close(): void {
@@ -151,7 +158,7 @@ export class MenuBar {
   constructor(host: HTMLElement, commands: Commands, defs: MenuDef[]) {
     for (const def of defs) {
       const btn = el<HTMLButtonElement>('<button class="cv-menu-btn" type="button" aria-haspopup="menu"></button>');
-      setText(btn, def.label);
+      setText(btn, t(def.label));
       host.appendChild(btn);
       const menu = new PopupMenu(commands);
       menu.setItems(itemsOf(def));
@@ -175,6 +182,7 @@ export class MenuBar {
     }, true);
     window.addEventListener('blur', () => this.close());
     window.addEventListener('resize', () => this.close());
+    onLanguage(() => { for (const b of this.bars) { setText(b.btn, t(b.def.label)); b.menu.relabel(); } });
   }
 
   get isOpen(): boolean { return this.openIndex >= 0; }
