@@ -1,13 +1,13 @@
 # formvis commands
 
-Generated from the window's command catalogue (894 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (905 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 58
 - File: 73
 - Filter: 80
-- Image: 79
+- Image: 88
 - Layer: 190
 - Paint: 1
 - Paths: 8
@@ -15,8 +15,8 @@ Generated from the window's command catalogue (894 commands) by `./formvis agent
 - Tool options: 226
 - Tools: 49
 - Type: 12
-- View: 33
-- Window: 57
+- View: 34
+- Window: 58
 
 ## Edit
 
@@ -320,6 +320,14 @@ Generated from the window's command catalogue (894 commands) by `./formvis agent
 | `mode-lab` | Lab Color |  | Converts the document to Lab colour. (changes the picture) |
 | `mode-multichannel` | Multichannel |  | Converts the document to Multichannel: grey spot channels with ink colours, shown overprinted on white. (changes the picture) |
 | `mode-rgb` | RGB Color |  | Converts the document to RGB. (changes the picture) |
+| `par-anamorphic` | Anamorphic 2:1 (2) |  | Sets the pixel aspect ratio to Anamorphic 2:1 (2). (changes the picture) |
+| `par-custom` | Custom Pixel Aspect Ratio... |  | Sets a custom pixel aspect ratio, the width of one pixel over its height. Without parameters it asks for the number. (changes the picture) |
+| `par-d1-ntsc` | D1/DV NTSC (0.91) |  | Sets the pixel aspect ratio to D1/DV NTSC (0.91). (changes the picture) |
+| `par-d1-ntsc-wide` | D1/DV NTSC Widescreen (1.21) |  | Sets the pixel aspect ratio to D1/DV NTSC Widescreen (1.21). (changes the picture) |
+| `par-d1-pal` | D1/DV PAL (1.09) |  | Sets the pixel aspect ratio to D1/DV PAL (1.09). (changes the picture) |
+| `par-d1-pal-wide` | D1/DV PAL Widescreen (1.46) |  | Sets the pixel aspect ratio to D1/DV PAL Widescreen (1.46). (changes the picture) |
+| `par-hdv` | DVCPRO HD 1080 / HDV 1080 (1.33) |  | Sets the pixel aspect ratio to DVCPRO HD 1080 / HDV 1080 (1.33). (changes the picture) |
+| `par-square` | Square (1) |  | Sets the pixel aspect ratio to square (1). (changes the picture) |
 | `remove-bg` | Remove Background |  | Removes the background of the active layer with the neural model. (changes the picture) |
 | `remove-bg-lite` | Remove Background (Lightweight) |  | Removes the background with the lightweight model. (changes the picture) |
 | `replace-color` | Replace Color... |  | Opens Replace Color. (changes the picture) |
@@ -328,6 +336,7 @@ Generated from the window's command catalogue (894 commands) by `./formvis agent
 | `rotate-90-ccw` | 90° Counter Clockwise |  | Rotates the whole image 90 degrees counter clockwise. (changes the picture) |
 | `rotate-90-cw` | 90° Clockwise |  | Rotates the whole image 90 degrees clockwise. (changes the picture) |
 | `rotate-arbitrary` | Arbitrary... |  | Opens the dialog that rotates the whole image by any angle. (changes the picture) |
+| `trap` | Trap... |  | Overlaps CMYK colours where they meet so press misregistration shows no gap; lighter inks spread under darker ones, black does not. (changes the picture) |
 | `trim` | Trim... |  | Opens Trim to cut away transparent or same-colour edges. (changes the picture) |
 | `upscale-2x` | Upscale 2x... |  | Opens the dialog that enlarges the picture two times. |
 | `upscale-4x` | Upscale 4x... |  | Opens the dialog that enlarges the picture four times. |
@@ -935,6 +944,7 @@ Generated from the window's command catalogue (894 commands) by `./formvis agent
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
 | `lock-guides` | Lock Guides | Alt+Mod+; | Locks or unlocks guides so they cannot be dragged. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
+| `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which draws the Navigator preview with the pixel shape applied. The main canvas is not stretched yet. |
 | `pattern-preview` | Pattern Preview |  | Shows or hides eight copies of the document around it, to check that a tile repeats. |
 | `pixel-art-preview` | Pixel Art Preview |  | Shows or hides a crisp, nearest-neighbour view of the document at every zoom. |
 | `pixel-grid` | Pixel Grid |  | Shows or hides the pixel grid at high zoom. |
@@ -998,6 +1008,7 @@ Generated from the window's command catalogue (894 commands) by `./formvis agent
 | `panel-layer-comps` | Layer Comps |  | Shows or hides the Layer Comps panel. |
 | `panel-layers` | Layers |  | Shows or hides the Layers panel. |
 | `panel-measurement-log` | Measurement Log |  | Shows or hides the Measurement Log panel. |
+| `panel-modifier-keys` | Modifier Keys |  | Shows or hides the Modifier Keys panel. |
 | `panel-navigator` | Navigator |  | Shows or hides the Navigator panel. |
 | `panel-paragraph` | Paragraph |  | Shows or hides the Paragraph panel. |
 | `panel-paths` | Paths |  | Shows or hides the Paths panel. |

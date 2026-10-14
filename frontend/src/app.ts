@@ -34,6 +34,8 @@ import { APPLY_MODES, type ApplyMode } from './engine/apply-image';
 import { CALC_MODES, type CalcMode } from './engine/calculations';
 import { recovery, type RecoveryRecord } from './io/recovery';
 import { TrimDialog } from './ui/panels/trim-dialog';
+import { TrapDialog, trapPixels } from './ui/panels/trap-dialog';
+import type { TrapUnit } from './ui/panels/trap-dialog';
 import { ColorRangeDialog } from './ui/panels/color-range-dialog';
 import { ArbitraryRotationDialog, DuplicateImageDialog } from './ui/panels/image-dialogs';
 import { ReplaceColorDialog } from './ui/panels/replace-color-dialog';
@@ -45,6 +47,7 @@ import { FillLayerDialog } from './ui/panels/fill-layer-dialog';
 import { HistoryPanel } from './ui/history';
 import { LayerCompsPanel } from './ui/layer-comps';
 import { StylesPanel } from './ui/styles-panel';
+import { ModifierKeysPanel } from './ui/modifier-keys';
 import { MeasurementLogPanel } from './ui/measurement-log';
 import { StopDialog } from './ui/panels/stop-dialog';
 import { TweenDialog } from './ui/panels/tween-dialog';
@@ -374,6 +377,7 @@ export function startApp(): void {
   new LayerCompsPanel(q(root, '.cv-layers'), engine);   // Window > Layer Comps (DEV_PLAN 33.3 part b)
   registerPanel({ id: 'layer-comps', label: 'Layer Comps', selector: 'section.cv-layer-comps' });
   new StylesPanel(q(root, '.cv-layers'), engine);   // Window > Styles (DEV_PLAN 35.3 part b)
+  new ModifierKeysPanel(q(root, '.cv-layers'));   // Window > Modifier Keys (DEV_PLAN 35.3 part c)
   new MeasurementLogPanel(q(root, '.cv-layers'), engine, (blob, name) => deliver(blob, name));   // Window > Measurement Log
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
   // arrangement, filled when the tabs' homes are restored.
@@ -1141,13 +1145,13 @@ export function startApp(): void {
       else if (m === 'cmyk') { if (await toRgbFirst()) engine.convertMode('grayscale'); }
       else engine.convertMode('grayscale');
     } else if (to === 'lab') {
-      if (m !== 'rgb' && !(await toRgbFirst() && (engine.current?.doc.mode === 'rgb' || engine.convertMode('rgb')))) return false;
+      if (m !== 'rgb' && !(await toRgbFirst() && ((engine.current?.doc.mode ?? 'rgb') === 'rgb' || engine.convertMode('rgb')))) return false;
       if (!(await downTo(16))) return false;
       if (engine.current?.doc.depth === 16) await deepMode('lab', 'lab', null); else engine.setLab();
     } else {
       // CMYK, Bitmap and Indexed Color start from 8-bit RGB; Bitmap takes Grayscale.
       if (!(await toRgbFirst()) || !(await downTo(8))) return false;
-      if (engine.current?.doc.mode !== 'rgb' && !engine.convertMode('rgb')) return false;
+      if ((engine.current?.doc.mode ?? 'rgb') !== 'rgb' && !engine.convertMode('rgb')) return false;   // no mode is RGB
       if (to === 'bitmap' && !engine.convertMode('grayscale')) return false;
       if (to === 'cmyk') {
         // As Mode > CMYK Color with no dialog: the shipped CMYK profile (else the first found), and Color Settings' intent and BPC.
@@ -1947,6 +1951,7 @@ export function startApp(): void {
     stop: new StopDialog(),
     presetManager: new PresetManagerDialog(engine, swatches, deliver, savePatterns),
     trim: new TrimDialog(engine),
+    trap: new TrapDialog(engine),
     colorRange: new ColorRangeDialog(engine),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
@@ -2235,6 +2240,17 @@ export function startApp(): void {
     { id: 'new-snapshot', label: 'New Snapshot', enabled: () => !!engine.current, run: () => engine.takeSnapshot() },
     { id: 'trim', label: 'Trim...', enabled: () => !!engine.current, run: () => dialogs.trim.show() },
     { id: 'reveal-all', label: 'Reveal All', enabled: () => !!engine.current, run: () => engine.revealAll() },
+    {
+      id: 'trap', label: 'Trap...', enabled: () => engine.current?.doc.mode === 'cmyk',
+      params: { width: { type: 'number', min: 1, max: 100, description: 'Trap width; 1 to 10 pixels once converted.' }, unit: { type: 'string', enum: ['pixels', 'points', 'mm'], description: 'Unit of the width; pixels when left out.' } },
+      run: (a) => {
+        const p = engine.current;
+        if (!p) return;
+        if (a?.width === undefined) { dialogs.trap.show(); return; }
+        const u = String(a.unit ?? 'pixels'), unit: TrapUnit = u === 'points' || u === 'mm' ? u : 'pixels';
+        engine.trap(trapPixels(Number(a.width), unit, p.doc.resolution));
+      },
+    },
     { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
@@ -2564,6 +2580,24 @@ export function startApp(): void {
       params: { pixels: { type: 'number', description: 'Pixels in the reference length.' }, length: { type: 'number', description: 'The logical length those pixels stand for.' }, units: { type: 'string', description: 'The logical units, such as cm.' } },
       run: (a) => { if (typeof a?.pixels === 'number' && typeof a?.length === 'number') engine.setMeasureScale(a.pixels, a.length, typeof a.units === 'string' ? a.units : 'px'); else dialogs.measureScale.show(); },
     },
+    // Pixel Aspect Ratio presets (35.4 part b): each is checked while the document's ratio matches.
+    ...([['par-square', 'Square (1)', 1], ['par-d1-ntsc', 'D1/DV NTSC (0.91)', 0.91], ['par-d1-pal', 'D1/DV PAL (1.09)', 1.09], ['par-d1-ntsc-wide', 'D1/DV NTSC Widescreen (1.21)', 1.21], ['par-d1-pal-wide', 'D1/DV PAL Widescreen (1.46)', 1.46], ['par-anamorphic', 'Anamorphic 2:1 (2)', 2], ['par-hdv', 'DVCPRO HD 1080 / HDV 1080 (1.33)', 1.33]] as const).map(([id, label, r]) => ({
+      id, label, enabled: has, checked: () => Math.abs((engine.current?.doc.pixelAspect ?? 1) - r) < 0.005, run: () => engine.setPixelAspect(r),
+    })),
+    {
+      id: 'par-custom', label: 'Custom Pixel Aspect Ratio...', enabled: has,
+      params: { ratio: { type: 'number', description: 'Pixel width over pixel height; 1 is square.' } },
+      run: async (a) => {
+        let r = typeof a?.ratio === 'number' ? a.ratio : NaN;
+        if (Number.isNaN(r)) {
+          const raw = await promptName('Custom Pixel Aspect Ratio', String(engine.current?.doc.pixelAspect ?? 1), 'OK');
+          if (raw === null) return;
+          r = Number(raw);
+        }
+        if (Number.isFinite(r)) engine.setPixelAspect(r);
+      },
+    },
+    { id: 'par-correction', label: 'Pixel Aspect Ratio Correction', checked: () => engine.view.parCorrection, run: () => engine.setView({ parCorrection: !engine.view.parCorrection }) },
     { id: 'measure-record', label: 'Record Measurements', enabled: has, run: () => { engine.recordMeasurements(); } },
     {
       id: 'measure-scale-marker', label: 'Place Scale Marker...', enabled: () => !!engine.current?.doc.measureScale,
@@ -2973,7 +3007,7 @@ export function startApp(): void {
       'apply-image', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-scale-marker', 'measure-log'] }] },
+      'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
@@ -3008,7 +3042,7 @@ export function startApp(): void {
       { label: 'Video', items: filterGroup('Video', []) },
       { label: 'Other', items: filterGroup('Other', []) },
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
-    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'transform-controls', '-',
+    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
