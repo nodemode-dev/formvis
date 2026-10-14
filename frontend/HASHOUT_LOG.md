@@ -2,15 +2,26 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
-## Image > Calculations dialog · _v1.68.2 (files)
+## Release 1.68.2: the Apply Image and Calculations dialogs, Print · _v1.68.2
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (796 catalogue ids); a probe in Chromium: the Apply Image dialog 420 by 633 before and after choosing Add and toggling Mask, OK with Multiply giving 64 from 128 with one undo step; the Calculations dialog 420 by 573 before and after switching Result, OK adding one alpha channel; Print One Copy with `window.print` stubbed found the print element holding the page and hidden on screen at the call, and gone after; no page errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.1",
+      "version": "1.68.1",
+  "version": "1.68.1",
+export const VERSION = '1.68.1';
+```
+
+## Image > Calculations dialog · _v1.68.2 (ui/panels/calculations-dialog.ts new, app.ts)
 
 Added `ui/panels/calculations-dialog.ts` (`CalculationsDialog` on the `Dialog` base, `remember()` called, the layer and mask selects skipped as they belong to the document): Source 1 and Source 2 (Merged or a layer, Gray/Red/Green/Blue/Transparency or an alpha channel, Invert), Blending from `CALC_MODES`, Opacity, Scale and Offset (always present, disabled unless Add or Subtract), Mask with its channel select (disabled while off or with no alpha channels), Result (New Channel, New Document, Selection). Every row exists from the first frame, so the size does not change. OK runs `engine.calculations`; Cancel changes nothing. No live preview: `setPreview` only draws over a layer's pixels and `calcGrey` is private, so it was not cheap. `app.ts`: the `calculations` command with no parameters now opens the dialog (was a notice); the parameter path is unchanged. Nothing removed except the notice line.
 
-## Image > Apply Image... dialog · _v1.68.2 (files)
+## Image > Apply Image... dialog · _v1.68.2 (ui/panels/apply-image-dialog.ts new, engine/index.ts, app.ts)
 
 Added `frontend/src/ui/panels/apply-image-dialog.ts` (`ApplyImageDialog` on the `Dialog` base, `remember()` called with the session-bound selects skipped): Source document, Layer (Merged plus the document's pixel layers), Channel (RGB, Red, Green, Blue, Transparency, then the document's alpha channels) and Invert; a read-only Target line; Blending (the layer modes plus Add), Opacity, Scale (1 to 2) and Offset (-255 to 255), the last two dimmed and disabled unless Add or Subtract; a Mask checkbox with its own document, Layer, Channel and Invert rows, dimmed and disabled while Mask is off; Preview; OK and Cancel. Every row is in the box from the first frame, so toggling Mask or the mode changes no size. No Preserve Transparency row: the engine has no such option. `engine/index.ts`: `applyImage` takes `preview: true`, which routes through `previewImageEdit` instead of a history step, resampling the source and mask (nearest) when the preview works on a reduced copy. `app.ts`: `dialogs.applyImage`, and the `apply-image` command opens it when run with no parameters (the parameter path is unchanged). Nothing removed except the notice text "Apply Image's dialog comes next release".
 
-## File > Print... and Print One Copy (29.3, part 1) · _v1.68.2 (files)
+## File > Print... and Print One Copy (29.3, part 1) · _v1.68.2 (io/print.ts new, ui/panels/print-dialog.ts new, app.ts, automation/command-meta.ts)
 
 Added `io/print.ts` (`PAPERS`, `printSettings` as the last used settings, `printLayout` from pixels over the document's dpi, `printRegion` for the selection's bounds, `printDocument`: flattened canvas in a `#fv-print` element plus a style with `@page { size; margin: 0 }`, `display:none` except in `@media print`, `window.print()`, then both removed) and `ui/panels/print-dialog.ts` (paper, orientation, Center Image or Top and Left, Scale % or Scale to Fit Media, resulting size note, paper preview, Print Selected Area disabled without a selection; `remember()` keeps the settings). Commands `print` (Mod+P) and `print-one-copy` (Alt+Shift+Mod+P) in `app.ts` before the close group of the File menu, words in `command-meta.ts`. Mod+P was free. Printer profiles, marks and PDF output are later parts.
 
@@ -25,15 +36,15 @@ Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sy
 export const VERSION = '1.68.0';
 ```
 
-## Layer > Smart Objects: New Smart Object via Copy, Convert to Layers, Export Contents · _v1.68.1 (files)
+## Layer > Smart Objects: New Smart Object via Copy, Convert to Layers, Export Contents · _v1.68.1 (engine/index.ts, app.ts, automation/command-meta.ts)
 
 `engine/index.ts`: `newSmartObjectViaCopy()` (clones the layer through `LS.cloneLayer` and gives the copy its own source raster, filter stack, warp and filter mask; named "<name> copy", placed above, link dropped; one step), `smartToLayers()` (source at the current placement, warp applied through `warpedSmart`, filters not applied, name, opacity, blend and mask kept; padded masks cropped to the source; one step) and `smartContents()`. `app.ts`: commands `smart-new-via-copy`, `smart-convert-to-layers`, `smart-export-contents` (PNG named after the layer through `deliver`), enabled for a smart object, in both Layer > Smart Objects menus. `automation/command-meta.ts`: their words. Checked: tsc clean, unit tests run.
 
-## Image > Apply Image, engine and command, no dialog yet (31.2) · _v1.68.1 (files)
+## Image > Apply Image, engine and command, no dialog yet (31.2) · _v1.68.1 (engine/apply-image.ts new, engine/index.ts, app.ts, automation/command-meta.ts)
 
 Added `frontend/src/engine/apply-image.ts` (pure RGBA math: `channelSource`, `coverageSource`, `maskStrength`, `applyImagePixels`; the nine per-pixel layer modes go through `blendPixels`, the rest and Add/Subtract with Scale and Offset are done there), `Engine.applyImage(opts)` in `engine/index.ts` (one history step, "Apply Image", within the selection; a source or mask of another size is refused with a notice), the `apply-image` command in `app.ts` (Image menu, before Adjustments; no parameters shows "Apply Image's dialog comes next release") and its words in `command-meta.ts`. Nothing removed.
 
-## Image > Calculations as an engine operation and a command, no dialog yet · _v1.68.1 (files)
+## Image > Calculations as an engine operation and a command, no dialog yet · _v1.68.1 (engine/calculations.ts new, engine/index.ts, app.ts, automation/command-meta.ts)
 
 Added `frontend/src/engine/calculations.ts` (pure greys: `channelOf` with Gray as 0.299, 0.587, 0.114, `invertGrey`, `blendGreys` for the 16 modes with Scale and Offset for Add and Subtract, opacity and mask), `Engine.calculations(opts)` and `calcGrey` in `engine/index.ts` beside Save Selection (Source 2 is the backdrop; the result is a new alpha channel as one "Calculations" step, a white-backed RGB document of the grey, or the selection), and the `calculations` command in `app.ts` with parameters for agents; with none it shows "Calculations' dialog comes next release". Words in `command-meta.ts`. Sources are layers of the current document, so equal size is by construction. Nothing removed.
 

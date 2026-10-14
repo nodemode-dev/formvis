@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.2 · 2026-10-14
+
+### Added
+
+- The Apply Image dialog, with a live preview, and the Calculations dialog.
+- File > Print (Ctrl+P) and Print One Copy (Alt+Shift+Ctrl+P). They cover paper size and orientation, position, scale or fit to the paper, printing only the selected area, and a page preview. Print One Copy uses the last settings.
+
 ## 1.68.1 · 2026-10-14
 
 ### Added
