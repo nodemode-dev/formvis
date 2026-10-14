@@ -59,6 +59,7 @@ export type { FilterSettings } from './filter-jobs';
 export type { Entry as HierarchyEntry } from './tree';
 import { ADJUSTMENT_LABELS, autoLevels, defaultAdjustmentData, desaturatePixels, equalizePixels, replaceColorPixels, type ReplaceColorSettings } from './adjust';
 import { fromGray, gaussianBlur, histogram, resizeMask, toGray } from './filters';
+import { APPLY_CHANNELS, APPLY_MODES, applyImagePixels, channelSource, coverageSource, maskStrength, type ApplyChannel, type ApplyMode } from './apply-image';
 import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
 import { sharpenSample } from './filters-more';
@@ -84,6 +85,10 @@ import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
 import { alphaToMask, defringe, distanceSquared, removeMatte } from './matting';
 import { alphasMoved, alphasRedrawn, nextAlphaName } from './alphas';
+import { CALC_COLOR_CHANNELS, CALC_MODES, blendGreys, channelOf, invertGrey, type CalcColorChannel, type CalcMode } from './calculations';
+
+/** One Calculations source: a layer (id or name, or Merged), a channel and whether it is inverted. */
+export interface CalcSource { layer?: string; channel?: string; invert?: boolean }
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
@@ -1576,6 +1581,53 @@ export class Engine {
       for (const id of ids) p.updateLayer(id, { smart: null, text: null, vector: null, shape: null, fillContent: null });
       return true;
     });
+  }
+
+  /** Layer > Smart Objects > New Smart Object via Copy (1.68.1): the active smart object becomes a second, independent one
+   *  above it (its own copy of the source, the filter stack and the filter mask), named "<name> copy": one step. */
+  newSmartObjectViaCopy(): void {
+    this.edit('New Smart Object via Copy', (p) => {
+      const l = p.activeLayer;
+      if (!l?.smart) { this.notice('Select a smart object to copy.'); return false; }
+      const sm = l.smart, own = { ...sm, source: sm.source.clone(), filters: structuredClone(sm.filters), warp: sm.warp ? structuredClone(sm.warp) : sm.warp, warpAt: sm.warpAt ? structuredClone(sm.warpAt) : sm.warpAt, filterMask: sm.filterMask ? sm.filterMask.clone() : sm.filterMask };
+      const copy = LS.cloneLayer(l, { name: `${l.name} copy`.slice(0, 255), smart: own, link: undefined });
+      const at = p.doc.layers.findIndex((x) => x.id === l.id);
+      const next = [...p.doc.layers.slice(0, at + 1), copy, ...p.doc.layers.slice(at + 1)];
+      p.setLayers(this.normalizeClips(next));
+      this.focus(p, copy.id);
+    });
+  }
+
+  /** Layer > Smart Objects > Convert to Layers (1.68.1): the smart object's source, at its current placement (transform and
+   *  warp applied, smart filters not), becomes a plain pixel layer keeping name, opacity, blend mode and mask: one step. */
+  smartToLayers(): void {
+    this.edit('Convert to Layers', (p) => {
+      const l = p.activeLayer;
+      if (!l?.smart || !l.raster) { this.notice('Select a smart object to convert.'); return false; }
+      const src = l.smart.source, warp = this.smartWarpNow(l);
+      if (warp) {
+        const w = this.warpedSmart(src, 0, src, warp);
+        if (!w) return false;
+        const mask = l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask;
+        p.updateLayer(l.id, { smart: null, raster: w.raster, transform: w.t, mask });
+        return;
+      }
+      const old = l.raster, t = l.transform, w = (t.w / old.width) * src.width, h = (t.h / old.height) * src.height, cx = t.x + t.w / 2, cy = t.y + t.h / 2;
+      let mask = l.mask;
+      if (mask?.raster && !mask.placement && (src.width !== old.width || src.height !== old.height)) {
+        const nm = Raster.filled(src.width, src.height, '#ffffff');
+        nm.ctx.clearRect(0, 0, src.width, src.height);
+        nm.ctx.drawImage(mask.raster.canvas, (src.width - old.width) / 2, (src.height - old.height) / 2);
+        mask = { ...mask, raster: nm };
+      }
+      p.updateLayer(l.id, { smart: null, raster: src.clone(), transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
+    });
+  }
+
+  /** The active smart object's name and source raster, for Layer > Smart Objects > Export Contents; null when none. */
+  smartContents(): { name: string; raster: Raster } | null {
+    const l = this.current?.activeLayer;
+    return l?.smart ? { name: l.name, raster: l.smart.source } : null;
   }
 
   /** Adds a filter to the active smart object's stack and re-renders it, as one undo step. */
@@ -3648,6 +3700,50 @@ export class Engine {
     if (preview) this.previewImageEdit(run); else this.applyImageEdit('Replace Color', run);
   }
 
+  /** Image > Apply Image (31.2): a channel of a document, layer or the merged image blended into the active layer's
+   *  pixels (within the selection) by a mode at `opacity` (0 to 1), through an optional mask; one step. A source or mask
+   *  document must be the target's pixel size. `channel` is rgb, red, green, blue, transparency or a saved alpha
+   *  channel's id or name. Returns whether it ran. */
+  applyImage(opts: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean; mode?: ApplyMode; opacity?: number; scale?: number; offset?: number; mask?: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean } | null } = {}): boolean {
+    const t = this.targetImage();
+    if (!t) { this.notice('Apply Image needs a layer to apply to.'); return false; }
+    this.settle();
+    const grab = (s: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean }, what: string): Uint8ClampedArray | null => {
+      const q = s.doc ? this.alphaDocuments().find((d) => d.id === s.doc) : this.current;
+      if (!q) { this.notice(`Apply Image: the ${what} document must be open and the same pixel size as the target.`); return null; }
+      const ch = s.channel ?? 'rgb', alpha = q.doc.alphas?.find((a) => a.id === ch || a.name === ch);
+      if (alpha) {
+        const W = q.doc.width, H = q.doc.height;
+        if (W !== t.width || H !== t.height) { this.notice(`Apply Image: the ${what} must be the same pixel size as the target.`); return null; }
+        const cov = new Uint8Array(W * H);
+        if (alpha.mask) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) cov[y * W + x] = alpha.mask.valueAt(x, y);
+        return coverageSource(cov, !!s.invert);
+      }
+      if (!(APPLY_CHANNELS as readonly string[]).includes(ch)) { this.notice(`Apply Image: no channel named ${ch}.`); return null; }
+      let img: ImageData;
+      if (s.layer === 'merged') img = ctxOf(renderDoc(this.work, q.doc)).getImageData(0, 0, q.doc.width, q.doc.height);
+      else {
+        const l = s.layer ? q.doc.layers.find((x) => x.id === s.layer) : q.activeLayer;
+        if (!l || !l.raster) { this.notice(`Apply Image: the ${what} layer has no pixels.`); return null; }
+        img = l.raster.read();
+      }
+      if (img.width !== t.width || img.height !== t.height) { this.notice(`Apply Image: the ${what} must be the same pixel size as the target.`); return null; }
+      return channelSource(img.data, ch as ApplyChannel, !!s.invert);
+    };
+    const src = grab(opts, 'source');
+    if (!src) return false;
+    let mask: Uint8ClampedArray | null = null;
+    if (opts.mask) { const m = grab(opts.mask, 'mask'); if (!m) return false; mask = maskStrength(m); }
+    const mode = opts.mode && (APPLY_MODES as readonly string[]).includes(opts.mode) ? opts.mode : 'normal';
+    const o = { mode, opacity: Math.min(1, Math.max(0, opts.opacity ?? 1)), scale: Math.min(255, Math.max(1, opts.scale ?? 1)), offset: Math.min(255, Math.max(-255, opts.offset ?? 0)), mask };
+    this.applyImageEdit('Apply Image', (s) => {
+      const out = new ImageData(new Uint8ClampedArray(s.data), s.width, s.height);
+      applyImagePixels(out.data, src, s.width, o);
+      return out;
+    });
+    return true;
+  }
+
   /** Replace Color's preview (1.65.5): the active layer's pixels (its mask's, when the mask is the target), fitted in
    *  `boxW` by `boxH`, scored as `replaceColor` scores them. */
   replaceColorScores(o: ReplaceColorSettings, boxW: number, boxH: number): { mask: Uint8Array; w: number; h: number } | null {
@@ -4214,6 +4310,61 @@ export class Engine {
       return true;
     });
     return ok ? id : null;
+  }
+
+  /** One Calculations source as a document-sized grey (1.68.1): `layer` (an id or name; Merged or left out is the whole
+   *  picture) read through `channel` (gray, red, green, blue, transparency, or an alpha channel's id or name). */
+  private calcGrey(p: Project, s: CalcSource): Uint8Array | null {
+    const W = p.doc.width, H = p.doc.height, ch = (s.channel ?? 'gray').trim();
+    const alpha = (p.doc.alphas ?? []).find((a) => a.id === ch || a.name === ch);
+    let g: Uint8Array;
+    if (alpha) {
+      g = new Uint8Array(W * H);
+      const m = alpha.mask;
+      if (m) for (let y = 0; y < m.h; y++) for (let x = 0; x < m.w; x++) { const dx = m.x + x, dy = m.y + y; if (dx >= 0 && dy >= 0 && dx < W && dy < H) g[dy * W + dx] = m.data[y * m.w + x]; }
+    } else {
+      const key = ch.toLowerCase() as CalcColorChannel, ref = (s.layer ?? '').trim();
+      if (!CALC_COLOR_CHANNELS.includes(key)) return null;
+      let surf: Surface | null;
+      if (!ref || ref.toLowerCase() === 'merged') surf = this.flattened();
+      else { const l = p.doc.layers.find((x) => x.id === ref || x.name === ref); surf = l ? this.renderLayerAlone(l.id) : null; }
+      if (!surf) return null;
+      const d = ctxOf(surf).getImageData(0, 0, W, H).data;
+      g = channelOf(d, key);
+    }
+    return s.invert ? invertGrey(g) : g;
+  }
+
+  /** Image > Calculations (DEV_PLAN 31.2b, 1.68.1): Source 1 blended onto Source 2 by `mode` (Add and Subtract take
+   *  `scale` 1 to 2 and `offset`), at `opacity` 0 to 1 and through an optional `mask` (an alpha channel), into a new alpha
+   *  channel (one step, "Calculations"), a new grey-as-RGB document, or the selection (one step). Both sources are of the
+   *  current document, so the same pixel size. */
+  calculations(o: { source1: CalcSource; source2: CalcSource; mode?: CalcMode; opacity?: number; scale?: number; offset?: number; mask?: string; result?: 'channel' | 'document' | 'selection'; name?: string }): { channel?: ID; project?: Project; selection?: boolean } | null {
+    const p = this.current;
+    if (!p) return null;
+    this.settle();
+    const W = p.doc.width, H = p.doc.height, mode = o.mode ?? 'normal', result = o.result ?? 'channel';
+    if (!CALC_MODES.includes(mode)) { this.notice('Calculations: unknown blending mode.', 'error'); return null; }
+    const a = this.calcGrey(p, o.source1), b = this.calcGrey(p, o.source2);
+    if (!a || !b) { this.notice('Calculations: a source layer or channel was not found.', 'error'); return null; }
+    let mask: Uint8Array | null = null;
+    if (o.mask) { mask = this.calcGrey(p, { channel: o.mask }); if (!mask) { this.notice('Calculations: the mask channel was not found.', 'error'); return null; } }
+    const g = blendGreys(b, a, { mode, opacity: o.opacity ?? 1, scale: o.scale ?? 1, offset: o.offset ?? 0, mask });
+    if (result === 'document') {
+      const q = this.newDocument(W, H, (o.name ?? '').trim() || 'Calculations', 'white');
+      const id = q?.doc.layers[0]?.id;
+      if (!q || !id) return null;
+      const px = new Uint8ClampedArray(W * H * 4);
+      for (let i = 0; i < g.length; i++) { px[i * 4] = px[i * 4 + 1] = px[i * 4 + 2] = g[i]; px[i * 4 + 3] = 255; }
+      this.replaceLayerPixels(id, new ImageData(px, W, H), 'Calculations');
+      return { project: q };
+    }
+    const sel = SelectionMask.cropped(0, 0, W, H, g);
+    if (result === 'selection') { this.applySelection(sel, 'replace', 'Calculations'); return { selection: !!sel }; }
+    if (W > CANVAS_SIDE || H > CANVAS_SIDE || W * H > CANVAS_PIXELS) { this.notice('Alpha channels are kept only in documents within one canvas for now.'); return null; }
+    const list = p.doc.alphas ?? [], id = uid(), name = (o.name ?? '').trim().slice(0, 200);
+    const ok = this.editOn(p, 'Calculations', () => { p.doc = { ...p.doc, alphas: [...list, { id, name: name || nextAlphaName(list), mask: sel }] }; return true; });
+    return ok ? { channel: id } : null;
   }
 
   /** Select > Load Selection (1.65.1): an alpha channel, or the active layer's transparency or mask, by `mode`; one step. */
