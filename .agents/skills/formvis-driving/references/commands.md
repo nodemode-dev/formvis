@@ -1,14 +1,14 @@
 # formvis commands
 
-Generated from the window's command catalogue (806 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (809 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 49
-- File: 55
+- File: 56
 - Filter: 77
-- Image: 73
-- Layer: 167
+- Image: 74
+- Layer: 168
 - Paint: 1
 - Paths: 8
 - Select: 28
@@ -97,6 +97,7 @@ Generated from the window's command catalogue (806 commands) by `./formvis agent
 | `export-gif` | Export GIF... |  | Opens the GIF dialog and exports an animated GIF. (asks first) |
 | `export-hdr` | Radiance HDR... |  | Exports a Radiance HDR file. (asks first) |
 | `export-jpg` | Export JPEG... | Alt+Shift+Mod+S | Opens the JPEG quality dialog, then exports a JPEG. (asks first) |
+| `export-layer-comps` | Layer Comps to Files... |  | Exports each layer comp to its own file named prefix_NNNN_compname, the flattened document with that comp applied, then puts the document back exactly as it was; opens the dialog, or runs at once when given any of prefix, format, quality, icc or folder. (asks first) |
 | `export-layers` | Layers to Files... |  | Exports each layer to its own file named prefix_NNNN_layername, with its effects and mask applied; opens the dialog, or runs at once when given any of prefix, format, quality, visible_only, trim, icc or folder. (asks first) |
 | `export-mp4` | Video (MP4)... |  | Renders the video timeline or animation to an MP4 file. (asks first) |
 | `export-ora` | Export OpenRaster... |  | Exports an OpenRaster file that keeps layers. (asks first) |
@@ -260,6 +261,7 @@ Generated from the window's command catalogue (806 commands) by `./formvis agent
 | `calculations` | Calculations... |  | Blends two single channels (each a layer or the merged picture, optionally inverted) by a blending mode, opacity and optional mask into a new alpha channel, a new grey document or the selection; with no parameters it only shows a notice until the dialog arrives. (changes the picture) |
 | `canvas-size` | Canvas Size... | Alt+Mod+C | Opens Canvas Size. (changes the picture) |
 | `color-match` | Color Match... |  | Opens Color Match. (changes the picture) |
+| `color-table` | Color Table... |  | Opens the Color Table of an Indexed Color document: edit, load or save its palette. (changes the picture) |
 | `content-aware-scale` | Content-Aware Scale... |  | Opens Content-Aware Scale. (changes the picture) |
 | `convert-profile` | Convert to Profile... |  | Opens Convert to Profile. (changes the picture) |
 | `data-set-apply` | Apply Data Set |  | Applies a data set to the document: sets bound layers visible or hidden, replaces bound type text keeping its style, and swaps bound pixel layers, as one undo step. |
@@ -448,6 +450,7 @@ Generated from the window's command catalogue (806 commands) by `./formvis agent
 | `shapes-subtract` | Subtract Front Shape |  | Cuts the front shape out of the one behind. (changes the picture) |
 | `shapes-unite` | Unite Shapes |  | Unites the selected shape layers into one shape. (changes the picture) |
 | `smart-convert-to-layers` | Convert to Layers |  | Replaces the active smart object with a pixel layer holding its source at its current placement, without the smart filters. (changes the picture) |
+| `smart-convert-to-linked` | Convert to Linked... |  | Saves an embedded smart object as a PNG file and links the layer to it. (changes the picture) |
 | `smart-export-contents` | Export Contents... |  | Saves the active smart object source as a PNG file named after the layer. (changes the picture) |
 | `smart-filters` | Smart Filters... |  | Opens the smart filter stack of the active layer. (changes the picture) |
 | `smart-filters-clear` | Clear Smart Filters |  | Removes every smart filter of the active smart object. (changes the picture) |
