@@ -5,13 +5,13 @@ import type { Action, ActionStep } from '../ui/actions';
 
 interface Enum { kind: 'enum'; type: string; value: string }
 interface Unit { kind: 'unit'; unit: string; value: number }
-interface Desc { cls: string; items: Map<string, Val> }
-type Val = number | string | boolean | Val[] | Desc | Enum | Unit | null;
+export interface Desc { cls: string; classId: string; items: Map<string, Val> }
+export type Val =number | string | boolean | Val[] | Desc | Enum | Unit | null;
 
 const isEnum = (v: Val | undefined): v is Enum => !!v && typeof v === 'object' && !Array.isArray(v) && 'kind' in v && v.kind === 'enum';
 const isUnit = (v: Val | undefined): v is Unit => !!v && typeof v === 'object' && !Array.isArray(v) && 'kind' in v && v.kind === 'unit';
 
-class Reader {
+export class Reader {
   private readonly view: DataView;
   pos = 0;
   constructor(buf: ArrayBuffer) { this.view = new DataView(buf); }
@@ -79,15 +79,14 @@ function readValue(r: Reader, type: string): Val {
   }
 }
 
-function readDescriptor(r: Reader): Desc {
-  const cls = r.unicode();
-  r.id();
+export function readDescriptor(r: Reader): Desc {
+  const cls = r.unicode(), classId = r.id();   // the display name (often empty) and the class ID ('RGBC', 'Grdn')
   const n = r.u32(), items = new Map<string, Val>();
   for (let i = 0; i < n; i++) {
     const key = r.id();
     items.set(key, readValue(r, r.ascii(4)));
   }
-  return { cls, items };
+  return { cls, classId, items };
 }
 
 interface Item { enabled: boolean; event: string; name: string; desc: Desc | null }

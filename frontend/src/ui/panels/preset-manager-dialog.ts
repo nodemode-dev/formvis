@@ -2,6 +2,8 @@ import type { Engine } from '../../engine';
 import { allBrushPresets, BUILTIN_BRUSH_PRESETS } from '../../engine/brush-dynamics';
 import { allCustomShapes, CUSTOM_SHAPES, addCustomShape, parseShape, removeCustomShape, renameCustomShape } from '../../engine/custom-shapes';
 import { allGradients, customGradients, GRADIENT_PRESETS, gradientsFromJson, setCustomGradients } from '../../engine/gradients';
+import type { GradientPreset } from '../../engine/gradients';
+import { readGgr, readGrd } from '../../io/grd';
 import { addPattern, allPatterns, removePattern, renamePattern } from '../../engine/patterns';
 import { createSurface, ctxOf } from '../../engine/surface';
 import { importAbr, removeImportedBrush, renameImportedBrush } from '../../io/brush-library';
@@ -18,7 +20,7 @@ interface Item { id: string; label: string; builtin: boolean }
 const KINDS: ReadonlyArray<{ id: Kind; label: string; accept: string }> = [
   { id: 'brushes', label: 'Brushes', accept: '.abr' },
   { id: 'swatches', label: 'Swatches', accept: '.aco,.ase' },
-  { id: 'gradients', label: 'Gradients', accept: '.json,application/json' },
+  { id: 'gradients', label: 'Gradients', accept: '.json,.grd,.ggr,application/json' },
   { id: 'patterns', label: 'Patterns', accept: '.pat' },
   { id: 'shapes', label: 'Custom Shapes', accept: '.json,application/json' },
 ];
@@ -198,6 +200,16 @@ export class PresetManagerDialog extends Dialog {
       }
       if (n) await this.keepPatterns();
       return n;
+    }
+    if (kind === 'gradients' && /\.(grd|ggr)$/i.test(f.name)) {
+      let found: GradientPreset[];
+      let skipped = 0;
+      if (/\.grd$/i.test(f.name)) { const res = readGrd(await f.arrayBuffer()); found = res.gradients; skipped = res.skipped; }
+      else found = readGgr(await f.text());
+      setCustomGradients([...customGradients, ...found]);
+      this.keepGradients();
+      if (skipped) toast(`${f.name}: skipped ${skipped} noise ${skipped === 1 ? 'gradient' : 'gradients'}.`, 'info');
+      return found.length;
     }
     const raw: unknown = JSON.parse(await f.text());
     if (kind === 'gradients') {

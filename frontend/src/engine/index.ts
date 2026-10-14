@@ -95,7 +95,8 @@ import { alphasMoved, alphasRedrawn, nextAlphaName } from './alphas';
 import { CALC_COLOR_CHANNELS, CALC_MODES, blendGreys, channelOf, invertGrey, type CalcColorChannel, type CalcMode } from './calculations';
 
 /** One Calculations source: a layer (id or name, or Merged), a channel and whether it is inverted. */
-export interface CalcSource { layer?: string; channel?: string; invert?: boolean }
+export interface CalcSource { layer?: string; channel?: string; invert?: boolean; doc?: string }
+export interface CalcOptions { source1: CalcSource; source2: CalcSource; mode?: CalcMode; opacity?: number; scale?: number; offset?: number; mask?: string; result?: 'channel' | 'document' | 'selection'; name?: string }
 
 /** One entry of the GPU display's layer list (gpuLayers): a pixel layer's image, or an adjustment's lookup table applied
  *  to what is below it (per channel, 256 x 1; or 3D, 52 x 52 x 52 packed into 2704 x 52, with lut3 set). */
@@ -327,7 +328,11 @@ export class Engine {
 
   on<K extends keyof EngineEvents>(key: K, fn: (p: EngineEvents[K]) => void): () => void { return this.events.on(key, fn); }
   emit<K extends keyof EngineEvents>(key: K, payload: EngineEvents[K]): void { this.events.emit(key, payload); }
+  /** Set while a preview computes, so its refusals stay quiet; the dialog's OK says them. */
+  private quiet = false;
+
   notice(text: string, kind: Notice['kind'] = 'info'): void {
+    if (this.quiet) return;
     // A lock's reason stands alone: the generic 'Select a pixel layer' that a refused operation adds just after it is not
     // shown, since the layer is a pixel layer, only locked.
     if (this.lockedAt && performance.now() - this.lockedAt < 50 && !text.startsWith('The layer')) return;
@@ -4890,7 +4895,13 @@ export class Engine {
 
   /** One Calculations source as a document-sized grey (1.68.1): `layer` (an id or name; Merged or left out is the whole
    *  picture) read through `channel` (gray, red, green, blue, transparency, or an alpha channel's id or name). */
-  private calcGrey(p: Project, s: CalcSource): Uint8Array | null {
+  private calcGrey(cur: Project, s: CalcSource): Uint8Array | null {
+    let p = cur;
+    if (s.doc && s.doc !== cur.doc.id && s.doc !== cur.id) {
+      const other = this.projects.find((q) => q.id === s.doc || q.doc.id === s.doc);   // the project's id or its document's
+      if (!other || other.doc.width !== cur.doc.width || other.doc.height !== cur.doc.height) { this.notice('The source document must be the same size.', 'error'); return null; }
+      p = other;
+    }
     const W = p.doc.width, H = p.doc.height, ch = (s.channel ?? 'gray').trim();
     const alpha = (p.doc.alphas ?? []).find((a) => a.id === ch || a.name === ch);
     let g: Uint8Array;
@@ -4902,8 +4913,12 @@ export class Engine {
       const key = ch.toLowerCase() as CalcColorChannel, ref = (s.layer ?? '').trim();
       if (!CALC_COLOR_CHANNELS.includes(key)) return null;
       let surf: Surface | null;
-      if (!ref || ref.toLowerCase() === 'merged') surf = this.flattened();
-      else { const l = p.doc.layers.find((x) => x.id === ref || x.name === ref); surf = l ? this.renderLayerAlone(l.id) : null; }
+      const foreign = p !== cur;
+      if (!ref || ref.toLowerCase() === 'merged') surf = foreign ? this.flattenedOf(p) : this.flattened();
+      else {
+        const l = p.doc.layers.find((x) => x.id === ref || x.name === ref);
+        surf = !l ? null : foreign ? renderDoc(this.work, { ...p.doc, layers: [{ ...l, visible: true }] }) : this.renderLayerAlone(l.id);
+      }
       if (!surf) return null;
       const d = ctxOf(surf).getImageData(0, 0, W, H).data;
       g = channelOf(d, key);
@@ -4915,17 +4930,44 @@ export class Engine {
    *  `scale` 1 to 2 and `offset`), at `opacity` 0 to 1 and through an optional `mask` (an alpha channel), into a new alpha
    *  channel (one step, "Calculations"), a new grey-as-RGB document, or the selection (one step). Both sources are of the
    *  current document, so the same pixel size. */
-  calculations(o: { source1: CalcSource; source2: CalcSource; mode?: CalcMode; opacity?: number; scale?: number; offset?: number; mask?: string; result?: 'channel' | 'document' | 'selection'; name?: string }): { channel?: ID; project?: Project; selection?: boolean } | null {
+  /** The shared core of calculations() and calculationsPreview(): the blended grey at document size, or null (with a notice). */
+  private calcCore(p: Project, o: CalcOptions): Uint8Array | null {
+    const mode = o.mode ?? 'normal';
+    if (!CALC_MODES.includes(mode)) { this.notice('Calculations: unknown blending mode.', 'error'); return null; }
+    const a = this.calcGrey(p, o.source1), b = this.calcGrey(p, o.source2);
+    if (!a || !b) return null;
+    let mask: Uint8Array | null = null;
+    if (o.mask) { mask = this.calcGrey(p, { channel: o.mask }); if (!mask) { this.notice('Calculations: the mask channel was not found.', 'error'); return null; } }
+    return blendGreys(b, a, { mode, opacity: o.opacity ?? 1, scale: o.scale ?? 1, offset: o.offset ?? 0, mask });
+  }
+
+  /** The Calculations result as grey RGBA ImageData scaled to fit within `max` px (220 by default); changes nothing. */
+  calculationsPreview(o: CalcOptions, max = 220): ImageData | null {
+    const p = this.current;
+    if (!p) return null;
+    let g: Uint8Array | null;
+    this.quiet = true;
+    try { g = this.calcCore(p, o); } finally { this.quiet = false; }
+    if (!g) return null;
+    const W = p.doc.width, H = p.doc.height, k = Math.min(1, max / Math.max(W, H));
+    const w = Math.max(1, Math.round(W * k)), h = Math.max(1, Math.round(H * k)), out = new ImageData(w, h), d = out.data;
+    for (let y = 0; y < h; y++) {
+      const sy = Math.min(H - 1, Math.floor((y + 0.5) / k));
+      for (let x = 0; x < w; x++) {
+        const v = g[sy * W + Math.min(W - 1, Math.floor((x + 0.5) / k))], i = (y * w + x) * 4;
+        d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = 255;
+      }
+    }
+    return out;
+  }
+
+  calculations(o: CalcOptions): { channel?: ID; project?: Project; selection?: boolean } | null {
     const p = this.current;
     if (!p) return null;
     this.settle();
-    const W = p.doc.width, H = p.doc.height, mode = o.mode ?? 'normal', result = o.result ?? 'channel';
-    if (!CALC_MODES.includes(mode)) { this.notice('Calculations: unknown blending mode.', 'error'); return null; }
-    const a = this.calcGrey(p, o.source1), b = this.calcGrey(p, o.source2);
-    if (!a || !b) { this.notice('Calculations: a source layer or channel was not found.', 'error'); return null; }
-    let mask: Uint8Array | null = null;
-    if (o.mask) { mask = this.calcGrey(p, { channel: o.mask }); if (!mask) { this.notice('Calculations: the mask channel was not found.', 'error'); return null; } }
-    const g = blendGreys(b, a, { mode, opacity: o.opacity ?? 1, scale: o.scale ?? 1, offset: o.offset ?? 0, mask });
+    const W = p.doc.width, H = p.doc.height, result = o.result ?? 'channel';
+    const g = this.calcCore(p, o);
+    if (!g) { this.notice('Calculations: a source layer or channel was not found.', 'error'); return null; }
     if (result === 'document') {
       const q = this.newDocument(W, H, (o.name ?? '').trim() || 'Calculations', 'white');
       const id = q?.doc.layers[0]?.id;
@@ -8515,6 +8557,17 @@ export class Engine {
     if (!p) return null;
     const blob = await toBlob(renderDoc(this.work, p.doc, type === 'image/jpeg' ? '#ffffff' : null), type, quality);
     return blob ? withResolution(blob, p.doc.resolution) : null;
+  }
+
+  /** Any open document's flattened picture, as its own surface (n-up views and Calculations read documents other than
+   *  the active one; the duotone and multichannel looks are left to flattened()). */
+  flattenedOf(p: Project): Surface | null {
+    if (p === this.current) return this.flattened();
+    const s = renderDoc(this.work, p.doc);
+    if (!s) return null;
+    const out = createSurface(s.width, s.height);
+    ctxOf(out).drawImage(s as CanvasImageSource, 0, 0);
+    return out;
   }
 
   flattened(): Surface | null {
