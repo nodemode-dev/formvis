@@ -5,7 +5,8 @@ import { readDuotone, type Duotone } from '../engine/duotone';
 import {
   Raster, SAMPLING_LABELS, blendFromLabel, blendLabel, clamp, createSurface, ctxOf, samplingFromLabel, toBlob, uid, type AdjustmentKind, type Doc, type ID, type Layer, type Mask, type Transform, effectsPresent, effectsFromData, liveText, textFromData, paragraphStylesFrom, smartFiltersFrom, pathSetData, pathSetFrom, pathData, pathFrom, type PathSet, type RGB, timelineData, timelineFrom, type Timeline, addPattern, patternById, projectPatterns, SelectionMask, type AlphaChannel,
 } from '../engine';
-import { artboardFromData } from '../engine/types';
+import { artboardFromData, type SmartStack } from '../engine/types';
+import { isStackMode } from '../engine/stack-modes';
 import { cleanMeta } from '../engine/doc-meta';
 import { fillContentFrom } from '../engine/fill-layers';
 import { alphaGrey, nextAlphaName } from '../engine/alphas';
@@ -128,6 +129,15 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
       const name = `${l.id}.source.png`;
       files.push({ name, blob: await toBlob(l.smart.source.canvas) });
       r.smartSourceFile = name;
+      if (l.smart.stack) {
+        const stackFiles: string[] = [];
+        for (const [i, s] of l.smart.stack.sources.entries()) {
+          const sn = `${l.id}.stack${i}.png`;
+          files.push({ name: sn, blob: await toBlob(s.canvas) });
+          stackFiles.push(sn);
+        }
+        r.smartStack = { mode: l.smart.stack.mode, files: stackFiles };
+      }
       r.smart = { filters: l.smart.filters.map(({ id, kind, settings, enabled }) => ({ id, kind, settings, enabled })), warp: l.smart.warp ?? null, warpAt: l.smart.warpAt ? transformRecord(l.smart.warpAt) : null, filterMaskEnabled: l.smart.filterMaskEnabled !== false, link: l.smart.link ? { id: l.smart.link.id, name: l.smart.link.name, size: l.smart.link.size, lastModified: l.smart.link.lastModified } : null };
       if (l.smart.filterMask) {
         const mn = `${name.replace(/\.png$/i, '')}-filtermask.png`;
@@ -161,7 +171,15 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.shape) r.shape = l.shape;
     layers.push(r);
   }
-  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, ...(doc.depth ? { depth: doc.depth } : {}), colorSpace: doc.profile?.name ?? 'sRGB', ...(doc.profile ? { profile: { name: doc.profile.name, icc: doc.profile.icc } } : {}), resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.mode && doc.mode !== 'rgb' ? { mode: doc.mode } : {}), ...(doc.mode === 'duotone' && doc.duotone ? { duotone: doc.duotone } : {}), ...(doc.palette?.length ? { palette: doc.palette.map((c) => [c.r, c.g, c.b]) } : {}),
+  const mcRecords: Json[] = [];   // Multichannel (31.3b): each channel's grey plane as a PNG beside the layers
+  if (doc.mode === 'multichannel' && doc.multichannel) {
+    for (let i = 0; i < doc.multichannel.channels.length; i++) {
+      const c = doc.multichannel.channels[i], file = `mchan_${i}.png`;
+      files.push({ name: file, blob: await toBlob(c.data.canvas) });
+      mcRecords.push({ name: c.name, color: { r: c.color.r, g: c.color.g, b: c.color.b }, solidity: c.solidity, file });
+    }
+  }
+  const manifest: Json = { format: FORMAT, version: FORMAT_VERSION, ...(doc.depth ? { depth: doc.depth } : {}), colorSpace: doc.profile?.name ?? 'sRGB', ...(doc.profile ? { profile: { name: doc.profile.name, icc: doc.profile.icc } } : {}), resolution: doc.resolution, documentID: doc.id, width: doc.width, height: doc.height, layers, ...(doc.guides?.length ? { guides: doc.guides.map((g) => ({ axis: g.axis, at: g.at })) } : {}), ...(doc.slices?.length ? { slices: doc.slices.map((s) => ({ id: s.id, name: s.name, x: s.x, y: s.y, w: s.w, h: s.h, ...(s.layer ? { layer: s.layer } : {}), ...(s.url ? { url: s.url } : {}), ...(s.alt ? { alt: s.alt } : {}) })) } : {}), ...(doc.mode && doc.mode !== 'rgb' ? { mode: doc.mode } : {}), ...(doc.mode === 'duotone' && doc.duotone ? { duotone: doc.duotone } : {}), ...(mcRecords.length ? { multichannel: mcRecords } : {}), ...(doc.palette?.length ? { palette: doc.palette.map((c) => [c.r, c.g, c.b]) } : {}),
      ...(doc.notes?.length ? { notes: doc.notes.map((n) => ({ id: n.id, x: n.x, y: n.y, text: n.text })) } : {}), ...(doc.comps?.length ? { comps: JSON.parse(JSON.stringify(doc.comps)), activeComp: doc.activeComp ?? null } : {}), ...(doc.counts?.length ? { counts: doc.counts.map((c) => ({ x: c.x, y: c.y })) } : {}), ...(doc.globalLight ? { globalLight: { angle: doc.globalLight.angle, altitude: doc.globalLight.altitude } } : {}), ...(doc.paragraphStyles?.length ? { paragraphStyles: doc.paragraphStyles.map((s) => ({ ...s, color: { ...s.color } })) } : {}), ...(doc.meta ? { meta: { ...doc.meta, ...(doc.meta.keywords ? { keywords: [...doc.meta.keywords] } : {}), ...(doc.meta.camera ? { camera: { ...doc.meta.camera } } : {}) } } : {}),
      ...(doc.variables?.length ? { variables: doc.variables.map((v) => ({ ...v })) } : {}), ...(doc.dataSets?.length ? { dataSets: doc.dataSets.map((d) => ({ name: d.name, values: { ...d.values } })) } : {}), ...(doc.activeDataSet ? { activeDataSet: doc.activeDataSet } : {}) };
   if (activeId && doc.layers.some((l) => l.id === activeId)) manifest.activeLayerID = activeId;
@@ -227,7 +245,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
   const records = (Array.isArray(manifest.layers) ? manifest.layers : []).map((x) => obj(x));
   const names = new Set<string>();
-  for (const r of records) { for (const n of [r.tiled ? null : str(r.imageFile), str(r.maskFile), str(r.smartSourceFile), str(r.smartFilterMaskFile)]) if (n) names.add(n); }
+  for (const r of records) { for (const n of [r.tiled ? null : str(r.imageFile), str(r.maskFile), str(r.smartSourceFile), str(r.smartFilterMaskFile)]) if (n) names.add(n); const sf = obj(r.smartStack).files; if (Array.isArray(sf)) for (const n of sf) if (typeof n === 'string') names.add(n); }
   const bitmaps = new Map<string, ImageBitmap>();
   await Promise.all([...names].map(async (n) => { bitmaps.set(n, await createImageBitmap(await fetchImage(n))); }));
   // Giant layers (1.62.8): filled band by band by the engine's reader, past what the browser can decode.
@@ -245,6 +263,12 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   await Promise.all(records.map(async (r) => { const n = str(r.deepFile); if (n) { const b = await (await fetchImage(n)).arrayBuffer(); deeps.set(n, n.endsWith('.deep32') ? new Float32Array(b) : new Uint16Array(b)); } }));
   const inks = new Map<string, Float32Array>();
   await Promise.all(records.map(async (r) => { const n = str(r.inkFile); if (n) inks.set(n, new Float32Array(await (await fetchImage(n)).arrayBuffer())); }));
+  const stackFrom = (raw: unknown): SmartStack | null => {
+    const o = obj(raw), list = Array.isArray(o.files) ? o.files : [];
+    const pics = list.map((n) => bitmaps.get(typeof n === 'string' ? n : ''));
+    if (!pics.length || !isStackMode(o.mode) || pics.some((b) => !b)) return null;
+    return { mode: o.mode, sources: pics.map((b) => Raster.from(b as ImageBitmap, (b as ImageBitmap).width, (b as ImageBitmap).height)) };
+  };
   const layers: Layer[] = records.map((r) => {
     const picture = bitmaps.get(str(r.imageFile) ?? '');
     const raster = picture ? Raster.from(picture, picture.width, picture.height) : null;
@@ -253,7 +277,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const sw = obj(r.smart), warpPts = Array.isArray(sw.warp) && sw.warp.length === 4 && sw.warp.every((q) => finite(obj(q).x) && finite(obj(q).y)) ? (sw.warp as Array<{ x: number; y: number }>).map((q) => ({ x: q.x, y: q.y })) : null;
     const fmImage = bitmaps.get(str(r.smartFilterMaskFile) ?? ''), fmOk = !!fmImage && !!sourceImage && fmImage.width === sourceImage.width && fmImage.height === sourceImage.height;
     const lk = obj(sw.link), link = str(lk.id) && str(lk.name) && finite(lk.size) && finite(lk.lastModified) ? { id: str(lk.id) as string, name: str(lk.name) as string, size: lk.size as number, lastModified: lk.lastModified as number } : null;
-    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link } : null;
+    const smart = raster && sourceImage ? { source: Raster.from(sourceImage, sourceImage.width, sourceImage.height), filters: smartFiltersFrom(r.smart), stack: stackFrom(r.smartStack), warp: warpPts, warpAt: warpPts && sw.warpAt ? transformFrom(sw.warpAt, raster.width, raster.height) : null, filterMask: fmOk && fmImage ? Raster.from(fmImage, fmImage.width, fmImage.height) : null, filterMaskEnabled: sw.filterMaskEnabled !== false, link } : null;
     const maskPicture = bitmaps.get(str(r.maskFile) ?? '');
     const mask: Mask | null = maskPicture
       ? { raster: grayToMask(maskPicture), enabled: r.maskEnabled !== false, linked: r.maskLinked !== false, placement: r.maskPlacement ? transformFrom(r.maskPlacement, maskPicture.width, maskPicture.height) : null }
@@ -284,11 +308,16 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const o = obj(g), axis: 'x' | 'y' | null = o.axis === 'x' || o.axis === 'y' ? o.axis : null, at = num(o.at, NaN);
     return axis && Number.isFinite(at) && at >= 0 && at <= (axis === 'x' ? width : height) ? [{ axis, at }] : [];
   }).slice(0, 1000);
-  const glo = obj(manifest.globalLight), globalLight = finite(glo.angle) && finite(glo.altitude) ? { angle: Math.max(-180, Math.min(180, glo.angle)), altitude: Math.max(0, Math.min(90, glo.altitude)) } : null;
+  const slices = (Array.isArray(manifest.slices) ? manifest.slices : []).flatMap((s) => {
+    const o = obj(s), x = num(o.x, NaN), y = num(o.y, NaN), w = num(o.w, NaN), h = num(o.h, NaN);
+    if (![x, y, w, h].every(Number.isFinite) || w < 1 || h < 1 || typeof o.id !== 'string') return [];
+    return [{ id: o.id, name: typeof o.name === 'string' ? o.name : '', x, y, w, h, ...(typeof o.layer === 'string' ? { layer: o.layer } : {}), ...(typeof o.url === 'string' ? { url: o.url } : {}), ...(typeof o.alt === 'string' ? { alt: o.alt } : {}) }];
+  }).slice(0, 1000);
+  const glo =obj(manifest.globalLight), globalLight = finite(glo.angle) && finite(glo.altitude) ? { angle: Math.max(-180, Math.min(180, glo.angle)), altitude: Math.max(0, Math.min(90, glo.altitude)) } : null;
   const styles = paragraphStylesFrom(manifest.paragraphStyles);
   const inside = (x: number, y: number): boolean => Number.isFinite(x) && Number.isFinite(y) && x >= 0 && y >= 0 && x <= width && y <= height;
   // The colour mode and an indexed document's palette (1.50.2); anything else reads as RGB.
-  const mode = manifest.mode === 'grayscale' || manifest.mode === 'bitmap' || manifest.mode === 'indexed' || manifest.mode === 'cmyk' || manifest.mode === 'lab' || manifest.mode === 'duotone' ? manifest.mode : null;
+  const mode = manifest.mode === 'grayscale' || manifest.mode === 'bitmap' || manifest.mode === 'indexed' || manifest.mode === 'cmyk' || manifest.mode === 'lab' || manifest.mode === 'duotone' || manifest.mode === 'multichannel' ? manifest.mode : null;
   const palette = (Array.isArray(manifest.palette) ? manifest.palette : []).flatMap((c) => Array.isArray(c) && c.length === 3 && c.every((v) => Number.isInteger(v) && v >= 0 && v <= 255) ? [{ r: c[0] as number, g: c[1] as number, b: c[2] as number }] : []).slice(0, 256);
   const notes = (Array.isArray(manifest.notes) ? manifest.notes : []).flatMap((n) => { const o = obj(n), x = num(o.x, NaN), y = num(o.y, NaN); return inside(x, y) ? [{ id: str(o.id) ?? uid(), x, y, text: (str(o.text) ?? '').slice(0, 10000) }] : []; }).slice(0, 1000);
   const counts = (Array.isArray(manifest.counts) ? manifest.counts : []).flatMap((c) => { const o = obj(c), x = num(o.x, NaN), y = num(o.y, NaN); return inside(x, y) ? [{ x, y }] : []; }).slice(0, 10000);
@@ -296,6 +325,18 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   if (mode === 'cmyk') records.forEach((r, i) => { const n = str(r.inkFile), u = n ? inks.get(n) : undefined, w = num(r.inkWidth, 0), h = num(r.inkHeight, 0); if (u && layers[i] && u.length === w * h * 5) (layers[i] as { channels?: ChannelPixels }).channels = { mode: 'cmyk', n: 4, width: w, height: h, data: u }; });
   records.forEach((r, i) => { const t = tiledById.get(str(r.id) ?? ''); if (t && layers[i]) layers[i] = { ...layers[i], raster: null, tiled: t }; });   // giant layers (1.62.8)
   if (mode === 'lab') records.forEach((r, i) => { const n = str(r.inkFile), u = n ? inks.get(n) : undefined, w = num(r.inkWidth, 0), h = num(r.inkHeight, 0); if (u && layers[i] && u.length === w * h * 4) (layers[i] as { channels?: ChannelPixels }).channels = { mode: 'lab', n: 3, width: w, height: h, data: u }; });
+  const mcChannels: { name: string; color: { r: number; g: number; b: number }; solidity: number; data: Raster }[] = [];   // Multichannel (31.3b)
+  if (mode === 'multichannel' && Array.isArray(manifest.multichannel)) {
+    for (const raw of manifest.multichannel.slice(0, 64)) {
+      const o = obj(raw), file = str(o.file), col = obj(o.color);
+      if (!file) continue;
+      try {
+        const bmp = await createImageBitmap(await fetchImage(file));
+        const ch = (v: unknown): number => Math.max(0, Math.min(255, Math.round(num(v, 0))));
+        mcChannels.push({ name: (str(o.name) ?? 'Channel').slice(0, 200), color: { r: ch(col.r), g: ch(col.g), b: ch(col.b) }, solidity: Math.max(0, Math.min(1, num(o.solidity, 1))), data: Raster.from(bmp, bmp.width, bmp.height) });
+      } catch { /* a channel that cannot be read is left out */ }
+    }
+  }
   const fileInfo = cleanMeta(manifest.meta);   // File Info (29.2); older projects have none
   const alphas: AlphaChannel[] = [];
   for (const raw of (Array.isArray(manifest.alphas) ? manifest.alphas : []).slice(0, 100)) {
@@ -314,7 +355,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       bmp.close();
     } catch { /* a channel that cannot be read is left out */ }
   }
-  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(comps.length ? { comps, activeComp: comps.some((c) => c.id === manifest.activeComp) ? (manifest.activeComp as string) : null } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(mode === 'duotone' && readDuotone(manifest.duotone) ? { duotone: readDuotone(manifest.duotone) as Duotone } : {}), ...(guides.length ? { guides } : {}), ...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}), ...(alphas.length ? { alphas } : {}), ...variablesFrom(manifest, records.map((r) => str(r.id))), ...(fileInfo ? { meta: fileInfo } : {}) }, activeId: str(manifest.activeLayerID) };
+  return { timeline: timelineFrom(manifest.timeline), paths: pathSetFrom(manifest.paths, manifest.activePath, manifest.workPath), doc: { ...profileFrom(manifest.profile), ...(manifest.depth === 16 || manifest.depth === 32 ? { depth: manifest.depth as 16 | 32 } : {}), id: str(manifest.documentID) ?? uid(), width, height, resolution: num(manifest.resolution, 72), layers, ...(notes.length ? { notes } : {}), ...(comps.length ? { comps, activeComp: comps.some((c) => c.id === manifest.activeComp) ? (manifest.activeComp as string) : null } : {}), ...(counts.length ? { counts } : {}), ...(mode ? { mode } : {}), ...(mode === 'indexed' && palette.length ? { palette } : {}), ...(mode === 'duotone' && readDuotone(manifest.duotone) ? { duotone: readDuotone(manifest.duotone) as Duotone } : {}), ...(mode === 'multichannel' && mcChannels.length ? { multichannel: { channels: mcChannels } } : {}), ...(guides.length ? { guides } : {}), ...(slices.length ? { slices } : {}),...(globalLight ? { globalLight } : {}), ...(styles.length ? { paragraphStyles: styles } : {}), ...(alphas.length ? { alphas } : {}), ...variablesFrom(manifest, records.map((r) => str(r.id))), ...(fileInfo ? { meta: fileInfo } : {}) }, activeId: str(manifest.activeLayerID) };
 }
 
 /** Variables, data sets and the active data set from a manifest (29.9), checked; a variable whose layer is gone is dropped. */

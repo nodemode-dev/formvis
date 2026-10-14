@@ -12,6 +12,8 @@ const REDUCED = typeof matchMedia === 'function' && matchMedia('(prefers-reduced
 /** Ruler thickness in CSS pixels; the rulers lie over the stage's top and left edges, so showing them moves nothing. */
 const RULER = 18;
 
+import { drawSlices } from '../extensions/tools/slice';
+
 export class Stage {
   readonly ctx: ToolContext;
   private readonly scene: HTMLCanvasElement;
@@ -210,7 +212,7 @@ export class Stage {
     let gpuLayers: DisplayLayer[] | null = null;
     if (this.gpu) {
       const vz = p.viewport.zoom * this.dpr, gl = this.engine.gpuLayers({ matrix: [vz, 0, 0, vz, p.viewport.panX * this.dpr, p.viewport.panY * this.dpr], width: W, height: H });   // the view, for a giant document's tiles (1.62.9)
-      const reason = (this.engine.viewTransform ? 'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? (p.doc.mode === 'duotone' ? 'Duotone documents are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
+      const reason = (this.engine.viewTransform ? 'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? (p.doc.mode === 'duotone' ? 'Duotone documents are drawn on the CPU' : null) ?? (p.doc.mode === 'multichannel' ? 'Multichannel documents are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
       if (!reason && 'layers' in gl) gpuLayers = gl.layers;
       if (reason !== this.gpuReason) {
         this.gpuReason = reason;
@@ -479,6 +481,7 @@ export class Stage {
     }
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.drawGuides(g, pal);
+    if (this.engine.view.slices && this.tool()?.id !== 'slice' && p.doc.slices?.length) drawSlices(g, p.doc.slices, v.panX, v.panY, v.zoom, pal.accent);
     this.tool()?.overlay?.(this.ctx, g);
     const ring = this.engine.sampleRing;
     if (ring) {

@@ -128,7 +128,7 @@ export interface Guide { axis: 'x' | 'y'; at: number }
 export interface DocNote { id: ID; x: number; y: number; text: string }
 /** A document's colour mode (1.50.2, the owner's walkthrough), as Photoshop's: RGB, Grayscale (8-bit grey), Bitmap (1-bit
  *  black and white) or Indexed Color (a palette of at most 256). Absent means RGB. */
-export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk' | 'lab' | 'duotone';
+export type DocMode = 'rgb' | 'grayscale' | 'bitmap' | 'indexed' | 'cmyk' | 'lab' | 'duotone' | 'multichannel';
 /** Blend If ranges, 0 to 255: [blackStart, blackEnd, whiteStart, whiteEnd] for this layer and for the underlying
  *  composite; between the two numbers of a split the layer fades. Identity is [0, 0, 255, 255] on both. */
 export interface BlendIf { channel: 'gray' | 'r' | 'g' | 'b'; thisLayer: [number, number, number, number]; underlying: [number, number, number, number] }
@@ -154,11 +154,13 @@ export interface LayerComp {
 export interface DocVariable { name: string; layer: ID; kind: 'visibility' | 'text' | 'pixels'; method?: 'fit' | 'fill' | 'asis' | 'conform' }
 /** A named row of values, one per variable name. */
 export interface DataSet { name: string; values: Record<string, string> }
-export interface Doc { duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
+export interface Doc { multichannel?: { channels: { name: string; color: RGB; solidity: number; data: Raster }[] }; duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; slices?: readonly DocSlice[];notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
 /** An alpha channel (1.65.1): a selection saved with the document, `mask` null when nothing in it is selected. */
 export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null }
 
-export type ToolId = 'move' | 'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'mixer' | 'artHistory' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'markup' | 'count' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'idle';
+/** A user slice (Slice tool): a rectangle in document pixels with the web properties Slice Options will edit. */
+export interface DocSlice { id: ID; name: string; x: number; y: number; w: number; h: number; layer?: ID; url?: string; alt?: string }
+export type ToolId = 'slice' | 'move' |'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'mixer' | 'artHistory' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'markup' | 'count' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'idle';
 
 /** pixels follows this computer's memory (1.53.4, setPixelBudget from the engine's capabilities); 100 megapixels until known. */
 export const LIMITS: { readonly side: number; pixels: number; readonly layers: number; readonly depth: number } = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 };
@@ -340,7 +342,10 @@ export interface SmartFilter { id: ID; kind: string; settings: Record<string, un
 /** A linked smart object's file: an id for its source in the app's link registry, and the name, size and modified time
  *  its contents were last read at. */
 export interface SmartLink { id: string; name: string; size: number; lastModified: number }
-export interface SmartObject { source: Raster; filters: SmartFilter[]; warp?: Pt[] | null; warpAt?: Transform | null; filterMask?: Raster | null; filterMaskEnabled?: boolean; link?: SmartLink | null }
+/** `stack` (33.1): a smart object made from several layers keeps their document-size renders, bottom first; `source` is
+ *  the stack mode's result over them (the top one under None). */
+export interface SmartStack { sources: Raster[]; mode: import('./stack-modes').StackMode }
+export interface SmartObject { source: Raster; filters: SmartFilter[]; stack?: SmartStack | null; warp?: Pt[] | null; warpAt?: Transform | null; filterMask?: Raster | null; filterMaskEnabled?: boolean; link?: SmartLink | null }
 
 /** Smart filters read back from saved data, checked. */
 export function smartFiltersFrom(raw: unknown): SmartFilter[] {

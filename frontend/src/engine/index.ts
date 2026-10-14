@@ -19,7 +19,8 @@ import * as VR from './variables';
 import type { DocVariable } from './types';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
-import { applyDuotoneLut, duotoneLut, type Duotone } from './duotone';
+import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
+import { compositeChannels, splitChannels } from './multichannel';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
 import { PREVIEW, TiledRaster } from './tiled';
 import { SelectionMask, traceOutline, type SelectionMode } from './selection';
@@ -31,6 +32,7 @@ import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable,
 import { withResolution } from './dpi';
 import { antialiasMask, levelsKernel, wandMask } from './kernels';
 import { Project } from './project';
+import { computeStack, type StackMode } from './stack-modes';
 import * as LS from './layer-structure';
 import * as LM from './layer-masks';
 import * as FS from './file-scripts';
@@ -1239,9 +1241,40 @@ export class Engine {
     this.emit('render', null);
   }
 
+  /** Multichannel (31.3b): the channels overprinted on white, drawn once per channel set. */
+  private mcCache: { key: object; s: Surface } | null = null;
+  private multichannelSurface(doc: Doc): Surface | null {
+    const mc = doc.multichannel;
+    if (!mc) return null;
+    if (this.mcCache?.key === mc) return this.mcCache.s;
+    const W = doc.width, H = doc.height;
+    const chs = mc.channels.map((ch) => {
+      const d = ch.data.ctx.getImageData(0, 0, W, H).data, g = new Uint8ClampedArray(W * H);
+      for (let i = 0; i < g.length; i++) g[i] = d[i * 4];
+      return { color: ch.color, solidity: ch.solidity, grey: g };
+    });
+    const s = createSurface(W, H), img = ctxOf(s).createImageData(W, H);
+    compositeChannels(chs, img.data);
+    ctxOf(s).putImageData(img, 0, 0);
+    this.mcCache = { key: mc, s };
+    return s;
+  }
+
   compose(target: Surface, view: Mat, quality: ImageSmoothingQuality = 'high'): void {
     const p = this.current;
     if (!p) return;
+    if (p.doc.mode === 'multichannel' && p.doc.multichannel) {
+      const s = this.multichannelSurface(p.doc), c = ctxOf(target);
+      if (s) {
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        c.clearRect(0, 0, target.width, target.height);
+        c.setTransform(view[0], view[1], view[2], view[3], view[4], view[5]);
+        c.imageSmoothingQuality = quality;
+        c.drawImage(s as CanvasImageSource, 0, 0);
+        c.setTransform(1, 0, 0, 1, 0, 0);
+        return;
+      }
+    }
     this.display.render({ doc: p.doc, target, view, overrides: this.overrides(p), quality });
   }
 
@@ -1677,11 +1710,46 @@ export class Engine {
 
   /** Layer > Convert to Smart Object: keeps the layer's pixels as the untouched source of a smart object. */
   convertToSmartObject(): void {
+    const sel = this.current ? this.current.doc.layers.filter((x) => this.current?.selectedIds.has(x.id) && !x.isGroup && !x.adjustment && !x.smart && !!x.raster) : [];
+    if (sel.length > 1) { this.stackToSmartObject(sel); return; }
     this.edit('Convert to Smart Object', (p) => {
       const l = p.activeLayer;
       if (!l || l.isGroup || l.adjustment || l.smart || !l.raster) { this.notice('Select a pixel layer to convert.'); return false; }
       p.updateLayer(l.id, { smart: { source: l.raster, filters: [] }, text: null, shape: null, fillContent: null });
     });
+  }
+
+  /** 33.1: several selected pixel layers (bottom first) become one smart object on the top one, keeping their document-size
+   *  renders as a stack (mode None, the top one shows); the other layers go. One step. */
+  private stackToSmartObject(sel: Layer[]): void {
+    this.edit('Convert to Smart Object', (p) => {
+      const W = p.doc.width, H = p.doc.height, ids = new Set(sel.map((x) => x.id));
+      const sources = sel.map((l) => {
+        const r = new Raster(W, H), src = l.raster as Raster;
+        setMat(r.ctx, placement(l.transform, src.width, src.height));
+        r.ctx.drawImage(src.canvas, 0, 0);
+        r.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        r.touch();
+        return r;
+      });
+      const top = sel[sel.length - 1], shown = sources[sources.length - 1];
+      p.updateLayer(top.id, { smart: { source: shown.clone(), filters: [], stack: { sources, mode: 'none' } }, raster: shown.clone(), transform: docTransform(W, H), mask: null, text: null, shape: null, fillContent: null });
+      p.setLayers(this.normalizeClips(p.doc.layers.filter((x) => x.id === top.id || !ids.has(x.id))));
+      this.focus(p, top.id);
+    });
+  }
+
+  /** The active smart object's stack mode, or null when it has no stack. */
+  get stackMode(): StackMode | null { return this.current?.activeLayer?.smart?.stack?.mode ?? null; }
+
+  /** Layer > Smart Objects > Stack Mode: recomputes the active smart object's source from its stack and re-renders it
+   *  through the filters, one undo step. */
+  setStackMode(mode: StackMode): boolean {
+    const p = this.current, l = p?.activeLayer, st = l?.smart?.stack;
+    if (!p || !l || !st) { this.notice('Select a smart object made from several layers.'); return false; }
+    const W = st.sources[0].width, H = st.sources[0].height, out = computeStack(st.sources.map((r) => r.ctx.getImageData(0, 0, W, H)), mode), src = new Raster(W, H);
+    src.write(out);
+    return this.restackSoon(p, l.id, src, null, 'Stack Mode', null, { stack: { ...st, mode } });
   }
 
   /** Layer > Rasterize Layer: a smart object or a type layer becomes plain pixels, looking as it does now. */
@@ -1796,7 +1864,7 @@ export class Engine {
   replaceContents(source: Raster): boolean {
     const p = this.current, l = p?.activeLayer;
     if (!p || !l?.smart) { this.notice('Select a smart object to replace its contents.'); return false; }
-    return this.restackSoon(p, l.id, source, null, 'Replace Contents');
+    return this.restackSoon(p, l.id, source, null, 'Replace Contents', null, { stack: null });
   }
 
   /** Adds a smart filter mask to the active smart object: from the selection (mapped into the source's pixels) when
@@ -5647,7 +5715,7 @@ export class Engine {
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };
 
   /** View > Rulers, Guides, Grid and Lock Guides; the grid's spacing and subdivisions in document pixels. */
-  view = { rulers: false, guides: true, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4 };
+  view = { rulers: false, guides: true, slices: false, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4 };
   /** A guide being dragged out of a ruler or across the canvas, drawn but not yet in the document. */
   guideDraft: { axis: 'x' | 'y'; at: number; index: number | null } | null = null;
 
@@ -5679,6 +5747,29 @@ export class Engine {
 
   removeGuide(index: number): void { this.setGuides('Delete Guide', (g) => g.filter((_, i) => i !== index)); }
   clearGuides(): void { this.setGuides('Clear Guides', () => []); }
+
+  private setSlices(name: string, next: (s: import('./types').DocSlice[]) => import('./types').DocSlice[]): void {
+    this.edit(name, (p) => {
+      const before = p.doc.slices ?? [], after = next([...before]);
+      if (after.length === before.length && after.every((s, i) => s === before[i])) return false;
+      p.doc = { ...p.doc, slices: after };
+      return true;
+    });
+    this.emit('overlay', null);
+  }
+
+  /** Slice tool: a user slice on whole pixels, kept within the canvas; returns false when it has no area. */
+  addSlice(r: { x: number; y: number; w: number; h: number }): boolean {
+    const d = this.current?.doc;
+    if (!d) return false;
+    const x0 = Math.max(0, Math.round(Math.min(r.x, r.x + r.w))), y0 = Math.max(0, Math.round(Math.min(r.y, r.y + r.h)));
+    const x1 = Math.min(d.width, Math.round(Math.max(r.x, r.x + r.w))), y1 = Math.min(d.height, Math.round(Math.max(r.y, r.y + r.h)));
+    if (x1 - x0 < 1 || y1 - y0 < 1) return false;
+    this.setSlices('New Slice', (s) => [...s, { id: `sl${Date.now().toString(36)}${s.length}`, name: '', x: x0, y: y0, w: x1 - x0, h: y1 - y0 }]);
+    return true;
+  }
+  removeSlice(id: string): void { this.setSlices('Delete Slice', (s) => s.filter((x) => x.id !== id)); }
+  clearSlices(): void { this.setSlices('Clear Slices', () => []); }
 
   /** The guide within `tol` screen pixels of a screen point, nearest first; null when guides are hidden or locked. */
   guideAt(screen: Pt, tol = 4): number | null {
@@ -7945,6 +8036,10 @@ export class Engine {
   flattened(): Surface | null {
     const p = this.current;
     if (!p) return null;
+    if (p.doc.mode === 'multichannel') {
+      const m = this.multichannelSurface(p.doc);
+      if (m) { const out = createSurface(m.width, m.height); ctxOf(out).drawImage(m as CanvasImageSource, 0, 0); return out; }
+    }
     if (this.composesFloats(p)) { const r = this.composedRendition(p); if (r) return r.canvas; }
     const s = renderDoc(this.work, p.doc);
     if (p.doc.mode !== 'duotone' || !p.doc.duotone || !s) return s;
@@ -8447,12 +8542,48 @@ export class Engine {
 
   convertMode(mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean {
     const p = this.current;
-    if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || p.doc.mode === 'cmyk' || mode === 'lab' || p.doc.mode === 'lab') return false;
+    if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || (p.doc.mode === 'cmyk' && mode !== 'multichannel') || mode === 'lab' || p.doc.mode === 'lab' || (p.doc.mode === 'multichannel' && mode !== 'rgb')) return false;
     if (mode === 'duotone') return false;   // reached through setDuotone, from Grayscale only
-    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color', lab: 'Lab Color', duotone: 'Duotone' }[mode];
-    const flat = mode === 'bitmap' || mode === 'indexed' ? this.flattened() : null;
+    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color', lab: 'Lab Color', duotone: 'Duotone', multichannel: 'Multichannel' }[mode];
+    const flat = mode === 'bitmap' || mode === 'indexed' || mode === 'multichannel' ? this.flattened() : null;
+    const duoGrey = mode === 'multichannel' && p.doc.mode === 'duotone' ? renderDoc(this.work, p.doc) : null;   // the grey under the inks
     const ok = this.edit(label, (pp) => {
       const W = pp.doc.width, H = pp.doc.height;
+      if (pp.doc.mode === 'multichannel' && mode === 'rgb') {
+        // Multichannel to RGB: the overprint is baked into one pixel layer.
+        const s = this.multichannelSurface(pp.doc);
+        if (!s) return false;
+        const r = new Raster(W, H);
+        r.ctx.drawImage(s as CanvasImageSource, 0, 0);
+        r.touch();
+        const l = newLayer('Background', pp.doc, { raster: r });
+        pp.doc = { ...pp.doc, layers: [l], mode: 'rgb', multichannel: undefined, palette: undefined };
+        pp.activeId = l.id;
+        return true;
+      }
+      if (mode === 'multichannel') {
+        // To Multichannel (31.3b): RGB gives Cyan, Magenta, Yellow; CMYK adds Black; Grayscale one Black; Duotone its inks.
+        const from = duoGrey ?? flat;
+        if (!from) return false;
+        const px = ctxOf(from).getImageData(0, 0, W, H).data, duo = pp.doc.duotone;
+        const src = pp.doc.mode;
+        const parts: { name: string; color: RGB; solidity: number; grey: ArrayLike<number> }[] = src === 'duotone' && duo
+          ? duo.inks.slice(0, DUOTONE_COUNT[duo.type]).map((ink) => {
+            const g = new Uint8ClampedArray(W * H);
+            for (let i = 0; i < g.length; i++) g[i] = 255 - Math.round(curveAt(ink.curve, (1 - px[i * 4] / 255) * 100) * 2.55);
+            return { name: ink.name, color: ink.color, solidity: 1, grey: g };
+          })
+          : splitChannels(px, src === 'cmyk' ? 'cmyk' : src === 'grayscale' ? 'grayscale' : 'rgb');
+        const channels = parts.map((c) => {
+          const r = new Raster(W, H), img = r.ctx.createImageData(W, H);
+          for (let i = 0; i < c.grey.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = c.grey[i]; img.data[i * 4 + 3] = 255; }
+          r.ctx.putImageData(img, 0, 0);
+          r.touch();
+          return { name: c.name, color: c.color, solidity: c.solidity, data: r };
+        });
+        pp.doc = { ...pp.doc, mode: 'multichannel', multichannel: { channels }, duotone: undefined, palette: undefined };
+        return true;
+      }
       if (pp.doc.mode === 'duotone' && pp.doc.duotone && mode === 'rgb') {
         // Duotone to RGB: the overprint is baked into each layer's pixels.
         const lut = duotoneLut(pp.doc.duotone);
