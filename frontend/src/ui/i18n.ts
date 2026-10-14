@@ -22,6 +22,22 @@ const LOADERS: Record<Exclude<Lang, 'en'>, () => Promise<Table>> = {
   id: () => import('./i18n/id').then((m) => m.id), th: () => import('./i18n/th').then((m) => m.th),
   vi: () => import('./i18n/vi').then((m) => m.vi),
 };
+/** Part b of each table (36.32b): filters, adjustments, dialog fields, tooltips, notes and messages, kept apart so the
+ *  first part stays readable; merged over it when the language loads. Regional variants have none of their own. */
+const MORE: Partial<Record<Exclude<Lang, 'en'>, () => Promise<Table>>> = {
+  es: () => import('./i18n/more/es').then((m) => m.es), 'pt-BR': () => import('./i18n/more/pt-BR').then((m) => m.ptBR),
+  fr: () => import('./i18n/more/fr').then((m) => m.fr), de: () => import('./i18n/more/de').then((m) => m.de),
+  it: () => import('./i18n/more/it').then((m) => m.it), nl: () => import('./i18n/more/nl').then((m) => m.nl),
+  da: () => import('./i18n/more/da').then((m) => m.da), fi: () => import('./i18n/more/fi').then((m) => m.fi),
+  nb: () => import('./i18n/more/nb').then((m) => m.nb), sv: () => import('./i18n/more/sv').then((m) => m.sv),
+  ru: () => import('./i18n/more/ru').then((m) => m.ru), pl: () => import('./i18n/more/pl').then((m) => m.pl),
+  cs: () => import('./i18n/more/cs').then((m) => m.cs), hu: () => import('./i18n/more/hu').then((m) => m.hu),
+  uk: () => import('./i18n/more/uk').then((m) => m.uk), tr: () => import('./i18n/more/tr').then((m) => m.tr),
+  'zh-CN': () => import('./i18n/more/zh-CN').then((m) => m.zhCN), 'zh-TW': () => import('./i18n/more/zh-TW').then((m) => m.zhTW),
+  ja: () => import('./i18n/more/ja').then((m) => m.ja), ko: () => import('./i18n/more/ko').then((m) => m.ko),
+  id: () => import('./i18n/more/id').then((m) => m.id), th: () => import('./i18n/more/th').then((m) => m.th),
+  vi: () => import('./i18n/more/vi').then((m) => m.vi),
+};
 const tables = new Map<Lang, Table>([['en', {}]]);
 
 const saved = loadPrefs().language;
@@ -41,7 +57,9 @@ export const isLang = isLangCode;
 async function load(l: Lang): Promise<void> {
   for (const code of [LANG_PARENT[l], l]) {
     if (!code || tables.has(code) || code === 'en') continue;
-    tables.set(code, await LOADERS[code]());
+    const more = MORE[code];
+    const [a, b] = await Promise.all([LOADERS[code](), more ? more() : Promise.resolve({})]);
+    tables.set(code, { ...b, ...a });   // the first part wins where both have a key
   }
 }
 
@@ -49,12 +67,14 @@ async function load(l: Lang): Promise<void> {
  *  is set aside before the lookup and put back after, so "Save As..." and "Save As" share one entry. */
 export function t(english: string): string {
   if (current === 'en') return english;
-  const dots = english.endsWith('...');
-  const base = dots ? english.slice(0, -3) : english;
+  // A trailing "..." or ":" (a label before its control) is set aside too, so "Size:" shares "Size"'s entry (36.32b).
+  const tail = english.endsWith('...') ? '...' : english.endsWith(':') && !english.endsWith('::') ? ':' : '';
+  const base = tail ? english.slice(0, -tail.length) : english;
   const parent = LANG_PARENT[current];
-  const found = tables.get(current)?.[base] ?? (parent ? tables.get(parent)?.[base] : undefined);
+  const look = (k: string): string | undefined => tables.get(current)?.[k] ?? (parent ? tables.get(parent)?.[k] : undefined);
+  const found = look(base) ?? (tail ? look(english) : undefined);
   if (found === undefined) return english;
-  return dots ? `${found}...` : found;
+  return tail && look(base) !== undefined ? `${found}${tail}` : found;
 }
 
 /** Whether `text` has an entry in the current language (the page translator only touches text that does). */
