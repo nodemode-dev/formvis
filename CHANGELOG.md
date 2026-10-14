@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.3 · 2026-10-14
+
+### Added
+
+- Edit > Auto-Align Layers and Auto-Blend Layers, outside Photomerge. Align uses Auto, Perspective or Reposition; Blend uses Panorama or Stack Images, with Seamless Tones and Colors.
+- File > Export > Artboards to PDF: one page per artboard, lossless or JPEG, contents only or with background.
+- Print: crop and registration marks, description and label; colour managed by formvis with a printer profile, intent and black point compensation; Save as PDF.
+
 ## 1.68.2 · 2026-10-14
 
 ### Added

@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.3: Auto-Align and Auto-Blend, Artboards to PDF, Print part 2 · _v1.68.3
+
+Joined and checked: tsc clean; unit 194 of 194; engine tests failing only the seven known model and EXR cases; the window opened and `agents sync` run (799 catalogue ids); a probe in Chromium: two textured layers 12 and 7 pixels apart, Auto-Align (Reposition) brought the moved one's corner from (52, 37) to the reference's (40, 30) as one undo step, Auto-Blend (Stack Images) gave both layers masks; Artboards to PDF with two artboards wrote a two-page PDF; Print's Save as PDF wrote a PDF; no page errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.2",
+      "version": "1.68.2",
+  "version": "1.68.2",
+export const VERSION = '1.68.2';
+```
+
 ## Auto-Align and Auto-Blend Layers (DEV_PLAN 32.1) · _v1.68.3 (src/ui/panels/align-blend-dialog.ts, src/engine/index.ts, src/engine/layer-masks.ts, src/io/api.ts, src/app.ts, src/automation/command-meta.ts, docs/MANUAL.md)
 
 Commands `auto-align-layers` (param projection) and `auto-blend-layers` (params method, seamless), enabled with two or more selected plain pixel layers; no params opens `AlignBlendDialog`. `AlignBlendDialog.execute` renders each layer alone (`renderLayerAlone`, bottom-most of `doc.layers` first, assumed to be index 0) as a document-size PNG and posts to `api.mergeAlign` / `api.mergeBlend`. `engine.applyLayerEdits` then does every layer in one `edit` step: align draws the layer through the returned matrix (inverse map, premultiplied bilinear) onto a document-size raster with `docTransform`; blend sets `LM.maskFromImage` masks (document-size, so a layer whose box is not the document gets a mask that is not in its own space) and multiplies pixels by the Seamless Tones gains. Layers with text, shapes, smart objects or adjustments are skipped. Cylindrical runs as Perspective and Vignette Removal is not applied; both said in the dialog. Not exercised in a browser, only type-checked.

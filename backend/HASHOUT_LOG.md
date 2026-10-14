@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.3 · _v1.68.3
+
+Engine tests: 108 passed, the seven known model and EXR cases failing. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.68.2"
+version = "1.68.2"
+version = "1.68.2"
+ "version": "1.68.2",
+```
+
 ## POST /api/merge/align and /api/merge/blend: Auto-Align and Auto-Blend Layers (DEV_PLAN 32.1) · _v1.68.3 (app/routers/merge.py)
 
 `align` takes repeated `file` document-size RGBA PNGs (reference first), `projection`, `vignette`; SIFT (ORB if missing) with a 0.75 ratio test, then RANSAC `findHomography` (3 px) or, for reposition or when the homography is weak or implausible, a median-and-inliers translation. Answers `matrices` (row-major, layer to reference). `blend` takes `method` (`panorama`: layer farthest from its own edge; `stack`: largest blurred Laplacian energy), smooths the winner map with a Gaussian and normalises, answering base64 grey `masks` and `tones` gains over the overlap with the reference. Checked with TestClient: a copy shifted 12,7 gave -12.1,-7.0; two copies blurred on opposite halves gave masks near 248 on the sharp half and 10 on the other.
