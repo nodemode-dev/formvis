@@ -20,7 +20,11 @@ export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: 
   /** The user dictionary Check Spelling adds to (1.70.4). */
   spellWords: string[];
   /** Image > Analysis > Select Data Points (1.70.7): the Measurement Log columns shown, by data point name. */
-  measureDataPoints: string[] }
+  measureDataPoints: string[];
+  /** Type > Font Preview Size (36.31): each family drawn in its own face in the font menus at this size, or plain. */
+  fontPreview: FontPreview }
+export type FontPreview = 'none' | 'small' | 'medium' | 'large' | 'extra';
+export const FONT_PREVIEWS: readonly FontPreview[] = ['none', 'small', 'medium', 'large', 'extra'];
 /** Every data point Record Measurements can show, in log order, and the ones on by default. */
 export const MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H', 'Gray Value', 'Min Gray', 'Max Gray', 'Integrated Density', 'Centroid X', 'Centroid Y', 'Circularity'];
 export const DEFAULT_MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H'];
@@ -45,7 +49,7 @@ export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [[
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'light', rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS] };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium' };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 const LANGS: readonly Lang[] = ['en', 'es', 'it', 'ko', 'zh-CN'];
@@ -119,6 +123,7 @@ export function loadPrefs(): Prefs {
       dialogValues: cleanDialogValues(r.dialogValues),
       spellWords: Array.isArray(r.spellWords) ? r.spellWords.filter((w): w is string => typeof w === 'string' && w.length > 0 && w.length <= 80).slice(0, 5000) : [],
       measureDataPoints: Array.isArray(r.measureDataPoints) ? MEASURE_POINTS.filter((n) => (r.measureDataPoints as unknown[]).includes(n)) : [...DEFAULT_MEASURE_POINTS],
+      fontPreview: FONT_PREVIEWS.find((v) => v === r.fontPreview) ?? DEFAULT_PREFS.fontPreview,
     };
   } catch { return { ...DEFAULT_PREFS }; }
 }

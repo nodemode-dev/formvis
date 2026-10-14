@@ -1,4 +1,17 @@
 import { TEXT_FONTS } from '../engine';
+import { loadPrefs, type FontPreview } from './prefs';
+
+const PREVIEW_PX: Record<FontPreview, number> = { none: 0, small: 11, medium: 13, large: 16, extra: 20 };
+
+/** Type > Font Preview Size (36.31): a font menu entry drawn in its own family at the chosen size, or plain when the
+ *  preview is off. Only the option's inline style changes, so menus are not rebuilt. Chromium draws option fonts on
+ *  Windows and Linux; macOS's native menu shows them plain whatever is set. */
+export function previewFont(o: HTMLOptionElement, family: string): void {
+  const px = PREVIEW_PX[loadPrefs().fontPreview];
+  const ff = px ? `"${family.replace(/"/g, '')}", sans-serif` : '', fs = px ? `${px}px` : '';
+  if (o.style.fontFamily !== ff) o.style.fontFamily = ff;
+  if (o.style.fontSize !== fs) o.style.fontSize = fs;
+}
 
 /** Fonts for the Type tool (Phase 19.1). Two sources: a broad list of common families across macOS, Windows and Linux,
  *  each kept if this machine has it (text measured in it differs from each generic fallback), and, where the browser has

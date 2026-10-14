@@ -190,11 +190,12 @@ export const api = {
     return (await (await request('/generative/key', { method: 'DELETE' })).json()) as GenerativeStatus;
   },
   /** The filled image for `image` with white in `mask` marking what to fill; an empty prompt removes. */
-  async generativeFill(image: Blob, mask: Blob, prompt: string): Promise<Blob> {
+  async generativeFill(image: Blob, mask: Blob, prompt: string, provider = 'fal'): Promise<Blob> {
     const f = new FormData();
     f.append('image', image, 'image.png');
     f.append('mask', mask, 'mask.png');
     f.append('prompt', prompt);
+    if (provider !== 'fal') f.append('provider', provider);   // another provider's fill (36.12), the engine's /fill takes it since 1.58.4
     return (await request('/generative/fill', { method: 'POST', body: f })).blob();
   },
   /** `image` upscaled 2 or 4 times. */

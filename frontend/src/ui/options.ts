@@ -3,6 +3,7 @@ import { toolList, type OptionSpec, type Tool } from '../extensions/registry';
 import { el, q, setChecked, setClass, setHidden, setText, setValue } from './dom';
 import { icon } from './icons';
 import { onLanguage, t as tr } from './i18n';
+import { previewFont } from './fonts';
 
 /** An options-bar label in the current language, its English kept in data-en for language changes (35.5d). */
 const labelEn = (s: HTMLElement, en: string): void => { s.dataset.en = en; setText(s, tr(en)); };
@@ -108,6 +109,7 @@ export class OptionsBar {
           if (list) {
             while (box.options.length > list.length) box.remove(box.options.length - 1);
             list.forEach((c, i) => { const o = box.options[i] ?? box.appendChild(document.createElement('option')); if (o.value !== c.id) o.value = c.id; if (o.textContent !== c.label) o.textContent = c.label; });
+            if (spec.label === 'Font') for (const o of Array.from(box.options)) if (o.value && o.value === o.textContent) previewFont(o, o.value);   // Font Preview Size (36.31)
           }
           const v = spec.get();
           if (box.value !== v) box.value = v;

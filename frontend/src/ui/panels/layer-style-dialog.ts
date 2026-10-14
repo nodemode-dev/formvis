@@ -122,8 +122,9 @@ export class LayerStyleDialog extends Dialog {
     slider('Opacity (%)', 0, 100, () => Math.round(fx().colorOverlay.opacity * 100), (v) => { fx().colorOverlay.opacity = v / 100; });
     check('Gradient Overlay', () => fx().gradientOverlay.enabled, (v) => { fx().gradientOverlay.enabled = v; });
     multi('gradientOverlay');
-    colour('From', () => fx().gradientOverlay.from, (c) => { fx().gradientOverlay.from = c; });
-    colour('To', () => fx().gradientOverlay.to, (c) => { fx().gradientOverlay.to = c; });
+    // Changing either end makes the overlay two colours again (a many-stop gradient from PSD or .asl, 36.8, is dropped).
+    colour('From', () => fx().gradientOverlay.from, (c) => { fx().gradientOverlay.from = c; delete fx().gradientOverlay.stops; });
+    colour('To', () => fx().gradientOverlay.to, (c) => { fx().gradientOverlay.to = c; delete fx().gradientOverlay.stops; });
     slider('Opacity (%)', 0, 100, () => Math.round(fx().gradientOverlay.opacity * 100), (v) => { fx().gradientOverlay.opacity = v / 100; });
     slider('Angle (\u00b0)', -180, 180, () => fx().gradientOverlay.angle, (v) => { fx().gradientOverlay.angle = v; });
     slider('Scale (%)', 10, 150, () => Math.round(fx().gradientOverlay.scale * 100), (v) => { fx().gradientOverlay.scale = v / 100; });

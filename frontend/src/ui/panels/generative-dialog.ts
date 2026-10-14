@@ -1,5 +1,5 @@
 import type { Engine } from '../../engine';
-import { api, type GenerativeStatus } from '../../io/api';
+import { api, type GenerativeStatus, type ProviderStatus } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import { addRecipe, comfyGenerator, recipes, removeRecipe } from '../../io/comfy';
@@ -99,7 +99,7 @@ export class GenerativeDialog extends Dialog {
     for (const b of this.modelRow.querySelectorAll('button')) setHidden(b as HTMLElement, mode === 'upscale');
     this.status = await api.generativeStatus();   // first, so the default knows whether fal has a key (1.58.5)
     if (mode === 'upscale') this.upscaleModels(await upscalerReady());
-    else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
+    else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.providers = (await api.providers()).filter((p) => p.fill); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
     this.refs.refresh(!this.model.value.startsWith('comfy:'));
     setHidden(this.refs.el, mode === 'upscale');
     setHidden(this.improver.el, mode === 'upscale');
@@ -124,7 +124,9 @@ export class GenerativeDialog extends Dialog {
    *  exists, else fal when it has a key, else a model on this computer (1.58.5). */
   private fillModels(): void {
     const was = this.model.value;
-    this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }),
+    this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'),
+      ...this.providers.map((p) => { const o = document.createElement('option'); o.value = `provider:${p.id}`; o.textContent = `${p.model} (${p.name})`; o.disabled = !p.configured; if (!p.configured) o.title = 'Add its key in Edit > Generate Image'; return o; }),
+      ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }),
       ...this.locals.map((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = `${m.label.replace(/ \(local\)$/, '')} (this computer)`; o.disabled = !m.ready; if (!m.ready && m.reason) o.title = m.reason; return o; }));
     // LaMa (1.53.2): inpainting on any computer's CPU, no prompt; chosen when fal has no key.
     const lama = el<HTMLOptionElement>('<option value="local:lama">LaMa, no prompt (this computer)</option>');
@@ -153,6 +155,9 @@ export class GenerativeDialog extends Dialog {
   heard: (r: { notice?: string; warning?: string; notes: string[] }) => void = () => {};
 
   private get comfy(): boolean { return this.mode !== 'upscale' && this.model.value.startsWith('comfy:'); }
+  /** The providers beside fal whose fill the engine runs (36.12), and the one chosen, if any. */
+  private providers: ProviderStatus[] = [];
+  private get provider(): ProviderStatus | undefined { return this.mode !== 'upscale' ? this.providers.find((p) => `provider:${p.id}` === this.model.value) : undefined; }
   private get lamaHere(): boolean { return this.mode !== 'upscale' && this.model.value === 'local:lama'; }
   private get upscaleHere(): boolean { return this.mode === 'upscale' && this.model.value === 'local:ai-upscale'; }
   private get local(): LocalModel | undefined { return this.mode !== 'upscale' ? this.locals.find((m) => m.id === this.model.value) : undefined; }
@@ -178,6 +183,12 @@ export class GenerativeDialog extends Dialog {
       return;
     }
     setHidden(this.refs.el, this.mode === 'upscale');
+    const pr = this.provider;
+    if (pr) {   // another provider (36.12): its own key, kept by the engine
+      setHidden(this.keyRow, true); setHidden(this.forget, true); setHidden(this.refs.el, true);
+      setText(this.state, `${pr.model} through ${pr.name}, key set ${pr.source === 'environment' ? 'in the environment' : 'in formvis'}. The result arrives as a new layer masked to the selection; ${pr.name} charges for each request.`);
+      return;
+    }
     if (this.comfy) {   // a workflow needs no fal key
       setHidden(this.keyRow, true); setHidden(this.forget, true);
       setText(this.state, `Runs on ComfyUI at ${loadPrefs().comfyuiUrl}: its first Load Image takes the area, Load Image (as Mask) the mask, and a text node titled formvis prompt the prompt.`);
@@ -226,6 +237,16 @@ export class GenerativeDialog extends Dialog {
       const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
       this.close();
       const fill = comfyGenerator(target, recipe, prompt, await this.refs.chosen());
+      if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
+      else await e.task(() => e.generativeFill(prompt, fill));
+      return;
+    }
+    const pr = this.provider;
+    if (pr) {   // another provider's fill (36.12)
+      const prompt = this.prompt.value, mode = this.mode, e = this.engine, id = pr.id;
+      const margins = { left: Number(this.margin.left.value), top: Number(this.margin.top.value), right: Number(this.margin.right.value), bottom: Number(this.margin.bottom.value) };
+      this.close();
+      const fill = (image: Blob, mask: Blob): Promise<Blob> => api.generativeFill(image, mask, prompt, id);
       if (mode === 'expand') await e.task(() => e.generativeExpand(margins, prompt, fill));
       else await e.task(() => e.generativeFill(prompt, fill));
       return;

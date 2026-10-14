@@ -1,5 +1,5 @@
 import type { Engine, ID } from '../../engine';
-import { clearFreeze, dabField, fieldIsZero, freezeAt, invertFreeze, liquifyImage, makeField, paintFreeze, pushField, resetField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
+import { clearFreeze, dabField, fieldIsZero, freezeAt, invertFreeze, liquifyImage, makeField, meshFromJson, meshToJson, paintFreeze, pushField, pushLeftField, resetField, type LiquifyField, type LiquifyTool } from '../../engine/liquify';
 import { FACE_SLIDERS, faceField, noFaceChange, type Face, type FaceSettings, type FaceSlider } from '../../engine/face-liquify';
 import { faceReady, findFaces } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
@@ -9,7 +9,7 @@ import { toast } from '../toast';
 import { sliderRow, type Row } from './controls';
 
 const PW = 640, PH = 440;
-const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask']];
+const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['pushLeft', 'Push Left'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask']];
 
 /** Filter > Liquify (Shift+Mod+X), Photoshop's workspace: the active layer in a preview, brushed with Forward Warp,
  *  Reconstruct, Twirl either way, Pucker or Bloat; Restore All clears the field; OK applies once as a Liquify step,
@@ -59,8 +59,12 @@ export class LiquifyDialog extends Dialog {
     maskNone.addEventListener('click', () => { if (this.liq) { clearFreeze(this.liq); this.render(); } });
     const maskInvert = el('<button class="cv-btn cv-btn-ghost" type="button">Invert Mask</button>') as HTMLButtonElement;
     maskInvert.addEventListener('click', () => { if (this.liq) { invertFreeze(this.liq); this.render(); } });
+    const saveMesh = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Save Mesh...</button>');
+    saveMesh.addEventListener('click', () => this.saveMesh());
+    const loadMesh = el<HTMLButtonElement>('<button class="cv-btn cv-btn-ghost" type="button">Load Mesh...</button>');
+    loadMesh.addEventListener('click', () => this.loadMesh());
     const actions = el('<div class="cv-row-actions"></div>');
-    actions.append(restore, maskNone, maskInvert);
+    actions.append(restore, maskNone, maskInvert, saveMesh, loadMesh);
     const findFaces = el('<button class="cv-btn" type="button">Find faces</button>') as HTMLButtonElement;
     findFaces.addEventListener('click', () => void this.findFaces());
     const resetFace = el('<button class="cv-btn cv-btn-ghost" type="button">Reset face</button>') as HTMLButtonElement;
@@ -102,6 +106,29 @@ export class LiquifyDialog extends Dialog {
     this.open();
   }
 
+  /** Alt held while dragging: Push Left pushes right instead (36.4). */
+  private altDown = false;
+
+  /** Save Mesh (36.4): the field as a JSON file through a one-shot link. */
+  private saveMesh(): void {
+    if (!this.liq) return;
+    const url = URL.createObjectURL(new Blob([meshToJson(this.liq)], { type: 'application/json' })), a = document.createElement('a');
+    a.href = url; a.download = 'liquify-mesh.json'; a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  /** Load Mesh (36.4): a saved field for a layer of the same size, applied to the preview. */
+  private loadMesh(): void {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.json,application/json';
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (!file || !this.liq) return;
+      void file.text().then((t) => { if (this.liq && meshFromJson(this.liq, t)) this.render(); else toast('That mesh was saved for a layer of another size, or is not a liquify mesh.'); });
+    });
+    input.click();
+  }
+
   private syncTools(): void { TOOLS.forEach(([id], i) => this.toolButtons[i].classList.toggle('is-active', id === this.tool)); }
 
   /** Pointer position on the canvas in layer pixels. */
@@ -115,6 +142,7 @@ export class LiquifyDialog extends Dialog {
     if (!f) return;
     const s = this.pressure / 100;
     if (this.tool === 'warp') { if (this.last) pushField(f, this.last.x, this.last.y, pt.x, pt.y, this.size / 2, s); }
+    else if (this.tool === 'pushLeft') { if (this.last) pushLeftField(f, this.last.x, this.last.y, pt.x, pt.y, this.size / 2, s, this.altDown); }
     else if (this.tool === 'freeze' || this.tool === 'thaw') paintFreeze(f, pt.x, pt.y, this.size / 2, s, this.tool === 'thaw');
     else dabField(f, this.tool, pt.x, pt.y, this.size / 2, s);
     this.last = pt;
@@ -127,9 +155,10 @@ export class LiquifyDialog extends Dialog {
       if (e.button !== 0 || !this.liq) return;
       c.setPointerCapture(e.pointerId);
       this.last = this.at(e);
-      if (this.tool !== 'warp') { this.dab(this.last); this.held = setInterval(() => { if (this.last) this.dab(this.last); }, 50); }
+      if (this.tool !== 'warp' && this.tool !== 'pushLeft') { this.dab(this.last); this.held = setInterval(() => { if (this.last) this.dab(this.last); }, 50); }
     });
     c.addEventListener('pointermove', (e) => {
+      this.altDown = e.altKey;
       this.hover = this.at(e);
       if (c.hasPointerCapture(e.pointerId)) this.dab(this.hover);
       else this.draw();

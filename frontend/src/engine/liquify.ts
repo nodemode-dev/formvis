@@ -7,7 +7,7 @@
  *  smoothstep falloff from the brush centre. */
 
 export interface LiquifyField { gw: number; gh: number; cell: number; d: Float32Array; freeze?: Float32Array }
-export type LiquifyTool = 'warp' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'freeze' | 'thaw';
+export type LiquifyTool = 'warp' | 'pushLeft' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'freeze' | 'thaw';
 
 export function makeField(w: number, h: number, cell = 4): LiquifyField {
   const gw = Math.ceil(w / cell) + 1, gh = Math.ceil(h / cell) + 1;
@@ -62,6 +62,33 @@ export function pushField(f: LiquifyField, ax: number, ay: number, bx: number, b
   const dx = bx - ax, dy = by - ay, s = Math.min(1, Math.max(0.02, strength));
   if (!dx && !dy) return;
   eachNode(f, ax, ay, radius, (i, _x, _y, w) => { f.d[i] += dx * w * s; f.d[i + 1] += dy * w * s; });
+}
+
+/** Push Left (36.4), as Photoshop's: pixels move to the left of the drag (dragging up pushes them left), or to its
+ *  right with `right` (Alt). The drag turned a quarter turn, then added as Forward Warp adds it. */
+export function pushLeftField(f: LiquifyField, ax: number, ay: number, bx: number, by: number, radius: number, strength: number, right = false): void {
+  const dx = bx - ax, dy = by - ay, k = right ? -1 : 1;
+  pushField(f, ax, ay, ax + dy * k, ay - dx * k, radius, strength);
+}
+
+/** A liquify mesh as JSON (36.4), Photoshop's Save Mesh and Load Mesh: the grid, its displacements and the freeze. */
+export function meshToJson(f: LiquifyField): string {
+  return JSON.stringify({ formvis: 'liquify-mesh', version: 1, gw: f.gw, gh: f.gh, cell: f.cell, d: Array.from(f.d, (v) => Math.round(v * 1000) / 1000), freeze: f.freeze ? Array.from(f.freeze, (v) => Math.round(v * 1000) / 1000) : null });
+}
+
+/** Loads a saved mesh into `f` when its grid matches (same image size); false otherwise. */
+export function meshFromJson(f: LiquifyField, text: string): boolean {
+  let o: unknown;
+  try { o = JSON.parse(text); } catch { return false; }
+  if (!o || typeof o !== 'object') return false;
+  const m = o as { formvis?: unknown; gw?: unknown; gh?: unknown; cell?: unknown; d?: unknown; freeze?: unknown };
+  if (m.formvis !== 'liquify-mesh' || m.gw !== f.gw || m.gh !== f.gh || m.cell !== f.cell || !Array.isArray(m.d) || m.d.length !== f.d.length) return false;
+  const d = m.d;
+  if (!d.every((v) => typeof v === 'number' && Number.isFinite(v))) return false;
+  f.d.set(d as number[]);
+  const fr = m.freeze;
+  f.freeze = Array.isArray(fr) && fr.length === f.gw * f.gh && fr.every((v) => typeof v === 'number') ? Float32Array.from(fr as number[]) : undefined;
+  return true;
 }
 
 /** One dab of a stationary tool at (cx, cy): Reconstruct, Twirl either way, Pucker or Bloat. */

@@ -80,7 +80,9 @@ function toPsdEffects(fx: LayerEffects, patterns: PatternInfo[]): LayerEffectsIn
   if (k.enabled) e.stroke = [{ ...on, position: 'outside', fillType: 'color', color: k.color, opacity: k.opacity, blendMode: 'normal', size: px(k.size) }];
   if (co.enabled) e.solidFill = [{ ...on, color: co.color, opacity: co.opacity, blendMode: bm(co.blend) }];
   if (go.enabled) e.gradientOverlay = [{ ...on, opacity: go.opacity, blendMode: bm(go.blend), type: go.style, angle: go.angle, scale: go.scale, reverse: go.reverse, align: true,
-    gradient: { name: 'formvis', type: 'solid', colorStops: [{ color: go.from, location: 0, midpoint: 0.5 }, { color: go.to, location: 1, midpoint: 0.5 }], opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] } }];
+    gradient: { name: 'formvis', type: 'solid',   // every stop and its alpha when the overlay has them (36.8)
+      colorStops: go.stops ? go.stops.map((s) => ({ color: s.color, location: s.at, midpoint: 0.5 })) : [{ color: go.from, location: 0, midpoint: 0.5 }, { color: go.to, location: 1, midpoint: 0.5 }],
+      opacityStops: go.stops ? go.stops.map((s) => ({ opacity: s.alpha, location: s.at, midpoint: 0.5 })) : [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] } }];
   if (sa.enabled) e.satin = { ...on, color: sa.color, opacity: sa.opacity, blendMode: bm(sa.blend), angle: sa.angle, distance: px(sa.distance), size: px(sa.size), invert: sa.invert };
   if (bv.enabled) e.bevel = { ...on, style: BEVEL_TO[bv.style], technique: bv.technique === 'chiselHard' ? 'chisel hard' : bv.technique === 'chiselSoft' ? 'chisel soft' : 'smooth', strength: bv.depth / 100, direction: bv.down ? 'down' : 'up', size: px(bv.size), soften: px(bv.soften), angle: bv.angle, altitude: bv.altitude, useGlobalLight: false,
     highlightColor: bv.highlight, highlightOpacity: bv.highlightOpacity, highlightBlendMode: bm(bv.highlightBlend), shadowColor: bv.shadow, shadowOpacity: bv.shadowOpacity, shadowBlendMode: bm(bv.shadowBlend) };
@@ -219,7 +221,17 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
     const stops = go.gradient && 'colorStops' in go.gradient ? go.gradient.colorStops : [];
     fx.gradientOverlay = { enabled: on(go), from: col(stops[0]?.color, fx.gradientOverlay.from), to: col(stops[stops.length - 1]?.color, fx.gradientOverlay.to), opacity: op(go.opacity, 1), blend: bm(go.blendMode, 'normal'),
       angle: go.angle ?? 90, style: go.type === 'radial' ? 'radial' : 'linear', scale: Math.max(0.1, Math.min(1.5, go.scale ?? 1)), reverse: !!go.reverse };
-    if (stops.length > 2 || (go.type && go.type !== 'linear' && go.type !== 'radial')) notes.push(`"${name}" has a Photoshop gradient formvis simplifies to two colours, linear or radial.`);
+    // Every colour stop, each with the alpha the opacity stops give at its place (36.8), kept when it is more than two opaque ends.
+    const ops = go.gradient && 'opacityStops' in go.gradient ? [...go.gradient.opacityStops].sort((a, b) => a.location - b.location) : [];
+    const alphaAt = (t: number): number => {
+      if (!ops.length) return 1;
+      if (t <= ops[0].location) return ops[0].opacity;
+      for (let i = 1; i < ops.length; i++) if (t <= ops[i].location) { const a = ops[i - 1], b = ops[i], k = (t - a.location) / Math.max(1e-6, b.location - a.location); return a.opacity + (b.opacity - a.opacity) * k; }
+      return ops[ops.length - 1].opacity;
+    };
+    const full = stops.map((s) => ({ at: s.location, color: col(s.color, fx.gradientOverlay.from), alpha: alphaAt(s.location) }));
+    if (full.length > 2 || full.some((s) => s.alpha < 1)) fx.gradientOverlay.stops = full;
+    if (go.type && go.type !== 'linear' && go.type !== 'radial') notes.push(`"${name}" has a Photoshop gradient formvis draws as linear or radial.`);
   }
   const sa = info.satin;
   if (sa) fx.satin = { enabled: on(sa), color: col(sa.color, fx.satin.color), opacity: op(sa.opacity, 0.5), blend: bm(sa.blendMode, 'multiply'), angle: sa.angle ?? 19, distance: px(sa.distance, 11), size: px(sa.size, 14), invert: sa.invert !== false };
@@ -479,7 +491,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
       const ax = t.align === 'center' ? r.raster.width / 2 : t.align === 'right' ? r.raster.width - r.pad : r.pad, at = applyMat(pm, ax * (l.raster.width / r.raster.width), r.baseline * (l.raster.height / r.raster.height));
       const k = Math.hypot(pm[2], pm[3]) * (l.raster.height / r.raster.height) || 1;
       out.text = { text: t.content.replace(/\n/g, '\r'), transform: [pm[0] / k * (l.raster.width / r.raster.width), pm[1] / k * (l.raster.width / r.raster.width), pm[2] / k * (l.raster.height / r.raster.height), pm[3] / k * (l.raster.height / r.raster.height), at.x, at.y],
-        style: { font: { name: PS_FONT[t.family] ?? t.family.replace(/\s+/g, '') }, fontSize: t.size * k, fauxBold: t.bold, fauxItalic: t.italic, fillColor: t.color, autoLeading: false, leading: t.size * t.lineHeight * k },
+        style: { font: { name: PS_FONT[t.family] ?? t.family.replace(/\s+/g, '') }, fontSize: t.size * k, fauxBold: t.bold, fauxItalic: t.italic, fillColor: t.color, autoLeading: false, leading: t.size * t.lineHeight * k, tracking: t.tracking, autoKerning: t.kerning !== 'none' },   // tracking and kerning written (36.9), as the reader takes them
         // Justify is Photoshop's justify-left (every line but a paragraph's last spread; that one left); a box is area text.
         antiAlias: t.antialias ?? 'smooth', paragraphStyle: { justification: t.align === 'justify' ? 'justify-left' : t.align }, shapeType: t.box ? 'box' : 'point', ...(t.box ? { boxBounds: [0, 0, t.box.w * k, t.box.h * k] } : {}), ...(t.direction === 'vertical' ? { orientation: 'vertical' } : {}) };
     }

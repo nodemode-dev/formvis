@@ -548,8 +548,12 @@ export class Renderer {
             const ux = Math.cos(a), uy = -Math.sin(a), half = Math.max(0.5, ((Math.abs(bounds.w * ux) + Math.abs(bounds.h * uy)) / 2) * go.scale);
             grad = c.createLinearGradient(cx - ux * half, cy - uy * half, cx + ux * half, cy + uy * half);
           }
-          grad.addColorStop(0, css(c0));
-          grad.addColorStop(1, css(c1));
+          if (go.stops && go.stops.length >= 2) {   // every stop with its alpha (36.8), mirrored when reversed
+            for (const s of go.stops) grad.addColorStop(go.reverse ? 1 - s.at : s.at, `rgba(${s.color.r}, ${s.color.g}, ${s.color.b}, ${s.alpha})`);
+          } else {
+            grad.addColorStop(0, css(c0));
+            grad.addColorStop(1, css(c1));
+          }
           c.fillStyle = grad;
           c.fillRect(0, 0, bw, bh);
         }), go.opacity * opacity, compositeOp(go.blend), 'Gradient Fill', true);

@@ -211,7 +211,22 @@ export interface ColorOverlayEffect { enabled: boolean; color: RGB; opacity: num
 /** A gradient across the layer's bounds, kept to its silhouette: from `from` to `to` along `angle` (degrees
  *  counter-clockwise from the right, so 90 runs bottom to top), or outward from the centre when radial; `scale` stretches
  *  it about the centre, and `reverse` swaps the ends. */
-export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; opacity: number; blend: BlendMode; angle: number; style: 'linear' | 'radial'; scale: number; reverse: boolean }
+/** Gradient Overlay. `stops` (36.8), when present, is the whole gradient (positions 0 to 1, each colour with its own
+ *  alpha) and wins over `from` and `to`, which stay its two ends for the two-colour editor; editing either drops it. */
+export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; opacity: number; blend: BlendMode; angle: number; style: 'linear' | 'radial'; scale: number; reverse: boolean; stops?: GradientOverlayStop[] }
+export interface GradientOverlayStop { at: number; color: RGB; alpha: number }
+/** A Gradient Overlay's stops read back safely: two to 64, positions and alphas held to 0..1, sorted. */
+export function overlayStopsFrom(raw: unknown): GradientOverlayStop[] | undefined {
+  if (!Array.isArray(raw) || raw.length < 2) return undefined;
+  const out: GradientOverlayStop[] = [];
+  for (const s of raw.slice(0, 64)) {
+    if (!s || typeof s !== 'object') return undefined;
+    const o = s as { at?: unknown; color?: unknown; alpha?: unknown }, c = o.color as { r?: unknown; g?: unknown; b?: unknown } | null;
+    if (typeof o.at !== 'number' || !c || typeof c.r !== 'number' || typeof c.g !== 'number' || typeof c.b !== 'number') return undefined;
+    out.push({ at: Math.min(1, Math.max(0, o.at)), color: { r: c.r, g: c.g, b: c.b }, alpha: typeof o.alpha === 'number' ? Math.min(1, Math.max(0, o.alpha)) : 1 });
+  }
+  return out.sort((a, b) => a.at - b.at);
+}
 /** Bevel and Emboss: the silhouette, softened over `size`, taken as a height map and lit from `angle` (as Drop Shadow's)
  *  at `altitude` degrees; slopes facing the light take the highlight, those facing away the shadow. Inner shades inside
  *  the edge, outer outside it, emboss both, pillow both with the outside pressed in, stroke the layer's stroke; `down`
@@ -286,7 +301,7 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
     innerShadow: { enabled: is.enabled === true, color: rgb(is.color, d.innerShadow.color), opacity: num(is.opacity, 0.75, 0, 1), blend: blend(is.blend, 'multiply'), angle: num(is.angle, 120, -360, 360), distance: num(is.distance, 5, 0, 1000), size: num(is.size, 5, 0, 250) },
     innerGlow: { enabled: ig.enabled === true, color: rgb(ig.color, d.innerGlow.color), opacity: num(ig.opacity, 0.75, 0, 1), blend: blend(ig.blend, 'screen'), size: num(ig.size, 5, 0, 250) },
     colorOverlay: { enabled: co.enabled === true, color: rgb(co.color, d.colorOverlay.color), opacity: num(co.opacity, 1, 0, 1), blend: blend(co.blend, 'normal') },
-    gradientOverlay: { enabled: go.enabled === true, from: rgb(go.from, d.gradientOverlay.from), to: rgb(go.to, d.gradientOverlay.to), opacity: num(go.opacity, 1, 0, 1), blend: blend(go.blend, 'normal'), angle: num(go.angle, 90, -360, 360), style: go.style === 'radial' ? 'radial' : 'linear', scale: num(go.scale, 1, 0.1, 1.5), reverse: go.reverse === true },
+    gradientOverlay: { enabled: go.enabled === true, from: rgb(go.from, d.gradientOverlay.from), to: rgb(go.to, d.gradientOverlay.to), opacity: num(go.opacity, 1, 0, 1), blend: blend(go.blend, 'normal'), angle: num(go.angle, 90, -360, 360), style: go.style === 'radial' ? 'radial' : 'linear', scale: num(go.scale, 1, 0.1, 1.5), reverse: go.reverse === true, ...(overlayStopsFrom(go.stops) ? { stops: overlayStopsFrom(go.stops) } : {}) },
     patternOverlay: { enabled: po.enabled === true, pattern: typeof po.pattern === 'string' && po.pattern ? po.pattern.slice(0, 120) : 'builtin:checker', opacity: num(po.opacity, 1, 0, 1), blend: blend(po.blend, 'normal'), scale: num(po.scale, 1, 0.1, 10) },
     satin: { enabled: sa.enabled === true, color: rgb(sa.color, d.satin.color), opacity: num(sa.opacity, 0.5, 0, 1), blend: blend(sa.blend, 'multiply'), angle: num(sa.angle, 19, -360, 360), distance: num(sa.distance, 11, 0, 250), size: num(sa.size, 14, 0, 250), invert: sa.invert !== false },
     bevel: { enabled: bv.enabled === true, style: bv.style === 'outer' || bv.style === 'emboss' || bv.style === 'pillow' || bv.style === 'stroke' ? bv.style : 'inner', depth: num(bv.depth, 100, 1, 1000), down: bv.down === true, size: num(bv.size, 5, 0, 250), soften: num(bv.soften, 0, 0, 16), angle: num(bv.angle, 120, -360, 360), altitude: num(bv.altitude, 30, 0, 90), highlight: rgb(bv.highlight, d.bevel.highlight), highlightOpacity: num(bv.highlightOpacity, 0.75, 0, 1), highlightBlend: blend(bv.highlightBlend, 'screen'), shadow: rgb(bv.shadow, d.bevel.shadow), shadowOpacity: num(bv.shadowOpacity, 0.75, 0, 1), shadowBlend: blend(bv.shadowBlend, 'multiply') },

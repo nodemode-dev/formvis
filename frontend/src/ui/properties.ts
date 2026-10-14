@@ -2,7 +2,7 @@ import type { Engine } from '../engine';
 import type { Layer, TextSpec } from '../engine/types';
 import { setType } from '../extensions/tools/type';
 import { el, setHidden, setText } from './dom';
-import { fontFamilies } from './fonts';
+import { fontFamilies, previewFont } from './fonts';
 import { icon } from './icons';
 import { PanelGroup } from './panel-group';
 import { allBrushPresets, importedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
@@ -428,6 +428,7 @@ export class PropertiesColumn {
         font.textContent = '';
         for (const f of list.includes(t.family) ? list : [t.family, ...list]) { const o = document.createElement('option'); o.value = f; o.textContent = f; font.appendChild(o); }
       }
+      for (const o of Array.from(font.options)) previewFont(o, o.value);   // Font Preview Size (36.31), a style compare when unchanged
       if (document.activeElement !== font) font.value = t.family;
       if (document.activeElement !== style) style.value = `${t.bold ? 1 : 0}${t.italic ? 1 : 0}`;
       if (document.activeElement !== kern) kern.value = t.kerning;
