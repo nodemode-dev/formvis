@@ -3704,7 +3704,7 @@ export class Engine {
    *  pixels (within the selection) by a mode at `opacity` (0 to 1), through an optional mask; one step. A source or mask
    *  document must be the target's pixel size. `channel` is rgb, red, green, blue, transparency or a saved alpha
    *  channel's id or name. Returns whether it ran. */
-  applyImage(opts: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean; mode?: ApplyMode; opacity?: number; scale?: number; offset?: number; mask?: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean } | null } = {}): boolean {
+  applyImage(opts: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean; mode?: ApplyMode; opacity?: number; scale?: number; offset?: number; mask?: { doc?: ID; layer?: ID | 'merged'; channel?: string; invert?: boolean } | null; preview?: boolean } = {}): boolean {
     const t = this.targetImage();
     if (!t) { this.notice('Apply Image needs a layer to apply to.'); return false; }
     this.settle();
@@ -3736,11 +3736,23 @@ export class Engine {
     if (opts.mask) { const m = grab(opts.mask, 'mask'); if (!m) return false; mask = maskStrength(m); }
     const mode = opts.mode && (APPLY_MODES as readonly string[]).includes(opts.mode) ? opts.mode : 'normal';
     const o = { mode, opacity: Math.min(1, Math.max(0, opts.opacity ?? 1)), scale: Math.min(255, Math.max(1, opts.scale ?? 1)), offset: Math.min(255, Math.max(-255, opts.offset ?? 0)), mask };
-    this.applyImageEdit('Apply Image', (s) => {
+    const run = (s: ImageData): ImageData => {
       const out = new ImageData(new Uint8ClampedArray(s.data), s.width, s.height);
-      applyImagePixels(out.data, src, s.width, o);
+      if (s.width === t.width && s.height === t.height) { applyImagePixels(out.data, src, s.width, o); return out; }
+      // A preview's reduced copy: sample the full-size source and mask at the reduced pixels (nearest).
+      const rs = new Uint8ClampedArray(s.width * s.height * 4), rm = o.mask ? new Uint8ClampedArray(s.width * s.height) : null;
+      for (let y = 0; y < s.height; y++) {
+        const fy = Math.min(t.height - 1, Math.floor(((y + 0.5) * t.height) / s.height));
+        for (let x = 0; x < s.width; x++) {
+          const fi = fy * t.width + Math.min(t.width - 1, Math.floor(((x + 0.5) * t.width) / s.width)), di = y * s.width + x;
+          rs.set(src.subarray(fi * 4, fi * 4 + 4), di * 4);
+          if (rm && o.mask) rm[di] = o.mask[fi];
+        }
+      }
+      applyImagePixels(out.data, rs, s.width, { ...o, mask: rm });
       return out;
-    });
+    };
+    if (opts.preview) this.previewImageEdit(run); else this.applyImageEdit('Apply Image', run);
     return true;
   }
 
