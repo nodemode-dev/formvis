@@ -2,6 +2,7 @@ import { CONTOURS, DEFAULT_GLOBAL_LIGHT, MAX_EXTRA, MULTI_EFFECTS, defaultEffect
 import { BLEND_IF_IDENTITY, type BlendIf } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
+import { t } from '../i18n';
 import { checkRow, sliderRow } from './controls';
 
 const hex = (c: RGB): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
@@ -80,7 +81,7 @@ export class LayerStyleDialog extends Dialog {
     choice('Knockout', [['none', 'None'], ['shallow', 'Shallow'], ['deep', 'Deep']], () => bl().knockout, (v) => { bl().knockout = v as 'none' | 'shallow' | 'deep'; });
     choice('Blend If', [['gray', 'Gray'], ['r', 'Red'], ['g', 'Green'], ['b', 'Blue']], () => bl().blendIf.channel, (v) => { bl().blendIf.channel = v as BlendIf['channel']; });
     for (const [side, label] of [['thisLayer', 'This Layer'], ['underlying', 'Underlying Layer']] as const) for (const [k, name] of [[0, 'black start'], [1, 'black end'], [2, 'white start'], [3, 'white end']] as const) {
-      slider(`${label}: ${name}`, 0, 255, () => bl().blendIf[side][k], (v) => { const r = bl().blendIf[side]; r[k] = v; if (k === 0 && r[1] < v) r[1] = v; if (k === 1 && r[0] > v) r[0] = v; if (k === 2 && r[3] < v) r[3] = v; if (k === 3 && r[2] > v) r[2] = v; });
+      slider(t(`${label}: ${name}`), 0, 255, () => bl().blendIf[side][k], (v) => { const r = bl().blendIf[side]; r[k] = v; if (k === 0 && r[1] < v) r[1] = v; if (k === 1 && r[0] > v) r[0] = v; if (k === 2 && r[3] < v) r[3] = v; if (k === 3 && r[2] > v) r[2] = v; });
     }
     check('Drop Shadow', () => fx().dropShadow.enabled, (v) => { fx().dropShadow.enabled = v; });
     multi('dropShadow');

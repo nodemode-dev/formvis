@@ -21,6 +21,9 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'shapes', label: 'Shapes', selector: 'section.cv-shapes' },
   { id: 'measurement-log', label: 'Measurement Log', selector: 'section.cv-measure-log' },
   { id: 'modifier-keys', label: 'Modifier Keys', selector: 'section.cv-modifier-keys' },
+  { id: 'adjustments', label: 'Adjustments', selector: 'section.cv-adjustments' },
+  { id: 'notes', label: 'Notes', selector: 'section.cv-notes-panel' },
+  { id: 'histogram', label: 'Histogram', selector: 'section.cv-histogram-panel' },
 ];
 /** The side column's panel groups (Phase 21), movable like the dock's: any panel may live in either column. */
 export const SIDE_PANELS: readonly DockPanel[] = [
@@ -39,7 +42,7 @@ interface DockState { order: string[]; hidden: string[]; side: string[] }
 const KEY = 'formvis.dock';
 const HEIGHTS_KEY = 'formvis.dock.heights';
 /** As the target's Essentials (and Photoshop's): Navigator, Swatches and Layers shown; Timeline and History in Window. */
-const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys'], side: [...DEFAULT_SIDE] };
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys', 'adjustments', 'notes', 'histogram'], side: [...DEFAULT_SIDE] };
 
 function load(): DockState {
   try {

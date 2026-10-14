@@ -1,10 +1,14 @@
 import { hexOf, type Engine, type RGB } from '../engine';
 import type { Tool } from '../extensions/registry';
 import { el, q, setClass, setHidden, setHtml, setText, setTitle, setValue } from './dom';
-import { Dialog } from './dialogs';
 import { icon } from './icons';
 import { onLanguage, t as tr } from './i18n';
-import { rememberTool, slotTool, toolGroups, type ToolGroup } from './tool-groups';
+import { rememberTool, resolveLayout, slotTool, TOOLBAR_EVENT, type ToolGroup } from './tool-groups';
+import { loadPrefs } from './prefs';
+import { openToolbarDialog } from './panels/toolbar-dialog';
+
+/** One place on the rail: its dash, its button, and the group it shows now. */
+interface RailSlot { group: ToolGroup; node: HTMLButtonElement; sep: HTMLElement }
 
 /** Turns a '#rrggbb' string into its red, green and blue channels. */
 function parseHex(v: string): RGB { return { r: parseInt(v.slice(1, 3), 16), g: parseInt(v.slice(3, 5), 16), b: parseInt(v.slice(5, 7), 16) }; }
@@ -15,7 +19,7 @@ let ENGINE: Engine | null = null;
 
 export class Rail {
   /** One slot per tool group (the tools sharing a key), showing the group's current tool. */
-  private readonly slots: Array<{ group: ToolGroup; node: HTMLButtonElement }> = [];
+  private readonly slots: RailSlot[] = [];
   private readonly flyout: HTMLElement;
   private flyoutFor: ToolGroup | null = null;
   private readonly fg: HTMLButtonElement;
@@ -28,36 +32,14 @@ export class Rail {
     const box = q(root, '.cv-rail-tools');
     this.flyout = el('<div class="cv-flyout" role="menu" hidden></div>');
     document.getElementById('overlay-root')?.appendChild(this.flyout);
-    // Short dashes between Photoshop's tool families, as the target's column (Phase 21): selection and crop, painting and
-    // retouching, vector and type, then eyedropper and navigation (by the tools' order).
-    const family = (order: number): number => (order <= 45 ? 0 : order <= 72 ? 1 : order <= 79 ? 2 : 3);
-    let lastFamily = -1;
-    for (const group of toolGroups()) {
-      const fam = family(group.tools[0].order);
-      if (lastFamily !== -1 && fam !== lastFamily) box.appendChild(el('<span class="cv-rail-sep" aria-hidden="true"></span>'));
-      lastFamily = fam;
-      const b = el<HTMLButtonElement>(`<button class="cv-tool${entries(group) > 1 ? ' has-group' : ''}" type="button" aria-haspopup="${entries(group) > 1 ? 'menu' : 'false'}"></button>`);
-      const pick = (t: Tool): void => { engine.setTool(t.id); if (t.id === 'brush') engine.setBrushMode('paint'); };
-      b.addEventListener('click', () => { if (!this.suppressClick) pick(slotTool(group, engine.tool)); this.suppressClick = false; });
-      if (entries(group) > 1) {
-        // Press and hold, or right-click, shows the group, as Photoshop's toolbar does.
-        let hold = 0;
-        b.addEventListener('pointerdown', (e) => {
-          if (e.button !== 0) return;
-          hold = window.setTimeout(() => { this.suppressClick = true; this.openFlyout(group, b); }, 350);
-        });
-        for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) b.addEventListener(ev, () => window.clearTimeout(hold));
-        b.addEventListener('contextmenu', (e) => { e.preventDefault(); this.openFlyout(group, b); });
-      }
-      box.appendChild(b);
-      this.slots.push({ group, node: b });
-    }
-    // Edit Toolbar (the target's •••): tools can be hidden from the rail and stay one click away in this button's list.
+    // Edit > Toolbar (the target's •••): tools can be kept in Extra Tools and stay one click away in this button's list.
     const more = el<HTMLButtonElement>(`<button class="cv-tool cv-rail-more" type="button" title="More tools and Edit Toolbar" aria-label="More tools">${icon('more3', 18)}</button>`);
     more.addEventListener('click', () => this.openMore(more));
     box.appendChild(more);
     this.box = box;
-    this.applyHidden();
+    this.more = more;
+    this.applyLayout();
+    document.addEventListener(TOOLBAR_EVENT, () => { this.applyLayout(); this.sync(); });
     document.addEventListener('pointerdown', (e) => { if (!this.flyout.hidden && !this.flyout.contains(e.target as Node)) this.closeFlyout(); }, true);
     document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !this.flyout.hidden) { e.preventDefault(); this.closeFlyout(); } }, true);
     // The colour well: foreground and background swatches, swap and reset, and two hidden native colour inputs.
@@ -91,25 +73,53 @@ export class Rail {
   private suppressClick = false;
 
   private box: HTMLElement | null = null;
-  private hidden = new Set<string>((() => { try { const v = JSON.parse(localStorage.getItem('formvis.railHidden') ?? '[]'); return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string') : []; } catch { return []; } })());
-  private editor: EditToolbar | null = null;
+  private more: HTMLElement | null = null;
+  /** The tools kept in Extra Tools, reachable from the ••• list. */
+  private extra: Tool[] = [];
 
-  /** Hidden groups leave the rail; a dash shows only between two shown tools, never leading, trailing or doubled. */
-  private applyHidden(): void {
-    for (const { group, node } of this.slots) setHidden(node, this.hidden.has(group.key));
-    let prevTool = false, pendingSep: HTMLElement | null = null;
-    for (const child of Array.from(this.box?.children ?? []) as HTMLElement[]) {
-      if (child.classList.contains('cv-rail-sep')) { setHidden(child, true); if (prevTool) pendingSep = child; prevTool = false; continue; }
-      if (child.classList.contains('cv-rail-more') || child.hidden) continue;
-      if (pendingSep) { setHidden(pendingSep, false); pendingSep = null; }
-      prevTool = true;
-    }
+  /** One more slot (its dash and its button), placed before the ••• button. The group it shows is set by `applyLayout`. */
+  private makeSlot(): RailSlot {
+    const node = el<HTMLButtonElement>('<button class="cv-tool" type="button" aria-haspopup="false"></button>');
+    const sep = el('<span class="cv-rail-sep" aria-hidden="true" hidden></span>');
+    const slot: RailSlot = { group: { key: '', tools: [] }, node, sep };
+    const engine = this.engine;
+    node.addEventListener('click', () => {
+      if (!this.suppressClick && slot.group.tools.length) { const t = slotTool(slot.group, engine.tool); engine.setTool(t.id); if (t.id === 'brush') engine.setBrushMode('paint'); }
+      this.suppressClick = false;
+    });
+    // Press and hold, or right-click, shows the group, as Photoshop's toolbar does.
+    let hold = 0;
+    node.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0 || entries(slot.group) < 2) return;
+      hold = window.setTimeout(() => { this.suppressClick = true; this.openFlyout(slot.group, node); }, 350);
+    });
+    for (const ev of ['pointerup', 'pointerleave', 'pointercancel']) node.addEventListener(ev, () => window.clearTimeout(hold));
+    node.addEventListener('contextmenu', (e) => { if (entries(slot.group) < 2) return; e.preventDefault(); this.openFlyout(slot.group, node); });
+    this.box?.insertBefore(sep, this.more);
+    this.box?.insertBefore(node, this.more);
+    return slot;
   }
 
-  setHiddenGroups(keys: Iterable<string>): void {
-    this.hidden = new Set(keys);
-    try { localStorage.setItem('formvis.railHidden', JSON.stringify([...this.hidden])); } catch { /* this session only */ }
-    this.applyHidden();
+  /** Puts the saved layout on the rail in place: the slots (kept, never rebuilt) take the groups in order, surplus slots are
+   *  hidden, and a short dash sits between tool families (selection and crop, painting and retouching, vector and type, then
+   *  eyedropper and navigation, by the tools' order) as Photoshop's column has. */
+  private applyLayout(): void {
+    const layout = resolveLayout(loadPrefs().toolbar);
+    this.extra = layout.hidden;
+    while (this.slots.length < layout.groups.length) this.slots.push(this.makeSlot());
+    const family = (order: number): number => (order <= 45 ? 0 : order <= 72 ? 1 : order <= 79 ? 2 : 3);
+    let lastFamily = -1;
+    this.slots.forEach((slot, i) => {
+      const group = layout.groups[i];
+      if (!group) { setHidden(slot.node, true); setHidden(slot.sep, true); return; }
+      slot.group = group;
+      const fam = family(group.tools[0].order), multi = entries(group) > 1;
+      setHidden(slot.sep, lastFamily === -1 || fam === lastFamily);
+      lastFamily = fam;
+      setHidden(slot.node, false);
+      setClass(slot.node, 'has-group', multi);
+      slot.node.setAttribute('aria-haspopup', multi ? 'menu' : 'false');
+    });
   }
 
   /** The ••• list: the hidden tools (their modes too), then Edit Toolbar. */
@@ -122,15 +132,13 @@ export class Rail {
       r.addEventListener('click', () => { this.closeFlyout(); pick(); });
       this.flyout.appendChild(r);
     };
-    for (const { group } of this.slots.filter((s) => this.hidden.has(s.group.key))) {
-      for (const t of group.tools) {
-        const vs = t.variants?.(this.engine);
-        if (vs?.length) for (const v of vs) row(v.icon, v.label, group.key, () => { this.engine.setTool(t.id); v.pick(); this.engine.emit('tool', null); });
-        else row(t.icon(this.engine), t.label, group.key, () => this.engine.setTool(t.id));
-      }
+    for (const t of this.extra) {
+      const vs = t.variants?.(this.engine);
+      if (vs?.length) for (const v of vs) row(v.icon, v.label, t.key, () => { this.engine.setTool(t.id); v.pick(); this.engine.emit('tool', null); });
+      else row(t.icon(this.engine), t.label, t.key, () => this.engine.setTool(t.id));
     }
     if (this.flyout.childElementCount) this.flyout.appendChild(el('<div class="cv-menu-sep"></div>'));
-    row('sliders', 'Edit Toolbar...', '', () => { this.editor ??= new EditToolbar(); this.editor.show(this.slots.map((s) => s.group), this.hidden, (keys) => this.setHiddenGroups(keys)); });
+    row('sliders', 'Toolbar...', '', () => openToolbarDialog(this.engine));
     this.flyoutFor = null;
     const r = anchor.getBoundingClientRect();
     this.flyout.style.visibility = 'hidden';
@@ -144,6 +152,7 @@ export class Rail {
   private sync(): void {
     rememberTool(this.engine);
     for (const { group, node } of this.slots) {
+      if (node.hidden || !group.tools.length) continue;
       const t = slotTool(group, this.engine.tool), key = t.icon(this.engine);
       setHtml(node, icon(key, 20), `${t.id}:${key}`);
       node.setAttribute('aria-label', tr(t.label));
@@ -196,30 +205,4 @@ export class Rail {
 
   private fgRgb(): string { const c = this.engine.fg; return `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`; }
   private bgRgb(): string { const c = this.engine.bg; return `rgb(${Math.round(c.r)}, ${Math.round(c.g)}, ${Math.round(c.b)})`; }
-}
-
-/** Edit Toolbar, as Photoshop's: which tool groups the rail shows; hidden ones stay in its ••• list. */
-class EditToolbar extends Dialog {
-  private readonly list = el('<div class="cv-edit-toolbar"></div>');
-  private onChange: ((keys: Set<string>) => void) | null = null;
-  constructor() {
-    super('Edit Toolbar', 420);
-    this.body.append(el('<p class="cv-note">Tools you hide stay one click away in the toolbar\'s ••• list.</p>'), this.list);
-    this.button('Done', 'primary', () => this.close());
-  }
-  show(groups: ToolGroup[], hidden: Set<string>, onChange: (keys: Set<string>) => void): void {
-    this.onChange = onChange;
-    this.list.textContent = '';
-    const now = new Set(hidden);
-    for (const g of groups) {
-      const r = el(`<label class="cv-edit-tool"><input type="checkbox"><span class="cv-edit-tool-name"></span><span class="cv-flyout-key"></span></label>`);
-      const box = r.querySelector('input') as HTMLInputElement;
-      box.checked = !now.has(g.key);
-      setText(r.querySelector('.cv-edit-tool-name') as HTMLElement, g.tools.map((t) => t.label).join(', '));
-      setText(r.querySelector('.cv-flyout-key') as HTMLElement, g.key);
-      box.addEventListener('change', () => { if (box.checked) now.delete(g.key); else now.add(g.key); this.onChange?.(new Set(now)); });
-      this.list.appendChild(r);
-    }
-    this.open();
-  }
 }

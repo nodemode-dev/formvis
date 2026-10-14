@@ -2,6 +2,7 @@ import type { Engine } from '../engine';
 import type { Layer, TextSpec } from '../engine/types';
 import { setType } from '../extensions/tools/type';
 import { el, setHidden, setText } from './dom';
+import { onLanguage, t } from './i18n';
 import { fontFamilies, previewFont } from './fonts';
 import { icon } from './icons';
 import { PanelGroup } from './panel-group';
@@ -212,12 +213,13 @@ export class PropertiesColumn {
     }
     const tile = body.querySelector('.cv-props-tile') as HTMLElement, name = body.querySelector('.cv-props-name') as HTMLElement;
     new PanelGroup(this.root, 'properties', [{ id: 'properties', label: 'Properties', body }], 'Properties');
+    onLanguage(() => { for (const r of this.refreshers) r(); });   // the heading is set in place, in the new language
     this.refreshers.push(() => {
       const a = e.activeLayer, l = layer();
       // Written only when the kind changes (1.50.3): rewriting it on every refresh rebuilt the icon, a flash.
       const want = a ? kindIcon(a) : '';
       if (tile.dataset.icon !== want) { tile.dataset.icon = want; tile.innerHTML = want ? icon(want, 18) : ''; }
-      setText(name, a ? `${a.name} Properties` : 'No layer selected');
+      setText(name, a ? t('{name} Properties').replace('{name}', t(a.name)) : t('No layer selected'));
       // The section keeps its place whatever is selected (its fields disabled when there is nothing to place), so the
       // groups beneath never jump when a document opens or the selection changes; only the fold changes its height.
       setHidden(tr, section.getAttribute('aria-expanded') !== 'true');
@@ -300,7 +302,7 @@ export class PropertiesColumn {
       key = k;
       for (const b of body.querySelectorAll<HTMLElement>('[data-view]')) b.classList.toggle('is-on', b.dataset.view === view);
       folders.textContent = '';
-      const groups = [{ id: 'general', name: 'General Brushes', list: allBrushPresets().filter((p) => !imported.has(p.id)) }, { id: 'imported', name: 'Imported Brushes', list: allBrushPresets().filter((p) => imported.has(p.id)) }];
+      const groups = [{ id: 'general', name: t('General Brushes'), list: allBrushPresets().filter((p) => !imported.has(p.id)) }, { id: 'imported', name: t('Imported Brushes'), list: allBrushPresets().filter((p) => imported.has(p.id)) }];
       for (const grp of groups) {
         const list = grp.list.filter((p) => !q0 || p.name.toLowerCase().includes(q0));
         if (!list.length) continue;
@@ -327,6 +329,7 @@ export class PropertiesColumn {
       }
       if (!folders.childElementCount) folders.appendChild(el('<p class="cv-brush-none">No brush matches.</p>'));
     };
+    onLanguage(() => { key = ''; fill(); });   // the group names are set in place, in the new language
     // The tip as an editor, as the target's: drag the right handle to turn it, the top or bottom one to flatten it, or
     // anywhere else to turn it toward the pointer. It is the brush's own shape that changes.
     let grab: 'angle' | 'round' | null = null;

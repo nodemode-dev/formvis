@@ -1,10 +1,10 @@
 # formvis commands
 
-Generated from the window's command catalogue (930 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (934 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 58
+- Edit: 59
 - File: 73
 - Filter: 80
 - Image: 89
@@ -16,7 +16,7 @@ Generated from the window's command catalogue (930 commands) by `./formvis agent
 - Tools: 49
 - Type: 22
 - View: 40
-- Window: 61
+- Window: 64
 
 ## Edit
 
@@ -30,6 +30,7 @@ Generated from the window's command catalogue (930 commands) by `./formvis agent
 | `content-fill-workspace` | Content-Aware Fill... |  | Opens the Content-Aware Fill workspace for the selection. (changes the picture) |
 | `copy` | Copy | Mod+C | Copies the selection to the clipboard. |
 | `copy-merged` | Copy Merged | Shift+Mod+C | Copies the selection from all visible layers. |
+| `customize-toolbar` | Toolbar... |  | Opens the Toolbar dialog to choose which tools the tool rail shows, how they are grouped and in what order. |
 | `cut` | Cut | Mod+X | Cuts the selection to the clipboard. (changes the picture) |
 | `define-brush` | Define Brush Preset... |  | Saves the selection, or the whole image, as a sampled brush tip. (changes the picture) |
 | `define-custom-shape` | Define Custom Shape... |  | Saves the current path as a custom shape for the Shape tool. (changes the picture) |
@@ -1023,9 +1024,11 @@ Generated from the window's command catalogue (930 commands) by `./formvis agent
 | `match-zoom` | Match Zoom |  | Gives every open document the current zoom. (changes the picture) |
 | `merge-columns` | Merge Panel Columns |  | Merges the panel columns into one. |
 | `new-frame` | New Frame |  | Adds a frame to the frame animation. (changes the picture) |
+| `panel-adjustments` | Adjustments |  | Shows or hides the Adjustments panel. |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
 | `panel-character` | Character |  | Shows or hides the Character panel. |
 | `panel-gradients` | Gradients |  | Shows or hides the Gradients panel. |
+| `panel-histogram` | Histogram |  | Shows or hides the Histogram panel. |
 | `panel-history` | History |  | Shows or hides the History panel. |
 | `panel-info` | Info |  | Shows or hides the Info panel. |
 | `panel-layer-comps` | Layer Comps |  | Shows or hides the Layer Comps panel. |
@@ -1033,6 +1036,7 @@ Generated from the window's command catalogue (930 commands) by `./formvis agent
 | `panel-measurement-log` | Measurement Log |  | Shows or hides the Measurement Log panel. |
 | `panel-modifier-keys` | Modifier Keys |  | Shows or hides the Modifier Keys panel. |
 | `panel-navigator` | Navigator |  | Shows or hides the Navigator panel. |
+| `panel-notes` | Notes |  | Shows or hides the Notes panel. |
 | `panel-paragraph` | Paragraph |  | Shows or hides the Paragraph panel. |
 | `panel-paths` | Paths |  | Shows or hides the Paths panel. |
 | `panel-patterns` | Patterns |  | Shows or hides the Patterns panel. |

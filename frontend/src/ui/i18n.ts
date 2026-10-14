@@ -38,6 +38,21 @@ const MORE: Partial<Record<Exclude<Lang, 'en'>, () => Promise<Table>>> = {
   id: () => import('./i18n/more/id').then((m) => m.id), th: () => import('./i18n/more/th').then((m) => m.th),
   vi: () => import('./i18n/more/vi').then((m) => m.vi),
 };
+/** Part c (36.32c): strings the app assembles at run time (tool hint segments, status readouts, Preferences sections). */
+const EXTRA: Partial<Record<Exclude<Lang, 'en'>, () => Promise<Table>>> = {
+  es: () => import('./i18n/extra/es').then((m) => m.es), 'pt-BR': () => import('./i18n/extra/pt-BR').then((m) => m.ptBR),
+  fr: () => import('./i18n/extra/fr').then((m) => m.fr), de: () => import('./i18n/extra/de').then((m) => m.de),
+  it: () => import('./i18n/extra/it').then((m) => m.it), nl: () => import('./i18n/extra/nl').then((m) => m.nl),
+  da: () => import('./i18n/extra/da').then((m) => m.da), fi: () => import('./i18n/extra/fi').then((m) => m.fi),
+  nb: () => import('./i18n/extra/nb').then((m) => m.nb), sv: () => import('./i18n/extra/sv').then((m) => m.sv),
+  ru: () => import('./i18n/extra/ru').then((m) => m.ru), pl: () => import('./i18n/extra/pl').then((m) => m.pl),
+  cs: () => import('./i18n/extra/cs').then((m) => m.cs), hu: () => import('./i18n/extra/hu').then((m) => m.hu),
+  uk: () => import('./i18n/extra/uk').then((m) => m.uk), tr: () => import('./i18n/extra/tr').then((m) => m.tr),
+  'zh-CN': () => import('./i18n/extra/zh-CN').then((m) => m.zhCN), 'zh-TW': () => import('./i18n/extra/zh-TW').then((m) => m.zhTW),
+  ja: () => import('./i18n/extra/ja').then((m) => m.ja), ko: () => import('./i18n/extra/ko').then((m) => m.ko),
+  id: () => import('./i18n/extra/id').then((m) => m.id), th: () => import('./i18n/extra/th').then((m) => m.th),
+  vi: () => import('./i18n/extra/vi').then((m) => m.vi),
+};
 const tables = new Map<Lang, Table>([['en', {}]]);
 
 const saved = loadPrefs().language;
@@ -57,9 +72,9 @@ export const isLang = isLangCode;
 async function load(l: Lang): Promise<void> {
   for (const code of [LANG_PARENT[l], l]) {
     if (!code || tables.has(code) || code === 'en') continue;
-    const more = MORE[code];
-    const [a, b] = await Promise.all([LOADERS[code](), more ? more() : Promise.resolve({})]);
-    tables.set(code, { ...b, ...a });   // the first part wins where both have a key
+    const more = MORE[code], extra = EXTRA[code];
+    const [a, b, c] = await Promise.all([LOADERS[code](), more ? more() : Promise.resolve({}), extra ? extra() : Promise.resolve({})]);
+    tables.set(code, { ...c, ...b, ...a });   // the first part wins where parts share a key
   }
 }
 
@@ -150,7 +165,7 @@ function translateAttrs(el: Element): void {
       if (next !== v) { rec.shown = next; el.setAttribute(a, next); }
       continue;
     }
-    if (!known(v) || skipped(el)) { recs?.delete(a); continue; }
+    if (!known(v) || skippedAttr(el)) { recs?.delete(a); continue; }
     if (!recs) { recs = new Map(); attrEn.set(el, recs); }
     const next = t(v);
     recs.set(a, { en: v, shown: next });
@@ -158,12 +173,22 @@ function translateAttrs(el: Element): void {
   }
 }
 
+/** Attributes follow a narrower rule than text (36.32c): a field's placeholder, title and label are interface text even
+ *  though its value is the person's, so inputs and text areas are not skipped for them. */
+const SKIP_ATTR = SKIP.replace('textarea, input, ', '');
+const skippedAttr = (e: Element): boolean => !!e.closest(SKIP_ATTR);
+
 function walk(root: Node): void {
   if (root instanceof Text) { translateText(root); return; }
-  if (!(root instanceof Element) || root.closest(SKIP)) return;
+  if (!(root instanceof Element)) return;
+  if (root.closest(SKIP)) { if (root.matches('input, textarea')) translateAttrs(root); return; }
   translateAttrs(root);
   const it = document.createTreeWalker(root, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => (n instanceof Element && n.matches(SKIP) ? NodeFilter.FILTER_REJECT : NodeFilter.FILTER_ACCEPT),
+    acceptNode: (n) => {
+      if (!(n instanceof Element) || !n.matches(SKIP)) return NodeFilter.FILTER_ACCEPT;
+      if (n.matches('input, textarea')) translateAttrs(n);   // its attributes, never its value
+      return NodeFilter.FILTER_REJECT;
+    },
   });
   for (let n = it.nextNode(); n; n = it.nextNode()) {
     if (n instanceof Text) translateText(n);

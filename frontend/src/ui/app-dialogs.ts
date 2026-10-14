@@ -8,7 +8,7 @@ import { comboOf, formatKeys, type Commands } from './commands';
 import { LIMITS } from '../engine/types';
 import { Dialog, confirmAction } from './dialogs';
 import { el, patchList, q, setClass, setDisabled, setHidden, setText, setValue } from './dom';
-import { languages, setLanguage, type Lang } from './i18n';
+import { languages, onLanguage, setLanguage, t, type Lang } from './i18n';
 import { icon } from './icons';
 import { brandMark } from './brand';
 import { THEMES, readChoice, setAccent, setIntensity, setTheme, themeSwatchesHtml } from './themes';
@@ -389,15 +389,17 @@ export class SettingsDialog extends Dialog {
    *  kept on this device. `onPrefs` puts a change into effect. */
   constructor(private readonly onPrefs: (p: Prefs) => void) {
     super('Preferences', 620);
-    const t = document.createElement('template');
-    t.innerHTML = themeSwatchesHtml();
-    this.grid.append(t.content);
+    const swatches = document.createElement('template');
+    swatches.innerHTML = themeSwatchesHtml();
+    this.grid.append(swatches.content);
     const row = el('<div class="cv-field"><span>Theme</span></div>');
     row.appendChild(this.grid);
     const pages = el('<div class="cv-prefs-pages"></div>');
     const add = (name: string, ...content: HTMLElement[]): void => {
       const tab = el<HTMLButtonElement>('<button class="cv-prefs-tab" type="button" role="tab"></button>');
-      tab.textContent = name;
+      tab.dataset.section = name;   // the English name is the identity; the label is the translation
+      tab.textContent = t(name);
+      onLanguage(() => { tab.textContent = t(name); });
       tab.addEventListener('click', () => this.showSection(name));
       this.nav.appendChild(tab);
       const page = el('<div class="cv-prefs-page" role="tabpanel"></div>');
@@ -572,7 +574,7 @@ export class SettingsDialog extends Dialog {
 
   private showSection(name: string): void {
     for (const [n, page] of this.sections) setHidden(page, n !== name);
-    for (const tab of Array.from(this.nav.children) as HTMLElement[]) { const on = tab.textContent === name; setClass(tab, 'is-active', on); tab.setAttribute('aria-selected', String(on)); }
+    for (const tab of Array.from(this.nav.children) as HTMLElement[]) { const on = tab.dataset.section === name; setClass(tab, 'is-active', on); tab.setAttribute('aria-selected', String(on)); }
   }
 
   private readonly nodemodeUrl = el<HTMLInputElement>('<input class="cv-input" type="url" aria-label="NodeMode address" spellcheck="false">');

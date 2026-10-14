@@ -22,7 +22,10 @@ export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: 
   /** Image > Analysis > Select Data Points (1.70.7): the Measurement Log columns shown, by data point name. */
   measureDataPoints: string[];
   /** Type > Font Preview Size (36.31): each family drawn in its own face in the font menus at this size, or plain. */
-  fontPreview: FontPreview }
+  fontPreview: FontPreview;
+  /** Edit > Toolbar (36.22): the tool rail's groups of tool ids, in order, and the tools kept in Extra Tools; null is the built-in layout. */
+  toolbar: ToolbarPref | null }
+export interface ToolbarPref { groups: string[][]; hidden: string[] }
 export type FontPreview = 'none' | 'small' | 'medium' | 'large' | 'extra';
 export const FONT_PREVIEWS: readonly FontPreview[] = ['none', 'small', 'medium', 'large', 'extra'];
 /** Every data point Record Measurements can show, in log order, and the ones on by default. */
@@ -49,7 +52,7 @@ export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [[
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'light', rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium' };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium', toolbar: null };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 
@@ -76,6 +79,16 @@ function cleanDialogValues(v: unknown): Record<string, Record<string, DialogValu
     out[d.slice(0, 120)] = row;
   }
   return out;
+}
+
+/** The saved toolbar layout: strings only, each tool id once. Ids no longer known are dropped, and tools missing from the
+ *  layout are placed, when the rail is built (`resolveLayout`, ui/tool-groups.ts), which holds the registry. */
+function cleanToolbar(v: unknown): ToolbarPref | null {
+  if (!plain(v) || !Array.isArray(v.groups) || !Array.isArray(v.hidden)) return null;
+  const seen = new Set<string>();
+  const ids = (a: unknown): string[] => (Array.isArray(a) ? a : []).filter((x): x is string => typeof x === 'string' && x.length > 0 && x.length <= 80 && !seen.has(x) && !!seen.add(x));
+  const groups = v.groups.slice(0, 200).map(ids).filter((g) => g.length > 0);
+  return { groups, hidden: ids(v.hidden) };
 }
 
 export function loadPrefs(): Prefs {
@@ -123,6 +136,7 @@ export function loadPrefs(): Prefs {
       spellWords: Array.isArray(r.spellWords) ? r.spellWords.filter((w): w is string => typeof w === 'string' && w.length > 0 && w.length <= 80).slice(0, 5000) : [],
       measureDataPoints: Array.isArray(r.measureDataPoints) ? MEASURE_POINTS.filter((n) => (r.measureDataPoints as unknown[]).includes(n)) : [...DEFAULT_MEASURE_POINTS],
       fontPreview: FONT_PREVIEWS.find((v) => v === r.fontPreview) ?? DEFAULT_PREFS.fontPreview,
+      toolbar: cleanToolbar(r.toolbar),
     };
   } catch { return { ...DEFAULT_PREFS }; }
 }

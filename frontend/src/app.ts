@@ -48,6 +48,7 @@ import { HistoryPanel } from './ui/history';
 import { LayerCompsPanel } from './ui/layer-comps';
 import { StylesPanel } from './ui/styles-panel';
 import { createPresetPanels } from './ui/preset-panels';
+import { createMorePanels } from './ui/more-panels';
 import { ModifierKeysPanel } from './ui/modifier-keys';
 import { MeasurementLogPanel } from './ui/measurement-log';
 import { StopDialog } from './ui/panels/stop-dialog';
@@ -199,6 +200,7 @@ import { MenuBar, PopupMenu, type MenuDef } from './ui/menu';
 import { OptionsBar } from './ui/options';
 import { invalidatePaint } from './ui/palette';
 import { Rail } from './ui/rail';
+import { openToolbarDialog } from './ui/panels/toolbar-dialog';
 import { slotTool, toolGroups } from './ui/tool-groups';
 import { Stage } from './ui/stage';
 import { StatusBar } from './ui/status';
@@ -384,6 +386,7 @@ export function startApp(): void {
   registerPanel({ id: 'layer-comps', label: 'Layer Comps', selector: 'section.cv-layer-comps' });
   new StylesPanel(q(root, '.cv-layers'), engine, (blob, name) => deliver(blob, name));   // Window > Styles (DEV_PLAN 35.3 part b)
   createPresetPanels(q(root, '.cv-layers'), engine, () => savePatterns());   // Window > Gradients, Patterns, Shapes (DEV_PLAN 35.3 part c)
+  createMorePanels(q(root, '.cv-layers'), engine, (id) => { void catalogue.runCommand(id).then((r) => { if (!r.ok) toast(r.error ?? 'That could not run now.', 'error'); }); });   // Window > Adjustments, Notes, Histogram (DEV_PLAN 36.17)
   new ModifierKeysPanel(q(root, '.cv-layers'));   // Window > Modifier Keys (DEV_PLAN 35.3 part c)
   new MeasurementLogPanel(q(root, '.cv-layers'), engine, (blob, name) => deliver(blob, name));   // Window > Measurement Log
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
@@ -2745,6 +2748,7 @@ export function startApp(): void {
     { id: 'pattern-preview', label: 'Pattern Preview', checked: () => engine.view.patternPreview, run: () => engine.setView({ patternPreview: !engine.view.patternPreview }) },
     { id: 'pixel-art-preview', label: 'Pixel Art Preview', checked: () => engine.view.pixelArt, run: () => engine.setView({ pixelArt: !engine.view.pixelArt }) },
     { id: 'transform-controls', label: 'Transform Controls', checked: () => engine.showTransformControls, run: () => engine.update({ showTransformControls: !engine.showTransformControls }) },
+    { id: 'customize-toolbar', label: 'Toolbar...', run: () => openToolbarDialog(engine) },   // Edit > Toolbar (36.22)
     { id: 'shortcuts', label: 'Keyboard Shortcuts...', keys: ['Alt+Shift+Mod+K', 'Shift+/'], run: () => dialogs.shortcuts.show() },   // Photoshop's key; Edit and Help menus
     { id: 'search', label: 'Search...', keys: ['Mod+K'], run: () => dialogs.palette.show() },
     { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
@@ -3050,7 +3054,7 @@ export function startApp(): void {
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
-      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },
+      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',

@@ -17,6 +17,40 @@ export function toolGroups(): ToolGroup[] {
   return out;
 }
 
+/** Fired on the document when Edit > Toolbar saves a layout; the rail re-applies it in place. */
+export const TOOLBAR_EVENT = 'cv-toolbar-changed';
+
+/** The rail's layout: the groups shown, in order, and the tools kept in Extra Tools. */
+export interface ToolLayout { groups: ToolGroup[]; hidden: Tool[] }
+
+/** The saved layout (null is the built-in one) against the tools registered now: unknown ids are dropped, a tool listed twice
+ *  keeps its first place, and a tool the layout lacks (added in a later version) goes to the end of its default group. */
+export function resolveLayout(pref: { groups: string[][]; hidden: string[] } | null): ToolLayout {
+  if (!pref) return { groups: toolGroups(), hidden: [] };
+  const known = new Map<string, Tool>(toolList().map((t) => [t.id, t]));
+  const seen = new Set<string>();
+  const take = (id: string): Tool | undefined => {
+    const t = known.get(id);
+    if (!t || seen.has(id)) return undefined;
+    seen.add(id);
+    return t;
+  };
+  const isTool = (t: Tool | undefined): t is Tool => t !== undefined;
+  const groups: ToolGroup[] = [];
+  for (const ids of pref.groups) {
+    const tools = ids.map(take).filter(isTool);
+    if (tools.length) groups.push({ key: tools[0].group ?? tools[0].key, tools });
+  }
+  const hidden = pref.hidden.map(take).filter(isTool);
+  for (const t of toolList()) {
+    if (seen.has(t.id)) continue;
+    seen.add(t.id);
+    const k = t.group ?? t.key, home = groups.find((g) => g.tools.some((x) => (x.group ?? x.key) === k));
+    if (home) home.tools.push(t); else groups.push({ key: k, tools: [t] });
+  }
+  return { groups, hidden };
+}
+
 const last = new Map<string, ToolId>();
 try {
   const raw = JSON.parse(localStorage.getItem(STORE) ?? '{}') as Record<string, unknown>;
