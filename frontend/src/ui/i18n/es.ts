@@ -177,4 +177,8 @@ export const es: Record<string, string> = {
   'Style': 'Estilo', 'Subtract': 'Restar', 'Tolerance': 'Tolerancia', 'Tool': 'Herramienta', 'Tracking': 'Tracking', 'Transparency': 'Transparencia', 'Transparent': 'Transparente',
   'Triangle': 'Triángulo', 'Unit': 'Unidad', 'Use Pattern': 'Usar motivo', 'Vibrance': 'Intensidad', 'W × H × Res': 'An × Al × Res', 'Weight': 'Grosor', 'Wet': 'Húmedo',
   'Width': 'Anchura', 'Zoom in': 'Acercar', 'Zoom out': 'Alejar',
+  'Gradients': 'Degradados', 'Patterns': 'Motivos', 'Shapes': 'Formas', 'Fit Layer(s) on Screen': 'Encajar capas en pantalla', 'Fit Artboard on Screen': 'Encajar mesa de trabajo en pantalla',
+  'New Guide Layout': 'Nueva disposición de guías', 'New Guides From Shape': 'Nuevas guías desde forma', 'Columns': 'Columnas', 'Rows': 'Filas', 'Column gutter': 'Medianil de columna',
+  'Row gutter': 'Medianil de fila', 'Top margin': 'Margen superior', 'Left margin': 'Margen izquierdo', 'Bottom margin': 'Margen inferior', 'Right margin': 'Margen derecho',
+  'Clear existing guides': 'Borrar guías existentes', 'Units': 'Unidades', 'Resolution (ppi)': 'Resolución (ppp)', 'Constrain proportions': 'Restringir proporciones', 'Resample': 'Remuestrear',
 };

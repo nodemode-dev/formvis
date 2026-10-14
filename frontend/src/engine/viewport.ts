@@ -43,6 +43,16 @@ export class Viewport {
     this.fitted = true;
   }
 
+  /** Fit Layers and Fit Artboard on Screen (27.11): document rectangle `r` fitted to the visible area and centred. */
+  fitRect(r: { x: number; y: number; w: number; h: number }, margin = 32): void {
+    const w = this.width - Viewport.insetRight;
+    const z = Math.min((w - margin * 2) / Math.max(1, r.w), (this.height - margin * 2) / Math.max(1, r.h));
+    this.zoom = clamp(Number.isFinite(z) && z > 0 ? z : Viewport.MIN, Viewport.MIN, Viewport.MAX);
+    this.panX = Math.round((w - r.w * this.zoom) / 2 - r.x * this.zoom);
+    this.panY = Math.round((this.height - r.h * this.zoom) / 2 - r.y * this.zoom);
+    this.fitted = false;
+  }
+
   /** Fill Screen: the zoom at which the image covers the visible area, centred, no margin. */
   fill(dw: number, dh: number): void {
     const w = this.width - Viewport.insetRight;

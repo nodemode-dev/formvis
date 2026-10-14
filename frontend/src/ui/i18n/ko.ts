@@ -173,4 +173,8 @@ export const ko: Record<string, string> = {
   'Style': '스타일', 'Subtract': '빼기', 'Tolerance': '허용치', 'Tool': '도구', 'Tracking': '자간', 'Transparency': '투명도', 'Transparent': '투명',
   'Triangle': '삼각형', 'Unit': '단위', 'Use Pattern': '패턴 사용', 'Vibrance': '활기', 'W × H × Res': '폭 × 높이 × 해상도', 'Weight': '두께', 'Wet': '젖음',
   'Width': '폭', 'Zoom in': '확대', 'Zoom out': '축소',
+  'Gradients': '그레이디언트', 'Patterns': '패턴', 'Shapes': '모양', 'Fit Layer(s) on Screen': '레이어를 화면에 맞추기', 'Fit Artboard on Screen': '아트보드를 화면에 맞추기',
+  'New Guide Layout': '새 안내선 레이아웃', 'New Guides From Shape': '모양에서 새 안내선', 'Columns': '열', 'Rows': '행', 'Column gutter': '열 간격',
+  'Row gutter': '행 간격', 'Top margin': '위쪽 여백', 'Left margin': '왼쪽 여백', 'Bottom margin': '아래쪽 여백', 'Right margin': '오른쪽 여백',
+  'Clear existing guides': '기존 안내선 지우기', 'Units': '단위', 'Resolution (ppi)': '해상도 (ppi)', 'Constrain proportions': '비율 제한', 'Resample': '리샘플링',
 };

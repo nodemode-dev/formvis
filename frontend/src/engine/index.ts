@@ -1359,6 +1359,34 @@ export class Engine {
     p.viewport.fit(p.doc.width, p.doc.height);
     this.emit('viewport', null); this.emit('render', null);
   }
+  /** View > Fit Layer(s) on Screen (27.11): the selected layers' content bounds fitted to the view. False when they hold nothing. */
+  fitLayers(): boolean {
+    const p = this.current;
+    if (!p) return false;
+    let r: Rect | null = null;
+    for (const id of p.selectedIds.size ? p.selectedIds : new Set(p.activeId ? [p.activeId] : [])) {
+      const b = this.contentBounds(id, p);
+      if (b) r = r ? unionRect(r, b) : b;
+    }
+    if (!r || r.w < 1 || r.h < 1) return false;
+    p.viewport.fitRect(r);
+    this.emit('viewport', null); this.emit('render', null);
+    return true;
+  }
+
+  /** View > Fit Artboard on Screen (27.11): the artboard holding the active layer (or the first artboard) fitted to the view. */
+  fitArtboard(): boolean {
+    const p = this.current;
+    if (!p) return false;
+    let l = p.activeLayer ?? null;
+    while (l && !l.artboard && l.parentId) l = p.layer(l.parentId) ?? null;
+    const a = l?.artboard ?? p.doc.layers.find((x) => x.artboard)?.artboard;
+    if (!a) return false;
+    p.viewport.fitRect(a);
+    this.emit('viewport', null); this.emit('render', null);
+    return true;
+  }
+
   zoomTo(z: number, at?: Pt): void {
     const v = this.current?.viewport;
     if (!v) return;
@@ -6503,6 +6531,43 @@ export class Engine {
   }
 
   removeGuide(index: number): void { this.setGuides('Delete Guide', (g) => g.filter((_, i) => i !== index)); }
+
+  /** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins, as Photoshop lays them out:
+   *  guides at the margins and at both edges of every gutter (a gutter of 0 puts one guide between cells). `clear`
+   *  replaces the existing guides. One undo step. */
+  guideLayout(o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean }): void {
+    const d = this.current?.doc;
+    if (!d) return;
+    const half = (v: number): number => Math.round(v * 2) / 2, out: Guide[] = [];
+    const lay = (axis: 'x' | 'y', n: number, gutter: number, a: number, b: number): void => {
+      const span = b - a, cells = Math.max(1, Math.floor(n));
+      if (span <= 0) return;
+      const cell = (span - gutter * (cells - 1)) / cells;
+      if (a > 0) out.push({ axis, at: half(a) });
+      if (b < (axis === 'x' ? d.width : d.height)) out.push({ axis, at: half(b) });
+      for (let i = 1; i < cells; i += 1) {
+        const end = a + i * cell + (i - 1) * gutter;
+        out.push({ axis, at: half(end) });
+        if (gutter > 0) out.push({ axis, at: half(end + gutter) });
+      }
+    };
+    if (o.columns >= 1) lay('x', o.columns, Math.max(0, o.gutterX), Math.max(0, o.margin.left), d.width - Math.max(0, o.margin.right));
+    if (o.rows >= 1) lay('y', o.rows, Math.max(0, o.gutterY), Math.max(0, o.margin.top), d.height - Math.max(0, o.margin.bottom));
+    this.setGuides('New Guide Layout', (g) => [...(o.clear ? [] : g), ...out]);
+  }
+
+  /** View > New Guides From Shape (27.11): guides on the four edges of the active shape layer's path, else of the selection. */
+  guidesFromShape(): boolean {
+    const p = this.current;
+    if (!p) return false;
+    const l = p.activeLayer, sel = p.selection;
+    let r: Rect | null = l?.vector ? this.contentBounds(l.id, p) : null;
+    if (!r && sel) r = { x: sel.x, y: sel.y, w: sel.w, h: sel.h };
+    if (!r) return false;
+    const b = r;
+    this.setGuides('New Guides From Shape', (g) => [...g, { axis: 'x', at: b.x }, { axis: 'x', at: b.x + b.w }, { axis: 'y', at: b.y }, { axis: 'y', at: b.y + b.h }]);
+    return true;
+  }
   clearGuides(): void { this.setGuides('Clear Guides', () => []); }
 
   private setSlices(name: string, next: (s: import('./types').DocSlice[]) => import('./types').DocSlice[]): void {

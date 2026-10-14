@@ -60,7 +60,7 @@ export class StatusBar {
     setText(this.zoom, p ? `${Number((p.viewport.zoom * 100).toFixed(1))}%` : '');
     setText(this.dims, p ? `${p.doc.width} \u00d7 ${p.doc.height} px` : '');
     const par = p?.doc.pixelAspect;
-    setText(this.par, par && par !== 1 ? `PAR ${Number(par.toFixed(3))}${this.engine.view.parCorrection ? ', corrected in the Navigator' : ''}` : '');
+    setText(this.par, par && par !== 1 ? `PAR ${Number(par.toFixed(3))}${this.engine.view.parCorrection ? ', corrected' : ''}` : '');
   }
 
   private syncHint(): void { setText(this.hint, getTool(this.engine.tool)?.hint(this.engine) ?? ''); }

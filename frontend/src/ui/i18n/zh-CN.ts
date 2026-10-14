@@ -173,4 +173,8 @@ export const zhCN: Record<string, string> = {
   'Style': '样式', 'Subtract': '减去', 'Tolerance': '容差', 'Tool': '工具', 'Tracking': '字距', 'Transparency': '透明度', 'Transparent': '透明',
   'Triangle': '三角形', 'Unit': '单位', 'Use Pattern': '使用图案', 'Vibrance': '自然饱和度', 'W × H × Res': '宽 × 高 × 分辨率', 'Weight': '粗细', 'Wet': '潮湿',
   'Width': '宽度', 'Zoom in': '放大', 'Zoom out': '缩小',
+  'Gradients': '渐变', 'Patterns': '图案', 'Shapes': '形状', 'Fit Layer(s) on Screen': '图层适合屏幕', 'Fit Artboard on Screen': '画板适合屏幕',
+  'New Guide Layout': '新建参考线版面', 'New Guides From Shape': '通过形状新建参考线', 'Columns': '列', 'Rows': '行', 'Column gutter': '列间距',
+  'Row gutter': '行间距', 'Top margin': '上边距', 'Left margin': '左边距', 'Bottom margin': '下边距', 'Right margin': '右边距',
+  'Clear existing guides': '清除现有参考线', 'Units': '单位', 'Resolution (ppi)': '分辨率 (ppi)', 'Constrain proportions': '约束比例', 'Resample': '重新采样',
 };

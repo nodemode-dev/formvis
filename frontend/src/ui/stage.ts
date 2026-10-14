@@ -73,6 +73,7 @@ export class Stage {
     window.addEventListener('resize', () => this.resize());
     engine.on('render', (region) => this.queue(true, true, region));
     for (const k of ['viewport', 'active', 'projects'] as const) engine.on(k, () => { this.turn(); this.queue(true, true); });
+    for (const k of ['overlay', 'doc'] as const) engine.on(k, () => this.turn());   // Pixel Aspect Ratio Correction or the ratio changed (35.4c); a style compare when nothing did
     for (const k of ['overlay', 'options'] as const) engine.on(k, () => this.queue(false, true));
     engine.on('projects', () => { this.queue(true, true); this.syncAnts(); this.syncWelcome(); this.updateCursor(); });
     engine.on('selection', () => { this.queue(false, true); this.syncAnts(); });
@@ -348,15 +349,29 @@ export class Stage {
    *  the rulers' units, and the grid's and guides' colours ('' is the theme's). */
   static prefs: { cell: number; zoomWheel: boolean; rulerUnits: 'px' | 'in' | 'cm' | 'mm' | '%'; gridColor: string; guideColor: string } = { cell: 8, zoomWheel: false, rulerUnits: 'px', gridColor: '', guideColor: '' };
 
-  static unturn(x: number, y: number, w: number, h: number, deg: number): { x: number; y: number } {
-    if (!deg) return { x, y };
-    const a = (-deg * Math.PI) / 180, cx = w / 2, cy = h / 2, dx = x - cx, dy = y - cy;
-    return { x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a) };
+  /** A stage point back to the unturned, unstretched drawing surfaces: the view's rotation taken off about the centre,
+   *  then the pixel aspect stretch `par` (35.4c) taken off horizontally about the centre. */
+  static unturn(x: number, y: number, w: number, h: number, deg: number, par = 1): { x: number; y: number } {
+    let p = { x, y };
+    if (deg) {
+      const a = (-deg * Math.PI) / 180, cx = w / 2, cy = h / 2, dx = x - cx, dy = y - cy;
+      p = { x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a) };
+    }
+    return par !== 1 && par > 0 ? { x: w / 2 + (p.x - w / 2) / par, y: p.y } : p;
   }
 
-  /** The drawing surfaces turned as the view is (CSS, about the stage's centre); every renderer draws as it always has. */
+  /** The pixel aspect stretch the canvas shows with (View > Pixel Aspect Ratio Correction on a non-square document). */
+  static parOf(engine: Engine): number {
+    const r = engine.current?.doc.pixelAspect;
+    return engine.view.parCorrection && r && r > 0 ? r : 1;
+  }
+
+  /** The drawing surfaces turned as the view is (CSS, about the stage's centre); every renderer draws as it always has.
+   *  Pixel Aspect Ratio Correction (35.4c) stretches them horizontally the same way, before the turn, so every
+   *  renderer, overlay and tool keeps drawing in square pixels and the pointer is mapped back by `unturn`. */
   private turn(): void {
-    const deg = this.engine.current?.viewport.rotation ?? 0, t = deg ? `rotate(${deg}deg)` : '';
+    const deg = this.engine.current?.viewport.rotation ?? 0, par = Stage.parOf(this.engine);
+    const t = [deg ? `rotate(${deg}deg)` : '', par !== 1 ? `scaleX(${par})` : ''].filter(Boolean).join(' ');
     for (const c of Array.from(this.host.querySelectorAll<HTMLElement>(':scope > canvas'))) if (c.style.transform !== t) c.style.transform = t;
     this.host.classList.toggle('is-turned', !!deg);
   }
@@ -566,7 +581,7 @@ export class Stage {
     const v = this.engine.current?.viewport;
     // Rotate View turns the drawing surfaces about the stage's centre; a pointer is turned back into their space, so
     // every tool lands where it points at any angle.
-    const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0);
+    const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0, Stage.parOf(this.engine));
     const pen = 'pointerType' in e && (e as PointerEvent).pointerType === 'pen';
     return { doc: v ? v.toDoc(screen.x, screen.y) : screen, screen, button: e.button, shift: e.shiftKey || stickyModifiers.active('shift'), alt: e.altKey || stickyModifiers.active('alt'), mod: (isMac ? e.metaKey : e.ctrlKey) || stickyModifiers.active('mod'), clicks, pressure: Stage.pressureOf(e, pen),
       pose: pen ? { tiltX: (e as PointerEvent).tiltX || 0, tiltY: (e as PointerEvent).tiltY || 0, twist: (e as PointerEvent).twist || 0 } : undefined };
@@ -578,7 +593,8 @@ export class Stage {
     let id: number | null = null;
     const at = (e: PointerEvent): { doc: Pt; inside: boolean } => {
       const b = this.rect ?? this.host.getBoundingClientRect(), sx = e.clientX - b.left, sy = e.clientY - b.top, v = this.engine.current?.viewport;
-      const doc = v ? v.toDoc(sx, sy) : { x: sx, y: sy };
+      const s = Stage.unturn(sx, sy, b.width, b.height, v?.rotation ?? 0, Stage.parOf(this.engine));   // the guide under the pointer in a turned or stretched view (35.4c)
+      const doc = v ? v.toDoc(s.x, s.y) : { x: sx, y: sy };
       return { doc, inside: sx >= 0 && sy >= 0 && sx <= b.width && sy <= b.height && (axis === 'y' ? sy > RULER : sx > RULER) };
     };
     r.addEventListener('pointerdown', (e) => {
@@ -613,7 +629,8 @@ export class Stage {
     const r = this.rect ?? this.host.getBoundingClientRect();
     const v = this.engine.current?.viewport;
     if (!v || clientX < r.left || clientY < r.top || clientX > r.right || clientY > r.bottom) return null;
-    return v.toDoc(clientX - r.left, clientY - r.top);
+    const s = Stage.unturn(clientX - r.left, clientY - r.top, r.width, r.height, v.rotation ?? 0, Stage.parOf(this.engine));   // turned and stretched views (35.4c)
+    return v.toDoc(s.x, s.y);
   }
 
   private setCursor(c: string): void {
@@ -696,7 +713,7 @@ export class Stage {
       g.mx = q.mx; g.my = q.my;
       this.engine.pan(dx * Math.cos(ra) - dy * Math.sin(ra), dx * Math.sin(ra) + dy * Math.cos(ra));
       // Zoom by the spread about the midpoint, which stays under the fingers.
-      this.engine.zoomTo(g.z0 * (q.d / Math.max(1, g.d0)), Stage.unturn(q.mx, q.my, r.width, r.height, this.engine.current?.viewport.rotation ?? 0));
+      this.engine.zoomTo(g.z0 * (q.d / Math.max(1, g.d0)), Stage.unturn(q.mx, q.my, r.width, r.height, this.engine.current?.viewport.rotation ?? 0, Stage.parOf(this.engine)));
       // Turn once the fingers have turned past 10 degrees.
       const turn = ((q.ang - g.a0) * 180) / Math.PI, wrapped = ((turn + 540) % 360) - 180;
       if (!g.turning && Math.abs(wrapped) > 10) g.turning = true;
