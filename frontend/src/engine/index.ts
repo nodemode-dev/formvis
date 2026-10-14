@@ -1562,6 +1562,27 @@ export class Engine {
     const p = this.current, sp = this.workPath?.subpaths.find((s) => s.anchors.length > 1);
     if (!p) return false;
     if (!sp) { this.notice('Draw a path with the Pen tool first, then set type on it.'); return false; }
+    return this.textOnSubpath(content, offset, sp, 'Type on Path');
+  }
+
+  /** Layer > Type > Type on Arc / Type on Circle: `content` set along an arc (degrees, 0 at the top, clockwise; the type
+   *  reads left to right along the top when start is minus half the sweep) or a full circle, live and editable. */
+  async createTextOnShape(content: string, shape: { kind: 'arc' | 'circle'; cx: number; cy: number; r: number; start: number; sweep: number }, offset: number): Promise<boolean> {
+    if (!this.current) return false;
+    const circle = shape.kind === 'circle', r = Math.max(1, shape.r), sweep = circle ? 360 : Math.max(1, Math.min(360, shape.sweep));
+    const n = Math.max(1, Math.ceil(sweep / 90 - 1e-9)), theta = sweep / n, k = (4 / 3) * Math.tan((theta * Math.PI) / 180 / 4) * r;
+    const count = circle ? n : n + 1, anchors: SubPath['anchors'] = [];
+    for (let i = 0; i < count; i++) {
+      const a = ((shape.start + theta * i) * Math.PI) / 180, tx = Math.cos(a) * k, ty = Math.sin(a) * k;
+      const x = shape.cx + Math.sin(a) * r, y = shape.cy - Math.cos(a) * r;
+      anchors.push({ x, y, inX: !circle && i === 0 ? x : x - tx, inY: !circle && i === 0 ? y : y - ty, outX: !circle && i === count - 1 ? x : x + tx, outY: !circle && i === count - 1 ? y : y + ty });
+    }
+    return this.textOnSubpath(content, offset, { anchors, closed: circle }, circle ? 'Type on Circle' : 'Type on Arc');
+  }
+
+  private async textOnSubpath(content: string, offset: number, sp: SubPath, undoName: string): Promise<boolean> {
+    const p = this.current;
+    if (!p) return false;
     if (!content.trim()) { this.notice('Type some text to set on the path.'); return false; }
     const base: TextSpec = { ...this.textSettings, content: content.replace(/\r?\n/g, ' '), warp: null, onPath: null, rendered: undefined };
     await loadTextFont(base);
@@ -1573,8 +1594,33 @@ export class Engine {
     const spec: TextSpec = { ...base, onPath: { points: pts.map((q) => ({ x: q.x - ox, y: q.y - oy })), offset: Math.max(0, Math.min(100, offset)), frame } };
     const r = renderText(spec);
     this.textSettings = { ...base, content: '', onPath: null };
-    this.insertRasterLayer(r.raster, spec.content.trim().slice(0, 40) || 'Type', ox, oy, { text: { ...spec, rendered: textKey(r.raster) } }, 'Type on Path');
+    this.insertRasterLayer(r.raster, spec.content.trim().slice(0, 40) || 'Type', ox, oy, { text: { ...spec, rendered: textKey(r.raster) } }, undoName);
     return true;
+  }
+
+  /** The centre type on an arc or circle is set around: the selection's centre, else the document's. */
+  shapeCentre(): { x: number; y: number } | null {
+    const p = this.current;
+    if (!p) return null;
+    const s = p.selection?.rect;
+    return s && s.w > 0 && s.h > 0 ? { x: s.x + s.w / 2, y: s.y + s.h / 2 } : { x: p.doc.width / 2, y: p.doc.height / 2 };
+  }
+
+  /** Window > Arrange > Match Zoom, Match Location, Match Rotation: the current document's view copied to every other
+   *  open document. Location puts the same document point at the view's centre. */
+  matchViews(what: { zoom?: boolean; location?: boolean; rotation?: boolean }): void {
+    const cur = this.current;
+    if (!cur || this.projects.length < 2) return;
+    const v = cur.viewport, mid = v.toDoc(v.centerX, v.height / 2);
+    for (const p of this.projects) {
+      if (p === cur) continue;
+      const w = p.viewport;
+      if (what.zoom) { w.zoom = v.zoom; w.fitted = false; }
+      if (what.rotation) w.rotation = v.rotation;
+      if (what.location) { w.panX = w.centerX - mid.x * w.zoom; w.panY = w.height / 2 - mid.y * w.zoom; w.fitted = false; }
+    }
+    this.emit('viewport', null);
+    this.emit('render', null);
   }
 
   /** Window > Paragraph Styles: the document's styles. */
