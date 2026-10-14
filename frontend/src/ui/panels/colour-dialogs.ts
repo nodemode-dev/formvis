@@ -11,7 +11,7 @@ import { displayLine } from '../colour-display';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
 
-const INTENTS: Array<[Intent, string]> = [['perceptual', 'Perceptual'], ['relative', 'Relative Colorimetric'], ['saturation', 'Saturation'], ['absolute', 'Absolute Colorimetric']];
+export const INTENTS: Array<[Intent, string]> = [['perceptual', 'Perceptual'], ['relative', 'Relative Colorimetric'], ['saturation', 'Saturation'], ['absolute', 'Absolute Colorimetric']];
 const BUILT_IN: Array<['display-p3' | 'adobe-rgb', string]> = [['display-p3', 'Display P3'], ['adobe-rgb', 'Adobe RGB (1998)']];
 const msg = (err: unknown): string => (err instanceof ApiError || err instanceof Error ? err.message : 'The engine did not answer.');
 
@@ -19,14 +19,14 @@ function row(label: string, control: HTMLElement): HTMLElement { const r = el('<
 function options(sel: HTMLSelectElement, items: Array<[string, string]>): void { sel.replaceChildren(...items.map(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; return o; })); }
 
 /** RGB profiles to assign or convert to: sRGB (the working space), the two built in, and the RGB ones on this computer. */
-async function rgbChoices(): Promise<Array<[string, string]>> {
+export async function rgbChoices(): Promise<Array<[string, string]>> {
   const list: Array<[string, string]> = [['srgb', 'Working RGB: sRGB IEC61966-2.1'], ...BUILT_IN.map(([id, n]) => [id, n] as [string, string])];
   try { for (const p of (await api.colourProfiles()).profiles) if (p.space === 'RGB') list.push([`id:${p.id}`, p.name]); } catch { /* the engine offline: built-in only */ }
   return list;
 }
 
 /** CMYK profiles on this computer (1.57.9), for Assign and Convert to Profile in a CMYK document. */
-async function cmykChoices(): Promise<Array<[string, string]>> {
+export async function cmykChoices(): Promise<Array<[string, string]>> {
   const list: Array<[string, string]> = [];
   try { for (const p of (await api.colourProfiles()).profiles) if (p.space === 'CMYK') list.push([`id:${p.id}`, p.name]); } catch { /* the engine offline: none */ }
   return list;
