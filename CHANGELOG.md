@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.71.6 · 2026-10-14
+
+### Added
+
+- Object Selection: Object Finder (on by default) outlines the object under the pointer after a short rest; a click selects that object without asking the model again.
+- Assistant: each command the model runs is its own row with its status and an Undo for that step; Plan first shows a numbered plan to run or cancel; the model is told to use formvis's own commands.
+- Save for Web: 2-Up and 4-Up views with three variants, file sizes and download times; true 8-bit PNG with colours, dither and transparency; a metadata choice; and Image Assets on Save in File > Export.
+
 ## 1.71.5 · 2026-10-14
 
 ### Added

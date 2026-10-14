@@ -2,6 +2,196 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.71.6: Object Finder, natural-language editing, Save for Web · _v1.71.6 (ui/panels/assistant.ts, styles/dialogs.css, ui/i18n/extra/*.ts)
+
+- `ui/panels/assistant.ts`, `stepRow`: a call with no arguments leaves the arguments line empty instead of saying "no settings". Replaced: `setText(c.querySelector('.cv-assistant-args'), plainArgs(shown) || 'no settings');`.
+- `styles/dialogs.css`: new `.cv-assistant-args:empty { display: none; }`.
+- `ui/i18n/extra/*.ts`: 36 keys in all 23 tables (365 each): Object Finder, the assistant's step states, Undo titles, plan notes and setup note, and Save for Web's views, variants, dither, metadata, download speeds and note. Not keyed: the pane captions assembled from pieces ("JPEG · 1 KB · under 1 sec at 56.6 Kbps", "Quality 80"), which stay English.
+- Checked in the window, with the model stubbed at `/api/llm/status` and `/api/llm/chat` returning two `run_command` calls (new-layer, invert): two step rows labelled New Layer and Invert, both Done, history steps named after the commands; the first row's Undo disabled with "Later steps must be undone first." until the second was undone, which took history from 2 to 1. Save for Web's 4-Up shows the original and three JPEG panes at quality 80, 48 and 24 with sizes and times. Object Finder was not exercised (no SAM model files here).
+
+## Object Finder, DEV_PLAN 36.1 · _v1.71.6 (extensions/tools/object-select.ts)
+
+- Module state: the hover highlight keeps the mask data and its project; new counters guard stale answers. Replaced:
+
+```ts
+let highlight: { mask: HTMLCanvasElement | OffscreenCanvas; at: Pt } | null = null;
+let hoverTimer = 0, hoverBusy = false, hoverOn = true;
+```
+
+  with `highlight: { mask; at; data: Uint8Array; project: object }`, `hoverSeq`, `hoverDownUntil` and a `watched` WeakSet; `watch(engine)` clears the highlight on 'render', 'active' and (when the tool is no longer objectSelect) 'tool'. Module `found` holds the mask under the pointer at press time.
+- `showHover`: debounce 350 ms became 120 ms; no model call while the pointer stays inside the shown mask; answers dropped when `seq !== hoverSeq` or the project changed; a failed call backs off silently for 20 s. Replaced:
+
+```ts
+      highlight = { mask: c, at };
+    } catch { highlight = null; } finally { hoverBusy = false; engine.emit('overlay', null); }
+  }, 350);
+```
+
+- `selectAt`: optional `found`; when present the mask is applied with `engine.applySelection(...)` and no model call is made.
+- `objectSelectTool.down` captures `found` when the press lands inside the highlight. Replaced:
+
+```ts
+  down(ctx, p) { if (p.button !== 0) return; clearTimeout(hoverTimer); highlight = null; draft = { from: p.doc, to: p.doc, mode: modeFor(ctx.engine, p) }; ctx.engine.emit('overlay', null); },
+```
+
+- `objectSelectTool.up`: a click passes `found` to `selectAt`; a drag clears it. Replaced:
+
+```ts
+    if (Math.abs(b.x - a.x) < 6 && Math.abs(b.y - a.y) < 6) { void selectAt(ctx.engine, d.from, d.mode); return; }
+```
+
+- `objectSelectTool.hover`: the highlight stays while the pointer is inside the mask (it dropped after 12 screen px). Replaced:
+
+```ts
+    if (highlight && Math.hypot(p.doc.x - highlight.at.x, p.doc.y - highlight.at.y) * ctx.view().zoom > 12) { highlight = null; ctx.engine.emit('overlay', null); }
+```
+
+- `objectSelectTool.cancel` also clears `found` and bumps `hoverSeq`.
+- `objectSelectTool.options`: the toggle is now "Object Finder" (default on); turning it off resets the back-off and repaints. Replaced:
+
+```ts
+    { kind: 'toggle', label: 'Highlight on Hover', get: () => hoverOn, set: (v) => { hoverOn = v; if (!v) { highlight = null; clearTimeout(hoverTimer); } } },
+```
+
+## Natural-language editing, DEV_PLAN 36.6 · _v1.71.6 (ui/panels/assistant.ts, engine/history.ts, engine/index.ts, styles/dialogs.css)
+
+- `ui/panels/assistant.ts`, `SYSTEM`: commands preferred (list_commands, then run_command with the id, one command per call); `PLAN` new. Replaced:
+
+```ts
+  + 'Keep replies short and say what you changed.';
+```
+
+- `AssistantPanel.card` removed (a `<details>` card titled with the tool name and JSON); replaced by `labelOf`, `stepRow`, `setState`, `refreshRows`, `undoRow`, `showPlan`, `dropPlan`, `setupNote`. Each tool call is one row appended once and patched in place, with the history index before and after; Undo is enabled only while `history.steps.current === row.after` and jumps with `engine.jumpHistory(row.before)`, a group when the call made several steps.
+- `AssistantPanel.ask` split into `ask` and `converse(planOnly)`. Replaced:
+
+```ts
+    if (!st?.configured) { this.line('note', 'Set a language model first, in Preferences > Plugins (Ollama or LM Studio on this computer, or a service with a key).'); return; }
+```
+
+  with `setupNote()` (an Open Preferences button running `settings`). A one-step `run_command` renames its step to the command label through `engine.renameLastStep`.
+- Constructor: a Plan first checkbox in the foot; `engine.on('history', ...)` patches the Undo buttons.
+- `engine/history.ts`, `History.renameLast(name)`; `engine/index.ts`, `Engine.renameLastStep(name)` (emits 'history').
+- `styles/dialogs.css`: `.cv-assistant-step-head`, `-step-label`, `-step-status`, `.cv-assistant-plan-bar`, `.cv-assistant-plan`.
+
+## Save for Web: 4-Up, PNG-8, metadata, assets on save, DEV_PLAN 36.14 · _v1.71.6 (ui/panels/save-for-web-dialog.ts, io/png8.ts, io/export-presets.ts, io/gif.ts, engine/types.ts, engine/index.ts, app.ts, automation/command-meta.ts)
+
+- `io/png8.ts` (new): `quantize8`, `encodePng8`: an indexed PNG (IHDR colour type 3, PLTE, tRNS with entry 0 transparent, bit depth 1, 2, 4 or 8 by palette size, zlib through CompressionStream('deflate')); the GIF median-cut palette; Floyd-Steinberg diffusion or none; Transparency off composites onto white. Checked by a scratchpad script: PIL opens both test outputs as mode P.
+- `io/gif.ts`, `palette` exported. Replaced: `function palette(px: Uint8ClampedArray, max: number)`.
+- `io/export-presets.ts`, `SFW_METADATA`, `sfwMeta` (new, before `XMP_FORMATS`); None reuses `exportMeta`.
+- `ui/panels/save-for-web-dialog.ts`, `SaveForWebDialog`: four fixed panes, view tabs, variants, shared pan, download time (`caption`, `SPEEDS`), Colors, Dither, Transparency and Metadata rows, `encode(c, cfg)` with `encodePng8` and `withXmp`. Replaced the fields and constructor:
+
+```ts
+  private fmt: Fmt = 'jpeg';
+  private quality = 80;
+  private scope: 'whole' | 'slices' = 'whole';
+  private timer = 0;
+  private token = 0;
+  private readonly orig = el<HTMLCanvasElement>(`<canvas width="${BOX_W}" height="${BOX_H}" aria-label="Original preview" style="width: ${BOX_W}px; height: ${BOX_H}px"></canvas>`);
+  private readonly opt = el<HTMLCanvasElement>(`<canvas width="${BOX_W}" height="${BOX_H}" aria-label="Optimized preview" style="width: ${BOX_W}px; height: ${BOX_H}px"></canvas>`);
+  private readonly origCap = el<HTMLElement>('<p class="cv-note"></p>');
+  private readonly optCap = el<HTMLElement>('<p class="cv-note"></p>');
+  private readonly status = el<HTMLElement>('<p class="cv-note"></p>');
+  private readonly format = selectRow('Format', [['jpeg', 'JPEG'], ['png24', 'PNG-24'], ['png8', 'PNG-8'], ['gif', 'GIF'], ['webp', 'WebP']], (v) => { this.fmt = v as Fmt; this.sync(); this.schedule(); });
+  private readonly qRow = sliderRow('Quality', 0, 100, 1, (v) => { this.quality = v; this.schedule(); });
+  private readonly scopeRow = selectRow('Export', [['whole', 'Whole image'], ['slices', 'All slices']], (v) => { this.scope = v as 'whole' | 'slices'; });
+
+  constructor(private readonly engine: Engine, private readonly deliver: (blob: Blob, name: string) => Promise<void>) {
+    super('Save for Web (Legacy)', 620);
+    const grid = el('<div style="display: flex; gap: 12px; justify-content: space-between"></div>');
+    const left = el('<div></div>'), right = el('<div></div>');
+    left.append(el('<p class="cv-note">Original</p>'), this.orig, this.origCap);
+    right.append(el('<p class="cv-note">Optimized</p>'), this.opt, this.optCap);
+    grid.append(left, right);
+    this.body.append(grid, this.format.el, this.qRow.el, this.scopeRow.el, this.status);
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('Save...', 'primary', () => { void this.save(); });
+  }
+```
+
+  Replaced the end of `show`, and `close`, `sync`, `drawBox`:
+
+```ts
+    this.format.set(this.fmt);
+    this.qRow.set(this.quality);
+    const flat = flatCanvas(this.engine);
+    if (flat) this.drawBox(this.orig, flat);
+    const ctx = this.opt.getContext('2d');
+    ctx?.clearRect(0, 0, BOX_W, BOX_H);
+    setText(this.origCap, '');
+    setText(this.optCap, '');
+    this.open();
+    this.schedule();
+  }
+
+  close(): void {
+    window.clearTimeout(this.timer);
+    this.token++;
+    super.close();
+  }
+
+  private sync(): void { this.qRow.el.hidden = this.fmt !== 'jpeg' && this.fmt !== 'webp'; }
+
+  private drawBox(c: HTMLCanvasElement, src: CanvasImageSource & { width: number; height: number }): void {
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, BOX_W, BOX_H);
+    ctx.drawImage(src, Math.round((BOX_W - src.width) / 2), Math.round((BOX_H - src.height) / 2));
+  }
+```
+
+  Replaced `encode` (PNG-8 was a plain 24-bit PNG) and `refresh`:
+
+```ts
+  /** Encodes a canvas in the chosen format. PNG-8 is written as a normal PNG for now: a true 8-bit palette is not built yet. */
+  private async encode(c: HTMLCanvasElement): Promise<Blob | null> {
+    switch (this.fmt) {
+      case 'jpeg': return toBlob(c, 'image/jpeg', this.quality / 100);
+      case 'webp': return toBlob(c, 'image/webp', this.quality / 100);
+      case 'gif': {
+        const ctx = c.getContext('2d');
+        if (!ctx) return null;
+        const data = ctx.getImageData(0, 0, c.width, c.height);
+        const bytes = encodeGif([{ data, delayMs: 0 }], c.width, c.height);
+        return new Blob([bytes as BlobPart], { type: 'image/gif' });
+      }
+      default: return toBlob(c, 'image/png');
+    }
+  }
+
+  private async refresh(token: number): Promise<void> {
+    const flat = flatCanvas(this.engine);
+    if (!flat || flat.width < 1 || flat.height < 1) return;
+    const blob = await this.encode(flat);
+    if (token !== this.token || !blob) return;
+    const bmp = await createImageBitmap(blob);
+    if (token !== this.token) { bmp.close(); return; }
+    this.drawBox(this.opt, bmp);
+    bmp.close();
+    setText(this.optCap, `${LABEL[this.fmt]} · ${size(blob.size)}`);
+    const png = await toBlob(flat, 'image/png');
+    if (token !== this.token) return;
+    setText(this.origCap, `Original · ${png ? size(png.size) : ''}`);
+    setText(this.status, 'Encoded preview at 100 percent, centre of the image.');
+  }
+```
+
+- `engine/types.ts`, `Doc.assetsOnSave?: boolean` (saved with the document); `engine/index.ts`, `Engine.setAssetsOnSave(on)`, one undo step.
+- `automation/command-meta.ts`: words for `'image-assets-on-save'`.
+- `app.ts`, `save`: after a plain Save, `generateAssets(true)` when the document's flag is on. `generateAssets(quiet)` holds the body that was inline in the command. Replaced:
+
+```ts
+    { id: 'generate-image-assets', label: 'Generate Image Assets', enabled: has, run: async () => {
+      const p = engine.current;
+      if (!p) return;
+      const files = await assetFiles(engine, !!caps);
+      if (!files.length) { toast('No layer names hold an asset name such as hero.png.', 'info'); return; }
+      await deliver(await zipFiles(files), `${stripExt(p.name)}-assets.zip`);
+      toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
+    } },
+```
+
+  The checked command `image-assets-on-save` sits beside it in File > Export.
+
 ## Release 1.71.5: Content-Aware Fill adaptation, Script Console, multi-part OpenEXR · _v1.71.5 (engine/retouch.ts, ui/i18n/extra/*.ts)
 
 - `engine/retouch.ts`, `contentFill`: the target's known-pixel offsets and their per-channel sums are computed once per target into `kx`, `ky`, `tq` (allocated beside `ad`), and each candidate only sums its own side; the per-candidate arrays are gone. Measured on a 30 px hole in 160 by 120 px: colour adaptation took 805 ms before this and 483 ms after, against 62 ms without. Replaced:
