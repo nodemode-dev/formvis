@@ -1,13 +1,13 @@
 # formvis commands
 
-Generated from the window's command catalogue (803 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (806 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 49
-- File: 54
+- File: 55
 - Filter: 77
-- Image: 72
+- Image: 73
 - Layer: 167
 - Paint: 1
 - Paths: 8
@@ -16,7 +16,7 @@ Generated from the window's command catalogue (803 commands) by `./formvis agent
 - Tools: 48
 - Type: 4
 - View: 29
-- Window: 41
+- Window: 42
 
 ## Edit
 
@@ -92,6 +92,7 @@ Generated from the window's command catalogue (803 commands) by `./formvis agent
 | `export-artboards-pdf` | Artboards to PDF... |  | Exports every artboard as one page of a single PDF, in the Layers order, each page at its artboard size from the document resolution; takes name, jpeg, quality and icc. (asks first) |
 | `export-as` | Export As... | Alt+Shift+Mod+W | Opens Export As with format, size and quality. (asks first) |
 | `export-avif` | Export AVIF |  | Exports the flattened picture as AVIF. (asks first) |
+| `export-data-sets` | Data Sets as Files... |  | Applies each data set in turn and exports the flattened document as <doc>_<dataset>.png (or jpg, psd by the format param), all in one zip; the document ends as it started. (asks first) |
 | `export-exr` | OpenEXR... |  | Exports an OpenEXR file. (asks first) |
 | `export-gif` | Export GIF... |  | Opens the GIF dialog and exports an animated GIF. (asks first) |
 | `export-hdr` | Radiance HDR... |  | Exports a Radiance HDR file. (asks first) |
@@ -278,6 +279,7 @@ Generated from the window's command catalogue (803 commands) by `./formvis agent
 | `invert` | Invert | Mod+I | Inverts the colours of the active layer. (changes the picture) |
 | `mode-bitmap` | Bitmap... |  | Opens the Bitmap conversion. (changes the picture) |
 | `mode-cmyk` | CMYK Color... |  | Opens the CMYK conversion. (changes the picture) |
+| `mode-duotone` | Duotone... |  | Opens Duotone options: one to four inks overprinted on a grayscale document. (changes the picture) |
 | `mode-grayscale` | Grayscale |  | Converts the document to grayscale. (changes the picture) |
 | `mode-indexed` | Indexed Color... |  | Opens the Indexed Color conversion. (changes the picture) |
 | `mode-lab` | Lab Color |  | Converts the document to Lab colour. (changes the picture) |
@@ -909,6 +911,7 @@ Generated from the window's command catalogue (803 commands) by `./formvis agent
 | `panel-character` | Character |  | Shows or hides the Character panel. |
 | `panel-history` | History |  | Shows or hides the History panel. |
 | `panel-info` | Info |  | Shows or hides the Info panel. |
+| `panel-layer-comps` | Layer Comps |  | Shows or hides the Layer Comps panel. |
 | `panel-layers` | Layers |  | Shows or hides the Layers panel. |
 | `panel-navigator` | Navigator |  | Shows or hides the Navigator panel. |
 | `panel-paragraph` | Paragraph |  | Shows or hides the Paragraph panel. |

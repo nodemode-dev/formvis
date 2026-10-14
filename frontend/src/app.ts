@@ -1,11 +1,13 @@
 import { ErrorLog } from './ui/errors';
 import { FillDialog } from './ui/panels/fill-dialog';
 import { FadeDialog } from './ui/panels/fade-dialog';
+import { DuotoneDialog } from './ui/panels/duotone-dialog';
 import { ApplyImageDialog } from './ui/panels/apply-image-dialog';
 import { ExportDialog } from './ui/panels/export-dialog';
 import { LayerExportDialog } from './ui/panels/layer-export-dialog';
+import { DataSetsDialog, DefineVariablesDialog } from './ui/panels/variables-dialog';
 import { ArtboardPdfDialog, type ArtboardPdfSettings } from './ui/panels/artboard-pdf-dialog';
-import { DEFAULT_LAYER_EXPORT, layerFiles, type LayerExportSettings } from './io/layer-export';
+import { DEFAULT_LAYER_EXPORT, dataSetFiles, layerFiles, type LayerExportSettings } from './io/layer-export';
 import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog, NewArtboardDialog } from './ui/panels/artboard-dialog';
 import { CornersDialog } from './ui/panels/corners-dialog';
@@ -39,6 +41,7 @@ import { SaveCopyDialog } from './ui/panels/save-copy-dialog';
 import { CommandPalette } from './ui/command-palette';
 import { FillLayerDialog } from './ui/panels/fill-layer-dialog';
 import { HistoryPanel } from './ui/history';
+import { LayerCompsPanel } from './ui/layer-comps';
 import { StopDialog } from './ui/panels/stop-dialog';
 import { TweenDialog } from './ui/panels/tween-dialog';
 import { GifDialog } from './ui/panels/gif-dialog';
@@ -340,6 +343,8 @@ export function startApp(): void {
   // 1.59.3, DEV_PLAN 25.2: under the canvas; 1.59.8: kept for Window > Timeline, and opening the frames panel.
   const vtl = new VideoTimelinePanel(q(root, '.cv-vtl'), engine, () => renderDialog.show(), () => { if (!dock.isShown('timeline')) dock.toggle('timeline'); });
   new HistoryPanel(q(root, '.cv-layers'), engine);
+  new LayerCompsPanel(q(root, '.cv-layers'), engine);   // Window > Layer Comps (DEV_PLAN 33.3 part b)
+  registerPanel({ id: 'layer-comps', label: 'Layer Comps', selector: 'section.cv-layer-comps' });
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
   // arrangement, filled when the tabs' homes are restored.
   const CUSTOM = 'formvis.customGroups';
@@ -1718,6 +1723,7 @@ export function startApp(): void {
     adjust: new AdjustPanel(engine),
     filter: new FilterPanel(engine),
     fade: new FadeDialog(engine),
+    duotone: new DuotoneDialog(engine),
     applyImage: new ApplyImageDialog(engine),
     neural: new NeuralFiltersDialog(engine),
     contentAwareScale: new ContentAwareScaleDialog(engine),
@@ -1743,6 +1749,8 @@ export function startApp(): void {
     print: new PrintDialog(engine, (s) => { printDocument(engine, s); }, (pdf, name) => { void deliver(pdf, name); }),
     layerExport: new LayerExportDialog(engine, () => !!caps?.desktop, (s) => void exportLayerFiles(s)),
     artboardPdf: new ArtboardPdfDialog(engine, (s) => void exportArtboardsPdf(s)),
+    defineVariables: new DefineVariablesDialog(engine),
+    dataSets: new DataSetsDialog(engine),
     guide: new GuideDialog(engine),
     artboard: new ArtboardDialog(engine),
     newArtboard: new NewArtboardDialog(engine),
@@ -1953,6 +1961,7 @@ export function startApp(): void {
         method: { type: 'string', description: 'For pixels: fit, fill, asis or conform; fit when left out.' },
       },
       run: (a) => {
+        if (!a || !Object.keys(a).length) { dialogs.defineVariables.show(); return undefined; }
         const p = engine.current, k = String(a?.kind ?? 'visibility').toLowerCase(), ref = a?.layer === undefined ? p?.activeId : String(a.layer);
         const l = p?.doc.layers.find((x) => x.id === ref) ?? p?.doc.layers.find((x) => x.name === ref);
         if (!l || (k !== 'visibility' && k !== 'text' && k !== 'pixels')) { toast('Give a layer and a kind: visibility, text or pixels.'); return undefined; }
@@ -1965,11 +1974,25 @@ export function startApp(): void {
       params: { text: { type: 'string', description: 'CSV or tab-separated text: the first row names the variables, each later row is a data set.' } },
       run: (a) => {
         if (a?.text !== undefined) return engine.importDataSets(String(a.text));
-        const input = document.createElement('input');
-        input.type = 'file'; input.accept = '.csv,.txt,text/csv,text/plain';
-        input.addEventListener('change', () => { const f = input.files?.[0]; if (f) void f.text().then((t) => { const n = engine.importDataSets(t); if (n) toast(`${n} data set${n === 1 ? '' : 's'} imported.`); }); });
-        input.click();
+        dialogs.dataSets.show();
         return undefined;
+      },
+    },
+    {
+      id: 'export-data-sets', label: 'Data Sets as Files...', enabled: () => !!engine.current?.doc.dataSets?.length,
+      params: { format: { type: 'string', description: 'png, jpg or psd; png when left out.' } },
+      run: async (a) => {
+        const p = engine.current, f = String(a?.format ?? 'png').toLowerCase(), format = f === 'jpg' || f === 'jpeg' ? 'jpg' : f === 'psd' ? 'psd' : 'png';
+        if (!p?.doc.dataSets?.length) { toast('Import data sets first.', 'info'); return; }
+        engine.settle();
+        await engine.task(async () => {
+          try {
+            const files = await dataSetFiles(engine, format, !!caps);
+            if (!files.length) { toast('There are no data sets to export.', 'info'); return; }
+            await deliver(await zipFiles(files), `${stripExt(p.name)} data sets.zip`);
+            toast(`Exported ${files.length} data set${files.length === 1 ? '' : 's'} as a zip.`, 'info');
+          } catch (err) { toast(message(err), 'error'); }
+        });
       },
     },
     {
@@ -2417,6 +2440,7 @@ export function startApp(): void {
     { id: 'mode-lab', label: 'Lab Color', enabled: () => has() && ['rgb', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'lab', run: () => { if (engine.current?.doc.mode !== 'lab') void downTo(16).then((ok) => { if (!ok) return; if (engine.current?.doc.depth === 16) void deepMode('lab', 'lab', null); else engine.setLab(); }); } },
     { id: 'mode-cmyk', label: 'CMYK Color...', enabled: () => has() && ['rgb', 'cmyk', 'lab'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'cmyk', run: () => { if (engine.current?.doc.mode === 'cmyk') return; void ((engine.current?.doc.depth ?? 8) > 8 ? downTo(16) : toRgbFirst().then((rgb) => (rgb ? downTo(8) : false))).then((ok) => { if (ok) modeDialog.show('cmyk'); }); } },
     { id: 'mode-grayscale', label: 'Grayscale', enabled: has, checked: () => engine.current?.doc.mode === 'grayscale', run: () => { const m = engine.current?.doc.mode; if (engine.current?.doc.depth === 16 && m !== 'grayscale') void toGray(); else if (m === 'lab') engine.setGrayFromLab(); else if (m === 'cmyk') void toRgbFirst().then((ok) => { if (ok) engine.convertMode('grayscale'); }); else engine.convertMode('grayscale'); } },
+    { id: 'mode-duotone', label: 'Duotone...', enabled: () => has() && ['grayscale', 'duotone'].includes(engine.current?.doc.mode ?? 'rgb'), checked: () => engine.current?.doc.mode === 'duotone', run: () => dialogs.duotone.show() },   // 31.3a
     { id: 'mode-bitmap', label: 'Bitmap...', enabled: has, checked: () => engine.current?.doc.mode === 'bitmap', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('bitmap'); }) },
     { id: 'mode-indexed', label: 'Indexed Color...', enabled: has, checked: () => engine.current?.doc.mode === 'indexed', run: () => void toRgbFirst().then((rgb) => (rgb ? downTo(8) : false)).then((ok) => { if (ok) modeDialog.show('indexed'); }) },
     // Bit depth (1.53.6, H1).
@@ -2478,7 +2502,7 @@ export function startApp(): void {
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', '-',
-      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-layers', 'export-artboards-files', 'export-artboards'] },
+      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-layers', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
@@ -2488,7 +2512,7 @@ export function startApp(): void {
     { label: 'Image', items: [
       'apply-image', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
-      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
+      { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
