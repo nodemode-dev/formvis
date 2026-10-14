@@ -88,6 +88,7 @@ import { MergeDialog } from './ui/panels/merge-dialog';
 import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
 import { ScriptEvents, type ScriptEvent } from './ui/script-events';
 import { LutExportDialog } from './ui/panels/lut-export-dialog';
+import { MeasureScaleDialog, MeasurementLogDialog } from './ui/panels/measurement-dialogs';
 import { FindReplaceTextDialog } from './ui/panels/find-replace-text-dialog';
 import { NormalMapDialog } from './ui/panels/normal-map-dialog';
 import { SaveForWebDialog } from './ui/panels/save-for-web-dialog';
@@ -108,6 +109,7 @@ import { GlDisplay } from './gpu/gl-display';
 import { NativeDisplay } from './gpu/native-display';
 import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
+import { PresetManagerDialog } from './ui/panels/preset-manager-dialog';
 import { PropertiesColumn } from './ui/properties';
 import { TitleTools } from './ui/titlebar-tools';
 import { InfoPanel } from './ui/info';
@@ -1848,6 +1850,8 @@ export function startApp(): void {
     scriptEvents: new ScriptEventsDialog(scriptEvents, actions),
     saveForWeb: new SaveForWebDialog(engine, deliver),
     exportLuts: new LutExportDialog(engine, deliver),
+    measureScale: new MeasureScaleDialog(engine),
+    measureLog: new MeasurementLogDialog(engine, deliver),
     findReplaceText: new FindReplaceTextDialog(engine),
     normalMap: new NormalMapDialog(engine),
     smartFilters: new SmartFiltersDialog(engine, (): FilterPanel => dialogs.filter),
@@ -1856,6 +1860,7 @@ export function startApp(): void {
     gif: new GifDialog(engine, (k) => exportGif(k)),
     tween: new TweenDialog(engine),
     stop: new StopDialog(),
+    presetManager: new PresetManagerDialog(engine, swatches, deliver, savePatterns),
     trim: new TrimDialog(engine),
     colorRange: new ColorRangeDialog(engine),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
@@ -2035,6 +2040,9 @@ export function startApp(): void {
     { id: 'load-brushes', label: 'Load Brushes...', run: () => abrInput.click() },
     { id: 'swatch-add', label: 'Add Foreground Color to Swatches', run: () => swatches.addForeground() },
     { id: 'swatches-reset', label: 'Reset Swatches', run: () => swatches.reset() },
+    { id: 'preset-manager', label: 'Preset Manager...', run: () => dialogs.presetManager.show() },
+    { id: 'swatches-load', label: 'Load Swatches...', run: () => dialogs.presetManager.load('swatches') },
+    { id: 'swatches-save', label: 'Save Swatches...', run: () => void dialogs.presetManager.saveSet('swatches') },
   );
   abrInput.addEventListener('change', () => {
     const f = abrInput.files?.[0];
@@ -2408,6 +2416,27 @@ export function startApp(): void {
       await deliver(await zipFiles(files), `${stripExt(p.name)}-assets.zip`);
       toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
     } },
+    {
+      id: 'measure-scale', label: 'Set Measurement Scale...', enabled: has,
+      params: { pixels: { type: 'number', description: 'Pixels in the reference length.' }, length: { type: 'number', description: 'The logical length those pixels stand for.' }, units: { type: 'string', description: 'The logical units, such as cm.' } },
+      run: (a) => { if (typeof a?.pixels === 'number' && typeof a?.length === 'number') engine.setMeasureScale(a.pixels, a.length, typeof a.units === 'string' ? a.units : 'px'); else dialogs.measureScale.show(); },
+    },
+    { id: 'measure-record', label: 'Record Measurements', enabled: has, run: () => { engine.recordMeasurements(); } },
+    {
+      id: 'measure-scale-marker', label: 'Place Scale Marker...', enabled: () => !!engine.current?.doc.measureScale,
+      params: { length: { type: 'number', description: 'The marker length in logical units; leave out for about a fifth of the width.' } },
+      run: (a) => {
+        const d = engine.current?.doc, sc = d?.measureScale;
+        if (!d || !sc) return;
+        let len = typeof a?.length === 'number' && a.length > 0 ? a.length : 0;
+        if (!len) {
+          const raw = (d.width / 5) * (sc.length / sc.pixels), pow = Math.pow(10, Math.floor(Math.log10(raw)));
+          len = pow * ([1, 2, 5, 10].reduce((best, m) => (Math.abs(m * pow - raw) < Math.abs(best * pow - raw) ? m : best), 1));
+        }
+        engine.placeScaleMarker({ lengthUnits: len, text: true, color: 'black' });
+      },
+    },
+    { id: 'measure-log', label: 'Measurement Log...', enabled: has, run: () => dialogs.measureLog.show() },
     { id: 'export-luts', label: 'Color Lookup Tables...', enabled: has, run: () => dialogs.exportLuts.show() },
     { id: 'export-layer-comps', label: 'Layer Comps to Files...', enabled: () => !!engine.current?.doc.comps?.length, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(false, a, true) },
     { id: 'export-artboards-pdf', label: 'Artboards to PDF...', enabled: () => engine.artboards().length > 0,
@@ -2504,6 +2533,8 @@ export function startApp(): void {
     { id: 'fit', label: 'Fit on Screen', keys: ['Mod+0'], enabled: has, run: () => engine.fit() },
     { id: 'actual', label: 'Actual Pixels', keys: ['Mod+1'], enabled: has, run: () => engine.zoomTo(1) },
     { id: 'pixel-grid', label: 'Pixel Grid', checked: () => engine.showPixelGrid, run: () => engine.update({ showPixelGrid: !engine.showPixelGrid }) },
+    { id: 'pattern-preview', label: 'Pattern Preview', checked: () => engine.view.patternPreview, run: () => engine.setView({ patternPreview: !engine.view.patternPreview }) },
+    { id: 'pixel-art-preview', label: 'Pixel Art Preview', checked: () => engine.view.pixelArt, run: () => engine.setView({ pixelArt: !engine.view.pixelArt }) },
     { id: 'transform-controls', label: 'Transform Controls', checked: () => engine.showTransformControls, run: () => engine.update({ showTransformControls: !engine.showTransformControls }) },
     { id: 'shortcuts', label: 'Keyboard Shortcuts...', keys: ['Alt+Shift+Mod+K', 'Shift+/'], run: () => dialogs.shortcuts.show() },   // Photoshop's key; Edit and Help menus
     { id: 'search', label: 'Search...', keys: ['Mod+K'], run: () => dialogs.palette.show() },
@@ -2769,12 +2800,12 @@ export function startApp(): void {
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
-      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },
+      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
+      'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
@@ -2809,7 +2840,7 @@ export function startApp(): void {
       { label: 'Video', items: filterGroup('Video', []) },
       { label: 'Other', items: filterGroup('Other', []) },
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
-    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
+    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },

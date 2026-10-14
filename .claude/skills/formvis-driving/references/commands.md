@@ -1,13 +1,13 @@
 # formvis commands
 
-Generated from the window's command catalogue (851 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (860 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 55
+- Edit: 58
 - File: 67
 - Filter: 80
-- Image: 75
+- Image: 79
 - Layer: 181
 - Paint: 1
 - Paths: 8
@@ -15,7 +15,7 @@ Generated from the window's command catalogue (851 commands) by `./formvis agent
 - Tool options: 225
 - Tools: 49
 - Type: 9
-- View: 31
+- View: 33
 - Window: 42
 
 ## Edit
@@ -53,6 +53,7 @@ Generated from the window's command catalogue (851 commands) by `./formvis agent
 | `patterns-export` | Export Patterns... |  | Saves your patterns as one Photoshop .pat file. |
 | `patterns-import` | Import Patterns... |  | Adds the patterns from Photoshop .pat files. |
 | `perspective-warp` | Perspective Warp |  | Starts Perspective Warp. (changes the picture) |
+| `preset-manager` | Preset Manager... |  | Opens the Preset Manager to rename, delete, load and save brushes, swatches, gradients, patterns and custom shapes. (changes the picture) |
 | `puppet-warp` | Puppet Warp |  | Starts Puppet Warp with pins on the layer. (changes the picture) |
 | `purge-all` | All |  | Clears the clipboard and the history of every open document after asking. (changes the picture) |
 | `purge-clipboard` | Clipboard |  | Clears formvis's internal clipboard. (changes the picture) |
@@ -61,7 +62,9 @@ Generated from the window's command catalogue (851 commands) by `./formvis agent
 | `remove-wires` | Remove Wires and Cables |  | Finds wires and cables and removes them. (changes the picture) |
 | `stroke-dialog` | Stroke... |  | Opens the Stroke dialog for the selection. (changes the picture) |
 | `swatch-add` | Add Foreground Color to Swatches |  | Adds the foreground colour to the Swatches panel. |
+| `swatches-load` | Load Swatches... |  | Replaces the swatches with those in an .aco or .ase file. |
 | `swatches-reset` | Reset Swatches |  | Restores the default swatches. |
+| `swatches-save` | Save Swatches... |  | Saves the current swatches as an .aco file. |
 | `toggle-last-state` | Toggle Last State | Alt+Mod+Z | Switches between the current and the previous history state. (changes the picture) |
 | `transform` | Transform Layer | Alt+Mod+T Mod+T | Starts Free Transform on the layer or selection. (changes the picture) |
 | `transform-again` | Again | Shift+Mod+T | Repeats the last transform. (changes the picture) |
@@ -299,6 +302,10 @@ Generated from the window's command catalogue (851 commands) by `./formvis agent
 | `image-crop` | Crop |  | Crops the document to the selection. (changes the picture) |
 | `image-size` | Image Size... | Alt+Mod+I | Opens Image Size. (changes the picture) |
 | `invert` | Invert | Mod+I | Inverts the colours of the active layer. (changes the picture) |
+| `measure-log` | Measurement Log... |  | Opens the measurement log: a table of recorded measurements that can be added to, deleted, cleared or exported as CSV. (changes the picture) |
+| `measure-record` | Record Measurements |  | Records one measurement from the selection (area, perimeter, size), the Ruler line (length, angle) and the counts, scaled by the measurement scale. (changes the picture) |
+| `measure-scale` | Set Measurement Scale... |  | Sets the measurement scale: how many pixels make a logical length in chosen units. Without parameters it opens a dialog prefilled from the Ruler line. (changes the picture) |
+| `measure-scale-marker` | Place Scale Marker... |  | Places a scale bar with a text label as a new pixel layer at the bottom left, sized from the measurement scale. (changes the picture) |
 | `mode-bitmap` | Bitmap... |  | Opens the Bitmap conversion. (changes the picture) |
 | `mode-cmyk` | CMYK Color... |  | Opens the CMYK conversion. (changes the picture) |
 | `mode-duotone` | Duotone... |  | Opens Duotone options: one to four inks overprinted on a grayscale document. (changes the picture) |
@@ -909,6 +916,8 @@ Generated from the window's command catalogue (851 commands) by `./formvis agent
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
 | `lock-guides` | Lock Guides | Alt+Mod+; | Locks or unlocks guides so they cannot be dragged. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
+| `pattern-preview` | Pattern Preview |  | Shows or hides eight copies of the document around it, to check that a tile repeats. |
+| `pixel-art-preview` | Pixel Art Preview |  | Shows or hides a crisp, nearest-neighbour view of the document at every zoom. |
 | `pixel-grid` | Pixel Grid |  | Shows or hides the pixel grid at high zoom. |
 | `proof-colors` | Proof Colors |  | Turns Proof Colors on or off. |
 | `proof-preset-black` | Working Black Plate |  | Shows the working CMYK black plate as a grey image and turns Proof Colors on. |
