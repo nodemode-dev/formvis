@@ -41,8 +41,8 @@ function colourOf(d: Desc | undefined): RGB {
   }
 }
 
-interface ColStop { at: number; color: RGB | 'fg' | 'bg' }
-interface TrnStop { at: number; alpha: number }
+interface ColStop { at: number; color: RGB | 'fg' | 'bg'; mid: number }
+interface TrnStop { at: number; alpha: number; mid: number }
 
 function lerpColour(list: ColStop[], at: number): RGB | 'fg' | 'bg' {
   let lo = list[0], hi = list[list.length - 1];
@@ -72,10 +72,15 @@ function gradientFrom(g: Desc): GradientPreset | null {
     const type = enumValue(c.items.get('Type'));
     const clr = c.items.get('Clr ');
     const color: RGB | 'fg' | 'bg' = type === 'FrgC' ? 'fg' : type === 'BckC' ? 'bg' : colourOf(isDesc(clr) ? clr : undefined);
-    return { at: clamp(num(c.items.get('Lctn')) / 4096, 0, 1), color };
+    return { at: clamp(num(c.items.get('Lctn')) / 4096, 0, 1), color, mid: clamp(num(c.items.get('Mdpn'), 50) / 100, 0.05, 0.95) };
   }).sort((a, b) => a.at - b.at);
-  const trns: TrnStop[] = listOf(g.items.get('Trns')).map((t) => ({ at: clamp(num(t.items.get('Lctn')) / 4096, 0, 1), alpha: clamp(num(t.items.get('Opct'), 100) / 100, 0, 1) })).sort((a, b) => a.at - b.at);
+  const trns: TrnStop[] = listOf(g.items.get('Trns')).map((t) => ({ at: clamp(num(t.items.get('Lctn')) / 4096, 0, 1), alpha: clamp(num(t.items.get('Opct'), 100) / 100, 0, 1), mid: clamp(num(t.items.get('Mdpn'), 50) / 100, 0.05, 0.95) })).sort((a, b) => a.at - b.at);
   if (!cols.length) return null;
+  const nm = typeof name === 'string' && name ? name : 'Gradient';
+  // Midpoints off centre are kept: colour stops with their midpoints plus separate opacity stops (sampleStops folds them).
+  if ([...cols, ...trns].some((s) => Math.abs(s.mid - 0.5) > 1e-6)) {
+    return { id: newId(), label: nm, stops: cols.map((c) => ({ at: c.at, color: c.color, alpha: trns.length ? lerpAlpha(trns, c.at) : 1, ...(c.mid !== 0.5 ? { mid: c.mid } : {}) })), ...(trns.length ? { opacityStops: trns.map((t) => ({ at: t.at, alpha: t.alpha, ...(t.mid !== 0.5 ? { mid: t.mid } : {}) })) } : {}) };
+  }
   const locations = [...new Set([...cols.map((c) => c.at), ...trns.map((t) => t.at)])].sort((a, b) => a - b);
   const stops: GradientStop[] = locations.map((at) => ({ at, color: lerpColour(cols, at), alpha: trns.length ? lerpAlpha(trns, at) : 1 }));
   return { id: newId(), label: typeof name === 'string' && name ? name : 'Gradient', stops };
@@ -146,13 +151,14 @@ export function writeGrd(list: GradientPreset[]): Uint8Array {
         s.key('Bl  ', 'doub'); s.f64(byte(c.b));
       }
       s.enum('Type', 'Clry', typeof c !== 'string' ? 'UsrS' : c === 'fg' ? 'FrgC' : 'BckC');
-      s.long('Lctn', loc); s.long('Mdpn', 50);
+      s.long('Lctn', loc); s.long('Mdpn', Math.round(clamp(st.mid ?? 0.5, 0.05, 0.95) * 100));
     }
-    s.key('Trns', 'VlLs'); s.u32(stops.length);
-    for (const st of stops) {
+    const ops = g.opacityStops && g.opacityStops.length ? [...g.opacityStops].sort((a, b) => a.at - b.at) : stops;
+    s.key('Trns', 'VlLs'); s.u32(ops.length);
+    for (const st of ops) {
       s.ascii('Objc'); s.head('TrnS', 3);
       s.key('Opct', 'UntF'); s.ascii('#Prc'); s.f64(clamp(st.alpha, 0, 1) * 100);
-      s.long('Lctn', Math.round(clamp(st.at, 0, 1) * 4096)); s.long('Mdpn', 50);
+      s.long('Lctn', Math.round(clamp(st.at, 0, 1) * 4096)); s.long('Mdpn', Math.round(clamp(st.mid ?? 0.5, 0.05, 0.95) * 100));
     }
   }
   return new Uint8Array(s.bytes);

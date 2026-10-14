@@ -1,4 +1,5 @@
 import { SPACES, type SpaceId } from '../engine/icc';
+import { cleanMeta, type DocMeta } from '../engine/doc-meta';
 
 export type ExportFormat = 'png' | 'jpg' | 'webp' | 'avif' | 'tiff' | 'pdf' | 'dpx' | 'qoi' | 'pnm' | 'tga' | 'ico';
 /** DEV_PLAN 34.1: the options the engine-written formats take, kept in `ExportSettings.option` (one choice a format) and
@@ -24,7 +25,13 @@ export type ExportIntent = 'perceptual' | 'relative' | 'saturation' | 'absolute'
 export const EXPORT_INTENTS: ReadonlyArray<readonly [ExportIntent, string]> = [['relative', 'Relative Colorimetric'], ['perceptual', 'Perceptual'], ['saturation', 'Saturation'], ['absolute', 'Absolute Colorimetric']];
 /** `profile` is a built-in space or `id:` and a profile listed by the engine; `intent` and `bpc` steer the conversion
  *  into a listed profile (relative and on when left out); `embed` false leaves the profile out of the file. */
-export interface ExportSettings { format: ExportFormat; quality: number; scale: number; profile?: SpaceId | `id:${string}`; intent?: ExportIntent; bpc?: boolean; embed?: boolean; size?: 'scale' | 'fit' | 'frame'; boxW?: number; boxH?: number; aiLabel?: 'none' | 'generated' | 'edited'; dpxBits?: DpxBits; dpxTransfer?: DpxTransfer; option?: string; icoSizes?: number[] }
+export interface ExportSettings { format: ExportFormat; quality: number; scale: number; profile?: SpaceId | `id:${string}`; intent?: ExportIntent; bpc?: boolean; embed?: boolean; size?: 'scale' | 'fit' | 'frame'; boxW?: number; boxH?: number; aiLabel?: 'none' | 'generated' | 'edited'; dpxBits?: DpxBits; dpxTransfer?: DpxTransfer; option?: string; icoSizes?: number[];
+  /** DEV_PLAN 36.29: a canvas the scaled picture is centred in (transparent margins, white in JPEG; smaller than the
+   *  picture crops); metadata: the document's File Info as before (left out), none, or only the Copyright and Contact
+   *  texts below; sizes: one file per entry, `x` times the size above, named with `suffix`. */
+  canvas?: boolean; canvasW?: number; canvasH?: number; metadata?: 'none' | 'copyright'; copyrightText?: string; contactText?: string; sizes?: ExportSize[] }
+export interface ExportSize { x: number; suffix: string }
+export const MAX_EXPORT_SIZES = 8;
 export interface ExportPreset extends ExportSettings { id: string; name: string; builtin: boolean }
 
 export const EXPORT_FORMATS: ReadonlyArray<readonly [ExportFormat, string]> = [['png', 'PNG'], ['jpg', 'JPEG'], ['webp', 'WebP'], ['avif', 'AVIF'], ['tiff', 'TIFF'], ['dpx', 'DPX'], ['qoi', 'QOI'], ['pnm', 'PNM (PBM, PGM, PPM, PAM)'], ['tga', 'TGA'], ['ico', 'ICO (Windows icon)'], ['pdf', 'PDF']];
@@ -56,7 +63,36 @@ export const clampSettings = (s: ExportSettings): ExportSettings => ({
   ...(s.format === 'dpx' ? { dpxBits: ([8, 10, 12, 16] as const).find((b) => b === Number(s.dpxBits)) ?? 10, dpxTransfer: DPX_TRANSFERS.find(([t]) => t === s.dpxTransfer)?.[0] ?? 'log' } : {}),
   ...(FORMAT_OPTIONS[s.format] ? { option: FORMAT_OPTIONS[s.format]?.find(([v]) => v === s.option)?.[0] ?? FORMAT_OPTIONS[s.format]?.[0][0] } : {}),
   ...(s.format === 'ico' ? { icoSizes: icoSizesOf(s.icoSizes) } : {}),
+  ...(s.canvas ? { canvas: true, canvasW: box(s.canvasW), canvasH: box(s.canvasH) } : {}),
+  ...(s.metadata === 'none' || s.metadata === 'copyright' ? { metadata: s.metadata } : {}),
+  ...(text(s.copyrightText) ? { copyrightText: text(s.copyrightText) } : {}),
+  ...(text(s.contactText) ? { contactText: text(s.contactText) } : {}),
+  ...(Array.isArray(s.sizes) && s.sizes.length ? { sizes: s.sizes.slice(0, MAX_EXPORT_SIZES).map(sizeOf) } : {}),
 });
+const text = (v: unknown): string => (typeof v === 'string' ? v.replace(/[\u0000-\u001f]/g, ' ').slice(0, 300) : '');
+const sizeOf = (v: ExportSize): ExportSize => {
+  const x = Math.round(Math.min(10, Math.max(0.1, Number.isFinite(Number(v?.x)) && Number(v.x) > 0 ? Number(v.x) : 1)) * 100) / 100;
+  return { x, suffix: typeof v?.suffix === 'string' ? v.suffix.replace(/[^A-Za-z0-9@._-]/g, '').slice(0, 20) : defaultSuffix(x) };
+};
+export const defaultSuffix = (x: number): string => (x === 1 ? '' : `@${Number(x.toFixed(2))}x`);
+
+/** One ExportSettings per file: the settings as they are, or one for each entry of `sizes` with the scale, the Fit or
+ *  Frame box and the canvas multiplied by its `x`, paired with that entry's file name suffix. */
+export function sizedSettings(s: ExportSettings): Array<{ s: ExportSettings; suffix?: string }> {
+  if (!s.sizes?.length) return [{ s }];
+  const { sizes, ...base } = s, m = (v: number | undefined, x: number): number => box((v ?? 1080) * x);
+  return sizes.map((z) => ({ suffix: z.suffix, s: { ...base, scale: Math.round(Math.min(1000, Math.max(1, s.scale * z.x))), ...(s.size === 'fit' || s.size === 'frame' ? { boxW: m(s.boxW, z.x), boxH: m(s.boxH, z.x) } : {}), ...(s.canvas ? { canvasW: m(s.canvasW, z.x), canvasH: m(s.canvasH, z.x) } : {}) } }));
+}
+
+/** The File Info written into the file: the document's own, nothing, or just the Copyright and Contact texts. */
+export function exportMeta(s: ExportSettings, doc: DocMeta | undefined): DocMeta | undefined {
+  if (s.metadata === 'none') return undefined;
+  if (s.metadata !== 'copyright') return doc;
+  const notice = s.copyrightText?.trim(), author = s.contactText?.trim();
+  return cleanMeta({ ...(notice ? { notice, copyright: 'copyrighted' } : {}), ...(author ? { author } : {}) }) ?? undefined;
+}
+/** What the chosen metadata cannot reach: formats written without an XMP packet. */
+export const XMP_FORMATS: ReadonlySet<ExportFormat> = new Set(['png', 'jpg', 'webp', 'tiff']);
 const icoSizesOf = (v: unknown): number[] => {
   const kept = ICO_SIZES.filter((n) => Array.isArray(v) && v.includes(n));
   return kept.length ? kept : [...DEFAULT_ICO_SIZES];
@@ -75,6 +111,12 @@ const box = (v: unknown): number => Math.round(Math.min(30000, Math.max(1, Numbe
 
 /** Where the picture goes in the exported image: the image's size, and the rectangle the picture is drawn into. */
 export function exportLayout(w: number, h: number, s: ExportSettings): { w: number; h: number; dx: number; dy: number; dw: number; dh: number } {
+  const L = sizeLayout(w, h, s);
+  if (!s.canvas) return L;
+  const CW = box(s.canvasW), CH = box(s.canvasH);
+  return { w: CW, h: CH, dx: L.dx + Math.floor((CW - L.w) / 2), dy: L.dy + Math.floor((CH - L.h) / 2), dw: L.dw, dh: L.dh };
+}
+function sizeLayout(w: number, h: number, s: ExportSettings): { w: number; h: number; dx: number; dy: number; dw: number; dh: number } {
   if (s.size !== 'fit' && s.size !== 'frame') { const z = exportSize(w, h, s.scale); return { ...z, dx: 0, dy: 0, dw: z.w, dh: z.h }; }
   const W = box(s.boxW), H = box(s.boxH), k = Math.min(W / w, H / h), dw = Math.max(1, Math.round(w * k)), dh = Math.max(1, Math.round(h * k));
   return s.size === 'fit' ? { w: dw, h: dh, dx: 0, dy: 0, dw, dh } : { w: W, h: H, dx: Math.floor((W - dw) / 2), dy: Math.floor((H - dh) / 2), dw, dh };
@@ -88,15 +130,15 @@ export function presetsFromStorage(raw: string | null): ExportPreset[] {
   return v.flatMap((r) => {
     const o = r && typeof r === 'object' ? (r as Record<string, unknown>) : null;
     if (!o || typeof o.id !== 'string' || typeof o.name !== 'string' || !o.name.trim()) return [];
-    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale), profile: o.profile as ExportSettings['profile'], intent: o.intent as ExportIntent, bpc: o.bpc as boolean | undefined, embed: o.embed as boolean | undefined, size: o.size as ExportSettings['size'], boxW: Number(o.boxW), boxH: Number(o.boxH), aiLabel: o.aiLabel as ExportSettings['aiLabel'], dpxBits: Number(o.dpxBits) as DpxBits, dpxTransfer: o.dpxTransfer as DpxTransfer, option: typeof o.option === 'string' ? o.option : undefined, icoSizes: Array.isArray(o.icoSizes) ? o.icoSizes.map(Number) : undefined });
+    const s = clampSettings({ format: o.format as ExportFormat, quality: Number(o.quality), scale: Number(o.scale), profile: o.profile as ExportSettings['profile'], intent: o.intent as ExportIntent, bpc: o.bpc as boolean | undefined, embed: o.embed as boolean | undefined, size: o.size as ExportSettings['size'], boxW: Number(o.boxW), boxH: Number(o.boxH), aiLabel: o.aiLabel as ExportSettings['aiLabel'], dpxBits: Number(o.dpxBits) as DpxBits, dpxTransfer: o.dpxTransfer as DpxTransfer, option: typeof o.option === 'string' ? o.option : undefined, icoSizes: Array.isArray(o.icoSizes) ? o.icoSizes.map(Number) : undefined, canvas: o.canvas === true, canvasW: Number(o.canvasW), canvasH: Number(o.canvasH), metadata: o.metadata as ExportSettings['metadata'], copyrightText: o.copyrightText as string | undefined, contactText: o.contactText as string | undefined, sizes: Array.isArray(o.sizes) ? (o.sizes as ExportSize[]) : undefined });
     return [{ id: o.id, name: o.name.trim().slice(0, 60), ...s, builtin: false }];
   });
 }
 
 /** Photoshop's naming: the document name, a scale suffix like @2x or @0.5x when not 100 percent, the extension. */
-export function exportName(docName: string, s: ExportSettings): string {
+export function exportName(docName: string, s: ExportSettings, sizeSuffix?: string): string {
   const ext = s.format === 'tiff' ? 'tif' : s.format === 'pnm' ? (FORMAT_OPTIONS.pnm?.find(([v]) => v === s.option)?.[0] ?? 'ppm') : s.format;
-  const suffix = s.scale === 100 ? '' : `@${Number((s.scale / 100).toFixed(2))}x`;
+  const suffix = sizeSuffix !== undefined ? sizeSuffix : s.scale === 100 ? '' : `@${Number((s.scale / 100).toFixed(2))}x`;
   return `${docName}${suffix}.${ext}`;
 }
 

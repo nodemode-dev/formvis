@@ -10,8 +10,16 @@ export const GRADIENT_TYPES: ReadonlyArray<{ id: GradientType; label: string }> 
   { id: 'linear', label: 'Linear' }, { id: 'radial', label: 'Radial' }, { id: 'angle', label: 'Angle' }, { id: 'reflected', label: 'Reflected' }, { id: 'diamond', label: 'Diamond' },
 ];
 
-export interface GradientStop { at: number; color: RGB | 'fg' | 'bg'; alpha: number }
-export interface GradientPreset { id: string; label: string; stops: GradientStop[] }
+/** `mid` is the midpoint between this stop and the next, as a fraction of the gap (0.05 to 0.95, default 0.5). */
+export interface GradientStop { at: number; color: RGB | 'fg' | 'bg'; alpha: number; mid?: number }
+/** Photoshop's separate opacity stops (with their own midpoints). When a preset has them, `stops` are its colour stops
+ *  (their `alpha` kept only as the opacity at that spot, for readers that know nothing of opacity stops). */
+export interface OpacityStop { at: number; alpha: number; mid?: number }
+export interface GradientPreset { id: string; label: string; stops: GradientStop[]; opacityStops?: OpacityStop[] }
+
+export const clampMid = (m: number | undefined): number => (typeof m === 'number' && Number.isFinite(m) ? Math.min(0.95, Math.max(0.05, m)) : 0.5);
+/** Photoshop's midpoint curve: t' = t ^ (log 0.5 / log m), so t' is 0.5 at t = m. */
+export const midCurve = (t: number, m: number | undefined): number => { const k = clampMid(m); return k === 0.5 ? t : Math.pow(t, Math.log(0.5) / Math.log(k)); };
 
 const rgb = (r: number, g: number, b: number): RGB => ({ r, g, b });
 export const GRADIENT_PRESETS: GradientPreset[] = [
@@ -42,9 +50,13 @@ export function gradientsFromJson(raw: unknown): GradientPreset[] {
       const q = s && typeof s === 'object' ? (s as Record<string, unknown>) : null;
       if (!q) return [];
       const c = q.color, color: GradientStop['color'] | null = c === 'fg' || c === 'bg' ? c : c && typeof c === 'object' ? { r: n((c as RGB).r, 0, 255, 0), g: n((c as RGB).g, 0, 255, 0), b: n((c as RGB).b, 0, 255, 0) } : null;
-      return color ? [{ at: n(q.at, 0, 1, 0), color, alpha: n(q.alpha, 0, 1, 1) } as GradientStop] : [];
+      return color ? [{ at: n(q.at, 0, 1, 0), color, alpha: n(q.alpha, 0, 1, 1), ...(typeof q.mid === 'number' ? { mid: n(q.mid, 0.05, 0.95, 0.5) } : {}) } as GradientStop] : [];
     });
-    return stops.length >= 2 ? [{ id: o.id, label: o.label.trim().slice(0, 60), stops }] : [];
+    const ops = Array.isArray(o.opacityStops) ? (o.opacityStops as unknown[]).flatMap((s) => {
+      const q = s && typeof s === 'object' ? (s as Record<string, unknown>) : null;
+      return q ? [{ at: n(q.at, 0, 1, 0), alpha: n(q.alpha, 0, 1, 1), ...(typeof q.mid === 'number' ? { mid: n(q.mid, 0.05, 0.95, 0.5) } : {}) } as OpacityStop] : [];
+    }) : [];
+    return stops.length >= 2 ? [{ id: o.id, label: o.label.trim().slice(0, 60), stops, ...(ops.length ? { opacityStops: ops } : {}) }] : [];
   });
 }
 
@@ -62,9 +74,43 @@ export function noiseStops(seed: number, roughness: number): GradientStop[] {
   return out;
 }
 
+/** A preset as the dense combined stop list every renderer takes: colour stops, opacity stops and midpoints folded
+ *  together. A preset with no opacity stops and no midpoints maps straight across; otherwise every stop location of
+ *  either kind becomes a point, and a gap whose midpoint is off centre gets extra points along the curve. */
+export function sampleStops(preset: GradientPreset, fg: RGB, bg: RGB): Array<{ at: number; rgb: RGB; alpha: number }> {
+  const c01 = (v: number): number => Math.min(1, Math.max(0, v));
+  const cols = preset.stops.map((s) => ({ at: c01(s.at), rgb: s.color === 'fg' ? fg : s.color === 'bg' ? bg : s.color, alpha: s.alpha, mid: s.mid })).sort((a, b) => a.at - b.at);
+  const hasOps = !!preset.opacityStops?.length;
+  const ops = (hasOps ? preset.opacityStops ?? [] : preset.stops).map((s) => ({ at: c01(s.at), alpha: s.alpha, mid: s.mid })).sort((a, b) => a.at - b.at);
+  const bent = (l: Array<{ mid?: number }>): boolean => l.some((s) => clampMid(s.mid) !== 0.5);
+  if (!hasOps && !bent(cols)) return cols.map(({ at, rgb, alpha }) => ({ at, rgb, alpha }));
+  const along = <T extends { at: number; mid?: number }>(l: T[], t: number): { a: T; b: T; f: number } => {
+    let i = 0;
+    while (i < l.length - 1 && l[i + 1].at <= t) i++;
+    const a = l[i], b = l[Math.min(l.length - 1, i + 1)];
+    return { a, b, f: a === b || b.at <= a.at ? 0 : Math.min(1, Math.max(0, (t - a.at) / (b.at - a.at))) };
+  };
+  const at = (t: number): { at: number; rgb: RGB; alpha: number } => {
+    const c = along(cols, t), o = along(ops, t), fc = midCurve(c.f, c.a.mid), fo = midCurve(o.f, o.a.mid);
+    const lerp = (x: number, y: number, f: number): number => x + (y - x) * f;
+    return { at: t, rgb: { r: lerp(c.a.rgb.r, c.b.rgb.r, fc), g: lerp(c.a.rgb.g, c.b.rgb.g, fc), b: lerp(c.a.rgb.b, c.b.rgb.b, fc) }, alpha: lerp(o.a.alpha, o.b.alpha, fo) };
+  };
+  const marks = [...new Set([...cols.map((s) => s.at), ...ops.map((s) => s.at)])].sort((a, b) => a - b);
+  const out: Array<{ at: number; rgb: RGB; alpha: number }> = [];
+  marks.forEach((m, i) => {
+    out.push(at(m));
+    const next = marks[i + 1];
+    if (next === undefined || next <= m) return;
+    const mid = (m + next) / 2, c = along(cols, mid), o = along(ops, mid);
+    if (clampMid(c.a.mid) === 0.5 && clampMid(o.a.mid) === 0.5) return;
+    for (let k = 1; k < 12; k++) out.push(at(m + ((next - m) * k) / 12));
+  });
+  return out;
+}
+
 /** A preset's stops with the foreground and background filled in, sorted, and reversed when asked. */
 export function resolveStops(preset: GradientPreset, fg: RGB, bg: RGB, reversed: boolean): Array<{ at: number; rgb: RGB; alpha: number }> {
-  const out = preset.stops.map((s) => ({ at: Math.min(1, Math.max(0, s.at)), rgb: s.color === 'fg' ? fg : s.color === 'bg' ? bg : s.color, alpha: s.alpha }));
+  const out = sampleStops(preset, fg, bg);
   const r = reversed ? out.map((s) => ({ ...s, at: 1 - s.at })) : out;
   return r.sort((a, b) => a.at - b.at);
 }

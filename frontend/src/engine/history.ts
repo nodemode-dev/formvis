@@ -110,8 +110,10 @@ export class History {
 
   /** The oldest kept state and every pixel patch done since, oldest first, for rebuilding pixels as they were
    *  (Edit > Fill with History). Undone steps are excluded, since undoing already wrote their pixels back. */
-  origin(): { first: Snapshot | null; patches: PixelPatch[] } {
-    return { first: this.past[0]?.before ?? null, patches: this.past.flatMap((e) => e.patches) };
+  origin(from = 0): { first: Snapshot | null; patches: PixelPatch[] } {
+    // `from` is a history row index: 0 the starting point, k the state after k steps (the History panel's source column).
+    const k = Math.min(Math.max(0, Math.floor(from)), this.past.length);
+    return { first: k === 0 ? this.past[0]?.before ?? null : this.past[k - 1].after, patches: this.past.slice(k).flatMap((e) => e.patches) };
   }
 
   /** Takes back the last step, if allowed, and returns it. */

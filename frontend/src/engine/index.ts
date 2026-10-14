@@ -897,6 +897,10 @@ export class Engine {
   }
 
   /** The History Brush's source, as Photoshop's: a snapshot chosen in the History panel, or the document's first. */
+  /** The History panel's source column for Edit > Fill with History: a history row index (0 the starting point, k the
+   *  state after k steps), or null for the oldest kept step. The History Brush keeps its snapshot source below. */
+  historySourceIndex: number | null = null;
+  setHistorySourceIndex(i: number | null): void { if (this.historySourceIndex === i) return; this.historySourceIndex = i; this.emit('history', null); }
   historyBrushSource: ID | null = null;
   setHistoryBrushSource(id: ID): void { this.historyBrushSource = id; this.emit('history', null); }
   get historyBrushSourceId(): ID | null {
@@ -4919,7 +4923,7 @@ export class Engine {
   private historySource(p: Project): Surface | null {
     const l = p.activeLayer;
     if (!l) return null;
-    const { first, patches } = p.history.origin(), l0 = (first?.doc ?? p.doc).layers.find((x) => x.id === l.id), R0 = l0?.raster;
+    const { first, patches } = p.history.origin(this.historySourceIndex ?? 0), l0 =(first?.doc ?? p.doc).layers.find((x) => x.id === l.id), R0 = l0?.raster;
     if (!l0 || !R0) return null;
     const copy = createSurface(R0.width, R0.height), cc = ctxOf(copy);
     cc.drawImage(R0.canvas, 0, 0);
@@ -7979,6 +7983,13 @@ export class Engine {
     this.cloneSource = s ? { ...s.source } : null;
     if (s) Object.assign(r, { cloneScale: s.scale, cloneAngle: s.angle, cloneFlipH: s.flipH, cloneFlipV: s.flipV });
     this.cloneOffset = null;
+    this.emit('overlay', null);
+    this.emit('options', null);
+  }
+
+  /** The Clone Source panel's overlay settings: assigns the given fields and redraws the overlay. */
+  setCloneOverlay(patch: Partial<{ show: boolean; clipped: boolean; opacity: number; autoHide: boolean }>): void {
+    Object.assign(this.cloneOverlay, patch);
     this.emit('overlay', null);
     this.emit('options', null);
   }
