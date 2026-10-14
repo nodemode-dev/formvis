@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (786 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (789 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 45
-- File: 50
+- Edit: 47
+- File: 51
 - Filter: 77
 - Image: 69
 - Layer: 161
@@ -22,6 +22,8 @@ Generated from the window's command catalogue (786 commands) by `./formvis agent
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `auto-align-layers` | Auto-Align Layers... |  | Aligns the selected layers to the bottom-most one by matching their features. (changes the picture) |
+| `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack. (changes the picture) |
 | `clear` | Clear Selection Pixels |  | Erases the pixels inside the selection. (changes the picture) |
 | `colour.settings` | Color Settings... | Shift+Mod+K | Opens Color Settings: working spaces, colour management policies and conversion options. |
 | `content-fill` | Quick Content-Aware Fill | Shift+Backspace | Fills the selection from its surroundings. (changes the picture) |
@@ -83,6 +85,7 @@ Generated from the window's command catalogue (786 commands) by `./formvis agent
 | `download-project` | Download Project File |  | Downloads the project file through the browser. (asks first) |
 | `export-artboards` | Export Artboards to Files |  | Exports every artboard to its own file. (asks first) |
 | `export-artboards-files` | Artboards to Files... |  | Exports each artboard to its own file in a chosen type and quality; opens the dialog, or runs at once when given any of prefix, format, quality, icc or folder. (asks first) |
+| `export-artboards-pdf` | Artboards to PDF... |  | Exports every artboard as one page of a single PDF, in the Layers order, each page at its artboard size from the document resolution; takes name, jpeg, quality and icc. (asks first) |
 | `export-as` | Export As... | Alt+Shift+Mod+W | Opens Export As with format, size and quality. (asks first) |
 | `export-avif` | Export AVIF |  | Exports the flattened picture as AVIF. (asks first) |
 | `export-exr` | OpenEXR... |  | Exports an OpenEXR file. (asks first) |

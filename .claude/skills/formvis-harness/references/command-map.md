@@ -1,13 +1,13 @@
 # Command map
 
-Generated from the window's command catalogue (786 commands: 7 action, 506 command, 225 option, 48 tool) by `./formvis agents sync`; do not edit by hand.
+Generated from the window's command catalogue (789 commands: 7 action, 509 command, 225 option, 48 tool) by `./formvis agents sync`; do not edit by hand.
 
 Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.
 
 | Group | Commands | Harness sub-skill | First ids |
 | --- | --- | --- | --- |
-| Edit | 45 | `command-author` | `clear`, `colour.settings`, `content-fill`, `content-fill-workspace` |
-| File | 50 | `io-formats` | `assemble-tiles`, `batch`, `clear-recent`, `close-all` |
+| Edit | 47 | `command-author` | `auto-align-layers`, `auto-blend-layers`, `clear`, `colour.settings` |
+| File | 51 | `io-formats` | `assemble-tiles`, `batch`, `clear-recent`, `close-all` |
 | Filter | 77 | `filter-library` | `filter-addNoise`, `filter-average`, `filter-blur`, `filter-blurMore` |
 | Image | 69 | `engine-builder` | `adj-blackWhite`, `adj-brightnessContrast`, `adj-channelMixer`, `adj-clarity` |
 | Layer | 161 | `engine-builder` | `add-filter-mask`, `add-mask`, `add-mask-hide`, `align-bottom` |
@@ -22,4 +22,4 @@ Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/s
 
 ## Id families
 
-`tool` 273, `filter` 77, `new` 42, `adj` 27, `export` 17, `panel` 12, `style` 11, `transform` 11, `proof` 10, `select` 10, `layer` 9, `distribute` 8, `delete` 7, `mask` 7, `rasterize` 7, `toggle` 7, `align` 6, `mode` 6, `smart` 6, `vmask` 6, `fill` 5, `paste` 5, `save` 5, `shapes` 5, `clear` 4, `copy` 4, `edit` 4, `flip` 4, `matting` 4, `merge` 4, `rotate` 4, `screen` 4, `send` 4, `add` 3, `apply` 3, `artboard` 3, `auto` 3, `close` 3, `content` 3, `convert` 3
+`tool` 273, `filter` 77, `new` 42, `adj` 27, `export` 18, `panel` 12, `style` 11, `transform` 11, `proof` 10, `select` 10, `layer` 9, `distribute` 8, `delete` 7, `mask` 7, `rasterize` 7, `toggle` 7, `align` 6, `mode` 6, `smart` 6, `vmask` 6, `auto` 5, `fill` 5, `paste` 5, `save` 5, `shapes` 5, `clear` 4, `copy` 4, `edit` 4, `flip` 4, `matting` 4, `merge` 4, `rotate` 4, `screen` 4, `send` 4, `add` 3, `apply` 3, `artboard` 3, `close` 3, `content` 3, `convert` 3

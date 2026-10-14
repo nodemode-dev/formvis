@@ -2,6 +2,14 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## POST /api/merge/align and /api/merge/blend: Auto-Align and Auto-Blend Layers (DEV_PLAN 32.1) · _v1.68.3 (app/routers/merge.py)
+
+`align` takes repeated `file` document-size RGBA PNGs (reference first), `projection`, `vignette`; SIFT (ORB if missing) with a 0.75 ratio test, then RANSAC `findHomography` (3 px) or, for reposition or when the homography is weak or implausible, a median-and-inliers translation. Answers `matrices` (row-major, layer to reference). `blend` takes `method` (`panorama`: layer farthest from its own edge; `stack`: largest blurred Laplacian energy), smooths the winner map with a Gaussian and normalises, answering base64 grey `masks` and `tones` gains over the overlap with the reference. Checked with TestClient: a copy shifted 12,7 gave -12.1,-7.0; two copies blurred on opposite halves gave masks near 248 on the sharp half and 10 on the other.
+
+## POST /io/pdf-pages: Artboards to PDF (DEV_PLAN 29.4) · _v1.68.3 (app/routers/io.py)
+
+`pdf_pages` takes repeated `file` PNGs plus `dpi`, `jpeg`, `quality` and an optional `icc`, flattens each on white and writes one PDF with Pillow `save_all=True, append_images, resolution=dpi`; pages may differ in size, each page is its pixels over dpi times 72 in points. Lossless encoding is RGBA saved as reversible JPEG 2000 (Pillow's PDF writer has no Flate for RGB), falling back to JPEG at quality 100 if that fails; some PDF viewers may not show JPEG 2000. The `icc` profile is checked with ImageCms and then NOT embedded, since Pillow's PDF writer carries none. Checked with TestClient: 288x144 and 100x200 PNGs at 144 dpi gave /MediaBox 144x72 and 50x100.
+
 ## Version only · _v1.68.2
 
 No engine code changed in 1.68.2. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

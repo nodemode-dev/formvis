@@ -6133,6 +6133,60 @@ export class Engine {
     return this.edit(undoName, (pp) => { pp.updateLayer(id, { raster: r, transform: docTransform(image.width, image.height) }); return true; });
   }
 
+  /** Auto-Align and Auto-Blend Layers (DEV_PLAN 32.1), one undo step for every layer: a pixel layer is drawn alone at the
+   *  document's size, moved by `matrix` (3x3 row-major, its pixels to the document's, by an inverse map with bilinear
+   *  sampling), multiplied by the RGB `gain`, and put back with the document transform; `mask` (a grey image) becomes its
+   *  layer mask. Layers that are not plain pixel layers are skipped. */
+  applyLayerEdits(items: Array<{ id: ID; matrix?: number[]; gain?: number[]; mask?: CanvasImageSource }>, undoName: string): boolean {
+    const p = this.current;
+    if (!p) return false;
+    const W = p.doc.width, H = p.doc.height, done: Array<{ id: ID; raster: Raster | null; mask: ReturnType<typeof LM.maskFromImage> | null }> = [];
+    for (const it of items) {
+      const l = p.layer(it.id);
+      if (!l || !l.raster || l.isGroup || l.adjustment || l.text || l.shape || l.smart) continue;
+      let raster: Raster | null = null;
+      const m = it.matrix, g = it.gain;
+      const moved = !!m && m.some((v, i) => Math.abs(v - (i % 4 === 0 ? 1 : 0)) > 1e-9), toned = !!g && g.some((v) => Math.abs(v - 1) > 1e-6);
+      if (moved || toned) {
+        const src = ctxOf(this.renderLayerAlone(it.id)).getImageData(0, 0, W, H), out = new ImageData(W, H), sd = src.data, od = out.data;
+        let inv = [1, 0, 0, 0, 1, 0, 0, 0, 1];
+        if (m && moved) {
+          const [a, b, c, d, e, f, gg, h, i] = m, A = e * i - f * h, B = c * h - b * i, C = b * f - c * e, det = a * A + d * B + gg * C;
+          if (Math.abs(det) < 1e-12) continue;
+          inv = [A, B, C, f * gg - d * i, a * i - c * gg, c * d - a * f, d * h - e * gg, b * gg - a * h, a * e - b * d].map((v) => v / det);
+        }
+        const gr = g?.[0] ?? 1, gg2 = g?.[1] ?? 1, gb = g?.[2] ?? 1;
+        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+          const px = x + 0.5, py = y + 0.5, z = inv[6] * px + inv[7] * py + inv[8];
+          const o = (y * W + x) * 4;
+          if (Math.abs(z) < 1e-12) continue;
+          const sx = (inv[0] * px + inv[1] * py + inv[2]) / z - 0.5, sy = (inv[3] * px + inv[4] * py + inv[5]) / z - 0.5;
+          const x0 = Math.floor(sx), y0 = Math.floor(sy), fx = sx - x0, fy = sy - y0;
+          if (x0 < -1 || y0 < -1 || x0 >= W || y0 >= H) continue;
+          // premultiplied bilinear: outside the picture counts as transparent
+          let r = 0, gc = 0, bc = 0, al = 0;
+          for (let k = 0; k < 4; k++) {
+            const xx = x0 + (k & 1), yy = y0 + (k >> 1), wt = ((k & 1) ? fx : 1 - fx) * ((k >> 1) ? fy : 1 - fy);
+            if (xx < 0 || yy < 0 || xx >= W || yy >= H || wt <= 0) continue;
+            const q = (yy * W + xx) * 4, a = sd[q + 3] * wt;
+            r += sd[q] * a / 255; gc += sd[q + 1] * a / 255; bc += sd[q + 2] * a / 255; al += a;
+          }
+          if (al <= 0) continue;
+          od[o] = Math.min(255, Math.round(r / al * 255 * gr)); od[o + 1] = Math.min(255, Math.round(gc / al * 255 * gg2)); od[o + 2] = Math.min(255, Math.round(bc / al * 255 * gb)); od[o + 3] = Math.round(al);
+        }
+        raster = new Raster(W, H);
+        raster.ctx.putImageData(out, 0, 0);
+        raster.touch();
+      }
+      done.push({ id: it.id, raster, mask: it.mask ? LM.maskFromImage(it.mask, W, H) : null });
+    }
+    if (!done.length) { this.notice('No plain pixel layers to change.'); return false; }
+    return this.edit(undoName, (pp) => {
+      for (const d of done) pp.updateLayer(d.id, { ...(d.raster ? { raster: d.raster, transform: docTransform(W, H) } : {}), ...(d.mask ? { mask: d.mask } : {}) });
+      return true;
+    });
+  }
+
   /** Content-Aware Scale (1.55.4, M4): the layer's pixels replaced at a new size, its box resized in place. */
   rescaleLayerPixels(id: ID, image: ImageData, undoName: string): boolean {
     const p = this.current, l = p?.layer(id);
@@ -8306,10 +8360,10 @@ export class Engine {
   }
 
   /** One artboard as its own image: only it and what it holds, rendered and cut to its rectangle. */
-  artboardImage(id: ID): Surface | null {
+  artboardImage(id: ID, bare = false): Surface | null {
     const p = this.current, a = p?.layer(id);
     if (!p || !a?.artboard) return null;
-    const map = byId(p.doc), keep = p.doc.layers.filter((l) => l.id === id || isDescendant(map, l.id, id));
+    const map = byId(p.doc), keep = p.doc.layers.filter((l) => l.id === id || isDescendant(map, l.id, id)).map((l) => (bare && l.id === id && l.artboard ? { ...l, artboard: { ...l.artboard, background: null } } : l));
     const r = a.artboard, pad = { x: Math.min(0, r.x), y: Math.min(0, r.y) };
     const doc: Doc = { ...p.doc, width: Math.max(p.doc.width, r.x + r.w) - pad.x, height: Math.max(p.doc.height, r.y + r.h) - pad.y, layers: pad.x || pad.y ? keep.map((l) => ({ ...l, transform: { ...l.transform, x: l.transform.x - pad.x, y: l.transform.y - pad.y }, mask: l.mask?.placement ? { ...l.mask, placement: { ...l.mask.placement, x: l.mask.placement.x - pad.x, y: l.mask.placement.y - pad.y } } : l.mask, ...(l.artboard ? { artboard: { ...l.artboard, x: l.artboard.x - pad.x, y: l.artboard.y - pad.y } } : {}) })).map((l) => (l.vectorMask ? { ...l, vectorMask: movedVector(l.vectorMask, (x, y) => ({ x: x - pad.x, y: y - pad.y })) } : l)) : keep };
     const full = renderDoc(this.work, doc), out = createSurface(r.w, r.h);

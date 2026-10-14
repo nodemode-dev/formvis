@@ -371,6 +371,10 @@ ask it questions.
 - File > Automate > Merge to HDR merges exposures of one scene into a new 32-bit document (photos taken by hand are
   aligned; exposure times come from EXIF or are worked out from the photos). File > Automate > Photomerge stitches
   overlapping photos into a panorama (Auto or Reposition; transparent edges or cropped).
+- Edit > Auto-Align Layers moves the other selected pixel layers to line up with the bottom-most one (Auto, Perspective,
+  Reposition; Cylindrical runs as Perspective, Vignette Removal is not applied). Edit > Auto-Blend Layers adds layer
+  masks that join the selected layers as a Panorama or keep the sharpest layer at each point (Stack Images), with
+  Seamless Tones and Colors; each is one undo step.
 - Radiance HDR, OpenEXR and 32-bit TIFF open as 32-bit documents, and Image > Mode > 32 Bits/Channel turns any RGB
   document into one. Their pixels are linear light and may be brighter than white; the canvas shows them with white and
   above as white. The Exposure adjustment works in linear light, as do moving, the canvas and image size commands and
@@ -425,6 +429,11 @@ ask it questions.
   Only, the type (PNG, JPEG or WebP with a quality, TIFF, PSD) and Include ICC Profile. The desktop app writes the files
   into a folder you name inside its exports folder; the browser gives one zip. Artboards to Files does the same for each
   artboard, holding only what is inside it.
+- File > Export > Artboards to PDF writes one multipage PDF, a page per artboard in the Layers order (top of the panel
+  first), each page the artboard's contents at its own size in points from the document's resolution (72 dpi when none
+  is set). Choose the file name, Encoding (Lossless, or JPEG with a quality) and Contents Only (leaves out each
+  artboard's background colour). Include ICC Profile is shown but not yet carried by the PDF writer; page labels with
+  the artboard names are not written.
 - File > File Info (Alt+Shift+Ctrl+I) holds the document's metadata: Document Title, Author, Author Title, Description,
   Rating (0 to 5 stars), Description Writer, Keywords (separated by commas or semicolons), Copyright Status (Unknown,
   Copyrighted, Public Domain), Copyright Notice and Copyright Info URL. For a photo with Exif it also shows the camera's

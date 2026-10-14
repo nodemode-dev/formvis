@@ -357,6 +357,17 @@ export const api = {
     const head = JSON.parse(new TextDecoder().decode(b.subarray(4, 4 + n))) as { width: number; height: number; times: number[]; source: string };
     return { ...head, rgb: new Float32Array(b.slice(4 + n).buffer) };
   },
+  /** Edit > Auto-Align Layers (DEV_PLAN 32.1): each layer as a document-sized PNG, bottom-most first; a 3x3 matrix per
+   *  layer (row-major, layer pixels to the reference's), identity for the reference. */
+  async mergeAlign(layers: Blob[], projection: string, vignette: boolean): Promise<{ matrices: number[][]; layers: Array<{ inliers: number; kind: string }>; vignette: string }> {
+    const r = await request('/merge/align', { method: 'POST', body: form({ projection, vignette: String(vignette) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
+    return await r.json();
+  },
+  /** Edit > Auto-Blend Layers (DEV_PLAN 32.1): a grey mask PNG (base64) per layer and RGB tone gains per layer. */
+  async mergeBlend(layers: Blob[], method: string, seamless: boolean): Promise<{ masks: string[]; tones: number[][] }> {
+    const r = await request('/merge/blend', { method: 'POST', body: form({ method, seamless: String(seamless) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
+    return await r.json();
+  },
   /** A Lab TIFF or PSD as Lab layers (1.58.1): each layer's L, a, b and alpha as floats in the window's encoding;
    *  null when the file is not Lab. */
   async decodeLab(file: Blob, name: string): Promise<{ width: number; height: number; bits: 8 | 16; layers: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean; data: Float32Array }> } | null> {
@@ -479,6 +490,12 @@ export const api = {
     const body = form({ format, quality: String(quality), dpi: String(dpi), ...(options ? { options: JSON.stringify(options) } : {}) }, [{ name: 'image.png', blob: png }], 'file');
     if (icc) body.append('icc', new Blob([icc as Uint8Array<ArrayBuffer>], { type: 'application/vnd.iccprofile' }), 'profile.icc');
     return (await request('/io/encode', { method: 'POST', body })).blob();
+  },
+  /** Artboards to PDF (29.4): one PNG per page, in order, each page at its own size from `dpi`; one PDF comes back. */
+  async pdfPages(pages: Blob[], dpi: number, jpeg: boolean, quality: number, icc: Uint8Array | null): Promise<Blob> {
+    const body = form({ dpi: String(dpi), jpeg: String(jpeg), quality: String(quality) }, pages.map((blob, i) => ({ name: `page-${i + 1}.png`, blob })), 'file');
+    if (icc) body.append('icc', new Blob([icc as Uint8Array<ArrayBuffer>], { type: 'application/vnd.iccprofile' }), 'profile.icc');
+    return (await request('/io/pdf-pages', { method: 'POST', body })).blob();
   },
   async exportFile(blob: Blob, name: string, folder = ''): Promise<string> {
     const r = await request('/io/export', { method: 'POST', body: form(folder ? { name, folder } : { name }, [{ name, blob }], 'file') });

@@ -4,6 +4,7 @@ import { FadeDialog } from './ui/panels/fade-dialog';
 import { ApplyImageDialog } from './ui/panels/apply-image-dialog';
 import { ExportDialog } from './ui/panels/export-dialog';
 import { LayerExportDialog } from './ui/panels/layer-export-dialog';
+import { ArtboardPdfDialog, type ArtboardPdfSettings } from './ui/panels/artboard-pdf-dialog';
 import { DEFAULT_LAYER_EXPORT, layerFiles, type LayerExportSettings } from './io/layer-export';
 import { GuideDialog } from './ui/panels/guide-dialog';
 import { ArtboardDialog, NewArtboardDialog } from './ui/panels/artboard-dialog';
@@ -1262,6 +1263,24 @@ export function startApp(): void {
     });
   }
 
+  /** File > Export > Artboards to PDF (29.4): one page per artboard in the Layers order, each at its own size from the
+   *  document resolution, built by the engine's /io/pdf-pages. */
+  async function exportArtboardsPdf(set: ArtboardPdfSettings): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const pages: Blob[] = [];
+        for (const b of engine.artboards(p)) { const img = engine.artboardImage(b.id, set.contentsOnly); if (img) pages.push(await toBlob(img)); }
+        if (!pages.length) { toast('There are no artboards to export.', 'info'); return; }
+        const own = p.doc.profile, pdf = await api.pdfPages(pages, p.doc.resolution ?? 72, set.jpeg, set.quality, set.icc && own ? fromBase64(own.icc) : null);
+        await deliver(pdf, `${set.name.replace(/\.pdf$/i, '') || stripExt(p.name)}.pdf`);
+        toast(`Exported ${pages.length} artboard${pages.length === 1 ? '' : 's'} as one PDF.`, 'info');
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   /** File Info from a person (the dialog) or an agent (any parameter given sets those fields at once, as one step). */
   const FILE_INFO_PARAMS: Record<string, CommandParam> = {
     title: { type: 'string', description: 'Document Title. A single space clears the field.' },
@@ -1614,8 +1633,9 @@ export function startApp(): void {
     scaleEffects: new ScaleEffectsDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
-    print: new PrintDialog(engine, (s) => { printDocument(engine, s); }),
+    print: new PrintDialog(engine, (s) => { printDocument(engine, s); }, (pdf, name) => { void deliver(pdf, name); }),
     layerExport: new LayerExportDialog(engine, () => !!caps?.desktop, (s) => void exportLayerFiles(s)),
+    artboardPdf: new ArtboardPdfDialog(engine, (s) => void exportArtboardsPdf(s)),
     guide: new GuideDialog(engine),
     artboard: new ArtboardDialog(engine),
     newArtboard: new NewArtboardDialog(engine),
@@ -1819,6 +1839,20 @@ export function startApp(): void {
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
     { id: 'fit-image', label: 'Fit Image...', enabled: has, run: () => dialogs.fitImage.show() },
     { id: 'photomerge', label: 'Photomerge...', run: () => photomergeDialog.show() },   // 1.58.2
+    ...(['align', 'blend'] as const).map((mode) => ({   // DEV_PLAN 32.1
+      id: mode === 'align' ? 'auto-align-layers' : 'auto-blend-layers', label: mode === 'align' ? 'Auto-Align Layers...' : 'Auto-Blend Layers...',
+      enabled: () => { const p = engine.current; return !!p && [...p.selectedIds].filter((id) => { const l = p.layer(id); return !!l?.raster && !l.isGroup && !l.adjustment && !l.text && !l.shape && !l.smart; }).length > 1; },
+      params: (mode === 'align' ? {
+        projection: { type: 'string' as const, enum: ['auto', 'perspective', 'cylindrical', 'reposition'], description: 'Projection; auto when left out. Cylindrical is treated as perspective; reposition only moves layers.' },
+      } : {
+        method: { type: 'string' as const, enum: ['panorama', 'stack'], description: 'Blend method: panorama (soft seams) or stack (sharpest layer, for focus stacking); panorama when left out.' },
+        seamless: { type: 'boolean' as const, description: 'Seamless Tones and Colors: match each layer\'s tones to the reference; on when left out.' },
+      }) as NonNullable<Command['params']>,
+      run: (a?: Record<string, unknown>) => import('./ui/panels/align-blend-dialog').then(async (m) => {
+        if (!a || !Object.keys(a).length) { m.AlignBlendDialog.get(engine, mode).show(); return undefined; }
+        return { message: await m.AlignBlendDialog.execute(engine, mode, { projection: a.projection === undefined ? undefined : String(a.projection), method: a.method === undefined ? undefined : String(a.method), seamless: a.seamless === undefined ? true : !!a.seamless }) };
+      }),
+    })),
     { id: 'merge-hdr', label: 'Merge to HDR...', run: () => hdrMergeDialog.show() },
     { id: 'send-host', label: 'Send to NodeMode Canvas', enabled: () => has() && hostLink.embedded, run: () => void sendToHost() },
     // Standalone (1.50.8): the engine sends to the NodeMode at the address in Preferences > Plugins.
@@ -1943,6 +1977,18 @@ export function startApp(): void {
     { id: 'artboard-options', label: 'Artboard Options...', enabled: () => !!engine.current?.activeLayer?.artboard, run: () => dialogs.artboard.show() },
     { id: 'export-artboards', label: 'Export Artboards to Files', enabled: () => engine.artboards().length > 0, run: () => void exportArtboards() },
     { id: 'export-layers', label: 'Layers to Files...', enabled: has, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(false, a) },
+    { id: 'export-artboards-pdf', label: 'Artboards to PDF...', enabled: () => engine.artboards().length > 0,
+      params: {
+        name: { type: 'string', description: 'PDF file name; the document name when left out.' },
+        jpeg: { type: 'boolean', description: 'JPEG encoding instead of lossless; false when left out.' },
+        quality: { type: 'integer', min: 1, max: 100, description: 'JPEG quality; 90 when left out.' },
+        icc: { type: 'boolean', description: 'Check the document ICC profile; true when left out. The PDF does not carry it yet.' },
+        contents_only: { type: 'boolean', description: 'Leave out each artboard\'s background colour; false when left out.' },
+      },
+      run: (a) => {
+        if (!a || !Object.keys(a).length) { dialogs.artboardPdf.show(); return; }
+        void exportArtboardsPdf({ name: String(a.name ?? ''), jpeg: a.jpeg === true, quality: Number(a.quality ?? 90), icc: a.icc !== false, contentsOnly: a.contents_only === true });
+      } },
     { id: 'export-artboards-files', label: 'Artboards to Files...', enabled: () => engine.artboards().length > 0, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(true, a) },
     { id: 'script-delete-empty-layers', label: 'Delete All Empty Layers', enabled: has, run: () => engine.deleteEmptyLayers() },
     { id: 'script-flatten-effects', label: 'Flatten All Layer Effects', enabled: () => !!engine.current?.doc.layers.some((l) => effectsActive(l.effects)), run: () => engine.flattenAllEffects() },
@@ -2239,7 +2285,7 @@ export function startApp(): void {
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
-      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
+      { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
