@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Layer > Smart Objects: New Smart Object via Copy, Convert to Layers, Export Contents · _v1.68.1 (files)
+
+`engine/index.ts`: `newSmartObjectViaCopy()` (clones the layer through `LS.cloneLayer` and gives the copy its own source raster, filter stack, warp and filter mask; named "<name> copy", placed above, link dropped; one step), `smartToLayers()` (source at the current placement, warp applied through `warpedSmart`, filters not applied, name, opacity, blend and mask kept; padded masks cropped to the source; one step) and `smartContents()`. `app.ts`: commands `smart-new-via-copy`, `smart-convert-to-layers`, `smart-export-contents` (PNG named after the layer through `deliver`), enabled for a smart object, in both Layer > Smart Objects menus. `automation/command-meta.ts`: their words. Checked: tsc clean, unit tests run.
+
+## Image > Apply Image, engine and command, no dialog yet (31.2) · _v1.68.1 (files)
+
+Added `frontend/src/engine/apply-image.ts` (pure RGBA math: `channelSource`, `coverageSource`, `maskStrength`, `applyImagePixels`; the nine per-pixel layer modes go through `blendPixels`, the rest and Add/Subtract with Scale and Offset are done there), `Engine.applyImage(opts)` in `engine/index.ts` (one history step, "Apply Image", within the selection; a source or mask of another size is refused with a notice), the `apply-image` command in `app.ts` (Image menu, before Adjustments; no parameters shows "Apply Image's dialog comes next release") and its words in `command-meta.ts`. Nothing removed.
+
+## Image > Calculations as an engine operation and a command, no dialog yet · _v1.68.1 (files)
+
+Added `frontend/src/engine/calculations.ts` (pure greys: `channelOf` with Gray as 0.299, 0.587, 0.114, `invertGrey`, `blendGreys` for the 16 modes with Scale and Offset for Add and Subtract, opacity and mask), `Engine.calculations(opts)` and `calcGrey` in `engine/index.ts` beside Save Selection (Source 2 is the backdrop; the result is a new alpha channel as one "Calculations" step, a white-backed RGB document of the grey, or the selection), and the `calculations` command in `app.ts` with parameters for agents; with none it shows "Calculations' dialog comes next release". Words in `command-meta.ts`. Sources are layers of the current document, so equal size is by construction. Nothing removed.
+
 ## Release 1.68.0: proof presets, Purge, Smart Filter's Disable and Clear · _v1.68.0
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (789 catalogue ids, the 13 new ones listed); a probe: three layers' history emptied by Purge Histories with the layers kept, the Cyan plate, Protanopia, Proof Colors and Purge Clipboard run without a page error; colour management, history and smart object browser tests 9 of 9. Removed lines taken after the version edit. Removed from frontend:

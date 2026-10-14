@@ -151,6 +151,7 @@ const ROWS: Record<string, Row> = {
   'auto-color': ['Image', 'Neutralises colour casts automatically.', 'Use when the picture has a colour cast.', 'm'],
   'desaturate': ['Image', 'Removes colour and keeps the mode.', 'Use when you want black and white without a conversion.', 'm'],
   'equalize': ['Image', 'Spreads brightness values evenly.', 'Use when you want to maximise tonal range.', 'm'],
+  'apply-image': ['Image', 'Blends a channel of a layer or the merged image into the active layer.', 'Use when you want a channel calculation, a mode blend through a mask, or add and subtract with scale and offset.', 'm'],
   'replace-color': ['Image', 'Opens Replace Color.', 'Use when you want to change one colour to another across the picture.', 'm'],
   'image-crop': ['Image', 'Crops the document to the selection.', 'Use when a selection marks what to keep.', 'm'],
   'duplicate-image': ['Image', 'Opens the dialog that duplicates the document into a new one.', 'Use when you want a working copy to experiment on.'],
@@ -285,6 +286,9 @@ const ROWS: Record<string, Row> = {
   'edit-text': ['Type', 'Opens the text of the active type layer for editing.', 'Use when words on a text layer must change.', 'm'],
   'convert-smart': ['Layer', 'Converts the layer to a smart object.', 'Use when you want to filter or scale without losing quality.', 'm'],
   'rasterize': ['Layer', 'Rasterizes the active layer.', 'Use when a vector, text or smart layer must become pixels.', 'm'],
+  'smart-new-via-copy': ['Layer', 'Duplicates the active smart object as a new, independent smart object above it.', 'Use when you want to edit a copy of a smart object without changing the original.', 'm'],
+  'smart-convert-to-layers': ['Layer', 'Replaces the active smart object with a pixel layer holding its source at its current placement, without the smart filters.', 'Use when you want the smart object contents as ordinary pixels.', 'm'],
+  'smart-export-contents': ['Layer', 'Saves the active smart object source as a PNG file named after the layer.', 'Use when you need the original pixels of a smart object as a file.', 'm'],
   'smart-filters-disable': ['Layer', 'Turns every filter of the active smart object off, or back on when all are off.', 'Use when you want to compare the smart object with and without its filters.', 'm'],
   'smart-filters-clear': ['Layer', 'Removes every smart filter of the active smart object.', 'Use when the filters on a smart object are no longer wanted.', 'm'],
   'purge-clipboard': ['Edit', 'Clears formvis\'s internal clipboard.', 'Use when copied pixels should no longer be pasted or take memory.', 'm'],
@@ -380,6 +384,7 @@ const ROWS: Record<string, Row> = {
   'proof-preset-deuteranopia': ['View', 'Simulates deuteranopia, green-blind colour vision, and turns Proof Colors on.', 'Use when you want to check the picture for viewers who cannot see green.'],
   'proof-colors': ['View', 'Turns Proof Colors on or off.', 'Use when you want to preview how print colours will look.'],
   'gamut-warning': ['View', 'Turns the gamut warning on or off.', 'Use when you want to see colours the output cannot print.'],
+  'calculations': ['Image', 'Blends two single channels (each a layer or the merged picture, optionally inverted) by a blending mode, opacity and optional mask into a new alpha channel, a new grey document or the selection; with no parameters it only shows a notice until the dialog arrives.', 'Use when you want a mask built from channel maths, such as one colour channel multiplied with another, as a selectable channel.', 'm'],
   'flatten': ['Image', 'Flattens every layer into one.', 'Use when the layers are done and one flat picture is wanted.', 'm'],
 };
 

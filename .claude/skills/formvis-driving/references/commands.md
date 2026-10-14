@@ -1,14 +1,14 @@
 # formvis commands
 
-Generated from the window's command catalogue (779 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (784 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 45
 - File: 48
 - Filter: 77
-- Image: 67
-- Layer: 158
+- Image: 69
+- Layer: 161
 - Paint: 1
 - Paths: 8
 - Select: 28
@@ -240,11 +240,13 @@ Generated from the window's command catalogue (779 commands) by `./formvis agent
 | `adj-threshold` | Threshold... |  | Opens Threshold and applies it to the pixels of the active layer. (changes the picture) |
 | `adj-vibrance` | Vibrance... |  | Opens Vibrance and applies it to the pixels of the active layer. (changes the picture) |
 | `adjust.apply` | Apply Adjustment |  | Applies an adjustment with exact values, to the pixels of the active layer or as an adjustment layer. (changes the picture) |
+| `apply-image` | Apply Image... |  | Blends a channel of a layer or the merged image into the active layer. (changes the picture) |
 | `apply-redactions` | Apply Redactions |  | Burns the redaction boxes into the pixels. (changes the picture) |
 | `assign-profile` | Assign Profile... |  | Opens Assign Profile. (changes the picture) |
 | `auto-color` | Auto Color | Shift+Mod+B | Neutralises colour casts automatically. (changes the picture) |
 | `auto-contrast` | Auto Contrast | Alt+Shift+Mod+L | Sets contrast automatically without shifting colour. (changes the picture) |
 | `auto-tone` | Auto Tone | Shift+Mod+L | Sets levels on each channel automatically. (changes the picture) |
+| `calculations` | Calculations... |  | Blends two single channels (each a layer or the merged picture, optionally inverted) by a blending mode, opacity and optional mask into a new alpha channel, a new grey document or the selection; with no parameters it only shows a notice until the dialog arrives. (changes the picture) |
 | `canvas-size` | Canvas Size... | Alt+Mod+C | Opens Canvas Size. (changes the picture) |
 | `color-match` | Color Match... |  | Opens Color Match. (changes the picture) |
 | `content-aware-scale` | Content-Aware Scale... |  | Opens Content-Aware Scale. (changes the picture) |
@@ -424,9 +426,12 @@ Generated from the window's command catalogue (779 commands) by `./formvis agent
 | `shapes-merge` | Merge Shape Components |  | Merges shape components into one path. (changes the picture) |
 | `shapes-subtract` | Subtract Front Shape |  | Cuts the front shape out of the one behind. (changes the picture) |
 | `shapes-unite` | Unite Shapes |  | Unites the selected shape layers into one shape. (changes the picture) |
+| `smart-convert-to-layers` | Convert to Layers |  | Replaces the active smart object with a pixel layer holding its source at its current placement, without the smart filters. (changes the picture) |
+| `smart-export-contents` | Export Contents... |  | Saves the active smart object source as a PNG file named after the layer. (changes the picture) |
 | `smart-filters` | Smart Filters... |  | Opens the smart filter stack of the active layer. (changes the picture) |
 | `smart-filters-clear` | Clear Smart Filters |  | Removes every smart filter of the active smart object. (changes the picture) |
 | `smart-filters-disable` | Disable Smart Filters |  | Turns every filter of the active smart object off, or back on when all are off. (changes the picture) |
+| `smart-new-via-copy` | New Smart Object via Copy |  | Duplicates the active smart object as a new, independent smart object above it. (changes the picture) |
 | `style-bevel` | Bevel & Emboss... |  | Opens Layer Style at Bevel and Emboss. (changes the picture) |
 | `style-blending` | Blending Options... |  | Opens Layer Style at Blending Options. (changes the picture) |
 | `style-color-overlay` | Color Overlay... |  | Opens Layer Style at Color Overlay. (changes the picture) |

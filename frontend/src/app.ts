@@ -24,6 +24,8 @@ import { dpxBlob } from './io/dpx';
 import { exportLayout, ENGINE_FORMATS, exportName, exportSize, formatOptions, PROFILELESS, type ExportSettings } from './io/export-presets';
 import { pnmDeepBlob } from './io/pnm';
 import { PARAM_KINDS } from './engine/adjust-params';
+import { APPLY_MODES, type ApplyMode } from './engine/apply-image';
+import { CALC_MODES, type CalcMode } from './engine/calculations';
 import { recovery, type RecoveryRecord } from './io/recovery';
 import { TrimDialog } from './ui/panels/trim-dialog';
 import { ColorRangeDialog } from './ui/panels/color-range-dialog';
@@ -1890,6 +1892,32 @@ export function startApp(): void {
     { id: 'desaturate', label: 'Desaturate', keys: ['Shift+Mod+U'], enabled: pixel, run: () => engine.pixelAdjust('desaturate') },
     { id: 'equalize', label: 'Equalize', enabled: pixel, run: () => engine.pixelAdjust('equalize') },
     { id: 'replace-color', label: 'Replace Color...', enabled: pixel, run: () => dialogs.replaceColor.show() },
+    {
+      id: 'apply-image', label: 'Apply Image...', enabled: pixel, params: {
+        source_doc: { type: 'string', description: 'Id of the source document, which must be the target\'s pixel size; the current document when left out.' },
+        layer: { type: 'string', description: 'Source layer id, or "merged" for the whole image; the active layer when left out.' },
+        channel: { type: 'string', description: 'Source channel: rgb (default), red, green, blue, transparency, or a saved alpha channel\'s id or name.' },
+        invert: { type: 'boolean', description: 'Invert the source channel.' },
+        mode: { type: 'string', enum: APPLY_MODES, description: 'Blending mode; normal when left out. Add and subtract use scale and offset.' },
+        opacity: { type: 'number', min: 0, max: 100, description: 'Opacity in percent; 100 when left out.' },
+        scale: { type: 'number', min: 1, max: 255, description: 'Scale for add and subtract; 1 when left out.' },
+        offset: { type: 'number', min: -255, max: 255, description: 'Offset for add and subtract; 0 when left out.' },
+        mask_layer: { type: 'string', description: 'Mask layer id, or "merged"; giving any mask_ field turns the mask on.' },
+        mask_channel: { type: 'string', description: 'Mask channel: rgb (its luminosity), red, green, blue, transparency, or an alpha channel\'s id or name.' },
+        mask_invert: { type: 'boolean', description: 'Invert the mask.' },
+      },
+      run: (a) => {
+        if (!a || !Object.keys(a).length) { engine.notice('Apply Image\'s dialog comes next release'); return undefined; }
+        const s = (k: string): string | undefined => (typeof a[k] === 'string' && a[k] ? String(a[k]) : undefined), n = (k: string): number | undefined => (typeof a[k] === 'number' ? a[k] : undefined);
+        const hasMask = a.mask_layer !== undefined || a.mask_channel !== undefined || a.mask_invert !== undefined;
+        const ran = engine.applyImage({
+          doc: s('source_doc'), layer: s('layer'), channel: s('channel'), invert: a.invert === true, mode: s('mode') as ApplyMode | undefined,
+          opacity: n('opacity') === undefined ? undefined : (n('opacity') as number) / 100, scale: n('scale'), offset: n('offset'),
+          mask: hasMask ? { doc: s('source_doc'), layer: s('mask_layer'), channel: s('mask_channel'), invert: a.mask_invert === true } : null,
+        });
+        return { applied: ran };
+      },
+    },
     { id: 'image-crop', label: 'Crop', enabled: selected, run: () => { engine.cropToSelection(); } },
     { id: 'duplicate-image', label: 'Duplicate...', enabled: has, run: () => dialogs.duplicateImage.show() },
     { id: 'new-layer', label: 'New Layer', enabled: has, run: () => engine.addLayer() },
@@ -2075,6 +2103,13 @@ export function startApp(): void {
     { id: 'convert-smart', label: 'Convert to Smart Object', enabled: () => { const l = engine.current?.activeLayer; return !!l?.raster && !l.isGroup && !l.adjustment && !l.smart; }, run: () => engine.convertToSmartObject() },
     { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || !!l.vector || !!l.shape || !!l.fillContent || liveText(l)); }, run: () => engine.rasterizeLayer() },
     { id: 'smart-filters', label: 'Smart Filters...', enabled: () => !!engine.current?.activeLayer?.smart, run: () => dialogs.smartFilters.show() },
+    { id: 'smart-new-via-copy', label: 'New Smart Object via Copy', enabled: () => !!engine.current?.activeLayer?.smart, run: () => engine.newSmartObjectViaCopy() },
+    { id: 'smart-convert-to-layers', label: 'Convert to Layers', enabled: () => !!engine.current?.activeLayer?.smart, run: () => engine.smartToLayers() },
+    { id: 'smart-export-contents', label: 'Export Contents...', enabled: () => !!engine.current?.activeLayer?.smart, run: async () => {
+      const c = engine.smartContents();
+      if (!c) return;
+      try { await deliver(await toBlob(c.raster.canvas, 'image/png'), `${c.name.replace(/[\\/:*?"<>|]+/g, '_') || 'Smart Object'}.png`); } catch (err) { toast(message(err), 'error'); }
+    } },
     { id: 'smart-filters-disable', label: () => (engine.smartFiltersOff ? 'Enable Smart Filters' : 'Disable Smart Filters'), enabled: () => !!engine.current?.activeLayer?.smart?.filters.length, run: () => engine.toggleSmartFilters() },
     { id: 'smart-filters-clear', label: 'Clear Smart Filters', enabled: () => !!engine.current?.activeLayer?.smart?.filters.length, run: () => engine.clearSmartFilters() },
     { id: 'edit-contents', label: 'Edit Contents', enabled: () => !!engine.current?.activeLayer?.smart, run: () => engine.editContents() },
@@ -2144,6 +2179,35 @@ export function startApp(): void {
     ...PROOF_KINDS.map(([kind, name]): Command => ({ id: `proof-preset-${kind}`, label: name, enabled: has, checked: () => colourView.proof && colourView.preset === kind, run: () => colourView.usePreset(kind) })),
     { id: 'proof-colors', label: 'Proof Colors', enabled: () => has() && (!!colourView.setup || !!colourView.preset), checked: () => colourView.proof, run: () => { colourView.proof = !colourView.proof; if (!colourView.proof) colourView.gamut = false; void colourView.refresh(); } },
     { id: 'gamut-warning', label: 'Gamut Warning', keys: ['Shift+Mod+Y'], enabled: () => has() && !!colourView.setup, checked: () => colourView.gamut, run: () => { colourView.gamut = !colourView.gamut; if (colourView.gamut) colourView.proof = true; void colourView.refresh(); } },
+    {
+      id: 'calculations', label: 'Calculations...', enabled: has,
+      params: {
+        source1_layer: { type: 'string', description: 'Source 1 layer (id or name), or Merged; Merged when left out.' },
+        source1_channel: { type: 'string', description: 'Source 1 channel: gray, red, green, blue, transparency, or an alpha channel (id or name); gray when left out.' },
+        source1_invert: { type: 'boolean', description: 'Invert Source 1.' },
+        source2_layer: { type: 'string', description: 'Source 2 layer (id or name), or Merged; Merged when left out. Source 2 is the backdrop.' },
+        source2_channel: { type: 'string', description: 'Source 2 channel: gray, red, green, blue, transparency, or an alpha channel (id or name); gray when left out.' },
+        source2_invert: { type: 'boolean', description: 'Invert Source 2.' },
+        mode: { type: 'string', enum: [...CALC_MODES], description: 'Blending mode; normal when left out.' },
+        opacity: { type: 'number', min: 0, max: 100, description: 'Opacity in percent; 100 when left out.' },
+        scale: { type: 'number', min: 1, max: 2, description: 'Scale for add and subtract; 1 when left out.' },
+        offset: { type: 'number', min: -255, max: 255, description: 'Offset for add and subtract; 0 when left out.' },
+        mask_channel: { type: 'string', description: 'An alpha channel (id or name) used as the mask.' },
+        result: { type: 'string', enum: ['channel', 'document', 'selection'], description: 'Where the result goes: a new alpha channel (the default), a new document, or the selection.' },
+      },
+      run: (a) => {
+        if (!a || !Object.keys(a).length) { engine.notice('Calculations\' dialog comes next release'); return undefined; }
+        const text = (k: string): string | undefined => (a[k] === undefined ? undefined : String(a[k]));
+        const num = (k: string): number | undefined => (a[k] === undefined ? undefined : Number(a[k]));
+        const r = engine.calculations({
+          source1: { layer: text('source1_layer'), channel: text('source1_channel'), invert: a.source1_invert === true },
+          source2: { layer: text('source2_layer'), channel: text('source2_channel'), invert: a.source2_invert === true },
+          mode: text('mode') as CalcMode | undefined, opacity: num('opacity') === undefined ? undefined : num('opacity')! / 100, scale: num('scale'), offset: num('offset'),
+          mask: text('mask_channel'), result: text('result') as 'channel' | 'document' | 'selection' | undefined,
+        });
+        return r ? { channel: r.channel, document: r.project?.doc.id, selection: r.selection } : undefined;
+      },
+    },
     { id: 'flatten', label: 'Flatten Image', enabled: () => (engine.current?.doc.layers.length ?? 0) > 1, run: () => { engine.flattenImage(); } },
     ...FILTERS.map((kind) => ({ id: `filter-${kind}`, label: `${FILTER_LABELS[kind]}...`, ...(kind === 'develop' ? { keys: ['Shift+Mod+A'] } : {}), enabled: hasTargetPixels, run: () => dialogs.filter.show(kind) })),
     ...LIBRARY.map((f) => ({ id: `filter-${f.id}`, label: libHasDialog(f.id) ? `${f.label}...` : f.label, enabled: f.fills ? () => hasTargetPixels() || engine.canGivePixels : hasTargetPixels, run: () => {
@@ -2169,7 +2233,7 @@ export function startApp(): void {
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
-      { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
+      'apply-image', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
@@ -2179,7 +2243,7 @@ export function startApp(): void {
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
-      { label: 'Smart Objects', items: ['convert-smart', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
+      { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
       { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] },
@@ -2222,7 +2286,7 @@ export function startApp(): void {
     engine.on('projects', () => { void native.build().catch(() => undefined); });   // Open Recent and what is enabled
   }
   contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', 'warp-text', '-',
-    { label: 'Smart Objects', items: ['convert-smart', 'rasterize', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
+    { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'smart-export-contents', 'rasterize', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] }, '-',
     { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
