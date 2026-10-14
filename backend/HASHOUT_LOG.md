@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.68.9
+
+No engine code changed in 1.68.9. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.68.8"
+version = "1.68.8"
+version = "1.68.8"
+ "version": "1.68.8",
+```
+
 ## Version only · _v1.68.8
 
 No engine code changed in 1.68.8. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

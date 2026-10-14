@@ -2,6 +2,29 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.9: Load Files into Stack, Statistics, Generate Image Assets, Save for Web · _v1.68.9 (io/image-assets.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (840 catalogue ids). At the join: `encodeAsset`'s GIF branch passed the pixel array where `encodeGif` takes an `ImageData`, hidden by an `as never` cast; it now passes the `ImageData` and the cast is gone. The three 1.68.9 entries were moved above the 1.68.8 release section, newest first. Probes in Chromium: three files (40x30, 50x40, 40x30) loaded into a 50x40 document as layers a, b, c; Statistics with Median over grey 10, 200, 30 made one stacked smart object showing 30; one file was refused with a notice; a layer named `hero.png, 50% small.jpg80%, icon.gif, 32x? thumb.webp` with an 80x40 red block gave hero.png 80x40 PNG, small.jpg 40x20 JPEG, icon.gif 80x40 GIF and thumb.webp 32x16 WebP in `Assets-assets.zip`; Save for Web wrote `Assets.png` 200x100 as PNG-24, and with All slices `Assets slices.zip` holding `Assets_01.jpg` and `Assets_02.jpg`, each 100x50; both dialogs looked right in screenshots; no page errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.8",
+      "version": "1.68.8",
+  "version": "1.68.8",
+export const VERSION = '1.68.8';
+```
+
+## Load Files into Stack and Statistics, DEV_PLAN 30.4 · _v1.68.9 (engine/index.ts, ui/panels/load-stack-dialog.ts, app.ts, automation/command-meta.ts)
+
+File > Scripts gains Load Files into Stack and Statistics. Both open one dialog class (LoadStackDialog, rows built once in the constructor): a Browse button with the chosen file list, a Create Smart Object after Loading Layers checkbox (Load Files only) and a Stack Mode select (Statistics only, median by default). OK decodes each file and calls the new Engine.loadStack, which makes one document sized to the largest image with a layer per file at the top left (named after the file, the first at the bottom), and, for a smart object or any mode, converts them to a stacked smart object and sets the mode, with fewer than two files refused by a notice. Deferred: auto-align of the layers and a folder as the source.
+
+## Generate Image Assets, DEV_PLAN 29.5 part b · _v1.68.9 (io/image-assets.ts, app.ts, automation/command-meta.ts)
+
+File > Export > Generate Image Assets reads Photoshop's asset syntax from layer names (a comma separated list of an optional `NN%` or `WxH` size with `?` allowed, a file name with png, png8, png24, png32, jpg, jpeg, gif or webp, and an optional quality such as `jpg80%` or `jpg8`), draws each matching layer alone, trims it, scales it per spec and zips the files, with ` 2`, ` 3` added to duplicate names. Deferred: regenerating the assets on every save, true 8-bit palette PNGs (png8 is written as a full colour PNG for now) and SVG.
+
+## Save for Web (Legacy), DEV_PLAN 29.5 part b · _v1.68.9 (ui/panels/save-for-web-dialog.ts, app.ts, automation/command-meta.ts)
+
+File > Export > Save for Web (Legacy)... opens a dialog with an Original and an Optimized preview, each the centre of the image at 100 percent in a fixed 280 by 200 box with a format and size caption. The format is JPEG, PNG-24, PNG-8, GIF or WebP, with a quality slider for JPEG and WebP; the Optimized preview is the really encoded result decoded again, refreshed 150 ms after a change, and all the DOM is built once. Export writes the whole image, or with All slices (disabled when the document has none) crops each slice in reading order and delivers a zip named `<doc> slices.zip` of `<doc>_01`, `_02` and so on. The command has no keyboard shortcut. Deferred: the 2-up and 4-up layouts, a true 8-bit PNG palette (PNG-8 writes an ordinary PNG for now), metadata options, and an HTML table of the slices.
+
 ## Release 1.68.8: the Slice tool, Multichannel, Stack Modes · _v1.68.8 (automation/catalogue.ts, ui/tabs.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (836 catalogue ids). At the join: `tool.select.slice` had no words, so `TOOL_WHEN` in `automation/catalogue.ts` gained `slice`; the Multichannel entry's heading now lists `ui/tabs.ts`, whose mode-label table needed the new mode. Probes in Chromium through the catalogue: two slices added, Show Slices toggled, saved and read back as two, Clear Slices then undo gave two again; a half-red RGB document converted to Multichannel gave Cyan, Magenta and Yellow, red composited as (236, 0, 0) and white stayed white, the mode and three channels survived a save and read, and RGB Color gave back (236, 0, 0); three grey layers (10, 200, 30) made one stacked smart object (2 layers with the background), Median gave 30 and Maximum 200, and the mode survived a save and read; no page errors. Deferred: Slice Select, Slice Options, layer-based slices, the channels of a Multichannel document in the Channels panel. Removed lines taken after the version edit. Removed from frontend:

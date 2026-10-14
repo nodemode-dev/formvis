@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.9 · 2026-10-14
+
+### Added
+
+- File > Scripts > Load Files into Stack and Statistics: chosen images load as layers of one new document, optionally as a stacked smart object; Statistics stacks them with a chosen stack mode (Median by default).
+- File > Export > Generate Image Assets: layers named like `hero.png, 50% small.jpg80%, 32x? thumb.webp` are exported as those files, trimmed and scaled, in one zip (PNG, JPEG, GIF and WebP).
+- File > Export > Save for Web (Legacy): the original and the encoded result side by side with their sizes, JPEG, PNG-24, PNG-8, GIF or WebP with quality, and an export of the whole image or of every slice as numbered files in a zip.
+
 ## 1.68.8 · 2026-10-14
 
 ### Added
