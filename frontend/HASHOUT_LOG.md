@@ -2,6 +2,29 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.5: Layer Comps, Variables and Data Sets, .pat files · _v1.68.5
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (813 catalogue ids); README's TypeScript size updated; a probe in Chromium through the catalogue: two comps, "Shown" and "Hidden", applied in turn showed and hid the layer; a visibility variable with a two-row CSV gave data sets "true" and "false" that showed and hid it; the serialized project held 2 comps, 1 variable and 2 data sets; no page errors. The .pat round trip of two patterns was byte for byte in the builder's scratch script; a .pat written by Photoshop is not yet tried. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.4",
+      "version": "1.68.4",
+  "version": "1.68.4",
+export const VERSION = '1.68.4';
+```
+
+## Variables and Data Sets, the model and commands, DEV_PLAN 29.9 part a · _v1.68.5 (frontend/src/engine/variables.ts new, frontend/src/engine/types.ts, frontend/src/engine/index.ts, frontend/src/io/project-io.ts, frontend/src/app.ts, frontend/src/automation/command-meta.ts, frontend/HASHOUT_LOG.md)
+
+`Doc.variables`, `dataSets`, `activeDataSet`; `variables.ts` parses CSV or tab text (quoted fields, BOM) and plans a data set's changes; engine `defineVariable`, `importDataSets`, `applyDataSet` (one undo step; pixel images come from a File map, drawn doc-sized into the layer's bounds by fit, fill, as is or conform); saved in the manifest as `variables`, `dataSets`, `activeDataSet`; commands `variables-define`, `data-sets-import`, `data-set-apply` and Image > Variables. No dialog yet. Note: pixel replacement draws a document-sized raster directly through `updateLayer` rather than `replaceLayerPixels`, so a whole apply stays one undo step.
+
+## Layer Comps, the model and commands, DEV_PLAN 33.3 part a · _v1.68.5 (frontend/src/engine/layer-comps.ts new, frontend/src/engine/types.ts, frontend/src/engine/index.ts, frontend/src/io/project-io.ts, frontend/src/app.ts, frontend/src/automation/command-meta.ts, frontend/HASHOUT_LOG.md)
+
+`Doc.comps` and `Doc.activeComp` with `LayerComp`; pure capture, apply and parse in `engine/layer-comps.ts`; engine `newLayerComp`, `applyLayerComp`, `updateLayerComp`, `deleteLayerComp`, `nextLayerComp`, each one undo step; saved in the manifest as `comps` and `activeComp` (absent in older projects); six `layer-comp-*` commands and Layer > Layer Comps. No panel yet.
+
+## Photoshop .pat import and export, DEV_PLAN 34.3 · _v1.68.5 (frontend/src/io/pat.ts, frontend/src/app.ts, frontend/src/automation/command-meta.ts, frontend/HASHOUT_LOG.md)
+
+New `readPat(bytes)` and `writePat(patterns)` in `io/pat.ts`, from Adobe's 8BPT specification: reads RGB, grayscale and indexed (raw or PackBits RLE, 8 or 16 bit, optional alpha); writes RGB with RLE, plus an alpha channel only when a pixel is not opaque. Commands `patterns-import` (multiple .pat files, each pattern through `addPattern`, then `savePatterns`) and `patterns-export` (all non-builtin patterns into one Patterns.pat through `deliver`) sit beside `define-pattern` in app.ts, with words in command-meta.ts. Not yet checked against a file written by Photoshop itself.
+
 ## Release 1.68.4: Image Processor, Contact Sheet II, Crop and Straighten Photos · _v1.68.4
 
 Joined and checked: tsc clean; unit 194 of 194; a probe in Chromium: a 600 by 400 scan with two photos drawn at 8 and -12 degrees opened two new documents of 182 by 221 and 202 by 142 (drawn 180 by 220 and 200 by 140); Image Processor through its parameters on three open images gave one zip with JPEG/ and TIFF/ holding six files; the Contact Sheet II dialog 400 by 725 before and after toggling every checkbox; no page errors. Fixed at the join: Image Processor's desktop folders were nested (`Image Processor/JPEG`), which the export route's one-name folder rule refuses, now `Image Processor JPEG`; its Scripts menu entry and command words. Removed lines taken after the version edit. Removed from frontend:

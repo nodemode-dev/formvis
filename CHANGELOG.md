@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.5 · 2026-10-14
+
+### Added
+
+- Layer > Layer Comps: New, Apply, Update, Delete, Next and Previous. A comp keeps each layer's visibility, position and appearance, and is saved with the project. The Layer Comps panel follows.
+- Image > Variables: visibility, text and pixel replacement variables, data sets imported from CSV or tab-separated text, and Apply Data Set. The Define and Data Sets dialogs follow.
+- Photoshop pattern files (.pat): import and export.
+
 ## 1.68.4 · 2026-10-14
 
 ### Added
