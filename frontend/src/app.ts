@@ -60,6 +60,7 @@ import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/im
 import { zipFiles } from './io/zip';
 import { assetFiles } from './io/image-assets';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
+import { isKraFile, readKra } from './io/kra';
 import { readLayeredTiff, writeLayeredTiff } from './io/layered-tiff';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
@@ -537,6 +538,10 @@ export function startApp(): void {
           if (isOraFile(f)) {   // OpenRaster (1.51.7)
             const { doc, notes } = await readOraFile(f);
             engine.addProject(doc, f.name.replace(/\.ora$/i, ''), null);
+            if (notes.length) toast(notes.join(' '), 'info');
+          } else if (isKraFile(f)) {   // Krita (DEV_PLAN 34.5 part a)
+            const { doc, notes, activeId } = await readKra(f);
+            engine.addProject(doc, f.name.replace(/\.kra$/i, ''), activeId);
             if (notes.length) toast(notes.join(' '), 'info');
           } else if (isPsdFile(f)) {
             const cmykPsd = await api.decodeCmykPsd(f, f.name).catch(() => null);
@@ -1087,6 +1092,22 @@ export function startApp(): void {
         if (blob) await deliver(await withXmp(blob, kind, p.doc.meta), `${p.name}.${kind === 'tiff' ? 'tif' : kind}`);   // File Info as XMP (29.2)
       } catch (err) { toast(message(err), 'error'); }
     });
+  }
+
+  /** The flattened current document as encoded bytes (DEV_PLAN 30.8), without delivering it: the core of file-in, file-out. */
+  async function imageBlob(kind: 'png' | 'jpg' | 'webp' | 'tiff', quality = 0.92): Promise<Blob | null> {
+    const p = engine.current;
+    if (!p) return null;
+    engine.settle();
+    if (kind === 'png' || kind === 'jpg' || kind === 'webp') return engine.exportBlob(kind === 'png' ? 'image/png' : kind === 'jpg' ? 'image/jpeg' : 'image/webp', quality);
+    const png = await engine.exportBlob('image/png');
+    return png ? api.encode(png, kind, Math.round(quality * 100), p.doc.resolution ?? 72) : null;
+  }
+
+  /** The droplet script (DEV_PLAN 30.5): drop pictures onto it to run the named action over them from the formvis folder. */
+  function dropletScript(action: string, format: string): string {
+    const q = `'${action.replace(/'/g, `'\\''`)}'`;
+    return `#!/bin/sh\n# formvis droplet for the action ${action}. Keep this file in the formvis folder, then drop pictures onto it or run it with file names.\ncd "$(dirname "$0")" || exit 1\nexec ./formvis cli process "$@" --action ${q} --format ${format}\n`;
   }
 
   /** Conditional Mode Change (DEV_PLAN 30.5a): a document whose mode is in `from` goes to `to` by the routes the Mode
@@ -2108,6 +2129,7 @@ export function startApp(): void {
     { id: 'video-delete-frame', label: 'Delete Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.deleteVideoFrame(); } },
     { id: 'video-restore-frame', label: 'Restore Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.restoreFrame(); } },
     { id: 'video-restore-all', label: 'Restore All Frames', enabled: () => !!engine.activeLayer?.video, run: () => { engine.restoreAllFrames(); } },
+    { id: 'video-replace-footage', label: 'Replace Footage...', enabled: () => !!engine.activeLayer?.video, run: () => { void import('./ui/panels/video-layer-file').then((m) => m.replaceFootageFromFile(engine, toast)); } },   // 33.4b
     { id: 'video-rasterize', label: 'Rasterize Video Layer', enabled: () => !!engine.activeLayer?.video, run: () => { engine.rasterizeVideo(); } },
     { id: 'create-video-timeline', label: 'Create Video Timeline', enabled: () => !!engine.current && !engine.video && engine.timeline.frames.length === 0, run: () => { if (engine.createVideoTimeline()) toast('Video timeline ready, a track per layer.'); } },   // 1.59.3
     { id: 'export-mp4', label: 'Video (MP4)...', enabled: () => !!engine.current, run: () => void exportMp4() },
@@ -2177,6 +2199,51 @@ export function startApp(): void {
     { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
+    {
+      id: 'create-droplet', label: 'Create Droplet...', enabled: () => actions.list.length > 0,
+      run: async () => {
+        const name = await promptName('Create Droplet: action name', actions.list[0]?.name ?? '', 'Create');
+        if (!name) return;
+        if (!actions.list.some((x) => x.name === name)) { toast(`There is no action named "${name}".`, 'error'); return; }
+        await deliver(new Blob([dropletScript(name, 'png')], { type: 'text/x-shellscript' }), `${name}-droplet.sh`);
+        toast('Put the droplet in the formvis folder, make it executable, then drop pictures onto it.');
+      },
+    },
+    {
+      id: 'open-image-data', label: 'Open Image Data', params: { name: { type: 'string', description: 'The file name, with its extension.' }, data: { type: 'string', description: 'The file bytes, base64.' } },
+      run: async (a) => {
+        const name = String(a?.name ?? 'image.png'), bin = atob(String(a?.data ?? '')), bytes = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+        const p = engine.openImage(await decodeImage(new Blob([bytes]), name));
+        return { id: p.id };
+      },
+    },
+    {
+      id: 'export-to-file', label: 'Export to File', enabled: has,
+      params: {
+        format: { type: 'string', description: 'png, jpg, webp or tiff; png when left out.' },
+        quality: { type: 'number', min: 0, max: 100, description: 'Quality for jpg and webp; 92 when left out.' },
+        name: { type: 'string', description: 'The file name; the document name when left out.' },
+      },
+      run: async (a) => {
+        const p = engine.current, f = String(a?.format ?? 'png').toLowerCase(), kind = f === 'jpeg' ? 'jpg' : f === 'tif' ? 'tiff' : f;
+        if (!p) return undefined;
+        if (kind !== 'png' && kind !== 'jpg' && kind !== 'webp' && kind !== 'tiff') throw new Error('format must be png, jpg, webp or tiff.');
+        const blob = await imageBlob(kind, (typeof a?.quality === 'number' ? a.quality : 92) / 100);
+        if (!blob) throw new Error('The picture could not be encoded.');
+        return { path: await api.exportFile(blob, typeof a?.name === 'string' && a.name ? a.name : `${p.name}.${kind}`) };
+      },
+    },
+    {
+      id: 'play-action', label: 'Play Action', enabled: has, params: { name: { type: 'string', description: 'The action to play on the current document.' } },
+      run: async (a) => {
+        const x = actions.list.find((y) => y.name === String(a?.name ?? ''));
+        if (!x) throw new Error(`There is no action named "${String(a?.name ?? '')}".`);
+        await playAction(x);
+        return { played: true };
+      },
+    },
+    { id: 'close-document', label: 'Close Document', enabled: has, run: async () => { const p = engine.current; if (p) await requestClose(p.id, 'discard'); } },
     {
       id: 'variables-define', label: 'Define Variable...', enabled: has,
       params: {
@@ -2835,7 +2902,7 @@ export function startApp(): void {
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
       { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
-      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
@@ -2848,7 +2915,7 @@ export function startApp(): void {
       'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
-      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
+      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },

@@ -1,14 +1,14 @@
 # formvis commands
 
-Generated from the window's command catalogue (872 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (878 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 58
-- File: 68
+- File: 73
 - Filter: 80
 - Image: 79
-- Layer: 189
+- Layer: 190
 - Paint: 1
 - Paths: 8
 - Select: 28
@@ -89,11 +89,13 @@ Generated from the window's command catalogue (872 commands) by `./formvis agent
 | `batch` | Batch... |  | Opens Batch to run an action over many files. (changes the picture) (asks first) |
 | `clear-recent` | Clear Recent |  | Empties the Open Recent list. (asks first) |
 | `close-all` | Close All |  | Closes every open document. (asks first) |
+| `close-document` | Close Document |  | Closes the current document without asking about unsaved changes. (asks first) |
 | `close-others` | Close Others | Alt+Mod+P | Closes every document but the current one. (asks first) |
 | `close-tab` | Close Tab | Alt+Mod+W | Closes the current document, asking about unsaved changes. (asks first) |
 | `comfyui-run` | Run ComfyUI Workflow... |  | Opens the dialog that runs a ComfyUI workflow and brings the result back. (changes the picture) (asks first) |
 | `conditional-mode-change` | Conditional Mode Change... |  | Changes the document to a target mode only when its current mode is one of the ticked source modes. (changes the picture) |
 | `contact-sheet` | Contact Sheet II... |  | Opens Contact Sheet II to lay chosen images out as thumbnails on new documents. (changes the picture) |
+| `create-droplet` | Create Droplet... |  | Writes a shell script that runs a chosen action over any pictures dropped onto it. (asks first) |
 | `create-video-timeline` | Create Video Timeline |  | Creates a video timeline from the document layers. (changes the picture) |
 | `crop-straighten-photos` | Crop and Straighten Photos |  | Finds each photo on a scanned page, straightens it and opens it as its own document. (changes the picture) |
 | `download-project` | Download Project File |  | Downloads the project file through the browser. (asks first) |
@@ -119,6 +121,7 @@ Generated from the window's command catalogue (872 commands) by `./formvis agent
 | `export-psd` | Export PSD... |  | Exports the document as a Photoshop PSD. (asks first) |
 | `export-tiff` | Export TIFF |  | Exports the picture as TIFF. (asks first) |
 | `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its Photoshop layers. (asks first) |
+| `export-to-file` | Export to File |  | Encodes the flattened picture as png, jpg, webp or tiff and writes it to the exports folder. (asks first) |
 | `export-webp` | Export WebP |  | Exports the flattened picture as WebP. (asks first) |
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
 | `fit-image` | Fit Image... |  | Opens Fit Image to scale within a width and height. (changes the picture) |
@@ -131,12 +134,14 @@ Generated from the window's command catalogue (872 commands) by `./formvis agent
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
 | `open` | Open Project... | Mod+O | Opens the library dialog to open a saved project. |
+| `open-image-data` | Open Image Data |  | Opens base64 picture bytes with a file name as a new document. (changes the picture) |
 | `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
 | `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip. (changes the picture) |
 | `photomerge` | Photomerge... |  | Opens Photomerge to stitch images into a panorama. (changes the picture) |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
 | `place-embedded` | Place Embedded... |  | Places an image file as an embedded smart object. (changes the picture) |
 | `place-linked` | Place Linked... |  | Places an image file as a linked smart object. (changes the picture) |
+| `play-action` | Play Action |  | Plays a named action on the current document. (changes the picture) |
 | `print` | Print... | Mod+P | Opens the Print dialog: paper size, orientation, position, scaled print size and a preview, then prints the flattened document through the system print dialog. |
 | `print-one-copy` | Print One Copy | Alt+Shift+Mod+P | Prints the flattened document at once with the settings Print last used, through the system print dialog. |
 | `render-video` | Render Video... |  | Opens the Render Video dialog for the video timeline. (asks first) |
@@ -519,6 +524,7 @@ Generated from the window's command catalogue (872 commands) by `./formvis agent
 | `video-layer-blank` | New Blank Video Layer |  | Adds a video layer of empty frames the length of the timeline. (changes the picture) |
 | `video-layer-from-file` | New Video Layer from File... |  | Adds a video file as a layer with one frame per video frame. (changes the picture) |
 | `video-rasterize` | Rasterize Video Layer |  | Turns the video layer into a pixel layer of the playhead frame. (changes the picture) |
+| `video-replace-footage` | Replace Footage... |  | Swaps the active video layer's footage for a chosen clip, keeping its place on the timeline. (changes the picture) |
 | `video-restore-all` | Restore All Frames |  | Puts every frame of the video layer back to the footage as loaded. (changes the picture) |
 | `video-restore-frame` | Restore Frame |  | Puts the playhead frame back to the footage as loaded. (changes the picture) |
 | `vmask-current-path` | Current Path |  | Makes a vector mask from the current path. (changes the picture) |
