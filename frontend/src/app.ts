@@ -86,6 +86,8 @@ import { MergeDialog } from './ui/panels/merge-dialog';
 import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
 import { ScriptEvents, type ScriptEvent } from './ui/script-events';
 import { LutExportDialog } from './ui/panels/lut-export-dialog';
+import { FindReplaceTextDialog } from './ui/panels/find-replace-text-dialog';
+import { NormalMapDialog } from './ui/panels/normal-map-dialog';
 import { SaveForWebDialog } from './ui/panels/save-for-web-dialog';
 import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
@@ -573,9 +575,9 @@ export function startApp(): void {
             try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { toast(message(err), 'error'); continue; }
           }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
-          if (/\.(png|tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam)$/i.test(f.name) && !engine.current && decoded.length === 0) {
+          if (/\.(png|tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name) && !engine.current && decoded.length === 0) {
             const head = new Uint8Array(await f.slice(0, 26).arrayBuffer()), png16 = head[0] === 0x89 && head[24] === 16;
-            if (png16 || /\.(tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam)$/i.test(f.name)) {
+            if (png16 || /\.(tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name)) {
               try {
                 const d = await api.decodeDeep(f, f.name), name = f.name.replace(/\.[^.]+$/, '');
                 if (d.depth === 32) { engine.openDeep(name, { mode: 'rgb', n: 3, width: d.width, height: d.height, data: d.data as Float32Array }, 32); continue; }
@@ -1777,6 +1779,8 @@ export function startApp(): void {
     scriptEvents: new ScriptEventsDialog(scriptEvents, actions),
     saveForWeb: new SaveForWebDialog(engine, deliver),
     exportLuts: new LutExportDialog(engine, deliver),
+    findReplaceText: new FindReplaceTextDialog(engine),
+    normalMap: new NormalMapDialog(engine),
     smartFilters: new SmartFiltersDialog(engine, (): FilterPanel => dialogs.filter),
     shapeStyle: new ShapeStyleDialog(engine),
     animation: new AnimationDialog(engine),
@@ -2262,6 +2266,21 @@ export function startApp(): void {
     { id: 'desaturate', label: 'Desaturate', keys: ['Shift+Mod+U'], enabled: pixel, run: () => engine.pixelAdjust('desaturate') },
     { id: 'equalize', label: 'Equalize', enabled: pixel, run: () => engine.pixelAdjust('equalize') },
     { id: 'replace-color', label: 'Replace Color...', enabled: pixel, run: () => dialogs.replaceColor.show() },
+    ...(['normal', 'bump'] as const).map((kind): Command => ({
+      id: kind === 'normal' ? 'normal-map' : 'bump-map', label: kind === 'normal' ? 'Generate Normal Map...' : 'Generate Bump Map...', enabled: pixel,
+      params: {
+        strength: { type: 'number', min: 0.1, max: 20, description: kind === 'normal' ? 'Bump strength; 2 when left out.' : 'Contrast of the height map; 2 when left out.' },
+        blur: { type: 'number', min: 0, max: 20, description: 'Blur radius in pixels applied to the height first; 1 when left out.' },
+        invert: { type: 'boolean', description: 'Invert the height (dark becomes high).' },
+        ...(kind === 'normal' ? { flip_y: { type: 'boolean', description: 'Flip the green channel for the DirectX convention; OpenGL when left out.' } } : {}),
+      },
+      run: (a) => {
+        if (!a || !Object.keys(a).length) { dialogs.normalMap.show(kind); return undefined; }
+        const n = (k: string, d: number): number => (typeof a[k] === 'number' ? a[k] : d);
+        return engine.generateMap(kind, { strength: n('strength', 2), blur: n('blur', 1), invert: a.invert === true, flipY: a.flip_y === true });
+      },
+    })),
+    { id: 'height-from-normal', label: 'Height Map from Normal Map', enabled: pixel, run: () => engine.generateMap('height', { strength: 1, blur: 0, invert: false, flipY: false }) },
     {
       id: 'apply-image', label: 'Apply Image...', enabled: pixel, params: {
         source_doc: { type: 'string', description: 'Id of the source document, which must be the target\'s pixel size; the current document when left out.' },
@@ -2414,6 +2433,34 @@ export function startApp(): void {
     { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
     { id: 'brush-settings', label: 'Brush Settings...', keys: ['F5'], run: () => dialogs.brushSettings.show() },
     { id: 'paragraph-styles', label: 'Paragraph Styles...', run: () => dialogs.paragraphStyles.show() },
+    {
+      id: 'find-replace-text', label: 'Find and Replace Text...', enabled: has,
+      params: {
+        find: { type: 'string', description: 'Text to find.' },
+        replace: { type: 'string', description: 'Replacement text. Empty deletes the matches.' },
+        case_sensitive: { type: 'boolean', description: 'Match case. Default false.' },
+        whole_word: { type: 'boolean', description: 'Match whole words only. Default false.' },
+        all: { type: 'boolean', description: 'Search every type layer, not only the active one. Default true.' },
+      },
+      run: async (a) => {
+        const find = a && typeof a.find === 'string' ? a.find : '';
+        if (!find) { dialogs.findReplaceText.show(); return; }
+        const n = await engine.replaceText(find, typeof a?.replace === 'string' ? a.replace : '', { caseSensitive: a?.case_sensitive === true, wholeWord: a?.whole_word === true, all: a?.all !== false });
+        toast(`${n} replacement${n === 1 ? '' : 's'}.`, 'info');
+      },
+    },
+    {
+      id: 'paste-lorem-ipsum', label: 'Paste Lorem Ipsum', enabled: () => engine.liveText(engine.current?.activeLayer),
+      run: async () => {
+        const l = engine.current?.activeLayer;
+        if (!l?.text || !liveText(l)) return;
+        const lorem = 'Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat.';
+        await engine.updateTextLayer(l.id, { ...l.text, content: l.text.content.trim() ? `${l.text.content}\n${lorem}` : lorem });
+      },
+    },
+    { id: 'convert-point-text', label: 'Convert to Point Text', enabled: () => { const l = engine.current?.activeLayer; return engine.liveText(l) && !!l?.text?.box; }, run: async () => { await engine.convertTextKind('point'); } },
+    { id: 'convert-paragraph-text', label: 'Convert to Paragraph Text', enabled: () => { const l = engine.current?.activeLayer; return engine.liveText(l) && !l?.text?.box; }, run: async () => { await engine.convertTextKind('paragraph'); } },
+    { id: 'update-all-text', label: 'Update All Text Layers', enabled: has, run: async () => { const n = await engine.updateAllTextLayers(); toast(`Updated ${n} text layer${n === 1 ? '' : 's'}.`, 'info'); } },
     { id: 'warp-text', label: 'Warp Text...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => dialogs.warpText.show() },
     { id: 'type-on-path', label: 'Type on Path...', enabled: () => !!engine.workPath?.subpaths.some((s) => s.anchors.length > 1), run: () => dialogs.typeOnPath.show() },
     { id: 'benchmark', label: 'Performance Benchmark...', run: () => dialogs.benchmark.show() },
@@ -2659,7 +2706,7 @@ export function startApp(): void {
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
       { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
-      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
+      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'update-all-text'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] },
       { label: 'Vector Mask', items: ['vmask-reveal-all', 'vmask-hide-all', 'vmask-current-path', 'vmask-delete', '-', 'vmask-enable', 'vmask-link'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
@@ -2683,7 +2730,8 @@ export function startApp(): void {
       { label: 'Sharpen', items: filterGroup('Sharpen', ['filter-smartSharpen', 'filter-shakeReduction', 'filter-unsharpMask']) },
       { label: 'Stylize', items: filterGroup('Stylize', []) },
       { label: 'Video', items: filterGroup('Video', []) },
-      { label: 'Other', items: filterGroup('Other', []) }, '-', 'remove-bg', 'remove-bg-lite'] },
+      { label: 'Other', items: filterGroup('Other', []) },
+      { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'transform-controls', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },

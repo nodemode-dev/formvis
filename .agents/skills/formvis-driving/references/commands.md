@@ -1,12 +1,12 @@
 # formvis commands
 
-Generated from the window's command catalogue (836 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (844 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 49
 - File: 66
-- Filter: 77
+- Filter: 80
 - Image: 75
 - Layer: 181
 - Paint: 1
@@ -14,7 +14,7 @@ Generated from the window's command catalogue (836 commands) by `./formvis agent
 - Select: 28
 - Tool options: 225
 - Tools: 49
-- Type: 4
+- Type: 9
 - View: 31
 - Window: 42
 
@@ -147,6 +147,7 @@ Generated from the window's command catalogue (836 commands) by `./formvis agent
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `bump-map` | Generate Bump Map... |  | Adds a Bump Map layer: the active layer's brightness as a greyscale height map. (changes the picture) |
 | `filter-addNoise` | Add Noise... |  | Opens the Noise filter on the active layer. (changes the picture) |
 | `filter-average` | Average |  | Fills the selection or layer with its average colour. (changes the picture) |
 | `filter-blur` | Blur |  | Opens the Blur filter on the active layer. (changes the picture) |
@@ -224,6 +225,8 @@ Generated from the window's command catalogue (836 commands) by `./formvis agent
 | `filter-wind` | Wind... |  | Opens the Wind filter on the active layer. (changes the picture) |
 | `filter-zigZag` | ZigZag... |  | Opens the ZigZag filter on the active layer. (changes the picture) |
 | `filter.apply` | Apply Filter |  | Applies a filter with exact settings to the active layer, inside the selection if there is one. (changes the picture) |
+| `height-from-normal` | Height Map from Normal Map |  | Adds a Height Map layer integrated from the active layer, read as a normal map. (changes the picture) |
+| `normal-map` | Generate Normal Map... |  | Adds a Normal Map layer built from the active layer's brightness. (changes the picture) |
 
 ### filter.apply parameters
 
@@ -878,9 +881,14 @@ Generated from the window's command catalogue (836 commands) by `./formvis agent
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `convert-paragraph-text` | Convert to Paragraph Text |  | Turns the active point text into paragraph text in a box around its current size. (changes the picture) |
+| `convert-point-text` | Convert to Point Text |  | Turns the active paragraph text into point text with no box. (changes the picture) |
 | `edit-text` | Edit Type... |  | Opens the text of the active type layer for editing. (changes the picture) |
+| `find-replace-text` | Find and Replace Text... |  | Finds text in type layers and replaces it, with case and whole word options. (changes the picture) |
 | `paragraph-styles` | Paragraph Styles... |  | Opens Paragraph Styles. |
+| `paste-lorem-ipsum` | Paste Lorem Ipsum |  | Appends a Lorem Ipsum paragraph to the active type layer. (changes the picture) |
 | `type-on-path` | Type on Path... |  | Opens Type on Path. (changes the picture) |
+| `update-all-text` | Update All Text Layers |  | Re-renders every type layer from its own settings. (changes the picture) |
 | `warp-text` | Warp Text... |  | Opens Warp Text. (changes the picture) |
 
 ## View
