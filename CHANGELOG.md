@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.0 · 2026-10-14
+
+### Added
+
+- View > Proof Setup presets: Working CMYK, the Working Cyan, Magenta, Yellow, Black and CMY plates, and Color Blindness, Protanopia-type and Deuteranopia-type. Each turns Proof Colors on.
+- Edit > Purge: Clipboard, Histories and All. Purging histories asks first, because it cannot be undone.
+- Layer > Smart Filter: Disable Smart Filters (Enable when they are off) and Clear Smart Filters, each one undoable step.
+
 ## 1.67.9 · 2026-10-13
 
 ### Added

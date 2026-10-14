@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.68.0
+
+No engine code changed in 1.68.0. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.67.9"
+version = "1.67.9"
+version = "1.67.9"
+ "version": "1.67.9",
+```
+
 ## Release 1.67.9 · _v1.67.9
 
 Engine tests: 108 passed, the seven known model and EXR cases failing. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

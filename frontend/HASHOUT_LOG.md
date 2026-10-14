@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.0: proof presets, Purge, Smart Filter's Disable and Clear · _v1.68.0
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (789 catalogue ids, the 13 new ones listed); a probe: three layers' history emptied by Purge Histories with the layers kept, the Cyan plate, Protanopia, Proof Colors and Purge Clipboard run without a page error; colour management, history and smart object browser tests 9 of 9. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.67.9",
+      "version": "1.67.9",
+  "version": "1.67.9",
+export const VERSION = '1.67.9';
+```
+
 ## Edit > Purge and Layer > Smart Filter, DEV_PLAN 32.5 and 33.2 (part) · _v1.68.0 (engine/history.ts, engine/index.ts, app.ts, automation/command-meta.ts)
 
 Edit > Purge (Clipboard, Histories, All), as Photoshop's. `History.clear()` empties the done and undone steps and hands each to `History.onDrop`, so the pixels a step keeps in the engine's undo store go too; it does nothing while a step is open. `Engine.purgeHistories(all)` clears the current document or every open one, empties the queued undo and redo ops and emits `history`; the current state and the History panel's snapshots (kept on the project, not in `History`) are untouched, and the revision is not changed, so the saved mark stays true. `Engine.purgeClipboard()` sets `engine.clipboard` to null (the system clipboard and the layer-style clipboard are not touched). Histories and All ask first through `confirmAction` (danger style) that it cannot be undone. Commands `purge-clipboard`, `purge-histories`, `purge-all`, each disabled when it has nothing to clear.
