@@ -2,6 +2,24 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Multi-part OpenEXR, DEV_PLAN 36.15 · _v1.71.5 (services/contained.py, routers/io.py, requirements.txt, requirements_macos.txt, NOTICE.md)
+
+- `services/contained.py`, new `_parts_worker`, `MAX_PARTS` (64), `MAX_PART_PIXELS`, `is_multipart_exr`, `decode_exr_parts` (nothing replaced): the OpenEXR binding (3.5.2) reads every part inside a spawned child, like the OpenCV decode, so untrusted bytes are never parsed in the engine. Per part: name, size, data window offset relative to the canvas (part 1's display window joined with every data window), RGBA float32 (the `RGBA` or `RGB` group, else the first channel as grey with alpha 1). `is_multipart_exr` reads only the version flags (byte 5, bit 0x10), so a single-part file never starts the new child; `decode_exr` and `decode-deep` are untouched.
+- `routers/io.py`, new route `exr_parts` (`POST /io/exr-parts`, before `encode_deep`): a 4-byte little-endian JSON length, JSON `{count, width, height, parts:[{name,width,height,x,y}]}`, then each part's RGBA as little-endian float32. One part, or a file the child cannot read as parts, answers `{count: 1}` and the window opens it the single-part way.
+- `requirements.txt`: `OpenEXR==3.5.2` after tifffile; `requirements_macos.txt`: `OpenEXR` after tifffile. `NOTICE.md`: an OpenEXR (Academy Software Foundation) row, BSD-3-Clause.
+- Checked: a three-part file (64 by 48; beauty ZIP with alpha, diffuse 32 by 24 at (10, 8) ZIPS without alpha, specular uncompressed) reads back with diffuse's red channel equal to its source; a single-part file answers count 1; garbage answers None. Over HTTP from the window the three names come back in order.
+
+## Version only · _v1.71.5
+
+No other engine code changed in 1.71.5. Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "1.71.4"
+version = "1.71.4"
+version = "1.71.4"
+ "version": "1.71.4",
+```
+
 ## Version only · _v1.71.4
 
 No engine code changed in 1.71.4 (Export As metadata reuses the window's XMP writer). Removed version lines, the desktop shell's quoted too:

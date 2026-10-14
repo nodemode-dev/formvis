@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.71.5 · 2026-10-14
+
+### Added
+
+- Content-Aware Fill: Color Adaptation, Rotation Adaptation, Scale and Mirror. They start off, so the fill is as fast as before until one is chosen; colour adaptation makes it several times slower.
+- Window > Script Console...: type JavaScript with `formvis.run`, `formvis.commands`, `formvis.api` (the plugin API) and `formvis.log` in scope.
+- Multi-part OpenEXR files open with one layer per part, named after it, in a 32-bit document.
+
 ## 1.71.4 · 2026-10-14
 
 ### Added

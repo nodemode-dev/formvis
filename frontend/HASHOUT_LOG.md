@@ -2,6 +2,156 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.71.5: Content-Aware Fill adaptation, Script Console, multi-part OpenEXR · _v1.71.5 (engine/retouch.ts, ui/i18n/extra/*.ts)
+
+- `engine/retouch.ts`, `contentFill`: the target's known-pixel offsets and their per-channel sums are computed once per target into `kx`, `ky`, `tq` (allocated beside `ad`), and each candidate only sums its own side; the per-candidate arrays are gone. Measured on a 30 px hole in 160 by 120 px: colour adaptation took 805 ms before this and 483 ms after, against 62 ms without. Replaced:
+
+```ts
+      if (adapt) {
+        // Gain and offset per channel that carry the candidate's mean and spread onto the known pixels around the target.
+        let n = 0, sa0 = 0, sa1 = 0, sa2 = 0, sb0 = 0, sb1 = 0, sb2 = 0, qa0 = 0, qa1 = 0, qa2 = 0, qb0 = 0, qb1 = 0, qb2 = 0;
+        for (let dy = -half; dy <= half; dy++) {
+          const yy = ty + dy;
+          if (yy < 0 || yy >= rh) continue;
+          for (let dx = -half; dx <= half; dx++) {
+            const xx = tx + dx;
+            if (xx < 0 || xx >= rw || unknown[yy * rw + xx]) continue;
+            const a = global(yy * rw + xx), b = global((sy + Math.round(m[2] * dx + m[3] * dy)) * rw + sx + Math.round(m[0] * dx + m[1] * dy));
+            n++;
+            sa0 += px[a]; sa1 += px[a + 1]; sa2 += px[a + 2]; sb0 += px[b]; sb1 += px[b + 1]; sb2 += px[b + 2];
+            qa0 += px[a] * px[a]; qa1 += px[a + 1] * px[a + 1]; qa2 += px[a + 2] * px[a + 2]; qb0 += px[b] * px[b]; qb1 += px[b + 1] * px[b + 1]; qb2 += px[b + 2] * px[b + 2];
+          }
+        }
+        if (n >= 6) {
+          const sa = [sa0, sa1, sa2], sb = [sb0, sb1, sb2], qa = [qa0, qa1, qa2], qb = [qb0, qb1, qb2];
+          for (let c = 0; c < 3; c++) {
+            const ma = sa[c] / n, mb = sb[c] / n, va = qa[c] / n - ma * ma, vb = qb[c] / n - mb * mb;
+            const gain = vb > 1 && va > 0 ? Math.max(lv[0], Math.min(lv[1], Math.sqrt(va / vb))) : 1;
+            ad[c] = gain;
+            ad[3 + c] = Math.max(-lv[2], Math.min(lv[2], ma - gain * mb));
+          }
+        }
+      }
+  const ad = new Float64Array(6), bestAd = new Float64Array(6);
+```
+
+- `engine/retouch.ts`, `FILL_DEFAULTS.color` 1 became 0: the workspace starts with no adaptation, so its result and speed match 1.71.4; Default and above are a choice. Replaced: `export const FILL_DEFAULTS: FillOptions = { color: 1, rotation: 0, scale: false, mirror: false };`.
+- Checked with the fill run directly on a striped picture with a 30 px hole: None, Default, Very High, Full rotation and every option together all fill with no error against the original (62, 483, 517, 1220 and 858 ms). In the window: the workspace shows the four rows; the Script Console printed 946 commands, ran `new-layer` (two layers after), and showed a syntax error in its error style; `api.exrParts` on a three-part file returned beauty, diffuse, specular, and null on a single-part file.
+- `ui/i18n/extra/*.ts`: 14 keys in all 23 tables (329 each): the four adaptation rows and their levels, the Script Console's title, input label, notes and the outside-agent message.
+- `setup/freeze_backend`, `setup/freeze_backend.bat`: `--hidden-import OpenEXR` beside `--hidden-import cv2`, since the binding is imported only inside the contained child.
+
+## Content-Aware Fill adaptation, DEV_PLAN 36.30 · _v1.71.5 (engine/retouch.ts, engine/index.ts, ui/panels/content-fill-dialog.ts)
+
+- `engine/retouch.ts`: `FillOptions`, `FILL_DEFAULTS`, `FILL_COLOR`, `FILL_ANGLES` new; `contentFill` takes a sixth parameter `options` (default none, so Quick Content-Aware Fill, heal and the other callers are unchanged). Replaced:
+
+```ts
+/** Content-Aware Fill: fills the pixels where `mask` is set in premultiplied `px` from the surrounding image. Returns
+ *  false when there is nothing opaque around the hole, or no whole patch of the surroundings to copy from. */
+export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, h: number, allow: Uint8Array | null = null): boolean {
+```
+
+- `contentFill` candidates: after the 8000-source subsample, the extra transforms (rotation, scale, mirror) share one budget of about 6000 centres (stride grid; the transformed patch's box kept clear of the hole and inside the sampling area). Replaced (the start of the next statement kept):
+
+```ts
+  if (sources.length > 8000) { const step = sources.length / 8000, all = sources; sources = Array.from({ length: 8000 }, (_, i) => all[Math.floor(i * step)]); }
+  const confidence
+```
+
+- `contentFill` matching and copy: per-candidate gain and offset per channel (the known target pixels' mean and spread against the candidate's), cost on the adapted candidate, the best transform copied with its gain and offset (clamped to 0..alpha), nearest-pixel sampling. Replaced:
+
+```ts
+    let from = -1, bestCost = Infinity;
+    for (const s of sources) {
+      const sx = s % rw, sy = (s - sx) / rw;
+      let cost = 0;
+      for (let dy = -half; dy <= half && cost < bestCost; dy++) {
+        const yy = ty + dy;
+        if (yy < 0 || yy >= rh) continue;
+        for (let dx = -half; dx <= half; dx++) {
+          const xx = tx + dx;
+          if (xx < 0 || xx >= rw || unknown[yy * rw + xx]) continue;
+          const a = global(yy * rw + xx), b = global((sy + dy) * rw + sx + dx);
+          const d0 = px[a] - px[b], d1 = px[a + 1] - px[b + 1], d2 = px[a + 2] - px[b + 2], d3 = px[a + 3] - px[b + 3];
+          cost += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3;
+        }
+      }
+      if (cost < bestCost) { bestCost = cost; from = s; }
+    }
+    if (from < 0) break;
+    const fx = from % rw, fy = (from - fx) / rw;
+    for (let dy = -half; dy <= half; dy++) {
+      for (let dx = -half; dx <= half; dx++) {
+        const xx = tx + dx, yy = ty + dy;
+        if (xx < 0 || yy < 0 || xx >= rw || yy >= rh) continue;
+        const l = yy * rw + xx;
+        if (!unknown[l]) continue;
+        const a = global(l), b = global((fy + dy) * rw + fx + dx);
+        px[a] = px[b]; px[a + 1] = px[b + 1]; px[a + 2] = px[b + 2]; px[a + 3] = px[b + 3];
+```
+
+- `engine/index.ts`, `Engine.contentAwareFillWith` gains `options: FillOptions = FILL_DEFAULTS` and passes it on; the import line gains `FILL_DEFAULTS` and `type FillOptions`. Replaced:
+
+```ts
+  contentAwareFillWith(allowDoc: Uint8Array | null, output: 'current' | 'new' | 'duplicate'): void {
+      if (!contentFill(pm, hole, r.width, r.height, allow)) { this.notice('There is nothing opaque in the sampling area to fill from.'); return false; }
+```
+
+- `ui/panels/content-fill-dialog.ts`, `ContentFillDialog.opts`; four rows (Color Adaptation, Rotation Adaptation, Scale, Mirror) between Brush size and Show Result, set in `sync`, remembered by `remember()`; `refresh` and `apply` pass `opts`. Replaced:
+
+```ts
+    this.body.append(this.canvas, samplingRow.el, this.brushRow.el, resultRow.el, outRow.el);
+    this.sync = () => { samplingRow.set(this.sampling); outRow.set(this.output); resultRow.set(this.showResult); this.brushRow.set(this.brush); this.syncBrush(); };
+        if (contentFill(pm, hole, this.pw, this.ph, this.sampling === 'auto' ? null : allow)) {
+    this.engine.contentAwareFillWith(allowDoc, output);
+```
+
+## Script Console, DEV_PLAN 36.7 · _v1.71.5 (ui/panels/script-console-dialog.ts, automation/agent-bridge.ts, plugins/host.ts, app.ts, automation/command-meta.ts)
+
+- `ui/panels/script-console-dialog.ts` (new): `ScriptConsoleDialog`. Log rows appended, the oldest dropped past 500; a textarea input, Enter runs, Shift+Enter adds a line, Up and Down walk an in-memory history. Code is tried as `return (expr)` first, then as a function body, through the AsyncFunction constructor with `formvis` in scope (`run`, `commands`, `api`, `log`). One script at a time; refused while an outside agent's call is in flight.
+- `automation/agent-bridge.ts`, `AgentBridge`: `private inflight = 0` and the getter `agentBusy`; `loop()` counts calls in flight. Replaced:
+
+```ts
+          const result = this.on ? await this.run(item.name, item.arguments ?? {}) : fail('formvis stopped taking requests.');
+```
+
+- `plugins/host.ts`, `PluginHost.receive`: the `call`, `getPixels` and `putPixels` cases moved to the private `serve(op, args, label)`; the public `apiFor(label)` returns the same three functions, so the console has exactly a plugin's reach. Replaced:
+
+```ts
+        case 'call': reply(await this.bridge.run(String(m.args?.tool ?? ''), (m.args?.args ?? {}) as Record<string, unknown>)); return;
+        case 'getPixels': {
+          const q = this.engine.current, l = q?.activeLayer;
+          if (!q || !l) { reply(undefined, 'No document or layer is open.'); return; }
+          const s = this.engine.renderLayerAlone(l.id), c = s.getContext('2d') as CanvasRenderingContext2D, img = c.getImageData(0, 0, s.width, s.height);
+          reply({ width: img.width, height: img.height, data: img.data, layer: { id: l.id, name: l.name } });
+          return;
+        }
+        case 'putPixels': {
+          const q = this.engine.current, img = m.args?.image as { width?: number; height?: number; data?: Uint8ClampedArray } | undefined;
+          if (!q) { reply(undefined, 'No document is open.'); return; }
+          const W = q.doc.width, H = q.doc.height;
+          if (!img || img.width !== W || img.height !== H || !(img.data instanceof Uint8ClampedArray) || img.data.length !== W * H * 4) { reply(undefined, `putPixels takes { width: ${W}, height: ${H}, data: a Uint8ClampedArray of ${W * H * 4} } (the document's size).`); return; }
+          const data = new ImageData(new Uint8ClampedArray(img.data), W, H), label = p.label;
+          if (m.args?.how === 'replace' && q.activeLayer) reply(this.engine.replaceLayerPixels(q.activeLayer.id, data, label));
+          else {
+            const { Raster } = await import('../engine');
+            const r = new Raster(W, H); r.ctx.putImageData(data, 0, 0); r.touch();
+            this.engine.insertRasterLayer(r, label, 0, 0, {}, label);
+            reply(true);
+          }
+          return;
+        }
+        default: reply(undefined, `Unknown request ${m.op}.`);
+```
+
+- `app.ts`: imports `ScriptConsoleDialog`; `const scriptConsole` after `pluginHost`; command `script-console` ("Script Console...") after `actions`; the Window menu gains it after `'terminal.new'`.
+- `automation/command-meta.ts`: words for `'script-console'` before `'action-stop'`.
+
+## Multi-part OpenEXR, DEV_PLAN 36.15 · _v1.71.5 (io/api.ts, engine/index.ts, app.ts)
+
+- `io/api.ts`, new `api.exrParts(file, name)`: posts to `/io/exr-parts`; returns `{ width, height, parts[{ name, width, height, x, y, data: Float32Array }] }`, or null for a single-part file.
+- `engine/index.ts`, new `Engine.openDeepLayers(name, width, height, parts)` (before `applyDeepFilter`): one 32-bit document, a layer per part named after it at its data window offset, `channels` the part's float RGBA, the raster its linear-to-sRGB rendition. The first part (the beauty) is the top layer.
+- `app.ts`, `importFiles`, inside the deep-decode `try` before `api.decodeDeep`: an `.exr` tries `api.exrParts` first and opens with `openDeepLayers` when it has parts. Nothing replaced.
+
 ## Release 1.71.4: Clone Source panel, gradient opacity stops and midpoints, history source, Export As · _v1.71.4 (ui/clone-source-panel.ts, ui/i18n/extra/*.ts)
 
 - `ui/clone-source-panel.ts`: the head icon was `icon('layers', 14)`, now `icon('tStamp', 14)`, the Clone Stamp tool's own icon. Replaced: `${icon('layers', 14)}<span>Clone Source</span>`.
