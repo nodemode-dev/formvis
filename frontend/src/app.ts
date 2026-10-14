@@ -159,6 +159,7 @@ import { PluginHost } from './plugins/host';
 import { PluginsDialog } from './ui/panels/plugins-dialog';
 import { LargePictureDialog } from './ui/panels/large-picture';
 import { TiffPagesDialog } from './ui/panels/tiff-pages';
+import { CameraRawDialog, type RawChoice } from './ui/panels/camera-raw';
 import { ColourView, PROOF_KINDS } from './ui/colour';
 import { composeDeep, deepFromU16, deepToU16, deepToned, place, srgbToLinear } from './engine/deep';
 import { composeFloat } from './engine/compose-float';
@@ -207,6 +208,7 @@ import { Stage } from './ui/stage';
 import { StatusBar } from './ui/status';
 import { Tabs } from './ui/tabs';
 import { ViewTiles, type ArrangeLayout } from './ui/view-tiles';
+import { FloatViews } from './ui/float-views';
 import { toast } from './ui/toast';
 
 /** Each tab's own group, where Reset Panels returns it. */
@@ -352,6 +354,7 @@ export function startApp(): void {
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const viewTiles = new ViewTiles(q(root, '.cv-stage-col'), engine);   // Window > Arrange (the Stage's own ResizeObserver refits it)
+  const floatViews = new FloatViews(q(root, '.cv-stage-col'), engine);   // Window > Arrange > Float in Window (36.16)
   // Preferences the interface draws with (the engine's are applyPrefs'): the stage's checkerboard, wheel, rulers, grid
   // and guides, and the side column's narrow-window icons.
   const applyUiPrefs = (pr: Prefs): void => {
@@ -622,7 +625,9 @@ export function startApp(): void {
 
   /** Camera RAW files placed as layers (DEV_PLAN 28.2), with the camera profile each was developed with ('auto' is what the
    *  engine chose at import), so Develop's Profile list can develop the file again. */
-  const rawLayers = new Map<string, { file: File; profile: string }>();
+  const rawLayers = new Map<string, { file: File; profile: string; wb?: RawChoice['wb'] }>();
+  /** Camera Raw on open (DEV_PLAN 36.21): a camera RAW opens into this panel first (white balance at the RAW stage, 8 or 16 bits). */
+  const cameraRaw = new CameraRawDialog();
 
   async function importFiles(files: File[], at?: Pt): Promise<void> {
     const projects = files.filter(isProjectFile);
@@ -634,7 +639,20 @@ export function startApp(): void {
         const decoded: ImportedImage[] = [];
         let largeAsked = false;
         let pagesAsked = false;
+        let rawPick: RawChoice | null = null;
         for (const f of images) {
+          // A single camera RAW opens into Camera Raw first (DEV_PLAN 36.21): Cancel does not open it; 16 Bits/Channel opens a 16-bit document.
+          if (RAW_FILE.test(f.name) && images.length === 1) {
+            rawPick = await cameraRaw.ask(f);
+            if (!rawPick) continue;
+            if (rawPick.bits === 16) {
+              try { const d = await api.decodeRaw16(f, f.name, rawPick.wb); engine.openDeep(stripExt(f.name), deepFromU16(d.data, d.width, d.height)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+              rawPick = null;
+              continue;
+            }
+            try { decoded.push(await decodeImage(f, f.name, false, rawPick.wb)); } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+            continue;
+          }
           // A Lab TIFF opened as a new document is a Lab document (1.58.1), tried before the page count (which refuses it).
           if (/\.tiff?$/i.test(f.name) && !engine.current && decoded.length === 0) { const lab = await api.decodeLab(f, f.name).catch(() => null); if (lab) { openLab(f.name.replace(/\.[^.]+$/, ''), lab); continue; } }
           // A TIFF with several pages asks how to open them (1.53.4).
@@ -682,7 +700,9 @@ export function startApp(): void {
         engine.insertImages(decoded, at);
         for (const img of decoded) {
           const file = RAW_FILE.test(img.name) ? images.find((f) => f.name === img.name) : undefined, layer = file ? [...(engine.current?.doc.layers ?? [])].reverse().find((l) => l.name === stripExt(img.name)) : undefined;
-          if (file && layer) rawLayers.set(layer.id, { file, profile: 'auto' });
+          // A white balance chosen in Camera Raw is kept with the layer (for this session); the engine applies no camera profile with it.
+          const custom = !!rawPick && (rawPick.wb.wb !== 'as_shot' || !!rawPick.wb.temperature || !!rawPick.wb.tint);
+          if (file && layer) rawLayers.set(layer.id, { file, profile: custom ? 'none' : 'auto', ...(rawPick ? { wb: rawPick.wb } : {}) });
         }
         // A single camera RAW opens into Develop, as Photoshop opens RAW files into Camera Raw.
         if (decoded.length === 1 && RAW_FILE.test(decoded[0].name)) commands.run('filter-develop');
@@ -2484,7 +2504,7 @@ export function startApp(): void {
     { id: 'comfyui-run', label: 'Run ComfyUI Workflow...', enabled: has, run: () => runWorkflow.show() },   // 1.51.1
     // the File > Close is Cmd-W. A browser keeps Ctrl/Cmd-W for its own tab (the unload guard covers that),
     // so the web binds Alt+Mod+W; the desktop shell, with no browser tab, takes Mod+W, and Alt+Mod+W is Close All there.
-    { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p) void requestClose(p.id); } },
+    { id: 'close-tab', label: 'Close Tab', keys: '__TAURI_INTERNALS__' in window ? ['Mod+W'] : ['Alt+Mod+W'], enabled: has, run: () => { const p = engine.current; if (p && !engine.closeSpareView(p.id)) void requestClose(p.id); } },
     { id: 'close-all', label: 'Close All', keys: '__TAURI_INTERNALS__' in window ? ['Alt+Mod+W'] : [], enabled: has, run: () => void closeMany(null) },
     { id: 'close-others', label: 'Close Others', keys: ['Alt+Mod+P'], enabled: () => engine.projects.length > 1, run: () => { const p = engine.current; if (p) void closeMany(p.id); } },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
@@ -2826,8 +2846,12 @@ export function startApp(): void {
       ['arrange-tabs', 'Consolidate All to Tabs', 'tabs'], ['arrange-2up-v', '2-up Vertical', '2up-v'], ['arrange-2up-h', '2-up Horizontal', '2up-h'],
       ['arrange-3up', '3-up', '3up'], ['arrange-4up', '4-up', '4up'], ['arrange-6up', '6-up', '6up'],
     ] as const satisfies readonly (readonly [string, string, ArrangeLayout])[]).map(([id, label, layout]) => ({
-      id, label, checked: () => viewTiles.layout === layout, enabled: () => layout === 'tabs' || engine.projects.length > 1, run: () => viewTiles.setLayout(layout),
+      id, label, checked: () => viewTiles.layout === layout, enabled: () => layout === 'tabs' || engine.projects.length > 1 || engine.docViews.list.length > 0,
+      run: () => { const was = viewTiles.layout; viewTiles.setLayout(layout); if (was !== layout) requestAnimationFrame(() => engine.fit()); if (layout === 'tabs') for (const v of [...engine.docViews.list]) engine.closeView(v.id); },   // Consolidate All to Tabs also brings every further view and floating window back (36.16)
     })),
+    { id: 'new-window', label: 'New Window for Document', enabled: has, run: () => { if (engine.openView() && viewTiles.layout === 'tabs') { viewTiles.setLayout('2up-v'); requestAnimationFrame(() => engine.fit()); } } },
+    { id: 'float-window', label: 'Float in Window', enabled: has, run: () => floatViews.open() },
+    { id: 'float-all-windows', label: 'Float All in Windows', enabled: has, run: () => floatViews.openAll() },
     { id: 'match-zoom', label: 'Match Zoom', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ zoom: true }) },
     { id: 'match-location', label: 'Match Location', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ location: true }) },
     { id: 'match-rotation', label: 'Match Rotation', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ rotation: true }) },
@@ -3119,7 +3143,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'layer-based-slice', 'slice-options', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['arrange-tabs', 'arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
@@ -3136,7 +3160,7 @@ export function startApp(): void {
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
     { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-delete', '-', 'layer-comp-next', 'layer-comp-previous'] }, '-',
     { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
-  new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));
+  new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void (engine.closeSpareView(id) || requestClose(id)));   // a further view closes first; the document stays open while one remains (36.16)
 
   const zoomLabel = q(root, '.cv-zoom-label');
   let chromeFrame = 0;

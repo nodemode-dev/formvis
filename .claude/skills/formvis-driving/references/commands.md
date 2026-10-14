@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (937 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (944 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -12,11 +12,11 @@ Generated from the window's command catalogue (937 commands) by `./formvis agent
 - Paint: 1
 - Paths: 8
 - Select: 28
-- Tool options: 226
-- Tools: 49
+- Tool options: 229
+- Tools: 50
 - Type: 22
 - View: 40
-- Window: 66
+- Window: 69
 
 ## Edit
 
@@ -648,6 +648,9 @@ Generated from the window's command catalogue (937 commands) by `./formvis agent
 | `tool.options.artHistory.size` | Art History Brush: Size |  | Sets Size for the Art History Brush tool. |
 | `tool.options.artHistory.style` | Art History Brush: Style |  | Sets Style for the Art History Brush tool. |
 | `tool.options.artHistory.tolerance` | Art History Brush: Tolerance |  | Sets Tolerance for the Art History Brush tool. |
+| `tool.options.artboard.height` | Artboard: Height |  | Sets Height for the Artboard tool. |
+| `tool.options.artboard.size` | Artboard: Size |  | Sets Size for the Artboard tool. |
+| `tool.options.artboard.width` | Artboard: Width |  | Sets Width for the Artboard tool. |
 | `tool.options.backgroundEraser.hardness` | Background Eraser: Hardness |  | Sets Hardness for the Background Eraser tool. |
 | `tool.options.backgroundEraser.limits` | Background Eraser: Limits |  | Sets Limits for the Background Eraser tool. |
 | `tool.options.backgroundEraser.protectForegroundColor` | Background Eraser: Protect Foreground Color |  | Sets Protect Foreground Color for the Background Eraser tool. |
@@ -875,6 +878,7 @@ Generated from the window's command catalogue (937 commands) by `./formvis agent
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
 | `tool.select.artHistory` | Art History Brush Tool |  | Makes the Art History Brush tool the active tool (key Y). Paint stylised strokes in the colours of the source snapshot (History panel) · [ ] size |
+| `tool.select.artboard` | Artboard Tool |  | Makes the Artboard tool the active tool (key V). Drag on empty canvas to make an artboard · Click its name to select it · Drag inside to move it with its contents · Handles resize · "+" adds one beside it |
 | `tool.select.backgroundEraser` | Background Eraser Tool |  | Makes the Background Eraser tool the active tool (key E). Drag with the centre over the colour to erase · Tolerance widens it · Protect Foreground keeps the foreground colour |
 | `tool.select.brush` | Brush Tool |  | Makes the Brush tool the active tool (key B). Drag to paint · Shift-click draws a line from the last point · [ ] size · Shift+[ ] hardness · 1-0 opacity · E eraser · B brush · Space pans |
 | `tool.select.bucket` | Paint Bucket Tool |  | Makes the Paint Bucket tool the active tool (key G). Click to fill the area of similar color with the foreground color · Tolerance sets how similar · Stays inside the selection |
@@ -1010,12 +1014,14 @@ Generated from the window's command catalogue (937 commands) by `./formvis agent
 | `arrange-3up` | 3-up |  | Shows the active document with two others as read-only view tiles. |
 | `arrange-4up` | 4-up |  | Shows the active document with three others as read-only view tiles. |
 | `arrange-6up` | 6-up |  | Shows the active document with five others as read-only view tiles. |
-| `arrange-tabs` | Consolidate All to Tabs |  | Returns every open document to the tab strip, one at a time on the Stage. |
+| `arrange-tabs` | Consolidate All to Tabs |  | Returns every open document to the tab strip, one at a time on the Stage; closes the floating windows and extra views. |
 | `assistant` | Assistant |  | Shows or hides the Assistant panel. |
 | `benchmark` | Performance Benchmark... |  | Opens the performance benchmark. |
 | `brush-settings` | Brush Settings... | F5 | Opens Brush Settings. |
 | `copy-error-log` | Copy Error Log |  | Copies the error log to the clipboard. |
 | `delete-frame` | Delete Frame |  | Deletes the current animation frame. (changes the picture) |
+| `float-all-windows` | Float All in Windows |  | Gives every open document a floating window of its own. |
+| `float-window` | Float in Window |  | Detaches a view of the current document into a floating window inside the app, with its own zoom, pan and rotation; drag its title to move it and its edges to resize it. |
 | `glyphs` | Glyphs |  | Opens Glyphs, a grid of Unicode characters to add to a type layer. |
 | `help` | formvis Help | F1 | Opens the formvis manual. |
 | `manage-plugins` | Manage Plugins... |  | Opens the plugins dialog. |
@@ -1025,6 +1031,7 @@ Generated from the window's command catalogue (937 commands) by `./formvis agent
 | `match-zoom` | Match Zoom |  | Gives every open document the current zoom. (changes the picture) |
 | `merge-columns` | Merge Panel Columns |  | Merges the panel columns into one. |
 | `new-frame` | New Frame |  | Adds a frame to the frame animation. (changes the picture) |
+| `new-window` | New Window for Document |  | Opens a second view of the current document, titled name (2), as a tile with its own zoom, pan and rotation; edits show in both views. |
 | `panel-adjustments` | Adjustments |  | Shows or hides the Adjustments panel. |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
 | `panel-character` | Character |  | Shows or hides the Character panel. |
