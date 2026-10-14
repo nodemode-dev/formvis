@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.72.3 · 2026-10-14
+
+### Fixed
+
+- OpenEXR files open and export again with OpenCV builds that ship no EXR codec.
+- Ctrl+J (Cmd+J) is Layer via Copy while a layer is open, as in Photoshop; it toggles the terminal otherwise or when the terminal has focus.
+- The History panel's History Brush column no longer overlaps the row below.
+- Browser tests brought up to date with 16- and 32-bit painting, giant-document budgets, the Gradient Editor's strips, Image > Mode and the dock Timeline; the LaMa tests skip when the model is not installed.
+
 ## 1.72.2 · 2026-10-14
 
 ### Fixed

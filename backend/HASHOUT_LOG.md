@@ -2,6 +2,26 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## OpenEXR through the binding when OpenCV has no codec · _v1.72.3 (services/contained.py, __init__.py)
+
+- `services/contained.py`: the venv's OpenCV 5.0 ships no OpenEXR codec, so every single-part EXR decode and Export EXR returned nothing. `_decode_worker` and `_encode_worker` fall back to new `_binding_decode` and `_binding_encode` over the OpenEXR binding (3.5.2, already a requirement since 1.71.5), still inside the contained child; a round trip is exact for 3 and 4 channels. Replaced:
+
+```python
+        img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+        ok, out = cv2.imencode(".exr", np.ascontiguousarray(img))
+        q.put(out.tobytes() if ok else None)
+```
+
+- `tests/test_deep_io.py::test_32_bit_hdr_exr_and_tiff_round_trip_past_white` still fails: the test itself calls `cv2.imencode('.exr')` in-process.
+- Version lines removed, the desktop shell's quoted too:
+
+```text
+__version__ = "1.72.2"
+version = "1.72.2"
+version = "1.72.2"
+ "version": "1.72.2",
+```
+
 ## Version only · _v1.72.2
 
 No engine code changed in 1.72.2. Removed version lines, the desktop shell's quoted too:

@@ -526,7 +526,8 @@ ask it questions.
 
 ## Terminal
 
-- Window > Terminal (Ctrl+J, Cmd+J on a Mac) opens a terminal dock along the foot of the window; the same key or the
+- Window > Terminal opens a terminal dock along the foot of the window (Ctrl+J, Cmd+J on a Mac, when no layer is open
+  or the dock has focus; with a layer open, Ctrl+J is Layer via Copy, as in Photoshop); the same key in the dock or the
   hide button closes it, and the shells keep running while it is hidden. Drag the grip above it to resize; its
   height and whether it is open are remembered, and the window opens as you left it without moving.
 - Each tab is a shell started in the formvis folder by the engine on this computer, with formvis's own command

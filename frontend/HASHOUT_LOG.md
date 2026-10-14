@@ -2,6 +2,25 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.72.3: browser suite fixes, second batch · _v1.72.3 (styles/panels.css, ui/terminal-dock.ts, app.ts, e2e/*.py, docs/MANUAL.md)
+
+- `styles/panels.css`, `.cv-history-row`: 1.71.4 put a second source button on step rows, which wrapped onto an implicit second grid row and overlapped the row below, so a click on the History Brush column landed on the next step. A third column holds it. Replaced:
+
+```css
+.cv-history-row { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: var(--space-2); height: 26px; padding: 0 var(--space-3); color: var(--text-secondary); cursor: pointer; }
+```
+
+- `ui/terminal-dock.ts`, `TerminalDock`: its capture-phase Mod+J handler always ate the key, so Layer via Copy (also Mod+J) never ran from the keyboard. New `yieldsKey`; `app.ts` sets `termDock.yieldsKey = () => !!layer()`, so with a layer open and focus outside the dock Mod+J is Layer via Copy, as in Photoshop; otherwise it toggles the terminal. Replaced:
+
+```ts
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !e.repeat) { e.preventDefault(); e.stopPropagation(); this.toggle(); }
+```
+
+- `docs/MANUAL.md`, Window > Terminal: the key's two meanings stated.
+- Tests changed to follow intended changes: giant-document tests (`test_tiled_filter.py`, `test_tiled_gpu.py`, `test_tiled_paint.py`, `test_tiled_project.py`) set a 100 MP pixel budget first, since the engine's budget from this host's memory (210 MP) made their 120 MP document an ordinary canvas; `test_sixteen_bit.py` expects painting at 16 and 32 bits (allowed since 1.53.8 and 1.56.8) and reads and writes its EXR through the engine; `test_history_fill_gradient_editor.py` takes the colour strip (`.last`) beside the 1.71.4 opacity strip; `test_paragraph_styles.py` scopes to the open dialog (Character Styles shares the list class); `test_offered_options.py` expects Lab, Duotone and Multichannel in Image > Mode; `test_title_tools.py` gives the document a frame for the dock Timeline; `test_tool_audit_2.py` counts only the visible options row; `test_gpu_clip.py` the new fallback wording; `test_local_models.py` clears the consent file in both model folders; `test_local_inpaint.py` skips when `/api/models` reports `lama-inpaint` not ready.
+- Passed on rerun with no change: path_ops (2), marquee_options, tool options part 0, agent editing. Environment: the paging and tiled-filter disk checks read `/tmp/formvisdata/undo`; the engine here was started without `FORMVIS_DATA_DIR`, so a link to `/root/Formvis/undo` was made outside the repo.
+- The menu walk (`test_every_menu_command_runs`) run alone crashed the renderer after 5.6 minutes, with a navigation after load; the command at fault is not named in the output.
+
 ## Release 1.72.2: browser suite fixes, first batch · _v1.72.2 (app.ts, ui/panels/toolbar-dialog.ts, e2e/*.py)
 
 - The full browser suite was run again on a frozen clone of 1.72.1 (Vite on 5191) with `-rfE` and the menu walk deselected (it walks 959 commands and outlives the per-test timeout; to run alone). By 68 percent, 21 tests had failed; the first ten were fixed this release, the rest are listed in DEV_PLAN 36.20.
