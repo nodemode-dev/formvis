@@ -40,6 +40,8 @@ export class HistoryPanel {
       if (!row) return;
       // The brush column, as Photoshop's: sets the History Brush's source without reverting to the snapshot.
       if ((e.target as HTMLElement).closest('.cv-hb-source') && row.dataset.snap) { this.engine.setHistoryBrushSource(row.dataset.snap); return; }
+      // The same column on a step row: the state Edit > Fill with History paints from (marking the oldest again clears it).
+      if ((e.target as HTMLElement).closest('.cv-hs-source') && !row.dataset.snap) { const i = Number(row.dataset.index); this.engine.setHistorySourceIndex(i === 0 || this.engine.historySourceIndex === i ? null : i); return; }
       if (row.dataset.snap) { this.picked = row.dataset.snap; this.engine.revertToSnapshot(row.dataset.snap); this.sync(); return; }
       this.engine.jumpHistory(Number(row.dataset.index));
     });
@@ -58,7 +60,7 @@ export class HistoryPanel {
     patchList<Row>(this.rows, list, {
       key: (r) => r.key,
       create: (r) => {
-        const row = el(`<div class="cv-history-row" role="option"><span class="cv-history-icon">${icon(r.snap ? 'camera' : r.index === 0 ? 'image' : 'history', 12)}</span><span class="cv-history-name"></span>${r.snap ? `<button class="cv-hb-source" type="button" title="Paint from this snapshot with the History Brush" aria-label="History Brush source">${icon('tHistoryBrush', 13)}</button>` : ''}</div>`);
+        const row = el(`<div class="cv-history-row" role="option"><span class="cv-history-icon">${icon(r.snap ? 'camera' : r.index === 0 ? 'image' : 'history', 12)}</span><span class="cv-history-name"></span>${r.snap ? `<button class="cv-hb-source" type="button" title="Paint from this snapshot with the History Brush" aria-label="History Brush source">${icon('tHistoryBrush', 13)}</button>` : `<button class="cv-hb-source cv-hs-source" type="button" title="Fill with History paints from this step" aria-label="Set history source">${icon('tHistoryBrush', 13)}</button>`}</div>`);
         this.fill(row, r, current);
         return row;
       },
@@ -79,7 +81,8 @@ export class HistoryPanel {
     row.title = r.snap ? `${r.name}: keeps ${Math.ceil((r.bytes ?? 0) / 1048576)} MB` : '';
     row.classList.toggle('is-snapshot', !!r.snap);
     row.classList.toggle('is-picked', !!r.snap && r.snap === this.picked);
-    row.querySelector('.cv-hb-source')?.classList.toggle('is-on', !!r.snap && r.snap === this.engine.historyBrushSourceId);
+    row.querySelector('.cv-hb-source:not(.cv-hs-source)')?.classList.toggle('is-on', !!r.snap && r.snap === this.engine.historyBrushSourceId);
+    row.querySelector('.cv-hs-source')?.classList.toggle('is-on', !r.snap && r.index === (this.engine.historySourceIndex ?? 0));
     setText(q(row, '.cv-history-name'), r.name);
     row.classList.toggle('is-current', !r.snap && r.index === current);
     row.classList.toggle('is-undone', !r.snap && r.index > current);

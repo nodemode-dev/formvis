@@ -27,7 +27,7 @@ import { importedBrushPresets } from './engine/brush-dynamics';
 import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
 import { dpxBlob } from './io/dpx';
-import { exportLayout, ENGINE_FORMATS, exportName, exportSize, formatOptions, PROFILELESS, type ExportSettings } from './io/export-presets';
+import { exportLayout, ENGINE_FORMATS, exportMeta, exportName, exportSize, formatOptions, PROFILELESS, sizedSettings, type ExportSettings } from './io/export-presets';
 import { pnmDeepBlob } from './io/pnm';
 import { PARAM_KINDS } from './engine/adjust-params';
 import { APPLY_MODES, type ApplyMode } from './engine/apply-image';
@@ -810,7 +810,11 @@ export function startApp(): void {
 
   /** File > Export As: the composite scaled by the settings, then encoded (PNG, JPEG and WebP by the browser, JPEG
    *  flattened on white; AVIF, TIFF and PDF by the engine), named as Photoshop names scaled exports. */
-  async function exportAs(s: ExportSettings): Promise<void> {
+  async function exportAs(all: ExportSettings): Promise<void> {
+    // Several sizes (36.29): one file for each, named with the entry's suffix.
+    for (const one of sizedSettings(all)) await exportAsOne(one.s, one.suffix);
+  }
+  async function exportAsOne(s: ExportSettings, suffix?: string): Promise<void> {
     const p = engine.current;
     if (!p) return;
     engine.settle();
@@ -818,12 +822,12 @@ export function startApp(): void {
       try {
         if (s.format === 'dpx') {
           const dpx = await dpxBlob(engine, s);
-          if (dpx) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame') toast('DPX is written at the document\'s own size.', 'info'); await deliver(dpx, exportName(p.name, s)); }
+          if (dpx) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame' || s.canvas) toast('DPX is written at the document\'s own size.', 'info'); await deliver(dpx, exportName(p.name, s, suffix)); }
           return;
         }
         if (s.format === 'pnm') {
           const deep = await pnmDeepBlob(engine, s);
-          if (deep) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame') toast('A 16-bit PNM file is written at the document\'s own size.', 'info'); await deliver(deep, exportName(p.name, s)); return; }
+          if (deep) { if (s.scale !== 100 || s.size === 'fit' || s.size === 'frame' || s.canvas) toast('A 16-bit PNM file is written at the document\'s own size.', 'info'); await deliver(deep, exportName(p.name, s, suffix)); return; }
         } else if ((p.doc.depth ?? 8) > 8 && (s.format === 'qoi' || s.format === 'tga' || s.format === 'ico')) toast(`${s.format.toUpperCase()} holds 8 bits a channel, so the ${p.doc.depth}-bit picture is written at 8 bits.`, 'info');
         const base = await engine.exportBlob('image/png');
         if (!base) return;
@@ -858,7 +862,9 @@ export function startApp(): void {
         // The AI label (1.51.8), in PNG, JPEG and WebP.
         // File Info (29.2) goes in as XMP, the AI label inside the same packet; with no File Info the label is written alone.
         const ai = s.aiLabel && s.aiLabel !== 'none' ? s.aiLabel : undefined;
-        await deliver(metaWritable(p.doc.meta) ? await withXmp(blob, s.format, p.doc.meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob, exportName(p.name, s));
+        // Metadata (36.29): the document's File Info, none, or only the Copyright and Contact texts.
+        const meta = exportMeta(s, p.doc.meta);
+        await deliver(metaWritable(meta) ? await withXmp(blob, s.format, meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob, exportName(p.name, s, suffix));
       } catch (err) { toast(message(err), 'error'); }
     });
   }

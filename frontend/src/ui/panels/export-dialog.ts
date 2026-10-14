@@ -1,5 +1,5 @@
 import type { Engine } from '../../engine';
-import { exportLayout, BUILTIN_EXPORT_PRESETS, DPX_BITS, DPX_TRANSFERS, EXPORT_FORMATS, EXPORT_INTENTS, FORMAT_OPTIONS, ICO_SIZES, LOSSY, PROFILELESS, clampSettings, exportName, exportSize, presetsFromStorage, type DpxBits, type DpxTransfer, type ExportFormat, type ExportIntent, type ExportPreset, type ExportSettings } from '../../io/export-presets';
+import { exportLayout, BUILTIN_EXPORT_PRESETS, DPX_BITS, DPX_TRANSFERS, EXPORT_FORMATS, EXPORT_INTENTS, FORMAT_OPTIONS, ICO_SIZES, LOSSY, MAX_EXPORT_SIZES, PROFILELESS, XMP_FORMATS, clampSettings, defaultSuffix, sizedSettings, exportName, exportSize, presetsFromStorage, type DpxBits, type DpxTransfer, type ExportFormat, type ExportIntent, type ExportPreset, type ExportSettings } from '../../io/export-presets';
 import { api } from '../../io/api';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
@@ -37,7 +37,21 @@ export class ExportDialog extends Dialog {
   private readonly boxW = el('<input class="cv-input" type="number" min="1" max="30000" step="1" aria-label="Width">') as HTMLInputElement;
   private readonly boxH = el('<input class="cv-input" type="number" min="1" max="30000" step="1" aria-label="Height">') as HTMLInputElement;
   private readonly boxRow = el('<label class="cv-field"><span>Width x Height (px)</span><div class="cv-row-actions"></div></label>');
+  // Canvas size, metadata and several sizes (36.29); each row exists from the start and is disabled when it does not apply.
+  private readonly canvasRow: Row<boolean>;
+  private readonly canvasW = el('<input class="cv-input" type="number" min="1" max="30000" step="1" aria-label="Canvas width">') as HTMLInputElement;
+  private readonly canvasH = el('<input class="cv-input" type="number" min="1" max="30000" step="1" aria-label="Canvas height">') as HTMLInputElement;
+  private readonly canvasBox = el('<label class="cv-field"><span>Canvas (px)</span><div class="cv-row-actions"></div></label>');
+  private readonly metaRow: Row<string>;
+  private readonly copyrightInput = el('<input class="cv-input" type="text" maxlength="300" aria-label="Copyright text">') as HTMLInputElement;
+  private readonly copyrightField = el('<label class="cv-field"><span>Copyright</span></label>');
+  private readonly contactInput = el('<input class="cv-input" type="text" maxlength="300" aria-label="Contact text">') as HTMLInputElement;
+  private readonly contactField = el('<label class="cv-field"><span>Contact</span></label>');
+  private readonly sizesHead = el('<div class="cv-field"><span>Sizes</span><div class="cv-row-actions"></div></div>');
+  private readonly addSizeBtn = el('<button class="cv-btn" type="button">Add Size</button>') as HTMLButtonElement;
+  private readonly sizesList = el('<div class="cv-sizes" role="group" aria-label="Export sizes"></div>');
   private readonly sizeNote = el('<p class="cv-note"></p>');
+  private readonly metaNote = el('<p class="cv-note"></p>');
   private readonly nameInput = el('<input class="cv-input" type="text" maxlength="60" placeholder="Preset name">') as HTMLInputElement;
   private readonly deleteBtn: HTMLButtonElement;
 
@@ -56,6 +70,19 @@ export class ExportDialog extends Dialog {
     (this.boxRow.lastElementChild as HTMLElement).append(this.boxW, el('<span>x</span>'), this.boxH);
     const box = (): void => { this.s = clampSettings({ ...this.s, boxW: Number(this.boxW.value), boxH: Number(this.boxH.value) }); this.custom(); };
     this.boxW.addEventListener('change', box); this.boxH.addEventListener('change', box);
+    this.canvasRow = checkRow('Canvas size', (v) => { this.s = clampSettings({ ...this.s, canvas: v, canvasW: this.s.canvasW ?? Number(this.canvasW.value), canvasH: this.s.canvasH ?? Number(this.canvasH.value) }); this.custom(); });
+    (this.canvasBox.lastElementChild as HTMLElement).append(this.canvasW, el('<span>x</span>'), this.canvasH);
+    const canvas = (): void => { this.s = clampSettings({ ...this.s, canvasW: Number(this.canvasW.value), canvasH: Number(this.canvasH.value) }); this.custom(); };
+    this.canvasW.addEventListener('change', canvas); this.canvasH.addEventListener('change', canvas);
+    this.metaRow = selectRow('Metadata', [['doc', 'Document File Info'], ['none', 'None'], ['copyright', 'Copyright and Contact Info']], (v) => { this.s = clampSettings({ ...this.s, metadata: v === 'doc' ? undefined : v as 'none' | 'copyright' }); this.custom(); });
+    this.copyrightField.append(this.copyrightInput); this.contactField.append(this.contactInput);
+    this.copyrightInput.addEventListener('input', () => { this.s = clampSettings({ ...this.s, copyrightText: this.copyrightInput.value }); this.custom(); });
+    this.contactInput.addEventListener('input', () => { this.s = clampSettings({ ...this.s, contactText: this.contactInput.value }); this.custom(); });
+    (this.sizesHead.lastElementChild as HTMLElement).append(this.addSizeBtn);
+    this.addSizeBtn.addEventListener('click', () => {
+      const have = this.s.sizes ?? [], x = [1, 2, 0.5, 3, 4, 1.5, 0.25].find((n) => !have.some((z) => z.x === n)) ?? 1;
+      this.s = clampSettings({ ...this.s, sizes: [...have, { x, suffix: defaultSuffix(x) }] }); this.custom();
+    });
     this.labelRow = selectRow('AI label', [['none', 'None'], ['generated', 'Made with AI'], ['edited', 'Edited with AI']], (v) => { this.s = clampSettings({ ...this.s, aiLabel: v === 'none' ? undefined : v as 'generated' | 'edited' }); this.custom(); });
     this.dpxBitsRow = selectRow('DPX bit depth', DPX_BITS, (v) => { this.s = clampSettings({ ...this.s, dpxBits: Number(v) as DpxBits }); this.custom(); });
     this.dpxTransferRow = selectRow('DPX transfer', DPX_TRANSFERS, (v) => { this.s = clampSettings({ ...this.s, dpxTransfer: v as DpxTransfer }); this.custom(); });
@@ -73,7 +100,7 @@ export class ExportDialog extends Dialog {
     this.deleteBtn.addEventListener('click', () => this.deletePreset());
     const manage = el('<div class="cv-field"><span></span><div class="cv-row-actions"></div></div>');
     (manage.lastElementChild as HTMLElement).append(this.nameInput, save, this.deleteBtn);
-    this.body.append(this.presetRow.el, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.profileRow.el, this.intentRow.el, this.bpcRow.el, this.embedRow.el, this.dpxBitsRow.el, this.dpxTransferRow.el, this.optionRow.el, this.icoRow, this.labelRow.el, this.sizeNote, manage);
+    this.body.append(this.presetRow.el, this.formatRow.el, this.qualityRow.el, this.sizeRow.el, this.scaleRow.el, this.boxRow, this.canvasRow.el, this.canvasBox, this.profileRow.el, this.intentRow.el, this.bpcRow.el, this.embedRow.el, this.dpxBitsRow.el, this.dpxTransferRow.el, this.optionRow.el, this.icoRow, this.labelRow.el, this.metaRow.el, this.copyrightField, this.contactField, this.metaNote, this.sizesHead, this.sizesList, this.sizeNote, manage);
     this.button('Cancel', 'ghost', () => this.close());
     this.button('Export', 'primary', () => { this.close(); this.run({ ...this.s }); });
     // The settings in use (not only the saved presets) and the preset chosen are kept across sessions.
@@ -100,6 +127,17 @@ export class ExportDialog extends Dialog {
     this.profileRow.set(this.s.profile ?? 'srgb');
   }
 
+  /** One size entry: the multiplier (1, 2, 0.5), the file name suffix and a remove button. */
+  private sizeRowNode(): HTMLElement {
+    const row = el('<div class="cv-row-actions"><input class="cv-input" type="number" min="0.1" max="10" step="0.05" aria-label="Size multiplier"><input class="cv-input" type="text" maxlength="20" aria-label="File name suffix" placeholder="Suffix"><button class="cv-btn" type="button">Remove</button></div>');
+    const [xi, si] = Array.from(row.querySelectorAll('input')) as HTMLInputElement[], at = (): number => Array.from(this.sizesList.children).indexOf(row);
+    const put = (patch: Partial<{ x: number; suffix: string }>): void => { const list = (this.s.sizes ?? []).map((z, k) => (k === at() ? { ...z, ...patch } : z)); this.s = clampSettings({ ...this.s, sizes: list }); this.custom(); };
+    xi.addEventListener('change', () => { const old = this.s.sizes?.[at()], x = Number(xi.value); put({ x, ...(old && old.suffix === defaultSuffix(old.x) ? { suffix: defaultSuffix(Math.round(Math.min(10, Math.max(0.1, x || 1)) * 100) / 100) } : {}) }); });
+    si.addEventListener('input', () => put({ suffix: si.value }));
+    row.querySelector('button')?.addEventListener('click', () => { this.s = clampSettings({ ...this.s, sizes: (this.s.sizes ?? []).filter((_, k) => k !== at()) }); this.custom(); });
+    return row;
+  }
+
   private all(): ExportPreset[] { return [...BUILTIN_EXPORT_PRESETS, ...this.saved]; }
 
   private load(): void {
@@ -114,7 +152,7 @@ export class ExportDialog extends Dialog {
   }
 
   private store(): void {
-    try { localStorage.setItem(KEY, JSON.stringify(this.saved.map(({ id, name, format, quality, scale, profile, intent, bpc, embed, size, boxW, boxH, aiLabel, dpxBits, dpxTransfer, option, icoSizes }) => ({ id, name, format, quality, scale, ...(profile ? { profile } : {}), ...(intent ? { intent } : {}), ...(bpc === false ? { bpc } : {}), ...(embed === false ? { embed } : {}), ...(size ? { size, boxW, boxH } : {}), ...(aiLabel ? { aiLabel } : {}), ...(dpxBits ? { dpxBits, dpxTransfer } : {}), ...(option ? { option } : {}), ...(icoSizes ? { icoSizes } : {}) })))); } catch { toast('Presets cannot be saved in this browser.', 'error'); }
+    try { localStorage.setItem(KEY, JSON.stringify(this.saved.map(({ id, name, format, quality, scale, profile, intent, bpc, embed, size, boxW, boxH, aiLabel, dpxBits, dpxTransfer, option, icoSizes, canvas, canvasW, canvasH, metadata, copyrightText, contactText, sizes }) => ({ id, name, format, quality, scale, ...(profile ? { profile } : {}), ...(intent ? { intent } : {}), ...(bpc === false ? { bpc } : {}), ...(embed === false ? { embed } : {}), ...(size ? { size, boxW, boxH } : {}), ...(aiLabel ? { aiLabel } : {}), ...(dpxBits ? { dpxBits, dpxTransfer } : {}), ...(option ? { option } : {}), ...(icoSizes ? { icoSizes } : {}), ...(canvas ? { canvas, canvasW, canvasH } : {}), ...(metadata ? { metadata, copyrightText, contactText } : {}), ...(sizes ? { sizes } : {}) })))); } catch { toast('Presets cannot be saved in this browser.', 'error'); }
   }
 
   private pick(id: string): void {
@@ -187,11 +225,36 @@ export class ExportDialog extends Dialog {
     const ico = s.format === 'ico';
     this.icoRow.classList.toggle('is-off', !ico);
     this.icoBoxes.forEach((b, i) => { b.checked = ico && !!s.icoSizes?.includes(ICO_SIZES[i]); b.disabled = !ico; });
+    // Canvas size: the boxes keep their place and are disabled while the box is unchecked.
+    const cv = !!s.canvas;
+    this.canvasRow.set(cv);
+    this.canvasBox.classList.toggle('is-off', !cv);
+    this.canvasW.disabled = !cv; this.canvasH.disabled = !cv;
+    if (document.activeElement !== this.canvasW) this.canvasW.value = String(s.canvasW ?? doc?.width ?? 1920);
+    if (document.activeElement !== this.canvasH) this.canvasH.value = String(s.canvasH ?? doc?.height ?? 1080);
+    // Metadata: the two texts are used only for Copyright and Contact Info; the note says where the file can carry them.
+    const cm = s.metadata === 'copyright';
+    this.metaRow.set(s.metadata ?? 'doc');
+    this.copyrightField.classList.toggle('is-off', !cm); this.contactField.classList.toggle('is-off', !cm);
+    this.copyrightInput.disabled = !cm; this.contactInput.disabled = !cm;
+    if (document.activeElement !== this.copyrightInput) this.copyrightInput.value = s.copyrightText ?? '';
+    if (document.activeElement !== this.contactInput) this.contactInput.value = s.contactText ?? '';
+    setText(this.metaNote, XMP_FORMATS.has(s.format) ? (cm ? 'The contact text is written as the creator. ' : '') + (s.format === 'webp' || s.format === 'tiff' ? 'Written as XMP.' : 'Written as an XMP packet in the file.') : `${s.format.toUpperCase()} cannot carry metadata here; the file is written without it.`);
+    // Several sizes: one row of nodes per entry, kept and patched in place; a row is added or removed only when the list changes length.
+    const sizes = s.sizes ?? [];
+    while (this.sizesList.children.length > sizes.length) this.sizesList.lastElementChild?.remove();
+    while (this.sizesList.children.length < sizes.length) this.sizesList.append(this.sizeRowNode());
+    sizes.forEach((z, i) => {
+      const row = this.sizesList.children[i] as HTMLElement, [xi, si] = Array.from(row.querySelectorAll('input')) as HTMLInputElement[];
+      if (document.activeElement !== xi) xi.value = String(z.x);
+      if (document.activeElement !== si) si.value = z.suffix;
+    });
+    this.addSizeBtn.disabled = sizes.length >= MAX_EXPORT_SIZES;
     const lossy = LOSSY.has(s.format);
     this.qualityRow.el.classList.toggle('is-off', !lossy);
     for (const i of this.qualityRow.el.querySelectorAll('input')) i.disabled = !lossy;
     this.deleteBtn.disabled = !this.saved.some((x) => x.id === this.presetId);
-    if (doc) { const z = exportLayout(doc.width, doc.height, s); setText(this.sizeNote, `${z.w} x ${z.h} px · ${exportName(this.engine.current?.name ?? 'Untitled', s)}${s.format === 'pdf' && s.profile ? ' · converted; PDF carries no profile' : ''}`); }
+    if (doc) { const z = exportLayout(doc.width, doc.height, sizedSettings(s)[0].s), many = sizes.length > 1; setText(this.sizeNote, `${many ? `${sizes.length} files, first ` : ''}${z.w} x ${z.h} px · ${exportName(this.engine.current?.name ?? 'Untitled', s, sizes[0]?.suffix)}${s.format === 'pdf' && s.profile ? ' · converted; PDF carries no profile' : ''}`); }
     if (doc && s.aiLabel && ['avif', 'tiff', 'pdf'].includes(s.format)) setText(this.sizeNote, `${this.sizeNote.textContent ?? ''} · AVIF, TIFF and PDF do not carry the AI label yet.`);
     remembered('Export As', 'settings', JSON.stringify(s));
     remembered('Export As', 'preset', this.presetId);

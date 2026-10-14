@@ -185,6 +185,7 @@ const ROWS: Record<string, Row> = {
   'panel-shapes': ['Window', 'Shows or hides the Shapes panel.', 'Use when you want to pick a custom shape for the Shape tool from a grid.'],
   'panel-adjustments': ['Window', 'Shows or hides the Adjustments panel.', 'Use when you want to add an adjustment layer (Levels, Curves, Hue/Saturation and the rest) from a grid of buttons.'],
   'panel-notes': ['Window', 'Shows or hides the Notes panel.', 'Use when you want to list, read, edit, jump to or delete the notes pinned to the document.'],
+  'panel-clone-source': ['Window', 'Shows or hides the Clone Source panel.', 'Use when you want to pick one of five clone sources and set its scale, angle, flips and the overlay for the Clone Stamp.'],
   'panel-histogram': ['Window', 'Shows or hides the Histogram panel.', 'Use when you want to see the composite histogram by channel with its mean, deviation, median and pixel count.'],
   'panel-modifier-keys': ['Window', 'Shows or hides the Modifier Keys panel.', 'Use when a pen or touch user needs to hold Shift, Alt or Ctrl for the next canvas gesture.'],
   'panel-measurement-log': ['Window', 'Shows or hides the Measurement Log panel.', 'Use when you want to record, review or export measurements.'],

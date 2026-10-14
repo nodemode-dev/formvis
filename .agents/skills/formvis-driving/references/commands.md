@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (934 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (935 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -16,7 +16,7 @@ Generated from the window's command catalogue (934 commands) by `./formvis agent
 - Tools: 49
 - Type: 22
 - View: 40
-- Window: 64
+- Window: 65
 
 ## Edit
 
@@ -1027,6 +1027,7 @@ Generated from the window's command catalogue (934 commands) by `./formvis agent
 | `panel-adjustments` | Adjustments |  | Shows or hides the Adjustments panel. |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
 | `panel-character` | Character |  | Shows or hides the Character panel. |
+| `panel-clone-source` | Clone Source |  | Shows or hides the Clone Source panel. |
 | `panel-gradients` | Gradients |  | Shows or hides the Gradients panel. |
 | `panel-histogram` | Histogram |  | Shows or hides the Histogram panel. |
 | `panel-history` | History |  | Shows or hides the History panel. |

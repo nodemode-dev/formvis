@@ -40,6 +40,12 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-btn-primary { background: var(--accent-color); border-color: transparent; color: var(--text-on-accent); }
 .cv-btn-primary:hover { background: var(--accent-color-hover); color: var(--text-on-accent); }
 .cv-btn-ghost { background: transparent; border-color: transparent; }
+.cv-clone-slots { display: grid; grid-template-columns: repeat(5, 1fr); gap: var(--space-1); padding: var(--space-2) var(--space-3); }
+.cv-clone-slot.is-active { background: var(--accent-color); border-color: transparent; color: var(--text-on-accent); }
+.cv-clone-slot.is-empty:not(.is-active) { border-style: dashed; opacity: 0.6; }
+.cv-clone-pos { display: grid; grid-template-columns: auto 1fr auto 1fr; gap: var(--space-1) var(--space-2); margin: 0; padding: 0 var(--space-3); font-size: var(--fs-12); color: var(--text-secondary); }
+.cv-clone-pos dd { margin: 0; color: var(--text-primary); }
+.cv-clone-rows, .cv-clone-overlay { display: flex; flex-direction: column; gap: var(--space-1); padding: var(--space-2) var(--space-3); }
 .cv-btn-danger { background: transparent; border-color: var(--danger-fill); color: var(--danger-soft); }
 .cv-icon-btn { width: var(--ctl-md); height: var(--ctl-md); display: inline-flex; align-items: center; justify-content: center; flex: none; border: 0; border-radius: var(--radius); background: transparent; color: var(--text-muted); cursor: pointer; }
 .cv-icon-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }

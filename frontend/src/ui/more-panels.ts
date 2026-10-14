@@ -4,6 +4,7 @@ import { histogram } from '../engine/scopes';
 import type { DocNote } from '../engine/types';
 import { el, patchList, q, setText } from './dom';
 import { icon } from './icons';
+import { createCloneSourcePanel } from './clone-source-panel';
 
 /** The channels the Histogram panel can show. */
 type Channel = 'rgb' | 'r' | 'g' | 'b' | 'l';
@@ -184,4 +185,5 @@ export function createMorePanels(root: HTMLElement, engine: Engine, run: (id: st
   adjustmentsPanel(root, run);
   notesPanel(root, engine);
   histogramPanel(root, engine);
+  createCloneSourcePanel(root, engine);
 }
