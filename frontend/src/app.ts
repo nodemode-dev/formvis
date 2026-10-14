@@ -57,6 +57,7 @@ import { Actions, RECORDABLE, type Action, type ActionStep } from './ui/actions'
 import { ActionsDialog, BatchDialog } from './ui/panels/actions-dialogs';
 import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/image-processor-dialog';
 import { zipFiles } from './io/zip';
+import { assetFiles } from './io/image-assets';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
@@ -81,6 +82,7 @@ import { api, type Capabilities, type CmykPsd, type OpenedProject } from './io/a
 import { findToRemove, localInpaint, modelReady, skyMask, skyReady } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
+import { SaveForWebDialog } from './ui/panels/save-for-web-dialog';
 import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
 import { VideoTimelinePanel } from './ui/video-timeline';
@@ -152,6 +154,7 @@ import { ContentAwareScaleDialog } from './ui/panels/content-aware-scale';
 import { WideAngleDialog } from './ui/panels/wide-angle-dialog';
 import { AmountDialog, CanvasSizeDialog, FitImageDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
 import { ContactSheetDialog } from './ui/panels/contact-sheet-dialog';
+import { LoadStackDialog } from './ui/panels/load-stack-dialog';
 import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel } from './ui/panels/background-panel';
 import { ColorPickerDialog } from './ui/panels/color-picker';
@@ -1694,6 +1697,7 @@ export function startApp(): void {
 
   const actions = new Actions();
   const dialogs = {
+    saveForWeb: new SaveForWebDialog(engine, deliver),
     smartFilters: new SmartFiltersDialog(engine, (): FilterPanel => dialogs.filter),
     shapeStyle: new ShapeStyleDialog(engine),
     animation: new AnimationDialog(engine),
@@ -1735,6 +1739,8 @@ export function startApp(): void {
     imageSize: new ImageSizeDialog(engine),
     fitImage: new FitImageDialog(engine),
     contactSheet: new ContactSheetDialog(engine),
+    loadStack: new LoadStackDialog(engine, false),
+    stackStatistics: new LoadStackDialog(engine, true),
     saveCopy: new SaveCopyDialog(engine, (n, layers) => void saveCopy(n, layers)),
     palette: new CommandPalette(commands, () => menus, engine),
     fillLayer: new FillLayerDialog(engine),
@@ -1916,6 +1922,7 @@ export function startApp(): void {
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
+    { id: 'save-for-web', label: 'Save for Web (Legacy)...', enabled: has, run: () => { engine.settle(); dialogs.saveForWeb.show(); } },
     { id: 'print', label: 'Print...', keys: ['Mod+P'], enabled: has, run: () => dialogs.print.show() },
     { id: 'print-one-copy', label: 'Print One Copy', keys: ['Alt+Shift+Mod+P'], enabled: has, run: () => { printDocument(engine, { ...printSettings, selectedArea: printSettings.selectedArea && !!engine.current?.selection }); } },
     { id: 'file-info', label: 'File Info...', keys: ['Alt+Shift+Mod+I'], enabled: has, params: FILE_INFO_PARAMS, run: (a) => fileInfoRun(a) },
@@ -2029,6 +2036,8 @@ export function startApp(): void {
     },
     { id: 'fit-image', label: 'Fit Image...', enabled: has, run: () => dialogs.fitImage.show() },
     { id: 'contact-sheet', label: 'Contact Sheet II...', run: () => dialogs.contactSheet.show() },
+    { id: 'load-files-stack', label: 'Load Files into Stack...', run: () => dialogs.loadStack.show() },
+    { id: 'stack-statistics', label: 'Statistics...', run: () => dialogs.stackStatistics.show() },
     { id: 'crop-straighten-photos', label: 'Crop and Straighten Photos', enabled: has, run: async () => {   // DEV_PLAN 30.3 part b
       const p = engine.current, flat = engine.flattened();
       if (!p || !flat) return;
@@ -2187,6 +2196,14 @@ export function startApp(): void {
     { id: 'artboard-options', label: 'Artboard Options...', enabled: () => !!engine.current?.activeLayer?.artboard, run: () => dialogs.artboard.show() },
     { id: 'export-artboards', label: 'Export Artboards to Files', enabled: () => engine.artboards().length > 0, run: () => void exportArtboards() },
     { id: 'export-layers', label: 'Layers to Files...', enabled: has, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(false, a) },
+    { id: 'generate-image-assets', label: 'Generate Image Assets', enabled: has, run: async () => {
+      const p = engine.current;
+      if (!p) return;
+      const files = await assetFiles(engine, !!caps);
+      if (!files.length) { toast('No layer names hold an asset name such as hero.png.', 'info'); return; }
+      await deliver(await zipFiles(files), `${stripExt(p.name)}-assets.zip`);
+      toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
+    } },
     { id: 'export-layer-comps', label: 'Layer Comps to Files...', enabled: () => !!engine.current?.doc.comps?.length, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(false, a, true) },
     { id: 'export-artboards-pdf', label: 'Artboards to PDF...', enabled: () => engine.artboards().length > 0,
       params: {
@@ -2512,9 +2529,9 @@ export function startApp(): void {
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', '-',
-      { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
+      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
-      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
+      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',

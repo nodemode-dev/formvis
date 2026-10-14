@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (826 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (830 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 49
-- File: 56
+- File: 60
 - Filter: 77
 - Image: 75
 - Layer: 181
@@ -110,9 +110,11 @@ Generated from the window's command catalogue (826 commands) by `./formvis agent
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
 | `fit-image` | Fit Image... |  | Opens Fit Image to scale within a width and height. (changes the picture) |
 | `generate-image` | Generate Image... |  | Opens Generate Image. (changes the picture) |
+| `generate-image-assets` | Generate Image Assets |  | Writes a zip of image files for every layer whose name holds an asset name such as hero.png, or a list like 200% big.png, small.jpg60%, 64x? icon.png, each trimmed and scaled to its size. (asks first) |
 | `image-processor` | Image Processor... |  | Saves chosen files or the open images as JPEG, PSD and TIFF at a maximum size, optionally after an action and with a copyright notice, each type in its own folder. |
 | `import` | Import Images... | Shift+Mod+O | Opens the file picker to place images as layers. (changes the picture) |
 | `import-video` | Video Frames to Layers... |  | Opens the dialog that turns video frames into layers. (changes the picture) |
+| `load-files-stack` | Load Files into Stack... |  | Opens a dialog to load chosen image files as the layers of one new document, optionally as a smart object stack. (changes the picture) |
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
 | `open` | Open Project... | Mod+O | Opens the library dialog to open a saved project. |
@@ -126,12 +128,14 @@ Generated from the window's command catalogue (826 commands) by `./formvis agent
 | `save` | Save | Mod+S | Saves the document to the library, or asks for a name the first time. (asks first) |
 | `save-as` | Save As... | Shift+Mod+S | Saves the document under a new name in the library. (asks first) |
 | `save-copy` | Save a Copy... | Alt+Mod+S | Saves a copy without changing which file the document belongs to. (asks first) |
+| `save-for-web` | Save for Web (Legacy)... |  | Opens Save for Web (Legacy): side-by-side original and optimized previews, a format (JPEG, PNG-24, PNG-8, GIF, WebP) and quality, and an export of the whole image or every slice as a zip. (asks first) |
 | `script-delete-empty-layers` | Delete All Empty Layers |  | Deletes every pixel layer with no visible pixels and every empty group, and says how many; keeps the Background and adjustment, fill, type, shape and smart object layers. (changes the picture) |
 | `script-flatten-effects` | Flatten All Layer Effects |  | Draws every layer style into its layer's pixels and clears the style; a type, shape or fill layer that carries one is rasterized. (changes the picture) |
 | `script-flatten-masks` | Flatten All Masks |  | Applies every layer mask and vector mask into its layer's pixels and removes it; a type, shape or fill layer that carries one is rasterized. (changes the picture) |
 | `send-comfyui` | Send to ComfyUI... |  | Opens the dialog that sends the picture to ComfyUI. (asks first) |
 | `send-host` | Send to NodeMode Canvas |  | Sends the picture to the NodeMode canvas that hosts formvis. (asks first) |
 | `send-nodemode` | Send to NodeMode... |  | Opens the dialog that sends the picture to NodeMode. (asks first) |
+| `stack-statistics` | Statistics... |  | Opens a dialog to load chosen image files as a smart object stack and combine them with a stack mode such as median. (changes the picture) |
 
 ## Filter
 
