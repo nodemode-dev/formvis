@@ -1,5 +1,8 @@
 # Generative Fill and Expand with neither fal nor ComfyUI (1.53.2): LaMa on this computer, the real engine and model.
+import json
 import urllib.request
+
+import pytest
 
 DLG = ".cv-scrim:not([hidden]) .cv-dialog"
 PAINT = """([w, h]) => { const e = window.formvis.engine; e.newDocument(w, h, 'L', 'white');
@@ -8,6 +11,9 @@ PX = "([x, y]) => Array.from(window.formvis.engine.flattened().getContext('2d').
 
 
 def no_fal():
+    models = json.loads(urllib.request.urlopen("http://127.0.0.1:8190/api/models", timeout=10).read())   # the engine's own list says whether LaMa is installed
+    if not next((m for m in models if m["id"] == "lama-inpaint"), {}).get("ready"):
+        pytest.skip("the lama-inpaint model is not installed on this machine (the engine's /api/models reports it not ready)")
     try:
         urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8190/api/generative/key", method="DELETE"), timeout=10)
     except Exception:

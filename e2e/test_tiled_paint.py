@@ -71,6 +71,7 @@ def test_a_new_layer_on_a_giant_document_gets_tiles_and_paints(page):
     page.evaluate(SETUP)
     r = page.evaluate("""async () => {
       const E = await import('/src/engine/index.ts'), e = window.formvis.engine;
+      (await import('/src/engine/types.ts')).setPixelBudget(100_000_000);   // 120 MP is giant only on the smallest budget
       e.newDocument(20000, 6000, 'Giant', 'white'); const bg = e.current.doc.layers[0];
       e.addLayer({ name: 'Paint' }); const id = e.current.activeLayer.id;
       window.__stroke();

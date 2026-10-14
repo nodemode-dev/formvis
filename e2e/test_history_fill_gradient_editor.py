@@ -16,8 +16,8 @@ def test_gradient_editor_adds_a_stop_and_saves(page):
     page.evaluate("(() => { const e = window.formvis.engine; e.newDocument(200, 100, 'G', 'white'); e.fg = { r: 0, g: 0, b: 0 }; e.bg = { r: 255, g: 255, b: 255 }; e.gradientSettings.style = 'background'; e.setTool('gradient'); if (e.tool !== 'gradient') throw new Error('tool'); })()")
     page.locator(".cv-opt-group:not([hidden]) button", has_text="Edit").first.click()
     d = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
-    d.locator(".cv-grad-strip").wait_for(state="visible")
-    box = d.locator(".cv-grad-strip").bounding_box()
+    d.locator(".cv-grad-strip").last.wait_for(state="visible")                                 # the opacity strip is first, the colour strip last
+    box = d.locator(".cv-grad-strip").last.bounding_box()
     page.mouse.click(box["x"] + box["width"] * 0.5, box["y"] + box["height"] / 2)
     d.locator(".cv-field", has_text="Stop colour").locator("input[type=color]").evaluate("(i) => { i.value = '#ff0000'; i.dispatchEvent(new Event('input', { bubbles: true })); i.dispatchEvent(new Event('change', { bubbles: true })); }")
     d.locator("input[type=text]").fill("Black red white")

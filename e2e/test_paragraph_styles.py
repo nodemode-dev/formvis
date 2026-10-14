@@ -70,6 +70,6 @@ def test_the_dialog_makes_and_lists_a_style(page):
     dlg = page.locator(".cv-scrim:not([hidden]) .cv-dialog")
     dlg.locator("input[type=text]").fill("Body")
     dlg.locator("button", has_text="New Style").click()
-    page.wait_for_function("document.querySelector('.cv-pstyle-list').options.length === 1")
-    assert page.evaluate("document.querySelector('.cv-pstyle-list').options[0].text") == "Body"
+    page.wait_for_function("document.querySelector('.cv-scrim:not([hidden]) .cv-pstyle-list').options.length === 1")   # Character Styles shares the class and sits earlier in the page
+    assert page.evaluate("document.querySelector('.cv-scrim:not([hidden]) .cv-pstyle-list').options[0].text") == "Body"
     page.keyboard.press("Escape")

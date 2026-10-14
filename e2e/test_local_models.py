@@ -11,8 +11,12 @@ SEC = f"{DLG} .cv-local-models"
 
 
 def test_local_models_licence_install_and_loras(page, tmp_path):
-    consent = Path(os.environ.get("FORMVIS_MODELS_DIR", str(Path.home() / ".cache/formvis-models"))) / "krea-2-consent.json"
-    consent.unlink(missing_ok=True)
+    # Where the engine keeps it: FORMVIS_MODELS_DIR if it was started with one, else <data dir>/models (~/Formvis/models);
+    # the cache folder is where a shared download lives. Every place is cleared, before and after.
+    consents = [Path(os.environ.get("FORMVIS_MODELS_DIR", str(Path.home() / ".cache/formvis-models"))) / "krea-2-consent.json",
+                Path(os.environ.get("FORMVIS_DATA_DIR", str(Path.home() / "Formvis"))).expanduser() / "models" / "krea-2-consent.json"]
+    for consent in consents:
+        consent.unlink(missing_ok=True)
     polls = {"n": 0}
 
     def job(route, request):
@@ -49,4 +53,5 @@ def test_local_models_licence_install_and_loras(page, tmp_path):
         lib.locator(".cv-plugins-row", has_text="tiny style").get_by_role("button", name="Remove").click()
         lib.locator("text=No LoRAs yet.").wait_for(timeout=10000)
     finally:
-        consent.unlink(missing_ok=True)
+        for consent in consents:
+            consent.unlink(missing_ok=True)

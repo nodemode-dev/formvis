@@ -2272,6 +2272,7 @@ export function startApp(): void {
 
   const has = (): boolean => !!engine.current;
   const layer = () => engine.activeLayer;
+  termDock.yieldsKey = () => !!layer();   // Mod+J is Layer via Copy while a layer is open; the dock keeps it inside itself and the menu opens it otherwise
   const pixel = (): boolean => { const l = engine.activeLayer; return !!l && !l.isGroup && !l.adjustment; };
   const withPixels = (): boolean => pixel() && !!engine.activeLayer?.raster;
   const selected = (): boolean => !!engine.current?.selection;

@@ -32,6 +32,7 @@ def test_a_blur_on_a_giant_layer_is_exact_its_undo_streams_from_disk_and_edits_w
       const E = await import('/src/engine/index.ts'), F = await import('/src/ui/panels/filter-panel.ts'), e = window.formvis.engine, notes = [];
       e.on('notice', (n) => notes.push(n.text));
       const hash = (d) => { const u = new Uint32Array(d.buffer); let h = 2166136261; for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i], 16777619); return h >>> 0; };
+      (await import('/src/engine/types.ts')).setPixelBudget(100_000_000);   // 120 MP is giant only on the smallest budget; a larger machine's would keep it whole
       e.newDocument(20000, 6000, 'Giant', 'white'); const t = e.current.doc.layers[0].tiled;
       const paint = (c) => { c.fillStyle = '#2050c0'; c.fillRect(1500, 1500, 2600, 1300); };   // across the 2,048 and 4,096 edges
       t.drawOn(1500, 1500, 2600, 1300, paint);

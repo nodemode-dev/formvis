@@ -8,6 +8,7 @@ import pytest
 
 SETUP = """async () => {
   const e = window.formvis.engine;
+  (await import('/src/engine/types.ts')).setPixelBudget(100_000_000);   // 120 MP is giant only on the smallest budget
   e.newDocument(20000, 6000, 'Giant', 'white'); const bg = e.current.doc.layers[0].tiled;
   bg.drawOn(1500, 1500, 2600, 1300, (c) => { c.fillStyle = '#2050c0'; c.fillRect(1500, 1500, 2600, 1300); });
   e.addLayer({ name: 'Paint' }); e.setTool('brush'); e.brush = { ...e.brush, diameter: 120, hardness: 0.6 }; e.setBrushMode('paint'); e.fg = { r: 220, g: 120, b: 40 };

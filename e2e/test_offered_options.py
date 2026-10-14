@@ -148,7 +148,7 @@ def test_every_colour_mode_offered_changes_the_mode(page):
     dialog (Bitmap, Indexed Color) confirmed."""
     errors = collect(page)
     modes = page.evaluate("window.formvis.commands.all().map((c) => c.id).filter((id) => id.startsWith('mode-'))")
-    assert sorted(modes) == ["mode-bitmap", "mode-cmyk", "mode-grayscale", "mode-indexed", "mode-rgb"], modes
+    assert sorted(modes) == ["mode-bitmap", "mode-cmyk", "mode-duotone", "mode-grayscale", "mode-indexed", "mode-lab", "mode-multichannel", "mode-rgb"], modes
     for cid in ["mode-grayscale", "mode-bitmap", "mode-indexed", "mode-cmyk", "mode-rgb"]:
         page.evaluate(SETUP)
         if cid == "mode-rgb":

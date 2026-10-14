@@ -21,9 +21,10 @@ def test_a_giant_document_saves_and_reopens_exactly(page):
     if not _engine_up():
         pytest.skip("needs the engine on 8190")
     page.wait_for_function("window.formvis.engine.undoStore", timeout=30000)
-    before = page.evaluate("""() => {
+    before = page.evaluate("""async () => {
       const e = window.formvis.engine;
       window.__hash = (d) => { const u = new Uint32Array(d.buffer); let h = 2166136261; for (let i = 0; i < u.length; i++) h = Math.imul(h ^ u[i], 16777619); return h >>> 0; };
+      (await import('/src/engine/types.ts')).setPixelBudget(100_000_000);   // 120 MP is giant only on the smallest budget
       e.newDocument(20000, 6000, 'Giant', 'white'); const bg = e.current.doc.layers[0].tiled;
       bg.drawOn(1500, 1500, 2600, 1300, (c) => { c.fillStyle = '#2050c0'; c.fillRect(1500, 1500, 2600, 1300); });
       e.addLayer({ name: 'Paint' });

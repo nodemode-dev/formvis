@@ -33,7 +33,7 @@ def test_search_finds_and_runs_a_command(page):
 
 def test_workspaces_arrange_the_panels_and_the_lock_holds_them(page):
     try:
-        page.evaluate("window.formvis.engine.newDocument(200, 100, 'W', 'white')")
+        page.evaluate("window.formvis.engine.newDocument(200, 100, 'W', 'white'); window.formvis.engine.newFrame()")   # a frame animation, so Window > Timeline shows the dock's panel (1.59.8)
         def choose(label):                                                           # through the target's menu, as a user
             page.locator(".cv-title-tools .cv-dd-btn").click()
             page.locator(".cv-dd-pop:not([hidden]) .cv-dd-item", has_text=label).click()

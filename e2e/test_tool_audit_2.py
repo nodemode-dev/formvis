@@ -32,7 +32,7 @@ def test_type_anti_aliasing_colour_and_the_selected_layer(page):
     w0 = page.evaluate("window.formvis.engine.activeLayer.raster.width")
     opt(page, 'type', 'Size', 90)
     page.wait_for_function(f"window.formvis.engine.activeLayer.raster.width > {w0}")
-    assert page.locator(".cv-options input[type='color']").count() == 1
+    assert page.locator(".cv-options .cv-opt-group:not([hidden]) input[type='color']").count() == 1   # each tool's row is built once and kept hidden (Markup has a Color too)
     opt(page, 'type', 'Color', {"r": 200, "g": 30, "b": 30})
     page.wait_for_function("window.formvis.engine.activeLayer.text.color.r === 200")
     assert page.evaluate("window.formvis.engine.fg") == {"r": 200, "g": 30, "b": 30}

@@ -7,6 +7,14 @@ import cv2
 import numpy as np
 
 
+def _exr():
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "backend"))
+    from app.services import contained
+    return contained
+
+
 def test_a_16_bit_png_keeps_its_bits_through_an_adjustment(page, tmp_path):
     src = tmp_path / "ramp16.png"
     ramp = np.linspace(0, 65535, 1024).astype(np.uint16).reshape(1, 1024, 1).repeat(3, 2).repeat(8, 0)
@@ -25,7 +33,8 @@ def test_a_16_bit_png_keeps_its_bits_through_an_adjustment(page, tmp_path):
     assert int(img[0, 512, 0]) > int(ramp[0, 512, 0]) + 3000                                   # the Exposure layer took effect
     assert page.evaluate("window.formvis.commands.enabled(window.formvis.commands.get('filter-gaussianBlur'))") is False
     assert page.evaluate("window.formvis.commands.enabled(window.formvis.commands.get('new-adj-curves'))") is True
-    assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.channels).id); return e.beginStroke({ x: 5, y: 4 }, false); })()") is False
+    # Brush, Pencil and Eraser paint at 16 bits since 1.53.8 (every command since 1.55.9), so a stroke now begins and ends.
+    assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.channels).id); const began = e.beginStroke({ x: 5, y: 4 }, false); if (began) e.endStroke(); return began; })()") is True
     page.evaluate("window.formvis.commands.run('depth-8')")
     assert page.evaluate("(() => { const d = window.formvis.engine.current.doc; return [d.depth ?? 8, d.layers.some((l) => l.channels)]; })()") == [8, False]
 
@@ -88,7 +97,8 @@ def test_painting_and_filtering_a_selection_keep_16_bits(page, tmp_path):
 def test_32_bit_exr_keeps_its_highlights(page, tmp_path):
     src = tmp_path / "bright.exr"
     lin = np.linspace(0, 8, 256, dtype=np.float32).reshape(1, 256, 1).repeat(3, 2).repeat(4, 0)   # up to 8 times white
-    assert cv2.imwrite(str(src), lin)
+    src.write_bytes(_exr().encode_exr(lin) or b"")   # the engine's own writer: OpenCV 5 has no OpenEXR codec
+    assert src.stat().st_size > 0
     page.locator("input[data-role='import-images']").set_input_files(str(src))
     page.wait_for_function("window.formvis.engine.current?.doc.depth === 32", timeout=20000)
     page.evaluate("""() => { const e = window.formvis.engine; e.addAdjustmentLayer('exposure');
@@ -96,13 +106,13 @@ def test_32_bit_exr_keeps_its_highlights(page, tmp_path):
     with page.expect_download(timeout=30000) as d:
         page.evaluate("window.formvis.commands.run('export-exr')")
     out = tmp_path / "out.exr"; d.value.save_as(str(out))
-    img = cv2.imread(str(out), cv2.IMREAD_UNCHANGED)
+    img = _exr().decode_exr(out.read_bytes())
     assert img.dtype == np.float32 and np.abs(img[2, :, 0] - lin[2, :, 0] / 4).max() < 1e-5 and img.max() > 1.9   # a quarter, highlights past white kept
     with page.expect_download(timeout=30000) as d:
         page.evaluate("window.formvis.commands.run('export-tiff')")
     t = tmp_path / "out.tif"; d.value.save_as(str(t))
     assert cv2.imread(str(t), cv2.IMREAD_UNCHANGED).dtype == np.float32
-    assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.channels).id); e.setTool('brush'); return e.beginStroke({ x: 5, y: 2 }, false); })()") is False
+    assert page.evaluate("(() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.channels).id); e.setTool('brush'); const began = e.beginStroke({ x: 5, y: 2 }, false); if (began) e.endStroke(); return began; })()") is True   # painting at 32 bits since 1.56.8
     page.evaluate("() => { const e = window.formvis.engine; e.selectLayer(e.current.doc.layers.find((l) => l.adjustment).id); e.deleteLayers(); }")
     page.evaluate("window.formvis.commands.run('depth-16')")
     page.locator(".cv-scrim:not([hidden]) .cv-dialog", has_text="HDR Toning").wait_for()
