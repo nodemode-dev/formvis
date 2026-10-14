@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.69.8
+
+No engine code changed in 1.69.8. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.69.7"
+version = "1.69.7"
+version = "1.69.7"
+ "version": "1.69.7",
+```
+
 ## Release 1.69.7 · _v1.69.7 (app/__init__.py)
 
 Probed end to end: with the window open, `./formvis cli process cli_in.png --run invert --format png --out <dir> --suffix _cli --yes` opened the 30 by 20 picture (200, 40, 40), inverted it, exported `cli_in_cli.png` reading (55, 215, 215), moved it beside the input, and closed its document (the window's own two documents stayed open); exit 0. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

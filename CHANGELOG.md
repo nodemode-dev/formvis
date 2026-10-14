@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.69.8 · 2026-10-14
+
+### Added
+
+- Paint.NET `.pdn` files open with their layers, names, visibility, opacity and blend modes (the thumbnail as one layer when the layers cannot be read).
+- Affinity `.af`, `.afphoto`, `.afdesign` and `.afpub` files open as the preview they carry; their layers are not readable.
+- Layer > Type > Type on Arc and Type on Circle: live, editable type set along an arc or a circle around the selection or the document's centre.
+- Window > Arrange: Match Zoom, Match Location, Match Rotation and Match All across the open documents.
+
 ## 1.69.7 · 2026-10-14
 
 ### Added

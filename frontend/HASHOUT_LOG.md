@@ -2,6 +2,41 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.8: .pdn and Affinity read, type on an arc or circle, Match views · _v1.69.8 (io/pdn.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (894 catalogue ids). No builder added a type cast.
+
+The .pdn reader was checked against an independent reader's field names (pypdn 1.0.6, MIT, read for reference only and not shipped). Two fixes followed in `io/pdn.ts`:
+- Paint.NET 4 writes the blend mode as an enum object holding `value__` (0 Normal to 13 Xor). It was taken by class name and so always read Normal; it is now mapped by value.
+- Inherited members come in named for their declaring class ("Layer+properties"). `norm` now drops the "Class+" part.
+- No real .pdn file was at hand, so the reader is untested on one. When it cannot read a file, it falls back to the thumbnail.
+
+Probes in Chromium:
+- **Affinity:** a hand-built file with the Affinity magic and two embedded PNGs (32 by 24, 120 by 80) opened as the 120 by 80 one with its note. A file without the magic was refused as "That is not an Affinity file."
+- **Type on Arc and Type on Circle:** each made a live type layer with `onPath`. Editing the arc layer's text to "EDITED" re-rendered it along the same arc, as a screenshot showed.
+- **Match All:** copied zoom 2.5 and pan (-100, -50) from one 400 by 300 document to another (they had 1.765, 32, 114).
+- No page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.69.7",
+      "version": "1.69.7",
+  "version": "1.69.7",
+export const VERSION = '1.69.7';
+```
+
+## Affinity preview read, DEV_PLAN 34.6 · _v1.69.8 (io/affinity.ts, app.ts, io/images.ts)
+
+Affinity files (.af, .afphoto, .afdesign, .afpub) now open as their embedded preview, one layer. Layers are not readable: the format is proprietary and undocumented, and its layers live in a compressed file system formvis does not decode. `readAffinity` checks the magic bytes 00 FF 4B 41, scans for every embedded PNG (walked chunk by chunk to IEND) and JPEG, decodes each and keeps the largest. A file with no readable preview is refused with a plain message.
+
+## Type on an arc or circle, and Match views, DEV_PLAN 32.8 and 35.2 part a · _v1.69.8 (engine/index.ts, app.ts, ui/panels/type-on-shape-dialog.ts, automation/command-meta.ts)
+
+Layer > Type gains Type on Arc and Type on Circle: the text follows a curve around the document's or the selection's centre, from a radius, a sweep and a start offset, and stays live and editable because the type layer keeps its path. Window > Arrange gains Match Zoom, Match Location, Match Rotation and Match All, which copy the current document's view to every other open document. Tiled multi-view layouts (2-up and so on) are deferred.
+
+## Paint.NET .pdn read, DEV_PLAN 34.5 part b · _v1.69.8 (io/pdn.ts, io/images.ts, app.ts)
+`io/pdn.ts` opens Paint.NET 3.x and 4.x files with their layers, in TypeScript. `readPdn` checks the PDN3 magic, reads the XML header (size, thumbnail), then walks the .NET BinaryFormatter stream with a small record reader (class, array, string, reference and null records) to collect each BitmapLayer's name, visibility, opacity byte, blend op and surface size. After MessageEnd it reads each MemoryBlock's pixels (raw, or gzip chunks placed by chunk number through `DecompressionStream`) in serialized order, skipping blocks that match no layer, and converts BGRA to RGBA, bottom layer first. Reflect, Glow, Negation and Xor open as Normal with a note. Anything unreadable, including gzip-wrapped streams, falls back to the header thumbnail as one layer with a note. `isPdnFile` is wired into `openFiles` beside Krita and `.pdn` joins `PROJECT_ACCEPT`.
+
 ## Release 1.69.7: video layers saved, cli process and droplets, Krita read · _v1.69.7 (engine/index.ts, io/kra.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (888 catalogue ids). No builder added a type cast.
