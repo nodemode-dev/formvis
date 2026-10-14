@@ -1,4 +1,5 @@
 import { IMAGE_ACCEPT } from '../../io/images';
+import { parseAtn } from '../../io/atn';
 import type { Action, Actions } from '../actions';
 import { actionsFrom } from '../actions';
 import { Dialog } from '../dialogs';
@@ -34,7 +35,7 @@ export class ActionsDialog extends Dialog {
   private picked = -1;
   private readonly follow = el<HTMLInputElement>('<input type="checkbox">');
   private readonly note = el('<p class="cv-note"></p>');
-  private readonly file = el<HTMLInputElement>('<input type="file" accept=".json,application/json" hidden>');
+  private readonly file = el<HTMLInputElement>('<input type="file" accept=".json,.atn,application/json" hidden>');
   private readonly playBtn: HTMLButtonElement;
   private readonly deleteBtn: HTMLButtonElement;
   private readonly exportBtn: HTMLButtonElement;
@@ -186,6 +187,16 @@ export class ActionsDialog extends Dialog {
     this.file.value = '';
     if (!f) return;
     try {
+      if (/\.atn$/i.test(f.name)) {
+        const { actions, unsupported } = parseAtn(await f.arrayBuffer());
+        if (!actions.length) { setText(this.note, `${f.name} holds no actions.`); return; }
+        this.store.add(actions);
+        this.pick.value = String(this.store.list.length - 1);
+        this.sync();
+        const skipped = unsupported.length ? `; ${unsupported.length} step${unsupported.length === 1 ? '' : 's'} had no formvis equivalent: ${unsupported.slice(0, 5).join(', ')}` : '';
+        setText(this.note, `Imported ${actions.length} action${actions.length === 1 ? '' : 's'}${skipped}`);
+        return;
+      }
       const more = actionsFrom(JSON.parse(await f.text()));
       if (!more.length) { setText(this.note, `${f.name} holds no actions formvis can play.`); return; }
       this.store.add(more);

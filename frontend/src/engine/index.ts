@@ -862,7 +862,11 @@ export class Engine {
     return true;
   }
 
+  /** How many times newDocument has been called, so Script Events (30.6) can tell a new document from an opened one. */
+  newCount = 0;
+
   newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
+    this.newCount++;
     // Past what one canvas may hold here (a side past 30,000, or more pixels than the budget) but within 65,535 a side,
     // a tiled document (1.62.3, DEV_PLAN 26.6b): its background costs nothing until drawn into. Before 1.62.3 refused.
     if (Number.isInteger(width) && Number.isInteger(height) && width >= 1 && height >= 1 && width <= 65535 && height <= 65535 &&

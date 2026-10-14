@@ -1,4 +1,8 @@
 import { ADJUSTMENT_KINDS, type RGB } from '../engine';
+import type { DocMode } from '../engine/types';
+
+const DOC_MODES: readonly string[] = ['rgb', 'cmyk', 'lab', 'grayscale', 'bitmap', 'indexed', 'duotone', 'multichannel'];
+const isMode = (v: unknown): v is DocMode => typeof v === 'string' && DOC_MODES.includes(v);
 
 /** Actions: recorded sequences of document changes, replayed on the current document or a batch of files. A step is a
  *  command that changes the document without asking anything, a filter with its settings, an Image or Canvas Size
@@ -13,7 +17,8 @@ export type ActionStep =
   | { kind: 'layerStyle'; label: string; effects: Record<string, unknown> | null }
   | { kind: 'imageSize'; label: string; w: number; h: number; sampling: string; res: number; fromW?: number; fromH?: number }
   | { kind: 'canvasSize'; label: string; w: number; h: number; dx: number; dy: number; fill: RGB | null; fromW?: number; fromH?: number }
-  | { kind: 'fitImage'; label: string; w: number; h: number; enlarge: boolean };
+  | { kind: 'fitImage'; label: string; w: number; h: number; enlarge: boolean }
+  | { kind: 'conditionalMode'; label: string; from: DocMode[]; to: DocMode };
 /** `relative`: size steps follow each document, Image Size as the same proportion and Canvas Size as the same pixels
  *  added, using the size each step was recorded from. */
 export interface Action { name: string; steps: ActionStep[]; relative?: boolean }
@@ -49,6 +54,7 @@ function stepFrom(v: unknown): ActionStep | null {
   const from = isNum(s.fromW) && isNum(s.fromH) && s.fromW > 0 && s.fromH > 0 ? { fromW: s.fromW, fromH: s.fromH } : {};
   if (s.kind === 'imageSize' && isNum(s.w) && isNum(s.h) && typeof s.sampling === 'string' && isNum(s.res)) return { kind: 'imageSize', label: label || 'Image Size', w: s.w, h: s.h, sampling: s.sampling, res: s.res, ...from };
   if (s.kind === 'fitImage' && isNum(s.w) && isNum(s.h) && s.w >= 1 && s.h >= 1) return { kind: 'fitImage', label: label || 'Fit Image', w: Math.round(s.w), h: Math.round(s.h), enlarge: s.enlarge !== false };
+  if (s.kind === 'conditionalMode' && Array.isArray(s.from) && s.from.every(isMode) && s.from.length > 0 && isMode(s.to)) return { kind: 'conditionalMode', label: label || 'Conditional Mode Change', from: s.from.filter(isMode), to: s.to };
   if (s.kind === 'canvasSize' && isNum(s.w) && isNum(s.h) && isNum(s.dx) && isNum(s.dy)) {
     const f = s.fill as Record<string, unknown> | null;
     const fill = f && isNum(f.r) && isNum(f.g) && isNum(f.b) ? { r: f.r, g: f.g, b: f.b } : null;
