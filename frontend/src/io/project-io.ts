@@ -125,6 +125,18 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.fillContent && l.raster) r.fillContent = structuredClone(l.fillContent);
     if (l.vectorMask) r.vectorMask = { enabled: l.vectorMask.enabled, linked: l.vectorMask.linked, inverted: l.vectorMask.inverted, subpaths: pathData(l.vectorMask.path)?.subpaths ?? [] };
+    if (l.video && !l.isGroup) {   // 33.4b: every painted frame, and an original only where it differs from its frame
+      const frameFiles: string[] = [], originals: (string | null)[] = [];
+      for (const [i, f] of l.video.frames.entries()) {
+        const fn = `${l.id}.vframe${i}.png`;
+        files.push({ name: fn, blob: await toBlob(f.canvas) });
+        frameFiles.push(fn);
+        const o = l.video.original[i];
+        if (!o || o === f) originals.push(null);
+        else { const on = `${l.id}.vorig${i}.png`; files.push({ name: on, blob: await toBlob(o.canvas) }); originals.push(on); }
+      }
+      r.video = { name: l.video.name, frames: frameFiles, originals };
+    }
     if (l.smart && !l.isGroup) {
       const name = `${l.id}.source.png`;
       files.push({ name, blob: await toBlob(l.smart.source.canvas) });
@@ -245,7 +257,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
   const width = num(manifest.width, 0), height = num(manifest.height, 0);
   const records = (Array.isArray(manifest.layers) ? manifest.layers : []).map((x) => obj(x));
   const names = new Set<string>();
-  for (const r of records) { for (const n of [r.tiled ? null : str(r.imageFile), str(r.maskFile), str(r.smartSourceFile), str(r.smartFilterMaskFile)]) if (n) names.add(n); const sf = obj(r.smartStack).files; if (Array.isArray(sf)) for (const n of sf) if (typeof n === 'string') names.add(n); }
+  for (const r of records) { for (const n of [r.tiled ? null : str(r.imageFile), str(r.maskFile), str(r.smartSourceFile), str(r.smartFilterMaskFile)]) if (n) names.add(n); const sf = obj(r.smartStack).files; if (Array.isArray(sf)) for (const n of sf) if (typeof n === 'string') names.add(n); const vd = obj(r.video); for (const list of [vd.frames, vd.originals]) if (Array.isArray(list)) for (const n of list) if (typeof n === 'string') names.add(n); }
   const bitmaps = new Map<string, ImageBitmap>();
   await Promise.all([...names].map(async (n) => { bitmaps.set(n, await createImageBitmap(await fetchImage(n))); }));
   // Giant layers (1.62.8): filled band by band by the engine's reader, past what the browser can decode.
@@ -268,6 +280,14 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
     const pics = list.map((n) => bitmaps.get(typeof n === 'string' ? n : ''));
     if (!pics.length || !isStackMode(o.mode) || pics.some((b) => !b)) return null;
     return { mode: o.mode, sources: pics.map((b) => Raster.from(b as ImageBitmap, (b as ImageBitmap).width, (b as ImageBitmap).height)) };
+  };
+  const videoFrom = (raw: unknown): NonNullable<Layer['video']> | null => {
+    const o = obj(raw), list = Array.isArray(o.frames) ? o.frames : [], origs = Array.isArray(o.originals) ? o.originals : [];
+    const ras = (n: unknown): Raster | null => { const b = bitmaps.get(typeof n === 'string' ? n : ''); return b ? Raster.from(b, b.width, b.height) : null; };
+    const frames = list.map(ras);
+    if (!frames.length || frames.some((f) => !f)) return null;
+    const live = frames as Raster[];
+    return { name: str(o.name) ?? 'Video Layer', frames: live, original: live.map((f, i) => ras(origs[i]) ?? f) };
   };
   const layers: Layer[] = records.map((r) => {
     const picture = bitmaps.get(str(r.imageFile) ?? '');
@@ -296,7 +316,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       ...(r.frame && typeof r.frame === 'object' ? (() => { const f = r.frame as Record<string, unknown>; return { frame: { x: num(f.x, 0), y: num(f.y, 0), w: Math.max(2, num(f.w, 2)), h: Math.max(2, num(f.h, 2)), shape: f.shape === 'ellipse' ? 'ellipse' as const : 'rect' as const } }; })() : {}),
       ...(r.locks && typeof r.locks === 'object' ? (() => { const k = r.locks as Record<string, unknown>, out = Object.fromEntries((['transparency', 'pixels', 'position', 'all'] as const).filter((n) => k[n] === true).map((n) => [n, true])); return Object.keys(out).length ? { locks: out } : {}; })() : {}),
       ...(str(r.linkID) ? { link: (str(r.linkID) as string).slice(0, 120) } : {}),
-      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
+      blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, ...(r.video && raster ? { video: videoFrom(r.video) } : {}), vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null,
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
       ...(raster && r.fillContent ? { fillContent: fillContentFrom(r.fillContent) } : {}),
       ...(r.vectorMask && typeof r.vectorMask === 'object' ? { vectorMask: { path: pathFrom(r.vectorMask) ?? { subpaths: [] }, enabled: (r.vectorMask as Record<string, unknown>).enabled !== false, linked: (r.vectorMask as Record<string, unknown>).linked !== false, inverted: (r.vectorMask as Record<string, unknown>).inverted === true } } : {}),

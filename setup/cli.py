@@ -4,12 +4,18 @@
   ./formvis cli list [text] [--group name]   the catalogue: id, label, when to use it
   ./formvis cli describe <id> [kind=name]    one command: what it does, its parameters (kind= picks a filter or adjustment)
   ./formvis cli run <id> key=value ... [--yes]   runs it in the open window as an undoable step
+  ./formvis cli process <input...> [--action NAME] [--run id key=value ...] [--format png|jpg|webp|tiff] [--quality N]
+                        [--out DIR] [--suffix TEXT] [--yes]   file in, file out: each picture is opened, edited, exported and closed
+  ./formvis cli droplet <action-name> [--format ...] [--out DIR] [--name FILE]   writes a script (and a .cmd twin) that runs the action over dropped files
 
 A command marked risky (undo cannot reverse it) is run only with --yes. The engine's address: FORMVIS_URL, or
 http://127.0.0.1:8190. The window must be open (./formvis boot) and outside agents allowed (Preferences > Plugins)."""
 
+import base64
 import json
 import os
+import shutil
+import stat
 import sys
 import urllib.error
 import urllib.parse
@@ -146,6 +152,124 @@ def run_cmd(args: list[str]) -> int:
     return 0
 
 
+def command_result(cid: str, params: dict, yes: bool) -> dict:
+    """Runs one catalogue command and returns what it handed back; raises RuntimeError with the reason on failure."""
+    quoted = urllib.parse.quote(cid, safe=":")
+    status, c = call("GET", "/api/commands/" + quoted)
+    if status == 200 and c.get("risky") and not yes:
+        raise RuntimeError(f"{cid} cannot be undone. Run again with --yes to go ahead.")
+    status, out = call("POST", "/api/commands/" + quoted, {"params": params})
+    if status != 200:
+        raise RuntimeError(out.get("detail") or out.get("error") or f"The engine answered {status}.")
+    if not out.get("ok"):
+        raise RuntimeError(out.get("error", f"{cid} did not run."))
+    result = out.get("result")
+    returned = result.get("returned") if isinstance(result, dict) else None
+    return returned if isinstance(returned, dict) else {}
+
+
+def split_flags(args: list[str], valued: tuple[str, ...]) -> tuple[list[str], dict, list[list[str]]]:
+    """Separates positional words, --flag values and repeated --run groups (id then key=value words)."""
+    rest, flags, runs = [], {}, []
+    i = 0
+    while i < len(args):
+        a = args[i]
+        if a == "--yes":
+            flags["yes"] = True
+        elif a == "--run":
+            i += 1
+            group = []
+            while i < len(args) and not args[i].startswith("--"):
+                group.append(args[i])
+                i += 1
+            runs.append(group)
+            continue
+        elif a in valued:
+            if i + 1 >= len(args):
+                print(f"{a} needs a value.", file=sys.stderr)
+                sys.exit(2)
+            flags[a[2:]] = args[i + 1]
+            i += 1
+        elif a.startswith("--"):
+            print(f"{a}: not an option here. Try ./formvis cli help.", file=sys.stderr)
+            sys.exit(2)
+        else:
+            rest.append(a)
+        i += 1
+    return rest, flags, runs
+
+
+def process_one(path: str, flags: dict, runs: list[list[str]]) -> str:
+    fmt = flags.get("format", "png").lower().lstrip(".")
+    fmt = {"jpeg": "jpg", "tif": "tiff"}.get(fmt, fmt)
+    if fmt not in ("png", "jpg", "webp", "tiff"):
+        raise RuntimeError("format must be png, jpg, webp or tiff.")
+    yes = bool(flags.get("yes"))
+    stem = os.path.splitext(os.path.basename(path))[0]
+    name = f"{stem}{flags.get('suffix', '')}.{fmt}"
+    with open(path, "rb") as f:
+        data = base64.b64encode(f.read()).decode()
+    command_result("open-image-data", {"name": os.path.basename(path), "data": data}, yes)
+    try:
+        for group in runs:
+            command_result(group[0], pairs(group[1:]), yes)
+        if flags.get("action"):
+            command_result("play-action", {"name": flags["action"]}, yes)
+        params = {"format": fmt, "name": name}
+        if "quality" in flags:
+            params["quality"] = value_of(flags["quality"])
+        made = command_result("export-to-file", params, yes).get("path")
+    finally:
+        try:
+            command_result("close-document", {}, True)
+        except RuntimeError:
+            pass
+    if not made:
+        raise RuntimeError("The window did not report where it saved the picture.")
+    out_dir = flags.get("out") or os.path.dirname(os.path.abspath(path))
+    os.makedirs(out_dir, exist_ok=True)
+    target = os.path.join(out_dir, name)
+    shutil.move(made, target)
+    return target
+
+
+def process_cmd(args: list[str]) -> int:
+    files, flags, runs = split_flags(args, ("--action", "--format", "--quality", "--out", "--suffix"))
+    if not files:
+        print("Give one or more picture files, for example: ./formvis cli process a.jpg b.jpg --action Sepia --format png --out done", file=sys.stderr)
+        return 2
+    failed = 0
+    for path in files:
+        try:
+            print(f"{path} -> {process_one(path, flags, runs)}")
+        except (RuntimeError, OSError) as exc:
+            failed += 1
+            print(f"{path}: failed. {exc}", file=sys.stderr)
+    return 1 if failed else 0
+
+
+def droplet_cmd(args: list[str]) -> int:
+    words, flags, _ = split_flags(args, ("--format", "--out", "--name"))
+    if not words:
+        print("Give the action name, for example: ./formvis cli droplet Sepia --format jpg", file=sys.stderr)
+        return 2
+    action, fmt = " ".join(words), flags.get("format", "png")
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    quoted = "'" + action.replace("'", "'\\''") + "'"
+    out_dir = flags.get("out") or os.getcwd()
+    os.makedirs(out_dir, exist_ok=True)
+    sh = os.path.join(out_dir, flags.get("name") or f"{action}-droplet.sh")
+    with open(sh, "w") as f:
+        f.write(f"#!/bin/sh\n# formvis droplet for the action {action}: drop pictures onto it, or run it with file names.\ncd '{root}' || exit 1\nexec ./formvis cli process \"$@\" --action {quoted} --format {fmt}\n")
+    os.chmod(sh, 0o755 | stat.S_IMODE(os.stat(sh).st_mode))
+    twin = os.path.splitext(sh)[0] + ".cmd"
+    win_action = action.replace('"', "'")
+    with open(twin, "w", newline="") as f:
+        f.write(f"@echo off\r\ncd /d \"{root}\"\r\npython setup\\cli.py process %* --action \"{win_action}\" --format {fmt}\r\n")
+    print(f"Wrote {sh} and {twin}. Drop pictures onto either, or run it with file names.")
+    return 0
+
+
 def main(argv: list[str]) -> int:
     if not argv or argv[0] in ("-h", "--help", "help"):
         print(__doc__)
@@ -157,7 +281,11 @@ def main(argv: list[str]) -> int:
         return describe_cmd(rest)
     if sub == "run":
         return run_cmd(rest)
-    print(f"{sub}: the subcommands are list, describe and run. Try ./formvis cli help.", file=sys.stderr)
+    if sub == "process":
+        return process_cmd(rest)
+    if sub == "droplet":
+        return droplet_cmd(rest)
+    print(f"{sub}: the subcommands are list, describe, run, process and droplet. Try ./formvis cli help.", file=sys.stderr)
     return 2
 
 

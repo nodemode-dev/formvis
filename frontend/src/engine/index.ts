@@ -2486,7 +2486,8 @@ export class Engine {
       const ras = l.raster;
       if (!ras) continue;
       const i = t - tr.start, seen = this.videoShown.get(ras);
-      if (i < 0 || i >= v.frames.length || seen === undefined || ras.version === seen) continue;
+      // Never seen (a project just opened shows its own copy of the frame): kept when it is not the stored frame itself.
+      if (i < 0 || i >= v.frames.length || (seen === undefined ? ras === v.frames[i] : ras.version === seen)) continue;
       v.frames[i] = ras;
       this.videoShown.set(ras, ras.version);
     }
@@ -2629,7 +2630,27 @@ export class Engine {
   renderVideoFrame(f: number): Surface | null {
     const p = this.current, vt = this.video;
     if (!p || !vt) return null;
-    return renderDoc(this.work, { ...p.doc, layers: frameLayers(p.doc.layers, stateAt(p.doc, vt, f)) });
+    const t = Math.round(f);
+    const layers = p.doc.layers.map((l) => {   // video layers show their own painted frame for `t`, not the one on the canvas
+      const v = l.video, tr = vt.tracks[l.id];
+      if (!v || !tr || t === vt.current) return l;
+      const i = t - tr.start;
+      return i >= 0 && i < v.frames.length ? { ...l, raster: v.frames[i] } : l;
+    });
+    return renderDoc(this.work, { ...p.doc, layers: frameLayers(layers, stateAt(p.doc, vt, f)) });
+  }
+
+  /** Keeps the painted frame under the playhead in each video layer's `frames`, as saving and rendering read them. */
+  flushVideo(): void {
+    const p = this.current, vt = this.video;
+    if (p && vt) this.videoStore(p, vt, vt.current);
+  }
+
+  /** Replace Footage: the active video layer's original and painted frames both become `frames`, and its clip as long as
+   *  they are. One undo step. */
+  replaceFootage(frames: Raster[]): boolean {
+    if (!frames.length || frames.length > 300) return false;
+    return this.videoStep('Replace Footage', () => ({ frames, original: frames.slice() }));
   }
 
   /** Convert to Frame Animation: a frame for each frame of the work area (500 at most), the video timeline gone. */
@@ -2648,7 +2669,7 @@ export class Engine {
   }
 
   /** Any open document's timeline, as saving reads it, and replacing it, as opening restores it. */
-  timelineFor(p: Project): Timeline { if (p === this.current) this.syncFrame(p); return this.timelineOf(p); }
+  timelineFor(p: Project): Timeline { if (p === this.current) { this.flushVideo(); this.syncFrame(p); } return this.timelineOf(p); }
   setTimelineFor(p: Project, t: Timeline): void { this.timelines.set(p, t); if (p === this.current) this.emit('timeline', null); }
 
   private readonly pathSets = new WeakMap<Project, PathSet>();

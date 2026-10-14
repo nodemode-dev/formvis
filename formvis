@@ -25,7 +25,7 @@ usage: ./formvis [command] [options]
   bench [--frames N]  time formvis's drawing paths on this computer's real graphics; writes bench-results/ to send back
   verify-local [--small]  run Krea 2 and FLUX.2 [klein] once here (licences and downloads asked first); writes bench-results/
   mcp                 formvis over MCP's stdio transport, for Claude Desktop and other MCP clients
-  cli list|describe|run  the command catalogue of the open window: list [text], describe <id>, run <id> key=value ...
+  cli list|describe|run|process|droplet  the command catalogue of the open window: list [text], describe <id>, run <id> key=value ...; process <files> --action NAME (file in, file out); droplet <action> (a script to drop files onto)
   agents install|sync  set up Claude Code, Codex and Cursor for editing in plain language (install), or refresh every skill and its generated references (sync [--check])
   clean [--all]       remove build output (--all also venv and node_modules)
   help                this text
