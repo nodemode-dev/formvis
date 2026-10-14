@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (921 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (925 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -15,7 +15,7 @@ Generated from the window's command catalogue (921 commands) by `./formvis agent
 - Tool options: 226
 - Tools: 49
 - Type: 17
-- View: 36
+- View: 40
 - Window: 61
 
 ## Edit
@@ -952,11 +952,15 @@ Generated from the window's command catalogue (921 commands) by `./formvis agent
 | `clear-guides` | Clear Guides |  | Removes every guide. (changes the picture) |
 | `clear-slices` | Clear Slices |  | Removes every user slice. (changes the picture) |
 | `fit` | Fit on Screen | Mod+0 | Zooms so the picture fits the window. |
+| `fit-artboard` | Fit Artboard on Screen |  | Zooms so the artboard holding the active layer fills the window. |
+| `fit-layers` | Fit Layer(s) on Screen |  | Zooms so the selected layers' content fills the window. |
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
+| `guide-layout` | New Guide Layout... |  | Opens New Guide Layout: columns and rows with gutters inside margins, placed as guides in one step. (changes the picture) |
+| `guides-from-shape` | New Guides From Shape |  | Places guides on the four edges of the active shape layer, or of the selection. |
 | `layer-based-slice` | New Layer Based Slice |  | Adds a slice over the visible pixels of the active layer, tied to that layer. (changes the picture) |
 | `lock-guides` | Lock Guides | Alt+Mod+; | Locks or unlocks guides so they cannot be dragged. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
-| `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which draws the Navigator preview with the pixel shape applied. The main canvas is not stretched yet. |
+| `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which stretches the canvas and the Navigator preview by the pixel shape; tools and the pointer keep working in document pixels. |
 | `pattern-preview` | Pattern Preview |  | Shows or hides eight copies of the document around it, to check that a tile repeats. |
 | `pixel-art-preview` | Pixel Art Preview |  | Shows or hides a crisp, nearest-neighbour view of the document at every zoom. |
 | `pixel-grid` | Pixel Grid |  | Shows or hides the pixel grid at high zoom. |
