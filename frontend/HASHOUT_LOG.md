@@ -2,6 +2,82 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.8: .asl styles written, gray value and centroid, Type options on the layer, glyphs at the caret · _v1.70.8 (automation/command-meta.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (928 catalogue ids, no new commands). All three builders finished in budget (12, 18 and 32 calls). The only change at the join: the `measure-data-points` words in automation/command-meta.ts now name the new columns. Replaced:
+
+```ts
+  'measure-data-points': ['Image', 'Chooses which measurements the Measurement Log and its CSV export show (label, scale, area, perimeter, length, angle, count, width, height, circularity).', 'Use when the log should show only some of the recorded values; recording still keeps every value.', ''],
+```
+
+Probed: `readAsl(writeAsl(x))` for two styles (every effect enabled with non-default colour, opacity, blend, angle, distance and sizes; and the defaults) gave back every mapped field, the only differences being fields formvis leaves undefined coming back as their defaults (`useGlobal` false, stroke position 'outside') and the pattern overlay, which the reader does not map; a 100 by 100 image half black, half white, all selected, measured gray 127.5 (min 0, max 255), integrated density 1,275,000 and centroid 50, 50; with a TeX Gyre Pagella layer selected while new text is set to Inter, the Type options marked Swash '(not in font)'; with the in-canvas editor open on "Affix" and the caret after the A, a glyph went in at the caret and the caret moved past it.
+
+Release version lines, removed:
+
+```text
+<img src="https://img.shields.io/badge/version-1.70.7-f97316" alt="version 1.70.7">
+  "version": "1.70.7",
+  "version": "1.70.7",
+      "version": "1.70.7",
+export const VERSION = '1.70.7';
+```
+
+## Type options follow the layer, glyphs at the caret, DEV_PLAN 32.6 part e · _v1.70.8 (extensions/tools/type.ts, ui/panels/glyphs-dialog.ts)
+
+- extensions/tools/type.ts, `featureChoices`: reads the new `featureSource(e)` (the selected live type layer's `text`, else `e.textSettings`) for family, bold, italic and features, so the on/off marks and ' (not in font)' follow the layer; `featuresOf` is requested for that font and the options bar refreshes when detection ends. Replaced:
+
+```ts
+  const { family, bold, italic } = e.textSettings, known = featuresKnown(family, !!bold, !!italic);
+  if (known === undefined) void featuresOf(family, !!bold, !!italic).then(() => e.emit('options', null));
+  return [{ id: '', label: 'OpenType' }, ...OT_FEATURES.map((f) => ({ id: f.tag, label: `${featureOn(e.textSettings.features, f.tag) ? '[x]' : '[ ]'} ${f.label}${known && !known.has(f.tag) ? ' (not in font)' : ''}` }))];
+```
+
+- extensions/tools/type.ts, OpenType select `set`: with a live type layer selected and no text being typed, toggles the feature on the layer via `e.updateTextLayer(l.id, { ...l.text, features })` (one undo step) and keeps `textSettings.features` in step; otherwise the old `setType` path. Replaced:
+
+```ts
+      set: (v: string) => { if (v) setType(e, { features: withFeature(e.textSettings.features, v, !featureOn(e.textSettings.features, v)) }); } },
+```
+
+- ui/panels/glyphs-dialog.ts, `GlyphsDialog.insert`: when the in-canvas editor (`.cv-type-editor`, not hidden) is open, `setRangeText` at its selection with the caret moved after the glyph, an 'input' event so the editor's own `place()` runs, and focus returned; appends to the layer only when no editor is open. Replaced:
+
+```ts
+    const layer = this.engine.current?.activeLayer;
+    if (!layer || !layer.text || !this.engine.liveText(layer)) { toast('Select a type layer to insert a glyph.', 'info'); return; }
+    this.recent = [glyph, ...this.recent.filter((g) => g !== glyph)].slice(0, RECENT_MAX);
+    saveRecent(this.recent);
+    this.paintRecent();
+    await this.engine.updateTextLayer(layer.id, { ...layer.text, content: layer.text.content + glyph });
+```
+
+## Gray value, integrated density and centroid, DEV_PLAN 31.6 part d · _v1.70.8 (engine/index.ts, engine/types.ts, ui/prefs.ts, ui/panels/measurement-dialogs.ts)
+
+- engine/types.ts, `Doc.measurements` record: new optional `gray`, `grayMin`, `grayMax`, `intDen`, `cx`, `cy`. Old records lack them.
+- engine/index.ts, `recordMeasurements`: after the area/perimeter line, one pass over the selection's bounding box on `this.flattened()`; luminance 0.299 R + 0.587 G + 0.114 B, mask-weighted, fully transparent pixels skipped for gray; centroid mask-weighted, scaled by `k`; `intDen` = scaled area times mean gray.
+- ui/prefs.ts, `MEASURE_POINTS` gains 'Gray Value', 'Min Gray', 'Max Gray', 'Integrated Density', 'Centroid X', 'Centroid Y' before 'Circularity'; `DEFAULT_MEASURE_POINTS` is now an explicit list so they are off by default. Replaced:
+
+```ts
+export const MEASURE_POINTS: readonly string[] = ['Label', 'Scale', 'Area', 'Perimeter', 'Length', 'Angle', 'Count', 'W', 'H', 'Circularity'];
+export const DEFAULT_MEASURE_POINTS: readonly string[] = MEASURE_POINTS.filter((n) => n !== 'Circularity');
+```
+
+- ui/panels/measurement-dialogs.ts, `MEASURE_COLS`: six new columns (grey to 1 decimal, others through `opt`); an absent field gives an empty cell. The data points dialog and measurement-log.ts loop the shared lists, so they pick the columns up unchanged.
+
+## Photoshop .asl styles written, DEV_PLAN 32.4 part e · _v1.70.8 (io/asl.ts, io/grd.ts, ui/styles-panel.ts, app.ts)
+
+- io/grd.ts, `Sink`: now `export class Sink` (unchanged otherwise), reused by the .asl writer. Replaced:
+
+```ts
+class Sink {
+```
+
+- io/asl.ts, `writeAsl(styles)`: the inverse of `readAsl`. Writes u16 2, '8BSL', u16 3, u32 0 (no patterns), the count, then per style a u32 block length, u32 16 + identity descriptor ('null': 'Nm  ', 'Idnt' a `crypto.randomUUID()`), u32 16 + style descriptor ('Styl' > 'Lefx': 'Scl ' 100 `#Prc` and DrSh, IrSh, OrGl, IrGl, FrFX, SoFi, GrFl, ChFX, ebbl), padded to 4 bytes. Helpers `writeEffects`, `putBool`, `putUnit`, `putPct`, `putBlend` (via `BLEND_IDS`, the reverse of `BLENDS`), `putColour`, `putFx`. Bevel 'bvlT' is written only when a technique is set; the gradient overlay is written as a two-stop 'Grad'.
+- ui/styles-panel.ts: footer button `export` (title 'Export Styles (.asl)', the 'download' icon), enabled while any style exists; `exportAll()` saves `writeAsl` output as 'formvis-styles.asl' through a new constructor parameter `deliver`.
+- app.ts: passes `deliver` to `StylesPanel`. Replaced:
+
+```ts
+new StylesPanel(q(root, '.cv-layers'), engine);
+```
+
 ## Release 1.70.7: .asl styles, font feature detection, Select Data Points · _v1.70.7 (ui/panels/measurement-dialogs.ts, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (928 catalogue ids). All three builders finished inside their budgets (19, 15 and 35 calls; one feature each this time). The 1.70.7 entries below are theirs.

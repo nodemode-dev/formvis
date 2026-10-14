@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.70.8 · 2026-10-14
+
+### Added
+
+- The Styles panel exports every style as a Photoshop `.asl` file.
+- Record Measurements also keeps the selection's gray value (mean, minimum, maximum), integrated density and centroid; Select Data Points offers them as columns, off by default.
+
+### Changed
+
+- The Type tool's OpenType choices follow the selected type layer's font and features, and a choice changes that layer in one step.
+- The Glyphs dialog inserts at the caret while a type layer is being edited, instead of at the end.
+
 ## 1.70.7 · 2026-10-14
 
 ### Added
