@@ -70,20 +70,37 @@ async function selectWith(engine: Engine, points: Array<[number, number, 0 | 1]>
 /* Box mode and the hover highlight (1.49.10, the owner's tool list), as Photoshop's: a drag draws a box and selects the
    object in it; resting the pointer shows the object under it, tinted, before any click. */
 let draft: { from: Pt; to: Pt; mode: SelectionMode } | null = null;
-let highlight: { mask: HTMLCanvasElement | OffscreenCanvas; at: Pt } | null = null;
-let hoverTimer = 0, hoverBusy = false, hoverOn = true;
+/** The hover mask under the pointer at press time; a click that does not become a drag uses it without asking the model. */
+let found: Uint8Array | null = null;
+let highlight: { mask: HTMLCanvasElement | OffscreenCanvas; at: Pt; data: Uint8Array; project: object } | null = null;
+let hoverTimer = 0, hoverBusy = false, hoverOn = true, hoverSeq = 0, hoverDownUntil = 0;
+const watched = new WeakSet<Engine>();
+
+/** Drops the found object when the tool changes, the document changes or its pixels change (hooked once per engine). */
+function watch(engine: Engine): void {
+  if (watched.has(engine)) return;
+  watched.add(engine);
+  const drop = (): void => { clearTimeout(hoverTimer); hoverSeq++; if (highlight) { highlight = null; engine.emit('overlay', null); } };
+  engine.on('render', drop);
+  engine.on('active', drop);
+  engine.on('tool', () => { if (engine.tool !== 'objectSelect') drop(); });
+}
 
 function showHover(engine: Engine, at: Pt): void {
   clearTimeout(hoverTimer);
   if (!hoverOn || draft) return;
+  watch(engine);
+  const seq = ++hoverSeq;
   hoverTimer = window.setTimeout(async () => {
     const p = engine.current;
-    if (!p || hoverBusy || engine.tool !== 'objectSelect') return;
+    if (!p || hoverBusy || engine.tool !== 'objectSelect' || Date.now() < hoverDownUntil) return;
     const x = Math.floor(at.x), y = Math.floor(at.y);
     if (x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height) return;
+    if (highlight && highlight.project === p && highlight.data[y * p.doc.width + x] >= 128) return;
     hoverBusy = true;
     try {
       const data = await request(engine, [[x, y, 1]], null);
+      if (seq !== hoverSeq || engine.current !== p) return;
       if (!data || engine.tool !== 'objectSelect' || draft) { highlight = null; return; }
       const W = p.doc.width, H = p.doc.height, c = createSurface(W, H), g = ctxOf(c), img = g.createImageData(W, H);
       // A light wash with the object's outline, as Photoshop marks it (an orange tint turned a blue object grey, 1.49.10).
@@ -95,16 +112,17 @@ function showHover(engine: Engine, at: Pt): void {
         else { img.data[i] = 255; img.data[i + 1] = 255; img.data[i + 2] = 255; img.data[i + 3] = 46; }
       }
       g.putImageData(img, 0, 0);
-      highlight = { mask: c, at };
-    } catch { highlight = null; } finally { hoverBusy = false; engine.emit('overlay', null); }
-  }, 350);
+      highlight = { mask: c, at, data, project: p };
+    } catch { highlight = null; hoverDownUntil = Date.now() + 20000; } finally { hoverBusy = false; engine.emit('overlay', null); }
+  }, 120);
 }
 
-async function selectAt(engine: Engine, pt: Pt, mode: SelectionMode): Promise<void> {
+async function selectAt(engine: Engine, pt: Pt, mode: SelectionMode, found: Uint8Array | null = null): Promise<void> {
   const p = engine.current;
   if (!p) return;
   const x = Math.floor(pt.x), y = Math.floor(pt.y);
   if (x < 0 || y < 0 || x >= p.doc.width || y >= p.doc.height) return;
+  if (found) { engine.applySelection(SelectionMask.cropped(0, 0, p.doc.width, p.doc.height, found), mode, 'Object Selection'); return; }
   await selectWith(engine, [[x, y, 1]], null, mode);
 }
 
@@ -113,7 +131,13 @@ export const objectSelectTool: Tool = {
   icon: () => 'tObjectSelect',
   hint: () => 'Click an object, or drag a box round it · Shift adds · Alt subtracts · Rest the pointer to see the object it finds · The first use on an image takes a few seconds',
   cursor: () => 'crosshair',
-  down(ctx, p) { if (p.button !== 0) return; clearTimeout(hoverTimer); highlight = null; draft = { from: p.doc, to: p.doc, mode: modeFor(ctx.engine, p) }; ctx.engine.emit('overlay', null); },
+  down(ctx, p) {
+    if (p.button !== 0) return;
+    clearTimeout(hoverTimer); hoverSeq++;
+    const cur = ctx.engine.current, x = Math.floor(p.doc.x), y = Math.floor(p.doc.y);
+    found = highlight && cur === highlight.project && cur.doc && x >= 0 && y >= 0 && x < cur.doc.width && y < cur.doc.height && highlight.data[y * cur.doc.width + x] >= 128 ? highlight.data : null;
+    highlight = null; draft = { from: p.doc, to: p.doc, mode: modeFor(ctx.engine, p) }; ctx.engine.emit('overlay', null);
+  },
   move(ctx, p) { if (!draft) return; draft.to = p.doc; ctx.engine.emit('overlay', null); },
   up(ctx) {
     const d = draft;
@@ -121,15 +145,20 @@ export const objectSelectTool: Tool = {
     ctx.engine.emit('overlay', null);
     if (!d) return;
     const v = ctx.view(), a = v.toScreen(d.from), b = v.toScreen(d.to);
-    if (Math.abs(b.x - a.x) < 6 && Math.abs(b.y - a.y) < 6) { void selectAt(ctx.engine, d.from, d.mode); return; }
+    if (Math.abs(b.x - a.x) < 6 && Math.abs(b.y - a.y) < 6) { const f = found; found = null; void selectAt(ctx.engine, d.from, d.mode, f); return; }
+    found = null;
     void selectWith(ctx.engine, [], [Math.min(d.from.x, d.to.x), Math.min(d.from.y, d.to.y), Math.max(d.from.x, d.to.x), Math.max(d.from.y, d.to.y)], d.mode);
   },
   hover(ctx, p) {
     if (!p) { clearTimeout(hoverTimer); if (highlight) { highlight = null; ctx.engine.emit('overlay', null); } return; }
-    if (highlight && Math.hypot(p.doc.x - highlight.at.x, p.doc.y - highlight.at.y) * ctx.view().zoom > 12) { highlight = null; ctx.engine.emit('overlay', null); }
+    if (highlight) {
+      const cur = ctx.engine.current, x = Math.floor(p.doc.x), y = Math.floor(p.doc.y);
+      const inside = !!cur && cur === highlight.project && x >= 0 && y >= 0 && x < cur.doc.width && y < cur.doc.height && highlight.data[y * cur.doc.width + x] >= 128;
+      if (!inside) { highlight = null; ctx.engine.emit('overlay', null); }
+    }
     showHover(ctx.engine, p.doc);
   },
-  cancel(ctx) { draft = null; highlight = null; clearTimeout(hoverTimer); ctx.engine.emit('overlay', null); },
+  cancel(ctx) { draft = null; found = null; highlight = null; hoverSeq++; clearTimeout(hoverTimer); ctx.engine.emit('overlay', null); },
   overlay(ctx, g) {
     const v = ctx.view();
     if (highlight && !draft) { const o = v.toScreen({ x: 0, y: 0 }), p = ctx.engine.current; if (p) g.drawImage(highlight.mask as CanvasImageSource, o.x, o.y, p.doc.width * v.zoom, p.doc.height * v.zoom); }
@@ -139,7 +168,7 @@ export const objectSelectTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Object Selection' },
     { kind: 'toggle', label: 'Sample All Layers', get: () => sampleAll, set: (v) => { sampleAll = v; } },
-    { kind: 'toggle', label: 'Highlight on Hover', get: () => hoverOn, set: (v) => { hoverOn = v; if (!v) { highlight = null; clearTimeout(hoverTimer); } } },
+    { kind: 'toggle', label: 'Object Finder', get: () => hoverOn, set: (v) => { hoverOn = v; hoverDownUntil = 0; if (!v) { highlight = null; hoverSeq++; clearTimeout(hoverTimer); e.emit('overlay', null); } } },
     modeSegment(e),
     { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
   ],

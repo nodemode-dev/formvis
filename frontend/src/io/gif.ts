@@ -8,7 +8,7 @@ export interface GifFrame { data: ImageData; delayMs: number }
 type Box = { lo: number; hi: number };
 
 /** Up to `max` colours for `px` (RGBA, opaque pixels only), and a map from each colour key to its palette index. */
-function palette(px: Uint8ClampedArray, max: number): { colors: number[][]; index: (r: number, g: number, b: number) => number } {
+export function palette(px: Uint8ClampedArray, max: number): { colors: number[][]; index: (r: number, g: number, b: number) => number } {
   const exact = new Map<number, number>();
   for (let i = 0; i < px.length && exact.size <= max; i += 4) if (px[i + 3] >= 128) exact.set((px[i] << 16) | (px[i + 1] << 8) | px[i + 2], 0);
   if (exact.size <= max) {

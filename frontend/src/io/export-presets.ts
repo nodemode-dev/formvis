@@ -91,6 +91,18 @@ export function exportMeta(s: ExportSettings, doc: DocMeta | undefined): DocMeta
   const notice = s.copyrightText?.trim(), author = s.contactText?.trim();
   return cleanMeta({ ...(notice ? { notice, copyright: 'copyrighted' } : {}), ...(author ? { author } : {}) }) ?? undefined;
 }
+/** DEV_PLAN 36.14, Save for Web (Legacy): Photoshop's Metadata choices. */
+export type SfwMetadata = 'none' | 'copyright' | 'contact' | 'noCamera' | 'all';
+export const SFW_METADATA: ReadonlyArray<readonly [SfwMetadata, string]> = [['none', 'None'], ['copyright', 'Copyright'], ['contact', 'Copyright and Contact Info'], ['noCamera', 'All Except Camera Info'], ['all', 'All']];
+/** The File Info a Save for Web file carries: Copyright is the status, notice and web statement; Contact adds the creator
+ *  and its title; All Except Camera Info drops the camera's record; All keeps everything. Reuses exportMeta for None. */
+export function sfwMeta(mode: SfwMetadata, doc: DocMeta | undefined): DocMeta | undefined {
+  if (mode === 'none' || !doc) return exportMeta({ format: 'png', quality: 100, scale: 100, metadata: 'none' }, doc);
+  if (mode === 'all') return doc;
+  if (mode === 'noCamera') { const { camera: _camera, ...rest } = doc; return cleanMeta(rest) ?? undefined; }
+  const { copyright, notice, url, author, authorTitle } = doc;
+  return cleanMeta({ copyright, notice, url, ...(mode === 'contact' ? { author, authorTitle } : {}) }) ?? undefined;
+}
 /** What the chosen metadata cannot reach: formats written without an XMP packet. */
 export const XMP_FORMATS: ReadonlySet<ExportFormat> = new Set(['png', 'jpg', 'webp', 'tiff']);
 const icoSizesOf = (v: unknown): number[] => {

@@ -44,6 +44,8 @@ export class History {
   get steps(): { names: string[]; current: number } {
     return { names: [...this.past.map((e) => e.name), ...[...this.future].reverse().map((e) => e.name)], current: this.past.length };
   }
+  /** Names the latest done step (the assistant gives a command's step the command's label). */
+  renameLast(name: string): void { const e = this.past[this.past.length - 1]; if (e && this.depth === 0 && e.name !== name) e.name = name; }
   get modified(): boolean { return this.revision !== this.saved; }
   get open(): boolean { return this.depth > 0; }
   markSaved(): void { this.saved = this.revision; }

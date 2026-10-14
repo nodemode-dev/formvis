@@ -763,6 +763,15 @@ export class Engine {
     const u = units.trim().slice(0, 12) || 'px';
     this.edit('Set Measurement Scale', (p) => { p.doc = { ...p.doc, measureScale: { pixels, length, units: u } }; return true; });
   }
+  /** Image Assets on save (36.14): whether File > Save regenerates the layers named like foo.png. One undo step. */
+  setAssetsOnSave(on: boolean): void {
+    this.edit('Image Assets on Save', (p) => {
+      if (!!p.doc.assetsOnSave === on) return false;
+      const { assetsOnSave: _drop, ...rest } = p.doc;
+      p.doc = on ? { ...rest, assetsOnSave: true } : rest;
+      return true;
+    });
+  }
   /** Pixel Aspect Ratio (35.4 part b): width over height of one pixel; 1 drops the field. One undo step. */
   setPixelAspect(r: number): void {
     if (!(r >= 0.1 && r <= 10)) { this.notice('The pixel aspect ratio must be between 0.1 and 10.', 'info'); return; }
@@ -1177,6 +1186,14 @@ export class Engine {
 
   /** The History panel's list for the current document. */
   get historySteps(): { names: string[]; current: number } { return this.current?.history.steps ?? { names: [], current: 0 }; }
+
+  /** Renames the latest done step of the current document (the assistant: the step carries the command's label). */
+  renameLastStep(name: string): void {
+    const p = this.current;
+    if (!p || p.history.undoName === name) return;
+    p.history.renameLast(name);
+    this.emit('history', null);
+  }
 
   /** Goes to the state after step `index` (0 is before the first step kept) by undoing or redoing in turn, so
    *  everything that follows undo and redo, frames included, stays right. */
