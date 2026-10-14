@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.6 · 2026-10-14
+
+### Added
+
+- Image > Mode > Duotone, from Grayscale: Monotone, Duotone, Tritone and Quadtone, each ink with its colour and curve, shown, exported and printed as the inks overprinted.
+- Window > Layer Comps: the panel, with apply, rename, previous, next, update, new and delete.
+- Image > Variables > Define and Data Sets dialogs, and File > Export > Data Sets as Files.
+
 ## 1.68.5 · 2026-10-14
 
 ### Added

@@ -2,6 +2,29 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.6: Duotone, the Layer Comps panel, the Variables dialogs · _v1.68.6 (ui/stage.ts, ui/dock.ts, ui/tabs.ts, io/project-io.ts)
+
+Joined, finished and checked. Finished at the join: two type errors the Duotone builder left (the project reader's mode list and the tab's mode label, now `Duotone/8` with an ink count in its tip); the canvas showed a duotone document grey, because the stage drew it on the GPU and its view step only ran a colour transform, so `applyView` now maps a duotone document through `duotoneLut` before any view transform and `renderScene` keeps duotone documents on the CPU; the Layer Comps panel came up shown in every window, changing the default workspace, so it joined `DOCK_PANELS` and `DEFAULT.hidden` as History and Info have, a saved arrangement taking it hidden as it comes. Checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (816 catalogue ids); probes in Chromium: a grey 128 document as Duotone flattens to (114, 94, 74) and the canvas shows the same (two smaller canvases, the navigator's, still grey: open), the tab reads Duotone/8; Layer Comps hidden at first, shown by its command, hidden again by the second; Define Variables 420 by 409 and Data Sets 460 by 453 open with no page error; no-scrollbars, menus and the dock tests, failing only `test_panels_move_hide_and_reset`, `test_the_layers_panel_moves_and_keeps_the_space` and `test_the_grip_sits_in_one_place_and_a_group_holds_seven_tabs_at_most`, which fail the same on the unchanged 1.68.5 tree. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.5",
+      "version": "1.68.5",
+  "version": "1.68.5",
+export const VERSION = '1.68.5';
+```
+
+## The Layer Comps panel, DEV_PLAN 33.3 part b · _v1.68.6 (frontend/src/ui/layer-comps.ts new, frontend/src/engine/index.ts, frontend/src/app.ts, frontend/src/automation/command-meta.ts, frontend/src/styles/panels.css, frontend/HASHOUT_LOG.md)
+
+Window > Layer Comps (`panel-layer-comps`): a Last Document State row, one fixed 26px row per comp patched by id, apply marker, inline rename on double click (new `renameLayerComp` in the engine), comment disclosure, and a footer with Previous, Next, Update, New and Delete.
+
+## Variables and Data Sets dialogs, Data Sets as Files, DEV_PLAN 29.9 part b · _v1.68.6 (frontend/src/ui/panels/variables-dialog.ts new, frontend/src/io/layer-export.ts, frontend/src/app.ts, frontend/src/automation/command-meta.ts, frontend/HASHOUT_LOG.md)
+
+`DefineVariablesDialog` (layer select; Visibility, Text Replacement, Pixel Replacement with Method, rows always present and disabled when they do not fit the layer) and `DataSetsDialog` (select, Previous, Next, Import, Preview, Apply, read-only table). `variables-define` and `data-sets-import` open them when given no params. New `export-data-sets` (File > Export): `dataSetFiles` applies each set, encodes the flattened document into one zip as `<doc>_<dataset>.<ext>`, then undoes every applied step. `encodeOne` is now exported.
+
+## Duotone mode, DEV_PLAN 31.3 part a · _v1.68.6 (frontend/src/engine/duotone.ts, frontend/src/ui/panels/duotone-dialog.ts, frontend/src/engine/types.ts, frontend/src/engine/index.ts, frontend/src/app.ts, frontend/src/automation/command-meta.ts, frontend/src/io/project-io.ts)
+
+Image > Mode > Duotone... from a Grayscale (or Duotone) document: 1 to 4 inks, each a name, colour and 13-point curve; flattened() and export map the grey through a 256-entry overprint table; Grayscale drops the inks, RGB bakes them. Saved in .fmv as `duotone`. Not yet checked: tsc, vitest, the window.
+
 ## Release 1.68.5: Layer Comps, Variables and Data Sets, .pat files · _v1.68.5
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (813 catalogue ids); README's TypeScript size updated; a probe in Chromium through the catalogue: two comps, "Shown" and "Hidden", applied in turn showed and hid the layer; a visibility variable with a two-row CSV gave data sets "true" and "false" that showed and hid it; the serialized project held 2 comps, 1 variable and 2 data sets; no page errors. The .pat round trip of two patterns was byte for byte in the builder's scratch script; a .pat written by Photoshop is not yet tried. Removed lines taken after the version edit. Removed from frontend:
