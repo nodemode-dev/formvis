@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.70.2
+
+No engine code changed in 1.70.2. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.70.1"
+version = "1.70.1"
+version = "1.70.1"
+ "version": "1.70.1",
+```
+
 ## Release 1.70.1 · _v1.70.1 (app/__init__.py)
 
 Checked: `tests/test_api.py` 16 of 16. Probed through the running engine: Inter, an installed font with a `frac` feature, came back from `/api/fonts/file`. The page registered it as `Inter__ot_<hash>` with `"frac" 1`, and "1/2 3/4" at 48 px rendered 111 px wide instead of 172 (the fractions set as single glyphs). Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

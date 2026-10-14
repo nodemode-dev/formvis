@@ -2,6 +2,40 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.2: Trap, Pixel Aspect Ratio, Modifier Keys · _v1.70.2 (engine/trap.ts, app.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (915 catalogue ids). No builder added a type cast.
+
+Fixes at the join:
+- **Trap read the ink at the wrong stride.** `trapInk` assumed 4 floats per pixel, but `ChannelPixels` keeps C, M, Y, K and alpha (n + 1 = 5), as `channelGrey` and the other ink readers do. The first run altered 512 values across the whole layer. The stride is now read from the data's length.
+- **Conditional Mode Change skipped plain RGB documents.** On the CMYK, Bitmap and Indexed route, `conditionalMode` tested `doc.mode !== 'rgb'`. A document never converted has no mode, so it tried `convertMode('rgb')`, which refused, and the whole change silently did nothing. The test now reads an absent mode as RGB, here and on the Lab route. The 1.69.2 probe had only reached this route from Bitmap.
+
+Probes in Chromium:
+- **Trap:** a 40 by 10 document, red on the left and yellow on the right, converted to CMYK and trapped at 2 px. It changed exactly 40 values: the two yellow columns next to the red took magenta 0.97 and yellow 0.98 from the red side. The red side stayed as it was, and K stayed 0.
+- **Modifier Keys:** one tap of Shift held for one gesture and cleared at its end. A latched Alt survived a gesture and cleared on the next tap.
+- **Pixel Aspect Ratio:** Anamorphic 2:1 set an aspect of 2, which survived a save and read. With correction on, the status bar read "PAR 2, corrected in the Navigator", and the Navigator drew the document's circle as a 2:1 ellipse.
+- No page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.70.1",
+      "version": "1.70.1",
+  "version": "1.70.1",
+export const VERSION = '1.70.1';
+```
+
+## Modifier Keys panel, DEV_PLAN 35.3 part c · _v1.70.2 (ui/modifier-keys.ts, ui/stage.ts, ui/dock.ts, app.ts, automation/command-meta.ts, styles/panels.css)
+
+Window > Modifier Keys is a small docked panel (hidden by default) with Shift, Alt (Option) and Ctrl (Cmd) buttons, so pen and touch users can hold a modifier for a canvas gesture. The new `ui/modifier-keys.ts` holds the shared sticky state (`stickyModifiers`, with a tiny subscribe API) and `ModifierKeysPanel`, which builds its three buttons once and only flips aria-pressed and the `is-latched` class. One tap holds a modifier for the next gesture; a double tap within 350 ms latches it until tapped again. `Stage.pointer` ORs the sticky flags into shift, alt and mod, and the stage's pointerup handler calls `stickyModifiers.endGesture()` to release the one-shot flags. Keyboard shortcuts and wheel zoom are unchanged. The panel has a dock entry and a hidden default, an app.ts construction, and a `panel-modifier-keys` command row.
+
+## Trap, DEV_PLAN 31.5 · _v1.70.2 (engine/trap.ts, engine/index.ts, ui/panels/trap-dialog.ts, app.ts, automation/command-meta.ts)
+Image > Trap for CMYK documents. `trapInk` in engine/trap.ts is a pure two-pass separable filter over interleaved CMYK floats: each pixel's C, M and Y rise to the value of the darkest (most total ink) neighbour within the radius, only when that neighbour is darker than the pixel; K never spreads. `Engine.trap(widthPx)` refuses non-CMYK documents and documents with more than one pixel layer with a notice, otherwise writes a new ink record and redraws the layer rendition through the document table as one 'Trap' undo step. TrapDialog takes a Width (1 to 10) and a unit (Pixels, Points, mm) converted by the document resolution; the `trap` command runs straight from `width` and `unit` params and shows the dialog otherwise.
+
+## Pixel Aspect Ratio, DEV_PLAN 35.4 part b · _v1.70.2 (engine/types.ts, engine/index.ts, io/project-io.ts, io/psd.ts, app.ts, automation/command-meta.ts, ui/navigator.ts, ui/status.ts)
+
+A document now carries an optional `pixelAspect` (width over height of one pixel, absent when square), set by Image > Pixel Aspect Ratio (square, D1/DV NTSC 0.91, PAL 1.09, the two widescreen ratios, Anamorphic 2:1, HDV 1.33 and a custom value) as one undo step through `engine.setPixelAspect`, saved in the project manifest and read and written as the PSD pixel aspect ratio resource. View > Pixel Aspect Ratio Correction (`engine.view.parCorrection`) is honest about its reach: the main canvas is not stretched yet, because about twenty files read the viewport's zoom for their coordinate mapping. The correction shows only in the Navigator, whose preview and red view rectangle are widened by the ratio, and a status bar note reads, for example, "PAR 0.91, corrected in the Navigator". Exports stay square-pixel and offer nothing new.
+
 ## Release 1.70.1: OpenType features, Layer Comps in PSD, Styles and Measurement Log panels · _v1.70.1 (io/psd.ts, README.md)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (904 catalogue ids); README's TypeScript count raised to 64,600. No builder added a type cast.

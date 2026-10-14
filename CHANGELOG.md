@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.70.2 · 2026-10-14
+
+### Added
+
+- Image > Trap for CMYK documents: lighter colours spread under darker ones by a width in pixels, points or millimetres; black never spreads.
+- Image > Pixel Aspect Ratio presets (square, D1/DV NTSC and PAL, their widescreen forms, anamorphic 2:1, HDV 1.33) and a custom ratio, kept in `.fmv` and PSD; View > Pixel Aspect Ratio Correction shows the corrected picture in the Navigator.
+- Window > Modifier Keys: Shift, Alt and Ctrl for pen and touch, one tap for the next stroke, two to hold.
+
+### Fixed
+
+- Conditional Mode Change to CMYK or Lab did nothing on an RGB document that had never been converted.
+
 ## 1.70.1 · 2026-10-14
 
 ### Added
