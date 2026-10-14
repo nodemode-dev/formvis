@@ -2,6 +2,42 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.4: SVG as shape layers, Define Brush and Custom Shape, Split Warp · _v1.69.4 (engine/index.ts, io/svg-layers.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (861 catalogue ids). No builder added a type cast.
+
+Fixes at the join:
+- `addShapeLayers` made one undo step per shape, through `insertRasterLayer`. It now renders every shape first, then inserts them all inside one `edit('Open SVG as Layers')` with `newLayer` and `insertAboveActive`, as insertRasterLayer does.
+- `svgToShapes` sized the document by the viewBox alone. A `viewBox="0 0 200 100" width="400" height="200"` file came out 200 by 100. It now takes width and height when given and fits the viewBox inside them uniformly and centred (the default xMidYMid meet). When only one of the two is given, the other follows the viewBox's aspect.
+
+Probes in Chromium:
+- **SVG:** the test SVG (a red rect, a blue circle in a translated group, a green arc path, a stroked polygon, a skipped text and defs) opened 400 by 200 with four shape layers named box, circle 1, path 1 and polygon 1, at the right places and colours. One undo removed all four, and the toast read "4 shape layers; 2 elements skipped".
+- **Define Brush Preset:** a black dot on white made a 100 by 100 tip, full coverage at the dot and none on the white, and the new brush became active.
+- **Define Custom Shape:** a triangle path became the 14th custom shape, normalised into the 100 box with its aspect kept (y 6.25 to 93.75), and stored.
+- **Split Warp:** the 4 by 4 grid went to 5 by 5 (crosswise), then 6 by 5 (vertical), then back to 5 by 5 (Remove). Applying the unmoved warp changed no pixel by more than 4 of 255 (resampling).
+- No page errors.
+
+Open: the SVG document keeps the empty "Layer 1" that a new transparent document starts with. The brush's spacing is recorded in its description only, as for brushes loaded from .abr. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.69.3",
+      "version": "1.69.3",
+  "version": "1.69.3",
+export const VERSION = '1.69.3';
+```
+
+## Define Brush Preset and Define Custom Shape, DEV_PLAN 32.2 · _v1.69.4 (app.ts, engine/custom-shapes.ts, engine/index.ts, io/brush-library.ts, extensions/tools/shape.ts, automation/command-meta.ts)
+
+Edit > Define Brush Preset turns the selection (or the whole image, up to 2500 px a side) of the flattened picture into a SampledTip with coverage (255 - luminance) * alpha / 255, so dark paints; `addSampledBrush` in io/brush-library.ts appends it to the imported presets, saves the list to the same IndexedDB store the .abr import uses, and selects it. Edit > Define Custom Shape (enabled when a work path exists) calls `addCustomShape` in engine/custom-shapes.ts, which fits the path into the 100 x 100 box keeping its aspect and centred, writes M, C and Z commands into a user list kept in localStorage `formvis.customShapes`, and `allCustomShapes()` (built-ins first) now feeds `customShapePath`, the Shape tool's picker and the engine's labels; `loadCustomShapes()` runs once at startup.
+
+## SVG as shape layers, DEV_PLAN 34.4 · _v1.69.4 (io/svg-layers.ts, engine/index.ts, app.ts, automation/command-meta.ts)
+
+File > Open SVG as Layers reads an SVG into a new transparent document with one editable shape layer per path, rect, circle, ellipse, line, polyline and polygon, in document order, with group transforms and the viewBox applied and fill and stroke inherited from groups. Each layer is its own undo step because insertRasterLayer records its own. Deferred: text as type layers (text is counted as skipped), gradients and patterns (a url() paint falls back to mid grey), clip paths and masks (skipped), use and symbol references, opacity attributes and stroke caps, joins and dashes.
+
+## Split Warp, DEV_PLAN 32.3 · _v1.69.4 (engine/mesh-warp.ts, engine/index.ts, app.ts, automation/command-meta.ts)
+
+The mesh Warp grid can now grow and shrink while it is pending. Split Warp Horizontally adds a row, Vertically a column and Crosswise both, at the middle of the largest cell; Remove Warp Split drops the row or column added last (or the last interior line), never the border lines. `meshWarpImage` takes optional `us` and `vs`, the source positions of the grid columns and rows, and maps grid parameters to the source by piecewise-linear interpolation, so an inserted line no longer assumes an evenly divided source. `splitGrid` places each new point on the current surface (`meshSurfacePoint`) at the matching interpolated source position, which leaves every existing point of the picture where it was; between control points the Catmull-Rom surface is refit through the denser grid, so a bent mesh can shift very slightly there while a still-linear grid is exact. A split that would fold a cell is refused with a notice. The move tool's overlay and point picking read `gw` and `gh` and already draw the lines along the surface, so they follow with no change.
+
 ## Release 1.69.3: Normal and Bump Maps, FITS, type commands · _v1.69.3 (engine/normal-map.ts, engine/index.ts, ui/panels/find-replace-text-dialog.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (854 catalogue ids).

@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.69.4
+
+No engine code changed in 1.69.4. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.69.3"
+version = "1.69.3"
+version = "1.69.3"
+ "version": "1.69.3",
+```
+
 ## Release 1.69.3 · _v1.69.3 (app/__init__.py)
 
 Checked: `tests/test_deep_io.py` and `tests/test_api.py` 18 of 19, the one failure the known 32-bit EXR round trip that fails on the baseline too. Probed through the running engine: a 16-bit FITS gave 60 by 40 at depth 16, the image's 1000 counts at 65535 and its zero floor at 0 after the flip; a -32 FITS gave depth 32 in 0 to 1; `/decode` turned the 16-bit file into an 8-bit picture that opened as a 60 by 40 document. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

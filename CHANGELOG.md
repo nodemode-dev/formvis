@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.69.4 · 2026-10-14
+
+### Added
+
+- File > Open SVG as Layers: an SVG's paths, rectangles, circles, ellipses, lines, polylines and polygons become editable shape layers with their fills, strokes and transforms, in one undo step.
+- Edit > Define Brush Preset: the selection, or the whole picture, becomes a sampled brush (dark paints), kept with the loaded brushes.
+- Edit > Define Custom Shape: the current path joins the Custom Shape tool's list, kept between sessions.
+- Edit > Transform: Split Warp Horizontally, Vertically and Crosswise, and Remove Warp Split, for an uneven Warp grid.
+
 ## 1.69.3 · 2026-10-14
 
 ### Added
