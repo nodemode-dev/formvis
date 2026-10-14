@@ -442,6 +442,50 @@ def camera_profile_list(file: UploadFile = File(...)) -> dict:
             "folders": [str(d) for d in camera_profiles.folders()]}
 
 
+@router.post("/pdf-pages")
+def pdf_pages(file: list[UploadFile] = File(...), dpi: int = Form(72), jpeg: bool = Form(False), quality: int = Form(90), icc: UploadFile | None = File(default=None)) -> Response:
+    """One multipage PDF (DEV_PLAN 29.4, Artboards to PDF): a page per PNG, in the order sent, each at its own size in
+    points from `dpi`. Flattened on white. Encoding: JPEG at `quality`, or lossless (JPEG 2000 reversible, falling back
+    to JPEG at 100 when the engine's Pillow has no JPEG 2000). `icc` is checked and then not embedded: Pillow's PDF
+    writer carries no profile."""
+    from PIL import Image, ImageCms
+    if not file or len(file) > 200:
+        raise HTTPException(status_code=422, detail="Send between 1 and 200 pages.")
+    if icc is not None:
+        try:
+            ImageCms.ImageCmsProfile(io.BytesIO(icc.file.read()))
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="The colour profile could not be read.") from exc
+    pages = []
+    for part in file:
+        try:
+            with Image.open(io.BytesIO(part.file.read())) as src:
+                src.load()
+                if src.width * src.height > config.MAX_PIXELS:
+                    raise HTTPException(status_code=413, detail="A page is larger than formvis edits in one piece.")
+                rgba = src.convert("RGBA")
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=415, detail=f"A page could not be read: {exc}") from exc
+        flat = Image.new("RGBA" if not jpeg else "RGB", rgba.size, (255, 255, 255, 255) if not jpeg else (255, 255, 255))
+        flat.paste(rgba, mask=rgba.getchannel("A"))
+        if not jpeg:
+            flat.putalpha(255)   # RGBA is written as JPEG 2000 (reversible), so no pixel is changed
+        pages.append(flat)
+    res = float(max(1, dpi))
+    out = io.BytesIO()
+    try:
+        pages[0].save(out, "PDF", save_all=True, append_images=pages[1:], resolution=res, quality=max(1, min(100, quality)))
+    except Exception:
+        if jpeg:
+            raise
+        out = io.BytesIO()
+        rgb = [p.convert("RGB") for p in pages]
+        rgb[0].save(out, "PDF", save_all=True, append_images=rgb[1:], resolution=res, quality=100)
+    return Response(out.getvalue(), media_type="application/pdf")
+
+
 @router.post("/export")
 def export(file: UploadFile = File(...), name: str = Form(...), folder: str = Form("")) -> dict:
     base = Path(name.replace("\\", "/")).name.strip()
