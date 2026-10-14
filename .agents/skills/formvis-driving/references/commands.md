@@ -1,14 +1,14 @@
 # formvis commands
 
-Generated from the window's command catalogue (860 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (872 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 58
-- File: 67
+- File: 68
 - Filter: 80
 - Image: 79
-- Layer: 181
+- Layer: 189
 - Paint: 1
 - Paths: 8
 - Select: 28
@@ -16,7 +16,7 @@ Generated from the window's command catalogue (860 commands) by `./formvis agent
 - Tools: 49
 - Type: 9
 - View: 33
-- Window: 42
+- Window: 45
 
 ## Edit
 
@@ -118,6 +118,7 @@ Generated from the window's command catalogue (860 commands) by `./formvis agent
 | `export-psb` | Export PSB (Large Document)... |  | Exports a Photoshop large document (PSB). (asks first) |
 | `export-psd` | Export PSD... |  | Exports the document as a Photoshop PSD. (asks first) |
 | `export-tiff` | Export TIFF |  | Exports the picture as TIFF. (asks first) |
+| `export-tiff-layers` | TIFF with Layers... |  | Exports the picture as a TIFF that carries its Photoshop layers. (asks first) |
 | `export-webp` | Export WebP |  | Exports the flattened picture as WebP. (asks first) |
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
 | `fit-image` | Fit Image... |  | Opens Fit Image to scale within a width and height. (changes the picture) |
@@ -512,6 +513,14 @@ Generated from the window's command catalogue (860 commands) by `./formvis agent
 | `toggle-mask` | Toggle Mask |  | Disables or enables the layer mask. (changes the picture) |
 | `ungroup` | Ungroup Layers |  | Dissolves the selected folder and keeps its layers. (changes the picture) |
 | `update-linked` | Update Modified Content |  | Updates linked smart objects whose files changed. (changes the picture) |
+| `video-delete-frame` | Delete Frame |  | Removes the playhead frame from the video layer. (changes the picture) |
+| `video-duplicate-frame` | Duplicate Frame |  | Copies the playhead frame of the video layer after itself. (changes the picture) |
+| `video-insert-blank-frame` | Insert Blank Frame |  | Inserts an empty frame after the playhead in the video layer. (changes the picture) |
+| `video-layer-blank` | New Blank Video Layer |  | Adds a video layer of empty frames the length of the timeline. (changes the picture) |
+| `video-layer-from-file` | New Video Layer from File... |  | Adds a video file as a layer with one frame per video frame. (changes the picture) |
+| `video-rasterize` | Rasterize Video Layer |  | Turns the video layer into a pixel layer of the playhead frame. (changes the picture) |
+| `video-restore-all` | Restore All Frames |  | Puts every frame of the video layer back to the footage as loaded. (changes the picture) |
+| `video-restore-frame` | Restore Frame |  | Puts the playhead frame back to the footage as loaded. (changes the picture) |
 | `vmask-current-path` | Current Path |  | Makes a vector mask from the current path. (changes the picture) |
 | `vmask-delete` | Delete |  | Deletes the vector mask. (changes the picture) |
 | `vmask-enable` | Disable Vector Mask |  | Disables or enables the vector mask. (changes the picture) |
@@ -957,6 +966,7 @@ Generated from the window's command catalogue (860 commands) by `./formvis agent
 | `brush-settings` | Brush Settings... | F5 | Opens Brush Settings. |
 | `copy-error-log` | Copy Error Log |  | Copies the error log to the clipboard. |
 | `delete-frame` | Delete Frame |  | Deletes the current animation frame. (changes the picture) |
+| `glyphs` | Glyphs |  | Opens Glyphs, a grid of Unicode characters to add to a type layer. |
 | `help` | formvis Help | F1 | Opens the formvis manual. |
 | `manage-plugins` | Manage Plugins... |  | Opens the plugins dialog. |
 | `merge-columns` | Merge Panel Columns |  | Merges the panel columns into one. |
@@ -987,5 +997,7 @@ Generated from the window's command catalogue (860 commands) by `./formvis agent
 | `shortcuts` | Keyboard Shortcuts... | Alt+Shift+Mod+K Shift+/ | Opens the Keyboard Shortcuts editor. |
 | `terminal.new` | New Terminal |  | Opens a new terminal tab. |
 | `terminal.toggle` | Terminal | Mod+J | Shows or hides the terminal dock. |
+| `tool-preset-apply` | Apply Tool Preset |  | Applies a saved tool preset by name: switches to its tool and sets its options. |
+| `tool-presets` | Tool Presets |  | Opens Tool Presets, saved sets of a tool's options. |
 | `tween-frames` | Tween... |  | Opens the Tween dialog to add in-between frames. (changes the picture) |
 | `whats-new` | What's New... |  | Opens What's New: the additions of the current and recent releases, each with a Show Me button that runs its command. |

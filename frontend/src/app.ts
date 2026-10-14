@@ -60,6 +60,7 @@ import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/im
 import { zipFiles } from './io/zip';
 import { assetFiles } from './io/image-assets';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
+import { readLayeredTiff, writeLayeredTiff } from './io/layered-tiff';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
 import { pathsToIllustrator } from './io/ai-paths';
@@ -88,6 +89,8 @@ import { MergeDialog } from './ui/panels/merge-dialog';
 import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
 import { ScriptEvents, type ScriptEvent } from './ui/script-events';
 import { LutExportDialog } from './ui/panels/lut-export-dialog';
+import { GlyphsDialog } from './ui/panels/glyphs-dialog';
+import { ToolPresetsDialog } from './ui/panels/tool-presets-dialog';
 import { MeasureScaleDialog, MeasurementLogDialog } from './ui/panels/measurement-dialogs';
 import { FindReplaceTextDialog } from './ui/panels/find-replace-text-dialog';
 import { NormalMapDialog } from './ui/panels/normal-map-dialog';
@@ -544,7 +547,14 @@ export function startApp(): void {
             const opened = engine.addProject(doc, f.name.replace(/\.ps[db]$/i, ''), activeId);
             if (paths) engine.setPathsOf(opened, paths);
             if (notes.length) toast(notes.join(' '), 'info');
-          } else await openOpened(await api.importProject([f]), null);
+          } else {
+            const layered = /\.tiff?$/i.test(f.name) ? await readLayeredTiff(f) : null;   // a TIFF with Photoshop layers (34.2)
+            if (layered) {
+              const opened = engine.addProject(layered.doc, f.name.replace(/\.tiff?$/i, ''), layered.activeId);
+              if (layered.paths) engine.setPathsOf(opened, layered.paths);
+              if (layered.notes.length) toast(layered.notes.join(' '), 'info');
+            } else await openOpened(await api.importProject([f]), null);
+          }
         } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
       }
     });
@@ -553,6 +563,22 @@ export function startApp(): void {
   async function openFolder(files: File[], paths: string[]): Promise<void> {
     await engine.task(async () => {
       try { await openOpened(await api.importProject(files, paths), null); } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
+  /** The document as a TIFF carrying its Photoshop layers (DEV_PLAN 34.2). */
+  async function exportLayeredTiff(): Promise<void> {
+    engine.settle();
+    const p = engine.current;
+    if (!p) return;
+    await engine.task(async () => {
+      try {
+        const flat = engine.flattened();
+        if (!flat) return;
+        const { blob, notes } = await writeLayeredTiff(p.doc, flat, engine.pathsOf(p));
+        await deliver(blob, `${p.name}.tif`);
+        if (notes.length) toast(notes.join(' '), 'info');
+      } catch (err) { toast(message(err), 'error'); }
     });
   }
 
@@ -1882,6 +1908,8 @@ export function startApp(): void {
     warpText: new WarpTextDialog(engine),
     typeOnPath: new TypeOnPathDialog(engine),
     paragraphStyles: new ParagraphStylesDialog(engine),
+    glyphs: new GlyphsDialog(engine),
+    toolPresets: new ToolPresetsDialog(engine),
     benchmark: new BenchmarkDialog(async () => benchText(await runBenchmark(engine), gpuProbed ? detectedName(gpuProbe) ?? 'none found' : 'not detected yet')),
     adjust: new AdjustPanel(engine),
     filter: new FilterPanel(engine),
@@ -2073,6 +2101,14 @@ export function startApp(): void {
     { id: 'clear-recent', label: 'Clear Recent', enabled: () => recent.length > 0, run: () => keepRecent([]) },
     { id: 'import', label: 'Import Images...', keys: ['Shift+Mod+O'], run: () => imageInput.click() },
     { id: 'import-video', label: 'Video Frames to Layers...', run: () => videoDialog.show() },   // 1.58.9, L1
+    { id: 'video-layer-from-file', label: 'New Video Layer from File...', enabled: () => !!engine.current, run: () => { void import('./ui/panels/video-layer-file').then((m) => m.videoLayerFromFile(engine, toast)); } },   // 33.4a
+    { id: 'video-layer-blank', label: 'New Blank Video Layer', enabled: () => !!engine.current, run: () => { if (engine.newBlankVideoLayer()) toast('Blank video layer added.'); } },
+    { id: 'video-insert-blank-frame', label: 'Insert Blank Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.insertBlankFrame(); } },
+    { id: 'video-duplicate-frame', label: 'Duplicate Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.duplicateFrame(); } },
+    { id: 'video-delete-frame', label: 'Delete Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.deleteVideoFrame(); } },
+    { id: 'video-restore-frame', label: 'Restore Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.restoreFrame(); } },
+    { id: 'video-restore-all', label: 'Restore All Frames', enabled: () => !!engine.activeLayer?.video, run: () => { engine.restoreAllFrames(); } },
+    { id: 'video-rasterize', label: 'Rasterize Video Layer', enabled: () => !!engine.activeLayer?.video, run: () => { engine.rasterizeVideo(); } },
     { id: 'create-video-timeline', label: 'Create Video Timeline', enabled: () => !!engine.current && !engine.video && engine.timeline.frames.length === 0, run: () => { if (engine.createVideoTimeline()) toast('Video timeline ready, a track per layer.'); } },   // 1.59.3
     { id: 'export-mp4', label: 'Video (MP4)...', enabled: () => !!engine.current, run: () => void exportMp4() },
     { id: 'render-video', label: 'Render Video...', enabled: () => !!engine.video, run: () => renderDialog.show() },   // 1.59.6
@@ -2127,6 +2163,7 @@ export function startApp(): void {
     { id: 'export-psb', label: 'Export PSB (Large Document)...', enabled: has, run: () => void exportPsd(true) },
     { id: 'export-webp', label: 'Export WebP', enabled: has, run: () => void exportImage('webp', 0.9) },
     { id: 'export-tiff', label: 'Export TIFF', enabled: () => has() && !!caps, run: () => void exportImage('tiff', 0.9) },
+    { id: 'export-tiff-layers', label: 'TIFF with Layers...', enabled: () => has(), run: () => void exportLayeredTiff() },
     { id: 'export-pdf', label: 'Export PDF', enabled: () => has() && !!caps, run: () => void exportImage('pdf', 0.9) },
     { id: 'export-avif', label: 'Export AVIF', enabled: () => has() && !!caps, run: () => void exportImage('avif', 0.9) },
     { id: 'export-gif', label: 'Export GIF...', enabled: () => !!engine.current, run: () => dialogs.gif.show() },
@@ -2541,6 +2578,9 @@ export function startApp(): void {
     { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
     { id: 'brush-settings', label: 'Brush Settings...', keys: ['F5'], run: () => dialogs.brushSettings.show() },
     { id: 'paragraph-styles', label: 'Paragraph Styles...', run: () => dialogs.paragraphStyles.show() },
+    { id: 'glyphs', label: 'Glyphs', run: () => dialogs.glyphs.show() },
+    { id: 'tool-presets', label: 'Tool Presets', run: () => dialogs.toolPresets.show() },
+    { id: 'tool-preset-apply', label: 'Apply Tool Preset', params: { name: { type: 'string', description: 'Name of the saved tool preset to apply.' } }, run: (a) => { const n = typeof a?.name === 'string' ? a.name : ''; if (!dialogs.toolPresets.applyByName(n)) toast(`No tool preset named "${n}".`, 'info'); } },
     {
       id: 'find-replace-text', label: 'Find and Replace Text...', enabled: has,
       params: {
@@ -2794,7 +2834,7 @@ export function startApp(): void {
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
-      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
+      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
@@ -2808,7 +2848,7 @@ export function startApp(): void {
       'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
-      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
+      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
@@ -2844,7 +2884,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: ['assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+    { label: 'Window', items: ['assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
