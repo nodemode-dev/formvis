@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.1 · 2026-10-14
+
+### Added
+
+- Image > Apply Image and Image > Calculations, for agents and actions with their parameters. The dialogs follow in the next release; from the menu each says so for now.
+- Layer > Smart Objects: New Smart Object via Copy (an independent copy), Convert to Layers (the contents at their placement, without the smart filters) and Export Contents (the contents as a PNG).
+
 ## 1.68.0 · 2026-10-14
 
 ### Added

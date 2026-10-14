@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.1: Apply Image, Calculations and three smart object entries · _v1.68.1
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (794 catalogue ids); a probe through the catalogue's `runCommand`: Apply Image's Multiply of a mid-grey layer onto itself gives 64 from 128 and undo restores 128; Calculations adds one alpha channel; New Smart Object via Copy gives a separate source raster, named "Background copy"; Convert to Layers leaves a pixel layer with the same composite; no page errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.0",
+      "version": "1.68.0",
+  "version": "1.68.0",
+export const VERSION = '1.68.0';
+```
+
 ## Layer > Smart Objects: New Smart Object via Copy, Convert to Layers, Export Contents · _v1.68.1 (files)
 
 `engine/index.ts`: `newSmartObjectViaCopy()` (clones the layer through `LS.cloneLayer` and gives the copy its own source raster, filter stack, warp and filter mask; named "<name> copy", placed above, link dropped; one step), `smartToLayers()` (source at the current placement, warp applied through `warpedSmart`, filters not applied, name, opacity, blend and mask kept; padded masks cropped to the source; one step) and `smartContents()`. `app.ts`: commands `smart-new-via-copy`, `smart-convert-to-layers`, `smart-export-contents` (PNG named after the layer through `deliver`), enabled for a smart object, in both Layer > Smart Objects menus. `automation/command-meta.ts`: their words. Checked: tsc clean, unit tests run.
