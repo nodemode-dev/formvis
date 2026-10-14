@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (918 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (921 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -16,7 +16,7 @@ Generated from the window's command catalogue (918 commands) by `./formvis agent
 - Tools: 49
 - Type: 17
 - View: 36
-- Window: 58
+- Window: 61
 
 ## Edit
 
@@ -1016,6 +1016,7 @@ Generated from the window's command catalogue (918 commands) by `./formvis agent
 | `new-frame` | New Frame |  | Adds a frame to the frame animation. (changes the picture) |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
 | `panel-character` | Character |  | Shows or hides the Character panel. |
+| `panel-gradients` | Gradients |  | Shows or hides the Gradients panel. |
 | `panel-history` | History |  | Shows or hides the History panel. |
 | `panel-info` | Info |  | Shows or hides the Info panel. |
 | `panel-layer-comps` | Layer Comps |  | Shows or hides the Layer Comps panel. |
@@ -1025,8 +1026,10 @@ Generated from the window's command catalogue (918 commands) by `./formvis agent
 | `panel-navigator` | Navigator |  | Shows or hides the Navigator panel. |
 | `panel-paragraph` | Paragraph |  | Shows or hides the Paragraph panel. |
 | `panel-paths` | Paths |  | Shows or hides the Paths panel. |
+| `panel-patterns` | Patterns |  | Shows or hides the Patterns panel. |
 | `panel-properties` | Properties |  | Shows or hides the Properties panel. |
 | `panel-properties-col` | Properties Column |  | Shows or hides the Properties column. |
+| `panel-shapes` | Shapes |  | Shows or hides the Shapes panel. |
 | `panel-styles` | Styles |  | Shows or hides the Styles panel. |
 | `panel-swatches` | Swatches |  | Shows or hides the Swatches panel. |
 | `panel-timeline` | Timeline |  | Shows or hides the Timeline panel. |
