@@ -2,6 +2,79 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.71.8: NodeMode ports, Lab PSD, docs · _v1.71.8 (ui/app-dialogs.ts, ui/i18n/extra/*.ts, docs/MANUAL.md)
+
+- `ui/app-dialogs.ts`, Preferences > Language note: it still said panels and dialogs followed later, untrue since 1.71.2. Replaced: `The language of the menus; panels and dialogs follow in later releases.`
+- `docs/MANUAL.md` (beside the docs builder's sections): Quick Shape, Compare with and the Reference panel in Painting and retouching; "opens a dialog" became "shows a dialog" in the Content-Aware Fill paragraph and the new lines avoid "open", "larger" and "picture", because `help/markdown.test.ts` asks which section answers "How do I open a very large picture?" and the added words had moved the answer from Getting started to Painting and retouching.
+- `ui/i18n/extra/*.ts`: 17 keys in all 23 tables (401 each): Quick Shape, the Reference panel, the Compare dialog and its notices, the Lab PSD notice, the new Language note. Not keyed: "Found N regions that differ." with N over 1, and the Lab PSD skipped-layers notice, which are built from pieces.
+- Checked in the window: a 48-point wobbly ellipse held still for a second with the Brush became a clean ellipse in one Brush step; Compare with on two documents made "B vs A" with three layers, a selection and "Found 1 region that differs."; Window > Reference shows Add, Remove and the session note.
+
+## NodeMode ports: quick shape, reference panel, compare, diffusion fill, DEV_PLAN 36.5 · _v1.71.8 (engine/quick-shape.ts, engine/image-diff.ts, extensions/tools/quick-shape.ts, extensions/tools/brush.ts, pencil.ts, eraser.ts, ui/reference-panel.ts, ui/panels/compare-dialog.ts, engine/retouch.ts, engine/index.ts, ui/dock.ts, ui/more-panels.ts, styles/shell.css, app.ts, automation/command-meta.ts)
+
+- `engine/quick-shape.ts` (new), `fitQuickShape`: a line (chord over path above 0.9, no point farther than 8 percent of the chord), or a closed stroke (ends within 20 percent of the path) as a rectangle (four corners by Ramer-Douglas-Peucker at 7 percent of the bounds diagonal) or an ellipse (normalised radius deviation under 0.12).
+- `extensions/tools/quick-shape.ts` (new): `holdStart`, `holdMove`, `holdEnd`, `quickShapeSnapped`, `quickShapeOption` (default on). A 600 ms timer restarted by moves over 2 document px; on fire `engine.cancelStroke()` drops the freehand step and a new stroke follows the shape, so release ends one step.
+- `extensions/tools/pencil.ts`, replaced:
+
+```ts
+    ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose, { aliased: true, autoErase, name: 'Pencil' });
+  },
+  move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc, p.pressure, p.pose); ctx.engine.emit('overlay', null); },
+  up(ctx) { ctx.engine.endStroke(); },
+  hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },
+  cancel(ctx) { ctx.engine.cancelStroke(); },
+```
+
+- `extensions/tools/eraser.ts` (not in Block mode or Erase to History), replaced:
+
+```ts
+    if (!e.beginStroke(p.doc, p.shift, p.pressure, p.pose, { aliased: mode === 'pencil', square: mode === 'block', name: 'Eraser' })) finish(e);
+  },
+  move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc, p.pressure, p.pose); ctx.engine.emit('overlay', null); },
+  up(ctx) { ctx.engine.endStroke(); if (history) history = false; else finish(ctx.engine); },
+  cancel(ctx) { ctx.engine.cancelStroke(); if (history) history = false; else finish(ctx.engine); },
+```
+
+- `extensions/tools/brush.ts` (not with Airbrush), replaced:
+
+```ts
+    if (ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose) && airbrush) { clearInterval(airTimer); airTimer = window.setInterval(() => ctx.engine.airbrushTick(last?.pressure ?? 1), 60); }
+  },
+  move(ctx, p) {
+    hoverPt = p.doc; last = p;
+    const k = 1 - Math.min(0.95, smoothing / 100);
+    if (steady && smoothing > 0) { steady = { x: steady.x + (p.doc.x - steady.x) * k, y: steady.y + (p.doc.y - steady.y) * k }; ctx.engine.strokeTo(steady, p.pressure, p.pose); }
+    else ctx.engine.strokeTo(p.doc, p.pressure, p.pose);
+    ctx.engine.emit('overlay', null);
+  },
+  up(ctx) { clearInterval(airTimer); if (steady && last && smoothing > 0) ctx.engine.strokeTo(last.doc, last.pressure, last.pose); steady = null; last = null; ctx.engine.endStroke(); },
+  hover(ctx, p) { hoverPt = p ? p.doc : null; ctx.engine.emit('overlay', null); },
+  cancel(ctx) { clearInterval(airTimer); ctx.engine.cancelStroke(); },
+```
+
+- `ui/reference-panel.ts` (new), `createReferencePanel`: Add, drop, thumbnails through `patchList`, a larger view with wheel zoom, drag pan and double-click fit, Remove; object URLs for the session, revoked on Remove.
+- `ui/dock.ts`: `DOCK_PANELS` gains `reference`; the default hidden list gains it. Replaced: `'adjustments', 'notes', 'histogram', 'clone-source'], side: [...DEFAULT_SIDE] };`. `ui/more-panels.ts` calls `createReferencePanel(root)`. `styles/shell.css`: `.cv-ref-*`, `.cv-reference.is-drop`.
+- `engine/image-diff.ts` (new), `diffRegions`: the per-pixel largest channel difference, a threshold, 8-way connected regions, bounding boxes and areas, small regions dropped.
+- `engine/index.ts`, `Engine.compareDocuments(other, threshold, minSize)`: a new document on the larger canvas with the current picture, the other (hidden) and "Differences" (the other in Difference mode); the regions become the selection; returns the count.
+- `ui/panels/compare-dialog.ts` (new), `CompareDialog`. `app.ts`: `dialogs.compare`, command `compare-documents`; Edit menu, replaced `'fade', '-',` with `'fade', 'compare-documents', '-',`. `automation/command-meta.ts`: `compare-documents`, `panel-reference`.
+- `engine/retouch.ts`: `SMOOTH_RING_VARIANCE` (150), `ringVariance`, `diffusionFill` (a pyramid: push down averaging known pixels, fill the coarsest gaps from known neighbours, pull up only into unknown pixels; known pixels kept). Measured on a 512 by 512 gradient with a 30 px hole: `contentFill` 267 ms, mean error 2.11; `diffusionFill` 8.8 ms, mean error 0.40. The 150 cut-off was not tried on textured pictures.
+- `engine/index.ts`, `Engine.removePatch` chooses `diffusionFill` when the ring variance is under 150. Replaced:
+
+```ts
+    if (!contentFill(pm, hole, W, H)) { this.notice('There is nothing opaque around the stroke to fill from.'); return null; }
+```
+
+## CMYK and Lab coverage, DEV_PLAN 36.11 · _v1.71.8 (io/api.ts, app.ts)
+
+- Audit: the mode gate in `app.ts` (`CMYK_NOT`, `LAB_NOT`) is already empty; every filter, adjustment and warp runs on the 8-bit rendition and `deriveChannels` brings the floats into step inside `Engine.edit`. Probed in CMYK and Lab documents: Smart Sharpen, Radial Blur, Field, Iris, Tilt-Shift and Path Blur, Threshold (pixels and layer), Posterize, Gradient Map, Black & White, Photo Filter, Liquify and Puppet Warp change the pixels and keep the mode. Lab single-channel view is in `Engine.channelGrey`.
+- `io/api.ts`, `api.encodeLabPsd(doc, composite, layers)` after `encodeLabTiff`.
+- `app.ts`, `exportLabPsd` before `exportCmyk` (8 bits only, with a toast above); `exportPsd` routes Lab to it. Replaced:
+
+```ts
+    if (p.doc.mode === 'cmyk' && !psb) { await exportCmykPsd(); return; }
+```
+
+- Still open: painting on one channel in Lab (`paintChannel` and `strokeChannels` in `engine/channels.ts` are CMYK only).
+
 ## Release 1.71.7: Artboard tool, Camera Raw on open, Window > Arrange · _v1.71.7 (app.ts, automation/catalogue.ts, ui/i18n/extra/*.ts)
 
 - `app.ts`, `new-window` and the arrange commands: the Stage refits on the next frame after the layout changes, since a tile layout left it at the tab layout's zoom with the picture in a corner. Replaced:

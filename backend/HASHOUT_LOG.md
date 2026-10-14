@@ -2,6 +2,19 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Lab PSD writing, DEV_PLAN 36.11 · _v1.71.8 (routers/io.py, __init__.py)
+
+- `routers/io.py`, new `encode_lab_psd` (`POST /io/encode-lab-psd`) after `encode_cmyk_psd`. psd-tools' own Lab writer converts from RGB, so the document is built as RGBA (keeping each layer's transparency channel), then `header.color_mode = ColorMode.LAB`, `header.channels = 3`, the composite planes set with `image_data.set_data`, and written with `psd._record.write(out)` (`psd.save` redraws the composite as RGB). Bytes as Photoshop stores them: L 0..255 for 0..100, a and b 0..255 with 128 neutral. Nothing replaced.
+- Checked: written through `api.encodeLabPsd` and read back with `api.decodeLab`: header `8BPS`, colour mode 9, layer position and size kept, a pixel back as L 100, a 150, b 90, a transparent pixel at alpha 0.
+- Version lines removed, the desktop shell's quoted too:
+
+```text
+__version__ = "1.71.7"
+version = "1.71.7"
+version = "1.71.7"
+ "version": "1.71.7",
+```
+
 ## Camera Raw white balance and preview, DEV_PLAN 36.21 · _v1.71.7 (services/imaging.py, routers/io.py, __init__.py)
 
 - `imaging.py`, `_wb_kwargs` (new): as shot with no adjustment returns `{"use_camera_wb": True}`, as before; otherwise rawpy `user_wb` multipliers from as shot, daylight or a gray-world average (auto), times Temperature (2^(0.8 t/100) on red, its inverse on blue) and Tint (2^(-0.5 t/100) on green).

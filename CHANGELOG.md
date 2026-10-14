@@ -4,6 +4,21 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.71.8 · 2026-10-14
+
+### Added
+
+- Quick Shape for the Brush, Pencil and Eraser: hold still at the end of a stroke and a line, ellipse or rectangle snaps to the clean shape.
+- Edit > Compare with...: a new document with both pictures, a Differences layer and the differing regions selected and counted.
+- Window > Reference: reference images beside your work, kept for the session.
+- Lab documents save as Lab PSD (8 bits).
+- The Remove tool fills holes in smooth areas with a fast diffusion fill.
+
+### Changed
+
+- README, the manual and the wiki describe the work of Phases 29 to 36; a Languages page in the wiki.
+- Preferences > Language says what it now does: the whole interface.
+
 ## 1.71.7 · 2026-10-14
 
 ### Added

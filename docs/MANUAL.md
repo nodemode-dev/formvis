@@ -9,6 +9,11 @@ ask it questions.
 - New document: File > New sets the size, resolution, colour mode (RGB, Grayscale or Bitmap) and background.
 - Open: File > Open Project opens formvis projects (.fmv), Photoshop files (.psd, .psb), OpenRaster files (.ora) and
   images (PNG, JPEG, WebP, AVIF, GIF, TIFF, HEIC, QOI, TGA, ICO, PBM, PGM, PPM, PAM, camera raw and more). Dropping files on the window opens them too.
+- Opening one camera RAW (DNG, CR2, CR3, NEF, ARW and the rest) shows Camera Raw first: a half-size preview,
+  White Balance (As Shot, Auto or Daylight), Temperature and Tint, applied in the RAW decode, and 8 or 16 bits per
+  channel. Auto is a gray-world average, not the camera's own. The curve, mixer, grading, lens and geometry controls
+  stay in Filter > Develop, which runs after an 8-bit open. Develop settings are not stored on the layer, so there is
+  no Camera Raw Filter to reopen, and when you open several RAW files at once they open with the defaults.
 - A picture larger than formvis edits in one piece (over 30,000 pixels a side or 100 megapixels, up to 65,535 a
   side) opens as a reduced copy that fits, a region at full size, or tiles at full size, each tile its own document.
   File > Export > Assemble Tiles puts the edited tiles back together as one full-size PNG, written by the engine a
@@ -31,6 +36,22 @@ ask it questions.
 - Panels (Layers, Properties, History, Brushes, Swatches, Paths, Navigator and more) dock in columns on the right.
   Drag a tab to move it, into another group or into a new one; Window lists every panel. Window > Reset Panels puts
   them back.
+- Hidden panels are in the Window menu: Clone Source, Adjustments, Notes and Histogram are docked but hidden until
+  you open them; Gradients, Patterns and Shapes hold preset tiles that pick the Gradient tool's gradient, the Pattern
+  Stamp's pattern or the Shape tool's custom shape in one click; Styles, Character Styles, Layer Comps, Measurement
+  Log and Modifier Keys are there too. Glyphs and Tool Presets are dialogs, not panels.
+- Edit > Toolbar arranges the tool rail: drag a tool to another group, or into Extra Tools to tuck it away, and drag
+  groups to reorder them. Restore Defaults puts the standard layout back and Clear Tools empties every group into
+  Extra Tools. The layout is saved in the preferences, so it survives a restart; an older hidden-rail setting is
+  dropped, not carried over.
+- Window > Arrange chooses how open documents show. Consolidate All to Tabs is the normal view. 2-up Vertical and
+  Horizontal, 3-up, 4-up and 6-up tile the documents, the current one live and the others as read-only views;
+  Tile All Vertically and Horizontally fill the area, and Match Zoom, Location, Rotation or All copy the current
+  view to the rest. Drag the gutter between tiles to resize them. New Window for Document opens a second view of the
+  same project, Float in Window puts a view in a frame you can move and resize, and Float All in Windows does that for
+  every document; Consolidate All to Tabs closes the frames again. Limits: a second view or a floating frame pans,
+  zooms and rotates but takes no tool input (paint in the main view); Float keeps the document's tab; extra views and
+  tile sizes are not saved with the project. Cascade and Tile are not built.
 - Workspaces arrange the panels for a kind of work, and the lock keeps an arrangement from being changed by accident.
 - Preferences (Edit > Preferences, Ctrl+comma) has Photoshop's sections: General, Interface, Performance, Workspace, Tools, History
   & Cache, File Handling, Cursors, Transparency & Gamut, Units & Rulers, Guides & Grid, and Plugins.
@@ -112,6 +133,12 @@ ask it questions.
 - Tools and commands work where Photoshop's do: painting an adjustment layer paints its mask, as does painting a fill
   layer while its mask is the target; a text or shape layer, or a fill layer's own content, asks to be rasterized
   first.
+- The Artboard tool (V cycles it with Move) makes artboards, folders that clip their contents to a size. Drag on
+  empty canvas to make one; drag its handles to resize it and drag inside it to move it with its contents; the "+" beside
+  it adds another. The options bar has size presets. In the Layers panel an artboard folder shows its own icon and size.
+  PSD files keep artboards both ways. Limits: an artboard cannot be grown to the left or up, Shift and Alt do nothing
+  while resizing, the contents jump to the new place when you release a move, and only artboards at the top level of a
+  PSD are read.
 
 ## Selecting
 
@@ -155,6 +182,16 @@ ask it questions.
   formvis holds of what this computer allows it; work that would not fit is refused with a message, not lost.
 - Clone Stamp (Sample: Current Layer, Current & Below or All Layers; Mode; Flow), Healing Brush, Spot Healing, Patch,
   Content-Aware Move and Red Eye.
+- Window > Clone Source keeps five sources for the Clone Stamp and the Healing Brush. Pick a slot to
+  make it the current source; each of the five slots remembers its own position, scale, angle and flips (Reset Transform clears them). The
+  overlay shows the source on the canvas as you paint: Show, Opacity, Clipped (only inside the brush) and Auto Hide
+  (hidden while you paint).
+- Edit > Content-Aware Fill shows a dialog with Sampling Area, Show Result and Output To, and four adaptation
+  controls that all start off: Color Adaptation (None, Default, High, Very High), Rotation Adaptation (None to Full),
+  Scale and Mirror. With them off the fill is as fast as before. Colour adaptation makes the search about 8 times
+  slower and the rotation and scale options about 20 times slower with colour, so use them on small holes. Transformed
+  patches are sampled to the nearest pixel. The adaptation options are in the dialog only, not on the quick
+  command or the agents' tools.
 - Dodge and Burn (Range, Exposure, Protect Tones) and Sponge (Saturate or Desaturate, Flow, Vibrance).
 - Blur and Sharpen (Mode and Sample All Layers; Sharpen's Protect Detail) and Smudge (Sample All Layers, Finger
   Painting), in the Smear tool with Liquify.
@@ -166,6 +203,19 @@ ask it questions.
   to make a perspective plane, and drag them to fit. Paste puts another layer on the plane in perspective (drag it
   along; Paste size sets how much of the plane it covers); Stamp clones in perspective (Alt-click a source, then
   paint). OK applies it as one step.
+- The Gradient Editor (click the gradient in the Gradient tool's options) has opacity stops above the bar and colour
+  stops below it, each with a draggable midpoint between neighbours. Photoshop `.grd` files keep the midpoints and the
+  opacity stops both ways. Limit: a Gradient Fill layer and the stops read from a PSD fill layer keep their dense list
+  of stops, without editable midpoints.
+- Quick Shape (on by default for the Brush, Pencil and Eraser): end a stroke by holding still with the button down
+  for about half a second, and a stroke that resembles a straight line, an ellipse or an upright rectangle is redrawn
+  as that shape with the same brush, in the same undo step.
+- Edit > Compare with... takes another document in your tabs and makes a new one holding both images and a
+  Differences layer in Difference mode, with the regions that differ by more than the Threshold selected and counted.
+- Window > Reference keeps reference images beside your work: Add or drop images, click one to see it bigger, scroll
+  to zoom and drag to pan. They are kept for this session only.
+- The History panel has a source column: mark a step in it and Edit > Fill with History paints from that step instead
+  of the oldest; marking the oldest again clears it. This marker is separate from the History Brush's snapshot source.
 
 ## Brushes
 
@@ -389,6 +439,9 @@ ask it questions.
   Color, Bitmap, CMYK and Lab bring the document down first (HDR Toning asks how); Grayscale keeps 32 bits, taking
   each pixel's luminance in linear light. Every adjustment layer works at 32 bits: it changes a pixel's colour as it
   shows within the visible range, and light above white keeps its brightness.
+- A multi-part OpenEXR file opens as a 32-bit document with one layer per part, named after the part. Limits: deep
+  parts are not handled, and a file with more than 64 parts opens its first part only. The OpenEXR library runs in a
+  contained child process of the engine.
 
 ## 16-bit documents
 
@@ -404,7 +457,17 @@ ask it questions.
 
 - File > Export As chooses the format (PNG, JPEG, WebP, AVIF, TIFF, DPX, QOI, PNM, TGA, ICO, PDF), quality, colour profile and size: a Scale in
   percent, Fit Within a width and height, or a Frame of exactly that size with the picture centred. Settings can be
-  saved as presets.
+  saved as presets. Export As also has a Canvas Size, a Metadata choice (Document File Info, None, or Copyright and
+  Contact Info) and Sizes: tick several scales or sizes, each with a file name suffix, and one Export writes them all.
+  Limits: Copyright and Contact Info puts the contact text in the creator field, not an IPTC contact block; AVIF, PDF,
+  DPX, QOI, PNM, TGA and ICO carry no metadata; the notes the dialog assembles are in English in every language.
+- File > Export > Save for Web (Legacy) compares the picture as it will be saved. 2-Up and 4-Up show the original and
+  up to three variants side by side, each with its format settings, file size and download time; click a view to
+  choose it. The PNG-8 format is a true 8-bit indexed PNG with a choice of colours, dither and transparency. Metadata runs from None to All, written as XMP. Cut the picture into slices first (Slice tool, C;
+  Slice Select moves one, View > Show > Slice Options sets a name, URL, alt text and exact bounds) and each slice is
+  saved as its own file. Limits: no pattern or noise dither and no web snap; the preview is a 100 percent crop, not a
+  fit; the captions are in English. Image Assets on Save, in File > Export, regenerates the assets named by layers
+  (a layer named "logo.png" or "icon.jpg" becomes that file) each time the document is saved.
 - AI label: Made with AI or Edited with AI writes the standard machine-readable marking of AI content (IPTC's Digital
   Source Type) into PNG, JPEG and WebP. AVIF, TIFF and PDF do not carry it yet.
 - DPX (the film scan format) opens like any picture and exports from File > Export As with a bit depth of 8, 10, 12
@@ -447,7 +510,9 @@ ask it questions.
 ## The assistant and outside agents
 
 - Window > Assistant is a chat beside the canvas that edits the open document: add and change layers, select, fill,
-  add adjustments, place images, undo, and generate. Each action shows as a card. Undo This Turn takes back everything
+  add adjustments, place images, undo, and generate. Each command it runs is its own row with its status and an Undo
+  for that step; Plan first shows a numbered plan, which you run or cancel before anything changes. The model is told
+  to use formvis's own commands, and the row names come from the command labels. Undo This Turn takes back everything
   since your last message. It uses the language model set in Preferences > Plugins; a local model needs to support
   tool calling.
 - Outside agents (Claude Code, Codex, Cursor): ask them in plain language to edit what is open in formvis. In the
@@ -499,6 +564,16 @@ ask it questions.
   `run_commands`; a list of commands is a single undo step.
 - `./formvis counts --commands` prints how many commands the catalogue holds and any that lack a description.
 
+## Script Console
+
+- Window > Script Console opens a log and a box to type JavaScript in. Enter runs it, Shift+Enter adds a line, and
+  Up and Down walk earlier lines. The text runs as the body of an async function, so `await` works. In scope are
+  `formvis.run(id, args)`, which runs a command from the catalogue; `formvis.commands()`, the list of commands;
+  `formvis.api`, the plugin API (the same reach as a plugin: formvis's tools, each change undoable); and
+  `formvis.log(...)`, which writes a line to the console's log.
+- It has no wider reach than a plugin: it cannot read your keys or files. It is refused while an outside agent's
+  request is being worked on, though a connected agent that is idle is not detected.
+
 ## Plugins
 
 - Plugins > Manage Plugins adds a plugin (a JavaScript file), turns plugins on and off, and removes them. Their
@@ -510,6 +585,22 @@ ask it questions.
   `await formvis.call(tool, args)` uses a tool (the same ones as the assistant: get_document, select, add_layer, fill
   and the rest); `await formvis.getPixels()` gives the active layer at the document's size as `{ width, height, data }`;
   `await formvis.putPixels(image, 'replace')` puts pixels back into that layer, or with `'new-layer'` into a new one.
+
+## Interface languages
+
+- Preferences > Language chooses the interface language from 26: English (the default), Spanish, Mexican Spanish,
+  Brazilian Portuguese, French, Canadian French, German, Italian, Dutch, Danish, Finnish, Norwegian Bokmål, Swedish,
+  Russian, Polish, Czech, Hungarian, Ukrainian, Turkish, Simplified and Traditional Chinese, Japanese, Korean,
+  Indonesian, Thai and Vietnamese. Each is named in its own language in the list.
+- The interface switches in place, with no restart, and the saved choice is used from the next start before anything
+  shows. Menus, panel names, dialog titles, buttons and fields, tool names, options bar labels, tooltips, the status
+  bar, filter and adjustment names and Preferences sections are translated.
+- Your own words are never translated: layer, document, channel, path, preset, style and comp names, text in type
+  layers and anything you type into a field stay as you wrote them.
+- A string that has no translation yet shows in English; Mexican Spanish and Canadian French change only the words that
+  differ and use Spanish and French for the rest. Spelling check (Layer > Type) follows the language only for
+  English, Spanish and Italian.
+- The manual, the Help window's search and the assistant's replies stay in English.
 
 ## Keyboard shortcuts
 

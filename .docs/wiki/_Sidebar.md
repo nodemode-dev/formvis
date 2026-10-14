@@ -9,6 +9,7 @@
 - [Terminal](Terminal)
 - [Agents](Agents)
 - [UI Shell](UI-Shell)
+- [Languages](Languages)
 - [Engine Service](Engine-Service)
 - [Project Format](Project-Format)
 - [Desktop](Desktop)
