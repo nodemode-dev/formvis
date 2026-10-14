@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (925 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (930 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -14,7 +14,7 @@ Generated from the window's command catalogue (925 commands) by `./formvis agent
 - Select: 28
 - Tool options: 226
 - Tools: 49
-- Type: 17
+- Type: 22
 - View: 40
 - Window: 61
 
@@ -932,6 +932,11 @@ Generated from the window's command catalogue (925 commands) by `./formvis agent
 | `convert-point-text` | Convert to Point Text |  | Turns the active paragraph text into point text with no box. (changes the picture) |
 | `edit-text` | Edit Type... |  | Opens the text of the active type layer for editing. (changes the picture) |
 | `find-replace-text` | Find and Replace Text... |  | Finds text in type layers and replaces it, with case and whole word options. (changes the picture) |
+| `font-preview-extra` | Extra Large |  | Draws each family in the font menus in its own face, extra large. |
+| `font-preview-large` | Large |  | Draws each family in the font menus in its own face, large. |
+| `font-preview-medium` | Medium |  | Draws each family in the font menus in its own face, medium (the default). |
+| `font-preview-none` | None |  | Shows the font menus plainly, each family in the interface font. |
+| `font-preview-small` | Small |  | Draws each family in the font menus in its own face, small. |
 | `paragraph-styles` | Paragraph Styles... |  | Opens Paragraph Styles. |
 | `paste-lorem-ipsum` | Paste Lorem Ipsum |  | Appends a Lorem Ipsum paragraph to the active type layer. (changes the picture) |
 | `resolve-missing-fonts` | Resolve Missing Fonts... |  | Lists the fonts type layers use that are not installed and replaces each with an installed family. (changes the picture) |

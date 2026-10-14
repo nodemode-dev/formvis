@@ -117,7 +117,7 @@ import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, is
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
-import { CHECKER_CELL, CHECKER_PAIR, applyPrefs, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
+import { CHECKER_CELL, CHECKER_PAIR, FONT_PREVIEWS, applyPrefs, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
 import { GpuDisplay, type ScreenDisplay } from './gpu/display';
@@ -2785,6 +2785,7 @@ export function startApp(): void {
     { id: 'resolve-missing-fonts', label: 'Resolve Missing Fonts...', enabled: has, run: () => { if (!dialogs.missingFonts.show()) toast('No missing fonts in the type layers.', 'info'); } },
     { id: 'type-work-path', label: 'Create Work Path', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { engine.typeToWorkPath(); } },
     { id: 'type-to-shape', label: 'Convert to Shape', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { engine.typeToShape(); } },
+    ...FONT_PREVIEWS.map((v) => ({ id: `font-preview-${v}`, label: v === 'none' ? 'None' : v === 'extra' ? 'Extra Large' : v[0].toUpperCase() + v.slice(1), checked: () => loadPrefs().fontPreview === v, run: () => { updatePrefs({ fontPreview: v }); engine.emit('options', null); } })),   // Type > Font Preview Size (36.31)
     { id: 'update-all-text', label: 'Update All Text Layers', enabled: has, run: async () => { const n = await engine.updateAllTextLayers(); toast(`Updated ${n} text layer${n === 1 ? '' : 's'}.`, 'info'); } },
     { id: 'type-features', label: 'OpenType Features', enabled: () => engine.liveText(engine.current?.activeLayer), params: { features: { type: 'string', description: 'Comma list of OpenType tags to turn on (liga, dlig, calt, salt, swsh, onum, titl, ornm, ordn, frac, smcp); -liga or -calt turns that default feature off; empty clears them.' } },
       run: async (a) => {
@@ -3064,7 +3065,7 @@ export function startApp(): void {
       { label: '3D', items: ['extrude-3d', 'place-3d', '-', 'panorama-view', 'panorama-apply-view'] },
       { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
-      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
+      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', '-', { label: 'Font Preview Size', items: FONT_PREVIEWS.map((v) => `font-preview-${v}`) }, '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] },
       { label: 'Vector Mask', items: ['vmask-reveal-all', 'vmask-hide-all', 'vmask-current-path', 'vmask-delete', '-', 'vmask-enable', 'vmask-link'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
