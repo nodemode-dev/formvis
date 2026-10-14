@@ -2,6 +2,115 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.71.4: Clone Source panel, gradient opacity stops and midpoints, history source, Export As · _v1.71.4 (ui/clone-source-panel.ts, ui/i18n/extra/*.ts)
+
+- `ui/clone-source-panel.ts`: the head icon was `icon('layers', 14)`, now `icon('tStamp', 14)`, the Clone Stamp tool's own icon. Replaced: `${icon('layers', 14)}<span>Clone Source</span>`.
+- `ui/i18n/extra/*.ts`: 36 keys in all 23 tables (315 each): the Clone Source panel, the Gradient Editor's midpoint and stop colour, the History panel's source marker, and the Export As canvas, metadata and size rows. Not keyed: Export As notes assembled from pieces ("Written as an XMP packet in the file.", the creator note, "{N} files, first"), which stay English.
+- Checked in the window: the Clone Source panel shows slot 3 at (7, 9) after Alt-click equivalents and reads in German; a History fill from the third row after red then blue fills paints red; `sampleStops` with a 25 % midpoint puts 50 % grey at 0.25; Export As shows the canvas, metadata and size rows in German.
+
+## Clone Source panel, DEV_PLAN 36.3 · _v1.71.4 (ui/clone-source-panel.ts, engine/index.ts, ui/more-panels.ts, ui/dock.ts, automation/command-meta.ts, styles/shell.css)
+
+- `ui/clone-source-panel.ts` (new): `createCloneSourcePanel(root, engine)` builds the docked Clone Source panel once (five source buttons with aria-pressed and an is-empty mark, read-only X and Y, Scale, Angle, Flip Horizontal, Flip Vertical, Reset Transform, Show Overlay, Opacity, Clipped, Auto Hide) and patches values in place on the engine's 'options' and 'overlay' events; inputs with focus are not overwritten.
+- `engine/index.ts`, `Engine.setCloneOverlay(patch)` (new, before `resetCloneTransform`): assigns into `cloneOverlay` and emits 'overlay' and 'options'.
+- `ui/more-panels.ts`: import, and `createMorePanels` also calls `createCloneSourcePanel(root, engine)`.
+- `ui/dock.ts`: `DOCK_PANELS` gains `clone-source`; `DEFAULT.hidden` gains `'clone-source'`. The Window menu's `panel-clone-source` follows from `DOCK_PANELS`.
+- `automation/command-meta.ts`: words for `panel-clone-source`.
+- `styles/shell.css`: `.cv-clone-slots`, `.cv-clone-slot`, `.cv-clone-pos`, `.cv-clone-rows`, `.cv-clone-overlay` after `.cv-btn-ghost`.
+- No code was replaced.
+
+## Gradient opacity stops, midpoints and the history source, DEV_PLAN 36.28 · _v1.71.4 (engine/gradients.ts, io/grd.ts, engine/history.ts, engine/index.ts, ui/history.ts, ui/panels/gradient-editor.ts, styles/dialogs.css)
+
+- `engine/gradients.ts`, `GradientStop` / `GradientPreset`: optional `mid` on a stop (the midpoint after it, 0.05 to 0.95), the `OpacityStop` type and optional `GradientPreset.opacityStops`; `clampMid` and `midCurve` (t' = t ^ (log 0.5 / log m)). Replaced:
+
+```ts
+export interface GradientStop { at: number; color: RGB | 'fg' | 'bg'; alpha: number }
+export interface GradientPreset { id: string; label: string; stops: GradientStop[] }
+```
+
+- `engine/gradients.ts`, new `sampleStops(preset, fg, bg)`: folds colour stops, opacity stops and midpoints into the dense stop list (11 interior points in a gap with an off-centre midpoint); plain presets map straight across. `resolveStops` starts from it, so the Gradient tool, Gradient Fill dialog, previews and Gradient Map presets need no change. Replaced:
+
+```ts
+  const out = preset.stops.map((s) => ({ at: Math.min(1, Math.max(0, s.at)), rgb: s.color === 'fg' ? fg : s.color === 'bg' ? bg : s.color, alpha: s.alpha }));
+```
+
+- `engine/gradients.ts`, `gradientsFromJson`: reads `mid` and `opacityStops`, clamped. Replaced:
+
+```ts
+return color ? [{ at: n(q.at, 0, 1, 0), color, alpha: n(q.alpha, 0, 1, 1) } as GradientStop] : [];
+return stops.length >= 2 ? [{ id: o.id, label: o.label.trim().slice(0, 60), stops }] : [];
+```
+
+- `io/grd.ts`: `ColStop` / `TrnStop` gain `mid`; `gradientFrom` reads `Mdpn` on both and, when any midpoint is off 50, returns colour stops plus `opacityStops` (otherwise the old dense merge). `writeGrd` writes `Mdpn` from `mid` and `Trns` from `opacityStops` when present. Replaced (the second `Mdpn` line in the Trns loop as well):
+
+```ts
+  s.long('Lctn', loc); s.long('Mdpn', 50);
+  s.key('Trns', 'VlLs'); s.u32(stops.length);
+  for (const st of stops) {
+```
+
+- `engine/history.ts`, `History.origin(from = 0)`: from a history row index (the state after k steps). Replaced:
+
+```ts
+return { first: this.past[0]?.before ?? null, patches: this.past.flatMap((e) => e.patches) };
+```
+
+- `engine/index.ts`: `historySourceIndex: number | null` and `setHistorySourceIndex(i)` (emits 'history'); `historySource` calls `p.history.origin(this.historySourceIndex ?? 0)`. Replaced `p.history.origin()`. The History Brush keeps its own snapshot source (`historyBrushSource`).
+- `ui/history.ts`, `HistoryPanel`: step rows get a `.cv-hs-source` button (aria-label "Set history source"), marked `is-on` in `fill`; clicking row 0 or the chosen row again clears the choice. Reuses the `.cv-hb-source` styles.
+- `ui/panels/gradient-editor.ts`, `GradientEditor`: an opacity strip above the bar, midpoint diamonds on both strips, a Midpoint location row; `pick` replaces `sel`; `cur`, `resort`, `asPreset`, `removeStop()` (one stop of each kind kept), `bindStrip(strip, opacity)`; `edited` saves colour stops (alpha the opacity there), `opacityStops` and `mid`. Old `sorted()`, `bindStrip()` and `removeStop(i)` removed. The bar draws from `sampleStops`.
+- `styles/dialogs.css`, `.cv-grad-strip` 18px became 26px for the diamonds. Replaced:
+
+```css
+.cv-grad-strip { height: 18px; cursor: pointer; touch-action: none; }
+```
+
+## Export As: canvas size, metadata, sizes, DEV_PLAN 36.29 · _v1.71.4 (io/export-presets.ts, ui/panels/export-dialog.ts, app.ts)
+
+Colour conversion already existed (the profile, intent, BPC and embed rows); Convert to sRGB is the Colour profile row set to sRGB, so no checkbox was added. Frame already centred a fitted picture in a box; the new Canvas size is separate and applies after any Size mode.
+
+- `io/export-presets.ts`, `ExportSettings`: optional `canvas`, `canvasW`, `canvasH`, `metadata`, `copyrightText`, `contactText`, `sizes`. Replaced:
+
+```ts
+option?: string; icoSizes?: number[] }
+export interface ExportPreset
+```
+
+- `io/export-presets.ts`, `clampSettings`: replaced tail:
+
+```ts
+  ...(s.format === 'ico' ? { icoSizes: icoSizesOf(s.icoSizes) } : {}),
+});
+```
+
+- `io/export-presets.ts`, `exportLayout` split into `exportLayout` (adds the canvas) and `sizeLayout` (the old body). Replaced:
+
+```ts
+  if (s.size !== 'fit' && s.size !== 'frame') { const z = exportSize(w, h, s.scale); return { ...z, dx: 0, dy: 0, dw: z.w, dh: z.h }; }
+  const W = box(s.boxW), H = box(s.boxH), k = Math.min(W / w, H / h), dw = Math.max(1, Math.round(w * k)), dh = Math.max(1, Math.round(h * k));
+  return s.size === 'fit' ? { w: dw, h: dh, dx: 0, dy: 0, dw, dh } : { w: W, h: H, dx: Math.floor((W - dw) / 2), dy: Math.floor((H - dh) / 2), dw, dh };
+}
+```
+
+- `io/export-presets.ts`, `presetsFromStorage`: `icoSizes: Array.isArray(o.icoSizes) ? o.icoSizes.map(Number) : undefined });` now also reads the new fields.
+- `io/export-presets.ts`, `exportName` takes an optional `sizeSuffix`. Replaced:
+
+```ts
+export function exportName(docName: string, s: ExportSettings): string {
+  const suffix = s.scale === 100 ? '' : `@${Number((s.scale / 100).toFixed(2))}x`;
+```
+
+  New: `ExportSize`, `MAX_EXPORT_SIZES`, `defaultSuffix`, `sizedSettings`, `exportMeta`, `XMP_FORMATS`.
+- `app.ts`, `exportAs` loops `sizedSettings(all)` and calls the new `exportAsOne(s, suffix)`; the deliver line uses `exportMeta(s, p.doc.meta)` and `exportName(p.name, s, suffix)`; DPX and PNM size toasts also fire for a canvas. Replaced:
+
+```ts
+  async function exportAs(s: ExportSettings): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+        await deliver(metaWritable(p.doc.meta) ? await withXmp(blob, s.format, p.doc.meta, new Date(), ai) : ai ? await withAiLabel(blob, s.format, ai) : blob, exportName(p.name, s));
+```
+
+- `ui/panels/export-dialog.ts`, `ExportDialog`: canvasRow and canvasBox, metaRow, copyrightField, contactField, metaNote, sizesHead, sizesList, addSizeBtn, `sizeRowNode`; `sync` patches them in place (disabled, never hidden; size rows added or removed only when the count changes); `store` keeps the new fields. Contact text is written as `dc:creator`, copyright as `dc:rights`.
+
 ## Release 1.71.3: run-time strings, Edit > Toolbar, three panels · _v1.71.3 (ui/i18n.ts, styles/shell.css, ui/more-panels.ts, ui/i18n/extra/*.ts)
 
 - `ui/i18n.ts`: a third loader map, `EXTRA` (`ui/i18n/extra/<code>.ts`, 279 keys each), loaded beside `LOADERS` and `MORE`; `load` merges `{ ...c, ...b, ...a }` so part a still wins. Replaced:

@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.71.4
+
+No engine code changed in 1.71.4 (Export As metadata reuses the window's XMP writer). Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "1.71.3"
+version = "1.71.3"
+version = "1.71.3"
+ "version": "1.71.3",
+```
+
 ## Version only · _v1.71.3
 
 No engine code changed in 1.71.3. Removed version lines, the desktop shell's quoted too:

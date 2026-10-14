@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.71.4 · 2026-10-14
+
+### Added
+
+- Clone Source panel: five sources, each with its own position, scale, angle and flips, and the overlay's Show, Opacity, Clipped and Auto Hide.
+- Gradient Editor: separate opacity stops above the bar and colour stops below, with draggable midpoints on both; .grd files keep their midpoints and opacity stops both ways.
+- History panel: a source marker on each step, so Fill with History paints from the chosen step instead of the oldest.
+- Export As: a canvas size, a metadata choice (Document File Info, None, or Copyright and Contact Info) and several sizes at once with file name suffixes.
+
 ## 1.71.3 · 2026-10-14
 
 ### Added
