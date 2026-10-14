@@ -191,6 +191,7 @@ import { slotTool, toolGroups } from './ui/tool-groups';
 import { Stage } from './ui/stage';
 import { StatusBar } from './ui/status';
 import { Tabs } from './ui/tabs';
+import { ViewTiles, type ArrangeLayout } from './ui/view-tiles';
 import { toast } from './ui/toast';
 
 /** Each tab's own group, where Reset Panels returns it. */
@@ -335,6 +336,7 @@ export function startApp(): void {
   applyRail();
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
+  const viewTiles = new ViewTiles(q(root, '.cv-stage-col'), engine);   // Window > Arrange (the Stage's own ResizeObserver refits it)
   // Preferences the interface draws with (the engine's are applyPrefs'): the stage's checkerboard, wheel, rulers, grid
   // and guides, and the side column's narrow-window icons.
   const applyUiPrefs = (pr: Prefs): void => {
@@ -2712,6 +2714,12 @@ export function startApp(): void {
     { id: 'type-on-path', label: 'Type on Path...', enabled: () => !!engine.workPath?.subpaths.some((s) => s.anchors.length > 1), run: () => dialogs.typeOnPath.show() },
     { id: 'type-on-arc', label: 'Type on Arc...', enabled: has, params: TYPE_SHAPE_PARAMS_ARC, run: (a) => typeOnShapeRun('arc', a) },
     { id: 'type-on-circle', label: 'Type on Circle...', enabled: has, params: TYPE_SHAPE_PARAMS_CIRCLE, run: (a) => typeOnShapeRun('circle', a) },
+    ...([
+      ['arrange-tabs', 'Consolidate All to Tabs', 'tabs'], ['arrange-2up-v', '2-up Vertical', '2up-v'], ['arrange-2up-h', '2-up Horizontal', '2up-h'],
+      ['arrange-3up', '3-up', '3up'], ['arrange-4up', '4-up', '4up'], ['arrange-6up', '6-up', '6up'],
+    ] as const satisfies readonly (readonly [string, string, ArrangeLayout])[]).map(([id, label, layout]) => ({
+      id, label, checked: () => viewTiles.layout === layout, enabled: () => layout === 'tabs' || engine.projects.length > 1, run: () => viewTiles.setLayout(layout),
+    })),
     { id: 'match-zoom', label: 'Match Zoom', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ zoom: true }) },
     { id: 'match-location', label: 'Match Location', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ location: true }) },
     { id: 'match-rotation', label: 'Match Rotation', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ rotation: true }) },
@@ -2896,6 +2904,8 @@ export function startApp(): void {
     {
       id: 'calculations', label: 'Calculations...', enabled: has,
       params: {
+        source1_doc: { type: 'string', description: 'Source 1 document (name) of the same pixel size as the current one; the current document when left out.' },
+        source2_doc: { type: 'string', description: 'Source 2 document (name) of the same pixel size as the current one; the current document when left out.' },
         source1_layer: { type: 'string', description: 'Source 1 layer (id or name), or Merged; Merged when left out.' },
         source1_channel: { type: 'string', description: 'Source 1 channel: gray, red, green, blue, transparency, or an alpha channel (id or name); gray when left out.' },
         source1_invert: { type: 'boolean', description: 'Invert Source 1.' },
@@ -2913,9 +2923,10 @@ export function startApp(): void {
         if (!a || !Object.keys(a).length) { dialogs.calculations.show(); return undefined; }
         const text = (k: string): string | undefined => (a[k] === undefined ? undefined : String(a[k]));
         const num = (k: string): number | undefined => (a[k] === undefined ? undefined : Number(a[k]));
+        const docId = (name: string | undefined): string | undefined => (name ? engine.projects.find((q) => q.doc.id === name || q.name === name)?.doc.id : undefined);
         const r = engine.calculations({
-          source1: { layer: text('source1_layer'), channel: text('source1_channel'), invert: a.source1_invert === true },
-          source2: { layer: text('source2_layer'), channel: text('source2_channel'), invert: a.source2_invert === true },
+          source1: { doc: docId(text('source1_doc')), layer: text('source1_layer'), channel: text('source1_channel'), invert: a.source1_invert === true },
+          source2: { doc: docId(text('source2_doc')), layer: text('source2_layer'), channel: text('source2_channel'), invert: a.source2_invert === true },
           mode: text('mode') as CalcMode | undefined, opacity: num('opacity') === undefined ? undefined : num('opacity')! / 100, scale: num('scale'), offset: num('offset'),
           mask: text('mask_channel'), result: text('result') as 'channel' | 'document' | 'selection' | undefined,
         });
@@ -2989,7 +3000,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['arrange-tabs', 'arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);

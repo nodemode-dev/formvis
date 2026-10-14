@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (884 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (890 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -16,7 +16,7 @@ Generated from the window's command catalogue (884 commands) by `./formvis agent
 - Tools: 49
 - Type: 11
 - View: 33
-- Window: 49
+- Window: 55
 
 ## Edit
 
@@ -969,6 +969,12 @@ Generated from the window's command catalogue (884 commands) by `./formvis agent
 | `actions` | Actions... |  | Opens the Actions panel to record and play steps. |
 | `agent.claude.open` | Claude Code |  | Shows or hides the Claude Code panel. |
 | `agent.connect.open` | Agent Connect |  | Shows or hides Agent Connect: which outside agents may act, their policy, approvals and activity. |
+| `arrange-2up-h` | 2-up Horizontal |  | Shows the active document and one other stacked top and bottom; the other is a read-only view tile. |
+| `arrange-2up-v` | 2-up Vertical |  | Shows the active document and one other side by side; the other is a read-only view tile. |
+| `arrange-3up` | 3-up |  | Shows the active document with two others as read-only view tiles. |
+| `arrange-4up` | 4-up |  | Shows the active document with three others as read-only view tiles. |
+| `arrange-6up` | 6-up |  | Shows the active document with five others as read-only view tiles. |
+| `arrange-tabs` | Consolidate All to Tabs |  | Returns every open document to the tab strip, one at a time on the Stage. |
 | `assistant` | Assistant |  | Shows or hides the Assistant panel. |
 | `benchmark` | Performance Benchmark... |  | Opens the performance benchmark. |
 | `brush-settings` | Brush Settings... | F5 | Opens Brush Settings. |
