@@ -2,6 +2,21 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.4 · _v1.68.4
+
+Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.68.3"
+version = "1.68.3"
+version = "1.68.3"
+ "version": "1.68.3",
+```
+
+## Crop and Straighten Photos, DEV_PLAN 30.3 part b · _v1.68.4 (app/routers/merge.py)
+
+Files: `app/routers/merge.py` (`crop_photos`, `POST /api/merge/photos`: background from the border median, colour-distance mask, close/open/erode, external contours above 1 percent, `minAreaRect` folded to -45..45, `getPerspectiveTransform` + `warpPerspective`; JSON `photos` of base64 PNG with `rect`). Nothing removed. Checked with TestClient on a 600 by 400 canvas, photos 200x140 at 8 degrees and 180x220 at -12: results 202x142 and 181x222.
+
 ## Release 1.68.3 · _v1.68.3
 
 Engine tests: 108 passed, the seven known model and EXR cases failing. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

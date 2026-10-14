@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.4 · 2026-10-14
+
+### Added
+
+- File > Scripts > Image Processor: saves chosen files or the open images as JPEG, PSD and TIFF at a maximum size, optionally after an action and with a copyright notice.
+- File > Automate > Contact Sheet II: thumbnails of chosen files in a grid on new pages, with file-name captions.
+- File > Automate > Crop and Straighten Photos: finds each photo on a scan, straightens it and opens it as its own document.
+
 ## 1.68.3 · 2026-10-14
 
 ### Added

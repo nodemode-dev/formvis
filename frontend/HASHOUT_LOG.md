@@ -2,6 +2,29 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.4: Image Processor, Contact Sheet II, Crop and Straighten Photos · _v1.68.4
+
+Joined and checked: tsc clean; unit 194 of 194; a probe in Chromium: a 600 by 400 scan with two photos drawn at 8 and -12 degrees opened two new documents of 182 by 221 and 202 by 142 (drawn 180 by 220 and 200 by 140); Image Processor through its parameters on three open images gave one zip with JPEG/ and TIFF/ holding six files; the Contact Sheet II dialog 400 by 725 before and after toggling every checkbox; no page errors. Fixed at the join: Image Processor's desktop folders were nested (`Image Processor/JPEG`), which the export route's one-name folder rule refuses, now `Image Processor JPEG`; its Scripts menu entry and command words. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.3",
+      "version": "1.68.3",
+  "version": "1.68.3",
+export const VERSION = '1.68.3';
+```
+
+## Image Processor, DEV_PLAN 30.2 · _v1.68.4 (ui/panels/image-processor-dialog.ts new, app.ts, automation/command-meta.ts)
+
+File > Scripts > Image Processor...: chosen files or the open images (flattened copies, the documents untouched) to JPEG (quality 0 to 12, Resize to Fit, sRGB profile embedded), PSD and TIFF, each re-opened per type, an optional action played and a copyright notice written to File Info, each type in its own folder of one zip in the browser or a folder per type in the engine's exports on the desktop; agent parameters types, quality, max_w, max_h, action and copyright. Not yet: an LZW switch wired to the TIFF encoder, pixel conversion to sRGB from another profile, layered PSD output from open documents.
+
+## Contact Sheet II, DEV_PLAN 30.3 part a · _v1.68.4 (engine/contact-sheet.ts new, ui/panels/contact-sheet-dialog.ts new, app.ts, automation/command-meta.ts)
+
+Files: `src/engine/contact-sheet.ts` (pure: `sheetCells`, `fitInCell` with rotate, `sheetPages`, `sheetName`), `src/ui/panels/contact-sheet-dialog.ts` (Dialog with `remember()`; chosen files only, Use Open Images shown disabled "comes later"; new white documents named ContactSheet-001 and so on, one layer per file via `insertImages`, captions through `createTextLayer`, or drawn onto one layer when Flatten), `src/app.ts` (command `contact-sheet` in File > Automate after `fit-image`), `src/automation/command-meta.ts` (words). No agent params yet. Nothing removed.
+
+## Crop and Straighten Photos, DEV_PLAN 30.3 part b · _v1.68.4 (io/api.ts, app.ts, automation/command-meta.ts)
+
+Files: `src/io/api.ts` (`api.cropPhotos`), `src/app.ts` (command `crop-straighten-photos` in File > Automate after `fit-image`; flattened document or the selection's rect sent, each result opened with `engine.openImage` and named "<doc> copy", "<doc> copy 2"; notice with the count), `src/automation/command-meta.ts` (words). Nothing removed. tsc clean; unit 194 of 194.
+
 ## Release 1.68.3: Auto-Align and Auto-Blend, Artboards to PDF, Print part 2 · _v1.68.3
 
 Joined and checked: tsc clean; unit 194 of 194; engine tests failing only the seven known model and EXR cases; the window opened and `agents sync` run (799 catalogue ids); a probe in Chromium: two textured layers 12 and 7 pixels apart, Auto-Align (Reposition) brought the moved one's corner from (52, 37) to the reference's (40, 30) as one undo step, Auto-Blend (Stack Images) gave both layers masks; Artboards to PDF with two artboards wrote a two-page PDF; Print's Save as PDF wrote a PDF; no page errors. Removed lines taken after the version edit. Removed from frontend:
