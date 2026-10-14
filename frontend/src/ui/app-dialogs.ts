@@ -439,7 +439,7 @@ export class SettingsDialog extends Dialog {
     add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
     add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el('<p class="cv-note">The checkerboard shown behind transparent pixels. None shows it plain.</p>'));
-    add('Language', this.languageRow.el, el('<p class="cv-note">The language of the menus; panels and dialogs follow in later releases.</p>'));
+    add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
     add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
     add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridEveryRow.el, this.subdivRow.el);
     // Plugins (1.50.8): the other apps formvis sends to, as Photoshop's Plugins section; NodeMode first.

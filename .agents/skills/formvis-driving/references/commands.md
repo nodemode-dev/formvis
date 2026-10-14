@@ -1,10 +1,10 @@
 # formvis commands
 
-Generated from the window's command catalogue (944 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (949 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 59
+- Edit: 60
 - File: 74
 - Filter: 80
 - Image: 89
@@ -12,11 +12,11 @@ Generated from the window's command catalogue (944 commands) by `./formvis agent
 - Paint: 1
 - Paths: 8
 - Select: 28
-- Tool options: 229
+- Tool options: 232
 - Tools: 50
 - Type: 22
 - View: 40
-- Window: 69
+- Window: 70
 
 ## Edit
 
@@ -26,6 +26,7 @@ Generated from the window's command catalogue (944 commands) by `./formvis agent
 | `auto-blend-layers` | Auto-Blend Layers... |  | Adds layer masks that blend the selected layers into a panorama or a focus stack. (changes the picture) |
 | `clear` | Clear Selection Pixels |  | Erases the pixels inside the selection. (changes the picture) |
 | `colour.settings` | Color Settings... | Shift+Mod+K | Opens Color Settings: working spaces, colour management policies and conversion options. |
+| `compare-documents` | Compare with... |  | Opens Compare with: picks another open document and makes a new document with both pictures and a Differences layer in Difference blend mode, selecting where they differ. |
 | `content-fill` | Quick Content-Aware Fill | Shift+Backspace | Fills the selection from its surroundings. (changes the picture) |
 | `content-fill-workspace` | Content-Aware Fill... |  | Opens the Content-Aware Fill workspace for the selection. (changes the picture) |
 | `copy` | Copy | Mod+C | Copies the selection to the clipboard. |
@@ -669,6 +670,7 @@ Generated from the window's command catalogue (944 commands) by `./formvis agent
 | `tool.options.brush.pressureFlow` | Brush: Pressure: flow |  | Sets Pressure: flow for the Brush tool. |
 | `tool.options.brush.pressureOpacity` | Brush: Pressure: opacity |  | Sets Pressure: opacity for the Brush tool. |
 | `tool.options.brush.pressureSize` | Brush: Pressure: size |  | Sets Pressure: size for the Brush tool. |
+| `tool.options.brush.quickShape` | Brush: Quick Shape |  | Sets Quick Shape for the Brush tool. |
 | `tool.options.brush.size` | Brush: Size |  | Sets Size for the Brush tool. |
 | `tool.options.brush.smoothing` | Brush: Smoothing |  | Sets Smoothing for the Brush tool. |
 | `tool.options.bucket.antiAlias` | Paint Bucket: Anti-alias |  | Sets Anti-alias for the Paint Bucket tool. |
@@ -724,6 +726,7 @@ Generated from the window's command catalogue (944 commands) by `./formvis agent
 | `tool.options.eraser.hardness` | Eraser: Hardness |  | Sets Hardness for the Eraser tool. |
 | `tool.options.eraser.mode` | Eraser: Mode |  | Sets Mode for the Eraser tool. |
 | `tool.options.eraser.opacity` | Eraser: Opacity |  | Sets Opacity for the Eraser tool. |
+| `tool.options.eraser.quickShape` | Eraser: Quick Shape |  | Sets Quick Shape for the Eraser tool. |
 | `tool.options.eraser.size` | Eraser: Size |  | Sets Size for the Eraser tool. |
 | `tool.options.eyedropper.sample` | Eyedropper: Sample |  | Sets Sample for the Eyedropper tool. |
 | `tool.options.eyedropper.sampleRing` | Eyedropper: Sample Ring |  | Sets Sample Ring for the Eyedropper tool. |
@@ -811,6 +814,7 @@ Generated from the window's command catalogue (944 commands) by `./formvis agent
 | `tool.options.pen.mode` | Pen: Mode |  | Sets Mode for the Pen tool. |
 | `tool.options.pencil.autoErase` | Pencil: Auto Erase |  | Sets Auto Erase for the Pencil tool. |
 | `tool.options.pencil.opacity` | Pencil: Opacity |  | Sets Opacity for the Pencil tool. |
+| `tool.options.pencil.quickShape` | Pencil: Quick Shape |  | Sets Quick Shape for the Pencil tool. |
 | `tool.options.pencil.size` | Pencil: Size |  | Sets Size for the Pencil tool. |
 | `tool.options.quickSelect.sampleAllLayers` | Quick Selection: Sample all layers |  | Sets Sample all layers for the Quick Selection tool. |
 | `tool.options.quickSelect.selection` | Quick Selection: Selection |  | Sets Selection for the Quick Selection tool. |
@@ -1051,6 +1055,7 @@ Generated from the window's command catalogue (944 commands) by `./formvis agent
 | `panel-patterns` | Patterns |  | Shows or hides the Patterns panel. |
 | `panel-properties` | Properties |  | Shows or hides the Properties panel. |
 | `panel-properties-col` | Properties Column |  | Shows or hides the Properties column. |
+| `panel-reference` | Reference |  | Shows or hides the Reference panel. |
 | `panel-shapes` | Shapes |  | Shows or hides the Shapes panel. |
 | `panel-styles` | Styles |  | Shows or hides the Styles panel. |
 | `panel-swatches` | Swatches |  | Shows or hides the Swatches panel. |

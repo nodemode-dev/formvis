@@ -1,6 +1,7 @@
 import { ErrorLog } from './ui/errors';
 import { FillDialog } from './ui/panels/fill-dialog';
 import { FadeDialog } from './ui/panels/fade-dialog';
+import { CompareDialog } from './ui/panels/compare-dialog';
 import { DuotoneDialog } from './ui/panels/duotone-dialog';
 import { ColorTableDialog } from './ui/panels/color-table-dialog';
 import { ApplyImageDialog } from './ui/panels/apply-image-dialog';
@@ -1121,6 +1122,44 @@ export function startApp(): void {
     });
   }
 
+  /** Export PSD from a Lab document (DEV_PLAN 36.11): PSD colour mode 9, each pixel layer placed at its bounds with L, a
+   *  and b over 0 to 255 (a and b offset by 128) and its transparency, the composite laid on white. Groups, masks,
+   *  adjustment layers and styles are in the composite, not as such; a note says so. */
+  async function exportLabPsd(): Promise<void> {
+    const p = engine.current;
+    if (!p || p.doc.mode !== 'lab') return;
+    if ((p.doc.depth ?? 8) > 8) { toast('A Lab PSD is written at 8 bits: Image > Mode > 8 Bits/Channel first.', 'info'); return; }
+    await engine.task(async () => {
+      try {
+        const W = p.doc.width, H = p.doc.height, c = composeFloat(p.doc, 3, false);
+        if ('error' in c) throw new Error(c.error);
+        const comp = new Uint8Array(W * H * 3);
+        for (let i = 0, o = 0; i < c.data.length; i += 4, o += 3) {
+          const a = c.data[i + 3];
+          comp[o] = Math.round(Math.max(0, Math.min(1, c.data[i] * a + (1 - a))) * 255);
+          comp[o + 1] = Math.round(Math.max(0, Math.min(1, c.data[i + 1] * a + 0.5 * (1 - a))) * 255);
+          comp[o + 2] = Math.round(Math.max(0, Math.min(1, c.data[i + 2] * a + 0.5 * (1 - a))) * 255);
+        }
+        const metas: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean; blend: string }> = [], planes: Uint8Array[] = [];
+        let skipped = 0;
+        for (const l of p.doc.layers) {
+          if (!l.channels || l.channels.mode !== 'lab' || l.isGroup || l.adjustment) { if (l.adjustment || l.mask || l.effects) skipped++; continue; }
+          const full = new Float32Array(W * H * 4); place(full, W, H, l.channels, l.transform, 1, 4);
+          let x0 = W, y0 = H, x1 = -1, y1 = -1;
+          for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (full[(y * W + x) * 4 + 3] > 0) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+          if (x1 < 0) continue;
+          const w = x1 - x0 + 1, h = y1 - y0 + 1, cut = new Float32Array(w * h * 4);
+          for (let y = 0; y < h; y++) cut.set(full.subarray(((y0 + y) * W + x0) * 4, ((y0 + y) * W + x0 + w) * 4), y * w * 4);
+          metas.push({ name: l.name, left: x0, top: y0, width: w, height: h, opacity: Math.round(l.opacity * (l.fill ?? 1) * 255), visible: l.visible, blend: l.blend ?? 'normal' });
+          planes.push(channelsToU8(cut));
+          if (l.mask || l.effects) skipped++;
+        }
+        await deliver(await api.encodeLabPsd({ width: W, height: H, layers: metas }, comp, planes), `${p.name}.psd`);
+        if (skipped) toast(`${skipped} layer mask, style or adjustment layer${skipped > 1 ? 's are' : ' is'} in the composite, not as such: the Lab PSD carries pixel layers.`, 'info');
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
   async function exportCmyk(kind: 'tiff' | 'jpg', quality: number): Promise<void> {
     const p = engine.current;
     if (!p || p.doc.mode !== 'cmyk' || !p.doc.profile) return;
@@ -1737,6 +1776,7 @@ export function startApp(): void {
     if (!p) return;
     engine.settle();
     if (p.doc.mode === 'cmyk' && !psb) { await exportCmykPsd(); return; }
+    if (p.doc.mode === 'lab' && !psb) { await exportLabPsd(); return; }
     await engine.task(async () => {
       try {
         const flat = engine.flattened();
@@ -2040,6 +2080,7 @@ export function startApp(): void {
     adjust: new AdjustPanel(engine),
     filter: new FilterPanel(engine),
     fade: new FadeDialog(engine),
+    compare: new CompareDialog(engine),
     duotone: new DuotoneDialog(engine),
     colorTable: new ColorTableDialog(engine),
     applyImage: new ApplyImageDialog(engine),
@@ -2509,6 +2550,7 @@ export function startApp(): void {
     { id: 'close-others', label: 'Close Others', keys: ['Alt+Mod+P'], enabled: () => engine.projects.length > 1, run: () => { const p = engine.current; if (p) void closeMany(p.id); } },
     { id: 'undo', label: () => { const h = engine.current?.history; return h?.canUndo ? `Undo ${h.undoName}` : 'Undo'; }, keys: ['Mod+Z'], enabled: () => !!engine.current?.history.canUndo, run: () => engine.undo() },
     { id: 'redo', label: () => { const h = engine.current?.history; return h?.canRedo ? `Redo ${h.redoName}` : 'Redo'; }, keys: ['Shift+Mod+Z', 'Mod+Y'], enabled: () => !!engine.current?.history.canRedo, run: () => engine.redo() },
+    { id: 'compare-documents', label: 'Compare with...', enabled: () => !!engine.current && engine.projects.length > 1, run: () => dialogs.compare.show() },
     { id: 'toggle-last-state', label: 'Toggle Last State', keys: ['Alt+Mod+Z'], enabled: () => !!engine.current?.history.canUndo || !!engine.current?.history.canRedo, run: () => engine.toggleLastState() },
     { id: 'fade', label: () => { const n = engine.fadeName; return n ? `Fade ${n}...` : 'Fade...'; }, keys: ['Shift+Mod+F'], enabled: () => !!engine.fadeName, run: () => dialogs.fade.show() },
     { id: 'fill-fg', label: 'Fill with Foreground', keys: ['Alt+Backspace', 'Alt+Delete'], enabled: pixel, run: () => engine.fill('fg') },
@@ -3095,7 +3137,7 @@ export function startApp(): void {
       { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
-    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
+    { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', 'compare-documents', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
       'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', { label: 'Presets', items: ['preset-manager', '-', 'swatches-load', 'swatches-save'] }, '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'customize-toolbar', 'shortcuts', 'settings'] },
