@@ -137,6 +137,7 @@ import { ColorMatchDialog } from './ui/panels/color-match';
 import { FilmLayerDialog } from './ui/panels/film-layer';
 import { Model3DDialog } from './ui/panels/model3d';
 import { Extrude3DDialog } from './ui/panels/extrude3d-dialog';
+import { PanoramaDialog } from './ui/panels/panorama-dialog';
 import { AgentConfirmDialog } from './ui/panels/agent-confirm';
 import { AgentBridge } from './automation/agent-bridge';
 import { attachCatalogue, catalogue } from './automation/catalogue';
@@ -2066,6 +2067,7 @@ export function startApp(): void {
   const filmLayer = new FilmLayerDialog(engine);
   const model3d = new Model3DDialog(engine, (t) => toast(t));
   const extrude3d = new Extrude3DDialog(engine, (t) => toast(t));
+  const panorama = new PanoramaDialog(engine, (t) => toast(t));
   // Outside agents over MCP (1.52.1): the window runs their calls while Preferences > Plugins allows it.
   const agentConfirm = new AgentConfirmDialog();
   // Allow, asked in the window when an agent first calls (1.53.3), is the same setting as Preferences > Plugins.
@@ -2209,6 +2211,8 @@ export function startApp(): void {
     { id: 'clear-guides', label: 'Clear Guides', enabled: () => !!engine.current?.doc.guides?.length, run: () => engine.clearGuides() },
     { id: 'toggle-show-slices', label: () => (engine.view.slices ? 'Hide Slices' : 'Show Slices'), enabled: has, run: () => engine.setView({ slices: !engine.view.slices }) },
     { id: 'clear-slices', label: 'Clear Slices', enabled: () => !!engine.current?.doc.slices?.length, run: () => engine.clearSlices() },
+    { id: 'slice-options', label: 'Slice Options...', enabled: () => !!engine.current?.doc.slices?.some((s) => s.id === engine.activeSlice), run: async () => { (await import('./ui/slice-options')).openSliceOptions(engine); } },
+    { id: 'layer-based-slice', label: 'New Layer Based Slice', enabled: () => !!engine.current?.activeLayer, run: () => { if (engine.addLayerSlice() && !engine.view.slices) engine.setView({ slices: true }); } },
     { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
     { id: 'export-paths-ai', label: 'Paths to Illustrator...', enabled: () => has() && engine.paths.list.some((p) => !p.shape && !p.mask),
@@ -2235,6 +2239,12 @@ export function startApp(): void {
     { id: 'open-svg-layers', label: 'Open SVG as Layers...', params: { svg: { type: 'string', description: 'The SVG text to open; leave out to pick a file.' } }, run: (a) => { void openSvgLayers(typeof a?.svg === 'string' ? a.svg : null); } },
     { id: 'place-3d', label: 'Place 3D Model...', enabled: has, run: () => model3dInput.click() },   // 1.51.9
     { id: 'extrude-3d', label: 'New 3D Extrusion from Selected Layer...', enabled: () => { const l = engine.current?.activeLayer; return !!l && !l.isGroup && (!!l.vector || !!l.raster); }, run: () => void extrude3d.start() },   // DEV_PLAN 32.9
+    { id: 'panorama-view', label: 'Spherical Panorama...', enabled: has, run: () => {   // DEV_PLAN 35.8
+      const p = engine.current;
+      if (p && Math.abs(p.doc.width / p.doc.height - 2) > 0.1) toast('This picture is not close to 2:1, so it is not a full equirectangular panorama; it opens anyway.');
+      panorama.start();
+    } },
+    { id: 'panorama-apply-view', label: 'Apply View to Panorama', enabled: () => !!engine.current && engine.panoramaLinks.has(engine.current.id), run: () => { engine.applyPanoramaView(); } },
     { id: 'assemble-tiles', label: 'Assemble Tiles...', enabled: () => engine.projects.some((p) => p.tile), run: () => void assembleTiles() },   // 1.52.7
     { id: 'export-ora', label: 'Export OpenRaster...', enabled: has, run: () => void exportOra() },   // 1.51.7
     { id: 'export-psb', label: 'Export PSB (Large Document)...', enabled: has, run: () => void exportPsd(true) },
@@ -3039,7 +3049,7 @@ export function startApp(): void {
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
-      { label: '3D', items: ['extrude-3d', 'place-3d'] },
+      { label: '3D', items: ['extrude-3d', 'place-3d', '-', 'panorama-view', 'panorama-apply-view'] },
       { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
       { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
@@ -3069,7 +3079,7 @@ export function startApp(): void {
       { label: 'Other', items: filterGroup('Other', []) },
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
     { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', '-',
-      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'clear-slices'] }, '-',
+      { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'layer-based-slice', 'slice-options', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['arrange-tabs', 'arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },

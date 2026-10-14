@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (911 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (915 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -8,14 +8,14 @@ Generated from the window's command catalogue (911 commands) by `./formvis agent
 - File: 73
 - Filter: 80
 - Image: 88
-- Layer: 192
+- Layer: 194
 - Paint: 1
 - Paths: 8
 - Select: 28
 - Tool options: 226
 - Tools: 49
 - Type: 16
-- View: 34
+- View: 36
 - Window: 58
 
 ## Edit
@@ -469,6 +469,8 @@ Generated from the window's command catalogue (911 commands) by `./formvis agent
 | `new-folder-dialog` | Group... |  | Opens the New Group dialog. (changes the picture) |
 | `new-layer` | New Layer |  | Adds an empty layer above the active one. (changes the picture) |
 | `new-layer-dialog` | Layer... | Shift+Mod+N | Opens the New Layer dialog with name, colour and mode. (changes the picture) |
+| `panorama-apply-view` | Apply View to Panorama |  | Projects the current panorama edit view back onto its source panorama as a new layer named Panorama edit, one undo step. (changes the picture) |
+| `panorama-view` | Spherical Panorama... |  | Opens the active document, taken as an equirectangular picture, as a sphere you turn by dragging, with yaw, pitch and field of view; Edit View makes the current view a new document. (changes the picture) |
 | `paste-layer-style` | Paste Layer Style |  | Pastes the copied layer style. (changes the picture) |
 | `rasterize` | Rasterize Layer |  | Rasterizes the active layer. (changes the picture) |
 | `rasterize-all` | Rasterize All Layers |  | Rasterizes every vector, text and smart layer. (changes the picture) |
@@ -948,6 +950,7 @@ Generated from the window's command catalogue (911 commands) by `./formvis agent
 | `clear-slices` | Clear Slices |  | Removes every user slice. (changes the picture) |
 | `fit` | Fit on Screen | Mod+0 | Zooms so the picture fits the window. |
 | `gamut-warning` | Gamut Warning | Shift+Mod+Y | Turns the gamut warning on or off. |
+| `layer-based-slice` | New Layer Based Slice |  | Adds a slice over the visible pixels of the active layer, tied to that layer. (changes the picture) |
 | `lock-guides` | Lock Guides | Alt+Mod+; | Locks or unlocks guides so they cannot be dragged. |
 | `new-guide` | New Guide... |  | Opens the New Guide dialog to place a guide at a position. (changes the picture) |
 | `par-correction` | Pixel Aspect Ratio Correction |  | Shows or hides the pixel aspect correction, which draws the Navigator preview with the pixel shape applied. The main canvas is not stretched yet. |
@@ -969,6 +972,7 @@ Generated from the window's command catalogue (911 commands) by `./formvis agent
 | `screen-menu` | Full Screen Mode with Menu Bar |  | Full screen with the menu bar kept. |
 | `screen-next` | Change Screen Mode | F | Steps through standard, menu and full screen modes. |
 | `screen-standard` | Standard Screen Mode |  | Shows the normal window with its title bar. |
+| `slice-options` | Slice Options... |  | Opens the active slice's name, URL, alt text and exact position and size for editing. (changes the picture) |
 | `toggle-grid` | Toggle Grid | Mod+' | Shows or hides the grid. |
 | `toggle-guides` | Toggle Guides | Mod+; | Shows or hides guides. |
 | `toggle-panels` | Toggle Panels | Tab | Shows or hides every panel and the toolbar. |
