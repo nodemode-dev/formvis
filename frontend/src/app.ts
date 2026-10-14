@@ -84,6 +84,7 @@ import { WarpTextDialog } from './ui/panels/warp-text-dialog';
 import { TypeOnPathDialog } from './ui/panels/type-on-path-dialog';
 import { TypeOnShapeDialog } from './ui/panels/type-on-shape-dialog';
 import { ParagraphStylesDialog } from './ui/panels/paragraph-styles';
+import { CharacterStylesDialog } from './ui/panels/character-styles';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { readPat, writePat } from './io/pat';
@@ -1983,6 +1984,7 @@ export function startApp(): void {
     typeOnPath: new TypeOnPathDialog(engine),
     typeOnShape: new TypeOnShapeDialog(engine),
     paragraphStyles: new ParagraphStylesDialog(engine),
+    characterStyles: new CharacterStylesDialog(engine),
     glyphs: new GlyphsDialog(engine),
     toolPresets: new ToolPresetsDialog(engine),
     benchmark: new BenchmarkDialog(async () => benchText(await runBenchmark(engine), gpuProbed ? detectedName(gpuProbe) ?? 'none found' : 'not detected yet')),
@@ -2185,6 +2187,7 @@ export function startApp(): void {
     { id: 'video-delete-frame', label: 'Delete Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.deleteVideoFrame(); } },
     { id: 'video-restore-frame', label: 'Restore Frame', enabled: () => !!engine.activeLayer?.video, run: () => { engine.restoreFrame(); } },
     { id: 'video-restore-all', label: 'Restore All Frames', enabled: () => !!engine.activeLayer?.video, run: () => { engine.restoreAllFrames(); } },
+    { id: 'video-interpret-footage', label: 'Interpret Footage...', enabled: () => { const l = engine.activeLayer; return !!l?.video && !!engine.video?.tracks[l.id]; }, run: () => { void import('./ui/panels/interpret-footage').then((m) => m.openInterpretFootage(engine)); } },   // 33.4c
     { id: 'video-replace-footage', label: 'Replace Footage...', enabled: () => !!engine.activeLayer?.video, run: () => { void import('./ui/panels/video-layer-file').then((m) => m.replaceFootageFromFile(engine, toast)); } },   // 33.4b
     { id: 'video-rasterize', label: 'Rasterize Video Layer', enabled: () => !!engine.activeLayer?.video, run: () => { engine.rasterizeVideo(); } },
     { id: 'create-video-timeline', label: 'Create Video Timeline', enabled: () => !!engine.current && !engine.video && engine.timeline.frames.length === 0, run: () => { if (engine.createVideoTimeline()) toast('Video timeline ready, a track per layer.'); } },   // 1.59.3
@@ -2739,6 +2742,7 @@ export function startApp(): void {
     { id: 'about', label: 'About formvis', run: () => dialogs.about.show(caps) },
     { id: 'brush-settings', label: 'Brush Settings...', keys: ['F5'], run: () => dialogs.brushSettings.show() },
     { id: 'paragraph-styles', label: 'Paragraph Styles...', run: () => dialogs.paragraphStyles.show() },
+    { id: 'character-styles', label: 'Character Styles...', run: () => dialogs.characterStyles.show() },
     { id: 'glyphs', label: 'Glyphs', run: () => dialogs.glyphs.show() },
     { id: 'tool-presets', label: 'Tool Presets', run: () => dialogs.toolPresets.show() },
     { id: 'tool-preset-apply', label: 'Apply Tool Preset', params: { name: { type: 'string', description: 'Name of the saved tool preset to apply.' } }, run: (a) => { const n = typeof a?.name === 'string' ? a.name : ''; if (!dialogs.toolPresets.applyByName(n)) toast(`No tool preset named "${n}".`, 'info'); } },
@@ -3045,7 +3049,7 @@ export function startApp(): void {
       'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
-      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
+      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
@@ -3082,7 +3086,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'layer-based-slice', 'slice-options', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: [{ label: 'Arrange', items: ['arrange-tabs', 'arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['arrange-tabs', 'arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);

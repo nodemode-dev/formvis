@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (915 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (917 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -8,13 +8,13 @@ Generated from the window's command catalogue (915 commands) by `./formvis agent
 - File: 73
 - Filter: 80
 - Image: 88
-- Layer: 194
+- Layer: 195
 - Paint: 1
 - Paths: 8
 - Select: 28
 - Tool options: 226
 - Tools: 49
-- Type: 16
+- Type: 17
 - View: 36
 - Window: 58
 
@@ -534,6 +534,7 @@ Generated from the window's command catalogue (915 commands) by `./formvis agent
 | `video-delete-frame` | Delete Frame |  | Removes the playhead frame from the video layer. (changes the picture) |
 | `video-duplicate-frame` | Duplicate Frame |  | Copies the playhead frame of the video layer after itself. (changes the picture) |
 | `video-insert-blank-frame` | Insert Blank Frame |  | Inserts an empty frame after the playhead in the video layer. (changes the picture) |
+| `video-interpret-footage` | Interpret Footage... |  | Sets the active video layer's own frame rate, how many times it loops and how its alpha is read (straight, ignored, or premultiplied with a matte). (changes the picture) |
 | `video-layer-blank` | New Blank Video Layer |  | Adds a video layer of empty frames the length of the timeline. (changes the picture) |
 | `video-layer-from-file` | New Video Layer from File... |  | Adds a video file as a layer with one frame per video frame. (changes the picture) |
 | `video-rasterize` | Rasterize Video Layer |  | Turns the video layer into a pixel layer of the playhead frame. (changes the picture) |
@@ -924,6 +925,7 @@ Generated from the window's command catalogue (915 commands) by `./formvis agent
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `character-styles` | Character Styles... |  | Opens Character Styles. |
 | `check-spelling` | Check Spelling... |  | Checks the words of every type layer against a dictionary and steps through the unknown ones with suggestions. (changes the picture) |
 | `convert-paragraph-text` | Convert to Paragraph Text |  | Turns the active point text into paragraph text in a box around its current size. (changes the picture) |
 | `convert-point-text` | Convert to Point Text |  | Turns the active paragraph text into point text with no box. (changes the picture) |
