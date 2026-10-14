@@ -308,7 +308,7 @@ Generated from the window's command catalogue (918 commands) by `./formvis agent
 | `image-crop` | Crop |  | Crops the document to the selection. (changes the picture) |
 | `image-size` | Image Size... | Alt+Mod+I | Opens Image Size. (changes the picture) |
 | `invert` | Invert | Mod+I | Inverts the colours of the active layer. (changes the picture) |
-| `measure-data-points` | Select Data Points... |  | Chooses which measurements the Measurement Log and its CSV export show (label, scale, area, perimeter, length, angle, count, width, height, circularity). |
+| `measure-data-points` | Select Data Points... |  | Chooses which measurements the Measurement Log and its CSV export show (label, scale, area, perimeter, length, angle, count, width, height, gray value and its minimum and maximum, integrated density, centroid, circularity). |
 | `measure-log` | Measurement Log... |  | Opens the measurement log: a table of recorded measurements that can be added to, deleted, cleared or exported as CSV. (changes the picture) |
 | `measure-record` | Record Measurements |  | Records one measurement from the selection (area, perimeter, size), the Ruler line (length, angle) and the counts, scaled by the measurement scale. (changes the picture) |
 | `measure-scale` | Set Measurement Scale... |  | Sets the measurement scale: how many pixels make a logical length in chosen units. Without parameters it opens a dialog prefilled from the Ruler line. (changes the picture) |

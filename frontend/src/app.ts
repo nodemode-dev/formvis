@@ -381,7 +381,7 @@ export function startApp(): void {
   new HistoryPanel(q(root, '.cv-layers'), engine);
   new LayerCompsPanel(q(root, '.cv-layers'), engine);   // Window > Layer Comps (DEV_PLAN 33.3 part b)
   registerPanel({ id: 'layer-comps', label: 'Layer Comps', selector: 'section.cv-layer-comps' });
-  new StylesPanel(q(root, '.cv-layers'), engine);   // Window > Styles (DEV_PLAN 35.3 part b)
+  new StylesPanel(q(root, '.cv-layers'), engine, (blob, name) => deliver(blob, name));   // Window > Styles (DEV_PLAN 35.3 part b)
   new ModifierKeysPanel(q(root, '.cv-layers'));   // Window > Modifier Keys (DEV_PLAN 35.3 part c)
   new MeasurementLogPanel(q(root, '.cv-layers'), engine, (blob, name) => deliver(blob, name));   // Window > Measurement Log
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
