@@ -2,6 +2,7 @@ import type { DevelopState } from './develop';
 import type { ShakeSettings, SmartSharpenSettings } from './filters-more';
 import type { GalleryKind, GallerySettings } from './blur-gallery';
 import type { LibColors, LibFrame, LibKind, LibValues } from './filter-library';
+import { runFilterOnGpu } from './gpu-filters';
 
 /** The main-thread side of the filter worker: one long-lived worker takes numbered jobs, and pixels travel as
  *  transferred buffers. `runFilterOffThread` answers null where module workers are missing or after a failure, so the
@@ -39,6 +40,8 @@ function start(): Worker | null {
 
 /** The filter run in the worker, or null when there is none; `src` is left as it is. */
 export function runFilterOffThread(kind: FilterKind, settings: FilterSettings, scale: number, seed: number, src: ImageData, frame?: LibFrame | null): Promise<ImageData> | null {
+  const onGpu = runFilterOnGpu(kind, settings, scale, seed, src);   // 36.10: a registered GPU runner takes what it can
+  if (onGpu) return Promise.resolve(onGpu);
   const w = start();
   if (!w) return null;
   const copy = new Uint8ClampedArray(src.data);

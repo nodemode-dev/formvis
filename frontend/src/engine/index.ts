@@ -1,5 +1,5 @@
 import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, type Lut4 } from './colour-lut';
-import { composeChannels, rasterFromChannels, strokeChannels } from './channels';
+import { composeChannels, labGreyValue, rasterFromChannels, strokeChannels, strokeLabChannel } from './channels';
 import { trapInk } from './trap';
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
@@ -235,6 +235,8 @@ export class Engine {
   fgInk: Ink = [0, 0, 0, 1];
   bgInk: Ink = [0, 0, 0, 0];
   paintChannel: 0 | 1 | 2 | 3 | null = null;
+  /** In a Lab document (1.71.9), the one plane (L, a or b) a Brush, Pencil or Eraser stroke writes when it is solo. */
+  paintLab: 0 | 1 | 2 | null = null;
   get fg(): RGB { return this.fgc; }
   set fg(c: RGB) { this.fgc = this.inMode(c); if (this.current?.doc.mode === 'cmyk' && this.current.cmykIn) this.fgInk = inkOf(this.fgc, this.current.cmykIn); }
   get bg(): RGB { return this.bgc; }
@@ -2276,13 +2278,30 @@ export class Engine {
   purgeHistories(all: boolean): number {
     if (this.stroke) return 0;
     let n = 0;
-    for (const p of all ? this.projects : this.current ? [this.current] : []) n += p.history.clear();
+    const targets = all ? this.projects : this.current ? [this.current] : [], held = new Set<Raster>();
+    for (const p of targets) { for (const r of p.history.rasters()) held.add(r); n += p.history.clear(); }
+    // The canvases only the forgotten steps kept (a layer a growing filter replaced, a smart object's old source) are
+    // shrunk to nothing as closing a document shrinks its own, so the memory is back now rather than when the browser
+    // next collects (36.18); a raster any document still shows or holds in its layers stays.
+    const kept = new Set<Raster>();
+    for (const q of this.projects) for (const r of this.rastersOf(q)) kept.add(r);
+    for (const r of held) {
+      if (kept.has(r)) continue;
+      const t = this.pagedRasters.get(r);
+      if (t) { for (const x of t) this.undoStore?.drop(x.key); this.pagedRasters.delete(r); }
+      try { r.canvas.width = 0; r.canvas.height = 0; } catch { /* already gone */ }
+    }
     this.historyOps.length = 0;
     this.emit('history', null);
     return n;
   }
   /** Clipboard: formvis's own copy of pixels goes; the style clipboard is Layer > Layer Style's and stays. */
-  purgeClipboard(): boolean { const had = !!this.clipboard; this.clipboard = null; return had; }
+  purgeClipboard(): boolean {
+    const c = this.clipboard;
+    this.clipboard = null;
+    if (c) { try { c.surface.width = 0; c.surface.height = 0; } catch { /* already gone */ } }   // its pixels back now, not at the next collection (36.18)
+    return !!c;
+  }
 
   /** Layer > Smart Objects > Replace Contents: a new source for the active smart object, shown at the same scale per
    *  source pixel and about the same centre, its filters and mask re-run, as one step. */
@@ -4967,6 +4986,11 @@ export class Engine {
     } else if (patch && exact && dl?.channels?.mode === 'cmyk' && dl.raster === patch.raster && st.project.cmykLut) {
       const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height);
       const r = strokeChannels(dl.channels, patch.before, after, patch.x, patch.y, this.brushMode === 'erase' || this.tool === 'eraser' ? null : this.fgInk, this.bgInk, st.project.cmykLut, this.paintChannel);
+      after.data.set(r.region); patch.raster.ctx.putImageData(after, patch.x, patch.y); patch.raster.touch(); patch.after.data.set(r.region);
+      st.project.updateLayer(st.layerId, { channels: r.channels });
+    } else if (patch && exact && dl?.channels?.mode === 'lab' && this.paintLab !== null && dl.raster === patch.raster) {
+      const after = patch.raster.ctx.getImageData(patch.x, patch.y, patch.before.width, patch.before.height), erasing = this.brushMode === 'erase' || this.tool === 'eraser';
+      const r = strokeLabChannel(dl.channels, patch.before, after, patch.x, patch.y, erasing ? this.bgc : this.fgc, labGreyValue(erasing ? this.bgc : this.fgc), erasing, this.paintLab);
       after.data.set(r.region); patch.raster.ctx.putImageData(after, patch.x, patch.y); patch.raster.touch(); patch.after.data.set(r.region);
       st.project.updateLayer(st.layerId, { channels: r.channels });
     } else if (patch && dl?.channels && dl.raster === patch.raster) {

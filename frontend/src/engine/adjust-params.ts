@@ -1,5 +1,6 @@
 import { defaultDevelopState, developImage } from './develop';
 import type { Kernel } from './kernels';
+import { gpuFilters } from './gpu-filters';
 import type { RGB } from './types';
 
 /** Adjustments described by their controls, each baked into a kernel from its settings. Values live in an
@@ -259,7 +260,7 @@ export const PARAM_ADJUSTMENTS: Record<ParamKind, ParamAdjustment> = {
   threshold: {
     label: 'Threshold',
     params: [range('level', 'Threshold Level', 1, 255, 128)],
-    kernel: (v) => { const t = n(v, 'level'); return perPixel((r, g, b) => { const x = lum(r, g, b) * 255 >= t ? 1 : 0; return [x, x, x]; }); },
+    kernel: (v) => { const t = n(v, 'level'); const cpu = perPixel((r, g, b) => { const x = lum(r, g, b) * 255 >= t ? 1 : 0; return [x, x, x]; }); return (px, ctx) => { if (!gpuFilters()?.threshold(px, t)) cpu(px, ctx); }; },   // 36.10: the GPU when one is registered
   },
   selectiveColor: {
     label: 'Selective Color',

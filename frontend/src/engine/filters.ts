@@ -69,11 +69,21 @@ export function boxBlur(src: Float32Array, dst: Float32Array, w: number, h: numb
   const row = w * 4, sum = new Float64Array(row), warm = Math.min(r, h - 1);
   for (let k = 0; k <= warm; k++) { const o = k * row; for (let x = 0; x < row; x++) sum[x] += src[o + x]; }
   for (let i = 0; i < h; i++) {
-    const at = i * row;
-    for (let x = 0; x < row; x++) dst[at + x] = sum[x] * scale;
-    const enter = i + r + 1, leave = i - r;
-    if (enter < h) { const o = enter * row; for (let x = 0; x < row; x++) sum[x] += src[o + x]; }
-    if (leave >= 0) { const o = leave * row; for (let x = 0; x < row; x++) sum[x] -= src[o + x]; }
+    const at = i * row, enter = i + r + 1, leave = i - r;
+    // One walk along the row per output row (36.18): each column's sum is read once, written out scaled, then moved on
+    // (the row entering added, then the one leaving taken off, as before, so the results are the same to the bit).
+    if (enter < h && leave >= 0) {
+      const e = enter * row, l = leave * row;
+      for (let x = 0; x < row; x++) { let s = sum[x]; dst[at + x] = s * scale; s += src[e + x]; s -= src[l + x]; sum[x] = s; }
+    } else if (enter < h) {
+      const e = enter * row;
+      for (let x = 0; x < row; x++) { const s = sum[x]; dst[at + x] = s * scale; sum[x] = s + src[e + x]; }
+    } else if (leave >= 0) {
+      const l = leave * row;
+      for (let x = 0; x < row; x++) { const s = sum[x]; dst[at + x] = s * scale; sum[x] = s - src[l + x]; }
+    } else {
+      for (let x = 0; x < row; x++) dst[at + x] = sum[x] * scale;
+    }
   }
 }
 
