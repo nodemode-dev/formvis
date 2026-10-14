@@ -49,7 +49,7 @@ def test_a_turn_acts_shows_cards_and_undoes(page, model):
     page.evaluate("window.formvis.engine.newDocument(80, 60, 'A', 'white'); window.formvis.commands.run('assistant')")
     ask(page, "Add a blue sky band at the top.")
     page.locator(f"{PANEL} .cv-assistant-msg.is-assistant", has_text="Added a blue sky.").wait_for(timeout=20000)
-    assert page.locator(f"{PANEL} .cv-assistant-card summary").all_inner_texts() == ["add_layer", "select", "fill"]
+    assert page.locator(f"{PANEL} .cv-assistant-step .cv-assistant-step-label").all_inner_texts() == ["Add layer", "Select", "Fill"]
     sky = page.evaluate("(() => { const l = window.formvis.engine.current.doc.layers.find((x) => x.name === 'Sky'); return l ? Array.from(l.raster.ctx.getImageData(10, 10, 1, 1).data) : null; })()")
     assert sky == [51, 102, 255, 255], sky
     second = model["bodies"][1]

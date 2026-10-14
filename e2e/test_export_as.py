@@ -41,7 +41,7 @@ def test_save_and_delete_a_preset(page):
       await new Promise((r) => setTimeout(r, 200));
       const dlg = document.querySelector('.cv-scrim:not([hidden]) .cv-dialog'), selects = dlg.querySelectorAll('select');
       selects[1].value = 'avif'; selects[1].dispatchEvent(new Event('change', { bubbles: true }));
-      const name = dlg.querySelector('input[type=text]'); name.value = 'My AVIF'; name.dispatchEvent(new Event('input', { bubbles: true }));
+      const name = dlg.querySelector('input[placeholder="Preset name"]'); name.value = 'My AVIF'; name.dispatchEvent(new Event('input', { bubbles: true }));
       const btn = (t) => [...dlg.querySelectorAll('button')].find((b) => b.textContent === t);
       const qualityDisabledForPng = (() => { selects[1].value = 'png'; selects[1].dispatchEvent(new Event('change', { bubbles: true })); const d = dlg.querySelector('input[type=range]').disabled; selects[1].value = 'avif'; selects[1].dispatchEvent(new Event('change', { bubbles: true })); return d; })();
       btn('Save Preset').click();

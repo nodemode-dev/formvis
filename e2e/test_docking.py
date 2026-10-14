@@ -130,7 +130,7 @@ def test_moving_a_group_shows_a_ghost_and_says_move_here(page):
 
 def test_the_grip_sits_in_one_place_and_a_group_holds_seven_tabs_at_most(page):
     try:
-        page.evaluate("window.formvis.engine.newDocument(300, 200, 'S', 'white'); window.formvis.commands.run('panel-timeline')")
+        page.evaluate("window.formvis.engine.newDocument(300, 200, 'S', 'white'); window.formvis.engine.newFrame(); window.formvis.commands.run('panel-timeline')")   # frames, so the command shows the dock's Timeline (1.59.8)
         offs = page.evaluate("[...document.querySelectorAll('.cv-group-grip')].filter((g) => g.offsetParent).map((g) => Math.round(g.getBoundingClientRect().left - g.parentElement.getBoundingClientRect().left))")
         assert len(offs) >= 8 and len(set(offs)) == 1, offs                                     # the same place in every header
         # Fill the Navigator's group to seven tabs, then drag an eighth at it.

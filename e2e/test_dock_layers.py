@@ -4,7 +4,7 @@ LIST_H = "document.querySelector('.cv-layer-list').getBoundingClientRect().heigh
 
 def test_the_layers_panel_moves_and_keeps_the_space(page):
     try:
-        page.evaluate("window.formvis.engine.newDocument(200, 100, 'L', 'white')")
+        page.evaluate("window.formvis.engine.newDocument(200, 100, 'L', 'white'); window.formvis.engine.newFrame()")   # a frame animation, so Window > Timeline shows the dock's panel (1.59.8)
         assert page.evaluate(LIST_H) > 150                                               # the default arrangement
         page.evaluate("window.formvis.commands.run('panel-timeline'); window.formvis.commands.run('panel-history')")   # hidden by default, as the target's Essentials
         page.wait_for_timeout(100)

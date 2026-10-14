@@ -3411,9 +3411,16 @@ export function startApp(): void {
 
   status.setEngine('Engine: checking');
   // The engine's compute device (Phase 18.6): the preference sent, the engine's report shown in Preferences.
+  // The requests go one after another, each sending the preference as it is when its turn comes, so the engine ends
+  // on the latest choice and a slower earlier answer never overwrites the line a later one wrote.
+  let deviceChain: Promise<void> = Promise.resolve(), deviceTurn = 0;
   function syncEngineDevice(): void {
     if (!caps) { dialogs.settings.setEngine('Engine: offline, so the engine processor cannot be set.'); return; }
-    void api.setCompute(loadPrefs().engineDevice).then((r) => dialogs.settings.setEngine(r ? `Engine: ${r.label} (${r.reason}).` : 'Engine: could not be reached.'));
+    const turn = ++deviceTurn;
+    deviceChain = deviceChain.then(async () => {
+      const r = await api.setCompute(loadPrefs().engineDevice);
+      if (turn === deviceTurn) dialogs.settings.setEngine(r ? `Engine: ${r.label} (${r.reason}).` : 'Engine: could not be reached.');
+    });
   }
   let noted = false;
   const applyCaps = (c: Capabilities | null): void => {

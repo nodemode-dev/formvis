@@ -4,6 +4,7 @@ import json
 import os
 import urllib.request
 
+import pytest
 from PIL import Image
 
 MODERN = {"io.modelcontextprotocol/protocolVersion": "2026-07-28", "io.modelcontextprotocol/clientInfo": {"name": "test-agent", "version": "1"}}
@@ -22,7 +23,17 @@ def ok(tool_name, **args):
     return r
 
 
-def test_an_agent_edits_saves_exports_and_reopens(page, tmp_path):
+@pytest.fixture()
+def allowed():
+    # Files written (export, save) are held for the person's approval under the default Ask policy; this agent is set to Allow all, then back.
+    def policy(p):
+        urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8190/api/agents/policy", json.dumps({"client": "test-agent", "policy": p}).encode(), {"Content-Type": "application/json"}), timeout=10)
+    policy("allow")
+    yield
+    policy("ask")
+
+
+def test_an_agent_edits_saves_exports_and_reopens(page, tmp_path, allowed):
     urllib.request.urlopen(urllib.request.Request("http://127.0.0.1:8190/api/generative/key", method="DELETE"), timeout=10)
     page.evaluate("() => { localStorage.setItem('formvis.prefs', JSON.stringify({ ...JSON.parse(localStorage.getItem('formvis.prefs') || '{}'), agentsAllowed: true })); window.dispatchEvent(new CustomEvent('formvis:agents', { detail: true })); }")
     page.wait_for_timeout(1200)
@@ -42,8 +53,13 @@ def test_an_agent_edits_saves_exports_and_reopens(page, tmp_path):
     doc = json.loads(ok("get_document")["content"][0]["text"])
     assert {l["id"] for l in doc["layers"]} >= {shape, text} and [d["name"] for d in doc["documents"]].count("Poster") == 1
     ok("select", shape="ellipse", x=100, y=80, width=60, height=60)
-    filled = ok("generative_fill")                                                             # auto: LaMa, here with no fal key
-    assert filled["structuredContent"]["model"] == "lama" and "LaMa on this computer" in filled["content"][0]["text"]
+    models = json.loads(urllib.request.urlopen("http://127.0.0.1:8190/api/models", timeout=10).read())
+    if next(m for m in models if m["id"] == "lama-inpaint")["ready"]:                           # the engine's own list says whether LaMa is installed
+        filled = ok("generative_fill")                                                         # auto: LaMa, here with no fal key
+        assert filled["structuredContent"]["model"] == "lama" and "LaMa on this computer" in filled["content"][0]["text"]
+    else:                                                                                      # this machine has not downloaded LaMa: only the fill step differs
+        refused_fill = tool("generative_fill")
+        assert refused_fill["isError"] and "download LaMa" in refused_fill["content"][0]["text"], refused_fill   # says what to do
     ok("select", shape="none")
     png, fmv = tmp_path / "poster.png", tmp_path / "poster.fmv"
     assert ok("export_image", path=str(png))["structuredContent"]["bytes"] > 1000 and Image.open(png).size == (400, 300)

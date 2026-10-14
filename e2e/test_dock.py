@@ -4,7 +4,7 @@ EXPANDED = "document.querySelector('.cv-history-toggle').getAttribute('aria-expa
 
 def test_panels_move_hide_and_reset(page):
     try:
-        page.evaluate("window.formvis.engine.newDocument(200, 100, 'D', 'white')")
+        page.evaluate("window.formvis.engine.newDocument(200, 100, 'D', 'white'); window.formvis.engine.newFrame()")   # a frame animation, so Window > Timeline shows the dock's panel (1.59.8)
         assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel"]
         page.evaluate("window.formvis.commands.run('panel-timeline'); window.formvis.commands.run('panel-history')")   # hidden by default, as the target's Essentials
         assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "timeline", "history"]
@@ -17,6 +17,7 @@ def test_panels_move_hide_and_reset(page):
         assert page.evaluate(EXPANDED) == before                       # the drag did not also fold or unfold it
         page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
         assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history", "timeline"]   # remembered
+        page.evaluate("window.formvis.engine.newDocument(200, 100, 'D', 'white'); window.formvis.engine.newFrame()")   # the reload dropped the frame animation
         page.locator(".cv-menu-btn", has_text="Window").click()
         page.locator(".cv-menu:not([hidden]) .cv-menu-item", has_text="Timeline").click()
         assert page.evaluate(ORDER) == ["navigator", "swatches", "layers-panel", "history"]
