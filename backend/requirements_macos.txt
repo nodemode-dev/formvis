@@ -16,3 +16,4 @@ psd-tools
 tifffile
 ptyprocess
 pywinpty; sys_platform == "win32"
+pyspellchecker

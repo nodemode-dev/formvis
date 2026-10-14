@@ -94,7 +94,8 @@
 .cv-dialog-head .cv-dialog-title { font-size: 16px; font-weight: 600; color: var(--text-primary); }
 .cv-dialog-head [data-close] { border-radius: 50%; background: var(--surface-raised); }
 .cv-dialog-foot { border-top: 0; }
-.cv-dialog-foot .cv-btn { height: 34px; padding: 0 16px; border-radius: 9px; font-size: 14px; }
+.cv-dialog-foot .cv-btn { height: 34px; padding: 0 16px; min-width: 72px; max-width: 100%; border-radius: 9px; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; justify-content: center; }
+.cv-dialog-head .cv-dialog-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .cv-dialog-foot .cv-btn-primary { border: 1px solid var(--cta-bg); background: var(--cta-bg); color: var(--cta-text); }
 .cv-dialog-foot .cv-btn-primary:hover { background: var(--cta-bg-hover); color: var(--cta-text); }
 .cv-dialog-foot .cv-btn-ghost { border: 1px solid var(--line-3); background: var(--surface-2); color: var(--text-primary); }

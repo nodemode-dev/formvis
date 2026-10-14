@@ -16,7 +16,9 @@ export interface Prefs { language: Lang; profileMismatch: MismatchPref; colour: 
   /* The workspace charter (DEV_PLAN 35.1): the Home screen when the last document closes, What's New after an update,
      and the values that stick: every tool option, and each dialog's last controls. */
   homeOnLastClose: boolean; whatsNewAuto: boolean; whatsNewSeen: string;
-  toolOptions: Record<string, ToolOptionValue>; dialogValues: Record<string, Record<string, DialogValue>> }
+  toolOptions: Record<string, ToolOptionValue>; dialogValues: Record<string, Record<string, DialogValue>>;
+  /** The user dictionary Check Spelling adds to (1.70.4). */
+  spellWords: string[] }
 export type ToolOptionValue = string | number | boolean;
 export type DialogValue = string | boolean;
 export type PaintCursor = 'tip' | 'precise' | 'standard';
@@ -38,7 +40,7 @@ export const ENGINE_CHOICES: ReadonlyArray<readonly [EngineDevice, string]> = [[
 export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert', colour: DEFAULT_COLOUR, colourPresets: [], shortcuts: {}, restoreSession: true, agentsAllowed: false, comfyuiUrl: 'http://127.0.0.1:8188', nodemodeUrl: 'http://localhost:8000', historyStates: 100, historyMB: 256, historyAuto: true, regionRedraws: true, recoverySeconds: 20, autoShowHome: true, useGpu: true, renderer: 'auto', gpuMemoryMB: 1024, engineDevice: 'auto',
   zoomWheel: false, autoFirstSnapshot: true, snapshotMB: 768, narrowCollapse: true, paintCursor: 'tip', cursorCrosshair: false,
   checkerSize: 'medium', checkerColors: 'light', rulerUnits: 'px', guideColor: '', gridColor: '', gridSpacing: 100, gridSubdivisions: 4,
-  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {} };
+  homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [] };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
 const LANGS: readonly Lang[] = ['en', 'es', 'it', 'ko', 'zh-CN'];
@@ -110,6 +112,7 @@ export function loadPrefs(): Prefs {
       whatsNewSeen: typeof r.whatsNewSeen === 'string' ? r.whatsNewSeen.slice(0, 32) : DEFAULT_PREFS.whatsNewSeen,
       toolOptions: cleanToolOptions(r.toolOptions),
       dialogValues: cleanDialogValues(r.dialogValues),
+      spellWords: Array.isArray(r.spellWords) ? r.spellWords.filter((w): w is string => typeof w === 'string' && w.length > 0 && w.length <= 80).slice(0, 5000) : [],
     };
   } catch { return { ...DEFAULT_PREFS }; }
 }

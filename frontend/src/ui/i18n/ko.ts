@@ -14,4 +14,13 @@ export const ko: Record<string, string> = {
   'Shape': '모양', 'Sharpen': '선명 효과', 'Show': '표시', 'Smart Filter': '고급 필터', 'Smart Objects': '고급 개체',
   'Stack Mode': '스택 모드', 'Stylize': '스타일화', 'Transform': '변형', 'Upscale': '확대', 'Variables': '변수',
   'Vector Mask': '벡터 마스크', 'Video Layers': '비디오 레이어', 'Video': '비디오',
+  // Panel names
+  'Layers': '레이어', 'Channels': '채널', 'Paths': '패스', 'History': '작업 내역', 'Properties': '속성',
+  'Swatches': '견본', 'Colour': '색상', 'Color': '색상', 'Navigator': '내비게이터', 'Info': '정보',
+  'Histogram': '히스토그램', 'Styles': '스타일', 'Measurement Log': '측정 기록', 'Modifier Keys': '수정 키',
+  'Timeline': '타임라인', 'Brushes': '브러시', 'Brush Settings': '브러시 설정', 'Check Spelling': '맞춤법 검사', 'Resolve Missing Fonts': '누락된 글꼴 해결', 'Ignore': '무시', 'Ignore All': '모두 무시', 'Change': '변경', 'Change All': '모두 변경', 'Replace All': '모두 바꾸기', 'Reveal in File Manager': '파일 관리자에서 보기', 'Character': '문자', 'Paragraph': '단락',
+  // Dialog buttons and tooltips
+  'OK': '확인', 'Cancel': '취소', 'Apply': '적용', 'Reset': '재설정', 'Close': '닫기', 'Done': '완료',
+  'Preview': '미리 보기', 'Save': '저장', 'Don’t Save': '저장 안 함', 'hold or right-click for more tools': '길게 누르거나 오른쪽 클릭하여 도구 더 보기',
+  'cycles': '순환',
 };

@@ -88,7 +88,15 @@ async function read(source: LinkSource): Promise<{ raster: Raster; file: File }>
   return { raster, file };
 }
 
-const meta = (id: string, f: File): SmartLink => ({ id, name: f.name, size: f.size, lastModified: f.lastModified });
+/** The disk path of a picked file where the desktop shell hands one over (the File carries `path`); a browser never has one. */
+const pathOf = (f: File): string | undefined => { const p: unknown = Reflect.get(f, 'path'); return typeof p === 'string' && p ? p : undefined; };
+const paths = new Map<string, string>();
+
+const meta = (id: string, f: File): SmartLink => {
+  const path = pathOf(f) ?? paths.get(id);
+  if (path) paths.set(id, path);
+  return { id, name: f.name, size: f.size, lastModified: f.lastModified, ...(path ? { path } : {}) };
+};
 
 /** File > Place Linked, from a picked or registered source. */
 export async function placeLinked(engine: Engine, id: string, source: LinkSource): Promise<void> {

@@ -14,4 +14,13 @@ export const zhCN: Record<string, string> = {
   'Shape': '形状', 'Sharpen': '锐化', 'Show': '显示', 'Smart Filter': '智能滤镜', 'Smart Objects': '智能对象',
   'Stack Mode': '堆栈模式', 'Stylize': '风格化', 'Transform': '变换', 'Upscale': '放大', 'Variables': '变量',
   'Vector Mask': '矢量蒙版', 'Video Layers': '视频图层', 'Video': '视频',
+  // Panel names
+  'Layers': '图层', 'Channels': '通道', 'Paths': '路径', 'History': '历史记录', 'Properties': '属性',
+  'Swatches': '色板', 'Colour': '颜色', 'Color': '颜色', 'Navigator': '导航器', 'Info': '信息',
+  'Histogram': '直方图', 'Styles': '样式', 'Measurement Log': '测量记录', 'Modifier Keys': '修饰键',
+  'Timeline': '时间轴', 'Brushes': '画笔', 'Brush Settings': '画笔设置', 'Check Spelling': '拼写检查', 'Resolve Missing Fonts': '解析缺失字体', 'Ignore': '忽略', 'Ignore All': '全部忽略', 'Change': '更改', 'Change All': '全部更改', 'Replace All': '全部替换', 'Reveal in File Manager': '在文件管理器中显示', 'Character': '字符', 'Paragraph': '段落',
+  // Dialog buttons and tooltips
+  'OK': '确定', 'Cancel': '取消', 'Apply': '应用', 'Reset': '重置', 'Close': '关闭', 'Done': '完成',
+  'Preview': '预览', 'Save': '存储', 'Don’t Save': '不存储', 'hold or right-click for more tools': '按住或右键单击以查看更多工具',
+  'cycles': '循环切换',
 };

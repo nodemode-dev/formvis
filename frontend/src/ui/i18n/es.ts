@@ -117,4 +117,15 @@ export const es: Record<string, string> = {
   'Extras': 'Extras', 'Rulers': 'Reglas', 'Grid': 'Cuadrícula', 'Snap': 'Ajustar', 'Lock Guides': 'Bloquear guías',
   'Show or Hide Panels': 'Mostrar u ocultar paneles', 'Reset Panels': 'Restablecer paneles', 'Tools in Two Columns': 'Herramientas en dos columnas',
   'Merge Panel Columns': 'Combinar columnas de paneles', 'Properties Column': 'Columna de propiedades',
+  // Panel names
+  'Layers': 'Capas', 'Channels': 'Canales', 'Paths': 'Trazados', 'History': 'Historial', 'Properties': 'Propiedades',
+  'Swatches': 'Muestras', 'Colour': 'Color', 'Color': 'Color', 'Navigator': 'Navegador', 'Info': 'Información',
+  'Histogram': 'Histograma', 'Styles': 'Estilos', 'Modifier Keys': 'Teclas modificadoras', 'Timeline': 'Línea de tiempo',
+  'Brushes': 'Pinceles', 'Character': 'Carácter', 'Paragraph': 'Párrafo',
+  // Dialog buttons and tooltips
+  'OK': 'Aceptar', 'Cancel': 'Cancelar', 'Apply': 'Aplicar', 'Reset': 'Restablecer', 'Close': 'Cerrar', 'Done': 'Hecho',
+  'Preview': 'Vista previa', 'Don’t Save': 'No guardar', 'hold or right-click for more tools': 'mantén pulsado o clic derecho para más herramientas',
+  'cycles': 'alterna',
+  'Check Spelling': 'Revisar ortografía', 'Resolve Missing Fonts': 'Resolver fuentes que faltan', 'Ignore': 'Omitir', 'Ignore All': 'Omitir todo',
+  'Change': 'Cambiar', 'Change All': 'Cambiar todo', 'Replace All': 'Reemplazar todo', 'Reveal in File Manager': 'Mostrar en el gestor de archivos',
 };

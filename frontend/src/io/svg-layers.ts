@@ -2,11 +2,14 @@ import type { Anchor, SubPath, VectorPath } from '../engine/paths';
 import type { RGB } from '../engine/types';
 
 /** File > Open SVG as Layers (DEV_PLAN 34.4): an SVG read into one editable shape per drawable element, in document
- *  order, with group transforms and the viewBox folded into the outlines. Text, gradients, clip paths, masks and symbols
- *  are not carried over (text and use are counted as skipped). */
+ *  order, with group transforms and the viewBox folded into the outlines. Opacity, dash arrays (as dashed or dotted),
+ *  use and symbol, and text (as point type) are carried; a gradient fill becomes its first stop's colour. Clip paths,
+ *  masks, images and patterns are counted as skipped. */
 
-export interface SvgShape { name: string; path: VectorPath; fill: RGB | null; stroke: { color: RGB; width: number } | null }
-export interface SvgLayers { width: number; height: number; shapes: SvgShape[]; skipped: number }
+export interface SvgShape { name: string; path: VectorPath; fill: RGB | null; stroke: { color: RGB; width: number; dash?: 'solid' | 'dashed' | 'dotted' } | null; opacity: number }
+/** A text element (34.4d), to become a point type layer with its baseline at (x, y) in document pixels. */
+export interface SvgText { content: string; x: number; y: number; size: number; family: string; color: RGB; align: 'left' | 'center' | 'right'; bold: boolean; italic: boolean; opacity: number }
+export interface SvgLayers { width: number; height: number; shapes: SvgShape[]; texts: SvgText[]; skipped: number }
 
 type Mat = [number, number, number, number, number, number];
 const IDENT: Mat = [1, 0, 0, 1, 0, 0];
@@ -206,10 +209,12 @@ function ellipseD(cx: number, cy: number, rx: number, ry: number): string {
   return `M${f(cx + rx)} ${f(cy)}A${f(rx)} ${f(ry)} 0 1 1 ${f(cx - rx)} ${f(cy)}A${f(rx)} ${f(ry)} 0 1 1 ${f(cx + rx)} ${f(cy)}Z`;
 }
 
-interface Paint { fill: string; stroke: string; sw: number }
+/** Inherited paint. `op` is the product of every opacity on the way down (group opacity applies to all inside);
+ *  fill-opacity, stroke-opacity, the dash array and the font properties inherit by value. */
+interface Paint { fill: string; stroke: string; sw: number; op: number; fo: number; so: number; dash: string; family: string; size: number; weight: string; fstyle: string; anchor: string }
 
-const SKIPPED = new Set(['defs', 'clippath', 'mask', 'symbol', 'text', 'use', 'image', 'foreignobject', 'pattern', 'marker']);
-const IGNORED = new Set(['title', 'desc', 'metadata', 'style', 'lineargradient', 'radialgradient', 'filter', 'script', 'namedview']);
+const SKIPPED = new Set(['clippath', 'mask', 'image', 'foreignobject', 'pattern', 'marker']);
+const IGNORED = new Set(['title', 'desc', 'metadata', 'style', 'lineargradient', 'radialgradient', 'filter', 'script', 'namedview', 'defs', 'symbol']);
 
 /** An SVG file as shapes in document order, sized by its width and height with the viewBox fitted in (else the
  *  viewBox, else 512 px square). */
@@ -234,13 +239,13 @@ export function svgToShapes(text: string): SvgLayers {
     if (Number.isFinite(h)) height = h;
   }
   width = Math.max(1, Math.round(width)); height = Math.max(1, Math.round(height));
-  const shapes: SvgShape[] = [];
+  const shapes: SvgShape[] = [], texts: SvgText[] = [];
   let skipped = 0;
   const counts = new Map<string, number>();
 
   const style = (el: Element): Record<string, string> => {
     const o: Record<string, string> = {};
-    for (const k of ['fill', 'stroke', 'stroke-width']) { const v = el.getAttribute(k); if (v !== null) o[k] = v; }
+    for (const k of ['fill', 'stroke', 'stroke-width', 'opacity', 'fill-opacity', 'stroke-opacity', 'stroke-dasharray', 'font-family', 'font-size', 'font-weight', 'font-style', 'text-anchor']) { const v = el.getAttribute(k); if (v !== null) o[k] = v; }
     for (const decl of (el.getAttribute('style') ?? '').split(';')) {
       const at = decl.indexOf(':');
       if (at > 0) o[decl.slice(0, at).trim().toLowerCase()] = decl.slice(at + 1).trim();
@@ -253,8 +258,32 @@ export function svgToShapes(text: string): SvgLayers {
     if (SKIPPED.has(tag)) { skipped++; return; }
     if (IGNORED.has(tag)) return;
     const st = style(el);
-    const paint: Paint = { fill: st.fill ?? inherited.fill, stroke: st.stroke ?? inherited.stroke, sw: st['stroke-width'] !== undefined ? parseFloat(st['stroke-width']) : inherited.sw };
+    const unit = (v: string | undefined, dflt: number): number => { if (v === undefined) return dflt; const n = parseFloat(v); return Number.isFinite(n) ? Math.min(1, Math.max(0, v.trim().endsWith('%') ? n / 100 : n)) : dflt; };
+    const fsz = st['font-size'] !== undefined ? parseFloat(st['font-size']) : NaN;
+    const paint: Paint = {
+      fill: st.fill ?? inherited.fill, stroke: st.stroke ?? inherited.stroke, sw: st['stroke-width'] !== undefined ? parseFloat(st['stroke-width']) : inherited.sw,
+      op: inherited.op * unit(st.opacity, 1), fo: unit(st['fill-opacity'], inherited.fo), so: unit(st['stroke-opacity'], inherited.so),
+      dash: st['stroke-dasharray'] ?? inherited.dash, family: st['font-family'] ?? inherited.family, size: Number.isFinite(fsz) && fsz > 0 ? fsz : inherited.size,
+      weight: st['font-weight'] ?? inherited.weight, fstyle: st['font-style'] ?? inherited.fstyle, anchor: st['text-anchor'] ?? inherited.anchor,
+    };
     const m = mul(parent, parseTransform(el.getAttribute('transform')));
+    if (tag === 'text') {
+      // text (34.4d): the element's whole text (tspans joined, their own positions not followed) as point type at
+      // its first x and y, scaled by the transform; rotation and skew are not carried.
+      const content = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+      const color = paintColor(paint.fill === '' ? 'black' : paint.fill);
+      if (!content || !color) { skipped++; return; }
+      const x0 = numList(el.getAttribute('x') ?? '')[0] ?? 0, y0 = numList(el.getAttribute('y') ?? '')[0] ?? 0;
+      const k = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
+      const fam = paint.family.split(',')[0].trim().replace(/^['"]|['"]$/g, '') || 'sans-serif';
+      const w = paint.weight.trim().toLowerCase(), wn = parseInt(w, 10);
+      texts.push({
+        content, x: m[0] * x0 + m[2] * y0 + m[4], y: m[1] * x0 + m[3] * y0 + m[5], size: Math.max(1, paint.size * k), family: fam, color,
+        align: paint.anchor === 'middle' ? 'center' : paint.anchor === 'end' ? 'right' : 'left', bold: w === 'bold' || w === 'bolder' || (Number.isFinite(wn) && wn >= 600),
+        italic: /italic|oblique/i.test(paint.fstyle), opacity: paint.op * paint.fo,
+      });
+      return;
+    }
     if (tag === 'g' || tag === 'svg' || tag === 'a' || tag === 'switch') {
       for (const child of Array.from(el.children)) walk(child, m, paint);
       return;
@@ -278,21 +307,59 @@ export function svgToShapes(text: string): SvgLayers {
         d = 'M' + n.slice(0, n.length - (n.length % 2)).map((v, k) => (k % 2 === 0 && k > 0 ? `L${v}` : String(v))).join(' ');
         if (tag === 'polygon') d += 'Z'; else open = true;
       }
+    } else if (tag === 'use') {
+      // use (34.4c): the referenced element, or a symbol's children, drawn at the use's x and y.
+      const href = el.getAttribute('href') ?? el.getAttribute('xlink:href') ?? '', target = href.startsWith('#') ? byId.get(href.slice(1)) : undefined;
+      if (!target || active.has(target)) { skipped++; return; }
+      const um = mul(m, [1, 0, 0, 1, a('x'), a('y')]);
+      active.add(target);
+      if (target.localName.toLowerCase() === 'symbol') { for (const child of Array.from(target.children)) walk(child, um, paint); } else walk(target, um, paint);
+      active.delete(target);
+      return;
     } else return;
     const path = toVectorPath(pathSegments(d), m);
     if (!path.subpaths.length) return;
     const scale = Math.sqrt(Math.abs(m[0] * m[3] - m[1] * m[2]));
-    let fill = parseColor(paint.fill === '' ? 'black' : paint.fill);
+    let fill = paintColor(paint.fill === '' ? 'black' : paint.fill);
     if (open) fill = tag === 'line' ? null : fill;
-    const sc = parseColor(paint.stroke === '' ? 'none' : paint.stroke), sw = Number.isFinite(paint.sw) ? paint.sw : 1;
-    const stroke = sc && sw * scale > 0 ? { color: sc, width: Math.max(0.1, sw * scale) } : null;
+    const sc = paintColor(paint.stroke === '' ? 'none' : paint.stroke), sw = Number.isFinite(paint.sw) ? paint.sw : 1;
+    // A dash array (34.4b) becomes the stroke model's dashed or dotted: dots when the first dash is no longer than
+    // the line is wide, dashes otherwise; the exact lengths, caps and joins are not in the model.
+    const dashes = numList(paint.dash.replace(/none/i, ''));
+    const dash: 'solid' | 'dashed' | 'dotted' = dashes.some((v) => v > 0) ? (dashes[0] <= sw * 1.5 ? 'dotted' : 'dashed') : 'solid';
+    const stroke = sc && sw * scale > 0 ? { color: sc, width: Math.max(0.1, sw * scale), ...(dash !== 'solid' ? { dash } : {}) } : null;
     if (!fill && !stroke) return;
+    // One layer opacity (34.4a): the inherited opacity times the fill's own, or the stroke's when there is no fill.
+    const opacity = paint.op * (fill ? paint.fo : paint.so);
+    if (opacity <= 0) return;
     const id = el.getAttribute('id');
     let name = id && id.trim() ? id.trim().slice(0, 60) : '';
     if (!name) { const c = (counts.get(tag) ?? 0) + 1; counts.set(tag, c); name = `${tag} ${c}`; }
-    shapes.push({ name, path, fill, stroke });
+    shapes.push({ name, path, fill, stroke, opacity });
   };
 
-  walk(root, base, { fill: 'black', stroke: 'none', sw: 1 });
-  return { width, height, shapes, skipped };
+  // Ids, for use references and gradient links; the guard stops a use that reaches itself.
+  const active = new Set<Element>();
+  const byId = new Map<string, Element>();
+  for (const e of Array.from(doc.getElementsByTagName('*'))) { const id = e.getAttribute('id'); if (id && !byId.has(id)) byId.set(id, e); }
+  /** The first stop's colour of a gradient (34.4e), following href links; the shape layer's fill is one colour. */
+  const stopColor = (g: Element | undefined, hops: number): string | null => {
+    if (!g || hops > 4) return null;
+    const stop = Array.from(g.children).find((c) => c.localName.toLowerCase() === 'stop');
+    if (stop) {
+      const decl = /(?:^|;)\s*stop-color\s*:\s*([^;]+)/i.exec(stop.getAttribute('style') ?? '');
+      return decl ? decl[1].trim() : stop.getAttribute('stop-color') ?? '#000000';
+    }
+    const href = g.getAttribute('href') ?? g.getAttribute('xlink:href') ?? '';
+    return href.startsWith('#') ? stopColor(byId.get(href.slice(1)), hops + 1) : null;
+  };
+  function paintColor(v: string): RGB | null {
+    const ref = /^\s*url\(\s*['"]?#([^'")\s]+)['"]?\s*\)/i.exec(v);
+    if (!ref) return parseColor(v);
+    const first = stopColor(byId.get(ref[1]), 0);
+    return parseColor(first ?? v);
+  }
+
+  walk(root, base, { fill: 'black', stroke: 'none', sw: 1, op: 1, fo: 1, so: 1, dash: 'none', family: 'sans-serif', size: 16, weight: 'normal', fstyle: 'normal', anchor: 'start' });
+  return { width, height, shapes, texts, skipped };
 }

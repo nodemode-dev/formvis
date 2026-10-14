@@ -1829,6 +1829,39 @@ export class Engine {
     return this.updateTextLayers(changes, 'Update All Text Layers');
   }
 
+  /** The live type layers' id, name, content and font family, for Check Spelling and Resolve Missing Fonts. */
+  textLayerInfo(): Array<{ id: ID; name: string; content: string; family: string }> {
+    const p = this.current;
+    if (!p) return [];
+    const out: Array<{ id: ID; name: string; content: string; family: string }> = [];
+    for (const l of p.doc.layers) if (l.text && liveText(l)) out.push({ id: l.id, name: l.name, content: l.text.content, family: l.text.family });
+    return out;
+  }
+
+  /** New content for live type layers as one undo step named `step`; returns how many changed. */
+  async setTextContents(edits: ReadonlyArray<{ id: ID; content: string }>, step: string): Promise<number> {
+    const p = this.current;
+    if (!p) return 0;
+    const changes: Array<{ id: ID; spec: TextSpec }> = [];
+    for (const e of edits) {
+      const l = p.doc.layers.find((x) => x.id === e.id);
+      if (l?.text && liveText(l) && l.text.content !== e.content) changes.push({ id: e.id, spec: { ...l.text, content: e.content } });
+    }
+    return this.updateTextLayers(changes, step);
+  }
+
+  /** Swaps font families on live type layers (old family to new) as one undo step named `step`; returns how many changed. */
+  async replaceFontFamilies(map: ReadonlyMap<string, string>, step: string): Promise<number> {
+    const p = this.current;
+    if (!p) return 0;
+    const changes: Array<{ id: ID; spec: TextSpec }> = [];
+    for (const l of p.doc.layers) {
+      const to = l.text && liveText(l) ? map.get(l.text.family) : undefined;
+      if (l.text && to && to !== l.text.family) changes.push({ id: l.id, spec: { ...l.text, family: to } });
+    }
+    return this.updateTextLayers(changes, step);
+  }
+
   /** True, with a notice, when the active layer is a smart object and an edit would change its pixels rather than its
    *  mask. Checked before any history step opens. */
   private smartLocked(p: Project): boolean {
@@ -2876,15 +2909,19 @@ export class Engine {
 
   /** File > Open SVG as Layers (DEV_PLAN 34.4): one shape layer per entry, in order, each outline still editable. insertRasterLayer
    *  records its own undo step, so each layer is one step. Returns the number of layers made. */
-  addShapeLayers(shapes: Array<{ name: string; path: VectorPath; fill: RGB | null; stroke: { color: RGB; width: number } | null }>): number {
+  addShapeLayers(shapes: Array<{ name: string; path: VectorPath; fill: RGB | null; stroke: ShapeStroke | null; opacity?: number }>, dropEmptyBase = false): number {
     // Rendered first, then inserted in one edit, so the whole SVG is one undo step.
     const made = shapes.flatMap((s) => { const look: ShapeStyle = { fill: s.fill, stroke: s.stroke }, r = this.renderShape(s.path, look); return r ? [{ s, look, r }] : []; });
     if (!made.length) return 0;
     this.edit('Open SVG as Layers', (p) => {
+      // A new document's blank base layer (34.4f) is removed when asked: only a pixel layer with nothing painted.
+      const painted = (d: Uint8ClampedArray): boolean => { for (let i = 3; i < d.length; i += 4) if (d[i]) return true; return false; };
+      const blank = dropEmptyBase ? p.doc.layers.filter((l) => !l.isGroup && !l.vector && !l.text && !l.adjustment && !l.smart && (!l.raster || !painted(l.raster.read().data))) : [];
       for (const { s, look, r } of made) {
-        const base = newLayer(s.name, p.doc, { raster: r.raster, parentId: this.parentForNew(p) });
+        const base = newLayer(s.name, p.doc, { raster: r.raster, parentId: this.parentForNew(p), opacity: s.opacity ?? 1 });
         this.insertAboveActive(p, { ...base, transform: { ...docTransform(r.raster.width, r.raster.height), x: r.x, y: r.y }, vector: { path: s.path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } });
       }
+      if (blank.length) { const gone = new Set(blank.map((l) => l.id)); p.setLayers(p.doc.layers.filter((l) => !gone.has(l.id))); }
     });
     return made.length;
   }

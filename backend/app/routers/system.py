@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
 from app.core import config
-from app.services import background, compute, imaging, segment
+from app.services import background, compute, imaging, segment, spell
 
 router = APIRouter(tags=["system"])
 
@@ -14,6 +14,41 @@ router = APIRouter(tags=["system"])
 @router.get("/health")
 def health() -> dict:
     return {"status": "ok"}
+
+
+class RevealBody(BaseModel):
+    path: str
+
+
+@router.post("/reveal")
+def reveal(body: RevealBody) -> dict:
+    """Reveal in the file manager (33.2): select a file in the system's file manager. 404 when the path does not exist."""
+    import sys
+    target = Path(body.path).expanduser()
+    if not target.exists():
+        raise HTTPException(status_code=404, detail="That path does not exist.")
+    target = target.resolve()
+    if sys.platform == "darwin":
+        subprocess.Popen(["open", "-R", str(target)])
+    elif sys.platform.startswith("win"):
+        subprocess.Popen(["explorer", f"/select,{target}"])
+    else:
+        shown = False
+        if shutil.which("dbus-send"):
+            try:
+                proc = subprocess.Popen(["dbus-send", "--session", "--dest=org.freedesktop.FileManager1", "--type=method_call", "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems", f"array:string:{target.as_uri()}", "string:"])
+                try:
+                    shown = proc.wait(timeout=3) == 0
+                except subprocess.TimeoutExpired:
+                    shown = True
+            except OSError:
+                shown = False
+        if not shown:
+            opener = shutil.which("xdg-open")
+            if not opener:
+                raise HTTPException(status_code=501, detail="No file manager could be started here.")
+            subprocess.Popen([opener, str(target if target.is_dir() else target.parent)])
+    return {"ok": True}
 
 
 @router.get("/version")
@@ -108,6 +143,19 @@ def font_file(family: str, bold: int = 0, italic: int = 0) -> Response:
     except OSError as err:
         raise HTTPException(status_code=404, detail=f"No font file found for {name}.") from err
     return Response(content=data, media_type=_FONT_TYPES[path.suffix.lower()])
+
+
+class SpellBody(BaseModel):
+    words: list[str]
+    lang: str = "en"
+
+
+@router.post("/spell/check")
+def spell_check(body: SpellBody) -> dict[str, list[dict[str, object]]]:
+    """The words the language does not know, each with up to 6 suggestions (DEV_PLAN 32.7 part c, Check Spelling)."""
+    if len(body.words) > 20000 or any(len(w) > 80 for w in body.words):
+        raise HTTPException(status_code=400, detail="Too many words, or a word that is too long.")
+    return {"unknown": spell.check(body.words, body.lang[:12])}
 
 
 def _fc_family(path: Path) -> str:

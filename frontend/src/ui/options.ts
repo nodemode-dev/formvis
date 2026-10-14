@@ -2,6 +2,7 @@ import type { Engine, ToolId } from '../engine';
 import { toolList, type OptionSpec, type Tool } from '../extensions/registry';
 import { el, q, setChecked, setClass, setHidden, setText, setValue } from './dom';
 import { icon } from './icons';
+import { t as tr } from './i18n';
 
 /** One tool's built row of controls, and the functions that bring those controls up to date. */
 interface Group { node: HTMLElement; sync: Array<() => void> }
@@ -54,8 +55,8 @@ export class OptionsBar {
       if (spec.kind === 'title') {
         // The tool's own icon in a raised chip, as the target's bar begins (Phase 21); its name as the label and tooltip.
         const n = el('<span class="cv-opt-title cv-opt-tool" role="img"></span>');
-        n.setAttribute('aria-label', spec.text);
-        n.title = spec.text;
+        n.setAttribute('aria-label', tr(spec.text));
+        n.title = tr(spec.text);
         let shown = '';
         const paint = (): void => { const name = t.icon(this.engine); if (name !== shown) { shown = name; n.innerHTML = icon(name, 18); } };
         paint();

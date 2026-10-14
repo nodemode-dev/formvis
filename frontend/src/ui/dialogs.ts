@@ -1,5 +1,6 @@
 import { el, q, setText } from './dom';
 import { icon } from './icons';
+import { t } from './i18n';
 import { loadPrefs, updatePrefs, type DialogValue } from './prefs';
 
 /** A value a remembered dialog holds outside its form controls. */
@@ -18,6 +19,8 @@ export class Dialog {
   readonly body: HTMLElement;
   readonly foot: HTMLElement;
   private readonly title: HTMLElement;
+  /** The English title: the key the remembered values are stored under, whatever language is showing. */
+  private english = '';
   private lastFocus: HTMLElement | null = null;
   onClose: (() => void) | null = null;
 
@@ -32,7 +35,9 @@ export class Dialog {
     this.title = q<HTMLElement>(this.scrim, '.cv-dialog-title');
     this.body = q<HTMLElement>(this.scrim, '.cv-dialog-body');
     this.foot = q<HTMLElement>(this.scrim, '.cv-dialog-foot');
-    setText(this.title, title);
+    this.english = title;
+    setText(this.title, t(title));
+    q(this.scrim, '[data-close]').title = t('Close');
     q(this.scrim, '[data-close]').addEventListener('click', () => this.close());
     this.scrim.addEventListener('pointerdown', (e) => { if (e.target === this.scrim) this.close(); });
     this.scrim.addEventListener('keydown', (e) => {
@@ -43,7 +48,20 @@ export class Dialog {
   }
 
   get isOpen(): boolean { return !this.scrim.hidden; }
-  setTitle(title: string): void { setText(this.title, title); }
+  setTitle(title: string): void { this.english = title; setText(this.title, t(title)); }
+
+  /** Dialogs are built once, often before the language is changed, so each opening re-reads the title, the Close
+   *  tooltip and the footer buttons in the current language. A button whose text its owner has since replaced is left
+   *  alone (its shown text no longer matches what was set here). */
+  private relabel(): void {
+    setText(this.title, t(this.english));
+    q(this.scrim, '[data-close]').title = t('Close');
+    for (const b of Array.from(this.foot.querySelectorAll<HTMLButtonElement>('button[data-en]'))) {
+      if (b.textContent !== b.dataset.shown) continue;
+      setText(b, t(b.dataset.en ?? ''));
+      b.dataset.shown = b.textContent ?? '';
+    }
+  }
 
   private memory: { skip: ReadonlySet<Element>; busy: boolean; queued: boolean; extra: RememberedExtra | null } | null = null;
 
@@ -88,12 +106,12 @@ export class Dialog {
     const values: Record<string, DialogValue> = {};
     for (const [name, c] of this.rememberedControls()) values[name] = c instanceof HTMLInputElement && c.type === 'checkbox' ? c.checked : c.value;
     for (const [k, v] of Object.entries(this.memory?.extra?.read() ?? {})) values[`~${k}`] = v;
-    const key = this.title.textContent ?? '', cur = loadPrefs().dialogValues;
+    const key = this.english, cur = loadPrefs().dialogValues;
     updatePrefs({ dialogValues: { ...cur, [key]: values } });
   }
 
   private restoreRemembered(): void {
-    const m = this.memory, saved = loadPrefs().dialogValues[this.title.textContent ?? ''];
+    const m = this.memory, saved = loadPrefs().dialogValues[this.english];
     if (!m || !saved) return;
     m.busy = true;
     try {
@@ -121,6 +139,7 @@ export class Dialog {
   /** Shows the dialog and moves focus into it: to `focus` if given, else to the first field or primary button. */
   open(focus?: HTMLElement | null): void {
     if (this.isOpen) return;
+    this.relabel();
     this.restoreRemembered();
     this.lastFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     document.getElementById('overlay-root')?.appendChild(this.scrim);
@@ -146,7 +165,8 @@ export class Dialog {
   /** Adds a button to the footer row. */
   button(label: string, kind: '' | 'primary' | 'ghost' | 'danger', run: () => void): HTMLButtonElement {
     const b = el<HTMLButtonElement>(`<button class="cv-btn${kind ? ` cv-btn-${kind}` : ''}" type="button"></button>`);
-    setText(b, label);
+    setText(b, t(label));
+    b.dataset.en = label; b.dataset.shown = b.textContent ?? '';
     b.addEventListener('click', run);
     this.foot.appendChild(b);
     return b;

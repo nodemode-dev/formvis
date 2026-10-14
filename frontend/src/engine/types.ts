@@ -348,7 +348,7 @@ export interface SmartFilter { id: ID; kind: string; settings: Record<string, un
  *  set, so a later move or transform of the layer can be carried into the warp. */
 /** A linked smart object's file: an id for its source in the app's link registry, and the name, size and modified time
  *  its contents were last read at. */
-export interface SmartLink { id: string; name: string; size: number; lastModified: number }
+export interface SmartLink { id: string; name: string; size: number; lastModified: number; path?: string }
 /** `stack` (33.1): a smart object made from several layers keeps their document-size renders, bottom first; `source` is
  *  the stack mode's result over them (the top one under None). */
 export interface SmartStack { sources: Raster[]; mode: import('./stack-modes').StackMode }

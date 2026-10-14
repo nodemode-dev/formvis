@@ -14,3 +14,4 @@ psd-tools==1.23.0     # CMYK PSD read and written with its layers (1.56.1); MIT
 tifffile==2026.3.3    # 16-bit CMYK and Lab TIFF, which Pillow does not write (1.57.8); BSD-3-Clause
 ptyprocess==0.7.0; sys_platform != "win32"   # the window's terminal on macOS and Linux (28.5); ISC
 pywinpty==3.0.5; sys_platform == "win32"   # the window's terminal on Windows (28.5); MIT
+pyspellchecker==0.9.1   # Check Spelling in type layers (1.70.4); MIT

@@ -1,5 +1,6 @@
 import { el, setHidden, setText } from './dom';
 import { icon } from './icons';
+import { onLanguage, t } from './i18n';
 
 /** A panel group as the target's (Phase 21, UI_SPEC.md section 6): a black header strip whose tabs are chips (the active
  *  one filled, the others plain text), with − at the right to minimise the group to its header (remembered on this
@@ -30,11 +31,18 @@ export class PanelGroup {
   /** While a tab is dragged over a column's gap: where a new group would go (null: nowhere). */
   static onGapHint: ((x: number | null, y: number) => void) | null = null;
   get size(): number { return this.tabs.size; }
-  labelOf(tid: string): string { return this.tabs.get(tid)?.btn.textContent ?? tid; }
+  /** The tab's English name (the key); what is shown comes from t() at render time. */
+  labelOf(tid: string): string { return this.tabs.get(tid)?.label ?? tid; }
+  /** Re-labels every tab in place after a language change; only text changes, no node is rebuilt. */
+  private relabel(): void {
+    for (const v of this.tabs.values()) { setText(v.btn, t(v.label)); v.btn.title = t(v.label); }
+    requestAnimationFrame(() => this.fitTabs());
+  }
+  private static readonly langHook = onLanguage(() => { for (const g of PanelGroup.all.values()) g.relabel(); });
   /** A group made by detaching, gone once empty. */
   remove(): void { PanelGroup.all.delete(this.id); this.root.remove(); }
   readonly root: HTMLElement;
-  private readonly tabs = new Map<string, { btn: HTMLButtonElement; body: HTMLElement }>();
+  private readonly tabs = new Map<string, { btn: HTMLButtonElement; body: HTMLElement; label: string }>();
   private active = '';
   onTab: ((id: string) => void) | null = null;
   /** The panel menu (the target's •••): the app opens it with these command ids (PanelGroup.menuHost). */
@@ -89,14 +97,14 @@ export class PanelGroup {
   private attach(tid: string, label: string, page: HTMLElement): void {
     const strip = this.root.querySelector('.cv-group-tabs') as HTMLElement, body = this.root.querySelector('.cv-group-body') as HTMLElement;
     const btn = el<HTMLButtonElement>('<button class="cv-group-tab" type="button" role="tab"></button>');
-    setText(btn, label);
-    btn.title = label;   // the whole name, if the tab is shortened
+    setText(btn, t(label));
+    btn.title = t(label);   // the whole name, if the tab is shortened
     btn.dataset.tab = tid;
     btn.addEventListener('click', (e) => { if (PanelGroup.justDragged) { e.preventDefault(); PanelGroup.justDragged = false; return; } this.show(tid); });
     btn.addEventListener('pointerdown', (e) => this.tabDrag(e, tid, btn));
     strip.appendChild(btn);
     body.appendChild(page);
-    this.tabs.set(tid, { btn, body: page });
+    this.tabs.set(tid, { btn, body: page, label });
     this.root.classList.remove('is-empty');
     requestAnimationFrame(() => this.fitTabs());
   }
@@ -139,7 +147,7 @@ export class PanelGroup {
   static moveTab(tid: string, from: PanelGroup, to: PanelGroup): void {
     const t = from.tabs.get(tid);
     if (!t || from === to || to.full) return;   // never past seven tabs, dragged or restored
-    const label = t.btn.textContent ?? tid;
+    const label = t.label;
     t.btn.remove();
     from.tabs.delete(tid);
     requestAnimationFrame(() => from.fitTabs());

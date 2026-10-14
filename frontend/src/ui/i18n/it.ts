@@ -14,4 +14,13 @@ export const it: Record<string, string> = {
   'Shape': 'Forma', 'Sharpen': 'Contrasta', 'Show': 'Mostra', 'Smart Filter': 'Filtro avanzato', 'Smart Objects': 'Oggetti avanzati',
   'Stack Mode': 'Modalità pila', 'Stylize': 'Stilizzazione', 'Transform': 'Trasforma', 'Upscale': 'Ingrandisci', 'Variables': 'Variabili',
   'Vector Mask': 'Maschera vettoriale', 'Video Layers': 'Livelli video', 'Video': 'Video',
+  // Panel names
+  'Layers': 'Livelli', 'Channels': 'Canali', 'Paths': 'Tracciati', 'History': 'Cronologia', 'Properties': 'Proprietà',
+  'Swatches': 'Campioni', 'Colour': 'Colore', 'Color': 'Colore', 'Navigator': 'Navigatore', 'Info': 'Info',
+  'Histogram': 'Istogramma', 'Styles': 'Stili', 'Measurement Log': 'Registro misurazioni', 'Modifier Keys': 'Tasti modificatori',
+  'Timeline': 'Timeline', 'Brushes': 'Pennelli', 'Brush Settings': 'Impostazioni pennello', 'Check Spelling': 'Controllo ortografia', 'Resolve Missing Fonts': 'Risolvi font mancanti', 'Ignore': 'Ignora', 'Ignore All': 'Ignora tutto', 'Change': 'Cambia', 'Change All': 'Cambia tutto', 'Replace All': 'Sostituisci tutto', 'Reveal in File Manager': 'Mostra nel file manager', 'Character': 'Carattere', 'Paragraph': 'Paragrafo',
+  // Dialog buttons and tooltips
+  'OK': 'OK', 'Cancel': 'Annulla', 'Apply': 'Applica', 'Reset': 'Ripristina', 'Close': 'Chiudi', 'Done': 'Fine',
+  'Preview': 'Anteprima', 'Save': 'Salva', 'Don’t Save': 'Non salvare', 'hold or right-click for more tools': 'tieni premuto o clic destro per altri strumenti',
+  'cycles': 'alterna',
 };

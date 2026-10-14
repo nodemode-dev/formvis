@@ -26,6 +26,7 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | keyring, with jaraco.classes, jaraco.context, jaraco.functools, more-itertools, jeepney and SecretStorage | MIT (SecretStorage: BSD-3-Clause) | API keys in the system's password store |
 | Pillow | MIT-CMU | engine |
 | LittleCMS 2 (lcms2, Marti Maria Saguer) | MIT | engine, 16-bit and floating-point colour conversion (Convert to Profile, mode changes, ink limit); called through `ctypes` (`backend/app/services/lcms.py`) on the liblcms2 that Pillow's wheel already carries, or the system's; no code is copied or linked into formvis, no new package is installed |
+| pyspellchecker 0.9.1 | MIT | engine, Check Spelling in type layers (`backend/app/services/spell.py`) |
 | numpy | BSD-3-Clause | engine |
 | opencv-python-headless | Apache-2.0 (OpenCV), MIT (packaging) | engine; its wheels carry LGPL FFmpeg as separate shared libraries, kept separable in the frozen engine |
 | pillow-heif | BSD-3-Clause; bundles LGPL libheif and GPL x265 | server-side engine only; excluded from the frozen desktop engine |

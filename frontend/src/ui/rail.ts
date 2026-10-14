@@ -3,6 +3,7 @@ import type { Tool } from '../extensions/registry';
 import { el, q, setClass, setHidden, setHtml, setText, setTitle, setValue } from './dom';
 import { Dialog } from './dialogs';
 import { icon } from './icons';
+import { onLanguage, t as tr } from './i18n';
 import { rememberTool, slotTool, toolGroups, type ToolGroup } from './tool-groups';
 
 /** Turns a '#rrggbb' string into its red, green and blue channels. */
@@ -79,6 +80,7 @@ export class Rail {
     this.bgInput.addEventListener('input', () => engine.setColors(undefined, parseHex(this.bgInput.value)));
     q(well, '.cv-swap').addEventListener('click', () => engine.swapColors());
     q(well, '.cv-reset').addEventListener('click', () => engine.defaultColors());
+    onLanguage(() => this.sync());
     engine.on('tool', () => this.sync());
     engine.on('options', () => this.sync());
     engine.on('colors', () => this.syncColors());
@@ -115,7 +117,7 @@ export class Rail {
     this.flyout.textContent = '';
     const row = (iconName: string, label: string, key: string, pick: () => void): void => {
       const r = el<HTMLButtonElement>(`<button class="cv-flyout-item" role="menuitem" type="button">${icon(iconName, 18)}<span class="cv-flyout-label"></span><span class="cv-flyout-key"></span></button>`);
-      setText(q(r, '.cv-flyout-label'), label);
+      setText(q(r, '.cv-flyout-label'), tr(label));
       setText(q(r, '.cv-flyout-key'), key);
       r.addEventListener('click', () => { this.closeFlyout(); pick(); });
       this.flyout.appendChild(r);
@@ -144,9 +146,9 @@ export class Rail {
     for (const { group, node } of this.slots) {
       const t = slotTool(group, this.engine.tool), key = t.icon(this.engine);
       setHtml(node, icon(key, 20), `${t.id}:${key}`);
-      node.setAttribute('aria-label', t.label);
+      node.setAttribute('aria-label', tr(t.label));
       const own = t.key ? ` (${t.key})` : '';   // each tool its own key (Rotate View's R in the Hand's slot; Smear has none)
-      setTitle(node, entries(group) > 1 ? `${t.label}${own} · hold or right-click for more tools${group.key ? ` · Shift+${group.key} cycles` : ''}` : `${t.label}${own}`);
+      setTitle(node, entries(group) > 1 ? `${tr(t.label)}${own} · ${tr('hold or right-click for more tools')}${group.key ? ` · Shift+${group.key} ${tr('cycles')}` : ''}` : `${tr(t.label)}${own}`);
       setClass(node, 'is-active', group.tools.some((x) => x.id === this.engine.tool));
     }
   }
@@ -158,7 +160,7 @@ export class Rail {
     this.flyout.textContent = '';
     const add = (iconName: string, label: string, active: boolean, pick: () => void): void => {
       const row = el<HTMLButtonElement>(`<button class="cv-flyout-item" role="menuitem" type="button">${icon(iconName, 18)}<span class="cv-flyout-label"></span><span class="cv-flyout-key"></span></button>`);
-      setText(q(row, '.cv-flyout-label'), label);
+      setText(q(row, '.cv-flyout-label'), tr(label));
       setText(q(row, '.cv-flyout-key'), group.key);
       setClass(row, 'is-active', active);
       row.addEventListener('click', () => { this.closeFlyout(); pick(); });
