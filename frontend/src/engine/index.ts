@@ -19,6 +19,7 @@ import * as VR from './variables';
 import type { DocVariable } from './types';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
+import { applyDuotoneLut, duotoneLut, type Duotone } from './duotone';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
 import { PREVIEW, TiledRaster } from './tiled';
 import { SelectionMask, traceOutline, type SelectionMode } from './selection';
@@ -386,6 +387,14 @@ export class Engine {
       if (!list.some((x) => x.id === id)) return false;
       const rest = list.filter((x) => x.id !== id);
       p.doc = { ...p.doc, comps: rest.length ? rest : undefined, activeComp: p.doc.activeComp === id ? null : p.doc.activeComp };
+      return true;
+    });
+  }
+  renameLayerComp(id: ID, name: string): void {
+    this.edit('Rename Layer Comp', (p) => {
+      const list = p.doc.comps ?? [];
+      if (!name.trim() || !list.some((x) => x.id === id && x.name !== name)) return false;
+      p.doc = { ...p.doc, comps: list.map((x) => (x.id === id ? { ...x, name } : x)) };
       return true;
     });
   }
@@ -7921,7 +7930,20 @@ export class Engine {
     const p = this.current;
     if (!p) return null;
     if (this.composesFloats(p)) { const r = this.composedRendition(p); if (r) return r.canvas; }
-    return renderDoc(this.work, p.doc);
+    const s = renderDoc(this.work, p.doc);
+    if (p.doc.mode !== 'duotone' || !p.doc.duotone || !s) return s;
+    // Duotone (31.3a): the flattened grey, shown and exported as the inks overprinted on white.
+    const img = ctxOf(s).getImageData(0, 0, s.width, s.height), out = createSurface(s.width, s.height);
+    applyDuotoneLut(img.data, duotoneLut(p.doc.duotone));
+    ctxOf(out).putImageData(img, 0, 0);
+    return out;
+  }
+
+  /** Image > Mode > Duotone (31.3a): from Grayscale or Duotone; the grey pixels stay, the inks are the document's. */
+  setDuotone(d: Duotone): boolean {
+    const p = this.current;
+    if (!p || !['grayscale', 'duotone'].includes(p.doc.mode ?? 'rgb')) return false;
+    return this.edit('Duotone', (pp) => { pp.doc = { ...pp.doc, mode: 'duotone', duotone: d, palette: undefined }; return true; });
   }
 
   /** A new document's mode (New Document's Color Mode): set, not converted, as its pixels are only the background. */
@@ -8385,10 +8407,25 @@ export class Engine {
   convertMode(mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean {
     const p = this.current;
     if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || p.doc.mode === 'cmyk' || mode === 'lab' || p.doc.mode === 'lab') return false;
-    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color', lab: 'Lab Color' }[mode];
+    if (mode === 'duotone') return false;   // reached through setDuotone, from Grayscale only
+    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color', lab: 'Lab Color', duotone: 'Duotone' }[mode];
     const flat = mode === 'bitmap' || mode === 'indexed' ? this.flattened() : null;
     const ok = this.edit(label, (pp) => {
       const W = pp.doc.width, H = pp.doc.height;
+      if (pp.doc.mode === 'duotone' && pp.doc.duotone && mode === 'rgb') {
+        // Duotone to RGB: the overprint is baked into each layer's pixels.
+        const lut = duotoneLut(pp.doc.duotone);
+        const layers = pp.doc.layers.map((l) => {
+          if (!l.raster || l.isGroup) return l;
+          const r = l.raster.clone(), d = r.ctx.getImageData(0, 0, r.width, r.height);
+          applyDuotoneLut(d.data, lut);
+          r.ctx.putImageData(d, 0, 0); r.touch();
+          return { ...l, raster: r };
+        });
+        pp.doc = { ...pp.doc, layers, mode: 'rgb', duotone: undefined, palette: undefined };
+        return true;
+      }
+      if (pp.doc.duotone) pp.doc = { ...pp.doc, duotone: undefined };   // back to Grayscale (or on) drops the inks
       if (mode === 'rgb') { pp.doc = { ...pp.doc, mode: 'rgb', palette: undefined }; return true; }
       if (mode === 'grayscale') {
         const gray = (c: RGB): RGB => { const v = Math.round(0.299 * c.r + 0.587 * c.g + 0.114 * c.b); return { r: v, g: v, b: v }; };

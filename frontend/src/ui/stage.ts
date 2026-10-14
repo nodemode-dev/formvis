@@ -1,4 +1,5 @@
 import { applyLut } from '../engine/colour-lut';
+import { applyDuotoneLut, duotoneLut } from '../engine/duotone';
 import { createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
 import type { Project } from '../engine/project';
 import { getTool, type Tool, type ToolContext, type ToolPointer, type ViewInfo } from '../extensions/registry';
@@ -181,13 +182,20 @@ export class Stage {
   /** Proof Colors and a colour-managed view (1.53.5, H2): the composed region through the view's lookup table. */
   private applyView(w: number, h: number): void {
     const v = this.engine.viewTransform;
-    if (!v || w <= 0 || h <= 0) return;
+    // A duotone document (31.3) keeps grey pixels and is shown as its inks overprinted, before any view transform.
+    const duo = this.engine.current?.doc.mode === 'duotone' ? this.engine.current.doc.duotone ?? null : null;
+    if ((!v && !duo) || w <= 0 || h <= 0) return;
     const c = (this.work as unknown as { getContext(k: '2d'): CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null }).getContext('2d');
     if (!c) return;
     const img = c.getImageData(0, 0, w, h);
-    applyLut(img.data, v.lut, v.gamut);
+    if (duo) {
+      if (this.duoCache?.key !== duo) this.duoCache = { key: duo, lut: duotoneLut(duo) };
+      applyDuotoneLut(img.data, this.duoCache.lut);
+    }
+    if (v) applyLut(img.data, v.lut, v.gamut);
     c.putImageData(img, 0, 0);
   }
+  private duoCache: { key: object; lut: Uint8Array } | null = null;
 
   private renderScene(region: Rect | null = null): void {
     this.wantScene = false;
@@ -202,7 +210,7 @@ export class Stage {
     let gpuLayers: DisplayLayer[] | null = null;
     if (this.gpu) {
       const vz = p.viewport.zoom * this.dpr, gl = this.engine.gpuLayers({ matrix: [vz, 0, 0, vz, p.viewport.panX * this.dpr, p.viewport.panY * this.dpr], width: W, height: H });   // the view, for a giant document's tiles (1.62.9)
-      const reason = (this.engine.viewTransform ? 'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
+      const reason = (this.engine.viewTransform ? 'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? (p.doc.mode === 'duotone' ? 'Duotone documents are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
       if (!reason && 'layers' in gl) gpuLayers = gl.layers;
       if (reason !== this.gpuReason) {
         this.gpuReason = reason;
