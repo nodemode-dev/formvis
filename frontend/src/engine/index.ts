@@ -1587,6 +1587,34 @@ export class Engine {
   /** Replaces a smart object's filter stack and re-renders its pixels from the source, as one undo step. */
   setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void { const p = this.current; if (p) this.restackSoon(p, id, null, filters, name); }
 
+  /** Layer > Smart Filter > Disable Smart Filters (1.68.0): true while the active smart object has filters and all are off,
+   *  so the command reads Enable Smart Filters. */
+  get smartFiltersOff(): boolean { const f = this.current?.activeLayer?.smart?.filters; return !!f?.length && f.every((x) => !x.enabled); }
+  /** Turns every filter of the active smart object off, or on when all are off: one step. */
+  toggleSmartFilters(): void {
+    const l = this.current?.activeLayer;
+    if (!l?.smart?.filters.length) return;
+    const on = this.smartFiltersOff;
+    this.setSmartFilters(l.id, (this.smartFiltersShown(l.id) ?? l.smart.filters).map((f) => ({ ...f, enabled: on })), on ? 'Enable Smart Filters' : 'Disable Smart Filters');
+  }
+  /** Layer > Smart Filter > Clear Smart Filters (1.68.0): removes the active smart object's filters, one step. */
+  clearSmartFilters(): void {
+    const l = this.current?.activeLayer;
+    if (l?.smart?.filters.length) this.setSmartFilters(l.id, [], 'Clear Smart Filters');
+  }
+
+  /** Edit > Purge (1.68.0). Histories: the document's undo and redo steps go, its state and its snapshots stay. */
+  purgeHistories(all: boolean): number {
+    if (this.stroke) return 0;
+    let n = 0;
+    for (const p of all ? this.projects : this.current ? [this.current] : []) n += p.history.clear();
+    this.historyOps.length = 0;
+    this.emit('history', null);
+    return n;
+  }
+  /** Clipboard: formvis's own copy of pixels goes; the style clipboard is Layer > Layer Style's and stays. */
+  purgeClipboard(): boolean { const had = !!this.clipboard; this.clipboard = null; return had; }
+
   /** Layer > Smart Objects > Replace Contents: a new source for the active smart object, shown at the same scale per
    *  source pixel and about the same centre, its filters and mask re-run, as one step. */
   replaceContents(source: Raster): boolean {

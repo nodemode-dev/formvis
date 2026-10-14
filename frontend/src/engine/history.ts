@@ -180,6 +180,16 @@ export class History {
   /** The step an undo would take back, and the one a redo would make again (1.60.8: paged ones are brought back first). */
   peekUndo(): HistoryEntry | null { return this.canUndo ? this.past[this.past.length - 1] : null; }
   peekRedo(): HistoryEntry | null { return this.canRedo ? this.future[this.future.length - 1] : null; }
+  /** Edit > Purge > Histories (1.68.0): forgets every step, done and undone, each handed to `onDrop` so what it keeps in
+   *  the engine's undo store goes too; the current state stays. Not while a step is open. Gives back how many went. */
+  clear(): number {
+    if (this.depth > 0) return 0;
+    const gone = [...this.past, ...this.future];
+    this.past = [];
+    this.future = [];
+    for (const e of gone) History.onDrop?.(e);
+    return gone.length;
+  }
   /** Every step, for dropping all a closed document keeps outside the window. */
   entries(): HistoryEntry[] { return [...this.past, ...this.future]; }
   /** The patches that may go to the engine's undo store, oldest first: those of past steps but the last `keep`, not yet
