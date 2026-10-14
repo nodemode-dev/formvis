@@ -1,6 +1,7 @@
 import type { Pt } from '../../engine';
 import type { OptionSpec, Tool } from '../registry';
 import { brushKeys, brushOptions, drawBrushCursor } from './brush-common';
+import { holdEnd, holdMove, holdStart, quickShapeOption, quickShapeSnapped } from './quick-shape';
 
 let hover: Pt | null = null, mode: 'brush' | 'pencil' | 'block' = 'brush', before: 'paint' | 'erase' = 'paint';
 let toHistory = false, history = false, kept: { diameter: number; opacity: number } | null = null;
@@ -23,10 +24,18 @@ export const eraserTool: Tool = {
     e.setBrushMode('erase');
     if (mode === 'block') { kept = { diameter: e.brush.diameter, opacity: e.brush.opacity }; e.setBrush({ diameter: 16 / ctx.view().zoom, opacity: 1 }); }
     if (!e.beginStroke(p.doc, p.shift, p.pressure, p.pose, { aliased: mode === 'pencil', square: mode === 'block', name: 'Eraser' })) finish(e);
+    else holdStart(p.doc, mode !== 'block');
   },
-  move(ctx, p) { hover = p.doc; ctx.engine.strokeTo(p.doc, p.pressure, p.pose); ctx.engine.emit('overlay', null); },
-  up(ctx) { ctx.engine.endStroke(); if (history) history = false; else finish(ctx.engine); },
-  cancel(ctx) { ctx.engine.cancelStroke(); if (history) history = false; else finish(ctx.engine); },
+  move(ctx, p) {
+    hover = p.doc;
+    if (!quickShapeSnapped()) {
+      ctx.engine.strokeTo(p.doc, p.pressure, p.pose);
+      if (!history) holdMove(ctx, p, (pt, pr, pose) => ctx.engine.beginStroke(pt, false, pr, pose, { aliased: mode === 'pencil', square: false, name: 'Eraser' }));
+    }
+    ctx.engine.emit('overlay', null);
+  },
+  up(ctx) { holdEnd(); ctx.engine.endStroke(); if (history) history = false; else finish(ctx.engine); },
+  cancel(ctx) { holdEnd(); ctx.engine.cancelStroke(); if (history) history = false; else finish(ctx.engine); },
   hover(ctx, p) { hover = p ? p.doc : null; ctx.engine.emit('overlay', null); },
   keydown(ctx, e) { return brushKeys(ctx, e); },
   overlay(ctx, g) { drawBrushCursor(ctx, g, hover); },
@@ -36,6 +45,7 @@ export const eraserTool: Tool = {
     ...brushOptions(e, 'Opacity'),
     { kind: 'range', label: 'Flow', min: 1, max: 100, unit: '%', get: () => Math.round(e.brushFlow * 100), set: (v: number) => { e.brushFlow = Math.max(0.01, Math.min(1, v / 100)); e.emit('options', null); } },
     { kind: 'toggle', label: 'Erase to History', get: () => toHistory, set: (v) => { toHistory = v; e.emit('options', null); } },
+    quickShapeOption(e),
   ],
 };
 

@@ -405,6 +405,48 @@ def encode_cmyk_psd(meta: str = Form(...), file: UploadFile = File(...)) -> Resp
     return Response(out.getvalue(), media_type="image/vnd.adobe.photoshop")
 
 
+@router.post("/encode-lab-psd")
+def encode_lab_psd(meta: str = Form(...), file: UploadFile = File(...)) -> Response:
+    """A layered Lab PSD (DEV_PLAN 36.11, colour mode 9), written by psd-tools as Photoshop lays it out: L over 0 to 255
+    for 0 to 100, a and b over 0 to 255 with 128 for zero. `meta` names the document's size and each layer's name,
+    place, size, opacity, visibility and blend mode; `file` holds the composite's L, a and b bytes (laid on white
+    already), then each layer's L, a, b and alpha bytes. A layer's transparency is its transparency channel, which
+    the Lab reader (decode-lab) takes back. psd-tools' own Lab writer converts from RGB and would change the values,
+    so the document is built as RGBA, which keeps the transparency band, and turned to Lab at the end with the
+    bytes untouched."""
+    from PIL import Image
+    from psd_tools import PSDImage
+    from psd_tools.api.layers import PixelLayer
+    from psd_tools.constants import BlendMode, ColorMode
+    m = json.loads(meta)
+    W, H, raw = int(m["width"]), int(m["height"]), file.file.read()
+    if W <= 0 or H <= 0 or W * H > config.MAX_PIXELS:
+        raise HTTPException(status_code=422, detail="The document's size is out of range.")
+    at = W * H * 3
+    if len(raw) < at:
+        raise HTTPException(status_code=422, detail="The composite does not match the size given.")
+    comp = np.frombuffer(raw[:at], np.uint8).reshape(H, W, 3)
+    psd = PSDImage.frompil(Image.fromarray(np.dstack([comp, np.full((H, W), 255, np.uint8)]), "RGBA"))
+    for lm in m.get("layers", []):
+        w, h = int(lm["width"]), int(lm["height"])
+        n = w * h * 4
+        if w <= 0 or h <= 0 or at + n > len(raw):
+            raise HTTPException(status_code=422, detail=f"Layer \"{lm.get('name', '')}\" does not match its size.")
+        px = np.frombuffer(raw[at:at + n], np.uint8).reshape(h, w, 4)
+        at += n
+        layer = PixelLayer.frompil(Image.fromarray(np.ascontiguousarray(px), "RGBA"), psd, str(lm.get("name", "Layer")), top=int(lm["top"]), left=int(lm["left"]))
+        layer.opacity = max(0, min(255, int(lm.get("opacity", 255))))
+        layer.visible = bool(lm.get("visible", True))
+        layer.blend_mode = BlendMode[_PSD_BLENDS.get(str(lm.get("blend", "normal")), "NORMAL")]
+    header = psd._record.header
+    header.color_mode = ColorMode.LAB
+    header.channels = 3
+    psd._record.image_data.set_data([np.ascontiguousarray(comp[..., i]).tobytes() for i in range(3)], header)
+    out = io.BytesIO()
+    psd._record.write(out)   # not psd.save, which would redraw the composite as RGB
+    return Response(out.getvalue(), media_type="image/vnd.adobe.photoshop")
+
+
 @router.post("/decode-cmyk")
 def decode_cmyk(file: UploadFile = File(...)) -> Response:
     """A CMYK picture's ink (1.54.0, the parity plan's H1): C, M, Y, K and alpha, a byte each, then the embedded

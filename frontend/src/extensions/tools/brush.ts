@@ -2,6 +2,7 @@ import { BLEND_MODES, canvasBlend } from '../../engine';
 import { clamp, type Pt } from '../../engine';
 import { allBrushPresets, identityOption, pressureOption } from '../../engine/brush-dynamics';
 import { digitOf, type Tool } from '../registry';
+import { holdEnd, holdMove, holdStart, quickShapeOption, quickShapeSnapped } from './quick-shape';
 
 let hoverPt: Pt | null = null;
 
@@ -18,18 +19,23 @@ export const brushTool: Tool = {
   down(ctx, p) {
     if (p.button !== 0) return;
     hoverPt = p.doc; steady = { ...p.doc }; last = p;
-    if (ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose) && airbrush) { clearInterval(airTimer); airTimer = window.setInterval(() => ctx.engine.airbrushTick(last?.pressure ?? 1), 60); }
+    if (ctx.engine.beginStroke(p.doc, p.shift, p.pressure, p.pose)) {
+      holdStart(p.doc, !airbrush);   // Quick Shape (36.5); not with the Airbrush, whose paint builds where the pointer rests
+      if (airbrush) { clearInterval(airTimer); airTimer = window.setInterval(() => ctx.engine.airbrushTick(last?.pressure ?? 1), 60); }
+    }
   },
   move(ctx, p) {
     hoverPt = p.doc; last = p;
+    if (quickShapeSnapped()) { ctx.engine.emit('overlay', null); return; }   // snapped to a shape: the stroke is that shape now
     const k = 1 - Math.min(0.95, smoothing / 100);
     if (steady && smoothing > 0) { steady = { x: steady.x + (p.doc.x - steady.x) * k, y: steady.y + (p.doc.y - steady.y) * k }; ctx.engine.strokeTo(steady, p.pressure, p.pose); }
     else ctx.engine.strokeTo(p.doc, p.pressure, p.pose);
+    holdMove(ctx, p, (pt, pr, pose) => ctx.engine.beginStroke(pt, false, pr, pose));
     ctx.engine.emit('overlay', null);
   },
-  up(ctx) { clearInterval(airTimer); if (steady && last && smoothing > 0) ctx.engine.strokeTo(last.doc, last.pressure, last.pose); steady = null; last = null; ctx.engine.endStroke(); },
+  up(ctx) { clearInterval(airTimer); if (steady && last && smoothing > 0 && !quickShapeSnapped()) ctx.engine.strokeTo(last.doc, last.pressure, last.pose); holdEnd(); steady = null; last = null; ctx.engine.endStroke(); },
   hover(ctx, p) { hoverPt = p ? p.doc : null; ctx.engine.emit('overlay', null); },
-  cancel(ctx) { clearInterval(airTimer); ctx.engine.cancelStroke(); },
+  cancel(ctx) { clearInterval(airTimer); holdEnd(); ctx.engine.cancelStroke(); },
   keydown(ctx, e) {
     if (e.metaKey || e.ctrlKey || e.altKey) return false;
     const eng = ctx.engine;
@@ -73,6 +79,7 @@ export const brushTool: Tool = {
   options: (e) => [
     { kind: 'title', text: 'Brush' },
     { kind: 'toggle', label: 'Airbrush', get: () => airbrush, set: (v) => { airbrush = v; e.emit('options', null); } },
+    quickShapeOption(e),
     { kind: 'range', label: 'Smoothing', min: 0, max: 100, unit: '%', get: () => smoothing, set: (v: number) => { smoothing = Math.max(0, Math.min(100, Math.round(v))); e.emit('options', null); } },
     { kind: 'range', label: 'Angle', min: -180, max: 180, unit: '\u00b0', get: () => Math.round(e.brushShape.angle), set: (v: number) => { e.brushShape = { ...e.brushShape, angle: Math.max(-180, Math.min(180, Math.round(v))) }; e.emit('options', null); } },
     // Photoshop's Mode: Normal, Behind, Clear and the blend modes the canvas truly draws (Paint/Erase was formvis's own;

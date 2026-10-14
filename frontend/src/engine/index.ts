@@ -46,6 +46,7 @@ import * as TC from './transform-commit';
 import * as PO from './paint-ops';
 import * as SO from './select-ops';
 import * as IE from './image-edit';
+import { diffRegions } from './image-diff';
 import * as DS from './document-size';
 import * as TE from './transform-entry';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
@@ -92,7 +93,7 @@ import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
 import { traceAlpha } from './trace-outline';
 export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
-import { FILL_DEFAULTS, WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
+import { FILL_DEFAULTS, WarpStroke, contentFill, diffusionFill, ringVariance, SMOOTH_RING_VARIANCE, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
@@ -8479,7 +8480,10 @@ export class Engine {
     for (let i = 0; i < hole0.length; i++) hole0[i] = cov[i] > 0 ? 255 : 0;
     const grown = resizeMask(hole0, W, H, 2), hole = new Uint8Array(W * H);
     for (let i = 0; i < hole.length; i++) hole[i] = grown[i] >= 128 ? 1 : 0;
-    if (!contentFill(pm, hole, W, H)) { this.notice('There is nothing opaque around the stroke to fill from.'); return null; }
+    // A hole in a smooth area (little variance in the known ring around it) takes the quick diffusion fill (36.5); any
+    // other keeps the patch-copying fill.
+    const quick = ringVariance(pm, hole, W, H) < SMOOTH_RING_VARIANCE;
+    if (!(quick ? diffusionFill(pm, hole, W, H) : contentFill(pm, hole, W, H))) { this.notice('There is nothing opaque around the stroke to fill from.'); return null; }
     const out = new ImageData(W, H);
     unpremultiply(pm, out.data);
     r.write(out);
@@ -8604,6 +8608,30 @@ export class Engine {
       if (opts.mode !== 'none') this.setStackMode(opts.mode);
     }
     return p;
+  }
+
+  /** Edit > Compare with... (36.5): a new document holding what this one shows, what `other` shows (hidden, kept for
+   *  reference) and a "Differences" layer in Difference blend mode, with the regions that differ by more than
+   *  `threshold` (0 to 255, the largest channel difference) and at least `minSize` pixels selected. Both pictures sit at
+   *  the top left of a canvas as large as the larger. Returns how many regions differ, or null when it could not run. */
+  compareDocuments(other: Project, threshold: number, minSize: number): number | null {
+    const mine = this.current;
+    if (!mine || other === mine) return null;
+    const a = this.flattenedOf(mine), b = this.flattenedOf(other);
+    if (!a || !b) { this.notice('One of the documents could not be read.', 'error'); return null; }
+    const W = Math.max(a.width, b.width), H = Math.max(a.height, b.height);
+    if (W > LIMITS.side || H > LIMITS.side || W * H > LIMITS.pixels || !this.room(W * H * 4 * 5, 'Compare')) return null;
+    const put = (s: Surface): Raster => { const r = new Raster(W, H); (r.ctx as CanvasRenderingContext2D).drawImage(s as CanvasImageSource, 0, 0); r.touch(); return r; };
+    const ra = put(a), rb = put(b);
+    const found = diffRegions(ra.read().data, rb.read().data, W, H, Math.max(0, Math.min(255, Math.round(threshold))), Math.max(1, Math.round(minSize)));
+    const base: Doc = { id: uid(), width: W, height: H, resolution: mine.doc.resolution, layers: [] };
+    const la = { ...newLayer(mine.name, base), raster: ra }, lb = { ...newLayer(other.name, base), raster: rb, visible: false };
+    const ld = { ...newLayer('Differences', base), raster: put(b), blend: 'difference' as const };
+    const p = this.addProject({ ...base, layers: [la, lb, ld] }, `${mine.name} vs ${other.name}`, ld.id);
+    p.selection = SelectionMask.cropped(0, 0, W, H, found.mask);
+    this.emit('selection', null);
+    this.refresh();
+    return found.regions.length;
   }
 
   /** Upscale: what the document shows, enlarged `scale` times by `run`, opened as a new document. */

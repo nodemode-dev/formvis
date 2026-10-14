@@ -455,6 +455,12 @@ export const api = {
     const body = form({ width: String(width), height: String(height) }, [{ name: 'lab.raw', blob: new Blob([new Uint8Array(lab)]) }], 'file');
     return (await request('/io/encode-lab-tiff', { method: 'POST', body })).blob();
   },
+  /** A layered Lab PSD (DEV_PLAN 36.11, colour mode 9): the composite's L, a, b bytes, then each layer's L, a, b and alpha
+   *  (L over 0 to 255 for 0 to 100, a and b offset by 128), written by the engine. */
+  async encodeLabPsd(doc: { width: number; height: number; layers: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean; blend: string }> }, composite: Uint8Array, layers: Uint8Array[]): Promise<Blob> {
+    const body = form({ meta: JSON.stringify(doc) }, [{ name: 'layers.raw', blob: new Blob([new Uint8Array(composite), ...layers.map((k) => new Uint8Array(k))]) }], 'file');
+    return (await request('/io/encode-lab-psd', { method: 'POST', body })).blob();
+  },
   async encodeCmyk(ink: Uint8Array, width: number, height: number, format: 'tiff' | 'jpg', icc: Uint8Array | null, quality = 90, dpi = 72): Promise<Blob> {
     const files = [{ name: 'pixels.raw', blob: new Blob([new Uint8Array(ink)]) }];
     const body = form({ width: String(width), height: String(height), format, quality: String(quality), dpi: String(dpi) }, files, 'file');

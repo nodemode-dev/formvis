@@ -378,6 +378,133 @@ const FILL_NONE: FillOptions = { color: 0, rotation: 0, scale: false, mirror: fa
 const FILL_COLOR: ReadonlyArray<readonly [number, number, number]> = [[1, 1, 0], [1, 1, 12], [0.8, 1.25, 40], [0.6, 1.6, 80]];
 const FILL_ANGLES: ReadonlyArray<readonly number[]> = [[], [-15, 15], [-45, -15, 15, 45], [-90, -45, -15, 15, 45, 90], [-135, -90, -45, -15, 15, 45, 90, 135, 180]];
 
+/** The ring variance (see ringVariance) below which Remove counts a hole as sitting in a smooth area: a standard
+ *  deviation of about 12 levels. A plain gradient measured about 43; noise of 20 levels measures about 400. */
+export const SMOOTH_RING_VARIANCE = 150;
+
+/** How much the pixels just outside a hole vary: the largest per-channel variance (0 to 65025) of the known pixels in a
+ *  ring about `ring` pixels wide around the set pixels of `hole`, in premultiplied `px`. Remove's quick path runs
+ *  only when this is small (a smooth area). Returns Infinity when the hole has no known pixel around it. */
+export function ringVariance(px: Uint8ClampedArray, hole: Uint8Array, w: number, h: number, ring = 6): number {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (hole[y * w + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return 0;
+  const rx0 = Math.max(0, x0 - ring), ry0 = Math.max(0, y0 - ring), rx1 = Math.min(w - 1, x1 + ring), ry1 = Math.min(h - 1, y1 + ring);
+  const sum = [0, 0, 0, 0], sq = [0, 0, 0, 0];
+  let n = 0;
+  for (let y = ry0; y <= ry1; y++) for (let x = rx0; x <= rx1; x++) {
+    const i = y * w + x;
+    if (hole[i]) continue;
+    let near = false;
+    for (let dy = -ring; dy <= ring && !near; dy += 2) for (let dx = -ring; dx <= ring; dx += 2) {
+      const xx = x + dx, yy = y + dy;
+      if (xx >= 0 && yy >= 0 && xx < w && yy < h && hole[yy * w + xx]) { near = true; break; }
+    }
+    if (!near) continue;
+    for (let c = 0; c < 4; c++) { const v = px[i * 4 + c]; sum[c] += v; sq[c] += v * v; }
+    n++;
+  }
+  if (n < 8) return Infinity;
+  let worst = 0;
+  for (let c = 0; c < 4; c++) { const m = sum[c] / n; worst = Math.max(worst, sq[c] / n - m * m); }
+  return worst;
+}
+
+/** Diffusion fill (a quick path for Remove): fills the pixels where `hole` is set in premultiplied `px` by a pyramid.
+ *  The picture is halved again and again with the hole left out of every average, the coarsest level's remaining gaps
+ *  are filled by averaging their known neighbours, and each level back up takes the enlarged coarser level only where
+ *  its own pixels are unknown (known pixels are kept), softened by two neighbour averages. Smooth and fast, with no
+ *  texture; it works on a window around the hole. Returns false when nothing is known to fill from. */
+export function diffusionFill(px: Uint8ClampedArray, hole: Uint8Array, w: number, h: number): boolean {
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (hole[y * w + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return true;
+  const m = Math.max(8, Math.max(x1 - x0, y1 - y0) + 1);
+  const ox = Math.max(0, x0 - m), oy = Math.max(0, y0 - m), cw = Math.min(w, x1 + m + 1) - ox, ch = Math.min(h, y1 + m + 1) - oy;
+  type Level = { w: number; h: number; v: Float32Array; k: Uint8Array };
+  const base: Level = { w: cw, h: ch, v: new Float32Array(cw * ch * 4), k: new Uint8Array(cw * ch) };
+  let known = 0;
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const s = (y + oy) * w + x + ox, d = y * cw + x;
+    if (hole[s]) continue;
+    base.k[d] = 1; known++;
+    for (let c = 0; c < 4; c++) base.v[d * 4 + c] = px[s * 4 + c];
+  }
+  if (!known) return false;
+  const levels: Level[] = [base];
+  for (;;) {
+    const a = levels[levels.length - 1];
+    if (a.k.every((f) => f === 1) || (a.w <= 2 && a.h <= 2)) break;
+    const nw = Math.max(1, (a.w + 1) >> 1), nh = Math.max(1, (a.h + 1) >> 1), b: Level = { w: nw, h: nh, v: new Float32Array(nw * nh * 4), k: new Uint8Array(nw * nh) };
+    for (let y = 0; y < nh; y++) for (let x = 0; x < nw; x++) {
+      let n = 0;
+      const acc = [0, 0, 0, 0];
+      for (let dy = 0; dy < 2; dy++) for (let dx = 0; dx < 2; dx++) {
+        const sx = x * 2 + dx, sy = y * 2 + dy;
+        if (sx >= a.w || sy >= a.h || !a.k[sy * a.w + sx]) continue;
+        n++;
+        for (let c = 0; c < 4; c++) acc[c] += a.v[(sy * a.w + sx) * 4 + c];
+      }
+      if (!n) continue;
+      b.k[y * nw + x] = 1;
+      for (let c = 0; c < 4; c++) b.v[(y * nw + x) * 4 + c] = acc[c] / n;
+    }
+    levels.push(b);
+  }
+  // The coarsest level: unknown cells take the average of their known neighbours, round after round, until none is left.
+  const top = levels[levels.length - 1];
+  for (let guard = 0; guard < top.w + top.h + 4 && !top.k.every((f) => f === 1); guard++) {
+    const set: number[] = [];
+    const nv = new Map<number, number[]>();
+    for (let y = 0; y < top.h; y++) for (let x = 0; x < top.w; x++) {
+      const i = y * top.w + x;
+      if (top.k[i]) continue;
+      let n = 0;
+      const acc = [0, 0, 0, 0];
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if ((dx || dy) && xx >= 0 && yy >= 0 && xx < top.w && yy < top.h && top.k[yy * top.w + xx]) { n++; for (let c = 0; c < 4; c++) acc[c] += top.v[(yy * top.w + xx) * 4 + c]; }
+      }
+      if (n) { set.push(i); nv.set(i, acc.map((v) => v / n)); }
+    }
+    if (!set.length) break;
+    for (const i of set) { top.k[i] = 1; const v = nv.get(i) as number[]; for (let c = 0; c < 4; c++) top.v[i * 4 + c] = v[c]; }
+  }
+  // Back up: the finer level takes the enlarged coarser one where it is unknown, then two neighbour averages soften those cells.
+  for (let li = levels.length - 2; li >= 0; li--) {
+    const f = levels[li], c = levels[li + 1], was = f.k.slice();
+    for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
+      const i = y * f.w + x;
+      if (was[i]) continue;
+      const fx = Math.min(c.w - 1, Math.max(0, (x - 0.5) / 2)), fy = Math.min(c.h - 1, Math.max(0, (y - 0.5) / 2)), ix = Math.floor(fx), iy = Math.floor(fy), tx = fx - ix, ty = fy - iy;
+      const jx = Math.min(c.w - 1, ix + 1), jy = Math.min(c.h - 1, iy + 1);
+      for (let ch2 = 0; ch2 < 4; ch2++) {
+        const g = (xx: number, yy: number): number => c.v[(yy * c.w + xx) * 4 + ch2];
+        f.v[i * 4 + ch2] = (g(ix, iy) * (1 - tx) + g(jx, iy) * tx) * (1 - ty) + (g(ix, jy) * (1 - tx) + g(jx, jy) * tx) * ty;
+      }
+      f.k[i] = 1;
+    }
+    for (let pass = 0; pass < 2; pass++) {
+      const prev = f.v.slice();
+      for (let y = 0; y < f.h; y++) for (let x = 0; x < f.w; x++) {
+        const i = y * f.w + x;
+        if (was[i]) continue;
+        for (let c2 = 0; c2 < 4; c2++) {
+          let s = 0, n = 0;
+          for (const [dx, dy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) { const xx = x + dx, yy = y + dy; if (xx >= 0 && yy >= 0 && xx < f.w && yy < f.h) { s += prev[(yy * f.w + xx) * 4 + c2]; n++; } }
+          f.v[i * 4 + c2] = (prev[i * 4 + c2] + s) / (n + 1);
+        }
+      }
+    }
+  }
+  for (let y = 0; y < ch; y++) for (let x = 0; x < cw; x++) {
+    const s = (y + oy) * w + x + ox;
+    if (!hole[s]) continue;
+    for (let c = 0; c < 4; c++) px[s * 4 + c] = Math.max(0, Math.min(255, Math.round(base.v[(y * cw + x) * 4 + c])));
+  }
+  return true;
+}
+
 /** Content-Aware Fill: fills the pixels where `mask` is set in premultiplied `px` from the surrounding image. Returns
  *  false when there is nothing opaque around the hole, or no whole patch of the surroundings to copy from. `options`
  *  adds the workspace's adaptation: extra rotated, scaled and mirrored candidates (searched on a bounded subsample, at
