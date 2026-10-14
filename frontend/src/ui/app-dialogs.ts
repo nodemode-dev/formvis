@@ -379,6 +379,7 @@ export class SettingsDialog extends Dialog {
   private readonly gpuName = el('<span class="cv-gpu-name">Detecting...</span>');
   private readonly gpuMode = el('<p class="cv-note cv-gpu-mode"></p>');
   private readonly gpuUseRow = checkRow('Use Graphics Processor', (v) => this.change({ useGpu: v }));
+  private readonly gpuFiltersRow = checkRow('Use the GPU for filters', (v) => this.change({ gpuFilters: v }));
   private readonly rendererRow = selectRow('Renderer', RENDERER_CHOICES, (v) => this.change({ renderer: v as GpuRenderer }));
   private readonly gpuMemoryRow = sliderRow('GPU memory (MB)', 128, 16384, 128, (v) => this.change({ gpuMemoryMB: v }));
   /** The engine's compute device (Phase 18.6): the choice, and what the engine reports it uses and why. */
@@ -415,7 +416,7 @@ export class SettingsDialog extends Dialog {
     this.intensityRow.set(Math.round((readChoice().intensity ?? 1) * 100));
     add('Interface', row, accentRow, this.intensityRow.el, el('<p class="cv-note">Theme and accent are shared with NodeMode on this device. Intensity sets how strongly the accent tints what it marks; 100% is the design\'s.</p>'));
     add('Performance', this.budgetNote, this.redrawRow.el,
-      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
+      el('<h3 class="cv-prefs-sub">Graphics Processor Settings</h3>'), this.gpuNameRow(), this.gpuUseRow.el, this.gpuFiltersRow.el, this.rendererRow.el, this.gpuMemoryRow.el, this.gpuMode,
       el('<p class="cv-note">Automatic uses WebGPU (Metal on macOS, Direct3D 12 on Windows), then WebGL2 (as on Linux), on a hardware graphics processor, and the CPU otherwise; a software GPU is slower than the CPU renderer, so Automatic does not use one. If the graphics processor fails to start, formvis turns this off and says so. The canvas draws on the graphics processor; a document using something it does not draw yet draws on the CPU, and the status bar says why.</p>'),
       el('<h3 class="cv-prefs-sub">Engine</h3>'), this.engineRow.el, this.engineMode,
       el('<p class="cv-note">Where the engine runs its models (Remove Background, and the local models that follow). Automatic uses CUDA on an NVIDIA graphics processor, Core ML (Metal) on a Mac, and the CPU otherwise; a choice this machine cannot run falls back to the CPU, and the line above says why.</p>'));
@@ -528,6 +529,7 @@ export class SettingsDialog extends Dialog {
     this.homeCloseRow.set(this.prefs.homeOnLastClose);
     this.whatsNewRow.set(this.prefs.whatsNewAuto);
     this.gpuUseRow.set(this.prefs.useGpu);
+    this.gpuFiltersRow.set(this.prefs.gpuFilters);
     this.rendererRow.set(this.prefs.renderer);
     this.gpuMemoryRow.set(this.prefs.gpuMemoryMB);
     this.engineRow.set(this.prefs.engineDevice);

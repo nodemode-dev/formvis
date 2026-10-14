@@ -126,6 +126,8 @@ import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, m
 import { GpuDisplay, type ScreenDisplay } from './gpu/display';
 import { benchText, runBenchmark } from './gpu/bench';
 import { GlDisplay } from './gpu/gl-display';
+import { GlFilters } from './gpu/filters';
+import { setGpuFilters } from './engine/gpu-filters';
 import { NativeDisplay } from './gpu/native-display';
 import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
@@ -521,10 +523,21 @@ export function startApp(): void {
   // start or a lost device is remembered per API, so losing WebGPU does not rule out WebGL2.
   let gpuDisplay: ScreenDisplay | null = null, gpuKind: 'webgpu' | 'webgl2' | 'native' | null = null, gpuStarting = false;
   const gpuFailed = new Set<'webgpu' | 'webgl2' | 'native'>();
+  // The GPU filter runner (36.10): WebGL2 on its own offscreen canvas, used when Use Graphics Processor and Use the GPU
+  // for filters are on, the renderer is not the CPU, and WebGL2 is a hardware one (a software rasteriser only when WebGL2
+  // is named in Preferences). The engine only sees it through setGpuFilters.
+  let filterGl: GlFilters | null = null;
+  function syncGpuFilters(pr: ReturnType<typeof loadPrefs>): void {
+    const w = gpuProbe.webgl2, want = !!w && pr.useGpu && pr.gpuFilters && pr.renderer !== 'cpu' && (!w.software || pr.renderer === 'webgl2');
+    if (filterGl && (!want || !filterGl.ok)) { filterGl.destroy(); filterGl = null; }
+    if (want && !filterGl) filterGl = GlFilters.create();
+    setGpuFilters(want ? filterGl : null);
+  }
   function syncGpu(): void {
     if (!gpuProbed) return;
     const pr = loadPrefs(), ch = chooseRenderer(gpuProbe, pr.useGpu, pr.renderer), adapterName = ch.adapter ? `${ch.adapter.name}${ch.adapter.software ? ' (software)' : ''}` : '';
     const want = ch.mode === 'cpu' ? null : ch.mode;
+    syncGpuFilters(pr);
     if (gpuDisplay && gpuKind !== want) { gpuDisplay.destroy(); gpuDisplay = null; gpuKind = null; }
     if (want && !gpuDisplay && !gpuStarting && !gpuFailed.has(want)) {
       gpuStarting = true;

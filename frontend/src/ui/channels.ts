@@ -50,7 +50,7 @@ export class ChannelsPanel {
         this.apply();
       });
       row.addEventListener('click', (e) => {
-        if (isLabRow(r.id)) { if (r.id === 'lab') this.engine.showAlpha(null, false); this.labSolo = r.id === 'lab' ? null : r.id; this.engine.setChannelView(this.labSolo ? LAB_CH[this.labSolo] : null); this.apply(); return; }
+        if (isLabRow(r.id)) { if (r.id === 'lab') this.engine.showAlpha(null, false); this.labSolo = r.id === 'lab' ? null : r.id; this.engine.paintLab = this.labSolo ? LAB_CH[this.labSolo] : null; this.engine.setChannelView(this.labSolo ? LAB_CH[this.labSolo] : null); this.apply(); return; }
         if (e.metaKey || e.ctrlKey) { this.loadSelection(r.id, clickMode(e)); return; }
         if (r.id === 'rgb' || r.id === 'cmyk') this.engine.showAlpha(null, false);
         if (r.id === 'cmyk') this.inkSolo = null;
@@ -123,7 +123,7 @@ export class ChannelsPanel {
   private apply(): void {
     const cmyk = this.engine.current?.doc.mode === 'cmyk', lab = this.engine.current?.doc.mode === 'lab';
     if (!cmyk && this.inkSolo) { this.inkSolo = null; this.engine.paintChannel = null; this.engine.setChannelView(null); }
-    if (!lab && this.labSolo) { this.labSolo = null; this.engine.setChannelView(null); }
+    if (!lab && this.labSolo) { this.labSolo = null; this.engine.paintLab = null; this.engine.setChannelView(null); }
     const m = this.solo && !cmyk && !lab
       ? (() => { const k = { r: [1, 0, 0], g: [0, 1, 0], b: [0, 0, 1] }[this.solo]; return [...k, 0, 0, ...k, 0, 0, ...k, 0, 0, 0, 0, 0, 1, 0]; })()
       : [this.shown.r || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.g || cmyk ? 1 : 0, 0, 0, 0, 0, 0, this.shown.b || cmyk ? 1 : 0, 0, 0, 0, 0, 0, 1, 0];
@@ -140,7 +140,7 @@ export class ChannelsPanel {
       row.querySelector('.cv-ch-eye')?.classList.toggle('is-off', !visible);
     }
     const native = !!this.stage.querySelector('.cv-scene-native:not([hidden])');
-    setText(this.root.querySelector('.cv-ch-note') as HTMLElement, lab ? (this.labSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.labSolo)?.label} alone, as grey (a and b mid-grey where neutral); click Lab to see the colours again.` : 'Lab: Lightness, a and b as greys (a and b mid-grey where neutral). Click one to see it alone on the canvas.') : cmyk ? (this.inkSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.inkSolo)?.label} alone (paper white, full ink black); the Brush, Pencil and Eraser paint it alone.` : 'Click an ink to paint it alone; ⌘- or Ctrl-click loads its light areas as a selection.')
+    setText(this.root.querySelector('.cv-ch-note') as HTMLElement, lab ? (this.labSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.labSolo)?.label} alone, as grey (a and b mid-grey where neutral); click Lab to see the colours again. The Brush, Pencil and Eraser paint it alone.` : 'Lab: Lightness, a and b as greys (a and b mid-grey where neutral). Click one to see it alone on the canvas.') : cmyk ? (this.inkSolo ? `The canvas shows ${ROWS.find((r) => r.id === this.inkSolo)?.label} alone (paper white, full ink black); the Brush, Pencil and Eraser paint it alone.` : 'Click an ink to paint it alone; ⌘- or Ctrl-click loads its light areas as a selection.')
       : native && !plain ? 'The Native GPU renderer draws outside the page: switch the renderer in Preferences to view single channels.' : '⌘- or Ctrl-click a channel to load it as a selection.');
     this.syncAlphas();
   }
