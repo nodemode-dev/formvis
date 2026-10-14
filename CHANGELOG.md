@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.70.1 · 2026-10-14
+
+### Added
+
+- OpenType features on type: ligatures (standard on or off, discretionary), contextual and stylistic alternates, swash, oldstyle figures, titling, ornaments, ordinals, fractions and small caps, from the Type options and the `type-features` command, for fonts installed on the computer.
+- Layer Comps are written to and read from PSD (visibility and position; appearance is noted as not written), and a comp can be selected in the panel, with Update and Delete acting on it.
+- Window > Styles: saved layer styles applied in a click, kept between sessions; Window > Measurement Log as a docked panel.
+
 ## 1.69.9 · 2026-10-14
 
 ### Added

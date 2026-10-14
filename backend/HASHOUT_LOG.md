@@ -2,6 +2,21 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.1 · _v1.70.1 (app/__init__.py)
+
+Checked: `tests/test_api.py` 16 of 16. Probed through the running engine: Inter, an installed font with a `frac` feature, came back from `/api/fonts/file`. The page registered it as `Inter__ot_<hash>` with `"frac" 1`, and "1/2 3/4" at 48 px rendered 111 px wide instead of 172 (the fractions set as single glyphs). Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.69.9"
+version = "1.69.9"
+version = "1.69.9"
+ "version": "1.69.9",
+```
+
+## Font file route, DEV_PLAN 32.6 part b · _v1.70.1 (app/routers/system.py)
+
+`GET /api/fonts/file?family=X&bold=0|1&italic=0|1` returns a font file's bytes so the window can register a FontFace with OpenType features. It asks `fc-match` (list argument, no shell) and keeps the answer only when it is the requested family (fc-match otherwise answers with a fallback font), else scans the usual font folders for a file whose name holds the family. Only .ttf, .otf, .ttc, .woff and .woff2 files are read, served as font/ttf, font/otf, font/collection, font/woff or font/woff2; the request never names a path, and nothing found is a 404.
+
 ## Version only · _v1.69.9
 
 No engine code changed in 1.69.9. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

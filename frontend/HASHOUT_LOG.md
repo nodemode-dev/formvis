@@ -2,6 +2,43 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.1: OpenType features, Layer Comps in PSD, Styles and Measurement Log panels · _v1.70.1 (io/psd.ts, README.md)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (904 catalogue ids); README's TypeScript count raised to 64,600. No builder added a type cast.
+
+Fixes at the join, both in `io/psd.ts` `writePsdFile`:
+- Writing a document with comps threw in ag-psd ("You need to provide layer.id value whan writing document with layer comps"). Every built layer now gets a numeric `id` when comps are written.
+- File Info's XMP replaced `psd.imageResources` outright, so it would have dropped the layer comps. It is now merged in.
+
+Probes in Chromium:
+- **Layer Comps through PSD:** a document with a Red layer and two comps (Shown, and Hidden with Red off) was written to PSD and read back.
+  - Both comps came back with their visibility (true/true and true/false) and the active comp.
+  - The appearance note appeared, since new comps capture appearance by default.
+- **OpenType:** frac on Inter set "1/2 3/4" 111 px wide against 172 without it. DejaVu Sans, which has no frac or onum, drew the same either way, as it should.
+- **Panels:** the Styles and Measurement Log panels opened from their Window commands.
+- No page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.69.9",
+      "version": "1.69.9",
+  "version": "1.69.9",
+export const VERSION = '1.69.9';
+```
+
+## Layer Comps in PSD and selected in the panel, DEV_PLAN 33.3 part d · _v1.70.1 (io/psd.ts, ui/layer-comps.ts, styles/panels.css)
+
+Layer Comps now survive a PSD round trip through ag-psd. On read, the document's layerComps list becomes formvis comps with fresh ids (captured-info bits 1, 2 and 4 map to visibility, position and appearance), each layer's comps settings fill the comp's per-layer entries with visibility and, for position comps, x and y as the layer's own position plus the stored offset, and lastApplied sets the active comp. On write the comps get numeric ids 1 to n in order, each layer carries one settings entry per comp with enabled and a position offset, and lastApplied follows the active comp; appearance (opacity, blend) has no place in this structure, so a note says it is not written. In the Layer Comps panel a click now selects a row (is-selected class and aria-selected only, rows are never rebuilt), a double click outside the name applies it, and Update and Delete act on the selected comp, falling back to the active one. The selection lives in the panel instance, not the document.
+
+## Styles and Measurement Log panels, DEV_PLAN 35.3 part b · _v1.70.1 (ui/styles-panel.ts, ui/measurement-log.ts, ui/dock.ts, ui/panels/measurement-dialogs.ts, app.ts, automation/command-meta.ts, styles/panels.css)
+
+Window > Styles and Window > Measurement Log are now docked panels, both hidden by default so the workspace is unchanged. Styles keeps presets in localStorage under formvis.stylePresets; a click applies one to the active layer through the existing applyLayerStyle as one undo step, with New (named by promptName), Delete and Clear Style buttons, and tiles show the style name. The Measurement Log shows doc.measurements as a compact keyed table with Record, Delete, Clear and Export (CSV through the shared deliver callback), reusing the dialog's column formatters, now exported as MEASURE_COLS. Both skeletons are built once and rows are patched by id, so nothing flashes.
+
+## OpenType features on type, DEV_PLAN 32.6 part b · _v1.70.1 (engine/opentype.ts, engine/text.ts, engine/types.ts, io/api.ts, extensions/tools/type.ts, app.ts, automation/command-meta.ts)
+
+`TextSpec.features` lists the OpenType tags turned on, with `-liga` or `-calt` for a default feature turned off. The new `engine/opentype.ts` holds the catalogue (`OT_FEATURES`), the list helpers and `ensureVariant`, which fetches the family's font file once (`api.fontFile`, the engine's `/api/fonts/file` route), registers a `<family>__ot_<hash>` FontFace with the `featureSettings` descriptor and returns its name; `fontCss` uses that variant once registered and `loadTextFont` registers it first, falling back to the plain face when no file is found. `textFromData` keeps `features` so .fmv save and load carry them. The Type options bar gains an OpenType menu (marks updated through `live`, so no rows are rebuilt), and the `type-features` command sets a comma list on the active type layer.
+
 ## Release 1.69.9: Arrange layouts, Calculations across documents, .grd and .ggr · _v1.69.9 (engine/index.ts, io/atn.ts, io/grd.ts, ui/view-tiles.ts, ui/panels/calculations-dialog.ts, styles/shell.css)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (900 catalogue ids). No builder added a type cast. Before the builders started I added `Engine.flattenedOf(p)`: any open document's flattened picture, rendered on its own surface. Both the view tiles and Calculations use it.
