@@ -83,6 +83,8 @@ import { api, type Capabilities, type CmykPsd, type OpenedProject } from './io/a
 import { findToRemove, localInpaint, modelReady, skyMask, skyReady } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
+import { ScriptEventsDialog } from './ui/panels/script-events-dialog';
+import { ScriptEvents, type ScriptEvent } from './ui/script-events';
 import { LutExportDialog } from './ui/panels/lut-export-dialog';
 import { SaveForWebDialog } from './ui/panels/save-for-web-dialog';
 import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
@@ -135,7 +137,8 @@ import { composeDeep, deepFromU16, deepToU16, deepToned, place, srgbToLinear } f
 import { composeFloat } from './engine/compose-float';
 import { channelsFromU8, channelsToU8, composeChannels, rasterBytes } from './engine/channels';
 import type { Lut3x4, Lut4 } from './engine/colour-lut';
-import type { ChannelPixels, DocProfile, ID } from './engine/types';
+import type { ChannelPixels, DocMode, DocProfile, ID } from './engine/types';
+import { ConditionalModeDialog, SOURCE_MODES } from './ui/panels/conditional-mode-dialog';
 import { HdrToningDialog } from './ui/panels/hdr-toning';
 import { AssignProfileDialog, ConvertProfileDialog, ProfileMismatchDialog, ProofSetupDialog, convertDocumentDeep, type Space } from './ui/panels/colour-dialogs';
 import { embeddedProfile, fromBase64, isSrgbName, profileName, toBase64 } from './io/icc-read';
@@ -405,7 +408,7 @@ export function startApp(): void {
   let caps: Capabilities | null = null;
 
   async function deliver(blob: Blob, name: string): Promise<void> {
-    if (caps?.desktop) { toast(`Saved to ${await api.exportFile(blob, name)}`); return; }
+    if (caps?.desktop) { toast(`Saved to ${await api.exportFile(blob, name)}`); fireEvent('export'); return; }
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
@@ -415,6 +418,7 @@ export function startApp(): void {
     a.click();
     a.remove();
     window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    fireEvent('export');
   }
 
   /** A project from the engine read into a document, its giant layers through the engine's bands (1.62.8), for Open
@@ -613,6 +617,12 @@ export function startApp(): void {
   }
 
   async function save(saveAs: boolean): Promise<boolean> {
+    const ok = await saveCore(saveAs);
+    if (ok) fireEvent('save');
+    return ok;
+  }
+
+  async function saveCore(saveAs: boolean): Promise<boolean> {
     const p = engine.current;
     if (!p) return false;
     engine.settle();
@@ -1047,6 +1057,37 @@ export function startApp(): void {
     });
   }
 
+  /** Conditional Mode Change (DEV_PLAN 30.5a): a document whose mode is in `from` goes to `to` by the routes the Mode
+   *  commands use (CMYK and Lab through RGB, Bitmap through Grayscale); any other document is left as it is. */
+  async function conditionalMode(from: DocMode[], to: DocMode): Promise<boolean> {
+    const m = engine.current?.doc.mode ?? 'rgb';
+    if (!from.includes(m) || m === to) return true;
+    if (to === 'rgb') {
+      if (m === 'cmyk' || m === 'lab') await toRgbFirst(); else engine.convertMode('rgb');
+    } else if (to === 'grayscale') {
+      if (engine.current?.doc.depth === 16) await toGray();
+      else if (m === 'lab') engine.setGrayFromLab();
+      else if (m === 'cmyk') { if (await toRgbFirst()) engine.convertMode('grayscale'); }
+      else engine.convertMode('grayscale');
+    } else if (to === 'lab') {
+      if (m !== 'rgb' && !(await toRgbFirst() && (engine.current?.doc.mode === 'rgb' || engine.convertMode('rgb')))) return false;
+      if (!(await downTo(16))) return false;
+      if (engine.current?.doc.depth === 16) await deepMode('lab', 'lab', null); else engine.setLab();
+    } else {
+      // CMYK, Bitmap and Indexed Color start from 8-bit RGB; Bitmap takes Grayscale.
+      if (!(await toRgbFirst()) || !(await downTo(8))) return false;
+      if (engine.current?.doc.mode !== 'rgb' && !engine.convertMode('rgb')) return false;
+      if (to === 'bitmap' && !engine.convertMode('grayscale')) return false;
+      if (to === 'cmyk') {
+        // As Mode > CMYK Color with no dialog: the shipped CMYK profile (else the first found), and Color Settings' intent and BPC.
+        const all = (await api.colourProfiles()).profiles.filter((x) => x.space === 'CMYK'), pick = all.find((x) => x.shipped) ?? all[0], c = loadPrefs().colour;
+        if (!pick) { toast('No CMYK profile was found. Load one in View > Proof Setup.', 'error'); return false; }
+        await toCmyk(await cmykProfileOf(pick.id, pick.name), c.intent, c.bpc);
+      } else if (!engine.convertMode(to)) return false;
+    }
+    return engine.current?.doc.mode === to;
+  }
+
   /** One recorded step on the current document: a command through the registry, a filter with its settings, or a
    *  size change through the engine. False when it cannot run here. */
   async function runStep(s: ActionStep, relative = false): Promise<boolean | 'stopped'> {
@@ -1065,6 +1106,7 @@ export function startApp(): void {
     if (s.kind === 'layerStyle') return engine.applyLayerStyle(s.effects ? effectsFromData(s.effects) : null);
     if (s.kind === 'adjustment') return dialogs.adjust.applySettings(s.adj as AdjustmentKind, s.data as Parameters<typeof dialogs.adjust.applySettings>[1], s.layer);
     if (s.kind === 'fitImage') return engine.fitImage(s.w, s.h, s.enlarge, true);
+    if (s.kind === 'conditionalMode') return conditionalMode(s.from, s.to);
     const doc = engine.current?.doc, follow = relative && !!doc && !!s.fromW && !!s.fromH;
     if (s.kind === 'imageSize') {
       // Following each image: the same proportion of this document as of the one the step was recorded on.
@@ -1713,7 +1755,26 @@ export function startApp(): void {
   });
 
   const actions = new Actions();
+  const scriptEvents = new ScriptEvents();
+  function fireEvent(e: ScriptEvent): void {
+    void scriptEvents.fire(e, async (name) => {
+      const x = actions.list.find((a) => a.name === name);
+      if (!x || !engine.current) return;   // actions play on a document; with none open (as at start) the event passes quietly
+      await playAction(x);
+    });
+  }
+  let knownIds = new Set(engine.projects.map((p) => p.id)), knownNew = engine.newCount;
+  engine.on('projects', () => {
+    const now = new Set(engine.projects.map((p) => p.id));
+    const added = [...now].some((id) => !knownIds.has(id)), removed = [...knownIds].some((id) => !now.has(id)), made = engine.newCount !== knownNew;
+    knownIds = now;
+    knownNew = engine.newCount;
+    if (added) fireEvent(made ? 'new' : 'open');
+    if (removed) fireEvent('close');
+  });
+  window.setTimeout(() => fireEvent('start'), 0);
   const dialogs = {
+    scriptEvents: new ScriptEventsDialog(scriptEvents, actions),
     saveForWeb: new SaveForWebDialog(engine, deliver),
     exportLuts: new LutExportDialog(engine, deliver),
     smartFilters: new SmartFiltersDialog(engine, (): FilterPanel => dialogs.filter),
@@ -1756,6 +1817,7 @@ export function startApp(): void {
     canvasSize: new CanvasSizeDialog(engine),
     imageSize: new ImageSizeDialog(engine),
     fitImage: new FitImageDialog(engine),
+    conditionalMode: new ConditionalModeDialog(),
     contactSheet: new ContactSheetDialog(engine),
     loadStack: new LoadStackDialog(engine, false),
     stackStatistics: new LoadStackDialog(engine, true),
@@ -1773,7 +1835,7 @@ export function startApp(): void {
     scaleEffects: new ScaleEffectsDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
-    print: new PrintDialog(engine, (s) => { printDocument(engine, s); }, (pdf, name) => { void deliver(pdf, name); }),
+    print: new PrintDialog(engine, (s) => { printDocument(engine, s); fireEvent('print'); }, (pdf, name) => { void deliver(pdf, name); }),
     layerExport: new LayerExportDialog(engine, () => !!caps?.desktop, (s) => void exportLayerFiles(s)),
     artboardPdf: new ArtboardPdfDialog(engine, (s) => void exportArtboardsPdf(s)),
     defineVariables: new DefineVariablesDialog(engine),
@@ -1942,6 +2004,7 @@ export function startApp(): void {
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
     { id: 'save-for-web', label: 'Save for Web (Legacy)...', enabled: has, run: () => { engine.settle(); dialogs.saveForWeb.show(); } },
+    { id: 'script-events', label: 'Script Events Manager...', run: () => dialogs.scriptEvents.show() },
     { id: 'print', label: 'Print...', keys: ['Mod+P'], enabled: has, run: () => dialogs.print.show() },
     { id: 'print-one-copy', label: 'Print One Copy', keys: ['Alt+Shift+Mod+P'], enabled: has, run: () => { printDocument(engine, { ...printSettings, selectedArea: printSettings.selectedArea && !!engine.current?.selection }); } },
     { id: 'file-info', label: 'File Info...', keys: ['Alt+Shift+Mod+I'], enabled: has, params: FILE_INFO_PARAMS, run: (a) => fileInfoRun(a) },
@@ -2065,6 +2128,21 @@ export function startApp(): void {
       },
     },
     { id: 'fit-image', label: 'Fit Image...', enabled: has, run: () => dialogs.fitImage.show() },
+    {
+      id: 'conditional-mode-change', label: 'Conditional Mode Change...', enabled: has,
+      params: {
+        from: { type: 'string', description: 'Source modes as a comma list: bitmap, grayscale, duotone, indexed, rgb, cmyk, lab, multichannel.' },
+        to: { type: 'string', description: 'Target mode: rgb, cmyk, lab, grayscale, bitmap or indexed.' },
+      },
+      run: (a) => {
+        if (!a || a.from === undefined || a.to === undefined) { dialogs.conditionalMode.show(); return undefined; }
+        const known = SOURCE_MODES.map(([m]) => m), to = String(a.to).trim().toLowerCase();
+        const from = String(a.from).split(',').map((x) => x.trim().toLowerCase()).filter((x): x is DocMode => known.some((m) => m === x));
+        const target = known.find((m) => m === to);
+        if (!from.length || !target) { toast('Give from as a comma list of modes and a target mode.'); return undefined; }
+        return conditionalMode(from, target).then((ok) => { if (ok) actions.record({ kind: 'conditionalMode', label: `Conditional Mode Change to ${target}`, from, to: target }); });
+      },
+    },
     { id: 'contact-sheet', label: 'Contact Sheet II...', run: () => dialogs.contactSheet.show() },
     { id: 'load-files-stack', label: 'Load Files into Stack...', run: () => dialogs.loadStack.show() },
     { id: 'stack-statistics', label: 'Statistics...', run: () => dialogs.stackStatistics.show() },
@@ -2562,8 +2640,8 @@ export function startApp(): void {
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
       { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
-      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
-      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
+      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
@@ -2663,7 +2741,8 @@ export function startApp(): void {
   dialogs.layerStyle.onApplied = (fx) => actions.record({ kind: 'layerStyle', label: fx ? 'Layer Style' : 'Clear Layer Style', effects: fx as unknown as Record<string, unknown> | null });
   dialogs.adjust.onApplied = (v) => { if (!v.layer || v.made) actions.record({ kind: 'adjustment', adj: v.kind, label: v.layer ? `New ${ADJUSTMENT_LABELS[v.kind]} Layer` : ADJUSTMENT_LABELS[v.kind], data: v.data as Record<string, unknown>, layer: v.layer }); };
   dialogs.imageSize.onApplied = (v) => actions.record({ kind: 'imageSize', label: `Image Size ${v.w} x ${v.h}`, ...v });
-  dialogs.fitImage.onApplied = (v) => actions.record({ kind: 'fitImage', label: `Fit Image ${v.w} x ${v.h}${v.enlarge ? '' : ', no enlarging'}`, ...v });
+  dialogs.conditionalMode.onApply = (from, to) => void conditionalMode(from, to).then((ok) => { if (ok) actions.record({ kind: 'conditionalMode', label: `Conditional Mode Change to ${to}`, from, to }); });
+  dialogs.fitImage.onApplied =(v) => actions.record({ kind: 'fitImage', label: `Fit Image ${v.w} x ${v.h}${v.enlarge ? '' : ', no enlarging'}`, ...v });
   dialogs.canvasSize.onApplied = (v) => actions.record({ kind: 'canvasSize', label: `Canvas Size ${v.w} x ${v.h}`, ...v });
   root.addEventListener('cv:edit-layer-style', () => dialogs.layerStyle.show());
   root.addEventListener('cv:smart-filters', () => dialogs.smartFilters.show());

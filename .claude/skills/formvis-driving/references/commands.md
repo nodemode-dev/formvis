@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (834 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (836 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 49
-- File: 64
+- File: 66
 - Filter: 77
 - Image: 75
 - Layer: 181
@@ -83,6 +83,7 @@ Generated from the window's command catalogue (834 commands) by `./formvis agent
 | `close-others` | Close Others | Alt+Mod+P | Closes every document but the current one. (asks first) |
 | `close-tab` | Close Tab | Alt+Mod+W | Closes the current document, asking about unsaved changes. (asks first) |
 | `comfyui-run` | Run ComfyUI Workflow... |  | Opens the dialog that runs a ComfyUI workflow and brings the result back. (changes the picture) (asks first) |
+| `conditional-mode-change` | Conditional Mode Change... |  | Changes the document to a target mode only when its current mode is one of the ticked source modes. (changes the picture) |
 | `contact-sheet` | Contact Sheet II... |  | Opens Contact Sheet II to lay chosen images out as thumbnails on new documents. (changes the picture) |
 | `create-video-timeline` | Create Video Timeline |  | Creates a video timeline from the document layers. (changes the picture) |
 | `crop-straighten-photos` | Crop and Straighten Photos |  | Finds each photo on a scanned page, straightens it and opens it as its own document. (changes the picture) |
@@ -134,6 +135,7 @@ Generated from the window's command catalogue (834 commands) by `./formvis agent
 | `save-copy` | Save a Copy... | Alt+Mod+S | Saves a copy without changing which file the document belongs to. (asks first) |
 | `save-for-web` | Save for Web (Legacy)... |  | Opens Save for Web (Legacy): side-by-side original and optimized previews, a format (JPEG, PNG-24, PNG-8, GIF, WebP) and quality, and an export of the whole image or every slice as a zip. (asks first) |
 | `script-delete-empty-layers` | Delete All Empty Layers |  | Deletes every pixel layer with no visible pixels and every empty group, and says how many; keeps the Background and adjustment, fill, type, shape and smart object layers. (changes the picture) |
+| `script-events` | Script Events Manager... |  | Opens the Script Events Manager, where a saved action is bound to an event: the app starting, or a document being made, opened, saved, closed, exported or printed. |
 | `script-flatten-effects` | Flatten All Layer Effects |  | Draws every layer style into its layer's pixels and clears the style; a type, shape or fill layer that carries one is rasterized. (changes the picture) |
 | `script-flatten-masks` | Flatten All Masks |  | Applies every layer mask and vector mask into its layer's pixels and removes it; a type, shape or fill layer that carries one is rasterized. (changes the picture) |
 | `send-comfyui` | Send to ComfyUI... |  | Opens the dialog that sends the picture to ComfyUI. (asks first) |
