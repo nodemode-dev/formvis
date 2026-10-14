@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.69.3 · 2026-10-14
+
+### Added
+
+- Filter > 3D > Generate Normal Map and Generate Bump Map from the active layer, with strength, blur, invert and a DirectX flip, as new layers; Height Map from Normal Map goes back.
+- FITS files (`.fits`, `.fit`, `.fts`) open with a stretch: integer data at 16 bits, floating-point data at 32 bits, RGB cubes in colour.
+- Layer > Type: Find and Replace Text across type layers (one undo step), Paste Lorem Ipsum, Convert to Point Text and to Paragraph Text, and Update All Text Layers.
+
 ## 1.69.2 · 2026-10-14
 
 ### Added

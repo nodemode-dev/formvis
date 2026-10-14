@@ -2,6 +2,47 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.3: Normal and Bump Maps, FITS, type commands · _v1.69.3 (engine/normal-map.ts, engine/index.ts, ui/panels/find-replace-text-dialog.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (854 catalogue ids).
+
+Fixes at the join:
+- `normalMap` wrote DirectX green as its OpenGL default. The top edge of a raised disc read G 72; OpenGL's green-up wants it above 128. The Y sign now follows OpenGL, with Flip Y giving DirectX. `heightFromNormal` reads green the same way.
+- Find and Replace Text and Update All Text Layers made one undo step per layer. `updateTextLayer` is now split into a private `textPatch` (render only) and the edit. The new private `updateTextLayers` applies every patch in one `edit`, named 'Find and Replace Text' or 'Update All Text Layers'.
+- The dialog's unused `rows` field is gone.
+
+Probes in Chromium:
+- **Normal Map** of a white disc on black: centre (128, 128, 255); left edge R 72; top edge G 183, so green is up.
+- **Height Map** from that normal map: centre 249, corner 13.
+- **Bump Map:** centre 255, corner 0.
+- **Undo** removed the last map layer.
+- **Type:** two type layers 'red cat red' and 'Red dog' became 'blue cat blue' and 'blue dog' with whole word and no case. One undo brought both back.
+- **Paragraph and point:** Convert to Paragraph set a box, and Convert to Point cleared it.
+- **Lorem and update:** Paste Lorem Ipsum appended its paragraph, and Update All ran.
+- **FITS:** a FITS file opened through `decodeImage` as a 60 by 40 document.
+- No page errors.
+
+Noted: after a Vite hot update, a probe's `import('/src/automation/catalogue.ts')` loads a second copy without the app's deps ("has not finished starting"); restart Vite before probing again. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.69.2",
+      "version": "1.69.2",
+  "version": "1.69.2",
+export const VERSION = '1.69.2';
+```
+
+## FITS, DEV_PLAN 34.7 · _v1.69.3 (io/images.ts, app.ts)
+
+FITS astronomy files (.fits, .fit, .fts) now open. `SERVER` and `IMAGE_ACCEPT` in io/images.ts list the three extensions so the engine decodes them, and both deep-path tests in app.ts (the png16 gate and the depth branch) include them, so integer files open at 16 bits and floating point files at 32. The engine stretches on open, so nothing is applied on the frontend.
+
+## Normal and Bump Maps, DEV_PLAN 31.9 · _v1.69.3 (engine/normal-map.ts, engine/index.ts, app.ts, automation/command-meta.ts, ui/panels/normal-map-dialog.ts)
+
+Filter > 3D adds Generate Normal Map, Generate Bump Map and Height Map from Normal Map. `engine/normal-map.ts` holds the DOM-free maths: `heightField` (alpha-weighted luminance, optional invert, three box blur passes), `normalMap` (Sobel with clamped edges, OpenGL green-up by default, `flipY` for DirectX), `bumpMap` (greyscale stretched around 0.5) and `heightFromNormal` (cumulative-sum seed refined by 300 Jacobi iterations of a Poisson solve). `Engine.generateMap` renders the active layer alone at document size and inserts the result above it as one undo step. `NormalMapDialog` builds its rows once and only changes values, the title and the hidden state of the Flip Y row. The `normal-map` and `bump-map` commands run directly with params (strength, blur, invert, flip_y) and open the dialog without them.
+
+## Type commands, DEV_PLAN 32.7 part a · _v1.69.3 (engine/index.ts, app.ts, ui/panels/find-replace-text-dialog.ts, automation/command-meta.ts)
+
+Adds Find and Replace Text, Paste Lorem Ipsum, Convert to Point Text, Convert to Paragraph Text and Update All Text Layers under Layer > Type. Deferred: Check Spelling, Create Work Path from type and Resolve Missing Fonts. Each changed layer is its own undo step.
+
 ## Release 1.69.2: .atn import, Script Events Manager, Conditional Mode Change · _v1.69.2 (engine/index.ts, app.ts, ui/panels/script-events-dialog.ts, README.md)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (846 catalogue ids); README's TypeScript count raised from 58,800 to 60,700.

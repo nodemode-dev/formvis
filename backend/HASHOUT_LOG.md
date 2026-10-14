@@ -2,6 +2,21 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.3 · _v1.69.3 (app/__init__.py)
+
+Checked: `tests/test_deep_io.py` and `tests/test_api.py` 18 of 19, the one failure the known 32-bit EXR round trip that fails on the baseline too. Probed through the running engine: a 16-bit FITS gave 60 by 40 at depth 16, the image's 1000 counts at 65535 and its zero floor at 0 after the flip; a -32 FITS gave depth 32 in 0 to 1; `/decode` turned the 16-bit file into an 8-bit picture that opened as a 60 by 40 document. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.69.2"
+version = "1.69.2"
+version = "1.69.2"
+ "version": "1.69.2",
+```
+
+## FITS reader, DEV_PLAN 34.7 · _v1.69.3 (app/services/fits.py, app/routers/io.py)
+
+New app/services/fits.py (numpy only): `is_fits`, `FitsError` and `read(data)` for the primary HDU in BITPIX 8, 16, 32, -32 and -64 with BZERO and BSCALE, NAXIS3 of 3 as RGB and otherwise plane 1 as grey, flipped bottom-up. It stretches on open (0.25 and 99.75 percentiles, NaN ignored, then asinh(10 x) / asinh(10)); integer data returns uint16 RGBA at 16 bits, floating point returns float32 RGBA in 0..1 at 32 bits. `/decode-deep` has a FITS branch beside the Netpbm one (415 on FitsError), and `/decode` turns a FITS file into an 8-bit PNG through the same reader.
+
 ## Version only · _v1.69.2
 
 No engine code changed in 1.69.2. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
