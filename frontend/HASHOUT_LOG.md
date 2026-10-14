@@ -2,6 +2,46 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.9: Arrange layouts, Calculations across documents, .grd and .ggr · _v1.69.9 (engine/index.ts, io/atn.ts, io/grd.ts, ui/view-tiles.ts, ui/panels/calculations-dialog.ts, styles/shell.css)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (900 catalogue ids). No builder added a type cast. Before the builders started I added `Engine.flattenedOf(p)`: any open document's flattened picture, rendered on its own surface. Both the view tiles and Calculations use it.
+
+Fixes at the join:
+- **Gradient colours:** `readDescriptor` (io/atn.ts) threw away a descriptor's class ID and kept only its display name, which is usually empty. Every .grd colour therefore read as grey 128. `Desc` now carries `classId`, and `colourOf` switches on it.
+- **Calculations source ids:** `calcGrey` matched a source document by its document id only. A project id, as the engine's callers hold, failed silently. It now takes either.
+- **Calculations preview notices:** the preview showed Calculations' notices while you were still choosing options. The new private `quiet` flag on the engine silences them during calculationsPreview.
+- **Calculations dialog comment:** its class comment no longer says there is no live preview.
+- **Tiles under the panel:** the stage column runs under the properties column, which opens over it, so the right-hand tiles sat hidden beneath it. ViewTiles now pads the column clear of it while arranged, re-measured with a ResizeObserver; the stage alone still passes under it in tabs.
+- **Tile sharpness:** tiles enlarged 2x or more now draw crisp.
+
+Probes in Chromium:
+- **.grd:** a hand-built version 5 file (Red to Blue, 100 to 50% opacity, plus a noise gradient) read red to blue with alpha 1 to 0.5, and skipped the noise gradient.
+- **.ggr:** a two-segment file read as Sunset with three stops, from orange to blue.
+- **Calculations across documents:** from same-size document B (black left half), the preview read 0 on the left and 255 on the right, and the channel was made. A 50 by 30 source was refused.
+- **Arrange:** 4-up and 2-up screenshots showed B and C beside A, clear of the panel. A click on a tile made B active, and Consolidate hid the tiles.
+- No page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.69.8",
+      "version": "1.69.8",
+  "version": "1.69.8",
+export const VERSION = '1.69.8';
+```
+
+## Window > Arrange layouts, DEV_PLAN 35.2 part b · _v1.69.9 (ui/view-tiles.ts, app.ts, automation/command-meta.ts, styles/shell.css)
+
+Window > Arrange gains Consolidate All to Tabs, 2-up Vertical, 2-up Horizontal, 3-up, 4-up and 6-up. The active document stays the full live Stage; the other open documents sit beside it as read-only view tiles (a title strip and a canvas), and clicking a tile makes that document active. The tiles container is built once, a tile element is made or removed only when the tile count or set changes, and redraws touch canvas pixels only, rAF-throttled and only for tiles that are new, resized or whose document was edited. The Stage refits through its own ResizeObserver. The layout is remembered in localStorage. Floating windows are deferred.
+
+## .grd and .ggr gradients, DEV_PLAN 32.4 part b · _v1.69.9 (io/grd.ts, io/atn.ts, ui/panels/preset-manager-dialog.ts)
+
+The Preset Manager's Gradients Load now takes Photoshop .grd (version 5) and GIMP .ggr files beside .json. `io/grd.ts` reads the .grd through the ActionDescriptor reader that `io/atn.ts` already had (now exported, behaviour unchanged), merges each gradient's colour and transparency stops onto one list by interpolating where only one list has a stop, maps foreground and background stops to 'fg' and 'bg', and counts noise gradients as skipped. Midpoints are ignored. Version 3 files are refused with a clear error. A .ggr gives a stop at each segment's left and right edge. Loaded gradients are appended to the custom list and saved under 'formvis.gradients' like the dialog's other loads.
+
+## Calculations from another document, with a preview, DEV_PLAN 31.2 part c · _v1.69.9 (engine/index.ts, ui/panels/calculations-dialog.ts, app.ts)
+
+Calculations now takes either source from another open document of the same pixel size. Each source has a Document select (the current document first, then the other same-size documents by name) that refills that source's layer and channel lists; `CalcSource` gained `doc`, and the private source resolver reads a foreign document's Merged through `flattenedOf` and a layer by rendering it alone in its own document, with the notice "The source document must be the same size." when sizes differ. The maths moved into a shared `calcCore`, and a pure `calculationsPreview` returns the grey as RGBA ImageData scaled to at most 220 px, which the dialog paints into a fixed 220 px canvas 150 ms after any change without touching the document. The dialog DOM is built once and only the selects are refilled when it opens. The `calculations` command gained `source1_doc` and `source2_doc` (document names or ids). Apply Image keeps its own source resolver and already took `doc`, so it was left alone.
+
 ## Release 1.69.8: .pdn and Affinity read, type on an arc or circle, Match views · _v1.69.8 (io/pdn.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (894 catalogue ids). No builder added a type cast.

@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.69.9 · 2026-10-14
+
+### Added
+
+- Window > Arrange: 2-up Vertical and Horizontal, 3-up, 4-up and 6-up show the other open documents as live views beside the canvas (a click makes one the active document), and Consolidate All to Tabs goes back.
+- Image > Calculations takes either source from another open document of the same size, and shows a small live preview of the result.
+- The Preset Manager loads Photoshop `.grd` gradients (noise gradients skipped) and GIMP `.ggr` gradients.
+
 ## 1.69.8 · 2026-10-14
 
 ### Added
