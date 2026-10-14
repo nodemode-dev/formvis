@@ -21,7 +21,7 @@ import { LiquifyDialog } from './ui/panels/liquify-dialog';
 import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
 import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
-import { convertToLinked, pickLinkSource, placeLinked, relink, updateLinked } from './io/links';
+import { convertToLinked, linkedFiles, pickLinkSource, placeEmbedded, placeLinked, relink, updateLinked } from './io/links';
 import { importAbr, loadImportedBrushes } from './io/brush-library';
 import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
@@ -61,6 +61,7 @@ import { assetFiles } from './io/image-assets';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
+import { pathsToIllustrator } from './io/ai-paths';
 import { withXmp } from './io/xmp';
 import { FileInfoDialog } from './ui/panels/file-info-dialog';
 import { PrintDialog } from './ui/panels/print-dialog';
@@ -82,6 +83,7 @@ import { api, type Capabilities, type CmykPsd, type OpenedProject } from './io/a
 import { findToRemove, localInpaint, modelReady, skyMask, skyReady } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
+import { LutExportDialog } from './ui/panels/lut-export-dialog';
 import { SaveForWebDialog } from './ui/panels/save-for-web-dialog';
 import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
 import { VideoImportDialog } from './ui/panels/video-dialog';
@@ -685,6 +687,21 @@ export function startApp(): void {
         if (!engine.projects.includes(p)) return;
         if (engine.current !== p) engine.switchTo(p.id);
         if (engine.revertTo(doc, activeId, paths, timeline)) p.libraryVersion = o.version ?? null;
+      } catch (err) { toast(message(err), 'error'); }
+    });
+  }
+
+  async function packageDocument(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    await engine.task(async () => {
+      try {
+        const { manifest, files } = await serialize(p.doc, p.activeId, engine.pathsOf(p), engine.timelineFor(p));
+        const fmv = await api.package(manifest, files), linked = await linkedFiles(engine);
+        await deliver(await zipFiles([{ name: `${p.name}.fmv`, blob: fmv }, ...linked.files]), `${p.name} Package.zip`);
+        const n = linked.files.length;
+        toast(`Packaged ${n} linked file${n === 1 ? '' : 's'}.${linked.missing.length ? ` Not reachable and left out: ${linked.missing.join(', ')}.` : ''}`, linked.missing.length ? 'info' : undefined);
       } catch (err) { toast(message(err), 'error'); }
     });
   }
@@ -1698,6 +1715,7 @@ export function startApp(): void {
   const actions = new Actions();
   const dialogs = {
     saveForWeb: new SaveForWebDialog(engine, deliver),
+    exportLuts: new LutExportDialog(engine, deliver),
     smartFilters: new SmartFiltersDialog(engine, (): FilterPanel => dialogs.filter),
     shapeStyle: new ShapeStyleDialog(engine),
     animation: new AnimationDialog(engine),
@@ -1919,6 +1937,7 @@ export function startApp(): void {
     { id: 'save-copy', label: 'Save a Copy...', keys: ['Alt+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.saveCopy.show(); } },
     { id: 'revert', label: 'Revert', keys: '__TAURI_INTERNALS__' in window ? ['F12'] : [], enabled: () => !!engine.current?.libraryName && !!engine.current?.modified, run: () => void revert() },
     { id: 'download-project', label: 'Download Project File', enabled: has, run: () => void downloadProject() },
+    { id: 'package', label: 'Package...', enabled: has, run: () => void packageDocument() },
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
@@ -1935,6 +1954,17 @@ export function startApp(): void {
     { id: 'clear-slices', label: 'Clear Slices', enabled: () => !!engine.current?.doc.slices?.length, run: () => engine.clearSlices() },
     { id: 'new-guide', label: 'New Guide...', enabled: has, run: () => dialogs.guide.show() },
     { id: 'export-psd', label: 'Export PSD...', enabled: has, run: () => void exportPsd() },
+    { id: 'export-paths-ai', label: 'Paths to Illustrator...', enabled: () => has() && engine.paths.list.some((p) => !p.shape && !p.mask),
+      params: { path: { type: 'string', description: 'Name of one path to write; all paths when left out.' } },
+      run: (a) => {
+        const p = engine.current;
+        if (!p) return;
+        const set = engine.paths, want = a?.path ? String(a.path) : '';
+        const one = want ? set.list.find((n) => n.name === want && !n.shape && !n.mask) : undefined;
+        if (want && !one) { toast(`No path named "${want}".`, 'info'); return; }
+        const text = pathsToIllustrator(set, p.doc.width, p.doc.height, one ? one.id : 'all');
+        void deliver(new Blob([text], { type: 'application/postscript' }), `${stripExt(p.name)}.ai`);
+      } },
     { id: 'assistant', label: 'Assistant', run: () => assistant.toggle() },   // 1.52.2
     { id: 'terminal.toggle', label: 'Terminal', keys: ['Mod+J'], checked: () => termDock.isOpen(), run: () => termDock.toggle() },   // DEV_PLAN 28.5
     { id: 'terminal.new', label: 'New Terminal', run: () => void termDock.newTerminal() },
@@ -2204,6 +2234,7 @@ export function startApp(): void {
       await deliver(await zipFiles(files), `${stripExt(p.name)}-assets.zip`);
       toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
     } },
+    { id: 'export-luts', label: 'Color Lookup Tables...', enabled: has, run: () => dialogs.exportLuts.show() },
     { id: 'export-layer-comps', label: 'Layer Comps to Files...', enabled: () => !!engine.current?.doc.comps?.length, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(false, a, true) },
     { id: 'export-artboards-pdf', label: 'Artboards to PDF...', enabled: () => engine.artboards().length > 0,
       params: {
@@ -2414,6 +2445,7 @@ export function startApp(): void {
     { id: 'smart-filters-clear', label: 'Clear Smart Filters', enabled: () => !!engine.current?.activeLayer?.smart?.filters.length, run: () => engine.clearSmartFilters() },
     { id: 'edit-contents', label: 'Edit Contents', enabled: () => !!engine.current?.activeLayer?.smart, run: () => engine.editContents() },
     { id: 'replace-contents', label: 'Replace Contents...', enabled: () => !!engine.current?.activeLayer?.smart, run: () => replaceInput.click() },
+    { id: 'place-embedded', label: 'Place Embedded...', enabled: has, run: () => { void (async () => { const f = await pickOnce(); if (f) await engine.task(() => placeEmbedded(engine, f)); })(); } },
     { id: 'place-linked', label: 'Place Linked...', enabled: has, run: () => { void (async () => { try { const got = await pickLinkSource(pickOnce); if (got) await engine.task(() => placeLinked(engine, got.id, got.source)); } catch (err) { linkError(err); } })(); } },
     { id: 'update-linked', label: 'Update Modified Content', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart?.link), run: () => { void engine.task(async () => { try { const r = await updateLinked(engine); toast(r.missing.length ? `Could not reach ${r.missing.join(', ')}. Use Relink to File.` : r.updated ? `Updated ${r.updated} linked smart object${r.updated === 1 ? '' : 's'}.` : 'Linked contents are up to date.', r.missing.length ? 'error' : undefined); } catch (err) { linkError(err); } }); } },
     { id: 'relink', label: 'Relink to File...', enabled: () => !!engine.current?.activeLayer?.smart?.link, run: () => { void (async () => { try { await relink(engine, pickOnce); } catch (err) { linkError(err); } })(); } },
@@ -2528,8 +2560,8 @@ export function startApp(): void {
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', '-',
-      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
+    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
+      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',

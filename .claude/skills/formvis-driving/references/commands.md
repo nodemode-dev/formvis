@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (830 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (834 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 49
-- File: 60
+- File: 64
 - Filter: 77
 - Image: 75
 - Layer: 181
@@ -99,8 +99,10 @@ Generated from the window's command catalogue (830 commands) by `./formvis agent
 | `export-jpg` | Export JPEG... | Alt+Shift+Mod+S | Opens the JPEG quality dialog, then exports a JPEG. (asks first) |
 | `export-layer-comps` | Layer Comps to Files... |  | Exports each layer comp to its own file named prefix_NNNN_compname, the flattened document with that comp applied, then puts the document back exactly as it was; opens the dialog, or runs at once when given any of prefix, format, quality, icc or folder. (asks first) |
 | `export-layers` | Layers to Files... |  | Exports each layer to its own file named prefix_NNNN_layername, with its effects and mask applied; opens the dialog, or runs at once when given any of prefix, format, quality, visible_only, trim, icc or folder. (asks first) |
+| `export-luts` | Color Lookup Tables... |  | Records the visible adjustment layers as color lookup tables in .cube, .3dl and .csp files at 17, 33 or 65 points per side, delivered as one file or a zip. Layer masks are ignored. (asks first) |
 | `export-mp4` | Video (MP4)... |  | Renders the video timeline or animation to an MP4 file. (asks first) |
 | `export-ora` | Export OpenRaster... |  | Exports an OpenRaster file that keeps layers. (asks first) |
+| `export-paths-ai` | Paths to Illustrator... |  | Writes the document paths to an Illustrator .ai file. (asks first) |
 | `export-pdf` | Export PDF |  | Exports the picture as a PDF. (asks first) |
 | `export-png` | Export PNG | Shift+Mod+E | Exports the flattened picture as a PNG. (asks first) |
 | `export-psb` | Export PSB (Large Document)... |  | Exports a Photoshop large document (PSB). (asks first) |
@@ -118,8 +120,10 @@ Generated from the window's command catalogue (830 commands) by `./formvis agent
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
 | `open` | Open Project... | Mod+O | Opens the library dialog to open a saved project. |
+| `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip. (changes the picture) |
 | `photomerge` | Photomerge... |  | Opens Photomerge to stitch images into a panorama. (changes the picture) |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
+| `place-embedded` | Place Embedded... |  | Places an image file as an embedded smart object. (changes the picture) |
 | `place-linked` | Place Linked... |  | Places an image file as a linked smart object. (changes the picture) |
 | `print` | Print... | Mod+P | Opens the Print dialog: paper size, orientation, position, scaled print size and a preview, then prints the flattened document through the system print dialog. |
 | `print-one-copy` | Print One Copy | Alt+Shift+Mod+P | Prints the flattened document at once with the settings Print last used, through the system print dialog. |
