@@ -2,6 +2,64 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.4: Check Spelling, missing fonts, Reveal linked files, SVG completion, localised panels and dialogs · _v1.70.4 (io/svg-layers.ts, engine/index.ts, app.ts, ui/dialogs.ts, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (921 catalogue ids). No builder added a type cast.
+
+Finished at the join (the SVG builder ran out of budget after items c and e):
+- io/svg-layers.ts, `Paint`, `svgToShapes`: opacity, fill-opacity and stroke-opacity inherit (group opacity multiplies) into one layer opacity per shape (34.4a); stroke-dasharray becomes the stroke model's dotted or dashed (34.4b); `<text>` is read as `SvgText` (content, baseline position, size scaled by the transform, first font family, weight, style, anchor) instead of being skipped (34.4d). The header comment now says what is carried.
+- engine/index.ts, `addShapeLayers(shapes, dropEmptyBase)`: takes each shape's opacity and a `ShapeStroke` (so the dash travels), and with `dropEmptyBase` removes the new document's unpainted base layer inside the same edit (34.4f).
+- app.ts, `openSvgLayers`: passes `dropEmptyBase`, then makes a point type layer per text with `createTextLayer` and puts the Type tool's settings back afterwards (createTextLayer stores the last spec as the tool's settings).
+
+Fixes at the join:
+- ui/dialogs.ts, `relabel` (new, called from `open`): dialogs are built once at start, so a language change left every dialog's title and buttons in the old language. Each opening now re-reads the title, the Close tooltip and the footer buttons; a button whose text its owner has replaced since is left alone (`data-shown` no longer matches).
+- ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts: the new dialogs' titles and buttons (Check Spelling, Resolve Missing Fonts, Ignore, Ignore All, Change, Change All, Replace All), Reveal in File Manager, and Brush Settings (missing from it, ko and zh-CN, so that tab stayed English).
+
+Probed: an SVG with a 0.5 group around a 0.5 fill-opacity gradient rect, a dashed line, a use of a symbol and a bold text gave four layers (opacity 0.25 red, dashed, the green circle, the type layer in Arial 20 bold) and no empty base; Check Spelling found "Teh", offered The, Ten, Tea, and Change applied; Resolve Missing Fonts replaced NoSuchFontXyz with Inter; panel tabs read in Spanish and Korean; the missing-fonts dialog opened in Simplified Chinese after switching language.
+
+Release version lines, removed:
+
+```text
+<img src="https://img.shields.io/badge/version-1.70.3-f97316" alt="version 1.70.3">
+  "version": "1.70.3",
+  "version": "1.70.3",
+      "version": "1.70.3",
+export const VERSION = '1.70.3';
+```
+
+## Check Spelling and missing fonts · _v1.70.4 (app.ts, automation/command-meta.ts, engine/index.ts, ui/prefs.ts, ui/panels/spell-dialog.ts, ui/panels/missing-fonts-dialog.ts)
+
+- ui/panels/spell-dialog.ts, `SpellDialog`: new. `show()` collects the words of `engine.textLayerInfo()`, posts them to `/api/spell/check` with `prefs.language`, steps through the unknown (layer, word) pairs with Ignore, Ignore All, Add, Change, Change All and Done; `close()` applies every change as one undo step 'Check Spelling'.
+- ui/panels/missing-fonts-dialog.ts, `MissingFontsDialog`: new. `show()` lists families not in `fontFamilies()` and not `installed()` with their layer counts and a select defaulting to the closest name (`closest`); Replace All is one undo step 'Replace Missing Fonts'. Returns false when none are missing.
+- engine/index.ts, `Engine.textLayerInfo`, `setTextContents`, `replaceFontFamilies`: new public wrappers over the private `updateTextLayers`.
+- ui/prefs.ts, `Prefs.spellWords`, `DEFAULT_PREFS`, `loadPrefs`: the user dictionary, default [], read back as strings only.
+- app.ts: imports, `dialogs.spelling` and `dialogs.missingFonts`, commands `check-spelling` and `resolve-missing-fonts`; Layer > Type menu gets `check-spelling` first and `resolve-missing-fonts` after `update-all-text`.
+- automation/command-meta.ts: words for both ids.
+- Nothing removed. Menu line changed from `{ label: 'Type', items: ['find-replace-text', ... 'update-all-text', '-',` to the same with the two ids added.
+
+## Localised panels, dialogs and tooltips · _v1.70.4 (ui/panel-group.ts, ui/dialogs.ts, ui/rail.ts, ui/options.ts, styles/dialogs.css, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts)
+
+- `PanelGroup.tabs` now keeps each tab's English `label`; `attach` shows `t(label)`; `labelOf` and `moveTab` use the English label; `relabel` plus the static `langHook` (`onLanguage`) re-text tabs in place and refit.
+- `Dialog`: new private `english` title is the key for remembered values; title, Close tooltip and `button()` text go through `t()` at the one shared spot.
+- `Rail.sync` tooltips, aria-labels and both flyout rows use `t` (imported as `tr`, since `t` is the tool there); `OptionsBar` title chip tooltip uses `tr`. A `onLanguage` hook re-syncs the rail.
+- `styles/dialogs.css`: dialog footer buttons get `min-width`, nowrap and ellipsis; the dialog title truncates. Panel tabs already had nowrap and ellipsis in `styles/panels.css`.
+- Tables: panel names, standard buttons and rail tooltip phrases added to all four.
+
+## Reveal linked files and SVG completion · _v1.70.4 (engine/types.ts, io/links.ts, io/project-io.ts, io/svg-layers.ts, app.ts, automation/command-meta.ts)
+
+Reveal in the file manager (DEV_PLAN 33.2):
+- `SmartLink` (engine/types.ts) gains `path?: string`.
+- `meta` (io/links.ts) fills `path` from a picked `File`'s own `path` property where the desktop shell supplies one (read with `Reflect.get`, no cast), and keeps it per link id in `paths` so Relink and Update keep it within a session. A browser file never has a path. Removed, in full: `const meta = (id: string, f: File): SmartLink => ({ id, name: f.name, size: f.size, lastModified: f.lastModified });`
+- `serialize` and `deserialize` (io/project-io.ts) write and read `path` explicitly. Removed fragments, in full: `lastModified: l.smart.link.lastModified } : null }` and `lastModified: lk.lastModified as number } : null;`
+- app.ts: command `smart-reveal-linked` ('Reveal in File Manager', enabled when the active layer's link has a path) after `embed-linked`, and listed after 'embed-linked' in both Smart Objects submenus. It posts to `/api/reveal`; on failure or with no engine it shows the path in a toast. command-meta.ts: one line for it, group Layer.
+- Backend: `POST /api/reveal` in routers/system.py (see backend log).
+
+SVG import (DEV_PLAN 34.4), io/svg-layers.ts:
+- c: `use` resolves `href` or `xlink:href` through `byId` and walks the target (a `symbol`'s children) with the use's x and y translate; `active` stops cycles. `defs` and `symbol` are now in `IGNORED`, `symbol`, `use` and `defs` leave `SKIPPED`. Removed, in full: `const SKIPPED = new Set(['defs', 'clippath', 'mask', 'symbol', 'text', 'use', 'image', 'foreignobject', 'pattern', 'marker']);` and `const IGNORED = new Set(['title', 'desc', 'metadata', 'style', 'lineargradient', 'radialgradient', 'filter', 'script', 'namedview']);`
+- e: `paintColor` resolves `url(#id)` to a gradient's first stop colour (through `stopColor`, following href); the vector fill is one RGB colour, so a true gradient is not possible. Replaced `parseColor` at the fill and stroke lines.
+- Left: a (opacity, fill-opacity, stroke-opacity), b (dash, linecap, linejoin; the model has only solid, dashed, dotted), d (text as type layers), f (empty base layer on a new SVG document) and `clipPath` (still counted as skipped). The file's header comment still lists text and gradients as not carried.
+- Not run: `tsc --noEmit` (tool budget ran out).
+
 ## Release 1.70.3: outline tracing, extruded 3D, localised menus · _v1.70.3 (io/project-io.ts, ui/i18n/es.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (918 catalogue ids). No builder added a type cast.

@@ -2,6 +2,29 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.4 · _v1.70.4 (app/__init__.py)
+
+Joined and probed: `POST /api/spell/check` answered "Helo" and "recieve" with suggestions in English and "mundoo" with "mundo" in Spanish, skipping NASA and x2; `POST /api/reveal` gave 404 for a missing path and 200 for a real one. Removed version lines (the desktop shell's quoted too):
+
+```text
+__version__ = "1.70.3"
+version = "1.70.3"
+version = "1.70.3"
+ "version": "1.70.3",
+```
+
+## Reveal linked files · _v1.70.4 (app/routers/system.py)
+
+- app/routers/system.py, `RevealBody` and `reveal` (POST /api/reveal): 404 when the path does not exist; macOS `open -R`; Windows `explorer /select,`; Linux `dbus-send` FileManager1.ShowItems, falling back to `xdg-open` on the parent folder (501 when neither exists). Popen, no shell. Logged at the join; the builder ran out of budget.
+- Nothing removed.
+
+## Check Spelling and missing fonts · _v1.70.4 (app/services/spell.py, app/routers/system.py, requirements.txt, requirements_macos.txt)
+
+- app/services/spell.py, `check`, `_checker`, `_worth_checking`: new. A cached pyspellchecker `SpellChecker` per language (en, es, it; others use en); unknown words only, up to 6 suggestions, skipping numbers, words with digits, single letters and ALL-CAPS words up to 5 letters.
+- app/routers/system.py, `SpellBody`, `spell_check`: new `POST /api/spell/check`, body `{words: string[], lang: string}`, answers `{unknown: [{word, suggestions}]}`.
+- requirements.txt: `pyspellchecker==0.9.1`; requirements_macos.txt: `pyspellchecker`. The desktop lists hold only PyInstaller and are unchanged. NOTICE.md has the new row.
+- Nothing removed.
+
 ## Version only · _v1.70.3
 
 No engine code changed in 1.70.3. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

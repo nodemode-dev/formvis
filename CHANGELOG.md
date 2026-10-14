@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.70.4 · 2026-10-14
+
+### Added
+
+- Layer > Type > Check Spelling: every type layer's words checked against an English, Spanish or Italian dictionary (by the interface language), with Ignore, Ignore All, Add (a personal word list), Change and Change All, as one undo step.
+- Layer > Type > Resolve Missing Fonts: each font family that is not installed, with how many layers use it, replaced by a chosen family in one step.
+- Layer > Smart Objects > Reveal in File Manager: shows a linked smart object's file in the system file manager when its disk path is known (kept in `.fmv`); otherwise the path is shown.
+- Open SVG as Layers now carries opacity (through groups), dashed and dotted strokes, `use` and `symbol`, text as point type layers, and a gradient fill as its first colour, and leaves no empty base layer.
+- Panel tabs, dialog titles and buttons, and tool tooltips follow the interface language; a dialog opened after a language change shows the new language.
+
+### Changed
+
+- The Italian, Korean and Simplified Chinese tables cover the panel names and the standard dialog buttons. Pyspellchecker (MIT) joins the engine's dependencies.
+
 ## 1.70.3 · 2026-10-14
 
 ### Added
