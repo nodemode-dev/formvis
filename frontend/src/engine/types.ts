@@ -145,7 +145,16 @@ export interface DocProfile { name: string; icc: string }
 export interface ChannelPixels { mode: 'rgb' | 'cmyk' | 'lab'; n: 3 | 4; width: number; height: number; data: Float32Array }
 /** The RGB kind of ChannelPixels, as 16- and 32-bit documents hold it. */
 export type DeepPixels = ChannelPixels;
-export interface Doc { depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
+/** A Layer Comp (Photoshop's): per layer, any of visibility, position and appearance, plus a name and comment. */
+export interface LayerComp {
+  id: ID; name: string; comment: string; useVisibility: boolean; usePosition: boolean; useAppearance: boolean;
+  layers: Record<ID, { visible?: boolean; x?: number; y?: number; opacity?: number; blend?: BlendMode; fill?: number; effects?: unknown; effectsHidden?: boolean }>;
+}
+/** A variable bound to a layer (Image > Variables, DEV_PLAN 29.9): its visibility, a type layer's text, or a pixel layer's image. */
+export interface DocVariable { name: string; layer: ID; kind: 'visibility' | 'text' | 'pixels'; method?: 'fit' | 'fill' | 'asis' | 'conform' }
+/** A named row of values, one per variable name. */
+export interface DataSet { name: string; values: Record<string, string> }
+export interface Doc { variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
 /** An alpha channel (1.65.1): a selection saved with the document, `mask` null when nothing in it is selected. */
 export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null }
 

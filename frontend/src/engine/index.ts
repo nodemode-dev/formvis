@@ -7,6 +7,7 @@ import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab } from './l
 import { composeFloat, setStyleDrawer } from './compose-float';
 import { deepFromRaster, deepToLinear, deepToned, rasterFromDeep, resampleDeep, strokeDeep } from './deep';
 import type { ChannelPixels, DeepPixels, DocProfile } from './types';
+import { applyComp, captureComp, type CompOptions } from './layer-comps';
 import { captureFrame, frameLayers, type Frame, type FrameLayer, type Timeline } from './timeline';
 import { newVideoTimeline, sampleToFrames, stateAt, valueAt, type FadeColor, type VideoTimeline } from './video-timeline';
 import { fillVector, mapPath, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathOp, type PathSet, type SubPath, type VectorPath } from './paths';
@@ -14,6 +15,8 @@ import { simplify, smoothAnchors } from './curve-fit';
 export { PATH_OPS, type PathOp } from './paths';
 import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
 import { Emitter } from './events';
+import * as VR from './variables';
+import type { DocVariable } from './types';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom, warmStrokeSurfaces } from './stroke';
@@ -350,6 +353,48 @@ export class Engine {
       }
       return changed;
     });
+  }
+  /** Layer Comps: record the layers' visibility, position and appearance as a new comp (all three on by default). */
+  newLayerComp(opts: CompOptions = {}): ID | null {
+    let id: ID | null = null;
+    this.edit('New Layer Comp', (p) => { const c = captureComp(p.doc, uid(), opts); p.doc = { ...p.doc, comps: [...(p.doc.comps ?? []), c], activeComp: c.id }; id = c.id; return true; });
+    return id;
+  }
+  /** Layer Comps: put a comp's recorded state back on its layers; layers it does not mention stay as they are. */
+  applyLayerComp(id: ID): void {
+    this.edit('Apply Layer Comp', (p) => {
+      const c = p.doc.comps?.find((x) => x.id === id);
+      if (!c) return false;
+      p.setLayers(applyComp(p.doc, c));
+      p.doc = { ...p.doc, activeComp: id };
+      return true;
+    });
+  }
+  /** Layer Comps: re-record a comp from the layers as they are now, under the comp's own switches. */
+  updateLayerComp(id: ID): void {
+    this.edit('Update Layer Comp', (p) => {
+      const c = p.doc.comps?.find((x) => x.id === id);
+      if (!c) return false;
+      const next = captureComp(p.doc, id, {}, c);
+      p.doc = { ...p.doc, comps: p.doc.comps!.map((x) => (x.id === id ? next : x)), activeComp: id };
+      return true;
+    });
+  }
+  deleteLayerComp(id: ID): void {
+    this.edit('Delete Layer Comp', (p) => {
+      const list = p.doc.comps ?? [];
+      if (!list.some((x) => x.id === id)) return false;
+      const rest = list.filter((x) => x.id !== id);
+      p.doc = { ...p.doc, comps: rest.length ? rest : undefined, activeComp: p.doc.activeComp === id ? null : p.doc.activeComp };
+      return true;
+    });
+  }
+  /** Layer Comps: step to the next (1) or previous (-1) comp, wrapping, and apply it. */
+  nextLayerComp(dir: 1 | -1 = 1): void {
+    const d = this.current?.doc, list = d?.comps ?? [];
+    if (!list.length) return;
+    const at = list.findIndex((c) => c.id === d?.activeComp);
+    this.applyLayerComp(list[at < 0 ? (dir > 0 ? 0 : list.length - 1) : (at + dir + list.length) % list.length].id);
   }
   get current(): Project | null { return this.projects.find((p) => p.id === this.currentId) ?? null; }
   get activeLayer(): Layer | null { return this.current?.activeLayer ?? null; }
@@ -1461,6 +1506,67 @@ export class Engine {
     this.edit('Delete Paragraph Style', (pp) => {
       pp.doc = { ...pp.doc, paragraphStyles: (pp.doc.paragraphStyles ?? []).filter((x) => x.id !== id) };
       for (const l of pp.doc.layers) if (l.text?.style === id) pp.updateLayer(l.id, { text: { ...l.text, style: null } });
+    });
+  }
+
+  /** Binds a variable to a layer (Image > Variables > Define, DEV_PLAN 29.9), replacing any variable of the same name: one undo step. */
+  defineVariable(v: DocVariable): boolean {
+    const p = this.current, l = p?.layer(v.layer), name = v.name.trim().slice(0, 120);
+    if (!p || !l || !name) { this.notice('A variable needs a name and a layer.'); return false; }
+    if (v.kind === 'text' && !liveText(l)) { this.notice('Text Replacement needs a type layer.'); return false; }
+    if (v.kind === 'pixels' && (l.isGroup || l.adjustment || l.text || l.shape || l.smart)) { this.notice('Pixel Replacement needs a pixel layer.'); return false; }
+    const entry: DocVariable = { name, layer: l.id, kind: v.kind, ...(v.kind === 'pixels' ? { method: v.method ?? 'fit' } : {}) };
+    return this.edit('Define Variable', (pp) => { pp.doc = { ...pp.doc, variables: [...(pp.doc.variables ?? []).filter((x) => x.name !== name), entry] }; return true; });
+  }
+
+  /** Data sets from CSV or tab-separated text, replacing the document's data sets: one undo step. Returns how many were read. */
+  importDataSets(text: string): number {
+    const { dataSets } = VR.buildDataSets(text);
+    if (!dataSets.length) { this.notice('No data sets found: the first row names the variables, each later row is a data set.'); return 0; }
+    return this.edit('Import Data Sets', (pp) => { pp.doc = { ...pp.doc, dataSets, activeDataSet: null }; return true; }) ? dataSets.length : 0;
+  }
+
+  /** Applies a data set: visibility, type text (style kept) and pixel replacement (images from `files`, by name, placed
+   *  within the layer's bounds), all in one undo step. */
+  async applyDataSet(name: string, files: ReadonlyMap<string, File> = new Map()): Promise<boolean> {
+    const p = this.current, set = p?.doc.dataSets?.find((d) => d.name === name);
+    if (!p || !set) { this.notice('No such data set.'); return false; }
+    const plan = VR.planFor(p.doc, set), texts = new Map<ID, { raster: Raster; spec: TextSpec }>(), pixels = new Map<ID, Raster>();
+    for (const c of plan) {
+      const l = p.layer(c.layer);
+      if (!l) continue;
+      if (c.kind === 'text' && l.text && c.content.trim()) {
+        const spec = { ...l.text, content: c.content };
+        await loadTextFont(spec);
+        texts.set(l.id, { raster: renderText(spec).raster, spec });
+      } else if (c.kind === 'pixels') {
+        const f = files.get(c.file);
+        if (!f) { this.notice(`Image not supplied: ${c.file}`); continue; }
+        try {
+          const bmp = await createImageBitmap(f), t = l.transform, r = new Raster(p.doc.width, p.doc.height), q = VR.placeInBox(bmp.width, bmp.height, t.x, t.y, t.w, t.h, c.method);
+          r.ctx.save(); r.ctx.beginPath(); r.ctx.rect(t.x, t.y, t.w, t.h); r.ctx.clip();
+          r.ctx.drawImage(bmp, q.x, q.y, q.w, q.h);
+          r.ctx.restore(); bmp.close(); r.touch();
+          pixels.set(l.id, r);
+        } catch { this.notice(`Could not read image: ${c.file}`); }
+      }
+    }
+    if (this.current !== p) return false;
+    return this.edit('Apply Data Set', (pp) => {
+      for (const c of plan) {
+        const l = pp.layer(c.layer);
+        if (!l) continue;
+        if (c.kind === 'visibility') pp.updateLayer(l.id, { visible: c.visible });
+        else if (c.kind === 'text') {
+          const n = texts.get(l.id), old = l.raster;
+          if (!n || !old) continue;
+          const t = l.transform, nw = n.raster.width * (t.w / old.width), nh = n.raster.height * (t.h / old.height), s = n.spec;
+          const x = s.box ? t.x : s.direction === 'vertical' ? t.x + t.w - nw : s.align === 'center' ? t.x + (t.w - nw) / 2 : s.align === 'right' ? t.x + t.w - nw : t.x;
+          pp.updateLayer(l.id, { raster: n.raster, transform: { ...t, x, w: nw, h: nh }, text: { ...s, rendered: textKey(n.raster) } });
+        } else if (c.kind === 'pixels') { const r = pixels.get(l.id); if (r) pp.updateLayer(l.id, { raster: r, transform: docTransform(pp.doc.width, pp.doc.height) }); }
+      }
+      pp.doc = { ...pp.doc, activeDataSet: name };
+      return true;
     });
   }
 
