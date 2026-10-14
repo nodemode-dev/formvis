@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (905 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (908 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -8,13 +8,13 @@ Generated from the window's command catalogue (905 commands) by `./formvis agent
 - File: 73
 - Filter: 80
 - Image: 88
-- Layer: 190
+- Layer: 191
 - Paint: 1
 - Paths: 8
 - Select: 28
 - Tool options: 226
 - Tools: 49
-- Type: 12
+- Type: 14
 - View: 34
 - Window: 58
 
@@ -392,6 +392,7 @@ Generated from the window's command catalogue (905 commands) by `./formvis agent
 | `edit-adjustment` | Edit Adjustment... |  | Opens the settings of the active adjustment layer. (changes the picture) |
 | `edit-contents` | Edit Contents |  | Opens the smart object source for editing. (changes the picture) |
 | `embed-linked` | Embed Linked |  | Embeds the linked file in the document. (changes the picture) |
+| `extrude-3d` | New 3D Extrusion from Selected Layer... |  | Extrudes the selected shape, type or pixel layer into 3D with depth, bevel, light and material, rendered to a layer that keeps its settings. (changes the picture) |
 | `film-frame` | Frame... |  | Opens Frame to add a film or white border layer. (changes the picture) |
 | `film-leak` | Light Leak... |  | Opens Light Leak to add a leak layer. (changes the picture) |
 | `find-layers` | Find Layers... | Alt+Shift+Mod+F | Opens the Layers panel filter. |
@@ -930,6 +931,8 @@ Generated from the window's command catalogue (905 commands) by `./formvis agent
 | `type-on-arc` | Type on Arc... |  | Sets text on an arc, live and editable. (changes the picture) |
 | `type-on-circle` | Type on Circle... |  | Sets text round a full circle, live and editable. (changes the picture) |
 | `type-on-path` | Type on Path... |  | Opens Type on Path. (changes the picture) |
+| `type-to-shape` | Convert to Shape |  | Turns the active type layer into a shape layer in the text colour and hides the type layer. (changes the picture) |
+| `type-work-path` | Create Work Path |  | Traces the active type layer's outlines from its rendered pixels into the Work Path. (changes the picture) |
 | `update-all-text` | Update All Text Layers |  | Re-renders every type layer from its own settings. (changes the picture) |
 | `warp-text` | Warp Text... |  | Opens Warp Text. (changes the picture) |
 
