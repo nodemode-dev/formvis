@@ -511,7 +511,7 @@ export class Stage {
     }
     g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     this.drawGuides(g, pal);
-    if (this.engine.view.slices && this.tool()?.id !== 'slice' && p.doc.slices?.length) drawSlices(g, p.doc.slices, v.panX, v.panY, v.zoom, pal.accent, this.engine.activeSlice);
+    if (this.engine.view.slices && this.tool()?.id !== 'slice' && p.doc.slices?.length) drawSlices(g, p.doc.slices, v.panX, v.panY, v.zoom, pal.accent, this.engine.activeSlice, p.doc);
     this.tool()?.overlay?.(this.ctx, g);
     const ring = this.engine.sampleRing;
     if (ring) {

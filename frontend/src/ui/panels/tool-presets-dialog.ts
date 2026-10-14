@@ -52,12 +52,14 @@ export class ToolPresetsDialog extends Dialog {
   private readonly only: { el: HTMLElement; set(v: boolean): void };
 
   constructor(private readonly engine: Engine) {
-    super('Tool Presets', 420);
+    super('Tool Presets', 520);
     this.only = checkRow('Current Tool Only', (v) => { this.currentOnly = v; this.paint(); });
     this.only.set(true);
-    this.body.append(this.only.el, this.list, this.empty);
+    this.body.append(this.only.el, this.list, this.empty, el('<p class="cv-dialog-note">Export writes every preset to a .json file; Import merges one by name. Photoshop .tpl files are not read.</p>'));
     this.button('New Preset...', 'ghost', () => void this.create());
     this.button('Apply', 'primary', () => this.applySelected());
+    this.button('Export...', 'ghost', () => this.exportFile());
+    this.button('Import...', 'ghost', () => this.importFile());
     this.button('Delete', 'danger', () => this.remove());
     this.button('Done', 'ghost', () => this.close());
     this.list.addEventListener('dblclick', () => this.applySelected());
@@ -145,6 +147,53 @@ export class ToolPresetsDialog extends Dialog {
     if (!p) { toast('Choose a preset first.', 'info'); return; }
     if (!this.applyPreset(p)) toast('That preset\'s tool is not available.', 'info');
     this.paint();
+  }
+
+  /** Writes every preset to formvis-tool-presets.json. */
+  private exportFile(): void {
+    if (!this.presets.length) { toast('There are no tool presets to export.', 'info'); return; }
+    const blob = new Blob([JSON.stringify({ formvis: 'tool-presets', version: 1, presets: this.presets }, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a'), url = URL.createObjectURL(blob);
+    a.href = url;
+    a.download = 'formvis-tool-presets.json';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 10000);
+  }
+
+  /** Reads a tool presets file and merges it by name; a same-named preset is replaced, unknown tools are skipped and counted. */
+  private importFile(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json,application/json';
+    input.addEventListener('change', () => void (async () => {
+      const f = input.files?.[0];
+      if (!f) return;
+      try {
+        const raw: unknown = JSON.parse(await f.text());
+        if (!raw || typeof raw !== 'object') throw new Error('Not a tool presets file.');
+        const head = raw as Record<string, unknown>;
+        if (head.formvis !== 'tool-presets' || head.version !== 1 || !Array.isArray(head.presets)) throw new Error('Not a formvis tool presets file.');
+        let added = 0, unknown = 0, invalid = 0;
+        for (const item of head.presets as unknown[]) {
+          if (!isPreset(item)) { invalid += 1; continue; }
+          if (!this.toolOf(item.tool)) { unknown += 1; continue; }
+          const values: Record<string, unknown> = {};
+          for (const [k, v] of Object.entries(item.values)) {
+            if (typeof v === 'string' || typeof v === 'boolean' || (typeof v === 'number' && Number.isFinite(v))) values[k] = v;
+          }
+          const name = item.name.trim();
+          if (!name) { invalid += 1; continue; }
+          const next: ToolPreset = { name, tool: item.tool, values }, at = this.presets.findIndex((p) => p.name === name);
+          if (at >= 0) this.presets[at] = next; else this.presets.push(next);
+          added += 1;
+        }
+        savePresets(this.presets);
+        this.paint();
+        const extra = [unknown ? `${unknown} for unknown tools skipped` : '', invalid ? `${invalid} invalid skipped` : ''].filter(Boolean).join(', ');
+        toast(`Imported ${added} tool ${added === 1 ? 'preset' : 'presets'}${extra ? ` (${extra})` : ''}.`, added ? 'info' : 'error');
+      } catch (err) { toast(`${f.name}: ${err instanceof Error ? err.message : String(err)}`, 'error'); }
+    })());
+    input.click();
   }
 
   private remove(): void {

@@ -1,0 +1,162 @@
+import type { Engine } from '../engine';
+import { allCustomShapes, CUSTOM_SHAPES, removeCustomShape } from '../engine/custom-shapes';
+import { allGradients, customGradients, GRADIENT_PRESETS, resolveStops, setCustomGradients } from '../engine/gradients';
+import type { GradientPreset } from '../engine/gradients';
+import { allPatterns, removePattern } from '../engine/patterns';
+import type { Pattern } from '../engine/patterns';
+import { el, patchList, q, setText } from './dom';
+import { icon } from './icons';
+
+/** What one preset panel needs: where its items come from, how a tile is drawn, and what a click and Delete do. */
+interface PresetKind<T> {
+  id: 'gradients' | 'patterns' | 'shapes';
+  title: string;
+  glyph: string;
+  items(): readonly T[];
+  key(t: T): string;
+  label(t: T): string;
+  builtin(t: T): boolean;
+  /** The data key a tile's picture depends on: the canvas is redrawn only when it changes. */
+  drawKey(t: T, tile: HTMLElement): string;
+  draw(g: CanvasRenderingContext2D, w: number, h: number, t: T, tile: HTMLElement): void;
+  pick(t: T): void;
+  remove(t: T): void | Promise<unknown>;
+}
+
+/** The shared body of the Gradients, Patterns and Shapes panels (Window menu, DEV_PLAN 35.3 part c): a head with a count,
+ *  a grid of tiles, and a Delete button for custom items. The skeleton is built once; tiles are patched in by id and a
+ *  tile's canvas is redrawn only when its data key changes. */
+class PresetPanel<T> {
+  private readonly grid: HTMLElement;
+  private readonly count: HTMLElement;
+  private readonly del: HTMLButtonElement;
+  private selected: string | null = null;
+
+  constructor(root: HTMLElement, private readonly kind: PresetKind<T>, engine: Engine) {
+    root.insertAdjacentHTML('beforeend',
+      `<section class="cv-preset-panel cv-${kind.id}" aria-label="${kind.title}">` +
+      `<div class="cv-panel-head"><span class="cv-comps-title">${icon(kind.glyph, 14)}<span>${kind.title}</span></span><span></span><span class="cv-comps-count"></span></div>` +
+      `<div class="cv-styles-grid" role="listbox" aria-label="${kind.title}"></div>` +
+      `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-act="delete" title="Delete the selected custom item" aria-label="Delete">${icon('delete', 16)}</button></div></section>`);
+    const section = q(root, `section.cv-${kind.id}`);
+    this.grid = q(section, '.cv-styles-grid');
+    this.count = q(section, '.cv-comps-count');
+    this.del = q<HTMLButtonElement>(section, '[data-act="delete"]');
+    this.del.addEventListener('click', () => {
+      const t = this.current();
+      if (!t || this.kind.builtin(t)) return;
+      void Promise.resolve(this.kind.remove(t)).then(() => { this.selected = null; this.sync(); });
+    });
+    this.grid.addEventListener('click', (e) => {
+      const tile = (e.target as HTMLElement).closest<HTMLElement>('.cv-style-tile[data-id]');
+      const t = tile ? this.kind.items().find((x) => this.kind.key(x) === tile.dataset.id) : undefined;
+      if (!t) return;
+      this.selected = this.kind.key(t);
+      this.kind.pick(t);
+      this.sync();
+    });
+    // The Preset Manager changes the lists without an engine event, so the panel also looks again when the pointer enters it.
+    section.addEventListener('pointerenter', () => this.sync());
+    for (const ev of ['doc', 'projects', 'options', 'tool'] as const) engine.on(ev, () => this.sync());
+    this.sync();
+  }
+
+  private current(): T | undefined { return this.kind.items().find((x) => this.kind.key(x) === this.selected); }
+
+  private sync(): void {
+    const items = this.kind.items(), cur = items.find((x) => this.kind.key(x) === this.selected);
+    if (this.selected && !cur) this.selected = null;
+    setText(this.count, items.length ? String(items.length) : '');
+    const off = !cur || this.kind.builtin(cur);
+    if (this.del.disabled !== off) this.del.disabled = off;
+    patchList<T>(this.grid, [...items], {
+      key: (t) => this.kind.key(t),
+      create: (t) => {
+        const tile = el('<button class="cv-style-tile" type="button" role="option"><canvas class="cv-style-swatch cv-preset-swatch" width="48" height="48" aria-hidden="true"></canvas><span class="cv-style-name"></span></button>');
+        this.fill(tile, t);
+        return tile;
+      },
+      update: (tile, t) => this.fill(tile, t),
+    });
+  }
+
+  private fill(tile: HTMLElement, t: T): void {
+    const id = this.kind.key(t), label = this.kind.label(t);
+    if (tile.dataset.id !== id) tile.dataset.id = id;
+    setText(q(tile, '.cv-style-name'), label);
+    const dk = this.kind.drawKey(t, tile);
+    if (tile.dataset.draw !== dk) {
+      const c = q<HTMLCanvasElement>(tile, '.cv-style-swatch'), g = c.getContext('2d');
+      if (g) { g.clearRect(0, 0, c.width, c.height); this.kind.draw(g, c.width, c.height, t, tile); tile.dataset.draw = dk; }
+    }
+    if (tile.title !== label) tile.title = label;
+    tile.classList.toggle('is-active', id === this.selected);
+    tile.setAttribute('aria-selected', String(id === this.selected));
+  }
+}
+
+const GRADIENT_KEY = 'formvis.gradients';
+const rgba = (c: { r: number; g: number; b: number }, a: number): string => `rgba(${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)},${a})`;
+
+/** Builds the Gradients, Patterns and Shapes panels into the side column. `keepPatterns` persists the pattern set after a delete. */
+export function createPresetPanels(root: HTMLElement, engine: Engine, keepPatterns: () => Promise<boolean>): void {
+  const builtinGradients = new Set(GRADIENT_PRESETS.map((p) => p.id));
+  new PresetPanel<GradientPreset>(root, {
+    id: 'gradients', title: 'Gradients', glyph: 'gradient',
+    items: () => allGradients(),
+    key: (p) => p.id,
+    label: (p) => p.label,
+    builtin: (p) => builtinGradients.has(p.id),
+    drawKey: (p) => JSON.stringify(resolveStops(p, engine.fg, engine.bg, false)),
+    draw: (g, w, h, p) => {
+      // A checker behind the strip shows the stops' transparency.
+      for (let x = 0; x < w; x += 8) for (let y = 0; y < h; y += 8) { g.fillStyle = (x + y) / 8 % 2 ? '#bbb' : '#fff'; g.fillRect(x, y, 8, 8); }
+      const grad = g.createLinearGradient(0, 0, w, 0);
+      for (const s of resolveStops(p, engine.fg, engine.bg, false)) grad.addColorStop(Math.max(0, Math.min(1, s.at)), rgba(s.rgb, s.alpha));
+      g.fillStyle = grad;
+      g.fillRect(0, 0, w, h);
+    },
+    pick: (p) => { engine.gradientSettings.style = p.id; engine.setTool('gradient'); engine.renderGradient(); engine.emit('options', null); },
+    remove: (p) => {
+      setCustomGradients(customGradients.filter((x) => x.id !== p.id));
+      try { localStorage.setItem(GRADIENT_KEY, JSON.stringify(customGradients.filter((x) => x.id !== 'edited'))); } catch { engine.notice('Gradients cannot be saved in this browser.'); }
+    },
+  }, engine);
+  new PresetPanel<Pattern>(root, {
+    id: 'patterns', title: 'Patterns', glyph: 'layers',
+    items: () => allPatterns(),
+    key: (p) => p.id,
+    label: (p) => p.name,
+    builtin: (p) => p.builtin,
+    drawKey: (p) => `${p.id}:${p.surface.width}x${p.surface.height}`,
+    draw: (g, w, h, p) => {
+      const pat = g.createPattern(p.surface, 'repeat');
+      if (!pat) return;
+      g.fillStyle = pat;
+      g.fillRect(0, 0, w, h);
+    },
+    pick: (p) => { engine.patternStampPattern = p.id; engine.emit('options', null); },
+    remove: (p) => { removePattern(p.id); return keepPatterns(); },
+  }, engine);
+  const builtinShapes = new Set(CUSTOM_SHAPES.map((s) => s.id));
+  new PresetPanel<{ id: string; label: string; d: string }>(root, {
+    id: 'shapes', title: 'Shapes', glyph: 'layers',
+    items: () => allCustomShapes(),
+    key: (s) => s.id,
+    label: (s) => s.label,
+    builtin: (s) => builtinShapes.has(s.id),
+    drawKey: (s, tile) => `${s.d}|${getComputedStyle(tile).color}`,
+    draw: (g, w, h, s, tile) => {
+      // Shapes are designed in a 100 x 100 box; the tile fits it with a small margin and fills it in the text colour.
+      const k = Math.min(w, h) / 112;
+      g.save();
+      g.translate((w - 100 * k) / 2, (h - 100 * k) / 2);
+      g.scale(k, k);
+      g.fillStyle = getComputedStyle(tile).color;
+      g.fill(new Path2D(s.d), 'evenodd');
+      g.restore();
+    },
+    pick: (s) => { engine.shapeSettings.kind = 'custom'; engine.shapeSettings.custom = s.id; engine.setTool('shape'); engine.emit('options', null); engine.emit('tool', null); },
+    remove: (s) => { removeCustomShape(s.id); },
+  }, engine);
+}

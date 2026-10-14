@@ -2718,6 +2718,18 @@ export class Engine {
     return out;
   }
 
+  /** The inverse of `footagePixels` for premultiplied footage: the matte put back into the colour (c a + m (1 - a)). */
+  private footageStored(r: Raster, it: FootageInterpretation): Raster {
+    const out = r.clone(), img = out.read(), d = img.data, m = it.matte ?? { r: 0, g: 0, b: 0 };
+    for (let i = 0; i < d.length; i += 4) {
+      const a = d[i + 3] / 255;
+      if (a <= 0 || a >= 1) continue;
+      d[i] = d[i] * a + m.r * (1 - a); d[i + 1] = d[i + 1] * a + m.g * (1 - a); d[i + 2] = d[i + 2] * a + m.b * (1 - a);
+    }
+    out.write(img);
+    return out;
+  }
+
   /** Interpret Footage: the active video layer's rate, loop count and alpha reading, its clip made as long as the
    *  footage now plays. One undo step. */
   interpretFootage(it: FootageInterpretation): boolean {
@@ -2756,7 +2768,9 @@ export class Engine {
       const i = this.footageFrame(v, tr, vt, t), seen = this.videoShown.get(ras);
       // Never seen (a project just opened shows its own copy of the frame): kept when it is not the stored frame itself.
       if (i < 0 || i >= v.frames.length || (seen === undefined ? ras === v.frames[i] : ras.version === seen)) continue;
-      v.frames[i] = ras;
+      // A painted frame of premultiplied footage is shown with the matte taken out; it is stored with the matte put
+      // back, so showing it again does not take the matte out twice (33.4 open note, closed at 1.70.9).
+      v.frames[i] = v.interpret?.alpha === 'premultiplied' ? this.footageStored(ras, v.interpret) : ras;
       this.videoShown.set(ras, ras.version);
     }
   }

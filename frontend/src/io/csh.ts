@@ -1,5 +1,5 @@
 import type { VectorPath } from '../engine/paths';
-import { pathFromRecords } from './psd-paths';
+import { pathFromRecords, pathRecords } from './psd-paths';
 
 /** Photoshop custom shape files (.csh), read only: '8BCS', u32 version, u32 count, then per shape a u32 name length in
  *  UTF-16 units and the UTF-16BE name (padded to 4 bytes or not, both are tried), u32 zero, u32 data length, and the data:
@@ -39,6 +39,34 @@ function readShape(bytes: Uint8Array, dv: DataView, at: number): { shape: CshSha
     return { shape: shapeFrom(bytes, dv, start, end, name), end };
   }
   return null;
+}
+
+const u32 = (v: number): number[] => [(v >>> 24) & 255, (v >>> 16) & 255, (v >>> 8) & 255, v & 255];
+
+/** Writes a .csh, the inverse of readCsh: version 2, each name padded so the next field sits on a 4-byte boundary of the
+ *  file, a 37-byte id ('$' and hex, zero padded), bounds 0, 0, ceil(height), ceil(width) of the path's extent (the reader
+ *  scales the records by the bounds' size and ignores their origin, so the path keeps its own coordinates) and the
+ *  records psd-paths writes, as fractions of those bounds. */
+export function writeCsh(shapes: ReadonlyArray<CshShape>): Uint8Array {
+  const out: number[] = [0x38, 0x42, 0x43, 0x53, ...u32(2), ...u32(shapes.length)];
+  for (const shape of shapes) {
+    let maxX = 0, maxY = 0;
+    for (const sp of shape.path.subpaths) for (const a of sp.anchors) {
+      maxX = Math.max(maxX, a.x, a.inX, a.outX);
+      maxY = Math.max(maxY, a.y, a.inY, a.outY);
+    }
+    const w = Math.max(1, Math.ceil(maxX)), h = Math.max(1, Math.ceil(maxY));
+    const name = shape.name.slice(0, 1024);
+    out.push(...u32(name.length));
+    for (let i = 0; i < name.length; i += 1) { const c = name.charCodeAt(i); out.push(c >> 8, c & 255); }
+    while (out.length % 4) out.push(0);
+    const id = new Array<number>(ID_LEN).fill(0), hex = '$' + Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+    for (let i = 0; i < hex.length; i += 1) id[i] = hex.charCodeAt(i);
+    const records = pathRecords(shape.path, w, h);
+    out.push(...u32(0), ...u32(ID_LEN + BOUNDS_LEN + records.length), ...id, ...u32(0), ...u32(0), ...u32(h), ...u32(w));
+    for (const b of records) out.push(b);
+  }
+  return new Uint8Array(out);
 }
 
 /** Reads a .csh. `skipped` counts shapes that could not be read; a broken shape header ends the file, since the rest cannot be located. */

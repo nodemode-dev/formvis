@@ -4,7 +4,7 @@ import { allCustomShapes, CUSTOM_SHAPES, addCustomShape, parseShape, removeCusto
 import { allGradients, customGradients, GRADIENT_PRESETS, gradientsFromJson, setCustomGradients } from '../../engine/gradients';
 import type { GradientPreset } from '../../engine/gradients';
 import { readGgr, readGrd, writeGrd } from '../../io/grd';
-import { readCsh } from '../../io/csh';
+import { readCsh, writeCsh } from '../../io/csh';
 import { addPattern, allPatterns, removePattern, renamePattern } from '../../engine/patterns';
 import { createSurface, ctxOf } from '../../engine/surface';
 import { importAbr, removeImportedBrush, renameImportedBrush } from '../../io/brush-library';
@@ -41,6 +41,7 @@ export class PresetManagerDialog extends Dialog {
   private readonly saveBtn: HTMLButtonElement;
   private readonly aseBtn: HTMLButtonElement;
   private readonly grdBtn: HTMLButtonElement;
+  private readonly cshBtn: HTMLButtonElement;
   private items: Item[] = [];
 
   constructor(
@@ -64,6 +65,7 @@ export class PresetManagerDialog extends Dialog {
     this.saveBtn = this.button('Save Set...', 'ghost', () => void this.saveSet());
     this.aseBtn = this.button('Export .ase...', 'ghost', () => void this.saveSet('swatches', 'ase'));
     this.grdBtn = this.button('Export .grd...', 'ghost', () => void this.saveSet('gradients', 'grd'));
+    this.cshBtn = this.button('Export .csh...', 'ghost', () => void this.saveSet('shapes', 'csh'));
     this.button('Done', 'primary', () => this.close());
   }
 
@@ -105,11 +107,12 @@ export class PresetManagerDialog extends Dialog {
     setText(this.note, this.kind === 'swatches'
       ? 'Swatches have no names, so they cannot be renamed. Load takes .aco or .ase; Save Set writes .aco and Export writes .ase.'
       : this.kind === 'gradients' ? 'Load takes .json, .grd or .ggr; Save Set writes .json and Export writes a Photoshop .grd. Built-in presets cannot be renamed or deleted.'
-      : this.kind === 'shapes' ? 'Load takes .json or a Photoshop .csh. Built-in presets cannot be renamed or deleted.'
+      : this.kind === 'shapes' ? 'Load takes .json or a Photoshop .csh; Save Set writes .json and Export writes a Photoshop .csh. Built-in presets cannot be renamed or deleted.'
       : 'Built-in presets are listed but cannot be renamed or deleted.');
     setHidden(this.renameBtn, this.kind === 'swatches');
     setHidden(this.aseBtn, this.kind !== 'swatches');
     setHidden(this.grdBtn, this.kind !== 'gradients');
+    setHidden(this.cshBtn, this.kind !== 'shapes');
     this.saveBtn.disabled = this.kind === 'brushes';
     this.saveBtn.title = this.kind === 'brushes' ? 'Brush sets cannot be saved yet.' : '';
     this.sync();
@@ -244,7 +247,7 @@ export class PresetManagerDialog extends Dialog {
   }
 
   /** Writes one kind of preset to a file (the Preset Manager's Save Set, and Edit > Presets > Save Swatches). */
-  async saveSet(kind: Kind = this.kind, format?: 'ase' | 'grd'): Promise<void> {
+  async saveSet(kind: Kind = this.kind, format?: 'ase' | 'grd' | 'csh'): Promise<void> {
     try {
       switch (kind) {
         case 'swatches':
@@ -267,7 +270,8 @@ export class PresetManagerDialog extends Dialog {
         case 'shapes': {
           const builtin = new Set(CUSTOM_SHAPES.map((s) => s.id)), mine = allCustomShapes().filter((s) => !builtin.has(s.id));
           if (!mine.length) { toast('There are no custom shapes of your own to save.', 'info'); return; }
-          await this.deliver(new Blob([JSON.stringify(mine, null, 2)], { type: 'application/json' }), 'Custom Shapes.json');
+          if (format === 'csh') await this.deliver(new Blob([writeCsh(mine.map((s) => ({ name: s.label, path: parseShape(s.d) }))) as BlobPart], { type: 'application/octet-stream' }), 'Custom Shapes.csh');
+          else await this.deliver(new Blob([JSON.stringify(mine, null, 2)], { type: 'application/json' }), 'Custom Shapes.json');
           break;
         }
         case 'brushes': break;

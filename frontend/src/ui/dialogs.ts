@@ -61,6 +61,17 @@ export class Dialog {
       setText(b, t(b.dataset.en ?? ''));
       b.dataset.shown = b.textContent ?? '';
     }
+    // Body labels (35.5d): each row's label span, in .cv-field rows and hand-built .cv-dialog-row rows, keeps its
+    // English text in data-en the first time and shows the current language after; a label its owner has changed
+    // since (text no longer what was shown) takes the new text as its English.
+    for (const s of Array.from(this.body.querySelectorAll<HTMLElement>('.cv-field > span:first-child, .cv-dialog-row > span:first-child'))) {
+      const now = s.textContent ?? '';
+      if (!now) continue;
+      if (s.dataset.en === undefined || now !== s.dataset.shown) s.dataset.en = now;
+      const shown = t(s.dataset.en);
+      if (shown !== now) setText(s, shown);
+      s.dataset.shown = shown;
+    }
   }
 
   private memory: { skip: ReadonlySet<Element>; busy: boolean; queued: boolean; extra: RememberedExtra | null } | null = null;
@@ -94,7 +105,7 @@ export class Dialog {
     const skip = this.memory?.skip;
     Array.from(this.body.querySelectorAll<HTMLInputElement | HTMLSelectElement>(REMEMBERED)).forEach((c, i) => {
       if (skip?.has(c) || c.closest('[data-forget]')) return;
-      const host = c.closest('label, .cv-field, .cv-dialog-row'), text = (c.getAttribute('aria-label') || host?.querySelector('span')?.textContent || host?.textContent || '').trim().slice(0, 60);
+      const host = c.closest('label, .cv-field, .cv-dialog-row'), span = host?.querySelector<HTMLElement>('span'), text = (c.getAttribute('aria-label') || span?.dataset.en || span?.textContent || host?.textContent || '').trim().slice(0, 60);   // the English label (35.5d), so remembered values keep their keys in every language
       const base = `${c instanceof HTMLSelectElement ? 'select' : c.type}:${text || `#${i}`}`, n = (seen.get(base) ?? 0) + 1;
       seen.set(base, n);
       out.push([n === 1 ? base : `${base}#${n}`, c]);

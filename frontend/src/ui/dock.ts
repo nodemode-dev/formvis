@@ -16,6 +16,9 @@ export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'info', label: 'Info', selector: 'section.cv-info' },
   { id: 'layer-comps', label: 'Layer Comps', selector: 'section.cv-layer-comps' },
   { id: 'styles', label: 'Styles', selector: 'section.cv-styles' },
+  { id: 'gradients', label: 'Gradients', selector: 'section.cv-gradients' },
+  { id: 'patterns', label: 'Patterns', selector: 'section.cv-patterns' },
+  { id: 'shapes', label: 'Shapes', selector: 'section.cv-shapes' },
   { id: 'measurement-log', label: 'Measurement Log', selector: 'section.cv-measure-log' },
   { id: 'modifier-keys', label: 'Modifier Keys', selector: 'section.cv-modifier-keys' },
 ];
@@ -36,7 +39,7 @@ interface DockState { order: string[]; hidden: string[]; side: string[] }
 const KEY = 'formvis.dock';
 const HEIGHTS_KEY = 'formvis.dock.heights';
 /** As the target's Essentials (and Photoshop's): Navigator, Swatches and Layers shown; Timeline and History in Window. */
-const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history', 'info', 'layer-comps', 'styles', 'measurement-log', 'modifier-keys'], side: [...DEFAULT_SIDE] };
+const DEFAULT: DockState = { order: DOCK_PANELS.map((p) => p.id), hidden: ['timeline', 'history', 'info', 'layer-comps', 'styles', 'gradients', 'patterns', 'shapes', 'measurement-log', 'modifier-keys'], side: [...DEFAULT_SIDE] };
 
 function load(): DockState {
   try {
