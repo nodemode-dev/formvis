@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.8 · 2026-10-14
+
+### Added
+
+- The Slice tool (C, with Crop): drag to mark user slices, numbered in reading order. View > Show > Slices and Clear Slices; slices are saved in the project.
+- Image > Mode > Multichannel, from RGB, CMYK, Grayscale, Indexed or Duotone: one spot channel per ink, shown and exported as the inks overprinted; RGB Color brings it back to one layer.
+- Smart object Stack Modes: Convert to Smart Object on two or more pixel layers makes an image stack, and Layer > Smart Objects > Stack Mode chooses None or one of 12 modes (Mean, Median, Maximum, Minimum, Range, Summation, Standard Deviation and others). The stack is saved in the project.
+
 ## 1.68.7 · 2026-10-14
 
 ### Added

@@ -2,6 +2,29 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.8: the Slice tool, Multichannel, Stack Modes · _v1.68.8 (automation/catalogue.ts, ui/tabs.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (836 catalogue ids). At the join: `tool.select.slice` had no words, so `TOOL_WHEN` in `automation/catalogue.ts` gained `slice`; the Multichannel entry's heading now lists `ui/tabs.ts`, whose mode-label table needed the new mode. Probes in Chromium through the catalogue: two slices added, Show Slices toggled, saved and read back as two, Clear Slices then undo gave two again; a half-red RGB document converted to Multichannel gave Cyan, Magenta and Yellow, red composited as (236, 0, 0) and white stayed white, the mode and three channels survived a save and read, and RGB Color gave back (236, 0, 0); three grey layers (10, 200, 30) made one stacked smart object (2 layers with the background), Median gave 30 and Maximum 200, and the mode survived a save and read; no page errors. Deferred: Slice Select, Slice Options, layer-based slices, the channels of a Multichannel document in the Channels panel. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.7",
+      "version": "1.68.7",
+  "version": "1.68.7",
+export const VERSION = '1.68.7';
+```
+
+## The Slice tool, DEV_PLAN 29.5 part a · _v1.68.8 (extensions/tools/slice.ts, extensions/tools/index.ts, engine/types.ts, engine/index.ts, ui/stage.ts, app.ts, automation/command-meta.ts, automation/catalogue.ts, io/project-io.ts)
+
+The Slice tool (C, with Crop): drag a rectangle to add a user slice (`Doc.slices`, `DocSlice`), clamped to the canvas, Shift for a square. `Engine.addSlice`, `removeSlice` and `clearSlices` are one undo step each (`setSlices`, beside `setGuides`). The overlay draws each slice with its number in reading order; `ui/stage.ts` draws the same while View > Show > Slices (`toggle-show-slices`, `view.slices`) is on and the Slice tool is not active. `clear-slices` removes them all. Saved as `slices` in the manifest. `automation/catalogue.ts` `TOOL_WHEN` gains `slice` so `tool.select.slice` has words. Deferred: Slice Select, auto slices, Slice Options dialog, Layer > New Layer Based Slice.
+
+## Multichannel mode, DEV_PLAN 31.3 part b · _v1.68.8 (engine/multichannel.ts, engine/types.ts, engine/index.ts, ui/stage.ts, ui/tabs.ts, app.ts, automation/command-meta.ts, io/project-io.ts)
+
+Image > Mode > Multichannel (`mode-multichannel`): the document becomes grey spot channels with ink colours, shown overprinted on white. From RGB: Cyan, Magenta, Yellow as 255 minus R, G, B ink (black is full ink); from CMYK: Cyan, Magenta, Yellow, Black; from Grayscale: one Black channel; from Duotone: the duotone's inks through their curves. `engine/multichannel.ts` holds the split and the composite (start at white, multiply each RGB channel by 1 - amount * (1 - ink / 255), amount = (255 - grey) / 255 times solidity). `Engine.compose` and `flattened` draw the composite for a multichannel document, so the canvas, the Navigator and export follow; the Stage keeps such documents on the CPU. Image > Mode > RGB Color bakes the composite into one pixel layer. Saved as `multichannel` in the manifest with one PNG per channel. The Channels panel does not list the channels yet.
+
+## Smart object stack modes, DEV_PLAN 33.1 · _v1.68.8 (engine/stack-modes.ts, engine/types.ts, engine/index.ts, app.ts, automation/command-meta.ts, io/project-io.ts)
+
+Layer > Smart Objects > Stack Mode. Converting two or more selected pixel layers makes one smart object whose `stack` holds their document-size renders (bottom first) and whose source is the top one (mode None); `setStackMode` recomputes the source per channel (entropy, kurtosis, maximum, mean, median, minimum, range, skewness, standard deviation, summation, variance, majority) and re-renders through `restackSoon` as one undo step. Replace Contents clears the stack. The stack saves as `<id>.stack<N>.png` files with the mode in the manifest. Thirteen `stack-mode-<id>` commands, enabled when the active smart object has a stack and checked for its mode. Not yet joined: tsc and unit runs are the caller's.
+
 ## Release 1.68.7: Color Table, Layer Comps to Files, Convert to Linked · _v1.68.7 (ui/navigator.ts, app.ts, automation/command-meta.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (819 catalogue ids). At the join: the Navigator now maps a duotone document through `duotoneLut` after composing, as the canvas does (it showed grey at 1.68.6); a duplicate `smart-embed-linked` command, the same as the existing `embed-linked`, was removed with its words. Probes in Chromium: an indexed red document with its red entry set to blue showed blue, and undo showed red; two comps exported as `cmp_0000_One.png` and `cmp_0001_Two.png` with the layers' visibility as before; Convert to Linked with the save picker absent linked the contents as "Layer 1.png" and Embed Linked unlinked them (with the picker present headless Chromium waits on it, a person's choice); the Navigator of a grey 128 duotone shows (114, 94, 74); no page errors. Removed lines taken after the version edit. Removed from frontend:
