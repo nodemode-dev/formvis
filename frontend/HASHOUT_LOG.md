@@ -2,6 +2,41 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.3: outline tracing, extruded 3D, localised menus · _v1.70.3 (io/project-io.ts, ui/i18n/es.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (918 catalogue ids). No builder added a type cast.
+
+Fixes at the join:
+- `serialize` and `deserialize` (io/project-io.ts) write layer fields from a list, so a 3D extrusion's settings would have been lost on save. `extrude3d` is now written and read back.
+- The Spanish table lacked "New Canvas". Its builder collected labels by one pattern, which missed some; "Nuevo lienzo" is added.
+
+Probes in Chromium, with WebGL on SwiftShader:
+- **Create Work Path and Convert to Shape:** a bold 120 px "Ob" traced to four subpaths. The two outers had positive area and the two counters negative (5763, 3943, -2406, -1044). Convert to Shape added one vector layer named Ob and hid the type layer.
+- **3D extrusion:** New 3D Extrusion from Selected Layer opened on the shape with a lit, bevelled preview. Place made "3D: Ob" with 8,369 opaque pixels, and its settings survived a save and read.
+- **Menus:** Spanish showed Archivo, Edición, Imagen, Capa, Selección, Filtro, Ver, Plugins, Ventana and Ayuda, with the File menu's commands in Spanish. Simplified Chinese showed 文件, 编辑, 图像 and the rest. Both switched in place.
+- No page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.70.2",
+      "version": "1.70.2",
+  "version": "1.70.2",
+export const VERSION = '1.70.2';
+```
+
+## Outline tracing, Create Work Path and Convert to Shape from type, DEV_PLAN 32.7 part b · _v1.70.3 (engine/trace-outline.ts, engine/index.ts, app.ts, automation/command-meta.ts)
+
+The outlines are traced from the rendered pixels, not read from the font: `traceAlpha` thresholds a layer's alpha, chains the boundary into closed loops (outer contours clockwise, holes counter-clockwise), places points at the sub-pixel threshold crossing, simplifies with Ramer-Douglas-Peucker and fits Catmull-Rom handles, keeping sharp corners sharp. Layer > Type > Create Work Path puts the result in the Work Path, and Convert to Shape adds a shape layer in the text colour and hides the type layer, as one undo step. Rotation of the type layer is not applied yet.
+
+## Extruded 3D type and shapes, DEV_PLAN 32.9 · _v1.70.3 (ui/panels/extrude3d-dialog.ts, engine/types.ts, app.ts, automation/command-meta.ts)
+
+Layer > 3D > New 3D Extrusion from Selected Layer pushes a shape, type or pixel layer into depth. A shape layer's path is used directly; a type or pixel layer has its alpha traced to a path. Closed subpaths become three.js shapes, and a subpath wound against the largest one and lying inside another becomes that shape's hole. The dialog previews live with depth, bevel, turn, tilt, size, light and material sliders and a colour, and Place renders at the document's size into a layer named 3D: plus the source name. The layer keeps its settings in `extrude3d`, so running the command on it again re-opens the dialog and re-renders its pixels in place as one undo step.
+
+## Localised menus, DEV_PLAN 35.5 part a · _v1.70.3 (ui/i18n.ts, ui/i18n/es.ts, ui/i18n/it.ts, ui/i18n/ko.ts, ui/i18n/zh-CN.ts, ui/menu.ts, ui/prefs.ts, ui/app-dialogs.ts, ui/command-palette.ts)
+
+The menus now go through one translation table, `t()` in `ui/i18n.ts`, keyed by the English label (a trailing "..." is set aside and put back). Spanish, Italian, Korean and Simplified Chinese cover every menu title and submenu; Spanish also covers the command labels of the File, Edit, Image, Layer, Select and View menus. A new Language preference (Preferences, saved with the others) switches the menubar and every open menu in place with text changes only, and the command palette shows translated labels. Next: the Italian, Korean and Chinese command labels, panels, dialogs, tooltips, the desktop's native menu (it is built once and needs a rebuild on a language change), and layout length checks for longer words.
+
 ## Release 1.70.2: Trap, Pixel Aspect Ratio, Modifier Keys · _v1.70.2 (engine/trap.ts, app.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (915 catalogue ids). No builder added a type cast.

@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.70.3 · 2026-10-14
+
+### Added
+
+- Layer > Type > Create Work Path and Convert to Shape: a type layer's outlines, traced from its rendered letters, as a path or an editable shape layer.
+- Layer > 3D > New 3D Extrusion from Selected Layer: type, shapes or any layer extruded with depth, bevel, light and material, rendered to a layer that opens again in the same settings (kept in `.fmv`).
+- Menus in Spanish, Italian, Korean and Simplified Chinese (Preferences > Language), switched in place; Spanish also covers the File, Edit, Image, Layer, Select and View commands.
+
 ## 1.70.2 · 2026-10-14
 
 ### Added
