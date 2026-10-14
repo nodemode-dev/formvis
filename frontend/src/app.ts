@@ -67,6 +67,7 @@ import { TypeOnPathDialog } from './ui/panels/type-on-path-dialog';
 import { ParagraphStylesDialog } from './ui/panels/paragraph-styles';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
+import { readPat, writePat } from './io/pat';
 import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
@@ -1286,6 +1287,42 @@ export function startApp(): void {
     else toast(`Defined "${name}" for this session; the pattern library is full, so it will not be kept.`, 'error');
   }
 
+  /** Edit > Import Patterns: Photoshop .pat files (several at once), each pattern joining the library. */
+  function importPatterns(): void {
+    const input = document.createElement('input');
+    input.type = 'file'; input.accept = '.pat'; input.multiple = true;
+    input.addEventListener('change', () => void (async () => {
+      let added = 0;
+      for (const f of Array.from(input.files ?? [])) {
+        try {
+          for (const pt of readPat(new Uint8Array(await f.arrayBuffer()))) {
+            const s = createSurface(pt.width, pt.height);
+            ctxOf(s).putImageData(new ImageData(pt.rgba as Uint8ClampedArray<ArrayBuffer>, pt.width, pt.height), 0, 0);
+            addPattern(pt.name, s);
+            added += 1;
+          }
+        } catch (err) { toast(`${f.name}: ${message(err)}`, 'error'); }
+      }
+      if (!added) return;
+      const kept = await savePatterns();
+      toast(`${added === 1 ? 'Imported one pattern' : `Imported ${added} patterns`}.${kept ? '' : ' The pattern library is full, so they will not be kept.'}`, kept ? 'info' : 'error');
+    })());
+    input.click();
+  }
+
+  /** Edit > Export Patterns: every pattern you defined or imported, in one Photoshop .pat file. */
+  async function exportPatterns(): Promise<void> {
+    const mine = allPatterns().filter((q) => !q.builtin);
+    if (!mine.length) { toast('There are no patterns of your own to export. Define one with Edit > Define Pattern first.', 'info'); return; }
+    try {
+      const list = mine.map((q) => {
+        const w = q.surface.width, h = q.surface.height;
+        return { name: q.name, width: w, height: h, rgba: ctxOf(q.surface).getImageData(0, 0, w, h).data };
+      });
+      await deliver(new Blob([writePat(list) as BlobPart], { type: 'application/octet-stream' }), 'Patterns.pat');
+    } catch (err) { toast(message(err), 'error'); }
+  }
+
   /** File > Export Artboards to Files: each artboard alone, cut to its rectangle, as a PNG named after it, together
    *  in one zip (a browser will not take many downloads at once). */
   async function exportArtboards(): Promise<void> {
@@ -1908,6 +1945,39 @@ export function startApp(): void {
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
     {
+      id: 'variables-define', label: 'Define Variable...', enabled: has,
+      params: {
+        name: { type: 'string', description: 'The variable name; the column heading in a data set file.' },
+        layer: { type: 'string', description: 'Layer id or name the variable is bound to; the active layer when left out.' },
+        kind: { type: 'string', description: 'visibility, text (type layers) or pixels (pixel layers).' },
+        method: { type: 'string', description: 'For pixels: fit, fill, asis or conform; fit when left out.' },
+      },
+      run: (a) => {
+        const p = engine.current, k = String(a?.kind ?? 'visibility').toLowerCase(), ref = a?.layer === undefined ? p?.activeId : String(a.layer);
+        const l = p?.doc.layers.find((x) => x.id === ref) ?? p?.doc.layers.find((x) => x.name === ref);
+        if (!l || (k !== 'visibility' && k !== 'text' && k !== 'pixels')) { toast('Give a layer and a kind: visibility, text or pixels.'); return undefined; }
+        const m = String(a?.method ?? 'fit').toLowerCase(), method = m === 'fill' || m === 'asis' || m === 'conform' ? m : 'fit';
+        return engine.defineVariable({ name: String(a?.name ?? l.name), layer: l.id, kind: k, method });
+      },
+    },
+    {
+      id: 'data-sets-import', label: 'Data Sets...', enabled: has,
+      params: { text: { type: 'string', description: 'CSV or tab-separated text: the first row names the variables, each later row is a data set.' } },
+      run: (a) => {
+        if (a?.text !== undefined) return engine.importDataSets(String(a.text));
+        const input = document.createElement('input');
+        input.type = 'file'; input.accept = '.csv,.txt,text/csv,text/plain';
+        input.addEventListener('change', () => { const f = input.files?.[0]; if (f) void f.text().then((t) => { const n = engine.importDataSets(t); if (n) toast(`${n} data set${n === 1 ? '' : 's'} imported.`); }); });
+        input.click();
+        return undefined;
+      },
+    },
+    {
+      id: 'data-set-apply', label: 'Apply Data Set', enabled: () => !!engine.current?.doc.dataSets?.length,
+      params: { name: { type: 'string', description: 'The data set to apply; the first when left out.' } },
+      run: (a) => { const sets = engine.current?.doc.dataSets ?? [], n = a?.name === undefined ? sets[0]?.name : String(a.name); return n ? engine.applyDataSet(n) : undefined; },
+    },
+    {
       id: 'image-processor', label: 'Image Processor...', enabled: () => true,
       params: {
         types: { type: 'string', description: 'Comma list of jpg, psd, tiff; jpg when left out.' },
@@ -2001,6 +2071,8 @@ export function startApp(): void {
     { id: 'filter-wide-angle', label: 'Adaptive Wide Angle...', enabled: pixel, run: () => dialogs.wideAngle.show() },
     { id: 'filter-vanishing-point', label: 'Vanishing Point...', enabled: pixel, run: () => vanishingDialog.show() },   // 1.58.3
     { id: 'define-pattern', label: 'Define Pattern...', enabled: () => !!engine.current, run: () => void definePattern() },
+    { id: 'patterns-import', label: 'Import Patterns...', run: () => importPatterns() },
+    { id: 'patterns-export', label: 'Export Patterns...', enabled: () => allPatterns().some((q) => !q.builtin), run: () => void exportPatterns() },
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
     { id: 'delete', label: 'Delete', keys: ['Backspace', 'Delete'], enabled: () => !!layer(), run: () => (selected() && pixel() ? engine.clearPixels() : void deleteLayersWithChoice()) },
     { id: 'settings', label: 'Preferences...', keys: ['Mod+,'], run: () => dialogs.settings.show() },
@@ -2264,6 +2336,22 @@ export function startApp(): void {
     { id: 'delete-path', label: 'Delete Path', enabled: () => !!engine.workPath, run: () => engine.deletePath() },
     { id: 'new-path', label: 'New Path', enabled: () => !!engine.current, run: () => engine.newPath() },
     { id: 'layer-style', label: 'Layer Style...', enabled: () => pixel(), run: () => dialogs.layerStyle.show() },
+    {
+      id: 'layer-comp-new', label: 'New Layer Comp', enabled: has,
+      params: {
+        name: { type: 'string', description: 'Comp name; "Layer Comp N" when left out.' },
+        comment: { type: 'string', description: 'Comment kept with the comp.' },
+        visibility: { type: 'boolean', description: 'Record layer visibility; true when left out.' },
+        position: { type: 'boolean', description: 'Record layer x and y; true when left out.' },
+        appearance: { type: 'boolean', description: 'Record opacity, blend mode, fill and effects; true when left out.' },
+      },
+      run: (a) => { engine.newLayerComp({ name: typeof a?.name === 'string' ? a.name : undefined, comment: typeof a?.comment === 'string' ? a.comment : undefined, useVisibility: a?.visibility !== false, usePosition: a?.position !== false, useAppearance: a?.appearance !== false }); },
+    },
+    { id: 'layer-comp-apply', label: 'Apply Layer Comp', enabled: () => !!engine.current?.doc.comps?.length, params: { id: { type: 'string', description: 'Comp id.' }, name: { type: 'string', description: 'Comp name, when no id is given.' } }, run: (a) => { const c = engine.current?.doc.comps?.find((x) => (a?.id ? x.id === a.id : x.name === a?.name)); if (c) engine.applyLayerComp(c.id); } },
+    { id: 'layer-comp-update', label: 'Update Layer Comp', enabled: () => !!engine.current?.doc.activeComp, run: () => { const id = engine.current?.doc.activeComp; if (id) engine.updateLayerComp(id); } },
+    { id: 'layer-comp-delete', label: 'Delete Layer Comp', enabled: () => !!engine.current?.doc.activeComp, run: () => { const id = engine.current?.doc.activeComp; if (id) engine.deleteLayerComp(id); } },
+    { id: 'layer-comp-next', label: 'Next Layer Comp', enabled: () => !!engine.current?.doc.comps?.length, run: () => engine.nextLayerComp(1) },
+    { id: 'layer-comp-previous', label: 'Previous Layer Comp', enabled: () => !!engine.current?.doc.comps?.length, run: () => engine.nextLayerComp(-1) },
     { id: 'edit-text', label: 'Edit Type...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { const id = engine.current?.activeId; if (id) dialogs.text.showEdit(id); } },
     { id: 'convert-smart', label: 'Convert to Smart Object', enabled: () => { const l = engine.current?.activeLayer; return !!l?.raster && !l.isGroup && !l.adjustment && !l.smart; }, run: () => engine.convertToSmartObject() },
     { id: 'rasterize', label: 'Rasterize Layer', enabled: () => { const l = engine.current?.activeLayer; return !!l && (!!l.smart || !!l.vector || !!l.shape || !!l.fillContent || liveText(l)); }, run: () => engine.rasterizeLayer() },
@@ -2401,7 +2489,7 @@ export function startApp(): void {
       'apply-image', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-indexed', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
-      'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
+      'image-size', 'canvas-size', 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }] },
     { label: 'Layer', items: [
       { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
       { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
@@ -2453,7 +2541,8 @@ export function startApp(): void {
   contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', 'warp-text', '-',
     { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'smart-export-contents', 'rasterize', 'edit-contents', 'replace-contents', '-', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] },
-    { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] }, '-',
+    { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
+    { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-delete', '-', 'layer-comp-next', 'layer-comp-previous'] }, '-',
     { label: 'Layer Mask', items: ['add-mask', 'apply-mask', 'delete-mask', 'toggle-mask', 'link-mask'] }, 'clip', 'link-layers', 'select-linked', '-', 'group', 'ungroup', 'move-out', 'merge', 'merge-visible', '-', 'layer-pixels']);
   new Tabs(q(root, '.cv-tab-strip'), engine, (id) => void requestClose(id));
 

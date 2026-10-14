@@ -1,14 +1,14 @@
 # formvis commands
 
-Generated from the window's command catalogue (792 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (803 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 47
+- Edit: 49
 - File: 54
 - Filter: 77
-- Image: 69
-- Layer: 161
+- Image: 72
+- Layer: 167
 - Paint: 1
 - Paths: 8
 - Select: 28
@@ -48,6 +48,8 @@ Generated from the window's command catalogue (792 commands) by `./formvis agent
 | `paste-in-place` | Paste in Place | Shift+Mod+V | Pastes at the position the pixels were copied from. (changes the picture) |
 | `paste-into` | Paste Into | Alt+Shift+Mod+V | Pastes into the selection with a mask. (changes the picture) |
 | `paste-outside` | Paste Outside |  | Pastes outside the selection with a mask. (changes the picture) |
+| `patterns-export` | Export Patterns... |  | Saves your patterns as one Photoshop .pat file. |
+| `patterns-import` | Import Patterns... |  | Adds the patterns from Photoshop .pat files. |
 | `perspective-warp` | Perspective Warp |  | Starts Perspective Warp. (changes the picture) |
 | `puppet-warp` | Puppet Warp |  | Starts Puppet Warp with pins on the layer. (changes the picture) |
 | `purge-all` | All |  | Clears the clipboard and the history of every open document after asking. (changes the picture) |
@@ -259,6 +261,8 @@ Generated from the window's command catalogue (792 commands) by `./formvis agent
 | `color-match` | Color Match... |  | Opens Color Match. (changes the picture) |
 | `content-aware-scale` | Content-Aware Scale... |  | Opens Content-Aware Scale. (changes the picture) |
 | `convert-profile` | Convert to Profile... |  | Opens Convert to Profile. (changes the picture) |
+| `data-set-apply` | Apply Data Set |  | Applies a data set to the document: sets bound layers visible or hidden, replaces bound type text keeping its style, and swaps bound pixel layers, as one undo step. |
+| `data-sets-import` | Data Sets... |  | Reads data sets from CSV or tab-separated text whose first row names the variables; each later row is one data set. With no text it opens a file chooser for .csv and .txt. |
 | `depth-16` | 16 Bits/Channel |  | Sets 16 bits per channel. (changes the picture) |
 | `depth-32` | 32 Bits/Channel |  | Sets 32 bits per channel. (changes the picture) |
 | `depth-8` | 8 Bits/Channel |  | Sets 8 bits per channel. (changes the picture) |
@@ -289,6 +293,7 @@ Generated from the window's command catalogue (792 commands) by `./formvis agent
 | `trim` | Trim... |  | Opens Trim to cut away transparent or same-colour edges. (changes the picture) |
 | `upscale-2x` | Upscale 2x... |  | Opens the dialog that enlarges the picture two times. |
 | `upscale-4x` | Upscale 4x... |  | Opens the dialog that enlarges the picture four times. |
+| `variables-define` | Define Variable... |  | Binds a named variable to a layer: its visibility, a type layer's text, or a pixel layer's image (placed fit, fill, as is or conformed to the layer bounds). |
 
 ### adjust.apply parameters
 
@@ -353,6 +358,12 @@ Generated from the window's command catalogue (792 commands) by `./formvis agent
 | `hide-all-effects` | Hide All Effects |  | Shows or hides all layer effects. (changes the picture) |
 | `hide-layers` | Hide Layers |  | Hides or shows the selected layers. (changes the picture) |
 | `isolate-layers` | Isolate Layers |  | Shows only the selected layers. |
+| `layer-comp-apply` | Apply Layer Comp |  | Applies a layer comp by id or name. (changes the picture) |
+| `layer-comp-delete` | Delete Layer Comp |  | Deletes the active layer comp. (changes the picture) |
+| `layer-comp-new` | New Layer Comp |  | Records a layer comp of visibility, position and appearance. (changes the picture) |
+| `layer-comp-next` | Next Layer Comp |  | Applies the next layer comp, wrapping. (changes the picture) |
+| `layer-comp-previous` | Previous Layer Comp |  | Applies the previous layer comp, wrapping. (changes the picture) |
+| `layer-comp-update` | Update Layer Comp |  | Re-records the active layer comp from the layers now. (changes the picture) |
 | `layer-content-options` | Layer Content Options... |  | Opens the content options of a fill layer. (changes the picture) |
 | `layer-from-background` | Layer from Background... |  | Opens the dialog that turns the Background into a normal layer. (changes the picture) |
 | `layer-style` | Layer Style... |  | Opens Layer Style. (changes the picture) |
