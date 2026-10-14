@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.69.5 · 2026-10-14
+
+### Added
+
+- Edit > Presets > Preset Manager: brushes, swatches, gradients, patterns and custom shapes listed by type, renamed, deleted, loaded and saved as sets; Load Swatches and Save Swatches read Photoshop `.aco` and Adobe `.ase` and write `.aco`.
+- View > Pattern Preview: the document drawn again around itself, to check that a tile repeats cleanly.
+- View > Pixel Art Preview: the document drawn with hard pixel edges at every zoom.
+- Image > Analysis: Set Measurement Scale, Record Measurements (area, perimeter, size, ruler length and angle, count, in the scale's units), Place Scale Marker and the Measurement Log with CSV export; the scale and the records are saved in the project.
+
 ## 1.69.4 · 2026-10-14
 
 ### Added

@@ -2,6 +2,48 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.5: Preset Manager, Pattern and Pixel Art Preview, measurement · _v1.69.5 (ui/stage.ts, ui/panels/preset-manager-dialog.ts, app.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (870 catalogue ids). No builder added a type cast.
+
+Fixes at the join:
+- Pattern Preview's tiles were composed at the view's zoom and stretched smoothly, so zoomed in they were soft beside the crisp document. At 2x and over, and with Pixel Art on, they are now composed at the document's own pixels and drawn with smoothing off.
+- The Preset Manager renamed through `window.prompt`. It now uses the app's `promptName` dialog.
+- The Preset Manager's list is now 240 px tall. Before, it showed one row, because `cv-select` sets the height.
+- The Preset Manager dialog is 520 wide, so its five buttons fit in one row.
+- Image > Analysis moved from the top of the Image menu to its end, where Photoshop keeps it.
+
+Probes in Chromium:
+- **Swatches:** `writeAco` then `readAco`, and `writeAse` then `readAse`, gave back the same three swatches.
+- **Measurement:** the scale was set to 100 px = 2 cm on a 200 by 100 document.
+  - The whole selection recorded area 8, perimeter 11.92 (boundary pixels, so slightly under 12), and 4 by 2.
+  - A 100 px ruler line recorded length 2 and angle 0.
+  - Place Scale Marker added its layer.
+  - The scale and the two records survived a save and read.
+- **Screenshots:** they showed the Measurement Log table, the Preset Manager with the built-in brushes, Pattern Preview's crisp neighbouring tiles at 1084%, and Pixel Art Preview.
+- No page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.69.4",
+      "version": "1.69.4",
+  "version": "1.69.4",
+export const VERSION = '1.69.4';
+```
+
+## Pattern Preview and Pixel Art Preview, DEV_PLAN 35.4 part a · _v1.69.5 (ui/stage.ts, engine/index.ts, app.ts, automation/command-meta.ts)
+
+View > Pattern Preview draws the composed document again in the eight neighbouring positions across the whole scene, composed once per frame (at most about 4096 px a side, stretched beyond that), and turns every stroke frame into a full redraw. View > Pixel Art Preview takes the crisp, smoothing-off branch at every zoom, so zooming out is a nearest-neighbour downscale of the 1x composition. Both flags live in `engine.view`, make `setView` emit `render`, and send the stage to the CPU path. Pixel Aspect Ratio is deferred to a later part.
+
+## Preset Manager and swatch files, DEV_PLAN 32.4 part a · _v1.69.5 (io/swatch-files.ts, ui/panels/preset-manager-dialog.ts, ui/swatches.ts, engine/patterns.ts, engine/custom-shapes.ts, io/brush-library.ts, app.ts, automation/command-meta.ts)
+
+Edit > Presets holds the Preset Manager (rename, delete, load and save sets of brushes, swatches, gradients, patterns and custom shapes; built-ins are listed but locked) plus Load Swatches and Save Swatches for Photoshop .aco and Adobe .ase files (.ase is read only here; .aco is read and written). Deferred: .grd gradient files, .asl style libraries, .csh custom shape files, tool presets and writing .abr brush sets (Save Set is disabled for brushes).
+
+## Measurement scale, records and log, DEV_PLAN 31.6 part a · _v1.69.5 (engine/index.ts, engine/types.ts, io/project-io.ts, ui/panels/measurement-dialogs.ts, app.ts, automation/command-meta.ts)
+
+Image > Analysis adds Set Measurement Scale, Record Measurements, Place Scale Marker and a Measurement Log dialog; the scale and records are saved with the project. Deferred: Select Data Points and a docked Measurement Log panel.
+
 ## Release 1.69.4: SVG as shape layers, Define Brush and Custom Shape, Split Warp · _v1.69.4 (engine/index.ts, io/svg-layers.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (861 catalogue ids). No builder added a type cast.
