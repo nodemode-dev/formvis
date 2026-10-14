@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (844 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (851 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
-- Edit: 49
-- File: 66
+- Edit: 55
+- File: 67
 - Filter: 80
 - Image: 75
 - Layer: 181
@@ -31,6 +31,8 @@ Generated from the window's command catalogue (844 commands) by `./formvis agent
 | `copy` | Copy | Mod+C | Copies the selection to the clipboard. |
 | `copy-merged` | Copy Merged | Shift+Mod+C | Copies the selection from all visible layers. |
 | `cut` | Cut | Mod+X | Cuts the selection to the clipboard. (changes the picture) |
+| `define-brush` | Define Brush Preset... |  | Saves the selection, or the whole image, as a sampled brush tip. (changes the picture) |
+| `define-custom-shape` | Define Custom Shape... |  | Saves the current path as a custom shape for the Shape tool. (changes the picture) |
 | `define-pattern` | Define Pattern... |  | Saves the selection as a pattern. |
 | `delete` | Delete | Backspace Delete | Clears the selection, or deletes the selected layers. (changes the picture) |
 | `edit-note` | Edit Note... |  | Opens the selected note for editing. |
@@ -71,6 +73,10 @@ Generated from the window's command catalogue (844 commands) by `./formvis agent
 | `transform-skew` | Skew |  | Starts a Skew transform. (changes the picture) |
 | `transform-warp` | Warp |  | Starts a Warp transform on the layer. (changes the picture) |
 | `undo` | Undo | Mod+Z | Steps back one history step. (changes the picture) |
+| `warp-remove-split` | Remove Warp Split |  | Removes the Warp grid row or column added last, never the border lines. (changes the picture) |
+| `warp-split-cross` | Split Warp Crosswise |  | Adds a row and a column to the Warp grid in the middle of its largest cell. (changes the picture) |
+| `warp-split-h` | Split Warp Horizontally |  | Adds a row to the Warp grid in the middle of its largest cell, leaving the picture unchanged. (changes the picture) |
+| `warp-split-v` | Split Warp Vertically |  | Adds a column to the Warp grid in the middle of its largest cell, leaving the picture unchanged. (changes the picture) |
 
 ## File
 
@@ -121,6 +127,7 @@ Generated from the window's command catalogue (844 commands) by `./formvis agent
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |
 | `new` | New Canvas... | Alt+Mod+N Mod+N | Opens the New Canvas dialog. |
 | `open` | Open Project... | Mod+O | Opens the library dialog to open a saved project. |
+| `open-svg-layers` | Open SVG as Layers... |  | Opens an SVG file as a new document with one editable shape layer per drawable element; with the svg parameter it reads that SVG text instead of asking for a file. (changes the picture) |
 | `package` | Package... |  | Saves the document and the files of its linked smart objects together in one zip. (changes the picture) |
 | `photomerge` | Photomerge... |  | Opens Photomerge to stitch images into a panorama. (changes the picture) |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |

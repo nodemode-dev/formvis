@@ -22,7 +22,8 @@ import { SelectMaskDialog } from './ui/panels/select-mask-dialog';
 import { ContentFillDialog } from './ui/panels/content-fill-dialog';
 import { GradientEditor, loadSavedGradients } from './ui/panels/gradient-editor';
 import { convertToLinked, linkedFiles, pickLinkSource, placeEmbedded, placeLinked, relink, updateLinked } from './io/links';
-import { importAbr, loadImportedBrushes } from './io/brush-library';
+import { importAbr, loadImportedBrushes, addSampledBrush } from './io/brush-library';
+import { importedBrushPresets } from './engine/brush-dynamics';
 import { SPACES, convertPixels, iccProfile, type SpaceId } from './engine/icc';
 import { embedJpeg, embedPng } from './io/embed-icc';
 import { dpxBlob } from './io/dpx';
@@ -62,6 +63,7 @@ import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
 import { pathsToIllustrator } from './io/ai-paths';
+import { svgToShapes } from './io/svg-layers';
 import { withXmp } from './io/xmp';
 import { FileInfoDialog } from './ui/panels/file-info-dialog';
 import { PrintDialog } from './ui/panels/print-dialog';
@@ -75,7 +77,7 @@ import { ParagraphStylesDialog } from './ui/panels/paragraph-styles';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { readPat, writePat } from './io/pat';
-import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable } from './engine';
+import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable, addCustomShape, allCustomShapes, loadCustomShapes } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
@@ -1358,6 +1360,48 @@ export function startApp(): void {
     else toast(`Defined "${name}" for this session; the pattern library is full, so it will not be kept.`, 'error');
   }
 
+  /** Edit > Define Brush Preset: the visible image within the selection, or the whole canvas, up to 2500 px a side, as a
+   *  sampled tip where dark paints (coverage = (255 - luminance) * alpha / 255). */
+  async function defineBrush(): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    engine.settle();
+    const flat = engine.flattened();
+    if (!flat) return;
+    const sel = p.selection, x = sel ? Math.max(0, Math.floor(sel.x)) : 0, y = sel ? Math.max(0, Math.floor(sel.y)) : 0;
+    const w = Math.min(flat.width - x, sel ? Math.ceil(sel.w) : flat.width), h = Math.min(flat.height - y, sel ? Math.ceil(sel.h) : flat.height);
+    if (w < 1 || h < 1) return;
+    if (w > 2500 || h > 2500) { toast('A brush tip can be at most 2500 by 2500 pixels. Select a smaller area first.', 'error'); return; }
+    const s = createSurface(w, h);
+    ctxOf(s).drawImage(flat as CanvasImageSource, -x, -y);
+    const px = ctxOf(s).getImageData(0, 0, w, h).data, data = new Uint8Array(w * h);
+    for (let i = 0; i < data.length; i++) {
+      const lum = 0.299 * px[i * 4] + 0.587 * px[i * 4 + 1] + 0.114 * px[i * 4 + 2];
+      data[i] = Math.round(((255 - lum) * px[i * 4 + 3]) / 255);
+    }
+    let n = 1;
+    while (importedBrushPresets.some((q) => q.name === `Sampled Brush ${n}`)) n += 1;
+    const name = await promptName('Define Brush Preset', `Sampled Brush ${n}`, 'OK');
+    if (!name) return;
+    const r = await addSampledBrush(engine, name, { w, h, data });
+    engine.emit('options', null);
+    if (r.kept) toast(`Defined the brush "${name}". It is selected in the Brush tool's presets.`);
+    else toast(`Defined "${name}" for this session; the brush library could not be saved, so it will not be kept.`, 'error');
+  }
+
+  /** Edit > Define Custom Shape: the current path, fitted to the shape box and added to the Shape tool's list. */
+  async function defineCustomShape(): Promise<void> {
+    const vp = engine.workPath;
+    if (!vp || !vp.subpaths.some((sp) => sp.anchors.length > 1)) { toast('Draw a path first, then define it as a custom shape.', 'error'); return; }
+    let n = 1;
+    while (allCustomShapes().some((q) => q.label === `Custom Shape ${n}`)) n += 1;
+    const name = await promptName('Define Custom Shape', `Custom Shape ${n}`, 'OK');
+    if (!name) return;
+    addCustomShape(name, vp);
+    engine.emit('options', null);
+    toast(`Defined the custom shape "${name}". Choose it in the Shape tool's Custom shape list.`);
+  }
+
   /** Edit > Import Patterns: Photoshop .pat files (several at once), each pattern joining the library. */
   function importPatterns(): void {
     const input = document.createElement('input');
@@ -1737,6 +1781,31 @@ export function startApp(): void {
     document.body.appendChild(i);
     i.click();
   });
+  /** One .svg file through a fresh input; null when cancelled. */
+  const pickSvg = (): Promise<File | null> => new Promise((resolve) => {
+    const i = el<HTMLInputElement>('<input type="file" accept=".svg,image/svg+xml" data-role="svg-layers-file" hidden>');
+    const done = (f: File | null): void => { resolve(f); i.remove(); };
+    i.addEventListener('change', () => done(i.files?.[0] ?? null), { once: true });
+    i.addEventListener('cancel', () => done(null), { once: true });
+    document.body.appendChild(i);
+    i.click();
+  });
+  const openSvgLayers = async (svgText: string | null): Promise<void> => {
+    try {
+      let text = svgText, name = 'SVG';
+      if (text === null) {
+        const file = await pickSvg();
+        if (!file) return;
+        text = await file.text();
+        name = stripExt(file.name);
+      }
+      const parsed = svgToShapes(text);
+      if (!parsed.shapes.length) { toast(`No shapes found; ${parsed.skipped} elements skipped.`, 'error'); return; }
+      if (!engine.newDocument(parsed.width, parsed.height, name, 'transparent')) return;
+      const n = engine.addShapeLayers(parsed.shapes);
+      toast(`${n} shape layers; ${parsed.skipped} elements skipped.`);
+    } catch (err) { toast(message(err), 'error'); }
+  };
   const linkError = (err: unknown): void => { toast(message(err), 'error'); };
   replaceInput.addEventListener('change', () => {
     const f = replaceInput.files?.[0];
@@ -1864,6 +1933,7 @@ export function startApp(): void {
   };
   loadSavedGradients();
   engine.uiHooks.gradientEditor = () => dialogs.gradientEditor.show();
+  loadCustomShapes();
   void loadImportedBrushes().then(() => engine.emit('options', null));
   const abrInput = el<HTMLInputElement>('<input type="file" accept=".abr" data-role="import-brushes" hidden>');
   document.body.appendChild(abrInput);
@@ -2042,6 +2112,7 @@ export function startApp(): void {
     { id: 'pref-home-last-close', label: 'Show Home Screen When the Last Document Closes', checked: () => loadPrefs().homeOnLastClose, run: () => { updatePrefs({ homeOnLastClose: !loadPrefs().homeOnLastClose }); home.sync(); } },
     { id: 'pref-whats-new-auto', label: 'Show What\'s New Once After an Update', checked: () => loadPrefs().whatsNewAuto, run: () => { updatePrefs({ whatsNewAuto: !loadPrefs().whatsNewAuto }); } },
     { id: 'manage-plugins', label: 'Manage Plugins...', run: () => void pluginsDialog.show() },   // 1.52.6
+    { id: 'open-svg-layers', label: 'Open SVG as Layers...', params: { svg: { type: 'string', description: 'The SVG text to open; leave out to pick a file.' } }, run: (a) => { void openSvgLayers(typeof a?.svg === 'string' ? a.svg : null); } },
     { id: 'place-3d', label: 'Place 3D Model...', enabled: has, run: () => model3dInput.click() },   // 1.51.9
     { id: 'assemble-tiles', label: 'Assemble Tiles...', enabled: () => engine.projects.some((p) => p.tile), run: () => void assembleTiles() },   // 1.52.7
     { id: 'export-ora', label: 'Export OpenRaster...', enabled: has, run: () => void exportOra() },   // 1.51.7
@@ -2203,6 +2274,10 @@ export function startApp(): void {
     { id: 'content-fill-workspace', label: 'Content-Aware Fill...', enabled: () => pixel() && selected(), run: () => dialogs.contentFill.show() },
     { id: 'remove-wires', label: 'Remove Wires and Cables', enabled: pixel, run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.removeWires(); }); } },
     { id: 'transform-warp', label: 'Warp', enabled: pixel, run: () => { engine.setTool('move'); engine.beginMeshWarp(); } },
+    { id: 'warp-split-h', label: 'Split Warp Horizontally', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('h'); } },
+    { id: 'warp-split-v', label: 'Split Warp Vertically', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('v'); } },
+    { id: 'warp-split-cross', label: 'Split Warp Crosswise', enabled: () => !!engine.meshWarpEdit, run: () => { engine.splitMeshWarp('cross'); } },
+    { id: 'warp-remove-split', label: 'Remove Warp Split', enabled: () => !!engine.meshWarpEdit, run: () => { engine.removeMeshWarpSplit(); } },
     { id: 'transform-again', label: 'Again', keys: ['Shift+Mod+T'], enabled: () => engine.canTransformAgain, run: () => { engine.transformAgain(); } },
     { id: 'transform-again-copy', label: 'Transform Again on a Copy', keys: ['Alt+Shift+Mod+T'], enabled: () => engine.canTransformAgain, run: () => { engine.transformAgain(true); } },
     { id: 'transform-scale', label: 'Scale', enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.beginTransformMode('scale') },
@@ -2220,6 +2295,8 @@ export function startApp(): void {
     { id: 'filter-wide-angle', label: 'Adaptive Wide Angle...', enabled: pixel, run: () => dialogs.wideAngle.show() },
     { id: 'filter-vanishing-point', label: 'Vanishing Point...', enabled: pixel, run: () => vanishingDialog.show() },   // 1.58.3
     { id: 'define-pattern', label: 'Define Pattern...', enabled: () => !!engine.current, run: () => void definePattern() },
+    { id: 'define-brush', label: 'Define Brush Preset...', enabled: () => !!engine.current, run: () => void defineBrush() },
+    { id: 'define-custom-shape', label: 'Define Custom Shape...', enabled: () => !!engine.workPath, run: () => void defineCustomShape() },
     { id: 'patterns-import', label: 'Import Patterns...', run: () => importPatterns() },
     { id: 'patterns-export', label: 'Export Patterns...', enabled: () => allPatterns().some((q) => !q.builtin), run: () => void exportPatterns() },
     { id: 'clear', label: 'Clear Selection Pixels', enabled: () => pixel() && selected(), run: () => engine.clearPixels() },
@@ -2685,14 +2762,14 @@ export function startApp(): void {
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
+    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
       { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',
-      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },
+      'fill-path-dialog', 'stroke-path-dialog', '-', 'transform', { label: 'Transform', items: ['transform-again', '-', 'transform-scale', 'transform-rotate', 'transform-skew', 'transform-distort', 'transform-perspective', 'transform-warp', 'warp-split-h', 'warp-split-v', 'warp-split-cross', 'warp-remove-split', '-', 'layer-rotate-180', 'layer-rotate-90-cw', 'layer-rotate-90-ccw', '-', 'flip-layer-h', 'flip-layer-v'] }, 'perspective-warp', 'puppet-warp', '-', 'define-pattern', 'define-brush', 'define-custom-shape', '-', 'assign-profile', 'convert-profile', 'colour.settings', '-', 'shortcuts', 'settings'] },
     { label: 'Image', items: [
       'apply-image', { label: 'Adjustments', items: ['adj-levels', 'adj-curves', 'adj-exposure', '-', 'adj-hsv', ...PARAM_KINDS.map((k) => `adj-${k}`), '-', 'adj-gradientMap', 'adj-grain', '-', 'invert', '-', 'desaturate', 'replace-color', 'equalize'] }, '-',
       'auto-tone', 'auto-contrast', 'auto-color', '-',
