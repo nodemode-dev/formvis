@@ -2,6 +2,90 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.5: spherical panorama, desktop link paths, slices, translation tables level · _v1.70.5 (ui/panels/panorama-dialog.ts, styles/dialogs.css, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (925 catalogue ids). No builder added a type cast.
+
+Fixes at the join:
+- ui/panels/panorama-dialog.ts, `editView`: it wrote the view into the new document's first layer, but a transparent new document's layer has no raster until painted, so Edit View always failed ("could not be made") and Apply View had no link. The view now goes in as its own layer 'Panorama view' through `insertRasterLayer`. Replaced:
+
+```ts
+    const p = this.engine.newDocument(w, h, `${this.docName} view`, 'transparent');
+    const raster = p?.doc.layers[0]?.raster;
+    if (!p || !raster) { this.toast('The edit view could not be made.'); return; }
+    raster.write(new ImageData(img.data, w, h));
+```
+
+- styles/dialogs.css, `.cv-dialog-row` (new rules): about twenty dialogs build rows as `<label class="cv-dialog-row">` and the class had no rule, so their labels, sliders and number fields ran together inline (seen on the panorama dialog, and true of the 1.70.3 extrusion dialog). Rows now line up with `.cv-field` (a 110 px label, controls sharing the rest); bare inputs take the `.cv-input` look; inputs that carry their own class are left alone.
+- ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts: the five new labels (Spherical Panorama, Apply View to Panorama, Edit View, Slice Options, New Layer Based Slice).
+
+Probed: renderView at yaw 0, 90, -170 and pitch 45 lands on the expected longitude and latitude (centre 128/128, 191, 7, latitude 64; the 90 degree view's corner at -45 and 35.3 degrees); projectBack of a 60 degree view covers exactly plus and minus 30 degrees (60 px each side on a 720 px panorama) and leaves the far side untouched; Edit View then Apply View added 'Panorama edit' (24,452 opaque pixels) to the 720 by 360 source; the view of a striped panorama bends the latitude lines and keeps the verticals straight; New Layer Based Slice made a slice of the layer's bounds and Slice Options opened on it; menus in Italian; `/api/file` 200 for an image, 400 for README.md, 404 for a missing file; cargo check.
+
+Release version lines, removed:
+
+```text
+<img src="https://img.shields.io/badge/version-1.70.4-f97316" alt="version 1.70.4">
+  "version": "1.70.4",
+  "version": "1.70.4",
+      "version": "1.70.4",
+export const VERSION = '1.70.4';
+```
+
+## Desktop link paths and slices · _v1.70.5 (io/links.ts, extensions/tools/slice.ts, engine/index.ts, ui/slice-options.ts, app.ts, automation/command-meta.ts)
+
+- io/links.ts, `pickLinkSource`: in the desktop app (`'__TAURI_INTERNALS__' in window`) first `invoke('pick_image_path')`; a path becomes `fromPath(path)` (new; `getFile()` fetches `/api/file?path=` and builds a File named by the base name, `lastModified` from the Last-Modified header), `live: true`, and is recorded in `paths` so `meta` fills `SmartLink.path`. A failed invoke falls through to the old pickers.
+- io/links.ts, `sourceFor(id, path?)`: with no source and no stored handle, a desktop app rebuilds a source from the link's path. `linkedFiles` and `updateLinked` pass `link.path`.
+- io/links.ts, `meta(id, f, known?)` and `updateLinked`: the link's own path is kept when a file is re-read. Replaced:
+```ts
+const meta = (id: string, f: File): SmartLink => {
+  const path = pathOf(f) ?? paths.get(id);
+```
+```ts
+async function sourceFor(id: string): Promise<LinkSource | null> {
+  const s = sources.get(id);
+  if (s) return s;
+  const h = await recall(id);
+  if (!h) return null;
+  const made = fromHandle(h);
+  sources.set(id, made);
+  return made;
+}
+```
+- engine/index.ts, after `clearSlices`: `activeSlice` (not saved), `updateSlice(id, patch, step)` (whole pixels, clamped, one undo step) and `addLayerSlice()` (from `contentBounds` of the active layer, `layer` set, one step 'New Layer Based Slice').
+- extensions/tools/slice.ts, Slice Select: `down` selects the topmost slice under the press (`activeSlice`) and drags it (`drag.move`, previewed by `rectOf`, committed in `up` as one 'Move Slice' step); a press outside every slice draws a new one and makes it active. Replaced:
+```ts
+let drag: { start: Pt; now: Pt; square: boolean } | null = null;
+
+function rectOf(d: { start: Pt; now: Pt; square: boolean }): Rect {
+```
+```ts
+    drag = { start: p.doc, now: p.doc, square: p.shift };
+    ctx.engine.emit('overlay', null);
+```
+```ts
+    const r = rectOf(drag);
+    drag = null;
+    ctx.engine.addSlice(r);
+    ctx.engine.emit('overlay', null);
+```
+- ui/slice-options.ts (new), `openSliceOptions(engine)`: Dialog built hidden, filled, opened once; name, URL, alt, x, y, w, h; OK calls `updateSlice`.
+- app.ts, commands `slice-options` (loads the dialog on demand) and `layer-based-slice` (turns Show Slices on), added after `clear-slices`; View > Show list is now `['toggle-show-slices', 'layer-based-slice', 'slice-options', 'clear-slices']`, replacing `['toggle-show-slices', 'clear-slices']`.
+- automation/command-meta.ts: a words line each for `slice-options` and `layer-based-slice` (group View).
+
+## Spherical panorama, DEV_PLAN 35.8 · _v1.70.5 (engine/panorama.ts, engine/index.ts, ui/panels/panorama-dialog.ts, app.ts, automation/command-meta.ts)
+
+- `engine/panorama.ts` (new, pure): `renderView(equi, view, outW, outH)` gives a rectilinear view of an equirectangular image, bilinear, longitude wrapped and latitude clamped; `projectBack(equi, viewImg, view)` is the inverse, source-over by the view's alpha, limited to a lon/lat bounding box of the frustum (all longitudes when a pole is inside). Yaw 0 is the centre column, positive yaw turns right, positive pitch looks up; x = (lon/360 + 0.5) W, y = (0.5 - lat/180) H; fov is horizontal, degrees.
+- `ui/panels/panorama-dialog.ts` (new): `PanoramaDialog`, a 640 by 400 canvas, drag to turn, wheel for fov 30 to 120, sliders, reduced render while dragging and full on release; Edit View makes a transparent document of the chosen size (default 1024 by 768) and records `engine.panoramaLinks`.
+- `engine/index.ts`: `panoramaLinks` (Map of edit view project id to `PanoramaLink`, not saved) and `applyPanoramaView()`, which projects the flattened edit view onto a transparent image the size of the source and adds it as 'Panorama edit' above the source layer through `insertRasterLayer`, one undo step.
+- `app.ts`: commands `panorama-view` (toasts when the aspect is not near 2:1, still opens) and `panorama-apply-view`, both in Layer > 3D after a separator. `automation/command-meta.ts`: a words line for each.
+- Nothing removed.
+
+## Translation tables brought level, DEV_PLAN 35.5 part c · _v1.70.5 (ui/i18n/it.ts, ui/i18n/ko.ts, ui/i18n/zh-CN.ts, es.ts)
+
+- it.ts, ko.ts and zh-CN.ts each gained every key es.ts had and they lacked: 351 entries each (File, Edit, Image, Layer, Select and View commands plus 51 tool-rail names), 102 to 453 entries per table.
+- es.ts gained the 51 tool-rail names (Art History Brush through Zoom), 402 to 453 entries, so all four tables now hold the same 453 keys.
+- Terms follow Photoshop's UI wording per language (Livello, 레이어, 图层 and so on); product names stay untranslated. Nothing removed, no duplicate keys.
+
 ## Release 1.70.4: Check Spelling, missing fonts, Reveal linked files, SVG completion, localised panels and dialogs · _v1.70.4 (io/svg-layers.ts, engine/index.ts, app.ts, ui/dialogs.ts, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (921 catalogue ids). No builder added a type cast.

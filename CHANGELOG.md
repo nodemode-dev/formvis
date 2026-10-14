@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.70.5 · 2026-10-14
+
+### Added
+
+- Layer > 3D > Spherical Panorama: an equirectangular document viewed as a sphere (drag to turn, wheel to zoom, yaw, pitch and field of view). Edit View opens the current view as its own document; Apply View to Panorama projects it back onto the panorama as a new layer, in one step.
+- Slices: the Slice tool selects and moves an existing slice when pressed inside one; View > Show > Slice Options edits a slice's name, URL, alt text and exact bounds; New Layer Based Slice makes a slice from the active layer.
+- Linked smart objects in the desktop app are picked with the system file dialog and read from their disk path, so Update Modified Content and Reveal in File Manager work, and links reopen from a saved project.
+
+### Changed
+
+- The Italian, Korean and Simplified Chinese interfaces now cover everything the Spanish one does, tool names included.
+- Dialog rows built from labels and controls line up in two columns instead of running together.
+
 ## 1.70.4 · 2026-10-14
 
 ### Added

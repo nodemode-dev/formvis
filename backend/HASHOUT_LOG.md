@@ -2,6 +2,22 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.5 · _v1.70.5 (app/__init__.py)
+
+Joined and probed: `GET /api/file` gave 200 for an image, 400 for a non-image suffix and 404 for a missing path; `cargo check --offline` clean with `pick_image_path`. The native dialog itself needs a desktop run to see. Removed version lines (the desktop shell's quoted too):
+
+```text
+__version__ = "1.70.4"
+version = "1.70.4"
+version = "1.70.4"
+ "version": "1.70.4",
+```
+
+## Desktop link paths and slices · _v1.70.5 (app/routers/system.py, src-tauri/src/main.rs)
+
+- app/routers/system.py, `linked_file` (`GET /api/file?path=`): returns the bytes of an existing regular file whose suffix is in `_LINK_IMAGE_SUFFIXES` (the extensions `pickLinkSource` lists), with a guessed media type and a Last-Modified header; 400 for another suffix, 404 for a missing or non-regular file.
+- src-tauri/src/main.rs, `pick_image_path` (async command, `tauri_plugin_dialog::DialogExt`, `add_filter("Images", ...)`, `blocking_pick_file`): returns the picked file's disk path or None; registered in `generate_handler!` after `system_fonts`. The default capability needed no change (app commands are not gated by a capability without a build-time command manifest).
+
 ## Release 1.70.4 · _v1.70.4 (app/__init__.py)
 
 Joined and probed: `POST /api/spell/check` answered "Helo" and "recieve" with suggestions in English and "mundoo" with "mundo" in Spanish, skipping NASA and x2; `POST /api/reveal` gave 404 for a missing path and 200 for a real one. Removed version lines (the desktop shell's quoted too):
