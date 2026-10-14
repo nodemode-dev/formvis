@@ -108,8 +108,9 @@ function sample(p: Float32Array, w: number, h: number, x: number, y: number, o: 
 
 /** Warps `src` through a gw x gh control grid into a new outW x outH image. `points` are where the uniform source
  *  grid's points land, in output pixels. `smooth` passes through the Catmull-Rom surface. Null when a cell folds. */
-export function meshWarpImage(src: ImageData, gw: number, gh: number, points: P2[], outW: number, outH: number, smooth = true): ImageData | null {
+export function meshWarpImage(src: ImageData, gw: number, gh: number, points: P2[], outW: number, outH: number, smooth = true, us?: number[], vs?: number[]): ImageData | null {
   if (gw < 2 || gh < 2 || points.length !== gw * gh) return null;
+  const mapU = (t: number): number => gridToSource(us, gw, t), mapV = (t: number): number => gridToSource(vs, gh, t);
   for (let cy = 0; cy < gh - 1; cy++) for (let cx = 0; cx < gw - 1; cx++) {
     if (!convexQuad([points[cy * gw + cx], points[cy * gw + cx + 1], points[(cy + 1) * gw + cx], points[(cy + 1) * gw + cx + 1]])) return null;
   }
@@ -133,10 +134,10 @@ export function meshWarpImage(src: ImageData, gw: number, gh: number, points: P2
     for (const c of cells) {
       if (qx < c.bx0 || qx > c.bx1 || qy < c.by0 || qy > c.by1) continue;
       const inCell = invBilinear(c.p00, c.p10, c.p01, c.p11, qx, qy, uv);
-      if (!smooth) { if (!inCell) continue; su = (c.cx + uv[0]) / (gw - 1); sv = (c.cy + uv[1]) / (gh - 1); hit = true; break; }
+      if (!smooth) { if (!inCell) continue; su = mapU(c.cx + uv[0]); sv = mapV(c.cy + uv[1]); hit = true; break; }
       const seedU = inCell ? c.cx + uv[0] : c.cx + 0.5, seedV = inCell ? c.cy + uv[1] : c.cy + 0.5;
       if (!invSmooth(gw, gh, points, qx, qy, seedU, seedV, uTol, vTol, sm)) continue;
-      su = sm[0] / (gw - 1); sv = sm[1] / (gh - 1); hit = true; break;
+      su = mapU(sm[0]); sv = mapV(sm[1]); hit = true; break;
     }
     if (!hit) continue;
     sample(pm, W, H, su * W - 0.5, sv * H - 0.5, px);
@@ -146,6 +147,66 @@ export function meshWarpImage(src: ImageData, gw: number, gh: number, points: P2
     d[k] = Math.round(px[0] / a); d[k + 1] = Math.round(px[1] / a); d[k + 2] = Math.round(px[2] / a); d[k + 3] = Math.round(a * 255);
   }
   return out;
+}
+
+/** Even source positions (fractions 0..1) for n grid lines. */
+export function evenSpacing(n: number): number[] {
+  const a: number[] = [];
+  for (let i = 0; i < n; i++) a.push(n > 1 ? i / (n - 1) : 0);
+  return a;
+}
+
+/** Grid parameter t (0..n-1) to a source fraction, piecewise linear over `pos` (even spacing when absent). Outside
+ *  the range it extends the end segments linearly. */
+export function gridToSource(pos: number[] | undefined, n: number, t: number): number {
+  if (!pos || pos.length !== n) return t / (n - 1);
+  const i = Math.min(n - 2, Math.max(0, Math.floor(t))), f = t - i;
+  return pos[i] + (pos[i + 1] - pos[i]) * f;
+}
+
+export interface MeshGrid { gw: number; gh: number; points: P2[]; us: number[]; vs: number[] }
+
+/** Inserts a column at fractional grid position `at.u` (0..gw-1) and/or a row at `at.v`. Each new point is the current
+ *  surface evaluated at that parameter and each new source position is interpolated from its neighbours, so every
+ *  point of the picture keeps its source and its place: the split is exact at all control points, and exact
+ *  everywhere for a grid that is still linear (the spline through the same surface points only differs in between). */
+export function splitGrid(gw: number, gh: number, points: P2[], us: number[], vs: number[], at: { u?: number; v?: number }): MeshGrid {
+  let g: MeshGrid = { gw, gh, points: points.slice(), us: us.slice(), vs: vs.slice() };
+  const tmp: P2 = [0, 0];
+  if (at.u !== undefined) {
+    const u = Math.min(g.gw - 1.0001, Math.max(0.0001, at.u)), i = Math.floor(u), f = u - i, np: P2[] = [];
+    for (let j = 0; j < g.gh; j++) {
+      for (let k = 0; k < g.gw; k++) {
+        np.push(g.points[j * g.gw + k]);
+        if (k === i) { meshSurfacePoint(g.gw, g.gh, g.points, u, j, tmp); np.push([tmp[0], tmp[1]]); }
+      }
+    }
+    const nu = g.us.slice();
+    nu.splice(i + 1, 0, g.us[i] + (g.us[i + 1] - g.us[i]) * f);
+    g = { gw: g.gw + 1, gh: g.gh, points: np, us: nu, vs: g.vs };
+  }
+  if (at.v !== undefined) {
+    const v = Math.min(g.gh - 1.0001, Math.max(0.0001, at.v)), j = Math.floor(v), f = v - j, np: P2[] = [];
+    for (let r = 0; r < g.gh; r++) {
+      for (let k = 0; k < g.gw; k++) np.push(g.points[r * g.gw + k]);
+      if (r === j) for (let k = 0; k < g.gw; k++) { meshSurfacePoint(g.gw, g.gh, g.points, k, v, tmp); np.push([tmp[0], tmp[1]]); }
+    }
+    const nv = g.vs.slice();
+    nv.splice(j + 1, 0, g.vs[j] + (g.vs[j + 1] - g.vs[j]) * f);
+    g = { gw: g.gw, gh: g.gh + 1, points: np, us: g.us, vs: nv };
+  }
+  return g;
+}
+
+/** Removes the interior column `col` and/or row `row` (never the border lines; an out-of-range index is ignored). */
+export function removeSplit(gw: number, gh: number, points: P2[], us: number[], vs: number[], col?: number, row?: number): MeshGrid {
+  const dropC = col !== undefined && col > 0 && col < gw - 1 ? col : -1, dropR = row !== undefined && row > 0 && row < gh - 1 ? row : -1;
+  const np: P2[] = [];
+  for (let j = 0; j < gh; j++) {
+    if (j === dropR) continue;
+    for (let i = 0; i < gw; i++) if (i !== dropC) np.push(points[j * gw + i]);
+  }
+  return { gw: dropC >= 0 ? gw - 1 : gw, gh: dropR >= 0 ? gh - 1 : gh, points: np, us: us.filter((_, i) => i !== dropC), vs: vs.filter((_, j) => j !== dropR) };
 }
 
 /** The control points of an undeformed gw x gh grid over a w x h box at (x, y). */

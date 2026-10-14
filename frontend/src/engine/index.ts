@@ -71,7 +71,7 @@ import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
 import { sharpenSample } from './filters-more';
 import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
-import { convexQuad, meshWarpImage, type P2 } from './mesh-warp';
+import { convexQuad, evenSpacing, meshSurfacePoint, meshWarpImage, removeSplit, splitGrid, type P2 } from './mesh-warp';
 import { liquifyImage, type LiquifyField } from './liquify';
 import { puppetImage } from './puppet';
 import { applyH, convexQuadTLTRBRBL, homography as quadHomography, perspectiveImage, straighten, type Plane, type Quad } from './perspective';
@@ -84,8 +84,8 @@ export { COPYRIGHT_STATUSES, META_TEXT, cleanMeta, metaWritable, mergeMeta, pars
 import { UPRIGHT, defaultShape, noDynamics, pressureOption, shapeActive, type BrushDynamics, type BrushPreset, type BrushShape, type PenPose } from './brush-dynamics';
 import { DEFAULT_PATH_SHAPE, boxedShapePath, linePath, type PathShapeKind, type PathShapeOptions } from './shape-paths';
 import { markupPath, type MarkupKind } from './markup';
-import { CUSTOM_SHAPES } from './custom-shapes';
-export { CUSTOM_SHAPES } from './custom-shapes';
+import { allCustomShapes } from './custom-shapes';
+export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
 import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
@@ -2542,6 +2542,21 @@ export class Engine {
     this.insertRasterLayer(r.raster, `Shape ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'New Shape Layer');
   }
 
+  /** File > Open SVG as Layers (DEV_PLAN 34.4): one shape layer per entry, in order, each outline still editable. insertRasterLayer
+   *  records its own undo step, so each layer is one step. Returns the number of layers made. */
+  addShapeLayers(shapes: Array<{ name: string; path: VectorPath; fill: RGB | null; stroke: { color: RGB; width: number } | null }>): number {
+    // Rendered first, then inserted in one edit, so the whole SVG is one undo step.
+    const made = shapes.flatMap((s) => { const look: ShapeStyle = { fill: s.fill, stroke: s.stroke }, r = this.renderShape(s.path, look); return r ? [{ s, look, r }] : []; });
+    if (!made.length) return 0;
+    this.edit('Open SVG as Layers', (p) => {
+      for (const { s, look, r } of made) {
+        const base = newLayer(s.name, p.doc, { raster: r.raster, parentId: this.parentForNew(p) });
+        this.insertAboveActive(p, { ...base, transform: { ...docTransform(r.raster.width, r.raster.height), x: r.x, y: r.y }, vector: { path: s.path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } });
+      }
+    });
+    return made.length;
+  }
+
   /** The Markup tool's choice (1.60.3, the register's L2, DEV_PLAN 23.13): what a drag makes, its colour and width. */
   markupKind: MarkupKind = 'arrow';
   markupColor: RGB = { r: 230, g: 40, b: 40 };
@@ -2607,7 +2622,7 @@ export class Engine {
     const path = line ? linePath(kind, a, b, st) : boxedShapePath(kind, { x: Math.min(a.x, b.x), y: Math.min(a.y, b.y), w: Math.abs(b.x - a.x), h: Math.abs(b.y - a.y) }, st);
     const look: ShapeStyle = { fill: { ...this.fg }, stroke: null }, r = this.renderShape(path, look);
     if (!r) return;
-    const name = kind === 'custom' ? CUSTOM_SHAPES.find((s) => s.id === st.custom)?.label ?? 'Custom Shape' : { polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', triangle: 'Triangle' }[kind];
+    const name = kind === 'custom' ? allCustomShapes().find((s) => s.id === st.custom)?.label ?? 'Custom Shape' : { polygon: 'Polygon', star: 'Star', line: 'Line', arrow: 'Arrow', heart: 'Heart', triangle: 'Triangle' }[kind];
     let n = 1;
     while (p.doc.layers.some((l) => l.name === `${name} ${n}`)) n++;
     this.insertRasterLayer(r.raster, `${name} ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: null, origin: { x: r.x, y: r.y } } }, `New ${name}`);
@@ -2619,7 +2634,7 @@ export class Engine {
     if (!p) return;
     const r = this.renderShape(path, look);
     if (!r) return;
-    const st = this.shapeSettings, label = st.kind === 'custom' ? CUSTOM_SHAPES.find((c) => c.id === st.custom)?.label ?? name : name;
+    const st = this.shapeSettings, label = st.kind === 'custom' ? allCustomShapes().find((c) => c.id === st.custom)?.label ?? name : name;
     let n = 1;
     while (p.doc.layers.some((l) => l.name === `${label} ${n}`)) n++;
     this.insertRasterLayer(r.raster, `${label} ${n}`, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, `New ${label}`);
@@ -5246,7 +5261,7 @@ export class Engine {
   /** Edit > Transform > Warp: a 4 x 4 control grid over the active layer's corners, pending until applied (Enter) or
    *  cancelled (Escape). The warp is the smooth one (engine/mesh-warp.ts, ported from NodeMode's formvis): the surface
    *  curves through the points. A linked mask without a placement of its own warps with the pixels. */
-  meshWarpEdit: { project: Project; layerId: ID; gw: number; gh: number; points: P2[]; source: ImageData; mask: ImageData | null; preview: Warped | null } | null = null;
+  meshWarpEdit: { project: Project; layerId: ID; gw: number; gh: number; points: P2[]; us: number[]; vs: number[]; lastCol: number; lastRow: number; source: ImageData; mask: ImageData | null; preview: Warped | null } | null = null;
   private meshFrame = 0;
 
   beginMeshWarp(): boolean {
@@ -5260,7 +5275,7 @@ export class Engine {
       points.push([top.x + (bot.x - top.x) * v, top.y + (bot.y - top.y) * v]);
     }
     const m = l.mask?.raster && l.mask.linked && !l.mask.placement ? l.mask.raster.read() : null;
-    this.meshWarpEdit = { project: p, layerId: l.id, gw, gh, points, source: r.read(), mask: m, preview: null };
+    this.meshWarpEdit = { project: p, layerId: l.id, gw, gh, points, us: evenSpacing(gw), vs: evenSpacing(gh), lastCol: -1, lastRow: -1, source: r.read(), mask: m, preview: null };
     this.emit('render', null);
     this.emit('options', null);
     return true;
@@ -5275,19 +5290,96 @@ export class Engine {
       if (!convexQuad([next[cy * w.gw + cx], next[cy * w.gw + cx + 1], next[(cy + 1) * w.gw + cx], next[(cy + 1) * w.gw + cx + 1]])) return;
     }
     w.points = next;
-    if (!this.meshFrame) this.meshFrame = requestAnimationFrame(() => { this.meshFrame = 0; const e = this.meshWarpEdit; if (e) { e.preview = this.meshWarped(e.source, e.points, e.gw, e.gh, 360); this.emit('render', null); } });
+    if (!this.meshFrame) this.meshFrame = requestAnimationFrame(() => { this.meshFrame = 0; const e = this.meshWarpEdit; if (e) { e.preview = this.meshWarped(e.source, e.points, e.gw, e.gh, 360, e.us, e.vs); this.emit('render', null); } });
     this.emit('overlay', null);
   }
 
+  /** Grid parameters (u, v) of the surface point nearest the document point `at`: a coarse search over the surface,
+   *  then a finer one around the best sample. */
+  private meshParamAt(w: NonNullable<Engine['meshWarpEdit']>, at: Pt): { u: number; v: number } {
+    const q: P2 = [0, 0];
+    let bu = (w.gw - 1) / 2, bv = (w.gh - 1) / 2, bd = Infinity;
+    const scan = (u0: number, u1: number, v0: number, v1: number, n: number): void => {
+      let cu = bu, cv = bv;
+      for (let a = 0; a <= n; a++) for (let b = 0; b <= n; b++) {
+        const u = u0 + ((u1 - u0) * a) / n, v = v0 + ((v1 - v0) * b) / n;
+        meshSurfacePoint(w.gw, w.gh, w.points, u, v, q);
+        const d = (q[0] - at.x) ** 2 + (q[1] - at.y) ** 2;
+        if (d < bd) { bd = d; cu = u; cv = v; }
+      }
+      bu = cu; bv = cv;
+    };
+    scan(0, w.gw - 1, 0, w.gh - 1, Math.max(8, (Math.max(w.gw, w.gh) - 1) * 8));
+    scan(Math.max(0, bu - 0.25), Math.min(w.gw - 1, bu + 0.25), Math.max(0, bv - 0.25), Math.min(w.gh - 1, bv + 0.25), 10);
+    return { u: bu, v: bv };
+  }
+
+  /** Edit > Transform > Split Warp: adds a grid row ('h'), column ('v') or both ('cross') at the point `at` (document
+   *  coordinates), or in the middle of the largest cell. The new points sit on the current surface at the matching
+   *  source positions, so the picture does not change; they then move like any other point. */
+  splitMeshWarp(kind: 'h' | 'v' | 'cross', at?: Pt): boolean {
+    const w = this.meshWarpEdit;
+    if (!w) return false;
+    let u: number, v: number;
+    if (at) ({ u, v } = this.meshParamAt(w, at));
+    else {
+      let best = -1, bc = 0, br = 0;
+      for (let cy = 0; cy < w.gh - 1; cy++) for (let cx = 0; cx < w.gw - 1; cx++) {
+        const q = [w.points[cy * w.gw + cx], w.points[cy * w.gw + cx + 1], w.points[(cy + 1) * w.gw + cx + 1], w.points[(cy + 1) * w.gw + cx]];
+        let area = 0;
+        for (let k = 0; k < 4; k++) { const a = q[k], b = q[(k + 1) % 4]; area += a[0] * b[1] - b[0] * a[1]; }
+        area = Math.abs(area) / 2;
+        if (area > best) { best = area; bc = cx; br = cy; }
+      }
+      u = bc + 0.5; v = br + 0.5;
+    }
+    const want: { u?: number; v?: number } = {};
+    if (kind !== 'h') { u = Math.min(w.gw - 1.05, Math.max(0.05, u)); want.u = u; }
+    if (kind !== 'v') { v = Math.min(w.gh - 1.05, Math.max(0.05, v)); want.v = v; }
+    const g = splitGrid(w.gw, w.gh, w.points, w.us, w.vs, want);
+    for (let cy = 0; cy < g.gh - 1; cy++) for (let cx = 0; cx < g.gw - 1; cx++) {
+      if (!convexQuad([g.points[cy * g.gw + cx], g.points[cy * g.gw + cx + 1], g.points[(cy + 1) * g.gw + cx], g.points[(cy + 1) * g.gw + cx + 1]])) { this.notice('That split would fold a cell. Straighten the grid there first.'); return false; }
+    }
+    w.lastCol = want.u !== undefined ? Math.floor(want.u) + 1 : -1;
+    w.lastRow = want.v !== undefined ? Math.floor(want.v) + 1 : -1;
+    w.gw = g.gw; w.gh = g.gh; w.points = g.points; w.us = g.us; w.vs = g.vs;
+    w.preview = this.meshWarped(w.source, w.points, w.gw, w.gh, 360, w.us, w.vs);
+    this.emit('render', null);
+    this.emit('overlay', null);
+    return true;
+  }
+
+  /** Removes the interior row and/or column added last, or else the last interior line (a column when the grid is at
+   *  least as wide as tall); the border lines stay. The picture follows the remaining points. */
+  removeMeshWarpSplit(): boolean {
+    const w = this.meshWarpEdit;
+    if (!w) return false;
+    let col = w.lastCol, row = w.lastRow;
+    if (col < 1 && row < 1) {
+      if (w.gw >= w.gh && w.gw > 2) col = w.gw - 2;
+      else if (w.gh > 2) row = w.gh - 2;
+      else { this.notice('No split left to remove.'); return false; }
+    }
+    const g = removeSplit(w.gw, w.gh, w.points, w.us, w.vs, col, row);
+    for (let cy = 0; cy < g.gh - 1; cy++) for (let cx = 0; cx < g.gw - 1; cx++) {
+      if (!convexQuad([g.points[cy * g.gw + cx], g.points[cy * g.gw + cx + 1], g.points[(cy + 1) * g.gw + cx], g.points[(cy + 1) * g.gw + cx + 1]])) { this.notice('Removing that split would fold a cell. Move its neighbours first.'); return false; }
+    }
+    w.gw = g.gw; w.gh = g.gh; w.points = g.points; w.us = g.us; w.vs = g.vs; w.lastCol = -1; w.lastRow = -1;
+    w.preview = this.meshWarped(w.source, w.points, w.gw, w.gh, 360, w.us, w.vs);
+    this.emit('render', null);
+    this.emit('overlay', null);
+    return true;
+  }
+
   /** `img` through the grid into document space, at most `maxSide` pixels a side (0 for full size). */
-  private meshWarped(img: ImageData, points: P2[], gw: number, gh: number, maxSide = 0): Warped | null {
+  private meshWarped(img: ImageData, points: P2[], gw: number, gh: number, maxSide = 0, us?: number[], vs?: number[]): Warped | null {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (const [x, y] of points) { x0 = Math.min(x0, x); y0 = Math.min(y0, y); x1 = Math.max(x1, x); y1 = Math.max(y1, y); }
     const mg = 0.12 * Math.max(x1 - x0, y1 - y0);
     x0 = Math.floor(x0 - mg); y0 = Math.floor(y0 - mg); x1 = Math.ceil(x1 + mg); y1 = Math.ceil(y1 + mg);
     const W = Math.max(1, x1 - x0), H = Math.max(1, y1 - y0), s = maxSide ? Math.min(1, maxSide / Math.max(W, H)) : 1;
     const ow = Math.max(1, Math.round(W * s)), oh = Math.max(1, Math.round(H * s));
-    const out = meshWarpImage(img, gw, gh, points.map(([x, y]): P2 => [(x - x0) * s, (y - y0) * s]), ow, oh, true);
+    const out = meshWarpImage(img, gw, gh, points.map(([x, y]): P2 => [(x - x0) * s, (y - y0) * s]), ow, oh, true, us, vs);
     if (!out) return null;
     const raster = new Raster(ow, oh);
     raster.ctx.putImageData(out, 0, 0);
@@ -5301,11 +5393,11 @@ export class Engine {
     this.dropMeshWarp();
     const p = w.project, l = p.layer(w.layerId);
     if (p !== this.current || !l) return;
-    const full = this.meshWarped(w.source, w.points, w.gw, w.gh);
+    const full = this.meshWarped(w.source, w.points, w.gw, w.gh, 0, w.us, w.vs);
     if (!full) { this.notice('That warp folds over itself. Try smaller moves.'); return; }
     const crop = visibleBounds(full.raster), pixels = crop ? cropWarp(full, crop) : full;
     let mask = l.mask;
-    if (mask && w.mask) { const mw = this.meshWarped(w.mask, w.points, w.gw, w.gh); if (mw) mask = { ...mask, raster: crop ? cropWarp(mw, crop).raster : mw.raster }; }
+    if (mask && w.mask) { const mw = this.meshWarped(w.mask, w.points, w.gw, w.gh, 0, w.us, w.vs); if (mw) mask = { ...mask, raster: crop ? cropWarp(mw, crop).raster : mw.raster }; }
     this.edit('Warp', (q) => q.updateLayer(l.id, { raster: pixels.raster, transform: pixels.t, mask, shape: null }));
   }
 

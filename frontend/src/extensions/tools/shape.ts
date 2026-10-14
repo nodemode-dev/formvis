@@ -1,4 +1,4 @@
-import { CUSTOM_SHAPES, hexOf, type Pt } from '../../engine';
+import { allCustomShapes, hexOf, type Pt } from '../../engine';
 import { boxedShapePath, linePath } from '../../engine/shape-paths';
 import { dashed, type Tool } from '../registry';
 import { dragRect } from './marquee';
@@ -95,7 +95,7 @@ export const shapeTool: Tool = {
       { kind: 'segment', label: 'Shape', choices: KINDS.map((k) => ({ id: k, label: k[0].toUpperCase() + k.slice(1) })), get: () => s.kind, set: (v) => { s.kind = v as typeof s.kind; e.emit('options', null); e.emit('tool', null); } },
       // Each kind's own settings: built once with the bar, shown while that kind is chosen.
       { kind: 'range', label: 'Corner radius', min: 0, max: 500, unit: 'px', get: () => s.cornerRadius, set: (v: number) => set({ cornerRadius: v }), when: () => s.kind === 'rectangle' },
-      { kind: 'select', label: 'Custom shape', choices: CUSTOM_SHAPES.map((c) => ({ id: c.id, label: c.label })), get: () => s.custom, set: (v: string) => set({ custom: v }), when: () => s.kind === 'custom' },
+      { kind: 'select', label: 'Custom shape', choices: allCustomShapes().map((c) => ({ id: c.id, label: c.label })), get: () => s.custom, set: (v: string) => set({ custom: v }), when: () => s.kind === 'custom' },
       { kind: 'range', label: 'Sides', min: 3, max: 100, get: () => s.sides, set: (v: number) => set({ sides: Math.round(v) }), when: () => s.kind === 'polygon' },
       { kind: 'range', label: 'Points', min: 3, max: 100, get: () => s.sides, set: (v: number) => set({ sides: Math.round(v) }), when: () => s.kind === 'star' },
       { kind: 'range', label: 'Indent', min: 1, max: 99, unit: '%', get: () => s.starInset, set: (v: number) => set({ starInset: v }), when: () => s.kind === 'star' },

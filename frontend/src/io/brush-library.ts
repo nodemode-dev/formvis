@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import { parseAbr } from '../engine/abr';
+import { parseAbr, type SampledTip } from '../engine/abr';
 import { importedBrushPresets, presetFromTip, setImportedBrushPresets, type BrushPreset } from '../engine/brush-dynamics';
 
 /** Imported brushes: .abr files read for their sampled tips, each tip a preset in the Brush tool's list, kept in
@@ -40,6 +40,17 @@ export async function loadImportedBrushes(): Promise<void> {
   });
   if (!Array.isArray(got)) return;
   setImportedBrushPresets(got.filter((p): p is BrushPreset => !!p && typeof p === 'object' && typeof (p as BrushPreset).id === 'string' && !!(p as BrushPreset).tip && (p as BrushPreset).tip!.data instanceof Uint8Array && (p as BrushPreset).tip!.data.length === (p as BrushPreset).tip!.w * (p as BrushPreset).tip!.h));
+}
+
+/** Adds one sampled tip (from Define Brush Preset) to the kept presets and selects it. */
+export async function addSampledBrush(engine: Engine, name: string, tip: SampledTip, spacing = 25): Promise<{ kept: boolean }> {
+  const preset = presetFromTip(`user-${Date.now().toString(36)}`, name, tip);
+  const made: BrushPreset = { ...preset, description: `Defined from the image, ${tip.w} x ${tip.h} px, spacing ${spacing}%.` };
+  const list = [...importedBrushPresets, made];
+  setImportedBrushPresets(list);
+  const kept = await save(list);
+  engine.applyBrushPreset(made);
+  return { kept };
 }
 
 /** Reads an .abr file, adds its tips as presets (named after the file) and selects the first. Returns how many. */

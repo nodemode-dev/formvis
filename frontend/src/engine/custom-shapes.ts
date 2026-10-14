@@ -1,4 +1,4 @@
-import type { Anchor, SubPath, VectorPath } from './paths';
+import { pathBounds, type Anchor, type SubPath, type VectorPath } from './paths';
 import type { Rect } from './types';
 
 /** Custom shapes for the Shape tool, as Photoshop's Custom Shape tool offers a library; these are formvis's own simple
@@ -33,6 +33,57 @@ export const CUSTOM_SHAPES: ReadonlyArray<{ id: string; label: string; d: string
   { id: 'arrow-right', label: 'Block arrow', d: 'M4 36 L56 36 L56 12 L96 50 L56 88 L56 64 L4 64 Z' },
 ];
 
+const user: Array<{ id: string; label: string; d: string }> = [];
+const USER_KEY = 'formvis.customShapes';
+
+/** The built-in shapes, then the ones the person defined from paths. */
+export function allCustomShapes(): ReadonlyArray<{ id: string; label: string; d: string }> {
+  return [...CUSTOM_SHAPES, ...user];
+}
+
+function keepUserShapes(): void {
+  try { localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch { /* storage full or blocked: the shape lasts for the session */ }
+}
+
+/** Restores the shapes kept in localStorage; well-formed entries only, once. */
+export function loadCustomShapes(): void {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    if (!raw) return;
+    const got: unknown = JSON.parse(raw);
+    if (!Array.isArray(got)) return;
+    for (const s of got) {
+      if (!s || typeof s !== 'object') continue;
+      const { id, label, d } = s as { id?: unknown; label?: unknown; d?: unknown };
+      if (typeof id === 'string' && typeof label === 'string' && typeof d === 'string' && !user.some((u) => u.id === id)) user.push({ id, label, d });
+    }
+  } catch { /* unreadable storage: start with the built-ins */ }
+}
+
+/** Adds a shape from a path: fitted into the 100 x 100 box keeping its aspect and centred, kept as M, C and Z. Returns its id. */
+export function addCustomShape(label: string, path: VectorPath): string {
+  const b = pathBounds(path), w = Math.max(b?.w ?? 0, 1e-6), h = Math.max(b?.h ?? 0, 1e-6);
+  const k = 100 / Math.max(w, h), ox = 50 - ((b?.x ?? 0) + w / 2) * k, oy = 50 - ((b?.y ?? 0) + h / 2) * k;
+  const f = (v: number, o: number): string => String(Math.round((v * k + o) * 100) / 100);
+  const pt = (x: number, y: number): string => `${f(x, ox)} ${f(y, oy)}`;
+  const parts: string[] = [];
+  for (const sp of path.subpaths) {
+    const a = sp.anchors;
+    if (!a.length) continue;
+    parts.push(`M${pt(a[0].x, a[0].y)}`);
+    const n = sp.closed ? a.length : a.length - 1;
+    for (let i = 0; i < n; i++) {
+      const p = a[i], q = a[(i + 1) % a.length];
+      parts.push(`C${pt(p.outX, p.outY)} ${pt(q.inX, q.inY)} ${pt(q.x, q.y)}`);
+    }
+    if (sp.closed) parts.push('Z');
+  }
+  const id = `user-${Date.now().toString(36)}-${user.length}`;
+  user.push({ id, label, d: parts.join(' ') });
+  keepUserShapes();
+  return id;
+}
+
 /** Absolute M, L, C and Z commands as subpaths of anchors with handles; a closing point equal to the start is merged. */
 export function parseShape(d: string): VectorPath {
   const nums = (s: string): number[] => (s.match(/-?\d*\.?\d+(?:e-?\d+)?/gi) ?? []).map(Number);
@@ -59,7 +110,7 @@ export function parseShape(d: string): VectorPath {
 
 /** A custom shape fitted to `box` (its 100 x 100 design box scaled to the box); an unknown id gives the first. */
 export function customShapePath(id: string, box: Rect): VectorPath {
-  const def = CUSTOM_SHAPES.find((s) => s.id === id) ?? CUSTOM_SHAPES[0], sx = box.w / 100, sy = box.h / 100;
+  const def = allCustomShapes().find((s) => s.id === id) ?? CUSTOM_SHAPES[0], sx = box.w / 100, sy = box.h / 100;
   const px = (v: number): number => box.x + v * sx, py = (v: number): number => box.y + v * sy;
   const vp = parseShape(def.d);
   return { subpaths: vp.subpaths.map((sp) => ({ closed: sp.closed, anchors: sp.anchors.map((a) => ({ x: px(a.x), y: py(a.y), inX: px(a.inX), inY: py(a.inY), outX: px(a.outX), outY: py(a.outY) })) })) };
