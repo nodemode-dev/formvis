@@ -398,6 +398,15 @@ export class Engine {
       return true;
     });
   }
+  /** Layer Comps, Last Document State: clear the active comp as one step. The layers keep the state they have now;
+   *  stepping back to before a comp was applied is Undo. */
+  clearLayerComp(): void {
+    this.edit('Last Document State', (p) => {
+      if (!p.doc.activeComp) return false;
+      p.doc = { ...p.doc, activeComp: null };
+      return true;
+    });
+  }
   /** Layer Comps: step to the next (1) or previous (-1) comp, wrapping, and apply it. */
   nextLayerComp(dir: 1 | -1 = 1): void {
     const d = this.current?.doc, list = d?.comps ?? [];
@@ -1832,6 +1841,13 @@ export class Engine {
   embedLinked(): void {
     const p = this.current, l = p?.activeLayer;
     if (p && l?.smart?.link) this.edit('Embed Linked', (q) => q.updateLayer(l.id, { smart: { ...(l.smart as SmartObject), link: null } }));
+  }
+
+  /** Layer > Smart Objects > Convert to Linked: the embedded smart object keeps its contents and takes `link`, one step. */
+  convertToLinked(link: SmartLink): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l?.smart || l.smart.link) return false;
+    return this.edit('Convert to Linked', (q) => q.updateLayer(l.id, { smart: { ...(l.smart as SmartObject), link } }));
   }
 
   /** A change made as one undo step in `p`, which need not be the document in view. */
@@ -7944,6 +7960,31 @@ export class Engine {
     const p = this.current;
     if (!p || !['grayscale', 'duotone'].includes(p.doc.mode ?? 'rgb')) return false;
     return this.edit('Duotone', (pp) => { pp.doc = { ...pp.doc, mode: 'duotone', duotone: d, palette: undefined }; return true; });
+  }
+
+  /** Image > Mode > Color Table (31.4): the Indexed Color document's palette. One undo step. Pixels hold the colours, so
+   *  a pixel whose colour was palette entry i (the first such entry) takes the new entry i; others are left alone. */
+  setPalette(rgb: readonly RGB[]): boolean {
+    const p = this.current;
+    if (!p || p.doc.mode !== 'indexed' || !p.doc.palette || rgb.length < 1 || rgb.length > 256) return false;
+    const old = p.doc.palette, next = rgb.map((c) => ({ r: c.r, g: c.g, b: c.b }));
+    const map = new Map<number, number>();
+    old.forEach((c, i) => { const k = (c.r << 16) | (c.g << 8) | c.b; if (!map.has(k) && next[i]) map.set(k, (next[i].r << 16) | (next[i].g << 8) | next[i].b); });
+    return this.edit('Color Table', (pp) => {
+      const layers = pp.doc.layers.map((l) => {
+        if (!l.raster) return l;
+        const r = l.raster.clone(), d = r.ctx.getImageData(0, 0, r.width, r.height), px = d.data;
+        for (let i = 0; i < px.length; i += 4) {
+          if (px[i + 3] === 0) continue;
+          const to = map.get((px[i] << 16) | (px[i + 1] << 8) | px[i + 2]);
+          if (to !== undefined) { px[i] = to >> 16; px[i + 1] = (to >> 8) & 255; px[i + 2] = to & 255; }
+        }
+        r.ctx.putImageData(d, 0, 0); r.touch();
+        return { ...l, raster: r };
+      });
+      pp.doc = { ...pp.doc, layers, palette: next };
+      return true;
+    });
   }
 
   /** A new document's mode (New Document's Color Mode): set, not converted, as its pixels are only the background. */

@@ -25,6 +25,8 @@ export interface LayerExportSettings {
   folder: string;
   /** One file per artboard instead of one per layer. */
   artboards: boolean;
+  /** Layer Comps to Files: one file per layer comp (the flattened document with each comp applied). */
+  comps?: boolean;
 }
 
 export const DEFAULT_LAYER_EXPORT: LayerExportSettings = { prefix: '', visibleOnly: true, format: 'png', quality: 90, trim: false, icc: true, folder: '', artboards: false };
@@ -107,6 +109,28 @@ export async function layerFiles(engine: Engine, set: LayerExportSettings, engin
     done(i + 1, jobs.length);
   }
   return { files, skipped };
+}
+
+/** File > Export > Layer Comps to Files (DEV_PLAN 33.3 part c): each comp (only `ids` when given, else all) applied in
+ *  turn, the flattened document encoded as `<prefix>_NNNN_<comp>.<ext>`. Every applied comp is undone afterwards, so
+ *  the document ends exactly as it started, as dataSetFiles does. */
+export async function layerCompFiles(engine: Engine, set: LayerExportSettings, engineUp: boolean, ids: readonly ID[] = [], done: (n: number, of: number) => void = () => undefined): Promise<Array<{ name: string; blob: Blob }>> {
+  const p = engine.current, all = p?.doc.comps ?? [], comps = ids.length ? all.filter((c) => ids.includes(c.id)) : all, files: Array<{ name: string; blob: Blob }> = [];
+  if (!p || !comps.length) return files;
+  const prefix = set.prefix.trim() || p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled', base = safeName(prefix, 60, 'Untitled');
+  let applied = 0;
+  try {
+    for (const [i, c] of comps.entries()) {
+      engine.applyLayerComp(c.id);
+      applied++;
+      const img = engine.flattened();
+      if (img) files.push({ name: layerFileName(prefix, i, c.name, set.format), blob: await encodeOne(engine, img, base, set, engineUp) });
+      done(i + 1, comps.length);
+    }
+  } finally {
+    for (let k = 0; k < applied; k++) engine.undo();
+  }
+  return files;
 }
 
 /** File > Export > Data Sets as Files (DEV_PLAN 29.9 part b): each data set applied in turn, the flattened document

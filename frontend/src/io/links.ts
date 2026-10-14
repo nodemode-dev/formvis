@@ -96,6 +96,31 @@ export async function placeLinked(engine: Engine, id: string, source: LinkSource
   engine.placeLinked(raster, meta(id, file), file.name.replace(/\.[^.]+$/, ''));
 }
 
+/** Layer > Smart Objects > Convert to Linked: the active embedded smart object's contents are written as a PNG named
+ *  after the layer, to a file the person picks where the browser can save to one (kept as a handle, so the link sees
+ *  later edits), else held in the link store for the session; the object then links to it. One undo step. */
+export async function convertToLinked(engine: Engine): Promise<boolean> {
+  const c = engine.smartContents(), l = engine.current?.activeLayer;
+  if (!c || !l?.smart || l.smart.link) return false;
+  const name = `${c.name.replace(/[\\/:*?"<>|]+/g, '_') || 'Smart Object'}.png`;
+  const cv = c.raster.canvas as HTMLCanvasElement | OffscreenCanvas;
+  const blob = 'convertToBlob' in cv ? await cv.convertToBlob({ type: 'image/png' }) : await new Promise<Blob | null>((r) => cv.toBlob(r, 'image/png'));
+  if (!blob) throw new Error('The contents could not be encoded.');
+  const id = uid(), saver = (window as unknown as { showSaveFilePicker?: (o: unknown) => Promise<Handle & { createWritable(): Promise<{ write(b: Blob): Promise<void>; close(): Promise<void> }> }> }).showSaveFilePicker;
+  let file = new File([blob], name, { type: 'image/png', lastModified: Date.now() }), source: LinkSource = { name, live: false, getFile: async () => file };
+  if (saver) {
+    try {
+      const h = await saver({ suggestedName: name, types: [{ description: 'PNG image', accept: { 'image/png': ['.png'] } }] }), w = await h.createWritable();
+      await w.write(blob); await w.close();
+      file = await h.getFile();
+      source = fromHandle(h);
+      void keep(id, h);
+    } catch (err) { if ((err as { name?: string }).name === 'AbortError') return false; }
+  }
+  sources.set(id, source);
+  return engine.convertToLinked(meta(id, file));
+}
+
 /** Layer > Update Modified Content: every linked smart object in the document whose file changed since it was read is
  *  re-read, each as one step. Returns how many were updated and the names that could not be reached. */
 export async function updateLinked(engine: Engine): Promise<{ updated: number; missing: string[] }> {

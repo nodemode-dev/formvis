@@ -39,18 +39,18 @@ export class LayerExportDialog extends Dialog {
   }
 
   /** Opens for the layers (`artboards` false) or for the artboards of the open document. */
-  show(artboards = false): void {
+  show(artboards = false, comps = false): void {
     const p = this.engine.current;
     if (this.isOpen || !p) return;
-    const name = p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled';
-    this.s = { ...this.s, artboards, prefix: this.s.prefix || name, folder: this.s.folder || `${safeName(name, 60, 'Untitled')} ${artboards ? 'artboards' : 'layers'}` };
-    this.setTitle(artboards ? 'Export Artboards to Files' : 'Export Layers to Files');
+    const name = p.name.replace(/\.[A-Za-z0-9]{1,8}$/, '') || 'Untitled', what = comps ? 'comps' : artboards ? 'artboards' : 'layers';
+    this.s = { ...this.s, artboards, comps, prefix: this.s.prefix || name, folder: this.s.folder || `${safeName(name, 60, 'Untitled')} ${what}` };
+    this.setTitle(comps ? 'Export Layer Comps to Files' : artboards ? 'Export Artboards to Files' : 'Export Layers to Files');
     this.sync();
     this.open();
   }
 
   private sync(): void {
-    const p = this.engine.current, s = this.s, boards = s.artboards, desktop = this.desktop();
+    const p = this.engine.current, s = this.s, comps = !!s.comps, boards = s.artboards || comps, desktop = this.desktop();
     if (document.activeElement !== this.destInput) setValue(this.destInput, desktop ? s.folder : 'Zip download');
     if (document.activeElement !== this.prefixInput) setValue(this.prefixInput, s.prefix);
     this.destInput.disabled = !desktop;
@@ -68,8 +68,8 @@ export class LayerExportDialog extends Dialog {
     for (const i of this.qualityRow.el.querySelectorAll('input')) i.disabled = !LAYER_FILE_LOSSY.has(s.format);
     for (const i of this.iccRow.el.querySelectorAll('input')) i.disabled = s.format === 'psd';
     if (!p) return;
-    const n = boards ? this.engine.artboards(p).length : exportableLayers(p.doc, s.visibleOnly).length;
-    const first = layerFileName(s.prefix.trim() || 'Untitled', 0, (boards ? this.engine.artboards(p)[0]?.name : exportableLayers(p.doc, s.visibleOnly)[0]?.name) ?? 'layer', s.format);
-    setText(this.note, n ? `${n} file${n === 1 ? '' : 's'} · ${first}${desktop ? '' : ' · in one zip'}` : boards ? 'This document has no artboards.' : 'There are no layers to export.');
+    const list = comps ? (p.doc.comps ?? []) : s.artboards ? this.engine.artboards(p) : exportableLayers(p.doc, s.visibleOnly), n = list.length;
+    const first = layerFileName(s.prefix.trim() || 'Untitled', 0, list[0]?.name ?? 'layer', s.format);
+    setText(this.note, n ? `${n} file${n === 1 ? '' : 's'} · ${first}${desktop ? '' : ' · in one zip'}` : comps ? 'This document has no layer comps.' : boards ? 'This document has no artboards.' : 'There are no layers to export.');
   }
 }

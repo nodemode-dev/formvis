@@ -42,7 +42,7 @@ export class LayerCompsPanel {
     });
     this.rows.addEventListener('click', (e) => {
       const t = e.target as HTMLElement, row = t.closest<HTMLElement>('.cv-comp-row[data-id]');
-      if (!row) return;
+      if (!row) { if (t.closest('.cv-comp-state')) this.engine.clearLayerComp(); return; }
       const id = row.dataset.id!;
       if (t.closest('.cv-comp-twist')) { if (this.open.has(id)) this.open.delete(id); else this.open.add(id); this.sync(); return; }
       if (t.closest('.cv-comp-mark')) this.engine.applyLayerComp(id);

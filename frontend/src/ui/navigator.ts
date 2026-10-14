@@ -2,6 +2,7 @@ import type { Engine } from '../engine';
 import { Viewport } from '../engine/viewport';
 import { el } from './dom';
 import { PanelGroup } from './panel-group';
+import { applyDuotoneLut, duotoneLut } from '../engine/duotone';
 
 /** The Navigator (Phase 21, UI_SPEC.md section 6, the target's s20): the whole document in a rounded card with the
  *  visible area outlined in red; a click or drag there moves the view to that point; Fit, 100%, 150% and 200% as a pill
@@ -68,6 +69,12 @@ export class NavigatorPanel {
     const ox = (w - dw * s) / 2, oy = (h - dh * s) / 2;
     this.place = { s, ox, oy };
     this.engine.compose(c, [s * dpr, 0, 0, s * dpr, ox * dpr, oy * dpr], 'medium');
+    // A duotone document (31.3) is shown as its inks overprinted, as on the canvas.
+    if (p.doc.mode === 'duotone' && p.doc.duotone) {
+      const img = g.getImageData(0, 0, c.width, c.height);
+      applyDuotoneLut(img.data, duotoneLut(p.doc.duotone));
+      g.putImageData(img, 0, 0);
+    }
     // The visible area, in red, as the target's.
     const v = p.viewport, a = v.toDoc(0, 0), b = v.toDoc(v.width, v.height);
     const x0 = Math.max(0, a.x), y0 = Math.max(0, a.y), x1 = Math.min(dw, b.x), y1 = Math.min(dh, b.y);
