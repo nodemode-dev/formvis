@@ -2,6 +2,30 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.72.2: browser suite fixes, first batch · _v1.72.2 (app.ts, ui/panels/toolbar-dialog.ts, e2e/*.py)
+
+- The full browser suite was run again on a frozen clone of 1.72.1 (Vite on 5191) with `-rfE` and the menu walk deselected (it walks 959 commands and outlives the per-test timeout; to run alone). By 68 percent, 21 tests had failed; the first ten were fixed this release, the rest are listed in DEV_PLAN 36.20.
+- `app.ts`, `syncEngineDevice`: `applyCaps` runs more than once (the probe and `onServiceChange`), and each run posted `/compute`; a slower earlier answer could overwrite the person's later choice. The requests now go in order, each reading the preference at its turn, and only the latest writes the status line. Replaced:
+
+```ts
+    void api.setCompute(loadPrefs().engineDevice).then((r) => dialogs.settings.setEngine(r ? `Engine: ${r.label} (${r.reason}).` : 'Engine: could not be reached.'));
+```
+
+- `ui/panels/toolbar-dialog.ts`, `ToolbarDialog.drag`: moving the row in the tree released the pointer captured on it, so after the first reorder the drag stopped following and a tool could not reach Extra Tools. The listeners now sit on the document. Replaced:
+
+```ts
+    row.setPointerCapture(e.pointerId);
+      row.removeEventListener('pointermove', move);
+      row.removeEventListener('pointerup', end);
+      row.removeEventListener('pointercancel', end);
+    row.addEventListener('pointermove', move);
+    row.addEventListener('pointerup', end);
+    row.addEventListener('pointercancel', end);
+```
+
+- Tests changed to follow intended changes: `test_assistant.py` reads the 1.71.6 step rows (`.cv-assistant-step-label`, "Add layer", "Select", "Fill"); `test_camera_raw.py` presses Open in the 1.71.7 Camera Raw dialog and finds the picture by its opaque bounds (Develop pads the raster); `test_export_as.py` finds the preset name by its placeholder (1.71.4 put Copyright and Contact fields first); `test_dock.py`, `test_dock_layers.py`, `test_docking.py` give the document a frame so Window > Timeline shows the dock's Timeline rather than the video timeline (behaviour since 1.59.8); `test_edit_toolbar.py` drives the 1.71.3 toolbar dialog; `test_agent_editing.py` asks `/api/models` whether LaMa is ready and expects the download message when it is not, and allows its client through `/api/agents/policy` for the export and save steps.
+- `test_curvature_pen.py` failed once and then passed seven runs; no change. `test_agent_editing.py` still fails at `new_document` while other windows poll the bridge with agents off (one global consent in `routers/mcp.py`); to rerun alone.
+
 ## Release 1.72.1: engine split, browser build, the full browser suite · _v1.72.1 (ui/i18n/extra/*.ts)
 
 - `ui/i18n/extra/*.ts`: three keys in all 23 tables (405 each): the service note, the disabled command title and the request error. The browser TIFF errors stay English.

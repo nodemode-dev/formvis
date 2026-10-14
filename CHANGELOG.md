@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.72.2 · 2026-10-14
+
+### Fixed
+
+- Edit > Toolbar: a tool dragged past another row kept following the pointer, so it can reach Extra Tools.
+- The engine processor chosen in Preferences is no longer overwritten by a slower earlier request at start.
+- Browser tests brought up to date with the assistant's step rows, Camera Raw on open, Export As fields, the toolbar dialog and the dock's Timeline.
+
 ## 1.72.1 · 2026-10-14
 
 ### Changed
