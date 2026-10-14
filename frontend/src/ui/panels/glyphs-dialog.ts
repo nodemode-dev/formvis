@@ -2,6 +2,7 @@ import type { Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, q, setText } from '../dom';
 import { toast } from '../toast';
+import { featureOn, OT_STYLISTIC_SETS, withFeature } from '../../engine/opentype';
 import { selectRow } from './controls';
 
 /** Window > Glyphs (DEV_PLAN 32.6 part a): a 16-column grid of one Unicode block in the type layer's font, a row of
@@ -25,7 +26,12 @@ const BLOCKS: readonly Block[] = [
   { id: 'misc', label: 'Miscellaneous Symbols', from: 0x2600, to: 0x26ff },
   { id: 'dingbats', label: 'Dingbats', from: 0x2700, to: 0x27bf },
 ];
-const RECENT_KEY = 'formvis.glyphsRecent';
+/** The common alternates offered (the font is not probed): stylistic and contextual alternates, swash, and the first ten sets. */
+const ALTERNATES: ReadonlyArray<{ tag: string; label: string }> = [
+  { tag: 'salt', label: 'Stylistic' }, { tag: 'swsh', label: 'Swash' }, { tag: 'calt', label: 'Contextual' },
+  ...OT_STYLISTIC_SETS.slice(0, 10).map((f) => ({ tag: f.tag, label: `SS${f.tag.slice(2)}` })),
+];
+const RECENT_KEY ='formvis.glyphsRecent';
 const RECENT_MAX = 12;
 
 function loadRecent(): string[] {
@@ -43,6 +49,8 @@ export class GlyphsDialog extends Dialog {
   private readonly fontInput: HTMLInputElement;
   private readonly grid = el('<div class="cv-glyph-grid" role="grid" style="display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin-top: 8px"></div>');
   private readonly recentRow = el('<div class="cv-glyph-recent" style="display: flex; gap: 2px; min-height: 30px; margin-top: 8px" aria-label="Recently used"></div>');
+  private readonly altRow = el('<div class="cv-glyph-alts" style="display: flex; flex-wrap: wrap; gap: 4px" aria-label="Alternates"></div>');
+  private readonly altCells = new Map<string, HTMLButtonElement>();
   private readonly cells: HTMLButtonElement[] = [];
   private readonly recentCells: HTMLButtonElement[] = [];
   private recent: string[] = loadRecent();
@@ -68,7 +76,14 @@ export class GlyphsDialog extends Dialog {
       this.recentRow.appendChild(b);
     }
     this.body.append(this.font, show.el, el('<p class="cv-dialog-note">Recently used</p>'), this.recentRow, this.grid,
-      el('<p class="cv-dialog-note">Alternates and OpenType features are not offered yet. A click adds the glyph to the end of the selected type layer.</p>'));
+      el('<p class="cv-dialog-note">Alternates</p>'), this.altRow,
+      el('<p class="cv-dialog-note">The font is not probed for which alternates it has, so the common set is shown; one the font lacks changes nothing. A click on a glyph adds it to the end of the selected type layer.</p>'));
+    for (const f of ALTERNATES) {
+      const b = el<HTMLButtonElement>(`<button type="button" class="cv-btn ghost" aria-pressed="false" title="${f.tag}">${f.label}</button>`);
+      b.addEventListener('click', () => { void this.toggle(f.tag); });
+      this.altCells.set(f.tag, b);
+      this.altRow.appendChild(b);
+    }
     this.button('Done', 'primary', () => this.close());
     this.paintRecent();
   }
@@ -79,6 +94,7 @@ export class GlyphsDialog extends Dialog {
     this.fontInput.value = this.family;
     this.fill();
     this.paintRecent();
+    this.paintAlternates();
     this.open();
   }
 
@@ -102,6 +118,23 @@ export class GlyphsDialog extends Dialog {
       b.textContent = g ?? '';
       b.style.fontFamily = this.family ? `"${this.family}", sans-serif` : '';
     });
+  }
+
+  /** Marks the alternate toggles from the active type layer's features (attributes only; no element is added). */
+  private paintAlternates(): void {
+    const l = this.engine.current?.activeLayer, t = l && this.engine.liveText(l) ? l.text : null;
+    for (const [tag, b] of this.altCells) {
+      b.disabled = !t;
+      b.setAttribute('aria-pressed', t && featureOn(t.features, tag) ? 'true' : 'false');
+    }
+  }
+
+  /** Turns one alternate feature on or off for the active type layer: one undo step through the text update path. */
+  private async toggle(tag: string): Promise<void> {
+    const layer = this.engine.current?.activeLayer;
+    if (!layer || !layer.text || !this.engine.liveText(layer)) { toast('Select a type layer to set alternates.', 'info'); return; }
+    await this.engine.updateTextLayer(layer.id, { ...layer.text, features: withFeature(layer.text.features, tag, !featureOn(layer.text.features, tag)) });
+    this.paintAlternates();
   }
 
   private async insert(glyph: string): Promise<void> {

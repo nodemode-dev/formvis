@@ -157,7 +157,8 @@
 .cv-comp-comment { display: none; position: absolute; left: 0; right: 0; top: 100%; z-index: 2; padding: var(--space-1) var(--space-3); background: var(--bg-tertiary); border: 1px solid var(--border-color); color: var(--text-secondary); white-space: pre-wrap; max-height: 78px; overflow-y: auto; }
 .cv-comp-row.is-open .cv-comp-comment { display: block; }
 .cv-styles-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(56px, 1fr)); gap: var(--space-2); height: 132px; overflow-y: auto; padding: var(--space-2) var(--space-3); align-content: start; }
-.cv-style-tile { display: grid; place-items: center; height: 40px; padding: 2px; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); color: var(--text-secondary); font: inherit; cursor: pointer; }
+.cv-style-swatch { width: 40px; height: 40px; display: block; }
+.cv-style-tile { display: grid; place-items: center; gap: 2px; height: 62px; padding: 2px; font-size: var(--fs-11, 11px); box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); color: var(--text-secondary); font: inherit; cursor: pointer; }
 .cv-style-tile:hover { background: var(--bg-hover); }
 .cv-style-tile.is-active { border-color: var(--accent-color); color: var(--text-primary); }
 .cv-style-name { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

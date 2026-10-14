@@ -14,7 +14,8 @@ import { newVideoTimeline, sampleToFrames, stateAt, valueAt, type FadeColor, typ
 import { fillVector, mapPath, pathBounds, samplePath, shiftPath, tracePath, type NamedPath, type PathOp, type PathSet, type SubPath, type VectorPath } from './paths';
 import { simplify, smoothAnchors } from './curve-fit';
 export { PATH_OPS, type PathOp } from './paths';
-import { defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withStyle } from './text';
+import { charStyleOf, defaultText, liveText, loadTextFont, renderText, styleOf, textKey, withCharStyle, withStyle } from './text';
+import type { CharacterStyle } from './types';
 import { Emitter } from './events';
 import { bumpMap, heightField, heightFromNormal, normalMap } from './normal-map';
 import * as VR from './variables';
@@ -46,7 +47,7 @@ import * as SO from './select-ops';
 import * as IE from './image-edit';
 import * as DS from './document-size';
 import * as TE from './transform-entry';
-import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
+import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
 import { fillFrame, fillName, renderFill } from './fill-layers';
 import type { FillContent, VectorMask } from './types';
@@ -114,7 +115,7 @@ export { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, COLOR_RANGES, defaultAdjustmentDat
 export type { ColorRange, GrainSettings, HsvSettings } from './adjust';
 export { addNoise, gaussianBlur, gaussianMargin, histogram, lensDistort, motionBlur, motionMargin, unsharpMask } from './filters';
 export { defaultDevelopState, developImage, type DevelopState } from './develop';
-export { TEXT_FONTS, defaultText, fontCss, liveText, paragraphStylesFrom, styleOf, textFromData, textKey, textMetrics, renderText, withStyle } from './text';
+export { TEXT_FONTS, defaultText, fontCss, liveText, paragraphStylesFrom, characterStylesFrom, charStyleOf, withCharStyle, styleOf, textFromData, textKey, textMetrics, renderText, withStyle } from './text';
 export { addPattern, allPatterns, patternById, projectPatterns, type Pattern } from './patterns';
 export { FRAME_DELAYS, captureFrame, frameLayers, timelineData, timelineFrom, type Frame, type FrameLayer, type Timeline } from './timeline';
 export { anchorNear, cornerAt, nearestSegment, pathBounds, pathData, pathFrom, pathSetData, pathSetFrom, splitSegment, tracePath, type Anchor, type NamedPath, type PathSet, type SubPath, type VectorPath } from './paths';
@@ -1692,12 +1693,14 @@ export class Engine {
     const style = styleOf(src.text, id, old.name);
     const linked = p.doc.layers.filter((l) => liveText(l) && l.raster && (l.text?.style === id || l.id === src.id));
     const specs = linked.map((l) => withStyle(l.text as TextSpec, style));
-    for (const s of specs) await loadTextFont(s);
+    // Drawn with each layer's character style over the paragraph style (32.6c); the layer keeps its own spec.
+    const charOf = (s: TextSpec): TextSpec => withCharStyle(s, s.charStyle ? p.doc.characterStyles?.find((x) => x.id === s.charStyle) : undefined);
+    for (const s of specs) await loadTextFont(charOf(s));
     if (this.current !== p) return;
     this.edit('Redefine Paragraph Style', (pp) => {
       pp.doc = { ...pp.doc, paragraphStyles: (pp.doc.paragraphStyles ?? []).map((x) => (x.id === id ? style : x)) };
       linked.forEach((l, i) => {
-        const spec = specs[i], r = renderText(spec), oldR = l.raster as Raster, t = l.transform;
+        const spec = specs[i], r = renderText(charOf(spec)), oldR = l.raster as Raster, t = l.transform;
         const nw = r.raster.width * (t.w / oldR.width), nh = r.raster.height * (t.h / oldR.height);
         // Vertical type keeps its right edge (its first column); paragraph text its box's corner; point text its alignment.
     const x = spec.box ? t.x : spec.direction === 'vertical' ? t.x + t.w - nw : spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
@@ -1713,6 +1716,68 @@ export class Engine {
     this.edit('Delete Paragraph Style', (pp) => {
       pp.doc = { ...pp.doc, paragraphStyles: (pp.doc.paragraphStyles ?? []).filter((x) => x.id !== id) };
       for (const l of pp.doc.layers) if (l.text?.style === id) pp.updateLayer(l.id, { text: { ...l.text, style: null } });
+    });
+  }
+
+  /** Window > Character Styles: the document's character styles. */
+  get characterStyles(): readonly CharacterStyle[] { return this.current?.doc.characterStyles ?? []; }
+
+  /** New Character Style: the selected type layer's family, size, colour, weight, slant, tracking and features as a style,
+   *  the layer linked to it; one step. */
+  newCharacterStyle(name?: string): ID | null {
+    const p = this.current, l = p?.activeLayer, t = l?.text;
+    if (!p || !l || !liveText(l) || !t) { this.notice('Select a type layer to make a character style from it.'); return null; }
+    const list = p.doc.characterStyles ?? [], id = uid(), style = charStyleOf(t, id, name?.trim() || `Character Style ${list.length + 1}`);
+    this.edit('New Character Style', (pp) => { pp.doc = { ...pp.doc, characterStyles: [...list, style] }; pp.updateLayer(l.id, { text: { ...t, charStyle: id } }); });
+    return id;
+  }
+
+  /** Apply a character style to the selected type layer (sets its link); the style's set fields then draw over its own. */
+  async applyCharacterStyle(id: ID): Promise<void> {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l || !liveText(l) || !l.text || !p.doc.characterStyles?.some((x) => x.id === id)) { this.notice('Select a type layer and a character style.'); return; }
+    await this.updateTextLayer(l.id, { ...l.text, charStyle: id });
+  }
+
+  /** Clear Override: unlink the selected type layer from its character style so its own settings draw. */
+  async clearCharacterStyle(): Promise<void> {
+    const l = this.current?.activeLayer;
+    if (!l || !liveText(l) || !l.text?.charStyle) { this.notice('Select a type layer that has a character style.'); return; }
+    await this.updateTextLayer(l.id, { ...l.text, charStyle: null });
+  }
+
+  /** Redefine a character style from the selected type layer, re-rendering every layer linked to it; one step. */
+  async redefineCharacterStyle(id: ID): Promise<void> {
+    const p = this.current, src = p?.activeLayer, old = p?.doc.characterStyles?.find((x) => x.id === id);
+    if (!p || !src || !liveText(src) || !src.text || !old) { this.notice('Select a type layer to redefine the style from.'); return; }
+    const style = charStyleOf(src.text, id, old.name), next = (p.doc.characterStyles ?? []).map((x) => (x.id === id ? style : x));
+    const linked = p.doc.layers.filter((l) => liveText(l) && l.raster && l.text && (l.text.charStyle === id || l.id === src.id));
+    const patches: Array<{ id: ID; patch: Partial<Layer> }> = [];
+    for (const l of linked) {
+      const patch = await this.textPatch(p, l.id, { ...(l.text as TextSpec), charStyle: id }, next);
+      if (this.current !== p) return;
+      if (patch) patches.push({ id: l.id, patch });
+    }
+    this.edit('Redefine Character Style', (pp) => {
+      pp.doc = { ...pp.doc, characterStyles: next };
+      for (const x of patches) pp.updateLayer(x.id, x.patch);
+    });
+  }
+
+  /** Rename a character style; one step. */
+  renameCharacterStyle(id: ID, name: string): void {
+    const p = this.current, clean = name.trim().slice(0, 80);
+    if (!p || !clean || !p.doc.characterStyles?.some((x) => x.id === id)) return;
+    this.edit('Rename Character Style', (pp) => { pp.doc = { ...pp.doc, characterStyles: (pp.doc.characterStyles ?? []).map((x) => (x.id === id ? { ...x, name: clean } : x)) }; });
+  }
+
+  /** Delete a character style; the type linked to it keeps its look (the style's fields are written into the layer) and is unlinked; one step. */
+  deleteCharacterStyle(id: ID): void {
+    const p = this.current, s = p?.doc.characterStyles?.find((x) => x.id === id);
+    if (!p || !s) return;
+    this.edit('Delete Character Style', (pp) => {
+      pp.doc = { ...pp.doc, characterStyles: (pp.doc.characterStyles ?? []).filter((x) => x.id !== id) };
+      for (const l of pp.doc.layers) if (l.text?.charStyle === id) pp.updateLayer(l.id, { text: { ...withCharStyle(l.text, s), charStyle: null } });
     });
   }
 
@@ -1743,9 +1808,9 @@ export class Engine {
       const l = p.layer(c.layer);
       if (!l) continue;
       if (c.kind === 'text' && l.text && c.content.trim()) {
-        const spec = { ...l.text, content: c.content };
-        await loadTextFont(spec);
-        texts.set(l.id, { raster: renderText(spec).raster, spec });
+        const spec = { ...l.text, content: c.content }, drawn = withCharStyle(spec, spec.charStyle ? p.doc.characterStyles?.find((x) => x.id === spec.charStyle) : undefined);
+        await loadTextFont(drawn);
+        texts.set(l.id, { raster: renderText(drawn).raster, spec });
       } else if (c.kind === 'pixels') {
         const f = files.get(c.file);
         if (!f) { this.notice(`Image not supplied: ${c.file}`); continue; }
@@ -1788,13 +1853,15 @@ export class Engine {
 
   /** The new pixels, place and name of type layer `id` set to `spec`, rendered but not applied, so several layers can
    *  change in one undo step (Find and Replace Text, Update All Text Layers). Null when the layer is not live type. */
-  private async textPatch(p: Project, id: ID, spec: TextSpec): Promise<Partial<Layer> | null> {
+  private async textPatch(p: Project, id: ID, spec: TextSpec, styles: readonly CharacterStyle[] | undefined = p.doc.characterStyles): Promise<Partial<Layer> | null> {
     const l = p.layer(id);
     if (!l || !liveText(l) || !l.raster || !l.text) return null;
     if (!spec.content.trim()) { this.notice('Type some text, or delete the layer.'); return null; }
-    await loadTextFont(spec);
+    // The character style's set fields go over the layer's own for drawing; the stored spec keeps its own fields and the link.
+    const effective = withCharStyle(spec, spec.charStyle ? styles?.find((x) => x.id === spec.charStyle) : undefined);
+    await loadTextFont(effective);
     if (this.current !== p || !liveText(p.layer(id))) return null;
-    const r = renderText(spec), old = l.raster, t = l.transform, before = l.text;
+    const r = renderText(effective), old = l.raster, t = l.transform, before = l.text;
     const nw = r.raster.width * (t.w / old.width), nh = r.raster.height * (t.h / old.height);
     // Vertical type keeps its right edge (its first column); paragraph text its box's corner; point text its alignment.
     const x = spec.box ? t.x : spec.direction === 'vertical' ? t.x + t.w - nw : spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
@@ -2599,6 +2666,59 @@ export class Engine {
   /** The raster version each video layer's shown frame had when it was put on the layer, to tell a painted frame. */
   private readonly videoShown = new WeakMap<Raster, number>();
 
+  /** The footage frame video layer `v` shows at timeline frame `t`, by Interpret Footage's rate and loop count
+   *  (DEV_PLAN 33.4), or -1 outside the clip. Without an interpretation it is the frame `t - start`, as before. */
+  private footageFrame(v: NonNullable<Layer['video']>, tr: { start: number }, vt: VideoTimeline, t: number): number {
+    const local = t - tr.start, n = v.frames.length, it = v.interpret;
+    if (local < 0 || !n) return -1;
+    const src = it?.fps && vt.fps > 0 ? Math.floor(local * it.fps / vt.fps + 1e-9) : local;
+    const loops = Math.max(1, Math.round(it?.loop ?? 1));
+    return src < n * loops ? src % n : -1;
+  }
+
+  /** A footage frame as Interpret Footage's alpha setting reads it: `ignore` makes it opaque, `premultiplied` takes the
+   *  matte back out of the colour. A new raster when anything changes, else `r` itself. */
+  private footagePixels(r: Raster, it: FootageInterpretation | undefined): Raster {
+    if (!it?.alpha || it.alpha === 'straight') return r;
+    const out = r.clone(), img = out.read(), d = img.data, m = it.matte ?? { r: 0, g: 0, b: 0 };
+    for (let i = 0; i < d.length; i += 4) {
+      if (it.alpha === 'ignore') { d[i + 3] = 255; continue; }
+      const a = d[i + 3] / 255;
+      if (a <= 0 || a >= 1) continue;
+      d[i] = (d[i] - m.r * (1 - a)) / a; d[i + 1] = (d[i + 1] - m.g * (1 - a)) / a; d[i + 2] = (d[i + 2] - m.b * (1 - a)) / a;
+    }
+    out.write(img);
+    return out;
+  }
+
+  /** Interpret Footage: the active video layer's rate, loop count and alpha reading, its clip made as long as the
+   *  footage now plays. One undo step. */
+  interpretFootage(it: FootageInterpretation): boolean {
+    const p = this.current, vt = this.video, l = p?.activeLayer;
+    if (!p || !vt || !l?.video || !vt.tracks[l.id] || this.stroke || this.waiting()) return false;
+    this.settle();
+    this.videoStore(p, vt, vt.current);
+    const clean: FootageInterpretation = {
+      ...(it.fps && it.fps > 0 && Math.abs(it.fps - vt.fps) > 1e-6 ? { fps: Math.min(240, it.fps) } : {}),
+      ...(it.loop && it.loop > 1 ? { loop: Math.min(100, Math.round(it.loop)) } : {}),
+      ...(it.alpha && it.alpha !== 'straight' ? { alpha: it.alpha } : {}),
+      ...(it.alpha === 'premultiplied' && it.matte ? { matte: it.matte } : {}),
+    };
+    p.history.begin('Interpret Footage', { ...p.snapshot(), video: structuredClone(vt) });
+    const next = structuredClone(vt), nt = next.tracks[l.id], n = l.video.frames.length;
+    nt.length = Math.max(1, Math.ceil(n * (clean.loop ?? 1) * (clean.fps ? next.fps / clean.fps : 1) - 1e-9));
+    if (nt.start + nt.length > next.duration) { if (next.workOut === next.duration) next.workOut = nt.start + nt.length; next.duration = nt.start + nt.length; }
+    const v = l.video, interpret = Object.keys(clean).length ? clean : undefined;
+    p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: { frames: v.frames, original: v.original, name: v.name, ...(interpret ? { interpret } : {}) } } : x)) };
+    this.timelines.set(p, { ...this.timelineOf(p), video: next });
+    this.videoShow(p, next, next.current);
+    p.history.end({ ...p.snapshot(), video: structuredClone(next) });
+    this.refresh();
+    this.emit('timeline', null);
+    this.emit('render', null);
+    return true;
+  }
+
   /** Before the playhead leaves frame `t`: each video layer's raster goes back into its `frames` if it was painted. */
   private videoStore(p: Project, vt: VideoTimeline, t: number): void {
     for (const l of p.doc.layers) {
@@ -2606,7 +2726,7 @@ export class Engine {
       if (!v || !tr) continue;
       const ras = l.raster;
       if (!ras) continue;
-      const i = t - tr.start, seen = this.videoShown.get(ras);
+      const i = this.footageFrame(v, tr, vt, t), seen = this.videoShown.get(ras);
       // Never seen (a project just opened shows its own copy of the frame): kept when it is not the stored frame itself.
       if (i < 0 || i >= v.frames.length || (seen === undefined ? ras === v.frames[i] : ras.version === seen)) continue;
       v.frames[i] = ras;
@@ -2622,9 +2742,9 @@ export class Engine {
       layers: p.doc.layers.map((l) => {
         const v = l.video, tr = vt.tracks[l.id];
         if (!v || !tr) return l;
-        const i = t - tr.start;
+        const i = this.footageFrame(v, tr, vt, t);
         if (i < 0 || i >= v.frames.length) return l;
-        const r = v.frames[i].clone();
+        const shown = this.footagePixels(v.frames[i], v.interpret), r = shown === v.frames[i] ? shown.clone() : shown;
         this.videoShown.set(r, r.version);
         return { ...l, raster: r };
       }),
@@ -2678,18 +2798,20 @@ export class Engine {
   private videoStep(name: string, change: (v: NonNullable<Layer['video']>, i: number) => { frames: Raster[]; original: Raster[]; at?: number; drop?: boolean } | null): boolean {
     const p = this.current, vt = this.video, l = p?.activeLayer;
     if (!p || !vt || !l?.video || this.stroke || this.waiting()) return false;
-    const tr = vt.tracks[l.id], i = tr ? vt.current - tr.start : -1;
+    const tr = vt.tracks[l.id], i = tr ? this.footageFrame(l.video, tr, vt, vt.current) : -1;
     if (!tr || i < 0 || i >= l.video.frames.length) return false;
     this.settle();
     this.videoStore(p, vt, vt.current);
     const out = change(l.video, i);
     if (!out) return false;
     p.history.begin(name, { ...p.snapshot(), video: structuredClone(vt) });
-    const next = structuredClone(vt), nt = next.tracks[l.id], label = l.video.name;
-    nt.length = out.frames.length;
+    const next = structuredClone(vt), nt = next.tracks[l.id], label = l.video.name, it = l.video.interpret;
+    // Footage frames to timeline frames through Interpret Footage's rate and loops (1:1 without one).
+    const k = it?.fps ? next.fps / it.fps : 1;
+    nt.length = Math.max(1, Math.ceil(out.frames.length * (it?.loop ?? 1) * k - 1e-9));
     if (nt.start + nt.length > next.duration) { if (next.workOut === next.duration) next.workOut = nt.start + nt.length; next.duration = nt.start + nt.length; }
-    next.current = Math.min(next.duration - 1, nt.start + Math.min(out.at ?? i, nt.length - 1));
-    p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: out.drop ? null : { frames: out.frames, original: out.original, name: label } } : x)) };
+    next.current = Math.min(next.duration - 1, nt.start + Math.min(Math.ceil((out.at ?? i) * k - 1e-9), nt.length - 1));
+    p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: out.drop ? null : { frames: out.frames, original: out.original, name: label, ...(it ? { interpret: it } : {}) } } : x)) };
     this.timelines.set(p, { ...this.timelineOf(p), video: next });
     this.videoShow(p, next, next.current);
     p.history.end({ ...p.snapshot(), video: structuredClone(next) });
@@ -2755,8 +2877,8 @@ export class Engine {
     const layers = p.doc.layers.map((l) => {   // video layers show their own painted frame for `t`, not the one on the canvas
       const v = l.video, tr = vt.tracks[l.id];
       if (!v || !tr || t === vt.current) return l;
-      const i = t - tr.start;
-      return i >= 0 && i < v.frames.length ? { ...l, raster: v.frames[i] } : l;
+      const i = this.footageFrame(v, tr, vt, t);
+      return i >= 0 && i < v.frames.length ? { ...l, raster: this.footagePixels(v.frames[i], v.interpret) } : l;
     });
     return renderDoc(this.work, { ...p.doc, layers: frameLayers(layers, stateAt(p.doc, vt, f)) });
   }
@@ -6390,8 +6512,9 @@ export class Engine {
     const x0 = Math.max(0, Math.floor(b.x)), y0 = Math.max(0, Math.floor(b.y)), x1 = Math.min(p.doc.width, Math.ceil(b.x + b.w)), y1 = Math.min(p.doc.height, Math.ceil(b.y + b.h));
     if (x1 - x0 < 1 || y1 - y0 < 1) return false;
     const id = `sl${Date.now().toString(36)}${p.doc.slices?.length ?? 0}`;
-    this.setSlices('New Layer Based Slice', (s) => [...s, { id, name: l.name, x: x0, y: y0, w: x1 - x0, h: y1 - y0, layer: l.id }]);
+    // Active before the edit, so the redraw the edit causes already shows it highlighted.
     this.activeSlice = id;
+    this.setSlices('New Layer Based Slice', (s) => [...s, { id, name: l.name, x: x0, y: y0, w: x1 - x0, h: y1 - y0, layer: l.id }]);
     return true;
   }
 
@@ -8949,6 +9072,20 @@ export class Engine {
 
   /** Layer styles for the float compositor (1.56.9): the layer drawn alone by the 8-bit renderer, with and without its
    *  style, at full opacity with its Fill, without mask, blend, clipping or group (the compositor applies those). */
+  /** A style swatch (DEV_PLAN 35.3): `effects` drawn on a mid-grey rounded square in a `size`-pixel document, for the
+   *  Styles panel's tiles. The square is inset so shadows and glows have room. */
+  stylePreview(effects: LayerEffects, size = 48): Surface {
+    const doc: Doc = { id: uid(), width: size, height: size, resolution: 72, layers: [] };
+    const r = new Raster(size, size), g = r.ctx, inset = Math.round(size * 0.22), w = size - inset * 2, rad = Math.round(size * 0.12);
+    g.fillStyle = '#8a8a8a';
+    g.beginPath();
+    g.roundRect(inset, inset, w, w, rad);
+    g.fill();
+    r.touch();
+    const layer = newLayer('Style', doc, { raster: r, effects });
+    return renderDoc(this.work, { ...doc, layers: [layer] });
+  }
+
   private readonly styleDrawer = setStyleDrawer((doc: Doc, l: Layer) => {
     const alone: Layer = { ...l, parentId: null, opacity: 1, blend: 'normal', clipId: null, mask: null, visible: true };
     const draw = (layer: Layer): ImageData => ctxOf(renderDoc(this.work, { ...doc, layers: [layer] })).getImageData(0, 0, doc.width, doc.height);

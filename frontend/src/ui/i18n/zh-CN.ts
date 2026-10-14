@@ -138,4 +138,5 @@ export const zhCN: Record<string, string> = {
   'Slice': '切片工具', 'Smear': '涂抹', 'Smudge': '涂抹工具', 'Spot Healing': '污点修复画笔工具', 'Zoom': '缩放工具',
   'Spherical Panorama': '球面全景', 'Apply View to Panorama': '将视图应用到全景', 'Edit View': '编辑视图',
   'Slice Options': '切片选项', 'New Layer Based Slice': '新建基于图层的切片',
+  'Interpret Footage': '解释素材', 'Character Styles': '字符样式',
 };

@@ -3,12 +3,13 @@ import { allBrushPresets, BUILTIN_BRUSH_PRESETS } from '../../engine/brush-dynam
 import { allCustomShapes, CUSTOM_SHAPES, addCustomShape, parseShape, removeCustomShape, renameCustomShape } from '../../engine/custom-shapes';
 import { allGradients, customGradients, GRADIENT_PRESETS, gradientsFromJson, setCustomGradients } from '../../engine/gradients';
 import type { GradientPreset } from '../../engine/gradients';
-import { readGgr, readGrd } from '../../io/grd';
+import { readGgr, readGrd, writeGrd } from '../../io/grd';
+import { readCsh } from '../../io/csh';
 import { addPattern, allPatterns, removePattern, renamePattern } from '../../engine/patterns';
 import { createSurface, ctxOf } from '../../engine/surface';
 import { importAbr, removeImportedBrush, renameImportedBrush } from '../../io/brush-library';
 import { readPat, writePat } from '../../io/pat';
-import { readAco, readAse, writeAco } from '../../io/swatch-files';
+import { readAco, readAse, writeAco, writeAse } from '../../io/swatch-files';
 import { Dialog, promptName } from '../dialogs';
 import { el, setHidden, setText } from '../dom';
 import type { SwatchesPanel } from '../swatches';
@@ -22,7 +23,7 @@ const KINDS: ReadonlyArray<{ id: Kind; label: string; accept: string }> = [
   { id: 'swatches', label: 'Swatches', accept: '.aco,.ase' },
   { id: 'gradients', label: 'Gradients', accept: '.json,.grd,.ggr,application/json' },
   { id: 'patterns', label: 'Patterns', accept: '.pat' },
-  { id: 'shapes', label: 'Custom Shapes', accept: '.json,application/json' },
+  { id: 'shapes', label: 'Custom Shapes', accept: '.json,.csh,application/json' },
 ];
 const GRADIENT_KEY = 'formvis.gradients';
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
@@ -38,6 +39,8 @@ export class PresetManagerDialog extends Dialog {
   private readonly deleteBtn: HTMLButtonElement;
   private readonly loadBtn: HTMLButtonElement;
   private readonly saveBtn: HTMLButtonElement;
+  private readonly aseBtn: HTMLButtonElement;
+  private readonly grdBtn: HTMLButtonElement;
   private items: Item[] = [];
 
   constructor(
@@ -46,7 +49,7 @@ export class PresetManagerDialog extends Dialog {
     private readonly deliver: (blob: Blob, name: string) => Promise<void>,
     private readonly keepPatterns: () => Promise<boolean>,
   ) {
-    super('Preset Manager', 520);   // wide enough for its five buttons in one row
+    super('Preset Manager', 600);   // wide enough for its six buttons in one row
     const row = el('<label class="cv-field"><span>Preset Type</span><select class="cv-select"></select></label>');
     this.type = row.querySelector('select') as HTMLSelectElement;
     for (const k of KINDS) this.type.appendChild(new Option(k.label, k.id));
@@ -59,6 +62,8 @@ export class PresetManagerDialog extends Dialog {
     this.deleteBtn = this.button('Delete', 'danger', () => void this.remove());
     this.loadBtn = this.button('Load...', 'ghost', () => this.load());
     this.saveBtn = this.button('Save Set...', 'ghost', () => void this.saveSet());
+    this.aseBtn = this.button('Export .ase...', 'ghost', () => void this.saveSet('swatches', 'ase'));
+    this.grdBtn = this.button('Export .grd...', 'ghost', () => void this.saveSet('gradients', 'grd'));
     this.button('Done', 'primary', () => this.close());
   }
 
@@ -98,9 +103,13 @@ export class PresetManagerDialog extends Dialog {
       return o;
     }));
     setText(this.note, this.kind === 'swatches'
-      ? 'Swatches have no names, so they cannot be renamed. Load takes .aco or .ase; Save Set writes .aco.'
+      ? 'Swatches have no names, so they cannot be renamed. Load takes .aco or .ase; Save Set writes .aco and Export writes .ase.'
+      : this.kind === 'gradients' ? 'Load takes .json, .grd or .ggr; Save Set writes .json and Export writes a Photoshop .grd. Built-in presets cannot be renamed or deleted.'
+      : this.kind === 'shapes' ? 'Load takes .json or a Photoshop .csh. Built-in presets cannot be renamed or deleted.'
       : 'Built-in presets are listed but cannot be renamed or deleted.');
     setHidden(this.renameBtn, this.kind === 'swatches');
+    setHidden(this.aseBtn, this.kind !== 'swatches');
+    setHidden(this.grdBtn, this.kind !== 'gradients');
     this.saveBtn.disabled = this.kind === 'brushes';
     this.saveBtn.title = this.kind === 'brushes' ? 'Brush sets cannot be saved yet.' : '';
     this.sync();
@@ -211,6 +220,12 @@ export class PresetManagerDialog extends Dialog {
       if (skipped) toast(`${f.name}: skipped ${skipped} noise ${skipped === 1 ? 'gradient' : 'gradients'}.`, 'info');
       return found.length;
     }
+    if (kind === 'shapes' && /\.csh$/i.test(f.name)) {
+      const res = readCsh(await f.arrayBuffer());
+      for (const s of res.shapes) addCustomShape(s.name, s.path);
+      if (res.skipped) toast(`${f.name}: skipped ${res.skipped} ${res.skipped === 1 ? 'shape' : 'shapes'} that could not be read.`, 'info');
+      return res.shapes.length;
+    }
     const raw: unknown = JSON.parse(await f.text());
     if (kind === 'gradients') {
       const known = new Set(allGradients().map((g) => g.id));
@@ -229,10 +244,13 @@ export class PresetManagerDialog extends Dialog {
   }
 
   /** Writes one kind of preset to a file (the Preset Manager's Save Set, and Edit > Presets > Save Swatches). */
-  async saveSet(kind: Kind = this.kind): Promise<void> {
+  async saveSet(kind: Kind = this.kind, format?: 'ase' | 'grd'): Promise<void> {
     try {
       switch (kind) {
-        case 'swatches': await this.deliver(new Blob([writeAco(this.swatches.all()) as BlobPart], { type: 'application/octet-stream' }), 'Swatches.aco'); break;
+        case 'swatches':
+          if (format === 'ase') await this.deliver(new Blob([writeAse(this.swatches.all()) as BlobPart], { type: 'application/octet-stream' }), 'Swatches.ase');
+          else await this.deliver(new Blob([writeAco(this.swatches.all()) as BlobPart], { type: 'application/octet-stream' }), 'Swatches.aco');
+          break;
         case 'patterns': {
           const mine = allPatterns().filter((q) => !q.builtin);
           if (!mine.length) { toast('There are no patterns of your own to save.', 'info'); return; }
@@ -242,7 +260,8 @@ export class PresetManagerDialog extends Dialog {
         }
         case 'gradients': {
           if (!customGradients.length) { toast('There are no gradients of your own to save.', 'info'); return; }
-          await this.deliver(new Blob([JSON.stringify(customGradients, null, 2)], { type: 'application/json' }), 'Gradients.json');
+          if (format === 'grd') await this.deliver(new Blob([writeGrd(customGradients) as BlobPart], { type: 'application/octet-stream' }), 'Gradients.grd');
+          else await this.deliver(new Blob([JSON.stringify(customGradients, null, 2)], { type: 'application/json' }), 'Gradients.json');
           break;
         }
         case 'shapes': {

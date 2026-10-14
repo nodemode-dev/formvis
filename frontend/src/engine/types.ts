@@ -67,7 +67,7 @@ export interface Layer {
   /** A video layer (DEV_PLAN 33.4a): one raster per frame of its clip. `original` is the footage as loaded, `frames` the
    *  current, possibly painted, frames (they share Raster objects until a frame is altered); `raster` shows the frame
    *  at the playhead and is stored back into `frames` when the playhead leaves it. */
-  video?: { frames: Raster[]; original: Raster[]; name: string } | null;
+  video?: { frames: Raster[]; original: Raster[]; name: string; interpret?: FootageInterpretation } | null;
   /** On a top-level folder, makes it an artboard: its contents shown only inside `x, y, w, h` (document pixels), over
    *  `background` (none is transparent), and exported as its own image. */
   artboard?: Artboard | null;
@@ -160,11 +160,15 @@ export interface LayerComp {
 export interface DocVariable { name: string; layer: ID; kind: 'visibility' | 'text' | 'pixels'; method?: 'fit' | 'fill' | 'asis' | 'conform' }
 /** A named row of values, one per variable name. */
 export interface DataSet { name: string; values: Record<string, string> }
-export interface Doc { /** Width over height of one pixel (35.4 part b); absent means square. */ pixelAspect?: number; measureScale?: { pixels: number; length: number; units: string }; measurements?: Array<{ id: number; label: string; scale: number; units: string; area?: number; perimeter?: number; length?: number; angle?: number; count?: number; w?: number; h?: number }>; multichannel?: { channels: { name: string; color: RGB; solidity: number; data: Raster }[] }; duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; slices?: readonly DocSlice[];notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
+export interface Doc { /** Width over height of one pixel (35.4 part b); absent means square. */ pixelAspect?: number; measureScale?: { pixels: number; length: number; units: string }; measurements?: Array<{ id: number; label: string; scale: number; units: string; area?: number; perimeter?: number; length?: number; angle?: number; count?: number; w?: number; h?: number }>; multichannel?: { channels: { name: string; color: RGB; solidity: number; data: Raster }[] }; duotone?: { type: 'mono' | 'duo' | 'tri' | 'quad'; inks: { name: string; color: RGB; curve: number[] }[] }; variables?: DocVariable[]; dataSets?: DataSet[]; activeDataSet?: string | null; comps?: readonly LayerComp[]; activeComp?: ID | null; depth?: 8 | 16 | 32; profile?: DocProfile; mode?: DocMode; palette?: readonly RGB[]; readonly id: ID; width: number; height: number; resolution: number; layers: readonly Layer[]; guides?: readonly Guide[]; slices?: readonly DocSlice[];notes?: readonly DocNote[]; counts?: readonly { x: number; y: number }[]; globalLight?: GlobalLight; paragraphStyles?: readonly ParagraphStyle[]; characterStyles?: readonly CharacterStyle[]; alphas?: readonly AlphaChannel[]; meta?: DocMeta }
 /** An alpha channel (1.65.1): a selection saved with the document, `mask` null when nothing in it is selected. */
 export interface AlphaChannel { readonly id: ID; readonly name: string; readonly mask: SelectionMask | null }
 
 /** A user slice (Slice tool): a rectangle in document pixels with the web properties Slice Options will edit. */
+/** Interpret Footage (DEV_PLAN 33.4): how a video layer's frames are read. `fps` is the footage's own rate (the
+ *  timeline's when absent), `loop` how many times the clip plays, `alpha` how its transparency is read: 'ignore' makes
+ *  every frame opaque, 'premultiplied' takes the colour back off `matte` (black when absent). */
+export interface FootageInterpretation { fps?: number; loop?: number; alpha?: 'straight' | 'ignore' | 'premultiplied'; matte?: RGB }
 export interface DocSlice { id: ID; name: string; x: number; y: number; w: number; h: number; layer?: ID; url?: string; alt?: string }
 export type ToolId = 'slice' | 'move' |'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'mixer' | 'artHistory' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'markup' | 'count' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'idle';
 
@@ -327,7 +331,9 @@ export function effectsFromData(raw: unknown): LayerEffects | null {
 /** antialias (1.50.4, the tool audit): Photoshop's method, of those formvis renders truly: None (every edge pixel on or
  *  off), Sharp (steeper edges) or Smooth (absent). */
 /** features (DEV_PLAN 32.6b): OpenType feature tags turned on ('smcp'), and '-liga' or '-calt' for a default feature off. */
-export interface TextSpec { features?: string[] | null; antialias?: 'none' | 'sharp' | 'smooth'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; rendered?: string }
+export interface TextSpec { features?: string[] | null; antialias?: 'none' | 'sharp' | 'smooth'; box?: { w: number; h: number } | null; direction?: 'horizontal' | 'vertical'; content: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning; warp?: TextWarp | null; onPath?: TextPath | null; style?: ID | null; charStyle?: ID | null; rendered?: string }
+/** A character style (DEV_PLAN 32.6c): only the fields it sets override the type layer's own; the layer links it by `TextSpec.charStyle`. */
+export interface CharacterStyle { id: ID; name: string; family?: string; size?: number; color?: RGB; bold?: boolean; italic?: boolean; tracking?: number; features?: string[] }
 /** A paragraph style (Window > Paragraph Styles): a named set of type settings kept in the document; type layers linked
  *  to it by TextSpec.style take its settings, and redefining it updates every one of them. */
 export interface ParagraphStyle { id: ID; name: string; family: string; size: number; color: RGB; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; lineHeight: number; tracking: number; kerning: TextKerning }

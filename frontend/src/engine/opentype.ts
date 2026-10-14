@@ -13,13 +13,20 @@ export const OT_FEATURES: ReadonlyArray<{ tag: string; label: string }> = [
 /** Features fonts apply unless told otherwise: their toggle shows on until '-tag' is listed. */
 export const OT_DEFAULT_ON: ReadonlySet<string> = new Set(['liga', 'calt']);
 
-const KNOWN = new Set(OT_FEATURES.map((f) => f.tag));
+/** Stylistic sets ss01 to ss20 (DEV_PLAN 32.6c): known to the feature list, offered in the Glyphs dialog, not in the type menu. */
+export const OT_STYLISTIC_SETS: ReadonlyArray<{ tag: string; label: string }> = Array.from({ length: 20 }, (_, i) => {
+  const tag = `ss${String(i + 1).padStart(2, '0')}`;
+  return { tag, label: `Set ${i + 1}` };
+});
+
+const ALL_FEATURES = [...OT_FEATURES, ...OT_STYLISTIC_SETS];
+const KNOWN = new Set(ALL_FEATURES.map((f) => f.tag));
 
 /** A feature list cleaned: known tags only, once each, in the catalogue's order. */
 export function cleanFeatures(raw: unknown): string[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set(raw.filter((v): v is string => typeof v === 'string'));
-  return OT_FEATURES.flatMap(({ tag }) => (seen.has(tag) && !OT_DEFAULT_ON.has(tag) ? [tag] : seen.has(`-${tag}`) && OT_DEFAULT_ON.has(tag) ? [`-${tag}`] : []));
+  return ALL_FEATURES.flatMap(({ tag }) => (seen.has(tag) && !OT_DEFAULT_ON.has(tag) ? [tag] : seen.has(`-${tag}`) && OT_DEFAULT_ON.has(tag) ? [`-${tag}`] : []));
 }
 
 /** Whether a feature is on in a list: listed for most, not listed as off for the defaults. */

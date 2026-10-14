@@ -1,6 +1,6 @@
 import { Raster, createSurface, ctxOf } from './surface';
 import { cleanFeatures, ensureVariant, variantFamily } from './opentype';
-import { clamp, type ID, type Layer, type ParagraphStyle, type Pt, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
+import { clamp, type CharacterStyle, type ID, type Layer, type ParagraphStyle, type Pt, type TextPath, type TextSpec, type TextWarp, type WarpStyle } from './types';
 
 /** Type layers: text set in a font, drawn into a layer's pixels and kept editable while those pixels are untouched. */
 
@@ -301,6 +301,44 @@ export function withStyle(t: TextSpec, s: ParagraphStyle): TextSpec {
   return { ...t, family: s.family, size: s.size, color: { ...s.color }, align: s.align, bold: s.bold, italic: s.italic, lineHeight: s.lineHeight, tracking: s.tracking, kerning: s.kerning, style: s.id, rendered: undefined };
 }
 
+/** A spec's character style, if any, applied: the style's set fields over the spec's own (the effective spec to render). */
+export function withCharStyle(t: TextSpec, s: CharacterStyle | undefined): TextSpec {
+  if (!s) return t;
+  return {
+    ...t,
+    ...(s.family !== undefined ? { family: s.family } : {}), ...(s.size !== undefined ? { size: s.size } : {}),
+    ...(s.color !== undefined ? { color: { ...s.color } } : {}), ...(s.bold !== undefined ? { bold: s.bold } : {}),
+    ...(s.italic !== undefined ? { italic: s.italic } : {}), ...(s.tracking !== undefined ? { tracking: s.tracking } : {}),
+    ...(s.features !== undefined ? { features: [...s.features] } : {}),
+  };
+}
+
+/** A character style from a type spec: its family, size, colour, weight, slant, tracking and features, all set. */
+export function charStyleOf(t: TextSpec, id: ID, name: string): CharacterStyle {
+  return { id, name, family: t.family, size: t.size, color: { ...t.color }, bold: t.bold, italic: t.italic, tracking: t.tracking, features: cleanFeatures(t.features) };
+}
+
+/** A document's saved character styles read back: an id and a name are needed; each field is kept only when it is valid. */
+export function characterStylesFrom(raw: unknown): CharacterStyle[] {
+  if (!Array.isArray(raw)) return [];
+  const fin = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
+  return raw.flatMap((r): CharacterStyle[] => {
+    if (!r || typeof r !== 'object') return [];
+    const o = r as Record<string, unknown>;
+    if (typeof o.id !== 'string' || !o.id || typeof o.name !== 'string') return [];
+    const c = o.color && typeof o.color === 'object' ? (o.color as Record<string, unknown>) : null;
+    return [{
+      id: o.id, name: o.name.slice(0, 80) || 'Character Style',
+      ...(typeof o.family === 'string' && o.family.trim() ? { family: o.family.slice(0, 80) } : {}),
+      ...(fin(o.size) ? { size: clamp(o.size, 1, 2000) } : {}),
+      ...(c ? { color: { r: Math.round(clamp(fin(c.r) ? c.r : 0, 0, 255)), g: Math.round(clamp(fin(c.g) ? c.g : 0, 0, 255)), b: Math.round(clamp(fin(c.b) ? c.b : 0, 0, 255)) } } : {}),
+      ...(typeof o.bold === 'boolean' ? { bold: o.bold } : {}), ...(typeof o.italic === 'boolean' ? { italic: o.italic } : {}),
+      ...(fin(o.tracking) ? { tracking: Math.round(clamp(o.tracking, -1000, 10000)) } : {}),
+      ...(Array.isArray(o.features) ? { features: cleanFeatures(o.features) } : {}),
+    }];
+  });
+}
+
 /** A document's saved paragraph styles read back: each needs an id and a name; its settings are read as type is. */
 export function paragraphStylesFrom(raw: unknown): ParagraphStyle[] {
   if (!Array.isArray(raw)) return [];
@@ -350,6 +388,7 @@ export function textFromData(raw: unknown, raster: Raster | null): TextSpec | nu
     ...(cleanFeatures(o.features).length ? { features: cleanFeatures(o.features) } : {}),
     lineHeight: num(o.lineHeight, d.lineHeight, 0.5, 4), tracking: Math.round(num(o.tracking, 0, -1000, 10000)), kerning: o.kerning === 'none' ? 'none' : 'metrics',
     warp: warpFrom(o.warp), onPath: pathFrom(o.onPath), style: typeof o.style === 'string' && o.style ? o.style : null,
+    ...(typeof o.charStyle === 'string' && o.charStyle ? { charStyle: o.charStyle } : {}),
     rendered: textKey(raster),
   };
 }

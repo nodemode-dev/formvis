@@ -101,6 +101,63 @@ export function readGrd(buf: ArrayBuffer): { gradients: GradientPreset[]; skippe
   return { gradients, skipped };
 }
 
+/** Big-endian byte sink for writeGrd; descriptor keys and IDs use the 4-character form (length 0, then the code). */
+class Sink {
+  readonly bytes: number[] = [];
+  u8(v: number): void { this.bytes.push(v & 255); }
+  u16(v: number): void { this.u8(v >> 8); this.u8(v); }
+  u32(v: number): void { this.u16(v >>> 16); this.u16(v & 0xffff); }
+  f64(v: number): void { const dv = new DataView(new ArrayBuffer(8)); dv.setFloat64(0, v); for (let i = 0; i < 8; i += 1) this.u8(dv.getUint8(i)); }
+  ascii(s: string): void { for (let i = 0; i < s.length; i += 1) this.u8(s.charCodeAt(i)); }
+  /** A Unicode string: the UTF-16 unit count including the NUL, the units, the NUL. */
+  unicode(s: string): void { this.u32(s.length + 1); for (let i = 0; i < s.length; i += 1) this.u16(s.charCodeAt(i)); this.u16(0); }
+  id(s: string): void { this.u32(s.length === 4 ? 0 : s.length); this.ascii(s); }
+  /** An object header: empty display name, the class ID, the item count. */
+  head(classId: string, items: number): void { this.unicode(''); this.id(classId); this.u32(items); }
+  key(key: string, type: string): void { this.id(key); this.ascii(type); }
+  long(key: string, v: number): void { this.key(key, 'long'); this.u32(v); }
+  enum(key: string, type: string, value: string): void { this.key(key, 'enum'); this.id(type); this.id(value); }
+}
+
+/** Writes a Photoshop .grd (version 5): '8BGR', u16 5, u32 16, then a 'null' descriptor holding the 'GrdL' list. Each
+ *  gradient is an 'Objc' of class 'Grdn' whose 'Grad' item is a custom-stops gradient ('CstS', interval 4096) with
+ *  'Clrs' (RGB or foreground / background colour stops) and 'Trns' (opacity stops), locations 0 to 4096, midpoint 50. */
+export function writeGrd(list: GradientPreset[]): Uint8Array {
+  const s = new Sink();
+  s.ascii('8BGR'); s.u16(5); s.u32(16);
+  s.head('null', 1);
+  s.key('GrdL', 'VlLs'); s.u32(list.length);
+  for (const g of list) {
+    const stops = [...g.stops].sort((a, b) => a.at - b.at);
+    s.ascii('Objc'); s.head('Grdn', 1);
+    s.key('Grad', 'Objc'); s.head('Grdn', 5);
+    s.key('Nm  ', 'TEXT'); s.unicode(g.label);
+    s.enum('GrdF', 'GrdF', 'CstS');
+    s.key('Intr', 'doub'); s.f64(4096);
+    s.key('Clrs', 'VlLs'); s.u32(stops.length);
+    for (const st of stops) {
+      const loc = Math.round(clamp(st.at, 0, 1) * 4096);
+      const c = st.color;
+      s.ascii('Objc'); s.head('Clrt', typeof c === 'string' ? 3 : 4);
+      if (typeof c !== 'string') {
+        s.key('Clr ', 'Objc'); s.head('RGBC', 3);
+        s.key('Rd  ', 'doub'); s.f64(byte(c.r));
+        s.key('Grn ', 'doub'); s.f64(byte(c.g));
+        s.key('Bl  ', 'doub'); s.f64(byte(c.b));
+      }
+      s.enum('Type', 'Clry', typeof c !== 'string' ? 'UsrS' : c === 'fg' ? 'FrgC' : 'BckC');
+      s.long('Lctn', loc); s.long('Mdpn', 50);
+    }
+    s.key('Trns', 'VlLs'); s.u32(stops.length);
+    for (const st of stops) {
+      s.ascii('Objc'); s.head('TrnS', 3);
+      s.key('Opct', 'UntF'); s.ascii('#Prc'); s.f64(clamp(st.alpha, 0, 1) * 100);
+      s.long('Lctn', Math.round(clamp(st.at, 0, 1) * 4096)); s.long('Mdpn', 50);
+    }
+  }
+  return new Uint8Array(s.bytes);
+}
+
 /** Reads a GIMP .ggr: each segment gives a stop at its left and its right edge. */
 export function readGgr(text: string): GradientPreset[] {
   const lines = text.split(/\r?\n/).map((l) => l.trim()).filter((l) => l.length > 0);

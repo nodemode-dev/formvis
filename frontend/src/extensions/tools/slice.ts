@@ -5,7 +5,7 @@ import { type Tool } from '../registry';
 export const readingOrder = (list: readonly DocSlice[]): DocSlice[] => [...list].sort((a, b) => a.y - b.y || a.x - b.x);
 
 /** Draws user slices as solid rectangles with their numbers; the screen position is pan + document position * zoom. */
-export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[], panX: number, panY: number, zoom: number, color: string): void {
+export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[], panX: number, panY: number, zoom: number, color: string, active: string | null = null): void {
   g.save();
   g.lineWidth = 1;
   g.strokeStyle = color;
@@ -15,7 +15,10 @@ export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[
   readingOrder(list).forEach((s, i) => {
     const x0 = Math.round(panX + s.x * zoom) + 0.5, y0 = Math.round(panY + s.y * zoom) + 0.5;
     const x1 = Math.round(panX + (s.x + s.w) * zoom) + 0.5, y1 = Math.round(panY + (s.y + s.h) * zoom) + 0.5;
+    const on = s.id === active;
+    g.lineWidth = on ? 2 : 1;   // 29.5: the active slice, thicker and with corner handles
     g.strokeRect(x0, y0, x1 - x0, y1 - y0);
+    if (on) for (const [cx, cy] of [[x0, y0], [x1, y0], [x0, y1], [x1, y1]]) g.fillRect(cx - 3, cy - 3, 6, 6);
     g.fillText(String(i + 1).padStart(2, '0'), x0 + 3, y0 + 3);
   });
   g.restore();
@@ -71,7 +74,7 @@ export const sliceTool: Tool = {
     const p = ctx.engine.current;
     if (!p) return;
     const v = p.viewport, pal = ctx.paint();
-    drawSlices(g, p.doc.slices ?? [], v.panX, v.panY, v.zoom, pal.accent);
+    drawSlices(g, p.doc.slices ?? [], v.panX, v.panY, v.zoom, pal.accent, ctx.engine.activeSlice);
     if (drag) {
       const r = rectOf(drag), a = ctx.view().toScreen({ x: r.x, y: r.y }), b = ctx.view().toScreen({ x: r.x + r.w, y: r.y + r.h });
       g.save();

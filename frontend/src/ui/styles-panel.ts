@@ -97,7 +97,7 @@ export class StylesPanel {
     patchList<StylePreset>(this.grid, this.presets, {
       key: (p) => p.id,
       create: (p) => {
-        const tile = el('<button class="cv-style-tile" type="button" role="option"><span class="cv-style-name"></span></button>');
+        const tile = el('<button class="cv-style-tile" type="button" role="option"><canvas class="cv-style-swatch" width="48" height="48" aria-hidden="true"></canvas><span class="cv-style-name"></span></button>');
         this.fill(tile, p);
         return tile;
       },
@@ -108,6 +108,14 @@ export class StylesPanel {
   private fill(tile: HTMLElement, p: StylePreset): void {
     if (tile.dataset.id !== p.id) tile.dataset.id = p.id;
     setText(q(tile, '.cv-style-name'), p.name);
+    // The swatch (35.3) is drawn once per tile and style, and again only when the style's effects change.
+    const key = JSON.stringify(p.effects);
+    if (tile.dataset.fx !== key) {
+      const c = q<HTMLCanvasElement>(tile, '.cv-style-swatch'), g = c.getContext('2d');
+      if (g) {
+        try { const s = this.engine.stylePreview(p.effects, c.width); g.clearRect(0, 0, c.width, c.height); g.drawImage(s, 0, 0); tile.dataset.fx = key; } catch { /* no renderer yet: the tile keeps its name only */ }
+      }
+    }
     if (tile.title !== p.name) tile.title = p.name;
     tile.classList.toggle('is-active', p.id === this.selected);
     tile.setAttribute('aria-selected', String(p.id === this.selected));
