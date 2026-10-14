@@ -81,6 +81,8 @@ const ROWS: Record<string, Row> = {
   'comfyui-run': ['File', 'Opens the dialog that runs a ComfyUI workflow and brings the result back.', 'Use when a ComfyUI workflow should produce a new layer.', 'mr'],
   'close-tab': ['File', 'Closes the current document, asking about unsaved changes.', 'Use when you are done with a document.', 'r'],
   'close-all': ['File', 'Closes every open document.', 'Use when you want to finish the session; unsaved work is asked about first.', 'r'],
+  'print': ['File', 'Opens the Print dialog: paper size, orientation, position, scaled print size and a preview, then prints the flattened document through the system print dialog.', 'Use when the picture should go to a printer at a chosen paper size and scale.'],
+  'print-one-copy': ['File', 'Prints the flattened document at once with the settings Print last used, through the system print dialog.', 'Use when you want a print without going through the dialog again.'],
   'close-others': ['File', 'Closes every document but the current one.', 'Use when one document is the one you want left open.', 'r'],
   'undo': ['Edit', 'Steps back one history step.', 'Use when the last change was wrong.', 'm'],
   'redo': ['Edit', 'Steps forward one history step.', 'Use when you undid a step you wanted.', 'm'],

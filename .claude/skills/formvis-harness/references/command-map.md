@@ -1,13 +1,13 @@
 # Command map
 
-Generated from the window's command catalogue (784 commands: 7 action, 504 command, 225 option, 48 tool) by `./formvis agents sync`; do not edit by hand.
+Generated from the window's command catalogue (786 commands: 7 action, 506 command, 225 option, 48 tool) by `./formvis agents sync`; do not edit by hand.
 
 Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.
 
 | Group | Commands | Harness sub-skill | First ids |
 | --- | --- | --- | --- |
 | Edit | 45 | `command-author` | `clear`, `colour.settings`, `content-fill`, `content-fill-workspace` |
-| File | 48 | `io-formats` | `assemble-tiles`, `batch`, `clear-recent`, `close-all` |
+| File | 50 | `io-formats` | `assemble-tiles`, `batch`, `clear-recent`, `close-all` |
 | Filter | 77 | `filter-library` | `filter-addNoise`, `filter-average`, `filter-blur`, `filter-blurMore` |
 | Image | 69 | `engine-builder` | `adj-blackWhite`, `adj-brightnessContrast`, `adj-channelMixer`, `adj-clarity` |
 | Layer | 161 | `engine-builder` | `add-filter-mask`, `add-mask`, `add-mask-hide`, `align-bottom` |

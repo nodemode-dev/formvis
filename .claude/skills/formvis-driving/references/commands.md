@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (784 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (786 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 45
-- File: 48
+- File: 50
 - Filter: 77
 - Image: 69
 - Layer: 161
@@ -109,6 +109,8 @@ Generated from the window's command catalogue (784 commands) by `./formvis agent
 | `photomerge` | Photomerge... |  | Opens Photomerge to stitch images into a panorama. (changes the picture) |
 | `place-3d` | Place 3D Model... |  | Opens a file picker for a glTF or GLB model and places it as a layer. (changes the picture) |
 | `place-linked` | Place Linked... |  | Places an image file as a linked smart object. (changes the picture) |
+| `print` | Print... | Mod+P | Opens the Print dialog: paper size, orientation, position, scaled print size and a preview, then prints the flattened document through the system print dialog. |
+| `print-one-copy` | Print One Copy | Alt+Shift+Mod+P | Prints the flattened document at once with the settings Print last used, through the system print dialog. |
 | `render-video` | Render Video... |  | Opens the Render Video dialog for the video timeline. (asks first) |
 | `revert` | Revert |  | Throws away changes and reopens the last saved version. (changes the picture) (asks first) |
 | `save` | Save | Mod+S | Saves the document to the library, or asks for a name the first time. (asks first) |

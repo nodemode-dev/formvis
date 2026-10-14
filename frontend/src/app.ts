@@ -1,6 +1,7 @@
 import { ErrorLog } from './ui/errors';
 import { FillDialog } from './ui/panels/fill-dialog';
 import { FadeDialog } from './ui/panels/fade-dialog';
+import { ApplyImageDialog } from './ui/panels/apply-image-dialog';
 import { ExportDialog } from './ui/panels/export-dialog';
 import { LayerExportDialog } from './ui/panels/layer-export-dialog';
 import { DEFAULT_LAYER_EXPORT, layerFiles, type LayerExportSettings } from './io/layer-export';
@@ -31,6 +32,7 @@ import { TrimDialog } from './ui/panels/trim-dialog';
 import { ColorRangeDialog } from './ui/panels/color-range-dialog';
 import { ArbitraryRotationDialog, DuplicateImageDialog } from './ui/panels/image-dialogs';
 import { ReplaceColorDialog } from './ui/panels/replace-color-dialog';
+import { CalculationsDialog } from './ui/panels/calculations-dialog';
 import { StrokeDialog } from './ui/panels/stroke-dialog';
 import { SaveCopyDialog } from './ui/panels/save-copy-dialog';
 import { CommandPalette } from './ui/command-palette';
@@ -53,6 +55,8 @@ import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
 import { withXmp } from './io/xmp';
 import { FileInfoDialog } from './ui/panels/file-info-dialog';
+import { PrintDialog } from './ui/panels/print-dialog';
+import { printDocument, printSettings } from './io/print';
 import { TextEditor } from './ui/text-editor';
 import { TextDialog } from './ui/panels/text-dialog';
 import { BrushSettingsDialog } from './ui/panels/brush-settings';
@@ -1589,6 +1593,7 @@ export function startApp(): void {
     adjust: new AdjustPanel(engine),
     filter: new FilterPanel(engine),
     fade: new FadeDialog(engine),
+    applyImage: new ApplyImageDialog(engine),
     neural: new NeuralFiltersDialog(engine),
     contentAwareScale: new ContentAwareScaleDialog(engine),
     wideAngle: new WideAngleDialog(engine),
@@ -1609,6 +1614,7 @@ export function startApp(): void {
     scaleEffects: new ScaleEffectsDialog(engine),
     fill: new FillDialog(engine, () => commands.run('content-fill')),
     exportAs: new ExportDialog(engine, (s) => void exportAs(s)),
+    print: new PrintDialog(engine, (s) => { printDocument(engine, s); }),
     layerExport: new LayerExportDialog(engine, () => !!caps?.desktop, (s) => void exportLayerFiles(s)),
     guide: new GuideDialog(engine),
     artboard: new ArtboardDialog(engine),
@@ -1617,6 +1623,7 @@ export function startApp(): void {
     stroke: new StrokeDialog(engine),
     duplicateImage: new DuplicateImageDialog(engine),
     replaceColor: new ReplaceColorDialog(engine),
+    calculations: new CalculationsDialog(engine),
     corners: new CornersDialog(engine),
     strokePath: new StrokePathDialog(engine),
     newLayer: new NewLayerDialog(engine),
@@ -1771,6 +1778,8 @@ export function startApp(): void {
     { id: 'export-png', label: 'Export PNG', keys: ['Shift+Mod+E'], enabled: has, run: () => void exportImage('png') },
     { id: 'export-jpg', label: 'Export JPEG...', keys: ['Alt+Shift+Mod+S'], enabled: has, run: () => { engine.settle(); dialogs.jpeg.show((q) => void exportImage('jpg', q)); } },
     { id: 'export-as', label: 'Export As...', keys: ['Alt+Shift+Mod+W'], enabled: has, run: () => dialogs.exportAs.show() },
+    { id: 'print', label: 'Print...', keys: ['Mod+P'], enabled: has, run: () => dialogs.print.show() },
+    { id: 'print-one-copy', label: 'Print One Copy', keys: ['Alt+Shift+Mod+P'], enabled: has, run: () => { printDocument(engine, { ...printSettings, selectedArea: printSettings.selectedArea && !!engine.current?.selection }); } },
     { id: 'file-info', label: 'File Info...', keys: ['Alt+Shift+Mod+I'], enabled: has, params: FILE_INFO_PARAMS, run: (a) => fileInfoRun(a) },
     { id: 'toggle-rulers', label: () => (engine.view.rulers ? 'Hide Rulers' : 'Show Rulers'), keys: ['Mod+R'], enabled: has, run: () => engine.setView({ rulers: !engine.view.rulers }) },
     { id: 'toggle-guides', label: () => (engine.view.guides ? 'Hide Guides' : 'Show Guides'), keys: ['Mod+;'], enabled: has, run: () => engine.setView({ guides: !engine.view.guides }) },
@@ -1907,7 +1916,7 @@ export function startApp(): void {
         mask_invert: { type: 'boolean', description: 'Invert the mask.' },
       },
       run: (a) => {
-        if (!a || !Object.keys(a).length) { engine.notice('Apply Image\'s dialog comes next release'); return undefined; }
+        if (!a || !Object.keys(a).length) { dialogs.applyImage.show(); return undefined; }
         const s = (k: string): string | undefined => (typeof a[k] === 'string' && a[k] ? String(a[k]) : undefined), n = (k: string): number | undefined => (typeof a[k] === 'number' ? a[k] : undefined);
         const hasMask = a.mask_layer !== undefined || a.mask_channel !== undefined || a.mask_invert !== undefined;
         const ran = engine.applyImage({
@@ -2196,7 +2205,7 @@ export function startApp(): void {
         result: { type: 'string', enum: ['channel', 'document', 'selection'], description: 'Where the result goes: a new alpha channel (the default), a new document, or the selection.' },
       },
       run: (a) => {
-        if (!a || !Object.keys(a).length) { engine.notice('Calculations\' dialog comes next release'); return undefined; }
+        if (!a || !Object.keys(a).length) { dialogs.calculations.show(); return undefined; }
         const text = (k: string): string | undefined => (a[k] === undefined ? undefined : String(a[k]));
         const num = (k: string): number | undefined => (a[k] === undefined ? undefined : Number(a[k]));
         const r = engine.calculations({
@@ -2227,7 +2236,7 @@ export function startApp(): void {
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-layers', 'export-artboards-files', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'photomerge', 'merge-hdr'] },
-      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'close-tab', 'close-all', 'close-others'] },
+      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-',
