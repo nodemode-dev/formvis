@@ -1,7 +1,7 @@
 {
   "name": "formvis",
   "private": true,
-  "version": "1.68.0",
+  "version": "1.68.1",
   "description": "formvis · layered image editor in the NodeMode style",
   "license": "Apache-2.0",
   "type": "module",
