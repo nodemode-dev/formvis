@@ -2,6 +2,34 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.1: Color Lookup Tables, Paths to Illustrator, Place Embedded, Package · _v1.69.1 (no code at the join)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (844 catalogue ids). At the join only the log headings changed (they had listed this log itself). No builder added a type cast. Probes in Chromium:
+- Color Lookup Tables over an Invert adjustment gave `Look LUTs.zip` with Look.cube, Look.3dl and Look.csp at 33 points. The cube's first point (black) read 1, 1, 1 and its last (white) read 0, 0, 0; the 3DL ran its 0 to 1023 shaper and 12-bit triples from 4095 down to 0; the CSP header and size line were correct.
+- A three-anchor closed path wrote `Look.ai` with `m`, `l` and `c` segments in flipped y, inside one `u`/`U` group named Box.
+- Place Embedded placed a 30x20 PNG as an embedded smart object named place.
+- Package on a document with no links gave `Pk Package.zip` holding Pk.fmv. After Convert to Linked it gave `Lk Package.zip` holding Lk.fmv and Links/Logo.png.
+- The LUT dialog looked right in a screenshot, and there were no page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.9",
+      "version": "1.68.9",
+  "version": "1.68.9",
+export const VERSION = '1.68.9';
+```
+
+## Export Paths to Illustrator, DEV_PLAN 29.6 part b · _v1.69.1 (io/ai-paths.ts, app.ts, automation/command-meta.ts)
+File > Export > Paths to Illustrator writes the document's named paths as an Illustrator 3 style PostScript .ai file: `pathsToIllustrator` in io/ai-paths.ts emits the EPSF header, flips y against the document height at 1 px = 1 pt, writes each path as a `%%Note` plus `u`...`U` group with `m`, `l` or `c` segments (straight when both handles sit on their anchors), repeats the closing segment for closed subpaths and ends them with `N` (open ones with `n`). Shape and mask entries are skipped. The `export-paths-ai` command takes an optional `path` name to write one path. Deferred: a dialog to pick one path, and the document bounds as crop marks.
+
+## Export Color Lookup Tables, DEV_PLAN 29.6 part a · _v1.69.1 (engine/lut-export.ts, ui/panels/lut-export-dialog.ts, app.ts, automation/command-meta.ts)
+
+File > Export > Color Lookup Tables records the visible adjustment layers as a 3D lookup table: an identity lattice of 17, 33 or 65 points per side is run through each adjustment kernel bottom to top, mixed by layer opacity, and written as .cube, .3dl (12-bit, with its input shaper) and .csp. One file is delivered as is, several as a zip. The dialog is built once. Deferred: the ICC device link export and layer masks, which are ignored.
+
+## Place Embedded and Package, DEV_PLAN 29.7 · _v1.69.1 (engine/index.ts, io/links.ts, app.ts, automation/command-meta.ts)
+File > Place Embedded picks an image and places it as an embedded smart object (Engine.placeEmbedded, history step 'Place Embedded', decoded in io/links.ts). File > Package builds the .fmv as Download Project File does, gathers the files behind every distinct linked smart object through linkedFiles (stored as Links/<file name>, repeated names numbered), zips them with the .fmv into "<name> Package.zip" and toasts how many links were gathered and which were unreachable. Deferred: placing PDF, AI or other vector files, and a folder target on the desktop build.
+
 ## Release 1.68.9: Load Files into Stack, Statistics, Generate Image Assets, Save for Web · _v1.68.9 (io/image-assets.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (840 catalogue ids). At the join: `encodeAsset`'s GIF branch passed the pixel array where `encodeGif` takes an `ImageData`, hidden by an `as never` cast; it now passes the `ImageData` and the cast is gone. The three 1.68.9 entries were moved above the 1.68.8 release section, newest first. Probes in Chromium: three files (40x30, 50x40, 40x30) loaded into a 50x40 document as layers a, b, c; Statistics with Median over grey 10, 200, 30 made one stacked smart object showing 30; one file was refused with a notice; a layer named `hero.png, 50% small.jpg80%, icon.gif, 32x? thumb.webp` with an 80x40 red block gave hero.png 80x40 PNG, small.jpg 40x20 JPEG, icon.gif 80x40 GIF and thumb.webp 32x16 WebP in `Assets-assets.zip`; Save for Web wrote `Assets.png` 200x100 as PNG-24, and with All slices `Assets slices.zip` holding `Assets_01.jpg` and `Assets_02.jpg`, each 100x50; both dialogs looked right in screenshots; no page errors. Removed lines taken after the version edit. Removed from frontend:

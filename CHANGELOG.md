@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.69.1 · 2026-10-14
+
+### Added
+
+- File > Export > Color Lookup Tables: the visible adjustment layers recorded as a 3D LUT in CUBE, 3DL and CSP, at 17, 33 or 65 points a side.
+- File > Export > Paths to Illustrator: the document's paths written as an Illustrator `.ai` file, one group per path.
+- File > Place Embedded, beside Place Linked: a picture placed as an embedded smart object.
+- File > Package: the project file and every linked file it uses, gathered into one zip with a `Links` folder.
+
 ## 1.68.9 · 2026-10-14
 
 ### Added
