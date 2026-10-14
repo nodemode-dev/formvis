@@ -7591,6 +7591,22 @@ export class Engine {
     return this.addProject({ ...base, ...(img.profile ? { profile: img.profile } : {}), ...(img.meta ? { meta: img.meta } : {}), layers: [layer] }, img.name.replace(/\.[^.]+$/, '') || 'Image', layer.id);   // an embedded profile kept (1.53.5)
   }
 
+  /** File > Scripts > Load Files into Stack and Statistics (30.4): one new document holding every image as a layer at the
+   *  top left (the first file at the bottom), sized to the largest; as a smart object stack when `smart` or a mode is set. */
+  loadStack(imgs: ImportedImage[], opts: { smart: boolean; mode: StackMode }): Project | null {
+    if (imgs.length < 2) { this.notice('Choose at least two files to load into a stack.'); return null; }
+    const W = Math.max(...imgs.map((i) => i.width)), H = Math.max(...imgs.map((i) => i.height));
+    const base: Doc = { id: uid(), width: W, height: H, resolution: 72, layers: [] };
+    const layers = imgs.map((img) => ({ ...newLayer(img.name.replace(/\.[^.]+$/, '') || 'Layer', base), raster: Raster.from(img.source, img.width, img.height) }));
+    const first = imgs[0];
+    const p = this.addProject({ ...base, ...(first.profile ? { profile: first.profile } : {}), layers }, first.name.replace(/\.[^.]+$/, '') || 'Stack', layers[layers.length - 1].id);
+    if (opts.smart || opts.mode !== 'none') {
+      this.stackToSmartObject(p.doc.layers.filter((l) => !l.isGroup));
+      if (opts.mode !== 'none') this.setStackMode(opts.mode);
+    }
+    return p;
+  }
+
   /** Upscale: what the document shows, enlarged `scale` times by `run`, opened as a new document. */
   async upscaleToDocument(scale: number, run: (image: Blob) => Promise<Blob>): Promise<boolean> {
     const p = this.current, view = this.flattened();

@@ -1,0 +1,53 @@
+import type { Engine } from '../../engine';
+import { STACK_MODES, type StackMode } from '../../engine/stack-modes';
+import { decodeImage, IMAGE_ACCEPT } from '../../io/images';
+import { Dialog } from '../dialogs';
+import { el, setText } from '../dom';
+import { checkRow, selectRow } from './controls';
+
+/** File > Scripts > Load Files into Stack and Statistics (30.4): choose the files, and the engine opens one document with a
+ *  layer per file (the first at the bottom); Load Files can make them a smart object, Statistics always does and applies
+ *  a stack mode (median by default). All rows are built once; later only text, values and the hidden flag change. */
+export class LoadStackDialog extends Dialog {
+  private files: File[] = [];
+  private smart = false;
+  private mode: StackMode = 'median';
+  private readonly input = el(`<input type="file" accept="${IMAGE_ACCEPT}" multiple style="display: none">`) as HTMLInputElement;
+  private readonly picked = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
+  private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
+  private readonly smartRow: ReturnType<typeof checkRow>;
+  private readonly modeRow: ReturnType<typeof selectRow>;
+
+  constructor(private readonly engine: Engine, private readonly statistics: boolean) {
+    super(statistics ? 'Statistics' : 'Load Files into Stack', 440);
+    const browse = el('<button class="cv-btn" type="button">Browse...</button>') as HTMLButtonElement;
+    browse.addEventListener('click', () => this.input.click());
+    this.input.addEventListener('change', () => { this.files = Array.from(this.input.files ?? []); this.describe(); });
+    this.smartRow = checkRow('Create Smart Object after Loading Layers', (v) => { this.smart = v; });
+    this.modeRow = selectRow('Stack Mode', STACK_MODES.filter((m) => m.id !== 'none').map((m) => [m.id, m.label] as const), (v) => { this.mode = v as StackMode; });
+    this.smartRow.el.hidden = statistics;
+    this.modeRow.el.hidden = !statistics;
+    const intro = statistics ? 'Choose two or more images; they load as a smart object stack and the stack mode combines them.' : 'Choose two or more images; each becomes a layer of one new document.';
+    this.body.append(el(`<p class="cv-dialog-note">${intro}</p>`), browse, this.input, this.picked, this.smartRow.el, this.modeRow.el, this.note);
+    this.smartRow.set(false);
+    this.modeRow.set('median');
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => void this.apply());
+  }
+
+  show(): void { this.files = []; this.input.value = ''; this.describe(); setText(this.note, ''); this.open(); }
+
+  private describe(): void { setText(this.picked, this.files.length ? `${this.files.length} file${this.files.length > 1 ? 's' : ''}: ${this.files.map((f) => f.name).join(', ')}` : 'No files chosen yet.'); }
+
+  private async apply(): Promise<void> {
+    if (this.files.length < 2) { setText(this.note, 'Choose at least two files.'); return; }
+    const files = this.files;
+    setText(this.note, 'Loading...');
+    try {
+      const imgs = [];
+      for (const f of files) imgs.push(await decodeImage(f, f.name));
+      this.close();
+      this.engine.loadStack(imgs, this.statistics ? { smart: true, mode: this.mode } : { smart: this.smart, mode: 'none' });
+    } catch (err) { setText(this.note, err instanceof Error ? err.message : 'These files could not be loaded.'); }
+  }
+}
