@@ -2,7 +2,7 @@ import type { Engine } from '../../engine';
 import { Dialog } from '../dialogs';
 import { el, q, setText } from '../dom';
 import { toast } from '../toast';
-import { featureOn, OT_STYLISTIC_SETS, withFeature } from '../../engine/opentype';
+import { featureOn, featuresKnown, featuresOf, OT_STYLISTIC_SETS, withFeature } from '../../engine/opentype';
 import { selectRow } from './controls';
 
 /** Window > Glyphs (DEV_PLAN 32.6 part a): a 16-column grid of one Unicode block in the type layer's font, a row of
@@ -50,6 +50,8 @@ export class GlyphsDialog extends Dialog {
   private readonly grid = el('<div class="cv-glyph-grid" role="grid" style="display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin-top: 8px"></div>');
   private readonly recentRow = el('<div class="cv-glyph-recent" style="display: flex; gap: 2px; min-height: 30px; margin-top: 8px" aria-label="Recently used"></div>');
   private readonly altRow = el('<div class="cv-glyph-alts" style="display: flex; flex-wrap: wrap; gap: 4px" aria-label="Alternates"></div>');
+  private readonly altNote = el('<p class="cv-dialog-note"></p>');
+  private altSeq = 0;
   private readonly altCells = new Map<string, HTMLButtonElement>();
   private readonly cells: HTMLButtonElement[] = [];
   private readonly recentCells: HTMLButtonElement[] = [];
@@ -77,7 +79,7 @@ export class GlyphsDialog extends Dialog {
     }
     this.body.append(this.font, show.el, el('<p class="cv-dialog-note">Recently used</p>'), this.recentRow, this.grid,
       el('<p class="cv-dialog-note">Alternates</p>'), this.altRow,
-      el('<p class="cv-dialog-note">The font is not probed for which alternates it has, so the common set is shown; one the font lacks changes nothing. A click on a glyph adds it to the end of the selected type layer.</p>'));
+      this.altNote, el('<p class="cv-dialog-note">A click on a glyph adds it to the end of the selected type layer.</p>'));
     for (const f of ALTERNATES) {
       const b = el<HTMLButtonElement>(`<button type="button" class="cv-btn ghost" aria-pressed="false" title="${f.tag}">${f.label}</button>`);
       b.addEventListener('click', () => { void this.toggle(f.tag); });
@@ -95,7 +97,25 @@ export class GlyphsDialog extends Dialog {
     this.fill();
     this.paintRecent();
     this.paintAlternates();
+    this.detectAlternates();
     this.open();
+  }
+
+  /** Shows only the alternate toggles the layer's font has (hidden flags and the note text; nothing is rebuilt). */
+  private detectAlternates(): void {
+    const l = this.engine.current?.activeLayer, t = l && this.engine.liveText(l) ? l.text : null;
+    const s = t ?? this.engine.textSettings, seq = ++this.altSeq;
+    const apply = (found: Set<string> | null): void => {
+      if (seq !== this.altSeq) return;
+      let shown = 0;
+      for (const [tag, b] of this.altCells) { b.hidden = found ? !found.has(tag) : false; if (!b.hidden) shown += 1; }
+      setText(this.altNote, !found ? 'The font could not be checked, so the common alternates are shown; one the font lacks changes nothing.'
+        : shown ? 'Showing the alternates this font has.' : 'This font has no alternates.');
+    };
+    const known = featuresKnown(this.family || s.family, !!s.bold, !!s.italic);
+    if (known !== undefined) { apply(known); return; }
+    apply(null);
+    void featuresOf(this.family || s.family, !!s.bold, !!s.italic).then(apply);
   }
 
   /** Sets the 256 kept buttons for the current block: text and font only, nothing is added or removed. */

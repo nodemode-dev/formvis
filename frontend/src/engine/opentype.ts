@@ -57,6 +57,72 @@ let source: FontFileSource = async (family, bold, italic) => {
 /** Where the font file's bytes come from (the app sets the engine's route; the default asks it directly). */
 export function setFontFileSource(fn: FontFileSource): void { source = fn; }
 
+/** The feature tags a font file's GSUB and GPOS tables list (DEV_PLAN 32.6d). Every read is bounds-checked; on a bad
+ *  offset the tags collected so far are returned. A TrueType Collection is read at its first font. */
+export function fontFeatureTags(buf: ArrayBuffer): Set<string> {
+  const tags = new Set<string>();
+  const view = new DataView(buf), len = buf.byteLength;
+  const ok = (at: number, n: number): boolean => Number.isInteger(at) && at >= 0 && n >= 0 && at + n <= len;
+  const u16 = (at: number): number => (ok(at, 2) ? view.getUint16(at) : -1);
+  const u32 = (at: number): number => (ok(at, 4) ? view.getUint32(at) : -1);
+  const tag4 = (at: number): string => String.fromCharCode(view.getUint8(at), view.getUint8(at + 1), view.getUint8(at + 2), view.getUint8(at + 3));
+  try {
+    let base = 0;
+    if (ok(0, 4) && tag4(0) === 'ttcf') {
+      base = u32(12);
+      if (base < 0) return tags;
+    }
+    if (!ok(base, 12)) return tags;
+    const count = u16(base + 4);
+    for (let i = 0; i < count; i += 1) {
+      const rec = base + 12 + i * 16;
+      if (!ok(rec, 16)) break;
+      const name = tag4(rec);
+      if (name !== 'GSUB' && name !== 'GPOS') continue;
+      const table = u32(rec + 8);
+      if (table < 0 || !ok(table, 10)) continue;
+      const list = table + u16(table + 6);
+      const n = u16(list);
+      for (let k = 0; k < n; k += 1) {
+        const at = list + 2 + k * 6;
+        if (!ok(at, 6)) break;
+        tags.add(tag4(at));
+      }
+    }
+  } catch { /* return what was collected */ }
+  return tags;
+}
+
+const detected = new Map<string, Promise<Set<string> | null>>();
+const detectedDone = new Map<string, Set<string> | null>();
+
+/** The OpenType feature tags the font file has, cached per face; null where there is no source or the fetch fails. */
+export function featuresOf(family: string, bold: boolean, italic: boolean): Promise<Set<string> | null> {
+  const key = faceKey(family, bold, italic);
+  const have = detected.get(key);
+  if (have) return have;
+  const job = (async (): Promise<Set<string> | null> => {
+    try {
+      let data = bytes.get(key);
+      if (!data) { data = source(family, bold, italic); bytes.set(key, data); }
+      const found = fontFeatureTags(await data);
+      detectedDone.set(key, found);
+      return found;
+    } catch {
+      bytes.delete(key);
+      detectedDone.set(key, null);
+      return null;
+    }
+  })();
+  detected.set(key, job);
+  return job;
+}
+
+/** The detection already finished for a face: the tags, null when it failed, undefined while it has not run (sync, for menus). */
+export function featuresKnown(family: string, bold: boolean, italic: boolean): Set<string> | null | undefined {
+  return detectedDone.get(faceKey(family, bold, italic));
+}
+
 const bytes = new Map<string, Promise<ArrayBuffer>>();
 const ready = new Map<string, string>();
 const pending = new Map<string, Promise<string | null>>();

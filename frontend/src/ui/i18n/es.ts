@@ -142,5 +142,5 @@ export const es: Record<string, string> = {
   'Slice': 'Sector', 'Smear': 'Difuminar', 'Smudge': 'Dedo', 'Spot Healing': 'Pincel corrector puntual', 'Zoom': 'Zoom',
   'Spherical Panorama': 'Panorama esférico', 'Apply View to Panorama': 'Aplicar vista al panorama', 'Edit View': 'Editar vista',
   'Slice Options': 'Opciones de sector', 'New Layer Based Slice': 'Nuevo sector basado en capa',
-  'Interpret Footage': 'Interpretar material de archivo', 'Character Styles': 'Estilos de carácter',
+  'Interpret Footage': 'Interpretar material de archivo', 'Character Styles': 'Estilos de carácter', 'Select Data Points': 'Seleccionar puntos de datos',
 };

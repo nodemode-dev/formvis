@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import { MEASURE_COLS, type MeasureRec } from './panels/measurement-dialogs';
+import { MEASURE_COLS_EVENT, visibleMeasureCols, type MeasureRec } from './panels/measurement-dialogs';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
 
@@ -11,10 +11,15 @@ export class MeasurementLogPanel {
   private readonly count: HTMLElement;
   private readonly foot: HTMLButtonElement[];
   private selected: number | null = null;
+  private cols: ReturnType<typeof visibleMeasureCols>;
+  private colKey: string;
+  private readonly headRow: HTMLElement;
 
   constructor(root: HTMLElement, private readonly engine: Engine, private readonly deliver: (blob: Blob, name: string) => Promise<void> | void) {
     const btn = (cmd: string, title: string, label: string): string => `<button class="cv-icon-btn cv-styles-clear" type="button" data-act="${cmd}" title="${title}" aria-label="${title}">${label}</button>`;
-    const heads = MEASURE_COLS.map(([n]) => `<th>${n}</th>`).join('');
+    this.cols = visibleMeasureCols();
+    this.colKey = this.cols.map(([n]) => n).join('|');
+    const heads = this.cols.map(([n]) => `<th>${n}</th>`).join('');
     root.insertAdjacentHTML('beforeend',
       `<section class="cv-measure-log" aria-label="Measurement Log">` +
       `<div class="cv-panel-head"><span class="cv-comps-title">${icon('layers', 14)}<span>Measurement Log</span></span><span></span><span class="cv-comps-count"></span></div>` +
@@ -23,6 +28,8 @@ export class MeasurementLogPanel {
       `<div class="cv-panel-foot">${btn('export', 'Export the log as CSV', 'Export')}${btn('clear', 'Clear the log', 'Clear')}${btn('delete', 'Delete the selected record', 'Delete')}${btn('record', 'Record measurements', 'Record')}</div></section>`);
     const section = q(root, '.cv-measure-log');
     this.body = q(section, 'tbody');
+    this.headRow = q(section, 'thead tr');
+    window.addEventListener(MEASURE_COLS_EVENT, () => this.sync());
     this.empty = q(section, '.cv-comps-empty');
     this.count = q(section, '.cv-comps-count');
     this.foot = Array.from(section.querySelectorAll<HTMLButtonElement>('.cv-panel-foot [data-act]'));
@@ -50,6 +57,13 @@ export class MeasurementLogPanel {
   private sync(): void {
     const d = this.engine.current?.doc, list: readonly MeasureRec[] = d?.measurements ?? [];
     if (this.selected !== null && !list.some((m) => m.id === this.selected)) this.selected = null;
+    const cols = visibleMeasureCols(), key = cols.map(([n]) => n).join('|');
+    if (key !== this.colKey) {   // Select Data Points changed the columns: rebuild the header and rows once
+      this.cols = cols;
+      this.colKey = key;
+      this.headRow.replaceChildren(...cols.map(([n]) => el(`<th>${n}</th>`)));
+      this.body.replaceChildren();
+    }
     setText(this.count, list.length ? String(list.length) : '');
     setHidden(this.empty, list.length > 0 || !d);
     this.foot.forEach((b) => {
@@ -60,7 +74,7 @@ export class MeasurementLogPanel {
     patchList<MeasureRec>(this.body, [...list], {
       key: (m) => String(m.id),
       create: (m) => {
-        const tr = el(`<tr>${MEASURE_COLS.map(() => '<td></td>').join('')}</tr>`);
+        const tr = el(`<tr>${this.cols.map(() => '<td></td>').join('')}</tr>`);
         this.fill(tr, m);
         return tr;
       },
@@ -71,7 +85,7 @@ export class MeasurementLogPanel {
   private fill(tr: HTMLElement, m: MeasureRec): void {
     if (tr.dataset.id !== String(m.id)) tr.dataset.id = String(m.id);
     const cells = tr.children;
-    MEASURE_COLS.forEach(([, f], i) => setText(cells[i], f(m)));
+    this.cols.forEach(([, f], i) => setText(cells[i], f(m)));
     tr.classList.toggle('is-active', m.id === this.selected);
   }
 
@@ -79,7 +93,7 @@ export class MeasurementLogPanel {
     const list = this.engine.current?.doc.measurements ?? [];
     if (!list.length) return;
     const cell = (s: string): string => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-    const lines = [MEASURE_COLS.map(([n]) => n).join(','), ...list.map((m) => MEASURE_COLS.map(([, f]) => cell(f(m))).join(','))];
+    const lines = [this.cols.map(([n]) => n).join(','), ...list.map((m) => this.cols.map(([, f]) => cell(f(m))).join(','))];
     await this.deliver(new Blob([lines.join('\n') + '\n'], { type: 'text/csv' }), `${this.engine.current?.name ?? 'Untitled'} measurements.csv`);
   }
 }

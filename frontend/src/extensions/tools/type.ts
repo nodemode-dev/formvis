@@ -1,5 +1,5 @@
 import type { Engine, TextSpec } from '../../engine';
-import { OT_FEATURES, featureOn, withFeature } from '../../engine/opentype';
+import { OT_FEATURES, featureOn, featuresKnown, featuresOf, withFeature } from '../../engine/opentype';
 import { canListSystemFonts, fontFamilies, loadSystemFonts } from '../../ui/fonts';
 import type { Pt } from '../../engine';
 import { dashed, toolHost, type Tool } from '../registry';
@@ -20,7 +20,9 @@ const STYLE_KEYS = ['family', 'size', 'bold', 'italic', 'align', 'antialias', 'l
 
 /** The OpenType menu (DEV_PLAN 32.6b): each feature marked on or off, a pick toggling it for new text and the selected type layer. */
 function featureChoices(e: Engine): Array<{ id: string; label: string }> {
-  return [{ id: '', label: 'OpenType' }, ...OT_FEATURES.map((f) => ({ id: f.tag, label: `${featureOn(e.textSettings.features, f.tag) ? '[x]' : '[ ]'} ${f.label}` }))];
+  const { family, bold, italic } = e.textSettings, known = featuresKnown(family, !!bold, !!italic);
+  if (known === undefined) void featuresOf(family, !!bold, !!italic).then(() => e.emit('options', null));
+  return [{ id: '', label: 'OpenType' }, ...OT_FEATURES.map((f) => ({ id: f.tag, label: `${featureOn(e.textSettings.features, f.tag) ? '[x]' : '[ ]'} ${f.label}${known && !known.has(f.tag) ? ' (not in font)' : ''}` }))];
 }
 
 export function setType(e: Engine, patch: Partial<TextSpec>): void {

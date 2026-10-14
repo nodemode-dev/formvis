@@ -138,5 +138,5 @@ export const ko: Record<string, string> = {
   'Slice': '분할 영역', 'Smear': '번짐', 'Smudge': '손가락 도구', 'Spot Healing': '스팟 복구 브러시', 'Zoom': '돋보기',
   'Spherical Panorama': '구형 파노라마', 'Apply View to Panorama': '파노라마에 보기 적용', 'Edit View': '보기 편집',
   'Slice Options': '분할 영역 옵션', 'New Layer Based Slice': '새 레이어 기반 분할 영역',
-  'Interpret Footage': '푸티지 해석', 'Character Styles': '문자 스타일',
+  'Interpret Footage': '푸티지 해석', 'Character Styles': '문자 스타일', 'Select Data Points': '데이터 포인트 선택',
 };

@@ -138,5 +138,5 @@ export const it: Record<string, string> = {
   'Slice': 'Sezione', 'Smear': 'Sbava', 'Smudge': 'Sfuma', 'Spot Healing': 'Pennello correttivo al volo', 'Zoom': 'Zoom',
   'Spherical Panorama': 'Panorama sferico', 'Apply View to Panorama': 'Applica vista al panorama', 'Edit View': 'Modifica vista',
   'Slice Options': 'Opzioni sezione', 'New Layer Based Slice': 'Nuova sezione basata su livello',
-  'Interpret Footage': 'Interpreta metraggio', 'Character Styles': 'Stili carattere',
+  'Interpret Footage': 'Interpreta metraggio', 'Character Styles': 'Stili carattere', 'Select Data Points': 'Seleziona punti dati',
 };

@@ -1,6 +1,7 @@
 import type { Engine } from '../engine';
 import type { LayerEffects } from '../engine/types';
-import { effectsPresent } from '../engine/types';
+import { defaultEffects, effectsPresent } from '../engine/types';
+import { readAsl } from '../io/asl';
 import { promptName } from './dialogs';
 import { el, patchList, q, setHidden, setText } from './dom';
 import { icon } from './icons';
@@ -40,7 +41,7 @@ export class StylesPanel {
       `<div class="cv-panel-head"><span class="cv-comps-title">${icon('layers', 14)}<span>Styles</span></span><span></span><span class="cv-comps-count"></span></div>` +
       `<div class="cv-styles-grid" role="listbox" aria-label="Styles"></div>` +
       `<div class="cv-comps-empty">No styles yet. Use New to save the active layer's style.</div>` +
-      `<div class="cv-panel-foot"><button class="cv-icon-btn cv-styles-clear" type="button" data-act="clear" title="Clear the active layer's style" aria-label="Clear Style">Clear Style</button>${btn('delete', 'Delete the selected style', 'delete')}${btn('new', 'New style from the active layer', 'add')}</div></section>`);
+      `<div class="cv-panel-foot"><button class="cv-icon-btn cv-styles-clear" type="button" data-act="clear" title="Clear the active layer's style" aria-label="Clear Style">Clear Style</button>${btn('delete', 'Delete the selected style', 'delete')}${btn('load', 'Load Styles (.asl or .json)', 'upload')}${btn('new', 'New style from the active layer', 'add')}</div></section>`);
     const section = q(root, '.cv-styles');
     this.grid = q(section, '.cv-styles-grid');
     this.empty = q(section, '.cv-comps-empty');
@@ -51,6 +52,7 @@ export class StylesPanel {
       if (!b || b.disabled) return;
       if (b.dataset.act === 'new') void this.create();
       else if (b.dataset.act === 'delete') this.remove();
+      else if (b.dataset.act === 'load') this.load();
       else if (b.dataset.act === 'clear') this.engine.applyLayerStyle(null);
     });
     this.grid.addEventListener('click', (e) => {
@@ -77,6 +79,49 @@ export class StylesPanel {
     this.sync();
   }
 
+  /** Load Styles: a one-shot hidden file input; .asl through readAsl, .json as a list of { name, effects } (or this panel's own presets). */
+  private load(): void {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.asl,.json';
+    input.hidden = true;
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      input.remove();
+      if (file) void this.importFile(file);
+    }, { once: true });
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  private async importFile(file: File): Promise<void> {
+    let found: Array<{ name: string; effects: LayerEffects }> = [], skipped = 0;
+    try {
+      if (/\.asl$/i.test(file.name)) {
+        const r = readAsl(await file.arrayBuffer());
+        found = r.styles;
+        skipped = r.skipped;
+      } else {
+        const data = JSON.parse(await file.text()) as unknown;
+        const list: unknown[] = Array.isArray(data) ? data : [];
+        for (const p of list) {
+          if (p && typeof p === 'object' && 'name' in p && 'effects' in p && typeof p.name === 'string' && p.effects && typeof p.effects === 'object') {
+            found.push({ name: p.name, effects: { ...defaultEffects(), ...p.effects } });
+          } else skipped++;
+        }
+      }
+    } catch (err) {
+      this.engine.notice(`Could not read ${file.name}: ${err instanceof Error ? err.message : String(err)}`);
+      return;
+    }
+    if (found.length) {
+      this.presets = [...this.presets, ...found.map((s) => ({ id: `style-${Date.now().toString(36)}-${(this.serial++).toString(36)}`, name: s.name, effects: s.effects }))];
+      savePresets(this.presets);
+      this.sync();
+    }
+    this.engine.notice(`Loaded ${found.length} style${found.length === 1 ? '' : 's'}${skipped ? `, skipped ${skipped}` : ''}.`);
+  }
+
   private remove(): void {
     if (!this.selected) return;
     this.presets = this.presets.filter((p) => p.id !== this.selected);
@@ -91,7 +136,7 @@ export class StylesPanel {
     setHidden(this.empty, this.presets.length > 0);
     this.foot.forEach((b) => {
       const a = b.dataset.act;
-      const off = a === 'new' ? !effectsPresent(l?.effects) : a === 'delete' ? !this.selected : !can || !effectsPresent(l?.effects);
+      const off = a === 'load' ? false : a === 'new' ? !effectsPresent(l?.effects) : a === 'delete' ? !this.selected : !can || !effectsPresent(l?.effects);
       if (b.disabled !== off) b.disabled = off;
     });
     patchList<StylePreset>(this.grid, this.presets, {

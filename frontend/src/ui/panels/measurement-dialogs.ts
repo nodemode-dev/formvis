@@ -2,6 +2,7 @@ import type { Engine } from '../../engine';
 import type { Doc } from '../../engine/types';
 import { Dialog } from '../dialogs';
 import { el, q, setText, setValue } from '../dom';
+import { MEASURE_POINTS, loadPrefs, updatePrefs } from '../prefs';
 
 /** Image > Analysis > Set Measurement Scale (DEV_PLAN 31.6 part a): pixels per logical length. Built once. */
 export class MeasureScaleDialog extends Dialog {
@@ -51,22 +52,61 @@ export const MEASURE_COLS:ReadonlyArray<readonly [string, (m: Rec) => string]> =
   ['Count', (m) => (m.count === undefined ? '' : String(m.count))],
   ['W', (m) => opt(m.w)],
   ['H', (m) => opt(m.h)],
+  ['Circularity', (m) => (m.area === undefined || !m.perimeter ? '' : num((4 * Math.PI * m.area) / (m.perimeter * m.perimeter)))],
 ];
+/** The columns Select Data Points keeps, in log order; Label is always shown. */
+export function visibleMeasureCols(): ReadonlyArray<readonly [string, (m: Rec) => string]> {
+  const on = loadPrefs().measureDataPoints;
+  return MEASURE_COLS.filter(([n]) => n === 'Label' || on.includes(n));
+}
+export const MEASURE_COLS_EVENT = 'formvis:measure-columns';
+
+/** Image > Analysis > Select Data Points: which measurements the Measurement Log and its CSV show. Built once. */
+export class MeasureDataPointsDialog extends Dialog {
+  private readonly boxes: Array<readonly [string, HTMLInputElement]> = [];
+
+  constructor() {
+    super('Select Data Points', 460);
+    this.body.append(el('<p class="cv-dialog-note">Record Measurements keeps every value; these choose the columns the Measurement Log and its CSV show.</p>'));
+    // One cv-field row per data point (label column, then the box), the layout the other dialogs' checkboxes use.
+    for (const name of MEASURE_POINTS) {
+      const box = el<HTMLInputElement>('<input type="checkbox">');
+      box.setAttribute('aria-label', name);
+      if (name === 'Label') { box.checked = true; box.disabled = true; }
+      this.boxes.push([name, box]);
+      this.field(name === 'W' ? 'Width (W)' : name === 'H' ? 'Height (H)' : name, box).classList.add('cv-check');
+    }
+    const all = (on: boolean): void => { for (const [n, b] of this.boxes) if (n !== 'Label') b.checked = on; };
+    this.button('Select All', 'ghost', () => all(true));
+    this.button('Select None', 'ghost', () => all(false));
+    this.button('Cancel', 'ghost', () => this.close());
+    this.button('OK', 'primary', () => {
+      updatePrefs({ measureDataPoints: this.boxes.filter(([, b]) => b.checked).map(([n]) => n) });
+      window.dispatchEvent(new Event(MEASURE_COLS_EVENT));
+      this.close();
+    });
+  }
+
+  show(): void {
+    const on = loadPrefs().measureDataPoints;
+    for (const [n, b] of this.boxes) if (n !== 'Label') b.checked = on.includes(n);
+    this.open();
+  }
+}
 const num = (v: number): string => String(Number(v.toFixed(3)));
 const opt = (v: number | undefined): string => (v === undefined ? '' : num(v));
-const COLS = MEASURE_COLS;
 
 /** Image > Analysis > Measurement Log: the recorded measurements as a table. The shell is built once; only the rows change. */
 export class MeasurementLogDialog extends Dialog {
   private readonly tbody = el('<tbody></tbody>');
   private readonly note = el('<p class="cv-dialog-note" role="status" style="min-height: 1.4em"></p>');
   private selected: number | null = null;
+  private readonly head: HTMLElement;
 
   constructor(private readonly engine: Engine, private readonly deliver: (blob: Blob, name: string) => Promise<void> | void) {
     super('Measurement Log', 720);
     const table = el('<table class="cv-table" style="width: 100%; border-collapse: collapse"><thead><tr></tr></thead></table>');
-    const head = q(table, 'tr');
-    for (const [name] of COLS) head.append(el(`<th style="text-align: left; padding: 2px 6px">${name}</th>`));
+    this.head = q(table, 'tr');
     table.append(this.tbody);
     const wrap = el('<div style="max-height: 320px; overflow: auto"></div>');
     wrap.append(table);
@@ -86,9 +126,11 @@ export class MeasurementLogDialog extends Dialog {
 
   private refresh(): void {
     const list = this.engine.current?.doc.measurements ?? [];
+    const cols = visibleMeasureCols();
+    this.head.replaceChildren(...cols.map(([name]) => el(`<th style="text-align: left; padding: 2px 6px">${name}</th>`)));
     const rows = list.map((m) => {
       const tr = el('<tr style="cursor: pointer"></tr>');
-      for (const [, f] of COLS) { const td = el('<td style="padding: 2px 6px"></td>'); setText(td, f(m)); tr.append(td); }
+      for (const [, f] of cols) { const td = el('<td style="padding: 2px 6px"></td>'); setText(td, f(m)); tr.append(td); }
       if (m.id === this.selected) tr.style.background = 'var(--accent-soft, rgba(127,127,255,0.25))';
       tr.addEventListener('click', () => {
         this.selected = m.id;
@@ -105,7 +147,8 @@ export class MeasurementLogDialog extends Dialog {
     const list = this.engine.current?.doc.measurements ?? [];
     if (!list.length) { setText(this.note, 'Nothing to export.'); return; }
     const cell = (s: string): string => (/[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s);
-    const lines = [COLS.map(([n]) => n).join(','), ...list.map((m) => COLS.map(([, f]) => cell(f(m))).join(','))];
+    const cols = visibleMeasureCols();
+    const lines = [cols.map(([n]) => n).join(','), ...list.map((m) => cols.map(([, f]) => cell(f(m))).join(','))];
     await this.deliver(new Blob([lines.join('\n') + '\n'], { type: 'text/csv' }), `${this.engine.current?.name ?? 'Untitled'} measurements.csv`);
   }
 }
