@@ -56,6 +56,8 @@ export class TerminalDock {
   private started = false;
   private pending: Promise<void> | null = null;
   onChange: () => void = () => undefined;
+  /** True when Mod+J belongs to Layer via Copy (a layer is open and focus is outside the dock); the window's key handler then runs it. */
+  yieldsKey: () => boolean = () => false;
 
   constructor() {
     const html = document.documentElement;
@@ -64,7 +66,7 @@ export class TerminalDock {
     this.restartBtn.addEventListener('click', () => void this.restart());
     new ResizeObserver(() => this.fitActive()).observe(this.stage);
     document.addEventListener('keydown', (e) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !e.repeat) { e.preventDefault(); e.stopPropagation(); this.toggle(); }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.code === 'KeyJ' && !e.repeat && !(this.yieldsKey() && !this.root.contains(e.target as Node))) { e.preventDefault(); e.stopPropagation(); this.toggle(); }
     }, true);
     document.addEventListener('nm:ui-settings-changed', () => { for (const t of this.tabs.values()) t.term.options.theme = this.theme(); });
     this.grip(q(this.root, '.ft-dock-grip'), html);

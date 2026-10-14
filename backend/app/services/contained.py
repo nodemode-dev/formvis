@@ -23,18 +23,72 @@ def _decode_worker(data: bytes, q: "mp.Queue[object]") -> None:
     os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
     try:
         import cv2
-        img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+        img = None
+        try:
+            img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+        except Exception:
+            img = None   # an OpenCV build without the OpenEXR codec (5.0 ships none): the OpenEXR binding reads it below
+        if img is None:
+            img = _binding_decode(data)
         q.put(None if img is None else np.ascontiguousarray(img))
     except Exception:
         q.put(None)
+
+
+def _binding_decode(data: bytes) -> "np.ndarray | None":
+    """A single-part EXR through the OpenEXR binding, as OpenCV returns it (BGR or BGRA, or one plane, float32)."""
+    try:
+        import io
+        import OpenEXR
+        f = OpenEXR.File(io.BytesIO(data))
+        chans = f.parts[0].channels
+        key = next((k for k in chans if k.split(".")[-1] == "RGBA"), None) or next((k for k in chans if k.split(".")[-1] == "RGB"), None) or next(iter(chans), None)
+        if key is None:
+            return None
+        px = np.asarray(chans[key].pixels, dtype=np.float32)
+        if px.ndim == 3 and px.shape[2] >= 3:
+            px = px[:, :, [2, 1, 0] + ([3] if px.shape[2] >= 4 else [])]
+        return np.ascontiguousarray(px)
+    except Exception:
+        return None
+
+
+def _binding_encode(img: np.ndarray) -> "bytes | None":
+    """`img` (BGR or BGRA or one plane, float32) as EXR bytes through the OpenEXR binding."""
+    try:
+        import os
+        import tempfile
+        import OpenEXR
+        px = np.ascontiguousarray(img, dtype=np.float32)
+        if px.ndim == 3 and px.shape[2] >= 3:
+            px = np.ascontiguousarray(px[:, :, [2, 1, 0] + ([3] if px.shape[2] >= 4 else [])])
+            name = "RGBA" if px.shape[2] == 4 else "RGB"
+        else:
+            px = np.ascontiguousarray(px.reshape(px.shape[:2]))
+            name = "Y"
+        header = {"compression": OpenEXR.ZIP_COMPRESSION, "type": OpenEXR.scanlineimage}
+        fd, path = tempfile.mkstemp(suffix=".exr")
+        os.close(fd)
+        try:
+            with OpenEXR.File(header, {name: px}) as f:
+                f.write(path)
+            with open(path, "rb") as fh:
+                return fh.read()
+        finally:
+            os.unlink(path)
+    except Exception:
+        return None
 
 
 def _encode_worker(img: np.ndarray, q: "mp.Queue[object]") -> None:
     os.environ["OPENCV_IO_ENABLE_OPENEXR"] = "1"
     try:
         import cv2
-        ok, out = cv2.imencode(".exr", np.ascontiguousarray(img))
-        q.put(out.tobytes() if ok else None)
+        try:
+            ok, out = cv2.imencode(".exr", np.ascontiguousarray(img))
+        except Exception:
+            ok, out = False, None   # no OpenEXR codec in this OpenCV build: the binding writes it
+        q.put(out.tobytes() if ok else _binding_encode(img))
     except Exception:
         q.put(None)
 
