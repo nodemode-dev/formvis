@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.70.6
+
+No engine code changed in 1.70.6. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.70.5"
+version = "1.70.5"
+version = "1.70.5"
+ "version": "1.70.5",
+```
+
 ## Release 1.70.5 · _v1.70.5 (app/__init__.py)
 
 Joined and probed: `GET /api/file` gave 200 for an image, 400 for a non-image suffix and 404 for a missing path; `cargo check --offline` clean with `pick_image_path`. The native dialog itself needs a desktop run to see. Removed version lines (the desktop shell's quoted too):

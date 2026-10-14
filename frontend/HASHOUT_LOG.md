@@ -2,6 +2,119 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.6: Character Styles, Interpret Footage, style swatches, active slice, preset files · _v1.70.6 (engine/types.ts, engine/index.ts, io/project-io.ts, ui/panels/interpret-footage.ts, ui/styles-panel.ts, styles/panels.css, ui/stage.ts, app.ts, automation/command-meta.ts, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (927 catalogue ids). No builder added a type cast. The third builder (Interpret Footage, style swatches, active slice) ran out of budget while reading and finished only the slice highlight in the Slice tool; the rest was built at the join.
+
+Built at the join:
+- engine/types.ts, `FootageInterpretation` (new) and `Layer.video.interpret`: the footage's own rate, loop count, and alpha reading (straight, ignore, premultiplied with a matte).
+- engine/index.ts, `footageFrame` (new): the footage frame a video layer shows at a timeline frame, by rate and loops; used by `videoStore`, `videoShow`, `renderVideoFrame` and `videoStep` in place of `t - tr.start` (quoted below). `footagePixels` (new) applies the alpha reading to the shown copy. `interpretFootage` (new) is one undo step that also makes the clip as long as the footage now plays. `videoStep` keeps `interpret` when it rebuilds the layer's video and maps its frame back through the rate.
+- io/project-io.ts: `interpret` written beside the video frames, field by field, and read back with each value checked.
+- ui/panels/interpret-footage.ts (new): the dialog (Frame rate, Loop, Alpha, Matte, the matte row off unless Premultiplied).
+- engine/index.ts, `stylePreview` (new): a style's effects drawn on a mid-grey rounded square in a 48 px document. ui/styles-panel.ts, `fill`: each tile has a swatch canvas, drawn once per tile and redrawn only when the style's effects JSON changes (`data-fx`). styles/panels.css: tile height 62 px with a 40 px `.cv-style-swatch`.
+- ui/stage.ts: the overlay's slice drawing outside the Slice tool passes `engine.activeSlice`; engine/index.ts, `addLayerSlice` sets the active slice before the edit so the redraw shows it.
+- engine/index.ts, `redefineParagraphStyle` and `applyDataSet`: drawn with the layer's character style (`withCharStyle`), the layer keeping its own spec. Find and Replace and Update All Text Layers already go through `textPatch`, which resolves it.
+- The i18n tables: Interpret Footage and Character Styles in all four.
+
+Replaced (the frame mapping, four places):
+
+```ts
+      const i = t - tr.start, seen = this.videoShown.get(ras);
+        const i = t - tr.start;
+        const r = v.frames[i].clone();
+      const i = t - tr.start;
+      return i >= 0 && i < v.frames.length ? { ...l, raster: v.frames[i] } : l;
+    const tr = vt.tracks[l.id], i = tr ? vt.current - tr.start : -1;
+    const next = structuredClone(vt), nt = next.tracks[l.id], label = l.video.name;
+    nt.length = out.frames.length;
+    next.current = Math.min(next.duration - 1, nt.start + Math.min(out.at ?? i, nt.length - 1));
+    p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: out.drop ? null : { frames: out.frames, original: out.original, name: label } } : x)) };
+    this.setSlices('New Layer Based Slice', (s) => [...s, { id, name: l.name, x: x0, y: y0, w: x1 - x0, h: y1 - y0, layer: l.id }]);
+    this.activeSlice = id;
+        const spec = specs[i], r = renderText(spec), oldR = l.raster as Raster, t = l.transform;
+        const spec = { ...l.text, content: c.content };
+        await loadTextFont(spec);
+        texts.set(l.id, { raster: renderText(spec).raster, spec });
+    if (this.engine.view.slices && this.tool()?.id !== 'slice' && p.doc.slices?.length) drawSlices(g, p.doc.slices, v.panX, v.panY, v.zoom, pal.accent);
+        const tile = el('<button class="cv-style-tile" type="button" role="option"><span class="cv-style-name"></span></button>');
+.cv-style-tile { display: grid; place-items: center; height: 40px; padding: 2px; box-sizing: border-box; border: 1px solid var(--border-color); border-radius: 4px; background: var(--bg-tertiary); color: var(--text-secondary); font: inherit; cursor: pointer; }
+```
+
+Probed: a 10-frame clip at 30 fps interpreted at 15 fps looping twice became 40 frames long, frame 3 showed footage frame 1 and frame 25 footage frame 2, Ignore made it opaque; the interpretation survived save and read, and undo took it back; Character Style "Red big" applied to a second layer drew it red and larger while the layer kept its own black 20 px spec; `.grd` written then read gave the same three stops (a foreground stop and half alpha included); the Styles panel showed a red-stroked, a glowing and a blue-overlaid swatch.
+
+Release version lines, removed:
+
+```text
+<img src="https://img.shields.io/badge/version-1.70.5-f97316" alt="version 1.70.5">
+  "version": "1.70.5",
+  "version": "1.70.5",
+      "version": "1.70.5",
+export const VERSION = '1.70.5';
+```
+
+## Preset files: .ase and .grd written, .csh read, DEV_PLAN 32.4 part c · _v1.70.6 (io/grd.ts, io/csh.ts, ui/panels/preset-manager-dialog.ts)
+
+- `io/grd.ts` `writeGrd`: Photoshop gradient version 5 writer, the reverse of `readGrd` (the `Sink` class is its byte sink). Items sit under key `Grad`, which is what `readGrd` reads.
+- `io/csh.ts` `readCsh`: new custom shape reader returning `{ shapes, skipped }`; reuses `pathFromRecords` from `io/psd-paths.ts`.
+- `io/swatch-files.ts` `writeAse` already existed and `readAse` reads it back (RGB model, f32 0..1); no change there, the Preset Manager now calls it.
+- `ui/panels/preset-manager-dialog.ts`: `Export .ase...` (swatches) and `Export .grd...` (gradients) buttons, shown per kind; `loadFile` reads `.csh` for shapes through `addCustomShape`; `saveSet` takes an optional format. No new command was needed, since the Preset Manager already has a shapes kind.
+- Replaced in `ui/panels/preset-manager-dialog.ts`:
+
+```ts
+{ id: 'shapes', label: 'Custom Shapes', accept: '.json,application/json' },
+```
+```ts
+super('Preset Manager', 520);   // wide enough for its five buttons in one row
+```
+```ts
+      ? 'Swatches have no names, so they cannot be renamed. Load takes .aco or .ase; Save Set writes .aco.'
+      : 'Built-in presets are listed but cannot be renamed or deleted.');
+```
+```ts
+await this.deliver(new Blob([JSON.stringify(customGradients, null, 2)], { type: 'application/json' }), 'Gradients.json');
+```
+
+## Character Styles and glyph alternates, DEV_PLAN 32.6 part c · _v1.70.6 (engine/types.ts, engine/text.ts, engine/opentype.ts, engine/index.ts, io/project-io.ts, ui/panels/character-styles.ts, ui/panels/glyphs-dialog.ts, app.ts, automation/command-meta.ts)
+
+- `engine/types.ts`: new `CharacterStyle` (only id and name required), `Doc.characterStyles`, `TextSpec.charStyle`.
+- `engine/text.ts`: `withCharStyle` (set fields over the spec), `charStyleOf`, `characterStylesFrom`; `textFromData` reads `charStyle`.
+- `engine/index.ts`: `textPatch` draws the effective spec (character style over the layer) and stores the layer's own spec with the link, so Clear Override restores the layer's look. New `newCharacterStyle`, `applyCharacterStyle`, `clearCharacterStyle`, `redefineCharacterStyle`, `renameCharacterStyle`, `deleteCharacterStyle`, each one `edit` step (apply and clear go through `updateTextLayer`). Delete writes the style's fields into linked layers so their look is kept.
+- `engine/opentype.ts`: `OT_STYLISTIC_SETS` (ss01 to ss20) added to the known tags in `cleanFeatures` and `withFeature`; the type menu still lists `OT_FEATURES` only.
+- `io/project-io.ts`: `characterStyles` written beside `paragraphStyles` and read with `characterStylesFrom`.
+- `ui/panels/character-styles.ts` (new), `app.ts` (`character-styles` command, dialog, Window menu after `paragraph-styles`), `automation/command-meta.ts` line.
+- `ui/panels/glyphs-dialog.ts`: Alternates row (`ALTERNATES`, `toggle`, `paintAlternates`) setting `features` through `updateTextLayer`. The font is not probed (opentype.ts has no detection), so the common set is shown and the dialog says so.
+- Not covered: Update All Text Layers and Find and Replace paths that call `renderText` directly do not resolve `charStyle`.
+
+Replaced code, `glyphs-dialog.ts` note:
+
+```
+      el('<p class="cv-dialog-note">Alternates and OpenType features are not offered yet. A click adds the glyph to the end of the selected type layer.</p>'));
+```
+
+Replaced code, `engine/index.ts` `textPatch` head:
+
+```
+  private async textPatch(p: Project, id: ID, spec: TextSpec): Promise<Partial<Layer> | null> {
+    const l = p.layer(id);
+    if (!l || !liveText(l) || !l.raster || !l.text) return null;
+    if (!spec.content.trim()) { this.notice('Type some text, or delete the layer.'); return null; }
+    await loadTextFont(spec);
+    if (this.current !== p || !liveText(p.layer(id))) return null;
+    const r = renderText(spec), old
+```
+
+Replaced code, `engine/opentype.ts`:
+
+```
+const KNOWN = new Set(OT_FEATURES.map((f) => f.tag));
+
+/** A feature list cleaned: known tags only, once each, in the catalogue's order. */
+export function cleanFeatures(raw: unknown): string[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set(raw.filter((v): v is string => typeof v === 'string'));
+  return OT_FEATURES.flatMap(
+```
+
 ## Release 1.70.5: spherical panorama, desktop link paths, slices, translation tables level · _v1.70.5 (ui/panels/panorama-dialog.ts, styles/dialogs.css, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (925 catalogue ids). No builder added a type cast.

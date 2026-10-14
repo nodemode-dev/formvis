@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.70.6 · 2026-10-14
+
+### Added
+
+- Window > Character Styles: styles that set any of a type layer's font, size, colour, weight, tracking or OpenType features over its own settings, with New, Apply, Clear Override, Redefine, Rename and Delete; kept in `.fmv`.
+- The Glyphs dialog has Alternates toggles (Stylistic Alternates, Swash, Contextual Alternates, Stylistic Sets 1 to 10) for the active type layer.
+- Layer > Video Layers > Interpret Footage: a video layer's own frame rate, how many times it loops, and whether its alpha is straight, ignored or premultiplied with a matte; the clip lengthens to match, kept in `.fmv`.
+- The Styles panel shows each style as a swatch.
+- The selected slice is highlighted, with corner handles.
+- The Preset Manager exports gradients as Photoshop `.grd` and swatches as `.ase`, and loads Photoshop `.csh` custom shapes.
+
 ## 1.70.5 · 2026-10-14
 
 ### Added
