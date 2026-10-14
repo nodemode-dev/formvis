@@ -50,6 +50,7 @@ import { PathsPanel } from './ui/paths';
 import { SmartFiltersDialog } from './ui/panels/smart-filters-dialog';
 import { Actions, RECORDABLE, type Action, type ActionStep } from './ui/actions';
 import { ActionsDialog, BatchDialog } from './ui/panels/actions-dialogs';
+import { ImageProcessorDialog, type ImageProcessorOptions } from './ui/panels/image-processor-dialog';
 import { zipFiles } from './io/zip';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
@@ -144,6 +145,7 @@ import { NeuralFiltersDialog } from './ui/panels/neural-dialog';
 import { ContentAwareScaleDialog } from './ui/panels/content-aware-scale';
 import { WideAngleDialog } from './ui/panels/wide-angle-dialog';
 import { AmountDialog, CanvasSizeDialog, FitImageDialog, ImageSizeDialog } from './ui/panels/size-dialogs';
+import { ContactSheetDialog } from './ui/panels/contact-sheet-dialog';
 import { JpegDialog } from './ui/panels/jpeg-dialog';
 import { BackgroundPanel } from './ui/panels/background-panel';
 import { ColorPickerDialog } from './ui/panels/color-picker';
@@ -1083,6 +1085,72 @@ export function startApp(): void {
     });
   }
 
+  /** File > Scripts > Image Processor (DEV_PLAN 30.2): each source (chosen files, or a flattened copy of every open image)
+   *  is opened afresh for each ticked type, plays the action, takes the copyright notice, is fitted and encoded, and goes
+   *  into JPEG/, PSD/ or TIFF/ in one zip (browser) or in a named folder of the exports (desktop). */
+  async function imageProcessor(o: ImageProcessorOptions): Promise<void> {
+    const sources: File[] = [];
+    if (o.useOpen) {
+      const keep = engine.current?.id;
+      for (const q of [...engine.projects]) {
+        engine.switchTo(q.id);
+        engine.settle();
+        const flat = engine.flattened();
+        if (flat) sources.push(new File([await toBlob(flat, 'image/png')], `${stripExt(q.name)}.png`, { type: 'image/png' }));
+      }
+      if (keep) engine.switchTo(keep);
+    } else sources.push(...o.files);
+    if (!sources.length) { toast('Choose images, or open some and tick Use Open Images.', 'info'); return; }
+    const jobs: Array<{ dir: string; ext: string; fit: ImageProcessorOptions['psd']; make: () => Promise<Blob | null> }> = [];
+    const here = (): NonNullable<typeof engine.current> => engine.current as NonNullable<typeof engine.current>;
+    if (o.jpeg.on) jobs.push({ dir: 'JPEG', ext: 'jpg', fit: o.jpeg, make: async () => {
+      const jpg = await engine.exportBlob('image/jpeg', Math.round((o.jpeg.quality * 100) / 12) / 100);
+      if (!jpg) return null;
+      const tagged = o.jpeg.srgb ? (await import('./io/embed-icc')).embedJpeg(jpg, (await import('./engine/icc')).iccProfile('srgb')) : jpg;
+      return withXmp(await tagged, 'jpg', here().doc.meta);
+    } });
+    if (o.psd.on) jobs.push({ dir: 'PSD', ext: 'psd', fit: o.psd, make: async () => {
+      const flat = engine.flattened();
+      if (!flat) return null;
+      const { bytes } = await writePsdFile(here().doc, flat, false, engine.pathsOf(here()));
+      return new Blob([bytes], { type: 'image/vnd.adobe.photoshop' });
+    } });
+    if (o.tiff.on) jobs.push({ dir: 'TIFF', ext: 'tif', fit: o.tiff, make: async () => {
+      const png = await engine.exportBlob('image/png');
+      return png ? withXmp(await api.encode(png, 'tiff', 100, here().doc.resolution ?? 72), 'tiff', here().doc.meta) : null;   // the engine's TIFF is LZW-compressed; the LZW box is kept for the dialog's sake
+    } });
+    await engine.task(async () => {
+      const out: Array<{ dir: string; name: string; blob: Blob }> = [], problems: string[] = [], used = new Set<string>();
+      outer: for (const f of sources) for (const j of jobs) {
+        let id = '';
+        try {
+          const p = engine.openImage(await decodeImage(f, f.name));
+          id = p.id;
+          if (o.action) {
+            const r = await actions.play(o.action, (s) => runStep(s, !!o.action?.relative));
+            if (r.stopped) { problems.push(`stopped at ${f.name}`); break outer; }
+            if (r.failed) problems.push(`${f.name} stopped at ${r.failed}`);
+          }
+          if (o.copyright) engine.setMeta({ notice: o.copyright });
+          if (j.fit.on) engine.fitImage(j.fit.w, j.fit.h, false, true);
+          engine.settle();
+          const blob = await j.make();
+          const base = f.name.replace(/\.[^.]+$/, '') || 'image';
+          let name = `${base}.${j.ext}`;
+          for (let k = 2; used.has(`${j.dir}/${name}`); k++) name = `${base} ${k}.${j.ext}`;
+          used.add(`${j.dir}/${name}`);
+          if (blob) out.push({ dir: j.dir, name, blob });
+        } catch (err) { problems.push(`${f.name}: ${message(err)}`); } finally { if (id) engine.closeProject(id); }
+      }
+      if (out.length) {
+        if (caps?.desktop) { for (const f of out) await api.exportFile(f.blob, f.name, `Image Processor ${f.dir}`); }   // one folder level: the export route refuses separators
+        else await deliver(await zipFiles(out.map((f) => ({ name: `${f.dir}/${f.name}`, blob: f.blob }))), 'Image Processor.zip');
+      }
+      if (problems.length) toast(`Image Processor wrote ${out.length} file${out.length === 1 ? '' : 's'}. ${problems.join('. ')}.`, 'error');
+      else toast(`Image Processor wrote ${out.length} file${out.length === 1 ? '' : 's'} from ${sources.length} image${sources.length === 1 ? '' : 's'}.`);
+    });
+  }
+
   /** File > Export GIF: every frame of the timeline at full size, or the image as it stands when there are no frames. */
   /** File > Export > Video (MP4) (1.58.9, L1): each frame of the animation (or the picture, without one) drawn over
    *  white (video keeps no transparency) and written by the engine's ffmpeg as H.264, each frame for its delay. */
@@ -1592,6 +1660,7 @@ export function startApp(): void {
     colorRange: new ColorRangeDialog(engine),
     actions: new ActionsDialog(actions, { play: (x) => playAction(x), save: (b, n) => deliver(b, n) }),
     batch: new BatchDialog(actions, (x, f, fmt, q) => runBatch(x, f, fmt, q)),
+    imageProcessor: new ImageProcessorDialog(actions, (o) => imageProcessor(o)),
     generative: new GenerativeDialog(engine),
     layerStyle: new LayerStyleDialog(engine),
     text: new TextDialog(engine),
@@ -1619,6 +1688,7 @@ export function startApp(): void {
     canvasSize: new CanvasSizeDialog(engine),
     imageSize: new ImageSizeDialog(engine),
     fitImage: new FitImageDialog(engine),
+    contactSheet: new ContactSheetDialog(engine),
     saveCopy: new SaveCopyDialog(engine, (n, layers) => void saveCopy(n, layers)),
     palette: new CommandPalette(commands, () => menus, engine),
     fillLayer: new FillLayerDialog(engine),
@@ -1837,7 +1907,47 @@ export function startApp(): void {
     { id: 'actions', label: 'Actions...', run: () => dialogs.actions.show() },
     { id: 'action-stop', label: 'Stop Recording', enabled: () => !!actions.recording, run: () => { const x = actions.recording; actions.stop(); if (x) toast(`Recorded "${x.name}", ${x.steps.length} step${x.steps.length === 1 ? '' : 's'}.`); } },
     { id: 'batch', label: 'Batch...', enabled: () => actions.list.some((x) => x.steps.length > 0), run: () => dialogs.batch.show() },
+    {
+      id: 'image-processor', label: 'Image Processor...', enabled: () => true,
+      params: {
+        types: { type: 'string', description: 'Comma list of jpg, psd, tiff; jpg when left out.' },
+        quality: { type: 'integer', min: 0, max: 12, description: 'JPEG quality 0 to 12; 10 when left out.' },
+        max_w: { type: 'integer', min: 1, description: 'Resize to Fit width in pixels, with max_h.' },
+        max_h: { type: 'integer', min: 1, description: 'Resize to Fit height in pixels, with max_w.' },
+        action: { type: 'string', description: 'Name of an action to run on each image.' },
+        copyright: { type: 'string', description: 'Copyright notice written into File Info and the exported XMP.' },
+      },
+      run: (a) => {
+        if (!a || !Object.keys(a).length) { dialogs.imageProcessor.show(); return undefined; }
+        const t = String(a.types ?? 'jpg').toLowerCase(), w = Number(a.max_w) || 0, h = Number(a.max_h) || 0, fit = { on: w > 0 && h > 0, w, h };
+        const x = a.action === undefined ? null : actions.list.find((v) => v.name === String(a.action)) ?? null;
+        void imageProcessor({
+          files: [], useOpen: true, action: x, copyright: String(a.copyright ?? '').trim(),
+          jpeg: { ...fit, on: t.includes('jpg') || t.includes('jpeg'), quality: Math.min(12, Math.max(0, Math.round(Number(a.quality ?? 10)))), srgb: true },
+          psd: { ...fit, on: t.includes('psd') }, tiff: { ...fit, on: t.includes('tif'), lzw: true },
+        });
+        return undefined;
+      },
+    },
     { id: 'fit-image', label: 'Fit Image...', enabled: has, run: () => dialogs.fitImage.show() },
+    { id: 'contact-sheet', label: 'Contact Sheet II...', run: () => dialogs.contactSheet.show() },
+    { id: 'crop-straighten-photos', label: 'Crop and Straighten Photos', enabled: has, run: async () => {   // DEV_PLAN 30.3 part b
+      const p = engine.current, flat = engine.flattened();
+      if (!p || !flat) return;
+      const sel = p.selection?.rect, r = sel && sel.w > 1 && sel.h > 1 ? { x: Math.max(0, Math.floor(sel.x)), y: Math.max(0, Math.floor(sel.y)), w: Math.ceil(sel.w), h: Math.ceil(sel.h) } : null;
+      const src = r ? createSurface(r.w, r.h) : flat;
+      if (r) ctxOf(src).drawImage(flat as CanvasImageSource, -r.x, -r.y);
+      const base = p.name;
+      try {
+        const found = await api.cropPhotos(await toBlob(src));
+        if (!found.length) { engine.notice('No photos were found on a plain background.'); return; }
+        for (let i = 0; i < found.length; i++) {
+          const f = found[i], bmp = await createImageBitmap(await (await fetch(`data:image/png;base64,${f.png}`)).blob()), name = i === 0 ? `${base} copy` : `${base} copy ${i + 1}`;
+          engine.openImage({ source: bmp, width: bmp.width, height: bmp.height, name }).name = name;
+        }
+        engine.notice(`Found ${found.length} photo${found.length === 1 ? '' : 's'}, each opened as its own document.`);
+      } catch (err) { toast(message(err), 'error'); }
+    } },
     { id: 'photomerge', label: 'Photomerge...', run: () => photomergeDialog.show() },   // 1.58.2
     ...(['align', 'blend'] as const).map((mode) => ({   // DEV_PLAN 32.1
       id: mode === 'align' ? 'auto-align-layers' : 'auto-blend-layers', label: mode === 'align' ? 'Auto-Align Layers...' : 'Auto-Blend Layers...',
@@ -2281,8 +2391,8 @@ export function startApp(): void {
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-linked', 'place-3d', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', '-',
       { label: 'Export', items: ['export-as', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'assemble-tiles', '-', 'export-layers', 'export-artboards-files', 'export-artboards'] },
-      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'photomerge', 'merge-hdr'] },
-      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
+      { label: 'Automate', items: ['actions', 'action-stop', 'batch', '-', 'fit-image', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
+      { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',
       { label: 'Purge', items: ['purge-clipboard', 'purge-histories', 'purge-all'] }, '-',
       { label: 'Fill', items: ['fill-dialog', 'fill-fg', 'fill-bg'] }, 'stroke-dialog', 'content-fill-workspace', 'content-fill', 'generative-fill', 'generate-image', 'remove-wires', '-', 'auto-align-layers', 'auto-blend-layers', '-',

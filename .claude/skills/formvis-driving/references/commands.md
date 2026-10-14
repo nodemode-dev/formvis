@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (789 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (792 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 47
-- File: 51
+- File: 54
 - Filter: 77
 - Image: 69
 - Layer: 161
@@ -81,7 +81,9 @@ Generated from the window's command catalogue (789 commands) by `./formvis agent
 | `close-others` | Close Others | Alt+Mod+P | Closes every document but the current one. (asks first) |
 | `close-tab` | Close Tab | Alt+Mod+W | Closes the current document, asking about unsaved changes. (asks first) |
 | `comfyui-run` | Run ComfyUI Workflow... |  | Opens the dialog that runs a ComfyUI workflow and brings the result back. (changes the picture) (asks first) |
+| `contact-sheet` | Contact Sheet II... |  | Opens Contact Sheet II to lay chosen images out as thumbnails on new documents. (changes the picture) |
 | `create-video-timeline` | Create Video Timeline |  | Creates a video timeline from the document layers. (changes the picture) |
+| `crop-straighten-photos` | Crop and Straighten Photos |  | Finds each photo on a scanned page, straightens it and opens it as its own document. (changes the picture) |
 | `download-project` | Download Project File |  | Downloads the project file through the browser. (asks first) |
 | `export-artboards` | Export Artboards to Files |  | Exports every artboard to its own file. (asks first) |
 | `export-artboards-files` | Artboards to Files... |  | Exports each artboard to its own file in a chosen type and quality; opens the dialog, or runs at once when given any of prefix, format, quality, icc or folder. (asks first) |
@@ -104,6 +106,7 @@ Generated from the window's command catalogue (789 commands) by `./formvis agent
 | `file-info` | File Info... | Alt+Shift+Mod+I | Opens File Info (title, author, description, rating, keywords, copyright), or sets the fields given as title, author, author_title, description, rating, description_writer, keywords, copyright_status, copyright_notice and copyright_url at once as one step; the fields travel in the project and are written as XMP into PNG, JPEG, TIFF, WebP and PSD exports. (changes the picture) |
 | `fit-image` | Fit Image... |  | Opens Fit Image to scale within a width and height. (changes the picture) |
 | `generate-image` | Generate Image... |  | Opens Generate Image. (changes the picture) |
+| `image-processor` | Image Processor... |  | Saves chosen files or the open images as JPEG, PSD and TIFF at a maximum size, optionally after an action and with a copyright notice, each type in its own folder. |
 | `import` | Import Images... | Shift+Mod+O | Opens the file picker to place images as layers. (changes the picture) |
 | `import-video` | Video Frames to Layers... |  | Opens the dialog that turns video frames into layers. (changes the picture) |
 | `merge-hdr` | Merge to HDR... |  | Opens Merge to HDR for bracketed exposures. (changes the picture) |

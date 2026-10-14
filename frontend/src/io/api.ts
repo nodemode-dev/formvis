@@ -363,6 +363,12 @@ export const api = {
     const r = await request('/merge/align', { method: 'POST', body: form({ projection, vignette: String(vignette) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
     return await r.json();
   },
+  /** File > Automate > Crop and Straighten Photos (DEV_PLAN 30.3 part b): the photos found on a scan, each cut out and
+   *  turned upright as a PNG (base64) with its source rectangle (centre, size and angle in the sent picture). */
+  async cropPhotos(png: Blob): Promise<Array<{ png: string; width: number; height: number; rect: { cx: number; cy: number; w: number; h: number; angle: number } }>> {
+    const r = await request('/merge/photos', { method: 'POST', body: form({}, [{ name: 'scan.png', blob: png }], 'file') });
+    return (await r.json()).photos;
+  },
   /** Edit > Auto-Blend Layers (DEV_PLAN 32.1): a grey mask PNG (base64) per layer and RGB tone gains per layer. */
   async mergeBlend(layers: Blob[], method: string, seamless: boolean): Promise<{ masks: string[]; tones: number[][] }> {
     const r = await request('/merge/blend', { method: 'POST', body: form({ method, seamless: String(seamless) }, layers.map((b, i) => ({ name: `layer${i}.png`, blob: b })), 'file') });
