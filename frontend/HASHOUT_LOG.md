@@ -2,6 +2,29 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.68.7: Color Table, Layer Comps to Files, Convert to Linked · _v1.68.7 (ui/navigator.ts, app.ts, automation/command-meta.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (819 catalogue ids). At the join: the Navigator now maps a duotone document through `duotoneLut` after composing, as the canvas does (it showed grey at 1.68.6); a duplicate `smart-embed-linked` command, the same as the existing `embed-linked`, was removed with its words. Probes in Chromium: an indexed red document with its red entry set to blue showed blue, and undo showed red; two comps exported as `cmp_0000_One.png` and `cmp_0001_Two.png` with the layers' visibility as before; Convert to Linked with the save picker absent linked the contents as "Layer 1.png" and Embed Linked unlinked them (with the picker present headless Chromium waits on it, a person's choice); the Navigator of a grey 128 duotone shows (114, 94, 74); no page errors. Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.68.6",
+      "version": "1.68.6",
+  "version": "1.68.6",
+export const VERSION = '1.68.6';
+```
+
+## Layer Comps to Files, DEV_PLAN 33.3 part c · _v1.68.7 (src/io/layer-export.ts, src/ui/panels/layer-export-dialog.ts, src/ui/layer-comps.ts, src/engine/index.ts, src/app.ts, src/automation/command-meta.ts)
+
+File > Export > Layer Comps to Files... (`export-layer-comps`, enabled when the document has comps; same params as Layers to Files). `layerCompFiles` applies each comp in turn, encodes the flattened document as `<prefix>_NNNN_<comp>.<ext>` and undoes every applied step, as `dataSetFiles` does; zipped in the browser, written to a folder on the desktop. The dialog is LayerExportDialog with a `comps` flag (`LayerExportSettings.comps`). The panel has no comp selection, so all comps export (`layerCompFiles` takes an optional id list for when it does). Last Document State: clicking its row calls `Engine.clearLayerComp`, which clears `activeComp` as one undo step and leaves the layers as they are (Undo steps back to before an apply). Not run: the build check below.
+
+## Convert to Linked and Embed Linked, DEV_PLAN 33.2 part c · _v1.68.7 (src/io/links.ts, src/engine/index.ts, src/app.ts, src/automation/command-meta.ts)
+
+Layer > Smart Objects > Convert to Linked... (`smart-convert-to-linked`) writes the active embedded smart object's contents as a PNG named after the layer, to a file picked through the save picker where the browser has one (kept as a handle in the link store, so Update Modified Content sees later edits), else held in the in-session link store, then sets `smart.link` in one undo step (`Engine.convertToLinked`); enabled for embedded smart objects. `smart-embed-linked` is the Embed Linked wiring beside it (reuses `Engine.embedLinked`), enabled for linked ones; the older `embed-linked` stays. Words added to command-meta. Not run: the build check below.
+
+## Image > Mode > Color Table, DEV_PLAN 31.4 · _v1.68.7 (ui/panels/color-table-dialog.ts, engine/index.ts, app.ts, automation/command-meta.ts)
+
+Color Table... for Indexed Color documents: a fixed 16 by 16 grid of 20 pixel swatches (unused cells stay empty so nothing shifts), a Table select (Custom, Black Body, Grayscale, Spectrum, System Mac OS and Windows, the last two approximations generated in code), a swatch click opens the colour control, Load... and Save... of Adobe `.act` (768 bytes, or 772 with count and transparent index). OK calls `Engine.setPalette`, one undo step; pixels hold colours, so a pixel matching old entry i takes new entry i. No document-canvas live preview: the dialog previews in its grid.
+
 ## Release 1.68.6: Duotone, the Layer Comps panel, the Variables dialogs · _v1.68.6 (ui/stage.ts, ui/dock.ts, ui/tabs.ts, io/project-io.ts)
 
 Joined, finished and checked. Finished at the join: two type errors the Duotone builder left (the project reader's mode list and the tab's mode label, now `Duotone/8` with an ink count in its tip); the canvas showed a duotone document grey, because the stage drew it on the GPU and its view step only ran a colour transform, so `applyView` now maps a duotone document through `duotoneLut` before any view transform and `renderScene` keeps duotone documents on the CPU; the Layer Comps panel came up shown in every window, changing the default workspace, so it joined `DOCK_PANELS` and `DEFAULT.hidden` as History and Info have, a saved arrangement taking it hidden as it comes. Checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (816 catalogue ids); probes in Chromium: a grey 128 document as Duotone flattens to (114, 94, 74) and the canvas shows the same (two smaller canvases, the navigator's, still grey: open), the tab reads Duotone/8; Layer Comps hidden at first, shown by its command, hidden again by the second; Define Variables 420 by 409 and Data Sets 460 by 453 open with no page error; no-scrollbars, menus and the dock tests, failing only `test_panels_move_hide_and_reset`, `test_the_layers_panel_moves_and_keeps_the_space` and `test_the_grip_sits_in_one_place_and_a_group_holds_seven_tabs_at_most`, which fail the same on the unchanged 1.68.5 tree. Removed lines taken after the version edit. Removed from frontend:

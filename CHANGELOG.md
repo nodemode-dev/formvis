@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.68.7 · 2026-10-14
+
+### Added
+
+- Image > Mode > Color Table for Indexed Color documents: edit entries, choose a built-in table, and load and save `.act` files.
+- File > Export > Layer Comps to Files.
+- Layer > Smart Objects > Convert to Linked.
+
+### Fixed
+
+- The Navigator shows a Duotone document in its inks, as the canvas does.
+
 ## 1.68.6 · 2026-10-14
 
 ### Added
