@@ -38,3 +38,19 @@ export function addPattern(name: string, surface: Surface, id?: ID): Pattern {
   registry.set(p.id, p);
   return p;
 }
+
+/** Removes a pattern of the person's own; built-ins stay. Returns whether one was removed. */
+export function removePattern(id: ID): boolean {
+  const p = registry.get(id);
+  if (!p || p.builtin) return false;
+  projectPatterns.delete(id);
+  return registry.delete(id);
+}
+
+/** Renames a pattern of the person's own; built-ins keep their names. */
+export function renamePattern(id: ID, name: string): boolean {
+  const p = registry.get(id), n = name.trim().slice(0, 80);
+  if (!p || p.builtin || !n) return false;
+  p.name = n;
+  return true;
+}

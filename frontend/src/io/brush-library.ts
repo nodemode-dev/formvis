@@ -42,6 +42,23 @@ export async function loadImportedBrushes(): Promise<void> {
   setImportedBrushPresets(got.filter((p): p is BrushPreset => !!p && typeof p === 'object' && typeof (p as BrushPreset).id === 'string' && !!(p as BrushPreset).tip && (p as BrushPreset).tip!.data instanceof Uint8Array && (p as BrushPreset).tip!.data.length === (p as BrushPreset).tip!.w * (p as BrushPreset).tip!.h));
 }
 
+/** Removes an imported brush and keeps the rest. Built-in presets are not in this list, so they are never removed. */
+export async function removeImportedBrush(id: string): Promise<boolean> {
+  if (!importedBrushPresets.some((p) => p.id === id)) return false;
+  const list = importedBrushPresets.filter((p) => p.id !== id);
+  setImportedBrushPresets(list);
+  return save(list);
+}
+
+/** Renames an imported brush and keeps the list. */
+export async function renameImportedBrush(id: string, name: string): Promise<boolean> {
+  const n = name.trim().slice(0, 80);
+  if (!n || !importedBrushPresets.some((p) => p.id === id)) return false;
+  const list = importedBrushPresets.map((p) => (p.id === id ? { ...p, name: n } : p));
+  setImportedBrushPresets(list);
+  return save(list);
+}
+
 /** Adds one sampled tip (from Define Brush Preset) to the kept presets and selects it. */
 export async function addSampledBrush(engine: Engine, name: string, tip: SampledTip, spacing = 25): Promise<{ kept: boolean }> {
   const preset = presetFromTip(`user-${Date.now().toString(36)}`, name, tip);

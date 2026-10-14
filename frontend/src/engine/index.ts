@@ -743,6 +743,69 @@ export class Engine {
   addCount(pt: Pt): void { this.edit('Count', (p) => { p.doc = { ...p.doc, counts: [...(p.doc.counts ?? []), { x: pt.x, y: pt.y }] }; return true; }); }
   removeCount(i: number): void { this.edit('Remove Count', (p) => { const c = p.doc.counts ?? []; if (i < 0 || i >= c.length) return false; p.doc = { ...p.doc, counts: c.filter((_, k) => k !== i) }; return true; }); }
   clearCounts(): void { this.edit('Clear Count', (p) => { if (!p.doc.counts?.length) return false; p.doc = { ...p.doc, counts: [] }; return true; }); }
+  /** Measurement scale and records (DEV_PLAN 31.6 part a): document-level, saved with it; each change one step. */
+  setMeasureScale(pixels: number, length: number, units: string): void {
+    if (!(pixels > 0) || !(length > 0)) { this.notice('The pixel length and the logical length must both be above zero.', 'info'); return; }
+    const u = units.trim().slice(0, 12) || 'px';
+    this.edit('Set Measurement Scale', (p) => { p.doc = { ...p.doc, measureScale: { pixels, length, units: u } }; return true; });
+  }
+  recordMeasurements(): number | null {
+    const p = this.current;
+    if (!p) return null;
+    const sc = p.doc.measureScale, k = sc ? sc.length / sc.pixels : 1, units = sc ? sc.units : 'px';
+    const rec: NonNullable<Doc['measurements']>[number] = { id: 0, label: '', scale: k, units };
+    let any = false;
+    const sel = p.selection;
+    if (sel) {
+      let area = 0, edge = 0;
+      const { w, h, data } = sel;
+      for (let j = 0; j < h; j++) {
+        for (let i = 0; i < w; i++) {
+          const v = data[j * w + i];
+          if (!v) continue;
+          area += v / 255;
+          if (v < 128) continue;
+          if (i === 0 || j === 0 || i === w - 1 || j === h - 1 || data[j * w + i - 1] < 128 || data[j * w + i + 1] < 128 || data[(j - 1) * w + i] < 128 || data[(j + 1) * w + i] < 128) edge++;
+        }
+      }
+      if (area > 0) { rec.area = area * k * k; rec.perimeter = edge * k; rec.w = w * k; rec.h = h * k; any = true; }
+    }
+    const r = this.measure?.ruler;
+    if (r) {
+      rec.length = Math.hypot(r.b.x - r.a.x, r.b.y - r.a.y) * k;
+      rec.angle = (Math.atan2(r.a.y - r.b.y, r.b.x - r.a.x) * 180) / Math.PI;
+      any = true;
+    }
+    const n = p.doc.counts?.length ?? 0;
+    if (n > 0) { rec.count = n; any = true; }
+    if (!any) { this.notice('Nothing to measure: make a selection, draw a ruler line or place counts first.', 'info'); return null; }
+    const id = (p.doc.measurements ?? []).reduce((m, x) => Math.max(m, x.id), 0) + 1;
+    rec.id = id;
+    rec.label = `Measurement ${id}`;
+    this.edit('Record Measurements', (q) => { q.doc = { ...q.doc, measurements: [...(q.doc.measurements ?? []), rec] }; return true; });
+    return id;
+  }
+  deleteMeasurement(id: number): void {
+    this.edit('Delete Measurement', (p) => { const m = p.doc.measurements ?? []; if (!m.some((x) => x.id === id)) return false; p.doc = { ...p.doc, measurements: m.filter((x) => x.id !== id) }; return true; });
+  }
+  clearMeasurements(): void {
+    this.edit('Clear Measurements', (p) => { if (!p.doc.measurements?.length) return false; p.doc = { ...p.doc, measurements: [] }; return true; });
+  }
+  placeScaleMarker(opts: { lengthUnits: number; text: boolean; color: 'black' | 'white' }): void {
+    const p = this.current, sc = p?.doc.measureScale;
+    if (!p || !sc) { this.notice('Set the measurement scale first.', 'info'); return; }
+    const bar = Math.max(1, Math.round(opts.lengthUnits * sc.pixels / sc.length));
+    const label = `${String(Number(opts.lengthUnits.toFixed(3)))} ${sc.units}`;
+    const probe = ctxOf(createSurface(1, 1));
+    probe.font = '12px sans-serif';
+    const tw = opts.text ? Math.ceil(probe.measureText(label).width) : 0;
+    const w = Math.max(bar, tw, 1), h = opts.text ? 20 : 4;
+    const s = createSurface(w, h), c = ctxOf(s);
+    c.fillStyle = opts.color;
+    c.fillRect(0, h - 4, bar, 4);
+    if (opts.text) { c.font = '12px sans-serif'; c.textBaseline = 'alphabetic'; c.fillText(label, 0, 12); }
+    this.insertRasterLayer(Raster.from(s, w, h), 'Measurement Scale Marker', 10, p.doc.height - 10 - h, {}, 'Place Scale Marker');
+  }
   /** The Pattern Stamp's pattern (null: the first). */
   patternStampPattern: ID | null = null;
   /** Preferences > Cursors: how painting tools show where they will paint (drawn by brush-common's drawBrushCursor). */
@@ -5874,11 +5937,16 @@ export class Engine {
   selectionAmounts = { expand: 1, contract: 1, feather: 5, border: 4, smooth: 2 };
 
   /** View > Rulers, Guides, Grid and Lock Guides; the grid's spacing and subdivisions in document pixels. */
-  view = { rulers: false, guides: true, slices: false, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4 };
+  view = { rulers: false, guides: true, slices: false, grid: false, guidesLocked: false, gridSpacing: 100, gridSubdivisions: 4, patternPreview: false, pixelArt: false };
   /** A guide being dragged out of a ruler or across the canvas, drawn but not yet in the document. */
   guideDraft: { axis: 'x' | 'y'; at: number; index: number | null } | null = null;
 
-  setView(patch: Partial<Engine['view']>): void { Object.assign(this.view, patch); this.emit('overlay', null); this.emit('options', null); }
+  setView(patch: Partial<Engine['view']>): void {
+    Object.assign(this.view, patch);
+    this.emit('overlay', null);
+    this.emit('options', null);
+    if ('patternPreview' in patch || 'pixelArt' in patch) this.emit('render', null);   // the scene itself changes
+  }
 
   private setGuides(name: string, next: (g: Guide[]) => Guide[]): void {
     this.edit(name, (p) => {

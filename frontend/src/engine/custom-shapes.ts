@@ -41,6 +41,24 @@ export function allCustomShapes(): ReadonlyArray<{ id: string; label: string; d:
   return [...CUSTOM_SHAPES, ...user];
 }
 
+/** Removes a shape the person defined; built-ins stay. Returns whether one was removed. */
+export function removeCustomShape(id: string): boolean {
+  const i = user.findIndex((u) => u.id === id);
+  if (i < 0) return false;
+  user.splice(i, 1);
+  keepUserShapes();
+  return true;
+}
+
+/** Renames a shape the person defined; built-ins keep their labels. */
+export function renameCustomShape(id: string, label: string): boolean {
+  const s = user.find((u) => u.id === id), l = label.trim().slice(0, 80);
+  if (!s || !l) return false;
+  s.label = l;
+  keepUserShapes();
+  return true;
+}
+
 function keepUserShapes(): void {
   try { localStorage.setItem(USER_KEY, JSON.stringify(user)); } catch { /* storage full or blocked: the shape lasts for the session */ }
 }

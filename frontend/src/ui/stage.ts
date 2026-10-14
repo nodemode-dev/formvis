@@ -206,13 +206,14 @@ export class Stage {
     g.setTransform(1, 0, 0, 1, 0, 0);
     const p = this.engine.current;
     if (!p) { g.clearRect(0, 0, W, H); this.showGpu(false); return; }
+    if (this.engine.view.patternPreview) region = null;   // tiles around the document make every frame a full redraw
     const pal = paint();
     // The GPU display draws the whole frame when it can draw this document; otherwise the CPU path below, with the
     // reason reported once each time it changes.
     let gpuLayers: DisplayLayer[] | null = null;
     if (this.gpu) {
       const vz = p.viewport.zoom * this.dpr, gl = this.engine.gpuLayers({ matrix: [vz, 0, 0, vz, p.viewport.panX * this.dpr, p.viewport.panY * this.dpr], width: W, height: H });   // the view, for a giant document's tiles (1.62.9)
-      const reason = (this.engine.viewTransform ? 'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? (p.doc.mode === 'duotone' ? 'Duotone documents are drawn on the CPU' : null) ?? (p.doc.mode === 'multichannel' ? 'Multichannel documents are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
+      const reason = (this.engine.view.patternPreview || this.engine.view.pixelArt ? 'Pattern Preview and Pixel Art Preview are drawn on the CPU' : null) ?? (this.engine.viewTransform ?'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? (p.doc.mode === 'duotone' ? 'Duotone documents are drawn on the CPU' : null) ?? (p.doc.mode === 'multichannel' ? 'Multichannel documents are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
       if (!reason && 'layers' in gl) gpuLayers = gl.layers;
       if (reason !== this.gpuReason) {
         this.gpuReason = reason;
@@ -252,8 +253,10 @@ export class Stage {
       this.gpu.document?.(p.doc.width, p.doc.height);
       this.gpu.render(gpuLayers, [z, 0, 0, z, ox, oy], v.zoom, [vis.x, vis.y, vis.x + vis.w, vis.y + vis.h],
         { a: this.rgb(pal.checkerA), b: this.rgb(pal.checkerB), cell: Math.max(1, Math.round(Stage.prefs.cell * this.dpr)), origin: [Math.round(ox), Math.round(oy)] });
-    } else if (v.zoom >= 2) {
-      const d = intersectRect(integral({ x: (vis.x - ox) / z, y: (vis.y - oy) / z, w: vis.w / z, h: vis.h / z }), { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
+    } else if (v.zoom >= 2 || this.engine.view.pixelArt) {
+      // Pixel Art Preview takes this crisp branch at every zoom: composed at 1x, then scaled with smoothing off, so
+      // zooming out is a nearest-neighbour downscale.
+      const d =intersectRect(integral({ x: (vis.x - ox) / z, y: (vis.y - oy) / z, w: vis.w / z, h: vis.h / z }), { x: 0, y: 0, w: p.doc.width, h: p.doc.height });
       if (d) {
         sizeSurface(this.work, d.w, d.h);
         this.engine.compose(this.work, translation(-d.x, -d.y));
@@ -277,6 +280,32 @@ export class Stage {
       g.stroke();
     }
     g.restore();
+    if (this.engine.view.patternPreview && docRect.w >= 1 && docRect.h >= 1) {
+      // Pattern Preview: the composed document once per frame (at most about 4096 px a side, stretched beyond that),
+      // drawn again in the eight neighbouring positions across the whole scene.
+      // Zoomed in (2x or more) or Pixel Art: composed at the document's own pixels and drawn crisp, as the document is.
+      const crisp = v.zoom >= 2 || this.engine.view.pixelArt, base = crisp ? 1 : z;
+      const s = Math.min(1, 4096 / Math.max(p.doc.width * base, p.doc.height * base));
+      const tw = Math.max(1, Math.round(p.doc.width * base * s)), th = Math.max(1, Math.round(p.doc.height * base * s));
+      sizeSurface(this.work, tw, th);
+      this.engine.compose(this.work, [base * s, 0, 0, base * s, 0, 0], 'high');
+      this.applyView(tw, th);
+      const dw = Math.round(docRect.w), dh = Math.round(docRect.h);
+      g.save();
+      g.beginPath();
+      g.rect(0, 0, W, H);
+      g.clip();
+      g.imageSmoothingEnabled = !crisp;
+      for (let ty = -1; ty <= 1; ty++) {
+        for (let tx = -1; tx <= 1; tx++) {
+          if (tx === 0 && ty === 0) continue;
+          const x = Math.round(docRect.x) + tx * dw, y = Math.round(docRect.y) + ty * dh;
+          if (x >= W || y >= H || x + dw <= 0 || y + dh <= 0) continue;
+          g.drawImage(this.work as CanvasImageSource, 0, 0, tw, th, x, y, dw, dh);
+        }
+      }
+      g.restore();
+    }
   }
 
   /** The layout grid over the canvas (every spacing, fainter every subdivision) and the guides across the view, with

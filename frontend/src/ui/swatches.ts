@@ -63,6 +63,10 @@ export class SwatchesPanel {
   addForeground(): void { const c = hex(this.engine.fg); if (!this.list.includes(c)) { this.list.push(c); this.save(); this.renderGrid(); } }
   /** The target's swatches again (the panel menu's Reset Swatches). */
   reset(): void { this.list = [...DEFAULTS]; this.save(); this.renderGrid(); }
+  /** Every swatch as '#rrggbb', in order. */
+  all(): string[] { return [...this.list]; }
+  /** Replaces the whole set (Load Swatches, the Preset Manager); anything not '#rrggbb' is dropped. */
+  setAll(list: string[]): void { this.list = list.filter((v) => /^#[0-9a-f]{6}$/i.test(v)).map((v) => v.toLowerCase()); this.save(); this.renderGrid(); }
 
   private renderGrid(): void {
     this.grid.textContent = '';
