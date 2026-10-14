@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import type { Lang } from './i18n';
+import { isLang, type Lang } from './i18n/langs';
 import type { GpuRenderer } from '../gpu/probe';
 import { DEFAULT_COLOUR, cleanColour, cleanPresets, type ColourPreset, type ColourSettings, type MismatchPref } from './colour-settings';
 
@@ -52,7 +52,6 @@ export const DEFAULT_PREFS: Prefs = { language: 'en', profileMismatch: 'convert'
   homeOnLastClose: false, whatsNewAuto: true, whatsNewSeen: '', toolOptions: {}, dialogValues: {}, spellWords: [], measureDataPoints: [...DEFAULT_MEASURE_POINTS], fontPreview: 'medium' };
 export const RECOVERY_CHOICES: ReadonlyArray<readonly [string, string]> = [['10', '10 seconds'], ['20', '20 seconds'], ['60', '1 minute'], ['300', '5 minutes'], ['600', '10 minutes']];
 const KEY = 'formvis.prefs';
-const LANGS: readonly Lang[] = ['en', 'es', 'it', 'ko', 'zh-CN'];
 
 const num = (v: unknown, lo: number, hi: number, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? Math.min(hi, Math.max(lo, v)) : d);
 
@@ -83,7 +82,7 @@ export function loadPrefs(): Prefs {
   try {
     const r = JSON.parse(localStorage.getItem(KEY) ?? '{}') as Partial<Record<keyof Prefs, unknown>>;
     return {
-      language: LANGS.includes(r.language as Lang) ? r.language as Lang : DEFAULT_PREFS.language,
+      language: isLang(r.language) ? r.language : DEFAULT_PREFS.language,   // any of the 26 (36.32)
       historyStates: Math.round(num(r.historyStates, 1, 1000, DEFAULT_PREFS.historyStates)),
       historyMB: Math.round(num(r.historyMB, 16, 4096, DEFAULT_PREFS.historyMB)),
       historyAuto: typeof r.historyAuto === 'boolean' ? r.historyAuto : DEFAULT_PREFS.historyAuto,   // 1.61.3
