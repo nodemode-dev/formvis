@@ -694,7 +694,18 @@ export function startApp(): void {
   async function save(saveAs: boolean): Promise<boolean> {
     const ok = await saveCore(saveAs);
     if (ok) fireEvent('save');
+    if (ok && !saveAs && engine.current?.doc.assetsOnSave) await generateAssets(true).catch(() => { /* the save itself succeeded */ });
     return ok;
+  }
+
+  /** Image Assets (36.14): the zip of every layer named like hero.png; `quiet` (on save) says nothing when none are named. */
+  async function generateAssets(quiet: boolean): Promise<void> {
+    const p = engine.current;
+    if (!p) return;
+    const files = await assetFiles(engine, !!caps);
+    if (!files.length) { if (!quiet) toast('No layer names hold an asset name such as hero.png.', 'info'); return; }
+    await deliver(await zipFiles(files), `${stripExt(p.name)}-assets.zip`);
+    toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
   }
 
   async function saveCore(saveAs: boolean): Promise<boolean> {
@@ -2612,14 +2623,8 @@ export function startApp(): void {
     { id: 'artboard-options', label: 'Artboard Options...', enabled: () => !!engine.current?.activeLayer?.artboard, run: () => dialogs.artboard.show() },
     { id: 'export-artboards', label: 'Export Artboards to Files', enabled: () => engine.artboards().length > 0, run: () => void exportArtboards() },
     { id: 'export-layers', label: 'Layers to Files...', enabled: has, params: LAYER_EXPORT_PARAMS, run: (a) => layerExportRun(false, a) },
-    { id: 'generate-image-assets', label: 'Generate Image Assets', enabled: has, run: async () => {
-      const p = engine.current;
-      if (!p) return;
-      const files = await assetFiles(engine, !!caps);
-      if (!files.length) { toast('No layer names hold an asset name such as hero.png.', 'info'); return; }
-      await deliver(await zipFiles(files), `${stripExt(p.name)}-assets.zip`);
-      toast(`Generated ${files.length} image asset${files.length === 1 ? '' : 's'}.`, 'info');
-    } },
+    { id: 'generate-image-assets', label: 'Generate Image Assets', enabled: has, run: () => generateAssets(false) },
+    { id: 'image-assets-on-save', label: 'Image Assets on Save', enabled: has, checked: () => !!engine.current?.doc.assetsOnSave, run: () => engine.setAssetsOnSave(!engine.current?.doc.assetsOnSave) },
     {
       id: 'measure-scale', label: 'Set Measurement Scale...', enabled: has,
       params: { pixels: { type: 'number', description: 'Pixels in the reference length.' }, length: { type: 'number', description: 'The logical length those pixels stand for.' }, units: { type: 'string', description: 'The logical units, such as cm.' } },
@@ -3063,7 +3068,7 @@ export function startApp(): void {
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
     { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
-      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
+      { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
     { label: 'Edit', items: ['undo', 'redo', 'toggle-last-state', '-', 'fade', '-', 'cut', 'copy', 'copy-merged', 'paste', { label: 'Paste Special', items: ['paste-in-place', 'paste-into', 'paste-outside'] }, 'clear', '-', 'search', '-',

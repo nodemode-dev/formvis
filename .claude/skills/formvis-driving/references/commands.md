@@ -1,11 +1,11 @@
 # formvis commands
 
-Generated from the window's command catalogue (936 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (937 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 59
-- File: 73
+- File: 74
 - Filter: 80
 - Image: 89
 - Layer: 195
@@ -128,6 +128,7 @@ Generated from the window's command catalogue (936 commands) by `./formvis agent
 | `fit-image` | Fit Image... |  | Opens Fit Image to scale within a width and height. (changes the picture) |
 | `generate-image` | Generate Image... |  | Opens Generate Image. (changes the picture) |
 | `generate-image-assets` | Generate Image Assets |  | Writes a zip of image files for every layer whose name holds an asset name such as hero.png, or a list like 200% big.png, small.jpg60%, 64x? icon.png, each trimmed and scaled to its size. (asks first) |
+| `image-assets-on-save` | Image Assets on Save |  | Turns Image Assets on or off for this document; while on, File > Save also regenerates the image files for every layer named like hero.png and delivers them as a zip. (changes the picture) |
 | `image-processor` | Image Processor... |  | Saves chosen files or the open images as JPEG, PSD and TIFF at a maximum size, optionally after an action and with a copyright notice, each type in its own folder. |
 | `import` | Import Images... | Shift+Mod+O | Opens the file picker to place images as layers. (changes the picture) |
 | `import-video` | Video Frames to Layers... |  | Opens the dialog that turns video frames into layers. (changes the picture) |
@@ -787,8 +788,8 @@ Generated from the window's command catalogue (936 commands) by `./formvis agent
 | `tool.options.move.w` | Move: W |  | Sets W for the Move tool. |
 | `tool.options.move.x` | Move: X |  | Sets X for the Move tool. |
 | `tool.options.move.y` | Move: Y |  | Sets Y for the Move tool. |
-| `tool.options.objectSelect.highlightOnHover` | Object Selection: Highlight on Hover |  | Sets Highlight on Hover for the Object Selection tool. |
 | `tool.options.objectSelect.mode` | Object Selection: Mode |  | Sets Mode for the Object Selection tool. |
+| `tool.options.objectSelect.objectFinder` | Object Selection: Object Finder |  | Sets Object Finder for the Object Selection tool. |
 | `tool.options.objectSelect.sampleAllLayers` | Object Selection: Sample All Layers |  | Sets Sample All Layers for the Object Selection tool. |
 | `tool.options.patch.color` | Patch: Color |  | Sets Color for the Patch tool. |
 | `tool.options.patch.diffusion` | Patch: Diffusion |  | Sets Diffusion for the Patch tool. |

@@ -194,6 +194,14 @@
 .cv-assistant-card.is-error { border-color: var(--danger, #c0392b); }
 .cv-assistant-card summary { cursor: pointer; font-family: var(--font-mono, monospace); }
 .cv-assistant-args { margin: 4px 0; white-space: pre-wrap; font-size: 11px; max-height: 120px; overflow: auto; }
+.cv-assistant-args:empty { display: none; }
+.cv-assistant-step-head { display: flex; align-items: center; gap: 8px; }
+.cv-assistant-step-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-assistant-step-status { color: var(--text-muted, #999); }
+.cv-assistant-card p { margin: 2px 0; }
+.cv-assistant-card .cv-assistant-result:empty { display: none; }
+.cv-assistant-plan-bar { display: flex; gap: 6px; }
+.cv-assistant-plan { display: flex; align-items: center; gap: 6px; }
 .cv-assistant-foot { padding: 8px 10px; border-top: 1px solid var(--border, #333); display: flex; flex-direction: column; gap: 6px; }
 /* formvis Help (1.52.3). */
 .cv-help { display: grid; grid-template-columns: 190px 1fr; gap: 12px; height: min(62vh, 640px); }
