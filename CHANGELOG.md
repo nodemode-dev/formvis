@@ -4,6 +4,13 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.71.1 · 2026-10-14
+
+### Added
+
+- The interface in 26 languages, English the default: Spanish, Mexican Spanish, Brazilian Portuguese, French, Canadian French, German, Italian, Dutch, Danish, Finnish, Norwegian Bokmål, Swedish, Russian, Polish, Czech, Hungarian, Ukrainian, Turkish, Simplified and Traditional Chinese, Japanese, Korean, Indonesian, Thai and Vietnamese. Choose it in Preferences > Language; it switches in place and is used from the next start before anything shows.
+- Menus, panels, dialog titles and buttons, tool names and options bar labels are translated in every language; text placed directly in panels and dialogs follows as each string joins the tables.
+
 ## 1.70.9 · 2026-10-14
 
 ### Added

@@ -2,6 +2,52 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.71.1: 26 interface languages · _v1.71.1 (ui/i18n.ts, ui/i18n/langs.ts, ui/i18n/*.ts, ui/prefs.ts, main.ts)
+
+The owner asked for the whole app in 26 languages with English the default. Built and checked: tsc clean; unit 194 of 194.
+- ui/i18n/langs.ts (new): `LANG_CODES` (en, es, es-MX, pt-BR, fr, fr-CA, de, it, nl, da, fi, nb, sv, ru, pl, cs, hu, uk, tr, zh-CN, zh-TW, ja, ko, id, th, vi), `LANG_NAMES` in their own names, `LANG_PARENT` (es-MX to es, fr-CA to fr), `isLang`. No imports, so prefs and i18n both read it.
+- ui/i18n.ts (rewritten): every table is its own module loaded on demand (`LOADERS`, `load`); `t` looks in the language, then its parent, then keeps the English; `setLanguage` is async and switches only once the table is in (a later choice wins); `startLanguage` loads the saved language before the interface is built (main.ts), so nothing shows in English first. The page translator (`startPageTranslator`, `walk`, `translateText`, `translateAttrs`): a MutationObserver translating, by exact match, text nodes and title, aria-label and placeholder attributes that do not go through `t`, keeping the English per node for later changes; it never touches inputs, text areas, editable text, the canvas, `[data-no-i18n]` or the person's own names (layer, document, comp, path, style, recent file and timeline names). Its callbacks run before paint, so no English flashes. In English it does nothing.
+- ui/i18n/{fr,de,nl,da,fi,nb,sv,pt-BR,ru,pl,cs,hu,uk,tr,zh-TW,ja,id,th,vi}.ts (new, three Sonnet builders): each with all 670 keys of the existing tables, checked key for key against the master list (none missing, none extra, no em dash). ui/i18n/es-MX.ts and fr-CA.ts (new): only the words those variants say differently.
+- ui/prefs.ts: the language read through `isLang` of all 26 (the old five-code list and its cast removed).
+- Fixed at the join: Hungarian "Rasztereizálás" (a misspelling, eight entries) to "Raszterizálás"; Dutch "KopLengte" to "Koplengte".
+
+Probed: all 26 switched in place with the menus in each language; the saved language (Japanese) loaded at start before the interface showed, with `lang` set; no page errors. Open, said plainly: the 670 keys cover menus, panels, dialog chrome, tool names and options bar labels; text built in place (notes, hints, toasts, some panel bodies, for example "Alt-click sets the background" and "Background Properties") is not yet in the tables, and the page translator will pick each up once it is.
+
+Replaced (the whole of ui/i18n.ts's module head and `t`/`setLanguage`; the rest of the old file was those two):
+
+```ts
+import { loadPrefs } from './prefs';
+import { es } from './i18n/es';
+import { it } from './i18n/it';
+import { ko } from './i18n/ko';
+import { zhCN } from './i18n/zh-CN';
+export type Lang = 'en' | 'es' | 'it' | 'ko' | 'zh-CN';
+const TABLES: Record<Lang, Record<string, string>> = { en: {}, es, it, ko, 'zh-CN': zhCN };
+const NAMES: ReadonlyArray<readonly [Lang, string]> = [['en', 'English'], ['es', 'Español'], ['it', 'Italiano'], ['ko', '한국어'], ['zh-CN', '简体中文']];
+let current: Lang = loadPrefs().language;
+export const isLang = (v: unknown): v is Lang => NAMES.some(([k]) => k === v);
+  const found = TABLES[current][base];
+export function setLanguage(l: Lang): void {
+  if (l === current) return;
+  current = l;
+  document.documentElement.lang = l;
+  for (const fn of listeners) fn();
+}
+const LANGS: readonly Lang[] = ['en', 'es', 'it', 'ko', 'zh-CN'];
+      language: LANGS.includes(r.language as Lang) ? r.language as Lang : DEFAULT_PREFS.language,
+void carryOver().finally(() => startApp());
+```
+
+Release version lines, removed:
+
+```text
+<img src="https://img.shields.io/badge/version-1.70.9-f97316" alt="version 1.70.9">
+  "version": "1.70.9",
+  "version": "1.70.9",
+      "version": "1.70.9",
+export const VERSION = '1.70.9';
+```
+
 ## Release 1.70.9: panels, preset files, PSD slices, the closing register and its first closes · _v1.70.9 (ui/dialogs.ts, ui/options.ts, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts, engine/index.ts, engine/viewport.ts, engine/types.ts, engine/renderer.ts, engine/liquify.ts, ui/stage.ts, ui/status.ts, ui/fonts.ts, ui/prefs.ts, ui/properties.ts, ui/panels/guide-layout.ts, ui/panels/liquify-dialog.ts, ui/panels/generative-dialog.ts, ui/panels/layer-style-dialog.ts, io/api.ts, io/psd.ts, app.ts, automation/command-meta.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (940 catalogue ids). Three builders, one feature each (36, 25 and 22 calls); their entries are below. Built at the join, with the DEV_PLAN housekeeping that gathered every open row into Phase 36:
