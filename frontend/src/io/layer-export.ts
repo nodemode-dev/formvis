@@ -62,7 +62,7 @@ export function trimSurface(s: Surface): Surface | null {
 
 /** One picture as a file in `set.format`. JPEG is laid on white; the profile (the document's own, else sRGB for the
  *  formats that always carry one) is embedded when asked; TIFF and a tagged WebP are written by the engine. */
-async function encodeOne(engine: Engine, s: Surface, name: string, set: LayerExportSettings, engineUp: boolean): Promise<Blob> {
+export async function encodeOne(engine: Engine, s: Surface, name: string, set: LayerExportSettings, engineUp: boolean): Promise<Blob> {
   const p = engine.current, doc = p?.doc as Doc, own = doc.profile;
   const icc = set.icc ? (own ? fromBase64(own.icc) : iccProfile('srgb')) : null, label = own && icc ? profileName(icc) : SPACES.srgb.label, dpi = doc.resolution ?? 72;
   if (set.format === 'psd') {
@@ -107,4 +107,26 @@ export async function layerFiles(engine: Engine, set: LayerExportSettings, engin
     done(i + 1, jobs.length);
   }
   return { files, skipped };
+}
+
+/** File > Export > Data Sets as Files (DEV_PLAN 29.9 part b): each data set applied in turn, the flattened document
+ *  encoded as `<doc>_<dataset>.<ext>`. Every applied set is undone afterwards, so the document ends as it started. */
+export async function dataSetFiles(engine: Engine, format: LayerFileFormat, engineUp: boolean, done: (n: number, of: number) => void = () => undefined): Promise<Array<{ name: string; blob: Blob }>> {
+  const p = engine.current, sets = p?.doc.dataSets ?? [], files: Array<{ name: string; blob: Blob }> = [];
+  if (!p || !sets.length) return files;
+  const base = safeName(p.name.replace(/\.[A-Za-z0-9]{1,8}$/, ''), 60, 'Untitled'), set: LayerExportSettings = { ...DEFAULT_LAYER_EXPORT, format };
+  let applied = 0;
+  try {
+    for (const [i, d] of sets.entries()) {
+      if (await engine.applyDataSet(d.name)) {
+        applied++;
+        const img = engine.flattened();
+        if (img) files.push({ name: `${base}_${safeName(d.name, 60, 'dataset')}.${format}`, blob: await encodeOne(engine, img, base, set, engineUp) });
+      }
+      done(i + 1, sets.length);
+    }
+  } finally {
+    for (let k = 0; k < applied; k++) engine.undo();
+  }
+  return files;
 }
