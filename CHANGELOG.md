@@ -4,6 +4,26 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.70.9 · 2026-10-14
+
+### Added
+
+- Window > Gradients, Patterns and Shapes panels: preset tiles that pick the Gradient tool's gradient, the Pattern Stamp's pattern or the Shape tool's custom shape in one click.
+- Custom shapes export as Photoshop `.csh`; Tool Presets export and import as a file.
+- Slices are kept in PSD both ways, and auto slices are drawn around the user slices.
+- View > Pixel Aspect Ratio Correction now stretches the canvas itself, with every tool working in document pixels.
+- View > Fit Layer(s) on Screen and Fit Artboard on Screen; View > Guides > New Guide Layout and New Guides From Shape.
+- Gradient Overlay keeps every stop and its transparency from PSD files and draws them.
+- Liquify: the Push Left tool (Alt pushes right), Save Mesh and Load Mesh.
+- Generative Fill and Expand can run through the other providers that have a key (OpenAI, Google, Black Forest Labs, Ideogram).
+- Type > Font Preview Size: font menus draw each family in its own face.
+
+### Changed
+
+- Dialog labels and the options bar follow the interface language, in all four languages.
+- Type tracking and kerning are written to PSD.
+- A painted frame of premultiplied video footage keeps its colours when shown again.
+
 ## 1.70.8 · 2026-10-14
 
 ### Added

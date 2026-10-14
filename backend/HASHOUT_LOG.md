@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.70.9
+
+No engine code changed in 1.70.9 (Generative Fill's providers use the `provider` field `/generative/fill` has taken since 1.58.4). Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "1.70.8"
+version = "1.70.8"
+version = "1.70.8"
+ "version": "1.70.8",
+```
+
 ## Version only · _v1.70.8
 
 No engine code changed in 1.70.8. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:

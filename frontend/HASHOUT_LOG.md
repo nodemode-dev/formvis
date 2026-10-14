@@ -2,6 +2,127 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.70.9: panels, preset files, PSD slices, the closing register and its first closes · _v1.70.9 (ui/dialogs.ts, ui/options.ts, ui/i18n/es.ts, it.ts, ko.ts, zh-CN.ts, engine/index.ts, engine/viewport.ts, engine/types.ts, engine/renderer.ts, engine/liquify.ts, ui/stage.ts, ui/status.ts, ui/fonts.ts, ui/prefs.ts, ui/properties.ts, ui/panels/guide-layout.ts, ui/panels/liquify-dialog.ts, ui/panels/generative-dialog.ts, ui/panels/layer-style-dialog.ts, io/api.ts, io/psd.ts, app.ts, automation/command-meta.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (940 catalogue ids). Three builders, one feature each (36, 25 and 22 calls); their entries are below. Built at the join, with the DEV_PLAN housekeeping that gathered every open row into Phase 36:
+- ui/dialogs.ts, `relabel`: body labels (`.cv-field` and `.cv-dialog-row` first spans) keep their English in `data-en` and show the current language on each opening; remembered values key on the English (`rememberedControls`).
+- ui/options.ts, `labelEn` (new) and an `onLanguage` hook: every options bar label through the table and following a language change in place; ui/i18n: 189 options bar labels and the new commands' words in all four tables.
+- ui/stage.ts, `unturn(..., par)`, `parOf` (new), `turn`: Pixel Aspect Ratio Correction stretches the drawing surfaces with `scaleX` before the view's rotation, and the pointer, the rulers' guide drag and `docPoint` take it off again; ui/status.ts and the command's words no longer say Navigator only.
+- engine/viewport.ts, `fitRect` (new); engine/index.ts, `fitLayers`, `fitArtboard`, `guideLayout`, `guidesFromShape` (new); ui/panels/guide-layout.ts (new); app.ts, the four commands.
+- engine/index.ts, `footageStored` (new) and `videoStore`: a painted frame of premultiplied footage is stored with its matte put back.
+- engine/types.ts, `GradientOverlayStop`, `overlayStopsFrom` (new), `GradientOverlayEffect.stops`; engine/renderer.ts draws every stop with its alpha; io/psd.ts writes every colour and opacity stop and reads them back (alpha sampled from the opacity stops at each colour stop); ui/panels/layer-style-dialog.ts drops the stops when From or To is edited.
+- engine/liquify.ts, `pushLeftField`, `meshToJson`, `meshFromJson` (new); ui/panels/liquify-dialog.ts: the Push Left tool (Alt pushes right), Save Mesh and Load Mesh.
+- io/api.ts, `generativeFill(..., provider)`; ui/panels/generative-dialog.ts: the providers with a fill in the model list, their state line and their run path.
+- io/psd.ts: type tracking and kerning written.
+- ui/prefs.ts, `fontPreview`, `FONT_PREVIEWS`; ui/fonts.ts, `previewFont` (new); ui/properties.ts and ui/options.ts style the font menus' options; app.ts, Type > Font Preview Size.
+
+Replaced:
+
+```ts
+      const host = c.closest('label, .cv-field, .cv-dialog-row'), text = (c.getAttribute('aria-label') || host?.querySelector('span')?.textContent || host?.textContent || '').trim().slice(0, 60);
+        setText(q(n, 'span'), spec.label);
+        setText(q(n, '.cv-opt-label'), spec.label ?? '');
+        setText(q(n, '.cv-btn-label'), spec.label);
+  static unturn(x: number, y: number, w: number, h: number, deg: number): { x: number; y: number } {
+    if (!deg) return { x, y };
+    const a = (-deg * Math.PI) / 180, cx = w / 2, cy = h / 2, dx = x - cx, dy = y - cy;
+    return { x: cx + dx * Math.cos(a) - dy * Math.sin(a), y: cy + dx * Math.sin(a) + dy * Math.cos(a) };
+  }
+  /** The drawing surfaces turned as the view is (CSS, about the stage's centre); every renderer draws as it always has. */
+  private turn(): void {
+    const deg = this.engine.current?.viewport.rotation ?? 0, t = deg ? `rotate(${deg}deg)` : '';
+    for (const c of Array.from(this.host.querySelectorAll<HTMLElement>(':scope > canvas'))) if (c.style.transform !== t) c.style.transform = t;
+    this.host.classList.toggle('is-turned', !!deg);
+  }
+    const screen = Stage.unturn(e.clientX - r.left, e.clientY - r.top, r.width, r.height, v?.rotation ?? 0);
+      this.engine.zoomTo(g.z0 * (q.d / Math.max(1, g.d0)), Stage.unturn(q.mx, q.my, r.width, r.height, this.engine.current?.viewport.rotation ?? 0));
+    return v.toDoc(clientX - r.left, clientY - r.top);
+      const doc = v ? v.toDoc(sx, sy) : { x: sx, y: sy };
+    setText(this.par, par && par !== 1 ? `PAR ${Number(par.toFixed(3))}${this.engine.view.parCorrection ? ', corrected in the Navigator' : ''}` : '');
+  'par-correction': ['View', 'Shows or hides the pixel aspect correction, which draws the Navigator preview with the pixel shape applied. The main canvas is not stretched yet.', 'Use when the document has non-square pixels and you want to see its true proportions.'],
+      v.frames[i] = ras;
+export interface GradientOverlayEffect { enabled: boolean; from: RGB; to: RGB; opacity: number; blend: BlendMode; angle: number; style: 'linear' | 'radial'; scale: number; reverse: boolean }
+          grad.addColorStop(0, css(c0));
+          grad.addColorStop(1, css(c1));
+    gradient: { name: 'formvis', type: 'solid', colorStops: [{ color: go.from, location: 0, midpoint: 0.5 }, { color: go.to, location: 1, midpoint: 0.5 }], opacityStops: [{ opacity: 1, location: 0, midpoint: 0.5 }, { opacity: 1, location: 1, midpoint: 0.5 }] } }];
+    if (stops.length > 2 || (go.type && go.type !== 'linear' && go.type !== 'radial')) notes.push(`"${name}" has a Photoshop gradient formvis simplifies to two colours, linear or radial.`);
+        style: { font: { name: PS_FONT[t.family] ?? t.family.replace(/\s+/g, '') }, fontSize: t.size * k, fauxBold: t.bold, fauxItalic: t.italic, fillColor: t.color, autoLeading: false, leading: t.size * t.lineHeight * k },
+    colour('From', () => fx().gradientOverlay.from, (c) => { fx().gradientOverlay.from = c; });
+    colour('To', () => fx().gradientOverlay.to, (c) => { fx().gradientOverlay.to = c; });
+export type LiquifyTool = 'warp' | 'reconstruct' | 'twirlCW' | 'twirlCCW' | 'pucker' | 'bloat' | 'freeze' | 'thaw';
+const TOOLS: ReadonlyArray<readonly [LiquifyTool, string]> = [['warp', 'Forward Warp'], ['reconstruct', 'Reconstruct'], ['twirlCW', 'Twirl Clockwise'], ['twirlCCW', 'Twirl Counterclockwise'], ['pucker', 'Pucker'], ['bloat', 'Bloat'], ['freeze', 'Freeze Mask'], ['thaw', 'Thaw Mask']];
+      if (this.tool !== 'warp') { this.dab(this.last); this.held = setInterval(() => { if (this.last) this.dab(this.last); }, 50); }
+    const actions = el('<div class="cv-row-actions"></div>');
+    actions.append(restore, maskNone, maskInvert);
+  async generativeFill(image: Blob, mask: Blob, prompt: string): Promise<Blob> {
+    this.model.replaceChildren(el('<option value="fal">FLUX.1 Fill (fal)</option>'), ...recipes().map((r) => { const o = document.createElement('option'); o.value = `comfy:${r.name}`; o.textContent = `${r.name} (ComfyUI)`; return o; }),
+    else { this.locals = (await localModels()).filter((m) => m.fromPicture); this.lama = await modelReady('lama-inpaint'); this.fillModels(); }   // local models (1.52.9), LaMa (1.53.2)
+  measureDataPoints: string[] }
+'update-all-text', 'resolve-missing-fonts', '-', 'type-on-arc', 'type-on-circle']
+'zoom-in', 'zoom-out', 'fit', 'actual', '-', 'toggle-rulers',
+items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }
+```
+
+Probed: `.csh` written then read gave both shapes back within 0.0000024 px; a slice with a URL and a layer link went through PSD and back unchanged, and the four auto slices with it tiled the whole canvas; the Gradients, Patterns and Shapes panels drew 7, 4 and 13 tiles; Brush options and Image Size's labels in Spanish; with Pixel Aspect Ratio 2 corrected, a 100 by 40 px drag moved the layer 28 by 23 document pixels at zoom 1.765 (half the horizontal of the uncorrected drag); a 4-column layout with 40 px margins and 20 px gutters on 1000 px put guides at 40, 255, 275, 490, 510, 725, 745, 960; Fit Layer(s) framed a 100 by 50 layer; a red, green, blue three-stop overlay drew red, green and blue at the left, middle and right and came back from PSD with its three stops; Push Left dragged upward moved the field leftward only, and a saved mesh loaded back equal; Font Preview Size Large styled the Inter option in Inter at 16 px and None cleared it.
+
+Release version lines, removed:
+
+```text
+<img src="https://img.shields.io/badge/version-1.70.8-f97316" alt="version 1.70.8">
+  "version": "1.70.8",
+  "version": "1.70.8",
+      "version": "1.70.8",
+export const VERSION = '1.70.8';
+```
+
+## Slices in PSD and auto slices, DEV_PLAN 29.5 part d · _v1.70.9 (io/psd.ts, extensions/tools/slice.ts, ui/stage.ts)
+
+- `io/psd.ts` `writePsdFile`: slices written as one group (named after the document) in `imageResources.slices`; a slice with `layer` is origin 'layer' with the numeric layer id. Numeric ids are now assigned when comps exist or any slice references a layer (moved out of the comps block).
+- `io/psd.ts` reader: userGenerated and layer slices become `doc.slices` (layer ones mapped back through `psdIds` by numeric id); autoGenerated skipped.
+- `extensions/tools/slice.ts`: new `autoSlices(doc)` (grid of all slice edges, free cells merged into row runs); `drawSlices` takes an optional `docSize` and draws them dashed at half alpha, no labels.
+- `ui/stage.ts`: passes `p.doc` to `drawSlices`.
+- Save for Web / Generate Image Assets export only user slices; auto slices left out.
+
+Replaced code in `writePsdFile`:
+
+```ts
+  const comps = doc.comps ?? [];
+  if (comps.length) {
+    const resources = psd.imageResources ?? (psd.imageResources = {});
+    resources.layerComps = {
+      list: comps.map((c, i) => ({ id: i + 1, name: c.name, comment: c.comment, capturedInfo: (c.useVisibility ? 1 : 0) | (c.usePosition ? 2 : 0) | (c.useAppearance ? 4 : 0) })),
+      ...(doc.activeComp ? { lastApplied: comps.findIndex((c) => c.id === doc.activeComp) + 1 || undefined } : {}),
+    };
+    let layerNo = 0;
+    for (const o of built.values()) o.id = ++layerNo;   // ag-psd needs a numeric id on every layer once comps are written
+    for (const [lid, o] of built) {
+```
+
+## .csh written, tool preset files, DEV_PLAN 32.4 part f and 35.3 part d · _v1.70.9 (io/csh.ts, ui/panels/preset-manager-dialog.ts, ui/panels/tool-presets-dialog.ts)
+
+- `io/csh.ts`: new `writeCsh(shapes)`, the inverse of `readCsh`. Version 2; the name is padded to an absolute 4-byte boundary (data is not padded, so the reader's first try matches); 37-byte id of `$` plus 32 hex digits, zero padded; bounds `0, 0, ceil(maxY), ceil(maxX)` over anchors and handles (the reader ignores the bounds origin and scales records by the bounds size); records from `pathRecords` in `io/psd-paths.ts`. Imports `pathRecords`.
+- `ui/panels/preset-manager-dialog.ts`: `cshBtn` 'Export .csh...' shown only for Custom Shapes, calling `saveSet('shapes', 'csh')`; `saveSet` takes the `'csh'` format and writes `Custom Shapes.csh` from `parseShape(d)` of the user's shapes; note text updated. Replaced code:
+
+```ts
+          await this.deliver(new Blob([JSON.stringify(mine, null, 2)], { type: 'application/json' }), 'Custom Shapes.json');
+```
+
+- `ui/panels/tool-presets-dialog.ts`: `exportFile()` writes `{ formvis: 'tool-presets', version: 1, presets }` as `formvis-tool-presets.json`; `importFile()` validates the header and every preset (`isPreset`, non-empty name, primitive values only), skips and counts unknown tool ids, merges by name (same name replaced). Buttons 'Export...' and 'Import...', dialog width 420 to 520, note 'Photoshop .tpl files are not read.'. Replaced code: `super('Tool Presets', 420);`.
+
+## Gradients, Patterns and Shapes panels, DEV_PLAN 35.3 part c · _v1.70.9 (ui/preset-panels.ts, ui/dock.ts, app.ts, automation/command-meta.ts, styles/panels.css)
+
+- `ui/preset-panels.ts` (new): `PresetPanel<T>` (skeleton built once, tiles through `patchList`, canvas redrawn only when `data-draw` changes) and `createPresetPanels(root, engine, keepPatterns)` building the Gradients, Patterns and Shapes panels from `allGradients`, `allPatterns` and `allCustomShapes`, the Preset Manager's own sources. Click sets `gradientSettings.style` and selects the Gradient tool; sets `patternStampPattern`; sets `shapeSettings.kind = 'custom'` and `.custom` and selects the Shape tool. Delete removes custom items only.
+- `ui/dock.ts`: `DOCK_PANELS` gains `gradients`, `patterns`, `shapes` (so Window gets `panel-gradients`, `panel-patterns`, `panel-shapes`); the three join the default `hidden` list.
+- `app.ts`: import and one `createPresetPanels(...)` line after `new StylesPanel`.
+- `automation/command-meta.ts`: words for the three new `panel-*` commands.
+- `styles/panels.css`: `.cv-preset-swatch`.
+
+Replaced code in `ui/dock.ts` (the default hidden list):
+
+```ts
+hidden: ['timeline', 'history', 'info', 'layer-comps', 'styles', 'measurement-log', 'modifier-keys']
+```
+
 ## Release 1.70.8: .asl styles written, gray value and centroid, Type options on the layer, glyphs at the caret · _v1.70.8 (automation/command-meta.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (928 catalogue ids, no new commands). All three builders finished in budget (12, 18 and 32 calls). The only change at the join: the `measure-data-points` words in automation/command-meta.ts now name the new columns. Replaced:
