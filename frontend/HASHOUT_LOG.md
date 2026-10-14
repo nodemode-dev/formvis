@@ -2,6 +2,48 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.6: layered TIFF, video layers, Glyphs, Tool Presets · _v1.69.6 (app.ts, ui/option-memory.ts, ui/panels/tool-presets-dialog.ts)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (882 catalogue ids). No builder added a type cast.
+
+Fixes at the join:
+- The Video Layers submenu moved from the File menu to the Layer menu, beside New Fill Layer.
+- `skipped` in `ui/option-memory.ts` is now exported, and Tool Presets uses it. A preset no longer keeps Move's X, Y, W and H, or Type's Color, which describe the document rather than a setting.
+- A stray underscore was removed from the Glyphs entry's heading.
+
+Probes in Chromium:
+- **Layered TIFF:**
+  - A 60 by 40 document with Red and Blue layers exported as `LT.tif` (12,218 bytes). tifffile read it as 40 by 60 RGBA with tag 37724, red at (10, 10) and blue at (40, 10).
+  - `readLayeredTiff` read it back with its Background, Red and Blue layers.
+- **Video layers:**
+  - A three-frame clip (red, green, blue) showed each colour at times 0, 1 and 2.
+  - Yellow painted on frame 1 survived leaving and returning, and Restore Frame gave green again.
+  - Duplicate Frame made four frames, and Rasterize dropped the video.
+- **Glyphs:** a click on & made 'Hi' read 'Hi&'.
+- **Tool Presets:** a Brush preset at size 77 kept 14 options. With the size then set to 12, applying the preset by name gave 77.
+- No page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.69.5",
+      "version": "1.69.5",
+  "version": "1.69.5",
+export const VERSION = '1.69.5';
+```
+
+## Layered TIFF, DEV_PLAN 34.2 · _v1.69.6 (io/layered-tiff.ts, app.ts, automation/command-meta.ts)
+
+formvis now reads and writes a TIFF whose layers live in Photoshop's ImageSourceData tag (37724). Opening a .tif or .tiff tries `readLayeredTiff` first: it finds the 'Layr' and 'LMsk' blocks, wraps them in a synthetic PSD and hands that to `readPsdFile`; any other TIFF goes to the engine decoder as before. File > Export > TIFF with Layers (`export-tiff-layers`) writes a little-endian uncompressed RGBA TIFF with the layer info from `writePsdFile`. Deferred: 16-bit layers (the 'Lr16' block falls back to the flattened TIFF), compressed strips (the written composite is raw), and CMYK layered TIFFs.
+
+## Glyphs and Tool Presets, DEV_PLAN 32.6 part a and 35.3 part a · _v1.69.6 (ui/panels/glyphs-dialog.ts, ui/panels/tool-presets-dialog.ts, app.ts, automation/command-meta.ts)
+
+Window > Glyphs shows a 16-column grid of fourteen Unicode blocks in the type layer's font, with a recently-used row, and a click appends the glyph to the selected type layer as one undo step. Window > Tool Presets saves the active tool's option values under a name, applies them (the tool-preset-apply command does it without the dialog) and deletes them. Deferred: OpenType features and alternates, insertion at the in-place editor's caret, docked panels for both, and .tpl file import and export.
+
+## Video layers, DEV_PLAN 33.4 part a · _v1.69.6 (engine/types.ts, engine/index.ts, ui/panels/video-layer-file.ts, app.ts, automation/command-meta.ts)
+
+Video layers on the video timeline: a pixel layer carries one raster per frame of its clip (`video` on the layer), the playhead swaps the frame in and stores a painted one back, and Insert, Duplicate and Delete Frame, Restore Frame, Restore All Frames and Rasterize Video Layer are single undo steps under File > Video Layers, with New Video Layer from File and New Blank Video Layer. Deferred: Replace Footage, Interpret Footage, saving video layers in .fmv (they are lost on save for now), and export through Render Video with altered frames.
+
 ## Release 1.69.5: Preset Manager, Pattern and Pixel Art Preview, measurement · _v1.69.5 (ui/stage.ts, ui/panels/preset-manager-dialog.ts, app.ts)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (870 catalogue ids). No builder added a type cast.
