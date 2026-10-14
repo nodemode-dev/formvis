@@ -2,6 +2,37 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.71.2: the interface languages, part b · _v1.71.2 (ui/i18n.ts, ui/i18n/more/*.ts)
+
+- ui/i18n/more/{es,pt-BR,fr,de,it,nl,da,fi,nb,sv,ru,pl,cs,hu,uk,tr,zh-CN,zh-TW,ja,ko,id,th,vi}.ts (new, three Sonnet builders): 1327 more strings each, extracted from the source (filter and adjustment names, dialog titles and fields, buttons, tooltips, placeholders, notes and messages). Checked by me against the master list: all 1327 in every table, none missing, no em dash, nothing empty.
+- ui/i18n.ts, `MORE` (new) and `load`: part b loaded with each language and merged under part a. `t`: a trailing ":" is set aside like "...", so "Size:" uses "Size".
+- Fixed at the join: Norwegian "pikselengden" to "piksellengden"; Hungarian Screen (the blend mode) from "Kivonás" (subtract) to "Képernyő".
+- The builders kept to Write and Edit this time (no scripts on the files).
+
+Probed: German main window and the Image Size, Layer Style and Preferences dialogs; Japanese main window. What stays English, to be part c: strings built from pieces at run time ("Background Properties" from the layer kind, "Working", "GPU: CPU", the status bar's hints), the Preferences section names, the Blend If slider labels, "General Brushes" and "Search brushes", and one cramped button (the Navigator's Fit in Japanese wraps).
+
+Replaced:
+
+```ts
+    tables.set(code, await LOADERS[code]());
+  const dots = english.endsWith('...');
+  const base = dots ? english.slice(0, -3) : english;
+  const parent = LANG_PARENT[current];
+  const found = tables.get(current)?.[base] ?? (parent ? tables.get(parent)?.[base] : undefined);
+  if (found === undefined) return english;
+  return dots ? `${found}...` : found;
+```
+
+Release version lines, removed:
+
+```text
+<img src="https://img.shields.io/badge/version-1.71.1-f97316" alt="version 1.71.1">
+  "version": "1.71.1",
+  "version": "1.71.1",
+      "version": "1.71.1",
+export const VERSION = '1.71.1';
+```
+
 ## Release 1.71.1: 26 interface languages · _v1.71.1 (ui/i18n.ts, ui/i18n/langs.ts, ui/i18n/*.ts, ui/prefs.ts, main.ts)
 
 The owner asked for the whole app in 26 languages with English the default. Built and checked: tsc clean; unit 194 of 194.

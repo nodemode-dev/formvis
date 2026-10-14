@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.71.2 · 2026-10-14
+
+### Changed
+
+- 1327 more interface strings in every language: the filters and adjustments, dialog titles and fields, buttons, tooltips, notes and messages. Labels ending in a colon use the same words.
+
 ## 1.71.1 · 2026-10-14
 
 ### Added
