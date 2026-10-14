@@ -48,6 +48,9 @@ import * as SO from './select-ops';
 import * as IE from './image-edit';
 import { diffRegions } from './image-diff';
 import * as DS from './document-size';
+import * as AB from './artboard-ops';
+import * as GD from './guides-ops';
+import * as PR from './profile-ops';
 import * as TE from './transform-entry';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
@@ -3909,193 +3912,45 @@ export class Engine {
   }
 
   /** The document's artboards, top to bottom as the Layers panel lists them. */
-  artboards(p: Project | null = this.current): Layer[] {
-    return p ? p.doc.layers.filter((l) => l.isGroup && !l.parentId && l.artboard).reverse() : [];
-  }
+  artboards(p: Project | null = this.current): Layer[] { return AB.artboards(this.artboardHost, p); }
 
   /** Where the next artboard goes: over the whole canvas when there is none yet; otherwise the last one's size, 100 px
    *  to the right of the rightmost; `size` given, that size there instead. */
-  nextArtboardRect(size?: { w: number; h: number }): Rect | null {
-    const p = this.current;
-    if (!p) return null;
-    const existing = this.artboards(p).map((l) => l.artboard as Artboard);
-    if (!existing.length) return { x: 0, y: 0, w: size?.w ?? p.doc.width, h: size?.h ?? p.doc.height };
-    const last = existing[0], right = Math.max(...existing.map((a) => a.x + a.w));
-    return { x: right + 100, y: last.y, w: size?.w ?? last.w, h: size?.h ?? last.h };
-  }
+  nextArtboardRect(size?: { w: number; h: number }): Rect | null { return AB.nextArtboardRect(this.artboardHost, size); }
 
   /** The first free name of the form Artboard N. */
-  nextArtboardName(): string {
-    const names = new Set(this.current?.doc.layers.map((l) => l.name) ?? []);
-    let n = 1;
-    while (names.has(`Artboard ${n}`)) n += 1;
-    return `Artboard ${n}`;
-  }
+  nextArtboardName(): string { return AB.nextArtboardName(this.artboardHost); }
 
   /** Layer > New > Artboard: at `nextArtboardRect` unless `rect` is given, the canvas widened to hold it as
    *  Photoshop's grows, named `name` or Artboard N. White by default. One step. */
-  newArtboard(rect: { x: number; y: number; w: number; h: number } | null = null, background: RGB | null = { r: 255, g: 255, b: 255 }, name?: string): ID | null {
-    const p = this.current, r = rect ?? this.nextArtboardRect();
-    if (!p || !r) return null;
-    const want = { w: Math.max(p.doc.width, r.x + r.w), h: Math.max(p.doc.height, r.y + r.h) };
-    let created: ID | null = null;
-    this.edit('New Artboard', (q) => {
-      if (want.w !== q.doc.width || want.h !== q.doc.height) {
-        if (!this.sizeOk(want.w, want.h)) return false;
-        q.doc = { ...q.doc, width: want.w, height: want.h };
-      }
-      const board = newLayer(name?.trim().slice(0, 200) || this.nextArtboardName(), q.doc, { isGroup: true, parentId: null, artboard: { ...r, background } });
-      q.setLayers([...q.doc.layers, board]);
-      this.focus(q, board.id);
-      created = board.id;
-      return true;
-    });
-    if (created) this.fit();
-    return created;
-  }
+  newArtboard(rect: { x: number; y: number; w: number; h: number } | null = null, background: RGB | null = { r: 255, g: 255, b: 255 }, name?: string): ID | null { return AB.newArtboard(this.artboardHost, rect, background, name); }
 
   /** Layer > New > Artboard from Layers: the selected top-level layers moved into a new artboard fitted to their
    *  visible pixels, transparent behind them. One step. */
-  artboardFromLayers(): ID | null {
-    const p = this.current;
-    if (!p) return null;
-    const roots = this.selectedRoots(p).filter((id) => { const l = p.layer(id); return !!l && !l.parentId && !l.artboard; });
-    const boxes = this.alignItems(p).filter((it) => it.ids.some((id) => roots.includes(id))).map((it) => it.box);
-    if (!roots.length || !boxes.length) { this.notice('Select layers outside any folder or artboard, with pixels, first.'); return null; }
-    const b = integral(boxes.reduce((a, c) => unionRect(a, c)));
-    let created: ID | null = null;
-    this.edit('Artboard from Layers', (q) => {
-      const names = new Set(q.doc.layers.map((l) => l.name));
-      let n = 1;
-      while (names.has(`Artboard ${n}`)) n += 1;
-      const board = newLayer(`Artboard ${n}`, q.doc, { isGroup: true, parentId: null, artboard: { x: b.x, y: b.y, w: Math.max(1, b.w), h: Math.max(1, b.h), background: null } });
-      const at = Math.max(...roots.map((id) => q.doc.layers.findIndex((l) => l.id === id))) + 1;
-      const layers = q.doc.layers.map((l) => (roots.includes(l.id) ? { ...l, parentId: board.id } : l));
-      layers.splice(at, 0, board);
-      q.setLayers(this.normalizeClips(layers));
-      this.focus(q, board.id);
-      created = board.id;
-      return true;
-    });
-    return created;
-  }
+  artboardFromLayers(): ID | null { return AB.artboardFromLayers(this.artboardHost); }
 
   /** The document bounds of the visible pixels of layer `id` and of the layers inside it; null when they have none. */
-  contentBounds(id: ID, p: Project | null = this.current): Rect | null {
-    if (!p) return null;
-    const map = byId(p.doc);
-    let box: Rect | null = null;
-    for (const l of p.doc.layers) {
-      if (l.isGroup || !l.raster || (l.id !== id && !isDescendant(map, l.id, id))) continue;
-      const r = l.raster, vb = visibleBounds(r);
-      if (!vb) continue;
-      const m = placement(l.transform, r.width, r.height);
-      const b = boundsOf([applyMat(m, vb.x, vb.y), applyMat(m, vb.x + vb.w, vb.y), applyMat(m, vb.x + vb.w, vb.y + vb.h), applyMat(m, vb.x, vb.y + vb.h)]);
-      box = box ? unionRect(box, b) : b;
-    }
-    return box ? integral(box) : null;
-  }
+  contentBounds(id: ID, p: Project | null = this.current): Rect | null { return AB.contentBounds(this.artboardHost, id, p); }
 
   /** Layer > New > Artboard from Group (1.65.4): a folder outside any other made an artboard over its contents (or
    *  the canvas when it holds no pixels), `w` by `h` when given, renamed when `name` is given; transparent behind, as
    *  Artboard from Layers makes them. One step. */
-  artboardFromGroup(id: ID, opts: { name?: string; w?: number; h?: number } = {}): boolean {
-    const p = this.current, g = p?.layer(id);
-    if (!p || !g?.isGroup || g.parentId || g.artboard || g.frame) { this.notice('Select a folder outside any other folder, artboard or frame first.'); return false; }
-    const b = this.contentBounds(id, p) ?? { x: 0, y: 0, w: p.doc.width, h: p.doc.height }, name = opts.name?.trim().slice(0, 200);
-    const w = Math.max(1, Math.min(30000, Math.round(opts.w ?? b.w))), h = Math.max(1, Math.min(30000, Math.round(opts.h ?? b.h)));
-    return this.edit('Artboard from Group', (q) => {
-      q.updateLayer(id, { artboard: { x: b.x, y: b.y, w, h, background: null }, ...(name ? { name } : {}) });
-      this.focus(q, id);
-      return true;
-    });
-  }
+  artboardFromGroup(id: ID, opts: { name?: string; w?: number; h?: number } = {}): boolean { return AB.artboardFromGroup(this.artboardHost, id, opts); }
 
   /** Layer > New > Frame from Layers (1.65.4): each selected pixel layer put in a new rectangular frame fitted to its
    *  visible pixels, where it lies, as the Frame tool makes them. One step. */
-  frameFromLayers(): void {
-    const p = this.current;
-    if (!p) return;
-    const picks = p.doc.layers.filter((l) => p.selectedIds.has(l.id) && !l.isGroup && !!l.raster && !l.adjustment && !(l.parentId && p.layer(l.parentId)?.frame) && !!this.contentBounds(l.id, p));
-    if (!picks.length) { this.notice('Select layers with pixels, outside any frame, first.'); return; }
-    this.settle();
-    this.edit('Frame from Layers', (q) => {
-      let layers = [...q.doc.layers], last: ID | null = null, n = layers.filter((l) => l.frame).length + 1;
-      for (const l of picks) {
-        const b = this.contentBounds(l.id, q);
-        if (!b) continue;
-        while (layers.some((x) => x.name === `Frame ${n}`)) n += 1;
-        const mask = new Raster(q.doc.width, q.doc.height), fw = Math.max(2, b.w), fh = Math.max(2, b.h);
-        mask.ctx.fillStyle = '#ffffff';
-        mask.ctx.fillRect(b.x, b.y, fw, fh);
-        const frame = newLayer(`Frame ${n}`, q.doc, { isGroup: true, parentId: l.parentId, frame: { x: b.x, y: b.y, w: fw, h: fh, shape: 'rect' }, mask: { raster: mask, enabled: true, linked: true, placement: null } });
-        layers = layers.map((x) => (x.id === l.id ? { ...x, parentId: frame.id } : x));
-        layers.splice(layers.findIndex((x) => x.id === l.id) + 1, 0, frame);
-        last = frame.id;
-      }
-      if (!last) return false;
-      q.setLayers(this.normalizeClips(layers));
-      this.focus(q, last);
-      return true;
-    });
-  }
+  frameFromLayers(): void { AB.frameFromLayers(this.artboardHost); }
 
   /** Artboard Options: its rectangle and background, checked, as one step. */
-  setArtboard(id: ID, patch: Partial<Artboard>): boolean {
-    return this.edit('Artboard Options', (p) => {
-      const l = p.layer(id);
-      if (!l?.artboard) return false;
-      const next = artboardFromData({ ...l.artboard, ...patch });
-      if (!next || JSON.stringify(next) === JSON.stringify(l.artboard)) return false;
-      p.updateLayer(id, { artboard: next });
-      return true;
-    });
-  }
+  setArtboard(id: ID, patch: Partial<Artboard>): boolean { return AB.setArtboard(this.artboardHost, id, patch); }
 
   /** The Artboard tool (36.27): artboard `id` set to `rect`, its contents left where they are, the canvas widened to
    *  hold it as a new artboard does. One step. */
-  resizeArtboard(id: ID, rect: Rect): boolean {
-    const p = this.current, l = p?.layer(id);
-    if (!p || !l?.artboard) return false;
-    const r = { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.max(1, Math.round(rect.w)), h: Math.max(1, Math.round(rect.h)) };
-    const want = { w: Math.max(p.doc.width, r.x + r.w), h: Math.max(p.doc.height, r.y + r.h) };
-    return this.edit('Resize Artboard', (q) => {
-      const cur = q.layer(id)?.artboard;
-      if (!cur) return false;
-      const next = artboardFromData({ ...cur, ...r });
-      if (!next || (next.x === cur.x && next.y === cur.y && next.w === cur.w && next.h === cur.h)) return false;
-      if (want.w !== q.doc.width || want.h !== q.doc.height) {
-        if (!this.sizeOk(want.w, want.h)) return false;
-        q.doc = { ...q.doc, width: want.w, height: want.h };
-      }
-      q.updateLayer(id, { artboard: next });
-      return true;
-    });
-  }
+  resizeArtboard(id: ID, rect: Rect): boolean { return AB.resizeArtboard(this.artboardHost, id, rect); }
 
   /** The Artboard tool: artboard `id` moved by (dx, dy) with everything in it (boxes, mask placements, vector masks),
    *  the canvas widened to hold it. One step. */
-  moveArtboard(id: ID, dx: number, dy: number): boolean {
-    const p = this.current, l = p?.layer(id);
-    dx = Math.round(dx); dy = Math.round(dy);
-    if (!p || !l?.artboard || (!dx && !dy)) return false;
-    const a = l.artboard, want = { w: Math.max(p.doc.width, a.x + dx + a.w), h: Math.max(p.doc.height, a.y + dy + a.h) };
-    return this.edit('Move Artboard', (q) => {
-      if (want.w !== q.doc.width || want.h !== q.doc.height) {
-        if (!this.sizeOk(want.w, want.h)) return false;
-        q.doc = { ...q.doc, width: want.w, height: want.h };
-      }
-      const map = byId(q.doc), shift = (t: Transform): Transform => ({ ...t, x: t.x + dx, y: t.y + dy });
-      q.setLayers(q.doc.layers.map((x) => {
-        if (x.id !== id && !isDescendant(map, x.id, id)) return x;
-        const out: Layer = { ...x, transform: shift(x.transform), mask: x.mask?.placement ? { ...x.mask, placement: shift(x.mask.placement) } : x.mask };
-        if (x.artboard) out.artboard = { ...x.artboard, x: x.artboard.x + dx, y: x.artboard.y + dy };
-        if (x.vectorMask) out.vectorMask = movedVector(x.vectorMask, (px, py) => ({ x: px + dx, y: py + dy }));
-        return out;
-      }));
-      return true;
-    });
-  }
+  moveArtboard(id: ID, dx: number, dy: number): boolean { return AB.moveArtboard(this.artboardHost, id, dx, dy); }
 
   /** Layer > Duplicate Layer; the dialog passes a name, used when one layer or folder is duplicated. One step. */
   duplicateLayers(name?: string): void { LS.duplicateLayers(this.structHost, name); }
@@ -6631,133 +6486,38 @@ export class Engine {
     if ('patternPreview' in patch || 'pixelArt' in patch) this.emit('render', null);   // the scene itself changes
   }
 
-  private setGuides(name: string, next: (g: Guide[]) => Guide[]): void {
-    this.edit(name, (p) => {
-      const before = p.doc.guides ?? [], after = next([...before]);
-      if (after.length === before.length && after.every((g, i) => g.axis === before[i].axis && g.at === before[i].at)) return false;
-      p.doc = { ...p.doc, guides: after };
-      return true;
-    });
-    this.emit('overlay', null);
-  }
-
   /** View > New Guide, or a guide dropped from a ruler: at a whole or half pixel, kept within the canvas. */
-  addGuide(axis: 'x' | 'y', at: number): void {
-    const d = this.current?.doc;
-    if (!d || !Number.isFinite(at)) return;
-    const v = Math.min(axis === 'x' ? d.width : d.height, Math.max(0, Math.round(at * 2) / 2));
-    this.setGuides('New Guide', (g) => [...g, { axis, at: v }]);
-  }
+  addGuide(axis: 'x' | 'y', at: number): void { GD.addGuide(this.guideHost, axis, at); }
 
-  moveGuide(index: number, at: number): void {
-    const d = this.current?.doc;
-    if (!d || !Number.isFinite(at)) return;
-    this.setGuides('Move Guide', (g) => g.map((x, i) => (i === index ? { axis: x.axis, at: Math.min(x.axis === 'x' ? d.width : d.height, Math.max(0, Math.round(at * 2) / 2)) } : x)));
-  }
+  moveGuide(index: number, at: number): void { GD.moveGuide(this.guideHost, index, at); }
 
-  removeGuide(index: number): void { this.setGuides('Delete Guide', (g) => g.filter((_, i) => i !== index)); }
+  removeGuide(index: number): void { GD.removeGuide(this.guideHost, index); }
 
   /** View > New Guide Layout (27.11): `columns` and `rows` with gutters inside margins, as Photoshop lays them out:
    *  guides at the margins and at both edges of every gutter (a gutter of 0 puts one guide between cells). `clear`
    *  replaces the existing guides. One undo step. */
-  guideLayout(o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean }): void {
-    const d = this.current?.doc;
-    if (!d) return;
-    const half = (v: number): number => Math.round(v * 2) / 2, out: Guide[] = [];
-    const lay = (axis: 'x' | 'y', n: number, gutter: number, a: number, b: number): void => {
-      const span = b - a, cells = Math.max(1, Math.floor(n));
-      if (span <= 0) return;
-      const cell = (span - gutter * (cells - 1)) / cells;
-      if (a > 0) out.push({ axis, at: half(a) });
-      if (b < (axis === 'x' ? d.width : d.height)) out.push({ axis, at: half(b) });
-      for (let i = 1; i < cells; i += 1) {
-        const end = a + i * cell + (i - 1) * gutter;
-        out.push({ axis, at: half(end) });
-        if (gutter > 0) out.push({ axis, at: half(end + gutter) });
-      }
-    };
-    if (o.columns >= 1) lay('x', o.columns, Math.max(0, o.gutterX), Math.max(0, o.margin.left), d.width - Math.max(0, o.margin.right));
-    if (o.rows >= 1) lay('y', o.rows, Math.max(0, o.gutterY), Math.max(0, o.margin.top), d.height - Math.max(0, o.margin.bottom));
-    this.setGuides('New Guide Layout', (g) => [...(o.clear ? [] : g), ...out]);
-  }
+  guideLayout(o: { columns: number; rows: number; gutterX: number; gutterY: number; margin: { top: number; left: number; bottom: number; right: number }; clear: boolean }): void { GD.guideLayout(this.guideHost, o); }
 
   /** View > New Guides From Shape (27.11): guides on the four edges of the active shape layer's path, else of the selection. */
-  guidesFromShape(): boolean {
-    const p = this.current;
-    if (!p) return false;
-    const l = p.activeLayer, sel = p.selection;
-    let r: Rect | null = l?.vector ? this.contentBounds(l.id, p) : null;
-    if (!r && sel) r = { x: sel.x, y: sel.y, w: sel.w, h: sel.h };
-    if (!r) return false;
-    const b = r;
-    this.setGuides('New Guides From Shape', (g) => [...g, { axis: 'x', at: b.x }, { axis: 'x', at: b.x + b.w }, { axis: 'y', at: b.y }, { axis: 'y', at: b.y + b.h }]);
-    return true;
-  }
-  clearGuides(): void { this.setGuides('Clear Guides', () => []); }
-
-  private setSlices(name: string, next: (s: import('./types').DocSlice[]) => import('./types').DocSlice[]): void {
-    this.edit(name, (p) => {
-      const before = p.doc.slices ?? [], after = next([...before]);
-      if (after.length === before.length && after.every((s, i) => s === before[i])) return false;
-      p.doc = { ...p.doc, slices: after };
-      return true;
-    });
-    this.emit('overlay', null);
-  }
+  guidesFromShape(): boolean { return GD.guidesFromShape(this.guideHost); }
+  clearGuides(): void { GD.clearGuides(this.guideHost); }
 
   /** Slice tool: a user slice on whole pixels, kept within the canvas; returns false when it has no area. */
-  addSlice(r: { x: number; y: number; w: number; h: number }): boolean {
-    const d = this.current?.doc;
-    if (!d) return false;
-    const x0 = Math.max(0, Math.round(Math.min(r.x, r.x + r.w))), y0 = Math.max(0, Math.round(Math.min(r.y, r.y + r.h)));
-    const x1 = Math.min(d.width, Math.round(Math.max(r.x, r.x + r.w))), y1 = Math.min(d.height, Math.round(Math.max(r.y, r.y + r.h)));
-    if (x1 - x0 < 1 || y1 - y0 < 1) return false;
-    this.setSlices('New Slice', (s) => [...s, { id: `sl${Date.now().toString(36)}${s.length}`, name: '', x: x0, y: y0, w: x1 - x0, h: y1 - y0 }]);
-    return true;
-  }
-  removeSlice(id: string): void { this.setSlices('Delete Slice', (s) => s.filter((x) => x.id !== id)); }
-  clearSlices(): void { this.setSlices('Clear Slices', () => []); }
+  addSlice(r: { x: number; y: number; w: number; h: number }): boolean { return GD.addSlice(this.guideHost, r); }
+  removeSlice(id: string): void { GD.removeSlice(this.guideHost, id); }
+  clearSlices(): void { GD.clearSlices(this.guideHost); }
 
   /** The slice Slice Options edits and the Slice tool last made or clicked; not saved with the document. */
   activeSlice: string | null = null;
 
   /** Changes a slice's name, link, alt text or rectangle (whole pixels, kept inside the canvas) as one undo step. */
-  updateSlice(id: string, patch: Partial<Omit<import('./types').DocSlice, 'id'>>, step = 'Slice Options'): void {
-    const d = this.current?.doc;
-    if (!d) return;
-    this.setSlices(step, (list) => list.map((s) => {
-      if (s.id !== id) return s;
-      const w = Math.max(1, Math.min(d.width, Math.round(patch.w ?? s.w))), h = Math.max(1, Math.min(d.height, Math.round(patch.h ?? s.h)));
-      const x = Math.max(0, Math.min(d.width - w, Math.round(patch.x ?? s.x))), y = Math.max(0, Math.min(d.height - h, Math.round(patch.y ?? s.y)));
-      const next = { ...s, ...patch, x, y, w, h };
-      return next.name === s.name && next.url === s.url && next.alt === s.alt && x === s.x && y === s.y && w === s.w && h === s.h ? s : next;
-    }));
-  }
+  updateSlice(id: string, patch: Partial<Omit<import('./types').DocSlice, 'id'>>, step = 'Slice Options'): void { GD.updateSlice(this.guideHost, id, patch, step); }
 
   /** Layer > New Layer Based Slice: a slice over the visible pixels of the active layer, tied to that layer. */
-  addLayerSlice(): boolean {
-    const p = this.current, l = p?.activeLayer;
-    if (!p || !l) return false;
-    const b = this.contentBounds(l.id, p);
-    if (!b) return false;
-    const x0 = Math.max(0, Math.floor(b.x)), y0 = Math.max(0, Math.floor(b.y)), x1 = Math.min(p.doc.width, Math.ceil(b.x + b.w)), y1 = Math.min(p.doc.height, Math.ceil(b.y + b.h));
-    if (x1 - x0 < 1 || y1 - y0 < 1) return false;
-    const id = `sl${Date.now().toString(36)}${p.doc.slices?.length ?? 0}`;
-    // Active before the edit, so the redraw the edit causes already shows it highlighted.
-    this.activeSlice = id;
-    this.setSlices('New Layer Based Slice', (s) => [...s, { id, name: l.name, x: x0, y: y0, w: x1 - x0, h: y1 - y0, layer: l.id }]);
-    return true;
-  }
+  addLayerSlice(): boolean { return GD.addLayerSlice(this.guideHost); }
 
   /** The guide within `tol` screen pixels of a screen point, nearest first; null when guides are hidden or locked. */
-  guideAt(screen: Pt, tol = 4): number | null {
-    const p = this.current, g = p?.doc.guides;
-    if (!p || !g?.length || !this.view.guides || this.view.guidesLocked) return null;
-    const v = p.viewport;
-    let best: number | null = null, bestD = tol + 1;
-    g.forEach((x, i) => { const d = Math.abs(x.axis === 'x' ? v.panX + x.at * v.zoom - screen.x : v.panY + x.at * v.zoom - screen.y); if (d <= tol && d < bestD) { best = i; bestD = d; } });
-    return best;
-  }
+  guideAt(screen: Pt, tol = 4): number | null { return GD.guideAt(this.guideHost, screen, tol); }
 
   beginLive(name: string): boolean {
     const p = this.current;
@@ -7872,6 +7632,41 @@ export class Engine {
       vectorFollowing: (l, t) => followVector(l, t),
       setFlipAgain: (horizontal) => { this.lastTransform = { flip: horizontal }; },
       applySelection: (sel, mode, label) => this.applySelection(sel, mode, label),
+    };
+  }
+
+  private get artboardHost(): AB.ArtboardHost {
+    return {
+      current: this.current,
+      work: this.work,
+      edit: (name, fn) => this.edit(name, fn),
+      notice: (m) => this.notice(m),
+      sizeOk: (w, h) => this.sizeOk(w, h),
+      fit: () => this.fit(),
+      focus: (p, id) => this.focus(p, id),
+      settle: () => this.settle(),
+      selectedRoots: (p) => this.selectedRoots(p),
+      alignItems: (p) => this.alignItems(p),
+      normalizeClips: (layers) => this.normalizeClips(layers),
+    };
+  }
+
+  private get profileHost(): PR.ProfileHost {
+    return {
+      current: this.current,
+      edit: (name, fn) => this.edit(name, fn),
+      setCmykTables: (p, lut, inLut) => this.setCmykTables(p, lut, inLut),
+    };
+  }
+
+  private get guideHost(): GD.GuideHost {
+    return {
+      current: this.current,
+      view: this.view,
+      edit: (name, fn) => this.edit(name, fn),
+      overlay: () => { this.emit('overlay', null); },
+      contentBounds: (id, p) => this.contentBounds(id, p),
+      setActiveSlice: (id) => { this.activeSlice = id; },
     };
   }
 
@@ -9196,98 +8991,28 @@ export class Engine {
   setViewTransform(v: { lut: ColourLut; gamut: boolean } | null): void { this.viewTransform = v; this.emit('render', null); }   // the stage redraws on render, not doc
 
   /** Edit > Assign Profile: the profile the numbers are read in, the numbers unchanged; null for sRGB. */
-  assignProfile(profile: DocProfile | null): boolean {
-    const p = this.current;
-    if (!p || (p.doc.profile?.icc ?? null) === (profile?.icc ?? null)) return false;
-    return this.edit('Assign Profile', (pp) => { pp.doc = { ...pp.doc, profile: profile ?? undefined }; return true; });
-  }
+  assignProfile(profile: DocProfile | null): boolean { return PR.assignProfile(this.profileHost, profile); }
 
   /** Assign Profile in a CMYK document (1.57.9): the inks unchanged, each layer's rendition redrawn through the new
    *  profile's tables (`lut`, `inLut`), the profile assigned; one step. */
-  assignCmykProfile(profile: DocProfile, lut: Lut4, inLut: Lut3x4): boolean {
-    const p = this.current;
-    if (!p || p.doc.mode !== 'cmyk') return false;
-    const ok = this.edit('Assign Profile', (pp) => {
-      // A new ink record with the same values, so derive (1.55.9) reads the inks as set, not as an 8-bit edit to undo.
-      const layers = pp.doc.layers.map((l) => (l.channels?.mode === 'cmyk' ? { ...l, channels: { ...l.channels }, raster: rasterFromChannels(l.channels, lut) } : l));
-      pp.doc = { ...pp.doc, layers, profile };
-      return true;
-    });
-    if (ok) this.setCmykTables(p, lut, inLut);
-    return ok;
-  }
+  assignCmykProfile(profile: DocProfile, lut: Lut4, inLut: Lut3x4): boolean { return PR.assignCmykProfile(this.profileHost, profile, lut, inLut); }
 
   /** Convert to Profile in a CMYK document (1.57.9): each layer's inks replaced by `inks` (converted by the engine's
    *  LittleCMS to `profile`), renditions redrawn through its tables, the profile assigned; one step. */
-  convertCmykProfile(profile: DocProfile, inks: Map<ID, ChannelPixels>, lut: Lut4, inLut: Lut3x4): boolean {
-    const p = this.current;
-    if (!p || p.doc.mode !== 'cmyk') return false;
-    const ok = this.edit('Convert to Profile', (pp) => {
-      const layers = pp.doc.layers.map((l) => { const ch = inks.get(l.id); return ch ? { ...l, channels: ch, raster: rasterFromChannels(ch, lut) } : l; });
-      pp.doc = { ...pp.doc, layers, profile };
-      return true;
-    });
-    if (ok) this.setCmykTables(p, lut, inLut);
-    return ok;
-  }
+  convertCmykProfile(profile: DocProfile, inks: Map<ID, ChannelPixels>, lut: Lut4, inLut: Lut3x4): boolean { return PR.convertCmykProfile(this.profileHost, profile, inks, lut, inLut); }
 
   /** Convert to Profile at 32 bits (1.57.3): every layer's linear floats through `m` (the engine's matrix between the
    *  two profiles' primaries), light above white converting exactly; renditions redrawn; `target` assigned; one step. */
-  convertToProfileLinear(target: DocProfile | null, m: number[][]): boolean {
-    const p = this.current;
-    if (!p || p.doc.depth !== 32) return false;
-    return this.edit('Convert to Profile', (pp) => {
-      const layers = pp.doc.layers.map((l) => {
-        if (!l.channels || l.channels.mode !== 'rgb' || l.isGroup) return l;
-        const d = new Float32Array(l.channels.data);
-        for (let i = 0; i < d.length; i += 4) { const r = d[i], g = d[i + 1], b = d[i + 2]; for (let c = 0; c < 3; c++) d[i + c] = Math.max(0, m[c][0] * r + m[c][1] * g + m[c][2] * b); }
-        const ch = { ...l.channels, data: d };
-        return { ...l, channels: ch, raster: rasterFromDeep(ch, true) };
-      });
-      pp.doc = { ...pp.doc, layers, profile: target ?? undefined };
-      return true;
-    });
-  }
+  convertToProfileLinear(target: DocProfile | null, m: number[][]): boolean { return PR.convertToProfileLinear(this.profileHost, target, m); }
 
   /** Edit > Convert to Profile: every layer's pixels through `lut` (the engine's LittleCMS table from the document's
    *  profile to `target`), then `target` assigned; one step. Live type and shapes keep their colours' numbers. */
-  convertToProfile(target: DocProfile | null, lut: ColourLut): boolean {
-    if (!this.current) return false;
-    return this.edit('Convert to Profile', (pp) => {
-      const layers = pp.doc.layers.map((l) => {
-        if (!l.raster || l.isGroup) return l;
-        const r = l.raster.clone(), d = r.ctx.getImageData(0, 0, r.width, r.height);
-        applyLut(d.data, lut); r.ctx.putImageData(d, 0, 0); r.touch();
-        return { ...l, raster: r };
-      });
-      pp.doc = { ...pp.doc, layers, profile: target ?? undefined };
-      return true;
-    });
-  }
+  convertToProfile(target: DocProfile | null, lut: ColourLut): boolean { return PR.convertToProfile(this.profileHost, target, lut); }
 
   /** Convert to Profile and mode changes at 16 bits (DEV_PLAN 28.2): each pixel layer's channels replaced by the engine's
    *  LittleCMS result in `plan.layers` (double precision, rounded once, no 8-bit step), renditions redrawn, the mode,
    *  profile and depth set; one step. For CMYK the plan carries the new press's display and separation tables. */
-  convertDeepDocument(plan: { mode: DocMode; profile: DocProfile | null; depth: 8 | 16; layers: ReadonlyMap<ID, ChannelPixels>; cmyk?: { lut: Lut4; inLut: Lut3x4 } }): boolean {
-    const p = this.current;
-    if (!p || (plan.mode === 'cmyk' && !plan.cmyk)) return false;
-    if (plan.cmyk) { p.cmykLut = plan.cmyk.lut; p.cmykIn = plan.cmyk.inLut; }
-    const ok = this.edit('Convert to Profile', (pp) => {
-      const layers = pp.doc.layers.map((l) => {
-        const ch = plan.layers.get(l.id);
-        if (!ch) return l;
-        let raster: Raster;
-        if (ch.mode === 'cmyk' && plan.cmyk) raster = rasterFromChannels(ch, plan.cmyk.lut);
-        else if (ch.mode === 'lab') { raster = new Raster(ch.width, ch.height); const img = raster.ctx.createImageData(ch.width, ch.height); renderLab(ch.data, img.data); raster.ctx.putImageData(img, 0, 0); raster.touch(); }
-        else raster = rasterFromDeep(ch);
-        return { ...l, channels: plan.depth === 8 && ch.mode === 'rgb' ? undefined : ch, raster };
-      });
-      pp.doc = { ...pp.doc, layers, mode: plan.mode, profile: plan.profile ?? undefined, depth: plan.depth === 8 ? undefined : plan.depth, palette: undefined };
-      return true;
-    });
-    if (ok && plan.cmyk) this.setCmykTables(p, plan.cmyk.lut, plan.cmyk.inLut);
-    return ok;
-  }
+  convertDeepDocument(plan: { mode: DocMode; profile: DocProfile | null; depth: 8 | 16; layers: ReadonlyMap<ID, ChannelPixels>; cmyk?: { lut: Lut4; inLut: Lut3x4 } }): boolean { return PR.convertDeepDocument(this.profileHost, plan); }
 
   /** Generated pixels through the table (1.55.9, DEV_PLAN 22.7): after a step at 16 bits or in CMYK, a layer whose
    *  8-bit pixels changed while its floats did not is brought into step (engine/derive.ts), its rendition redrawn from
@@ -9778,16 +9503,7 @@ export class Engine {
   }
 
   /** One artboard as its own image: only it and what it holds, rendered and cut to its rectangle. */
-  artboardImage(id: ID, bare = false): Surface | null {
-    const p = this.current, a = p?.layer(id);
-    if (!p || !a?.artboard) return null;
-    const map = byId(p.doc), keep = p.doc.layers.filter((l) => l.id === id || isDescendant(map, l.id, id)).map((l) => (bare && l.id === id && l.artboard ? { ...l, artboard: { ...l.artboard, background: null } } : l));
-    const r = a.artboard, pad = { x: Math.min(0, r.x), y: Math.min(0, r.y) };
-    const doc: Doc = { ...p.doc, width: Math.max(p.doc.width, r.x + r.w) - pad.x, height: Math.max(p.doc.height, r.y + r.h) - pad.y, layers: pad.x || pad.y ? keep.map((l) => ({ ...l, transform: { ...l.transform, x: l.transform.x - pad.x, y: l.transform.y - pad.y }, mask: l.mask?.placement ? { ...l.mask, placement: { ...l.mask.placement, x: l.mask.placement.x - pad.x, y: l.mask.placement.y - pad.y } } : l.mask, ...(l.artboard ? { artboard: { ...l.artboard, x: l.artboard.x - pad.x, y: l.artboard.y - pad.y } } : {}) })).map((l) => (l.vectorMask ? { ...l, vectorMask: movedVector(l.vectorMask, (x, y) => ({ x: x - pad.x, y: y - pad.y })) } : l)) : keep };
-    const full = renderDoc(this.work, doc), out = createSurface(r.w, r.h);
-    ctxOf(out).drawImage(full, r.x - pad.x, r.y - pad.y, r.w, r.h, 0, 0, r.w, r.h);
-    return out;
-  }
+  artboardImage(id: ID, bare = false): Surface | null { return AB.artboardImage(this.artboardHost, id, bare); }
 }
 
 /** A palette of at most `n` colours for RGBA pixels: every colour when there are that few (Exact), else median cut over

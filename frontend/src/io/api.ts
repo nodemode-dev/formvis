@@ -22,10 +22,46 @@ export class ApiError extends Error {
   constructor(message: string, readonly status: number) { super(message); }
 }
 
+/** The engine service's state (DEV_PLAN 36.19), from the one health check that there is: /capabilities, asked once at
+ *  boot and again, only while the service is down, when the window gets the focus back. With the service down every
+ *  request fails at once without touching the network, so nothing logs a proxy error or retries. */
+let serviceState: 'unknown' | 'up' | 'down' = 'unknown';
+let caps: Promise<Capabilities | null> | null = null;
+const serviceWatchers = new Set<(up: boolean) => void>();
+
+export function serviceDown(): boolean { return serviceState === 'down'; }
+/** Calls `fn` whenever the service goes up or down; returns the way to stop. */
+export function onServiceChange(fn: (up: boolean) => void): () => void { serviceWatchers.add(fn); return () => { serviceWatchers.delete(fn); }; }
+/** Once the first health check has answered: whether the service is running. */
+export async function serviceReady(): Promise<boolean> { await (caps ??= probe()); return serviceState === 'up'; }
+/** Resolves when the service is running (at once if it is); no timer, it waits for the focus re-check. */
+export async function whenServiceUp(): Promise<void> {
+  if (await serviceReady()) return;
+  await new Promise<void>((done) => { const stop = onServiceChange((up) => { if (up) { stop(); done(); } }); });
+}
+
+async function probe(): Promise<Capabilities | null> {
+  // The desktop app starts its engine beside the window, so it may need a moment: a few quick tries before giving up.
+  for (let i = 0; i < ('__TAURI_INTERNALS__' in window ? 10 : 1); i++) {
+    try {
+      const res = await fetch('/api/capabilities');
+      if (res.ok) { const c = (await res.json()) as Capabilities; set('up'); return c; }
+    } catch { /* not answering */ }
+    if (i < 9 && '__TAURI_INTERNALS__' in window) await new Promise((r) => window.setTimeout(r, 500));
+  }
+  set('down');
+  return null;
+  function set(next: 'up' | 'down'): void { const was = serviceState; serviceState = next; if (was !== next) for (const fn of [...serviceWatchers]) fn(next === 'up'); }
+}
+window.addEventListener('focus', () => { if (serviceState === 'down') caps = probe(); });
+
+const NOT_RUNNING = 'The formvis engine service is not running. Start it with ./formvis boot.';
+
 async function request(path: string, init?: RequestInit): Promise<Response> {
+  if (!(await serviceReady())) throw new ApiError(NOT_RUNNING, 0);
   let res: Response;
   try { res = await fetch(`/api${path}`, init); } catch {
-    throw new ApiError('The formvis engine is not reachable. Start it with ./formvis boot.', 0);
+    throw new ApiError(NOT_RUNNING, 0);
   }
   if (!res.ok) {
     let detail = '';
@@ -96,7 +132,7 @@ export const api = {
     return (await request(`/fonts/file?family=${encodeURIComponent(family)}&bold=${bold ? 1 : 0}&italic=${italic ? 1 : 0}`)).arrayBuffer();
   },
   async capabilities(): Promise<Capabilities | null> {
-    try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
+    return await (caps ??= probe());
   },
   /** Tell the engine which compute device to use (Phase 18.6); its report of what it uses and why, or null offline. */
   /** Large pictures (1.52.7): kept by the engine, then opened reduced, as a region or as tiles. */

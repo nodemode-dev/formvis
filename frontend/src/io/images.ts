@@ -1,7 +1,7 @@
 import { headerSize } from './image-size';
 import { FORMER_PROJECT_EXTENSIONS } from './legacy';
 import { LIMITS, type ImportedImage } from '../engine';
-import { api, type RawWhiteBalance } from './api';
+import { api, serviceReady, type RawWhiteBalance } from './api';
 import { readFileMeta } from './xmp';
 
 const NATIVE = /\.(png|jpe?g|gif|webp|bmp|avif|svg)$/i;
@@ -48,7 +48,9 @@ export async function decodeImage(file: Blob, name: string, raw = false, rawWb?:
   if (size && (size.width > LIMITS.side || size.height > LIMITS.side || size.width * size.height > LIMITS.pixels)) throw new LargePictureError(file, name, size.width, size.height);
   const server = SERVER.test(name) || RAW_FILE.test(name) || /image\/(heic|heif|tiff)/.test(file.type);
   let source: ImportedImage['source'] & { width: number; height: number };
-  try { source = await bitmapOf(server ? await api.decode(file, name, 0, undefined, rawWb) : file, raw && !server); } catch (err) {
+  // 36.19: with the engine service not running a TIFF is read in the browser (utif2); the rest of the engine's formats wait for it.
+  const serverBlob = async (): Promise<Blob> => (/\.tiff?$/i.test(name) || file.type === 'image/tiff') && !(await serviceReady()) ? (await import('./tiff-browser')).decodeTiffInBrowser(file) : api.decode(file, name, 0, undefined, rawWb);
+  try { source = await bitmapOf(server ? await serverBlob() : file, raw && !server); } catch (err) {
     if (server) throw err;
     source = await bitmapOf(await api.decode(file, name));
   }

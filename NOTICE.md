@@ -18,6 +18,7 @@ formvis is licensed under the Apache License 2.0 (see `LICENSE`). It includes or
 | Inter, JetBrains Mono (via @fontsource) | SIL OFL 1.1 fonts, MIT packaging | bundled font files |
 | ag-psd, with pako and base64-js | MIT (pako: MIT and Zlib) | layered PSD open and export, loaded on first use |
 | three.js | MIT | Place 3D Model (.glb and .gltf), loaded on first use |
+| utif2 (4.1.0, with pako) | MIT (pako: MIT and Zlib) | opening a TIFF in the browser when the engine service is not running (`frontend/src/io/tiff-browser.ts`), loaded on first use |
 | xterm.js (@xterm/xterm 6.0.0) and its fit addon (@xterm/addon-fit 0.11.0) | MIT | the terminal dock (Window > Terminal) |
 | ptyprocess 0.7.0 | ISC | engine, the pseudo-terminals behind the terminal dock on macOS and Linux |
 | pywinpty 3.0.5 | MIT | engine, the same on Windows (ConPTY) |

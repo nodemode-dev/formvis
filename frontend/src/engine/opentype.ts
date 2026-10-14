@@ -49,6 +49,7 @@ const settings = (features: readonly string[]): string => features.map((f) => (f
 export type FontFileSource = (family: string, bold: boolean, italic: boolean) => Promise<ArrayBuffer>;
 
 let source: FontFileSource = async (family, bold, italic) => {
+  if (!(await (await import('../io/api')).serviceReady())) throw new Error(`No font file for ${family}`);   // the engine service is not running
   const res = await fetch(`/api/fonts/file?family=${encodeURIComponent(family)}&bold=${bold ? 1 : 0}&italic=${italic ? 1 : 0}`);
   if (!res.ok) throw new Error(`No font file for ${family}`);
   return res.arrayBuffer();
