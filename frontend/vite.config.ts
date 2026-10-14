@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite';
 
 const FRONTEND_PORT = 5190;
-const BACKEND_PORT = 8190;
+// FORMVIS_BACKEND_PORT points the /api proxy somewhere else, e.g. at a closed port to run the browser build with no engine service.
+const BACKEND_PORT = Number(process.env.FORMVIS_BACKEND_PORT) || 8190;
 
 export default defineConfig({
   root: '.',

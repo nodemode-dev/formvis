@@ -1,8 +1,11 @@
 import type { Engine } from '../engine';
 import { getTool } from '../extensions/registry';
-import { pendingClass, q, setText, type Disposer } from './dom';
+import { pendingClass, q, setText, setTitle, type Disposer } from './dom';
 import { onLanguage, t } from './i18n';
 import { icon } from './icons';
+
+/** The one note when the engine service is not running (DEV_PLAN 36.19): the status bar's title and the boot toast. */
+export const SERVICE_NOTE = 'The engine service is not running, so editing works but these wait for it: saving to the library, HEIC, RAW, DPX and other camera and film formats, colour conversion, AI tools, video, the terminal and agents. Start it with ./formvis boot.';
 
 export class StatusBar {
   private readonly zoom: HTMLElement;
@@ -63,6 +66,7 @@ export class StatusBar {
   private showEngine(): void {
     const raw = this.engineRaw, m = /^Engine (\d\S*)( · desktop)?$/.exec(raw);
     setText(this.engineState, m ? `${t('Engine')} ${m[1]}${m[2] ? ` · ${t('desktop')}` : ''}` : t(raw));
+    setTitle(this.engineState, raw === 'Engine offline' ? t(SERVICE_NOTE) : '');
   }
 
   private readonly mem: HTMLElement;

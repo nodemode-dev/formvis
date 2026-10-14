@@ -6,6 +6,7 @@ import { BLEND_MODES } from '../engine/types';
 import { getTool, toolList, type OptionSpec, type Tool, type ToolContext, type ToolPointer } from '../extensions/registry';
 import type { Command, CommandParam, Commands } from '../ui/commands';
 import { metaFor } from './command-meta';
+import { serviceReady } from '../io/api';
 
 export interface CatalogueEntry {
   id: string; label: string; kind: 'command' | 'tool' | 'option' | 'action'; group: string; description: string; when: string;
@@ -474,6 +475,7 @@ export async function runCommands(list: Array<{ id: string; params?: Record<stri
 async function mirror(): Promise<void> {
   if (!deps) return;
   const { entries, missing } = build();
+  if (!(await serviceReady())) return;   // no engine service to tell
   try {
     await fetch('/api/commands/catalogue', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ size: entries.length, missing, commands: entries }) });
   } catch { return; }

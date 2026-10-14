@@ -2,7 +2,7 @@ import type { Engine } from '../engine';
 import { toolList } from '../extensions/registry';
 import type { Commands } from './commands';
 import { Dialog } from './dialogs';
-import { el, patchList, q, setClass, setHidden, setHtml, setText } from './dom';
+import { el, patchList, q, setClass, setHidden, setHtml, setText, setTitle } from './dom';
 import { t } from './i18n';
 import { icon } from './icons';
 import type { MenuDef, MenuItem } from './menu';
@@ -46,7 +46,7 @@ function pathsOf(menus: MenuDef[]): Map<string, string> {
   return out;
 }
 
-interface Hit { key: string; label: string; meta: string; icon: string; enabled: boolean; score: number; run: () => void }
+interface Hit { key: string; label: string; meta: string; icon: string; enabled: boolean; why?: string; score: number; run: () => void }
 
 const SHOWN = 12;
 
@@ -112,7 +112,7 @@ export class CommandPalette extends Dialog {
       const own = fuzzyScore(query, label), wide = own === null ? fuzzyScore(query, `${label} ${path}`) : null;
       if (own === null && wide === null) continue;
       const score = own ?? (wide as number) - 10;
-      hits.push({ key: c.id, label, meta: [path, this.commands.keyLabel(c)].filter(Boolean).join(' · '), icon: c.icon ?? '', enabled: this.commands.enabled(c), score: score + first(c.id), run: () => { this.commands.run(c.id); } });
+      hits.push({ key: c.id, label, meta: [path, this.commands.keyLabel(c)].filter(Boolean).join(' · '), icon: c.icon ?? '', enabled: this.commands.enabled(c), why: t(this.commands.why(c)), score: score + first(c.id), run: () => { this.commands.run(c.id); } });
     }
     for (const t of toolList()) {
       const key = `tool:${t.id}`, score = fuzzyScore(query, `${t.label} tool`);
@@ -135,6 +135,7 @@ export class CommandPalette extends Dialog {
     setText(q(n, '.cv-list-name'), h.label);
     setText(q(n, '.cv-list-meta'), h.meta);
     setClass(n, 'is-off', !h.enabled);
+    if (h.why || n.title) setTitle(n, h.why ?? '');
     if (n.getAttribute('aria-disabled') !== String(!h.enabled)) n.setAttribute('aria-disabled', String(!h.enabled));
     setHtml(q(n, '.cv-palette-icon'), h.icon ? icon(h.icon, 16) : '', h.icon);
   }

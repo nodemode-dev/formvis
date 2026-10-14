@@ -1,4 +1,4 @@
-import { socketTo } from '../../io/api';
+import { serviceReady, socketTo, whenServiceUp } from '../../io/api';
 import { transformBounds, type Engine } from '../../engine';
 import type { Commands } from '../commands';
 import { el, patchList, q, setChecked, setClass, setHidden, setText, setValue } from '../dom';
@@ -82,6 +82,11 @@ export class AgentConnect {
   }
 
   private connect(): void {
+    // With the engine service not running there is no stream to open: wait for it to start instead of retrying.
+    void serviceReady().then((up) => { if (up) this.open(); else void whenServiceUp().then(() => this.open()); });
+  }
+
+  private open(): void {
     const ws = socketTo('/agents/stream');
     this.socket = ws;
     ws.addEventListener('message', (ev) => { try { this.take(JSON.parse(String(ev.data)) as Wire); } catch { return; } });

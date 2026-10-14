@@ -111,7 +111,11 @@ export class Commands {
   label(cmd: Command): string { return typeof cmd.label === 'function' ? cmd.label() : cmd.label; }
   /** What the document allows before a command's own test (1.53.6: a 16-bit document allows its 16-bit commands). */
   gate: ((cmd: Command) => boolean) | null = null;
-  enabled(cmd: Command): boolean { return (!this.gate || this.gate(cmd)) && (cmd.enabled ? cmd.enabled() : true); }
+  enabled(cmd: Command): boolean { return !this.why(cmd) && (!this.gate || this.gate(cmd)) && (cmd.enabled ? cmd.enabled() : true); }
+  /** Why a command is off for a reason outside the document (DEV_PLAN 36.19: it needs the engine service, which is
+   *  not running), as the title menus and the palette show; '' when nothing outside stops it. */
+  blocked: ((cmd: Command) => string) | null = null;
+  why(cmd: Command): string { return this.blocked ? this.blocked(cmd) : ''; }
   keyLabel(cmd: Command): string { return cmd.keys && cmd.keys.length ? formatKeys(cmd.keys[0]) : ''; }
   forEvent(e: KeyboardEvent): Command | undefined { return this.byKey.get(comboOf(e)); }
 

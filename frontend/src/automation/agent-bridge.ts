@@ -1,5 +1,5 @@
 import { Raster, SelectionMask, createSurface, ctxOf, toBlob, type BlendMode, type Engine } from '../engine';
-import { api } from '../io/api';
+import { api, whenServiceUp } from '../io/api';
 import { PARAM_KINDS } from '../engine/adjust-params';
 import { LIMITS } from '../engine/types';
 import { decodeImage } from '../io/images';
@@ -102,6 +102,7 @@ export class AgentBridge {
     this.looping = true;
     for (;;) {
       try {
+        await whenServiceUp();   // with the engine service not running there is nothing to poll, and no timer either
         const res = await fetch(`/api/mcp/bridge/next?allowed=${this.on ? 1 : 0}`);
         if (res.status === 200) {
           const item = await res.json() as { id: string; name: string; arguments: Record<string, unknown> };

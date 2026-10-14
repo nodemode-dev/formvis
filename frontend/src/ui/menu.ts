@@ -1,4 +1,4 @@
-import { el, q, setClass, setDisabled, setText } from './dom';
+import { el, q, setClass, setDisabled, setText, setTitle } from './dom';
 import { icon } from './icons';
 import type { Commands } from './commands';
 import { onLanguage, t } from './i18n';
@@ -128,6 +128,8 @@ export class PopupMenu {
       if (!cmd) continue;
       setText(q(r.node, '.cv-menu-label'), t(this.commands.label(cmd)));
       setDisabled(r.node, !this.commands.enabled(cmd));
+      const why = t(this.commands.why(cmd));
+      if (why || r.node.dataset.why) { setTitle(r.node, why); r.node.dataset.why = why; }
       setClass(r.node, 'is-checked', !!cmd.checked?.());
     }
   }

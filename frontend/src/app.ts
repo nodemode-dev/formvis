@@ -96,7 +96,7 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, str
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
 import { HostLink } from './host';
-import { api, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
+import { api, onServiceChange, serviceDown, type Capabilities, type CmykPsd, type OpenedProject } from './io/api';
 import { findToRemove, localInpaint, modelReady, skyMask, skyReady } from './io/local-gen';
 import { FocusAreaDialog } from './ui/panels/focus-area-dialog';
 import { MergeDialog } from './ui/panels/merge-dialog';
@@ -208,7 +208,8 @@ import { Rail } from './ui/rail';
 import { openToolbarDialog } from './ui/panels/toolbar-dialog';
 import { slotTool, toolGroups } from './ui/tool-groups';
 import { Stage } from './ui/stage';
-import { StatusBar } from './ui/status';
+import { StatusBar, SERVICE_NOTE } from './ui/status';
+import { t } from './ui/i18n';
 import { Tabs } from './ui/tabs';
 import { ViewTiles, type ArrangeLayout } from './ui/view-tiles';
 import { FloatViews } from './ui/float-views';
@@ -672,7 +673,7 @@ export function startApp(): void {
           // A TIFF with several pages asks how to open them (1.53.4).
           if (/\.(tiff?|ico)$/i.test(f.name) && !pagesAsked) { try { const pages = await api.imagePages(f, f.name); if (pages.length > 1) { pagesAsked = true; tiffPages.show(f, pages); continue; } } catch { /* decoded as before */ } }
           if (/\.(jpe?g|tiff?)$/i.test(f.name) && !engine.current && decoded.length === 0) {
-            try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { toast(message(err), 'error'); continue; }
+            try { const c = await api.decodeCmyk(f, f.name); if (c) { await openCmyk(f.name.replace(/\.[^.]+$/, ''), c); continue; } } catch (err) { if (serviceDown()) { /* the engine service is not running: opened as RGB below */ } else { toast(message(err), 'error'); continue; } }
           }
           // A 16-bit PNG or TIFF opens as a 16-bit document (1.53.6, H1).
           if (/\.(png|tiff?|hdr|exr|dpx|pbm|pgm|ppm|pnm|pam|fits|fit|fts)$/i.test(f.name) && !engine.current && decoded.length === 0) {
@@ -3229,7 +3230,8 @@ export function startApp(): void {
         setDisabled(b, !commands.enabled(cmd));
         const label = commands.label(cmd).replace(/\.\.\.$/, '');
         const keys = commands.keyLabel(cmd);
-        setTitle(b, keys ? `${label} (${keys})` : label);
+        const why = t(commands.why(cmd));
+        setTitle(b, why || (keys ? `${label} (${keys})` : label));
         if (b.classList.contains('cv-icon-btn') && b.getAttribute('aria-label') !== label) b.setAttribute('aria-label', label);
       }
       const p = engine.current;
@@ -3413,7 +3415,8 @@ export function startApp(): void {
     if (!caps) { dialogs.settings.setEngine('Engine: offline, so the engine processor cannot be set.'); return; }
     void api.setCompute(loadPrefs().engineDevice).then((r) => dialogs.settings.setEngine(r ? `Engine: ${r.label} (${r.reason}).` : 'Engine: could not be reached.'));
   }
-  void api.capabilities().then((c) => {
+  let noted = false;
+  const applyCaps = (c: Capabilities | null): void => {
     caps = c;
     if (c?.pixelBudget) setPixelBudget(c.pixelBudget);   // the largest document, from this computer's memory (1.53.4)
     // What formvis may hold in pixels (1.60.2, DEV_PLAN 26.1): 45% of this computer's memory, leaving the browser and
@@ -3423,9 +3426,13 @@ export function startApp(): void {
     if (c) engine.undoStore = { put: (b) => api.undoPut(b), get: (k) => api.undoGet(k), drop: (k) => api.undoDrop(k), dropMany: (ks) => api.undoDropMany(ks) };
     if (c) Object.assign(giantTiles, { store: engine.undoStore, page: () => engine.pageTiles(), share: () => engine.tileShare() });   // giant layers saved and opened (1.62.8)
     status.setEngine(c ? `Engine ${c.version}${c.desktop ? ' · desktop' : ''}` : 'Engine offline');
-    if (!c) toast('The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).');
+    if (!c && !noted) { noted = true; toast(SERVICE_NOTE); }   // once: the one note that the engine service is not running (36.19)
     syncEngineDevice();
-  });
+    engine.emit('options', null);   // the commands that wait for the service follow it: menus, the palette and the chrome re-read them
+  };
+  void api.capabilities().then(applyCaps);
+  // The service started (or stopped) later: the window re-checks on focus while it is down, and takes the new report.
+  onServiceChange(() => { void api.capabilities().then(applyCaps); });
   // The desktop app lists the installed fonts from the shell at once (no permission is asked there, as in Photoshop);
   // a browser keeps "Load system fonts..." in the Type tool, since Local Font Access asks the user first.
   if ('__TAURI_INTERNALS__' in window) void loadSystemFonts().then((f) => { if (f) engine.emit('options', null); });
@@ -3440,6 +3447,13 @@ export function startApp(): void {
   // composes on the one compositor, so what remains is the adjustments other than Exposure, Unsharp Mask and Add Noise,
   // the colour models and the profile and proof commands.
   const DEEP32_NOT = new Set<string>();
+  // 36.19, the browser build: these commands need the engine service (library, video, AI models, the terminal and
+  // agents, ComfyUI and NodeMode, LittleCMS conversions). With it not running they are off, with a title saying why.
+  const ENGINE_ONLY = new Set<string>(['save', 'save-as', 'save-copy', 'open', 'revert', 'export-tiff', 'export-pdf', 'export-avif', 'convert-profile', 'mode-cmyk',
+    'remove-bg', 'remove-bg-lite', 'select-subject', 'select-object', 'content-aware-scale', 'generative-fill', 'generate-image', 'generative-expand', 'upscale-2x', 'upscale-4x', 'assistant',
+    'terminal.toggle', 'terminal.new', 'agent.claude.open', 'send-nodemode', 'send-comfyui', 'comfyui-run', 'photomerge', 'merge-hdr', 'manage-plugins',
+    'import-video', 'video-layer-from-file', 'video-replace-footage', 'export-mp4', 'render-video']);
+  commands.blocked = (c) => serviceDown() && ENGINE_ONLY.has(c.id) ? 'Needs the engine service, which is not running (./formvis boot).' : '';
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? !CMYK_NOT.has(c.id) || passes(c)
     : engine.current?.doc.mode === 'lab' ? !LAB_NOT.has(c.id) || passes(c)
     : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || (engine.current?.doc.depth === 32 && (!DEEP32_NOT.has(c.id) || passes(c)));

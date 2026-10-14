@@ -2,6 +2,60 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.72.1: engine split, browser build, the full browser suite · _v1.72.1 (ui/i18n/extra/*.ts)
+
+- `ui/i18n/extra/*.ts`: three keys in all 23 tables (405 each): the service note, the disabled command title and the request error. The browser TIFF errors stay English.
+- The full browser suite ran against a frozen clone of the tree before this release's changes, on its own Vite at 5191, so the builders' edits could not disturb it; results are in the sidecar's BUILD_NOTES and DEV_PLAN 36.20.
+
+## Engine split by domain, DEV_PLAN 36.13 · _v1.72.1 (engine/artboard-ops.ts, engine/guides-ops.ts, engine/profile-ops.ts, engine/index.ts)
+
+- `engine/index.ts` went from 9,883 to 9,599 lines. Each new module defines a small host interface (as `select-ops.ts` does), never imports the Engine class, and each Engine method became a one-line delegator with its doc comment; names, signatures and exports are unchanged.
+- `engine/artboard-ops.ts` (`AB.ArtboardHost`, getter `artboardHost`): artboards, nextArtboardRect, nextArtboardName, newArtboard, artboardFromLayers, contentBounds, artboardFromGroup, frameFromLayers, setArtboard, resizeArtboard, moveArtboard, artboardImage. Moved unchanged except `this.` to `host.`. Delegator form: `moveArtboard(id: ID, dx: number, dy: number): boolean { return AB.moveArtboard(this.artboardHost, id, dx, dy); }`.
+- `engine/guides-ops.ts` (`GD.GuideHost`, getter `guideHost`): addGuide, moveGuide, removeGuide, guideLayout, guidesFromShape, clearGuides, addSlice, removeSlice, clearSlices, updateSlice, addLayerSlice, guideAt, and the private setGuides and setSlices. Moved unchanged except `this.` to `host.`, and two lines in form: `this.emit('overlay', null);` became `host.overlay();`, `this.activeSlice = id;` became `host.setActiveSlice(id);`.
+- `engine/profile-ops.ts` (`PR.ProfileHost`, getter `profileHost`): assignProfile, assignCmykProfile, convertCmykProfile, convertToProfileLinear, convertToProfile, convertDeepDocument. Moved unchanged except `this.` to `host.`.
+- Left in index.ts: text, smart objects, video and timeline, paths, snapshots and history, CMYK and Lab mode conversion (they reach many private fields).
+
+## Browser build: engine service optional, DEV_PLAN 36.19 · _v1.72.1 (io/api.ts, io/images.ts, io/tiff-browser.ts, app.ts, ui/commands.ts, ui/menu.ts, ui/command-palette.ts, ui/status.ts, ui/panels/agent-connect.ts, automation/agent-bridge.ts, automation/catalogue.ts, engine/opentype.ts, vite.config.ts)
+
+- `io/api.ts`, `request` and new `probe`, `serviceReady`, `whenServiceUp`, `onServiceChange`, `serviceDown`: the one health check (`/capabilities`) sets a service state and every request waits for it, so with the service down nothing reaches the network; focus re-checks once while down; the desktop app retries the probe 10 times at 500 ms. Replaced:
+
+```ts
+async function request(path: string, init?: RequestInit): Promise<Response> {
+  let res: Response;
+  try { res = await fetch(`/api${path}`, init); } catch {
+    throw new ApiError('The formvis engine is not reachable. Start it with ./formvis boot.', 0);
+  }
+    try { return (await (await request('/capabilities')).json()) as Capabilities; } catch { return null; }
+```
+
+- `ui/commands.ts`, `blocked` and `why`; `ui/menu.ts` and `ui/command-palette.ts` show the reason as a title. Replaced:
+
+```ts
+  enabled(cmd: Command): boolean { return (!this.gate || this.gate(cmd)) && (cmd.enabled ? cmd.enabled() : true); }
+```
+
+- `app.ts`: `ENGINE_ONLY` (35 ids: library saves and opens, TIFF, PDF and AVIF export, Convert to Profile, CMYK mode, the AI commands, the assistant, terminal and agents, NodeMode and ComfyUI, Photomerge and HDR, plugins, video) and `commands.blocked`; toolbar titles show the reason; boot's `applyCaps` and `onServiceChange` re-read when the service comes or goes; a TIFF or JPEG goes on as RGB when the CMYK probe cannot run. Replaced:
+
+```ts
+        setTitle(b, keys ? `${label} (${keys})` : label);
+  void api.capabilities().then((c) => {
+    caps = c;
+    if (!c) toast('The formvis engine is offline. Editing works; library saves, HEIC and TIFF import and Remove Background need it (./formvis boot).');
+    syncEngineDevice();
+  });
+catch (err) { toast(message(err), 'error'); continue; }
+```
+
+- `ui/status.ts`, `SERVICE_NOTE` as the title of "Engine offline". `automation/agent-bridge.ts` waits on `whenServiceUp()` instead of polling every 2 s; `automation/catalogue.ts` skips the mirror while down; `engine/opentype.ts` skips the font fetch; `ui/panels/agent-connect.ts` stops its WebSocket retries while down.
+- `io/tiff-browser.ts` (new), `decodeTiffInBrowser` over utif2 4.1.0 (MIT, lazy chunk of 106 kB): the first page at 8 bits when the service is down. `io/images.ts`, `decodeImage`. Replaced:
+
+```ts
+  try { source = await bitmapOf(server ? await api.decode(file, name, 0, undefined, rawWb) : file, raw && !server); } catch (err) {
+```
+
+- `vite.config.ts`: `FORMVIS_BACKEND_PORT` overrides the proxy target. Replaced: `const BACKEND_PORT = 8190;`.
+- Checked with the frontend on 5192 and the proxy at a dead port: no page errors, one `/api` request (the probe), "Engine offline" with the note, the palette's Remove Background rows disabled with the title, a 64 by 48 LZW TIFF opened in the browser. Not done: LittleCMS in WebAssembly (`lcms-wasm` 1.0.5 exists, not wired).
+
 ## Release 1.71.9: Lab channel painting, GPU filters, large-file measures · _v1.71.9 (ui/i18n/extra/*.ts)
 
 - `ui/i18n/extra/*.ts`: one key in all 23 tables (402 each), "Use the GPU for filters". The Lab solo note is assembled with the channel name and stays English.
