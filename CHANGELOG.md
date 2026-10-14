@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.69.2 · 2026-10-14
+
+### Added
+
+- The Actions panel imports Photoshop `.atn` files: Invert, Desaturate, Flatten, Merge Visible, Merge Down, Duplicate, Select All, Deselect, Flip Canvas and Gaussian Blur become steps, and the note names the steps with no formvis equivalent.
+- File > Scripts > Script Events Manager: an action runs when formvis starts or when a document is made, opened, saved, closed, exported or printed.
+- File > Automate > Conditional Mode Change: converts to a target mode only from the chosen source modes, and is recorded into actions.
+
 ## 1.69.1 · 2026-10-14
 
 ### Added

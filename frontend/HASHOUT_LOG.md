@@ -2,6 +2,45 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.69.2: .atn import, Script Events Manager, Conditional Mode Change · _v1.69.2 (engine/index.ts, app.ts, ui/panels/script-events-dialog.ts, README.md)
+
+Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (846 catalogue ids); README's TypeScript count raised from 58,800 to 60,700.
+
+Fixes at the join:
+- `Engine.newCount` (engine/index.ts) is raised by `newDocument`. app.ts's projects listener compares it, so a made document fires 'new' and a read one fires 'open'; before, 'new' never fired.
+- Script events now pass quietly when no document is open, 'start' included. Before, a start action toasted "Open a document".
+- `conditionalMode` to CMYK called `convertMode('cmyk')`, which does nothing without the Mode dialog, and the document stayed RGB. It now converts as the dialog does, through `toCmyk` with the shipped CMYK profile (else the first found) and Color Settings' intent and BPC.
+- The Script Events dialog's rows now use the house `cv-dialog-row`, and its list box is a fixed 132 px tall.
+
+Probes in Chromium:
+- A stored New Document event with an Invert action turned a new white document black.
+- Conditional Mode Change on a red RGB document:
+  - from CMYK did nothing;
+  - RGB to Grayscale, Grayscale to Bitmap, Bitmap to CMYK and CMYK to Lab each ended in the target mode.
+- A hand-built `.atn` (Invert, Gaussian Blur 3 px, Sharpen, and a disabled Flatten) imported as one action with Invert and gaussianBlur radius 3. The note named Sharpen as having no equivalent, and the disabled step was skipped.
+- No page errors.
+
+Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.69.1",
+      "version": "1.69.1",
+  "version": "1.69.1",
+export const VERSION = '1.69.1';
+```
+
+## Import Photoshop .atn actions, DEV_PLAN 30.7 · _v1.69.2 (io/atn.ts, ui/panels/actions-dialogs.ts)
+
+Actions > Import now accepts Photoshop .atn files. The parser reads the big-endian stream, including nested descriptors and references, and maps Invert, Desaturate, Flatten Image, Merge Visible, Merge Down, Duplicate, Deselect, Set Selection to All or None, Flip Canvas Horizontal and Vertical, and Gaussian Blur with its radius onto formvis steps. Disabled items are skipped. Every other event (adjustment layers, other filters, layer styles, type, paths, stops and the rest) has no mapping yet and is listed by name in the import note; an action with no mapped steps is still imported, empty. Descriptor data of an unknown type ends the read, keeping the actions parsed so far.
+
+## Script Events Manager, DEV_PLAN 30.6 · _v1.69.2 (ui/script-events.ts, ui/panels/script-events-dialog.ts, app.ts, automation/command-meta.ts)
+
+File > Scripts > Script Events Manager... binds saved actions to the events start, new, open, save, close, export and print, with an enable checkbox, Event and Action selects, Add and Remove, and a list of the pairs, kept in localStorage under formvis.scriptEvents. The ScriptEvents class plays each matching action in order through playAction and ignores fires that arrive while one is playing, so an action that saves does not loop. Save fires after a true result, export at the end of deliver, print when the print dialog prints, and open and close come from comparing project ids on the engine's projects event; every added project counts as open, so 'new' is never fired separately. Deferred: running JavaScript files and Generator as event targets, and a distinct 'new' event.
+
+## Conditional Mode Change, DEV_PLAN 30.5 part a · _v1.69.2 (app.ts, ui/actions.ts, ui/panels/conditional-mode-dialog.ts, automation/command-meta.ts)
+
+File > Automate > Conditional Mode Change... ticks the source modes and picks a target (RGB, CMYK, Lab, Grayscale, Bitmap or Indexed); a document in a ticked mode is converted by the Mode commands' own routes (CMYK and Lab through RGB, Bitmap through Grayscale, depth brought down first) and any other document is left alone. It records as a `conditionalMode` action step and replays in batches, and the command also takes `from` and `to` parameters. Create Droplet, the other half of 30.5 part a's neighbourhood, is deferred.
+
 ## Release 1.69.1: Color Lookup Tables, Paths to Illustrator, Place Embedded, Package · _v1.69.1 (no code at the join)
 
 Joined and checked: tsc clean; unit 194 of 194; the window opened and `agents sync` run (844 catalogue ids). At the join only the log headings changed (they had listed this log itself). No builder added a type cast. Probes in Chromium:
