@@ -11,6 +11,7 @@ response (Debevec) and merges them into linear radiance (Debevec), scaled so the
 its mid-tones: a 32-bit picture whose highlights run past white. Exposure times come from each photo's EXIF; when
 any lacks one, they are estimated from the photos themselves (the median brightness ratio of pixels mid-toned in
 both, in linear light)."""
+import base64
 import io
 import json
 
@@ -143,3 +144,113 @@ async def hdr_route(file: list[UploadFile] = File(...)) -> Response:
         raise HTTPException(422, str(exc)) from exc
     h = json.dumps(head).encode()
     return Response(len(h).to_bytes(4, "little") + h + raw, media_type="application/octet-stream")
+
+
+# Edit > Auto-Align Layers and Auto-Blend Layers (DEV_PLAN 32.1). Each layer arrives as a document-sized RGBA PNG (the
+# frontend renders it alone), bottom-most selected layer first; the answers are in document pixels.
+
+def _decode(data: bytes) -> tuple[np.ndarray, np.ndarray]:
+    a = np.asarray(Image.open(io.BytesIO(data)).convert("RGBA"))
+    return a[..., [2, 1, 0]].copy(), a[..., 3] > 0   # BGR, and where the layer has pixels
+
+
+def _translation(src: np.ndarray, dst: np.ndarray) -> list[float]:
+    d = dst - src
+    med = np.median(d, axis=0)
+    near = np.linalg.norm(d - med, axis=1) < 3.0
+    t = d[near].mean(axis=0) if near.any() else med
+    return [1.0, 0.0, float(t[0]), 0.0, 1.0, float(t[1]), 0.0, 0.0, 1.0]
+
+
+def align(images: list[bytes], projection: str, vignette: bool) -> dict:
+    """Per-layer 3x3 matrices (row-major, layer pixels to the reference's) with SIFT (ORB if absent) features and a
+    RANSAC homography; Reposition keeps only a translation. Cylindrical is treated as Perspective; vignette removal is
+    not done."""
+    import cv2
+    layers = [_decode(d) for d in images]
+    try:
+        det, norm = cv2.SIFT_create(5000), cv2.NORM_L2
+    except (AttributeError, cv2.error):
+        det, norm = cv2.ORB_create(5000), cv2.NORM_HAMMING
+
+    def features(bgr: np.ndarray, valid: np.ndarray):
+        m = cv2.erode(valid.astype(np.uint8) * 255, np.ones((5, 5), np.uint8))
+        return det.detectAndCompute(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY), m)
+
+    rk, rd = features(*layers[0])
+    ident = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0]
+    out, info = [ident], [{"inliers": 0, "kind": "reference"}]
+    bf = cv2.BFMatcher(norm)
+    for n, (bgr, valid) in enumerate(layers[1:], 1):
+        kp, ds = features(bgr, valid)
+        if rd is None or ds is None or len(rd) < 2 or len(ds) < 2:
+            raise ValueError(f"Layer {n + 1} has too few features to align.")
+        good = [m[0] for m in bf.knnMatch(ds, rd, k=2) if len(m) == 2 and m[0].distance < 0.75 * m[1].distance]
+        if len(good) < 3:
+            raise ValueError(f"Layer {n + 1} does not overlap the reference enough to align.")
+        src = np.float32([kp[m.queryIdx].pt for m in good])
+        dst = np.float32([rk[m.trainIdx].pt for m in good])
+        kind, mat, inl = "translation", None, len(good)
+        if projection != "reposition" and len(good) >= 8:
+            h, mask = cv2.findHomography(src, dst, cv2.RANSAC, 3.0)
+            if h is not None and mask is not None and int(mask.sum()) >= 8 and 0.25 < abs(np.linalg.det(h[:2, :2])) < 4.0:
+                kind, mat, inl = "homography", (h / h[2, 2]).ravel().tolist(), int(mask.sum())
+        out.append(mat if mat is not None else _translation(src, dst))
+        info.append({"inliers": inl, "kind": kind})
+    return {"matrices": out, "layers": info, "vignette": "not applied" if vignette else "off"}
+
+
+def blend(images: list[bytes], method: str, seamless: bool) -> dict:
+    """Per-layer masks (0-255 PNGs) where each pixel comes from one layer with smooth transitions: Stack Images picks
+    the layer with the most local Laplacian energy, Panorama the layer farthest from its own edge (a seam mid-overlap).
+    Seamless Tones returns per-layer RGB gains matching each layer's overlap with the reference."""
+    import cv2
+    layers = [_decode(d) for d in images]
+    h, w = layers[0][0].shape[:2]
+    valid = [v for _, v in layers]
+    if method == "stack":
+        score = []
+        for bgr, v in layers:
+            lap = cv2.Laplacian(cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32), cv2.CV_32F, ksize=3)
+            e = cv2.GaussianBlur(lap * lap, (0, 0), 3)
+            score.append(np.where(v, e, -1.0))
+        sigma = 4.0
+    else:
+        score = [cv2.distanceTransform(v.astype(np.uint8), cv2.DIST_L2, 3) for v in valid]
+        sigma = max(3.0, 0.01 * max(w, h))
+    best = np.argmax(np.stack(score), axis=0)
+    wts = [cv2.GaussianBlur((best == i).astype(np.float32), (0, 0), sigma) * valid[i] for i in range(len(layers))]
+    total = np.maximum(sum(wts), 1e-6)
+    masks = []
+    for wt in wts:
+        buf = io.BytesIO()
+        Image.fromarray(np.clip(wt / total * 255 + 0.5, 0, 255).astype(np.uint8), "L").save(buf, "PNG")
+        masks.append(base64.b64encode(buf.getvalue()).decode())
+    tones = [[1.0, 1.0, 1.0]]
+    for bgr, v in layers[1:]:
+        both = v & valid[0]
+        if seamless and both.sum() > 100:
+            g = layers[0][0][both].mean(axis=0) / np.maximum(bgr[both].mean(axis=0), 1.0)
+            tones.append([float(x) for x in np.clip(g[::-1], 0.5, 2.0)])   # RGB
+        else:
+            tones.append([1.0, 1.0, 1.0])
+    return {"masks": masks, "tones": tones}
+
+
+@router.post("/align")
+async def align_route(file: list[UploadFile] = File(...), projection: str = Form("auto"), vignette: bool = Form(False)) -> dict:
+    if len(file) < 2:
+        raise HTTPException(422, "Auto-Align Layers needs at least two layers.")
+    data = [await f.read() for f in file]
+    try:
+        return await run_in_threadpool(align, data, projection, vignette)
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@router.post("/blend")
+async def blend_route(file: list[UploadFile] = File(...), method: str = Form("panorama"), seamless: bool = Form(False)) -> dict:
+    if len(file) < 2:
+        raise HTTPException(422, "Auto-Blend Layers needs at least two layers.")
+    data = [await f.read() for f in file]
+    return await run_in_threadpool(blend, data, method, seamless)

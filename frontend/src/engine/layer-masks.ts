@@ -217,3 +217,11 @@ export function setMaskFromImage(
     p.maskTarget = true;
   });
 }
+
+/** A plain layer mask from a grey image drawn to width x height (32.1, Auto-Blend Layers), for a caller's own edit step. */
+export function maskFromImage(source: CanvasImageSource, width: number, height: number): Mask {
+  const surf = createSurface(width, height), ctx = ctxOf(surf);
+  ctx.drawImage(source, 0, 0, width, height);
+  const d = ctx.getImageData(0, 0, width, height).data;
+  return plainMask(maskRaster(width, height, (i) => Math.round(((d[i * 4] + d[i * 4 + 1] + d[i * 4 + 2]) / 3) * (d[i * 4 + 3] / 255))));
+}
