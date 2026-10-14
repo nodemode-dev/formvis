@@ -2,6 +2,160 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.71.7: Artboard tool, Camera Raw on open, Window > Arrange · _v1.71.7 (app.ts, automation/catalogue.ts, ui/i18n/extra/*.ts)
+
+- `app.ts`, `new-window` and the arrange commands: the Stage refits on the next frame after the layout changes, since a tile layout left it at the tab layout's zoom with the picture in a corner. Replaced:
+
+```ts
+run: () => { if (engine.openView() && viewTiles.layout === 'tabs') viewTiles.setLayout('2up-v'); } },
+      run: () => { viewTiles.setLayout(layout); if (layout === 'tabs')
+```
+
+- `automation/catalogue.ts`, `TOOL_WHEN`: words for the Artboard tool (`./formvis counts --commands --check` reported `tool.select.artboard` without them).
+- `ui/i18n/extra/*.ts`: 19 keys in all 23 tables (384 each): the artboard options and hint segments, Camera Raw's labels and messages, and the Arrange commands. The device names iPhone 15 and iPad stay as written.
+- Checked in the window: a drag with the Artboard tool made Artboard 1 at (460, 142, 272, 204) with handles, "+" buttons and the Layers marker "272 x 204"; New Window for Document opened "A (2)" as a tile, Float in Window "A (3)" as a frame, Consolidate closed both; 2-up shows two gutter handles; opening `backend/tests/fixtures/synthetic.dng` showed Camera Raw with the half-size preview, Open at 8 bits placed a 64 by 48 layer and at 16 bits opened a 16-bit document.
+
+## Artboards: tool, Layers marker, PSD, DEV_PLAN 36.27 · _v1.71.7 (extensions/tools/artboard.ts, extensions/tools/index.ts, engine/index.ts, engine/types.ts, io/psd.ts, ui/layers.ts, ui/icons.ts, styles/panels.css)
+
+- `extensions/tools/artboard.ts` (new): `artboardTool` (key V, order 10.5, so V cycles Move and Artboard). A drag on empty canvas calls `engine.newArtboard(rect)` on release (one step, named by `nextArtboardName`); a label click selects the folder; eight handles call `engine.resizeArtboard`; a drag inside calls `engine.moveArtboard`; the side "+" adds one 40 px beside (hidden when it would fall left of or above the canvas). Handles, labels, "+" and the drag preview draw in `overlay`; the engine is touched only on release. Options: Size preset, Width, Height, Make Artboard from Selected Layers.
+- `extensions/tools/index.ts`: `registerBuiltinTools` lists `artboardTool` after `rotateViewTool`.
+- `engine/types.ts`, `ToolId` gains `'artboard'`.
+- `engine/index.ts`, after `setArtboard`: `resizeArtboard(id, rect)` (one step, the canvas widened to hold it) and `moveArtboard(id, dx, dy)` (one step; the folder and every descendant: box, mask placement, vector mask, nested artboard).
+- `io/psd.ts`: exported `fromPsdArtboard(pl)` and `toPsdArtboard(l)` over ag-psd's `artb` descriptor (artboardRect Top, Left, Btom, Rght; background white, black, transparent or a colour); `psd.artboards = { count }` writes the document's `artd` record. A scratchpad round trip of a 390 by 844 artboard at (120, 40) came back equal. Replaced in `readPsdFile` `walk`:
+
+```ts
+  const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, ...linkOf(pl) });
+```
+
+  Replaced in `writePsdFile` `toPsd`:
+
+```ts
+  if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: 'pass through', opened: true, children: build(l.id) };
+```
+
+- `ui/layers.ts`: a `.cv-layer-size` span after the label; a top-level artboard folder gets the `artboard` icon and "W x H". Replaced:
+
+```ts
+  const kind = l.isGroup ? (collapsed ? 'folder' : 'folderOpen') : l.adjustment ? 'levels' : '';
+```
+
+- `ui/icons.ts`: `tArtboard` and `artboard`, inline currentColor SVG. `styles/panels.css`: `.cv-layer-size`.
+
+## Camera Raw on open, DEV_PLAN 36.21 · _v1.71.7 (ui/panels/camera-raw.ts, io/api.ts, io/images.ts, app.ts)
+
+- `ui/panels/camera-raw.ts` (new): `CameraRawDialog`; `ask(file)` resolves a white balance and 8 or 16 bits on Open, null on Cancel. The preview is the half-size decode in one persistent canvas; stale previews are dropped by a sequence number.
+- `io/api.ts`: `RawWhiteBalance`, `rawFields`; `api.decode` takes a fifth argument sent only when it is not the as-shot default; new `api.decodeRaw16`. Replaced:
+
+```ts
+  async decode(file: Blob, name: string, page = 0, cameraProfile?: string): Promise<Blob> {
+    return (await request('/io/decode', { method: 'POST', body: form({ ...(page ? { page: String(page) } : {}), ...(cameraProfile ? { camera_profile: cameraProfile } : {}) }, [{ name, blob: file }], 'file') })).blob();
+  },
+```
+
+- `io/images.ts`, `decodeImage`: optional `rawWb`. Replaced: `bitmapOf(server ? await api.decode(file, name) : file, raw && !server)`.
+- `app.ts`: `rawLayers` entries gain `wb`; `cameraRaw` beside it; `importFiles` asks `cameraRaw.ask(f)` for a single RAW first (Cancel skips the file; 16 bits opens `engine.openDeep` from `api.decodeRaw16`). Replaced:
+
+```ts
+const rawLayers = new Map<string, { file: File; profile: string }>();
+          if (file && layer) rawLayers.set(layer.id, { file, profile: 'auto' });
+```
+
+## Window > Arrange: new window, floating, editable tiles, DEV_PLAN 36.16 · _v1.71.7 (engine/doc-views.ts, engine/index.ts, ui/view-canvas.ts, ui/float-views.ts, ui/view-tiles.ts, styles/shell.css, app.ts, automation/command-meta.ts)
+
+- `engine/doc-views.ts` (new): `DocView` (id, projectId, n, its own `Viewport`, a `floating` rect or null) and `DocViews`. A view is view state only; the project is shared.
+- `engine/index.ts`: `docViews`, `openView`, `closeView`, `closeSpareView`; `closeProject` calls `this.docViews.closeAllOf(id)` after `this.projects.splice(i, 1);`.
+- `ui/view-canvas.ts` (new): `drawDocView`, `fitCanvas`, `bindDocView` (wheel zoom, Alt+wheel rotate, drag pan, double click fit). Extra views do not take tool input.
+- `ui/float-views.ts` (new): `FloatViews` (open, openAll, consolidate; title drag, eight resize handles, styles patched in place, on `var(--z-companion)`).
+- `ui/view-tiles.ts`, `ViewTiles`: tiles keyed by project or view id; gutter handles (`place`, `sized`, `drag`, `queuePlace`, `handle`); `setLayout` resets the sizes. Replaced `pick`, `sync`, `make`, `fit`:
+
+```ts
+  /** The documents shown as tiles: the next ones after the active one, in open order. */
+  private pick(): Project[] {
+    const n = COUNT[this.layout], list = this.engine.projects, cur = this.engine.current;
+    if (!n || list.length < 2) return [];
+    const at = Math.max(0, cur ? list.indexOf(cur) : 0);
+    const out: Project[] = [];
+    for (let i = 1; i < list.length && out.length < n; i++) out.push(list[(at + i) % list.length]);
+    return out;
+  }
+
+  private sync(): void {
+    const want = this.pick();
+    const ids = new Set(want.map((p) => p.id));
+    for (const [id, t] of this.tiles) {
+      if (ids.has(id)) continue;
+      t.ro.disconnect();
+      t.root.remove();
+      this.tiles.delete(id);
+    }
+    want.forEach((p, i) => {
+      let t = this.tiles.get(p.id);
+      if (!t) { t = this.make(p); this.tiles.set(p.id, t); }
+      if (t.title.textContent !== p.name) t.title.textContent = p.name;
+      if (this.box.children[i] !== t.root) this.box.insertBefore(t.root, this.box.children[i] ?? null);
+    });
+    this.col.dataset.tiles = String(want.length);
+    this.queue();
+  }
+
+  private make(p: Project): Tile {
+    const root = document.createElement('div');
+    root.className = 'cv-view-tile';
+    root.dataset.id = p.id;
+    const title = document.createElement('div');
+    title.className = 'cv-view-tile-title';
+    const canvas = document.createElement('canvas');
+    canvas.className = 'cv-view-tile-canvas';
+    root.append(title, canvas);
+    const tile: Tile = { id: p.id, root, title, canvas, drawn: false, ro: new ResizeObserver(() => this.fit(tile)) };
+    tile.ro.observe(canvas);
+    return tile;
+  }
+
+  /** The canvas box changed: match the backing store to it (only when different) and redraw. */
+  private fit(t: Tile): void {
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.max(1, Math.round(t.canvas.clientWidth * dpr)), h = Math.max(1, Math.round(t.canvas.clientHeight * dpr));
+    if (t.canvas.width !== w) t.canvas.width = w;
+    if (t.canvas.height !== h) t.canvas.height = h;
+    t.drawn = false;
+    this.queue();
+  }
+```
+
+  Replaced in `setLayout`, and the click handler:
+
+```ts
+    if (l === this.layout) return;
+    this.layout = l;
+    this.box.addEventListener('click', (e) => {
+      const hit = e.target instanceof Element ? e.target.closest<HTMLElement>('.cv-view-tile') : null;
+      const id = hit?.dataset.id;
+      if (id) this.engine.switchTo(id);
+    });
+```
+
+- `styles/shell.css`: the layout column rules became var-driven tracks (`--cv-c1`, `--cv-c2`, `--cv-r1`), with `.cv-gutters`, `.cv-gutter`, `.cv-floats`, `.cv-float*`. Replaced:
+
+```css
+.cv-stage-col[data-arrange="2up-v"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cv-stage-col[data-arrange="2up-h"] { grid-template-columns: minmax(0, 1fr); }
+.cv-stage-col[data-arrange="3up"] { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); }
+.cv-stage-col[data-arrange="3up"] > .cv-stage { grid-row: 2 / span 2; }
+.cv-stage-col[data-arrange="4up"] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.cv-stage-col[data-arrange="6up"] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+```
+
+- `app.ts`: `FloatViews`; commands `new-window`, `float-window`, `float-all-windows` first in Window > Arrange; a tab close or `close-tab` closes a spare view before the document. Replaced:
+
+```ts
+      id, label, checked: () => viewTiles.layout === layout, enabled: () => layout === 'tabs' || engine.projects.length > 1, run: () => viewTiles.setLayout(layout),
+    })),
+```
+
+  and `(id) => void requestClose(id)`, `if (p) void requestClose(p.id);`.
+- `automation/command-meta.ts`: three entries; `arrange-tabs` words extended.
+
 ## Release 1.71.6: Object Finder, natural-language editing, Save for Web · _v1.71.6 (ui/panels/assistant.ts, styles/dialogs.css, ui/i18n/extra/*.ts)
 
 - `ui/panels/assistant.ts`, `stepRow`: a call with no arguments leaves the arguments line empty instead of saying "no settings". Replaced: `setText(c.querySelector('.cv-assistant-args'), plainArgs(shown) || 'no settings');`.

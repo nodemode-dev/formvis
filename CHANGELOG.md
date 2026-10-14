@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.71.7 · 2026-10-14
+
+### Added
+
+- Artboard tool (V cycles it with Move): drag on empty canvas to make an artboard, handles to resize, drag inside to move it with its contents, "+" to add one beside; size presets in the options bar. Artboard folders show their own icon and size in the Layers panel, and artboards are read from and written to PSD.
+- Opening a camera RAW shows Camera Raw first: a preview, White Balance (As Shot, Auto, Daylight), Temperature and Tint applied in the RAW decode, and 8 or 16 bits per channel.
+- Window > Arrange: New Window for Document, Float in Window, Float All in Windows; the gutters between tiles can be dragged.
+
+### Fixed
+
+- Choosing a tile layout refits the picture in the main view.
+
 ## 1.71.6 · 2026-10-14
 
 ### Added

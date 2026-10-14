@@ -2,6 +2,35 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Camera Raw white balance and preview, DEV_PLAN 36.21 · _v1.71.7 (services/imaging.py, routers/io.py, __init__.py)
+
+- `imaging.py`, `_wb_kwargs` (new): as shot with no adjustment returns `{"use_camera_wb": True}`, as before; otherwise rawpy `user_wb` multipliers from as shot, daylight or a gray-world average (auto), times Temperature (2^(0.8 t/100) on red, its inverse on blue) and Tint (2^(-0.5 t/100) on green).
+- `imaging.py`, `_raw_args` (new): validates `wb` and `bits`, clamps Temperature and Tint to -100..100; errors are `DecodeError`.
+- `imaging.py`, `_raw`: `wb`, `temperature`, `tint`, `half`; a camera profile applies only with the plain as-shot white balance (an explicit profile with a custom white balance is a `DecodeError`). Replaced:
+
+```python
+                rgb = raw.postprocess(use_camera_wb=True, output_color=rawpy.ColorSpace.sRGB, output_bps=8)
+```
+
+  and `rgb = _profiled(raw, chosen)` became `_profiled(raw, chosen, half)`.
+- `imaging.py`, `_profiled`: `half` to `half_size=half`. Replaced: `linear = raw.postprocess(use_camera_wb=True, output_color=rawpy.ColorSpace.raw, output_bps=16, gamma=(1, 1), no_auto_bright=True)`.
+- `imaging.py`, `raw_deep` (new): 16 bits per channel sRGB RGBA little-endian, with `_check`'s size limit. `decode_to_png` passes the new arguments.
+- `routers/io.py`, `decode`: form fields `wb`, `temperature`, `tint`, `bits`, `half` (defaults as before; with all absent the PNG is byte-identical); `bits=16` on a RAW returns octet-stream with X-Width, X-Height, X-Depth. Replaced:
+
+```python
+def decode(file: UploadFile = File(...), page: int = Form(0), camera_profile: str = Form("auto")) -> Response:
+```
+
+- Checked on `tests/fixtures/synthetic.dng`: full 64 by 48, half 32 by 24; a cool Temperature raises blue and green; Tint and Daylight change the output; 16 bits returns uint16 RGBA with alpha 65535; a bad `wb` and a profile with a custom white balance are refused. `pytest -k "raw or decode"`: 7 passed.
+- Version lines removed, the desktop shell's quoted too:
+
+```text
+__version__ = "1.71.6"
+version = "1.71.6"
+version = "1.71.6"
+ "version": "1.71.6",
+```
+
 ## Version only · _v1.71.6
 
 No engine code changed in 1.71.6 (the Object Finder reuses `/api/ops/select-object` and its embedding cache; the assistant reuses `/api/llm/chat`). Removed version lines, the desktop shell's quoted too:
