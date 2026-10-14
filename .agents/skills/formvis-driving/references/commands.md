@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (878 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (884 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -14,9 +14,9 @@ Generated from the window's command catalogue (878 commands) by `./formvis agent
 - Select: 28
 - Tool options: 225
 - Tools: 49
-- Type: 9
+- Type: 11
 - View: 33
-- Window: 45
+- Window: 49
 
 ## Edit
 
@@ -916,6 +916,8 @@ Generated from the window's command catalogue (878 commands) by `./formvis agent
 | `find-replace-text` | Find and Replace Text... |  | Finds text in type layers and replaces it, with case and whole word options. (changes the picture) |
 | `paragraph-styles` | Paragraph Styles... |  | Opens Paragraph Styles. |
 | `paste-lorem-ipsum` | Paste Lorem Ipsum |  | Appends a Lorem Ipsum paragraph to the active type layer. (changes the picture) |
+| `type-on-arc` | Type on Arc... |  | Sets text on an arc, live and editable. (changes the picture) |
+| `type-on-circle` | Type on Circle... |  | Sets text round a full circle, live and editable. (changes the picture) |
 | `type-on-path` | Type on Path... |  | Opens Type on Path. (changes the picture) |
 | `update-all-text` | Update All Text Layers |  | Re-renders every type layer from its own settings. (changes the picture) |
 | `warp-text` | Warp Text... |  | Opens Warp Text. (changes the picture) |
@@ -975,6 +977,10 @@ Generated from the window's command catalogue (878 commands) by `./formvis agent
 | `glyphs` | Glyphs |  | Opens Glyphs, a grid of Unicode characters to add to a type layer. |
 | `help` | formvis Help | F1 | Opens the formvis manual. |
 | `manage-plugins` | Manage Plugins... |  | Opens the plugins dialog. |
+| `match-all` | Match All |  | Matches zoom, location and rotation across open documents. (changes the picture) |
+| `match-location` | Match Location |  | Centres every open document on the same point as the current one. (changes the picture) |
+| `match-rotation` | Match Rotation |  | Gives every open document the current view rotation. (changes the picture) |
+| `match-zoom` | Match Zoom |  | Gives every open document the current zoom. (changes the picture) |
 | `merge-columns` | Merge Panel Columns |  | Merges the panel columns into one. |
 | `new-frame` | New Frame |  | Adds a frame to the frame animation. (changes the picture) |
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |

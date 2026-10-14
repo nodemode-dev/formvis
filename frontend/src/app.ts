@@ -61,6 +61,8 @@ import { zipFiles } from './io/zip';
 import { assetFiles } from './io/image-assets';
 import { isPsdFile, readPsdFile, writePsdFile } from './io/psd';
 import { isKraFile, readKra } from './io/kra';
+import { isPdnFile, readPdn } from './io/pdn';
+import { isAffinityFile, readAffinity } from './io/affinity';
 import { readLayeredTiff, writeLayeredTiff } from './io/layered-tiff';
 import { isOraFile, readOraFile, writeOra } from './io/ora';
 import { withAiLabel } from './io/ai-label';
@@ -75,6 +77,7 @@ import { TextDialog } from './ui/panels/text-dialog';
 import { BrushSettingsDialog } from './ui/panels/brush-settings';
 import { WarpTextDialog } from './ui/panels/warp-text-dialog';
 import { TypeOnPathDialog } from './ui/panels/type-on-path-dialog';
+import { TypeOnShapeDialog } from './ui/panels/type-on-shape-dialog';
 import { ParagraphStylesDialog } from './ui/panels/paragraph-styles';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
@@ -543,8 +546,16 @@ export function startApp(): void {
             const { doc, notes, activeId } = await readKra(f);
             engine.addProject(doc, f.name.replace(/\.kra$/i, ''), activeId);
             if (notes.length) toast(notes.join(' '), 'info');
+          } else if (isAffinityFile(f)) {   // Affinity preview (DEV_PLAN 34.6)
+            const { doc, notes, activeId } = await readAffinity(f);
+            engine.addProject(doc, f.name.replace(/\.(af|afphoto|afdesign|afpub)$/i, ''), activeId);
+            if (notes.length) toast(notes.join(' '), 'info');
+          } else if (isPdnFile(f)) {   // Paint.NET (DEV_PLAN 34.5 part b)
+            const { doc, notes, activeId } = await readPdn(f);
+            engine.addProject(doc, f.name.replace(/\.pdn$/i, ''), activeId);
+            if (notes.length) toast(notes.join(' '), 'info');
           } else if (isPsdFile(f)) {
-            const cmykPsd = await api.decodeCmykPsd(f, f.name).catch(() => null);
+            const cmykPsd =await api.decodeCmykPsd(f, f.name).catch(() => null);
             if (cmykPsd) { await openCmykPsd(f.name.replace(/\.ps[db]$/i, ''), cmykPsd); continue; }
             const labPsd = await api.decodeLab(f, f.name).catch(() => null);   // 1.58.1
             if (labPsd) { openLab(f.name.replace(/\.ps[db]$/i, ''), labPsd); continue; }
@@ -1551,6 +1562,26 @@ export function startApp(): void {
   }
 
   /** File Info from a person (the dialog) or an agent (any parameter given sets those fields at once, as one step). */
+  const TYPE_SHAPE_PARAMS_CIRCLE: Record<string, CommandParam> = {
+    text: { type: 'string', description: 'The text to set on the circle; leave out to be asked.' },
+    radius: { type: 'number', min: 1, max: 100000, description: 'Radius in pixels; a third of the smaller side when left out.' },
+    offset: { type: 'number', min: 0, max: 100, description: 'Start offset in percent along the curve; 0 when left out.' },
+  };
+  const TYPE_SHAPE_PARAMS_ARC: Record<string, CommandParam> = {
+    ...TYPE_SHAPE_PARAMS_CIRCLE,
+    text: { type: 'string', description: 'The text to set on the arc; leave out to be asked.' },
+    sweep: { type: 'number', min: 1, max: 360, description: 'Arc sweep in degrees; 180 when left out.' },
+  };
+  function typeOnShapeRun(kind: 'arc' | 'circle', a?: Record<string, unknown>): void {
+    const p = engine.current;
+    if (!p) return;
+    if (typeof a?.text !== 'string') { dialogs.typeOnShape.show(kind); return; }
+    const c = engine.shapeCentre();
+    if (!c) return;
+    const num = (v: unknown, d: number): number => (typeof v === 'number' && Number.isFinite(v) ? v : d);
+    const sweep = kind === 'circle' ? 360 : num(a.sweep, 180);
+    void engine.createTextOnShape(a.text, { kind, cx: c.x, cy: c.y, r: num(a.radius, Math.min(p.doc.width, p.doc.height) / 3), start: -sweep / 2, sweep }, num(a.offset, 0));
+  }
   const FILE_INFO_PARAMS: Record<string, CommandParam> = {
     title: { type: 'string', description: 'Document Title. A single space clears the field.' },
     author: { type: 'string', description: 'Author. A single space clears the field.' },
@@ -1928,6 +1959,7 @@ export function startApp(): void {
     brushSettings: new BrushSettingsDialog(engine),
     warpText: new WarpTextDialog(engine),
     typeOnPath: new TypeOnPathDialog(engine),
+    typeOnShape: new TypeOnShapeDialog(engine),
     paragraphStyles: new ParagraphStylesDialog(engine),
     glyphs: new GlyphsDialog(engine),
     toolPresets: new ToolPresetsDialog(engine),
@@ -2678,6 +2710,12 @@ export function startApp(): void {
     { id: 'update-all-text', label: 'Update All Text Layers', enabled: has, run: async () => { const n = await engine.updateAllTextLayers(); toast(`Updated ${n} text layer${n === 1 ? '' : 's'}.`, 'info'); } },
     { id: 'warp-text', label: 'Warp Text...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => dialogs.warpText.show() },
     { id: 'type-on-path', label: 'Type on Path...', enabled: () => !!engine.workPath?.subpaths.some((s) => s.anchors.length > 1), run: () => dialogs.typeOnPath.show() },
+    { id: 'type-on-arc', label: 'Type on Arc...', enabled: has, params: TYPE_SHAPE_PARAMS_ARC, run: (a) => typeOnShapeRun('arc', a) },
+    { id: 'type-on-circle', label: 'Type on Circle...', enabled: has, params: TYPE_SHAPE_PARAMS_CIRCLE, run: (a) => typeOnShapeRun('circle', a) },
+    { id: 'match-zoom', label: 'Match Zoom', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ zoom: true }) },
+    { id: 'match-location', label: 'Match Location', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ location: true }) },
+    { id: 'match-rotation', label: 'Match Rotation', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ rotation: true }) },
+    { id: 'match-all', label: 'Match All', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ zoom: true, location: true, rotation: true }) },
     { id: 'benchmark', label: 'Performance Benchmark...', run: () => dialogs.benchmark.show() },
     { id: 'copy-error-log', label: 'Copy Error Log', run: () => { void navigator.clipboard?.writeText(errorLog.text()).then(() => toast('Copied the error log.'), () => toast('The clipboard is not available here.', 'error')); } },
   );
@@ -2921,7 +2959,7 @@ export function startApp(): void {
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
       { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
-      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'update-all-text'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
+      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'update-all-text', '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] },
       { label: 'Vector Mask', items: ['vmask-reveal-all', 'vmask-hide-all', 'vmask-current-path', 'vmask-delete', '-', 'vmask-enable', 'vmask-link'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
@@ -2951,7 +2989,7 @@ export function startApp(): void {
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
-    { label: 'Window', items: ['assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
+    { label: 'Window', items: [{ label: 'Arrange', items: ['match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'brush-settings', 'paragraph-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
     { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
