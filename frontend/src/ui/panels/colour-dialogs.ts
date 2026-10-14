@@ -6,7 +6,7 @@ import { iccProfile } from '../../engine/icc';
 import { loadPrefs } from '../prefs';
 import { api, ApiError } from '../../io/api';
 import { toBase64 } from '../../io/icc-read';
-import type { ColourView, Intent, ProofSetup } from '../colour';
+import { PROOF_KINDS, type ColourView, type Intent, type ProofSetup } from '../colour';
 import { displayLine } from '../colour-display';
 import { Dialog } from '../dialogs';
 import { el, setText } from '../dom';
@@ -212,7 +212,7 @@ export class ProofSetupDialog extends Dialog {
     const s = this.colour.setup;
     if (s) this.apply(s);
     this.terms();
-    this.fillPresets(s ? this.colour.presets.find((p) => JSON.stringify(p.setup) === JSON.stringify({ ...s, name: p.setup.name }))?.id ?? '' : '');
+    this.fillPresets(this.colour.preset ? `k:${this.colour.preset}` : s ? this.colour.presets.find((p) => JSON.stringify(p.setup) === JSON.stringify({ ...s, name: p.setup.name }))?.id ?? '' : '');
     setText(this.monitor, displayLine(this.colour.display, loadPrefs().colour.useDisplay));
     this.open();
   }
@@ -232,13 +232,14 @@ export class ProofSetupDialog extends Dialog {
     return { id: this.sel.value, name: (this.sel.selectedOptions[0]?.textContent ?? '').replace(/ \((RGB|CMYK|GRAY|LAB)\)$/, ''), intent: this.intent.value as Intent, bpc: this.bpc.checked, ...(this.paper.checked ? { paper: true } : {}), ...(this.ink.checked ? { ink: true } : {}) };
   }
   private fillPresets(pick: string): void {
-    options(this.presetSel, [['', 'Custom'], ...this.colour.presets.map((p) => [p.id, p.name] as [string, string])]);
+    options(this.presetSel, [['', 'Custom'], ...PROOF_KINDS.map(([k, n]) => [`k:${k}`, n] as [string, string]), ...this.colour.presets.map((p) => [p.id, p.name] as [string, string])]);
     this.presetSel.value = pick;
     this.deleteBtn.disabled = !pick;
   }
   private pickPreset(): void {
     const p = this.colour.presets.find((x) => x.id === this.presetSel.value);
     this.deleteBtn.disabled = !p;
+    if (this.presetSel.value.startsWith('k:')) { setText(this.note, 'A built-in preset: OK shows the view without a device from the list.'); return; }
     if (!p) return;
     this.apply(p.setup);
     setText(this.note, [...this.sel.options].some((o) => o.value === p.setup.id) ? '' : `The profile ${p.setup.name} is not on this computer: Load Profile adds it.`);
@@ -273,6 +274,9 @@ export class ProofSetupDialog extends Dialog {
     try { const p = await api.addColourProfile(f); await this.list(p.id); setText(this.note, `Added ${p.name}.`); } catch (err) { setText(this.note, msg(err)); }
   }
   private ok(): void {
+    const pick = this.presetSel.value, kind = PROOF_KINDS.find(([k]) => `k:${k}` === pick)?.[0] ?? null;
+    if (kind) { this.colour.usePreset(kind); this.close(); return; }
+    this.colour.preset = null;
     const setup = this.current();
     if (!setup) { setText(this.note, 'Choose a device to simulate, or load its profile.'); return; }
     this.colour.saveSetup(setup);

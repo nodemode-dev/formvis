@@ -1,5 +1,5 @@
 import type { Engine } from '../engine';
-import type { ColourLut } from '../engine/colour-lut';
+import type { ColourLut, Lut3x4 } from '../engine/colour-lut';
 import { api } from '../io/api';
 import { readDisplay, type DisplayInfo } from './colour-display';
 import { loadPrefs } from './prefs';
@@ -16,6 +16,42 @@ const PRESETS = 'formvis.proof-presets';
 /** The intent and black point compensation a proof is built with: the paper's white needs the absolute intent, and the
  *  press's black needs the compensation off. */
 export const proofTerms = (s: ProofSetup): { intent: Intent; bpc: boolean } => ({ intent: s.paper ? 'absolute' : s.intent, bpc: s.paper || s.ink ? false : s.bpc });
+
+/** Photoshop's built-in proof presets (DEV_PLAN 31.7), beside Custom. The working CMYK ones simulate the working CMYK
+ *  profile and show only some inks (a plate is a grey image of that ink's coverage, CMY leaves K out); the two colour
+ *  blindness ones are Vienot 1999 (Brettel 1997 for the dichromat's confusion lines) in linear RGB. */
+export type ProofKind = 'cmyk' | 'cyan' | 'magenta' | 'yellow' | 'black' | 'cmy' | 'protanopia' | 'deuteranopia';
+export const PROOF_KINDS: Array<[ProofKind, string]> = [['cmyk', 'Working CMYK'], ['cyan', 'Working Cyan Plate'], ['magenta', 'Working Magenta Plate'], ['yellow', 'Working Yellow Plate'], ['black', 'Working Black Plate'], ['cmy', 'Working CMY Plates'], ['protanopia', 'Color Blindness - Protanopia-type'], ['deuteranopia', 'Color Blindness - Deuteranopia-type']];
+const PLATE: Partial<Record<ProofKind, number>> = { cyan: 0, magenta: 1, yellow: 2, black: 3 };
+/** Vienot, Brettel and Mollon 1999: the dichromat's colours as a 3x3 on linear sRGB (rows R, G, B). */
+const CVD: Partial<Record<ProofKind, number[]>> = {
+  protanopia: [0.11238, 0.88762, 0, 0.11238, 0.88762, 0, 0.00401, -0.00401, 1],
+  deuteranopia: [0.29275, 0.70725, 0, 0.29275, 0.70725, 0, -0.02234, 0.02234, 1],
+};
+const lin = (v: number): number => { const c = v / 255; return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4; };
+const unlin = (c: number): number => { const v = c <= 0 ? 0 : c >= 1 ? 1 : c; return Math.round(255 * (v <= 0.0031308 ? v * 12.92 : 1.055 * v ** (1 / 2.4) - 0.055)); };
+
+/** Turns `lut`'s outputs into what a protanope or deuteranope sees (linear RGB, then back to sRGB codes). */
+export function colourBlindLut(lut: ColourLut, kind: ProofKind): ColourLut {
+  const m = CVD[kind], out = new Uint8Array(lut.rgb.length);
+  if (!m) return lut;
+  for (let i = 0; i < out.length; i += 3) {
+    const r = lin(lut.rgb[i]), g = lin(lut.rgb[i + 1]), b = lin(lut.rgb[i + 2]);
+    for (let k = 0; k < 3; k++) out[i + k] = unlin(m[k * 3] * r + m[k * 3 + 1] * g + m[k * 3 + 2] * b);
+  }
+  return { grid: lut.grid, rgb: out };
+}
+
+/** A plate (grey from one ink's coverage), or the CMY inks without K, from the sRGB-to-ink table of the working CMYK. */
+export function plateLut(inks: Lut3x4, kind: ProofKind): ColourLut {
+  const n = inks.grid ** 3, rgb = new Uint8Array(n * 3), ch = PLATE[kind];
+  for (let i = 0; i < n; i++) {
+    const c = inks.cmyk.subarray(i * 4, i * 4 + 4);
+    if (ch !== undefined) rgb[i * 3] = rgb[i * 3 + 1] = rgb[i * 3 + 2] = 255 - c[ch];
+    else { rgb[i * 3] = 255 - c[0]; rgb[i * 3 + 1] = 255 - c[1]; rgb[i * 3 + 2] = 255 - c[2]; }
+  }
+  return { grid: inks.grid, rgb };
+}
 
 /** A table that leaves every colour within one code is no change to draw: an sRGB-like monitor needs no pass. */
 export function nearIdentity(lut: ColourLut): boolean {
@@ -41,6 +77,9 @@ export class ColourView {
   presets: ProofPreset[] = [];
   proof = false;
   gamut = false;
+  /** The built-in preset in use (null for Custom, the saved device). */
+  preset: ProofKind | null = null;
+  private work: { id: string; name: string } | null = null;
   /** The monitor's profile as the system gave it (null until read; the browser build has none). */
   display: DisplayInfo | null = null;
   private key = '';
@@ -57,6 +96,13 @@ export class ColourView {
     window.addEventListener('focus', () => void this.detect());
   }
 
+  /** Chooses a built-in preset (null returns to the saved device) and turns Proof Colors on (the View > Proof Setup commands). */
+  usePreset(kind: ProofKind | null): void {
+    this.preset = kind;
+    if (kind) this.proof = true;
+    void this.refresh();
+  }
+
   saveSetup(s: ProofSetup): void { this.setup = s; try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* kept for this session */ } }
 
   savePresets(list: ProofPreset[]): void { this.presets = list; try { localStorage.setItem(PRESETS, JSON.stringify(list)); } catch { /* kept for this session */ } }
@@ -70,19 +116,38 @@ export class ColourView {
     await this.refresh();
   }
 
+  /** The working CMYK from Color Settings ('default' is the shipped one), by id; also kept for the sync read in refresh. */
+  private async working(ref: string): Promise<{ id: string; name: string } | null> {
+    try {
+      this.work = ref.startsWith('id:') ? { id: ref.slice(3), name: ref.slice(3) } : await api.defaultCmykProfile();
+    } catch { this.work = null; }
+    return this.work;
+  }
+
   async refresh(): Promise<void> {
     // CMYK and Lab documents (1.57.8): the canvas shows their sRGB rendition, so that is the source proofed.
-    const p = this.engine.current, rendered = p?.doc.mode === 'cmyk' || p?.doc.mode === 'lab', prof = rendered ? undefined : p?.doc.profile, s = this.setup, proofing = this.proof && !!s;
+    const p = this.engine.current, rendered = p?.doc.mode === 'cmyk' || p?.doc.mode === 'lab', prof = rendered ? undefined : p?.doc.profile, kind = this.proof ? this.preset : null;
+    const plate = kind === 'cyan' || kind === 'magenta' || kind === 'yellow' || kind === 'black' || kind === 'cmy', cvd = kind === 'protanopia' || kind === 'deuteranopia';
+    const s = kind === 'cmyk' ? ({ id: this.work?.id ?? '', name: 'Working CMYK', intent: 'relative', bpc: true } as ProofSetup) : kind ? null : this.setup, proofing = this.proof && (!!s || !!kind);
     const c = loadPrefs().colour, monitor = c.useDisplay && this.display?.icc ? this.display.icc : null, terms = proofing && s ? proofTerms(s) : null;
-    const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s && terms ? `${s.id}:${terms.intent}:${terms.bpc}` : ''}|${proofing && this.gamut}|${monitor ? `${monitor.length}:${monitor.slice(-64)}:${c.intent}:${c.bpc}` : ''}` : '';
+    const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s && terms ? `${s.id}:${terms.intent}:${terms.bpc}` : ''}|${kind ?? ''}:${c.cmyk}|${proofing && this.gamut}|${monitor ? `${monitor.length}:${monitor.slice(-64)}:${c.intent}:${c.bpc}` : ''}` : '';
     if (key === this.key) return;
     this.key = key;
     if (!p || (!prof && !proofing && !monitor)) { this.engine.setViewTransform(null); return; }
     const n = ++this.seq;
     try {
-      const lut = await api.colourLut({ source: prof ? { icc: prof.icc } : null, dest: monitor ? { icc: monitor } : null, proof: proofing && s ? { id: s.id } : null, intent: c.intent, proofIntent: terms?.intent ?? 'relative', bpc: terms?.bpc ?? c.bpc, gamut: proofing && this.gamut });
+      const work = kind === 'cmyk' || plate ? await this.working(c.cmyk) : null;
       if (n !== this.seq) return;
-      this.engine.setViewTransform(!prof && !proofing && nearIdentity(lut) ? null : { lut, gamut: proofing && this.gamut });
+      if ((kind === 'cmyk' || plate) && !work) throw new Error('No working CMYK profile was found: choose one in Edit > Color Settings.');
+      const proofId = kind === 'cmyk' && work ? work.id : s?.id;
+      let lut: ColourLut;
+      if (plate && work) lut = plateLut(await api.rgbCmykLut({ id: work.id }, prof ? { icc: prof.icc } : null), kind);
+      else {
+        lut = await api.colourLut({ source: prof ? { icc: prof.icc } : null, dest: monitor ? { icc: monitor } : null, proof: proofId ? { id: proofId } : null, intent: c.intent, proofIntent: terms?.intent ?? 'relative', bpc: terms?.bpc ?? c.bpc, gamut: proofing && this.gamut && !cvd });
+        if (cvd) lut = colourBlindLut(lut, kind);
+      }
+      if (n !== this.seq) return;
+      this.engine.setViewTransform(!prof && !proofing && nearIdentity(lut) ? null : { lut, gamut: proofing && this.gamut && !plate && !cvd });
     } catch (err) {
       if (n !== this.seq) return;
       this.key = '';
