@@ -44,6 +44,8 @@ import { CommandPalette } from './ui/command-palette';
 import { FillLayerDialog } from './ui/panels/fill-layer-dialog';
 import { HistoryPanel } from './ui/history';
 import { LayerCompsPanel } from './ui/layer-comps';
+import { StylesPanel } from './ui/styles-panel';
+import { MeasurementLogPanel } from './ui/measurement-log';
 import { StopDialog } from './ui/panels/stop-dialog';
 import { TweenDialog } from './ui/panels/tween-dialog';
 import { GifDialog } from './ui/panels/gif-dialog';
@@ -82,6 +84,7 @@ import { ParagraphStylesDialog } from './ui/panels/paragraph-styles';
 import { LayerStyleDialog } from './ui/panels/layer-style-dialog';
 import { GenerativeDialog } from './ui/panels/generative-dialog';
 import { readPat, writePat } from './io/pat';
+import { cleanFeatures } from './engine/opentype';
 import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, Engine, Raster, SelectionMask, stripExt, toBlob, type ImportedImage, type Pt, effectsActive, effectsPresent, liveText, ctxOf, createSurface, type AdjustmentKind, effectsFromData, runFilterOffThread, addPattern, allPatterns, patternById, projectPatterns, randomSeed, metaWritable, addCustomShape, allCustomShapes, loadCustomShapes } from './engine';
 import { toolForKey, toolsForKey } from './extensions/registry';
 import { registerBuiltinTools } from './extensions/tools';
@@ -370,6 +373,8 @@ export function startApp(): void {
   new HistoryPanel(q(root, '.cv-layers'), engine);
   new LayerCompsPanel(q(root, '.cv-layers'), engine);   // Window > Layer Comps (DEV_PLAN 33.3 part b)
   registerPanel({ id: 'layer-comps', label: 'Layer Comps', selector: 'section.cv-layer-comps' });
+  new StylesPanel(q(root, '.cv-layers'), engine);   // Window > Styles (DEV_PLAN 35.3 part b)
+  new MeasurementLogPanel(q(root, '.cv-layers'), engine, (blob, name) => deliver(blob, name));   // Window > Measurement Log
   // Groups made by detaching a tab (1.49.2) come back where they were: made (empty) before the dock reads its
   // arrangement, filled when the tabs' homes are restored.
   const CUSTOM = 'formvis.customGroups';
@@ -2710,6 +2715,13 @@ export function startApp(): void {
     { id: 'convert-point-text', label: 'Convert to Point Text', enabled: () => { const l = engine.current?.activeLayer; return engine.liveText(l) && !!l?.text?.box; }, run: async () => { await engine.convertTextKind('point'); } },
     { id: 'convert-paragraph-text', label: 'Convert to Paragraph Text', enabled: () => { const l = engine.current?.activeLayer; return engine.liveText(l) && !l?.text?.box; }, run: async () => { await engine.convertTextKind('paragraph'); } },
     { id: 'update-all-text', label: 'Update All Text Layers', enabled: has, run: async () => { const n = await engine.updateAllTextLayers(); toast(`Updated ${n} text layer${n === 1 ? '' : 's'}.`, 'info'); } },
+    { id: 'type-features', label: 'OpenType Features', enabled: () => engine.liveText(engine.current?.activeLayer), params: { features: { type: 'string', description: 'Comma list of OpenType tags to turn on (liga, dlig, calt, salt, swsh, onum, titl, ornm, ordn, frac, smcp); -liga or -calt turns that default feature off; empty clears them.' } },
+      run: async (a) => {
+        const l = engine.current?.activeLayer;
+        if (!l?.text || !engine.liveText(l)) return;
+        const list = String(a?.features ?? '').split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
+        await engine.updateTextLayer(l.id, { ...l.text, features: cleanFeatures(list) });
+      } },
     { id: 'warp-text', label: 'Warp Text...', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => dialogs.warpText.show() },
     { id: 'type-on-path', label: 'Type on Path...', enabled: () => !!engine.workPath?.subpaths.some((s) => s.anchors.length > 1), run: () => dialogs.typeOnPath.show() },
     { id: 'type-on-arc', label: 'Type on Arc...', enabled: has, params: TYPE_SHAPE_PARAMS_ARC, run: (a) => typeOnShapeRun('arc', a) },

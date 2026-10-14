@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (890 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (894 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -12,11 +12,11 @@ Generated from the window's command catalogue (890 commands) by `./formvis agent
 - Paint: 1
 - Paths: 8
 - Select: 28
-- Tool options: 225
+- Tool options: 226
 - Tools: 49
-- Type: 11
+- Type: 12
 - View: 33
-- Window: 55
+- Window: 57
 
 ## Edit
 
@@ -843,6 +843,7 @@ Generated from the window's command catalogue (890 commands) by `./formvis agent
 | `tool.options.type.fontStyle` | Type: Font Style |  | Sets Font Style for the Type tool. |
 | `tool.options.type.kerning` | Type: Kerning |  | Sets Kerning for the Type tool. |
 | `tool.options.type.leading` | Type: Leading |  | Sets Leading for the Type tool. |
+| `tool.options.type.opentype` | Type: OpenType |  | Sets OpenType for the Type tool. |
 | `tool.options.type.size` | Type: Size |  | Sets Size for the Type tool. |
 | `tool.options.type.tracking` | Type: Tracking |  | Sets Tracking for the Type tool. |
 | `tool.options.wand.antiAlias` | Magic Wand: Anti-alias |  | Sets Anti-alias for the Magic Wand tool. |
@@ -916,6 +917,7 @@ Generated from the window's command catalogue (890 commands) by `./formvis agent
 | `find-replace-text` | Find and Replace Text... |  | Finds text in type layers and replaces it, with case and whole word options. (changes the picture) |
 | `paragraph-styles` | Paragraph Styles... |  | Opens Paragraph Styles. |
 | `paste-lorem-ipsum` | Paste Lorem Ipsum |  | Appends a Lorem Ipsum paragraph to the active type layer. (changes the picture) |
+| `type-features` | OpenType Features |  | Turns OpenType features (ligatures, small caps, oldstyle figures, swash and more) on or off for the active type layer. (changes the picture) |
 | `type-on-arc` | Type on Arc... |  | Sets text on an arc, live and editable. (changes the picture) |
 | `type-on-circle` | Type on Circle... |  | Sets text round a full circle, live and editable. (changes the picture) |
 | `type-on-path` | Type on Path... |  | Opens Type on Path. (changes the picture) |
@@ -995,11 +997,13 @@ Generated from the window's command catalogue (890 commands) by `./formvis agent
 | `panel-info` | Info |  | Shows or hides the Info panel. |
 | `panel-layer-comps` | Layer Comps |  | Shows or hides the Layer Comps panel. |
 | `panel-layers` | Layers |  | Shows or hides the Layers panel. |
+| `panel-measurement-log` | Measurement Log |  | Shows or hides the Measurement Log panel. |
 | `panel-navigator` | Navigator |  | Shows or hides the Navigator panel. |
 | `panel-paragraph` | Paragraph |  | Shows or hides the Paragraph panel. |
 | `panel-paths` | Paths |  | Shows or hides the Paths panel. |
 | `panel-properties` | Properties |  | Shows or hides the Properties panel. |
 | `panel-properties-col` | Properties Column |  | Shows or hides the Properties column. |
+| `panel-styles` | Styles |  | Shows or hides the Styles panel. |
 | `panel-swatches` | Swatches |  | Shows or hides the Swatches panel. |
 | `panel-timeline` | Timeline |  | Shows or hides the Timeline panel. |
 | `play-animation` | Play Animation |  | Plays or stops the frame animation. |
