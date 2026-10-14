@@ -248,6 +248,58 @@ async def align_route(file: list[UploadFile] = File(...), projection: str = Form
         raise HTTPException(422, str(exc)) from exc
 
 
+def crop_photos(data: bytes) -> list[dict]:
+    """File > Automate > Crop and Straighten Photos (DEV_PLAN 30.3 part b): each photo on a plain scan background,
+    found by colour distance from the border's median, cut out of the page and turned upright."""
+    import cv2
+
+    rgb = _read(data)[0]
+    h, w = rgb.shape[:2]
+    border = np.concatenate([rgb[0], rgb[-1], rgb[:, 0], rgb[:, -1]]).astype(np.float32)
+    bg = np.median(border, axis=0)
+    dist = np.linalg.norm(rgb.astype(np.float32) - bg, axis=2)
+    dist = cv2.GaussianBlur(dist, (0, 0), 1.2)
+    mask = (dist > max(18.0, float(np.percentile(np.linalg.norm(border - bg, axis=1), 98)) * 2)).astype(np.uint8) * 255
+    k = max(3, round(min(w, h) / 150)) | 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (k, k))
+    mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+    mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+    mask = cv2.erode(mask, np.ones((3, 3), np.uint8), iterations=1)   # the blur and the closing grew the edge
+    found, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    out = []
+    for c in sorted(found, key=lambda c: (cv2.boundingRect(c)[1] // max(1, h // 8), cv2.boundingRect(c)[0])):
+        if cv2.contourArea(c) <= 0.01 * w * h:
+            continue
+        (cx, cy), (rw, rh), ang = cv2.minAreaRect(c)
+        if rw < 2 or rh < 2:
+            continue
+        # Upright: the rectangle's angle folded into -45..45, its sides swapped to match.
+        if ang > 45:
+            ang -= 90
+            rw, rh = rh, rw
+        elif ang < -45:
+            ang += 90
+            rw, rh = rh, rw
+        ow, oh = max(1, round(rw)), max(1, round(rh))
+        box = cv2.boxPoints(((cx, cy), (rw, rh), ang)).astype(np.float32)   # bl, tl, tr, br
+        dst = np.array([[0, oh - 1], [0, 0], [ow - 1, 0], [ow - 1, oh - 1]], np.float32)
+        m = cv2.getPerspectiveTransform(box, dst)
+        warped = cv2.warpPerspective(rgb, m, (ow, oh), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+        buf = io.BytesIO()
+        Image.fromarray(warped).save(buf, "PNG")
+        out.append({"png": base64.b64encode(buf.getvalue()).decode("ascii"), "width": ow, "height": oh,
+                    "rect": {"cx": cx, "cy": cy, "w": rw, "h": rh, "angle": ang}})
+    return out
+
+
+@router.post("/photos")
+async def photos_route(file: UploadFile = File(...)) -> dict:
+    try:
+        return {"photos": await run_in_threadpool(crop_photos, await file.read())}
+    except ValueError as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
 @router.post("/blend")
 async def blend_route(file: list[UploadFile] = File(...), method: str = Form("panorama"), seamless: bool = Form(False)) -> dict:
     if len(file) < 2:
