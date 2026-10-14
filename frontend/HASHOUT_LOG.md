@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.67.9: File Info, four formats and the workspace charter · _v1.67.9
+
+Joined and checked after the three builders: tsc clean; unit 194 of 194; `counts --check` accurate; the window opened and `agents sync` run, the references listing the new commands; engine tests failing only the seven known model and EXR cases; 35 browser tests over export, TIFF pages, OpenRaster, the Home screen, preferences, menus, no scrollbars, the shortcut editor, unsaved changes, projects, PSD paths, filters, 16-bit and layer dialogs, failing only as on the unchanged 1.67.8 tree (the 16-bit adjustment test's brush expectation, the EXR codec, the duplicate-layer dialog's Ctrl+J, which `terminal.toggle` also holds). Removed lines taken after the version edit. Removed from frontend:
+
+```text
+  "version": "1.67.8",
+      "version": "1.67.8",
+  "version": "1.67.8",
+export const VERSION = '1.67.8';
+```
+
 ## Workspace charter: optional Home, nothing over the canvas, settings that stick, Help > What's New, DEV_PLAN 35.1 · _v1.67.9 (ui/prefs.ts, ui/home.ts, ui/option-memory.ts new, ui/dialogs.ts, ui/toast.ts, ui/app-dialogs.ts, ui/panels/whats-new.ts new, ui/panels/whats-new-data.ts new, ui/panels/filter-panel.ts, ui/panels/background-panel.ts, ui/panels/brush-settings.ts, ui/panels/export-dialog.ts, about forty dialogs under ui/panels/ that call `remember()`, styles/panels.css, styles/dialogs.css, app.ts, automation/command-meta.ts, docs/MANUAL.md)
 
 Home screen. `Prefs.autoShowHome` (existing, now labelled "Show Home screen at launch", default on) gates the launch path; the new `Prefs.homeOnLastClose` (default off) gates the path taken when a session that had a document closes its last one. `Home` keeps a `hadDocument` flag and decides `on = forced || (n === 0 && (hadDocument ? deps.afterClose() : deps.autoShow()))`, so the old behaviour of Home returning after the last close is now the opt-in, and closing the last document leaves the empty workspace with its panels as they were. Both are commands (`pref-home-launch`, `pref-home-last-close`) that call `home.sync()`, and rows in Preferences > General.

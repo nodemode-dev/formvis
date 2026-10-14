@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.67.9 · _v1.67.9
+
+Engine tests: 108 passed, the seven known model and EXR cases failing. Removed lines taken after the version edit; the desktop shell's version lines are quoted here too. Removed:
+
+```text
+__version__ = "1.67.8"
+version = "1.67.8"
+version = "1.67.8"
+ "version": "1.67.8",
+```
+
 ## QOI, Netpbm, TGA and ICO codecs, DEV_PLAN 34.1 · _v1.67.9 (app/services/qoi.py new, pnm.py new, tga.py new, ico.py new, imaging.py, app/routers/io.py, app/routers/mcp.py)
 
 Four codecs written from the published specifications in numpy and the standard library (Pillow only encodes the PNG of an ICO entry, decodes a PNG entry and resamples; no new dependency, nothing for NOTICE). `qoi.py`: the 2022-01-05 spec, all six chunks, the 64-entry index, the 8-byte end marker, channels 3 or 4 (4 only when an alpha is below 255), the colourspace byte kept as a flag (informative, the numbers are not converted). `pnm.py`: P1 to P6 and P7 (BLACKANDWHITE, GRAYSCALE, RGB and the _ALPHA forms), comments, text with or without spaces for P1, maxval 1 to 65535, scaled to 8 bits or, above 255, 16; PBM's 1 is black, PAM's BLACKANDWHITE 1 is white; writes P4 (luma at half, transparency on white), P5 and P6 (luma 299/587/114, exact for gray, transparency on white), P7 (GRAYSCALE, GRAYSCALE_ALPHA, RGB or RGB_ALPHA by content), 8 or 16 bits. `tga.py`: types 1, 2, 3, 9, 10, 11, colour-map entries of 15, 16, 24, 32 bits, 8 or 16 bit indices with a first-entry offset, 15/16 (A1R5G5B5, alpha bit read only when the descriptor declares alpha bits), 24, 32 (a fourth byte that is all zero with no declared alpha bits is taken as opaque, as other readers do), 8-bit gray and 16-bit gray with alpha, image id, all four origins; writes 24 or 32 bits, bottom-left, run-length per scanline or not, 24 flattened on white, with the TGA 2.0 footer. `ico.py`: PNG and DIB entries (1, 4, 8, 16, 24, 32 bits, palette, 555 or bitfields, the AND mask used when a 32-bit alpha is all zero, top-down heights); the directory's size is not trusted (each entry's own header gives it); `listing` orders images largest first so page 0 is the largest; writes any of 1 to 256 as 32-bit BGRA DIBs with the AND mask (PNG for 256, or for all when asked), each size fitted in a square, centred, Lanczos on premultiplied alpha.

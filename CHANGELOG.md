@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.67.9 · 2026-10-13
+
+### Added
+
+- File > File Info: title, author, description, rating, keywords, copyright status, notice and URL, with read-only camera data from the photo. They are kept in the project and written as XMP into PNG, JPEG, WebP, TIFF and PSD exports, and read back when such a file is opened. A copyrighted document shows © before its title.
+- QOI, PNM (PBM, PGM, PPM, PAM), TGA and ICO open and export. 16-bit PGM and PPM open as 16-bit documents. An icon with several sizes asks which to open, and icons export at the sizes you choose.
+- Help > What's New, with a Show Me button on each row. It is shown once after an update.
+- Preferences: Show Home screen at launch, and Show Home screen when the last document closes (off by default, so closing the last document leaves the workspace).
+
+### Changed
+
+- Tool options and the values in about forty dialogs are remembered across sessions.
+- Notices never block a click and fade when the pointer comes near, so they never cover the picture you are working on.
+
 ## 1.67.8 · 2026-10-13
 
 ### Added
