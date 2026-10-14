@@ -2469,7 +2469,160 @@ export class Engine {
     const vt = this.video;
     if (!vt) return;
     const t = Math.round(Math.min(vt.duration - 1, Math.max(0, f)));
-    if (t !== vt.current) this.editVideo((v) => { v.current = t; });
+    if (t === vt.current) return;
+    const p = this.current;
+    if (p) { this.videoStore(p, vt, vt.current); this.videoShow(p, vt, t); }   // video layers: keep the painted frame, show the next
+    this.editVideo((v) => { v.current = t; });
+  }
+
+  /** The raster version each video layer's shown frame had when it was put on the layer, to tell a painted frame. */
+  private readonly videoShown = new WeakMap<Raster, number>();
+
+  /** Before the playhead leaves frame `t`: each video layer's raster goes back into its `frames` if it was painted. */
+  private videoStore(p: Project, vt: VideoTimeline, t: number): void {
+    for (const l of p.doc.layers) {
+      const v = l.video, tr = vt.tracks[l.id];
+      if (!v || !tr) continue;
+      const ras = l.raster;
+      if (!ras) continue;
+      const i = t - tr.start, seen = this.videoShown.get(ras);
+      if (i < 0 || i >= v.frames.length || seen === undefined || ras.version === seen) continue;
+      v.frames[i] = ras;
+      this.videoShown.set(ras, ras.version);
+    }
+  }
+
+  /** Puts frame `t`'s picture on each video layer whose clip holds it (a copy, so painting leaves `frames` alone until stored). */
+  private videoShow(p: Project, vt: VideoTimeline, t: number): void {
+    if (!p.doc.layers.some((l) => l.video)) return;
+    p.doc = {
+      ...p.doc,
+      layers: p.doc.layers.map((l) => {
+        const v = l.video, tr = vt.tracks[l.id];
+        if (!v || !tr) return l;
+        const i = t - tr.start;
+        if (i < 0 || i >= v.frames.length) return l;
+        const r = v.frames[i].clone();
+        this.videoShown.set(r, r.version);
+        return { ...l, raster: r };
+      }),
+    };
+  }
+
+  /** New Video Layer: `frames` become a pixel layer whose clip starts at `start` (the playhead) and lasts as many frames;
+   *  a video timeline is made if there is none. One undo step. */
+  addVideoLayer(name: string, frames: Raster[], start?: number): boolean {
+    const p = this.current;
+    if (!p || !frames.length || frames.length > 300 || this.stroke || this.waiting()) return false;
+    const had = this.timelineOf(p).video ?? null;
+    if (!had && this.timelineOf(p).frames.length) return false;
+    this.settle();
+    if (had) this.videoStore(p, had, had.current);
+    const from = start ?? had?.current ?? 0, before = new Set(p.doc.layers.map((l) => l.id));
+    let made: Layer | undefined;
+    p.history.begin('New Video Layer', { ...p.snapshot(), video: had ? structuredClone(had) : null });
+    try {
+      this.insertRasterLayer(frames[0].clone(), name, null, null, { video: { frames, original: frames.slice(), name } }, 'New Video Layer');
+      made = p.doc.layers.find((l) => !before.has(l.id));
+      if (made) {
+        const id = made.id, v = had ? structuredClone(had) : newVideoTimeline(p.doc, 30, Math.max(1, frames.length / 30));
+        v.tracks[id] = { start: from, length: frames.length, keys: {} };
+        if (from + frames.length > v.duration) { if (v.workOut === v.duration) v.workOut = from + frames.length; v.duration = from + frames.length; }
+        v.current = Math.min(v.duration - 1, from);
+        this.timelines.set(p, { ...this.timelineOf(p), video: v });
+        this.videoShow(p, v, v.current);
+      }
+    } finally {
+      const v = this.timelineOf(p).video ?? null;
+      p.history.end({ ...p.snapshot(), video: v ? structuredClone(v) : null });
+      this.refresh();
+      this.emit('timeline', null);
+      this.emit('render', null);
+    }
+    return !!made;
+  }
+
+  /** New Blank Video Layer: an empty document-size frame for every frame of the timeline (150 when there is none). */
+  newBlankVideoLayer(): boolean {
+    const p = this.current;
+    if (!p) return false;
+    const n = Math.min(300, this.video?.duration ?? 150), frames: Raster[] = [];
+    for (let i = 0; i < n; i++) frames.push(new Raster(p.doc.width, p.doc.height));
+    return this.addVideoLayer('Video Layer', frames, 0);
+  }
+
+  /** One undoable change to the active video layer's frames at the playhead; `change` returns the new frame lists
+   *  (`at` the frame to show after, `drop` to end the video layer) and must not alter the old ones. */
+  private videoStep(name: string, change: (v: NonNullable<Layer['video']>, i: number) => { frames: Raster[]; original: Raster[]; at?: number; drop?: boolean } | null): boolean {
+    const p = this.current, vt = this.video, l = p?.activeLayer;
+    if (!p || !vt || !l?.video || this.stroke || this.waiting()) return false;
+    const tr = vt.tracks[l.id], i = tr ? vt.current - tr.start : -1;
+    if (!tr || i < 0 || i >= l.video.frames.length) return false;
+    this.settle();
+    this.videoStore(p, vt, vt.current);
+    const out = change(l.video, i);
+    if (!out) return false;
+    p.history.begin(name, { ...p.snapshot(), video: structuredClone(vt) });
+    const next = structuredClone(vt), nt = next.tracks[l.id], label = l.video.name;
+    nt.length = out.frames.length;
+    if (nt.start + nt.length > next.duration) { if (next.workOut === next.duration) next.workOut = nt.start + nt.length; next.duration = nt.start + nt.length; }
+    next.current = Math.min(next.duration - 1, nt.start + Math.min(out.at ?? i, nt.length - 1));
+    p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: out.drop ? null : { frames: out.frames, original: out.original, name: label } } : x)) };
+    this.timelines.set(p, { ...this.timelineOf(p), video: next });
+    this.videoShow(p, next, next.current);
+    p.history.end({ ...p.snapshot(), video: structuredClone(next) });
+    this.refresh();
+    this.emit('timeline', null);
+    this.emit('render', null);
+    return true;
+  }
+
+  /** Insert Blank Frame: an empty frame after the playhead's, which moves onto it. The clip grows by one. */
+  insertBlankFrame(): boolean {
+    return this.videoStep('Insert Blank Frame', (v, i) => {
+      const w = this.current?.doc.width ?? 1, h = this.current?.doc.height ?? 1, blank = new Raster(w, h), f = v.frames.slice(), o = v.original.slice();
+      f.splice(i + 1, 0, blank); o.splice(i + 1, 0, blank);
+      return { frames: f, original: o, at: i + 1 };
+    });
+  }
+
+  /** Duplicate Frame: a copy of the playhead's frame after it, the playhead moving onto the copy. */
+  duplicateFrame(): boolean {
+    return this.videoStep('Duplicate Frame', (v, i) => {
+      const f = v.frames.slice(), o = v.original.slice();
+      f.splice(i + 1, 0, f[i].clone()); o.splice(i + 1, 0, o[i]);
+      return { frames: f, original: o, at: i + 1 };
+    });
+  }
+
+  /** Delete Frame: the playhead's frame goes and the clip shortens; the last frame of a clip stays. */
+  deleteVideoFrame(): boolean {
+    return this.videoStep('Delete Frame', (v, i) => {
+      if (v.frames.length < 2) return null;
+      const f = v.frames.slice(), o = v.original.slice();
+      f.splice(i, 1); o.splice(i, 1);
+      return { frames: f, original: o, at: i };
+    });
+  }
+
+  /** Restore Frame: the playhead's frame back to the footage as loaded. */
+  restoreFrame(): boolean {
+    return this.videoStep('Restore Frame', (v, i) => {
+      if (v.frames[i] === v.original[i]) return null;
+      const f = v.frames.slice();
+      f[i] = v.original[i];
+      return { frames: f, original: v.original };
+    });
+  }
+
+  /** Restore All Frames: every frame back to the footage as loaded. */
+  restoreAllFrames(): boolean {
+    return this.videoStep('Restore All Frames', (v) => (v.frames.every((r, k) => r === v.original[k]) ? null : { frames: v.original.slice(), original: v.original }));
+  }
+
+  /** Rasterize Video Layer: the layer becomes an ordinary pixel layer holding the frame at the playhead. */
+  rasterizeVideo(): boolean {
+    return this.videoStep('Rasterize Video Layer', (v) => ({ frames: v.frames, original: v.original, drop: true }));
   }
 
   /** The picture at video frame `f`: the layers in the state the timeline gives them there. */

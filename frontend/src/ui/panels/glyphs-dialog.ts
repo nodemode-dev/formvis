@@ -1,0 +1,115 @@
+import type { Engine } from '../../engine';
+import { Dialog } from '../dialogs';
+import { el, q, setText } from '../dom';
+import { toast } from '../toast';
+import { selectRow } from './controls';
+
+/** Window > Glyphs (DEV_PLAN 32.6 part a): a 16-column grid of one Unicode block in the type layer's font, a row of
+ *  the last 12 glyphs used, and a click that appends the glyph to the active type layer's content (one undo step).
+ *  The grid's 256 buttons are built once; changing the block changes only their text and font. */
+
+interface Block { id: string; label: string; from: number; to: number }
+const BLOCKS: readonly Block[] = [
+  { id: 'latin', label: 'Basic Latin', from: 0x20, to: 0x7e },
+  { id: 'latin1', label: 'Latin-1 Supplement', from: 0xa0, to: 0xff },
+  { id: 'latinA', label: 'Latin Extended-A', from: 0x100, to: 0x17f },
+  { id: 'greek', label: 'Greek', from: 0x370, to: 0x3ff },
+  { id: 'cyrillic', label: 'Cyrillic', from: 0x400, to: 0x4ff },
+  { id: 'punct', label: 'General Punctuation', from: 0x2010, to: 0x205e },
+  { id: 'currency', label: 'Currency', from: 0x20a0, to: 0x20bf },
+  { id: 'letterlike', label: 'Letterlike', from: 0x2100, to: 0x214f },
+  { id: 'arrows', label: 'Arrows', from: 0x2190, to: 0x21ff },
+  { id: 'math', label: 'Math Operators', from: 0x2200, to: 0x22ff },
+  { id: 'box', label: 'Box Drawing', from: 0x2500, to: 0x257f },
+  { id: 'shapes', label: 'Geometric Shapes', from: 0x25a0, to: 0x25ff },
+  { id: 'misc', label: 'Miscellaneous Symbols', from: 0x2600, to: 0x26ff },
+  { id: 'dingbats', label: 'Dingbats', from: 0x2700, to: 0x27bf },
+];
+const RECENT_KEY = 'formvis.glyphsRecent';
+const RECENT_MAX = 12;
+
+function loadRecent(): string[] {
+  try {
+    const v: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
+    return Array.isArray(v) ? v.filter((x): x is string => typeof x === 'string').slice(0, RECENT_MAX) : [];
+  } catch { return []; }
+}
+function saveRecent(list: string[]): void {
+  try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* storage unavailable: the row lives for the session */ }
+}
+
+export class GlyphsDialog extends Dialog {
+  private readonly font = el('<label class="cv-field"><span></span><input class="cv-input" type="text" readonly></label>');
+  private readonly fontInput: HTMLInputElement;
+  private readonly grid = el('<div class="cv-glyph-grid" role="grid" style="display: grid; grid-template-columns: repeat(16, 1fr); gap: 2px; margin-top: 8px"></div>');
+  private readonly recentRow = el('<div class="cv-glyph-recent" style="display: flex; gap: 2px; min-height: 30px; margin-top: 8px" aria-label="Recently used"></div>');
+  private readonly cells: HTMLButtonElement[] = [];
+  private readonly recentCells: HTMLButtonElement[] = [];
+  private recent: string[] = loadRecent();
+  private block: Block = BLOCKS[0];
+  private family = '';
+
+  constructor(private readonly engine: Engine) {
+    super('Glyphs', 560);
+    setText(q(this.font, 'span'), 'Font');
+    this.fontInput = q(this.font, 'input') as HTMLInputElement;
+    const show = selectRow('Show', BLOCKS.map((b) => [b.id, b.label] as const), (v) => { this.block = BLOCKS.find((b) => b.id === v) ?? BLOCKS[0]; this.fill(); });
+    show.set(this.block.id);
+    for (let i = 0; i < 256; i++) {
+      const b = el<HTMLButtonElement>('<button type="button" class="cv-btn ghost" style="padding: 2px 0; font-size: 18px; min-width: 0; height: 30px" role="gridcell"></button>');
+      b.addEventListener('click', () => { if (b.textContent) void this.insert(b.textContent); });
+      this.cells.push(b);
+      this.grid.appendChild(b);
+    }
+    for (let i = 0; i < RECENT_MAX; i++) {
+      const b = el<HTMLButtonElement>('<button type="button" class="cv-btn ghost" style="padding: 2px 0; font-size: 18px; width: 30px; height: 30px" hidden></button>');
+      b.addEventListener('click', () => { if (b.textContent) void this.insert(b.textContent); });
+      this.recentCells.push(b);
+      this.recentRow.appendChild(b);
+    }
+    this.body.append(this.font, show.el, el('<p class="cv-dialog-note">Recently used</p>'), this.recentRow, this.grid,
+      el('<p class="cv-dialog-note">Alternates and OpenType features are not offered yet. A click adds the glyph to the end of the selected type layer.</p>'));
+    this.button('Done', 'primary', () => this.close());
+    this.paintRecent();
+  }
+
+  show(): void {
+    const t = this.engine.current?.activeLayer?.text;
+    this.family = t && this.engine.liveText(this.engine.current?.activeLayer) ? t.family : this.engine.textSettings.family;
+    this.fontInput.value = this.family;
+    this.fill();
+    this.paintRecent();
+    this.open();
+  }
+
+  /** Sets the 256 kept buttons for the current block: text and font only, nothing is added or removed. */
+  private fill(): void {
+    const { from, to } = this.block;
+    const font = this.family ? `"${this.family}", sans-serif` : '';
+    this.cells.forEach((b, i) => {
+      const cp = from + i, on = cp <= to;
+      b.hidden = !on;
+      b.style.fontFamily = font;
+      b.textContent = on ? String.fromCodePoint(cp) : '';
+      b.title = on ? `U+${cp.toString(16).toUpperCase().padStart(4, '0')}` : '';
+    });
+  }
+
+  private paintRecent(): void {
+    this.recentCells.forEach((b, i) => {
+      const g = this.recent[i];
+      b.hidden = g === undefined;
+      b.textContent = g ?? '';
+      b.style.fontFamily = this.family ? `"${this.family}", sans-serif` : '';
+    });
+  }
+
+  private async insert(glyph: string): Promise<void> {
+    const layer = this.engine.current?.activeLayer;
+    if (!layer || !layer.text || !this.engine.liveText(layer)) { toast('Select a type layer to insert a glyph.', 'info'); return; }
+    this.recent = [glyph, ...this.recent.filter((g) => g !== glyph)].slice(0, RECENT_MAX);
+    saveRecent(this.recent);
+    this.paintRecent();
+    await this.engine.updateTextLayer(layer.id, { ...layer.text, content: layer.text.content + glyph });
+  }
+}

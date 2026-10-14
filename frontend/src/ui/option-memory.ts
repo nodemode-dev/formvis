@@ -22,7 +22,8 @@ type Settable = Extract<OptionSpec, { kind: 'segment' | 'range' | 'toggle' | 'se
 type Kept = { spec: Settable; key: string };
 const settable = (s: OptionSpec): s is Settable => s.kind !== 'title' && s.kind !== 'readout' && s.kind !== 'button';
 
-const skipped = (tool: string, label: string): boolean => { const n = NEVER[tool]; return n === '*' || !!n?.includes(label); };
+/** Whether an option describes the document or the gesture (never kept); Tool Presets (35.3) skip the same ones. */
+export const skipped = (tool: string, label: string): boolean => { const n = NEVER[tool]; return n === '*' || !!n?.includes(label); };
 
 /** The specs worth keeping, with the key each is kept under (a repeated label gets a count, as the catalogue names it). */
 function keptSpecs(tool: Tool, specs: OptionSpec[]): Kept[] {

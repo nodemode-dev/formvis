@@ -64,6 +64,10 @@ export interface Layer {
   text?: TextSpec | null;
   /** A smart object's original pixels and live filter stack; `raster` shows the result. */
   smart?: SmartObject | null;
+  /** A video layer (DEV_PLAN 33.4a): one raster per frame of its clip. `original` is the footage as loaded, `frames` the
+   *  current, possibly painted, frames (they share Raster objects until a frame is altered); `raster` shows the frame
+   *  at the playhead and is stored back into `frames` when the playhead leaves it. */
+  video?: { frames: Raster[]; original: Raster[]; name: string } | null;
   /** On a top-level folder, makes it an artboard: its contents shown only inside `x, y, w, h` (document pixels), over
    *  `background` (none is transparent), and exported as its own image. */
   artboard?: Artboard | null;
