@@ -128,4 +128,18 @@ export const es: Record<string, string> = {
   'cycles': 'alterna',
   'Check Spelling': 'Revisar ortografía', 'Resolve Missing Fonts': 'Resolver fuentes que faltan', 'Ignore': 'Omitir', 'Ignore All': 'Omitir todo',
   'Change': 'Cambiar', 'Change All': 'Cambiar todo', 'Replace All': 'Reemplazar todo', 'Reveal in File Manager': 'Mostrar en el gestor de archivos',
+  // Tool names (tool rail)
+  'Art History Brush': 'Pincel de historia artístico', 'Background Eraser': 'Borrador de fondos', 'Brush': 'Pincel', 'Paint Bucket': 'Bote de pintura',
+  'Clone Stamp': 'Sello de clonar', 'Color Sampler': 'Muestra de color', 'Content-Aware Move': 'Mover según el contenido', 'Convert Point': 'Convertir punto',
+  'Count': 'Contar', 'Curvature Pen': 'Pluma de curvatura', 'Direct Selection': 'Selección directa', 'Elliptical Frame': 'Marco elíptico',
+  'Elliptical Marquee': 'Selección elíptica', 'Eraser': 'Borrador', 'Eyedropper': 'Cuentagotas', 'Freeform Pen': 'Pluma de forma libre', 'Hand': 'Mano',
+  'Healing Brush': 'Pincel corrector', 'History Brush': 'Pincel de historia', 'Lasso': 'Lazo', 'Magic Eraser': 'Borrador mágico', 'Magic Wand': 'Varita mágica',
+  'Magnetic Lasso': 'Lazo magnético', 'Marquee': 'Selección', 'Markup': 'Marcado', 'Mixer Brush': 'Pincel mezclador', 'Move': 'Mover', 'Note': 'Nota',
+  'Object Selection': 'Selección de objetos', 'Patch': 'Parche', 'Path Selection': 'Selección de trazado', 'Pattern Stamp': 'Sello de motivo', 'Pen': 'Pluma',
+  'Pencil': 'Lápiz', 'Polygonal Lasso': 'Lazo poligonal', 'Quick Selection': 'Selección rápida', 'Rectangular Frame': 'Marco rectangular',
+  'Rectangular Marquee': 'Selección rectangular', 'Red Eye': 'Ojos rojos', 'Remove': 'Quitar', 'Rotate View': 'Girar vista', 'Ruler': 'Regla',
+  'Selection Brush': 'Pincel de selección', 'Single Column Marquee': 'Selección de columna única', 'Single Row Marquee': 'Selección de fila única',
+  'Slice': 'Sector', 'Smear': 'Difuminar', 'Smudge': 'Dedo', 'Spot Healing': 'Pincel corrector puntual', 'Zoom': 'Zoom',
+  'Spherical Panorama': 'Panorama esférico', 'Apply View to Panorama': 'Aplicar vista al panorama', 'Edit View': 'Editar vista',
+  'Slice Options': 'Opciones de sector', 'New Layer Based Slice': 'Nuevo sector basado en capa',
 };

@@ -51,20 +51,55 @@ const fromHandle = (h: Handle): LinkSource => ({
 
 export function registerLinkSource(id: string, s: LinkSource): void { sources.set(id, s); }
 
-async function sourceFor(id: string): Promise<LinkSource | null> {
+const inDesktopApp = (): boolean => '__TAURI_INTERNALS__' in window;
+
+/** A source that reads a file by its disk path through the engine (desktop app only: the engine runs on the same computer). */
+const fromPath = (path: string): LinkSource => {
+  const name = path.split(/[\\/]/).pop() || path;
+  return {
+    name, live: true,
+    async getFile() {
+      const res = await fetch(`/api/file?path=${encodeURIComponent(path)}`);
+      if (!res.ok) throw new Error(`${name} could not be read from ${path}.`);
+      const stamp = Date.parse(res.headers.get('Last-Modified') ?? '');
+      return new File([await res.blob()], name, { type: res.headers.get('Content-Type') ?? '', lastModified: Number.isFinite(stamp) ? stamp : Date.now() });
+    },
+  };
+};
+
+async function sourceFor(id: string, path?: string): Promise<LinkSource | null> {
   const s = sources.get(id);
   if (s) return s;
   const h = await recall(id);
-  if (!h) return null;
-  const made = fromHandle(h);
-  sources.set(id, made);
-  return made;
+  if (h) {
+    const made = fromHandle(h);
+    sources.set(id, made);
+    return made;
+  }
+  if (path && inDesktopApp()) {
+    const made = fromPath(path);
+    sources.set(id, made);
+    paths.set(id, path);
+    return made;
+  }
+  return null;
 }
 
 /** Asks for a file to link: a handle where the browser has them, else a one-time pick through `fallback`. */
 export async function pickLinkSource(fallback: () => Promise<File | null>): Promise<{ id: string; source: LinkSource } | null> {
   const picker = (window as unknown as { showOpenFilePicker?: (o: unknown) => Promise<Handle[]> }).showOpenFilePicker;
   const id = uid();
+  if (inDesktopApp()) {
+    try {
+      const { invoke } = await import('@tauri-apps/api/core');
+      const path = await invoke<string | null>('pick_image_path');
+      if (!path) return null;
+      const source = fromPath(path);
+      sources.set(id, source);
+      paths.set(id, path);
+      return { id, source };
+    } catch { /* the shell could not show its dialog: fall through to the browser pickers */ }
+  }
   if (picker) {
     try {
       const [h] = await picker({ types: [{ description: 'Images', accept: { 'image/*': ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif', '.tif', '.tiff', '.dpx', '.qoi', '.tga', '.ico', '.pgm', '.ppm', '.pam', '.heic', '.psd', '.dng', '.cr2', '.cr3', '.nef', '.arw', '.raf', '.orf', '.rw2', '.pef', '.srw'] } }] });
@@ -92,8 +127,8 @@ async function read(source: LinkSource): Promise<{ raster: Raster; file: File }>
 const pathOf = (f: File): string | undefined => { const p: unknown = Reflect.get(f, 'path'); return typeof p === 'string' && p ? p : undefined; };
 const paths = new Map<string, string>();
 
-const meta = (id: string, f: File): SmartLink => {
-  const path = pathOf(f) ?? paths.get(id);
+const meta = (id: string, f: File, known?: string): SmartLink => {
+  const path = pathOf(f) ?? paths.get(id) ?? known;
   if (path) paths.set(id, path);
   return { id, name: f.name, size: f.size, lastModified: f.lastModified, ...(path ? { path } : {}) };
 };
@@ -121,7 +156,7 @@ export async function linkedFiles(engine: Engine): Promise<{ files: { name: stri
     const link = l.smart?.link;
     if (!link || seen.has(link.id)) continue;
     seen.add(link.id);
-    const s = await sourceFor(link.id);
+    const s = await sourceFor(link.id, link.path);
     if (!s) { out.missing.push(link.name); continue; }
     let file: File;
     try { file = await s.getFile(); } catch { out.missing.push(link.name); continue; }
@@ -167,13 +202,13 @@ export async function updateLinked(engine: Engine): Promise<{ updated: number; m
   for (const l of p.doc.layers) {
     const link = l.smart?.link;
     if (!link) continue;
-    const s = await sourceFor(link.id);
+    const s = await sourceFor(link.id, link.path);
     if (!s) { out.missing.push(link.name); continue; }
     let file: File;
     try { file = await s.getFile(); } catch { out.missing.push(link.name); continue; }
     if (file.lastModified === link.lastModified && file.size === link.size) continue;
     const { raster } = await read({ ...s, getFile: async () => file });
-    if (engine.updateLinkedContents(l.id, raster, meta(link.id, file))) out.updated++;
+    if (engine.updateLinkedContents(l.id, raster, meta(link.id, file, link.path))) out.updated++;
   }
   return out;
 }

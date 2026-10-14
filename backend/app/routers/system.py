@@ -51,6 +51,27 @@ def reveal(body: RevealBody) -> dict:
     return {"ok": True}
 
 
+_LINK_IMAGE_SUFFIXES = {
+    ".png", ".jpg", ".jpeg", ".webp", ".gif", ".avif", ".tif", ".tiff", ".dpx", ".qoi", ".tga", ".ico", ".pgm", ".ppm",
+    ".pam", ".heic", ".psd", ".dng", ".cr2", ".cr3", ".nef", ".arw", ".raf", ".orf", ".rw2", ".pef", ".srw",
+}
+
+
+@router.get("/file")
+def linked_file(path: str) -> Response:
+    """Linked smart object file (33.2): the bytes of an existing image file on disk, for the desktop app to re-read a link
+    from its real path. 400 for a path that is not an image file by suffix, 404 when it does not exist as a regular file."""
+    import mimetypes
+    target = Path(path).expanduser()
+    if target.suffix.lower() not in _LINK_IMAGE_SUFFIXES:
+        raise HTTPException(status_code=400, detail="That is not an image file.")
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="That file does not exist.")
+    media = mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    from email.utils import formatdate
+    return Response(content=target.read_bytes(), media_type=media, headers={"Last-Modified": formatdate(target.stat().st_mtime, usegmt=True)})
+
+
 @router.get("/version")
 def version() -> dict:
     return {"name": config.APP_NAME, "version": config.VERSION}

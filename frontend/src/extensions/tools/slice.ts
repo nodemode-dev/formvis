@@ -22,9 +22,10 @@ export function drawSlices(g: CanvasRenderingContext2D, list: readonly DocSlice[
 }
 
 /** The rectangle being dragged, in document coordinates, or null. */
-let drag: { start: Pt; now: Pt; square: boolean } | null = null;
+let drag: { start: Pt; now: Pt; square: boolean; move?: DocSlice } | null = null;
 
-function rectOf(d: { start: Pt; now: Pt; square: boolean }): Rect {
+function rectOf(d: { start: Pt; now: Pt; square: boolean; move?: DocSlice }): Rect {
+  if (d.move) return { x: d.move.x + d.now.x - d.start.x, y: d.move.y + d.now.y - d.start.y, w: d.move.w, h: d.move.h };
   let dx = d.now.x - d.start.x, dy = d.now.y - d.start.y;
   if (d.square) { const m = Math.max(Math.abs(dx), Math.abs(dy)); dx = Math.sign(dx || 1) * m; dy = Math.sign(dy || 1) * m; }
   return { x: Math.min(d.start.x, d.start.x + dx), y: Math.min(d.start.y, d.start.y + dy), w: Math.abs(dx), h: Math.abs(dy) };
@@ -37,7 +38,10 @@ export const sliceTool: Tool = {
   cursor: () => 'crosshair',
   down(ctx, p) {
     if (p.button !== 0 || !ctx.engine.current) return;
-    drag = { start: p.doc, now: p.doc, square: p.shift };
+    // Slice Select: a press inside an existing slice (the topmost) selects it and a drag moves it; a press outside every slice starts a new one.
+    const hit = [...(ctx.engine.current.doc.slices ?? [])].reverse().find((s) => p.doc.x >= s.x && p.doc.x < s.x + s.w && p.doc.y >= s.y && p.doc.y < s.y + s.h);
+    if (hit) ctx.engine.activeSlice = hit.id;
+    drag = { start: p.doc, now: p.doc, square: p.shift, ...(hit ? { move: hit } : {}) };
     ctx.engine.emit('overlay', null);
   },
   move(ctx, p) {
@@ -48,9 +52,14 @@ export const sliceTool: Tool = {
   },
   up(ctx) {
     if (!drag) return;
-    const r = rectOf(drag);
+    const r = rectOf(drag), moved = drag.move;
     drag = null;
-    ctx.engine.addSlice(r);
+    if (moved) {
+      if (r.x !== moved.x || r.y !== moved.y) ctx.engine.updateSlice(moved.id, { x: r.x, y: r.y }, 'Move Slice');
+    } else if (ctx.engine.addSlice(r)) {
+      const made = ctx.engine.current?.doc.slices?.at(-1);
+      if (made) ctx.engine.activeSlice = made.id;
+    }
     ctx.engine.emit('overlay', null);
   },
   keydown(ctx, e) {

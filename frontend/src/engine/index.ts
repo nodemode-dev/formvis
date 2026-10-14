@@ -27,6 +27,7 @@ import { PixelStroke, dropSpareSurfaces, sameBytes, spareBytes, strokeWindowFrom
 import { PREVIEW, TiledRaster } from './tiled';
 import { SelectionMask, traceOutline, type SelectionMode } from './selection';
 import { CANVAS_PIXELS, CANVAS_SIDE, Raster, createSurface, ctxOf, toBlob, type Surface, type Ctx2D } from './surface';
+import { projectBack, type PanoramaLink } from './panorama';
 import { applyMat, boundsOf, contains, integral, intersectRect, invert, isAxisAligned, mul, placement, rotation, sameTransform, scaling, setMat, transformBounds, translation, unionRect, type Mat } from './geometry';
 import { ancestors, byId, descendantIds, hierarchy, isDescendant } from './tree';
 import { dragged, following, rounded, type DragMode } from './transform';
@@ -946,6 +947,29 @@ export class Engine {
 
   /** How many times newDocument has been called, so Script Events (30.6) can tell a new document from an opened one. */
   newCount = 0;
+
+  /** Spherical panorama edit views (DEV_PLAN 35.8), by the project id of the edit view; not saved with the document. */
+  readonly panoramaLinks = new Map<string, PanoramaLink>();
+
+  /** Apply View to Panorama: the current edit view, flattened, is projected back onto a transparent equirectangular
+   *  image the size of its source document and added there as a layer 'Panorama edit' above the source layer, as one
+   *  undo step on the source, which then becomes the current document. */
+  applyPanoramaView(): boolean {
+    const v = this.current, link = v ? this.panoramaLinks.get(v.id) : undefined;
+    if (!v || !link) return false;
+    const src = this.projects.find((x) => x.id === link.sourceProjectId);
+    if (!src) { this.notice('The panorama this view came from is no longer open.'); return false; }
+    const flat = this.flattenedOf(v);
+    if (!flat) return false;
+    const view = ctxOf(flat).getImageData(0, 0, flat.width, flat.height), W = src.doc.width, H = src.doc.height;
+    const projected = projectBack({ data: new Uint8ClampedArray(W * H * 4), width: W, height: H }, view, link.view);
+    const raster = new Raster(W, H);
+    raster.write(new ImageData(projected.data, W, H));
+    this.switchTo(src.id);
+    if (link.layerId && src.layer(link.layerId)) src.activeId = link.layerId;
+    this.insertRasterLayer(raster, 'Panorama edit', 0, 0, {}, 'Apply View to Panorama');
+    return true;
+  }
 
   newDocument(width: number, height: number, name = 'Untitled', fill: 'transparent' | 'white' | 'background' = 'transparent', resolution = 72): Project | null {
     this.newCount++;
@@ -6340,6 +6364,36 @@ export class Engine {
   }
   removeSlice(id: string): void { this.setSlices('Delete Slice', (s) => s.filter((x) => x.id !== id)); }
   clearSlices(): void { this.setSlices('Clear Slices', () => []); }
+
+  /** The slice Slice Options edits and the Slice tool last made or clicked; not saved with the document. */
+  activeSlice: string | null = null;
+
+  /** Changes a slice's name, link, alt text or rectangle (whole pixels, kept inside the canvas) as one undo step. */
+  updateSlice(id: string, patch: Partial<Omit<import('./types').DocSlice, 'id'>>, step = 'Slice Options'): void {
+    const d = this.current?.doc;
+    if (!d) return;
+    this.setSlices(step, (list) => list.map((s) => {
+      if (s.id !== id) return s;
+      const w = Math.max(1, Math.min(d.width, Math.round(patch.w ?? s.w))), h = Math.max(1, Math.min(d.height, Math.round(patch.h ?? s.h)));
+      const x = Math.max(0, Math.min(d.width - w, Math.round(patch.x ?? s.x))), y = Math.max(0, Math.min(d.height - h, Math.round(patch.y ?? s.y)));
+      const next = { ...s, ...patch, x, y, w, h };
+      return next.name === s.name && next.url === s.url && next.alt === s.alt && x === s.x && y === s.y && w === s.w && h === s.h ? s : next;
+    }));
+  }
+
+  /** Layer > New Layer Based Slice: a slice over the visible pixels of the active layer, tied to that layer. */
+  addLayerSlice(): boolean {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l) return false;
+    const b = this.contentBounds(l.id, p);
+    if (!b) return false;
+    const x0 = Math.max(0, Math.floor(b.x)), y0 = Math.max(0, Math.floor(b.y)), x1 = Math.min(p.doc.width, Math.ceil(b.x + b.w)), y1 = Math.min(p.doc.height, Math.ceil(b.y + b.h));
+    if (x1 - x0 < 1 || y1 - y0 < 1) return false;
+    const id = `sl${Date.now().toString(36)}${p.doc.slices?.length ?? 0}`;
+    this.setSlices('New Layer Based Slice', (s) => [...s, { id, name: l.name, x: x0, y: y0, w: x1 - x0, h: y1 - y0, layer: l.id }]);
+    this.activeSlice = id;
+    return true;
+  }
 
   /** The guide within `tol` screen pixels of a screen point, nearest first; null when guides are hidden or locked. */
   guideAt(screen: Pt, tol = 4): number | null {

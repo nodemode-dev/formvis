@@ -95,11 +95,24 @@ mod tests {
     }
 }
 
+/// The native open dialog for a linked smart object's file (33.2): returns the file's real disk path, which the web
+/// view never learns from a picked File. None when the dialog is cancelled.
+#[tauri::command]
+async fn pick_image_path(app: tauri::AppHandle) -> Option<String> {
+    let exts = [
+        "png", "jpg", "jpeg", "webp", "gif", "avif", "tif", "tiff", "dpx", "qoi", "tga", "ico", "pgm", "ppm", "pam", "heic",
+        "psd", "dng", "cr2", "cr3", "nef", "arw", "raf", "orf", "rw2", "pef", "srw",
+    ];
+    let picked = app.dialog().file().add_filter("Images", &exts).blocking_pick_file()?;
+    picked.into_path().ok().map(|p| p.to_string_lossy().into_owned())
+}
+
 fn main() {
     let app = tauri::Builder::default()
         .manage(native::NativeState::default())
         .invoke_handler(tauri::generate_handler![
             system_fonts,
+            pick_image_path,
             display::display_profile,
             native::native_start,
             native::native_stop,
