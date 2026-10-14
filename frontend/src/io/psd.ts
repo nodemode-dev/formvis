@@ -3,7 +3,7 @@ import {
   Raster, boundsOf, docTransform, effectsPresent, integral, liveText, newLayer, placement, applyMat, uid, type BlendMode, type Doc, type ID, type Layer, type Surface, invert, mul, toBlob, type Pt, defaultEffects, patternById, addPattern, projectPatterns, createSurface, ctxOf, type LayerEffects, renderText, textKey, TEXT_FONTS, type TextSpec, ADJUSTMENT_LABELS,
 } from '../engine';
 import { fromPsdAdjustment, toPsdAdjustment } from './psd-adjust';
-import { blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
+import { artboardFromData, blendIfActive, type BlendIf, type DocSlice, type LayerComp } from '../engine/types';
 import { windingArea } from '../engine/custom-shapes';
 import { addPathResources, readPathResources } from './psd-paths';
 import { buildXmp, metaFromXmp } from './xmp';
@@ -264,6 +264,24 @@ function fromPsdEffects(info: LayerEffectsInfo, patterns: PatternInfo[] | undefi
 const PS_FONT: Record<string, string> = { Inter: 'Inter-Regular', Arial: 'ArialMT', Helvetica: 'Helvetica', Georgia: 'Georgia', 'Times New Roman': 'TimesNewRomanPSMT', 'Courier New': 'CourierNewPSMT', Verdana: 'Verdana', 'Trebuchet MS': 'TrebuchetMS', Impact: 'Impact', serif: 'TimesNewRomanPSMT', 'sans-serif': 'ArialMT', monospace: 'CourierNewPSMT' };
 
 /** The formvis family a Photoshop font name belongs to, by its PostScript name or its family part. */
+/** A group's 'artb' artboard data (36.27): its rectangle in document pixels and its background, as a formvis artboard. */
+export function fromPsdArtboard(pl: PsdLayer): { artboard: NonNullable<Layer['artboard']> } | Record<string, never> {
+  const a = pl.artboard;
+  if (!a?.rect) return {};
+  const r = a.rect, c = a.color as unknown as { r?: number; g?: number; b?: number } | undefined, k = (v: unknown): number => Math.round(Math.min(255, Math.max(0, Number(v) || 0)));
+  const bg = a.backgroundType === 3 ? null : a.backgroundType === 2 ? { r: 0, g: 0, b: 0 } : a.backgroundType === 4 && c && typeof c.r === 'number' ? { r: k(c.r), g: k(c.g), b: k(c.b) } : { r: 255, g: 255, b: 255 };
+  const board = artboardFromData({ x: r.left, y: r.top, w: r.right - r.left, h: r.bottom - r.top, background: bg });
+  return board ? { artboard: board } : {};
+}
+
+/** A top-level artboard folder as 'artb' data: Top, Left, Btom, Rght, and a white, black, transparent or custom background. */
+export function toPsdArtboard(l: Layer): Pick<PsdLayer, 'artboard'> | Record<string, never> {
+  const a = l.artboard;
+  if (!a || l.parentId) return {};
+  const bg = a.background, white = !!bg && bg.r === 255 && bg.g === 255 && bg.b === 255, black = !!bg && !bg.r && !bg.g && !bg.b;
+  return { artboard: { rect: { top: a.y, left: a.x, bottom: a.y + a.h, right: a.x + a.w }, presetName: '', backgroundType: !bg ? 3 : white ? 1 : black ? 2 : 4, ...(bg ? { color: { r: bg.r, g: bg.g, b: bg.b } } : {}) } };
+}
+
 function familyOf(psName: string): { family: string; bold: boolean; italic: boolean } {
   const known = Object.entries(PS_FONT).find(([fam, ps]) => ps === psName && fam !== 'serif' && fam !== 'sans-serif' && fam !== 'monospace');
   const bare = psName.replace(/-(Bold|Italic|BoldItalic|Regular|Oblique|BoldOblique)?(MT|PSMT)?$/i, '').replace(/(PSMT|MT)$/, '');
@@ -293,7 +311,7 @@ export async function readPsdFile(file: File): Promise<{ doc: Doc; notes: string
     for (const pl of children ?? []) {
       const name = pl.name || 'Layer', blend = (pl.blendMode && FROM_PSD.get(pl.blendMode)) ?? 'normal';
       if (pl.children) {
-        const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, ...linkOf(pl) });
+        const group = newLayer(name, doc, { isGroup: true, parentId, visible: !pl.hidden, opacity: pl.opacity ?? 1, ...linkOf(pl), ...(!parentId ? fromPsdArtboard(pl) : {}) });
         walk(pl.children, group.id);
         psdIds.set(pl, group.id);
         layers.push(group); // after its children, where formvis keeps a folder's entry
@@ -465,7 +483,7 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
     out.mask = { canvas: mp.c, left: mp.x, top: mp.y, defaultColor: maskEdgeTone(mk.raster), disabled: !mk.enabled };
   };
   const toPsd = (l: Layer): PsdLayer | null => {
-    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: 'pass through', opened: true, children: build(l.id) };
+    if (l.isGroup) return { name: l.name, hidden: !l.visible, opacity: l.opacity, blendMode: 'pass through', opened: true, children: build(l.id), ...toPsdArtboard(l) };
     if (l.adjustment) {
       // An adjustment layer goes as Photoshop's, live, with its mask, opacity, blend and clipping.
       const adjustment = toPsdAdjustment(l.adjustment);
@@ -538,6 +556,8 @@ export async function writePsdFile(doc: Doc, composite: Surface, psb = false, pa
   const flat = canvas(doc.width, doc.height);
   (flat.getContext('2d') as CanvasRenderingContext2D).drawImage(composite as CanvasImageSource, 0, 0);
   const psd: Psd = { width: doc.width, height: doc.height, children: build(null), canvas: flat };
+  const boards = doc.layers.filter((l) => l.isGroup && !l.parentId && l.artboard).length;
+  if (boards) psd.artboards = { count: boards };   // 'artd', the document-wide artboard record Photoshop looks for beside each group's 'artb'
   const comps = doc.comps ?? [], sliceList = doc.slices ?? [];
   if (comps.length || sliceList.some((s) => s.layer)) { let layerNo = 0; for (const o of built.values()) o.id = ++layerNo; }   // ag-psd needs a numeric id on every layer once comps or layer slices are written
   if (sliceList.length) {   // Slices (29.5 part d): one group named after the document

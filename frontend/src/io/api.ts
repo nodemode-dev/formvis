@@ -41,6 +41,16 @@ async function request(path: string, init?: RequestInit): Promise<Response> {
 /** A CMYK PSD as the engine reads it (1.56.1): each layer's place, look and C, M, Y, K and alpha bytes. */
 export interface CmykPsd { width: number; height: number; icc: Uint8Array | null; layers: Array<{ name: string; left: number; top: number; width: number; height: number; opacity: number; visible: boolean; blend: string; ink: Uint8Array }> }
 
+/** A camera RAW's white balance at the RAW stage (DEV_PLAN 36.21): the preset, Temperature and Tint (-100 to 100), and
+ *  `half` for Camera Raw's fast half-size preview. */
+export type RawWhiteBalance = { wb: 'as_shot' | 'auto' | 'daylight'; temperature: number; tint: number; half?: boolean };
+
+/** The decode route's form fields for `raw`; none when it is the plain as-shot decode, so the engine's defaults stand. */
+function rawFields(raw?: RawWhiteBalance): Record<string, string> {
+  if (!raw) return {};
+  return { ...(raw.wb !== 'as_shot' ? { wb: raw.wb } : {}), ...(raw.temperature ? { temperature: String(raw.temperature) } : {}), ...(raw.tint ? { tint: String(raw.tint) } : {}), ...(raw.half ? { half: 'true' } : {}) };
+}
+
 function form(fields: Record<string, string>, files: FilePart[] = [], key = 'files'): FormData {
   const body = new FormData();
   for (const [name, value] of Object.entries(fields)) body.append(name, value);
@@ -205,8 +215,14 @@ export const api = {
     f.append('scale', String(scale));
     return (await request('/generative/upscale', { method: 'POST', body: f })).blob();
   },
-  async decode(file: Blob, name: string, page = 0, cameraProfile?: string): Promise<Blob> {
-    return (await request('/io/decode', { method: 'POST', body: form({ ...(page ? { page: String(page) } : {}), ...(cameraProfile ? { camera_profile: cameraProfile } : {}) }, [{ name, blob: file }], 'file') })).blob();
+  async decode(file: Blob, name: string, page = 0, cameraProfile?: string, raw?: RawWhiteBalance): Promise<Blob> {
+    return (await request('/io/decode', { method: 'POST', body: form({ ...(page ? { page: String(page) } : {}), ...(cameraProfile ? { camera_profile: cameraProfile } : {}), ...rawFields(raw) }, [{ name, blob: file }], 'file') })).blob();
+  },
+  /** A camera RAW at 16 bits per channel (DEV_PLAN 36.21): RGBA little-endian samples, with the white balance set at the RAW stage. */
+  async decodeRaw16(file: Blob, name: string, raw: RawWhiteBalance): Promise<{ width: number; height: number; data: Uint16Array }> {
+    const r = await request('/io/decode', { method: 'POST', body: form({ bits: '16', ...rawFields(raw) }, [{ name, blob: file }], 'file') });
+    const b = await r.arrayBuffer();
+    return { width: Number(r.headers.get('X-Width')), height: Number(r.headers.get('X-Height')), data: new Uint16Array(b) };
   },
   /** The camera a RAW file came from and the DNG camera profiles on this computer that are made for it (DEV_PLAN 28.2). */
   async cameraProfiles(file: Blob, name: string): Promise<{ camera: { make: string; model: string; unique: string }; profiles: Array<{ id: string; name: string; camera: string; file: string }>; auto: string | null; folders: string[] }> {

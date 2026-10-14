@@ -36,6 +36,7 @@ import { againQuad, carried, cornersOf, cropWarp, distortDragged, distortUsable,
 import { withResolution } from './dpi';
 import { antialiasMask, levelsKernel, wandMask } from './kernels';
 import { Project } from './project';
+import { DocViews, type DocView, type FloatRect } from './doc-views';
 import { computeStack, type StackMode } from './stack-modes';
 import * as LS from './layer-structure';
 import * as LM from './layer-masks';
@@ -57,6 +58,7 @@ export * from './types';
 export * from './geometry';
 export { Project } from './project';
 export { Viewport } from './viewport';
+export type { DocView, FloatRect } from './doc-views';
 export { SelectionMask } from './selection';
 export type { SelectionMode } from './selection';
 export { Raster, createSurface, ctxOf, sizeSurface, toBlob } from './surface';
@@ -180,6 +182,8 @@ export interface BgEraseOpts { tolerance: number; sampling: 'continuous' | 'once
 export class Engine {
   readonly events = new Emitter<EngineEvents>();
   readonly projects: Project[] = [];
+  /** Further views of open documents (New Window for Document, Float in Window; DEV_PLAN 36.16): view state only, the project is shared. */
+  readonly docViews = new DocViews();
   tool: ToolId = 'move';
   brush: BrushSettings = { diameter: 40, hardness: 1, opacity: 1 };
   /** The Brush and Eraser's Flow (0.01 to 1), as Photoshop's options bar has it: how much paint each dab lays down.
@@ -934,6 +938,7 @@ export class Engine {
     if (this.floatSel && this.floatSel.project === this.projects[i]) this.floatSel = null;
     const closing = this.projects[i];
     this.projects.splice(i, 1);
+    this.docViews.closeAllOf(id);   // the document's further views go with it (36.16)
     if (this.currentId === id) this.currentId = (this.projects[i] ?? this.projects[this.projects.length - 1])?.id ?? null;
     this.emit('projects', null);
     this.emit('viewport', null);
@@ -1728,6 +1733,30 @@ export class Engine {
     if (!p) return null;
     const s = p.selection?.rect;
     return s && s.w > 0 && s.h > 0 ? { x: s.x + s.w / 2, y: s.y + s.h / 2 } : { x: p.doc.width / 2, y: p.doc.height / 2 };
+  }
+
+  /** Window > Arrange > New Window for Document, and Float in Window with a `floating` rectangle: another view of the
+   *  document `id` (the current one by default), with its own zoom, pan and rotation (the tab's rotation to begin with). */
+  openView(id: string | null = null, floating: FloatRect | null = null): DocView | null {
+    const p = id ? this.projects.find((q) => q.id === id) : this.current;
+    if (!p) return null;
+    const v = this.docViews.open(p.id, p.viewport.rotation, floating);
+    this.emit('projects', null);
+    return v;
+  }
+
+  /** Closes one further view; the document stays open (its tab, and any other view). True when it existed. */
+  closeView(viewId: string): boolean {
+    if (!this.docViews.close(viewId)) return false;
+    this.emit('projects', null);
+    return true;
+  }
+
+  /** Close Tab on a document that still has a further view closes that view first (the newest), keeping the document
+   *  open while another view remains. True when a view was closed; false means the document has none. */
+  closeSpareView(projectId: string): boolean {
+    const list = this.docViews.of(projectId);
+    return list.length > 0 && this.closeView(list[list.length - 1].id);
   }
 
   /** Window > Arrange > Match Zoom, Match Location, Match Rotation: the current document's view copied to every other
@@ -3999,6 +4028,51 @@ export class Engine {
       const next = artboardFromData({ ...l.artboard, ...patch });
       if (!next || JSON.stringify(next) === JSON.stringify(l.artboard)) return false;
       p.updateLayer(id, { artboard: next });
+      return true;
+    });
+  }
+
+  /** The Artboard tool (36.27): artboard `id` set to `rect`, its contents left where they are, the canvas widened to
+   *  hold it as a new artboard does. One step. */
+  resizeArtboard(id: ID, rect: Rect): boolean {
+    const p = this.current, l = p?.layer(id);
+    if (!p || !l?.artboard) return false;
+    const r = { x: Math.round(rect.x), y: Math.round(rect.y), w: Math.max(1, Math.round(rect.w)), h: Math.max(1, Math.round(rect.h)) };
+    const want = { w: Math.max(p.doc.width, r.x + r.w), h: Math.max(p.doc.height, r.y + r.h) };
+    return this.edit('Resize Artboard', (q) => {
+      const cur = q.layer(id)?.artboard;
+      if (!cur) return false;
+      const next = artboardFromData({ ...cur, ...r });
+      if (!next || (next.x === cur.x && next.y === cur.y && next.w === cur.w && next.h === cur.h)) return false;
+      if (want.w !== q.doc.width || want.h !== q.doc.height) {
+        if (!this.sizeOk(want.w, want.h)) return false;
+        q.doc = { ...q.doc, width: want.w, height: want.h };
+      }
+      q.updateLayer(id, { artboard: next });
+      return true;
+    });
+  }
+
+  /** The Artboard tool: artboard `id` moved by (dx, dy) with everything in it (boxes, mask placements, vector masks),
+   *  the canvas widened to hold it. One step. */
+  moveArtboard(id: ID, dx: number, dy: number): boolean {
+    const p = this.current, l = p?.layer(id);
+    dx = Math.round(dx); dy = Math.round(dy);
+    if (!p || !l?.artboard || (!dx && !dy)) return false;
+    const a = l.artboard, want = { w: Math.max(p.doc.width, a.x + dx + a.w), h: Math.max(p.doc.height, a.y + dy + a.h) };
+    return this.edit('Move Artboard', (q) => {
+      if (want.w !== q.doc.width || want.h !== q.doc.height) {
+        if (!this.sizeOk(want.w, want.h)) return false;
+        q.doc = { ...q.doc, width: want.w, height: want.h };
+      }
+      const map = byId(q.doc), shift = (t: Transform): Transform => ({ ...t, x: t.x + dx, y: t.y + dy });
+      q.setLayers(q.doc.layers.map((x) => {
+        if (x.id !== id && !isDescendant(map, x.id, id)) return x;
+        const out: Layer = { ...x, transform: shift(x.transform), mask: x.mask?.placement ? { ...x.mask, placement: shift(x.mask.placement) } : x.mask };
+        if (x.artboard) out.artboard = { ...x.artboard, x: x.artboard.x + dx, y: x.artboard.y + dy };
+        if (x.vectorMask) out.vectorMask = movedVector(x.vectorMask, (px, py) => ({ x: px + dx, y: py + dy }));
+        return out;
+      }));
       return true;
     });
   }

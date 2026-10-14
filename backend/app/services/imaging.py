@@ -104,7 +104,7 @@ def _sips(data: bytes, suffix: str) -> tuple[bytes, int, int]:
             return _png(result)
 
 
-def _profiled(raw, profile: dcp.Dcp) -> np.ndarray:
+def _profiled(raw, profile: dcp.Dcp, half: bool = False) -> np.ndarray:
     """The RAW's linear camera values, white balanced as shot, through a DNG camera profile to 8-bit sRGB. LibRaw gives
     the demosaiced, black-subtracted values with no colour conversion; the exposure is raised the way LibRaw's own
     automatic brightness does (the brightest one percent of pixels at white), so a profile changes colour and tone, not
@@ -116,21 +116,66 @@ def _profiled(raw, profile: dcp.Dcp) -> np.ndarray:
         mult = np.array(raw.daylight_whitebalance[:3], dtype=np.float64)
     if not np.all(mult > 0):
         raise dcp.DcpError("This file holds no white balance to apply a camera profile to.")
-    linear = raw.postprocess(use_camera_wb=True, output_color=rawpy.ColorSpace.raw, output_bps=16, gamma=(1, 1), no_auto_bright=True)
+    linear = raw.postprocess(use_camera_wb=True, output_color=rawpy.ColorSpace.raw, output_bps=16, gamma=(1, 1), no_auto_bright=True, half_size=half)
     peak = float(np.percentile(linear[::4, ::4].max(axis=2), 99)) / 65535.0
     gain = float(np.clip(1.0 / peak, 1.0, 16.0)) if peak > 0 else 1.0
     return dcp.render(linear.astype(np.float32) / np.float32(65535.0), mult.min() / mult, profile, gain)
 
 
-def _raw(data: bytes, filename: str, camera_profile: str = "auto") -> tuple[bytes, int, int]:
+RAW_WB_MODES = ("as_shot", "auto", "daylight")
+
+
+def _wb_kwargs(raw, wb: str, temperature: float, tint: float) -> dict:
+    """The white balance LibRaw develops with (DEV_PLAN 36.21), applied to the sensor values before demosaicing and
+    colour, not to the 8-bit picture afterwards. As shot with no Temperature or Tint is LibRaw's camera white balance,
+    exactly as before. Otherwise `user_wb` multipliers: the as-shot, daylight or gray-world (auto) multipliers, then
+    Temperature (positive is warmer: red up, blue down, up to 0.8 stop at 100) and Tint (positive is magenta: green
+    down, up to 0.5 stop at 100)."""
+    if wb == "as_shot" and not temperature and not tint:
+        return {"use_camera_wb": True}
+    if wb == "auto":
+        # LibRaw's own gray-world white balance is not readable, so the same average is taken from a quick half-size
+        # linear decode (no white balance, no colour conversion) and turned into multipliers.
+        lin = raw.postprocess(user_wb=[1.0, 1.0, 1.0, 1.0], output_color=rawpy.ColorSpace.raw, output_bps=16, gamma=(1, 1), no_auto_bright=True, half_size=True)
+        means = lin.reshape(-1, lin.shape[-1])[::7, :3].astype(np.float64).mean(axis=0)
+        base = [float(means[1] / m) if m > 0 and means[1] > 0 else 1.0 for m in means] + [1.0]
+    else:
+        key = "daylight_whitebalance" if wb == "daylight" else "camera_whitebalance"
+        base = [float(v) for v in getattr(raw, key)]
+        if len(base) < 3 or not all(v > 0 for v in base[:3]):
+            base = [float(v) for v in raw.daylight_whitebalance]
+        if len(base) < 3 or not all(v > 0 for v in base[:3]):
+            return {}   # the file holds no white balance: LibRaw's own default
+        base = (base + [base[1]])[:4] if len(base) < 4 else base[:4]
+        if base[3] <= 0:
+            base[3] = base[1]
+    warm, magenta = 2.0 ** (0.8 * temperature / 100.0), 2.0 ** (-0.5 * tint / 100.0)
+    return {"user_wb": [base[0] * warm, base[1] * magenta, base[2] / warm, base[3] * magenta]}
+
+
+def _raw_args(wb: str, temperature: float, tint: float, bits: int) -> tuple[str, float, float, int]:
+    if wb not in RAW_WB_MODES:
+        raise DecodeError("The white balance must be as_shot, auto or daylight.")
+    if bits not in (8, 16):
+        raise DecodeError("A RAW opens at 8 or 16 bits per channel.")
+    return wb, max(-100.0, min(100.0, float(temperature))), max(-100.0, min(100.0, float(tint))), bits
+
+
+def _raw(data: bytes, filename: str, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False) -> tuple[bytes, int, int]:
     """A camera RAW developed as Camera Raw opens it by default: the camera's own white balance (as shot), sRGB, 8 bits,
     turned upright by the camera's orientation flag. Develop (Filter > Develop) then works on it. `camera_profile` is
     "none" for LibRaw's own colour, "auto" for the profile in the profile folders that is named like Adobe's defaults and
-    made for this camera (else LibRaw's), or the id of a listed profile, which must apply."""
+    made for this camera (else LibRaw's), or the id of a listed profile, which must apply. `wb`, `temperature` and `tint`
+    set the white balance at the RAW stage (_wb_kwargs); a camera profile applies only with the as-shot white balance.
+    `half` decodes at half size, a fast preview (Camera Raw's panel)."""
     if not RAW:
         raise DecodeError(f"{filename} is a camera RAW file, and the engine's RAW decoder (rawpy) is not installed.")
+    wb, temperature, tint, _ = _raw_args(wb, temperature, tint, 8)
+    custom = wb != "as_shot" or bool(temperature) or bool(tint)
     chosen = None
-    if camera_profile not in ("none", ""):
+    if custom and camera_profile not in ("none", "", "auto"):
+        raise DecodeError("A camera profile works with the as-shot white balance; set White Balance to As Shot to use one.")
+    if camera_profile not in ("none", "") and not custom:
         try:
             if camera_profile == "auto":
                 entry = camera_profiles.automatic(camera_profiles.camera_of(data))
@@ -145,18 +190,40 @@ def _raw(data: bytes, filename: str, camera_profile: str = "auto") -> tuple[byte
             rgb = None
             if chosen is not None:
                 try:
-                    rgb = _profiled(raw, chosen)
+                    rgb = _profiled(raw, chosen, half)
                 except dcp.DcpError as exc:
                     if camera_profile != "auto":
                         raise DecodeError(f"The camera profile could not be used: {exc}") from exc
             if rgb is None:
-                rgb = raw.postprocess(use_camera_wb=True, output_color=rawpy.ColorSpace.sRGB, output_bps=8)
+                rgb = raw.postprocess(**_wb_kwargs(raw, wb, temperature, tint), output_color=rawpy.ColorSpace.sRGB, output_bps=8, half_size=half)
     except DecodeError:
         raise
     except Exception as exc:
         # LibRaw's own messages ("Input/output error", "Unsupported file format") say little to a user.
         raise DecodeError(f"{filename} could not be read as a camera RAW file. It may be damaged, or from a camera LibRaw does not support yet.") from exc
     return _png(Image.fromarray(rgb))
+
+
+def raw_deep(data: bytes, filename: str, wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False) -> tuple[bytes, int, int]:
+    """A camera RAW developed at 16 bits per channel (Camera Raw's 16 Bits/Channel workflow option): sRGB, the white
+    balance set at the RAW stage, as RGBA little-endian 16-bit samples (opaque) with the width and height, the way
+    /io/decode-deep returns them. LibRaw's own colour is used: camera profiles render at 8 bits only."""
+    if not RAW:
+        raise DecodeError(f"{filename} is a camera RAW file, and the engine's RAW decoder (rawpy) is not installed.")
+    wb, temperature, tint, _ = _raw_args(wb, temperature, tint, 16)
+    try:
+        with rawpy.imread(io.BytesIO(data)) as raw:
+            rgb = raw.postprocess(**_wb_kwargs(raw, wb, temperature, tint), output_color=rawpy.ColorSpace.sRGB, output_bps=16, half_size=half)
+    except DecodeError:
+        raise
+    except Exception as exc:
+        raise DecodeError(f"{filename} could not be read as a camera RAW file. It may be damaged, or from a camera LibRaw does not support yet.") from exc
+    height, width = rgb.shape[:2]
+    _check(width, height)
+    out = np.empty((height, width, 4), dtype="<u2")
+    out[..., :3] = rgb
+    out[..., 3] = 65535
+    return out.tobytes(), width, height
 
 
 def pages(data: bytes, filename: str) -> list[dict]:
@@ -180,10 +247,10 @@ def pages(data: bytes, filename: str) -> list[dict]:
         raise DecodeError(f"Could not read {filename or 'the image'}: {exc}") from exc
 
 
-def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str = "auto") -> tuple[bytes, int, int]:
+def decode_to_png(data: bytes, filename: str, page: int = 0, camera_profile: str = "auto", wb: str = "as_shot", temperature: float = 0.0, tint: float = 0.0, half: bool = False) -> tuple[bytes, int, int]:
     suffix = Path(filename).suffix.lower()
     if suffix in RAW_SUFFIXES:
-        return _raw(data, filename, camera_profile)
+        return _raw(data, filename, camera_profile, wb, temperature, tint, half)
     if dpx.is_dpx(data):
         try:
             px, _info = dpx.read(data)
