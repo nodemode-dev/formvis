@@ -218,6 +218,16 @@ export const api = {
     const depth = Number(r.headers.get('X-Depth')), b = await r.arrayBuffer();
     return { width: Number(r.headers.get('X-Width')), height: Number(r.headers.get('X-Height')), depth, data: depth === 32 ? new Float32Array(b) : new Uint16Array(b) };
   },
+  /** A multi-part OpenEXR's parts (DEV_PLAN 36.15): each part's name, size, offset on the canvas and RGBA float32 pixels;
+   *  null for a file of one part, which opens through decodeDeep as before. */
+  async exrParts(file: Blob, name: string): Promise<{ width: number; height: number; parts: Array<{ name: string; width: number; height: number; x: number; y: number; data: Float32Array }> } | null> {
+    const buf = await (await request('/io/exr-parts', { method: 'POST', body: form({}, [{ name, blob: file }], 'file') })).arrayBuffer();
+    const n = new DataView(buf).getUint32(0, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, n))) as { count: number; width: number; height: number; parts: Array<{ name: string; width: number; height: number; x: number; y: number }> };
+    if (head.count < 2) return null;
+    let at = 4 + n;
+    const parts = head.parts.map((p) => { const len = p.width * p.height * 4; const data = new Float32Array(buf.slice(at, at + len * 4)); at += len * 4; return { ...p, data }; });
+    return { width: head.width, height: head.height, parts };
+  },
   async encodeDeep(data: Uint16Array | Float32Array, width: number, height: number, format: 'png' | 'tiff' | 'hdr' | 'exr' | 'tiff32'): Promise<Blob> {
     const raw = data instanceof Float32Array ? new Float32Array(data) : new Uint16Array(data);
     return (await request('/io/encode-deep', { method: 'POST', body: form({ width: String(width), height: String(height), format }, [{ name: 'pixels.raw', blob: new Blob([raw]) }], 'file') })).blob();

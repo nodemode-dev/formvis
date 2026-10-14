@@ -39,6 +39,55 @@ def _encode_worker(img: np.ndarray, q: "mp.Queue[object]") -> None:
         q.put(None)
 
 
+MAX_PARTS = 64
+MAX_PART_PIXELS = 120_000_000   # all parts together, so a hostile header cannot ask the child for more than the engine edits
+
+
+def _parts_worker(data: bytes, q: "mp.Queue[object]") -> None:
+    """Every part of a multi-part OpenEXR (DEV_PLAN 36.15), read by the OpenEXR binding inside this child alone.
+    Each part gives its name, size, data window offset and RGBA as float32; a part without R, G and B channels gives
+    its first channel as grey (a depth pass) and an alpha of 1."""
+    try:
+        import io
+        import OpenEXR
+        f = OpenEXR.File(io.BytesIO(data))
+        parts = list(f.parts)
+        if len(parts) < 2 or len(parts) > MAX_PARTS:
+            q.put({"count": len(parts)})
+            return
+        boxes = []
+        for p in parts:
+            dw, disp = p.header["dataWindow"], p.header.get("displayWindow", p.header["dataWindow"])
+            boxes.append((int(dw[0][0]), int(dw[0][1]), int(dw[1][0]), int(dw[1][1]), int(disp[0][0]), int(disp[0][1]), int(disp[1][0]), int(disp[1][1])))
+        total = sum((b[2] - b[0] + 1) * (b[3] - b[1] + 1) for b in boxes)
+        if total > MAX_PART_PIXELS:
+            q.put(None)
+            return
+        # The canvas is the display window of the first part joined with every data window, so nothing is cropped.
+        x0 = min([boxes[0][4]] + [b[0] for b in boxes]); y0 = min([boxes[0][5]] + [b[1] for b in boxes])
+        x1 = max([boxes[0][6]] + [b[2] for b in boxes]); y1 = max([boxes[0][7]] + [b[3] for b in boxes])
+        out, meta = [], []
+        for i, p in enumerate(parts):
+            chans = p.channels
+            key = next((k for k in chans if k.split(".")[-1] == "RGBA"), None) or next((k for k in chans if k.split(".")[-1] == "RGB"), None) or next(iter(chans), None)
+            if key is None:
+                continue
+            px = np.asarray(chans[key].pixels, dtype=np.float32)
+            if px.ndim == 2:
+                px = np.stack([px, px, px], axis=2)
+            if px.shape[2] == 2:
+                px = np.dstack([px, np.zeros(px.shape[:2], np.float32)])
+            if px.shape[2] == 3:
+                px = np.dstack([px, np.ones(px.shape[:2], np.float32)])
+            h, w = px.shape[:2]
+            name = p.name() or f"Part {i + 1}"
+            out.append(np.ascontiguousarray(px[:, :, :4]))
+            meta.append({"name": name, "width": w, "height": h, "x": boxes[i][0] - x0, "y": boxes[i][1] - y0})
+        q.put({"count": len(meta), "width": x1 - x0 + 1, "height": y1 - y0 + 1, "parts": meta, "pixels": out})
+    except Exception:
+        q.put(None)
+
+
 def _run(worker, arg) -> object:
     ctx = mp.get_context("spawn")
     q: "mp.Queue[object]" = ctx.Queue(1)
@@ -70,6 +119,21 @@ def decode_exr(data: bytes) -> np.ndarray | None:
     """The EXR's pixels as OpenCV returns them (BGR or BGRA, float32), or None when the child could not read it."""
     out = _run(_decode_worker, data)
     return out if isinstance(out, np.ndarray) else None
+
+
+def is_multipart_exr(data: bytes) -> bool:
+    """Whether the version field says multi-part (bit 12 of the flags): eight bytes read, nothing parsed."""
+    return len(data) >= 8 and data[:4] == EXR_MAGIC and bool(data[5] & 0x10)
+
+
+def decode_exr_parts(data: bytes) -> dict | None:
+    """A multi-part EXR's parts (DEV_PLAN 36.15): {count, width, height, parts: [{name, width, height, x, y}], pixels:
+    [RGBA float32 arrays]}. A file of one part, or none the binding can read, gives {count} alone or None, and the
+    caller opens it the single-part way. The parsing runs in the child, as every EXR does."""
+    if not is_multipart_exr(data):
+        return {"count": 1}
+    out = _run(_parts_worker, data)
+    return out if isinstance(out, dict) else None
 
 
 def encode_exr(img: np.ndarray) -> bytes | None:

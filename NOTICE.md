@@ -68,6 +68,7 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | LittleCMS (through Pillow's ImageCms) | MIT | Colour management: profile conversion, proofing and the gamut warning |
 | psd-tools (Kota Yamaguchi) | MIT | CMYK PSD files read and written with their layers (1.56.1) |
 | tifffile (Christoph Gohlke) | BSD-3-Clause | 16-bit CMYK and Lab TIFF files written (1.57.8) |
+| OpenEXR (Academy Software Foundation) | BSD-3-Clause | multi-part OpenEXR files read part by part, in the contained child process only (DEV_PLAN 36.15) |
 | x11-dl (Daniel Collin, Erik Lundin, Jason Orendorff and others) | MIT | desktop shell on Linux (`src-tauri/src/display.rs`): opens libX11 at run time to read the `_ICC_PROFILE` property of the X root window, the monitor's profile; already in the tree through tao. macOS (CoreGraphics `CGDisplayCopyColorSpace` and `CGColorSpaceCopyICCData`) and Windows (GDI `GetICMProfileW`) are called directly through declared system functions, with no package; on Linux without that property the engine asks colord's `colormgr` if it is installed |
 | Adobe DNG Specification 1.6 (the published document) | read as a format reference only | `backend/app/services/dcp.py` reads and applies DNG camera profiles (`.dcp`) from the tag definitions and chapter 6 of the specification; no Adobe code, profile or data file is included, and formvis ships no `.dcp` file. The profiles it finds in `~/Formvis/CameraProfiles` or Adobe's CameraProfiles folder are the user's own and keep their own terms |
 

@@ -97,6 +97,25 @@ def decode_deep(file: UploadFile = File(...)) -> Response:
     return Response(np.ascontiguousarray(img).astype("<u2").tobytes(), media_type="application/octet-stream", headers={"X-Width": str(w), "X-Height": str(h), "X-Depth": str(depth)})
 
 
+@router.post("/exr-parts")
+def exr_parts(file: UploadFile = File(...)) -> Response:
+    """The parts of a multi-part OpenEXR (DEV_PLAN 36.15), each as RGBA float32 in linear light. The body is a 4-byte
+    little-endian length, that many bytes of JSON ({count, width, height, parts: [{name, width, height, x, y}]}, x and
+    y the part's data window offset on the canvas), then every part's pixels in order. A file of one part, or one the
+    child cannot read as parts, has the JSON alone with count 1 and the caller opens it as before."""
+    from app.services import contained
+    raw = file.file.read()
+    res = contained.decode_exr_parts(raw) if contained.is_exr(raw) else None
+    if not res or res.get("count", 1) < 2:
+        head = json.dumps({"count": 1}).encode()
+        return Response(len(head).to_bytes(4, "little") + head, media_type="application/octet-stream")
+    if res["width"] > 30000 or res["height"] > 30000 or res["width"] * res["height"] > config.MAX_PIXELS:
+        raise HTTPException(status_code=413, detail="The picture is larger than formvis edits in one piece.")
+    head = json.dumps({"count": res["count"], "width": res["width"], "height": res["height"], "parts": res["parts"]}).encode()
+    body = b"".join(np.ascontiguousarray(px).astype("<f4").tobytes() for px in res["pixels"])
+    return Response(len(head).to_bytes(4, "little") + head + body, media_type="application/octet-stream")
+
+
 @router.post("/encode-deep")
 def encode_deep(file: UploadFile = File(...), width: int = Form(...), height: int = Form(...), format: str = Form("png")) -> Response:
     """A 16-bit PNG or TIFF from RGBA, 16 bits a channel, little-endian (1.53.6, H1)."""

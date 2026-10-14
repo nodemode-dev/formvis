@@ -90,7 +90,7 @@ import { markupPath, type MarkupKind } from './markup';
 import { allCustomShapes } from './custom-shapes';
 import { traceAlpha } from './trace-outline';
 export { CUSTOM_SHAPES, allCustomShapes, addCustomShape, loadCustomShapes } from './custom-shapes';
-import { WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type HealBlend, type HealMode, type HealSample } from './retouch';
+import { FILL_DEFAULTS, WarpStroke, contentFill, fillTransparent, healFromSource, premultiply, scaleHealCorrection, spotHeal, unpremultiply, type FillOptions, type HealBlend, type HealMode, type HealSample } from './retouch';
 import { dissolveNoise } from './blend';
 import { LUT3_N, adjustmentLut, adjustmentLut3 } from './lut';
 import { decontaminate } from './select-mask';
@@ -8673,7 +8673,7 @@ export class Engine {
   /** The Content-Aware Fill workspace's OK: fills the selection on the active layer, sampling only from `allowDoc`
    *  (1 where sampling is allowed, over the whole canvas) when given, and sends the result to the current layer, a
    *  new layer holding only the filled pixels (for an upright, unscaled layer), or a duplicate of the layer. One step. */
-  contentAwareFillWith(allowDoc: Uint8Array | null, output: 'current' | 'new' | 'duplicate'): void {
+  contentAwareFillWith(allowDoc: Uint8Array | null, output: 'current' | 'new' | 'duplicate', options: FillOptions = FILL_DEFAULTS): void {
     const p0 = this.current;
     if (!p0?.selection) { this.notice('Content-Aware Fill needs a selection.'); return; }
     if (!this.paintable(p0.activeLayer)) { this.notice('Select a pixel layer first.'); return; }
@@ -8700,7 +8700,7 @@ export class Engine {
       }
       const src = r.read(), pm = premultiply(src.data), hole = new Uint8Array(r.width * r.height);
       for (let i = 0; i < hole.length; i++) hole[i] = cov[i * 4 + 3] ? 1 : 0;
-      if (!contentFill(pm, hole, r.width, r.height, allow)) { this.notice('There is nothing opaque in the sampling area to fill from.'); return false; }
+      if (!contentFill(pm, hole, r.width, r.height, allow, options)) { this.notice('There is nothing opaque in the sampling area to fill from.'); return false; }
       const out = new ImageData(r.width, r.height);
       unpremultiply(pm, out.data);
       const result = this.blendThrough(src, out, cov);
@@ -9437,6 +9437,17 @@ export class Engine {
     const raster = rasterFromDeep(deep, depth === 32);
     const p = this.openImage({ source: raster.canvas as CanvasImageSource, width: deep.width, height: deep.height, name });
     p.doc = { ...p.doc, depth, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, channels: deep } : l)) };
+    this.refresh();
+    return p;
+  }
+
+  /** A multi-part OpenEXR as a 32-bit document (DEV_PLAN 36.15): one layer per part named after it, each at its data
+   *  window offset. `parts` are in file order and the first ends on top (the beauty), as a compositor lists passes. */
+  openDeepLayers(name: string, width: number, height: number, parts: Array<{ name: string; x: number; y: number; deep: DeepPixels }>): Project | null {
+    if (!parts.length || !this.sizeOk(width, height)) return null;
+    const doc: Doc = { id: uid(), width, height, resolution: 72, layers: [] };
+    const layers = [...parts].reverse().map((q) => newLayer(q.name, doc, { raster: rasterFromDeep(q.deep, true), channels: q.deep, transform: { ...docTransform(q.deep.width, q.deep.height), x: q.x, y: q.y } }));
+    const p = this.addProject({ ...doc, depth: 32, layers }, name, layers[layers.length - 1].id);
     this.refresh();
     return p;
   }

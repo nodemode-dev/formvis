@@ -364,9 +364,26 @@ export function spotHeal(rgba: Uint8ClampedArray, coverage: Uint8Array, W: numbe
   return true;
 }
 
+/** Content-Aware Fill's adaptation settings (Photoshop's workspace): how far a candidate patch may be recoloured toward
+ *  the known pixels around the target (colour: 0 None, 1 Default, 2 High, 3 Very High), turned (rotation: 0 None to 4
+ *  Full), scaled (0.8 to 1.25) or flipped left to right before it is compared and copied. */
+export interface FillOptions { color: number; rotation: number; scale: boolean; mirror: boolean }
+/** What the workspace and its OK start from: no adaptation, so the fill is as fast as before and gives the same result.
+ *  Colour level 1 ("Default", a brightness offset of at most 12 levels, no gain) is a choice, not the start: measured at
+ *  1.71.5 on a 30 px hole in 160 by 120 px, any colour adaptation took about 480 ms against 62 ms without, because its
+ *  statistics pass cannot stop early the way the cost comparison does. */
+export const FILL_DEFAULTS: FillOptions = { color: 0, rotation: 0, scale: false, mirror: false };
+const FILL_NONE: FillOptions = { color: 0, rotation: 0, scale: false, mirror: false };
+/** Per colour level: smallest gain, largest gain, largest offset (in 0..255 levels). Level 0 is off. */
+const FILL_COLOR: ReadonlyArray<readonly [number, number, number]> = [[1, 1, 0], [1, 1, 12], [0.8, 1.25, 40], [0.6, 1.6, 80]];
+const FILL_ANGLES: ReadonlyArray<readonly number[]> = [[], [-15, 15], [-45, -15, 15, 45], [-90, -45, -15, 15, 45, 90], [-135, -90, -45, -15, 15, 45, 90, 135, 180]];
+
 /** Content-Aware Fill: fills the pixels where `mask` is set in premultiplied `px` from the surrounding image. Returns
- *  false when there is nothing opaque around the hole, or no whole patch of the surroundings to copy from. */
-export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, h: number, allow: Uint8Array | null = null): boolean {
+ *  false when there is nothing opaque around the hole, or no whole patch of the surroundings to copy from. `options`
+ *  adds the workspace's adaptation: extra rotated, scaled and mirrored candidates (searched on a bounded subsample, at
+ *  most about 6000 more than the 8000 plain ones) and a per-candidate gain and offset per colour channel. The default,
+ *  no options, is the plain search with no colour adaptation. */
+export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, h: number, allow: Uint8Array | null = null, options: FillOptions = FILL_NONE): boolean {
   let x0 = w, y0 = h, x1 = -1, y1 = -1;
   for (let y = 0; y < h; y++) {
     for (let x = 0, row = y * w; x < w; x++) {
@@ -406,6 +423,31 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
   for (let cy = half; cy < rh - half; cy++) for (let cx = half; cx < rw - half; cx++) if (!holeIn(cx - half, cy - half, cx + half, cy + half) && (!outside || !outside(cx - half, cy - half, cx + half, cy + half))) sources.push(cy * rw + cx);
   if (!sources.length) return false;
   if (sources.length > 8000) { const step = sources.length / 8000, all = sources; sources = Array.from({ length: 8000 }, (_, i) => all[Math.floor(i * step)]); }
+  // Candidates: each a patch centre and a transform (index into `tf`, a 2 by 2 matrix applied to the offset from the
+  // target). Transform 0 is the identity with the plain sources above; the others share one bounded budget.
+  const tf: number[][] = [[1, 0, 0, 1]];
+  const angles = [0, ...(FILL_ANGLES[Math.max(0, Math.min(4, Math.round(options.rotation)))] ?? [])], scales = options.scale ? [1, 0.8, 0.9, 1.1, 1.25] : [1];
+  for (const flip of options.mirror ? [1, -1] : [1]) for (const sc of scales) for (const deg of angles) {
+    if (flip === 1 && sc === 1 && deg === 0) continue;
+    const r = (deg * Math.PI) / 180, co = Math.cos(r) * sc, si = Math.sin(r) * sc;
+    tf.push([co * flip, -si, si * flip, co]);
+  }
+  const cs: number[] = sources.slice(), ct: number[] = new Array<number>(sources.length).fill(0);
+  if (tf.length > 1) {
+    const per = Math.max(40, Math.floor(6000 / (tf.length - 1)));
+    for (let t = 1; t < tf.length; t++) {
+      const m = tf[t], reach = Math.ceil(half * Math.max(Math.abs(m[0]) + Math.abs(m[1]), Math.abs(m[2]) + Math.abs(m[3])));
+      const span = (rw - 2 * reach) * (rh - 2 * reach);
+      if (span <= 0) continue;
+      const stride = Math.max(1, Math.floor(Math.sqrt(span / per))), off = t % stride;
+      for (let cy = reach + off; cy < rh - reach; cy += stride) for (let cx = reach + off; cx < rw - reach; cx += stride) {
+        if (holeIn(cx - reach, cy - reach, cx + reach, cy + reach) || (outside && outside(cx - reach, cy - reach, cx + reach, cy + reach))) continue;
+        cs.push(cy * rw + cx); ct.push(t);
+      }
+    }
+  }
+  const lv = FILL_COLOR[Math.max(0, Math.min(3, Math.round(options.color)))], adapt = lv[2] > 0;
+  const ad = new Float64Array(6), bestAd = new Float64Array(6), tq = new Float64Array(6), kx = new Int32Array(side * side), ky = new Int32Array(side * side);
   const confidence = new Float32Array(rn);
   for (let l = 0; l < rn; l++) confidence[l] = unknown[l] ? 0 : 1;
   const luma = (l: number): number => { const g = global(l); return 0.299 * px[g] + 0.587 * px[g + 1] + 0.114 * px[g + 2]; };
@@ -447,9 +489,42 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
     }
     if (target < 0) break;
     const tx = target % rw, ty = (target - tx) / rw;
-    let from = -1, bestCost = Infinity;
-    for (const s of sources) {
-      const sx = s % rw, sy = (s - sx) / rw;
+    let from = -1, bestCost = Infinity, bestT = 0;
+    // The target's known pixels, once per target: their offsets and their mean and spread per channel (1.71.5: these
+    // were summed again for every candidate, which made the default fill about twelve times slower).
+    let kn = 0;
+    if (adapt) {
+      for (let c = 0; c < 6; c++) tq[c] = 0;
+      for (let dy = -half; dy <= half; dy++) {
+        const yy = ty + dy;
+        if (yy < 0 || yy >= rh) continue;
+        for (let dx = -half; dx <= half; dx++) {
+          const xx = tx + dx;
+          if (xx < 0 || xx >= rw || unknown[yy * rw + xx]) continue;
+          const a = global(yy * rw + xx);
+          kx[kn] = dx; ky[kn] = dy; kn++;
+          for (let c = 0; c < 3; c++) { tq[c] += px[a + c]; tq[3 + c] += px[a + c] * px[a + c]; }
+        }
+      }
+    }
+    for (let i = 0; i < cs.length; i++) {
+      const s = cs[i], m = tf[ct[i]], sx = s % rw, sy = (s - sx) / rw;
+      ad[0] = ad[1] = ad[2] = 1; ad[3] = ad[4] = ad[5] = 0;
+      if (adapt && kn >= 6) {
+        // Gain and offset per channel that carry the candidate's mean and spread onto the known pixels around the target.
+        let sb0 = 0, sb1 = 0, sb2 = 0, qb0 = 0, qb1 = 0, qb2 = 0;
+        for (let k = 0; k < kn; k++) {
+          const dx = kx[k], dy = ky[k], b = global((sy + Math.round(m[2] * dx + m[3] * dy)) * rw + sx + Math.round(m[0] * dx + m[1] * dy));
+          const b0 = px[b], b1 = px[b + 1], b2 = px[b + 2];
+          sb0 += b0; sb1 += b1; sb2 += b2; qb0 += b0 * b0; qb1 += b1 * b1; qb2 += b2 * b2;
+        }
+        for (let c = 0; c < 3; c++) {
+          const ma = tq[c] / kn, mb = (c === 0 ? sb0 : c === 1 ? sb1 : sb2) / kn, va = tq[3 + c] / kn - ma * ma, vb = (c === 0 ? qb0 : c === 1 ? qb1 : qb2) / kn - mb * mb;
+          const gain = vb > 1 && va > 0 ? Math.max(lv[0], Math.min(lv[1], Math.sqrt(va / vb))) : 1;
+          ad[c] = gain;
+          ad[3 + c] = Math.max(-lv[2], Math.min(lv[2], ma - gain * mb));
+        }
+      }
       let cost = 0;
       for (let dy = -half; dy <= half && cost < bestCost; dy++) {
         const yy = ty + dy;
@@ -457,23 +532,26 @@ export function contentFill(px: Uint8ClampedArray, mask: Uint8Array, w: number, 
         for (let dx = -half; dx <= half; dx++) {
           const xx = tx + dx;
           if (xx < 0 || xx >= rw || unknown[yy * rw + xx]) continue;
-          const a = global(yy * rw + xx), b = global((sy + dy) * rw + sx + dx);
-          const d0 = px[a] - px[b], d1 = px[a + 1] - px[b + 1], d2 = px[a + 2] - px[b + 2], d3 = px[a + 3] - px[b + 3];
+          const a = global(yy * rw + xx), b = global((sy + Math.round(m[2] * dx + m[3] * dy)) * rw + sx + Math.round(m[0] * dx + m[1] * dy));
+          const d0 = px[a] - (px[b] * ad[0] + ad[3]), d1 = px[a + 1] - (px[b + 1] * ad[1] + ad[4]), d2 = px[a + 2] - (px[b + 2] * ad[2] + ad[5]), d3 = px[a + 3] - px[b + 3];
           cost += d0 * d0 + d1 * d1 + d2 * d2 + d3 * d3;
         }
       }
-      if (cost < bestCost) { bestCost = cost; from = s; }
+      if (cost < bestCost) { bestCost = cost; from = s; bestT = ct[i]; bestAd.set(ad); }
     }
     if (from < 0) break;
-    const fx = from % rw, fy = (from - fx) / rw;
+    const fx = from % rw, fy = (from - fx) / rw, fm = tf[bestT];
     for (let dy = -half; dy <= half; dy++) {
       for (let dx = -half; dx <= half; dx++) {
         const xx = tx + dx, yy = ty + dy;
         if (xx < 0 || yy < 0 || xx >= rw || yy >= rh) continue;
         const l = yy * rw + xx;
         if (!unknown[l]) continue;
-        const a = global(l), b = global((fy + dy) * rw + fx + dx);
-        px[a] = px[b]; px[a + 1] = px[b + 1]; px[a + 2] = px[b + 2]; px[a + 3] = px[b + 3];
+        const a = global(l), b = global((fy + Math.round(fm[2] * dx + fm[3] * dy)) * rw + fx + Math.round(fm[0] * dx + fm[1] * dy));
+        px[a + 3] = px[b + 3];
+        px[a] = Math.max(0, Math.min(px[b + 3], px[b] * bestAd[0] + bestAd[3]));
+        px[a + 1] = Math.max(0, Math.min(px[b + 3], px[b + 1] * bestAd[1] + bestAd[4]));
+        px[a + 2] = Math.max(0, Math.min(px[b + 3], px[b + 2] * bestAd[2] + bestAd[5]));
         unknown[l] = 0;
         confidence[l] = targetConfidence;
         remaining--;

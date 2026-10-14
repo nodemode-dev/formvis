@@ -14,6 +14,7 @@ onnxruntime
 onnx
 psd-tools
 tifffile
+OpenEXR
 ptyprocess
 pywinpty; sys_platform == "win32"
 pyspellchecker
