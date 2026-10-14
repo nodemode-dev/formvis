@@ -747,6 +747,11 @@ export class Engine {
     this.edit('Delete Note', (p) => { const list = p.doc.notes ?? []; if (!list.some((x) => x.id === id)) return false; p.doc = { ...p.doc, notes: list.filter((x) => x.id !== id) }; return true; });
     if (this.activeNote === id) this.activeNote = null;
   }
+  /** Notes panel > Delete All (36.17): every note goes in one undo step. */
+  clearNotes(): void {
+    this.edit('Delete All Notes', (p) => { if (!p.doc.notes?.length) return false; p.doc = { ...p.doc, notes: [] }; return true; });
+    this.activeNote = null;
+  }
 
   /** Counting (the Count tool): numbered marks on the document, saved with it; each change one step. */
   addCount(pt: Pt): void { this.edit('Count', (p) => { p.doc = { ...p.doc, counts: [...(p.doc.counts ?? []), { x: pt.x, y: pt.y }] }; return true; }); }
