@@ -101,6 +101,7 @@ const ROWS: Record<string, Row> = {
   'trim': ['Image', 'Opens Trim to cut away transparent or same-colour edges.', 'Use when the picture has empty borders to remove.', 'm'],
   'reveal-all': ['Image', 'Grows the canvas so every layer is fully inside it.', 'Use when layers hang off the canvas and you want to see all of them.', 'm'],
   'actions': ['Window', 'Opens the Actions panel to record and play steps.', 'Use when you want to record a repeatable sequence.'],
+  'script-console': ['Window', 'Opens the Script Console, a log with a one-line input that runs JavaScript with formvis.run to run any catalogue command, formvis.commands to list them and formvis.api, the plugin API.', 'Use when you want to try a command or a short script by typing it.'],
   'action-stop': ['Window', 'Stops recording an action.', 'Use when you finished recording the steps of an action.'],
   'create-droplet': ['File', 'Writes a shell script that runs a chosen action over any pictures dropped onto it.', 'Use when the same action should run over files from a file manager or a terminal.', 'r'],
   'open-image-data': ['File', 'Opens base64 picture bytes with a file name as a new document.', 'Use from a script that sends a picture file to the open window.', 'm'],

@@ -16,7 +16,7 @@ pyinstaller --noconfirm --clean --onefile --name formvis-engine \
   --distpath dist-engine --workpath build/pyinstaller --specpath build/pyinstaller \
   --add-data "$FORMVIS_ROOT/frontend/dist${sep}frontend_dist" \
   --add-data "$FORMVIS_ROOT/backend/app/profiles${sep}profiles" \
-  --collect-submodules app --collect-submodules uvicorn --collect-submodules keyring --hidden-import cv2 \
+  --collect-submodules app --collect-submodules uvicorn --collect-submodules keyring --hidden-import cv2 --hidden-import OpenEXR \
   --exclude-module pillow_heif "${extra[@]}" \
   "$FORMVIS_ROOT/backend/formvis_engine.py"
 mkdir -p "$FORMVIS_ROOT/src-tauri/binaries"

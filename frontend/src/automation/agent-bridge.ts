@@ -83,7 +83,11 @@ async function catalogueTool(name: string, a: Record<string, unknown>): Promise<
 export class AgentBridge {
   private on = false;
   private looping = false;
+  private inflight = 0;
   constructor(private readonly engine: Engine, private readonly deps: AgentDeps) {}
+
+  /** True while an outside agent's call is being run here (the Script Console refuses to run then). */
+  get agentBusy(): boolean { return this.inflight > 0; }
 
   setEnabled(on: boolean): void {
     const was = this.on;
@@ -107,7 +111,9 @@ export class AgentBridge {
             await fetch('/api/mcp/bridge/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, result: { allowed: yes } }) });
             continue;
           }
-          const result = this.on ? await this.run(item.name, item.arguments ?? {}) : fail('formvis stopped taking requests.');
+          this.inflight++;
+          let result: McpResult;
+          try { result = this.on ? await this.run(item.name, item.arguments ?? {}) : fail('formvis stopped taking requests.'); } finally { this.inflight--; }
           await fetch('/api/mcp/bridge/result', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: item.id, result }) });
         } else if (res.status !== 204) await sleep(2000);
       } catch { await sleep(2000); }   // the engine is not answering: try again shortly

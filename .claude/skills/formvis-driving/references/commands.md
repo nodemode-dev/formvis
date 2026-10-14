@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (935 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (936 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -16,7 +16,7 @@ Generated from the window's command catalogue (935 commands) by `./formvis agent
 - Tools: 49
 - Type: 22
 - View: 40
-- Window: 65
+- Window: 66
 
 ## Edit
 
@@ -1052,6 +1052,7 @@ Generated from the window's command catalogue (935 commands) by `./formvis agent
 | `pref-home-launch` | Show Home Screen at Launch |  | Turns the Home screen at launch on or off (Preferences > General); on shows it while no document is open at start. |
 | `pref-whats-new-auto` | Show What's New Once After an Update |  | Turns on or off opening What's New once after an update (Preferences > General). |
 | `reset-panels` | Reset Panels |  | Restores the default panel layout. |
+| `script-console` | Script Console... |  | Opens the Script Console, a log with a one-line input that runs JavaScript with formvis.run to run any catalogue command, formvis.commands to list them and formvis.api, the plugin API. |
 | `search` | Search... | Mod+K | Opens the command palette. |
 | `settings` | Preferences... | Mod+, | Opens Preferences. |
 | `sheet-panels` | Panels Sheet |  | Opens the Panels sheet on narrow screens. |

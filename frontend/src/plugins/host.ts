@@ -114,31 +114,50 @@ export class PluginHost {
           return;
         }
         case 'done': { const f = this.runs.get(m.runId ?? -1); this.runs.delete(m.runId ?? -1); f?.(m.error); return; }
-        case 'call': reply(await this.bridge.run(String(m.args?.tool ?? ''), (m.args?.args ?? {}) as Record<string, unknown>)); return;
-        case 'getPixels': {
-          const q = this.engine.current, l = q?.activeLayer;
-          if (!q || !l) { reply(undefined, 'No document or layer is open.'); return; }
-          const s = this.engine.renderLayerAlone(l.id), c = s.getContext('2d') as CanvasRenderingContext2D, img = c.getImageData(0, 0, s.width, s.height);
-          reply({ width: img.width, height: img.height, data: img.data, layer: { id: l.id, name: l.name } });
-          return;
-        }
-        case 'putPixels': {
-          const q = this.engine.current, img = m.args?.image as { width?: number; height?: number; data?: Uint8ClampedArray } | undefined;
-          if (!q) { reply(undefined, 'No document is open.'); return; }
-          const W = q.doc.width, H = q.doc.height;
-          if (!img || img.width !== W || img.height !== H || !(img.data instanceof Uint8ClampedArray) || img.data.length !== W * H * 4) { reply(undefined, `putPixels takes { width: ${W}, height: ${H}, data: a Uint8ClampedArray of ${W * H * 4} } (the document's size).`); return; }
-          const data = new ImageData(new Uint8ClampedArray(img.data), W, H), label = p.label;
-          if (m.args?.how === 'replace' && q.activeLayer) reply(this.engine.replaceLayerPixels(q.activeLayer.id, data, label));
-          else {
-            const { Raster } = await import('../engine');
-            const r = new Raster(W, H); r.ctx.putImageData(data, 0, 0); r.touch();
-            this.engine.insertRasterLayer(r, label, 0, 0, {}, label);
-            reply(true);
-          }
+        case 'call': case 'getPixels': case 'putPixels': {
+          const out = await this.serve(m.op, m.args ?? {}, p.label);
+          if ('error' in out) reply(undefined, out.error); else reply(out.result);
           return;
         }
         default: reply(undefined, `Unknown request ${m.op}.`);
       }
     } catch (err) { reply(undefined, err instanceof Error ? err.message : String(err)); }
+  }
+
+  /** The three requests a plugin may make (call, getPixels, putPixels), shared by plugin frames and the Script Console. */
+  private async serve(op: string, args: Record<string, unknown>, label: string): Promise<{ result: unknown } | { error: string }> {
+    switch (op) {
+      case 'call': return { result: await this.bridge.run(String(args.tool ?? ''), (args.args ?? {}) as Record<string, unknown>) };
+      case 'getPixels': {
+        const q = this.engine.current, l = q?.activeLayer;
+        if (!q || !l) return { error: 'No document or layer is open.' };
+        const s = this.engine.renderLayerAlone(l.id), c = s.getContext('2d') as CanvasRenderingContext2D, img = c.getImageData(0, 0, s.width, s.height);
+        return { result: { width: img.width, height: img.height, data: img.data, layer: { id: l.id, name: l.name } } };
+      }
+      case 'putPixels': {
+        const q = this.engine.current, img = args.image as { width?: number; height?: number; data?: Uint8ClampedArray } | undefined;
+        if (!q) return { error: 'No document is open.' };
+        const W = q.doc.width, H = q.doc.height;
+        if (!img || img.width !== W || img.height !== H || !(img.data instanceof Uint8ClampedArray) || img.data.length !== W * H * 4) return { error: `putPixels takes { width: ${W}, height: ${H}, data: a Uint8ClampedArray of ${W * H * 4} } (the document's size).` };
+        const data = new ImageData(new Uint8ClampedArray(img.data), W, H);
+        if (args.how === 'replace' && q.activeLayer) return { result: this.engine.replaceLayerPixels(q.activeLayer.id, data, label) };
+        const { Raster } = await import('../engine');
+        const r = new Raster(W, H); r.ctx.putImageData(data, 0, 0); r.touch();
+        this.engine.insertRasterLayer(r, label, 0, 0, {}, label);
+        return { result: true };
+      }
+      default: return { error: `Unknown request ${op}.` };
+    }
+  }
+
+  /** The same API object a plugin's frame gets as window.formvis (call, getPixels, putPixels), for the Script Console under
+   *  the name given. It has exactly the plugin's reach: nothing is added, and it asks for nothing more. */
+  apiFor(label: string): { call(tool: string, args?: Record<string, unknown>): Promise<unknown>; getPixels(): Promise<unknown>; putPixels(image: unknown, how?: 'new-layer' | 'replace'): Promise<unknown> } {
+    const go = async (op: string, args: Record<string, unknown>): Promise<unknown> => { const out = await this.serve(op, args, label); if ('error' in out) throw new Error(out.error); return out.result; };
+    return {
+      call: (tool, args) => go('call', { tool, args: args ?? {} }),
+      getPixels: () => go('getPixels', {}),
+      putPixels: (image, how) => go('putPixels', { image, how: how === 'replace' ? 'replace' : 'new-layer' }),
+    };
   }
 }

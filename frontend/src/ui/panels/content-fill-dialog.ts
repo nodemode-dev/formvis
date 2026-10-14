@@ -1,5 +1,5 @@
 import { createSurface, ctxOf, type Engine } from '../../engine';
-import { contentFill, premultiply, unpremultiply } from '../../engine/retouch';
+import { FILL_DEFAULTS, contentFill, premultiply, unpremultiply, type FillOptions } from '../../engine/retouch';
 import { Dialog } from '../dialogs';
 import { el } from '../dom';
 import { toast } from '../toast';
@@ -18,6 +18,7 @@ export class ContentFillDialog extends Dialog {
   private output: Output = 'current';
   private brush = 40;
   private showResult = false;
+  private opts: FillOptions = { ...FILL_DEFAULTS };
   private scale = 1;
   private ox = 0;
   private oy = 0;
@@ -37,8 +38,15 @@ export class ContentFillDialog extends Dialog {
     const samplingRow = selectRow('Sampling Area', [['auto', 'Auto'], ['rectangular', 'Rectangular'], ['custom', 'Custom']], (v) => { this.sampling = v as Sampling; this.rebuildAllow(); });
     const resultRow = checkRow('Show Result', (v) => { this.showResult = v; this.refresh(); });
     const outRow = selectRow('Output To', [['current', 'Current Layer'], ['new', 'New Layer'], ['duplicate', 'Duplicate Layer']], (v) => { this.output = v as Output; });
-    this.body.append(this.canvas, samplingRow.el, this.brushRow.el, resultRow.el, outRow.el);
-    this.sync = () => { samplingRow.set(this.sampling); outRow.set(this.output); resultRow.set(this.showResult); this.brushRow.set(this.brush); this.syncBrush(); };
+    const colorRow = selectRow('Color Adaptation', [['0', 'None'], ['1', 'Default'], ['2', 'High'], ['3', 'Very High']], (v) => { this.opts = { ...this.opts, color: Number(v) }; this.refresh(); });
+    const rotRow = selectRow('Rotation Adaptation', [['0', 'None'], ['1', 'Low'], ['2', 'Medium'], ['3', 'High'], ['4', 'Full']], (v) => { this.opts = { ...this.opts, rotation: Number(v) }; this.refresh(); });
+    const scaleRow = checkRow('Scale', (v) => { this.opts = { ...this.opts, scale: v }; this.refresh(); });
+    const mirrorRow = checkRow('Mirror', (v) => { this.opts = { ...this.opts, mirror: v }; this.refresh(); });
+    this.body.append(this.canvas, samplingRow.el, this.brushRow.el, colorRow.el, rotRow.el, scaleRow.el, mirrorRow.el, resultRow.el, outRow.el);
+    this.sync = () => {
+      samplingRow.set(this.sampling); outRow.set(this.output); resultRow.set(this.showResult); this.brushRow.set(this.brush); this.syncBrush();
+      colorRow.set(String(this.opts.color)); rotRow.set(String(this.opts.rotation)); scaleRow.set(this.opts.scale); mirrorRow.set(this.opts.mirror);
+    };
     this.button('Cancel', 'ghost', () => this.close());
     this.button('OK', 'primary', () => this.apply());
     this.onClose = () => { if (this.frame) cancelAnimationFrame(this.frame); this.frame = 0; this.image = null; this.hole = null; this.allow = null; this.result = null; };
@@ -119,7 +127,7 @@ export class ContentFillDialog extends Dialog {
       if (!img || !hole || !allow || !g) return;
       if (this.showResult && !this.result) {
         const pm = premultiply(img.data);
-        if (contentFill(pm, hole, this.pw, this.ph, this.sampling === 'auto' ? null : allow)) { const r = new ImageData(this.pw, this.ph); unpremultiply(pm, r.data); this.result = r; }
+        if (contentFill(pm, hole, this.pw, this.ph, this.sampling === 'auto' ? null : allow, this.opts)) { const r = new ImageData(this.pw, this.ph); unpremultiply(pm, r.data); this.result = r; }
       }
       const base = this.showResult && this.result ? this.result : img, out = new ImageData(this.pw, this.ph), d = out.data, s = base.data;
       for (let i = 0; i < hole.length; i++) {
@@ -136,6 +144,7 @@ export class ContentFillDialog extends Dialog {
 
   private apply(): void {
     const p = this.engine.current, a = this.allow, sampling = this.sampling, output = this.output, s = this.scale, pw = this.pw, ph = this.ph;
+    const opts = { ...this.opts };
     this.close();
     if (!p) return;
     let allowDoc: Uint8Array | null = null;
@@ -144,6 +153,6 @@ export class ContentFillDialog extends Dialog {
       allowDoc = new Uint8Array(W * H);
       for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) allowDoc[y * W + x] = a[Math.min(ph - 1, Math.floor(y * s)) * pw + Math.min(pw - 1, Math.floor(x * s))];
     }
-    this.engine.contentAwareFillWith(allowDoc, output);
+    this.engine.contentAwareFillWith(allowDoc, output, opts);
   }
 }
