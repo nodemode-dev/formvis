@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.72.1 · 2026-10-14
+
+### Changed
+
+- Without the engine service, formvis boots quietly: one note says what waits for the service, and the commands that need it are disabled with the reason instead of failing after a click. Nothing polls or reconnects while it is down, and it is picked up again when it starts.
+- TIFF files open in the browser when the engine service is not running (first page, 8 bits).
+- The engine's artboard, guide and slice, and colour profile code live in their own modules; behaviour is unchanged.
+
 ## 1.71.9 · 2026-10-14
 
 ### Added
