@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (908 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (911 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -8,13 +8,13 @@ Generated from the window's command catalogue (908 commands) by `./formvis agent
 - File: 73
 - Filter: 80
 - Image: 88
-- Layer: 191
+- Layer: 192
 - Paint: 1
 - Paths: 8
 - Select: 28
 - Tool options: 226
 - Tools: 49
-- Type: 14
+- Type: 16
 - View: 34
 - Window: 58
 
@@ -500,6 +500,7 @@ Generated from the window's command catalogue (908 commands) by `./formvis agent
 | `smart-filters-clear` | Clear Smart Filters |  | Removes every smart filter of the active smart object. (changes the picture) |
 | `smart-filters-disable` | Disable Smart Filters |  | Turns every filter of the active smart object off, or back on when all are off. (changes the picture) |
 | `smart-new-via-copy` | New Smart Object via Copy |  | Duplicates the active smart object as a new, independent smart object above it. (changes the picture) |
+| `smart-reveal-linked` | Reveal in File Manager |  | Shows the active linked smart object's file in the system file manager. |
 | `stack-mode-entropy` | Entropy |  | Set the stack mode of a stacked smart object to Entropy (changes the picture) |
 | `stack-mode-kurtosis` | Kurtosis |  | Set the stack mode of a stacked smart object to Kurtosis (changes the picture) |
 | `stack-mode-majority` | Majority |  | Set the stack mode of a stacked smart object to Majority, the most common value (changes the picture) |
@@ -921,12 +922,14 @@ Generated from the window's command catalogue (908 commands) by `./formvis agent
 
 | Id | Name | Keys | Does |
 | --- | --- | --- | --- |
+| `check-spelling` | Check Spelling... |  | Checks the words of every type layer against a dictionary and steps through the unknown ones with suggestions. (changes the picture) |
 | `convert-paragraph-text` | Convert to Paragraph Text |  | Turns the active point text into paragraph text in a box around its current size. (changes the picture) |
 | `convert-point-text` | Convert to Point Text |  | Turns the active paragraph text into point text with no box. (changes the picture) |
 | `edit-text` | Edit Type... |  | Opens the text of the active type layer for editing. (changes the picture) |
 | `find-replace-text` | Find and Replace Text... |  | Finds text in type layers and replaces it, with case and whole word options. (changes the picture) |
 | `paragraph-styles` | Paragraph Styles... |  | Opens Paragraph Styles. |
 | `paste-lorem-ipsum` | Paste Lorem Ipsum |  | Appends a Lorem Ipsum paragraph to the active type layer. (changes the picture) |
+| `resolve-missing-fonts` | Resolve Missing Fonts... |  | Lists the fonts type layers use that are not installed and replaces each with an installed family. (changes the picture) |
 | `type-features` | OpenType Features |  | Turns OpenType features (ligatures, small caps, oldstyle figures, swash and more) on or off for the active type layer. (changes the picture) |
 | `type-on-arc` | Type on Arc... |  | Sets text on an arc, live and editable. (changes the picture) |
 | `type-on-circle` | Type on Circle... |  | Sets text round a full circle, live and editable. (changes the picture) |

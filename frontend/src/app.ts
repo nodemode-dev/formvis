@@ -103,6 +103,8 @@ import { GlyphsDialog } from './ui/panels/glyphs-dialog';
 import { ToolPresetsDialog } from './ui/panels/tool-presets-dialog';
 import { MeasureScaleDialog, MeasurementLogDialog } from './ui/panels/measurement-dialogs';
 import { FindReplaceTextDialog } from './ui/panels/find-replace-text-dialog';
+import { SpellDialog } from './ui/panels/spell-dialog';
+import { MissingFontsDialog } from './ui/panels/missing-fonts-dialog';
 import { NormalMapDialog } from './ui/panels/normal-map-dialog';
 import { SaveForWebDialog } from './ui/panels/save-for-web-dialog';
 import { VanishingPointDialog } from './ui/panels/vanishing-dialog';
@@ -1892,10 +1894,14 @@ export function startApp(): void {
         name = stripExt(file.name);
       }
       const parsed = svgToShapes(text);
-      if (!parsed.shapes.length) { toast(`No shapes found; ${parsed.skipped} elements skipped.`, 'error'); return; }
+      if (!parsed.shapes.length && !parsed.texts.length) { toast(`No shapes or text found; ${parsed.skipped} elements skipped.`, 'error'); return; }
       if (!engine.newDocument(parsed.width, parsed.height, name, 'transparent')) return;
-      const n = engine.addShapeLayers(parsed.shapes);
-      toast(`${n} shape layers; ${parsed.skipped} elements skipped.`);
+      const n = engine.addShapeLayers(parsed.shapes, true);
+      // Text as point type (34.4d), each its own step; the Type tool's own settings are put back afterwards.
+      const kept = engine.textSettings;
+      for (const tx of parsed.texts) await engine.createTextLayer({ x: tx.x, y: tx.y }, { ...kept, content: tx.content, family: tx.family, size: tx.size, color: tx.color, align: tx.align, bold: tx.bold, italic: tx.italic, box: null, direction: 'horizontal', warp: null, onPath: null, rendered: undefined });
+      engine.textSettings = kept;
+      toast(`${n} shape layers, ${parsed.texts.length} type layers; ${parsed.skipped} elements skipped.`);
     } catch (err) { toast(message(err), 'error'); }
   };
   const linkError = (err: unknown): void => { toast(message(err), 'error'); };
@@ -1943,6 +1949,8 @@ export function startApp(): void {
     measureScale: new MeasureScaleDialog(engine),
     measureLog: new MeasurementLogDialog(engine, deliver),
     findReplaceText: new FindReplaceTextDialog(engine),
+    spelling: new SpellDialog(engine),
+    missingFonts: new MissingFontsDialog(engine),
     normalMap: new NormalMapDialog(engine),
     smartFilters: new SmartFiltersDialog(engine, (): FilterPanel => dialogs.filter),
     shapeStyle: new ShapeStyleDialog(engine),
@@ -2751,6 +2759,8 @@ export function startApp(): void {
     },
     { id: 'convert-point-text', label: 'Convert to Point Text', enabled: () => { const l = engine.current?.activeLayer; return engine.liveText(l) && !!l?.text?.box; }, run: async () => { await engine.convertTextKind('point'); } },
     { id: 'convert-paragraph-text', label: 'Convert to Paragraph Text', enabled: () => { const l = engine.current?.activeLayer; return engine.liveText(l) && !l?.text?.box; }, run: async () => { await engine.convertTextKind('paragraph'); } },
+    { id: 'check-spelling', label: 'Check Spelling...', enabled: has, run: async () => { if (!(await dialogs.spelling.show())) toast('No misspelled words found in the type layers.', 'info'); } },
+    { id: 'resolve-missing-fonts', label: 'Resolve Missing Fonts...', enabled: has, run: () => { if (!dialogs.missingFonts.show()) toast('No missing fonts in the type layers.', 'info'); } },
     { id: 'type-work-path', label: 'Create Work Path', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { engine.typeToWorkPath(); } },
     { id: 'type-to-shape', label: 'Convert to Shape', enabled: () => engine.liveText(engine.current?.activeLayer), run: () => { engine.typeToShape(); } },
     { id: 'update-all-text', label: 'Update All Text Layers', enabled: has, run: async () => { const n = await engine.updateAllTextLayers(); toast(`Updated ${n} text layer${n === 1 ? '' : 's'}.`, 'info'); } },
@@ -2887,6 +2897,16 @@ export function startApp(): void {
     { id: 'update-linked', label: 'Update Modified Content', enabled: () => !!engine.current?.doc.layers.some((l) => l.smart?.link), run: () => { void engine.task(async () => { try { const r = await updateLinked(engine); toast(r.missing.length ? `Could not reach ${r.missing.join(', ')}. Use Relink to File.` : r.updated ? `Updated ${r.updated} linked smart object${r.updated === 1 ? '' : 's'}.` : 'Linked contents are up to date.', r.missing.length ? 'error' : undefined); } catch (err) { linkError(err); } }); } },
     { id: 'relink', label: 'Relink to File...', enabled: () => !!engine.current?.activeLayer?.smart?.link, run: () => { void (async () => { try { await relink(engine, pickOnce); } catch (err) { linkError(err); } })(); } },
     { id: 'embed-linked', label: 'Embed Linked', enabled: () => !!engine.current?.activeLayer?.smart?.link, run: () => engine.embedLinked() },
+    { id: 'smart-reveal-linked', label: 'Reveal in File Manager', enabled: () => !!engine.current?.activeLayer?.smart?.link?.path, run: () => {
+      const path = engine.current?.activeLayer?.smart?.link?.path;
+      if (!path) return;
+      void (async () => {
+        try {
+          const res = await fetch('/api/reveal', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ path }) });
+          if (!res.ok) toast(`Linked file: ${path}`);
+        } catch { toast(`Linked file: ${path}`); }
+      })();
+    } },
     { id: 'add-filter-mask', label: 'Add Smart Filter Mask', enabled: () => { const s = engine.current?.activeLayer?.smart; return !!s && !s.filterMask; }, run: () => engine.addSmartFilterMask() },
     { id: 'toggle-filter-mask', label: () => (engine.current?.activeLayer?.smart?.filterMaskEnabled === false ? 'Enable Smart Filter Mask' : 'Disable Smart Filter Mask'), enabled: () => !!engine.current?.activeLayer?.smart?.filterMask, run: () => engine.toggleSmartFilterMask() },
     ...STACK_MODES.map((m) => ({ id: `stack-mode-${m.id}`, label: m.label, checked: () => engine.stackMode === m.id, enabled: () => engine.stackMode !== null, run: () => { engine.setStackMode(m.id); } })),
@@ -3020,9 +3040,9 @@ export function startApp(): void {
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
       { label: '3D', items: ['extrude-3d', 'place-3d'] },
-      { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
+      { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'edit-contents', 'replace-contents', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
       { label: 'Smart Filter', items: ['smart-filters-disable', 'smart-filters-clear'] },
-      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
+      { label: 'Rasterize', items: ['rasterize-type', 'rasterize-shape', 'rasterize-fill', 'rasterize-smart', 'rasterize-vmask', '-', 'rasterize', 'rasterize-all'] }, { label: 'Type', items: ['check-spelling', 'find-replace-text', 'paste-lorem-ipsum', '-', 'convert-point-text', 'convert-paragraph-text', '-', 'type-work-path', 'type-to-shape', '-', 'update-all-text', 'resolve-missing-fonts', '-', 'type-on-arc', 'type-on-circle'] }, 'edit-text', 'warp-text', 'type-on-path', { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] }, '-',
       { label: 'Layer Mask', items: ['mask-reveal-all', 'mask-hide-all', 'mask-reveal-selection', 'mask-hide-selection', 'mask-from-transparency', '-', 'delete-mask', 'apply-mask', '-', 'toggle-mask', 'link-mask'] },
       { label: 'Vector Mask', items: ['vmask-reveal-all', 'vmask-hide-all', 'vmask-current-path', 'vmask-delete', '-', 'vmask-enable', 'vmask-link'] }, 'clip', 'mask-all-objects', '-',
       'group', 'ungroup', 'move-out', 'hide-layers', '-',
@@ -3064,7 +3084,7 @@ export function startApp(): void {
     engine.on('projects', () => { void native.build().catch(() => undefined); });   // Open Recent and what is enabled
   }
   contextMenu.setItems(['duplicate-dialog', 'delete-layer', 'rename', 'edit-text', 'warp-text', '-',
-    { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, 'rasterize', 'edit-contents', 'replace-contents', '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
+    { label: 'Smart Objects', items: ['convert-smart', 'smart-new-via-copy', 'smart-convert-to-layers', 'smart-export-contents', { label: 'Stack Mode', items: STACK_MODES.map((m) => `stack-mode-${m.id}`) }, 'rasterize', 'edit-contents', 'replace-contents', '-', 'smart-convert-to-linked', 'update-linked', 'relink', 'embed-linked', 'smart-reveal-linked', '-', 'smart-filters', 'add-filter-mask', 'toggle-filter-mask', 'delete-filter-mask'] },
     { label: 'Shape', items: ['new-shape-path', 'shape-color', 'shape-style', 'shape-corners', '-', 'apply-redactions'] },
     { label: 'Layer Style', items: ['layer-style', '-', 'copy-layer-style', 'paste-layer-style', 'clear-layer-style'] },
     { label: 'Layer Comps', items: ['layer-comp-new', 'layer-comp-apply', 'layer-comp-update', 'layer-comp-delete', '-', 'layer-comp-next', 'layer-comp-previous'] }, '-',
