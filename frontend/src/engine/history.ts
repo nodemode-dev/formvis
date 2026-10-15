@@ -9,7 +9,9 @@ export interface Snapshot { doc: Doc; activeId: ID | null; selection: SelectionM
 /* frames (1.59.8): a copy of the frame animation (frames, current, loops), carried by steps that change it (Convert to
    Frame Animation), as video and paths are carried. */
 /* video (1.59.5, DEV_PLAN 25): a copy of the video timeline, carried only by timeline edits' steps, as paths are. */
-export interface PixelPatch { raster: Raster | TiledRaster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null; lazy?: boolean; disk?: { before: string; after: string; w: number; h: number } | null }
+export interface PixelPatch { raster: Raster | TiledRaster; x: number; y: number; before: ImageData; after: ImageData; paged?: { key: string; w: number; h: number } | null; lazy?: boolean; disk?: { before: string; after: string; w: number; h: number } | null; redo?: () => ImageData }
+/* redo (DEV_PLAN 36.18): `after` is not kept (a pixel's worth stands in); redo works it out again with this, from the
+   layer's pixels as undo left them (a solid fill's recipe), so a step holds one side of its tile, as a lazy one does. */
 /* lazy (1.60.9, DEV_PLAN 26.4): only `before` is kept; `after` is what the layer holds when the step is undone, read
    there just before `before` is written back (a whole-layer filter's undo, halved). */
 /* paged (1.60.8, DEV_PLAN 26.3): kept in the engine's undo store under `key`, its before and after pixels (w by h)

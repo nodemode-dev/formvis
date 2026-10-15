@@ -2,6 +2,7 @@ import { applyLut, inkOf, renditionOf, type ColourLut, type Ink, type Lut3x4, ty
 import { composeChannels, labGreyValue, rasterFromChannels, strokeChannels, strokeLabChannel } from './channels';
 import { trapInk } from './trap';
 import { deriveRegion, deriveWhole, renderRegion, type DeriveTables } from './derive';
+import { sameImage, solidFillPixels, type SolidFill } from './fill-recipe';
 import { DEFAULT_MIXER, mixerSource, mixerStart, windowSampler, type MixerSettings, type MixerState } from './mixer';
 import { artHistoryTexture, type ArtStyle } from './art-history';
 import { decodeLab, labFromFloats, labFromRgba, labToSrgb, renderLab } from './lab';
@@ -53,6 +54,9 @@ import * as GD from './guides-ops';
 import * as PR from './profile-ops';
 import * as NT from './notes-ops';
 import * as SM from './smart-ops';
+import * as SOB from './smart-object-ops';
+import * as MO from './mode-ops';
+import * as SN from './snapshot-ops';
 import * as FR from './frame-ops';
 import * as PA from './path-ops';
 import * as TX from './text-ops';
@@ -512,13 +516,13 @@ export class Engine {
         for (const q of p.history.pageable(keep)) {
           if (!all && held <= this.undoShare()) break;
           if (q.paged) continue;
-          const w = q.before.width, h = q.before.height, n = w * h * 4, lazy = !!q.lazy, bytes = new Uint8Array(lazy ? n : n * 2);
+          const w = q.before.width, h = q.before.height, n = w * h * 4, lazy = !!q.lazy || !!q.redo, bytes = new Uint8Array(lazy ? n : n * 2);
           bytes.set(q.before.data, 0);
           if (!lazy) bytes.set(q.after.data, n);   // a lazy tile keeps only its before (1.60.9)
           const key = await store.put(bytes);
           // Closed, or its step trimmed, while it was on its way: the key is dropped rather than left behind (1.60.8).
           if (!this.projects.includes(p)) { store.drop(key); break; }
-          if (q.paged || !!q.lazy !== lazy || !p.history.entries().some((s) => s.patches.includes(q))) { store.drop(key); continue; }
+          if (q.paged || (!!q.lazy || !!q.redo) !== lazy || !p.history.entries().some((s) => s.patches.includes(q))) { store.drop(key); continue; }
           q.paged = { key, w, h };
           q.before = new ImageData(1, 1);
           q.after = new ImageData(1, 1);
@@ -680,7 +684,7 @@ export class Engine {
         job = store.get(key).then((buf) => {
           const all = new Uint8ClampedArray(buf), n = w * h * 4;
           q.before = new ImageData(all.slice(0, n), w, h);
-          if (!q.lazy) q.after = new ImageData(all.slice(n, n * 2), w, h);   // a lazy tile's after is read at undo (1.60.9)
+          if (!q.lazy && !q.redo) q.after = new ImageData(all.slice(n, n * 2), w, h);   // a lazy tile's after is read at undo (1.60.9)
           q.paged = null;
           store.drop(key);
         }).finally(() => this.pageJobs.delete(key));
@@ -876,17 +880,7 @@ export class Engine {
   patternStampPattern: ID | null = null;
   /** Preferences > Cursors: how painting tools show where they will paint (drawn by brush-common's drawBrushCursor). */
   cursorPrefs: { paint: 'tip' | 'precise' | 'standard'; crosshair: boolean } = { paint: 'tip', crosshair: false };
-  private openingSnapshot(p: Project): void {
-    if (!this.autoFirstSnapshot) return;
-    // A copy of every pixel (1.60.5, DEV_PLAN 26.2: measured, this was the second full copy of every document): past a
-    // quarter of this computer's budget it is not taken, and the document says so; New Snapshot takes one when wanted.
-    const need = this.docBytes(p.doc);
-    if (need > this.snapshotByteLimit || (this.memoryBudget && need > this.memoryBudget / 4)) {
-      if (this.memoryBudget && need > this.memoryBudget / 4) this.notice(`No opening snapshot: this document's pixels (${Math.ceil(need / 1048576).toLocaleString()} MB) would take too much of this computer's memory. New Snapshot takes one when you want it.`);
-      return;
-    }
-    this.historySnapshots.set(p, [{ id: uid(), name: p.name, state: { doc: this.copyDoc(p.doc), activeId: p.activeId, selection: p.selection } }]);
-  }
+  private openingSnapshot(p: Project): void { SN.openingSnapshot(this.snapshotHost, p); }
 
   /** Frame layers (the Frame tool, K; not the Timeline's frames), as Photoshop's: a folder named Frame N whose mask is the frame's rectangle or ellipse;
    *  one undo step; it is selected, so an image imported next goes into it and covers it (insertImages). */
@@ -917,10 +911,7 @@ export class Engine {
   setHistorySourceIndex(i: number | null): void { if (this.historySourceIndex === i) return; this.historySourceIndex = i; this.emit('history', null); }
   historyBrushSource: ID | null = null;
   setHistoryBrushSource(id: ID): void { this.historyBrushSource = id; this.emit('history', null); }
-  get historyBrushSourceId(): ID | null {
-    const p = this.current, list = p ? this.historySnapshots.get(p) ?? [] : [];
-    return (list.find((x) => x.id === this.historyBrushSource) ?? list[0])?.id ?? null;
-  }
+  get historyBrushSourceId(): ID | null { return SN.historyBrushSourceId(this.snapshotHost); }
 
   switchTo(id: string): void {
     if (this.stroke || !this.projects.some((q) => q.id === id)) return;
@@ -1121,74 +1112,32 @@ export class Engine {
     p.maskTarget = false;
   }
 
-  private readonly historySnapshots = new WeakMap<Project, Array<{ id: ID; name: string; state: Snapshot }>>();
+  private readonly snapshotStore = new SN.SnapshotStore();
+  /** Each open document's snapshots (the store's lists), read by the memory count and the History Brush. */
+  private get historySnapshots(): WeakMap<Project, SN.SnapshotEntry[]> { return this.snapshotStore.lists; }
 
   /** A copy of `doc` whose layer pixels and masks are copies too: strokes change pixels in place, so a snapshot that
    *  only referred to them would change with later painting. Type stays editable on its copied pixels; smart sources,
    *  paths and shapes are never changed in place, so they are shared. */
-  private copyDoc(doc: Doc): Doc {
-    const copy = (r: Raster | null | undefined): Raster | null => {
-      if (!r) return null;
-      const c = new Raster(r.width, r.height);
-      c.ctx.drawImage(r.canvas, 0, 0);
-      return c;
-    };
-    return { ...doc, layers: doc.layers.map((l) => {
-      const raster = copy(l.raster), text = l.text && raster && liveText(l) ? { ...l.text, rendered: textKey(raster) } : l.text;
-      return { ...l, raster, text, mask: l.mask ? { ...l.mask, raster: copy(l.mask.raster) } : l.mask };
-    }) };
-  }
+  private copyDoc(doc: Doc): Doc { return SN.copyDoc(doc); }
 
   /** Snapshots copy every layer's pixels, so beside the history's own limit they have a budget of their own, per
    *  document; past it, New Snapshot declines rather than risk running out of memory. */
   snapshotByteLimit = 768 * 1024 * 1024;
 
-  private docBytes(doc: Doc): number {
-    let n = 0;
-    for (const l of doc.layers) { if (l.raster) n += l.raster.bytes; if (l.mask?.raster) n += l.mask.raster.bytes; }
-    return n;
-  }
+  private docBytes(doc: Doc): number { return SN.docBytes(doc); }
 
   /** The current document's snapshots, newest last, with the memory each keeps. They live with the open document and
    *  are not saved. */
-  get snapshots(): ReadonlyArray<{ id: ID; name: string; bytes: number }> {
-    const p = this.current;
-    return p ? (this.historySnapshots.get(p) ?? []).map((x) => ({ id: x.id, name: x.name, bytes: this.docBytes(x.state.doc) })) : [];
-  }
+  get snapshots(): ReadonlyArray<{ id: ID; name: string; bytes: number }> { return SN.snapshots(this.snapshotHost); }
 
   /** History > New Snapshot: the document as it is now, kept to return to however far the steps move on. */
-  takeSnapshot(): void {
-    const p = this.current;
-    if (!p || this.stroke) return;
-    this.settle();
-    const list = this.historySnapshots.get(p) ?? [], need = this.docBytes(p.doc), used = list.reduce((a, x) => a + this.docBytes(x.state.doc), 0), mb = (b: number): number => Math.ceil(b / 1048576);
-    if (used + need > this.snapshotByteLimit) { this.notice(`A snapshot of this document needs ${mb(need)} MB, and snapshots already keep ${mb(used)} MB of the ${mb(this.snapshotByteLimit)} MB they may use. Delete one first.`); return; }
-    if (!this.room(need, 'A snapshot')) return;   // its copy of every pixel (1.60.5)
-    // Numbered as Photoshop's: the opening snapshot bears the document's name, so the first taken is Snapshot 1.
-    let n = list.filter((x) => /^Snapshot \d+$/.test(x.name)).length + 1;
-    while (list.some((x) => x.name === `Snapshot ${n}`)) n += 1;
-    list.push({ id: uid(), name: `Snapshot ${n}`, state: { doc: this.copyDoc(p.doc), activeId: p.activeId, selection: p.selection } });
-    this.historySnapshots.set(p, list);
-    this.emit('history', null);
-  }
+  takeSnapshot(): void { SN.takeSnapshot(this.snapshotHost); }
 
   /** Returns the document to a snapshot as one undo step, from a fresh copy, so the snapshot stays as it was taken. */
-  revertToSnapshot(id: ID): void {
-    const p = this.current, snap = p ? this.historySnapshots.get(p)?.find((x) => x.id === id) : undefined;
-    if (!p || !snap) return;
-    this.edit(`Revert to ${snap.name}`, (q) => {
-      q.doc = this.copyDoc(snap.state.doc);
-      q.selection = snap.state.selection;
-      this.focus(q, snap.state.activeId && q.doc.layers.some((l) => l.id === snap.state.activeId) ? snap.state.activeId : null);
-    });
-  }
+  revertToSnapshot(id: ID): void { SN.revertToSnapshot(this.snapshotHost, id); }
 
-  deleteSnapshot(id: ID): void {
-    const p = this.current, list = p ? this.historySnapshots.get(p) : undefined;
-    if (!p || !list) return;
-    this.historySnapshots.set(p, list.filter((x) => x.id !== id));
-    this.emit('history', null);
-  }
+  deleteSnapshot(id: ID): void { SN.deleteSnapshot(this.snapshotHost, id); }
 
   /** The History panel's list for the current document. */
   get historySteps(): { names: string[]; current: number } { return this.current?.history.steps ?? { names: [], current: 0 }; }
@@ -1271,7 +1220,7 @@ export class Engine {
     this.settle();
     const e = p.history.redo();
     if (!e) return;
-    if (!e.streamed) for (const q of e.patches) q.raster.write(q.after, q.x, q.y);   // a streamed step's are already in (1.62.7)
+    if (!e.streamed) for (const q of e.patches) q.raster.write(q.redo ? q.redo() : q.after, q.x, q.y);   // a recipe's after is worked out again (36.18); a streamed step's are already in (1.62.7)
     this.restore(p, e.after);
     this.reconcileFrame(p, e.name === 'Select Frame');
   }
@@ -1932,102 +1881,30 @@ export class Engine {
   smartFilterMargin: ((kind: string, settings: Record<string, unknown>) => number) | null = null;
 
   /** A smart object's pixels: its source padded by the shown filters' total reach, with each applied in order. */
-  private smartMargin(filters: SmartFilter[]): number {
-    return Math.min(512, Math.ceil(filters.filter((f) => f.enabled).reduce((n, f) => n + (this.smartFilterMargin?.(f.kind, f.settings) ?? 0), 0)));
-  }
+  private smartMargin(filters: SmartFilter[]): number { return SOB.smartMargin(this.smartObjectHost, filters); }
 
   /** A distorted smart object's warp as the layer now sits: a move or transform since its last render carried in. */
-  private smartWarpNow(l: Layer): Pt[] | null {
-    const sm = l.smart, w = sm?.warp;
-    if (!sm || !w || !l.raster) return null;
-    const at = sm.warpAt;
-    if (!at || JSON.stringify(at) === JSON.stringify(l.transform)) return w;
-    const move = mul(placement(l.transform, l.raster.width, l.raster.height), invert(placement(at, l.raster.width, l.raster.height)));
-    return w.map((p) => applyMat(move, p.x, p.y));
-  }
+  private smartWarpNow(l: Layer): Pt[] | null { return SOB.smartWarpNow(l); }
 
   /** The render `r` (the source padded by `margin`) warped so the source's corners land on `warp`, the padding
    *  following the same perspective, cropped to what shows. */
-  private warpedSmart(r: Raster, margin: number, source: Raster, warp: Pt[]): Warped | null {
-    const H = homography(warp), ex = margin / source.width, ey = margin / source.height;
-    const quad = [[-ex, -ey], [1 + ex, -ey], [1 + ex, 1 + ey], [-ex, 1 + ey]].map(([u, v]) => project(H, u, v));
-    const full = warpRaster(r, docTransform(r.width, r.height), quad);
-    if (!full) return null;
-    const crop = visibleBounds(full.raster);
-    return crop ? cropWarp(full, crop) : full;
-  }
+  private warpedSmart(r: Raster, margin: number, source: Raster, warp: Pt[]): Warped | null { return SOB.warpedSmart(r, margin, source, warp); }
 
-  /** A smart filter mask applied: where the mask (alpha, source-sized) is clear the unfiltered source shows, where it
-   *  is full the filtered render; the padding past the source shows the filters, as Photoshop's mask is white there. */
-  private maskFilters(filtered: ImageData, source: Raster, m: number, mask: Raster | null): ImageData {
-    if (!mask) return filtered;
-    const W = filtered.width, H = filtered.height, plain = createSurface(W, H), pc = ctxOf(plain), mk = createSurface(W, H), mc = ctxOf(mk);
-    pc.drawImage(source.canvas, m, m);
-    mc.fillStyle = '#ffffff';
-    mc.fillRect(0, 0, W, H);
-    mc.clearRect(m, m, source.width, source.height);
-    mc.drawImage(mask.canvas, m, m, source.width, source.height);
-    const u = pc.getImageData(0, 0, W, H).data, a = mc.getImageData(0, 0, W, H).data, f = filtered.data, out = new ImageData(W, H), o = out.data;
-    for (let i = 0; i < W * H; i++) { const k = a[i * 4 + 3] / 255; for (let c = 0; c < 4; c++) o[i * 4 + c] = Math.round(u[i * 4 + c] + (f[i * 4 + c] - u[i * 4 + c]) * k); }
-    return out;
-  }
-
-  private renderSmart(source: Raster, filters: SmartFilter[], mask: Raster | null = null): Raster {
-    const shown = filters.filter((f) => f.enabled);
-    const m = this.smartMargin(filters);
-    const pad = createSurface(source.width + 2 * m, source.height + 2 * m);
-    ctxOf(pad).drawImage(source.canvas, m, m);
-    let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
-    for (const f of shown) if (this.smartFilterRunner) img = this.smartFilterRunner(f.kind, f.settings, img);
-    if (shown.length) img = this.maskFilters(img, source, m, mask);
-    const out = new Raster(img.width, img.height);
-    out.write(img);
-    return out;
-  }
+  private renderSmart(source: Raster, filters: SmartFilter[], mask: Raster | null = null): Raster { return SOB.renderSmart(this.smartObjectHost, source, filters, mask); }
 
   /** Layer > Convert to Smart Object: keeps the layer's pixels as the untouched source of a smart object. */
-  convertToSmartObject(): void {
-    const sel = this.current ? this.current.doc.layers.filter((x) => this.current?.selectedIds.has(x.id) && !x.isGroup && !x.adjustment && !x.smart && !!x.raster) : [];
-    if (sel.length > 1) { this.stackToSmartObject(sel); return; }
-    this.edit('Convert to Smart Object', (p) => {
-      const l = p.activeLayer;
-      if (!l || l.isGroup || l.adjustment || l.smart || !l.raster) { this.notice('Select a pixel layer to convert.'); return false; }
-      p.updateLayer(l.id, { smart: { source: l.raster, filters: [] }, text: null, shape: null, fillContent: null });
-    });
-  }
+  convertToSmartObject(): void { SOB.convertToSmartObject(this.smartObjectHost); }
 
   /** 33.1: several selected pixel layers (bottom first) become one smart object on the top one, keeping their document-size
    *  renders as a stack (mode None, the top one shows); the other layers go. One step. */
-  private stackToSmartObject(sel: Layer[]): void {
-    this.edit('Convert to Smart Object', (p) => {
-      const W = p.doc.width, H = p.doc.height, ids = new Set(sel.map((x) => x.id));
-      const sources = sel.map((l) => {
-        const r = new Raster(W, H), src = l.raster as Raster;
-        setMat(r.ctx, placement(l.transform, src.width, src.height));
-        r.ctx.drawImage(src.canvas, 0, 0);
-        r.ctx.setTransform(1, 0, 0, 1, 0, 0);
-        r.touch();
-        return r;
-      });
-      const top = sel[sel.length - 1], shown = sources[sources.length - 1];
-      p.updateLayer(top.id, { smart: { source: shown.clone(), filters: [], stack: { sources, mode: 'none' } }, raster: shown.clone(), transform: docTransform(W, H), mask: null, text: null, shape: null, fillContent: null });
-      p.setLayers(this.normalizeClips(p.doc.layers.filter((x) => x.id === top.id || !ids.has(x.id))));
-      this.focus(p, top.id);
-    });
-  }
+  private stackToSmartObject(sel: Layer[]): void { SOB.stackToSmartObject(this.smartObjectHost, sel); }
 
   /** The active smart object's stack mode, or null when it has no stack. */
-  get stackMode(): StackMode | null { return this.current?.activeLayer?.smart?.stack?.mode ?? null; }
+  get stackMode(): StackMode | null { return SOB.stackMode(this.smartObjectHost); }
 
   /** Layer > Smart Objects > Stack Mode: recomputes the active smart object's source from its stack and re-renders it
    *  through the filters, one undo step. */
-  setStackMode(mode: StackMode): boolean {
-    const p = this.current, l = p?.activeLayer, st = l?.smart?.stack;
-    if (!p || !l || !st) { this.notice('Select a smart object made from several layers.'); return false; }
-    const W = st.sources[0].width, H = st.sources[0].height, out = computeStack(st.sources.map((r) => r.ctx.getImageData(0, 0, W, H)), mode), src = new Raster(W, H);
-    src.write(out);
-    return this.restackSoon(p, l.id, src, null, 'Stack Mode', null, { stack: { ...st, mode } });
-  }
+  setStackMode(mode: StackMode): boolean { return SOB.setStackMode(this.smartObjectHost, mode); }
 
   /** Layer > Rasterize Layer: a smart object or a type layer becomes plain pixels, looking as it does now. */
   rasterizeLayer(): void {
@@ -2054,44 +1931,11 @@ export class Engine {
 
   /** Layer > Smart Objects > New Smart Object via Copy (1.68.1): the active smart object becomes a second, independent one
    *  above it (its own copy of the source, the filter stack and the filter mask), named "<name> copy": one step. */
-  newSmartObjectViaCopy(): void {
-    this.edit('New Smart Object via Copy', (p) => {
-      const l = p.activeLayer;
-      if (!l?.smart) { this.notice('Select a smart object to copy.'); return false; }
-      const sm = l.smart, own = { ...sm, source: sm.source.clone(), filters: structuredClone(sm.filters), warp: sm.warp ? structuredClone(sm.warp) : sm.warp, warpAt: sm.warpAt ? structuredClone(sm.warpAt) : sm.warpAt, filterMask: sm.filterMask ? sm.filterMask.clone() : sm.filterMask };
-      const copy = LS.cloneLayer(l, { name: `${l.name} copy`.slice(0, 255), smart: own, link: undefined });
-      const at = p.doc.layers.findIndex((x) => x.id === l.id);
-      const next = [...p.doc.layers.slice(0, at + 1), copy, ...p.doc.layers.slice(at + 1)];
-      p.setLayers(this.normalizeClips(next));
-      this.focus(p, copy.id);
-    });
-  }
+  newSmartObjectViaCopy(): void { SOB.newSmartObjectViaCopy(this.smartObjectHost); }
 
   /** Layer > Smart Objects > Convert to Layers (1.68.1): the smart object's source, at its current placement (transform and
    *  warp applied, smart filters not), becomes a plain pixel layer keeping name, opacity, blend mode and mask: one step. */
-  smartToLayers(): void {
-    this.edit('Convert to Layers', (p) => {
-      const l = p.activeLayer;
-      if (!l?.smart || !l.raster) { this.notice('Select a smart object to convert.'); return false; }
-      const src = l.smart.source, warp = this.smartWarpNow(l);
-      if (warp) {
-        const w = this.warpedSmart(src, 0, src, warp);
-        if (!w) return false;
-        const mask = l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask;
-        p.updateLayer(l.id, { smart: null, raster: w.raster, transform: w.t, mask });
-        return;
-      }
-      const old = l.raster, t = l.transform, w = (t.w / old.width) * src.width, h = (t.h / old.height) * src.height, cx = t.x + t.w / 2, cy = t.y + t.h / 2;
-      let mask = l.mask;
-      if (mask?.raster && !mask.placement && (src.width !== old.width || src.height !== old.height)) {
-        const nm = Raster.filled(src.width, src.height, '#ffffff');
-        nm.ctx.clearRect(0, 0, src.width, src.height);
-        nm.ctx.drawImage(mask.raster.canvas, (src.width - old.width) / 2, (src.height - old.height) / 2);
-        mask = { ...mask, raster: nm };
-      }
-      p.updateLayer(l.id, { smart: null, raster: src.clone(), transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
-    });
-  }
+  smartToLayers(): void { SOB.smartToLayers(this.smartObjectHost); }
 
   /** The active smart object's name and source raster, for Layer > Smart Objects > Export Contents; null when none. */
   smartContents(): { name: string; raster: Raster } | null { return SM.smartContents(this.smartHost); }
@@ -2141,11 +1985,7 @@ export class Engine {
 
   /** Layer > Smart Objects > Replace Contents: a new source for the active smart object, shown at the same scale per
    *  source pixel and about the same centre, its filters and mask re-run, as one step. */
-  replaceContents(source: Raster): boolean {
-    const p = this.current, l = p?.activeLayer;
-    if (!p || !l?.smart) { this.notice('Select a smart object to replace its contents.'); return false; }
-    return this.restackSoon(p, l.id, source, null, 'Replace Contents', null, { stack: null });
-  }
+  replaceContents(source: Raster): boolean { return SOB.replaceContents(this.smartObjectHost, source); }
 
   /** Adds a smart filter mask to the active smart object: from the selection (mapped into the source's pixels) when
    *  there is one and the object is not distorted, else white, showing the filters everywhere. */
@@ -2156,33 +1996,19 @@ export class Engine {
   toggleSmartFilterMask(): void { SM.toggleSmartFilterMask(this.smartHost); }
 
   /** File > Place Linked: `raster` as a new smart object, centred, linked to a file through `link`. */
-  placeEmbedded(raster: Raster, name: string): void {
-    this.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [] } }, 'Place Embedded');
-  }
+  placeEmbedded(raster: Raster, name: string): void { SOB.placeEmbedded(this.smartObjectHost, raster, name); }
 
-  placeLinked(raster: Raster, link: SmartLink, name: string): void {
-    this.insertRasterLayer(raster, name, null, null, { smart: { source: raster, filters: [], link } }, 'Place Linked');
-  }
+  placeLinked(raster: Raster, link: SmartLink, name: string): void { SOB.placeLinked(this.smartObjectHost, raster, link, name); }
 
   /** New contents read from a linked file: the smart object `id` re-rendered from `raster` at the same scale and
    *  centre, its link noting what was read, as one step. */
-  updateLinkedContents(id: ID, raster: Raster, link: SmartLink, name = 'Update Modified Content'): boolean {
-    const p = this.current;
-    return !!p && this.restackSoon(p, id, raster, null, name, null, { link });
-  }
+  updateLinkedContents(id: ID, raster: Raster, link: SmartLink, name = 'Update Modified Content'): boolean { return SOB.updateLinkedContents(this.smartObjectHost, id, raster, link, name); }
 
   /** Layer > Embed Linked: the smart object keeps its contents and forgets the file. */
-  embedLinked(): void {
-    const p = this.current, l = p?.activeLayer;
-    if (p && l?.smart?.link) this.edit('Embed Linked', (q) => q.updateLayer(l.id, { smart: { ...(l.smart as SmartObject), link: null } }));
-  }
+  embedLinked(): void { SOB.embedLinked(this.smartObjectHost); }
 
   /** Layer > Smart Objects > Convert to Linked: the embedded smart object keeps its contents and takes `link`, one step. */
-  convertToLinked(link: SmartLink): boolean {
-    const p = this.current, l = p?.activeLayer;
-    if (!p || !l?.smart || l.smart.link) return false;
-    return this.edit('Convert to Linked', (q) => q.updateLayer(l.id, { smart: { ...(l.smart as SmartObject), link } }));
-  }
+  convertToLinked(link: SmartLink): boolean { return SOB.convertToLinked(this.smartObjectHost, link); }
 
   /** A change made as one undo step in `p`, which need not be the document in view. */
   private editOn(p: Project, name: string, fn: () => boolean | void): boolean {
@@ -2198,125 +2024,31 @@ export class Engine {
   /** Re-renders smart object `id` in `p` from a new source, a new filter stack, or both, as one undo step. */
   /** Runs one smart filter off the main thread, supplied by the app with the filter worker. */
   smartFilterRunnerAsync: ((kind: string, settings: Record<string, unknown>, src: ImageData) => Promise<ImageData>) | null = null;
-  private readonly smartPending = new Map<ID, { token: number; filters: SmartFilter[] }>();
-  private smartToken = 0;
+  private readonly smartStore = new SOB.SmartObjectStore();
 
   /** The filters a smart object's dialog shows: those last asked for while their render is still running, else its own. */
-  smartFiltersShown(id: ID): SmartFilter[] | null {
-    const pending = this.smartPending.get(id);
-    return pending ? pending.filters : this.current?.layer(id)?.smart?.filters ?? null;
-  }
-
-  /** renderSmart with each filter run in the worker in turn, the interface staying live. */
-  private async renderSmartAsync(source: Raster, filters: SmartFilter[], mask: Raster | null = null): Promise<Raster> {
-    const m = this.smartMargin(filters), pad = createSurface(source.width + 2 * m, source.height + 2 * m);
-    ctxOf(pad).drawImage(source.canvas, m, m);
-    let img = ctxOf(pad).getImageData(0, 0, pad.width, pad.height);
-    for (const f of filters.filter((x) => x.enabled)) {
-      img = this.smartFilterRunnerAsync ? await this.smartFilterRunnerAsync(f.kind, f.settings, img) : this.smartFilterRunner ? this.smartFilterRunner(f.kind, f.settings, img) : img;
-    }
-    if (filters.some((x) => x.enabled)) img = this.maskFilters(img, source, m, mask);
-    const out = new Raster(img.width, img.height);
-    out.write(img);
-    return out;
-  }
+  smartFiltersShown(id: ID): SmartFilter[] | null { return SOB.smartFiltersShown(this.smartObjectHost, id); }
 
   /** Re-renders a smart object: at once when it is small (up to 2 megapixels) or shows no filter, else in the
    *  background, the result applied as one undo step when it is ready. A later change to the same object supersedes a
    *  render still running, and a render whose source changed meanwhile is dropped. */
   private restackSoon(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, maskChange: { filterMask: Raster | null; filterMaskEnabled: boolean } | null = null, extra: Partial<SmartObject> | null = null): boolean {
-    const l = p.layer(id);
-    if (!l?.smart) return false;
-    const src = source ?? l.smart.source, stack = structuredClone(filters ?? this.smartFiltersShown(id) ?? l.smart.filters);
-    const fm = maskChange ?? { filterMask: l.smart.filterMask ?? null, filterMaskEnabled: l.smart.filterMaskEnabled !== false }, active = fm.filterMaskEnabled ? fm.filterMask : null;
-    if (!this.smartFilterRunnerAsync || src.width * src.height <= 2_000_000 || !stack.some((f) => f.enabled)) {
-      this.smartPending.delete(id);
-      return this.restack(p, id, source, stack, name, null, maskChange, extra);
-    }
-    const token = ++this.smartToken;
-    this.smartPending.set(id, { token, filters: stack });
-    void this.task(async () => {
-      const rendered = await this.renderSmartAsync(src, stack, active);
-      if (this.smartPending.get(id)?.token !== token) return;
-      this.smartPending.delete(id);
-      const now = p.layer(id);
-      if (!this.projects.includes(p) || !now?.smart || (source === null && now.smart.source !== src)) { this.emit('doc', null); return; }
-      this.restack(p, id, source, stack, name, rendered, maskChange, extra);
-    });
-    return true;
+    return SOB.restackSoon(this.smartObjectHost, p, id, source, filters, name, maskChange, extra);
   }
-
-  private restack(p: Project, id: ID, source: Raster | null, filters: SmartFilter[] | null, name: string, rendered: Raster | null = null, maskChange: { filterMask: Raster | null; filterMaskEnabled: boolean } | null = null, extra: Partial<SmartObject> | null = null): boolean {
-    return this.editOn(p, name, () => {
-      const l = p.layer(id);
-      if (!l?.smart) return false;
-      const src = source ?? l.smart.source;
-      const fm = maskChange ?? { filterMask: l.smart.filterMask ?? null, filterMaskEnabled: l.smart.filterMaskEnabled !== false };
-      const stack = structuredClone(filters ?? l.smart.filters), raster = rendered ?? this.renderSmart(src, stack, fm.filterMaskEnabled ? fm.filterMask : null), old = l.raster as Raster, t = l.transform;
-      const warp = this.smartWarpNow(l);
-      if (warp) {
-        // A distorted smart object warps its fresh render through its kept warp; a mask tied to its pixels is pinned
-        // where it is first, since the pixels' bounds change.
-        const w = this.warpedSmart(raster, this.smartMargin(stack), src, warp);
-        if (!w) return false;
-        const mask = l.mask && !l.mask.placement ? { ...l.mask, placement: l.transform } : l.mask;
-        p.updateLayer(id, { smart: { ...l.smart, ...extra, source: src, filters: stack, warp, warpAt: w.t, filterMask: fm.filterMask, filterMaskEnabled: fm.filterMaskEnabled }, raster: w.raster, transform: w.t, mask });
-        return;
-      }
-      // The padding grows or shrinks about the layer's centre, so the source pixels stay exactly where they were.
-      const w = (t.w / old.width) * raster.width, h = (t.h / old.height) * raster.height, cx = t.x + t.w / 2, cy = t.y + t.h / 2;
-      let mask = l.mask;
-      if (mask?.raster && !mask.placement && (raster.width !== old.width || raster.height !== old.height)) {
-        const dx = (raster.width - old.width) / 2, dy = (raster.height - old.height) / 2, nm = Raster.filled(raster.width, raster.height, '#ffffff');
-        nm.ctx.clearRect(dx, dy, old.width, old.height);
-        nm.ctx.drawImage(mask.raster.canvas, dx, dy);
-        mask = { ...mask, raster: nm };
-      }
-      p.updateLayer(id, { smart: { ...l.smart, ...extra, source: src, filters: stack, filterMask: fm.filterMask, filterMaskEnabled: fm.filterMaskEnabled }, raster, transform: { ...t, x: cx - w / 2, y: cy - h / 2, w, h }, mask });
-    });
-  }
-
-  private readonly contentsLinks = new WeakMap<Project, { parent: Project; layerId: ID }>();
 
   /** Layer > Edit Contents: the active smart object's original pixels open as their own document. Saving that document
    *  writes it back into the smart object. */
-  editContents(): Project | null {
-    const p = this.current, l = p?.activeLayer;
-    if (!p || !l?.smart) { this.notice('Select a smart object to edit its contents.'); return null; }
-    const src = l.smart.source, base: Doc = { id: uid(), width: src.width, height: src.height, resolution: p.doc.resolution, layers: [] };
-    const copy = new Raster(src.width, src.height);
-    copy.ctx.drawImage(src.canvas, 0, 0);
-    const layer = { ...newLayer('Layer 1', base), raster: copy };
-    const child = this.addProject({ ...base, layers: [layer] }, `${l.name} contents`, layer.id);
-    this.contentsLinks.set(child, { parent: p, layerId: l.id });
-    return child;
-  }
+  editContents(): Project | null { return SOB.editContents(this.smartObjectHost); }
 
   /** True for a document opened by Edit Contents, whether or not its smart object is still open. */
-  isContents(p: Project | null): boolean { return !!p && this.contentsLinks.has(p); }
+  isContents(p: Project | null): boolean { return SOB.isContents(this.smartObjectHost, p); }
 
   /** The smart object a contents document writes back to, while it is still open; null otherwise. */
-  contentsOf(p: Project | null): { parent: Project; layer: Layer } | null {
-    const link = p ? this.contentsLinks.get(p) : undefined;
-    if (!link || !this.projects.includes(link.parent)) return null;
-    const layer = link.parent.layer(link.layerId);
-    return layer?.smart ? { parent: link.parent, layer } : null;
-  }
+  contentsOf(p: Project | null): { parent: Project; layer: Layer } | null { return SOB.contentsOf(this.smartObjectHost, p); }
 
   /** Saving a contents document (the one in view): its flattened pixels become the smart object's new source and the
    *  filters re-run, as one undo step in the smart object's document. A new size keeps the object's scale per pixel. */
-  updateContents(): boolean {
-    const child = this.current;
-    if (!child || !this.contentsLinks.has(child)) return false;
-    const target = this.contentsOf(child);
-    if (!target) { this.notice('The smart object for these contents is no longer open, so they cannot go back into it. Save As keeps them as a project of their own.'); return false; }
-    this.settle();
-    const flat = this.flattened();
-    if (!flat) { this.notice('These contents have nothing visible to put back.'); return false; }
-    const ok = this.restackSoon(target.parent, target.layer.id, Raster.from(flat, flat.width, flat.height), null, 'Update Smart Object');
-    if (ok) { child.history.markSaved(); this.emit('projects', null); this.emit('history', null); }
-    return ok;
-  }
+  updateContents(): boolean { return SOB.updateContents(this.smartObjectHost); }
 
   private readonly timelines = new WeakMap<Project, Timeline>();
 
@@ -4097,6 +3829,8 @@ export class Engine {
     if ('history' in contents && !hist) { this.notice('This layer did not exist at the oldest history step, so there is nothing to fill from.'); return; }
     const pat = 'patternId' in contents ? patternById(contents.patternId) : null;
     if ('patternId' in contents && !pat) { this.notice('That pattern is no longer available.'); return; }
+    const rec: { f: SolidFill | null } = { f: null };   // a solid colour fill's recipe (36.18)
+    const last0 = this.current?.history.last ?? null;
     this.regionEdit(opts.name ?? 'Fill', ({ raster, target, rect, cover }) => {
       const rc = raster.ctx;
       rc.save();
@@ -4119,7 +3853,7 @@ export class Engine {
         sc.setTransform(1, 0, 0, 1, 0, 0);
       } else {
         if (pat) { const cp = sc.createPattern(pat.surface, 'repeat'); if (cp) { cp.setTransform(new DOMMatrix().translate(-rect.x, -rect.y)); sc.fillStyle = cp; } }
-        else if ('color' in contents) sc.fillStyle = rgbCss(contents.color);
+        else if ('color' in contents) { sc.fillStyle = rgbCss(contents.color); rec.f = { color: contents.color, blend, opacity, preserve: preserveTransparency, w: rect.w, h: rect.h, cover }; }
         sc.fillRect(0, 0, rect.w, rect.h);
       }
       if (cover) { sc.globalCompositeOperation = 'destination-in'; sc.drawImage(cover, 0, 0); }
@@ -4134,6 +3868,23 @@ export class Engine {
       rc.drawImage(out, rect.x, rect.y);
       rc.restore();
     }, opts.region);
+    if (rec.f && this.current && this.current.history.last !== last0) this.keepFillAsRecipe(this.current, rec.f);
+  }
+
+  /** A solid fill's step made cheaper (DEV_PLAN 36.18): the pixels it left (`after`) are let go and redo works them out
+   *  again from the step's `before` and the recipe (8 bits), or from the step's floats (16 and 32 bits, whose pixels
+   *  are rendered from them). Done only when the pixels worked out equal those the fill left, byte for byte. */
+  private keepFillAsRecipe(p: Project, f: SolidFill): void {
+    const e = p.history.peekUndo(), q = e?.patches.length === 1 ? e.patches[0] : null;
+    if (!e || !q || q.redo || q.lazy || q.paged || q.disk || !(q.raster instanceof Raster) || q.before.width !== f.w || q.before.height !== f.h) return;
+    const deep = (p.doc.depth ?? 8) > 8;
+    if (deep && (p.doc.mode ?? 'rgb') !== 'rgb') return;
+    const redo = deep
+      ? (): ImageData => { const ch = e.after.doc.layers.find((l) => l.raster === q.raster)?.channels; if (!ch) throw new Error('no floats'); return renderRegion(ch, q.x, q.y, f.w, f.h, null, p.doc.depth === 32); }
+      : (): ImageData => solidFillPixels(q.before, f);
+    try { if (!sameImage(redo(), q.after)) return; } catch { return; }
+    q.after = new ImageData(1, 1);
+    q.redo = redo;
   }
 
   /** Edit > Stroke (1.65.7), as Photoshop's: a band `width` pixels wide along the selection's edge (with no selection,
@@ -7001,6 +6752,74 @@ export class Engine {
     };
   }
 
+  private get snapshotHost(): SN.SnapshotHost {
+    const e = this;
+    return {
+      get current() { return e.current; },
+      get stroke() { return e.stroke; },
+      get autoFirstSnapshot() { return e.autoFirstSnapshot; },
+      get snapshotByteLimit() { return e.snapshotByteLimit; },
+      get memoryBudget() { return e.memoryBudget; },
+      get historyBrushSource() { return e.historyBrushSource; },
+      store: this.snapshotStore,
+      notice: (m) => this.notice(m),
+      settle: () => this.settle(),
+      room: (extra, what) => this.room(extra, what),
+      edit: (name, fn) => this.edit(name, fn),
+      focus: (p, id) => this.focus(p, id),
+      emit: (what) => this.emit(what, null),
+    };
+  }
+
+  private get modeHost(): MO.ModeHost {
+    const e = this;
+    return {
+      get current() { return e.current; },
+      work: this.work,
+      get fg() { return e.fg; },
+      set fg(c: RGB) { e.fg = c; },
+      get bg() { return e.bg; },
+      set bg(c: RGB) { e.bg = c; },
+      get fgc() { return e.fgc; },
+      get bgc() { return e.bgc; },
+      get fgInk() { return e.fgInk; },
+      set fgInk(i: Ink) { e.fgInk = i; },
+      get bgInk() { return e.bgInk; },
+      set bgInk(i: Ink) { e.bgInk = i; },
+      fillKeys: this.fillKeys,
+      edit: (name, fn) => this.edit(name, fn),
+      refresh: () => this.refresh(),
+      emit: (what) => this.emit(what, null),
+      flattened: () => this.flattened(),
+      multichannelSurface: (doc) => this.multichannelSurface(doc),
+      openImage: (img) => this.openImage(img),
+      addProject: (doc, name, activeId) => this.addProject(doc, name, activeId),
+    };
+  }
+
+  private get smartObjectHost(): SOB.SmartObjectHost {
+    const e = this;
+    return {
+      get current() { return e.current; },
+      get projects() { return e.projects; },
+      store: this.smartStore,
+      get smartFilterRunner() { return e.smartFilterRunner; },
+      get smartFilterMargin() { return e.smartFilterMargin; },
+      get smartFilterRunnerAsync() { return e.smartFilterRunnerAsync; },
+      notice: (m) => this.notice(m),
+      edit: (name, fn) => this.edit(name, fn),
+      editOn: (p, name, fn) => this.editOn(p, name, fn),
+      normalizeClips: (layers) => this.normalizeClips(layers),
+      focus: (p, id) => this.focus(p, id),
+      insertRasterLayer: (raster, name, x, y, extra, undoName) => this.insertRasterLayer(raster, name, x, y, extra, undoName),
+      addProject: (doc, name, activeId) => this.addProject(doc, name, activeId),
+      task: (fn) => this.task(fn),
+      settle: () => this.settle(),
+      flattened: () => this.flattened(),
+      emit: (what) => this.emit(what, null),
+    };
+  }
+
   private get smartHost(): SM.SmartHost {
     return {
       current: this.current,
@@ -8358,47 +8177,7 @@ export class Engine {
    *  8-bit pixels changed while its floats did not is brought into step (engine/derive.ts), its rendition redrawn from
    *  the floats; a pixel layer without floats takes them whole. Replaced rasters, in-place patches and new layers. A
    *  fill layer's CMYK rendition keeps the note of what its pixels were drawn for (1.66.0), so pinFills leaves it. */
-  private deriveChannels(p: Project, before: ReadonlyMap<ID, Layer>, patches: readonly PixelPatch[]): boolean {
-    const cmyk = p.doc.mode === 'cmyk', lab = p.doc.mode === 'lab', linear = p.doc.depth === 32, t = cmyk ? this.deriveTables(p) : null, lut = cmyk ? p.cmykLut : null;
-    if (cmyk && !t) return false;
-    let changed = false;
-    const shown = (r: Raster, ch: ChannelPixels): Raster => {
-      if (!lut) return r;
-      const out = rasterFromChannels(ch, lut), k = this.fillKeys.get(r);
-      if (k) this.fillKeys.set(out, k);
-      return out;
-    };
-    const layers = p.doc.layers.map((l) => {
-      if (!l.raster || l.isGroup || l.adjustment) return l;
-      const o = before.get(l.id);
-      if (!o?.channels || !o.raster) {
-        if (l.channels) return l;
-        changed = true;
-        const ch = deriveWhole(l.raster.read(), t, lab, linear);
-        return { ...l, channels: ch, raster: shown(l.raster, ch) };
-      }
-      if (l.channels !== o.channels) return l;
-      if (l.raster !== o.raster) {
-        changed = true;
-        const same = l.raster.width === o.raster.width && l.raster.height === o.raster.height && JSON.stringify(l.transform) === JSON.stringify(o.transform);
-        const ch = same ? deriveRegion(o.channels, 0, 0, o.raster.read(), l.raster.read(), t, linear) : deriveWhole(l.raster.read(), t, lab, linear);
-        return { ...l, channels: ch, raster: shown(l.raster, ch) };
-      }
-      const mine = patches.filter((q) => q.raster === l.raster);
-      if (!mine.length) return l;
-      changed = true;
-      let ch = o.channels;
-      for (const q of mine) {
-        ch = deriveRegion(ch, q.x, q.y, q.before, q.after, t, linear);
-        const img = renderRegion(ch, q.x, q.y, q.before.width, q.before.height, lut, linear);
-        l.raster.write(img, q.x, q.y);
-        q.after.data.set(img.data);
-      }
-      return { ...l, channels: ch };
-    });
-    if (changed) p.doc = { ...p.doc, layers };
-    return changed;
-  }
+  private deriveChannels(p: Project, before: ReadonlyMap<ID, Layer>, patches: readonly PixelPatch[]): boolean { return MO.deriveChannels(this.modeHost, p, before, patches); }
 
   /** Layer styles for the float compositor (1.56.9): the layer drawn alone by the 8-bit renderer, with and without its
    *  style, at full opacity with its Fill, without mask, blend, clipping or group (the compositor applies those). */
@@ -8473,127 +8252,39 @@ export class Engine {
     return changed;
   }
 
-  private deriveTables(p: Project): DeriveTables | null {
-    const out = p.cmykLut, inn = p.cmykIn;
-    if (!out || !inn) return null;
-    const hint = (ink: Ink): { rgb: [number, number, number]; ink: Ink } => { const c = renditionOf(ink, out); return { rgb: [c.r, c.g, c.b], ink }; };
-    return { out, in: inn, hints: [hint(this.fgInk), hint(this.bgInk)] };
-  }
+  private deriveTables(p: Project): DeriveTables | null { return MO.deriveTables(this.modeHost, p); }
 
   /** Image > Mode > CMYK Color (1.54.0, H1): each pixel layer's ink, converted by the engine's LittleCMS, beside its
    *  rendition through `lut`; the CMYK profile becomes the document's; one step. Live type and shapes keep their
    *  RGB colours; the deep guard then keeps every later step to what knows ink. */
-  setCmyk(profile: DocProfile, ink: Map<ID, ChannelPixels>, lut: Lut4, inLut: Lut3x4 | null = null): boolean {
-    const p = this.current;
-    if (!p || p.doc.mode === 'cmyk') return false;
-    p.cmykLut = lut; p.cmykIn = inLut;
-    if (inLut) { this.fgInk = inkOf(this.fgc, inLut); this.bgInk = inkOf(this.bgc, inLut); }
-    return this.edit('CMYK Color', (pp) => {
-      const layers = pp.doc.layers.map((l) => { const ch = ink.get(l.id); return ch ? { ...l, channels: ch, raster: rasterFromChannels(ch, lut) } : l; });
-      pp.doc = { ...pp.doc, layers, mode: 'cmyk', profile, depth: undefined, palette: undefined };
-      return true;
-    });
-  }
+  setCmyk(profile: DocProfile, ink: Map<ID, ChannelPixels>, lut: Lut4, inLut: Lut3x4 | null = null): boolean { return MO.setCmyk(this.modeHost, profile, ink, lut, inLut); }
 
   /** Image > Mode > RGB Color from CMYK: each layer's rendition replaced by the engine's exact conversion, the ink
    *  dropped, the document back in sRGB (or `profile`). */
   /** Image > Mode > Lab Color (1.56.4, DEV_PLAN 22.9): each pixel layer's floats in Lab, converted from its pixels
    *  exactly (engine/lab.ts); the rasters stay as their rendition. From an 8-bit or (1.57.3) a 16-bit RGB document,
    *  whose layers convert from their 16-bit floats; 32 bits come down to 16 first (app.ts). */
-  setLab(): boolean {
-    const p = this.current;
-    if (!p || (p.doc.mode ?? 'rgb') !== 'rgb' || (p.doc.depth ?? 8) > 16) return false;
-    return this.edit('Lab Color', (pp) => {
-      const layers = pp.doc.layers.map((l) => (l.raster && !l.isGroup && !l.adjustment ? { ...l, channels: l.channels?.mode === 'rgb' && l.channels.n === 3 ? labFromFloats(l.channels) : labFromRgba(l.raster.read()) } : l));
-      pp.doc = { ...pp.doc, layers, mode: 'lab', depth: 8 };
-      return true;
-    });
-  }
+  setLab(): boolean { return MO.setLab(this.modeHost); }
 
   /** Image > Mode > Grayscale from Lab (1.57.5): each layer's grey from its Lightness alone, as Photoshop takes it,
    *  the sRGB grey of that lightness exactly; the document leaves Lab for 8-bit Grayscale. */
-  setGrayFromLab(): boolean {
-    const p = this.current;
-    if (!p || p.doc.mode !== 'lab') return false;
-    return this.edit('Grayscale', (pp) => {
-      const layers = pp.doc.layers.map((l) => {
-        if (l.channels?.mode !== 'lab') return l;
-        const ch = l.channels, r = new Raster(ch.width, ch.height), img = r.ctx.createImageData(ch.width, ch.height), memo = new Map<number, number>();
-        for (let i = 0; i < ch.data.length; i += 4) {
-          const key = Math.round(ch.data[i] * 65535);
-          let v = memo.get(key);
-          if (v === undefined) { v = labToSrgb(ch.data[i] * 100, 0, 0)[0]; memo.set(key, v); }
-          img.data[i] = img.data[i + 1] = img.data[i + 2] = v; img.data[i + 3] = Math.round(ch.data[i + 3] * 255);
-        }
-        r.ctx.putImageData(img, 0, 0); r.touch();
-        return { ...l, channels: undefined, raster: r };
-      });
-      pp.doc = { ...pp.doc, layers, mode: 'grayscale' };
-      return true;
-    });
-  }
+  setGrayFromLab(): boolean { return MO.setGrayFromLab(this.modeHost); }
 
   /** Image > Mode > RGB Color from Lab: each layer's pixels from its Lab floats, exactly, clipped to sRGB. */
-  setRgbFromLab(): boolean {
-    const p = this.current;
-    if (!p || p.doc.mode !== 'lab') return false;
-    return this.edit('RGB Color', (pp) => {
-      const layers = pp.doc.layers.map((l) => {
-        if (l.channels?.mode !== 'lab') return l;
-        const ch = l.channels, r = new Raster(ch.width, ch.height), img = r.ctx.createImageData(ch.width, ch.height);
-        for (let i = 0, o = 0; i < ch.data.length; i += 4, o += 4) { const [L, a, b] = decodeLab(ch.data[i], ch.data[i + 1], ch.data[i + 2]), rgb = labToSrgb(L, a, b); img.data[o] = rgb[0]; img.data[o + 1] = rgb[1]; img.data[o + 2] = rgb[2]; img.data[o + 3] = Math.round(ch.data[i + 3] * 255); }
-        r.ctx.putImageData(img, 0, 0); r.touch();
-        return { ...l, channels: undefined, raster: r };
-      });
-      pp.doc = { ...pp.doc, layers, mode: 'rgb' };
-      return true;
-    });
-  }
+  setRgbFromLab(): boolean { return MO.setRgbFromLab(this.modeHost); }
 
-  setRgbFromCmyk(rasters: Map<ID, Raster>, profile: DocProfile | null = null): boolean {
-    const p = this.current;
-    if (!p || p.doc.mode !== 'cmyk') return false;
-    return this.edit('RGB Color', (pp) => {
-      const layers = pp.doc.layers.map((l) => { const r = rasters.get(l.id); return l.channels ? { ...l, channels: undefined, raster: r ?? l.raster } : l; });
-      pp.doc = { ...pp.doc, layers, mode: 'rgb', profile: profile ?? undefined };
-      return true;
-    });
-  }
+  setRgbFromCmyk(rasters: Map<ID, Raster>, profile: DocProfile | null = null): boolean { return MO.setRgbFromCmyk(this.modeHost, rasters, profile); }
 
   /** Opens CMYK ink as a CMYK document (1.54.0): its layer holds the ink, its raster the rendition through `lut`. */
-  openChannels(name: string, ch: ChannelPixels, profile: DocProfile, lut: Lut4, inLut: Lut3x4 | null = null): Project {
-    const raster = rasterFromChannels(ch, lut);
-    const p = this.openImage({ source: raster.canvas as CanvasImageSource, width: ch.width, height: ch.height, name });
-    p.cmykLut = lut; p.cmykIn = inLut;
-    p.doc = { ...p.doc, mode: 'cmyk', profile, layers: p.doc.layers.map((l) => (l.raster && !l.isGroup ? { ...l, channels: ch } : l)) };
-    this.refresh();
-    return p;
-  }
+  openChannels(name: string, ch: ChannelPixels, profile: DocProfile, lut: Lut4, inLut: Lut3x4 | null = null): Project { return MO.openChannels(this.modeHost, name, ch, profile, lut, inLut); }
 
   /** Opens CMYK layers as a CMYK document (1.56.1, a CMYK PSD): each layer's ink beside its rendition through `lut`,
    *  its place, opacity, visibility and blend mode kept; bottom layer first. */
-  openChannelLayers(name: string, width: number, height: number, layers: ReadonlyArray<{ name: string; x: number; y: number; channels: ChannelPixels; opacity: number; visible: boolean; blend: string }>, profile: DocProfile, lut: Lut4, inLut: Lut3x4): Project {
-    const made = layers.map((l) => {
-      const raster = rasterFromChannels(l.channels, lut), blend = (BLEND_MODES.find((b) => b.id === l.blend)?.id ?? 'normal') as BlendMode;
-      return newLayer(l.name, { width, height }, { raster, channels: l.channels, transform: { ...docTransform(l.channels.width, l.channels.height), x: l.x, y: l.y }, opacity: l.opacity, visible: l.visible, blend });
-    });
-    const doc: Doc = { id: uid(), width, height, resolution: 72, layers: made, mode: 'cmyk', profile } as Doc;
-    const p = this.addProject(doc, name, made[made.length - 1]?.id ?? null);
-    this.setCmykTables(p, lut, inLut);
-    return p;
-  }
+  openChannelLayers(name: string, width: number, height: number, layers: ReadonlyArray<{ name: string; x: number; y: number; channels: ChannelPixels; opacity: number; visible: boolean; blend: string }>, profile: DocProfile, lut: Lut4, inLut: Lut3x4): Project { return MO.openChannelLayers(this.modeHost, name, width, height, layers, profile, lut, inLut); }
 
   /** A Lab document from read layers (1.58.1, Lab TIFF and PSD): each layer's Lab floats kept, its rendition drawn by
    *  the formulas; `depth` 16 for a 16-bit file. */
-  openLabLayers(name: string, width: number, height: number, layers: ReadonlyArray<{ name: string; x: number; y: number; channels: ChannelPixels; opacity: number; visible: boolean }>, depth: 8 | 16): Project {
-    const made = layers.map((l) => {
-      const ch = l.channels, raster = new Raster(ch.width, ch.height), img = raster.ctx.createImageData(ch.width, ch.height);
-      renderLab(ch.data, img.data); raster.ctx.putImageData(img, 0, 0); raster.touch();
-      return newLayer(l.name, { width, height }, { raster, channels: ch, transform: { ...docTransform(ch.width, ch.height), x: l.x, y: l.y }, opacity: l.opacity, visible: l.visible });
-    });
-    const doc: Doc = { id: uid(), width, height, resolution: 72, layers: made, mode: 'lab', depth } as Doc;
-    return this.addProject(doc, name, made[made.length - 1]?.id ?? null);
-  }
+  openLabLayers(name: string, width: number, height: number, layers: ReadonlyArray<{ name: string; x: number; y: number; channels: ChannelPixels; opacity: number; visible: boolean }>, depth: 8 | 16): Project { return MO.openLabLayers(this.modeHost, name, width, height, layers, depth); }
 
   /** File > Import > Video Frames to Layers (1.58.9, L1), as Photoshop's: a new document of the clip's frames, one
    *  layer each named Frame 1, Frame 2 and on (the first at the bottom); with `animate`, a frame animation in which
@@ -8610,10 +8301,7 @@ export class Engine {
   }
 
   /** The tables of a CMYK project opened from a saved file (1.54.2), fetched by the app once its profile is known. */
-  setCmykTables(p: Project, lut: Lut4, inLut: Lut3x4): void {
-    p.cmykLut = lut; p.cmykIn = inLut;
-    if (p === this.current) { this.fgInk = inkOf(this.fgc, inLut); this.bgInk = inkOf(this.bgc, inLut); this.emit('colors', null); }
-  }
+  setCmykTables(p: Project, lut: Lut4, inLut: Lut3x4): void { MO.setCmykTables(this.modeHost, p, lut, inLut); }
 
   /** Image > Mode > 8 or 16 Bits/Channel (1.53.6, H1): each pixel layer gains its 16-bit pixels, or keeps only its
    *  8-bit rendition. */
@@ -8708,162 +8396,12 @@ export class Engine {
     return true;
   }
 
-  convertMode(mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean {
-    const p = this.current;
-    if (!p || (p.doc.mode ?? 'rgb') === mode || mode === 'cmyk' || (p.doc.mode === 'cmyk' && mode !== 'multichannel') || mode === 'lab' || p.doc.mode === 'lab' || (p.doc.mode === 'multichannel' && mode !== 'rgb')) return false;
-    if (mode === 'duotone') return false;   // reached through setDuotone, from Grayscale only
-    const label = { rgb: 'RGB Color', grayscale: 'Grayscale', bitmap: 'Bitmap', indexed: 'Indexed Color', cmyk: 'CMYK Color', lab: 'Lab Color', duotone: 'Duotone', multichannel: 'Multichannel' }[mode];
-    const flat = mode === 'bitmap' || mode === 'indexed' || mode === 'multichannel' ? this.flattened() : null;
-    const duoGrey = mode === 'multichannel' && p.doc.mode === 'duotone' ? renderDoc(this.work, p.doc) : null;   // the grey under the inks
-    const ok = this.edit(label, (pp) => {
-      const W = pp.doc.width, H = pp.doc.height;
-      if (pp.doc.mode === 'multichannel' && mode === 'rgb') {
-        // Multichannel to RGB: the overprint is baked into one pixel layer.
-        const s = this.multichannelSurface(pp.doc);
-        if (!s) return false;
-        const r = new Raster(W, H);
-        r.ctx.drawImage(s as CanvasImageSource, 0, 0);
-        r.touch();
-        const l = newLayer('Background', pp.doc, { raster: r });
-        pp.doc = { ...pp.doc, layers: [l], mode: 'rgb', multichannel: undefined, palette: undefined };
-        pp.activeId = l.id;
-        return true;
-      }
-      if (mode === 'multichannel') {
-        // To Multichannel (31.3b): RGB gives Cyan, Magenta, Yellow; CMYK adds Black; Grayscale one Black; Duotone its inks.
-        const from = duoGrey ?? flat;
-        if (!from) return false;
-        const px = ctxOf(from).getImageData(0, 0, W, H).data, duo = pp.doc.duotone;
-        const src = pp.doc.mode;
-        const parts: { name: string; color: RGB; solidity: number; grey: ArrayLike<number> }[] = src === 'duotone' && duo
-          ? duo.inks.slice(0, DUOTONE_COUNT[duo.type]).map((ink) => {
-            const g = new Uint8ClampedArray(W * H);
-            for (let i = 0; i < g.length; i++) g[i] = 255 - Math.round(curveAt(ink.curve, (1 - px[i * 4] / 255) * 100) * 2.55);
-            return { name: ink.name, color: ink.color, solidity: 1, grey: g };
-          })
-          : splitChannels(px, src === 'cmyk' ? 'cmyk' : src === 'grayscale' ? 'grayscale' : 'rgb');
-        const channels = parts.map((c) => {
-          const r = new Raster(W, H), img = r.ctx.createImageData(W, H);
-          for (let i = 0; i < c.grey.length; i++) { img.data[i * 4] = img.data[i * 4 + 1] = img.data[i * 4 + 2] = c.grey[i]; img.data[i * 4 + 3] = 255; }
-          r.ctx.putImageData(img, 0, 0);
-          r.touch();
-          return { name: c.name, color: c.color, solidity: c.solidity, data: r };
-        });
-        pp.doc = { ...pp.doc, mode: 'multichannel', multichannel: { channels }, duotone: undefined, palette: undefined };
-        return true;
-      }
-      if (pp.doc.mode === 'duotone' && pp.doc.duotone && mode === 'rgb') {
-        // Duotone to RGB: the overprint is baked into each layer's pixels.
-        const lut = duotoneLut(pp.doc.duotone);
-        const layers = pp.doc.layers.map((l) => {
-          if (!l.raster || l.isGroup) return l;
-          const r = l.raster.clone(), d = r.ctx.getImageData(0, 0, r.width, r.height);
-          applyDuotoneLut(d.data, lut);
-          r.ctx.putImageData(d, 0, 0); r.touch();
-          return { ...l, raster: r };
-        });
-        pp.doc = { ...pp.doc, layers, mode: 'rgb', duotone: undefined, palette: undefined };
-        return true;
-      }
-      if (pp.doc.duotone) pp.doc = { ...pp.doc, duotone: undefined };   // back to Grayscale (or on) drops the inks
-      if (mode === 'rgb') { pp.doc = { ...pp.doc, mode: 'rgb', palette: undefined }; return true; }
-      if (mode === 'grayscale') {
-        const gray = (c: RGB): RGB => { const v = Math.round(0.299 * c.r + 0.587 * c.g + 0.114 * c.b); return { r: v, g: v, b: v }; };
-        const layers = pp.doc.layers.map((l) => {
-          if (!l.raster || l.isGroup) return l;
-          if (l.channels?.mode === 'rgb' && l.channels.n === 3 && (pp.doc.depth ?? 8) > 8) {
-            // 16 and 32 bits (1.57.5, DEV_PLAN 22.11): the floats themselves go grey, 16 bits by the 8-bit formula on
-            // their encoded values, 32 bits as luminance in linear light (sRGB primaries), light above white kept.
-            const lin = pp.doc.depth === 32, s = l.channels.data, d = new Float32Array(s.length);
-            for (let i = 0; i < s.length; i += 4) { const v = lin ? 0.2126 * s[i] + 0.7152 * s[i + 1] + 0.0722 * s[i + 2] : 0.299 * s[i] + 0.587 * s[i + 1] + 0.114 * s[i + 2]; d[i] = d[i + 1] = d[i + 2] = v; d[i + 3] = s[i + 3]; }
-            const ch = { ...l.channels, data: d }, r = rasterFromDeep(ch, lin), patch: Partial<Layer> = { raster: r, channels: ch };
-            if (l.text && liveText(l)) patch.text = { ...l.text, color: gray(l.text.color), rendered: textKey(r) };
-            return { ...l, ...patch };
-          }
-          const r = l.raster.clone(), d = r.ctx.getImageData(0, 0, r.width, r.height);
-          for (let i = 0; i < d.data.length; i += 4) { const v = Math.round(0.299 * d.data[i] + 0.587 * d.data[i + 1] + 0.114 * d.data[i + 2]); d.data[i] = d.data[i + 1] = d.data[i + 2] = v; }
-          r.ctx.putImageData(d, 0, 0);
-          r.touch();
-          const patch: Partial<Layer> = { raster: r };
-          if (l.text && liveText(l)) patch.text = { ...l.text, color: gray(l.text.color), rendered: textKey(r) };
-          if (l.vector) patch.vector = { ...l.vector, fill: l.vector.fill ? gray(l.vector.fill) : null, stroke: l.vector.stroke ? { ...l.vector.stroke, color: gray(l.vector.stroke.color) } : null };
-          if (l.shape) { const sh = l.shape as Record<string, unknown>, v = 0.299 * Number(sh.red) + 0.587 * Number(sh.green) + 0.114 * Number(sh.blue); patch.shape = { ...l.shape, red: v, green: v, blue: v }; }
-          return { ...l, ...patch };
-        });
-        pp.doc = { ...pp.doc, layers, mode: 'grayscale', palette: undefined };
-        return true;
-      }
-      if (!flat) return false;
-      const src = ctxOf(flat).getImageData(0, 0, W, H), d = src.data, out = new ImageData(W, H), o = out.data;
-      let palette: RGB[] | undefined;
-      if (mode === 'bitmap') {
-        // Over white, as grey, then black or white: at 50 percent, or diffusing each pixel's error (Floyd-Steinberg).
-        const g = new Float32Array(W * H);
-        for (let i = 0; i < g.length; i++) { const a = d[i * 4 + 3] / 255; g[i] = (0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]) * a + 255 * (1 - a); }
-        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-          const i = y * W + x, v = g[i] < 128 ? 0 : 255, e = g[i] - v;
-          o[i * 4] = o[i * 4 + 1] = o[i * 4 + 2] = v; o[i * 4 + 3] = 255;
-          if (opts.dither) {
-            if (x + 1 < W) g[i + 1] += (e * 7) / 16;
-            if (y + 1 < H) { if (x > 0) g[i + W - 1] += (e * 3) / 16; g[i + W] += (e * 5) / 16; if (x + 1 < W) g[i + W + 1] += e / 16; }
-          }
-        }
-      } else {
-        palette = paletteFor(d, Math.max(2, Math.min(256, opts.colors ?? 256)));
-        const cache = new Map<number, RGB>(), near = (r: number, gg: number, b: number): RGB => {
-          const k = ((r >> 3) << 10) | ((gg >> 3) << 5) | (b >> 3);
-          let q = cache.get(k);
-          if (!q) { let bd = Infinity; for (const c of palette as RGB[]) { const dd = (c.r - r) ** 2 + (c.g - gg) ** 2 + (c.b - b) ** 2; if (dd < bd) { bd = dd; q = c; } } cache.set(k, q as RGB); }
-          return q as RGB;
-        };
-        const f = new Float32Array(d.length);
-        for (let i = 0; i < d.length; i++) f[i] = d[i];
-        for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
-          const i = (y * W + x) * 4;
-          if (d[i + 3] < 128) { o[i + 3] = 0; continue; }
-          const r = Math.max(0, Math.min(255, f[i])), gg = Math.max(0, Math.min(255, f[i + 1])), b = Math.max(0, Math.min(255, f[i + 2])), q = near(r, gg, b);
-          o[i] = q.r; o[i + 1] = q.g; o[i + 2] = q.b; o[i + 3] = 255;
-          if (opts.dither) for (let k = 0; k < 3; k++) {
-            const e = [r - q.r, gg - q.g, b - q.b][k];
-            if (x + 1 < W) f[i + 4 + k] += (e * 7) / 16;
-            if (y + 1 < H) { if (x > 0) f[i + (W - 1) * 4 + k] += (e * 3) / 16; f[i + W * 4 + k] += (e * 5) / 16; if (x + 1 < W) f[i + (W + 1) * 4 + k] += e / 16; }
-          }
-        }
-      }
-      const r = new Raster(W, H);
-      r.ctx.putImageData(out, 0, 0);
-      r.touch();
-      const l = newLayer(mode === 'bitmap' ? 'Background' : 'Index', pp.doc, { raster: r });
-      pp.doc = { ...pp.doc, layers: [l], mode, palette };
-      pp.activeId = l.id;
-      return true;
-    });
-    if (ok) { this.fg = this.fgc; this.bg = this.bgc; this.emit('options', null); this.emit('projects', null); }   // the colours kept to the new mode; the tab's label
-    return ok;
-  }
+  convertMode(mode: DocMode, opts: { dither?: boolean; colors?: number } = {}): boolean { return MO.convertMode(this.modeHost, mode, opts); }
 
   /** One artboard as its own image: only it and what it holds, rendered and cut to its rectangle. */
   artboardImage(id: ID, bare = false): Surface | null { return AB.artboardImage(this.artboardHost, id, bare); }
 }
 
-/** A palette of at most `n` colours for RGBA pixels: every colour when there are that few (Exact), else median cut over
- *  a sample (Adaptive), as Photoshop's Indexed Color chooses. */
-function paletteFor(d: Uint8ClampedArray, n: number): RGB[] {
-  const seen = new Map<number, RGB>();
-  for (let i = 0; i < d.length && seen.size <= n; i += 4) if (d[i + 3] >= 128) { const k = (d[i] << 16) | (d[i + 1] << 8) | d[i + 2]; if (!seen.has(k)) seen.set(k, { r: d[i], g: d[i + 1], b: d[i + 2] }); }
-  if (seen.size <= n) return [...seen.values()];
-  const step = Math.max(1, Math.floor(d.length / 4 / 200000)), pts: number[][] = [];
-  for (let i = 0; i < d.length; i += 4 * step) if (d[i + 3] >= 128) pts.push([d[i], d[i + 1], d[i + 2]]);
-  let boxes: number[][][] = [pts];
-  while (boxes.length < n) {
-    let bi = -1, bestRange = -1, axis = 0;
-    boxes.forEach((b, i) => { if (b.length < 2) return; for (let a = 0; a < 3; a++) { let lo = 255, hi = 0; for (const p of b) { if (p[a] < lo) lo = p[a]; if (p[a] > hi) hi = p[a]; } if (hi - lo > bestRange) { bestRange = hi - lo; bi = i; axis = a; } } });
-    if (bi < 0 || bestRange <= 0) break;
-    const b = boxes[bi].sort((p, q) => p[axis] - q[axis]), mid = b.length >> 1;
-    boxes = [...boxes.slice(0, bi), b.slice(0, mid), b.slice(mid), ...boxes.slice(bi + 1)];
-  }
-  return boxes.filter((b) => b.length).map((b) => { let r = 0, g = 0, bl = 0; for (const p of b) { r += p[0]; g += p[1]; bl += p[2]; } return { r: Math.round(r / b.length), g: Math.round(g / b.length), b: Math.round(bl / b.length) }; });
-}
 
 /** A gradient's stops blended in Photoshop's Method: Classic as they are (sRGB); Linear in linear light; Perceptual in
  *  OKLab. The canvas blends in sRGB only, so each segment is divided into 24 steps worked out in the chosen space. */
