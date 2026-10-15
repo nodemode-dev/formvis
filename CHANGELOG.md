@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.72.4 · 2026-10-15
+
+### Fixed
+
+- Play Action is offered only when an action exists, and plays the first one when no name is given.
+- Open image data with nothing to open says so instead of failing.
+
+### Changed
+
+- The notes and counts, smart filter and frame animation code live in their own engine modules; behaviour is unchanged.
+- The browser test that runs every command is split into six parts and names the command it was on when anything fails.
+
 ## 1.72.3 · 2026-10-14
 
 ### Fixed

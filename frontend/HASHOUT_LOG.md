@@ -2,6 +2,21 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.72.4: one-pass suite, menu walk in parts, engine split part two · _v1.72.4 (engine/notes-ops.ts, engine/smart-ops.ts, engine/frame-ops.ts, engine/index.ts, app.ts, e2e/*.py)
+
+- Whole suite in one pass on a frozen 1.72.3 (menu walk deselected): 517 passed, 8 failed, 6 skipped in 54 minutes, run while two builders ran their own browsers on the same machine. Failed: engine_device, mcp_agents money policy, measuring info panel, tool options part 0, path_ops save to PSD, puppet Alt-click, single row and column marquee, tiled paint undo from disk. Several of these passed alone in 1.72.2 and 1.72.3, so load is a suspect; to rerun alone.
+- `engine/notes-ops.ts` (new, `NoteHost`: addNote, setNote, removeNote, clearNotes, addCount, removeCount, clearCounts), `engine/smart-ops.ts` (new, `SmartHost`: smartContents, addSmartFilter, setSmartFilters, smartFiltersOff, toggleSmartFilters, clearSmartFilters, addSmartFilterMask, deleteSmartFilterMask, toggleSmartFilterMask), `engine/frame-ops.ts` (new, `FrameHost`: startFrameAnimation, newFrame, selectFrame, deleteFrame, moveFrame, tween, setFrameDelay, setLoops, renderFrame). Moved unchanged except `this.` to `host.`; calls between moved functions are direct; `this.emit('timeline', null)` became `host.timelineChanged()`. `engine/index.ts` 9,599 to 9,493 lines.
+- `app.ts`, `play-action`: enabled only when an action exists; plays the first when no name is given. `open-image-data` with no data toasts and returns instead of decoding nothing (an uncaught error and an engine 415). Replaced:
+
+```ts
+      id: 'play-action', label: 'Play Action', enabled: has, params: { name: { type: 'string', description: 'The action to play on the current document.' } },
+        const x = actions.list.find((y) => y.name === String(a?.name ?? ''));
+        const name = String(a?.name ?? 'image.png'), bin = atob(String(a?.data ?? '')), bytes = new Uint8Array(bin.length);
+```
+
+- `e2e/test_offered_options.py`: the menu walk is six parts over `commands.all()[part::6]`, each on a fresh page, printing each command before it runs and naming the last one on any failure; more state builders for the second pass; `OUTSIDE` gained the commands a test cannot enable, each with its reason (the two to revisit first: `trap`, `warp-split-cross`). The renderer crashes seen (adj-texture, define-custom-shape, calculations) happened only with three to six parts running at once on this 8 GB machine; each command alone ran clean.
+- `e2e/test_tiled_paging.py`, `e2e/test_tiled_filter.py`: the undo folder comes from `/api/capabilities` `dataDir`, not `/tmp/formvisdata`. `backend/tests/test_deep_io.py` builds its EXR through `contained.encode_exr` and `decode_exr`.
+
 ## Release 1.72.3: browser suite fixes, second batch · _v1.72.3 (styles/panels.css, ui/terminal-dock.ts, app.ts, e2e/*.py, docs/MANUAL.md)
 
 - `styles/panels.css`, `.cv-history-row`: 1.71.4 put a second source button on step rows, which wrapped onto an implicit second grid row and overlapped the row below, so a click on the History Brush column landed on the next step. A third column holds it. Replaced:
