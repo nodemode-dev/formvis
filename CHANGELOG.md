@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.72.6 · 2026-10-15
+
+### Changed
+
+- Close-out release: no code changes. The full browser suite passed 516 of 525 in one run (6 skipped for a model not installed); the nine that failed late in the run pass on their own. What remains is recorded in the planning handoff.
+
 ## 1.72.5 · 2026-10-15
 
 ### Fixed

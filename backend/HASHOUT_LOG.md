@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.72.6
+
+No engine code changed in 1.72.6 (close-out). Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "1.72.5"
+version = "1.72.5"
+version = "1.72.5"
+ "version": "1.72.5",
+```
+
 ## A font not installed answers 204 · _v1.72.5 (routers/system.py, __init__.py)
 
 - `routers/system.py`, `font_file`: a family with no file on this computer now answers 204 with `X-Formvis-Font: missing` instead of 404, since absence is an answer and a 404 makes the browser log a failed load. A bad family name is still 400. Replaced:

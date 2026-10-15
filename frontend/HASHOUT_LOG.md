@@ -2,6 +2,10 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.72.6: close-out · _v1.72.6
+
+- No frontend code changed. The whole browser suite (menu walk apart) on a frozen 1.72.5 with the engine running: 516 passed, 9 failed, 6 skipped in 31 minutes; the nine pass alone (notes and counts and the freeform pen rechecked alone the same hour). The planning sidecar's HANDOFF.md section 0 lists what stays open and why.
+
 ## Release 1.72.5: failures rerun alone, missing fonts answered quietly · _v1.72.5 (engine/opentype.ts, io/api.ts)
 
 - The eight failures of the 1.72.4 one-pass run were rerun alone with nothing else on the machine: seven passed (engine device, agent money policy, Info panel and samplers, path operations to PSD, Puppet Alt-click, single row and column marquee, tiled paint undo from disk), so load caused them. One was real: the tool option sweep, part 0, failed on the Type tool's Font option.
