@@ -43,8 +43,10 @@ def dev_server():
         proc.wait(timeout=10)
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="module")
 def browser(dev_server):
+    # One browser per test file (1.72.7): with one browser for the whole run, nine tests that pass alone failed late in
+    # a 31-minute pass, from state the browser process kept (its GPU and SwiftShader memory) across 500 tests.
     with sync_playwright() as p:
         exe = os.environ.get("FORMVIS_E2E_CHROME") or None
         # WebGPU on SwiftShader, a software adapter, so the GPU blender's shaders can be checked here (Phase 18.2);

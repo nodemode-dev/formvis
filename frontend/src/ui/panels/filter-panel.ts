@@ -551,6 +551,9 @@ export class FilterPanel extends Dialog {
       return r === true;
     }
     if (apron !== null) await this.engine.relieveFor(this.engine.layerBytes() * 1.25);   // undo to disk first if it would not fit (1.61.4)
+    const pooled = apron !== null ? this.engine.bandedFilterPool(FILTER_LABELS[kind], { kind, settings: s, seed }, (src, frame) => sync(src, 1, frame), apron, filterMargin(kind, s)) : false;   // the bands on the worker pool (36.18)
+    if (pooled === 'refused') return false;
+    if (pooled) { const done = await pooled; if (done === true) { this.engine.setPreview(null); this.close(); } return done === true; }
     const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src, frame) => sync(src, 1, frame), apron, filterMargin(kind, s)) : false;
     if (banded === 'refused') return Promise.resolve(false);   // not done, and said why
     if (banded) { this.engine.setPreview(null); this.close(); return Promise.resolve(true); }
@@ -581,6 +584,9 @@ export class FilterPanel extends Dialog {
     if (this.deepFilter(kind, settings)) return true;   // 16 bits (1.53.7)
     const apron = bandApron(kind, this.s);   // a large layer in bands (1.60.9)
     if (apron !== null && this.engine.activeTiled()) { void this.engine.bandedFilterTiled(FILTER_LABELS[kind], (src, frame) => run(src, 1, frame), apron); return true; }
+    const pooled = apron !== null ? this.engine.bandedFilterPool(FILTER_LABELS[kind], { kind, settings: structuredClone(this.s), seed: this.seed }, (src, frame) => run(src, 1, frame), apron, this.grow()) : false;   // the bands on the worker pool (36.18)
+    if (pooled === 'refused') return false;
+    if (pooled) return pooled;   // a promise: edits wait while it runs
     const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src, frame) => run(src, 1, frame), apron, this.grow()) : false;
     if (banded === 'refused') return false;   // not done, and said why
     if (banded) return true;
