@@ -51,6 +51,9 @@ import * as DS from './document-size';
 import * as AB from './artboard-ops';
 import * as GD from './guides-ops';
 import * as PR from './profile-ops';
+import * as NT from './notes-ops';
+import * as SM from './smart-ops';
+import * as FR from './frame-ops';
 import * as TE from './transform-entry';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
@@ -744,29 +747,16 @@ export class Engine {
 
   /** Notes (the Note tool; 1.49.6, the owner's tool list): pinned to the document, saved with it; each change one step. */
   activeNote: ID | null = null;
-  addNote(pt: Pt): ID | null {
-    let id: ID | null = null;
-    this.edit('New Note', (p) => { const n = { id: uid(), x: pt.x, y: pt.y, text: '' }; p.doc = { ...p.doc, notes: [...(p.doc.notes ?? []), n] }; id = n.id; return true; });
-    this.activeNote = id;
-    return id;
-  }
-  setNote(id: ID, patch: { text?: string; x?: number; y?: number }, name = 'Edit Note'): void {
-    this.edit(name, (p) => { const list = p.doc.notes ?? [], n = list.find((x) => x.id === id); if (!n) return false; p.doc = { ...p.doc, notes: list.map((x) => (x.id === id ? { ...x, ...patch } : x)) }; return true; });
-  }
-  removeNote(id: ID): void {
-    this.edit('Delete Note', (p) => { const list = p.doc.notes ?? []; if (!list.some((x) => x.id === id)) return false; p.doc = { ...p.doc, notes: list.filter((x) => x.id !== id) }; return true; });
-    if (this.activeNote === id) this.activeNote = null;
-  }
+  addNote(pt: Pt): ID | null { return NT.addNote(this.noteHost, pt); }
+  setNote(id: ID, patch: { text?: string; x?: number; y?: number }, name = 'Edit Note'): void { NT.setNote(this.noteHost, id, patch, name); }
+  removeNote(id: ID): void { NT.removeNote(this.noteHost, id); }
   /** Notes panel > Delete All (36.17): every note goes in one undo step. */
-  clearNotes(): void {
-    this.edit('Delete All Notes', (p) => { if (!p.doc.notes?.length) return false; p.doc = { ...p.doc, notes: [] }; return true; });
-    this.activeNote = null;
-  }
+  clearNotes(): void { NT.clearNotes(this.noteHost); }
 
   /** Counting (the Count tool): numbered marks on the document, saved with it; each change one step. */
-  addCount(pt: Pt): void { this.edit('Count', (p) => { p.doc = { ...p.doc, counts: [...(p.doc.counts ?? []), { x: pt.x, y: pt.y }] }; return true; }); }
-  removeCount(i: number): void { this.edit('Remove Count', (p) => { const c = p.doc.counts ?? []; if (i < 0 || i >= c.length) return false; p.doc = { ...p.doc, counts: c.filter((_, k) => k !== i) }; return true; }); }
-  clearCounts(): void { this.edit('Clear Count', (p) => { if (!p.doc.counts?.length) return false; p.doc = { ...p.doc, counts: [] }; return true; }); }
+  addCount(pt: Pt): void { NT.addCount(this.noteHost, pt); }
+  removeCount(i: number): void { NT.removeCount(this.noteHost, i); }
+  clearCounts(): void { NT.clearCounts(this.noteHost); }
   /** Measurement scale and records (DEV_PLAN 31.6 part a): document-level, saved with it; each change one step. */
   setMeasureScale(pixels: number, length: number, units: string): void {
     if (!(pixels > 0) || !(length > 0)) { this.notice('The pixel length and the logical length must both be above zero.', 'info'); return; }
@@ -2247,35 +2237,21 @@ export class Engine {
   }
 
   /** The active smart object's name and source raster, for Layer > Smart Objects > Export Contents; null when none. */
-  smartContents(): { name: string; raster: Raster } | null {
-    const l = this.current?.activeLayer;
-    return l?.smart ? { name: l.name, raster: l.smart.source } : null;
-  }
+  smartContents(): { name: string; raster: Raster } | null { return SM.smartContents(this.smartHost); }
 
   /** Adds a filter to the active smart object's stack and re-renders it, as one undo step. */
-  addSmartFilter(kind: string, settings: Record<string, unknown>): void {
-    const l = this.current?.activeLayer;
-    if (l?.smart) this.setSmartFilters(l.id, [...(this.smartFiltersShown(l.id) ?? l.smart.filters), { id: uid(), kind, settings: structuredClone(settings), enabled: true }], 'Smart Filter');
-  }
+  addSmartFilter(kind: string, settings: Record<string, unknown>): void { SM.addSmartFilter(this.smartHost, kind, settings); }
 
   /** Replaces a smart object's filter stack and re-renders its pixels from the source, as one undo step. */
-  setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void { const p = this.current; if (p) this.restackSoon(p, id, null, filters, name); }
+  setSmartFilters(id: ID, filters: SmartFilter[], name = 'Smart Filters'): void { SM.setSmartFilters(this.smartHost, id, filters, name); }
 
   /** Layer > Smart Filter > Disable Smart Filters (1.68.0): true while the active smart object has filters and all are off,
    *  so the command reads Enable Smart Filters. */
-  get smartFiltersOff(): boolean { const f = this.current?.activeLayer?.smart?.filters; return !!f?.length && f.every((x) => !x.enabled); }
+  get smartFiltersOff(): boolean { return SM.smartFiltersOff(this.smartHost); }
   /** Turns every filter of the active smart object off, or on when all are off: one step. */
-  toggleSmartFilters(): void {
-    const l = this.current?.activeLayer;
-    if (!l?.smart?.filters.length) return;
-    const on = this.smartFiltersOff;
-    this.setSmartFilters(l.id, (this.smartFiltersShown(l.id) ?? l.smart.filters).map((f) => ({ ...f, enabled: on })), on ? 'Enable Smart Filters' : 'Disable Smart Filters');
-  }
+  toggleSmartFilters(): void { SM.toggleSmartFilters(this.smartHost); }
   /** Layer > Smart Filter > Clear Smart Filters (1.68.0): removes the active smart object's filters, one step. */
-  clearSmartFilters(): void {
-    const l = this.current?.activeLayer;
-    if (l?.smart?.filters.length) this.setSmartFilters(l.id, [], 'Clear Smart Filters');
-  }
+  clearSmartFilters(): void { SM.clearSmartFilters(this.smartHost); }
 
   /** Edit > Purge (1.68.0). Histories: the document's undo and redo steps go, its state and its snapshots stay. */
   purgeHistories(all: boolean): number {
@@ -2316,29 +2292,11 @@ export class Engine {
 
   /** Adds a smart filter mask to the active smart object: from the selection (mapped into the source's pixels) when
    *  there is one and the object is not distorted, else white, showing the filters everywhere. */
-  addSmartFilterMask(): void {
-    const p = this.current, l = p?.activeLayer, sm = l?.smart;
-    if (!p || !l || !sm || !l.raster) { this.notice('Select a smart object first.'); return; }
-    if (sm.filterMask) return;
-    const src = sm.source, mask = new Raster(src.width, src.height), sel = p.selection;
-    if (sel && !sm.warp) {
-      const m = (l.raster.width - src.width) / 2;
-      setMat(mask.ctx, mul(translation(-m, -m), mul(invert(placement(l.transform, l.raster.width, l.raster.height)), translation(sel.x, sel.y))));
-      mask.ctx.drawImage(sel.surface(), 0, 0);
-      mask.ctx.setTransform(1, 0, 0, 1, 0, 0);
-    } else { mask.ctx.fillStyle = '#ffffff'; mask.ctx.fillRect(0, 0, src.width, src.height); }
-    this.restackSoon(p, l.id, null, null, 'Add Smart Filter Mask', { filterMask: mask, filterMaskEnabled: true });
-  }
+  addSmartFilterMask(): void { SM.addSmartFilterMask(this.smartHost); }
 
-  deleteSmartFilterMask(): void {
-    const p = this.current, l = p?.activeLayer;
-    if (p && l?.smart?.filterMask) this.restackSoon(p, l.id, null, null, 'Delete Smart Filter Mask', { filterMask: null, filterMaskEnabled: true });
-  }
+  deleteSmartFilterMask(): void { SM.deleteSmartFilterMask(this.smartHost); }
 
-  toggleSmartFilterMask(): void {
-    const p = this.current, l = p?.activeLayer, sm = l?.smart;
-    if (p && l && sm?.filterMask) this.restackSoon(p, l.id, null, null, sm.filterMaskEnabled === false ? 'Enable Smart Filter Mask' : 'Disable Smart Filter Mask', { filterMask: sm.filterMask, filterMaskEnabled: sm.filterMaskEnabled === false });
-  }
+  toggleSmartFilterMask(): void { SM.toggleSmartFilterMask(this.smartHost); }
 
   /** File > Place Linked: `raster` as a new smart object, centred, linked to a file through `link`. */
   placeEmbedded(raster: Raster, name: string): void {
@@ -2541,126 +2499,32 @@ export class Engine {
    *  as they are, and the copy is frame 2. */
   /** Create Frame Animation (1.59.8), as Photoshop's: one frame, the document as it is; refused beside a video timeline
    *  or an animation already begun. */
-  startFrameAnimation(): boolean {
-    const p = this.current;
-    if (!p) return false;
-    const t = this.timelineOf(p);
-    if (t.frames.length || t.video) return false;
-    const first: Frame = { id: uid(), delay: 100, state: captureFrame(p.doc) };
-    t.frames.push(first);
-    t.current = first.id;
-    this.emit('timeline', null);
-    return true;
-  }
+  startFrameAnimation(): boolean { return FR.startFrameAnimation(this.frameHost); }
 
-  newFrame(): void {
-    const p = this.current;
-    if (!p) return;
-    const t = this.timelineOf(p);
-    this.syncFrame(p);
-    if (!t.frames.length) { const first: Frame = { id: uid(), delay: 100, state: captureFrame(p.doc) }; t.frames.push(first); t.current = first.id; }
-    const i = Math.max(0, t.frames.findIndex((f) => f.id === t.current)), src = t.frames[i];
-    const copy: Frame = { id: uid(), delay: src.delay, state: structuredClone(src.state) };
-    t.frames.splice(i + 1, 0, copy);
-    t.current = copy.id;
-    this.emit('timeline', null);
-  }
+  newFrame(): void { FR.newFrame(this.frameHost); }
 
   /** Selects a frame, applying its layer states as one undo step, after the frame being left keeps its own. */
-  selectFrame(id: ID): void {
-    const p = this.current;
-    if (!p) return;
-    const t = this.timelineOf(p), f = t.frames.find((x) => x.id === id);
-    if (!f) return;
-    this.syncFrame(p);
-    t.current = id;
-    const target = frameLayers(p.doc.layers, f.state);
-    this.edit('Select Frame', (q) => {
-      target.forEach((l, i) => { const now = q.doc.layers[i]; if (l !== now && now?.id === l.id) q.updateLayer(l.id, { visible: l.visible, opacity: l.opacity, transform: l.transform, effects: l.effects }); });
-    });
-    this.emit('timeline', null);
-  }
+  selectFrame(id: ID): void { FR.selectFrame(this.frameHost, id); }
 
   /** Timeline > Delete Frame: removes the selected frame, or the one given, and selects its neighbour. */
-  deleteFrame(id?: ID): void {
-    const p = this.current;
-    if (!p) return;
-    const t = this.timelineOf(p), target = id ?? t.current, i = t.frames.findIndex((f) => f.id === target);
-    if (i < 0) return;
-    const wasCurrent = t.current === target;
-    t.frames.splice(i, 1);
-    if (!t.frames.length) t.current = null;
-    else if (wasCurrent) { t.current = null; this.selectFrame(t.frames[Math.min(i, t.frames.length - 1)].id); }
-    this.emit('timeline', null);
-  }
+  deleteFrame(id?: ID): void { FR.deleteFrame(this.frameHost, id); }
 
   /** Moves frame `id` to position `to`, counted from 0, as dragging it in the Timeline does. */
-  moveFrame(id: ID, to: number): void {
-    const p = this.current;
-    if (!p) return;
-    const t = this.timelineOf(p), i = t.frames.findIndex((f) => f.id === id);
-    if (i < 0) return;
-    const [f] = t.frames.splice(i, 1);
-    t.frames.splice(Math.max(0, Math.min(t.frames.length, Math.round(to))), 0, f);
-    this.emit('timeline', null);
-  }
+  moveFrame(id: ID, to: number): void { FR.moveFrame(this.frameHost, id, to); }
 
   /** Timeline > Tween: `count` frames between frame `id` and the one after it, stepping each layer's position and
    *  opacity evenly. A layer shown in only one of the two fades, shown in the new frames with its opacity stepping from
    *  or to nothing; without opacity it keeps the first frame's visibility. New frames take the first frame's delay. */
-  tween(id: ID, count: number, opts: { position: boolean; opacity: boolean; easing?: 'linear' | 'in' | 'out' | 'inOut' }): boolean {
-    const p = this.current;
-    if (!p) return false;
-    this.syncFrame(p);
-    const t = this.timelineOf(p), i = t.frames.findIndex((f) => f.id === id);
-    if (i < 0 || i + 1 >= t.frames.length) { this.notice('Select a frame with another after it to tween towards.'); return false; }
-    const a = t.frames[i], b = t.frames[i + 1], n = Math.min(50, Math.max(1, Math.round(count))), made: Frame[] = [];
-    for (let k = 1; k <= n; k++) {
-      // Easing shapes the steps: in starts slow (the square), out ends slow (its mirror), in and out does both.
-      const t0 = k / (n + 1), e = opts.easing ?? 'linear';
-      const u = e === 'in' ? t0 * t0 : e === 'out' ? 1 - (1 - t0) * (1 - t0) : e === 'inOut' ? (t0 < 0.5 ? 2 * t0 * t0 : 1 - 2 * (1 - t0) * (1 - t0)) : t0;
-      const state: Record<ID, FrameLayer> = {};
-      for (const lid of new Set([...Object.keys(a.state), ...Object.keys(b.state)])) {
-        const sa = a.state[lid], sb = b.state[lid];
-        if (!sa || !sb) { state[lid] = { ...(sa ?? sb) }; continue; }
-        const fades = opts.opacity && sa.visible !== sb.visible, oa = sa.visible ? sa.opacity : 0, ob = sb.visible ? sb.opacity : 0;
-        state[lid] = {
-          fx: sa.fx,
-          visible: fades ? true : sa.visible,
-          opacity: !opts.opacity ? sa.opacity : fades ? oa + (ob - oa) * u : sa.opacity + (sb.opacity - sa.opacity) * u,
-          x: opts.position ? sa.x + (sb.x - sa.x) * u : sa.x,
-          y: opts.position ? sa.y + (sb.y - sa.y) * u : sa.y,
-        };
-      }
-      made.push({ id: uid(), delay: a.delay, state });
-    }
-    t.frames.splice(i + 1, 0, ...made);
-    this.emit('timeline', null);
-    return true;
-  }
+  tween(id: ID, count: number, opts: { position: boolean; opacity: boolean; easing?: 'linear' | 'in' | 'out' | 'inOut' }): boolean { return FR.tween(this.frameHost, id, count, opts); }
 
-  setFrameDelay(id: ID, ms: number): void {
-    const p = this.current, f = p ? this.timelineOf(p).frames.find((x) => x.id === id) : null;
-    if (!f) return;
-    f.delay = Math.min(60000, Math.max(0, Math.round(ms)));
-    this.emit('timeline', null);
-  }
+  setFrameDelay(id: ID, ms: number): void { FR.setFrameDelay(this.frameHost, id, ms); }
 
   /** How often the animation plays: 0 repeats forever. */
-  setLoops(n: number): void {
-    const p = this.current;
-    if (!p) return;
-    this.timelineOf(p).loops = Math.min(65535, Math.max(0, Math.round(n)));
-    this.emit('timeline', null);
-  }
+  setLoops(n: number): void { FR.setLoops(this.frameHost, n); }
 
   /** Frame `f` of the current document at full size, rendered without touching the layers; the document as it stands
    *  when `f` is null. */
-  renderFrame(f: Frame | null): Surface | null {
-    const p = this.current;
-    if (!p) return null;
-    return renderDoc(this.work, f ? { ...p.doc, layers: frameLayers(p.doc.layers, f.state) } : p.doc);
-  }
+  renderFrame(f: Frame | null): Surface | null { return FR.renderFrame(this.frameHost, f); }
 
   /** The current document's video timeline (1.59.2, DEV_PLAN 25.1), or null. */
   get video(): VideoTimeline | null { const p = this.current; return p ? this.timelineOf(p).video ?? null : null; }
@@ -7667,6 +7531,36 @@ export class Engine {
       overlay: () => { this.emit('overlay', null); },
       contentBounds: (id, p) => this.contentBounds(id, p),
       setActiveSlice: (id) => { this.activeSlice = id; },
+    };
+  }
+
+  private get noteHost(): NT.NoteHost {
+    const self = this;
+    return {
+      get activeNote() { return self.activeNote; },
+      set activeNote(v) { self.activeNote = v; },
+      edit: (name, fn) => this.edit(name, fn),
+    };
+  }
+
+  private get frameHost(): FR.FrameHost {
+    return {
+      current: this.current,
+      work: this.work,
+      edit: (name, fn) => this.edit(name, fn),
+      notice: (m) => this.notice(m),
+      timelineOf: (p) => this.timelineOf(p),
+      syncFrame: (p) => this.syncFrame(p),
+      timelineChanged: () => { this.emit('timeline', null); },
+    };
+  }
+
+  private get smartHost(): SM.SmartHost {
+    return {
+      current: this.current,
+      notice: (m, kind) => this.notice(m, kind),
+      restackSoon: (p, id, source, filters, name, maskChange, extra) => this.restackSoon(p, id, source, filters, name, maskChange, extra),
+      smartFiltersShown: (id) => this.smartFiltersShown(id),
     };
   }
 
