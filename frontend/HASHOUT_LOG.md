@@ -2,6 +2,26 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.72.7: closing the remaining rows · _v1.72.7 (e2e/conftest.py, engine/path-ops.ts, engine/text-ops.ts, engine/video-ops.ts, engine/band-pool.ts, engine/index.ts, ui/panels/filter-panel.ts, ui/i18n/**)
+
+- `e2e/conftest.py`, `browser`: scope `session` became `module`, one browser per test file, since nine tests that pass alone failed late in a single-browser 31-minute run. Replaced: `@pytest.fixture(scope="session")` above `def browser(dev_server):`.
+- Engine split, part three (DEV_PLAN 36.13), `engine/index.ts` 9,493 to 8,939 lines:
+  - `engine/path-ops.ts` (new): pathSet, selectedPath, maskEntry, shapeEntry, beginPathEdit, endPathEdit, pathsChanged, the `paths` and `workPath` getters, setWorkPath, selectPath, nextPathName, newPath, renamePath, deletePath, setPathsOf, pathToSelection, fillPath, strokePath, strokePathWith, paintPath. A `PathStore` class replaces the fields pathSets, maskEdit, shapeEdit, pathGesture, pathGestureWork (`this.pathStore`); `PathHost` carries current, store, fg, brushDiameter, notice, edit, refresh, settle, emit, css, reshape, changeVectorMask, applySelection, paintable, regionEdit and a `stroker` facade. Moved unchanged except `this.` to `host.`; changed in form: `beginStroke(pts[0], false, pressure(0))` became `st.begin(pts[0], pressure(0))` and `beginRetouchStroke(kind, pts[0], false)` became `st.beginRetouch(kind, pts[0])` (the host passes shift false); `reshape`, `revertTo`, the undo restore and the document copy read and write `this.pathStore.shapeEdit` and `.sets`.
+  - `engine/text-ops.ts` (new): textLayerAt, createTextSelection, createTextLayer, createTextOnPath, createTextOnShape, textOnSubpath, typeToWorkPath, typeToShape, updateTextLayer, textPatch, updateTextLayers, replaceText, convertTextKind, updateAllTextLayers, textLayerInfo, setTextContents, replaceFontFamilies. `TextHost` with a live `current`, `textSettings` get and set, and a `paths` facade. Moved unchanged except `this.` to `host.`.
+  - `engine/video-ops.ts` (new): the video getter, create and delete timeline, editVideo, fadeClip, crossFade, splitClip, the video gesture pair, setVideoTime, the footage helpers, interpretFootage, videoStore, videoShow, addVideoLayer, newBlankVideoLayer, videoStep, the frame operations, renderVideoFrame, flushVideo, replaceFootage, convertVideoToFrames. A `VideoStore` class replaces videoGesture and videoShown. Changed in form: `this.stroke || this.waiting()` became `host.blocked()` (same short circuit).
+  - Left in index.ts: history and snapshots, CMYK and Lab conversion, smart object contents and links.
+- Banded filters on a worker pool (DEV_PLAN 36.18): `engine/band-pool.ts` (new; `POOL_FROM` 4 MP, `bandPlan`, `bandPoolSize`, `bandPoolReady`, `runBandOnPool`), min(cores - 1, 4) workers over the existing filter worker; `Engine.bandedFilterPool` after `bandedFilter`, same gates, the same single history step, edits blocked through `busyWith`; a worker failure falls back to the main thread for good. `ui/panels/filter-panel.ts` tries the pool first. Replaced in `applyInBackground` and `applySettings`:
+
+```ts
+    const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src, frame) => sync(src, 1, frame), apron, filterMargin(kind, s)) : false;
+    if (banded === 'refused') return Promise.resolve(false);   // not done, and said why
+    const banded = apron !== null ? this.engine.bandedFilter(FILTER_LABELS[kind], (src, frame) => run(src, 1, frame), apron, this.grow()) : false;
+    if (banded === 'refused') return false;   // not done, and said why
+```
+
+  Checked outside the browser: sequential bands, parallel bands (worker_threads) and the whole image byte-identical for Gaussian Blur 10 px and Unsharp Mask on 2000 by 1500. Not measured: the in-browser speed-up at 8000 by 6000.
+- Translation review (DEV_PLAN 36.32 part d, not a native reader): 80 value edits, Thai 18, Vietnamese 20, Indonesian 15, Hungarian 27: wrong senses (Thai "facial expression" for Foreground, "sharpness" for Contrast; arrow Head length read as a body's head), English left in Vietnamese values, distinct terms sharing a word (Artboard and Workspace, Duplicate and Redo), terms aligned across the three parts. Keys, placeholders and counts unchanged (405 per extra table).
+
 ## Release 1.72.6: close-out · _v1.72.6
 
 - No frontend code changed. The whole browser suite (menu walk apart) on a frozen 1.72.5 with the engine running: 516 passed, 9 failed, 6 skipped in 31 minutes; the nine pass alone (notes and counts and the freeform pen rechecked alone the same hour). The planning sidecar's HANDOFF.md section 0 lists what stays open and why.

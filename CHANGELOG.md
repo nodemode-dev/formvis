@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.72.7 · 2026-10-15
+
+### Changed
+
+- Large filters split into bands run the bands on a small pool of background workers (layers over 16 megapixels), with results identical to one band after another.
+- Paths, type and the video timeline live in their own engine modules; behaviour is unchanged.
+- Hungarian, Thai, Indonesian and Vietnamese: 80 corrections from a consistency review (wrong senses, English left in place, one word for two terms).
+- The browser tests start a fresh browser for each test file.
+
 ## 1.72.6 · 2026-10-15
 
 ### Changed
