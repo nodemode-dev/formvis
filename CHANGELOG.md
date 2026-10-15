@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.72.5 · 2026-10-15
+
+### Fixed
+
+- Choosing a font that is not installed, or a generic family such as monospace, no longer logs a failed request: the engine answers that there is no file, and generic families are not asked for at all.
+
 ## 1.72.4 · 2026-10-15
 
 ### Fixed

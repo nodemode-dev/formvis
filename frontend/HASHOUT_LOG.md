@@ -2,6 +2,26 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Release 1.72.5: failures rerun alone, missing fonts answered quietly · _v1.72.5 (engine/opentype.ts, io/api.ts)
+
+- The eight failures of the 1.72.4 one-pass run were rerun alone with nothing else on the machine: seven passed (engine device, agent money policy, Info panel and samplers, path operations to PSD, Puppet Alt-click, single row and column marquee, tiled paint undo from disk), so load caused them. One was real: the tool option sweep, part 0, failed on the Type tool's Font option.
+- The fault: choosing a font family that has no file here (a generic family such as monospace, or Arial on this machine) made the window ask the engine for the file, the engine answered 404, and the browser logged a failed resource load, which the sweep counts as an error.
+- `engine/opentype.ts`: new `GENERIC` and `fileOf(family, bold, italic)`, which refuses CSS's generic families at once; `featuresOf` and the variant registration call `fileOf` instead of `source`. The default source treats 204 as no file. Replaced:
+
+```ts
+      if (!data) { data = source(family, bold, italic); bytes.set(key, data); }
+      if (!data) { data = source(family, bold, italic); bytes.set(fk, data); }
+  if (!res.ok) throw new Error(`No font file for ${family}`);
+```
+
+- `io/api.ts`, `api.fontFile`: a 204 answer throws `ApiError` with status 204 instead of reading an empty body. Replaced:
+
+```ts
+    return (await request(`/fonts/file?family=${encodeURIComponent(family)}&bold=${bold ? 1 : 0}&italic=${italic ? 1 : 0}`)).arrayBuffer();
+```
+
+- After the change all four parts of the tool option sweep pass.
+
 ## Release 1.72.4: one-pass suite, menu walk in parts, engine split part two · _v1.72.4 (engine/notes-ops.ts, engine/smart-ops.ts, engine/frame-ops.ts, engine/index.ts, app.ts, e2e/*.py)
 
 - Whole suite in one pass on a frozen 1.72.3 (menu walk deselected): 517 passed, 8 failed, 6 skipped in 54 minutes, run while two builders ran their own browsers on the same machine. Failed: engine_device, mcp_agents money policy, measuring info panel, tool options part 0, path_ops save to PSD, puppet Alt-click, single row and column marquee, tiled paint undo from disk. Several of these passed alone in 1.72.2 and 1.72.3, so load is a suspect; to rerun alone.
