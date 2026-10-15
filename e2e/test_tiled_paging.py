@@ -8,9 +8,6 @@ import urllib.request
 
 import pytest
 
-STORE = "/tmp/formvisdata/undo"
-
-
 def _engine_up() -> bool:
     try:
         with urllib.request.urlopen("http://127.0.0.1:8190/api/version", timeout=2) as r:
@@ -19,13 +16,21 @@ def _engine_up() -> bool:
         return False
 
 
+def _store() -> str:
+    """The engine's undo folder, asked of the engine (/api/capabilities dataDir) rather than assumed."""
+    import json
+    with urllib.request.urlopen("http://127.0.0.1:8190/api/capabilities", timeout=5) as r:
+        return os.path.join(json.load(r)["dataDir"], "undo")
+
+
 def _stored() -> int:
-    return len(os.listdir(STORE)) if os.path.isdir(STORE) else 0
+    store = _store()
+    return len(os.listdir(store)) if os.path.isdir(store) else 0
 
 
 def test_tiles_past_their_share_go_to_disk_and_come_back_exactly(page):
-    if not _engine_up() or os.environ.get("FORMVIS_DATA_DIR", "/tmp/formvisdata") != "/tmp/formvisdata":
-        pytest.skip("needs the engine on 8190 with its data in /tmp/formvisdata (the store)")
+    if not _engine_up():
+        pytest.skip("needs the engine on 8190 (the store)")
     page.wait_for_function("window.formvis.engine.undoStore", timeout=30000)
     before = _stored()
     r = page.evaluate("""async () => {

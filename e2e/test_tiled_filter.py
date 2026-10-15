@@ -8,9 +8,6 @@ import urllib.request
 
 import pytest
 
-STORE = "/tmp/formvisdata/undo"
-
-
 def _engine_up() -> bool:
     try:
         with urllib.request.urlopen("http://127.0.0.1:8190/api/version", timeout=2) as r:
@@ -19,8 +16,16 @@ def _engine_up() -> bool:
         return False
 
 
+def _store() -> str:
+    """The engine's undo folder, asked of the engine (/api/capabilities dataDir) rather than assumed."""
+    import json
+    with urllib.request.urlopen("http://127.0.0.1:8190/api/capabilities", timeout=5) as r:
+        return os.path.join(json.load(r)["dataDir"], "undo")
+
+
 def _stored() -> int:
-    return len(os.listdir(STORE)) if os.path.isdir(STORE) else 0
+    store = _store()
+    return len(os.listdir(store)) if os.path.isdir(store) else 0
 
 
 def test_a_blur_on_a_giant_layer_is_exact_its_undo_streams_from_disk_and_edits_wait(page):

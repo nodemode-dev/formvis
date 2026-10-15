@@ -2399,7 +2399,8 @@ export function startApp(): void {
     {
       id: 'open-image-data', label: 'Open Image Data', params: { name: { type: 'string', description: 'The file name, with its extension.' }, data: { type: 'string', description: 'The file bytes, base64.' } },
       run: async (a) => {
-        const name = String(a?.name ?? 'image.png'), bin = atob(String(a?.data ?? '')), bytes = new Uint8Array(bin.length);
+        if (!a?.data) { toast('Open Image Data needs the file bytes (data, base64).', 'error'); return undefined; }   // run bare from the menu walk or the palette: say so, do not decode nothing
+        const name = String(a?.name ?? 'image.png'), bin = atob(String(a.data)), bytes = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
         const p = engine.openImage(await decodeImage(new Blob([bytes]), name));
         return { id: p.id };
@@ -2422,9 +2423,9 @@ export function startApp(): void {
       },
     },
     {
-      id: 'play-action', label: 'Play Action', enabled: has, params: { name: { type: 'string', description: 'The action to play on the current document.' } },
+      id: 'play-action', label: 'Play Action', enabled: () => has() && actions.list.length > 0, params: { name: { type: 'string', description: 'The action to play on the current document; the first action when left out.' } },
       run: async (a) => {
-        const x = actions.list.find((y) => y.name === String(a?.name ?? ''));
+        const x = a?.name === undefined || a.name === '' ? actions.list[0] : actions.list.find((y) => y.name === String(a.name));
         if (!x) throw new Error(`There is no action named "${String(a?.name ?? '')}".`);
         await playAction(x);
         return { played: true };
