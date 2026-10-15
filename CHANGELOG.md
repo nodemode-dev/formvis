@@ -4,6 +4,18 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.72.8 · 2026-10-15 · alpha
+
+### Added
+
+- docs/ALPHA_REVIEW.md: how alpha reviewers run formvis, what to look at, known limits and how to report.
+
+### Changed
+
+- A colour fill's undo step keeps half the memory: redo recomputes the filled pixels instead of storing them.
+- The engine's smart object, colour mode and snapshot code live in their own modules; behaviour is unchanged.
+- The README describes Ctrl+J's two meanings.
+
 ## 1.72.7 · 2026-10-15
 
 ### Changed
