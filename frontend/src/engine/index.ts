@@ -54,6 +54,9 @@ import * as PR from './profile-ops';
 import * as NT from './notes-ops';
 import * as SM from './smart-ops';
 import * as FR from './frame-ops';
+import * as PA from './path-ops';
+import * as TX from './text-ops';
+import * as VD from './video-ops';
 import * as TE from './transform-entry';
 import { type DocMode, BLEND_MODES, LIMITS, clamp, compositeOp, docTransform, newLayer, uid, blendIfActive, type BlendIf, type BlendMode, type Doc, type Guide, type ID, type Layer, type LayerLocks, type Mask, type Pt, type Rect, type RGB, type ToolId, type Transform, type ParagraphStyle, effectsActive, type LayerEffects, type TextSpec, type SmartFilter, type SmartLink, type SmartObject, type ShapeStroke, type ShapeStyle, type FootageInterpretation, effectsFromData, type Artboard, artboardFromData, type AlphaChannel, effectsPresent } from './types';
 import { allPatterns, patternById } from './patterns';
@@ -81,6 +84,8 @@ import { fromGray, gaussianBlur, histogram, resizeMask, toGray } from './filters
 import { APPLY_CHANNELS, APPLY_MODES, applyImagePixels, channelSource, coverageSource, maskStrength, type ApplyChannel, type ApplyMode } from './apply-image';
 import { averageImage } from './filters-lib/blur';
 import type { LibFrame, LibImage, LibPath } from './filter-library';
+import type { FilterKind, FilterSettings } from './filter-jobs';
+import { POOL_FROM, bandPlan, bandPoolReady, bandPoolSize, runBandOnPool } from './band-pool';
 import { sharpenSample } from './filters-more';
 import { diamondFill, presetById, reflectStops, resolveStops, type GradientType } from './gradients';
 import { convexQuad, evenSpacing, meshSurfacePoint, meshWarpImage, removeSplit, splitGrid, type P2 } from './mesh-warp';
@@ -979,7 +984,7 @@ export class Engine {
     p.history.begin('Revert', { ...p.snapshot(), paths: structuredClone(this.pathSet(p)), video: structuredClone(was.video ?? null), frames: film(was) });
     p.doc = { ...doc, id: p.doc.id };
     p.selection = null;
-    this.pathSets.set(p, { list: set.list, active: set.list.some((n) => n.id === set.active) ? set.active : null });
+    this.pathStore.sets.set(p, { list: set.list, active: set.list.some((n) => n.id === set.active) ? set.active : null });
     this.timelines.set(p, next);
     this.focus(p, activeId && doc.layers.some((l) => l.id === activeId) ? activeId : doc.layers[doc.layers.length - 1]?.id ?? null);
     p.history.end({ ...p.snapshot(), paths: structuredClone(this.pathSet(p)), video: structuredClone(next.video ?? null), frames: film(next) });
@@ -1274,7 +1279,7 @@ export class Engine {
   private restore(p: Project, s: Snapshot): void {
     p.doc = s.doc;
     p.selection = s.selection;
-    if (s.paths) { this.pathSets.set(p, structuredClone(s.paths) as PathSet); this.pathsChanged(p); }   // a path edit's step
+    if (s.paths) { this.pathStore.sets.set(p, structuredClone(s.paths) as PathSet); this.pathsChanged(p); }   // a path edit's step
     if (s.frames !== undefined) {   // a step carrying the frame animation (1.59.8: Convert to Frame Animation)
       const f = structuredClone(s.frames) as { frames: Frame[]; current: ID | null; loops: number };
       this.timelines.set(p, { ...this.timelineOf(p), frames: f.frames, current: f.current, loops: f.loops });
@@ -1638,12 +1643,7 @@ export class Engine {
   liveText(l: Layer | null | undefined): boolean { return liveText(l); }
 
   /** The topmost visible type layer whose box contains `pt`, for the Type tool to edit. */
-  textLayerAt(pt: Pt): ID | null {
-    const p = this.current;
-    if (!p) return null;
-    for (const l of [...p.doc.layers].reverse()) if (l.visible && liveText(l) && contains(l.transform, pt)) return l.id;
-    return null;
-  }
+  textLayerAt(pt: Pt): ID | null { return TX.textLayerAt(this.textHost, pt); }
 
   /** A new type layer: the click point `at` is where the first line's baseline starts (its centre or end when the text
    *  is centred or right-aligned), as with Photoshop's point type. */
@@ -1651,77 +1651,18 @@ export class Engine {
   typeMask = false;
   /** Type Mask, as Photoshop's: the text rendered and placed as a layer would be, its coverage made the selection; one
    *  step, no layer. */
-  async createTextSelection(at: Pt, spec: TextSpec): Promise<void> {
-    const p = this.current;
-    if (!p || !spec.content.trim()) return;
-    await loadTextFont(spec);
-    const r = renderText(spec), w = r.raster.width, h = r.raster.height, colW = spec.size * spec.lineHeight;
-    const x = Math.round(spec.box ? at.x : spec.direction === 'vertical' ? at.x - (w - r.pad - colW / 2) : at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad));
-    const y = Math.round(spec.box ? at.y : spec.direction === 'vertical' ? at.y - r.pad : at.y - r.baseline);
-    // Only what lies on the canvas is selected, as Photoshop keeps a selection within it (1.49.7 let it run past).
-    const x0 = Math.max(0, x), y0 = Math.max(0, y), x1 = Math.min(p.doc.width, x + w), y1 = Math.min(p.doc.height, y + h);
-    if (x1 <= x0 || y1 <= y0) { this.notice('The type lies outside the canvas.'); return; }
-    const cw = x1 - x0, ch = y1 - y0, d = r.raster.ctx.getImageData(x0 - x, y0 - y, cw, ch).data, a = new Uint8Array(cw * ch);
-    for (let i = 0; i < a.length; i++) a[i] = d[i * 4 + 3];
-    this.applySelection(SelectionMask.cropped(x0, y0, cw, ch, a), 'replace', spec.direction === 'vertical' ? 'Vertical Type Mask' : 'Horizontal Type Mask');
-  }
+  async createTextSelection(at: Pt, spec: TextSpec): Promise<void> { return TX.createTextSelection(this.textHost, at, spec); }
 
-  async createTextLayer(at: Pt, spec: TextSpec): Promise<void> {
-    if (!this.current || !spec.content.trim()) return;
-    await loadTextFont(spec);
-    const r = renderText(spec), w = r.raster.width;
-    // Paragraph text's box starts where it was dragged; vertical type's first column (the right one) is centred on the
-    // click, its first character just below it; point text keeps its first baseline at the click, by its alignment.
-    const colW = spec.size * spec.lineHeight;
-    const x = spec.box ? at.x : spec.direction === 'vertical' ? at.x - (w - r.pad - colW / 2) : at.x - (spec.align === 'center' ? w / 2 : spec.align === 'right' ? w - r.pad : r.pad);
-    this.textSettings = { ...spec, content: '', rendered: undefined };
-    const name = spec.content.split('\n')[0].trim().slice(0, 40) || 'Type';
-    const y = spec.box ? at.y : spec.direction === 'vertical' ? at.y - r.pad : at.y - r.baseline;
-    this.insertRasterLayer(r.raster, name, Math.round(x), Math.round(y), { text: { ...spec, rendered: textKey(r.raster) } }, 'Type');
-  }
+  async createTextLayer(at: Pt, spec: TextSpec): Promise<void> { return TX.createTextLayer(this.textHost, at, spec); }
 
   /** Layer > Type on Path: `content` set along the active path's first subpath of two or more anchors, in the current
    *  type settings, from `offset` percent of its length; the path kept with the type, relative to a frame around it
    *  (its bounds and a margin of one and a half times the type size), where the layer is placed. */
-  async createTextOnPath(content: string, offset: number): Promise<boolean> {
-    const p = this.current, sp = this.workPath?.subpaths.find((s) => s.anchors.length > 1);
-    if (!p) return false;
-    if (!sp) { this.notice('Draw a path with the Pen tool first, then set type on it.'); return false; }
-    return this.textOnSubpath(content, offset, sp, 'Type on Path');
-  }
+  async createTextOnPath(content: string, offset: number): Promise<boolean> { return TX.createTextOnPath(this.textHost, content, offset); }
 
   /** Layer > Type > Type on Arc / Type on Circle: `content` set along an arc (degrees, 0 at the top, clockwise; the type
    *  reads left to right along the top when start is minus half the sweep) or a full circle, live and editable. */
-  async createTextOnShape(content: string, shape: { kind: 'arc' | 'circle'; cx: number; cy: number; r: number; start: number; sweep: number }, offset: number): Promise<boolean> {
-    if (!this.current) return false;
-    const circle = shape.kind === 'circle', r = Math.max(1, shape.r), sweep = circle ? 360 : Math.max(1, Math.min(360, shape.sweep));
-    const n = Math.max(1, Math.ceil(sweep / 90 - 1e-9)), theta = sweep / n, k = (4 / 3) * Math.tan((theta * Math.PI) / 180 / 4) * r;
-    const count = circle ? n : n + 1, anchors: SubPath['anchors'] = [];
-    for (let i = 0; i < count; i++) {
-      const a = ((shape.start + theta * i) * Math.PI) / 180, tx = Math.cos(a) * k, ty = Math.sin(a) * k;
-      const x = shape.cx + Math.sin(a) * r, y = shape.cy - Math.cos(a) * r;
-      anchors.push({ x, y, inX: !circle && i === 0 ? x : x - tx, inY: !circle && i === 0 ? y : y - ty, outX: !circle && i === count - 1 ? x : x + tx, outY: !circle && i === count - 1 ? y : y + ty });
-    }
-    return this.textOnSubpath(content, offset, { anchors, closed: circle }, circle ? 'Type on Circle' : 'Type on Arc');
-  }
-
-  private async textOnSubpath(content: string, offset: number, sp: SubPath, undoName: string): Promise<boolean> {
-    const p = this.current;
-    if (!p) return false;
-    if (!content.trim()) { this.notice('Type some text to set on the path.'); return false; }
-    const base: TextSpec = { ...this.textSettings, content: content.replace(/\r?\n/g, ' '), warp: null, onPath: null, rendered: undefined };
-    await loadTextFont(base);
-    if (this.current !== p) return false;
-    const rough = samplePath(sp, 4), length = rough.reduce((s, q, i) => (i ? s + Math.hypot(q.x - rough[i - 1].x, q.y - rough[i - 1].y) : 0), 0);
-    const pts = samplePath(sp, Math.max(1, length / 2000)), m = Math.ceil(base.size * 1.5);
-    const xs = pts.map((q) => q.x), ys = pts.map((q) => q.y), ox = Math.floor(Math.min(...xs) - m), oy = Math.floor(Math.min(...ys) - m);
-    const frame = { w: Math.ceil(Math.max(...xs) - ox + m), h: Math.ceil(Math.max(...ys) - oy + m) };
-    const spec: TextSpec = { ...base, onPath: { points: pts.map((q) => ({ x: q.x - ox, y: q.y - oy })), offset: Math.max(0, Math.min(100, offset)), frame } };
-    const r = renderText(spec);
-    this.textSettings = { ...base, content: '', onPath: null };
-    this.insertRasterLayer(r.raster, spec.content.trim().slice(0, 40) || 'Type', ox, oy, { text: { ...spec, rendered: textKey(r.raster) } }, undoName);
-    return true;
-  }
+  async createTextOnShape(content: string, shape: { kind: 'arc' | 'circle'; cx: number; cy: number; r: number; start: number; sweep: number }, offset: number): Promise<boolean> { return TX.createTextOnShape(this.textHost, content, shape, offset); }
 
   /** The centre type on an arc or circle is set around: the selection's centre, else the document's. */
   shapeCentre(): { x: number; y: number } | null {
@@ -1950,114 +1891,30 @@ export class Engine {
 
   /** New text or settings for a type layer, re-rendered in place as one undo step: any scaling of the layer is kept,
    *  and so is its left edge, centre or right edge, by its alignment. */
-  async updateTextLayer(id: ID, spec: TextSpec): Promise<void> {
-    const p = this.current, patch = p ? await this.textPatch(p, id, spec) : null;
-    if (!p || !patch || this.current !== p) return;
-    this.textSettings = { ...spec, content: '', rendered: undefined };
-    this.edit('Edit Type', (pp) => { pp.updateLayer(id, patch); });
-  }
+  async updateTextLayer(id: ID, spec: TextSpec): Promise<void> { return TX.updateTextLayer(this.textHost, id, spec); }
 
   /** The new pixels, place and name of type layer `id` set to `spec`, rendered but not applied, so several layers can
    *  change in one undo step (Find and Replace Text, Update All Text Layers). Null when the layer is not live type. */
-  private async textPatch(p: Project, id: ID, spec: TextSpec, styles: readonly CharacterStyle[] | undefined = p.doc.characterStyles): Promise<Partial<Layer> | null> {
-    const l = p.layer(id);
-    if (!l || !liveText(l) || !l.raster || !l.text) return null;
-    if (!spec.content.trim()) { this.notice('Type some text, or delete the layer.'); return null; }
-    // The character style's set fields go over the layer's own for drawing; the stored spec keeps its own fields and the link.
-    const effective = withCharStyle(spec, spec.charStyle ? styles?.find((x) => x.id === spec.charStyle) : undefined);
-    await loadTextFont(effective);
-    if (this.current !== p || !liveText(p.layer(id))) return null;
-    const r = renderText(effective), old = l.raster, t = l.transform, before = l.text;
-    const nw = r.raster.width * (t.w / old.width), nh = r.raster.height * (t.h / old.height);
-    // Vertical type keeps its right edge (its first column); paragraph text its box's corner; point text its alignment.
-    const x = spec.box ? t.x : spec.direction === 'vertical' ? t.x + t.w - nw : spec.align === 'center' ? t.x + (t.w - nw) / 2 : spec.align === 'right' ? t.x + t.w - nw : t.x;
-    const autoName = before.content.split('\n')[0].trim().slice(0, 40) || 'Type';
-    const name = l.name === autoName ? spec.content.split('\n')[0].trim().slice(0, 40) || 'Type' : l.name;
-    return { raster: r.raster, transform: { ...t, x, w: nw, h: nh }, name, text: { ...spec, rendered: textKey(r.raster) } };
-  }
-
-  /** Several type layers re-rendered to new specs as one undo step named `step`. Returns how many changed. */
-  private async updateTextLayers(changes: ReadonlyArray<{ id: ID; spec: TextSpec }>, step: string): Promise<number> {
-    const p = this.current;
-    if (!p) return 0;
-    const patches: Array<{ id: ID; patch: Partial<Layer> }> = [];
-    for (const c of changes) { const patch = await this.textPatch(p, c.id, c.spec); if (patch) patches.push({ id: c.id, patch }); }
-    if (!patches.length || this.current !== p) return 0;
-    this.edit(step, (pp) => { for (const x of patches) pp.updateLayer(x.id, x.patch); });
-    return patches.length;
-  }
+  private async textPatch(p: Project, id: ID, spec: TextSpec, styles: readonly CharacterStyle[] | undefined = p.doc.characterStyles): Promise<Partial<Layer> | null> { return TX.textPatch(this.textHost, p, id, spec, styles); }
 
   /** Find and Replace Text: replaces matches in the content of every live type layer (or only the active one) and
    *  returns the number of replacements, all as one undo step. */
-  async replaceText(find: string, replace: string, opts: { caseSensitive: boolean; wholeWord: boolean; all: boolean }): Promise<number> {
-    const p = this.current;
-    if (!p || !find) return 0;
-    const esc = find.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const re = new RegExp(opts.wholeWord ? `\\b${esc}\\b` : esc, opts.caseSensitive ? 'g' : 'gi');
-    const layers = opts.all ? p.doc.layers.filter((l) => liveText(l)) : p.activeLayer && liveText(p.activeLayer) ? [p.activeLayer] : [];
-    let count = 0;
-    const changes: Array<{ id: ID; spec: TextSpec }> = [];
-    for (const l of layers) {
-      if (!l.text) continue;
-      let n = 0;
-      const content = l.text.content.replace(re, () => { n++; return replace; });
-      if (!n || content === l.text.content) continue;
-      count += n;
-      changes.push({ id: l.id, spec: { ...l.text, content } });
-    }
-    return (await this.updateTextLayers(changes, 'Find and Replace Text')) ? count : 0;
-  }
+  async replaceText(find: string, replace: string, opts: { caseSensitive: boolean; wholeWord: boolean; all: boolean }): Promise<number> { return TX.replaceText(this.textHost, find, replace, opts); }
 
   /** Converts the active type layer between point text (no box) and paragraph text (a box around its current size). */
-  async convertTextKind(to: 'point' | 'paragraph'): Promise<boolean> {
-    const p = this.current, l = p?.activeLayer;
-    if (!p || !l || !liveText(l) || !l.text || !l.raster) return false;
-    if (to === 'point') { if (!l.text.box) return false; await this.updateTextLayer(l.id, { ...l.text, box: null }); return true; }
-    if (l.text.box) return false;
-    await this.updateTextLayer(l.id, { ...l.text, box: { w: l.raster.width + 4, h: l.raster.height + 4 } });
-    return true;
-  }
+  async convertTextKind(to: 'point' | 'paragraph'): Promise<boolean> { return TX.convertTextKind(this.textHost, to); }
 
   /** Re-renders every live type layer with its own spec; returns how many it handled. */
-  async updateAllTextLayers(): Promise<number> {
-    const p = this.current;
-    if (!p) return 0;
-    const changes = p.doc.layers.filter((x) => liveText(x) && !!x.text).map((l) => ({ id: l.id, spec: { ...(l.text as TextSpec) } }));
-    return this.updateTextLayers(changes, 'Update All Text Layers');
-  }
+  async updateAllTextLayers(): Promise<number> { return TX.updateAllTextLayers(this.textHost); }
 
   /** The live type layers' id, name, content and font family, for Check Spelling and Resolve Missing Fonts. */
-  textLayerInfo(): Array<{ id: ID; name: string; content: string; family: string }> {
-    const p = this.current;
-    if (!p) return [];
-    const out: Array<{ id: ID; name: string; content: string; family: string }> = [];
-    for (const l of p.doc.layers) if (l.text && liveText(l)) out.push({ id: l.id, name: l.name, content: l.text.content, family: l.text.family });
-    return out;
-  }
+  textLayerInfo(): Array<{ id: ID; name: string; content: string; family: string }> { return TX.textLayerInfo(this.textHost); }
 
   /** New content for live type layers as one undo step named `step`; returns how many changed. */
-  async setTextContents(edits: ReadonlyArray<{ id: ID; content: string }>, step: string): Promise<number> {
-    const p = this.current;
-    if (!p) return 0;
-    const changes: Array<{ id: ID; spec: TextSpec }> = [];
-    for (const e of edits) {
-      const l = p.doc.layers.find((x) => x.id === e.id);
-      if (l?.text && liveText(l) && l.text.content !== e.content) changes.push({ id: e.id, spec: { ...l.text, content: e.content } });
-    }
-    return this.updateTextLayers(changes, step);
-  }
+  async setTextContents(edits: ReadonlyArray<{ id: ID; content: string }>, step: string): Promise<number> { return TX.setTextContents(this.textHost, edits, step); }
 
   /** Swaps font families on live type layers (old family to new) as one undo step named `step`; returns how many changed. */
-  async replaceFontFamilies(map: ReadonlyMap<string, string>, step: string): Promise<number> {
-    const p = this.current;
-    if (!p) return 0;
-    const changes: Array<{ id: ID; spec: TextSpec }> = [];
-    for (const l of p.doc.layers) {
-      const to = l.text && liveText(l) ? map.get(l.text.family) : undefined;
-      if (l.text && to && to !== l.text.family) changes.push({ id: l.id, spec: { ...l.text, family: to } });
-    }
-    return this.updateTextLayers(changes, step);
-  }
+  async replaceFontFamilies(map: ReadonlyMap<string, string>, step: string): Promise<number> { return TX.replaceFontFamilies(this.textHost, map, step); }
 
   /** True, with a notice, when the active layer is a smart object and an edit would change its pixels rather than its
    *  mask. Checked before any history step opens. */
@@ -2527,449 +2384,95 @@ export class Engine {
   renderFrame(f: Frame | null): Surface | null { return FR.renderFrame(this.frameHost, f); }
 
   /** The current document's video timeline (1.59.2, DEV_PLAN 25.1), or null. */
-  get video(): VideoTimeline | null { const p = this.current; return p ? this.timelineOf(p).video ?? null : null; }
+  get video(): VideoTimeline | null { return VD.video(this.videoHost); }
 
   /** Timeline > Create Video Timeline: `fps` frames a second for `seconds`, a track per layer; refused while the
    *  document has a frame animation or a video timeline already (Photoshop's two modes are one or the other). */
-  createVideoTimeline(fps = 30, seconds = 5): boolean {
-    const p = this.current;
-    if (!p) return false;
-    const t = this.timelineOf(p);
-    if (t.frames.length || t.video) return false;
-    const v = newVideoTimeline(p.doc, fps, seconds);
-    p.history.begin('Create Video Timeline', { ...p.snapshot(), video: null });   // a step (1.59.5)
-    this.timelines.set(p, { ...t, video: v });
-    p.history.end({ ...p.snapshot(), video: structuredClone(v) });
-    this.refresh();
-    this.emit('timeline', null);
-    return true;
-  }
+  createVideoTimeline(fps = 30, seconds = 5): boolean { return VD.createVideoTimeline(this.videoHost, fps, seconds); }
 
   /** Delete Timeline (the video one), a step. */
-  deleteVideoTimeline(): boolean {
-    const p = this.current, v = p ? this.timelineOf(p).video : null;
-    if (!p || !v) return false;
-    p.history.begin('Delete Timeline', { ...p.snapshot(), video: structuredClone(v) });
-    this.timelines.set(p, { ...this.timelineOf(p), video: null });
-    p.history.end({ ...p.snapshot(), video: null });
-    this.refresh();
-    this.emit('timeline', null);
-    return true;
-  }
+  deleteVideoTimeline(): boolean { return VD.deleteVideoTimeline(this.videoHost); }
 
   /** The video timeline changed through `fn` on a copy, then put in place and shown. With a `name` it is one undoable
    *  step (1.59.5, carrying the timeline as path edits carry paths); inside a gesture (`beginVideoGesture`) it is live,
    *  the gesture being the step; without either it is live and no step at all (the playhead moving). */
-  editVideo(fn: (vt: VideoTimeline) => void, name?: string): boolean {
-    const p = this.current, vt = this.video;
-    if (!p || !vt) return false;
-    const step = !!name && !this.videoGesture;
-    if (step) p.history.begin(name as string, { ...p.snapshot(), video: structuredClone(vt) });
-    const next = structuredClone(vt);
-    fn(next);
-    this.timelines.set(p, { ...this.timelineOf(p), video: next });
-    if (step) { p.history.end({ ...p.snapshot(), video: structuredClone(next) }); this.refresh(); }
-    this.emit('timeline', null);
-    this.emit('render', null);   // the canvas shows the playhead's frame (1.59.3)
-    return true;
-  }
+  editVideo(fn: (vt: VideoTimeline) => void, name?: string): boolean { return VD.editVideo(this.videoHost, fn, name); }
 
   /** Fade In, Fade Out or both on layer `id`'s clip over `frames` (0 removes them), one step (1.59.7: from the panel
    *  into the engine, which the MCP tools share). False when the layer has no clip. */
-  fadeClip(id: ID, frames: number, inn: boolean, out: boolean, color: FadeColor | null = null): boolean {
-    if (!this.video?.tracks[id]) return false;
-    return this.editVideo((v) => {
-      const t = v.tracks[id];
-      if (!t) return;
-      const f = Math.max(0, Math.min(Math.round(frames), t.length)), c = color ? { color } : {};   // with a colour: 1.60.1
-      if (inn) t.fadeIn = f > 0 ? { frames: f, ...c } : null;
-      if (out) t.fadeOut = f > 0 ? { frames: f, ...c } : null;
-    }, frames > 0 ? 'Add Transition' : 'Remove Transition');
-  }
+  fadeClip(id: ID, frames: number, inn: boolean, out: boolean, color: FadeColor | null = null): boolean { return VD.fadeClip(this.videoHost, id, frames, inn, out, color); }
 
   /** Cross Fade, as Photoshop's: layer `id`'s clip with the clip that starts or ends within it and overlaps it most
    *  (one covering it whole, a background, is no partner), over their overlap, fading only the upper of the two (in
    *  when it starts later, out when it ends first) so the picture never dips. Null when done, else why not. */
-  crossFade(id: ID): string | null {
-    const p = this.current, vt = this.video, a = vt?.tracks[id];
-    if (!p || !vt || !a) return 'Select a layer with a clip in the timeline.';
-    let best: { id: ID; len: number } | null = null;
-    for (const [other, b] of Object.entries(vt.tracks)) {
-      if (other === id) continue;
-      const covers = b.start <= a.start && b.start + b.length >= a.start + a.length;
-      const len = Math.min(a.start + a.length, b.start + b.length) - Math.max(a.start, b.start);
-      if (len > 0 && !covers && (!best || len > best.len)) best = { id: other, len };
-    }
-    if (!best) return 'Cross Fade needs another clip that starts or ends within this one.';
-    const order = p.doc.layers.map((l) => l.id), upper = order.indexOf(id) > order.indexOf(best.id) ? id : best.id, lower = upper === id ? best.id : id, len = best.len;
-    this.editVideo((v) => {
-      const u = v.tracks[upper], l = v.tracks[lower];
-      if (!u || !l) return;
-      if (u.start >= l.start) u.fadeIn = { frames: len }; else u.fadeOut = { frames: len };
-    }, 'Add Transition');
-    return null;
-  }
+  crossFade(id: ID): string | null { return VD.crossFade(this.videoHost, id); }
 
   /** Split at a frame, as Photoshop's Split at Playhead: layer `id`'s clip ends at `frame`, and a copy of the layer
    *  carries on from it with the rest of the clip and the same keyframes. The copy's id, or null when `frame` is not
    *  inside the clip. */
-  splitClip(id: ID, frame: number): ID | null {
-    const p = this.current, tr = this.video?.tracks[id];
-    if (!p || !tr || frame <= tr.start || frame >= tr.start + tr.length) return null;
-    const before = new Set(p.doc.layers.map((l) => l.id));
-    this.selectLayer(id);
-    // One step (1.59.8): the copy and the split nest inside it, so one undo takes back both.
-    p.history.begin('Split at Playhead', { ...p.snapshot(), video: structuredClone(this.video) });
-    let copy: Layer | undefined;
-    try {
-      this.duplicateLayers();
-      copy = this.current?.doc.layers.find((l) => !before.has(l.id));
-      if (copy) { const c = copy; this.editVideo((v) => { const t = v.tracks[id]; if (!t) return; v.tracks[c.id] = { ...structuredClone(t), start: frame, length: t.start + t.length - frame }; t.length = frame - t.start; }, 'Split at Playhead'); }
-    } finally {
-      p.history.end({ ...p.snapshot(), video: structuredClone(this.video) });
-      this.refresh();
-    }
-    return copy?.id ?? null;
-  }
+  splitClip(id: ID, frame: number): ID | null { return VD.splitClip(this.videoHost, id, frame); }
 
   /** A drag in the timeline (a clip moved or trimmed, a keyframe moved) as one step, from press to release. */
-  private videoGesture: { p: Project } | null = null;
-  beginVideoGesture(name: string): void {
-    const p = this.current, vt = this.video;
-    if (!p || !vt || this.videoGesture) return;
-    p.history.begin(name, { ...p.snapshot(), video: structuredClone(vt) });
-    this.videoGesture = { p };
-  }
-  endVideoGesture(): void {
-    const g = this.videoGesture;
-    if (!g) return;
-    this.videoGesture = null;
-    const v = this.timelineOf(g.p).video ?? null;
-    g.p.history.end({ ...g.p.snapshot(), video: v ? structuredClone(v) : null });
-    this.refresh();
-  }
+  beginVideoGesture(name: string): void { VD.beginVideoGesture(this.videoHost, name); }
+  endVideoGesture(): void { VD.endVideoGesture(this.videoHost); }
 
   /** The playhead moved to frame `f` (kept within the timeline); the canvas shows that frame. */
-  setVideoTime(f: number): void {
-    const vt = this.video;
-    if (!vt) return;
-    const t = Math.round(Math.min(vt.duration - 1, Math.max(0, f)));
-    if (t === vt.current) return;
-    const p = this.current;
-    if (p) { this.videoStore(p, vt, vt.current); this.videoShow(p, vt, t); }   // video layers: keep the painted frame, show the next
-    this.editVideo((v) => { v.current = t; });
-  }
+  setVideoTime(f: number): void { VD.setVideoTime(this.videoHost, f); }
 
-  /** The raster version each video layer's shown frame had when it was put on the layer, to tell a painted frame. */
-  private readonly videoShown = new WeakMap<Raster, number>();
-
-  /** The footage frame video layer `v` shows at timeline frame `t`, by Interpret Footage's rate and loop count
-   *  (DEV_PLAN 33.4), or -1 outside the clip. Without an interpretation it is the frame `t - start`, as before. */
-  private footageFrame(v: NonNullable<Layer['video']>, tr: { start: number }, vt: VideoTimeline, t: number): number {
-    const local = t - tr.start, n = v.frames.length, it = v.interpret;
-    if (local < 0 || !n) return -1;
-    const src = it?.fps && vt.fps > 0 ? Math.floor(local * it.fps / vt.fps + 1e-9) : local;
-    const loops = Math.max(1, Math.round(it?.loop ?? 1));
-    return src < n * loops ? src % n : -1;
-  }
-
-  /** A footage frame as Interpret Footage's alpha setting reads it: `ignore` makes it opaque, `premultiplied` takes the
-   *  matte back out of the colour. A new raster when anything changes, else `r` itself. */
-  private footagePixels(r: Raster, it: FootageInterpretation | undefined): Raster {
-    if (!it?.alpha || it.alpha === 'straight') return r;
-    const out = r.clone(), img = out.read(), d = img.data, m = it.matte ?? { r: 0, g: 0, b: 0 };
-    for (let i = 0; i < d.length; i += 4) {
-      if (it.alpha === 'ignore') { d[i + 3] = 255; continue; }
-      const a = d[i + 3] / 255;
-      if (a <= 0 || a >= 1) continue;
-      d[i] = (d[i] - m.r * (1 - a)) / a; d[i + 1] = (d[i + 1] - m.g * (1 - a)) / a; d[i + 2] = (d[i + 2] - m.b * (1 - a)) / a;
-    }
-    out.write(img);
-    return out;
-  }
-
-  /** The inverse of `footagePixels` for premultiplied footage: the matte put back into the colour (c a + m (1 - a)). */
-  private footageStored(r: Raster, it: FootageInterpretation): Raster {
-    const out = r.clone(), img = out.read(), d = img.data, m = it.matte ?? { r: 0, g: 0, b: 0 };
-    for (let i = 0; i < d.length; i += 4) {
-      const a = d[i + 3] / 255;
-      if (a <= 0 || a >= 1) continue;
-      d[i] = d[i] * a + m.r * (1 - a); d[i + 1] = d[i + 1] * a + m.g * (1 - a); d[i + 2] = d[i + 2] * a + m.b * (1 - a);
-    }
-    out.write(img);
-    return out;
-  }
+  /** The open timeline drag, and the raster version each video layer's shown frame had (video-ops.ts). */
+  private readonly videoStoreState = new VD.VideoStore();
 
   /** Interpret Footage: the active video layer's rate, loop count and alpha reading, its clip made as long as the
    *  footage now plays. One undo step. */
-  interpretFootage(it: FootageInterpretation): boolean {
-    const p = this.current, vt = this.video, l = p?.activeLayer;
-    if (!p || !vt || !l?.video || !vt.tracks[l.id] || this.stroke || this.waiting()) return false;
-    this.settle();
-    this.videoStore(p, vt, vt.current);
-    const clean: FootageInterpretation = {
-      ...(it.fps && it.fps > 0 && Math.abs(it.fps - vt.fps) > 1e-6 ? { fps: Math.min(240, it.fps) } : {}),
-      ...(it.loop && it.loop > 1 ? { loop: Math.min(100, Math.round(it.loop)) } : {}),
-      ...(it.alpha && it.alpha !== 'straight' ? { alpha: it.alpha } : {}),
-      ...(it.alpha === 'premultiplied' && it.matte ? { matte: it.matte } : {}),
-    };
-    p.history.begin('Interpret Footage', { ...p.snapshot(), video: structuredClone(vt) });
-    const next = structuredClone(vt), nt = next.tracks[l.id], n = l.video.frames.length;
-    nt.length = Math.max(1, Math.ceil(n * (clean.loop ?? 1) * (clean.fps ? next.fps / clean.fps : 1) - 1e-9));
-    if (nt.start + nt.length > next.duration) { if (next.workOut === next.duration) next.workOut = nt.start + nt.length; next.duration = nt.start + nt.length; }
-    const v = l.video, interpret = Object.keys(clean).length ? clean : undefined;
-    p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: { frames: v.frames, original: v.original, name: v.name, ...(interpret ? { interpret } : {}) } } : x)) };
-    this.timelines.set(p, { ...this.timelineOf(p), video: next });
-    this.videoShow(p, next, next.current);
-    p.history.end({ ...p.snapshot(), video: structuredClone(next) });
-    this.refresh();
-    this.emit('timeline', null);
-    this.emit('render', null);
-    return true;
-  }
-
-  /** Before the playhead leaves frame `t`: each video layer's raster goes back into its `frames` if it was painted. */
-  private videoStore(p: Project, vt: VideoTimeline, t: number): void {
-    for (const l of p.doc.layers) {
-      const v = l.video, tr = vt.tracks[l.id];
-      if (!v || !tr) continue;
-      const ras = l.raster;
-      if (!ras) continue;
-      const i = this.footageFrame(v, tr, vt, t), seen = this.videoShown.get(ras);
-      // Never seen (a project just opened shows its own copy of the frame): kept when it is not the stored frame itself.
-      if (i < 0 || i >= v.frames.length || (seen === undefined ? ras === v.frames[i] : ras.version === seen)) continue;
-      // A painted frame of premultiplied footage is shown with the matte taken out; it is stored with the matte put
-      // back, so showing it again does not take the matte out twice (33.4 open note, closed at 1.70.9).
-      v.frames[i] = v.interpret?.alpha === 'premultiplied' ? this.footageStored(ras, v.interpret) : ras;
-      this.videoShown.set(ras, ras.version);
-    }
-  }
-
-  /** Puts frame `t`'s picture on each video layer whose clip holds it (a copy, so painting leaves `frames` alone until stored). */
-  private videoShow(p: Project, vt: VideoTimeline, t: number): void {
-    if (!p.doc.layers.some((l) => l.video)) return;
-    p.doc = {
-      ...p.doc,
-      layers: p.doc.layers.map((l) => {
-        const v = l.video, tr = vt.tracks[l.id];
-        if (!v || !tr) return l;
-        const i = this.footageFrame(v, tr, vt, t);
-        if (i < 0 || i >= v.frames.length) return l;
-        const shown = this.footagePixels(v.frames[i], v.interpret), r = shown === v.frames[i] ? shown.clone() : shown;
-        this.videoShown.set(r, r.version);
-        return { ...l, raster: r };
-      }),
-    };
-  }
+  interpretFootage(it: FootageInterpretation): boolean { return VD.interpretFootage(this.videoHost, it); }
 
   /** New Video Layer: `frames` become a pixel layer whose clip starts at `start` (the playhead) and lasts as many frames;
    *  a video timeline is made if there is none. One undo step. */
-  addVideoLayer(name: string, frames: Raster[], start?: number): boolean {
-    const p = this.current;
-    if (!p || !frames.length || frames.length > 300 || this.stroke || this.waiting()) return false;
-    const had = this.timelineOf(p).video ?? null;
-    if (!had && this.timelineOf(p).frames.length) return false;
-    this.settle();
-    if (had) this.videoStore(p, had, had.current);
-    const from = start ?? had?.current ?? 0, before = new Set(p.doc.layers.map((l) => l.id));
-    let made: Layer | undefined;
-    p.history.begin('New Video Layer', { ...p.snapshot(), video: had ? structuredClone(had) : null });
-    try {
-      this.insertRasterLayer(frames[0].clone(), name, null, null, { video: { frames, original: frames.slice(), name } }, 'New Video Layer');
-      made = p.doc.layers.find((l) => !before.has(l.id));
-      if (made) {
-        const id = made.id, v = had ? structuredClone(had) : newVideoTimeline(p.doc, 30, Math.max(1, frames.length / 30));
-        v.tracks[id] = { start: from, length: frames.length, keys: {} };
-        if (from + frames.length > v.duration) { if (v.workOut === v.duration) v.workOut = from + frames.length; v.duration = from + frames.length; }
-        v.current = Math.min(v.duration - 1, from);
-        this.timelines.set(p, { ...this.timelineOf(p), video: v });
-        this.videoShow(p, v, v.current);
-      }
-    } finally {
-      const v = this.timelineOf(p).video ?? null;
-      p.history.end({ ...p.snapshot(), video: v ? structuredClone(v) : null });
-      this.refresh();
-      this.emit('timeline', null);
-      this.emit('render', null);
-    }
-    return !!made;
-  }
+  addVideoLayer(name: string, frames: Raster[], start?: number): boolean { return VD.addVideoLayer(this.videoHost, name, frames, start); }
 
   /** New Blank Video Layer: an empty document-size frame for every frame of the timeline (150 when there is none). */
-  newBlankVideoLayer(): boolean {
-    const p = this.current;
-    if (!p) return false;
-    const n = Math.min(300, this.video?.duration ?? 150), frames: Raster[] = [];
-    for (let i = 0; i < n; i++) frames.push(new Raster(p.doc.width, p.doc.height));
-    return this.addVideoLayer('Video Layer', frames, 0);
-  }
-
-  /** One undoable change to the active video layer's frames at the playhead; `change` returns the new frame lists
-   *  (`at` the frame to show after, `drop` to end the video layer) and must not alter the old ones. */
-  private videoStep(name: string, change: (v: NonNullable<Layer['video']>, i: number) => { frames: Raster[]; original: Raster[]; at?: number; drop?: boolean } | null): boolean {
-    const p = this.current, vt = this.video, l = p?.activeLayer;
-    if (!p || !vt || !l?.video || this.stroke || this.waiting()) return false;
-    const tr = vt.tracks[l.id], i = tr ? this.footageFrame(l.video, tr, vt, vt.current) : -1;
-    if (!tr || i < 0 || i >= l.video.frames.length) return false;
-    this.settle();
-    this.videoStore(p, vt, vt.current);
-    const out = change(l.video, i);
-    if (!out) return false;
-    p.history.begin(name, { ...p.snapshot(), video: structuredClone(vt) });
-    const next = structuredClone(vt), nt = next.tracks[l.id], label = l.video.name, it = l.video.interpret;
-    // Footage frames to timeline frames through Interpret Footage's rate and loops (1:1 without one).
-    const k = it?.fps ? next.fps / it.fps : 1;
-    nt.length = Math.max(1, Math.ceil(out.frames.length * (it?.loop ?? 1) * k - 1e-9));
-    if (nt.start + nt.length > next.duration) { if (next.workOut === next.duration) next.workOut = nt.start + nt.length; next.duration = nt.start + nt.length; }
-    next.current = Math.min(next.duration - 1, nt.start + Math.min(Math.ceil((out.at ?? i) * k - 1e-9), nt.length - 1));
-    p.doc = { ...p.doc, layers: p.doc.layers.map((x) => (x.id === l.id ? { ...x, video: out.drop ? null : { frames: out.frames, original: out.original, name: label, ...(it ? { interpret: it } : {}) } } : x)) };
-    this.timelines.set(p, { ...this.timelineOf(p), video: next });
-    this.videoShow(p, next, next.current);
-    p.history.end({ ...p.snapshot(), video: structuredClone(next) });
-    this.refresh();
-    this.emit('timeline', null);
-    this.emit('render', null);
-    return true;
-  }
+  newBlankVideoLayer(): boolean { return VD.newBlankVideoLayer(this.videoHost); }
 
   /** Insert Blank Frame: an empty frame after the playhead's, which moves onto it. The clip grows by one. */
-  insertBlankFrame(): boolean {
-    return this.videoStep('Insert Blank Frame', (v, i) => {
-      const w = this.current?.doc.width ?? 1, h = this.current?.doc.height ?? 1, blank = new Raster(w, h), f = v.frames.slice(), o = v.original.slice();
-      f.splice(i + 1, 0, blank); o.splice(i + 1, 0, blank);
-      return { frames: f, original: o, at: i + 1 };
-    });
-  }
+  insertBlankFrame(): boolean { return VD.insertBlankFrame(this.videoHost); }
 
   /** Duplicate Frame: a copy of the playhead's frame after it, the playhead moving onto the copy. */
-  duplicateFrame(): boolean {
-    return this.videoStep('Duplicate Frame', (v, i) => {
-      const f = v.frames.slice(), o = v.original.slice();
-      f.splice(i + 1, 0, f[i].clone()); o.splice(i + 1, 0, o[i]);
-      return { frames: f, original: o, at: i + 1 };
-    });
-  }
+  duplicateFrame(): boolean { return VD.duplicateFrame(this.videoHost); }
 
   /** Delete Frame: the playhead's frame goes and the clip shortens; the last frame of a clip stays. */
-  deleteVideoFrame(): boolean {
-    return this.videoStep('Delete Frame', (v, i) => {
-      if (v.frames.length < 2) return null;
-      const f = v.frames.slice(), o = v.original.slice();
-      f.splice(i, 1); o.splice(i, 1);
-      return { frames: f, original: o, at: i };
-    });
-  }
+  deleteVideoFrame(): boolean { return VD.deleteVideoFrame(this.videoHost); }
 
   /** Restore Frame: the playhead's frame back to the footage as loaded. */
-  restoreFrame(): boolean {
-    return this.videoStep('Restore Frame', (v, i) => {
-      if (v.frames[i] === v.original[i]) return null;
-      const f = v.frames.slice();
-      f[i] = v.original[i];
-      return { frames: f, original: v.original };
-    });
-  }
+  restoreFrame(): boolean { return VD.restoreFrame(this.videoHost); }
 
   /** Restore All Frames: every frame back to the footage as loaded. */
-  restoreAllFrames(): boolean {
-    return this.videoStep('Restore All Frames', (v) => (v.frames.every((r, k) => r === v.original[k]) ? null : { frames: v.original.slice(), original: v.original }));
-  }
+  restoreAllFrames(): boolean { return VD.restoreAllFrames(this.videoHost); }
 
   /** Rasterize Video Layer: the layer becomes an ordinary pixel layer holding the frame at the playhead. */
-  rasterizeVideo(): boolean {
-    return this.videoStep('Rasterize Video Layer', (v) => ({ frames: v.frames, original: v.original, drop: true }));
-  }
+  rasterizeVideo(): boolean { return VD.rasterizeVideo(this.videoHost); }
 
   /** The picture at video frame `f`: the layers in the state the timeline gives them there. */
-  renderVideoFrame(f: number): Surface | null {
-    const p = this.current, vt = this.video;
-    if (!p || !vt) return null;
-    const t = Math.round(f);
-    const layers = p.doc.layers.map((l) => {   // video layers show their own painted frame for `t`, not the one on the canvas
-      const v = l.video, tr = vt.tracks[l.id];
-      if (!v || !tr || t === vt.current) return l;
-      const i = this.footageFrame(v, tr, vt, t);
-      return i >= 0 && i < v.frames.length ? { ...l, raster: this.footagePixels(v.frames[i], v.interpret) } : l;
-    });
-    return renderDoc(this.work, { ...p.doc, layers: frameLayers(layers, stateAt(p.doc, vt, f)) });
-  }
+  renderVideoFrame(f: number): Surface | null { return VD.renderVideoFrame(this.videoHost, f); }
 
   /** Keeps the painted frame under the playhead in each video layer's `frames`, as saving and rendering read them. */
-  flushVideo(): void {
-    const p = this.current, vt = this.video;
-    if (p && vt) this.videoStore(p, vt, vt.current);
-  }
+  flushVideo(): void { VD.flushVideo(this.videoHost); }
 
   /** Replace Footage: the active video layer's original and painted frames both become `frames`, and its clip as long as
    *  they are. One undo step. */
-  replaceFootage(frames: Raster[]): boolean {
-    if (!frames.length || frames.length > 300) return false;
-    return this.videoStep('Replace Footage', () => ({ frames, original: frames.slice() }));
-  }
+  replaceFootage(frames: Raster[]): boolean { return VD.replaceFootage(this.videoHost, frames); }
 
   /** Convert to Frame Animation: a frame for each frame of the work area (500 at most), the video timeline gone. */
-  convertVideoToFrames(): boolean {
-    const p = this.current, vt = this.video;
-    if (!p || !vt) return false;
-    const frames = sampleToFrames(p.doc, vt);
-    if (!frames.length) return false;
-    const was = this.timelineOf(p);   // one step (1.59.8), carrying both timelines so undo brings the video one back
-    p.history.begin('Convert to Frame Animation', { ...p.snapshot(), video: structuredClone(vt), frames: structuredClone({ frames: was.frames, current: was.current, loops: was.loops }) });
-    this.timelines.set(p, { frames, current: frames[0].id, loops: vt.loops, video: null });
-    p.history.end({ ...p.snapshot(), video: null, frames: structuredClone({ frames, current: frames[0].id, loops: vt.loops }) });
-    this.refresh();
-    this.emit('timeline', null);
-    return true;
-  }
+  convertVideoToFrames(): boolean { return VD.convertVideoToFrames(this.videoHost); }
 
   /** Any open document's timeline, as saving reads it, and replacing it, as opening restores it. */
   timelineFor(p: Project): Timeline { if (p === this.current) { this.flushVideo(); this.syncFrame(p); } return this.timelineOf(p); }
   setTimelineFor(p: Project, t: Timeline): void { this.timelines.set(p, t); if (p === this.current) this.emit('timeline', null); }
 
-  private readonly pathSets = new WeakMap<Project, PathSet>();
+  /** Each open document's paths, the working copies of a shape's and a vector mask's path, and the open path gesture
+   *  (path-ops.ts). */
+  private readonly pathStore = new PA.PathStore();
 
-  private pathSet(p: Project): PathSet {
-    let set = this.pathSets.get(p);
-    if (!set) { set = { list: [], active: null }; this.pathSets.set(p, set); }
-    return set;
-  }
-
-  private selectedPath(p: Project): NamedPath | null {
-    const set = this.pathSet(p);
-    if (set.active?.startsWith('shape:')) return this.shapeEntry(p)?.id === set.active ? this.shapeEntry(p) : null;
-    if (set.active?.startsWith('vmask:')) return this.maskEntry(p)?.id === set.active ? this.maskEntry(p) : null;
-    return set.list.find((n) => n.id === set.active) ?? null;
-  }
-
-  /** The active layer's vector mask as a path entry (1.66.1), its outline in document pixels, reshaped in place by the
-   *  path tools as a shape's outline is. */
-  private maskEntry(p: Project): NamedPath | null {
-    const l = p.activeLayer, v = l?.vectorMask;
-    if (!l || !v) return null;
-    const e = this.maskEdit;
-    if (!e || e.project !== p || e.layerId !== l.id || e.layer !== l) this.maskEdit = { project: p, layerId: l.id, layer: l, path: structuredClone(v.path) };
-    return { id: `vmask:${l.id}`, name: `${l.name} Vector Mask`, path: (this.maskEdit as { path: VectorPath }).path, work: false, shape: true, mask: true };
-  }
-
-  /** The working copy of the active layer's vector mask path that the tools change in place, as `shapeEdit` is. */
-  private maskEdit: { project: Project; layerId: ID; layer: Layer; path: VectorPath } | null = null;
-
-  /** The working copy of the active shape layer's path, and the layer object it matches: a copy the tools hold during
-   *  a drag, rebuilt only when the layer changes some other way (a move, an undo, a recolour). */
-  private shapeEdit: { project: Project; layerId: ID; layer: Layer; path: VectorPath } | null = null;
-  private pathGesture: Project | null = null;
-
-  /** The active shape layer's outline as a path entry, its working copy moved along with any move of the layer. */
-  private shapeEntry(p: Project): NamedPath | null {
-    const l = p.activeLayer;
-    if (!l?.vector) return null;
-    const e = this.shapeEdit;
-    if (!e || e.project !== p || e.layerId !== l.id || e.layer !== l) {
-      const dx = l.transform.x - l.vector.origin.x, dy = l.transform.y - l.vector.origin.y;
-      this.shapeEdit = { project: p, layerId: l.id, layer: l, path: shiftPath(l.vector.path, dx, dy) };
-    }
-    return { id: `shape:${l.id}`, name: `${l.name} Shape Path`, path: (this.shapeEdit as { path: VectorPath }).path, work: false, shape: true };
-  }
+  private pathSet(p: Project): PathSet { return PA.pathSet(this.pathHost, p); }
 
   /** A shape layer's pixels: its path filled with its colour, in a raster over the path's bounds. */
   private renderShape(path: VectorPath, style: ShapeStyle): { raster: Raster; x: number; y: number } | null {
@@ -2994,29 +2497,14 @@ export class Engine {
     if (!r) return;
     const stored = structuredClone(path);
     p.updateLayer(id, { raster: r.raster, transform: { ...l.transform, x: r.x, y: r.y, w: r.raster.width, h: r.raster.height, rotation: 0, flipX: false, flipY: false }, vector: { path: stored, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } }, shape: null });
-    const e = this.shapeEdit, now = p.layer(id);
+    const e = this.pathStore.shapeEdit, now = p.layer(id);
     if (e && e.project === p && e.layerId === id && now) { e.layer = now; e.path = path; }
   }
 
   /** Brackets a pointer gesture on the selected path, so a gesture on a Shape Path is one undo step. */
-  beginPathEdit(): void {
-    const p = this.current, entry = p ? this.selectedPath(p) : null;
-    if (!p || this.pathGesture || !entry) return;
-    this.settle();
-    // A work path's edits are undoable too (1.49.3: they never were): the step carries the paths before and after.
-    this.pathGestureWork = !entry.shape;
-    p.history.begin(entry.mask ? 'Edit Vector Mask' : entry.shape ? 'Edit Shape Path' : 'Edit Path', entry.shape ? p.snapshot() : { ...p.snapshot(), paths: structuredClone(this.pathSet(p)) });
-    this.pathGesture = p;
-  }
-  private pathGestureWork = false;
+  beginPathEdit(): void { PA.beginPathEdit(this.pathHost); }
 
-  endPathEdit(): void {
-    const p = this.pathGesture;
-    if (!p) return;
-    this.pathGesture = null;
-    p.history.end(this.pathGestureWork ? { ...p.snapshot(), paths: structuredClone(this.pathSet(p)) } : p.snapshot());
-    this.refresh();
-  }
+  endPathEdit(): void { PA.endPathEdit(this.pathHost); }
 
   /** Layer > New Shape Layer from Path: the selected path filled with the foreground colour as a shape layer, whose
    *  outline stays editable. */
@@ -3036,33 +2524,11 @@ export class Engine {
   /** Layer > Type > Create Work Path (DEV_PLAN 32.7 part b): the active type layer's outlines, traced from its rendered
    *  pixels (not read from the font), become the Work Path. Paths sit outside undo, so this is not a history step. Placement
    *  uses the layer's x, y and size only; rotation is ignored. */
-  typeToWorkPath(): boolean {
-    const p = this.current, l = p?.activeLayer;
-    if (!p || !l || !l.raster || !liveText(l)) { this.notice('Select a type layer first.'); return false; }
-    const r = l.raster, d = r.ctx.getImageData(0, 0, r.width, r.height).data, alpha = new Uint8ClampedArray(r.width * r.height);
-    for (let i = 0; i < alpha.length; i++) alpha[i] = d[i * 4 + 3];
-    const vp = traceAlpha(alpha, r.width, r.height, { scale: l.transform.w / r.width, offsetX: l.transform.x, offsetY: l.transform.y });
-    if (!vp.subpaths.length) { this.notice('This type layer has no outlines to trace.'); return false; }
-    this.selectPath(null);
-    this.setWorkPath(vp);
-    return true;
-  }
+  typeToWorkPath(): boolean { return TX.typeToWorkPath(this.textHost); }
 
   /** Layer > Type > Convert to Shape: Create Work Path, then a shape layer in the text colour above the type layer, which
    *  is hidden. The shape and the hiding are one undo step. */
-  typeToShape(): boolean {
-    const p = this.current, l = p?.activeLayer, spec = l?.text;
-    if (!p || !l || !spec || !liveText(l)) { this.notice('Select a type layer first.'); return false; }
-    if (!this.typeToWorkPath()) return false;
-    const path = structuredClone(this.workPath as VectorPath), look: ShapeStyle = { fill: { ...spec.color }, stroke: null };
-    const r = this.renderShape(path, look);
-    if (!r) return false;
-    const name = spec.content.replace(/\s+/g, ' ').trim().slice(0, 32) || 'Type Shape', typeId = l.id;
-    return this.edit('Convert to Shape', (q) => {
-      this.insertRasterLayer(r.raster, name, r.x, r.y, { vector: { path, fill: look.fill, stroke: look.stroke, origin: { x: r.x, y: r.y } } }, 'Convert to Shape');
-      q.updateLayer(typeId, { visible: false });
-    });
-  }
+  typeToShape(): boolean { return TX.typeToShape(this.textHost); }
 
   /** File > Open SVG as Layers (DEV_PLAN 34.4): one shape layer per entry, in order, each outline still editable. insertRasterLayer
    *  records its own undo step, so each layer is one step. Returns the number of layers made. */
@@ -3235,195 +2701,52 @@ export class Engine {
     });
   }
 
-  private pathsChanged(p: Project): void {
-    if (p === this.current) { this.emit('overlay', null); this.emit('options', null); }
-    this.emit('paths', null);
-  }
+  private pathsChanged(p: Project): void { PA.pathsChanged(this.pathHost, p); }
 
   /** The current document's paths, the Work Path among them, and which one is selected. Paths live with the document
    *  and save with the project, outside undo, as in Photoshop. */
-  get paths(): PathSet {
-    const p = this.current;
-    if (!p) return { list: [], active: null };
-    const set = this.pathSet(p), own = [this.shapeEntry(p), this.maskEntry(p)].filter((n): n is NamedPath => !!n);
-    return own.length ? { list: [...own, ...set.list], active: set.active } : set;
-  }
+  get paths(): PathSet { return PA.pathsOfCurrent(this.pathHost); }
 
   /** The selected path, which the Pen, Direct Selection and the path commands work on; null when none is selected. */
-  get workPath(): VectorPath | null { const p = this.current; return p ? this.selectedPath(p)?.path ?? null : null; }
+  get workPath(): VectorPath | null { return PA.workPath(this.pathHost); }
 
   /** Sets the selected path's points. With none selected, a new Work Path takes them, replacing the old one; a Work
    *  Path left with no points goes away, while a named path stays, empty. */
-  setWorkPath(vp: VectorPath | null): void {
-    const p = this.current;
-    if (!p) return;
-    const set = this.pathSet(p), entry = this.selectedPath(p), has = !!vp && vp.subpaths.some((sp) => sp.anchors.length);
-    if (entry?.mask) {
-      // Reshaping a vector mask (1.66.1): live within a gesture's undo step, or one step of its own from the keyboard;
-      // an outline taken down to nothing leaves the empty mask, which shows (or, inverted, hides) everything.
-      const l = p.activeLayer, v = l?.vectorMask;
-      if (l && v) {
-        const write = (q: Project): void => q.updateLayer(l.id, { vectorMask: { ...v, path: vp && has ? structuredClone(vp) : { subpaths: [] } } });
-        if (this.pathGesture === p) write(p);
-        else this.edit('Edit Vector Mask', (q) => write(q));
-        const e = this.maskEdit, now = p.layer(l.id);
-        if (e && e.project === p && e.layerId === l.id && now) { e.layer = now; if (vp) e.path = vp; }
-        this.refresh();
-      }
-      this.pathsChanged(p);
-      return;
-    }
-    if (entry?.shape) {
-      // Reshaping a shape layer: live within a gesture's undo step, or one step of its own from the keyboard.
-      const l = p.activeLayer;
-      if (l?.vector && vp && has) {
-        (this.shapeEdit as { path: VectorPath }).path = vp;
-        if (this.pathGesture === p) this.reshape(p, l.id, vp);
-        else this.edit('Edit Shape Path', (q) => this.reshape(q, l.id, vp));
-        this.refresh();
-      }
-      this.pathsChanged(p);
-      return;
-    }
-    if (entry) {
-      if (entry.work && !has) { set.list = set.list.filter((n) => n !== entry); set.active = null; }
-      else entry.path = vp ?? { subpaths: [] };
-    } else if (vp && has) {
-      const work: NamedPath = { id: uid(), name: 'Work Path', path: vp, work: true };
-      set.list = [work, ...set.list.filter((n) => !n.work)];
-      set.active = work.id;
-    }
-    this.pathsChanged(p);
-  }
+  setWorkPath(vp: VectorPath | null): void { PA.setWorkPath(this.pathHost, vp); }
 
   /** Selects a path by id, or none, so the next Pen drawing starts a new Work Path. */
-  selectPath(id: ID | null): void {
-    const p = this.current;
-    if (!p) return;
-    const set = this.pathSet(p);
-    set.active = id && (set.list.some((n) => n.id === id) || this.shapeEntry(p)?.id === id || this.maskEntry(p)?.id === id) ? id : null;
-    this.pathsChanged(p);
-  }
-
-  private nextPathName(set: PathSet): string { let i = 1; while (set.list.some((n) => n.name === `Path ${i}`)) i++; return `Path ${i}`; }
+  selectPath(id: ID | null): void { PA.selectPath(this.pathHost, id); }
 
   /** Paths > New Path: an empty named path, selected, for the Pen to draw into. */
-  newPath(): void {
-    const p = this.current;
-    if (!p) return;
-    const set = this.pathSet(p), n: NamedPath = { id: uid(), name: this.nextPathName(set), path: { subpaths: [] }, work: false };
-    set.list.push(n);
-    set.active = n.id;
-    this.pathsChanged(p);
-  }
+  newPath(): void { PA.newPath(this.pathHost); }
 
   /** Renames a path; naming the Work Path saves it, so it stays when a new one is drawn. */
-  renamePath(id: ID, name: string): void {
-    const p = this.current, n = p ? this.pathSet(p).list.find((x) => x.id === id) : null;
-    if (!p || !n) return;
-    n.name = name.trim().slice(0, 80) || this.nextPathName(this.pathSet(p));
-    n.work = false;
-    this.pathsChanged(p);
-  }
+  renamePath(id: ID, name: string): void { PA.renamePath(this.pathHost, id, name); }
 
   /** Paths > Delete Path: removes the selected path, or the one given. */
-  deletePath(id?: ID): void {
-    const p = this.current;
-    if (!p) return;
-    const set = this.pathSet(p), target = id ?? set.active;
-    if (!target) return;
-    if (target === this.maskEntry(p)?.id) { this.changeVectorMask('delete'); return; }
-    set.list = set.list.filter((n) => n.id !== target);
-    if (set.active === target) set.active = null;
-    this.pathsChanged(p);
-  }
+  deletePath(id?: ID): void { PA.deletePath(this.pathHost, id); }
 
   /** Any open document's paths, as saving reads them. */
   pathsOf(p: Project): PathSet { return this.pathSet(p); }
 
   /** Replaces an open document's paths, as opening a project restores them. */
-  setPathsOf(p: Project, set: PathSet): void {
-    this.pathSets.set(p, { list: set.list, active: set.list.some((n) => n.id === set.active) ? set.active : null });
-    this.pathsChanged(p);
-  }
+  setPathsOf(p: Project, set: PathSet): void { PA.setPathsOf(this.pathHost, p, set); }
 
   /** Select > Make Selection from Path: the path's inside, by the non-zero winding rule, becomes the selection. */
-  pathToSelection(): void {
-    const p = this.current, vp = this.workPath, b = vp ? pathBounds(vp) : null;
-    if (!p || !vp || !b) { this.notice('Draw a path with the Pen tool first.'); return; }
-    const mask = SelectionMask.fromPath(p.doc.width, p.doc.height, b, (c) => fillVector(c as CanvasRenderingContext2D, vp), true);
-    if (!mask) { this.notice('The path lies outside the canvas.'); return; }
-    this.applySelection(mask, 'replace', 'Make Selection');
-  }
+  pathToSelection(): void { PA.pathToSelection(this.pathHost); }
 
   /** Edit > Fill Path: the path's inside painted into the active layer in the foreground colour, within any selection. */
-  fillPath(): void { this.paintPath('Fill Path', (c, _shape, vp) => { c.fillStyle = rgbCss(this.fg); fillVector(c as CanvasRenderingContext2D, vp); }); }
+  fillPath(): void { PA.fillPath(this.pathHost); }
 
   /** Edit > Stroke Path: the path traced in the foreground colour as wide as the brush, within any selection. */
-  strokePath(): void {
-    this.paintPath('Stroke Path', (c, shape) => {
-      c.strokeStyle = rgbCss(this.fg);
-      c.lineWidth = Math.max(1, this.brush.diameter);
-      c.lineJoin = 'round';
-      c.lineCap = 'round';
-      c.stroke(shape);
-    });
-  }
+  strokePath(): void { PA.strokePath(this.pathHost); }
 
   /** Stroke Path with its settings, as Photoshop's dialog has them: each subpath stroked with `tool` at its current
    *  settings, following the curves; Simulate Pressure runs the pressure from nothing at each end to full in the middle
    *  (thin, thick, thin), and when the brush's size does not follow pressure it does so for this stroke. One step. */
-  strokePathWith(tool: StrokeTool, simulatePressure: boolean): void {
-    const p = this.current, vp = this.workPath;
-    if (!p || !vp || !pathBounds(vp)) { this.notice('Draw a path with the Pen tool first.'); return; }
-    if (!this.paintable(p.activeLayer)) { this.notice('Select a pixel layer to stroke on.'); return; }
-    const runs = vp.subpaths.map((sp) => samplePath(sp, 2)).filter((pts) => pts.length > 1);
-    if (!runs.length) return;
-    const brush = tool === 'brush' || tool === 'eraser', savedDyn = this.brushDynamics, savedMode = this.brushMode;
-    if (brush) {
-      this.brushMode = tool === 'eraser' ? 'erase' : 'paint';
-      if (simulatePressure && !this.brushDynamics.size.enabled) this.brushDynamics = { ...savedDyn, size: pressureOption(0.02) };
-    }
-    const kind = ({ clone: 'clone', healBrush: 'healBrush', spotHealing: 'heal', dodge: 'dodge', burn: 'burn', sponge: 'sponge', blur: 'blur', sharpen: 'sharpen' } as const)[tool as Exclude<StrokeTool, 'brush' | 'eraser'>];
-    p.history.begin('Stroke Path', p.snapshot());
-    try {
-      for (const pts of runs) {
-        const pressure = (i: number): number => (simulatePressure ? Math.max(0.01, Math.sin((Math.PI * i) / (pts.length - 1))) : 1);
-        const ok = brush ? this.beginStroke(pts[0], false, pressure(0)) : this.beginRetouchStroke(kind, pts[0], false);
-        if (!ok) break;
-        for (let i = 1; i < pts.length; i++) this.strokeTo(pts[i], pressure(i));
-        this.endStroke();
-      }
-    } finally {
-      this.brushDynamics = savedDyn;
-      this.brushMode = savedMode;
-      p.history.end(p.snapshot());
-    }
-    this.refresh();
-  }
+  strokePathWith(tool: StrokeTool, simulatePressure: boolean): void { PA.strokePathWith(this.pathHost, tool, simulatePressure); }
 
-  private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D, vp: VectorPath) => void, given?: VectorPath): void {
-    const vp = given ?? this.workPath;
-    if (!vp || !pathBounds(vp)) { this.notice('Draw a path with the Pen tool first.'); return; }
-    const shape = tracePath(vp);
-    this.regionEdit(name, ({ raster, target, rect, cover }) => {
-      const p = this.current as Project, l = p.activeLayer as Layer;
-      const t = target === 'mask' ? l.mask?.placement ?? l.transform : l.transform;
-      const s = createSurface(rect.w, rect.h), c = ctxOf(s);
-      setMat(c, mul(translation(-rect.x, -rect.y), invert(placement(t, raster.width, raster.height))));
-      paint(c, shape, vp);
-      if (cover) {
-        c.setTransform(1, 0, 0, 1, 0, 0);
-        c.globalCompositeOperation = 'destination-in';
-        c.drawImage(cover, 0, 0);
-      }
-      const r = raster.ctx;
-      r.save();
-      r.setTransform(1, 0, 0, 1, 0, 0);
-      r.drawImage(s, rect.x, rect.y);
-      r.restore();
-    });
-  }
+  private paintPath(name: string, paint: (c: Ctx2D, shape: Path2D, vp: VectorPath) => void, given?: VectorPath): void { PA.paintPath(this.pathHost, name, paint, given); }
 
   private styleClipboard: LayerEffects | null = null;
 
@@ -4505,7 +3828,7 @@ export class Engine {
     } else doc = { ...this.copyDoc(p.doc), id: uid() };
     const paths = this.pathSet(p), tl = !flat && this.timelines.has(p) ? structuredClone(this.timelineFor(p)) : null;
     const q = this.addProject(doc, title, active);
-    if (paths.list.length) this.pathSets.set(q, structuredClone(paths));
+    if (paths.list.length) this.pathStore.sets.set(q, structuredClone(paths));
     if (tl && (tl.frames.length || tl.video)) this.setTimelineFor(q, tl);
     return q;
   }
@@ -6527,6 +5850,61 @@ export class Engine {
     return true;
   }
 
+  /** `bandedFilter` with the bands filtered on the worker pool (36.18, band-pool.ts): the same bands, aprons, tiles,
+   *  selection blend and one undo step, the same bytes (each band is filtered by the same kernel, in a worker or, where
+   *  a worker fails, here). A band's source is read when it is sent and a band is written only after the next one has
+   *  been sent, so every band still filters the layer's original pixels; results are written in order. Edits wait
+   *  (`busyWith`) while it runs. False where `bandedFilter` would be used instead: no workers, layers under the pool's
+   *  threshold, or any case `bandedFilter` declines, and a filter that grows the layer. */
+  bandedFilterPool(name: string, job: { kind: FilterKind; settings: FilterSettings; seed: number }, run: (src: ImageData, frame?: LibFrame) => ImageData, apron: number, grow = 0): Promise<boolean> | 'refused' | false {
+    const p = this.current, l = p?.activeLayer;
+    if (!p || !l?.raster || this.stroke || p.maskTarget || l.smart || l.vector || l.fillContent || !this.paintable(l)) return false;
+    if (l.raster.width * l.raster.height <= Math.max(this.bandFrom, POOL_FROM) || (p.doc.depth ?? 8) > 8 || p.doc.mode === 'cmyk' || p.doc.mode === 'lab') return false;
+    if (grow > 0 && this.canGrow(p, l)) return false;
+    if (!bandPoolReady()) return false;
+    if (this.waiting()) return 'refused';
+    const r = l.raster, W = r.width, H = r.height, A = Math.max(0, Math.ceil(apron)), B = Math.max(512, A), T = 512, N = bandPoolSize();
+    if (!this.room((N + 1) * (B + 2 * A) * W * 4 * 3 + W * H * 4, name)) return 'refused';
+    this.preview = null;
+    const sel = p.selection, m = sel ? mul(invert(placement(l.transform, W, H)), translation(sel.x, sel.y)) : null, f0 = this.filterFrame(p, l.transform, W, H);
+    const write = async (q: { y0: number; y1: number; a0: number; src: ImageData; out: Promise<ImageData | null> }): Promise<void> => {
+      const out = (await q.out) ?? run(q.src, this.bandFrame(f0, q.a0)), y0 = q.y0, h = q.y1 - y0;
+      if (!this.projects.includes(p)) return;
+      let cov: Uint8ClampedArray | null = null;
+      if (sel && m) { const s = createSurface(W, h), c = ctxOf(s); setMat(c, mul(translation(0, -y0), m)); c.drawImage(sel.surface(), 0, 0); cov = c.getImageData(0, 0, W, h).data; }
+      for (let x0 = 0; x0 < W; x0 += T) {
+        const w = Math.min(T, W - x0), before = r.read(x0, y0, w, h), tile = new ImageData(w, h);
+        for (let yy = 0; yy < h; yy++) { const so = ((y0 - q.a0 + yy) * W + x0) * 4; tile.data.set(out.data.subarray(so, so + w * 4), yy * w * 4); }
+        let after = tile;
+        if (cov) { const ct = new Uint8ClampedArray(w * h * 4); for (let yy = 0; yy < h; yy++) { const so = (yy * W + x0) * 4; ct.set(cov.subarray(so, so + w * 4), yy * w * 4); } after = this.blendThrough(before, tile, ct); }
+        if (sameBytes(before.data, after.data)) continue;
+        r.ctx.putImageData(after, x0, y0);
+        p.history.addPatch({ raster: r, x: x0, y: y0, before, after: new ImageData(1, 1), lazy: true });
+      }
+    };
+    this.busyWith = name;
+    return (async (): Promise<boolean> => {
+    p.history.begin(name, p.snapshot());
+    try {
+      const queue: { y0: number; y1: number; a0: number; src: ImageData; out: Promise<ImageData | null> }[] = [];
+      for (const b of bandPlan(H, A, B)) {
+        const src = r.ctx.getImageData(0, b.a0, W, b.a1 - b.a0);
+        queue.push({ y0: b.y0, y1: b.y1, a0: b.a0, src, out: runBandOnPool(job.kind, job.settings, job.seed, src, this.bandFrame(f0, b.a0)) });
+        while (queue.length > N) await write(queue.shift()!);   // band j is written once band j + 1 is sent
+      }
+      while (queue.length) await write(queue.shift()!);
+      r.touch();
+      if (l.shape) p.updateLayer(l.id, { shape: null });
+    } finally {
+      p.history.end(p.snapshot());
+      this.busyWith = null;
+      this.refresh();
+    }
+    void this.pageNewest(p);
+    return true;
+    })();
+  }
+
   /** A tiled layer's tiles in view as GPU layers (1.62.9, DEV_PLAN 26.6g): each tile its own texture (2,048 a side,
    *  within any GPU's limit) at the level suiting the view (a half, a quarter, down to a sixteenth of its side, so a
    *  frame's textures stay about one screen's worth at any zoom), an empty tile as the base colour stretched over it, a
@@ -7540,6 +6918,74 @@ export class Engine {
       get activeNote() { return self.activeNote; },
       set activeNote(v) { self.activeNote = v; },
       edit: (name, fn) => this.edit(name, fn),
+    };
+  }
+
+  private get pathHost(): PA.PathHost {
+    const e = this;
+    return {
+      current: this.current,
+      store: this.pathStore,
+      fg: this.fg,
+      brushDiameter: this.brush.diameter,
+      notice: (m) => this.notice(m),
+      edit: (name, fn) => this.edit(name, fn),
+      refresh: () => this.refresh(),
+      settle: () => this.settle(),
+      emit: (what) => this.emit(what, null),
+      css: (c) => rgbCss(c),
+      reshape: (p, id, path, style) => this.reshape(p, id, path, style),
+      changeVectorMask: (change) => this.changeVectorMask(change),
+      applySelection: (next, mode, name) => this.applySelection(next, mode, name),
+      paintable: (l) => this.paintable(l),
+      regionEdit: (name, apply) => this.regionEdit(name, apply),
+      stroker: {
+        get dynamics() { return e.brushDynamics; },
+        set dynamics(v) { e.brushDynamics = v; },
+        get mode() { return e.brushMode; },
+        set mode(v) { e.brushMode = v; },
+        begin: (pt, pressure) => e.beginStroke(pt, false, pressure),
+        beginRetouch: (kind, pt) => e.beginRetouchStroke(kind, pt, false),
+        to: (pt, pressure) => e.strokeTo(pt, pressure),
+        end: () => e.endStroke(),
+      },
+    };
+  }
+
+  private get textHost(): TX.TextHost {
+    const e = this;
+    return {
+      get current() { return e.current; },
+      get textSettings() { return e.textSettings; },
+      set textSettings(v) { e.textSettings = v; },
+      notice: (m) => this.notice(m),
+      edit: (name, fn) => this.edit(name, fn),
+      applySelection: (next, mode, name) => this.applySelection(next, mode, name),
+      insertRasterLayer: (raster, name, x, y, extra, undoName) => this.insertRasterLayer(raster, name, x, y, extra, undoName),
+      paths: {
+        get work() { return e.workPath; },
+        select: (id) => e.selectPath(id),
+        setWork: (vp) => e.setWorkPath(vp),
+      },
+      renderShape: (path, style) => this.renderShape(path, style),
+    };
+  }
+
+  private get videoHost(): VD.VideoHost {
+    const e = this;
+    return {
+      get current() { return e.current; },
+      store: this.videoStoreState,
+      work: this.work,
+      timelineOf: (p) => this.timelineOf(p),
+      setTimeline: (p, t) => { this.timelines.set(p, t); },
+      blocked: () => !!this.stroke || this.waiting(),
+      settle: () => this.settle(),
+      refresh: () => this.refresh(),
+      emit: (what) => this.emit(what, null),
+      insertRasterLayer: (raster, name, x, y, extra, undoName) => this.insertRasterLayer(raster, name, x, y, extra, undoName),
+      selectLayer: (id) => this.selectLayer(id),
+      duplicateLayers: () => this.duplicateLayers(),
     };
   }
 
