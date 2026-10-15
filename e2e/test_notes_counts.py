@@ -1,12 +1,19 @@
 DLG = ".cv-scrim:not([hidden]) .cv-dialog"
 
 
+def settle(page):
+    # The view fitted and the stage not moving for several frames (under load the docks can still be settling).
+    page.evaluate("""async () => { const e = window.formvis.engine, key = () => { const q = e.current.viewport, r = document.querySelector('.cv-stage').getBoundingClientRect(); return [q.fitted, q.panX, q.panY, q.zoom, r.left, r.top].join(); };
+      for (let i = 0, last = '', same = 0; i < 300 && same < 4; i++) { await new Promise((r) => requestAnimationFrame(r)); const k = key(); same = k === last ? same + 1 : 0; last = k; } }""")
+
+
 def scr(page, x, y):
     return page.evaluate("([x, y]) => { const v = window.formvis.engine.current.viewport, s = document.querySelector('.cv-stage').getBoundingClientRect(), q = v.toScreen(x, y); return [s.left + q.x, s.top + q.y]; }", [x, y])
 
 
 def test_notes_are_pinned_written_edited_deleted_and_undone(page):
     page.evaluate("window.formvis.engine.newDocument(300, 200, 'N', 'white'); window.formvis.engine.setTool('note')")
+    settle(page)
     x, y = scr(page, 50, 60); page.mouse.click(x, y)
     page.locator(f"{DLG} textarea").fill("Check the horizon")
     page.locator(f"{DLG} .cv-dialog-foot button", has_text="Save").click()
@@ -26,6 +33,7 @@ def test_notes_are_pinned_written_edited_deleted_and_undone(page):
 
 def test_counting_and_both_saved_with_the_document(page):
     page.evaluate("window.formvis.engine.newDocument(300, 200, 'C', 'white'); window.formvis.engine.setTool('count')")
+    settle(page)
     for (px, py) in [(40, 40), (120, 80), (220, 150)]:
         x, y = scr(page, px, py); page.mouse.click(x, y)
     assert page.evaluate("window.formvis.engine.current.doc.counts.length") == 3

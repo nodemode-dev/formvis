@@ -11,7 +11,9 @@ SETUP = """async () => { const e = window.formvis.engine; e.newDocument(200, 160
   e.setWorkPath({ subpaths: [sq(40), sq(80)] }); e.fg = { r: 0, g: 0, b: 0 }; e.setTool('pathSelect'); if (e.tool !== 'pathSelect') throw new Error('tool');
   // Where to click only once the new document's view is fitted (the next frame; 1.50.8, clicks could miss the path).
   for (let i = 0; i < 100 && !(e.current.viewport.fitted && e.current.viewport.width > 0); i++) await new Promise((r) => requestAnimationFrame(r));
-  await new Promise((r) => requestAnimationFrame(r));
+  // ... and its place unchanged for several frames (under load the docks can still be settling and move the stage).
+  const key = () => { const q = e.current.viewport, r = document.querySelector('.cv-stage').getBoundingClientRect(); return [q.panX, q.panY, q.zoom, r.left, r.top].join(); };
+  for (let i = 0, last = '', same = 0; i < 300 && same < 4; i++) { await new Promise((r) => requestAnimationFrame(r)); const k = key(); same = k === last ? same + 1 : 0; last = k; }
   const v = e.current.viewport, b = document.querySelector('.cv-stage').getBoundingClientRect(); return [b.left + v.panX, b.top + v.panY, v.zoom]; }"""
 DARK = "([x, y]) => window.formvis.engine.flattened().getContext('2d').getImageData(x, y, 1, 1).data[0] < 60"
 CAPTURE = """async () => {
