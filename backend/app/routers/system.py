@@ -158,7 +158,8 @@ def font_file(family: str, bold: int = 0, italic: int = 0) -> Response:
     if path is None:
         path = _scan_font(name, bool(bold), bool(italic))
     if path is None or path.suffix.lower() not in _FONT_TYPES or not path.is_file():
-        raise HTTPException(status_code=404, detail=f"No font file found for {name}.")
+        # A family not installed here is an answer, not a fault: 204 keeps the browser from logging a failed load (1.72.5).
+        return Response(status_code=204, headers={"X-Formvis-Font": "missing"})
     try:
         data = path.read_bytes()
     except OSError as err:

@@ -51,12 +51,20 @@ export type FontFileSource = (family: string, bold: boolean, italic: boolean) =>
 let source: FontFileSource = async (family, bold, italic) => {
   if (!(await (await import('../io/api')).serviceReady())) throw new Error(`No font file for ${family}`);   // the engine service is not running
   const res = await fetch(`/api/fonts/file?family=${encodeURIComponent(family)}&bold=${bold ? 1 : 0}&italic=${italic ? 1 : 0}`);
-  if (!res.ok) throw new Error(`No font file for ${family}`);
+  if (!res.ok || res.status === 204) throw new Error(`No font file for ${family}`);   // 204: not installed here (1.72.5)
   return res.arrayBuffer();
 };
 
 /** Where the font file's bytes come from (the app sets the engine's route; the default asks it directly). */
 export function setFontFileSource(fn: FontFileSource): void { source = fn; }
+
+/** CSS's generic families name no file, so asking the engine for one only logs a 404 (1.72.5). */
+const GENERIC = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'ui-rounded', 'math', 'emoji', 'fangsong']);
+
+/** The font file through the current source, refused at once for a generic family. */
+function fileOf(family: string, bold: boolean, italic: boolean): Promise<ArrayBuffer> {
+  return GENERIC.has(family.trim().toLowerCase()) ? Promise.reject(new Error(`${family} is a generic family`)) : source(family, bold, italic);
+}
 
 /** The feature tags a font file's GSUB and GPOS tables list (DEV_PLAN 32.6d). Every read is bounds-checked; on a bad
  *  offset the tags collected so far are returned. A TrueType Collection is read at its first font. */
@@ -105,7 +113,7 @@ export function featuresOf(family: string, bold: boolean, italic: boolean): Prom
   const job = (async (): Promise<Set<string> | null> => {
     try {
       let data = bytes.get(key);
-      if (!data) { data = source(family, bold, italic); bytes.set(key, data); }
+      if (!data) { data = fileOf(family, bold, italic); bytes.set(key, data); }
       const found = fontFeatureTags(await data);
       detectedDone.set(key, found);
       return found;
@@ -157,7 +165,7 @@ export async function ensureVariant(family: string, bold: boolean, italic: boole
     try {
       const fk = faceKey(family, bold, italic);
       let data = bytes.get(fk);
-      if (!data) { data = source(family, bold, italic); bytes.set(fk, data); }
+      if (!data) { data = fileOf(family, bold, italic); bytes.set(fk, data); }
       const name = `${family}__ot_${hash(key)}`;
       const face = new FontFace(name, await data, { featureSettings: settings(list), weight: bold ? '700' : '400', style: italic ? 'italic' : 'normal' });
       await face.load();
