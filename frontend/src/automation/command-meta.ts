@@ -496,6 +496,8 @@ const ROWS: Record<string, Row> = {
   'distribute-vspace': ['Layer', 'Makes the gaps between layers equal down.', 'Use when vertical gaps should match.', 'm'],
   'edit-adjustment': ['Layer', 'Opens the settings of the active adjustment layer.', 'Use when an adjustment layer needs different values.', 'm'],
   'new-fill-solid': ['Layer', 'Adds a solid colour fill layer.', 'Use when you want a flat colour layer that stays editable.', 'm'],
+  'new-relight-layer': ['Layer', 'Adds a Relight layer that lights what lies beneath it with virtual lights, on this computer.', 'Use when you want to change the direction, colour or mood of the light in a photo without any credits or cloud.', 'm'],
+  'edit-relight': ['Layer', 'Reopens the lights of the selected Relight layer.', 'Use when you want to move, recolour or add lights on a Relight layer you made earlier.', 'm'],
   'new-fill-gradient': ['Layer', 'Adds a gradient fill layer.', 'Use when you want a gradient layer that stays editable.', 'm'],
   'new-fill-pattern': ['Layer', 'Adds a pattern fill layer.', 'Use when you want a patterned layer that stays editable.', 'm'],
   'layer-content-options': ['Layer', 'Opens the content options of a fill layer.', 'Use when a fill layer needs another colour, gradient or pattern.', 'm'],

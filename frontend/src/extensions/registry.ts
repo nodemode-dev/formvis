@@ -36,6 +36,7 @@ export interface Tool {
   label: string;
   key: string;
   order: number;
+  hidden?: boolean;
   icon(engine: Engine): string;
   hint(engine: Engine): string;
   cursor?(ctx: ToolContext, p: ToolPointer | null): string;

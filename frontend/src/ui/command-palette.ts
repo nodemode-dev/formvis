@@ -115,7 +115,7 @@ export class CommandPalette extends Dialog {
       hits.push({ key: c.id, label, meta: [path, this.commands.keyLabel(c)].filter(Boolean).join(' · '), icon: c.icon ?? '', enabled: this.commands.enabled(c), why: t(this.commands.why(c)), score: score + first(c.id), run: () => { this.commands.run(c.id); } });
     }
     for (const t of toolList()) {
-      const key = `tool:${t.id}`, score = fuzzyScore(query, `${t.label} tool`);
+      const key = `tool:${t.id}`, score = t.hidden ? null : fuzzyScore(query, `${t.label} tool`);
       if (score === null) continue;
       hits.push({ key, label: `${t.label} Tool`, meta: `Tool · ${t.key}`, icon: t.icon(this.engine), enabled: true, score: score + (query ? 2 : 0) + first(key), run: () => this.engine.setTool(t.id) });
     }

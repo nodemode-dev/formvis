@@ -218,6 +218,7 @@ export class LayersPanel {
     setClass(row, 'is-collapsed', collapsed);
     setClass(row, 'is-adjust', !!l.adjustment);
     setClass(row, 'is-fill', !!l.fillContent);
+    setClass(row, 'is-relight', !!l.relight);
     setClass(row, 'has-mask', !!l.mask);
     setClass(row, 'mask-off', !!l.mask && !l.mask.enabled);
     setClass(row, 'is-mask-target', active && p.maskTarget && !!l.mask);
@@ -491,6 +492,7 @@ export class LayersPanel {
       else if (row.classList.contains('is-text')) document.dispatchEvent(new CustomEvent('cv:type', { detail: { layerId: row.dataset.id } }));
       else if (row.classList.contains('is-adjust')) row.dispatchEvent(new CustomEvent('cv:edit-adjustment', { bubbles: true, detail: row.dataset.id }));
       else if (row.classList.contains('is-fill') && !t.closest('.cv-layer-mask')) row.dispatchEvent(new CustomEvent('cv:fill-options', { bubbles: true, detail: row.dataset.id }));
+      else if (row.classList.contains('is-relight') && !t.closest('.cv-layer-mask')) row.dispatchEvent(new CustomEvent('cv:relight-edit', { bubbles: true, detail: row.dataset.id }));
     });
     this.list.addEventListener('contextmenu', (e) => {
       e.preventDefault();

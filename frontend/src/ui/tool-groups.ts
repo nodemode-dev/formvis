@@ -11,6 +11,7 @@ const STORE = 'formvis.toolGroups.last';
 export function toolGroups(): ToolGroup[] {
   const out: ToolGroup[] = [];
   for (const t of toolList()) {
+    if (t.hidden) continue;
     const k = t.group ?? t.key, g = out.find((x) => x.key === k);
     if (g) g.tools.push(t); else out.push({ key: k, tools: [t] });
   }
@@ -43,7 +44,7 @@ export function resolveLayout(pref: { groups: string[][]; hidden: string[] } | n
   }
   const hidden = pref.hidden.map(take).filter(isTool);
   for (const t of toolList()) {
-    if (seen.has(t.id)) continue;
+    if (seen.has(t.id) || t.hidden) continue;
     seen.add(t.id);
     const k = t.group ?? t.key, home = groups.find((g) => g.tools.some((x) => (x.group ?? x.key) === k));
     if (home) home.tools.push(t); else groups.push({ key: k, tools: [t] });
