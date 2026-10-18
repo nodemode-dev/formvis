@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.80.0 · 2026-10-18
+
+### Fixed
+
+- Blind slats have soft edges on both sides; one edge of every slat was a hard step.
+- Slat shadows no longer tear into ragged patches in hair: the shape that bends them is smoothed, and a far wall gets no displaced copy of a strip.
+- Light colours are as rich as the reference's: warm light gives saturated peach skin, not a pale veil.
+- No bright line down the picture's edge where the depth model misreads its border.
+- The Neon Club Look's lights moved in from the picture's edges.
+
 ## 1.79.0 · 2026-10-18
 
 ### Changed

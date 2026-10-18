@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Slat shadows that look like light · _v1.80.0 (engine/relight.ts, gpu/relight-gl.ts)
+
+The owner on 1.79.0: "how god awful it looks". At 100 percent beside the reference's face: the stripe edges were razor hard, torn and jagged through the hair, and the lit stripes pale, like a translucent sheet laid over her. Three causes, found by looking:
+
+- The slat phase wrapped: `smooth(-hf, hf, ph)` jumped from 0 to 0.5 where `ph` wrapped from 1 to 0, so one edge of every slat was a hard step whatever the feather. Now the distance to the slat's centre, cyclic: `q = |fract(ph - open / 2 + 0.5) - 0.5|`, `m = smooth(open / 2 + hf, open / 2 - hf, q)`. Replaced: `const hf = Math.min(f, 0.45) * 0.5, wash = ...;` and `m = frameOnly ? frame : frame * (smooth(open + hf, open - hf, ph) * smooth(-hf, hf, ph) * (1 - wash) + open * wash);` (GLSL: `float hf = min(f, 0.45) * 0.5, ...;` and the `sstep` twin). Edge cap 0.3 of a period, so the gaps still reach dark.
+- The projection read raw depth: Depth Anything's noise in the hair tore the slats into ragged patches. `relightGeometry` keeps a smoothed depth (box blur s/150, 3 passes) in `.a` (normals still from the lightly blurred depth), and the projection soft-clamps the depth difference to the aimed surface at `0.06 relief` (`band * tanh(dz / band)`), so a far wall no longer gets a displaced ghost band. Replaced: `const data = new Float32Array(n * 4);`, `data[i * 4 + 3] = clamp(sm[i], 0, 1);`, `const uv = goboUV(..., pz - zAim);` (GLSL `vec3(p - aim, pz - zAim)`).
+- Light colour is the sRGB swatch to the power 1.5: the reference's lit skin is a saturated peach (219, 148, 113), formvis gave (220, 163, 130). Replaced: `color: [l.color.r / 255, l.color.g / 255, l.color.b / 255],`.
+- Depth Anything's 1 to 2 pixel border is often wrong (0.83 at x 0 against 0.02 beside it), which lit a pink line down the picture's edge in Neon: the outer 3 pixels copy the depth just inside. Replaced: `const s = Math.max(w, h), n = w * h, sm = new Float32Array(depth), relief = NORMAL_RELIEF * s;`.
+- The Neon Look's lights moved in from the edges (pink 0.2, 0.62; cyan 0.8, 0.35; were 0.08, 0.7 and 0.92, 0.3).
+
+Lit face (219, 155, 119) against the reference's (219, 148, 113); lit hair (188, 145, 115) against (188, 142, 114); Blinds mean gain error 0.55 stops, subject 90th percentile 1.03 against 1.02.
+
 ## Gobos projected onto the depth surface · _v1.79.0 (engine/relight.ts, gpu/relight-gl.ts, extensions/tools/relight.ts)
 
 The owner on 1.78.0: the blinds must follow "the contours of the body/subject/objects/environment". Studied the reference's close-ups (frames 13, 15, 21): the slat shadows rise about 20 to 25 degrees to the right, curve around the arm like contour lines on a cylinder, jump at the arm's and face's silhouettes, and the frame the reference draws is a quadrilateral, a projected rectangle. 1.78.0 drew the pattern flat in picture space with a 0.05 nudge by depth, and the nudge had the wrong sign.
