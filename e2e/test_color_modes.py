@@ -60,7 +60,8 @@ def test_new_document_modes_and_flatten_image(page):
     page.locator("select[aria-label='Color Mode']").select_option("bitmap")
     assert page.locator("select[aria-label='Bit depth'] option").all_inner_texts() == ["1 bit"]
     page.locator("select[aria-label='Color Mode']").select_option("grayscale")
-    assert page.locator("select[aria-label='Bit depth'] option").all_inner_texts() == ["8 bit"]
+    assert page.locator("select[aria-label='Bit depth'] option").all_inner_texts() == ["8 bit", "16 bit", "32 bit"]
+    page.locator("select[aria-label='Bit depth']").select_option("8")
     page.locator(".cv-scrim:not([hidden]) .cv-dialog-foot button", has_text="Create").click()
     assert page.evaluate("window.formvis.engine.current.doc.mode") == "grayscale" and tab_is(page, "Gray/8")
     page.evaluate("window.formvis.engine.newDocument(100, 60, 'F', 'white'); window.formvis.engine.addLayer(); window.formvis.engine.addLayer()")
@@ -79,16 +80,18 @@ def test_wet_edges_keep_a_whole_strokes_rim(page):
     assert middle < rim - 60, col                                                              # the middle lighter along the stroke
 
 
-def test_new_document_says_what_is_not_offered_and_sizes_by_mode(page):
-    # 1.50.2 claimed this note and did not show it; the size was reckoned as RGB for every mode.
+def test_new_document_offers_every_mode_and_depth_and_sizes_by_both(page):
+    # The size was reckoned as RGB for every mode (1.50.2); the dialog offered only 8 bit, RGB, Grayscale and Bitmap (1.85.2).
     page.evaluate("window.formvis.commands.run('new')")
-    note = page.locator(".cv-scrim:not([hidden]) .cv-nd-note")
-    assert note.is_visible() and "CMYK" in note.inner_text() and "32 bit" in note.inner_text()
+    assert page.locator("select[aria-label='Color Mode'] option").all_inner_texts() == ["Bitmap", "Grayscale", "RGB Color", "CMYK Color", "Lab Color"]
+    assert not page.locator(".cv-scrim:not([hidden]) .cv-nd-note").count()
     page.locator(".cv-scrim:not([hidden]) input[aria-label='Width']").fill("1920")
     page.locator(".cv-scrim:not([hidden]) input[aria-label='Height']").fill("1080")
     sizes = {}
-    for m in ["rgb", "grayscale", "bitmap"]:
+    for m, d in [("rgb", "8"), ("rgb", "16"), ("grayscale", "8"), ("bitmap", "1"), ("cmyk", "8"), ("lab", "16")]:
         page.locator("select[aria-label='Color Mode']").select_option(m)
-        sizes[m] = page.locator(".cv-scrim:not([hidden]) .cv-nd-meta").inner_text()
-    assert "5.9 MB" in sizes["rgb"] and "2.0 MB" in sizes["grayscale"] and "0.2 MB" in sizes["bitmap"], sizes
+        page.locator("select[aria-label='Bit depth']").select_option(d)
+        sizes[m + d] = page.locator(".cv-scrim:not([hidden]) .cv-nd-meta").inner_text()
+    assert "5.9 MB" in sizes["rgb8"] and "11.9 MB" in sizes["rgb16"] and "2.0 MB" in sizes["grayscale8"] and "0.2 MB" in sizes["bitmap1"], sizes
+    assert "7.9 MB" in sizes["cmyk8"] and "11.9 MB" in sizes["lab16"], sizes
     page.keyboard.press("Escape")

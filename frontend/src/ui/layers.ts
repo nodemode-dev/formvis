@@ -5,6 +5,7 @@ import type { LayerLocks } from '../engine/types';
 import { enhanceSelect } from './dropdown';
 import { el, isMac, patchList, q, setClass, setDisabled, setHidden, setHtml, setStyleVar, setText, setTitle, setValue } from './dom';
 import { icon } from './icons';
+import { t } from './i18n';
 import { paint } from './palette';
 import type { PopupMenu } from './menu';
 
@@ -68,6 +69,8 @@ export class LayersPanel {
   private renaming: ID | null = null;
   private drag: { id: ID; ids: ID[]; startY: number; pointerId: number; started: boolean; wasSelected: boolean; target: { id: ID; where: Where } | null; maskFrom: ID | null; tabTarget: string | null } | null = null;
   private swipe: { visible: boolean; pointerId: number } | null = null;
+  /** Keeps the open Opacity or Fill slider popover on the layer's value (and closes it when the layer cannot take one). */
+  private slideSync: () => void = () => {};
 
   constructor(root: HTMLElement, private readonly engine: Engine, private readonly menu: PopupMenu) {
     root.insertAdjacentHTML('beforeend',
@@ -75,8 +78,8 @@ export class LayersPanel {
       `<div class="cv-layer-props"><div class="cv-layer-kind"><select class="cv-select cv-kind" title="Filter by kind" aria-label="Filter by kind"><option value="all">Kind</option>${KINDS.map((k) => `<option value="${k.id}">${k.label}</option>`).join('')}</select>` +
       `<div class="cv-kind-icons" role="group" aria-label="Show only">${KINDS.map((k) => `<button class="cv-kind-btn" type="button" data-kind="${k.id}" title="${k.label} layers" aria-label="${k.label} layers" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('')}</div></div>` +
       `<div class="cv-layer-blendrow"><select class="cv-select cv-blend" title="Blend mode" aria-label="Blend mode">${blendOptions()}</select><span class="cv-vsep"></span>` +
-      `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span></label></div>` +
-      `<div class="cv-layer-lockrow"><span class="cv-lock-slot"></span><span class="cv-vsep"></span><label class="cv-opacity" title="Fill: the layer's pixels, not its styles"><span>Fill</span><span class="cv-num"><input class="cv-fill-field" type="text" inputmode="numeric" value="100" aria-label="Fill"><span class="cv-unit">%</span></span></label></div></div>` +
+      `<label class="cv-opacity" title="Opacity"><span>Opacity</span><span class="cv-num"><input class="cv-opacity-field" type="text" inputmode="numeric" value="100" aria-label="Opacity"><span class="cv-unit">%</span></span><button class="cv-slide-btn cv-slide-opacity" type="button" title="${t('Opacity slider')}" aria-label="${t('Opacity slider')}" aria-haspopup="dialog" aria-expanded="false">${icon('chevronDown', 12)}</button></label></div>` +
+      `<div class="cv-layer-lockrow"><span class="cv-lock-slot"></span><span class="cv-vsep"></span><label class="cv-opacity" title="Fill: the layer's pixels, not its styles"><span>Fill</span><span class="cv-num"><input class="cv-fill-field" type="text" inputmode="numeric" value="100" aria-label="Fill"><span class="cv-unit">%</span></span><button class="cv-slide-btn cv-slide-fill" type="button" title="${t('Fill slider')}" aria-label="${t('Fill slider')}" aria-haspopup="dialog" aria-expanded="false">${icon('chevronDown', 12)}</button></label></div></div>` +
       `<div class="cv-layer-list"><div class="cv-layer-rows" role="listbox" aria-label="Layers"></div><div class="cv-drop-line"></div><div class="cv-layers-empty">No canvas open. Create one or drop images on the stage.</div></div>` +
       `<div class="cv-panel-foot"><button class="cv-icon-btn" type="button" data-cmd="link-layers">${icon('link', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="add-mask">${icon('mask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="clip">${icon('clipMask', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-folder">${icon('folder', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="duplicate">${icon('duplicate', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="new-layer">${icon('add', 16)}</button><button class="cv-icon-btn" type="button" data-cmd="delete-layer">${icon('delete', 16)}</button></div></div>`);
     // The Layers group is a panel group (1.49.2, the owner's walkthrough: every panel groups with any other): its Layers
@@ -90,7 +93,9 @@ export class LayersPanel {
     this.blend = q<HTMLSelectElement>(root, '.cv-blend');
     this.opacity = q<HTMLInputElement>(root, '.cv-opacity-field');
     this.blend.addEventListener('change', () => engine.setBlend(this.blend.value as Layer['blend']));
-    enhanceSelect(this.blend, { search: 'Search blend modes...' });   // shown as the target's grouped list (s21)
+    // Shown as the target's grouped list (s21); a mode under the pointer or the arrow keys previews live on the canvas
+    // (engine.previewBlend, no history), leaving the list restores the layer's own, and a choice is one setBlend step.
+    enhanceSelect(this.blend, { search: 'Search blend modes...', onHover: (v) => engine.previewBlend(v as Layer['blend'] | null) });
     // Opacity as the target's numeric field: Enter or leaving it commits (one undo step); arrows step by 1, Shift by 10.
     const commit = (pct: number): void => {
       const v = Math.min(100, Math.max(0, Math.round(pct)));
@@ -114,6 +119,83 @@ export class LayersPanel {
       e.preventDefault();
       commitFill((parseFloat(this.fill.value) || 0) + (e.key === 'ArrowUp' ? 1 : -1) * (e.shiftKey ? 10 : 1));
     });
+    // Photoshop's Opacity and Fill: a chevron beside the field opens one shared slider popover under it, and the label
+    // scrubs (press and drag sideways, Shift ten times faster). Both drive the engine's live edit (begin, live, end), begun
+    // on the first change and ended on release, so a whole drag is one undo step. Nodes are updated in place, never rebuilt.
+    type Live = { field: HTMLInputElement; btn: HTMLButtonElement; pct: () => number; begin: () => void; live: (v: number) => void; end: () => void; editing: boolean };
+    const pctOf = (n: number): number => Math.min(100, Math.max(0, Math.round(n)));
+    const lives: Live[] = [
+      { field: this.opacity, btn: q<HTMLButtonElement>(root, '.cv-slide-opacity'), pct: () => pctOf((engine.activeLayer?.opacity ?? 1) * 100), begin: () => engine.beginOpacityEdit(), live: (v) => engine.setOpacityLive(v), end: () => engine.endOpacityEdit(), editing: false },
+      { field: this.fill, btn: q<HTMLButtonElement>(root, '.cv-slide-fill'), pct: () => pctOf((engine.activeLayer?.fill ?? 1) * 100), begin: () => engine.beginFillEdit(), live: (v) => engine.setFillLive(v), end: () => engine.endFillEdit(), editing: false },
+    ];
+    const pop = el(`<div class="cv-dd-pop cv-slide-pop" role="dialog" hidden><input class="cv-slide-range" type="range" min="0" max="100" step="1"></div>`);
+    const range = q<HTMLInputElement>(pop, '.cv-slide-range');
+    (document.getElementById('overlay-root') ?? document.body).appendChild(pop);
+    let openFor: Live | null = null;
+    const nudge = (p: Live, pct: number): void => {
+      const v = pctOf(pct);
+      if (!p.editing) { if (p.pct() === v) return; p.begin(); p.editing = true; }
+      p.live(v / 100);
+      p.field.value = String(v);
+    };
+    const finish = (p: Live): void => { if (p.editing) { p.editing = false; p.end(); } };
+    const closeSlide = (refocus = false): void => {
+      const p = openFor;
+      if (!p) return;
+      openFor = null;
+      finish(p);
+      setHidden(pop, true);
+      p.btn.setAttribute('aria-expanded', 'false');
+      if (refocus) p.btn.focus();
+    };
+    const openSlide = (p: Live): void => {
+      if (p.field.disabled) return;
+      openFor = p;
+      range.value = String(p.pct());
+      setHidden(pop, false);
+      p.btn.setAttribute('aria-expanded', 'true');
+      const r = (p.field.parentElement as HTMLElement).getBoundingClientRect();
+      pop.style.left = `${Math.round(Math.max(4, Math.min(r.left, window.innerWidth - pop.offsetWidth - 4)))}px`;
+      pop.style.top = `${Math.round(r.bottom + 4 + pop.offsetHeight <= window.innerHeight - 4 ? r.bottom + 4 : Math.max(4, r.top - 4 - pop.offsetHeight))}px`;
+      range.focus();
+    };
+    range.addEventListener('input', () => { if (openFor) nudge(openFor, Number(range.value)); });
+    range.addEventListener('change', () => { if (openFor) finish(openFor); });
+    document.addEventListener('pointerdown', (e) => { if (openFor && !pop.contains(e.target as Node) && !openFor.btn.contains(e.target as Node)) closeSlide(); }, true);
+    document.addEventListener('keydown', (e) => { if (openFor && e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeSlide(true); } }, true);
+    this.slideSync = (): void => {
+      if (!openFor) return;
+      if (openFor.field.disabled) closeSlide(); else setValue(range, String(openFor.pct()));
+    };
+    for (const p of lives) {
+      p.btn.addEventListener('click', () => { const was = openFor === p; closeSlide(); if (!was) openSlide(p); });
+      const lab = (p.field.closest('label') as HTMLElement).firstElementChild as HTMLElement;
+      let from: { id: number; last: number; value: number; moved: boolean } | null = null, dragged = false;
+      lab.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0 || p.field.disabled) return;
+        e.preventDefault();
+        from = { id: e.pointerId, last: e.clientX, value: p.pct(), moved: false };
+        lab.setPointerCapture(e.pointerId);
+      });
+      lab.addEventListener('pointermove', (e) => {
+        if (!from || e.pointerId !== from.id) return;
+        const dx = e.clientX - from.last;
+        if (!from.moved && Math.abs(dx) < 2) return;
+        from.moved = true;
+        from.last = e.clientX;
+        from.value = Math.min(100, Math.max(0, from.value + dx * (e.shiftKey ? 10 : 1)));
+        nudge(p, from.value);
+      });
+      const stop = (e: PointerEvent): void => {
+        if (!from || e.pointerId !== from.id) return;
+        dragged = from.moved;
+        from = null;
+        finish(p);
+      };
+      lab.addEventListener('pointerup', stop);
+      lab.addEventListener('pointercancel', stop);
+      lab.addEventListener('click', (e) => { if (dragged) { e.preventDefault(); dragged = false; } });
+    }
     // The Lock row, as the target's: transparency, image pixels, position, all; each click one undo step.
     const slot = q(root, '.cv-lock-slot');
     slot.innerHTML = `<span class="cv-lock-label">Lock:</span>` + LOCKS.map((k) => `<button class="cv-lock-btn" type="button" data-lock="${k.id}" title="Lock ${k.title}" aria-label="Lock ${k.title}" aria-pressed="false">${icon(k.icon, 14)}</button>`).join('');
@@ -290,6 +372,7 @@ export class LayersPanel {
       setDisabled(b, !l);
     }
     if (document.activeElement !== this.fill) setValue(this.fill, String(Math.round((pixel ? (l as Layer).fill ?? 1 : 1) * 100)));
+    this.slideSync();
   }
 
   /** The kind icons and dropdown show the filter. */

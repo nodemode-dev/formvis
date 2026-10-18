@@ -29,6 +29,7 @@ const hexOf = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g,
 const rgbOf = (v: string): { r: number; g: number; b: number } | null => { const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(v); return m ? { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) } : null; };
 
 const TOOL_WHEN: Record<string, string> = {
+  relight: 'to light the picture with virtual lights: picking it starts Relight on an 8-bit RGB document',
   move: 'to move, align or transform layers by dragging', marquee: 'to select a rectangle, ellipse or single row or column', lasso: 'to select a freehand, polygon or magnetic outline',
   artboard: 'to draw, move or resize an artboard on the canvas, or add one beside another',
   objectSelect: 'to select an object by drawing a box around it', quickSelect: 'to select by painting over an area', wand: 'to select a region of similar colour with one click',

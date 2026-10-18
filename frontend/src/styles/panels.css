@@ -310,6 +310,15 @@
 .cv-layer-lockrow { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
 .cv-lock-slot { flex: 1; min-width: 0; }
 .cv-layer-lockrow .cv-opacity > span:first-child, .cv-layer-blendrow .cv-opacity > span:first-child { min-width: 50px; text-align: right; }
+/* Opacity and Fill as the target's: the label scrubs sideways, a chevron beside the field opens the slider popover (it is a
+   .cv-dd-pop too, so it takes the glass, the popover layer and the hidden rule). */
+.cv-layer-lockrow .cv-opacity > span:first-child, .cv-layer-blendrow .cv-opacity > span:first-child { cursor: ew-resize; user-select: none; -webkit-user-select: none; touch-action: none; }
+.cv-slide-btn { display: inline-grid; place-items: center; width: 18px; height: 28px; flex: none; margin-left: -4px; padding: 0; border: 0; border-radius: 5px; background: transparent; color: var(--text-muted); cursor: pointer; }
+.cv-slide-btn:hover, .cv-slide-btn[aria-expanded="true"] { color: var(--text-primary); }
+.cv-slide-btn:focus-visible { outline: 1px solid var(--accent-color); }
+.cv-slide-btn[aria-expanded="true"] .icon { transform: rotate(180deg); }
+.cv-dd-pop.cv-slide-pop { width: 168px; padding: 10px 12px; overflow: visible; }
+.cv-slide-range { display: block; width: 100%; margin: 0; accent-color: var(--accent-color); cursor: pointer; }
 /* The Lock row (the target's): "Lock:" and four toggles; the one on is lavender-tinted. */
 .cv-lock-slot { display: flex; align-items: center; gap: 2px; color: var(--text-secondary); font-size: 13px; }
 .cv-lock-label { margin-right: 6px; }

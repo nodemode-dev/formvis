@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.85.2 · 2026-10-18
+
+### Fixed
+
+- Rotate View: a turned view covered only part of the stage, leaving bare strips on both sides (or above and below) that hid the picture. The canvas now reaches every corner at any angle.
+- The Navigator turns with the view, and its red frame shows exactly the part of the picture on screen.
+- Image > Image Rotation 90 degrees keeps the document centred on screen.
+- Layers panel: Opacity and Fill have sliders (the arrow beside each field) and scrubby labels, and the blend mode menu previews each mode live on the canvas as you hover or arrow through it; leaving the menu restores the layer.
+- New Document creates Bitmap, Grayscale, RGB, CMYK and Lab documents at 8, 16 or 32 bits where the mode allows, with a clean history.
+- The transparency checkerboard follows the theme (Grid Colors: Match Theme, the new default).
+- Deselect also works with Escape and with a plain click of the marquee or lasso, and their options bars show a Deselect button while there is a selection.
+- Relight is easy to find: Filter > Relight..., Layer > New > Relight Layer... and the Relight tool in the tool rail.
+
 ## 1.85.1 · 2026-10-18
 
 ### Fixed

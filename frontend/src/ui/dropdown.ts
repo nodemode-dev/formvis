@@ -4,8 +4,10 @@ import { icon } from './icons';
 /** A native <select> shown as the target's menu (Phase 21, UI_SPEC.md; s21's blend modes, s23's workspaces): a button
  *  with the chosen label and a chevron; a rounded list with an optional search, the <optgroup>s as small grey headings,
  *  a tick on the chosen item; arrows, Enter and Esc. The <select> stays underneath and stays the truth: a choice sets its
- *  value and fires its change event, so the code that owns it is unchanged; values it is given show on the button. */
-export function enhanceSelect(select: HTMLSelectElement, opts: { search?: string } = {}): void {
+ *  value and fires its change event, so the code that owns it is unchanged; values it is given show on the button.
+ *  `onHover`, when given, hears the value under the pointer or the arrow keys as a live preview, and null when the menu
+ *  closes or the pointer leaves it without a choice; a choice fires change as ever, and onHover(null) follows it. */
+export function enhanceSelect(select: HTMLSelectElement, opts: { search?: string; onHover?: (value: string | null) => void } = {}): void {
   const btn = el<HTMLButtonElement>(`<button class="cv-dd-btn" type="button" aria-haspopup="listbox"><span class="cv-dd-label"></span>${icon('chevronDown', 12)}</button>`);
   const pop = el(`<div class="cv-dd-pop" role="listbox" hidden>${opts.search ? '<input class="cv-dd-search" type="search">' : ''}<div class="cv-dd-list"></div></div>`);
   const list = pop.querySelector('.cv-dd-list') as HTMLElement, search = pop.querySelector('.cv-dd-search') as HTMLInputElement | null;
@@ -42,7 +44,8 @@ export function enhanceSelect(select: HTMLSelectElement, opts: { search?: string
         item.dataset.value = o.value;
         item.classList.toggle('is-chosen', o.value === select.value);
         item.setAttribute('aria-selected', String(o.value === select.value));
-        item.addEventListener('click', () => { close(); if (select.value !== o.value) { select.value = o.value; select.dispatchEvent(new Event('change', { bubbles: true })); } });
+        item.addEventListener('click', () => { if (select.value !== o.value) { select.value = o.value; select.dispatchEvent(new Event('change', { bubbles: true })); } close(); });
+        item.addEventListener('pointerenter', () => { picked = Array.from(list.querySelectorAll('.cv-dd-item')).indexOf(item); mark(); opts.onHover?.(o.value); });
         list.appendChild(item);
       }
     }
@@ -52,7 +55,7 @@ export function enhanceSelect(select: HTMLSelectElement, opts: { search?: string
     mark();
   };
   const mark = (): void => { list.querySelectorAll<HTMLElement>('.cv-dd-item').forEach((i, n) => i.classList.toggle('is-picked', n === picked)); };
-  const close = (): void => { setHidden(pop, true); btn.setAttribute('aria-expanded', 'false'); };
+  const close = (): void => { setHidden(pop, true); btn.setAttribute('aria-expanded', 'false'); opts.onHover?.(null); };
   const open = (): void => {
     if (search) search.value = '';
     fill();
@@ -66,11 +69,12 @@ export function enhanceSelect(select: HTMLSelectElement, opts: { search?: string
     (list.querySelector('.is-chosen') as HTMLElement | null)?.scrollIntoView({ block: 'nearest' });
   };
   btn.addEventListener('click', () => (pop.hidden ? open() : close()));
-  search?.addEventListener('input', fill);
+  search?.addEventListener('input', () => { fill(); opts.onHover?.(null); });
+  list.addEventListener('pointerleave', () => opts.onHover?.(null));
   pop.addEventListener('keydown', (e) => {
     const items = Array.from(list.querySelectorAll<HTMLElement>('.cv-dd-item'));
     if (e.key === 'Escape') { e.preventDefault(); close(); btn.focus(); return; }
-    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (items.length) { picked = (picked + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; mark(); items[picked].scrollIntoView({ block: 'nearest' }); } return; }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); if (items.length) { picked = (picked + (e.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length; mark(); items[picked].scrollIntoView({ block: 'nearest' }); opts.onHover?.(items[picked].dataset.value ?? null); } return; }
     if (e.key === 'Enter') { e.preventDefault(); items[picked]?.click(); }
   });
   document.addEventListener('pointerdown', (e) => { if (!pop.hidden && !pop.contains(e.target as Node) && !btn.contains(e.target as Node)) close(); }, true);

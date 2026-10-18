@@ -1,12 +1,12 @@
 # formvis commands
 
-Generated from the window's command catalogue (953 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (954 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 60
 - File: 74
-- Filter: 80
+- Filter: 81
 - Image: 89
 - Layer: 198
 - Paint: 1
@@ -219,6 +219,7 @@ Generated from the window's command catalogue (953 commands) by `./formvis agent
 | `filter-polarCoordinates` | Polar Coordinates... |  | Opens the Polar Coordinates filter on the active layer. (changes the picture) |
 | `filter-radialBlur` | Radial Blur... |  | Opens the Radial Blur filter on the active layer. (changes the picture) |
 | `filter-reduceNoise` | Reduce Noise... |  | Opens the Reduce Noise filter on the active layer. (changes the picture) |
+| `filter-relight` | Relight... |  | Starts Relight from the Filter menu: adds a Relight layer above the active layer and opens its lights. (changes the picture) |
 | `filter-ripple` | Ripple... |  | Opens the Ripple filter on the active layer. (changes the picture) |
 | `filter-shakeReduction` | Shake Reduction... |  | Opens the Shake Reduction filter on the active layer. (changes the picture) |
 | `filter-shapeBlur` | Shape Blur... |  | Opens the Shape Blur filter on the active layer. (changes the picture) |
@@ -474,7 +475,7 @@ Generated from the window's command catalogue (953 commands) by `./formvis agent
 | `new-folder-dialog` | Group... |  | Opens the New Group dialog. (changes the picture) |
 | `new-layer` | New Layer |  | Adds an empty layer above the active one. (changes the picture) |
 | `new-layer-dialog` | Layer... | Shift+Mod+N | Opens the New Layer dialog with name, colour and mode. (changes the picture) |
-| `new-relight-layer` | New Relight Layer... |  | Adds a Relight layer that lights what lies beneath it with virtual lights, on this computer. (changes the picture) |
+| `new-relight-layer` | Relight Layer... |  | Adds a Relight layer that lights what lies beneath it with virtual lights, on this computer. (changes the picture) |
 | `panorama-apply-view` | Apply View to Panorama |  | Projects the current panorama edit view back onto its source panorama as a new layer named Panorama edit, one undo step. (changes the picture) |
 | `panorama-view` | Spherical Panorama... |  | Opens the active document, taken as an equirectangular picture, as a sphere you turn by dragging, with yaw, pitch and field of view; Edit View makes the current view a new document. (changes the picture) |
 | `paste-layer-style` | Paste Layer Style |  | Pastes the copied layer style. (changes the picture) |
@@ -922,10 +923,10 @@ Generated from the window's command catalogue (953 commands) by `./formvis agent
 | `tool.select.hand` | Hand Tool |  | Makes the Hand tool the active tool (key H). Drag to pan · Scroll pans · Cmd/Ctrl + scroll zooms · Hold Space to pan with any tool |
 | `tool.select.healingBrush` | Healing Brush Tool |  | Makes the Healing Brush tool the active tool (key J). Alt-click to set the source, then paint; on release the copied texture blends into its surroundings · Aligned keeps the offset between strokes · Shift+J cycles the healing tools · [ ] size |
 | `tool.select.historyBrush` | History Brush Tool |  | Makes the History Brush tool the active tool (key Y). Paint to bring back the layer as it was in the source snapshot (History panel) · [ ] size |
-| `tool.select.lasso` | Lasso Tool |  | Makes the Lasso tool the active tool (key L). Drag around an area · Shift adds · Alt subtracts · Shift+L switches to polygonal |
+| `tool.select.lasso` | Lasso Tool |  | Makes the Lasso tool the active tool (key L). Drag around an area · Shift adds · Alt subtracts · A click deselects · Shift+L switches to polygonal |
 | `tool.select.magicEraser` | Magic Eraser Tool |  | Makes the Magic Eraser tool the active tool (key E). Click an area to erase it and the colours like it · Tolerance widens the match · Contiguous keeps to the connected area |
 | `tool.select.markup` | Markup Tool |  | Makes the Markup tool the active tool (key I). Drag from the tail of the arrow to its tip |
-| `tool.select.marquee` | Marquee Tool |  | Makes the Marquee tool the active tool (key M). Drag a rectangle · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · Cmd or Ctrl+D deselects |
+| `tool.select.marquee` | Marquee Tool |  | Makes the Marquee tool the active tool (key M). Drag a rectangle · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · A click, Escape or Cmd or Ctrl+D deselects |
 | `tool.select.mixer` | Mixer Brush Tool |  | Makes the Mixer Brush tool the active tool (key B). Drag to paint with wet paint that picks up and mixes the colours under it · [ ] size · Alt-click loads the reservoir from the canvas |
 | `tool.select.move` | Move Tool |  | Makes the Move tool the active tool (key V). Drag to move · Drag inside a selection to move its pixels, Alt to duplicate them · Handles resize · Outside a corner rotates · Shift constrains · Alt resizes from the center · Cmd or Ctrl picks the layer under the pointer · Arrows nudge · 1-0 set layer opacity |
 | `tool.select.note` | Note Tool |  | Makes the Note tool the active tool (key I). Click to pin a note · Click a note to edit it · Drag it to move it · Alt-click it to delete it |
@@ -937,7 +938,7 @@ Generated from the window's command catalogue (953 commands) by `./formvis agent
 | `tool.select.pencil` | Pencil Tool |  | Makes the Pencil tool the active tool (key B). Drag to draw hard-edged, pixel-exact lines · Shift-click draws a line from the last point · [ ] size |
 | `tool.select.quickSelect` | Quick Selection Tool |  | Makes the Quick Selection tool the active tool (key W). Drag over an area to select it; the selection grows to similar color and stops at edges · Alt-drag subtracts · [ ] size |
 | `tool.select.redEye` | Red Eye Tool |  | Makes the Red Eye tool the active tool (key J). Click the red of a pupil |
-| `tool.select.relight` | Relight Tool |  | Makes the Relight tool the active tool. Drag a light on the image, or adjust it in the Properties panel. |
+| `tool.select.relight` | Relight Tool |  | Makes the Relight tool the active tool. Click the Relight tool to light the picture with virtual lights, or open Filter > Relight. |
 | `tool.select.remove` | Remove Tool |  | Makes the Remove tool the active tool (key J). Paint over what to remove; it is filled from its surroundings when you release · [ ] size |
 | `tool.select.rotateView` | Rotate View Tool |  | Makes the Rotate View tool the active tool (key R). Drag to turn the view · Shift for 15 degree steps · Double-click or Escape straightens it |
 | `tool.select.ruler` | Ruler Tool |  | Makes the Ruler tool the active tool (key I). Drag to measure · Drag an end to adjust · Straighten Layer levels the layer along the line |

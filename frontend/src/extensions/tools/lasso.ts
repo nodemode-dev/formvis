@@ -65,7 +65,7 @@ export const lassoTool: Tool = {
     ? 'Click an edge, then move along it: points fasten themselves · Click to fasten one · Click the start, double-click or press Enter to close · Backspace removes the last point · Escape cancels'
     : e.lassoKind === 'polygonal'
     ? 'Click the corners · Click the start, double-click or press Enter to close · Backspace removes the last corner · Escape cancels · Shift+L switches mode'
-    : 'Drag around an area · Shift adds · Alt subtracts · Shift+L switches to polygonal'),
+    : 'Drag around an area · Shift adds · Alt subtracts · A click deselects · Shift+L switches to polygonal'),
   cursor: () => 'crosshair',
   down(ctx, p) {
     const e = ctx.engine;
@@ -94,7 +94,11 @@ export const lassoTool: Tool = {
     pts.push(p.doc);
     ctx.engine.emit('overlay', null);
   },
-  up(ctx) { if (active && ctx.engine.lassoKind === 'freehand') commit(ctx); },
+  up(ctx) {
+    if (!active || ctx.engine.lassoKind !== 'freehand') return;
+    if (pts.length < 3 && mode === 'replace') { reset(ctx); ctx.engine.deselect(); return; }
+    commit(ctx);
+  },
   hover(ctx, p) { hover = p?.doc ?? null; if (active && ctx.engine.lassoKind === 'magnetic' && hover) traceSoon(ctx, hover); else if (active) ctx.engine.emit('overlay', null); },
   keydown(ctx, e) {
     if (!active || ctx.engine.lassoKind === 'freehand') return nudgeSelectionKey(ctx, e);
@@ -141,6 +145,7 @@ export const lassoTool: Tool = {
     ] : []),
     { kind: 'toggle', label: 'Anti-alias', get: () => e.selectionAntialiased, set: (v) => { e.selectionAntialiased = v; e.emit('options', null); } },
     modeSegment(e),
+    { kind: 'button', label: 'Deselect', run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
   ],
 };

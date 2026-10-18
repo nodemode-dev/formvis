@@ -46,11 +46,27 @@ const PRESET_GROUPS: ReadonlyArray<{ id: string; label: string; presets: DocPres
 type Unit = 'px' | 'in' | 'cm' | 'mm';
 const PER_INCH: Record<Unit, number> = { px: 0, in: 1, cm: 2.54, mm: 25.4 };
 
+/** The color modes New Document offers, each with its label, its channels and the bit depths it allows, as Photoshop's
+ *  lists: Bitmap one bit; Grayscale and RGB 8, 16 or 32; CMYK and Lab 8 or 16 (the engine keeps 32 bits for RGB and
+ *  Grayscale: Image > Mode > 32 Bits/Channel brings CMYK and Lab to RGB first). */
+export type NewMode = 'bitmap' | 'grayscale' | 'rgb' | 'cmyk' | 'lab';
+export type NewDepth = 1 | 8 | 16 | 32;
+const NEW_MODES: ReadonlyArray<{ id: NewMode; label: string; channels: number; depths: readonly NewDepth[] }> = [
+  { id: 'bitmap', label: 'Bitmap', channels: 1, depths: [1] },
+  { id: 'grayscale', label: 'Grayscale', channels: 1, depths: [8, 16, 32] },
+  { id: 'rgb', label: 'RGB Color', channels: 3, depths: [8, 16, 32] },
+  { id: 'cmyk', label: 'CMYK Color', channels: 4, depths: [8, 16] },
+  { id: 'lab', label: 'Lab Color', channels: 3, depths: [8, 16] },
+];
+/** What Create runs once the blank document exists: the app's Image > Mode conversions for the chosen mode and depth. */
+export type NewDocumentPrepare = (mode: NewMode, depth: NewDepth) => Promise<(() => Promise<boolean>) | null>;
+
 /** New Document as the target's (Phase 21, UI_SPEC.md section 4): categories at the left; a search over every preset and
  *  the presets as cards, each preview shaped as its document; at the right Name (pre-selected), Width, a link, Height and
- *  Unit, Resolution, Orientation, Color Mode (formvis's documents are RGB, 8 bit), Background Contents and Artboards; a
- *  live summary of the size and its memory (3 bytes a pixel, as Photoshop counts RGB); Cancel at the left, Create at the
- *  right. Every value is what the document is made with. */
+ *  Unit, Resolution, Orientation, Color Mode (Bitmap, Grayscale, RGB, CMYK, Lab) with its Bit depth (8, 16 or 32 as the
+ *  mode allows), Background Contents and Artboards; a live summary of the size and its memory (a mode's bytes a pixel
+ *  at its depth, as Photoshop counts them); Cancel at the left, Create at the right. Every value is what the document
+ *  is made with: Create makes it, then `prepare`'s conversion (the app's Image > Mode) sets its mode and depth. */
 export class NewCanvasDialog extends Dialog {
   private readonly name = el<HTMLInputElement>('<input class="cv-nd-input" type="text" value="Untitled-1" spellcheck="false" aria-label="Name">');
   private readonly wIn = el<HTMLInputElement>('<input class="cv-nd-input cv-nd-mono" type="text" inputmode="decimal" aria-label="Width">');
@@ -94,33 +110,35 @@ export class NewCanvasDialog extends Dialog {
     const seg = el('<div class="cv-nd-seg"></div>');
     seg.append(...this.orient);
     // What formvis's documents are, as dropdowns that open like any other (disabled, they looked broken: the owner's walkthrough).
-    // Color Mode as Photoshop's New Document offers what formvis can truly make (1.50.2): RGB, Grayscale and Bitmap; the bit
-    // depth follows the mode. 16 and 32 bit, CMYK and Lab need a new pixel engine, and the dialog says so.
-    const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode"><option value="rgb">RGB Color</option><option value="grayscale">Grayscale</option><option value="bitmap">Bitmap</option></select>');
-    const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth"><option>8 bit</option></select>');
+    // Color Mode and Bit depth as Photoshop's New Document offers them: every mode the engine makes (Bitmap, Grayscale, RGB,
+    // CMYK, Lab), and the depths each allows. Create converts the new document as Image > Mode does (`prepare`, set by the app).
+    const mode = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Color Mode"></select>');
+    for (const m of NEW_MODES) { const o = document.createElement('option'); o.value = m.id; o.textContent = t(m.label); mode.appendChild(o); }
+    mode.value = 'rgb';
+    const depth = el<HTMLSelectElement>('<select class="cv-nd-input" aria-label="Bit depth"></select>');
     this.mode = mode;
-    // What is not offered, said plainly (1.50.2 claimed this note and did not show it).
-    const modeNote = el('<p class="cv-nd-note">16 and 32 bit and CMYK come from Image > Mode once the document is open; Lab is not available yet.</p>');
-    this.modeNote = modeNote;
-    mode.addEventListener('change', () => { depth.innerHTML = mode.value === 'bitmap' ? '<option>1 bit</option>' : '<option>8 bit</option>'; this.sync(); });
+    this.depth = depth;
+    this.depthsFor('rgb');
+    mode.addEventListener('change', () => { this.depthsFor(mode.value as NewMode); this.sync(); });
+    depth.addEventListener('change', () => this.sync());
     const ab = el('<label class="cv-nd-check"></label>');
     ab.append(this.artboards, el('<span>Artboards</span>'));
     const wBox = label('Width', this.wIn), hBox = label('Height', this.hIn), uBox = label('Unit', this.unit);
     const sizeRow = el('<div class="cv-nd-sizes"></div>');
     sizeRow.append(wBox, this.link, hBox, uBox);
-    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), this.modeNote, label('Background Contents', this.fill), ab, this.summary);
+    side.append(label('Name', this.name), sizeRow, pair(label('Resolution', this.res, el('<span class="cv-nd-unit">ppi</span>')), label('Orientation', seg)), pair(label('Color Mode', mode), label('&nbsp;', depth)), label('Background Contents', this.fill), ab, this.summary);
     const grid = el('<div class="cv-nd-grid"></div>');
     grid.append(cats, mid, side);
     this.body.appendChild(grid);
     this.button('Cancel', 'ghost', () => this.close());
-    this.button('Create', 'primary', () => this.create());
+    this.createBtn = this.button('Create', 'primary', () => void this.create());
     this.link.addEventListener('click', () => { const on = !this.link.classList.contains('is-on'); this.link.classList.toggle('is-on', on); this.link.setAttribute('aria-pressed', String(on)); });
     const fromUnit = (v: number): number => { const u = this.unit.value as Unit, r = this.ppi(); return Math.max(1, Math.round(u === 'px' ? v : (v / PER_INCH[u]) * r)); };
     this.wIn.addEventListener('change', () => { const n = parseFloat(this.wIn.value); if (!Number.isFinite(n)) return this.sync(); const w = fromUnit(n); this.px = { w, h: this.linked() ? Math.max(1, Math.round((w * this.px.h) / this.px.w)) : this.px.h }; this.picked = null; this.sync(); });
     this.hIn.addEventListener('change', () => { const n = parseFloat(this.hIn.value); if (!Number.isFinite(n)) return this.sync(); const h = fromUnit(n); this.px = { h, w: this.linked() ? Math.max(1, Math.round((h * this.px.w) / this.px.h)) : this.px.w }; this.picked = null; this.sync(); });
     this.unit.addEventListener('change', () => this.sync());
     this.res.addEventListener('change', () => this.sync());
-    for (const i of [this.name, this.wIn, this.hIn, this.res]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); this.create(); } });
+    for (const i of [this.name, this.wIn, this.hIn, this.res]) i.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLInputElement).blur(); void this.create(); } });
     this.pick(PRESET_GROUPS[3].presets[0]);
   }
 
@@ -153,7 +171,7 @@ export class NewCanvasDialog extends Dialog {
       card.title = p.name;
       card.classList.toggle('is-on', this.picked === p);
       card.addEventListener('click', () => { this.pick(p); this.renderCards(); });
-      card.addEventListener('dblclick', () => { this.pick(p); this.create(); });
+      card.addEventListener('dblclick', () => { this.pick(p); void this.create(); });
       this.cards.appendChild(card);
     }
     if (!list.length) this.cards.appendChild(el('<p class="cv-nd-none">No preset matches.</p>'));
@@ -165,10 +183,11 @@ export class NewCanvasDialog extends Dialog {
     if (document.activeElement !== this.wIn) this.wIn.value = show(this.px.w);
     if (document.activeElement !== this.hIn) this.hIn.value = show(this.px.h);
     for (const b of this.orient) b.classList.toggle('is-on', b.dataset.orient === (this.px.h > this.px.w ? 'portrait' : 'landscape'));
-    // The size by the mode's bytes a pixel (1.50.3): RGB three, Grayscale one, Bitmap an eighth (one bit).
-    const perPixel = this.mode?.value === 'bitmap' ? 1 / 8 : this.mode?.value === 'grayscale' ? 1 : 3, mb = (this.px.w * this.px.h * perPixel) / (1024 * 1024);
+    // The size by the mode's channels at its depth (1.50.3): RGB three bytes a pixel at 8 bit, Bitmap an eighth (one bit).
+    const m = NEW_MODES.find((x) => x.id === this.mode?.value) ?? NEW_MODES[2], bits = Number(this.depth?.value) || m.depths[0];
+    const mb = (this.px.w * this.px.h * m.channels * bits) / 8 / (1024 * 1024);
     (this.summary.querySelector('.cv-nd-size') as HTMLElement).innerHTML = `${this.px.w} × ${this.px.h} <span>px</span>`;
-    setText(this.summary.querySelector('.cv-nd-meta') as HTMLElement, `${{ rgb: 'RGB Color · 8 bit', grayscale: 'Grayscale · 8 bit', bitmap: 'Bitmap · 1 bit' }[this.mode?.value as 'rgb' ?? 'rgb'] ?? 'RGB Color · 8 bit'} · ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`}`);
+    setText(this.summary.querySelector('.cv-nd-meta') as HTMLElement, `${t(m.label)} · ${bits} ${t('bit')} · ${mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${mb.toFixed(1)} MB`}`);
     this.renderCards();
   }
 
@@ -181,16 +200,30 @@ export class NewCanvasDialog extends Dialog {
   }
 
   private mode!: HTMLSelectElement;
-  private modeNote!: HTMLElement;
+  private depth!: HTMLSelectElement;
+  private making = false;
+  private createBtn!: HTMLButtonElement;
+  /** Set by the app: the conversion from the blank document to the chosen mode and depth (Image > Mode's own steps). */
+  prepare: NewDocumentPrepare = async () => async () => true;
 
-  /** The last document made sets the next one's size, unit, resolution, mode, background and artboards (not the name). */
+  /** The bit depths `mode` allows, listed in place; the one chosen stays when the mode allows it too, else 8 bit. */
+  private depthsFor(mode: NewMode): void {
+    const allowed = NEW_MODES.find((x) => x.id === mode)?.depths ?? [8], now = Number(this.depth.value);
+    if ([...this.depth.options].map((o) => Number(o.value)).join() !== allowed.join()) {
+      this.depth.replaceChildren(...allowed.map((d) => { const o = document.createElement('option'); o.value = String(d); o.textContent = `${d} ${t('bit')}`; return o; }));
+    }
+    this.depth.value = String(allowed.includes(now as NewDepth) ? now : allowed[0]);
+  }
+
+  /** The last document made sets the next one's size, unit, resolution, mode, depth, background and artboards (not the name). */
   private recall(): void {
     const get = (k: string): string | boolean | undefined => recalled('New Document', k);
-    const w = Number(get('w')), h = Number(get('h')), res = get('res'), unit = get('unit'), mode = get('mode'), fill = get('fill');
+    const w = Number(get('w')), h = Number(get('h')), res = get('res'), unit = get('unit'), mode = get('mode'), fill = get('fill'), depth = get('depth');
     const has = (s: HTMLSelectElement, v: unknown): v is string => typeof v === 'string' && [...s.options].some((o) => o.value === v);
     if (has(this.unit, unit)) this.unit.value = unit;
     if (has(this.fill, fill)) this.fill.value = fill;
-    if (has(this.mode, mode)) { this.mode.value = mode; this.mode.dispatchEvent(new Event('change')); }
+    if (has(this.mode, mode)) { this.mode.value = mode; this.depthsFor(mode as NewMode); }
+    if (has(this.depth, depth)) this.depth.value = depth;
     if (typeof res === 'string' && Number.isFinite(parseFloat(res))) this.res.value = res;
     if (typeof get('artboards') === 'boolean') this.artboards.checked = get('artboards') as boolean;
     const linked = get('link');
@@ -204,17 +237,27 @@ export class NewCanvasDialog extends Dialog {
   private keepValues(): void {
     const set = (k: string, v: string | boolean): void => remembered('New Document', k, v);
     set('w', String(this.px.w)); set('h', String(this.px.h)); set('unit', this.unit.value); set('res', String(this.ppi()));
-    set('mode', this.mode.value); set('fill', this.fill.value); set('artboards', this.artboards.checked); set('link', this.linked()); set('category', this.category);
+    set('mode', this.mode.value); set('depth', this.depth.value); set('fill', this.fill.value); set('artboards', this.artboards.checked); set('link', this.linked()); set('category', this.category);
   }
 
-  private create(): void {
-    this.keepValues();
-    const fill = this.fill.value as 'transparent' | 'white' | 'background';
-    const p = this.engine.newDocument(this.px.w, this.px.h, this.name.value.trim() || 'Untitled', fill, this.ppi());
-    if (!p) return;
-    if (this.mode.value !== 'rgb') this.engine.setDocumentMode(this.mode.value as 'grayscale' | 'bitmap');
-    if (this.artboards.checked) this.engine.newArtboard({ x: 0, y: 0, w: this.px.w, h: this.px.h }, fill === 'transparent' ? null : { r: 255, g: 255, b: 255 });
-    this.close();
+  /** What the mode needs is got first (CMYK's profile comes from the engine service), so a refusal leaves the dialog as it
+   *  was; then the document is made, converted as Image > Mode converts, and its history started clean. */
+  private async create(): Promise<void> {
+    if (this.making) return;
+    this.making = true;
+    setDisabled(this.createBtn, true);
+    try {
+      this.keepValues();
+      const apply = await this.prepare(this.mode.value as NewMode, Number(this.depth.value) as NewDepth);
+      if (!apply) return;
+      const fill = this.fill.value as 'transparent' | 'white' | 'background';
+      const p = this.engine.newDocument(this.px.w, this.px.h, this.name.value.trim() || 'Untitled', fill, this.ppi());
+      if (!p) return;
+      await apply();
+      if (this.artboards.checked) this.engine.newArtboard({ x: 0, y: 0, w: this.px.w, h: this.px.h }, fill === 'transparent' ? null : { r: 255, g: 255, b: 255 });
+      this.engine.startHistoryClean();
+      this.close();
+    } finally { this.making = false; setDisabled(this.createBtn, false); }
   }
 }
 
@@ -439,7 +482,7 @@ export class SettingsDialog extends Dialog {
     library.append(this.libNow, libRow, pathRow, moveRow, this.libApply, el('<p class="cv-note">The library can live in any folder, a synced one (iCloud Drive, Dropbox, OneDrive, Google Drive) included. If a project changed in that folder since you opened it, from another device or window, saving keeps that version and saves yours beside it as a conflict copy.</p>'));
     add('File Handling', library, mismatch, restore, el('<p class="cv-note">Every open document is kept on this device, in its tab order, and opens again at the next start, saved or not. Off, only unsaved work is kept, and formvis asks after a crash.</p>'), this.recoveryRow.el, el('<p class="cv-note">Unsaved documents are kept on this device so they can be recovered after a crash; this is how soon after a change that happens.</p>'));
     add('Cursors', this.cursorRow.el, this.crossRow.el, el('<p class="cv-note">How painting tools show where they paint: the tip\'s outline at its size, a crosshair alone, or a small ring.</p>'));
-    add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el('<p class="cv-note">The checkerboard shown behind transparent pixels. None shows it plain.</p>'));
+    add('Transparency & Gamut', this.checkerSizeRow.el, this.checkerColorsRow.el, el(`<p class="cv-note">${t('The checkerboard shown behind transparent pixels. None shows it plain; Match Theme uses the light checkerboard in light themes and the dark one in dark themes.')}</p>`));
     add('Language', this.languageRow.el, el('<p class="cv-note">The language of the whole interface. Names you give layers and documents stay as you wrote them.</p>'));
     add('Units & Rulers', this.rulerRow.el, el('<p class="cv-note">The rulers\' unit; inches, centimetres and millimetres follow the document\'s resolution, percent its width and height.</p>'));
     add('Guides & Grid', this.colorRow('Guides', this.guideColor, 'guideColor'), this.colorRow('Grid', this.gridColor, 'gridColor'), this.gridEveryRow.el, this.subdivRow.el);

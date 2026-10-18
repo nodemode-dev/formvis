@@ -120,7 +120,8 @@ import { LargePictureError, IMAGE_ACCEPT, RAW_FILE, decodeImage, isImageFile, is
 import { loadSystemFonts } from './ui/fonts';
 import { deserialize, giantTiles, serialize } from './io/project-io';
 import { AboutDialog, BenchmarkDialog, NewCanvasDialog, OpenDialog, SettingsDialog, ShortcutsDialog } from './ui/app-dialogs';
-import { CHECKER_CELL, CHECKER_PAIR, FONT_PREVIEWS, applyPrefs, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
+import { CHECKER_CELL, FONT_PREVIEWS, applyPrefs, checkerPair, loadPrefs, savePrefs, updatePrefs, type Prefs } from './ui/prefs';
+import { THEMES, readChoice } from './ui/themes';
 import { installOptionMemory } from './ui/option-memory';
 import { chooseRenderer, detectedName, gpuStartFailedLastTime, markGpuStarted, markGpuStarting, probeGpu, type GpuProbe } from './gpu/probe';
 import { GpuDisplay, type ScreenDisplay } from './gpu/display';
@@ -362,20 +363,32 @@ export function startApp(): void {
   const floatViews = new FloatViews(q(root, '.cv-stage-col'), engine);   // Window > Arrange > Float in Window (36.16)
   // Preferences the interface draws with (the engine's are applyPrefs'): the stage's checkerboard, wheel, rulers, grid
   // and guides, and the side column's narrow-window icons.
-  const applyUiPrefs = (pr: Prefs): void => {
-    Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor };
-    const [a, b] = CHECKER_PAIR[pr.checkerColors];
+  const applyChecker = (pr: Prefs): void => {
+    const [a, b] = checkerPair(pr.checkerColors, !!THEMES[readChoice().theme]?.light);
     document.documentElement.style.setProperty('--cv-checker-a', a);
     document.documentElement.style.setProperty('--cv-checker-b', pr.checkerSize === 'none' ? a : b);
+  };
+  const applyUiPrefs = (pr: Prefs): void => {
+    Stage.prefs = { cell: CHECKER_CELL[pr.checkerSize], zoomWheel: pr.zoomWheel, rulerUnits: pr.rulerUnits, gridColor: pr.gridColor, guideColor: pr.guideColor };
+    applyChecker(pr);
     PropertiesColumn.narrowCollapse = pr.narrowCollapse;
     stage.restyle();
     window.dispatchEvent(new Event('resize'));
   };
   applyUiPrefs(loadPrefs());
+  document.addEventListener('nm:ui-settings-changed', () => applyChecker(loadPrefs()));   // Match Theme follows a theme change at once
   const typing = new TextEditor(q(root, '.cv-stage'), engine);
   // The Properties column (Phase 21), shown unless hidden from Window > Properties Column (remembered).
   const props = new PropertiesColumn(q(root, '.cv-props-col'), engine, (c) => { commands.run(c); }, () => syncPropsCol());
   const relight = new RelightSession(engine, props.root, q(root, '.cv-stage'));
+  // The Relight tool in the toolbar starts a session as the menus do (editing the lights of a Relight layer when one is
+  // active); when it cannot start, the tool before it comes back.
+  engine.on('tool', () => {
+    if (engine.tool !== 'relight') { relight.cameFrom = engine.tool; return; }
+    if (relight.editing) return;
+    const l = engine.activeLayer, back = relight.cameFrom ?? 'move';
+    void (l?.relight ? relight.begin(l.id) : relight.begin()).then(() => { if (!relight.editing && engine.tool === 'relight') engine.setTool(back); });
+  });
   let dockRef: Dock | null = null;   // the side column shows only while it holds a shown panel (panels move: the Dock)
   const propsShown = (): boolean => stored('formvis.propsCol') !== 'hidden';
   const sideOpen = (): boolean => propsShown() && (dockRef ? dockRef.sideShown() > 0 : true);
@@ -2162,6 +2175,26 @@ export function startApp(): void {
     const profile = await cmykProfileOf(id, name);
     if (engine.current?.doc.depth === 16) await deepMode('cmyk', `id:${id}`, profile, intent, bpc); else await toCmyk(profile, intent, bpc);
   };
+  dialogs.newCanvas.prepare = async (mode, depth) => {
+    let profile: DocProfile | null = null;
+    if (mode === 'cmyk') {
+      try {
+        const all = (await api.colourProfiles()).profiles.filter((x) => x.space === 'CMYK'), pick = all.find((x) => x.shipped) ?? all[0];
+        if (!pick) { toast(t('No CMYK profile was found. Load one in View > Proof Setup.'), 'error'); return null; }
+        profile = await cmykProfileOf(pick.id, pick.name);
+      } catch { toast(t('CMYK needs the engine service, which is not running (./formvis boot).'), 'error'); return null; }
+    }
+    return async () => {
+      if (mode === 'bitmap' || mode === 'grayscale') engine.setDocumentMode(mode);
+      else if (mode === 'lab') engine.setLab();
+      else if (profile) { const c = loadPrefs().colour; await toCmyk(profile, c.intent, c.bpc); }
+      if (depth === 16 || depth === 32) engine.setDepth(depth);
+      const done = engine.current?.doc;
+      const ok = !!done && (done.mode ?? 'rgb') === mode && (done.depth ?? 8) === (depth === 1 ? 8 : depth);
+      if (!ok) toast(t('The new document could not be set to that mode and bit depth.'), 'error');
+      return ok;
+    };
+  };
   dialogs.neural.onSuperZoom = (factor) => { commands.run(factor === 4 ? 'upscale-4x' : 'upscale-2x'); };
   const sendNodeMode = new SendDialog(engine, (t) => toast(t));
   const sendComfyUI = new SendDialog(engine, (t) => toast(t), 'comfyui');
@@ -3074,7 +3107,8 @@ export function startApp(): void {
     { id: 'new-fill-solid', label: 'Solid Color...', enabled: has, run: () => dialogs.fillLayer.showNew('solid') },
     { id: 'new-fill-gradient', label: 'Gradient...', enabled: has, run: () => dialogs.fillLayer.showNew('gradient') },
     { id: 'new-fill-pattern', label: 'Pattern...', enabled: has, run: () => dialogs.fillLayer.showNew('pattern') },
-    { id: 'new-relight-layer', label: 'New Relight Layer...', icon: 'relight', enabled: () => has() && !relight.editing && (engine.current?.doc.mode ?? 'rgb') === 'rgb' && (engine.current?.doc.depth ?? 8) === 8, run: () => { void relight.begin(); } },
+    { id: 'new-relight-layer', label: 'Relight Layer...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
+    { id: 'filter-relight', label: 'Relight...', icon: 'relight', enabled: () => has() && !relight.editing, run: () => { void relight.begin(); } },
     { id: 'edit-relight', label: 'Edit Lighting...', icon: 'relight', enabled: () => !!layer()?.relight && !relight.editing, run: () => { const l = layer(); if (l?.relight) void relight.begin(l.id); } },
     { id: 'layer-content-options', label: 'Layer Content Options...', enabled: () => !!layer()?.adjustment || !!layer()?.fillContent || !!layer()?.relight, run: () => { const l = layer(); if (l?.fillContent) dialogs.fillLayer.showEdit(l.id); else if (l?.adjustment) dialogs.adjust.openForLayer(l.id); else if (l?.relight) void relight.begin(l.id); } },
     { id: 'film-leak', label: 'Light Leak...', enabled: () => !!engine.current, run: () => filmLayer.show('leak') },   // 1.51.6
@@ -3167,8 +3201,8 @@ export function startApp(): void {
       { label: 'Mode', items: ['mode-bitmap', 'mode-grayscale', 'mode-duotone', 'mode-indexed', 'mode-multichannel', 'color-table', 'mode-rgb', 'mode-cmyk', 'mode-lab', '-', 'depth-8', 'depth-16', 'depth-32'] }, '-',
       'image-size', 'canvas-size', { label: 'Pixel Aspect Ratio', items: ['par-square', 'par-d1-ntsc', 'par-d1-pal', 'par-d1-ntsc-wide', 'par-d1-pal-wide', 'par-anamorphic', 'par-hdv', '-', 'par-custom'] }, 'content-aware-scale', { label: 'Image Rotation', items: ['rotate-180', 'rotate-90-cw', 'rotate-90-ccw', 'rotate-arbitrary', '-', 'flip-canvas-h', 'flip-canvas-v'] }, '-', 'image-crop', 'trim', 'reveal-all', 'trap', '-', 'duplicate-image', '-', { label: 'Variables', items: ['variables-define', 'data-sets-import', 'data-set-apply'] }, '-', 'generative-expand', { label: 'Upscale', items: ['upscale-2x', 'upscale-4x'] }, '-', { label: 'Analysis', items: ['measure-scale', 'measure-record', 'measure-data-points', 'measure-scale-marker', 'measure-log'] }] },
     { label: 'Layer', items: [
-      { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut'] }, 'artboard-options', '-',
-      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'new-relight-layer', 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
+      { label: 'New', items: ['new-layer-dialog', 'layer-from-background', 'new-folder-dialog', 'group-from-layers', '-', 'new-artboard-dialog', 'artboard-from-group', 'artboard-from-layers', 'frame-from-layers', '-', 'duplicate', 'layer-via-cut', '-', 'new-relight-layer'] }, 'artboard-options', '-',
+      { label: 'New Fill Layer', items: ['new-fill-solid', 'new-fill-gradient', 'new-fill-pattern'] }, { label: 'Video Layers', items: ['video-layer-from-file', 'video-layer-blank', '-', 'video-insert-blank-frame', 'video-duplicate-frame', 'video-delete-frame', '-', 'video-restore-frame', 'video-restore-all', 'video-replace-footage', 'video-interpret-footage', 'video-rasterize'] },{ label: 'New Adjustment Layer', items: ADJUSTMENT_KINDS.map((k) => `new-adj-${k}`) }, 'edit-relight', 'layer-content-options', 'color-match', { label: 'New Film Layer', items: ['film-leak', 'film-frame'] }, '-',
       'duplicate-dialog', { label: 'Delete', items: ['delete-layer', 'delete-hidden'] }, 'rename', '-',
       { label: 'Layer Style', items: ['style-blending', 'style-bevel', 'style-stroke', 'style-inner-shadow', 'style-inner-glow', 'style-satin', 'style-color-overlay', 'style-gradient-overlay', 'style-pattern-overlay', 'style-outer-glow', 'style-drop-shadow', '-',
         'copy-layer-style', 'paste-layer-style', 'clear-layer-style', '-', 'global-light', 'create-layers', 'hide-all-effects', 'scale-effects'] },
@@ -3189,7 +3223,7 @@ export function startApp(): void {
       { label: 'Matting', items: ['matting-decontaminate', 'matting-defringe', 'matting-black', 'matting-white'] }] },
     { label: 'Select', items: ['select-all', 'deselect', 'reselect', 'inverse', 'convert-to-shape', '-', 'select-all-layers', 'deselect-layers', 'find-layers', 'isolate-layers', '-', 'color-range', 'focus-area', 'select-subject', 'select-sky', 'select-object', 'select-and-mask', '-', 'layer-pixels', 'mask-black', '-',
       { label: 'Modify', items: ['expand', 'contract', 'feather', 'border', 'smooth'] }, 'grow', 'similar', '-', 'transform-selection', '-', 'quick-mask', '-', 'load-selection', 'save-selection', 'path-selection', 'delete-path'] },
-    { label: 'Filter', items: ['filter-last', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', '-',
+    { label: 'Filter', items: ['filter-last', '-', 'filter-filterGallery', 'filter-develop', 'filter-wide-angle', 'filter-lensCorrection', 'filter-liquify', 'filter-vanishing-point', 'filter-neural', 'filter-relight', '-',
       { label: 'Blur', items: filterGroup('Blur', ['filter-average', 'filter-gaussianBlur', 'filter-lensBlur', 'filter-motionBlur', 'filter-radialBlur', 'filter-surfaceBlur']) },
       { label: 'Blur Gallery', items: ['filter-fieldBlur', 'filter-irisBlur', 'filter-tiltShift', 'filter-pathBlur', 'filter-spinBlur'] },
       { label: 'Distort', items: filterGroup('Distort', []) },
@@ -3326,6 +3360,8 @@ export function startApp(): void {
       if (!e.repeat || /^(undo|redo|zoom-in|zoom-out)$/.test(cmd.id)) commands.run(cmd.id);
       return;
     }
+    // Escape deselects, as Photoshop's does, once no tool, menu or dialog has used it and the focus is on the canvas or the toolbar.
+    if (e.key === 'Escape' && !e.repeat && !e.metaKey && !e.ctrlKey && !e.altKey && !e.shiftKey && selected() && (!target || target === document.body || !!target.closest('.cv-stage, .cv-rail'))) { e.preventDefault(); commands.run('deselect'); return; }
     if (e.metaKey || e.ctrlKey || e.altKey || e.repeat) return;
     const k = e.code.startsWith('Key') ? e.code.slice(3) : '';
     if (!k) return;
@@ -3467,7 +3503,14 @@ export function startApp(): void {
     'remove-bg', 'remove-bg-lite', 'select-subject', 'select-object', 'content-aware-scale', 'generative-fill', 'generate-image', 'generative-expand', 'upscale-2x', 'upscale-4x', 'assistant',
     'terminal.toggle', 'terminal.new', 'agent.claude.open', 'send-nodemode', 'send-comfyui', 'comfyui-run', 'photomerge', 'merge-hdr', 'manage-plugins',
     'import-video', 'video-layer-from-file', 'video-replace-footage', 'export-mp4', 'render-video']);
-  commands.blocked = (c) => serviceDown() && ENGINE_ONLY.has(c.id) ? 'Needs the engine service, which is not running (./formvis boot).' : '';
+  // Relight lights the 8-bit RGB picture beneath it (its shader reads and writes 8-bit RGBA), so other modes and depths say why it waits.
+  const relightWhy = (): string => {
+    const d = engine.current?.doc;
+    if (!d) return '';
+    if ((d.mode ?? 'rgb') !== 'rgb') return 'Relight works on RGB documents: Image > Mode > RGB Color first.';
+    return (d.depth ?? 8) > 8 ? 'Relight works on 8-bit documents: Image > Mode > 8 Bits/Channel first.' : '';
+  };
+  commands.blocked = (c) => serviceDown() && ENGINE_ONLY.has(c.id) ? 'Needs the engine service, which is not running (./formvis boot).' : c.id === 'new-relight-layer' || c.id === 'filter-relight' ? relightWhy() : '';
   commands.gate = (c) => engine.current?.doc.mode === 'cmyk' ? !CMYK_NOT.has(c.id) || passes(c)
     : engine.current?.doc.mode === 'lab' ? !LAB_NOT.has(c.id) || passes(c)
     : (engine.current?.doc.depth ?? 8) === 8 || (engine.current?.doc.depth === 16 && !DEEP16_NOT.has(c.id)) || (engine.current?.doc.depth === 32 && (!DEEP32_NOT.has(c.id) || passes(c)));

@@ -350,6 +350,9 @@ export class Engine {
   }
   private lastBrush: { layerId: ID; target: Target; p: Pt } | null = null;
   private opacityOpen: Project | null = null;
+  private fillOpen: Project | null = null;
+  /** A blend mode shown on the selected layers for rendering only (the Layers panel's hover preview); never recorded. */
+  private blendPreview: { project: Project; mode: BlendMode } | null = null;
   private swipeOpen: Project | null = null;
   private busyCount = 0;
 
@@ -1103,6 +1106,7 @@ export class Engine {
     if (this.transformEdit) this.endTransform();
     if (this.selectionShift) this.endSelectionShift();
     if (this.opacityOpen) this.endOpacityEdit();
+    if (this.fillOpen) this.endFillEdit();
     if (this.swipeOpen) this.endVisibilitySwipe();
     if (this.floatSel && !keepFloating) this.commitSelectionTransform();
   }
@@ -1976,6 +1980,17 @@ export class Engine {
     this.emit('history', null);
     return n;
   }
+  /** A document just made and then set to its mode and bit depth (New Document, which converts it as Image > Mode does):
+   *  its steps are forgotten, its opening snapshot is taken again from the state it has now, and that state counts as
+   *  saved, so its history starts clean with nothing to undo and no unsaved mark. */
+  startHistoryClean(): void {
+    const p = this.current;
+    if (!p || this.stroke) return;
+    this.purgeHistories(false);
+    this.openingSnapshot(p);
+    p.history.markSaved();
+    this.emit('history', null);
+  }
   /** Clipboard: formvis's own copy of pixels goes; the style clipboard is Layer > Layer Style's and stays. */
   purgeClipboard(): boolean {
     const c = this.clipboard;
@@ -2642,6 +2657,8 @@ export class Engine {
     if (tx && tx.project === p) m.set(tx.layerId, { ...(m.get(tx.layerId) ?? {}), hidden: true });
     const ep = this.effectPreview;
     if (ep && ep.project === p) m.set(ep.layerId, { ...(m.get(ep.layerId) ?? {}), effects: ep.effects });
+    const bp = this.blendPreview;
+    if (bp && bp.project === p) for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.isGroup) m.set(id, { ...(m.get(id) ?? {}), blend: bp.mode }); }
     const fp = this.fillPreview;
     if (fp && fp.project === p) m.set(fp.layerId, { ...(m.get(fp.layerId) ?? {}), source: fp.source });
     const rp = this.relightPreview;
@@ -3036,7 +3053,45 @@ export class Engine {
     });
   }
 
+  /** The Layers panel's Fill drag, as the Opacity drag: begin opens one 'Layer Fill' step, setFillLive changes the selected
+   *  layers' fill as the slider moves, end closes it, so a whole drag is one undo step. */
+  beginFillEdit(): void {
+    const p = this.current;
+    if (!p || this.stroke || this.fillOpen) return;
+    this.settle();
+    p.history.begin('Layer Fill', p.snapshot());
+    this.fillOpen = p;
+  }
+
+  setFillLive(value: number): void {
+    const p = this.fillOpen;
+    if (!p) return;
+    const v = clamp(value, 0, 1);
+    for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.isGroup && (l.fill ?? 1) !== v) p.updateLayer(id, { fill: v }); }
+    this.emit('doc', null);
+    this.emit('render', null);
+  }
+
+  endFillEdit(): void {
+    const p = this.fillOpen;
+    if (!p) return;
+    this.fillOpen = null;
+    p.history.end(p.snapshot());
+    this.refresh();
+  }
+
+  /** Shows `mode` on the selected layers for rendering only, without a history step, while the blend menu is hovered;
+   *  null ends it. */
+  previewBlend(mode: BlendMode | null): void {
+    const p = this.current;
+    const next = p && mode ? { project: p, mode } : null;
+    if (this.blendPreview?.project === next?.project && this.blendPreview?.mode === next?.mode) return;
+    this.blendPreview = next;
+    this.emit('render', null);
+  }
+
   setBlend(mode: BlendMode): void {
+    if (this.blendPreview) this.previewBlend(null);
     this.edit('Layer Blend Mode', (p) => {
       let changed = false;
       for (const id of p.selectedIds) { const l = p.layer(id); if (l && !l.isGroup && l.blend !== mode) { p.updateLayer(id, { blend: mode }); changed = true; } }
@@ -3358,6 +3413,13 @@ export class Engine {
       if (p.selection) p.selection = p.selection.rotated(quarters, W, H);
       return true;
     });
+    // The turned document stays centred where it was on screen (1.85.2): a quarter turn swaps the sides, so the view
+    // moves by half their difference instead of leaving the document hanging off one edge.
+    const p = this.current;
+    if (p && quarters !== 2 && p.doc.width !== p.doc.height) {
+      const z = p.viewport.zoom, dw = (p.doc.height - p.doc.width) / 2 * z;
+      this.pan(dw, -dw);
+    }
   }
 
   flipCanvas(horizontal: boolean): void {

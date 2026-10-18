@@ -12,8 +12,8 @@ Relight layers (1.73.0): virtual lights over the composite beneath a layer, rend
 | Layer field | `frontend/src/engine/types.ts` | `Layer.relight`, `ToolId` `'relight'` |
 | Project files | `frontend/src/io/project-io.ts` | `r.relight` written and read with `relightFrom` |
 | Session, panel, bar, pill | `frontend/src/ui/relight-session.ts` | `RelightSession.begin`, `commit`, `cancel`, `sync` |
-| Canvas handles | `frontend/src/extensions/tools/relight.ts` | `relightTool` (hidden), `setRelightHost`, `RelightHost` |
-| Commands | `frontend/src/app.ts`, `frontend/src/automation/command-meta.ts` | `new-relight-layer`, `edit-relight`, `layer-content-options` |
+| Canvas handles | `frontend/src/extensions/tools/relight.ts` | `relightTool` (in the rail, own slot; picking it starts a session through app.ts's `tool` listener), `setRelightHost`, `RelightHost` |
+| Commands | `frontend/src/app.ts`, `frontend/src/automation/command-meta.ts` | `new-relight-layer` (Layer > New), `filter-relight` (Filter), `edit-relight`, `layer-content-options`; `relightWhy` disables them outside 8-bit RGB with a tooltip |
 | Styles | `frontend/src/styles/relight.css` | `.cv-relight*` |
 
 ## Rules that keep it correct

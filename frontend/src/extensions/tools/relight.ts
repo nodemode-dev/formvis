@@ -46,10 +46,10 @@ export const relightTool: Tool = {
   id: 'relight',
   label: 'Relight',
   key: '',
-  order: 999,
-  hidden: true,
-  icon: () => 'sun',
-  hint: () => 'Drag a light on the image, or adjust it in the Properties panel.',
+  group: 'relight',
+  order: 69,
+  icon: () => 'relight',
+  hint: () => (host?.active() ? 'Drag a light on the image, or adjust it in the Properties panel.' : 'Click the Relight tool to light the picture with virtual lights, or open Filter > Relight.'),
   cursor: (ctx, p) => (p && hit(ctx, p.screen) ? 'grab' : 'crosshair'),
   down(ctx, p) {
     if (!host?.active()) return;

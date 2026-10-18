@@ -296,9 +296,10 @@ ask it questions.
 
 ## Relight
 
-Layer > New Relight Layer... (or type Relight in the command palette) adds a Relight layer above the active layer and
-lights everything beneath it with virtual lights, on this computer, with no credits and no cloud. The original layers
-are not touched.
+Filter > Relight..., Layer > New > Relight Layer..., the Relight tool in the toolbar, or Relight typed in the command
+palette adds a Relight layer above the active layer and lights everything beneath it with virtual lights, on this
+computer, with no credits and no cloud. The original layers are not touched. Relight works on 8-bit RGB documents; in
+other modes and depths its menu items are off, with the reason as their tooltip.
 
 - Relight Properties opens at the top of the Properties column. Looks are ready-made setups (Soft Key, Rembrandt,
   Split, Rim, Butterfly, Golden Hour, Window Blinds, Window, Candlelight, Neon Club, Moonlight, Light Strip, Dappled

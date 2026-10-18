@@ -6,10 +6,12 @@ import { modeFor, modeSegment, nudgeSelectionKey } from './select-common';
 interface Draft { anchor: Pt; point: Pt; mode: SelectionMode; shiftAtPress: boolean; altAtPress: boolean; square: boolean; center: boolean }
 let draft: Draft | null = null;
 let moving: Pt | null = null;
+let shifted = false;
 
 /** One drag step to a document point; pointer moves and autoscroll ticks both come through here. */
 function follow(ctx: ToolContext, doc: Pt, shift: boolean, alt: boolean): void {
   if (moving) {
+    if (Math.hypot(doc.x - moving.x, doc.y - moving.y) >= 1) shifted = true;
     ctx.engine.updateSelectionShift(doc.x - moving.x, doc.y - moving.y);
     return;
   }
@@ -87,7 +89,7 @@ export const marqueeTool: Tool = {
     { id: 'row', label: 'Single Row Marquee', icon: 'tRowMarquee', active: () => e.marqueeKind === 'row', pick: () => e.update({ marqueeKind: 'row' }) },
     { id: 'column', label: 'Single Column Marquee', icon: 'tColMarquee', active: () => e.marqueeKind === 'column', pick: () => e.update({ marqueeKind: 'column' }) },
   ],
-  hint: (e) => (e.marqueeKind === 'ellipse' ? 'Drag an ellipse' : 'Drag a rectangle') + ' · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · Cmd or Ctrl+D deselects',
+  hint: (e) => (e.marqueeKind === 'ellipse' ? 'Drag an ellipse' : 'Drag a rectangle') + ' · Shift adds · Alt subtracts · Shift after starting constrains · Alt after starting grows from the centre · Drag inside to move the outline · Shift+M switches shape · A click, Escape or Cmd or Ctrl+D deselects',
   cursor: (ctx, p) => (p && !p.shift && !p.alt && ctx.engine.selectionMode === 'replace' && inside(ctx, p) ? 'move' : 'crosshair'),
   down(ctx, p) {
     const e = ctx.engine;
@@ -102,7 +104,7 @@ export const marqueeTool: Tool = {
       e.applySelection(mask, mode, row ? 'Single Row Marquee' : 'Single Column Marquee');
       return;
     }
-    if (mode === 'replace' && inside(ctx, p)) { moving = p.doc; e.beginSelectionShift(); return; }
+    if (mode === 'replace' && inside(ctx, p)) { moving = p.doc; shifted = false; e.beginSelectionShift(); return; }
     draft = { anchor: p.doc, point: p.doc, mode, shiftAtPress: p.shift, altAtPress: p.alt, square: false, center: false };
     e.emit('overlay', null);
   },
@@ -115,7 +117,7 @@ export const marqueeTool: Tool = {
   up(ctx) {
     stopScroll();
     const e = ctx.engine;
-    if (moving) { moving = null; e.endSelectionShift(); return; }
+    if (moving) { moving = null; if (shifted) e.endSelectionShift(); else { e.updateSelectionShift(0, 0); e.endSelectionShift(); e.deselect(); } return; }
     const d = draft;
     draft = null;
     const doc = e.current?.doc;
@@ -162,6 +164,7 @@ export const marqueeTool: Tool = {
     { kind: 'number', label: 'Width', min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.w, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, w: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
     { kind: 'number', label: 'Height', min: 1, max: 30000, unit: 'px', get: () => e.marqueeSize.h, set: (v: number) => { e.marqueeSize = { ...e.marqueeSize, h: Math.max(1, Math.round(v)) }; e.emit('options', null); }, when: () => e.marqueeStyle === 'size' },
     modeSegment(e),
+    { kind: 'button', label: 'Deselect', run: () => toolHost.run('deselect'), when: () => !!e.current?.selection },
     { kind: 'button', label: 'Select and Mask...', run: () => toolHost.run('select-and-mask') }
   ],
 };

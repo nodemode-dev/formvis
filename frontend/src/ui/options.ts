@@ -41,7 +41,7 @@ export class OptionsBar {
     engine.on('tool', () => this.show());
     // Labels follow the interface language in place (35.5d): each keeps its English in data-en.
     onLanguage(() => { for (const s of Array.from(root.querySelectorAll<HTMLElement>('[data-en]'))) setText(s, tr(s.dataset.en ?? '')); });
-    for (const ev of ['options', 'active', 'colors', 'doc'] as const) engine.on(ev, () => this.queue());
+    for (const ev of ['options', 'active', 'colors', 'doc', 'selection'] as const) engine.on(ev, () => this.queue());
     this.show();
   }
 

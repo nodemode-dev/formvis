@@ -54,6 +54,8 @@ export class RelightSession {
   private layerId: ID | null = null;
   private isNew = false;
   private prevTool: ToolId = 'move';
+  /** The tool in use before the Relight tool was picked in the toolbar, which `end` brings back. */
+  cameFrom: ToolId | null = null;
   private content: RelightContent = defaultRelight();
   private selectedId: string | null = null;
   private full: Sized | null = null;
@@ -122,7 +124,7 @@ export class RelightSession {
     this.content.depth = 'estimate';
     this.depthFull = null;
     this.selectedId = this.content.lights[0]?.id ?? null;
-    this.prevTool = e.tool === 'relight' ? 'move' : e.tool;
+    this.prevTool = e.tool === 'relight' ? this.cameFrom ?? 'move' : e.tool;
     e.setTool('relight');
     setHidden(this.panel, false);
     setHidden(this.bar, false);
