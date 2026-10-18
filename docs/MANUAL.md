@@ -334,9 +334,11 @@ are not touched.
   without the panel, for example `./formvis cli run relight.apply look=rembrandt delight=40`.
 - Old light (Scene): relighting is re-shading, so Relight first takes the photo's own light out and keeps the colour
   of its surfaces; Original lighting then sets how much of the old light stays (0 removes it). Take out, keep the
-  subject divides the photo by a smooth shading field worked out for skin, hair, clothes and the scene each on their
-  own, so every detail of the face or object is the original's and only the light changes; download the parts and
-  face models (16 MB) from the button in Relight for the best split. Keep adds light on top of the old light.
+  subject builds a scene once per layer: the subject (from subject selection) and the background as two surfaces,
+  their shape from MoGe-2 small when installed (`pip install -r backend/requirements_relight.txt`), else from Depth
+  Anything; the photo's own light is read from how its brightness follows the subject's surface direction and divided
+  out, so every detail of the face or object is the original's and only the light changes. Added light is matched to
+  the subject's brightness, and each light is exposed for the point it aims at. Keep adds light on top of the old light.
   Take out with Marigold repaints the surfaces from a learned model and can change a face; it is an option only,
   downloaded from its own button, which names its licence (CreativeML Open RAIL++-M) and size (about 5.2 GB); the
   engine also needs `pip install -r backend/requirements_relight.txt`.

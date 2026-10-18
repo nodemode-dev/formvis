@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.82.0 · 2026-10-18
+
+### Changed
+
+- Relight builds a scene, as the owner's research of the reference describes. Geometry from MoGe-2 small (Microsoft, MIT; depth and normals in one pass at a short side of 518 px, optional with `backend/requirements_relight.txt`), else Depth Anything's depth and its slope. The subject from the app's subject selection (U2-Net) is its own surface: the background is filled in behind it and smoothed so patterns stay straight on it, the subject keeps its own normals so light never bleeds across the outline, and stray depth along outlines is refilled. The scene is solved on a grid at most 832 cells on the long side.
+- The photo's own light is estimated from how brightness varies with surface direction (second-order spherical harmonics over the subject's normals) and divided out, so new light reaches sides that were in shade while every detail of the photo stays. Each pixel is the photo times the kept share of the original light plus the surface colour times the added light; Take out old light starts at 100.
+- Added light is scaled to the subject's average brightness, so one Intensity reads alike on a dark coat and a pale face.
+- A local light is exposed for the point it aims at, with a falloff gentler than inverse-square and capped near the source; Softness sets the size of the light, which softens the terminator.
+- Warm materials such as skin take red light past the shadow edge.
+
 ## 1.81.0 · 2026-10-18
 
 ### Added

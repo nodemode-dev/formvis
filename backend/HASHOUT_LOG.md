@@ -2,6 +2,15 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight's scene · _v1.82.0 (app/localgen/relight_scene.py new, relight_split.py, model_manager.py, requirements_relight.txt, tests/test_localgen_krea2.py)
+
+- `relight_scene.py` (new): `solve(rgb)` on a grid of at most 832 cells: Depth Anything depth with stray outline pixels (more than 0.08 from a 5-pixel median) refilled (`_fill`, normalised blurs coarse to fine); the subject from U2-Net (`services.background._u2net_onnx`, soft-thresholded); two layers, the subject's depth extended past its outline and the background's filled behind it, blurred at size/30 and kept 0.03 behind the subject; normals from MoGe-2 small (`_moge_normals`, `MoGeModel.infer(..., use_fp16=False)` at a short side of 518, OpenCV frame turned to Relight's: x, y, -z) for the subject, else the slope of its layer, the background's from its layer; the original light as second-order SH of the smoothed luminance over the subject's normals, fitted with four robust reweightings, normalised at the subject's 90th percentile, clamped 0.15 to 1.3, 1 on the background; `level`, the mean luminance of photo over shading on the subject. MoGe ran in 12 s on the CPU for the 464 x 832 grid.
+- `relight_split.py`: `_scene_split` (albedo = photo / upsampled shading, signed residual, plus depth, mask, level, geometry) replaces `_classic` in `_split` (replaced: `result = _marigold(rgb) if engine == "marigold" else _classic(rgb)`); `pack` takes the optional fifth element and writes depth (f16) and mask (u8) after the normals with `scene`, `level`, `geometry` in the header (replaced: `albedo, shading, residual, normals = result` and the header line). `_classic` and its helpers stay for a later fallback.
+- `model_manager.py`: MODELS `moge-2-vits-normal` (MIT, optional) and its PINNED hash (79a16621...); `requirements_relight.txt` gains `moge` at commit 74fbce05.
+- `tests/test_localgen_krea2.py`: the optional allow-list gains `moge` (replaced the `startswith(("krea", "flux2-klein", "marigold"))` tuple).
+
+Verified: 112 tests pass; `test_the_real_lama_fills_a_hole_from_its_surroundings` fails for want of the LaMa download here, as at 1.75.0.
+
 ## Relight split, finer face normals · _v1.78.0 (app/localgen/relight_split.py)
 
 - `_shading`: a non-skin material is normalised at its 75th percentile, skin still at the 96th (hair sheen read as fully lit made the rest of the hair look shadowed and lifted it). Replaced: `level = float(np.percentile(est[core], 96)) if core.sum() > 100 else float(est.max())`.

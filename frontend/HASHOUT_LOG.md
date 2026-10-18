@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight on a solved scene · _v1.82.0 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts)
+
+The owner supplied a description of the reference's method (a scene from MoGe-2 and a subject cut-out, two layers, the original light estimated from brightness against surface direction and divided out, brightness matching, lights exposed at their aim with a gentler capped falloff, a sized source, warm light past the terminator, `photo x kept + surface x added`). The engine now solves the scene (backend HASHOUT 1.82.0); the frontend takes it.
+
+- `local-gen.ts` `LightSplit` gains `depth`, `mask`, `level`, `geometry`; `relightSplit` reads the scene's f16 depth and u8 mask after the normals when `head.scene`. Replaced: the one-line `LightSplit`, the `headLen, head` line and the return.
+- `relight.ts`: `SplitMaps.gain`; `LEVEL_REF` (0.135, the benchmark portrait's level calibrated against the reference) and `levelGain` (clamped 0.5 to 3). `TAKE_OUT` 100 (was 0): with the scene's split the pixel is `photo x Original + surface x light`. `shadeRelight` multiplies added light by the gain and adds `sss` (red, a third into green) scaled by the pixel's warmth (replaced `er += L.color[0] * c.diffuse * win; ...`). `lightAt` returns `sss` (`SSS` 0.6 times the wrap beyond the terminator); the early out is `ndl < -0.6` (was `lam <= 0`, which also dropped the warm spill); a local light is exposed at its aim, `atten = 2.2 x min(2.5, g(dist) / g(dAim))` with `g(q) = 1 / (1 + (q / R)^1.6)` and `R = (0.25 + d) s` (replaced `const R = (0.4 + L.distance) * s;` and `atten = 2.6 / (1 + (dist / R) * (dist / R));`); the wrap gains `1.2 x softness` (the source's size; replaced `wr = clamp(L.diffusion + wrapExtra, 0, 1.5)`).
+- `relight-gl.ts`: the same falloff, wrap, early out, gain (`uGain`) and warm spill; imports `SSS`. Replaced lines as quoted above in GLSL form, plus `E += add;` and the uniform list.
+- `relight-session.ts`: when the split carries a scene, the geometry is built from its depth and normals at every site (`loadSplit`, `apply`, `commit`), the gain is passed, and `loadDepth` no longer overwrites a scene's geometry (`proxy.scene`). Replaced: the proxy type, the three `split = { shading, residual }` lines, the `loadDepth` geometry line and the import.
+
+Benchmark (seven frames, values read off the reference's panels; frame 26's aim taken from its visible aim tip): mean error 0.27 to 0.54 stops each.
+
 ## Light as the reference throws it · _v1.81.0 (engine/relight.ts, gpu/relight-gl.ts, extensions/tools/relight.ts, ui/relight-session.ts, automation/catalogue.ts)
 
 The owner on 1.80.0: "not how light and shadows actually works and is not a true parity". Read every value off the reference's panels instead of guessing: frame 26 is Intensity 82 and frame 28 is 31 (the benchmark had them swapped since 1.78.0), frame 40 is Intensity 53, Softness 18, Width 38, Feather 30, Rotation 12, frame 33 Rotation -78, Close about 30 for every sun; and the reference draws a pattern-centre reticle apart from the aim. Seven frames now (23, 26, 27, 28, 31, 33, 40), mean gain-map error 0.27 to 0.50 stops each (was 0.55 to 0.74).
