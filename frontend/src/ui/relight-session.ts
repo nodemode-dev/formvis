@@ -1,6 +1,6 @@
 import type { Engine, ID, ToolId } from '../engine';
 import {
-  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, shadeRelight, shadingField, withNormals,
+  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, TAKE_OUT, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, shadeRelight, shadingField, withNormals,
   type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType, type SplitMaps,
 } from '../engine/relight';
 import { renderRelight } from '../gpu/relight-gl';
@@ -484,7 +484,7 @@ export class RelightSession {
     const scene = q(root, '.cv-relight-scene');
     const orig = sliderRow(t('Original lighting'), 0, 100, 1, (v) => { this.content.original = v; this.schedule(); });
     const shine = sliderRow(t('Shine'), 0, 100, 1, (v) => { this.content.shine = v; this.schedule(); });
-    const delight = sliderRow(t('Flatten original light'), 0, 100, 1, (v) => { this.content.delight = v; this.schedule(); });
+    const delight = sliderRow(t('Take out old light'), 0, 100, 1, (v) => { this.content.delight = v; this.schedule(); });
     const shadows = sliderRow(t('Shadows'), 0, 100, 1, (v) => { this.content.shadows = v; this.schedule(); });
     const ambient = colorRow(t('Ambient'), (h) => { this.content.ambient = fromHex(h); this.schedule(); });
     this.rows.original = orig; this.rows.shine = shine; this.rows.delight = delight; this.rows.shadows = shadows; this.rows.ambient = ambient;
@@ -597,7 +597,7 @@ export class RelightSession {
     }
     (this.rows.original as Row<number>).set(this.content.original);
     (this.rows.shine as Row<number>).set(this.content.shine);
-    (this.rows.delight as Row<number>).set(this.content.delight ?? 0);
+    (this.rows.delight as Row<number>).set(this.content.delight ?? (this.content.split === 'off' ? 0 : TAKE_OUT));
     (this.rows.shadows as Row<number>).set(this.content.shadows ?? 55);
     (this.rows.ambient as Row<string>).set(hex(this.content.ambient ?? { r: 255, g: 255, b: 255 }));
     this.panel.querySelectorAll<HTMLButtonElement>('.cv-relight-look').forEach((b) => setClass(b, 'is-on', b.dataset.look === this.content.look));
