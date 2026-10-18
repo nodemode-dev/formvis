@@ -271,13 +271,27 @@ def _classic(rgb: np.ndarray) -> tuple:
     return albedo, shading3, residual, normals
 
 
+def _scene_split(rgb: np.ndarray) -> tuple:
+    from . import relight_scene
+
+    sc = relight_scene.solve(rgb)
+    full = _lin(rgb)
+    h, w = rgb.shape[:2]
+    shading = np.clip(_fit(sc["shading"], w, h), 0.15, 1.3).astype(np.float32)
+    shading3 = np.repeat(shading[..., None], 3, -1)
+    albedo = np.clip(full / shading3, 0, 1).astype(np.float32)
+    residual = (full - albedo * shading3).astype(np.float32)
+    extra = {"depth": sc["depth"], "mask": sc["mask"], "level": sc["level"], "geometry": sc["geometry"]}
+    return albedo, shading3, residual, sc["normals"], extra
+
+
 def _split(data: bytes, rgb: np.ndarray, engine: str) -> tuple:
     key = hashlib.sha1(data).hexdigest() + engine + str(model_manager.ready(PARTS)) + str(model_manager.ready("yunet-face"))
     with _lock:
         if key in _cache:
             _cache.move_to_end(key)
             return _cache[key]
-        result = _marigold(rgb) if engine == "marigold" else _classic(rgb)
+        result = _marigold(rgb) if engine == "marigold" else _scene_split(rgb)
         _cache[key] = result
         while len(_cache) > KEEP:
             _cache.popitem(last=False)
@@ -296,13 +310,18 @@ def _fit(a: np.ndarray, w: int, h: int, cubic: bool = False) -> np.ndarray:
 
 
 def pack(result: tuple, engine: str, w: int, h: int) -> bytes:
-    albedo, shading, residual, normals = result
+    albedo, shading, residual, normals = result[:4]
+    extra = result[4] if len(result) > 4 else None
     parts = [_srgb8(_fit(albedo, w, h, True)).tobytes(), _fit(shading, w, h).astype("<f2").tobytes(), _fit(residual, w, h).astype("<f2").tobytes()]
     if normals is not None:
         n = _fit(normals, w, h)
         n = n / np.maximum(np.linalg.norm(n, axis=-1, keepdims=True), 1e-6)
         parts.append(n.astype("<f2").tobytes())
-    head = json.dumps({"engine": engine, "width": w, "height": h, "normals": normals is not None}).encode()
+    if extra is not None:
+        parts.append(_fit(extra["depth"], w, h).astype("<f2").tobytes())
+        parts.append((np.clip(_fit(extra["mask"], w, h), 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
+    head = json.dumps({"engine": engine, "width": w, "height": h, "normals": normals is not None, "scene": extra is not None,
+                       "level": extra["level"] if extra else None, "geometry": extra["geometry"] if extra else None}).encode()
     return len(head).to_bytes(4, "little") + head + b"".join(parts)
 
 
