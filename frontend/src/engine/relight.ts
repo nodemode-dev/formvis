@@ -14,6 +14,7 @@ export interface RelightPattern {
   feather: number;
   rotation: number;
   invert: boolean;
+  center?: { x: number; y: number };
 }
 
 export interface RelightLight {
@@ -103,7 +104,7 @@ export const RELIGHT_LOOKS: readonly RelightLook[] = [
   { id: 'candlelight', label: 'Candlelight', make: () => ({ original: 20, shine: 30, lights: named([L({ type: 'point', kelvin: 1800, intensity: 82, softness: 30, diffusion: 25, distance: 10, pos: { x: 0.62, y: 0.42 }, aim: { x: 0.5, y: 0.35 } })]) }) },
   { id: 'neon', label: 'Neon Club', make: () => ({ original: 22, shine: 18, lights: named([L({ type: 'point', kelvin: null, color: { r: 255, g: 43, b: 214 }, intensity: 55, softness: 20, diffusion: 10, distance: 15, pos: { x: 0.2, y: 0.62 }, aim: { x: 0.45, y: 0.4 } }), L({ type: 'point', kelvin: null, color: { r: 109, g: 241, b: 238 }, intensity: 45, softness: 20, diffusion: 10, distance: 15, pos: { x: 0.8, y: 0.35 }, aim: { x: 0.55, y: 0.4 } })]) }) },
   { id: 'moonlight', label: 'Moonlight', make: () => ({ original: 25, shine: 25, lights: named([L({ type: 'sun', kelvin: 9000, intensity: 55, softness: 35, diffusion: 30, distance: 60, pos: { x: 0.9, y: -0.1 }, aim: { x: 0.45, y: 0.5 } })]) }) },
-  { id: 'light-strip', label: 'Light Strip', make: () => ({ original: 25, shine: 25, lights: named([L({ type: 'sun', kelvin: 4300, intensity: 86, softness: 6, diffusion: 10, distance: 40, pos: { x: 0.15, y: 0.25 }, aim: { x: 0.5, y: 0.4 }, pattern: { ...defaultPattern(), kind: 'strip', length: 80, width: 60, feather: 8, rotation: 12 } })]) }) },
+  { id: 'light-strip', label: 'Light Strip', make: () => ({ original: 25, shine: 25, lights: named([L({ type: 'sun', kelvin: 4300, intensity: 60, softness: 18, diffusion: 10, distance: 20, pos: { x: -0.1, y: 0.45 }, aim: { x: 0.5, y: 0.45 }, pattern: { ...defaultPattern(), kind: 'strip', length: 80, width: 38, feather: 30, rotation: 12, center: { x: 0.42, y: 0.42 } } })]) }) },
   { id: 'dappled', label: 'Dappled Shade', make: () => ({ original: 40, shine: 15, lights: named([L({ type: 'sun', kelvin: 4500, intensity: 70, softness: 15, diffusion: 20, distance: 50, pos: { x: 0.85, y: 0.05 }, aim: { x: 0.5, y: 0.5 }, pattern: { ...defaultPattern(), kind: 'leaves', scale: 120, opening: 50, feather: 20 } })]) }) },
   { id: 'ring', label: 'Ring Light', make: () => ({ original: 55, shine: 30, lights: named([L({ type: 'ring', kelvin: 5600, intensity: 55, softness: 50, diffusion: 40, distance: 30, pos: { x: 0.5, y: 0.4 }, aim: { x: 0.5, y: 0.4 } })]) }) },
 ];
@@ -135,6 +136,7 @@ export function relightFrom(raw: unknown): RelightContent | null {
       pattern: {
         kind: pick(pr.kind, RELIGHT_PATTERNS, 'none'), scale: num(pr.scale, 10, 400, dp.scale), width: num(pr.width, 1, 200, dp.width), slats: Math.round(num(pr.slats, 2, 60, dp.slats)),
         opening: num(pr.opening, 1, 99, dp.opening), length: num(pr.length, 1, 200, dp.length), feather: num(pr.feather, 0, 100, dp.feather), rotation: num(pr.rotation, -180, 180, dp.rotation), invert: pr.invert === true,
+        ...(pr.center && typeof pr.center === 'object' ? { center: pt(pr.center, { x: 0.5, y: 0.45 }) } : {}),
       },
     };
   });
@@ -241,7 +243,7 @@ export function relightGeometry(depth: Float32Array, w: number, h: number): Reli
 
 export interface PackedLight {
   type: number; color: [number, number, number]; intensity: number; softness: number; diffusion: number; distance: number;
-  pos: [number, number]; aim: [number, number]; pattern: number; pat: [number, number, number, number]; pat2: [number, number, number, number]; range: [number, number];
+  pos: [number, number]; aim: [number, number]; pattern: number; pat: [number, number, number, number]; pat2: [number, number, number, number]; range: [number, number]; center: [number, number];
 }
 
 const TYPE_CODE: Record<RelightType, number> = { point: 0, spot: 1, sun: 2, area: 3, strip: 4, ring: 5 };
@@ -250,11 +252,11 @@ const PATTERN_CODE: Record<RelightPatternKind, number> = { none: 0, blinds: 1, s
 export function packLights(c: RelightContent, w: number, h: number): PackedLight[] {
   return c.lights.filter((l) => l.visible && l.intensity > 0).slice(0, MAX_RELIGHT_LIGHTS).map((l) => ({
     type: TYPE_CODE[l.type], color: [Math.pow(l.color.r / 255, 1.5), Math.pow(l.color.g / 255, 1.5), Math.pow(l.color.b / 255, 1.5)],
-    intensity: l.intensity / 100, softness: l.softness / 100, diffusion: l.diffusion / 100, distance: l.distance / 100,
+    intensity: 1.22 * (l.intensity / 100) ** 2, softness: l.softness / 100, diffusion: l.diffusion / 100, distance: l.distance / 100,
     pos: [l.pos.x * w, l.pos.y * h], aim: [l.aim.x * w, l.aim.y * h], pattern: PATTERN_CODE[l.pattern.kind] * (l.pattern.invert ? -1 : 1),
     pat: [l.pattern.scale / 100, l.pattern.width / 100, l.pattern.slats, l.pattern.opening / 100],
     pat2: [l.pattern.length / 100, l.pattern.feather / 100, (l.pattern.rotation * Math.PI) / 180, 0],
-    range: [(l.near ?? 0) / 100, (l.far ?? 100) / 100],
+    range: [(l.near ?? 0) / 100, (l.far ?? 100) / 100], center: l.pattern.center ? [l.pattern.center.x * w, l.pattern.center.y * h] : [l.aim.x * w, l.aim.y * h],
   }));
 }
 
@@ -283,7 +285,8 @@ export function patternAt(kind: number, u: number, v: number, s: number, pat: re
     m = frameOnly ? frame : frame * (smooth(open * 0.5 + hf, open * 0.5 - hf, q) * (1 - wash) + open * wash);
   } else if (k === 2) {
     const hl = 0.58 * pat2[0] * pat[0], hw = 0.5 * pat[1] * 0.14 * pat[0];
-    m = smooth(hl, hl - feather, Math.abs(y)) * smooth(hw, hw - feather, Math.abs(x));
+    const fw = Math.max(0.002, 2 * hw * (pat2[1] + 0.3 * soft));
+    m = smooth(hl + fw / 2, hl - fw / 2, Math.abs(y)) * smooth(hw + fw / 2, hw - fw / 2, Math.abs(x));
   } else if (k === 3) {
     const half = 0.32 * pat[0], bar = 0.02 * pat[0], frame = smooth(half, half - feather, Math.abs(x)) * smooth(half * 1.3, half * 1.3 - feather, Math.abs(y));
     m = frameOnly ? frame : frame * smooth(bar, bar + feather, Math.abs(x)) * smooth(bar, bar + feather, Math.abs(y));
@@ -362,6 +365,17 @@ export function goboUV(G: Gobo, x: number, y: number, z: number): [number, numbe
   return [(ax * G.r[0] + ay * G.r[1] + az * G.r[2]) * k, (ax * G.d[0] + ay * G.d[1] + az * G.d[2]) * k];
 }
 
+/** Where the light's ray through a surface point (x, y relative to the pattern centre, z its height above the centre's
+ *  surface) meets the picture plane at the centre's depth: the pattern is laid out on that plane as the canvas frame
+ *  shows it, and anything nearer or farther takes it shifted along the light, so it bends over the subject's shape. */
+export function goboPlaneUV(G: Gobo, x: number, y: number, z: number): [number, number] | null {
+  if (G.sun) { const k = z / Math.max(0.15, G.to[2]); return [x - G.to[0] * k, y - G.to[1] * k]; }
+  const dz = G.to[2] - z;
+  if (dz < 1e-3) return null;
+  const t = G.to[2] / dz;
+  return [G.to[0] + (x - G.to[0]) * t, G.to[1] + (y - G.to[1]) * t];
+}
+
 /** Where a gobo point lands on the plane of the aimed surface, relative to the aim (for the on-canvas frame). */
 export function goboPoint(G: Gobo, u: number, v: number): [number, number] | null {
   const gx = u * G.r[0] + v * G.d[0], gy = u * G.r[1] + v * G.d[1], gz = u * G.r[2] + v * G.d[2];
@@ -397,8 +411,8 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
       atten *= smooth(edge, cone, cosA);
     }
   }
-  const sun = L.type === 2, behind = zAim - pz, reach = (sun ? 0.18 + 1.8 * L.distance : 0.05 + 0.4 * L.distance) * relief, rr = behind > 0 ? behind / reach : -behind / (reach * 2.5);
-  atten = atten / (1 + rr * rr * (sun ? 1 : rr * rr)) * (sun ? 1.5 : 1);
+  const sun = L.type === 2, behind = zAim - pz, reach = (sun ? 0.08 + 0.8 * L.distance : 0.05 + 0.4 * L.distance) * relief, rr = behind > 0 ? behind / reach : -behind / (reach * 2.5);
+  atten = atten / (sun ? (1 + rr * rr) ** 2 : (1 + rr * rr) ** 3) * (sun ? 2.7 : 1);
   const wrapExtra = L.type === 3 ? 0.35 : L.type === 5 ? 0.5 : 0.3, wr = clamp(L.diffusion + wrapExtra, 0, 1.5);
   const ndl = nx * lx + ny * ly + nz * lz, lam = clamp((ndl + wr) / (1 + wr), 0, 1);
   if (lam <= 0 || atten <= 1e-4) return { diffuse: 0, spec: 0 };
@@ -422,7 +436,8 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
   shadow = 1 - (1 - shadow) * shadowAmt;
   let pattern = 1, frame = 1;
   if (L.pattern !== 0) {
-    const band = 0.06 * relief, uv = goboUV(goboBasis(L.type, L.pos, L.aim, L.distance, s), px - L.aim[0], py - L.aim[1], band * Math.tanh((pz - zAim) / band));
+    const C = L.center, zC = zAt(C[0], C[1]), band = 0.06 * relief;
+    const uv = goboPlaneUV(goboBasis(L.type, L.pos, L.type === 2 ? L.aim : C, L.distance, s), px - C[0], py - C[1], band * Math.tanh((pz - zC) / band));
     const spread = L.softness + (Math.abs(L.pattern) === 2 ? 0 : 4 * Math.max(0, behind) / relief);
     pattern = uv ? patternAt(L.pattern, uv[0], uv[1], s, L.pat, L.pat2, spread) : 0;
     frame = uv ? patternAt(L.pattern, uv[0], uv[1], s, L.pat, L.pat2, spread, true) : 0;

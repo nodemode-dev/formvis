@@ -51,6 +51,15 @@ vec3 sunTo(vec2 dd, float dist) {
   vec2 h = k < 1e-6 ? vec2(0.0) : dd / k;
   return normalize(vec3(h.x * c, h.y * c - 0.35 * sn, 0.9 * sn + 0.6));
 }
+bool goboPlaneUV(float type, vec2 pos, vec2 aim, float dist, float s, vec3 rel, out vec2 uv) {
+  vec2 dd = pos - aim;
+  if (abs(type - 2.0) < 0.5) { vec3 to = sunTo(dd, dist); uv = rel.xy - to.xy * (rel.z / max(0.15, to.z)); return true; }
+  vec3 to = vec3(dd, (0.12 + 0.9 * dist) * 0.5 * s);
+  float dz = to.z - rel.z;
+  if (dz < 1e-3) { uv = vec2(0.0); return false; }
+  uv = to.xy + (rel.xy - to.xy) * (to.z / dz);
+  return true;
+}
 bool goboUV(float type, vec2 pos, vec2 aim, float dist, float s, vec3 rel, out vec2 uv) {
   vec2 dd = pos - aim;
   bool sun = abs(type - 2.0) < 0.5;
@@ -81,7 +90,8 @@ float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool fr
     m = frameOnly ? frame : frame * (sstep(e.x * 0.5 + hf, e.x * 0.5 - hf, q) * (1.0 - wash) + e.x * wash);
   } else if (k < 2.5) {
     float hl = 0.58 * e.y * d.y, hw = 0.5 * d.z * 0.14 * d.y;
-    m = sstep(hl, hl - feather, abs(y)) * sstep(hw, hw - feather, abs(x));
+    float fw = max(0.002, 2.0 * hw * (e.z + 0.3 * soft));
+    m = sstep(hl + fw * 0.5, hl - fw * 0.5, abs(y)) * sstep(hw + fw * 0.5, hw - fw * 0.5, abs(x));
   } else if (k < 3.5) {
     float half_ = 0.32 * d.y, bar = 0.02 * d.y;
     float frame = sstep(half_, half_ - feather, abs(x)) * sstep(half_ * 1.3, half_ * 1.3 - feather, abs(y));
@@ -133,8 +143,8 @@ void main() {
       }
     }
     bool sun = abs(type - 2.0) < 0.5;
-    float behind = zAim - pz, reach = (sun ? 0.18 + 1.8 * distance_ : 0.05 + 0.4 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
-    atten = atten / (1.0 + rr * rr * (sun ? 1.0 : rr * rr)) * (sun ? 1.5 : 1.0);
+    float behind = zAim - pz, reach = (sun ? 0.08 + 0.8 * distance_ : 0.05 + 0.4 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
+    atten = atten / (sun ? pow(1.0 + rr * rr, 2.0) : pow(1.0 + rr * rr, 3.0)) * (sun ? 2.7 : 1.0);
     float wrapExtra = abs(type - 3.0) < 0.5 ? 0.35 : (abs(type - 5.0) < 0.5 ? 0.5 : 0.3);
     float wr = clamp(diffusion + wrapExtra, 0.0, 1.5);
     float ndl = dot(n, l), lam = clamp((ndl + wr) / (1.0 + wr), 0.0, 1.0);
@@ -167,8 +177,8 @@ void main() {
     float pattern = 1.0, frame = 1.0;
     if (abs(D.x) > 0.5) {
       vec2 guv;
-      float band = 0.06 * relief;
-      bool hit = goboUV(type, pos, aim, distance_, s, vec3(p - aim, band * tanh((pz - zAim) / band)), guv);
+      float band = 0.06 * relief, zC = zAt(F.zw, relief);
+      bool hit = goboPlaneUV(type, pos, abs(type - 2.0) < 0.5 ? aim : F.zw, distance_, s, vec3(p - F.zw, band * tanh((pz - zC) / band)), guv);
       float spread = softness + (abs(abs(D.x) - 2.0) < 0.5 ? 0.0 : 4.0 * max(0.0, behind) / relief);
       pattern = hit ? patternAt(D.x, guv, s, D, Ee, spread, false) : 0.0;
       frame = hit ? patternAt(D.x, guv, s, D, Ee, spread, true) : 0.0;
@@ -290,7 +300,7 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   gl.uniform4fv(loc.uC, pack((i) => [...lights[i].pos, ...lights[i].aim]));
   gl.uniform4fv(loc.uD, pack((i) => [lights[i].pattern, lights[i].pat[0], lights[i].pat[1], lights[i].pat[2]]));
   gl.uniform4fv(loc.uE, pack((i) => [lights[i].pat[3], lights[i].pat2[0], lights[i].pat2[1], lights[i].pat2[2]]));
-  gl.uniform4fv(loc.uF, pack((i) => [lights[i].range[0], lights[i].range[1], 0, 0]));
+  gl.uniform4fv(loc.uF, pack((i) => [lights[i].range[0], lights[i].range[1], ...lights[i].center]));
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   const out = new Uint8ClampedArray(w * h * 4);
   gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, out);
