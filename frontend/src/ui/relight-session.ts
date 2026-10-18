@@ -116,7 +116,7 @@ export class RelightSession {
   private async loadDepth(below: ImageData, pw: number, ph: number): Promise<void> {
     const id = this.layerId;
     try {
-      if (!(await depthReady())) { this.status(t('Shape estimated from the picture. Download Depth Anything in Local Models for light that follows the forms.')); return; }
+      if (!(await depthReady())) { this.status(t('Shape estimated from the picture. Download Depth Anything in Preferences > Plugins > Local models for light that follows the forms.')); return; }
       this.status(t('Reading the shape of the picture...'));
       const c = new OffscreenCanvas(below.width, below.height);
       (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
