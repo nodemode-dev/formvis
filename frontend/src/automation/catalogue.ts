@@ -145,7 +145,7 @@ function actionEntries(): CatalogueEntry[] {
         original: rangeParam('original', 0, 100, 'Percent of the original lighting kept'), shine: rangeParam('shine', 0, 100, 'Highlights on glossy forms'),
         delight: rangeParam('delight', 0, 100, 'Percent of the original light and shade flattened before the new lights'), shadows: rangeParam('shadows', 0, 100, 'Strength of cast shadows (with the depth model)'),
         ambient: { type: 'string', description: 'Colour of the kept original light, like #ffe8d0' },
-        split: { type: 'string', enum: ['auto', 'marigold', 'classic', 'off'], description: 'How the photo\'s own light is taken out before the new lights: auto (Marigold when installed, else SAM 2.1 regions), marigold, classic, or off (add light on top)' },
+        split: { type: 'string', enum: ['auto', 'marigold', 'classic', 'off'], description: 'How the photo\'s own light is taken out before the new lights: auto or classic (per-material shading, the subject\'s own detail kept), marigold (learned albedo, repaints surfaces, only when asked), or off (add light on top)' },
       }),
   ];
 }
@@ -167,7 +167,7 @@ async function relightApply(p: Record<string, unknown>): Promise<RunResult> {
   if (!content || !content.lights.length) return fail('Give at least one light, or a look.');
   const made = await deps!.applyRelight(content);
   if (!made) return fail('Relight could not run: it needs an 8-bit RGB document and no Relight session open in the window.');
-  return { ok: true, result: { message: `Added a Relight layer with ${content.lights.length} light${content.lights.length > 1 ? 's' : ''}${made.depth === 'model' ? ', shaped by Depth Anything' : ', on an estimated shape (download Depth Anything for cast shadows)'}${made.split === 'marigold' ? ', the old light taken out with Marigold' : made.split === 'classic' ? ', the old light taken out with SAM 2.1 regions' : ', light added on top of the old'}.`, layer: made.id, undoName: deps!.engine.current?.history.undoName } };
+  return { ok: true, result: { message: `Added a Relight layer with ${content.lights.length} light${content.lights.length > 1 ? 's' : ''}${made.depth === 'model' ? ', shaped by Depth Anything' : ', on an estimated shape (download Depth Anything for cast shadows)'}${made.split === 'marigold' ? ', the old light taken out with Marigold' : made.split === 'classic' ? ', the old light taken out with the subject\'s own detail kept' : ', light added on top of the old'}.`, layer: made.id, undoName: deps!.engine.current?.history.undoName } };
 }
 
 const describeParam = (n: string, s: CommandParam): string => `${n} (${s.enum ? `one of ${s.enum.join(', ')}` : s.min !== undefined && s.max !== undefined ? `${s.type} from ${s.min} to ${s.max}` : s.type})`;

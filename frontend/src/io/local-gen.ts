@@ -109,7 +109,7 @@ export async function installModel(id: string, status: (text: string) => void): 
   }
 }
 
-export interface RelightEngines { marigold: boolean; marigoldModels: boolean; marigoldRuntime: boolean; classic: boolean; regions: 'sam' | 'colour'; license: string; downloadGB: number }
+export interface RelightEngines { marigold: boolean; marigoldModels: boolean; marigoldRuntime: boolean; classic: boolean; regions: 'parts' | 'colour'; faces: boolean; license: string; downloadGB: number }
 export interface LightSplit { engine: 'marigold' | 'classic'; width: number; height: number; albedo: Uint8ClampedArray; shading: Float32Array; residual: Float32Array; normals: Float32Array | null }
 
 export async function relightEngines(): Promise<RelightEngines | null> {

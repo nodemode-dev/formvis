@@ -142,15 +142,14 @@ export class RelightSession {
     this.syncSplit();
     if (want === 'off' || !this.engines || this.layerId !== id) { setText(note, want === 'off' ? t('The photo keeps its own light; new light is added on top.') : t('The engine is not running, so the photo keeps its own light.')); return; }
     const engine = want === 'marigold' && !this.engines.marigold ? 'classic' : want;
-    const learned = engine === 'marigold' || (engine === 'auto' && this.engines.marigold);
-    setText(note, learned ? t('Taking the photo\'s own light out with Marigold (about a minute on a CPU)...') : t('Taking the photo\'s own light out (SAM 2.1 regions)...'));
+    setText(note, engine === 'marigold' ? t('Taking the photo\'s own light out with Marigold (about a minute on a CPU)...') : t('Taking the photo\'s own light out, keeping every detail of the subject...'));
     try {
       const sp = await relightSplit(await this.sourceBlob(below), pw, ph, engine);
       if (this.layerId !== id || !this.proxy) return;
       for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = this.proxy.base[i];
       this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual }, normals: sp.normals, geo: sp.normals ? withNormals(this.proxy.geo, sp.normals) : this.proxy.geo };
       this.splitUsed = sp.engine;
-      setText(note, sp.engine === 'marigold' ? t('Old light removed with Marigold: Original lighting now sets how much of it stays.') : t('Old light removed with SAM 2.1 regions (classic): Original lighting sets how much of it stays.'));
+      setText(note, sp.engine === 'marigold' ? t('Old light removed with Marigold: Original lighting now sets how much of it stays.') : t(this.engines.regions === 'parts' ? 'Old light removed per material (skin, hair, clothes, scene) with the subject\'s own detail kept: Original lighting sets how much of it stays.' : 'Old light removed by colour regions with the subject\'s own detail kept: Original lighting sets how much of it stays.'));
       this.schedule();
     } catch { setText(note, t('The photo\'s own light could not be separated, so new light is added on top.')); }
   }
@@ -167,9 +166,21 @@ export class RelightSession {
     btn.disabled = false;
   }
 
+  private async getParts(): Promise<void> {
+    const btn = q<HTMLButtonElement>(this.panel, '.cv-relight-parts'), note = q(this.panel, '.cv-relight-split');
+    btn.disabled = true;
+    try {
+      for (const m of ['selfie-multiclass', 'yunet-face']) if (!(await installModel(m, (text) => setText(note, text)))) { btn.disabled = false; return; }
+      const f = this.full;
+      if (f && this.proxy) await this.loadSplit(new ImageData(new Uint8ClampedArray(f.data), f.w, f.h), this.proxy.geo.width, this.proxy.geo.height);
+    } catch { setText(note, t('The download could not start. Is the engine running?')); }
+    btn.disabled = false;
+  }
+
   private syncSplit(): void {
     const e = this.engines, btn = q<HTMLButtonElement>(this.panel, '.cv-relight-marigold');
     setHidden(btn, !e || e.marigoldModels);
+    setHidden(q(this.panel, '.cv-relight-parts'), !e || (e.regions === 'parts' && e.faces));
     (this.rows.split as Row<string>).set(this.content.split ?? 'auto');
   }
 
@@ -477,7 +488,7 @@ export class RelightSession {
     const shadows = sliderRow(t('Shadows'), 0, 100, 1, (v) => { this.content.shadows = v; this.schedule(); });
     const ambient = colorRow(t('Ambient'), (h) => { this.content.ambient = fromHex(h); this.schedule(); });
     this.rows.original = orig; this.rows.shine = shine; this.rows.delight = delight; this.rows.shadows = shadows; this.rows.ambient = ambient;
-    const splitRow = selectRow(t('Old light'), [['auto', t('Take out (best available)')], ['marigold', t('Take out with Marigold')], ['classic', t('Take out with SAM 2.1 regions')], ['off', t('Keep, add on top')]], (v) => {
+    const splitRow = selectRow(t('Old light'), [['auto', t('Take out, keep the subject')], ['marigold', t('Take out with Marigold (repaints surfaces)')], ['off', t('Keep, add on top')]], (v) => {
       this.content.split = v as RelightContent['split'];
       const f = this.full;
       this.proxy = this.proxy ? { base: this.proxy.base, geo: this.proxy.geo, shade: this.proxy.shade } : null;
@@ -490,8 +501,12 @@ export class RelightSession {
     setText(mg, t('Accept CreativeML Open RAIL++-M and download Marigold (about 5.2 GB)'));
     mg.title = t('Marigold IID Lighting and Marigold Normals v1.1 by PRS ETH Zurich, used to take the photo\'s own light out. Also needs backend/requirements_relight.txt in the engine.');
     mg.addEventListener('click', () => { void this.getMarigold(); });
+    const parts = el<HTMLButtonElement>('<button class="cv-relight-btn cv-relight-parts" type="button" hidden></button>');
+    setText(parts, t('Download the parts and face models (16 MB)'));
+    parts.title = t('MediaPipe selfie multiclass (Apache-2.0) and YuNet (MIT): skin, hair, clothes and faces are shaded each on their own, so the subject keeps its detail.');
+    parts.addEventListener('click', () => { void this.getParts(); });
     const splitNote = el('<p class="cv-relight-split cv-note"></p>');
-    scene.prepend(splitRow.el, splitNote, mg);
+    scene.prepend(splitRow.el, splitNote, parts, mg);
     scene.append(orig.el, delight.el, ambient.el, shine.el, shadows.el);
     return root;
   }
