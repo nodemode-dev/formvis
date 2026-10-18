@@ -3481,6 +3481,7 @@ export function startApp(): void {
       return dialogs.filter.applySettings(kind as Parameters<typeof dialogs.filter.applySettings>[0], lib);
     },
     applyAdjustment: (kind, data, layer) => dialogs.adjust.applySettings(kind as AdjustmentKind, data as Parameters<typeof dialogs.adjust.applySettings>[1], layer),
+    applyRelight: (content) => relight.apply(content),
   });
   (window as unknown as { formvis: unknown }).formvis = { catalogue };
   if (import.meta.env.DEV) Object.assign((window as unknown as { formvis: object }).formvis, { engine, commands, actions, animation: dialogs.animation, colour: colourView });

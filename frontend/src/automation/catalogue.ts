@@ -3,6 +3,7 @@ import { ADJUSTMENT_KINDS, ADJUSTMENT_LABELS, defaultAdjustmentData } from '../e
 import { PARAM_ADJUSTMENTS, PARAM_KINDS, paramValues, type ParamKind } from '../engine/adjust-params';
 import { LIBRARY, type LibParam } from '../engine/filter-library';
 import { BLEND_MODES } from '../engine/types';
+import { RELIGHT_LOOKS, defaultRelight, kelvinToRgb, relightFrom, type RelightContent } from '../engine/relight';
 import { getTool, toolList, type OptionSpec, type Tool, type ToolContext, type ToolPointer } from '../extensions/registry';
 import type { Command, CommandParam, Commands } from '../ui/commands';
 import { metaFor } from './command-meta';
@@ -18,6 +19,7 @@ export interface CatalogueDeps {
   engine: Engine; commands: Commands;
   applyFilter(kind: string, settings: Record<string, unknown>): Promise<boolean> | boolean;
   applyAdjustment(kind: string, data: Record<string, unknown>, layer: boolean): boolean;
+  applyRelight?(content: RelightContent): Promise<{ id: string; depth: 'model' | 'estimate' } | null>;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms));
@@ -136,7 +138,35 @@ function actionEntries(): CatalogueEntry[] {
     a('filter.apply', 'Apply Filter', 'Filter', 'Applies a filter with exact settings to the active layer, inside the selection if there is one.', 'Use when you want a blur, sharpen, noise or effect with chosen values and no dialog.',
       { kind: { type: 'string', required: true, enum: Object.keys(filterVariants()), description: 'Which filter' }, settings: { type: 'object', description: 'All settings as one object; the settings of the kind may also be given as plain parameters' } },
       { variants: filterVariants() }),
+    a('relight.apply', 'Apply Relight', 'Layer', 'Adds a Relight layer above the active layer, lit by a Look or by the lights given, rendered at full size on this computer; one history step.',
+      'Use when you want to change the direction, colour or mood of the light in a photo with chosen lights and no panel.', {
+        look: { type: 'string', enum: RELIGHT_LOOKS.map((l) => l.id), description: 'A ready-made Look; its lights are used unless lights is given' },
+        lights: { type: 'array', description: 'Up to 8 lights: [{type: point|spot|sun|area|strip|ring, kelvin (1000 to 12000) or color {r,g,b}, intensity, softness, diffusion, distance (0 close to 100 far), pos {x,y} and aim {x,y} as fractions of the canvas, near and far (0 to 100, the depth band lit), pattern {kind: none|blinds|strip|window|leaves, scale, width, slats, opening, length, feather, rotation, invert}}]' },
+        original: rangeParam('original', 0, 100, 'Percent of the original lighting kept'), shine: rangeParam('shine', 0, 100, 'Highlights on glossy forms'),
+        delight: rangeParam('delight', 0, 100, 'Percent of the original light and shade flattened before the new lights'), shadows: rangeParam('shadows', 0, 100, 'Strength of cast shadows (with the depth model)'),
+        ambient: { type: 'string', description: 'Colour of the kept original light, like #ffe8d0' },
+      }),
   ];
+}
+
+async function relightApply(p: Record<string, unknown>): Promise<RunResult> {
+  if (!deps!.applyRelight) return fail('Relight is not available in this window.');
+  const look = typeof p.look === 'string' ? RELIGHT_LOOKS.find((l) => l.id === p.look) : undefined;
+  if (p.look !== undefined && !look) return fail(`Unknown look "${String(p.look)}". Choose one of ${RELIGHT_LOOKS.map((l) => l.id).join(', ')}.`);
+  const start = look ? look.make() : defaultRelight();
+  const lights = Array.isArray(p.lights) ? p.lights.map((x) => {
+    const o = isObj(x) ? { ...x } : {};
+    if (typeof o.kelvin === 'number' && !o.color) o.color = kelvinToRgb(o.kelvin);
+    if (o.color && o.kelvin === undefined) o.kelvin = null;
+    return o;
+  }) : start.lights;
+  const ambient = typeof p.ambient === 'string' ? rgbOf(p.ambient) : null;
+  if (p.ambient !== undefined && !ambient) return fail('ambient must be a colour like #ffe8d0.');
+  const content = relightFrom({ ...start, lights, ...(['original', 'shine', 'delight', 'shadows'] as const).reduce((m, k) => (typeof p[k] === 'number' ? { ...m, [k]: p[k] } : m), {}), ...(ambient ? { ambient } : {}), ...(look ? { look: look.id } : {}) });
+  if (!content || !content.lights.length) return fail('Give at least one light, or a look.');
+  const made = await deps!.applyRelight(content);
+  if (!made) return fail('Relight could not run: it needs an 8-bit RGB document and no Relight session open in the window.');
+  return { ok: true, result: { message: `Added a Relight layer with ${content.lights.length} light${content.lights.length > 1 ? 's' : ''}${made.depth === 'model' ? ', shaped by Depth Anything' : ', on an estimated shape (download Depth Anything for cast shadows)'}.`, layer: made.id, undoName: deps!.engine.current?.history.undoName } };
 }
 
 const describeParam = (n: string, s: CommandParam): string => `${n} (${s.enum ? `one of ${s.enum.join(', ')}` : s.min !== undefined && s.max !== undefined ? `${s.type} from ${s.min} to ${s.max}` : s.type})`;
@@ -432,6 +462,7 @@ export async function runCommand(id: string, params: Record<string, unknown> = {
     if (entry.kind === 'option') return setOption(id, p);
     if (id === 'filter.apply') return await filterApply(p);
     if (id === 'adjust.apply') return adjustApply(p);
+    if (id === 'relight.apply') return await relightApply(p);
     if (entry.kind === 'action') {
       const v = validate(p, entry.params ?? {});
       if (v.error) return fail(v.error);
