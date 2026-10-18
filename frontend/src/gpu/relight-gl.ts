@@ -87,7 +87,7 @@ void main() {
     if (win <= 0.0) continue;
     float type = A.x, intensity = A.y, softness = A.z, diffusion = A.w, distance_ = B.w;
     vec2 pos = C.xy, aim = C.zw;
-    float hL = relief + (0.05 + 0.9 * distance_) * s;
+    float zAim = zAt(aim, relief), hL = zAim + (0.3 + 0.9 * distance_) * 0.5 * s;
     vec3 l; float atten = 1.0; float maxRun = 0.45 * s;
     if (abs(type - 2.0) < 0.5) {
       vec2 dd = aim - pos; float dl = max(1e-6, length(dd)); float elev = radians(12.0 + 58.0 * distance_);
@@ -105,7 +105,7 @@ void main() {
       atten = 2.0 / (1.0 + (dist / R) * (dist / R));
       maxRun = min(maxRun, length(v.xy));
       if (abs(type - 1.0) < 0.5) {
-        vec3 ax = vec3(aim - pos, relief * 0.5 - hL);
+        vec3 ax = vec3(aim - pos, zAim - hL);
         float cosA = -dot(l, ax) / max(1e-6, length(ax));
         atten *= sstep(cos(radians(30.0 + 30.0 * softness)), cos(radians(18.0 + 22.0 * softness)), cosA);
       }

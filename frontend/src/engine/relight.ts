@@ -324,7 +324,7 @@ export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, cont
 function tone(v: number): number { return v <= 0.8 ? Math.max(0, v) : 0.8 + 0.2 * (1 - Math.exp(-(v - 0.8) / 0.2)); }
 
 export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number, shadowAmt = 1): { diffuse: number; spec: number } {
-  const hL = relief + (0.05 + 0.9 * L.distance) * s;
+  const zAim = zAt(L.aim[0], L.aim[1]), hL = zAim + (0.3 + 0.9 * L.distance) * 0.5 * s;
   let lx: number, ly: number, lz: number, atten = 1, maxRun = 0.45 * s;
   if (L.type === 2) {
     const dx = L.aim[0] - L.pos[0], dy = L.aim[1] - L.pos[1], d = Math.hypot(dx, dy) || 1, elev = (12 + 58 * L.distance) * Math.PI / 180;
@@ -342,7 +342,7 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
     atten = 2 / (1 + (dist / R) * (dist / R));
     maxRun = Math.min(maxRun, Math.hypot(vx, vy));
     if (L.type === 1) {
-      const ax = L.aim[0] - L.pos[0], ay = L.aim[1] - L.pos[1], az = relief * 0.5 - hL, ad = Math.hypot(ax, ay, az) || 1;
+      const ax = L.aim[0] - L.pos[0], ay = L.aim[1] - L.pos[1], az = zAim - hL, ad = Math.hypot(ax, ay, az) || 1;
       const cosA = -(lx * ax + ly * ay + lz * az) / ad, cone = Math.cos((18 + 22 * L.softness) * Math.PI / 180), edge = Math.cos((30 + 30 * L.softness) * Math.PI / 180);
       atten *= smooth(edge, cone, cosA);
     }
