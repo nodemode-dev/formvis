@@ -38,7 +38,9 @@ export class ContactSheetDialog extends Dialog {
     pick.addEventListener('click', () => this.picker.click());
     const open = document.createElement('button');
     open.type = 'button'; open.className = 'cv-btn'; open.textContent = 'Use Open Images (comes later)'; open.disabled = true;
-    choose.append(pick, open, this.picker);
+    const actions = el<HTMLElement>('<div class="cv-row-actions"></div>');
+    actions.append(pick, open);   // one grid cell for both buttons: a third child of the two-column row wrapped under the label
+    choose.append(actions, this.picker);
     this.body.append(choose, this.source, el('<p class="cv-note">Document</p>'), this.width.el, this.height.el, this.ppi.el, this.flat.el,
       el('<p class="cv-note">Thumbnails</p>'), this.columns.el, this.rows.el, this.spacing.el, this.vertical.el, this.horizontal.el, this.turn.el, this.caption.el, this.font.el);
     this.button('Cancel', 'ghost', () => this.close());

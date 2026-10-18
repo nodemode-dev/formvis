@@ -52,7 +52,7 @@ export class ToolPresetsDialog extends Dialog {
   private readonly only: { el: HTMLElement; set(v: boolean): void };
 
   constructor(private readonly engine: Engine) {
-    super('Tool Presets', 520);
+    super('Tool Presets', 600);
     this.only = checkRow('Current Tool Only', (v) => { this.currentOnly = v; this.paint(); });
     this.only.set(true);
     this.body.append(this.only.el, this.list, this.empty, el('<p class="cv-dialog-note">Export writes every preset to a .json file; Import merges one by name. Photoshop .tpl files are not read.</p>'));
