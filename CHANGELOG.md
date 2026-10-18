@@ -4,6 +4,16 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.78.0 · 2026-10-18
+
+### Changed
+
+- Relight is benchmarked on six of the reference video's frames (Blinds, Candlelight from two places, the Light Strip at two angles, Neon) and matches them to within half a stop on average.
+- Depth maps the light: a light reaches what it is aimed at and stops there (a lamp floods her and leaves the wall dark), blind stripes are crisp on the subject and wash out on surfaces far behind it, and a light stands at a height above the surface it aims at.
+- Point lights flood the subject like the reference; the sun rakes from higher; Blinds slats and the Light Strip have the reference's proportions and rotation; light colours are the swatch's own, and 1800K keeps a little blue so dark hair is not khaki; dark hair catches some light.
+- Take out old light starts at 0, as the reference does (the photo is its own albedo); raise it to move a hard old shadow.
+- Faces are shaded from finer depth normals.
+
 ## 1.77.0 · 2026-10-18
 
 ### Changed

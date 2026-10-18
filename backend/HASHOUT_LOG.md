@@ -2,6 +2,11 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight split, finer face normals · _v1.78.0 (app/localgen/relight_split.py)
+
+- `_shading`: a non-skin material is normalised at its 75th percentile, skin still at the 96th (hair sheen read as fully lit made the rest of the hair look shadowed and lifted it). Replaced: `level = float(np.percentile(est[core], 96)) if core.sum() > 100 else float(est.max())`.
+- `_normals`: depth gradients averaged over a tenth of the face width, not a fifth, so the nose and cheeks shape the light. Replaced: `r = max([f["box"][2] for f in faces], default=s / 26) / 5`.
+
 ## Relight keeps the subject · _v1.76.0 (app/localgen/relight_split.py, app/localgen/model_manager.py)
 
 The owner on 1.75.0: Marigold's albedo "is not the same face at all", and every split so far was "isolation and layered segment filtering" that degraded the subject. The classic engine is rewritten so the albedo is always `photo / shading` with a smooth shading field, so identity is the original's by construction; residual is signed and rebuilds the photo exactly (max error 6e-8).
