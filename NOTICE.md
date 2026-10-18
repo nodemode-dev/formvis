@@ -64,6 +64,8 @@ Nothing below ships with formvis. Each is downloaded to this computer only when 
 | U²-Net (Qin et al.), the u2net.onnx rembg publishes | Apache-2.0 | Select Subject and Remove Background, fetched on first use |
 | Real-ESRGAN x4plus (Xintao Wang et al.), converted to ONNX (skillsafe-ai/realesrgan-x4plus) | BSD-3-Clause | Image > Upscale on this computer, downloaded from Preferences > Plugins > Local models |
 | mflux (Apple silicon) and diffusers (Windows and Linux) | MIT; Apache-2.0 | The runtimes the models run in, installed into their own environment with a model |
+| Marigold IID Lighting v1.1 and Marigold Normals v1.1 (Ke, Obukhov et al., PRS ETH Zurich; prs-eth/marigold-iid-lighting-v1-1 and prs-eth/marigold-normals-v1-1, fine-tuned from Stable Diffusion 2) | CreativeML Open RAIL++-M (use-based restrictions apply and pass on to users; see each model card) | Relight's learned light split (albedo, shading, normals), 1.75.0. fp16 files pinned to their revisions, about 5.2 GB; downloaded only after the button that names the licence |
+| PyTorch, diffusers, transformers, accelerate, safetensors (backend/requirements_relight.txt) | BSD-3-Clause; Apache-2.0; Apache-2.0; Apache-2.0; Apache-2.0 | Run Marigold in the engine; an optional extra, not in the desktop bundle |
 | httpx | BSD-3-Clause | The engine's model downloads |
 | ONNX Runtime | MIT | Runs the local models; part of the base install |
 | LittleCMS (through Pillow's ImageCms) | MIT | Colour management: profile conversion, proofing and the gamut warning |
