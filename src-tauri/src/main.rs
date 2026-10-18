@@ -21,6 +21,29 @@ fn kill_backend(handle: &tauri::AppHandle) {
     let state = handle.state::<Backend>();
     let child = state.0.lock().ok().and_then(|mut slot| slot.take());
     if let Some(child) = child {
+        // Asked to stop first (1.86.2): the frozen engine is a launcher with the server as its child, and a forced kill
+        // reaches only the launcher, which then can neither stop the server nor remove the gigabyte it unpacked. SIGTERM
+        // is passed on to the server; it gets a second and a half before the forced kill.
+        #[cfg(unix)]
+        {
+            let pid = child.pid().to_string();
+            let signal = |sig: &str| {
+                std::process::Command::new("kill")
+                    .args([sig, pid.as_str()])
+                    .stdout(std::process::Stdio::null())
+                    .stderr(std::process::Stdio::null())
+                    .status()
+                    .is_ok_and(|s| s.success())
+            };
+            if signal("-TERM") {
+                for _ in 0..30 {
+                    std::thread::sleep(std::time::Duration::from_millis(50));
+                    if !signal("-0") {
+                        return;
+                    }
+                }
+            }
+        }
         let _ = child.kill();
     }
 }
