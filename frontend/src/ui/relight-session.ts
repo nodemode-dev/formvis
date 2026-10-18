@@ -58,6 +58,8 @@ export class RelightSession {
   cameFrom: ToolId | null = null;
   /** Called as a session starts, to bring its side panel (in the Properties column) into view. */
   onBegin: (() => void) | null = null;
+  /** Called as a session ends, to give the column back as it was. */
+  onEnd: (() => void) | null = null;
   private content: RelightContent = defaultRelight();
   private selectedId: string | null = null;
   private full: Sized | null = null;
@@ -316,6 +318,7 @@ export class RelightSession {
     setHidden(this.panel, true);
     setHidden(this.bar, true);
     document.documentElement.classList.remove('cv-relighting');
+    this.onEnd?.();
     this.syncPill();
     this.engine.emit('overlay', null);
   }

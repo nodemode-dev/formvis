@@ -200,6 +200,29 @@ export class PanelGroup {
     this.onTab?.(id);
   }
 
+  /** Brings a tab into full view for a session that lives in it (1.86.4, Relight in Properties): its group is
+   *  unminimised and remembered so (a minimised group had shown Relight as a bare header), the tab chosen, and every
+   *  other open group in the same column minimised for now without remembering it. Returns those groups, for
+   *  `unfocus` to open again when the session ends. */
+  static focusTab(tab: string): PanelGroup[] {
+    const g = [...PanelGroup.all.values()].find((x) => x.tabs.has(tab));
+    if (!g) return [];
+    g.setMinimised(false);
+    g.show(tab, false);
+    const column = g.root.parentElement, folded: PanelGroup[] = [];
+    for (const o of PanelGroup.all.values()) {
+      if (o === g || o.root.parentElement !== column || o.root.classList.contains('is-min')) continue;
+      o.setMinimised(true, false);
+      folded.push(o);
+    }
+    g.root.scrollIntoView({ block: 'start' });
+    return folded;
+  }
+
+  static unfocus(folded: readonly PanelGroup[]): void {
+    for (const o of folded) if (PanelGroup.all.get(o.id) === o) o.setMinimised(false, false);
+  }
+
   setMinimised(min: boolean, remember = true): void {
     this.root.classList.toggle('is-min', min);
     setHidden(this.root.querySelector('.cv-group-body') as HTMLElement, min);

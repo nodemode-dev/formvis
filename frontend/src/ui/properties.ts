@@ -84,8 +84,11 @@ export class PropertiesColumn {
     this.expand();
   }
   private expand: () => void = () => undefined;
-  /** Opens the column out of its strip (1.86.1): a session that lives in Properties, such as Relight, shows itself. */
-  reveal(): void { this.expand(); }
+  /** Opens the column out of its strip (1.86.1) and gives Properties the column (1.86.4): a session that lives in
+   *  Properties, such as Relight, shows itself even when its group was minimised. `conceal` opens the groups it folded. */
+  reveal(): void { this.expand(); PanelGroup.unfocus(this.folded); this.folded = PanelGroup.focusTab('properties'); }
+  conceal(): void { PanelGroup.unfocus(this.folded); this.folded = []; }
+  private folded: PanelGroup[] = [];
 
   private collapsible(): void {
     const host = this.root;
