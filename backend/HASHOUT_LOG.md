@@ -2,6 +2,22 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight's light split · _v1.75.0 (app/localgen/relight_split.py new, app/localgen/model_manager.py, app/main.py, requirements_relight.txt new, tests/test_localgen_krea2.py)
+
+- `relight_split.py`: `runtime_ready`, `models_ready`, `marigold_ready`; `_run_once` (load one Marigold pipeline in bfloat16 from the fp16 files, run at 768 px resized by PIL with `processing_resolution=0`, release it: the pipeline's own bf16 resize raises NotImplementedError on the CPU, and two float32 pipelines beside SAM and Depth Anything were OOM-killed at 8 GB); `_marigold` (albedo from photo / shading where shading is above about 0.012 to 0.06, guided-filter cleaned, the model's albedo, level-matched, only below; normals with y flipped to image space); `_sam_regions` (6 by 8 prompts through `segment.select`, masks opened by 5 px, at least 1 percent of the picture, smallest wins, gaps filled from the nearest region with `distanceTransformWithLabels`); `_chroma_regions` (fallback); `_classic`; `_split` (two results cached by SHA-1 and engine); `pack`; routes `GET /api/relight/engines`, `POST /api/relight/split`.
+- `model_manager.py`: PINNED rows for the 24 Marigold files (hashes of the small files computed from the downloaded snapshot, of the weights from the Hub's LFS oids, all re-checked by the real download); MODELS `marigold-iid-lighting` and `marigold-normals`, optional, licence CreativeML Open RAIL++-M, revisions 08c3930b and 09cfdd25.
+- `main.py`: router registered. Replaced line: `for _router in (... _lg_style.router, _lg_face.router, _lg_sky.router):` (now with `_lg_relight.router` before `_lg_face.router`).
+- `tests/test_localgen_krea2.py`, `test_every_krea_file_is_pinned_to_a_revision_and_kept_out_of_bulk_downloads`: the allow-list of optional models gains the `marigold` prefix. Replaced: `if "GPL" not in model_manager.MODELS[k]["license"] and not k.startswith(("krea", "flux2-klein")) and k != "nsfw-filter"`.
+
+Verified: downloads through `/api/models/{id}/download` with every pin matching; `_marigold` 48.6 s, peak RSS 4262 MB; `_classic` 5.2 s; tests `-k "depth or local or model"` pass but for `test_the_real_lama_fills_a_hole_from_its_surroundings` (LaMa not downloaded) and `test_segment_onnx` (passes with `FORMVIS_MODELS_DIR` set). Version lines removed:
+
+```text
+__version__ = "1.74.1"
+version = "1.74.1"
+version = "1.74.1"
+  "version": "1.74.1",
+```
+
 ## Float depth for Relight · _v1.74.1 (app/localgen/depth.py)
 
 Relight needs depth finer than 8 bits: at its relief one grey level is about 5 px of height, which banded the normals. `_normalised` (the model run and min-max scaling, shared), `depth_map` (unchanged PNG for Depth Blur), `depth_values` (float32 resized bicubically in mode F to the size asked, clipped 0 to 1), and `depth_local` gains query `fmt` (`png` default, `f32`), `width`, `height` (1 to 16384, else the picture's size); the f32 answer is little-endian bytes with `X-Depth-Width` and `X-Depth-Height`. Replaced:

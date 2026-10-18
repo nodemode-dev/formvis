@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight re-shades · _v1.75.0 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts, automation/catalogue.ts)
+
+The owner: "relighting is also reshading"; 1.74.1 multiplied new light over the photo, so the photo's own split-face shadow survived every Look. The image model is now `albedo x (Original x S0 + sum of new light) + Original x residual + highlights`, with albedo, S0 (old shading, per channel) and the residual from the engine's light split (`backend/app/localgen/relight_split.py`). Tried first and dropped, by looking at the albedo: an SH light fit on depth normals (the fit landed frontal; monocular depth makes a face a blob), Retinex gradients classified by chromaticity plus a screened Poisson solve (kept the shadow), chroma k-means normalisation (hair turned skin-coloured). Careaga and Aksoy's intrinsic model is academic-use only, so not used.
+
+- `engine/relight.ts`: `RelightContent.split`, `SplitMaps`, `withNormals`; in `shadeRelight` the ambient term is multiplied by S0 per channel and the residual times Original starts the highlight sum; `delight` does nothing while a split is in use. Replaced: `let er = sc.ambient[0], eg = sc.ambient[1], eb = sc.ambient[2], sr = 0, sg = 0, sb = 0;` and `const k = shade ? 1 / (1 + (shade[y * w + x] - 1) * sc.delight) : 1;`.
+- `gpu/relight-gl.ts`: `uS0`, `uRes` (RGBA32F, units 3 and 4), `uSplit`; `rgba` packs three channels; `uploaded.split` caches by identity. Replaced: `vec3 E = uAmbient, S = vec3(0.0);` and `gl.uniform1f(loc.uDelight, shade ? sc.delight : 0);`.
+- `io/local-gen.ts`: `RelightEngines`, `LightSplit`, `relightEngines`, `halfToFloat`, `relightSplit` (4-byte header length, JSON, albedo uint8 RGB, then float16 shading, residual and normals).
+- `ui/relight-session.ts`: proxy carries `albedo`, `split`, `normals`; `splitUsed`, `source` (the composite's PNG, made once), `engines`; `sourceBlob`, `loadSplit` (after `loadDepth`), `getMarigold` (installs both models), `syncSplit`; the Old light row and the licence-naming button in Scene; `commit` and `apply` fetch the split at full size. `loadDepth` keeps the model's normals on its rebuilt geometry.
+- `automation/catalogue.ts`: `split` parameter; the result names the split.
+
+Verified with the real engine and both models: point key at the right and at the left over the Marigold split move the face's shadow side and the nose shadow and the original split shadow is gone; Window Blinds and Candlelight over it; classic split; Keep equals 1.74.1; the panel under 4x CPU throttling; tsc; 194 unit tests. Known: dark hair is a little noisy in the albedo, a faint seam can remain where the old shadow was deepest, and Rembrandt's default Original lighting reads flatter over a split.
+
 ## Relight from real geometry · _v1.74.1 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts)
 
 The owner: the 1.74.0 output "doesn't look like relighting, more a layer effect on top of an image". True, and visible at a glance: an orange wash inside an oval. Causes, found by looking at the pixels: (1) no model in the test run, so `estimateDepth` returned a centred dome, and the depth band cut it into an oval; (2) even with depth, a 0.25 x side relief gave slopes of about 12 degrees, so Lambert was nearly uniform, a tint; (3) the 8-bit depth PNG stepped about 5 px per level at a useful relief. Fixed with the real model in the loop (Depth Anything V2 Small, pinned file, hash checked), prototyped in numpy first, then ported, and judged on full-size renders of six Looks.

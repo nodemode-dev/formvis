@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.75.0 · 2026-10-18
+
+### Added
+
+- Relight re-shades: it takes the photo's own light out first, so a new light from the other side moves the shadows on a face instead of adding brightness over the old ones. Scene > Old light chooses how: the best available, Marigold, SAM 2.1 regions, or Keep (the 1.74 behaviour).
+- Marigold (learned, optional): Marigold IID Lighting and Marigold Normals v1.1 separate the colour of surfaces from the light on them and read the detailed shape of faces. A button in Relight names the licence (CreativeML Open RAIL++-M) and the size (about 5.2 GB) before downloading; the engine also needs backend/requirements_relight.txt. About 50 seconds per photo on a CPU, once; Done reuses it.
+- SAM 2.1 regions (classic, no extra download beyond the selection model): formvis's own split from SAM 2.1's object regions and an edge-keeping shading estimate, in a few seconds. Noisier than Marigold.
+- relight.apply takes split for agents and the command line, and reports which split it used.
+
 ## 1.74.1 · 2026-10-18
 
 ### Fixed
