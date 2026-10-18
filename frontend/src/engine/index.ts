@@ -6283,14 +6283,14 @@ export class Engine {
     this.emit('render', null);
   }
 
-  setRelight(id: ID, content: RelightContent, image: ImageData): boolean {
+  setRelight(id: ID, content: RelightContent, image: ImageData, amendNew = true): boolean {
     this.relightPreview = null;
     const p = this.current, l = p?.layer(id);
     if (!p || !l?.relight || image.width !== p.doc.width || image.height !== p.doc.height) { this.emit('render', null); return false; }
     const r = new Raster(p.doc.width, p.doc.height);
     r.write(image);
     const patch = { relight: content, raster: r, transform: docTransform(p.doc.width, p.doc.height) };
-    if (p.history.last?.name === 'New Relight Layer' && !this.stroke) {
+    if (amendNew && p.history.last?.name === 'New Relight Layer' && !this.stroke) {
       p.updateLayer(id, patch);
       p.history.amend(p.snapshot());
       this.refresh();

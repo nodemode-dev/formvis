@@ -30,12 +30,17 @@ export interface RelightLight {
   pos: { x: number; y: number };
   aim: { x: number; y: number };
   pattern: RelightPattern;
+  near?: number;
+  far?: number;
 }
 
 export interface RelightContent {
   lights: RelightLight[];
   original: number;
   shine: number;
+  delight?: number;
+  shadows?: number;
+  ambient?: RGB;
   look?: string;
   depth?: 'model' | 'estimate';
 }
@@ -117,14 +122,34 @@ export function relightFrom(raw: unknown): RelightContent | null {
       kelvin: l.kelvin === null ? null : num(l.kelvin, 1000, 12000, 5200),
       intensity: num(l.intensity, 0, 100, 60), softness: num(l.softness, 0, 100, 20), diffusion: num(l.diffusion, 0, 100, 20), distance: num(l.distance, 0, 100, 35),
       pos: pt(l.pos, { x: 0.2, y: 0.25 }), aim: pt(l.aim, { x: 0.5, y: 0.45 }),
+      ...(l.near !== undefined ? { near: num(l.near, 0, 100, 0) } : {}), ...(l.far !== undefined ? { far: num(l.far, 0, 100, 100) } : {}),
       pattern: {
         kind: pick(pr.kind, RELIGHT_PATTERNS, 'none'), scale: num(pr.scale, 10, 400, dp.scale), width: num(pr.width, 1, 200, dp.width), slats: Math.round(num(pr.slats, 2, 60, dp.slats)),
         opening: num(pr.opening, 1, 99, dp.opening), length: num(pr.length, 1, 200, dp.length), feather: num(pr.feather, 0, 100, dp.feather), rotation: num(pr.rotation, -180, 180, dp.rotation), invert: pr.invert === true,
       },
     };
   });
-  return { lights, original: num(o.original, 0, 100, 60), shine: num(o.shine, 0, 100, 20), ...(typeof o.look === 'string' ? { look: o.look } : {}), ...(o.depth === 'model' || o.depth === 'estimate' ? { depth: o.depth } : {}) };
+  return {
+    lights, original: num(o.original, 0, 100, 60), shine: num(o.shine, 0, 100, 20),
+    ...(o.delight !== undefined ? { delight: num(o.delight, 0, 100, 0) } : {}), ...(o.shadows !== undefined ? { shadows: num(o.shadows, 0, 100, 70) } : {}),
+    ...(o.ambient && typeof o.ambient === 'object' ? { ambient: rgb(o.ambient) } : {}),
+    ...(typeof o.look === 'string' ? { look: o.look.slice(0, 80) } : {}), ...(o.depth === 'model' || o.depth === 'estimate' ? { depth: o.depth } : {}),
+  };
 }
+
+export function shadingField(rgba: ArrayLike<number>, w: number, h: number): Float32Array {
+  const s = Math.max(w, h), lum = heightField(rgba, w, h, Math.max(2, Math.round(s / 40)), false), out = new Float32Array(w * h);
+  let sum = 0, n = 0;
+  for (let i = 0; i < lum.length; i++) { const v = srgbToLinear(clamp(lum[i], 0, 1)); out[i] = v; if (rgba[i * 4 + 3] > 0) { sum += v; n++; } }
+  const mean = Math.max(1e-3, sum / Math.max(1, n));
+  for (let i = 0; i < out.length; i++) out[i] = clamp(out[i] / mean, 0.25, 4);
+  return out;
+}
+
+export const depthWindow = (d: number, near: number, far: number): number => {
+  const f = 0.04;
+  return (near <= 0 ? 1 : smooth(near - f, near + f, d)) * (far >= 1 ? 1 : smooth(far + f, far - f, d));
+};
 
 export interface RelightGeometry { width: number; height: number; data: Float32Array }
 
@@ -165,7 +190,7 @@ export function relightGeometry(depth: Float32Array, w: number, h: number): Reli
 
 export interface PackedLight {
   type: number; color: [number, number, number]; intensity: number; softness: number; diffusion: number; distance: number;
-  pos: [number, number]; aim: [number, number]; pattern: number; pat: [number, number, number, number]; pat2: [number, number, number, number];
+  pos: [number, number]; aim: [number, number]; pattern: number; pat: [number, number, number, number]; pat2: [number, number, number, number]; range: [number, number];
 }
 
 const TYPE_CODE: Record<RelightType, number> = { point: 0, spot: 1, sun: 2, area: 3, strip: 4, ring: 5 };
@@ -178,6 +203,7 @@ export function packLights(c: RelightContent, w: number, h: number): PackedLight
     pos: [l.pos.x * w, l.pos.y * h], aim: [l.aim.x * w, l.aim.y * h], pattern: PATTERN_CODE[l.pattern.kind] * (l.pattern.invert ? -1 : 1),
     pat: [l.pattern.scale / 100, l.pattern.width / 100, l.pattern.slats, l.pattern.opening / 100],
     pat2: [l.pattern.length / 100, l.pattern.feather / 100, (l.pattern.rotation * Math.PI) / 180, 0],
+    range: [(l.near ?? 0) / 100, (l.far ?? 100) / 100],
   }));
 }
 
@@ -216,25 +242,34 @@ export function patternAt(kind: number, u: number, v: number, s: number, pat: re
   return kind < 0 ? 1 - m : m;
 }
 
-export interface ShadeOptions { shadowSteps?: number }
+export interface ShadeOptions { shadowSteps?: number; shade?: Float32Array | null }
+
+export function sceneTerms(content: RelightContent): { ambient: [number, number, number]; delight: number; shadows: number } {
+  const a = content.ambient ?? { r: 255, g: 255, b: 255 }, o = content.original / 100;
+  return { ambient: [srgbToLinear(a.r / 255) * o, srgbToLinear(a.g / 255) * o, srgbToLinear(a.b / 255) * o], delight: (content.delight ?? 0) / 100, shadows: (content.shadows ?? 70) / 100 };
+}
 
 export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, opts: ShadeOptions = {}): Uint8ClampedArray {
   const w = geo.width, h = geo.height, g = geo.data, s = Math.max(w, h), relief = 0.25 * s, out = new Uint8ClampedArray(base.length);
-  const lights = packLights(content, w, h), orig = content.original / 100, shine = content.shine / 100, steps = opts.shadowSteps ?? 16;
+  const lights = packLights(content, w, h), shine = content.shine / 100, steps = opts.shadowSteps ?? 16, sc = sceneTerms(content), shade = opts.shade ?? null;
   const lut = new Float32Array(256);
   for (let i = 0; i < 256; i++) lut[i] = srgbToLinear(i / 255);
   const zAt = (x: number, y: number): number => g[(clamp(Math.round(y), 0, h - 1) * w + clamp(Math.round(x), 0, w - 1)) * 4 + 3] * relief;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = (y * w + x) * 4, nx = g[i], ny = g[i + 1], nz = g[i + 2], pz = g[i + 3] * relief;
-    let er = orig, eg = orig, eb = orig, sr = 0, sg = 0, sb = 0;
+    let er = sc.ambient[0], eg = sc.ambient[1], eb = sc.ambient[2], sr = 0, sg = 0, sb = 0;
+    const d = g[i + 3];
     for (const L of lights) {
-      const c = lightAt(L, x + 0.5, y + 0.5, pz, nx, ny, nz, s, relief, steps, zAt);
-      er += L.color[0] * c.diffuse; eg += L.color[1] * c.diffuse; eb += L.color[2] * c.diffuse;
-      sr += L.color[0] * c.spec * shine; sg += L.color[1] * c.spec * shine; sb += L.color[2] * c.spec * shine;
+      const win = depthWindow(d, L.range[0], L.range[1]);
+      if (win <= 0) continue;
+      const c = lightAt(L, x + 0.5, y + 0.5, pz, nx, ny, nz, s, relief, steps, zAt, sc.shadows);
+      er += L.color[0] * c.diffuse * win; eg += L.color[1] * c.diffuse * win; eb += L.color[2] * c.diffuse * win;
+      sr += L.color[0] * c.spec * shine * win; sg += L.color[1] * c.spec * shine * win; sb += L.color[2] * c.spec * shine * win;
     }
-    out[i] = Math.round(linearToSrgb(tone(lut[base[i]] * er + sr)) * 255);
-    out[i + 1] = Math.round(linearToSrgb(tone(lut[base[i + 1]] * eg + sg)) * 255);
-    out[i + 2] = Math.round(linearToSrgb(tone(lut[base[i + 2]] * eb + sb)) * 255);
+    const k = shade ? 1 / (1 + (shade[y * w + x] - 1) * sc.delight) : 1;
+    out[i] = Math.round(linearToSrgb(tone(lut[base[i]] * k * er + sr)) * 255);
+    out[i + 1] = Math.round(linearToSrgb(tone(lut[base[i + 1]] * k * eg + sg)) * 255);
+    out[i + 2] = Math.round(linearToSrgb(tone(lut[base[i + 2]] * k * eb + sb)) * 255);
     out[i + 3] = base[i + 3];
   }
   return out;
@@ -242,7 +277,7 @@ export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, cont
 
 function tone(v: number): number { return v <= 0.8 ? Math.max(0, v) : 0.8 + 0.2 * (1 - Math.exp(-(v - 0.8) / 0.2)); }
 
-export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number): { diffuse: number; spec: number } {
+export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number, shadowAmt = 1): { diffuse: number; spec: number } {
   const hL = relief + (0.08 + 1.4 * L.distance) * s;
   let lx: number, ly: number, lz: number, atten = 1, maxRun = 0.45 * s;
   if (L.type === 2) {
@@ -279,6 +314,7 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
       if (shadow <= 0) break;
     }
   }
+  shadow = 1 - (1 - shadow) * shadowAmt;
   let pattern = 1;
   if (L.pattern !== 0) {
     const par = (pz - relief * 0.5) * 0.35 / Math.max(0.25, lz), gx = px + lx * par, gy = py + ly * par;

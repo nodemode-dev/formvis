@@ -1,4 +1,4 @@
-import { MAX_RELIGHT_LIGHTS, packLights, shadeRelight, type RelightContent, type RelightGeometry } from '../engine/relight';
+import { MAX_RELIGHT_LIGHTS, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry } from '../engine/relight';
 
 const VERT = `#version 300 es
 in vec2 aPos;
@@ -22,6 +22,11 @@ uniform vec4 uB[${MAX_RELIGHT_LIGHTS}];
 uniform vec4 uC[${MAX_RELIGHT_LIGHTS}];
 uniform vec4 uD[${MAX_RELIGHT_LIGHTS}];
 uniform vec4 uE[${MAX_RELIGHT_LIGHTS}];
+uniform vec4 uF[${MAX_RELIGHT_LIGHTS}];
+uniform sampler2D uShade;
+uniform float uDelight;
+uniform float uShadows;
+uniform vec3 uAmbient;
 
 float toLin(float v) { return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4); }
 float toSrgb(float v) { return v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1.0 / 2.4) - 0.055; }
@@ -71,10 +76,12 @@ void main() {
   vec2 p = uv * uSize;
   vec3 n = g.rgb;
   float pz = g.a * relief;
-  vec3 E = vec3(uOrig), S = vec3(0.0);
+  vec3 E = uAmbient, S = vec3(0.0);
   for (int i = 0; i < ${MAX_RELIGHT_LIGHTS}; i++) {
     if (i >= uCount) break;
-    vec4 A = uA[i], B = uB[i], C = uC[i], D = uD[i], Ee = uE[i];
+    vec4 A = uA[i], B = uB[i], C = uC[i], D = uD[i], Ee = uE[i], F = uF[i];
+    float win = (F.x <= 0.0 ? 1.0 : sstep(F.x - 0.04, F.x + 0.04, g.a)) * (F.y >= 1.0 ? 1.0 : sstep(F.y + 0.04, F.y - 0.04, g.a));
+    if (win <= 0.0) continue;
     float type = A.x, intensity = A.y, softness = A.z, diffusion = A.w, distance_ = B.w;
     vec2 pos = C.xy, aim = C.zw;
     float hL = relief + (0.08 + 1.4 * distance_) * s;
@@ -118,6 +125,7 @@ void main() {
         if (shadow <= 0.0) break;
       }
     }
+    shadow = 1.0 - (1.0 - shadow) * uShadows;
     float pattern = 1.0;
     if (abs(D.x) > 0.5) {
       float par = (pz - relief * 0.5) * 0.35 / max(0.25, l.z);
@@ -127,15 +135,16 @@ void main() {
     float amount = intensity * 3.2 * atten * shadow * pattern;
     vec3 hv = normalize(l + vec3(0.0, 0.0, 1.0));
     float gloss = 8.0 + 56.0 * (1.0 - softness);
-    E += B.rgb * amount * lam;
-    if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.6 * uShine;
+    E += B.rgb * amount * lam * win;
+    if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.6 * uShine * win;
   }
-  vec3 lin = vec3(toLin(base.r), toLin(base.g), toLin(base.b));
+  float kd = 1.0 / (1.0 + (texture(uShade, uv).r - 1.0) * uDelight);
+  vec3 lin = vec3(toLin(base.r), toLin(base.g), toLin(base.b)) * kd;
   vec3 o = lin * E + S;
   outColor = vec4(toSrgb(tone(o.r)), toSrgb(tone(o.g)), toSrgb(tone(o.b)), base.a);
 }`;
 
-interface GlState { gl: WebGL2RenderingContext; canvas: HTMLCanvasElement | OffscreenCanvas; prog: WebGLProgram; base: WebGLTexture; geo: WebGLTexture; loc: Record<string, WebGLUniformLocation | null> }
+interface GlState { gl: WebGL2RenderingContext; canvas: HTMLCanvasElement | OffscreenCanvas; prog: WebGLProgram; base: WebGLTexture; geo: WebGLTexture; shade: WebGLTexture; loc: Record<string, WebGLUniformLocation | null> }
 
 let state: GlState | null | undefined;
 
@@ -170,22 +179,23 @@ function init(): GlState | null {
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, k, v);
     return t;
   };
-  const base = tex(), geo = tex();
-  if (!base || !geo) return null;
+  const base = tex(), geo = tex(), shade = tex();
+  if (!base || !geo || !shade) return null;
   const loc: Record<string, WebGLUniformLocation | null> = {};
-  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE']) loc[k] = gl.getUniformLocation(prog, k);
-  state = { gl, canvas, prog, base, geo, loc };
+  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient']) loc[k] = gl.getUniformLocation(prog, k);
+  state = { gl, canvas, prog, base, geo, shade, loc };
   return state;
 }
 
 export const relightGpuAvailable = (): boolean => !!init();
 
-let uploaded: { base: Uint8ClampedArray | null; geo: Float32Array | null } = { base: null, geo: null };
+let uploaded: { base: Uint8ClampedArray | null; geo: Float32Array | null; shade: Float32Array | null | undefined } = { base: null, geo: null, shade: undefined };
+const ONE = new Float32Array([1]);
 
-export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, steps = 24): Uint8ClampedArray {
+export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, steps = 24, shade: Float32Array | null = null): Uint8ClampedArray {
   const st = init(), w = geo.width, h = geo.height;
   const maxTex = st ? st.gl.getParameter(st.gl.MAX_TEXTURE_SIZE) as number : 0;
-  if (!st || w > maxTex || h > maxTex) return shadeRelight(base, geo, content, { shadowSteps: Math.min(steps, 16) });
+  if (!st || w > maxTex || h > maxTex) return shadeRelight(base, geo, content, { shadowSteps: Math.min(steps, 16), shade });
   const { gl, canvas, prog, loc } = st;
   canvas.width = w; canvas.height = h;
   gl.viewport(0, 0, w, h);
@@ -195,7 +205,17 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   if (uploaded.base !== base) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, base); uploaded.base = base; }
   gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, st.geo);
   if (uploaded.geo !== geo.data) { gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, geo.data); uploaded.geo = geo.data; }
-  gl.uniform1i(loc.uBase, 0); gl.uniform1i(loc.uGeo, 1);
+  gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, st.shade);
+  if (uploaded.shade !== shade) {
+    if (shade) gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, w, h, 0, gl.RED, gl.FLOAT, shade);
+    else gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, 1, 1, 0, gl.RED, gl.FLOAT, ONE);
+    uploaded.shade = shade;
+  }
+  gl.uniform1i(loc.uBase, 0); gl.uniform1i(loc.uGeo, 1); gl.uniform1i(loc.uShade, 2);
+  const sc = sceneTerms(content);
+  gl.uniform3f(loc.uAmbient, sc.ambient[0], sc.ambient[1], sc.ambient[2]);
+  gl.uniform1f(loc.uDelight, shade ? sc.delight : 0);
+  gl.uniform1f(loc.uShadows, sc.shadows);
   gl.uniform2f(loc.uSize, w, h);
   const lights = packLights(content, w, h);
   gl.uniform1i(loc.uCount, lights.length);
@@ -208,10 +228,11 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   gl.uniform4fv(loc.uC, pack((i) => [...lights[i].pos, ...lights[i].aim]));
   gl.uniform4fv(loc.uD, pack((i) => [lights[i].pattern, lights[i].pat[0], lights[i].pat[1], lights[i].pat[2]]));
   gl.uniform4fv(loc.uE, pack((i) => [lights[i].pat[3], lights[i].pat2[0], lights[i].pat2[1], lights[i].pat2[2]]));
+  gl.uniform4fv(loc.uF, pack((i) => [lights[i].range[0], lights[i].range[1], 0, 0]));
   gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   const out = new Uint8ClampedArray(w * h * 4);
   gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, out);
   return out;
 }
 
-export function forgetRelightUploads(): void { uploaded = { base: null, geo: null }; }
+export function forgetRelightUploads(): void { uploaded = { base: null, geo: null, shade: undefined }; }
