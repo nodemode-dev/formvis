@@ -170,6 +170,9 @@ fn main() {
                             .inner_size(width, height)
                             .min_inner_size(MIN_SIZE.0, MIN_SIZE.1)
                             .center()
+                            // Files dropped on the window reach the page as ordinary drop events (1.86.1): Tauri's own
+                            // drop handler otherwise takes them, and the Home screen and the canvas never saw a drop.
+                            .disable_drag_drop_handler()
                             .build();
                         close_splash(&handle);
                         check_for_updates(handle.clone());
