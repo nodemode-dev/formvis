@@ -2,6 +2,11 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Stale unpack folders swept at start · _v1.86.3 (formvis_engine.py)
+
+- The owner's Mac after the 1.86.2 checks: no `formvis-engine` process running, 31 `_MEI` folders in `$TMPDIR`, about 5.3 GB (116, 337, 338, 406 and 916 MB ones, one size per build of the day, and 12 empty). The servers had not outlived the app, but nearly every launch left its folder. The 1.86.0 launcher's name template is `%s_MEI%08xXXXXXX` (from its strings): the launcher's pid in hex, then six random characters.
+- `sweep_stale_unpacks()` (new), called in `main` after `watch_parent()`: in the frozen engine on POSIX, a daemon thread lists the folder holding `sys._MEIPASS` and removes every `_MEI([0-9a-f]{8})[A-Za-z0-9]{6}` folder but its own whose pid is gone (`os.kill(pid, 0)` raising `ProcessLookupError` or `PermissionError`). Checked on mock folders: dead full and dead empty removed; a live pid, its own folder, an old-style `_MEI89Pw8z` and a non-`_MEI` folder kept.
+
 ## The frozen engine stops with the app · _v1.86.2 (formvis_engine.py)
 
 - `watch_parent()` (new), called first in `main`: on POSIX, a daemon thread polls `os.getppid()` every 2 s; when the parent changes (the one-file launcher was forced closed), it removes `sys._MEIPASS` if that folder is a `_MEI` one and calls `os._exit(0)`. The 1.86.0 engine is a 320 MB one-file bundle that unpacks 997 MB (3,164 files, 843 MB of native libraries, torch's CPU library alone 386 MB) at every launch; the shell's forced stop reached only the launcher, so the server and that folder could outlive the app. The unpacking itself still happens each launch (DEV_PLAN 37.53, a one-folder build).

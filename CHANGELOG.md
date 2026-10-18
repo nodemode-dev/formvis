@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.86.3 · 2026-10-18
+
+### Fixed
+
+- Desktop app: the engine removes the temporary folders earlier launches left behind, in the background at every start. Each folder carries the process id of the launcher that made it; a folder whose process is gone is removed, one in use is kept. The owner's Mac held 31 of them, about 5.3 GB.
+
 ## 1.86.2 · 2026-10-18
 
 ### Fixed
