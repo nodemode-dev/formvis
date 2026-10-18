@@ -49,10 +49,49 @@ def watch_parent() -> None:
     threading.Thread(target=run, name="formvis-parent-watch", daemon=True).start()
 
 
+def sweep_stale_unpacks() -> None:
+    """Removes the temporary folders earlier launches left behind (1.86.3). The one-file launcher names its folder
+    `_MEI` + its process id as eight hex digits + six random characters, and deletes it when it exits; a launcher that
+    was forced closed never did. The owner's Mac held 31 such folders, about 5.3 GB, one per launch of every build that
+    day. A folder whose process is gone belongs to nobody, whichever program made it; one whose id is in use is kept
+    (the id may have been reused, so this is conservative), and so is this engine's own. Runs in the background so the
+    engine starts at once."""
+    unpacked = getattr(sys, "_MEIPASS", "")
+    if os.name != "posix" or not os.path.basename(unpacked).startswith("_MEI"):
+        return
+    import re
+    import shutil
+    import threading
+
+    def alive(pid: int) -> bool:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError:
+            return False   # another user's process now holds the id, so this user's launcher is gone
+        return True
+
+    def run() -> None:
+        root, own = os.path.dirname(unpacked), os.path.basename(unpacked)
+        try:
+            names = os.listdir(root)
+        except OSError:
+            return
+        for name in names:
+            m = re.fullmatch(r"_MEI([0-9a-f]{8})[A-Za-z0-9]{6}", name)
+            if not m or name == own or alive(int(m.group(1), 16)):
+                continue
+            shutil.rmtree(os.path.join(root, name), ignore_errors=True)
+
+    threading.Thread(target=run, name="formvis-unpack-sweep", daemon=True).start()
+
+
 def main() -> int:
     if "--selfcheck" in sys.argv:
         return selfcheck()
     watch_parent()
+    sweep_stale_unpacks()
     bundled = os.path.join(resource_dir(), "frontend_dist")
     if os.path.isdir(bundled):
         os.environ.setdefault("FORMVIS_DIST", bundled)
