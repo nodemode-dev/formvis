@@ -9,6 +9,8 @@ export interface RelightHost {
   selected(): string | null;
   select(id: string): void;
   move(id: string, part: 'pos' | 'aim', at: { x: number; y: number }, done: boolean): void;
+  nudge(dx: number, dy: number, aim: boolean): void;
+  cycle(back: boolean): void;
   commit(): void;
   cancel(): void;
 }
@@ -68,6 +70,10 @@ export const relightTool: Tool = {
     if (!host?.active() || ev.metaKey || ev.ctrlKey) return false;
     if (ev.key === 'Enter') { host.commit(); return true; }
     if (ev.key === 'Escape') { host.cancel(); return true; }
+    const step = ev.shiftKey ? 0.05 : 0.005, arrows: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    const a = arrows[ev.key];
+    if (a) { host.nudge(a[0], a[1], ev.altKey); return true; }
+    if (ev.key === 'Tab') { host.cycle(ev.shiftKey); return true; }
     return false;
   },
   cancel() { drag = null; },

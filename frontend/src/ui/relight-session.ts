@@ -1,6 +1,6 @@
 import type { Engine, ID, ToolId } from '../engine';
 import {
-  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, depthFromGrey, estimateDepth, kelvinToRgb, newLight, relightGeometry, shadeRelight,
+  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, depthFromGrey, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, shadeRelight, shadingField,
   type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType,
 } from '../engine/relight';
 import { renderRelight } from '../gpu/relight-gl';
@@ -12,6 +12,7 @@ import { t } from './i18n';
 import { checkRow, colorRow, selectRow, sliderRow, type Row } from './panels/controls';
 
 const PREVIEW_SIDE = 1280;
+const USER_LOOKS = 'formvis.relight.looks';
 const TYPE_ICON: Record<RelightType, string> = { point: 'lightPoint', spot: 'lightSpot', sun: 'sun', area: 'lightArea', strip: 'lightStrip', ring: 'lightRing' };
 const hex = (c: { r: number; g: number; b: number }): string => `#${[c.r, c.g, c.b].map((v) => v.toString(16).padStart(2, '0')).join('')}`;
 const fromHex = (h: string): { r: number; g: number; b: number } => ({ r: parseInt(h.slice(1, 3), 16) || 0, g: parseInt(h.slice(3, 5), 16) || 0, b: parseInt(h.slice(5, 7), 16) || 0 });
@@ -49,19 +50,20 @@ export class RelightSession {
   private content: RelightContent = defaultRelight();
   private selectedId: string | null = null;
   private full: Sized | null = null;
-  private proxy: { base: Uint8ClampedArray; geo: RelightGeometry } | null = null;
+  private proxy: { base: Uint8ClampedArray; geo: RelightGeometry; shade: Float32Array } | null = null;
   private depthBitmap: ImageBitmap | null = null;
   private frame = 0;
   private busy = false;
   private readonly rows: { [k: string]: Row<number> | Row<string> | Row<boolean> } = {};
   private readonly lightRows = new Map<string, HTMLElement>();
   private readonly typeButtons = new Map<RelightType, HTMLButtonElement>();
+  private readonly sphere = sphereGeometry(40);
 
   constructor(private readonly engine: Engine, propsRoot: HTMLElement, stage: HTMLElement) {
     this.panel = this.buildPanel();
     this.bar = this.buildBar();
     this.pill = el(`<div class="cv-relight-pill" hidden><button class="cv-relight-btn" type="button">${icon('relight', 14)}<span></span></button></div>`);
-    setText(q(this.pill, 'span'), t('Edit Lighting'));
+    setText(q(this.pill, 'button > span:last-child'), t('Edit Lighting'));
     q(this.pill, 'button').addEventListener('click', () => { const l = engine.activeLayer; if (l?.relight) void this.begin(l.id); });
     const head = propsRoot.querySelector('.cv-props-head');
     if (head) head.after(this.panel); else propsRoot.prepend(this.panel);
@@ -73,6 +75,13 @@ export class RelightSession {
       selected: () => this.selectedId,
       select: (id) => { this.selectedId = id; this.sync(); },
       move: (id, part, at, done) => this.moveLight(id, part, at, done),
+      nudge: (dx, dy, aim) => { const l = this.light(); if (l) { const p = aim ? l.aim : l.pos; this.moveLight(l.id, aim ? 'aim' : 'pos', { x: p.x + dx, y: p.y + dy }, true); this.engine.emit('overlay', null); } },
+      cycle: (back) => {
+        const ls = this.content.lights, i = ls.findIndex((l) => l.id === this.selectedId);
+        if (!ls.length) return;
+        this.selectedId = ls[(i + (back ? -1 : 1) + ls.length) % ls.length].id;
+        this.sync(); this.engine.emit('overlay', null);
+      },
       commit: () => { void this.commit(); },
       cancel: () => this.cancel(),
     });
@@ -99,7 +108,7 @@ export class RelightSession {
     this.full = { data: below.data, w: W, h: H };
     const k = Math.min(1, PREVIEW_SIDE / Math.max(W, H)), pw = Math.max(1, Math.round(W * k)), ph = Math.max(1, Math.round(H * k));
     const pbase = k < 1 ? scaled(below, pw, ph) : below.data;
-    this.proxy = { base: pbase, geo: relightGeometry(estimateDepth(pbase, pw, ph), pw, ph) };
+    this.proxy = { base: pbase, geo: relightGeometry(estimateDepth(pbase, pw, ph), pw, ph), shade: shadingField(pbase, pw, ph) };
     this.content.depth = 'estimate';
     this.depthBitmap = null;
     this.selectedId = this.content.lights[0]?.id ?? null;
@@ -113,6 +122,29 @@ export class RelightSession {
     void this.loadDepth(below, pw, ph);
   }
 
+  async apply(content: RelightContent): Promise<{ id: ID; depth: 'model' | 'estimate' } | null> {
+    const e = this.engine, p = e.current;
+    if (this.layerId || !p || (p.doc.mode ?? 'rgb') !== 'rgb' || (p.doc.depth ?? 8) > 8) return null;
+    const W = p.doc.width, H = p.doc.height, id = e.newRelightLayer(structuredClone(content), new ImageData(W, H));
+    if (!id) return null;
+    const below = e.compositeUnder(id);
+    if (!below) { e.dropNewRelight(id); return null; }
+    let depth: Float32Array | null = null, kind: 'model' | 'estimate' = 'estimate';
+    try {
+      if (await depthReady()) {
+        const c = new OffscreenCanvas(W, H);
+        (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
+        const bmp = await createImageBitmap(await localDepth(await c.convertToBlob({ type: 'image/png' })));
+        depth = depthFromGrey(scaled(bmp, W, H), W, H);
+        bmp.close();
+        kind = 'model';
+      }
+    } catch { depth = null; }
+    const made = { ...structuredClone(content), depth: kind };
+    const px = renderRelight(below.data, relightGeometry(depth ?? estimateDepth(below.data, W, H), W, H), made, kind === 'model' ? 24 : 0, shadingField(below.data, W, H));
+    return e.setRelight(id, made, new ImageData(new Uint8ClampedArray(px), W, H)) ? { id, depth: kind } : null;
+  }
+
   private async loadDepth(below: ImageData, pw: number, ph: number): Promise<void> {
     const id = this.layerId;
     try {
@@ -123,7 +155,7 @@ export class RelightSession {
       const bmp = await createImageBitmap(await localDepth(await c.convertToBlob({ type: 'image/png' })));
       if (this.layerId !== id || !this.proxy) { bmp.close(); return; }
       this.depthBitmap = bmp;
-      this.proxy = { base: this.proxy.base, geo: relightGeometry(depthFromGrey(scaled(bmp, pw, ph), pw, ph), pw, ph) };
+      this.proxy = { ...this.proxy, geo: relightGeometry(depthFromGrey(scaled(bmp, pw, ph), pw, ph), pw, ph) };
       this.content.depth = 'model';
       this.status(t('Shape from Depth Anything, on this computer.'));
       this.schedule();
@@ -137,7 +169,7 @@ export class RelightSession {
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
       if (!this.layerId || !this.proxy) return;
-      const g = this.proxy.geo, px = renderRelight(this.proxy.base, g, this.content, this.content.depth === 'model' ? 20 : 0);
+      const g = this.proxy.geo, px = renderRelight(this.proxy.base, g, this.content, this.content.depth === 'model' ? 20 : 0, this.proxy.shade);
       this.engine.previewRelight(this.layerId, new ImageData(new Uint8ClampedArray(px), g.width, g.height));
       this.engine.emit('overlay', null);
     });
@@ -151,8 +183,8 @@ export class RelightSession {
     await new Promise((r) => setTimeout(r, 0));
     try {
       const depth = this.depthBitmap ? depthFromGrey(scaled(this.depthBitmap, f.w, f.h), f.w, f.h) : estimateDepth(f.data, f.w, f.h);
-      const px = renderRelight(f.data, relightGeometry(depth, f.w, f.h), this.content, this.depthBitmap ? 24 : 0);
-      this.engine.setRelight(id, structuredClone(this.content), new ImageData(new Uint8ClampedArray(px), f.w, f.h));
+      const px = renderRelight(f.data, relightGeometry(depth, f.w, f.h), this.content, this.depthBitmap ? 24 : 0, shadingField(f.data, f.w, f.h));
+      this.engine.setRelight(id, structuredClone(this.content), new ImageData(new Uint8ClampedArray(px), f.w, f.h), this.isNew);
     } finally {
       this.busy = false;
       setClass(this.bar, 'is-busy', false);
@@ -211,10 +243,53 @@ export class RelightSession {
     this.schedule();
   }
 
+  private lookButton(id: string, label: string, content: RelightContent, user = false): HTMLButtonElement {
+    const b = el<HTMLButtonElement>(`<button class="cv-relight-look" type="button"><canvas width="40" height="40"></canvas></button>`);
+    b.dataset.look = id;
+    b.title = user ? `${label} · ${t('Alt-click to delete')}` : label;
+    b.setAttribute('aria-label', label);
+    const px = shadeRelight(this.sphere.base, this.sphere.geo, content, { shadowSteps: 0 });
+    (q<HTMLCanvasElement>(b, 'canvas').getContext('2d') as CanvasRenderingContext2D).putImageData(new ImageData(new Uint8ClampedArray(px), 40, 40), 0, 0);
+    b.addEventListener('click', (ev) => {
+      if (user && ev.altKey) { this.storeLooks(this.userLooks().filter((x) => x.id !== id)); b.remove(); return; }
+      this.applyLook(id);
+    });
+    return b;
+  }
+
+  private userLooks(): Array<{ id: string; label: string; content: RelightContent }> {
+    try {
+      const raw = JSON.parse(localStorage.getItem(USER_LOOKS) ?? '[]') as unknown;
+      if (!Array.isArray(raw)) return [];
+      return raw.flatMap((x) => {
+        const o = (x ?? {}) as Record<string, unknown>, c = relightFrom(o.content);
+        return c && typeof o.id === 'string' ? [{ id: o.id, label: typeof o.label === 'string' ? o.label.slice(0, 60) : 'My Look', content: c }] : [];
+      });
+    } catch { return []; }
+  }
+
+  private storeLooks(list: Array<{ id: string; label: string; content: RelightContent }>): void {
+    try { localStorage.setItem(USER_LOOKS, JSON.stringify(list.slice(0, 28))); } catch { this.engine.notice(t('This browser would not keep the Look.')); }
+  }
+
+  private saveLook(): void {
+    const list = this.userLooks();
+    if (list.length >= 28) { this.engine.notice(t('Up to 28 saved Looks; Alt-click one to delete it.')); return; }
+    let n = list.length + 1;
+    while (list.some((x) => x.label === `My Look ${n}`)) n += 1;
+    const { depth: _depth, look: _look, ...rest } = structuredClone(this.content);
+    const item = { id: `user-${Date.now().toString(36)}`, label: `My Look ${n}`, content: rest };
+    this.storeLooks([...list, item]);
+    const save = q(this.panel, '.cv-relight-look.is-save');
+    save.before(this.lookButton(item.id, item.label, item.content, true));
+    this.content.look = item.id;
+    this.sync();
+  }
+
   private applyLook(id: string): void {
-    const look = RELIGHT_LOOKS.find((x) => x.id === id);
-    if (!look) return;
-    const made = look.make();
+    const look = RELIGHT_LOOKS.find((x) => x.id === id), user = look ? null : this.userLooks().find((x) => x.id === id);
+    if (!look && !user) return;
+    const made = look ? look.make() : relightFrom(structuredClone(user!.content)) ?? defaultRelight();
     this.content = { ...made, look: id, ...(this.content.depth ? { depth: this.content.depth } : {}) };
     this.selectedId = made.lights[0]?.id ?? null;
     this.sync();
@@ -245,28 +320,26 @@ export class RelightSession {
       <div class="cv-relight-scene" data-part="scene"></div>
       <p class="cv-relight-status cv-note"></p>
     </section>`);
-    setText(q(root, '.cv-relight-title span'), t('Relight Properties'));
+    setText(q(root, '.cv-relight-title > span:last-child'), t('Relight Properties'));
     const folds = root.querySelectorAll<HTMLButtonElement>('[data-fold]');
     const labels: Record<string, string> = { looks: 'Looks', lights: 'Lights', scene: 'Scene' };
     folds.forEach((b) => {
       const k = b.dataset.fold ?? '';
-      if (labels[k]) setText(q(b, 'span'), t(labels[k]));
+      if (labels[k]) setText(q(b, ':scope > span:last-child'), t(labels[k]));
       b.addEventListener('click', () => {
         const open = b.getAttribute('aria-expanded') !== 'true';
         b.setAttribute('aria-expanded', String(open));
         root.querySelectorAll<HTMLElement>(`[data-part="${k}"]`).forEach((p) => setHidden(p, !open));
       });
     });
-    const looks = q(root, '.cv-relight-looks'), sphere = sphereGeometry(40);
-    for (const look of RELIGHT_LOOKS) {
-      const b = el<HTMLButtonElement>(`<button class="cv-relight-look" type="button" data-look="${look.id}"><canvas width="40" height="40"></canvas></button>`);
-      b.title = t(look.label);
-      b.setAttribute('aria-label', t(look.label));
-      const px = shadeRelight(sphere.base, sphere.geo, look.make(), { shadowSteps: 0 });
-      (q<HTMLCanvasElement>(b, 'canvas').getContext('2d') as CanvasRenderingContext2D).putImageData(new ImageData(new Uint8ClampedArray(px), 40, 40), 0, 0);
-      b.addEventListener('click', () => this.applyLook(look.id));
-      looks.append(b);
-    }
+    const looks = q(root, '.cv-relight-looks');
+    for (const look of RELIGHT_LOOKS) looks.append(this.lookButton(look.id, t(look.label), look.make()));
+    const save = el<HTMLButtonElement>(`<button class="cv-relight-look is-save" type="button">${icon('plus', 16)}</button>`);
+    save.title = t('Save these lights as a Look');
+    save.setAttribute('aria-label', t('Save these lights as a Look'));
+    save.addEventListener('click', () => this.saveLook());
+    for (const u of this.userLooks()) looks.append(this.lookButton(u.id, u.label, u.content, true));
+    looks.append(save);
     const add = q<HTMLSelectElement>(root, '.cv-relight-add');
     add.append(el(`<option value="">${t('Add Light')}</option>`), ...RELIGHT_TYPES.map(([k, label]) => el(`<option value="${k}">${t(label)}</option>`)));
     add.addEventListener('change', () => { const v = add.value as RelightType; add.value = ''; if (v) this.addLight(v); });
@@ -292,6 +365,8 @@ export class RelightSession {
     slider('softness', 'Softness', 0, 100, (l, v) => { l.softness = v; });
     slider('diffusion', 'Diffusion', 0, 100, (l, v) => { l.diffusion = v; });
     slider('distance', 'Close to Far', 0, 100, (l, v) => { l.distance = v; });
+    slider('near', 'Lights from depth', 0, 100, (l, v) => { l.near = v; });
+    slider('far', 'Lights to depth', 0, 100, (l, v) => { l.far = v; });
     light.append(el(`<p class="cv-note">${t('Drag the light or its aim point on the photo. Alt-drag moves the aim.')}</p>`));
     const pat = q(root, '.cv-relight-pattern');
     const kind = selectRow(t('Pattern'), RELIGHT_PATTERNS.map(([k, label]) => [k, t(label)] as const), (v) => this.change((l) => { l.pattern.kind = v as RelightPatternKind; }));
@@ -310,8 +385,11 @@ export class RelightSession {
     const scene = q(root, '.cv-relight-scene');
     const orig = sliderRow(t('Original lighting'), 0, 100, 1, (v) => { this.content.original = v; this.schedule(); });
     const shine = sliderRow(t('Shine'), 0, 100, 1, (v) => { this.content.shine = v; this.schedule(); });
-    this.rows.original = orig; this.rows.shine = shine;
-    scene.append(orig.el, shine.el);
+    const delight = sliderRow(t('Flatten original light'), 0, 100, 1, (v) => { this.content.delight = v; this.schedule(); });
+    const shadows = sliderRow(t('Shadows'), 0, 100, 1, (v) => { this.content.shadows = v; this.schedule(); });
+    const ambient = colorRow(t('Ambient'), (h) => { this.content.ambient = fromHex(h); this.schedule(); });
+    this.rows.original = orig; this.rows.shine = shine; this.rows.delight = delight; this.rows.shadows = shadows; this.rows.ambient = ambient;
+    scene.append(orig.el, delight.el, ambient.el, shine.el, shadows.el);
     return root;
   }
 
@@ -384,6 +462,8 @@ export class RelightSession {
       (this.rows.kelvin as Row<number>).set(l.kelvin ?? 6500);
       (this.rows.color as Row<string>).set(hex(l.color));
       for (const k of ['intensity', 'softness', 'diffusion', 'distance'] as const) (this.rows[k] as Row<number>).set(l[k]);
+      (this.rows.near as Row<number>).set(l.near ?? 0);
+      (this.rows.far as Row<number>).set(l.far ?? 100);
       (this.rows.pattern as Row<string>).set(l.pattern.kind);
       const pk = l.pattern.kind;
       setHidden(q(this.panel, '.cv-relight-sub'), pk === 'none');
@@ -399,6 +479,9 @@ export class RelightSession {
     }
     (this.rows.original as Row<number>).set(this.content.original);
     (this.rows.shine as Row<number>).set(this.content.shine);
+    (this.rows.delight as Row<number>).set(this.content.delight ?? 0);
+    (this.rows.shadows as Row<number>).set(this.content.shadows ?? 70);
+    (this.rows.ambient as Row<string>).set(hex(this.content.ambient ?? { r: 255, g: 255, b: 255 }));
     this.panel.querySelectorAll<HTMLButtonElement>('.cv-relight-look').forEach((b) => setClass(b, 'is-on', b.dataset.look === this.content.look));
   }
 }
