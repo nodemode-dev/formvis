@@ -1,8 +1,10 @@
 """Relight's light split (1.75.0): a photo taken apart into albedo (the colour of its surfaces), shading (the light that
 fell on them) and a residual (shine), so Relight can remove the old light and shade with new lights. Two engines:
 marigold, Marigold IID Lighting and Marigold Normals v1.1 (CreativeML Open RAIL++-M, optional downloads, run with
-PyTorch and diffusers from requirements_relight.txt); classic, formvis's own split on what the base install carries
-(SAM 2.1 regions on ONNX Runtime, Apache-2.0, and an edge-keeping shading estimate)."""
+PyTorch and diffusers from requirements_relight.txt); classic (1.76.0, "keep the subject"), formvis's own split that
+never replaces a pixel's detail: the albedo is the photo divided by a smooth shading field estimated per material
+(MediaPipe selfie multiclass parts and YuNet faces, as formlit 0.45.3 masks people, both Apache-2.0 or MIT), so every
+pore, eye and edge of the original survives and only the light changes."""
 import hashlib
 import importlib.util
 import io
@@ -25,8 +27,12 @@ FOLDERS = {IID: "marigold-iid-lighting-v1-1", NRM: "marigold-normals-v1-1"}
 STEPS = 4
 WORKING = 768
 KEEP = 2
+KEEP_SIDE = 1024
+PARTS = "selfie-multiclass"
+PARTS_FILE = "selfie-multiclass/model.onnx"
 
 _lock = threading.Lock()
+_parts_session = None
 _cache: "OrderedDict[str, tuple]" = OrderedDict()
 
 
@@ -117,85 +123,161 @@ def _marigold(rgb: np.ndarray) -> tuple:
     return albedo.astype(np.float32), shading.astype(np.float32), np.clip(residual, 0, 1).astype(np.float32), normals.astype(np.float32)
 
 
-def _sam_regions(rgb: np.ndarray, key: str) -> np.ndarray | None:
-    from app.services import segment
+def _blur(a: np.ndarray, sigma: float) -> np.ndarray:
+    return cv2.GaussianBlur(a.astype(np.float32), (0, 0), max(0.5, float(sigma)))
 
-    if not segment.available():
-        return None
-    h, w = rgb.shape[:2]
-    out = io.BytesIO()
-    Image.fromarray(rgb).save(out, "PNG")
+
+def _faces(rgb: np.ndarray) -> list[dict]:
+    if not model_manager.ready("yunet-face"):
+        return []
+    from .face import find_faces
+
     try:
-        segment.encode(key, out.getvalue())
+        return find_faces(Image.fromarray(rgb))
     except Exception:
-        return None
-    labels = np.full((h, w), -1, np.int32)
-    area = np.full((h, w), np.inf, np.float32)
-    cols, rows, n = 6, 8, 0
-    for j in range(rows):
-        for i in range(cols):
-            x, y = (i + 0.5) * w / cols, (j + 0.5) * h / rows
-            try:
-                with Image.open(io.BytesIO(segment.select(key, [(x, y, 1)]))) as m:
-                    mask = np.asarray(m.convert("L")) > 127
-            except Exception:
-                continue
-            mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((5, 5), np.uint8)) > 0
-            size = float(mask.sum())
-            if size < 0.01 * h * w:
-                continue
-            take = mask & (size < area)
-            labels[take] = n
-            area[take] = size
-            n += 1
-    if n == 0:
-        return None
-    if (labels < 0).any():
-        _, nearest = cv2.distanceTransformWithLabels((labels < 0).astype(np.uint8), cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
-        seeds = np.zeros(nearest.max() + 1, np.int32)
-        seeds[nearest[labels >= 0]] = labels[labels >= 0]
-        labels = np.where(labels < 0, seeds[nearest], labels)
-    return labels
+        return []
 
 
-def _chroma_regions(lin: np.ndarray) -> np.ndarray:
+def _materials(rgb: np.ndarray, lin: np.ndarray) -> tuple[np.ndarray, int]:
+    h, w = rgb.shape[:2]
+    if model_manager.ready(PARTS):
+        global _parts_session
+        try:
+            if _parts_session is None:
+                import onnxruntime as ort
+
+                _parts_session = ort.InferenceSession(str(model_manager.model_file(PARTS_FILE)), providers=["CPUExecutionProvider"])
+            x = cv2.resize(rgb, (256, 256), interpolation=cv2.INTER_AREA).astype(np.float32)[None] / 255
+            lg = _parts_session.run(None, {_parts_session.get_inputs()[0].name: x})[0][0]
+            e = np.exp(lg - lg.max(-1, keepdims=True))
+            p = cv2.resize((e / e.sum(-1, keepdims=True)).astype(np.float32), (w, h), interpolation=cv2.INTER_LINEAR)
+            p = np.stack([p[..., 0], p[..., 1], p[..., 2] + p[..., 3], p[..., 4] + p[..., 5]], -1)
+            guide = np.sqrt(np.clip(_lum(lin), 0, 1)).astype(np.float32)
+            p = np.stack([_guided(guide, p[..., c], max(2, max(h, w) // 150), 1e-3) for c in range(4)], -1).clip(0, 1)
+            return p / (p.sum(-1, keepdims=True) + 1e-5), 2
+        except Exception:
+            pass
     chroma = lin / (lin.sum(-1, keepdims=True) + 1e-3)
-    feat = (cv2.GaussianBlur(chroma, (0, 0), 2)[..., :2] * 12).reshape(-1, 2).astype(np.float32)
-    _, _, centres = cv2.kmeans(feat[::7], 6, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1e-3), 2, cv2.KMEANS_PP_CENTERS)
-    return ((feat[:, None, :] - centres[None]) ** 2).sum(-1).argmin(1).reshape(lin.shape[:2]).astype(np.int32)
+    feat = (_blur(chroma, 2)[..., :2] * 12).reshape(-1, 2).astype(np.float32)
+    _, _, centres = cv2.kmeans(feat[::7], 5, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1e-3), 2, cv2.KMEANS_PP_CENTERS)
+    labels = ((feat[:, None, :] - centres[None]) ** 2).sum(-1).argmin(1).reshape(h, w)
+    p = np.stack([_blur((labels == c).astype(np.float32), max(h, w) / 400) for c in range(5)], -1)
+    return p / (p.sum(-1, keepdims=True) + 1e-5), -1
 
 
-def _classic(rgb: np.ndarray, key: str) -> tuple:
-    lin = _lin(rgb)
-    size = max(rgb.shape[:2])
-    log_y = np.log(_lum(lin) + 1e-3)
-    r = max(2, size // 120)
-    smooth = _guided(log_y, log_y, r, 0.02)
-    smooth = _guided(smooth, smooth, r, 0.02)
-    labels = _sam_regions(rgb, key)
-    if labels is None:
-        labels = _chroma_regions(lin)
-    lit = np.zeros_like(smooth)
-    for label in np.unique(labels):
-        mask = labels == label
-        if mask.sum() < 32:
-            lit[mask] = smooth[mask].max()
+def _features(rgb: np.ndarray, faces: list[dict], skin: np.ndarray) -> np.ndarray:
+    h, w = rgb.shape[:2]
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    feat = np.zeros((h, w), np.float32)
+    astar = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)[..., 1].astype(np.float32) - 128
+    for f in faces:
+        fw = f["box"][2]
+        for ex, ey in (f["eyeLeft"], f["eyeRight"]):
+            feat = np.maximum(feat, np.clip(1.4 - np.hypot((xx - ex) / (fw * 0.16), (yy - ey + fw * 0.05) / (fw * 0.13)), 0, 1))
+        mx, my = (f["mouthLeft"][0] + f["mouthRight"][0]) / 2, (f["mouthLeft"][1] + f["mouthRight"][1]) / 2
+        mouth = np.clip(1.4 - np.hypot((xx - mx) / (fw * 0.26), (yy - my) / (fw * 0.12)), 0, 1)
+        plain = (skin > 0.7) & (mouth == 0)
+        ref = float(np.median(astar[plain])) if plain.any() else 10.0
+        feat = np.maximum(feat, mouth * np.clip((astar - ref - 3) / 6, 0, 1))
+    return np.clip(feat, 0, 1)
+
+
+def _shading(rgb: np.ndarray, lin: np.ndarray, faces: list[dict], mats: np.ndarray, skin: int) -> np.ndarray:
+    h, w = rgb.shape[:2]
+    s = max(h, w)
+    log_y = np.log(_lum(lin) + 2e-3).astype(np.float32)
+    fw = max([f["box"][2] for f in faces], default=s / 6)
+    feat = _features(rgb, faces, mats[..., skin] if skin >= 0 else np.zeros((h, w), np.float32))
+    kc = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(fw / 12) | 1,) * 2)
+    ko = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (int(fw / 18) | 1,) * 2)
+    total = np.zeros((h, w), np.float32)
+    weight = np.zeros((h, w), np.float32)
+    for k in range(mats.shape[-1]):
+        g = np.clip(mats[..., k], 0, 1)
+        if g.sum() < 50:
             continue
-        lit[mask] = np.percentile(smooth[mask], 92)
-    lit = _guided(log_y, lit, max(2, size // 200), 0.05)
-    shading = np.exp(np.clip(smooth - lit, np.log(0.04), 0.15)).astype(np.float32)
-    shading3 = np.repeat(shading[..., None], 3, -1)
-    albedo = np.clip(lin / shading3, 0, 1)
-    return albedo.astype(np.float32), shading3, np.zeros_like(lin), None
+        sigma = fw / 5 if (k == skin or skin < 0) and faces else s / 45
+        wgt = np.clip(g * g * (1 - feat if k == skin or skin < 0 else 1), 0, 1)
+        fill = _blur(log_y * wgt, fw / 12) / (_blur(wgt, fw / 12) + 1e-5)
+        hard = (wgt > 0.5).astype(np.float32)
+        plain = (log_y * hard + fill * (1 - hard)).astype(np.float32)
+        base = cv2.morphologyEx(cv2.morphologyEx(plain, cv2.MORPH_CLOSE, kc), cv2.MORPH_OPEN, ko)
+        small = cv2.resize(base, (max(1, w // 2), max(1, h // 2)), interpolation=cv2.INTER_AREA)
+        for _ in range(4):
+            small = cv2.bilateralFilter(small, -1, 0.35, sigma / 2)
+        est = cv2.resize(small, (w, h), interpolation=cv2.INTER_LINEAR)
+        est = _guided(plain, est, max(2, int(fw / 8)), 0.01)
+        gap = base - est
+        est = est + _blur(np.sign(gap) * np.maximum(np.abs(gap) - 0.2, 0), 1.5)
+        core = g > 0.6
+        level = float(np.percentile(est[core], 96)) if core.sum() > 100 else float(est.max())
+        total += g * (est - level)
+        weight += g
+    shade = _blur(total / (weight + 1e-5), s / 400)
+    return np.exp(np.clip(shade, np.log(0.02), np.log(1.25))).astype(np.float32)
+
+
+def _normals(rgb: np.ndarray, faces: list[dict], mats: np.ndarray, skin: int) -> np.ndarray | None:
+    from . import depth
+
+    h, w = rgb.shape[:2]
+    s = max(h, w)
+    yy, xx = np.mgrid[0:h, 0:w].astype(np.float32)
+    nx, ny, nz = np.zeros((h, w), np.float32), np.zeros((h, w), np.float32), np.ones((h, w), np.float32)
+    if model_manager.ready("depth-anything-v2-small"):
+        d = _blur(depth.depth_values(Image.fromarray(rgb), w, h), 2) * 0.7 * s
+        gy, gx = np.gradient(d)
+        keep = cv2.erode((np.hypot(gx, gy) < 1.2).astype(np.float32), np.ones((5, 5), np.uint8))
+        r = max([f["box"][2] for f in faces], default=s / 26) / 5
+        ws = _blur(keep, r) + 1e-4
+        gx, gy = _blur(gx * keep, r) / ws, _blur(gy * keep, r) / ws
+        n = np.sqrt(gx * gx + gy * gy + 1)
+        nx, ny, nz = -gx / n, -gy / n, 1 / n
+    elif not faces:
+        return None
+    head = mats[..., 1] + mats[..., skin] if skin >= 0 else np.ones((h, w), np.float32)
+    for f in faces:
+        x, y, fw, fh = f["box"]
+        u, v = (xx - x - fw / 2) / (fw * 0.62), (yy - y - fh * 0.42) / (fh * 0.78)
+        q = np.clip(1 - u * u - v * v, 0, 1)
+        t = np.clip(q / 0.6, 0, 1)
+        wgt = _blur(t * t * (3 - 2 * t) * np.clip(head, 0, 1), fw / 6)
+        nx, ny = nx * (1 - wgt) + u * 0.9 * wgt, ny * (1 - wgt) + v * 0.9 * wgt
+        nz = nz * (1 - wgt) + np.sqrt(np.clip(1 - 0.81 * (u * u + v * v), 0.02, 1)) * wgt
+    return np.stack([nx, ny, nz], -1).astype(np.float32)
+
+
+def _classic(rgb: np.ndarray) -> tuple:
+    full = _lin(rgb)
+    h, w = rgb.shape[:2]
+    k = min(1.0, KEEP_SIDE / max(h, w))
+    small = rgb if k == 1.0 else cv2.resize(rgb, (max(1, round(w * k)), max(1, round(h * k))), interpolation=cv2.INTER_AREA)
+    lin = _lin(small)
+    faces = [{**f, "box": [v * k for v in f["box"]], **{n: (f[n][0] * k, f[n][1] * k) for n in ("eyeLeft", "eyeRight", "nose", "mouthLeft", "mouthRight")}} for f in _faces(rgb)]
+    mats, skin = _materials(small, lin)
+    shading = _shading(small, lin, faces, mats, skin)
+    normals = _normals(small, faces, mats, skin)
+    if k != 1.0:
+        shading = np.exp(_guided(np.log(_lum(full) + 2e-3).astype(np.float32), np.log(_fit(shading, w, h)), 2, 0.01)).clip(0.02, 1.25)
+    shading3 = np.repeat(shading[..., None].astype(np.float32), 3, -1)
+    albedo = np.clip(full / shading3, 0, 1)
+    dark = np.clip((0.45 - shading) / 0.35, 0, 1)[..., None]
+    la = np.log(albedo + 2e-3)
+    clean = np.exp(np.stack([_guided(la[..., c], la[..., c], 3, 1e-2) for c in range(3)], -1)) - 2e-3
+    grey = _lum(clean)[..., None]
+    calm = grey * (_blur(clean, 3) / (_lum(_blur(clean, 3))[..., None] + 1e-4))
+    albedo = np.clip(albedo * (1 - dark) + (clean * (1 - dark) + calm * dark) * dark, 0, 1).astype(np.float32)
+    residual = (full - albedo * shading3).astype(np.float32)
+    return albedo, shading3, residual, normals
 
 
 def _split(data: bytes, rgb: np.ndarray, engine: str) -> tuple:
-    key = hashlib.sha1(data).hexdigest() + engine
+    key = hashlib.sha1(data).hexdigest() + engine + str(model_manager.ready(PARTS)) + str(model_manager.ready("yunet-face"))
     with _lock:
         if key in _cache:
             _cache.move_to_end(key)
             return _cache[key]
-        result = _marigold(rgb) if engine == "marigold" else _classic(rgb, "relight-" + key)
+        result = _marigold(rgb) if engine == "marigold" else _classic(rgb)
         _cache[key] = result
         while len(_cache) > KEEP:
             _cache.popitem(last=False)
@@ -229,9 +311,8 @@ router = APIRouter(prefix="/api/relight", tags=["relight"])
 
 @router.get("/engines")
 def engines() -> dict:
-    from app.services import segment
-
-    return {"marigold": marigold_ready(), "marigoldModels": models_ready(), "marigoldRuntime": runtime_ready(), "classic": True, "regions": "sam" if segment.available() else "colour",
+    return {"marigold": marigold_ready(), "marigoldModels": models_ready(), "marigoldRuntime": runtime_ready(), "classic": True,
+            "regions": "parts" if model_manager.ready(PARTS) else "colour", "faces": model_manager.ready("yunet-face"),
             "license": "CreativeML Open RAIL++-M", "downloadGB": 5.2}
 
 
@@ -239,7 +320,7 @@ def engines() -> dict:
 async def split(image: UploadFile = File(...), engine: str = "auto", width: int = 0, height: int = 0) -> Response:
     if engine not in ("auto", "marigold", "classic"):
         raise HTTPException(400, "engine is auto, marigold or classic")
-    use = "marigold" if engine in ("auto", "marigold") and marigold_ready() else "classic"
+    use = "marigold" if engine == "marigold" and marigold_ready() else "classic"
     if engine == "marigold" and use != "marigold":
         raise HTTPException(409, "Marigold is not installed: download its models from Relight, and install requirements_relight.txt in the engine.")
     data = await image.read()

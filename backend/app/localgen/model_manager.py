@@ -156,6 +156,7 @@ PINNED: dict[str, str] = {
     "fast-style/rain-princess-9.onnx": "4162912e6f75fedef6f810ae989b9e10d3d5d43308dab34b027c850cf255e152",
     "fast-style/udnie-9.onnx": "8656b6ce7dec8f22ee13c2d557d6b67bd6f550dde88d0f2e7c9972aeb765cc0d",
     "yunet-face/face_detection_yunet_2023mar.onnx": "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4",
+    "selfie-multiclass/model.onnx": "35ec1ecd9ee7f85073c99c00020b7f6751b69506eeacf683bc8665f6117f85b0",
     "skyseg/skyseg.onnx": "ab9c34c64c3d821220a2886a4a06da4642ffa14d5b30e8d5339056a089aa1d39",
     "sam2.1-hiera-tiny/vision_encoder.onnx": "4f30aacd3aaefbca81a0b7fe4c1fc96345570ea0a6f80ced599493d1b3be2e8c",
     "sam2.1-hiera-tiny/vision_encoder.onnx_data": "e83df9866a5afe68ea7f0f721f18f65137fc3acbf0da1c74e946d363e09c69cc",
@@ -389,6 +390,14 @@ MODELS = {
         "name": "YuNet face detector (OpenCV Zoo)",
         "license": "MIT",
         "files": {"yunet-face/face_detection_yunet_2023mar.onnx": "https://huggingface.co/opencv/face_detection_yunet/resolve/3cc26e7f1014a5ee5d74a42acee58bafc9d0a310/face_detection_yunet_2023mar.onnx"},
+    },
+    # MediaPipe selfie multiclass (1.76.0, from formlit 0.45.3's parts masks): background, hair, body skin, face skin,
+    # clothes and accessories as soft maps, Apache-2.0 (Google), a 16 MB ONNX export pinned to its revision; hashed on
+    # 18 October 2026 from the real download, matching formlit's pin. Relight shades each material on its own.
+    "selfie-multiclass": {
+        "name": "Selfie multiclass (hair, skin, clothes; MediaPipe)",
+        "license": "Apache-2.0",
+        "files": {"selfie-multiclass/model.onnx": "https://huggingface.co/senty-au/selfie_multiclass_256x256-ONNX/resolve/6db8421a7150ac20558f2c24675078eb3a1a04d0/onnx/model.onnx"},
     },
     # The sky segmenter (1.57.6, formvis): xiongzhu666's U-2-Net sky model, MIT (2021), from the Hugging Face copy the
     # VGGT project uses, pinned to its revision; hashed on 1 October 2026 from the real download; for Select > Sky.
