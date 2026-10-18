@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.77.0 · 2026-10-18
+
+### Changed
+
+- Relight is calibrated against the reference video, not by eye: the untouched photo from frame 7 and Photon's Blinds, Candlelight and Light Strip results (frames 23, 28, 40) were rendered with the same settings and compared pixel by pixel. Point and spot lights are about 25 times weaker near the subject, so Candlelight is a warm glow, not an orange flood; light colours mix like Photon's (gentle tints, not saturated gels); a light reaches what it is aimed at and fades on the wall behind (Close to Far sets how far it reaches); Diffusion adds an unpatterned fill inside the pattern's frame; Blinds and Strip rotate the same way as the reference; the Strip is narrower.
+- Take out old light (was Flatten original light): with the split, 0 keeps the photo as its own albedo, 100 takes all of the old shading out (1.76.0), 50 by default, so a dark dress is not lit like skin.
+- Default Shadows strength 40 (was 55).
+
 ## 1.76.0 · 2026-10-18
 
 ### Changed

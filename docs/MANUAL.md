@@ -318,8 +318,11 @@ are not touched.
   offers Download Depth Anything, after which it reads the shape and redraws. For real relighting, download it.
 - Lights from depth and Lights to depth keep a light to a band of the picture's depth: raise Lights from depth to light
   only the nearer subject and leave the background as it was, or lower Lights to depth to light only the background.
-- Scene also has Flatten original light (evens out the photo's own light and shade before the new lights, so they read
-  as the main light), Ambient (the colour of the light that is kept) and Shadows (how dark cast shadows are).
+- Scene also has Take out old light (how much of the photo's own light and shade is taken out before the new lights:
+  0 keeps the photo as it is under them, 100 takes all of it out, 50 by default), Ambient (the colour of the light
+  that is kept) and Shadows (how dark cast shadows are).
+- A light reaches what it is aimed at and fades on surfaces behind it: Close to Far sets how far it reaches and how
+  high it stands. Diffusion adds a soft fill inside the pattern's frame.
 - The + tile after the Looks saves the current lights as a Look of your own, kept in this browser; Alt-click a saved
   Look to delete it.
 - Keys while editing: the arrow keys move the selected light (Shift for bigger steps, Alt moves its aim), Tab picks
