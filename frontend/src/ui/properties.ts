@@ -55,7 +55,11 @@ export class PropertiesColumn {
     this.character();
     this.collapsible();
     const refresh = (): void => { for (const r of this.refreshers) r(); };
-    for (const ev of ['active', 'doc', 'history', 'options', 'projects'] as const) engine.on(ev, refresh);
+    // Engine events refresh the column once a frame (1.86.5): Move and Transform send 'options' on every pointer move,
+    // and each ran every refresher in the column.
+    let queued = 0;
+    const soon = (): void => { if (!queued) queued = requestAnimationFrame(() => { queued = 0; refresh(); }); };
+    for (const ev of ['active', 'doc', 'history', 'options', 'projects'] as const) engine.on(ev, soon);
     document.addEventListener('cv:type-settings', refresh);
     document.addEventListener('nm:ui-settings-changed', refresh);   // canvases repaint in the new theme's ink
     refresh();
@@ -380,8 +384,17 @@ export class PropertiesColumn {
       grad.addColorStop(0, inkA(1)); grad.addColorStop(Math.min(0.999, Math.max(0, hard)), inkA(1)); grad.addColorStop(1, inkA(0));
       g.fillStyle = grad; g.beginPath(); g.arc(x, y, r, 0, Math.PI * 2); g.fill();
     };
+    // Painted only when what it shows changed, and at most once a frame (1.86.5). Every engine 'options' event queued a
+    // repaint of 121 radial-gradient dabs, and the Move and Transform tools send one per pointer move: WebKit (the
+    // desktop app) keeps every queued fill and rasterised about 7,700 of them after a drag, a 3.5 s freeze at screen
+    // scale 2, where Chrome and Firefox drop drawing a clear covers.
+    let painted = '', paintQueued = 0;
+    const paintSoon = (): void => { if (!paintQueued) paintQueued = requestAnimationFrame(() => { paintQueued = 0; paint(); }); };
     const paint = (): void => {
       const dpr = window.devicePixelRatio || 1;
+      const sig = [dpr, tip.clientWidth, tip.clientHeight, stroke.clientWidth, stroke.clientHeight, e.brush.hardness, e.brush.diameter, e.brushShape.angle, e.brushShape.roundness, ink().join(',')].join('|');
+      if (sig === painted) return;
+      painted = sig;
       for (const c of [tip, stroke]) { const w = Math.round(c.clientWidth * dpr), h = Math.round(c.clientHeight * dpr); if (w && h && (c.width !== w || c.height !== h)) { c.width = w; c.height = h; } }
       const hard = e.brush.hardness, tg = tip.getContext('2d') as CanvasRenderingContext2D;
       tg.clearRect(0, 0, tip.width, tip.height);
@@ -401,7 +414,7 @@ export class PropertiesColumn {
         for (let i = 0; i <= 120; i++) { const t = i / 120; dab(sg, W * 0.12 + t * W * 0.76, H / 2 - Math.sin(t * Math.PI * 2) * H * 0.18, r, hard); }
       }
     };
-    this.refreshers.push(() => { for (const s of setters) s(); fill(); requestAnimationFrame(paint); });
+    this.refreshers.push(() => { for (const s of setters) s(); fill(); paintSoon(); });
   }
 
   private paragraph(): void {
