@@ -315,6 +315,16 @@ are not touched.
   Layer Content Options... and a double-click on the layer in the Layers panel.
 - With Depth Anything V2 Small downloaded (Preferences > Plugins > Local models, about 99 MB), light follows the shapes in the photo and casts
   shadows. Without it, formvis estimates the shape and leaves out cast shadows; the panel says which is in use.
+- Lights from depth and Lights to depth keep a light to a band of the picture's depth: raise Lights from depth to light
+  only the nearer subject and leave the background as it was, or lower Lights to depth to light only the background.
+- Scene also has Flatten original light (evens out the photo's own light and shade before the new lights, so they read
+  as the main light), Ambient (the colour of the light that is kept) and Shadows (how dark cast shadows are).
+- The + tile after the Looks saves the current lights as a Look of your own, kept in this browser; Alt-click a saved
+  Look to delete it.
+- Keys while editing: the arrow keys move the selected light (Shift for bigger steps, Alt moves its aim), Tab picks
+  the next light, Enter is Done and Escape is Cancel.
+- Agents and the command line: the `relight.apply` command takes a Look name or a list of lights and adds the layer
+  without the panel, for example `./formvis cli run relight.apply look=rembrandt delight=40`.
 - Relight works on 8-bit RGB documents. In PSD files and older builds a Relight layer is an ordinary pixel layer.
 
 ## Generating images

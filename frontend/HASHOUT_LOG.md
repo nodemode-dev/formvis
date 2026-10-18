@@ -2,6 +2,41 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight, second pass · _v1.74.0 (engine/relight.ts, gpu/relight-gl.ts, engine/index.ts, ui/relight-session.ts, extensions/tools/relight.ts, styles/relight.css, automation/catalogue.ts, app.ts)
+
+The owner: "expand the relight capability even further". Chosen for what a lighting artist misses first: control over where light lands (depth bands), getting rid of the photo's baked light (flatten), saved setups, keyboard placement, and agent access.
+
+- `engine/relight.ts`: `RelightLight.near`, `far` (0 to 100, optional; absent is no limit); `RelightContent.delight`, `shadows` (default 70), `ambient`; `relightFrom` reads them. `shadingField` (broad luminance blur over s/40, linear, divided by its mean, clamped 0.25 to 4) is the photo's own light; Flatten divides the albedo by `1 + (shade - 1) * delight`. `depthWindow` feathers a band by 0.04. `sceneTerms` gives ambient times Original, delight and shadows to both paths. `PackedLight.range`. `lightAt(..., shadowAmt)`. Replaced lines:
+
+```ts
+export interface ShadeOptions { shadowSteps?: number }
+  const lights = packLights(content, w, h), orig = content.original / 100, shine = content.shine / 100, steps = opts.shadowSteps ?? 16;
+    let er = orig, eg = orig, eb = orig, sr = 0, sg = 0, sb = 0;
+      const c = lightAt(L, x + 0.5, y + 0.5, pz, nx, ny, nz, s, relief, steps, zAt);
+      er += L.color[0] * c.diffuse; eg += L.color[1] * c.diffuse; eb += L.color[2] * c.diffuse;
+      sr += L.color[0] * c.spec * shine; sg += L.color[1] * c.spec * shine; sb += L.color[2] * c.spec * shine;
+    out[i] = Math.round(linearToSrgb(tone(lut[base[i]] * er + sr)) * 255);
+    out[i + 1] = Math.round(linearToSrgb(tone(lut[base[i + 1]] * eg + sg)) * 255);
+    out[i + 2] = Math.round(linearToSrgb(tone(lut[base[i + 2]] * eb + sb)) * 255);
+  return { lights, original: num(o.original, 0, 100, 60), shine: num(o.shine, 0, 100, 20), ...(typeof o.look === 'string' ? { look: o.look } : {}), ...(o.depth === 'model' || o.depth === 'estimate' ? { depth: o.depth } : {}) };
+```
+
+- `gpu/relight-gl.ts`: `uF[8]` (bands), `uShade` (R32F, a 1 by 1 of 1.0 when absent), `uDelight`, `uShadows`, `uAmbient`; `renderRelight(..., shade)`; `uOrig` is now unused in the shader (kept bound, harmless). Replaced: `vec3 E = vec3(uOrig), S = vec3(0.0);`, the two `E +=` and `S +=` lines without `win`, and `vec3 lin = vec3(toLin(base.r), toLin(base.g), toLin(base.b));`.
+- `engine/index.ts`: `setRelight(id, content, image, amendNew = true)`; the session passes `this.isNew`. Replaced `if (p.history.last?.name === 'New Relight Layer' && !this.stroke) {`.
+- `ui/relight-session.ts`: `apply(content)` (headless, Depth Anything when ready, one step); proxy carries `shade`; rows `near`, `far`, `delight`, `shadows`, `ambient`; `lookButton`, `userLooks`, `storeLooks`, `saveLook` (storage key `formvis.relight.looks`, 28 at most, read through `relightFrom`, try/catch both ways); `applyLook` takes user Looks; host `nudge` and `cycle`; `sphere` is a field. The span fix: the title, the fold headings and the pill set their text on `span:last-child`; the first `span` was the icon's own, which took the text and clipped it. Replaced:
+
+```ts
+    setText(q(this.pill, 'span'), t('Edit Lighting'));
+    setText(q(root, '.cv-relight-title span'), t('Relight Properties'));
+      if (labels[k]) setText(q(b, 'span'), t(labels[k]));
+```
+
+- `extensions/tools/relight.ts`: `RelightHost.nudge`, `cycle`; arrows (0.005, Shift 0.05 of the canvas), Alt for the aim, Tab and Shift+Tab.
+- `automation/catalogue.ts`: `relight.apply` entry and `relightApply` (look validated against `RELIGHT_LOOKS`, `kelvin` turned into a colour, ambient as `#rrggbb`, everything through `relightFrom`); `CatalogueDeps.applyRelight`. `app.ts`: `applyRelight: (content) => relight.apply(content)`.
+- Skills: `formvis-driving` adjustments-and-filters gains "Relight a photo"; `formvis-harness/references/relight.md` rules 9 to 13. The `.agents` copy of the driving sub-skill was refreshed by copying the edited `.claude` file over its identical mirror, which is what `./formvis agents sync` does (not runnable here, no venv); the harness reference was edited by hand in both places.
+
+Verified: `tsc --noEmit` clean; 194 unit tests pass; CPU and GPU with every new control differ by 0.016 levels on average and 7 at most (pixels at a hard depth step); a near-only band darkened only the far half; in Chromium under 4x CPU and slow network throttling (network after load): `relight.apply` with a Look, with lights as data, and with an unknown Look (refused); Edit Lighting, Flatten 85, Lights from depth 40, Shadows 100, an arrow and a Shift+arrow nudge, a saved Look, Done as one Modify Relight Layer step; no page errors. Not run: the Depth Anything path, `./formvis agents sync`, the browser suite, a real GPU.
+
 ## Relight layers · _v1.73.0 (engine/relight.ts, gpu/relight-gl.ts, ui/relight-session.ts, extensions/tools/relight.ts, styles/relight.css, engine/index.ts, engine/types.ts, io/project-io.ts, app.ts, ui/layers.ts, ui/icons.ts, ui/tool-groups.ts, ui/command-palette.ts, extensions/registry.ts, extensions/tools/index.ts, automation/command-meta.ts, index.html)
 
 The owner asked for a real Relight, modelled on the behaviour shown in a desktop editor's launch video (studied from frames only; no code, names of internals or assets taken). Decision: a Relight layer is a pixel layer that also holds `relight: RelightContent`, its raster baked from the composite beneath it at Done. It is not composited live like an adjustment layer: that matches the reference behaviour (a generated layer, reopened to change), it keeps the GPU display, PSD export, rasterize guards and every older build working with no new branch in `renderer.ts`, and a relight costs one render per edit rather than one per frame.

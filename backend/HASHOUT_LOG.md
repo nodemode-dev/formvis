@@ -2,6 +2,17 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Version only · _v1.74.0
+
+No engine code changed in 1.74.0. MCP agents reach `relight.apply` through the existing `run_command` tool. Removed version lines, the desktop shell's quoted too:
+
+```text
+__version__ = "1.73.0"
+version = "1.73.0"
+version = "1.73.0"
+  "version": "1.73.0",
+```
+
 ## Version only · _v1.73.0
 
 No engine code changed in 1.73.0. Relight reuses `POST /api/depth/local` (Depth Anything V2 Small) as it is. Removed version lines, the desktop shell's quoted too:

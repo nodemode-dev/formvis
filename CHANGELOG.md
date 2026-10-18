@@ -4,6 +4,21 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.74.0 · 2026-10-18
+
+### Added
+
+- Relight depth bands: each light can be kept to the nearer subject or to the background (Lights from depth, Lights to depth).
+- Relight Scene: Flatten original light evens out the photo's own light and shade before the new lights; Ambient tints the light that is kept; Shadows sets how dark cast shadows are.
+- Saved Looks: the + tile keeps the current lights as a Look of your own, shown on a lit sphere beside the built-in ones; Alt-click deletes one.
+- Keyboard lighting: arrow keys move the selected light (Shift for bigger steps, Alt for its aim) and Tab moves to the next light.
+- `relight.apply` for agents, MCP `run_command` and `./formvis cli`: a Look or a list of lights, rendered at full size without the panel, as one undo step.
+
+### Fixed
+
+- Relight's section headings, panel title and Edit Lighting button showed their text clipped at the left.
+- Editing an older Relight layer straight after making another one folded the edit into the other layer's undo step.
+
 ## 1.73.0 · 2026-10-18
 
 ### Added
