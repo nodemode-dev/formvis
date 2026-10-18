@@ -42,6 +42,13 @@ export interface RelightContent {
   delight?: number;
   shadows?: number;
   ambient?: RGB;
+  /** The room around the subject (1.85.0): Room light (0 to 100, the room's kept original light; Original lighting when
+   *  unset), Light on room (0 to 200 percent), Room shadows (0 to 100), Room depth (25 to 300 percent of the solved
+   *  distance behind the subject). */
+  roomOriginal?: number;
+  roomLight?: number;
+  roomShadows?: number;
+  roomDepth?: number;
   look?: string;
   depth?: 'model' | 'estimate';
   split?: 'auto' | 'marigold' | 'classic' | 'off';
@@ -149,6 +156,8 @@ export function relightFrom(raw: unknown): RelightContent | null {
     lights, original: num(o.original, 0, 100, 60), shine: num(o.shine, 0, 100, 20),
     ...(o.delight !== undefined ? { delight: num(o.delight, 0, 100, 0) } : {}), ...(o.shadows !== undefined ? { shadows: num(o.shadows, 0, 100, 70) } : {}),
     ...(o.ambient && typeof o.ambient === 'object' ? { ambient: rgb(o.ambient) } : {}),
+    ...(o.roomOriginal !== undefined ? { roomOriginal: num(o.roomOriginal, 0, 100, 40) } : {}), ...(o.roomLight !== undefined ? { roomLight: num(o.roomLight, 0, 200, 100) } : {}),
+    ...(o.roomShadows !== undefined ? { roomShadows: num(o.roomShadows, 0, 100, 100) } : {}), ...(o.roomDepth !== undefined ? { roomDepth: num(o.roomDepth, 25, 300, 100) } : {}),
     ...(typeof o.look === 'string' ? { look: o.look.slice(0, 80) } : {}), ...(o.depth === 'model' || o.depth === 'estimate' ? { depth: o.depth } : {}),
     ...(o.split === 'auto' || o.split === 'marigold' || o.split === 'classic' || o.split === 'off' ? { split: o.split } : {}),
   };
@@ -363,9 +372,20 @@ export function patternAt(kind: number, u: number, v: number, s: number, pat: re
 
 export interface ShadeOptions { shadowSteps?: number; shade?: Float32Array | null; split?: SplitMaps | null }
 
-export function sceneTerms(content: RelightContent): { ambient: [number, number, number]; delight: number; shadows: number; takeOut: number } {
-  const a = content.ambient ?? { r: 255, g: 255, b: 255 }, o = content.original / 100;
-  return { ambient: [srgbToLinear(a.r / 255) * o, srgbToLinear(a.g / 255) * o, srgbToLinear(a.b / 255) * o], delight: (content.delight ?? 0) / 100, shadows: (content.shadows ?? 85) / 100, takeOut: (content.delight ?? TAKE_OUT) / 100 };
+export interface SceneTerms {
+  ambient: [number, number, number]; delight: number; shadows: number; takeOut: number;
+  /** The room around the subject (1.85.0): its kept share of the original light, how strongly the lights reach it, how
+   *  dark the subject's shadows on it fall, and how far behind the subject it stands (1 as the scene was solved). */
+  roomAmbient: [number, number, number]; roomOriginal: number; roomLight: number; roomShadows: number; roomDepth: number;
+}
+
+export function sceneTerms(content: RelightContent): SceneTerms {
+  const a = content.ambient ?? { r: 255, g: 255, b: 255 }, o = content.original / 100, ro = (content.roomOriginal ?? content.original) / 100;
+  const lin: [number, number, number] = [srgbToLinear(a.r / 255), srgbToLinear(a.g / 255), srgbToLinear(a.b / 255)];
+  return {
+    ambient: [lin[0] * o, lin[1] * o, lin[2] * o], delight: (content.delight ?? 0) / 100, shadows: (content.shadows ?? 85) / 100, takeOut: (content.delight ?? TAKE_OUT) / 100,
+    roomAmbient: [lin[0] * ro, lin[1] * ro, lin[2] * ro], roomOriginal: ro, roomLight: (content.roomLight ?? 100) / 100, roomShadows: (content.roomShadows ?? 100) / 100, roomDepth: (content.roomDepth ?? 100) / 100,
+  };
 }
 
 /** The CPU twin of the shader (1.84.0), pixel for pixel the same scene: two layers blended by the cut-out, each lit in
@@ -373,7 +393,7 @@ export function sceneTerms(content: RelightContent): { ambient: [number, number,
 export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, opts: ShadeOptions = {}): Uint8ClampedArray {
   const w = geo.width, h = geo.height, g = geo.data, bgd = geo.bg ?? geo.data, out = new Uint8ClampedArray(base.length);
   const lights = packLights(content, w, h), shine = content.shine / 100, sc = sceneTerms(content), shade = opts.shade ?? null, split = opts.split ?? null;
-  const S: Scene = { C: { w, h, s: Math.max(w, h), f: geo.focal ?? 1.2 }, g, m: split?.subject ?? null, thick: geo.thickness ?? 0.3, zr: [geo.zNear ?? 0.8, geo.zFar ?? 2.5], steps: Math.min(32, opts.shadowSteps ?? 16), shadows: sc.shadows, gain: split?.gain ?? 1 };
+  const S: Scene = { C: { w, h, s: Math.max(w, h), f: geo.focal ?? 1.2 }, g, m: split?.subject ?? null, thick: geo.thickness ?? 0.3, zr: [geo.zNear ?? 0.8, geo.zFar ?? 2.5], steps: Math.min(32, opts.shadowSteps ?? 16), shadows: sc.shadows, gain: split?.gain ?? 1, roomLight: sc.roomLight, roomShadows: sc.roomShadows, roomDepth: sc.roomDepth };
   const lut = new Float32Array(256);
   for (let i = 0; i < 256; i++) lut[i] = srgbToLinear(i / 255);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -387,12 +407,13 @@ export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, cont
     alb = alb.map((v) => ya + (v - ya) * kc);
     const warm = clamp((alb[0] - alb[2]) / (alb[0] + 1e-3) * 1.6, 0, 1), m = subj < 0 ? 0 : clamp(subj, 0, 1);
     const Es = [0, 0, 0], Eb = [0, 0, 0], Ss = [0, 0, 0], Sb = [0, 0, 0], px = x + 0.5, py = y + 0.5, ray = rayAt(S.C, px, py);
-    if (subj < 0 || m < 0.98) { const src = subj < 0 ? g : bgd, z = src[i + 3]; shadeLayer(S, lights, [ray[0] * z, ray[1] * z, z], [src[i], src[i + 1], src[i + 2]], 0, 0, warm, Eb, Sb); }
-    if (m > 0.02) { const zs = m > 0.98 ? g[i + 3] : Math.max(0.05, (g[i + 3] - (1 - m) * bgd[i + 3]) / m); shadeLayer(S, lights, [ray[0] * zs, ray[1] * zs, zs], [g[i], g[i + 1], g[i + 2]], m, tex, warm, Es, Ss); }
+    if (subj < 0 || m < 0.98) { const src = subj < 0 ? g : bgd, z = subj < 0 ? g[i + 3] : 1 + (bgd[i + 3] - 1) * S.roomDepth; shadeLayer(S, lights, [ray[0] * z, ray[1] * z, z], [src[i], src[i + 1], src[i + 2]], 0, 0, warm, subj < 0 ? 0 : 1, Eb, Sb); }
+    if (m > 0.02) { const zs = m > 0.98 ? g[i + 3] : Math.max(0.05, (g[i + 3] - (1 - m) * bgd[i + 3]) / m); shadeLayer(S, lights, [ray[0] * zs, ray[1] * zs, zs], [g[i], g[i + 1], g[i + 2]], m, tex, warm, 0, Es, Ss); }
+    const mk = subj < 0 ? 1 : m, origK = sc.roomOriginal + (content.original / 100 - sc.roomOriginal) * mk;
     const kd = shade && !split ? 1 / (1 + (shade[j] - 1) * sc.delight) : 1, o = [0, 0, 0];
     for (let c = 0; c < 3; c++) {
       const ea = Eb[c] + (Es[c] - Eb[c]) * m, sa0 = (Sb[c] + (Ss[c] - Sb[c]) * m) * shine * 2, sa = sa0 / (1 + sa0);
-      let v = Math.max(0, alb[c] * kd * Math.pow(s0[c], 1 - sc.takeOut) * (sc.ambient[c] * Math.pow(s0[c], sc.takeOut) + ea) + (split ? res[c] * content.original / 100 : 0) + sa);
+      let v = Math.max(0, alb[c] * kd * Math.pow(s0[c], 1 - sc.takeOut) * ((sc.roomAmbient[c] + (sc.ambient[c] - sc.roomAmbient[c]) * mk) * Math.pow(s0[c], sc.takeOut) + ea) + (split ? res[c] * origK : 0) + sa);
       if (split) v = Math.min(v, photo[c] * 6 + 0.02) + (v - Math.min(v, photo[c] * 6 + 0.02)) * m;
       o[c] = v;
     }
@@ -423,8 +444,10 @@ export const sphereLambert = (x: number, sa: number): number => (x >= sa ? x : x
  *  camera by this much: close is beside the subject (side light, steep falloff), far well in front (frontal, sun-like). */
 export const lightLift = (zAim: number, distance: number, sun = false): number => zAim * (sun ? 0.25 + 0.75 * distance : 0.03 + 0.97 * Math.pow(distance, 1.5));
 
-interface Scene { C: Camera; g: Float32Array; m: Float32Array | null; thick: number; zr: [number, number]; steps: number; shadows: number; gain: number }
-const zPx = (S: Scene, x: number, y: number): number => S.g[(clamp(Math.floor(y), 0, S.C.h - 1) * S.C.w + clamp(Math.floor(x), 0, S.C.w - 1)) * 4 + 3];
+interface Scene { C: Camera; g: Float32Array; m: Float32Array | null; thick: number; zr: [number, number]; steps: number; shadows: number; gain: number; roomLight: number; roomShadows: number; roomDepth: number }
+/** A pixel's distance, the room's scaled by Room depth (the subject keeps its own). */
+const sceneZ = (S: Scene, at: number): number => { const z = S.g[at * 4 + 3], m = S.m ? S.m[at] : -1; return m > -0.5 && m < 0.5 ? 1 + (z - 1) * S.roomDepth : z; };
+const zPx = (S: Scene, x: number, y: number): number => sceneZ(S, clamp(Math.floor(y), 0, S.C.h - 1) * S.C.w + clamp(Math.floor(x), 0, S.C.w - 1));
 
 /** Where the line from a point toward the light meets the plane at the pattern centre's depth, in pixels: straight on
  *  a flat background, bent over the subject. */
@@ -452,7 +475,7 @@ function visibility(S: Scene, P: readonly number[], Lc: readonly number[], toL: 
       if (Q[2] < 0.05) break;
       const [qx, qy] = toPx(S.C, Q);
       if (qx < 0 || qy < 0 || qx >= S.C.w || qy >= S.C.h) break;
-      const at = Math.floor(qy) * S.C.w + Math.floor(qx), zs = S.g[at * 4 + 3], mm = S.m ? S.m[at] : -1, dz = Q[2] - zs;
+      const at = Math.floor(qy) * S.C.w + Math.floor(qx), zs = sceneZ(S, at), mm = S.m ? S.m[at] : -1, dz = Q[2] - zs;
       const th = mm > 0.5 || mm < -0.5 ? S.thick : 1e4;
       if (dz > 0 && dz < th) vis = Math.min(vis, 1 - smooth(0.004 * Q[2], 0.03 * Q[2], dz));
       if (vis <= 0) break;
@@ -463,7 +486,8 @@ function visibility(S: Scene, P: readonly number[], Lc: readonly number[], toL: 
 }
 
 /** One surface layer lit by every light: E gathers light that multiplies the surface colour, Sp the glints on top. */
-function shadeLayer(S: Scene, lights: readonly PackedLight[], P: readonly number[], nV: readonly number[], subj: number, tex: number, warm: number, E: number[], Sp: number[]): void {
+function shadeLayer(S: Scene, lights: readonly PackedLight[], P: readonly number[], nV: readonly number[], subj: number, tex: number, warm: number, room: number, E: number[], Sp: number[]): void {
+  const roomGain = 1 + (S.roomLight - 1) * room, roomShadow = S.shadows * (1 + (S.roomShadows - 1) * room);
   const nW = norm3([nV[0], nV[1], -nV[2]]), V = norm3([-P[0], -P[1], -P[2]]);
   const near = clamp((S.zr[1] - P[2]) / Math.max(1e-4, S.zr[1] - S.zr[0]), 0, 1);
   for (const L of lights) {
@@ -490,7 +514,7 @@ function shadeLayer(S: Scene, lights: readonly PackedLight[], P: readonly number
     const spill = sphereLambert((ndl + 0.45) / 1.45, 0.3);
     if (lam <= 0 && rim <= 0 && spill <= 0) continue;
     let shadow = 1;
-    if (!ring && S.steps > 0) shadow = 1 - (1 - visibility(S, [P[0] + nW[0] * 0.004 * P[2], P[1] + nW[1] * 0.004 * P[2], P[2] + nW[2] * 0.004 * P[2]], Lc, toL, sun, rad)) * S.shadows;
+    if (!ring && S.steps > 0) shadow = 1 - (1 - visibility(S, [P[0] + nW[0] * 0.004 * P[2], P[1] + nW[1] * 0.004 * P[2], P[2] + nW[2] * 0.004 * P[2]], Lc, toL, sun, rad)) * roomShadow;
     let pattern = 1, frame = 1;
     if (L.pattern !== 0) {
       const zc = zPx(S, L.center[0], L.center[1]), q = goboPx(S.C, P, Lc, toL, sun, zc), u = q[0] - L.center[0], v = q[1] - L.center[1];
@@ -498,7 +522,7 @@ function shadeLayer(S: Scene, lights: readonly PackedLight[], P: readonly number
       pattern = patternAt(L.pattern, u, v, S.C.s, L.pat, L.pat2, spread);
       frame = patternAt(L.pattern, u, v, S.C.s, L.pat, L.pat2, spread, true);
     }
-    const level = L.intensity * 3.2 * (sun ? 2.7 : 2.2) * atten, amount = level * shadow * pattern, gw = win * S.gain;
+    const level = L.intensity * 3.2 * (sun ? 2.7 : 2.2) * atten * roomGain, amount = level * shadow * pattern, gw = win * S.gain;
     const dif = (amount * (lam + rim) * (1 - L.diffusion) + level * L.diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0, 1)) * gw;
     const sss = amount * (1 - L.diffusion) * SSS * Math.max(0, spill - lam) * warm * gw;
     E[0] += L.color[0] * (dif + sss); E[1] += L.color[1] * (dif + 0.35 * sss); E[2] += L.color[2] * dif;

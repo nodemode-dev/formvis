@@ -2,6 +2,15 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The room relit, room controls · _v1.85.0 (engine/relight.ts, gpu/relight-gl.ts, ui/relight-session.ts, automation/catalogue.ts)
+
+The owner on 1.84.0: "the environment around the subject needs to be relight/reshadowed correctly too not just the subject and there need to be controls for that as well".
+
+- `RelightContent` gains `roomOriginal`, `roomLight`, `roomShadows`, `roomDepth` (parsed in `relightFrom`). `sceneTerms` returns the new `SceneTerms` with `roomAmbient`, `roomOriginal`, `roomLight`, `roomShadows`, `roomDepth` (replaced the inline return type and `return { ambient: [...], delight, shadows, takeOut };`).
+- Shader: uniforms `uRoomAmbient`, `uRoom` (room original, light, shadows, depth); `sceneZ` scales a room pixel's distance as `1 + (z - 1) x roomDepth` (used by `zAtPx` and `visibility`, replaced `float zs = texture(uGeo, tq).a`); `shadeLayer` takes `room` and scales its light by `roomLight` and its shadow strength by `roomShadows`; `main` keeps `mix(uRoomAmbient, uAmbient, mk)` and `resid x mix(roomOriginal, original, mk)` (replaced `vec3 kept = uAmbient * ...` and `resid.rgb * uOrig`). The TypeScript twin the same (`Scene` gains the room fields, `sceneZ`, `shadeLayer(..., room, ...)`).
+- `relight-session.ts`: four sliders after Shadows (Room light, Light on room, Room shadows, Room depth) with tooltips; the Shadows row shows 85 when unset (replaced `this.content.shadows ?? 55`).
+- `catalogue.ts`: `relight.apply` takes the four room numbers (replaced the `['original', 'shine', 'delight', 'shadows']` list).
+
 ## Relight in camera space · _v1.84.0 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts; patterns also automation/catalogue.ts)
 
 The owner on 1.83.0: "you need to actually re-think about this and stop doing the same thing over and over again.... I literally gave you the road map". The screen-space renderer (pixels in x and y, a fudged `relief` in z, a `reach` falloff behind the aim, a tanh-bent pattern plane) is replaced by a camera-space one built on the engine's metric scene.

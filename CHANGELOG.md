@@ -4,6 +4,21 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.85.0 · 2026-10-18
+
+### Changed
+
+- The room around the subject is relit and reshadowed as the subject is. The engine now takes the room's own light out too: which way each surface faces (MoGe-2's normals for the table, walls and dress form, continued smoothly behind the subject) and the slow change of brightness across the room (a bright window side, a dark corner). New light then lands on the environment by its real shape and distance, and the subject's shadows fall on it.
+- The room layer keeps its fine shape (depth smoothed at 1/100 of the picture, was 1/30), so light rakes across the table's fabric and the dress form.
+
+### Added
+
+- Room controls in Relight's Scene section, also in `relight.apply`: Room light (how much of the room's own light stays; follows Original lighting until moved), Light on room (0 to 200 percent of the lights reaching the room), Room shadows (how dark the subject's shadows fall on it) and Room depth (25 to 300 percent of the solved distance behind the subject: nearer keeps patterns and shadows close to the subject, farther spreads and shifts them).
+
+### Fixed
+
+- The Shadows slider showed 55 when unset while the scene used 85; it now shows 85.
+
 ## 1.84.0 · 2026-10-18
 
 ### Changed

@@ -36,6 +36,8 @@ uniform sampler2D uBg;
 uniform float uFocal;
 uniform float uThick;
 uniform vec2 uZRange;
+uniform vec3 uRoomAmbient;
+uniform vec4 uRoom;
 
 float toLin(float v) { return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4); }
 float toSrgb(float v) { return v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1.0 / 2.4) - 0.055; }
@@ -52,7 +54,9 @@ float vnoise(vec2 p) {
 vec3 rayAt(vec2 p) { return vec3((p - 0.5 * uSize) / (uFocal * max(uSize.x, uSize.y)), 1.0); }
 vec2 toPx(vec3 q) { return 0.5 * uSize + q.xy / max(q.z, 1e-4) * uFocal * max(uSize.x, uSize.y); }
 vec2 texAt(vec2 p) { return clamp((floor(p) + 0.5) / uSize, vec2(0.0), vec2(1.0)); }
-float zAtPx(vec2 p) { return texture(uGeo, texAt(p)).a; }
+// The room's distance behind the subject (1.85.0) is scaled by Room depth; the subject stays at its own distance.
+float sceneZ(vec2 tq) { float z = texture(uGeo, tq).a, m = texture(uRes, tq).a; return m > -0.5 && m < 0.5 ? 1.0 + (z - 1.0) * uRoom.w : z; }
+float zAtPx(vec2 p) { return sceneZ(texAt(p)); }
 // A round light of angular radius asin(sa): the terminator is the cosine smoothed over the source's size.
 float sphereLambert(float x, float sa) { return x >= sa ? x : (x <= -sa ? 0.0 : (x + sa) * (x + sa) / (4.0 * sa)); }
 // The light sits where its marker is, at the depth of the point it aims at, and Close to Far brings it out toward the
@@ -87,7 +91,7 @@ float visibility(vec3 P, vec3 Lc, vec3 toL, bool sun, float rad, float steps) {
       vec2 qp = toPx(Q);
       if (qp.x < 0.0 || qp.y < 0.0 || qp.x >= uSize.x || qp.y >= uSize.y) break;
       vec2 tq = texAt(qp);
-      float zs = texture(uGeo, tq).a, m = texture(uRes, tq).a, dz = Q.z - zs;
+      float zs = sceneZ(tq), m = texture(uRes, tq).a, dz = Q.z - zs;
       float th = m > 0.5 || m < -0.5 ? uThick : 1e4;
       if (dz > 0.0 && dz < th) vis = min(vis, 1.0 - sstep(0.004 * Q.z, 0.03 * Q.z, dz));
       if (vis <= 0.0) break;
@@ -160,7 +164,8 @@ float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool fr
 }
 // One surface layer lit by every light (1.84.0): E gathers light that multiplies the surface colour, Sp gathers
 // glints that sit on top. P is the point in camera space, nV its normal (z toward the viewer).
-void shadeLayer(vec2 p, vec3 P, vec3 nV, float subj, float tex, float warm, inout vec3 E, inout vec3 Sp) {
+void shadeLayer(vec2 p, vec3 P, vec3 nV, float subj, float tex, float warm, float room, inout vec3 E, inout vec3 Sp) {
+  float roomGain = mix(1.0, uRoom.y, room), roomShadow = uShadows * mix(1.0, uRoom.z, room);
   vec3 nW = normalize(vec3(nV.xy, -nV.z)), V = normalize(-P);
   float near = clamp((uZRange.y - P.z) / max(1e-4, uZRange.y - uZRange.x), 0.0, 1.0);
   for (int i = 0; i < ${MAX_RELIGHT_LIGHTS}; i++) {
@@ -199,7 +204,7 @@ void shadeLayer(vec2 p, vec3 P, vec3 nV, float subj, float tex, float warm, inou
     float spill = sphereLambert((ndl + 0.45) / 1.45, 0.3);
     if (lam <= 0.0 && rim <= 0.0 && spill <= 0.0) continue;
     float shadow = 1.0;
-    if (!ring && uSteps > 0) shadow = 1.0 - (1.0 - visibility(P + nW * 0.004 * P.z, Lc, toL, sun, rad, float(uSteps))) * uShadows;
+    if (!ring && uSteps > 0) shadow = 1.0 - (1.0 - visibility(P + nW * 0.004 * P.z, Lc, toL, sun, rad, float(uSteps))) * roomShadow;
     float pattern = 1.0, frame = 1.0;
     if (abs(D.x) > 0.5) {
       float zc = zAtPx(F.zw);
@@ -208,7 +213,7 @@ void shadeLayer(vec2 p, vec3 P, vec3 nV, float subj, float tex, float warm, inou
       pattern = patternAt(D.x, q, max(uSize.x, uSize.y), D, Ee, spread, false);
       frame = patternAt(D.x, q, max(uSize.x, uSize.y), D, Ee, spread, true);
     }
-    float level = intensity * 3.2 * (sun ? 2.7 : 2.2) * atten, amount = level * shadow * pattern;
+    float level = intensity * 3.2 * (sun ? 2.7 : 2.2) * atten * roomGain, amount = level * shadow * pattern;
     E += B.rgb * (amount * (lam + rim) * (1.0 - diffusion) + level * diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win * uGain;
     E += B.rgb * vec3(1.0, 0.35, 0.0) * amount * (1.0 - diffusion) * ${SSS.toFixed(3)} * max(0.0, spill - lam) * warm * win * uGain;
     vec3 H = normalize(toL + V);
@@ -237,13 +242,15 @@ void main() {
   float m = subj < 0.0 ? 0.0 : clamp(subj, 0.0, 1.0);
   vec4 bg = texture(uBg, uv);
   // Two layers blended by the cut-out: the subject on its own surface, the background on the one filled in behind it.
-  if (subj < 0.0 || m < 0.98) shadeLayer(pc, rayAt(pc) * (subj < 0.0 ? g.a : bg.a), subj < 0.0 ? g.rgb : bg.rgb, 0.0, 0.0, warm, Eb, Sb);
-  if (m > 0.02) { float zs = m > 0.98 ? g.a : max(0.05, (g.a - (1.0 - m) * bg.a) / m); shadeLayer(pc, rayAt(pc) * zs, g.rgb, m, tex, warm, Es, Ss); }
+  if (subj < 0.0 || m < 0.98) shadeLayer(pc, rayAt(pc) * (subj < 0.0 ? g.a : 1.0 + (bg.a - 1.0) * uRoom.w), subj < 0.0 ? g.rgb : bg.rgb, 0.0, 0.0, warm, subj < 0.0 ? 0.0 : 1.0, Eb, Sb);
+  if (m > 0.02) { float zs = m > 0.98 ? g.a : max(0.05, (g.a - (1.0 - m) * bg.a) / m); shadeLayer(pc, rayAt(pc) * zs, g.rgb, m, tex, warm, 0.0, Es, Ss); }
   vec3 Ea = mix(Eb, Es, m), Sa = mix(Sb, Ss, m) * uShine * 2.0;
   Sa = Sa / (1.0 + Sa);
   float kd = 1.0 / (1.0 + (texture(uShade, uv).r - 1.0) * uDelight);
-  vec3 kept = uAmbient * pow(s0, vec3(uTakeOut));
-  vec3 o = alb * kd * pow(s0, vec3(1.0 - uTakeOut)) * (kept + Ea) + (uSplit > 0.5 ? resid.rgb * uOrig : vec3(0.0)) + Sa;
+  // The subject and the room each keep their own share of the original light (Original lighting, Room light).
+  float mk = subj < 0.0 ? 1.0 : m;
+  vec3 kept = mix(uRoomAmbient, uAmbient, mk) * pow(s0, vec3(uTakeOut));
+  vec3 o = alb * kd * pow(s0, vec3(1.0 - uTakeOut)) * (kept + Ea) + (uSplit > 0.5 ? resid.rgb * mix(uRoom.x, uOrig, mk) : vec3(0.0)) + Sa;
   o = max(o, vec3(0.0));
   // A dark background can only be brightened so far.
   if (uSplit > 0.5) o = mix(min(o, photo * 6.0 + 0.02), o, m);
@@ -292,7 +299,7 @@ function init(): GlState | null {
   const base = tex(), geo = tex(), shade = tex(), s0 = tex(), res = tex(), bg = tex();
   if (!base || !geo || !shade || !s0 || !res || !bg) return null;
   const loc: Record<string, WebGLUniformLocation | null> = {};
-  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit', 'uTakeOut', 'uGain', 'uBg', 'uFocal', 'uThick', 'uZRange']) loc[k] = gl.getUniformLocation(prog, k);
+  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit', 'uTakeOut', 'uGain', 'uBg', 'uFocal', 'uThick', 'uZRange', 'uRoomAmbient', 'uRoom']) loc[k] = gl.getUniformLocation(prog, k);
   state = { gl, canvas, prog, base, geo, shade, s0, res, bg, loc };
   return state;
 }
@@ -352,6 +359,8 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   gl.uniform1i(loc.uBase, 0); gl.uniform1i(loc.uGeo, 1); gl.uniform1i(loc.uShade, 2);
   const sc = sceneTerms(content);
   gl.uniform3f(loc.uAmbient, sc.ambient[0], sc.ambient[1], sc.ambient[2]);
+  gl.uniform3f(loc.uRoomAmbient, sc.roomAmbient[0], sc.roomAmbient[1], sc.roomAmbient[2]);
+  gl.uniform4f(loc.uRoom, sc.roomOriginal, sc.roomLight, sc.roomShadows, sc.roomDepth);
   gl.uniform1f(loc.uDelight, shade && !split ? sc.delight : 0);
   gl.uniform1f(loc.uShadows, sc.shadows);
   gl.uniform1f(loc.uTakeOut, sc.takeOut);

@@ -345,6 +345,10 @@ are not touched.
   Take out with Marigold repaints the surfaces from a learned model and can change a face; it is an option only,
   downloaded from its own button, which names its licence (CreativeML Open RAIL++-M) and size (about 5.2 GB); the
   engine also needs `pip install -r backend/requirements_relight.txt`.
+- The room (Scene section): the environment around the subject is relit and reshadowed too. Room light sets how much
+  of the room's own light stays (it follows Original lighting until you move it), Light on room how strongly the lights
+  reach it (0 to 200 percent), Room shadows how dark the subject's shadows fall on it, and Room depth how far it stands
+  behind the subject (25 to 300 percent of the solved scene): nearer keeps patterns and shadows close to the subject.
 - A light sits where its marker is, at the depth of the point it aims at; Close to Far brings it out toward the camera.
   Close is a side light that falls off fast across the subject, far is frontal and even. A Sun is always well up.
 - The scene is solved in 3D (1.84.0): shadows are traced from several points on each light, so the subject casts a

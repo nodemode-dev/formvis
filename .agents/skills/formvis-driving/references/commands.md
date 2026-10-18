@@ -572,6 +572,10 @@ Generated from the window's command catalogue (953 commands) by `./formvis agent
 - `shine`: number 0 to 100; Highlights on glossy forms
 - `delight`: number 0 to 100; Percent of the original light and shade flattened before the new lights
 - `shadows`: number 0 to 100; Strength of cast shadows (with the depth model)
+- `roomOriginal`: number 0 to 100; Room light: percent of the room's own light kept around the subject (Original lighting when omitted)
+- `roomLight`: number 0 to 200; Light on room: percent of the lights that reach the room around the subject
+- `roomShadows`: number 0 to 100; Room shadows: strength of the subject's shadows on the room
+- `roomDepth`: number 25 to 300; Room depth: percent of the solved distance between the subject and the room behind
 - `ambient`: string; Colour of the kept original light, like #ffe8d0
 - `split`: string (auto | marigold | classic | off); How the photo's own light is taken out before the new lights: auto or classic (per-material shading, the subject's own detail kept), marigold (learned albedo, repaints surfaces, only when asked), or off (add light on top)
 

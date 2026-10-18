@@ -277,7 +277,7 @@ def _scene_split(rgb: np.ndarray) -> tuple:
     sc = relight_scene.solve(rgb)
     full = _lin(rgb)
     h, w = rgb.shape[:2]
-    shading = np.clip(_fit(sc["shading"], w, h), 0.15, 1.3).astype(np.float32)
+    shading = np.clip(_fit(sc["shading"], w, h), 0.15, 1.6).astype(np.float32)
     shading3 = np.repeat(shading[..., None], 3, -1)
     albedo = np.clip(full / shading3, 0, 1).astype(np.float32)
     residual = (full - albedo * shading3).astype(np.float32)

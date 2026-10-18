@@ -154,7 +154,7 @@ def solve(rgb: np.ndarray) -> dict:
     subj = _fill(lz, core * sure, size) if core.sum() > 64 else lz
     bg_w = (1 - np.clip(mask * 1.5, 0, 1)) * sure
     bg = _fill(lz, bg_w, size) if bg_w.sum() > 64 else lz
-    bg = _blur(bg, size / 30)
+    bg = _blur(bg, size / 100)
     zs, zb = np.exp(subj).astype(np.float32), np.exp(bg).astype(np.float32)
     thickness = 0.3
     if core.sum() > 64:
@@ -164,11 +164,17 @@ def solve(rgb: np.ndarray) -> dict:
     depth = (mask * zs + (1 - mask) * zb).astype(np.float32)
     # Normals: MoGe-2 for the subject when installed, else the slope of its own layer; the background from its layer.
     fpx = focal * size
+    n_moge = n_sub
     if n_sub is None:
         n_sub = _slope_z_normals(zs, fpx)
         r = size / 130
         n_sub = np.stack([_blur(n_sub[..., c], r) for c in range(3)], -1)
+    # The room's own surfaces (table, walls, a dress form) keep MoGe-2's normals where they are seen; behind the subject
+    # they come from the filled-in layer's slope.
     n_bg = _slope_z_normals(_blur(zb, size / 60), fpx)
+    if n_moge is not None and bg_w.sum() > 64:
+        n_bg = np.stack([_fill(n_moge[..., c], bg_w, size) for c in range(3)], -1)
+        n_bg = n_bg / np.maximum(np.linalg.norm(n_bg, axis=-1, keepdims=True), 1e-6)
     m3 = mask[..., None]
     normals = n_sub * m3 + n_bg * (1 - m3)
     normals = normals / np.maximum(np.linalg.norm(normals, axis=-1, keepdims=True), 1e-6)
@@ -188,6 +194,24 @@ def solve(rgb: np.ndarray) -> dict:
         S = np.maximum(B @ coef, 1e-4)
         S = S / np.percentile(S[core > 0], 90)
         shading = (mask * np.clip(S, 0.4, 1.3) + (1 - mask)).astype(np.float32)
+    # The room's own light, taken out too so new light and shadow land on the environment as on the subject: second-
+    # order SH over the room's normals (which way each surface faces), times the slow change of brightness across the
+    # room (a bright window side, a dark corner), normalised at the room's 75th percentile.
+    room = bg_w > 0.5
+    if room.sum() > 256:
+        Bb = _sh_basis(n_bg)
+        sel = room & (Y > np.percentile(Y[room], 5))
+        A, b = Bb[sel], Y[sel]
+        wts = np.ones(len(b), np.float32)
+        for _ in range(3):
+            coef, *_ = np.linalg.lstsq(A * wts[:, None], b * wts, rcond=None)
+            res = np.abs(np.log(np.maximum(A @ coef, 1e-4) / b))
+            wts = 1 / (1 + (res / 0.35) ** 2)
+        Sb = np.maximum(Bb @ coef, 1e-4)
+        ratio = _fill(np.log(Y / Sb), room.astype(np.float32), size)
+        Sb = Sb * np.exp(_blur(ratio, size / 12))
+        Sb = np.clip(Sb / np.percentile(Sb[room], 75), 0.35, 1.5)
+        shading = (mask * shading + (1 - mask) * Sb).astype(np.float32)
     level = float(np.mean(_lum(lin / shading[..., None])[core > 0])) if core.sum() > 64 else float(np.mean(_lum(lin)))
     # Texture for glints: the photo's own fine contrast (pores, hair strands), where light catches.
     g8 = np.sqrt(np.clip(_lum(lin), 0, 1)).astype(np.float32)

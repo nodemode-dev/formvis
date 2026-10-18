@@ -2,6 +2,11 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The room's own light · _v1.85.0 (app/localgen/relight_scene.py, relight_split.py)
+
+- `solve`: the room's shading is second-order SH over its normals (three robust reweightings) times `exp(blur(log(Y / SH), size / 12))` filled across the subject, normalised at the room's 75th percentile and clamped 0.35 to 1.5 (replaced the room's flat `+ (1 - mask)` shading of 1). Room normals are MoGe-2's where the room is seen, filled smoothly behind the subject (`_fill` per channel; replaced only the slope of the blurred layer). The room layer's depth is blurred at `size / 100` (was `size / 30`).
+- `relight_split.py`: the full-size shading clamp is 0.15 to 1.6 (was 0.15 to 1.3) so a bright window side keeps its range.
+
 ## The scene in camera space · _v1.84.0 (app/localgen/relight_scene.py, relight_split.py)
 
 - `relight_scene.py`: `_moge_scene` (replaces `_moge_normals`) returns MoGe-2's normals, metric depth (0 and unsure where MoGe masks it, such as sky), that mask and the focal length as a fraction of the width. `solve` works in log distance: unsure and stray pixels (more than 0.08 from a 5-pixel median) refilled with `_fill`, the subject's median at 1; without MoGe, Depth Anything's relative depth becomes `1 / (0.3 + 0.7 d)` with a focal of 1.2. Two layers as before, now `zs` and `zb`; the subject's `thickness` is its width over the focal (0.08 to 0.8) and the background is kept at least that far behind it. Normals from depth slope come from `_slope_z_normals(z, fpx)` (`n = (gx f / z, gy f / z, 1)`). The result gains `focal`, `thickness`, `bg_depth`, `bg_normals`; `depth` is now distance, not nearness. Removed:

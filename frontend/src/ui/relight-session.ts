@@ -498,6 +498,17 @@ export class RelightSession {
     const shadows = sliderRow(t('Shadows'), 0, 100, 1, (v) => { this.content.shadows = v; this.schedule(); });
     const ambient = colorRow(t('Ambient'), (h) => { this.content.ambient = fromHex(h); this.schedule(); });
     this.rows.original = orig; this.rows.shine = shine; this.rows.delight = delight; this.rows.shadows = shadows; this.rows.ambient = ambient;
+    // The room around the subject (1.85.0): its own kept light, how much the lights reach it, the subject's shadows on
+    // it, and how far behind the subject it stands.
+    const roomOrig = sliderRow(t('Room light'), 0, 100, 1, (v) => { this.content.roomOriginal = v; this.schedule(); });
+    const roomLight = sliderRow(t('Light on room'), 0, 200, 1, (v) => { this.content.roomLight = v; this.schedule(); });
+    const roomShadows = sliderRow(t('Room shadows'), 0, 100, 1, (v) => { this.content.roomShadows = v; this.schedule(); });
+    const roomDepth = sliderRow(t('Room depth'), 25, 300, 1, (v) => { this.content.roomDepth = v; this.schedule(); });
+    roomOrig.el.title = t('How much of the room\'s own light stays. Follows Original lighting until you move it.');
+    roomLight.el.title = t('How strongly the lights reach the room around the subject, in percent.');
+    roomShadows.el.title = t('How dark the subject\'s shadows fall on the room.');
+    roomDepth.el.title = t('How far the room stands behind the subject, in percent of the solved scene: farther spreads shadows and shifts patterns more.');
+    this.rows.roomOriginal = roomOrig; this.rows.roomLight = roomLight; this.rows.roomShadows = roomShadows; this.rows.roomDepth = roomDepth;
     const splitRow = selectRow(t('Old light'), [['auto', t('Take out, keep the subject')], ['marigold', t('Take out with Marigold (repaints surfaces)')], ['off', t('Keep, add on top')]], (v) => {
       this.content.split = v as RelightContent['split'];
       const f = this.full;
@@ -517,7 +528,7 @@ export class RelightSession {
     parts.addEventListener('click', () => { void this.getParts(); });
     const splitNote = el('<p class="cv-relight-split cv-note"></p>');
     scene.prepend(splitRow.el, splitNote, parts, mg);
-    scene.append(orig.el, delight.el, ambient.el, shine.el, shadows.el);
+    scene.append(orig.el, delight.el, ambient.el, shine.el, shadows.el, roomOrig.el, roomLight.el, roomShadows.el, roomDepth.el);
     return root;
   }
 
@@ -608,7 +619,11 @@ export class RelightSession {
     (this.rows.original as Row<number>).set(this.content.original);
     (this.rows.shine as Row<number>).set(this.content.shine);
     (this.rows.delight as Row<number>).set(this.content.delight ?? (this.content.split === 'off' ? 0 : TAKE_OUT));
-    (this.rows.shadows as Row<number>).set(this.content.shadows ?? 55);
+    (this.rows.shadows as Row<number>).set(this.content.shadows ?? 85);
+    (this.rows.roomOriginal as Row<number>).set(this.content.roomOriginal ?? this.content.original);
+    (this.rows.roomLight as Row<number>).set(this.content.roomLight ?? 100);
+    (this.rows.roomShadows as Row<number>).set(this.content.roomShadows ?? 100);
+    (this.rows.roomDepth as Row<number>).set(this.content.roomDepth ?? 100);
     (this.rows.ambient as Row<string>).set(hex(this.content.ambient ?? { r: 255, g: 255, b: 255 }));
     this.panel.querySelectorAll<HTMLButtonElement>('.cv-relight-look').forEach((b) => setClass(b, 'is-on', b.dataset.look === this.content.look));
   }

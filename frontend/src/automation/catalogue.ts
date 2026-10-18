@@ -144,6 +144,10 @@ function actionEntries(): CatalogueEntry[] {
         lights: { type: 'array', description: 'Up to 8 lights: [{type: point|spot|sun|area|strip|ring, kelvin (1000 to 12000) or color {r,g,b}, intensity, softness, diffusion, distance (0 close to 100 far), pos {x,y} and aim {x,y} as fractions of the canvas, near and far (0 to 100, the depth band lit), pattern {kind: none|blinds|strip|window|leaves|caustics|lattice|arch|dapple|circle, scale, width, slats, opening, length, feather, rotation, invert, center {x,y} where the pattern sits, the aim when omitted}}]' },
         original: rangeParam('original', 0, 100, 'Percent of the original lighting kept'), shine: rangeParam('shine', 0, 100, 'Highlights on glossy forms'),
         delight: rangeParam('delight', 0, 100, 'Percent of the original light and shade flattened before the new lights'), shadows: rangeParam('shadows', 0, 100, 'Strength of cast shadows (with the depth model)'),
+        roomOriginal: rangeParam('roomOriginal', 0, 100, 'Room light: percent of the room\'s own light kept around the subject (Original lighting when omitted)'),
+        roomLight: rangeParam('roomLight', 0, 200, 'Light on room: percent of the lights that reach the room around the subject'),
+        roomShadows: rangeParam('roomShadows', 0, 100, 'Room shadows: strength of the subject\'s shadows on the room'),
+        roomDepth: rangeParam('roomDepth', 25, 300, 'Room depth: percent of the solved distance between the subject and the room behind'),
         ambient: { type: 'string', description: 'Colour of the kept original light, like #ffe8d0' },
         split: { type: 'string', enum: ['auto', 'marigold', 'classic', 'off'], description: 'How the photo\'s own light is taken out before the new lights: auto or classic (per-material shading, the subject\'s own detail kept), marigold (learned albedo, repaints surfaces, only when asked), or off (add light on top)' },
       }),
@@ -163,7 +167,7 @@ async function relightApply(p: Record<string, unknown>): Promise<RunResult> {
   }) : start.lights;
   const ambient = typeof p.ambient === 'string' ? rgbOf(p.ambient) : null;
   if (p.ambient !== undefined && !ambient) return fail('ambient must be a colour like #ffe8d0.');
-  const content = relightFrom({ ...start, lights, ...(['original', 'shine', 'delight', 'shadows'] as const).reduce((m, k) => (typeof p[k] === 'number' ? { ...m, [k]: p[k] } : m), {}), ...(ambient ? { ambient } : {}), ...(look ? { look: look.id } : {}), ...(typeof p.split === 'string' ? { split: p.split } : {}) });
+  const content = relightFrom({ ...start, lights, ...(['original', 'shine', 'delight', 'shadows', 'roomOriginal', 'roomLight', 'roomShadows', 'roomDepth'] as const).reduce((m, k) => (typeof p[k] === 'number' ? { ...m, [k]: p[k] } : m), {}), ...(ambient ? { ambient } : {}), ...(look ? { look: look.id } : {}), ...(typeof p.split === 'string' ? { split: p.split } : {}) });
   if (!content || !content.lights.length) return fail('Give at least one light, or a look.');
   const made = await deps!.applyRelight(content);
   if (!made) return fail('Relight could not run: it needs an 8-bit RGB document and no Relight session open in the window.');
