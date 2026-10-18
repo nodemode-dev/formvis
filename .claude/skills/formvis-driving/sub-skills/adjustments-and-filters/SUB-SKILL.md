@@ -97,6 +97,9 @@ The full settings of every kind are in the `apply_filter` entry of `../formvis-e
 ### Sharpen for web
 `apply_filter` `unsharpMask` with `usmAmount` 80, `usmRadius` 1, `threshold` 2, on the flattened or top pixel layer, after resizing, not before.
 
+### Relight a photo
+`run_command` `relight.apply` adds a Relight layer above the active layer, on this computer. Quick: `{ "look": "rembrandt" }` (also soft-key, split, rim, butterfly, golden-hour, window-blinds, window-light, candlelight, neon, moonlight, light-strip, dappled, ring). Exact: `{ "lights": [{ "type": "spot", "kelvin": 3200, "intensity": 80, "pos": { "x": 0.1, "y": 0.15 }, "aim": { "x": 0.5, "y": 0.4 }, "near": 40 }], "original": 35, "delight": 50, "ambient": "#d0dcff" }`; positions are fractions of the canvas and may lie outside it, `near` 40 keeps the light on the nearer subject. The message says whether Depth Anything shaped the light; without it there are no cast shadows. `get_image` after. 8-bit RGB only.
+
 ## When it fails
 
 - "is a text layer: call rasterize_layer": do what it says, then retry.

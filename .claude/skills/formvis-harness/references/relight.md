@@ -26,3 +26,8 @@ Relight layers (1.73.0): virtual lights over the composite beneath a layer, rend
 6. Geometry is float (RGBA32F on the GPU). 8-bit normals band under strong highlights.
 7. 8-bit RGB documents only (`begin` and the command's `enabled` both check).
 8. The DOM is built once; `sync()` patches values and keyed light rows. Never rebuild the panel.
+9. Scene terms come from `sceneTerms` on both paths; the flattened source is `shadingField` (CPU array, R32F texture). A light's depth band is `depthWindow` (CPU) and `uF` (GPU); `near` 0 and `far` 100 mean no limit on that side.
+10. `setRelight(..., amendNew)` folds into the creation step only when the caller made the layer in this session (`RelightSession.isNew`, or `apply`).
+11. Agents use the `relight.apply` catalogue action (`automation/catalogue.ts`, `relightApply`), which calls `RelightSession.apply`; it never opens the panel.
+12. Saved Looks live in this browser's storage under `formvis.relight.looks`, read through `relightFrom`; never in the document.
+13. When an `icon()` sits in a node, set the label on `span:last-child`, not the first `span`: the icon is a span too.
