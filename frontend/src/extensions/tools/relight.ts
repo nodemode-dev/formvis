@@ -89,9 +89,9 @@ export const relightTool: Tool = {
       g.strokeStyle = on ? pal.antsB : pal.antsA;
       g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
       if (on && l.pattern.kind !== 'none') {
-        const k = l.pattern, unit = Math.max(s.w, s.h) * v.zoom, rot = (-k.rotation * Math.PI) / 180;
-        const hw = k.kind === 'strip' ? 0.5 * k.width / 100 * 0.11 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.5 * k.scale / 100 * k.width / 100 : 0.32 * k.scale / 100) * unit;
-        const hh = k.kind === 'strip' ? 0.5 * k.length / 100 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.5 * k.scale / 100 : 0.42 * k.scale / 100) * unit;
+        const k = l.pattern, unit = Math.max(s.w, s.h) * v.zoom, rot = ((k.kind === 'strip' ? 1 : -1) * k.rotation * Math.PI) / 180;
+        const hw = k.kind === 'strip' ? 0.5 * k.width / 100 * 0.14 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.33 * k.scale / 100 * k.width / 100 : 0.32 * k.scale / 100) * unit;
+        const hh = k.kind === 'strip' ? 0.58 * k.length / 100 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.33 * k.scale / 100 : 0.42 * k.scale / 100) * unit;
         g.save(); g.translate(b.x, b.y); g.rotate(rot); g.strokeRect(-hw, -hh, hw * 2, hh * 2); g.restore();
       }
       g.setLineDash([]);

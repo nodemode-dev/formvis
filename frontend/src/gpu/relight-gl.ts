@@ -1,4 +1,4 @@
-import { MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry, type SplitMaps } from '../engine/relight';
+import { ALBEDO_FLOOR, MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry, type SplitMaps } from '../engine/relight';
 
 const VERT = `#version 300 es
 in vec2 aPos;
@@ -54,12 +54,13 @@ float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool fr
   float feather = max(0.002, e.z * 0.25 + soft * 0.08);
   float m = 1.0;
   if (k < 1.5) {
-    float half_ = 0.5 * d.y, hw = half_ * d.z;
+    float half_ = 0.33 * d.y, hw = half_ * d.z;
     float frame = sstep(hw, hw - feather, abs(x)) * sstep(half_, half_ - feather, abs(y));
     float period = (2.0 * half_) / max(2.0, d.w), ph = fract((y + half_) / period), f = feather / period;
-    m = frameOnly ? frame : frame * sstep(e.x, e.x - f, ph) * sstep(0.0, f, ph);
+    float hf = min(f, 0.3) * 0.5, wash = clamp((f - 0.3) / 0.7, 0.0, 1.0);
+    m = frameOnly ? frame : frame * (sstep(e.x + hf, e.x - hf, ph) * sstep(-hf, hf, ph) * (1.0 - wash) + e.x * wash);
   } else if (k < 2.5) {
-    float hl = 0.5 * e.y * d.y, hw = 0.5 * d.z * 0.11 * d.y;
+    float hl = 0.58 * e.y * d.y, hw = 0.5 * d.z * 0.14 * d.y;
     m = sstep(hl, hl - feather, abs(y)) * sstep(hw, hw - feather, abs(x));
   } else if (k < 3.5) {
     float half_ = 0.32 * d.y, bar = 0.02 * d.y;
@@ -89,10 +90,10 @@ void main() {
     if (win <= 0.0) continue;
     float type = A.x, intensity = A.y, softness = A.z, diffusion = A.w, distance_ = B.w;
     vec2 pos = C.xy, aim = C.zw;
-    float zAim = zAt(aim, relief), hL = zAim + (0.3 + 0.9 * distance_) * 0.5 * s;
+    float zAim = zAt(aim, relief), hL = zAim + (0.12 + 0.9 * distance_) * 0.5 * s;
     vec3 l; float atten = 1.0; float maxRun = 0.45 * s;
     if (abs(type - 2.0) < 0.5) {
-      vec2 dd = aim - pos; float dl = max(1e-6, length(dd)); float elev = radians(12.0 + 58.0 * distance_);
+      vec2 dd = aim - pos; float dl = max(1e-6, length(dd)); float elev = radians(30.0 + 50.0 * distance_);
       l = vec3(-dd / dl * cos(elev), sin(elev));
     } else {
       vec2 q = pos;
@@ -103,8 +104,8 @@ void main() {
       vec3 v = vec3(q - p, (abs(type - 5.0) < 0.5 ? relief + 0.6 * s : hL) - pz);
       float dist = length(v);
       l = v / dist;
-      float R = (0.08 + 0.5 * distance_) * s;
-      atten = 1.0 / (1.0 + (dist / R) * (dist / R));
+      float R = (0.4 + distance_) * s;
+      atten = 2.6 / (1.0 + (dist / R) * (dist / R));
       maxRun = min(maxRun, length(v.xy));
       if (abs(type - 1.0) < 0.5) {
         vec3 ax = vec3(aim - pos, zAim - hL);
@@ -112,8 +113,9 @@ void main() {
         atten *= sstep(cos(radians(30.0 + 30.0 * softness)), cos(radians(18.0 + 22.0 * softness)), cosA);
       }
     }
-    float behind = zAim - pz, reach = (0.06 + 0.6 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
-    atten /= 1.0 + rr * rr;
+    bool sun = abs(type - 2.0) < 0.5;
+    float behind = zAim - pz, reach = (sun ? 0.18 + 1.8 * distance_ : 0.05 + 0.4 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
+    atten = atten / (1.0 + rr * rr * (sun ? 1.0 : rr * rr)) * (sun ? 1.9 : 1.0);
     float wrapExtra = abs(type - 3.0) < 0.5 ? 0.35 : (abs(type - 5.0) < 0.5 ? 0.5 : 0.3);
     float wr = clamp(diffusion + wrapExtra, 0.0, 1.5);
     float ndl = dot(n, l), lam = clamp((ndl + wr) / (1.0 + wr), 0.0, 1.0);
@@ -147,14 +149,17 @@ void main() {
     if (abs(D.x) > 0.5) {
       float par = (pz - zAim) * 0.05 / max(0.25, l.z);
       vec2 gp = p + l.xy * par;
-      pattern = patternAt(D.x, gp - aim, s, D, Ee, softness, false);
-      frame = patternAt(D.x, gp - aim, s, D, Ee, softness, true);
+      float spread = softness + (abs(abs(D.x) - 2.0) < 0.5 ? 0.0 : 4.0 * max(0.0, behind) / relief);
+      pattern = patternAt(D.x, gp - aim, s, D, Ee, spread, false);
+      frame = patternAt(D.x, gp - aim, s, D, Ee, spread, true);
     }
     float amount = intensity * 3.2 * atten * shadow * pattern;
     vec3 hv = normalize(l + vec3(0.0, 0.0, 1.0));
     float gloss = 8.0 + 56.0 * (1.0 - softness);
-    E += B.rgb * (amount * lam * (1.0 - diffusion) + intensity * 3.2 * atten * diffusion * 1.2 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win;
-    if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.3 * uShine * win;
+    vec3 add = B.rgb * (amount * lam * (1.0 - diffusion) + intensity * 3.2 * atten * diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win;
+    E += add;
+    S += add * ${ALBEDO_FLOOR.toFixed(3)};
+    if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.15 * uShine * win;
   }
   float kd = 1.0 / (1.0 + (texture(uShade, uv).r - 1.0) * uDelight);
   vec3 lin = vec3(toLin(base.r), toLin(base.g), toLin(base.b)) * kd * pow(s0, vec3(1.0 - uTakeOut));
