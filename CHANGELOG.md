@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.76.0 · 2026-10-18
+
+### Changed
+
+- Relight keeps the subject. The owner's verdict on 1.75.0: Marigold's albedo "is not the same face at all", and the SAM 2.1 grid split degraded it too. The default split ("Take out, keep the subject") no longer replaces a single pixel's detail: the albedo is the photo divided by a smooth shading field, so eyes, pores, hair strands and edges are the original's, and only the light changes. The shading is estimated per material, each on its own (background, hair, skin, clothes), with formlit 0.45.3's way of masking people: MediaPipe selfie multiclass for the parts and YuNet for faces. A morphological close drops thin dark features (lashes, nostrils) while keeping shadow edges, a rolling bilateral smooths within each material, and the old terminator's penumbra is followed so no dark seam is left where the old shadow was.
+- Faces get a head-shaped normal prior blended into the depth normals, so a light from the left lights her right cheek and leaves the other side in shade: the old shadow really moves.
+- Lights now sit above the surface they aim at, not above the nearest point of the picture, so side lights rake across a face instead of falling flat from the front (CPU and WebGL2 alike).
+- Deep shadows that a new light lifts are cleaned of JPEG blocks and colour noise; what is removed rides with Original lighting, so the untouched photo is still rebuilt exactly.
+- Marigold stays as an option ("Take out with Marigold (repaints surfaces)") and is never chosen by Auto; the SAM 2.1 grid split is gone.
+
+### Added
+
+- Relight's Scene section offers the parts and face models (16 MB, Apache-2.0 and MIT) when they are missing; without them the split falls back to colour regions.
+
 ## 1.75.0 · 2026-10-18
 
 ### Added

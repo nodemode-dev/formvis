@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight keeps the subject · _v1.76.0 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts, automation/catalogue.ts)
+
+The engine's split now keeps every original detail (see backend HASHOUT 1.76.0); the frontend changes are where lights sit and how the choice reads.
+
+- `relight.ts` `lightAt`: replaced `const hL = relief + (0.05 + 0.9 * L.distance) * s;` with `const zAim = zAt(L.aim[0], L.aim[1]), hL = zAim + (0.3 + 0.9 * L.distance) * 0.5 * s;` and the spot cone's `az = relief * 0.5 - hL` with `az = zAim - hL`. Why: the light stood above the nearest point of the picture (often a table in front), so on a subject further back it fell almost from the camera and shaded flat; anchored to the depth under its aim it rakes across the face. `(0.05 + ...)` gave grazing light and long hard nose shadows at short distances, hence the 0.3 floor.
+- `relight-gl.ts`: the same two lines in GLSL (`float hL = relief + (0.05 + 0.9 * distance_) * s;` and `vec3 ax = vec3(aim - pos, relief * 0.5 - hL);` replaced).
+- `local-gen.ts` `RelightEngines`: `regions: 'sam' | 'colour'` replaced by `regions: 'parts' | 'colour'; faces: boolean`.
+- `relight-session.ts`: `loadSplit` loses `learned` (replaced: `const learned = engine === 'marigold' || (engine === 'auto' && this.engines.marigold);`) as Auto never runs Marigold; notes name the per-material split; Old light options `Take out, keep the subject`, `Take out with Marigold (repaints surfaces)`, `Keep, add on top` (replaced `Take out (best available)` and `Take out with SAM 2.1 regions`); new `getParts` and a `.cv-relight-parts` button shown by `syncSplit` while the parts or face model is missing.
+- `catalogue.ts` `relight.apply`: `split` description and the result message no longer name SAM 2.1.
+
 ## Relight re-shades · _v1.75.0 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts, automation/catalogue.ts)
 
 The owner: "relighting is also reshading"; 1.74.1 multiplied new light over the photo, so the photo's own split-face shadow survived every Look. The image model is now `albedo x (Original x S0 + sum of new light) + Original x residual + highlights`, with albedo, S0 (old shading, per channel) and the residual from the engine's light split (`backend/app/localgen/relight_split.py`). Tried first and dropped, by looking at the albedo: an SH light fit on depth normals (the fit landed frontal; monocular depth makes a face a blob), Retinex gradients classified by chromaticity plus a screened Poisson solve (kept the shadow), chroma k-means normalisation (hair turned skin-coloured). Careaga and Aksoy's intrinsic model is academic-use only, so not used.

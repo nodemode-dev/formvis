@@ -327,10 +327,14 @@ are not touched.
 - Agents and the command line: the `relight.apply` command takes a Look name or a list of lights and adds the layer
   without the panel, for example `./formvis cli run relight.apply look=rembrandt delight=40`.
 - Old light (Scene): relighting is re-shading, so Relight first takes the photo's own light out and keeps the colour
-  of its surfaces; Original lighting then sets how much of the old light stays (0 removes it). Take out (best
-  available) uses Marigold when it is installed, else SAM 2.1 regions; Keep adds light on top of the old light.
-  Marigold is the better split: download it from the button in Relight, which names its licence (CreativeML Open
-  RAIL++-M) and size (about 5.2 GB); the engine also needs `pip install -r backend/requirements_relight.txt`.
+  of its surfaces; Original lighting then sets how much of the old light stays (0 removes it). Take out, keep the
+  subject divides the photo by a smooth shading field worked out for skin, hair, clothes and the scene each on their
+  own, so every detail of the face or object is the original's and only the light changes; download the parts and
+  face models (16 MB) from the button in Relight for the best split. Keep adds light on top of the old light.
+  Take out with Marigold repaints the surfaces from a learned model and can change a face; it is an option only,
+  downloaded from its own button, which names its licence (CreativeML Open RAIL++-M) and size (about 5.2 GB); the
+  engine also needs `pip install -r backend/requirements_relight.txt`.
+- Lights sit above the surface they aim at: aim a light at the face and Close to Far sets how high above it it is.
 - Relight works on 8-bit RGB documents. In PSD files and older builds a Relight layer is an ordinary pixel layer.
 
 ## Generating images

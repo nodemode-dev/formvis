@@ -2,6 +2,91 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight keeps the subject · _v1.76.0 (app/localgen/relight_split.py, app/localgen/model_manager.py)
+
+The owner on 1.75.0: Marigold's albedo "is not the same face at all", and every split so far was "isolation and layered segment filtering" that degraded the subject. The classic engine is rewritten so the albedo is always `photo / shading` with a smooth shading field, so identity is the original's by construction; residual is signed and rebuilds the photo exactly (max error 6e-8).
+
+- `relight_split.py`: new `KEEP_SIDE` (1024, the working side), `PARTS`, `PARTS_FILE`, `_parts_session`; `_blur`; `_faces` (YuNet via `face.find_faces` when `yunet-face` is ready); `_materials` (MediaPipe selfie multiclass to background, hair, skin, clothes, refined by a guided filter on the luminance; without it, 5 chroma k-means clusters, skin index -1); `_features` (eyes from landmarks, lips by a* above the skin's median inside the mouth ellipse, after formlit's `ai/parts.py`); `_shading` (per material: fill outside it, close fw/12 then open fw/18 so lashes and nostrils drop and shadow edges stay, 4 bilateral passes at half size, a guided pass r fw/8 on the filled luminance so the penumbra ramp is followed, gaps over 0.2 log moved into the shading, normalised at the 96th percentile of the material; clamp 0.02 to 1.25); `_normals` (Depth Anything gradient normals, cliff-masked, plus a head ellipsoid per face blended by a smoothstep of its interior over hair and skin); `_classic(rgb)` (working-size estimate, guided upsample of the shading, deep-shadow deblock with chroma calmed, removed noise into the residual). `_split` key gains the readiness of the parts and face models; `split` chooses Marigold only when asked; `engines` reports `regions` (`parts` or `colour`) and `faces`.
+- Removed, quoted in full:
+
+```python
+def _sam_regions(rgb: np.ndarray, key: str) -> np.ndarray | None:
+    from app.services import segment
+
+    if not segment.available():
+        return None
+    h, w = rgb.shape[:2]
+    out = io.BytesIO()
+    Image.fromarray(rgb).save(out, "PNG")
+    try:
+        segment.encode(key, out.getvalue())
+    except Exception:
+        return None
+    labels = np.full((h, w), -1, np.int32)
+    area = np.full((h, w), np.inf, np.float32)
+    cols, rows, n = 6, 8, 0
+    for j in range(rows):
+        for i in range(cols):
+            x, y = (i + 0.5) * w / cols, (j + 0.5) * h / rows
+            try:
+                with Image.open(io.BytesIO(segment.select(key, [(x, y, 1)]))) as m:
+                    mask = np.asarray(m.convert("L")) > 127
+            except Exception:
+                continue
+            mask = cv2.morphologyEx(mask.astype(np.uint8), cv2.MORPH_OPEN, np.ones((5, 5), np.uint8)) > 0
+            size = float(mask.sum())
+            if size < 0.01 * h * w:
+                continue
+            take = mask & (size < area)
+            labels[take] = n
+            area[take] = size
+            n += 1
+    if n == 0:
+        return None
+    if (labels < 0).any():
+        _, nearest = cv2.distanceTransformWithLabels((labels < 0).astype(np.uint8), cv2.DIST_L2, 5, labelType=cv2.DIST_LABEL_PIXEL)
+        seeds = np.zeros(nearest.max() + 1, np.int32)
+        seeds[nearest[labels >= 0]] = labels[labels >= 0]
+        labels = np.where(labels < 0, seeds[nearest], labels)
+    return labels
+
+
+def _chroma_regions(lin: np.ndarray) -> np.ndarray:
+    chroma = lin / (lin.sum(-1, keepdims=True) + 1e-3)
+    feat = (cv2.GaussianBlur(chroma, (0, 0), 2)[..., :2] * 12).reshape(-1, 2).astype(np.float32)
+    _, _, centres = cv2.kmeans(feat[::7], 6, None, (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 20, 1e-3), 2, cv2.KMEANS_PP_CENTERS)
+    return ((feat[:, None, :] - centres[None]) ** 2).sum(-1).argmin(1).reshape(lin.shape[:2]).astype(np.int32)
+
+
+def _classic(rgb: np.ndarray, key: str) -> tuple:
+    lin = _lin(rgb)
+    size = max(rgb.shape[:2])
+    log_y = np.log(_lum(lin) + 1e-3)
+    r = max(2, size // 120)
+    smooth = _guided(log_y, log_y, r, 0.02)
+    smooth = _guided(smooth, smooth, r, 0.02)
+    labels = _sam_regions(rgb, key)
+    if labels is None:
+        labels = _chroma_regions(lin)
+    lit = np.zeros_like(smooth)
+    for label in np.unique(labels):
+        mask = labels == label
+        if mask.sum() < 32:
+            lit[mask] = smooth[mask].max()
+            continue
+        lit[mask] = np.percentile(smooth[mask], 92)
+    lit = _guided(log_y, lit, max(2, size // 200), 0.05)
+    shading = np.exp(np.clip(smooth - lit, np.log(0.04), 0.15)).astype(np.float32)
+    shading3 = np.repeat(shading[..., None], 3, -1)
+    albedo = np.clip(lin / shading3, 0, 1)
+    return albedo.astype(np.float32), shading3, np.zeros_like(lin), None
+```
+
+  Replaced lines: `result = _marigold(rgb) if engine == "marigold" else _classic(rgb, "relight-" + key)`; `key = hashlib.sha1(data).hexdigest() + engine`; `use = "marigold" if engine in ("auto", "marigold") and marigold_ready() else "classic"`; in `engines`, `from app.services import segment` and `"regions": "sam" if segment.available() else "colour",`. Why the old split failed: the SAM grid cut one material into pieces each normalised to its own lit level, the edge-keeping smoothing kept eyes and brows in the shading, and the albedo clip at 1 lost highlights.
+- `model_manager.py`: PINNED `selfie-multiclass/model.onnx` and MODELS `selfie-multiclass` (Apache-2.0, 16 MB), the hash matching formlit 0.45.3's pin and the real download.
+
+Verified: `_classic` 3.5 s at 736x1326 and 6.0 s at 2208x3978 on the CPU; reconstruction error 6e-8; through the window with `relight.apply`, a key from the left and from the right move the face's shadow to the opposite side and the face stays the same person (full-size crops beside the original). Tests: 111 pass; `test_the_skill_is_in_step_with_the_catalogue` and `test_the_engine_reports_sam` fail at HEAD 1.75.0 too (agents sync needs the window; SAM reporting in this sandbox), `test_segment_onnx` passes alone.
+
 ## Relight's light split · _v1.75.0 (app/localgen/relight_split.py new, app/localgen/model_manager.py, app/main.py, requirements_relight.txt new, tests/test_localgen_krea2.py)
 
 - `relight_split.py`: `runtime_ready`, `models_ready`, `marigold_ready`; `_run_once` (load one Marigold pipeline in bfloat16 from the fp16 files, run at 768 px resized by PIL with `processing_resolution=0`, release it: the pipeline's own bf16 resize raises NotImplementedError on the CPU, and two float32 pipelines beside SAM and Depth Anything were OOM-killed at 8 GB); `_marigold` (albedo from photo / shading where shading is above about 0.012 to 0.06, guided-filter cleaned, the model's albedo, level-matched, only below; normals with y flipped to image space); `_sam_regions` (6 by 8 prompts through `segment.select`, masks opened by 5 px, at least 1 percent of the picture, smallest wins, gaps filled from the nearest region with `distanceTransformWithLabels`); `_chroma_regions` (fallback); `_classic`; `_split` (two results cached by SHA-1 and engine); `pack`; routes `GET /api/relight/engines`, `POST /api/relight/split`.
