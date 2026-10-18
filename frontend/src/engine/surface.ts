@@ -13,12 +13,24 @@ export function createSurface(w: number, h: number): Surface {
   if (width * height > CANVAS_PIXELS || width > CANVAS_SIDE || height > CANVAS_SIDE) {
     throw new Error(`A picture of ${width.toLocaleString('en-US')} by ${height.toLocaleString('en-US')} is past what a browser canvas holds (268 megapixels, 32,767 a side); this does not work on documents that large yet.`);
   }
-  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  return canvas;
+  let s: Surface;
+  if (typeof OffscreenCanvas !== 'undefined') s = new OffscreenCanvas(width, height);
+  else {
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    s = canvas;
+  }
+  if (READS_ON_CPU) s.getContext('2d', { willReadFrequently: true });
+  return s;
 }
+
+/** WebKit (the desktop app on macOS and Linux, and Safari) keeps a 2D canvas on the GPU unless it is told at birth that
+ *  it will be read (1.86.2), and each getImageData is then a wait on the GPU. formvis reads layer pixels in nearly every
+ *  brush, filter and selection; Chrome moves such a canvas to the CPU by itself after a few reads, which is why the
+ *  browser build was quick and the Mac app was not. The first getContext fixes a canvas's attributes, so it is asked
+ *  here, before any other code touches the surface. Chrome is left to its own heuristic. */
+const READS_ON_CPU = typeof navigator !== 'undefined' && /AppleWebKit/.test(navigator.userAgent) && !/Chrome|Chromium|Edg\//.test(navigator.userAgent);
 
 /** The surface's 2D context; throws when the browser gives none. */
 export function ctxOf(s: Surface): Ctx2D {

@@ -1,6 +1,7 @@
 import { adjustmentKernel } from './kernels';
 import { hsvFromData, hsvKernel } from './adjust';
 import type { Adjustment, AdjustmentKind } from './types';
+import { applyLut, type ColourLut } from './colour-lut';
 
 /** Adjustments the GPU applies as per-channel lookup tables (Phase 18.5): kinds whose output channel depends only on the
  *  same input channel. The table is made by the CPU kernel itself, run over the 256 greys, so the GPU applies exactly
@@ -53,6 +54,24 @@ export function lut3Sample(t: Uint8Array, r: number, g: number, b: number, c: nu
     acc += w * t[(y * N * N + x) * 4 + c];
   }
   return Math.round(acc);
+}
+
+const viewCache = new WeakMap<ColourLut, Uint8Array>();
+
+/** The view's colour table (Proof Colors, a document profile, the monitor) as the GPU's 3D table (1.86.2): the CPU
+ *  table sampled at every lattice node, so the screen display draws the view on the GPU, last over the stack, instead
+ *  of the whole canvas falling back to the CPU and a JavaScript pass over every screen pixel each frame. Both tables
+ *  are trilinear over lattices of 8-bit nodes, so the two agree within a level or two for the smooth tables LittleCMS
+ *  builds. The gamut warning greys by nearest node, which a smooth table cannot hold, so it stays on the CPU. */
+export function viewLut3(lut: ColourLut): Uint8Array {
+  const hit = viewCache.get(lut);
+  if (hit) return hit;
+  const N = LUT3_N, px = new Uint8ClampedArray(N * N * N * 4);
+  for (let bi = 0; bi < N; bi++) for (let gi = 0; gi < N; gi++) for (let ri = 0; ri < N; ri++) px.set([ri * 5, gi * 5, bi * 5, 255], (bi * N * N + gi * N + ri) * 4);
+  applyLut(px, lut);
+  const t = new Uint8Array(px.buffer);
+  viewCache.set(lut, t);
+  return t;
 }
 
 export function adjustmentLut3(adj: Adjustment): Uint8Array | null {

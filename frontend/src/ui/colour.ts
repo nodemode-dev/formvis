@@ -129,7 +129,7 @@ export class ColourView {
     const p = this.engine.current, rendered = p?.doc.mode === 'cmyk' || p?.doc.mode === 'lab', prof = rendered ? undefined : p?.doc.profile, kind = this.proof ? this.preset : null;
     const plate = kind === 'cyan' || kind === 'magenta' || kind === 'yellow' || kind === 'black' || kind === 'cmy', cvd = kind === 'protanopia' || kind === 'deuteranopia';
     const s = kind === 'cmyk' ? ({ id: this.work?.id ?? '', name: 'Working CMYK', intent: 'relative', bpc: true } as ProofSetup) : kind ? null : this.setup, proofing = this.proof && (!!s || !!kind);
-    const c = loadPrefs().colour, monitor = c.useDisplay && this.display?.icc ? this.display.icc : null, terms = proofing && s ? proofTerms(s) : null;
+    const c = loadPrefs().colour, monitor = c.useDisplay && this.display?.icc && !this.display.managed ? this.display.icc : null, terms = proofing && s ? proofTerms(s) : null;
     const key = p ? `${prof ? `${prof.icc.length}:${prof.icc.slice(-64)}` : 'srgb'}|${proofing && s && terms ? `${s.id}:${terms.intent}:${terms.bpc}` : ''}|${kind ?? ''}:${c.cmyk}|${proofing && this.gamut}|${monitor ? `${monitor.length}:${monitor.slice(-64)}:${c.intent}:${c.bpc}` : ''}` : '';
     if (key === this.key) return;
     this.key = key;

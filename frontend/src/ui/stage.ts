@@ -1,4 +1,5 @@
 import { applyLut } from '../engine/colour-lut';
+import { LUT3_N, viewLut3 } from '../engine/lut';
 import { applyDuotoneLut, duotoneLut } from '../engine/duotone';
 import { createSurface, integral, intersectRect, sizeSurface, translation, unionRect, type AlphaChannel, type Engine, type Pt, type Rect, type Surface } from '../engine';
 import type { Project } from '../engine/project';
@@ -234,8 +235,20 @@ export class Stage {
     let gpuLayers: DisplayLayer[] | null = null;
     if (this.gpu) {
       const vz = p.viewport.zoom * this.dpr, gl = this.engine.gpuLayers({ matrix: [vz, 0, 0, vz, (p.viewport.panX + this.offX) * this.dpr, (p.viewport.panY + this.offY) * this.dpr], width: W, height: H });   // the view, for a giant document's tiles (1.62.9)
-      const reason = (this.engine.view.patternPreview || this.engine.view.pixelArt ? 'Pattern Preview and Pixel Art Preview are drawn on the CPU' : null) ?? (this.engine.viewTransform ?'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? (p.doc.mode === 'duotone' ? 'Duotone documents are drawn on the CPU' : null) ?? (p.doc.mode === 'multichannel' ? 'Multichannel documents are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
-      if (!reason && 'layers' in gl) gpuLayers = gl.layers;
+      // A view transform without the gamut warning goes on the GPU as a last 3D table over the stack (1.86.2); before,
+      // any view transform sent the whole canvas to the CPU, which in the desktop app on a Mac was every frame.
+      const vt = this.engine.viewTransform, viewTable = vt && !vt.gamut ? viewLut3(vt.lut) : null;
+      let reason = (this.engine.view.patternPreview || this.engine.view.pixelArt ? 'Pattern Preview and Pixel Art Preview are drawn on the CPU' : null) ?? (vt && !viewTable ? 'the gamut warning is drawn on the CPU' : null) ?? (p.doc.mode === 'duotone' ? 'Duotone documents are drawn on the CPU' : null) ?? (p.doc.mode === 'multichannel' ? 'Multichannel documents are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
+      if (!reason && 'layers' in gl) {
+        gpuLayers = gl.layers;
+        if (viewTable) {
+          const view: DisplayLayer = { image: null, lut: viewTable, lut3: true, version: 0, width: LUT3_N * LUT3_N, height: LUT3_N, matrix: [1, 0, 0, 1, 0, 0], opacity: 1, blend: 'normal' };
+          const why = this.gpu.unsupported?.([view]) ?? null;
+          if (why) reason = why;
+          else gpuLayers = [...gl.layers, view];
+        }
+        if (reason) gpuLayers = null;
+      }
       if (reason !== this.gpuReason) {
         this.gpuReason = reason;
         console.info(reason ? `formvis: drawing on the CPU, because ${reason}` : 'formvis: drawing on the GPU (WebGPU)');

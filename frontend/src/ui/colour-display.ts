@@ -9,7 +9,13 @@ export interface DisplayInfo {
   name: string;
   icc: string | null;
   note: string;
+  /** The web view already converts the page's sRGB to this monitor (1.86.2): WebKit on macOS hands the window to
+   *  ColorSync and WebView2 on Windows is colour-managed Chromium, so a conversion here as well converted twice, and
+   *  drew the whole canvas on the CPU every frame. WebKitGTK on Linux does not, so there formvis converts. */
+  managed?: boolean;
 }
+
+const systemManaged = (): boolean => /mac|win/i.test(navigator.platform || navigator.userAgent);
 
 const ASSUMED = 'sRGB IEC61966-2.1';
 export const BROWSER_NOTE = 'This browser does not say which profile the monitor has, so formvis assumes an sRGB display. The desktop app reads the monitor profile from the system and draws through it.';
@@ -22,7 +28,7 @@ export async function readDisplay(): Promise<DisplayInfo> {
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     const r = await invoke<{ available: boolean; source: string; icc: string | null; note: string }>('display_profile');
-    if (r.available && r.icc) return { desktop: true, available: true, source: r.source, name: profileName(fromBase64(r.icc)), icc: r.icc, note: '' };
+    if (r.available && r.icc) return { desktop: true, available: true, source: r.source, name: profileName(fromBase64(r.icc)), icc: r.icc, note: '', managed: systemManaged() };
     return { desktop: true, available: false, source: r.source, name: ASSUMED, icc: null, note: `The system holds no profile for this monitor${r.note ? ` (${r.note})` : ''}, so formvis assumes an sRGB display.` };
   } catch (err) {
     return { desktop: true, available: false, source: 'none', name: ASSUMED, icc: null, note: `The monitor profile could not be read (${err instanceof Error ? err.message : String(err)}), so formvis assumes an sRGB display.` };
@@ -33,5 +39,6 @@ export async function readDisplay(): Promise<DisplayInfo> {
 export function displayLine(d: DisplayInfo | null, use = true): string {
   if (!d) return 'Reading the monitor profile...';
   if (!d.available) return d.note;
+  if (d.managed) return `${d.name}, from ${SOURCES[d.source] ?? d.source}. The system converts the canvas to it, so formvis does not convert it again.`;
   return use ? `${d.name}, from ${SOURCES[d.source] ?? d.source}. The canvas is drawn through it.` : `${d.name}, from ${SOURCES[d.source] ?? d.source}, is not used: the canvas assumes an sRGB display.`;
 }
