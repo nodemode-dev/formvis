@@ -46,6 +46,26 @@ float zAt(vec2 p, float relief) {
   vec2 uv = clamp((floor(p) + 0.5) / uSize, vec2(0.0), vec2(1.0));
   return texture(uGeo, uv).a * relief;
 }
+vec3 sunTo(vec2 dd, float dist) {
+  float k = length(dd), e = radians(20.0 + 40.0 * dist), c = cos(e), sn = sin(e);
+  vec2 h = k < 1e-6 ? vec2(0.0) : dd / k;
+  return normalize(vec3(h.x * c, h.y * c - 0.35 * sn, 0.9 * sn + 0.6));
+}
+bool goboUV(float type, vec2 pos, vec2 aim, float dist, float s, vec3 rel, out vec2 uv) {
+  vec2 dd = pos - aim;
+  bool sun = abs(type - 2.0) < 0.5;
+  vec3 to = sun ? sunTo(dd, dist) : vec3(dd, (0.12 + 0.9 * dist) * 0.5 * s);
+  vec3 f = -normalize(to);
+  float rl = length(vec2(f.z, f.x));
+  vec3 r = rl < 1e-4 ? vec3(1.0, 0.0, 0.0) : vec3(-f.z / rl, 0.0, f.x / rl);
+  vec3 dn = vec3(r.z * f.y, r.z * f.x - r.x * f.z, r.x * f.y);
+  if (sun) { uv = vec2(dot(rel, r), dot(rel, dn)); return true; }
+  vec3 a = rel - to;
+  float t = dot(a, f);
+  if (t < 1e-3) { uv = vec2(0.0); return false; }
+  uv = vec2(dot(a, r), dot(a, dn)) * length(to) / t;
+  return true;
+}
 float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool frameOnly) {
   float k = abs(kind);
   if (k < 0.5 || (frameOnly && (kind < 0.0 || k > 3.5))) return 1.0;
@@ -54,10 +74,10 @@ float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool fr
   float feather = max(0.002, e.z * 0.25 + soft * 0.08);
   float m = 1.0;
   if (k < 1.5) {
-    float half_ = 0.33 * d.y, hw = half_ * d.z;
+    float half_ = 0.28 * d.y, hw = half_ * d.z;
     float frame = sstep(hw, hw - feather, abs(x)) * sstep(half_, half_ - feather, abs(y));
     float period = (2.0 * half_) / max(2.0, d.w), ph = fract((y + half_) / period), f = feather / period;
-    float hf = min(f, 0.3) * 0.5, wash = clamp((f - 0.3) / 0.7, 0.0, 1.0);
+    float hf = min(f, 0.45) * 0.5, wash = clamp((f - 0.3) / 0.7, 0.0, 1.0);
     m = frameOnly ? frame : frame * (sstep(e.x + hf, e.x - hf, ph) * sstep(-hf, hf, ph) * (1.0 - wash) + e.x * wash);
   } else if (k < 2.5) {
     float hl = 0.58 * e.y * d.y, hw = 0.5 * d.z * 0.14 * d.y;
@@ -93,8 +113,7 @@ void main() {
     float zAim = zAt(aim, relief), hL = zAim + (0.12 + 0.9 * distance_) * 0.5 * s;
     vec3 l; float atten = 1.0; float maxRun = 0.45 * s;
     if (abs(type - 2.0) < 0.5) {
-      vec2 dd = aim - pos; float dl = max(1e-6, length(dd)); float elev = radians(30.0 + 50.0 * distance_);
-      l = vec3(-dd / dl * cos(elev), sin(elev));
+      l = sunTo(pos - aim, distance_);
     } else {
       vec2 q = pos;
       if (abs(type - 4.0) < 0.5) {
@@ -115,7 +134,7 @@ void main() {
     }
     bool sun = abs(type - 2.0) < 0.5;
     float behind = zAim - pz, reach = (sun ? 0.18 + 1.8 * distance_ : 0.05 + 0.4 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
-    atten = atten / (1.0 + rr * rr * (sun ? 1.0 : rr * rr)) * (sun ? 1.9 : 1.0);
+    atten = atten / (1.0 + rr * rr * (sun ? 1.0 : rr * rr)) * (sun ? 1.5 : 1.0);
     float wrapExtra = abs(type - 3.0) < 0.5 ? 0.35 : (abs(type - 5.0) < 0.5 ? 0.5 : 0.3);
     float wr = clamp(diffusion + wrapExtra, 0.0, 1.5);
     float ndl = dot(n, l), lam = clamp((ndl + wr) / (1.0 + wr), 0.0, 1.0);
@@ -147,11 +166,11 @@ void main() {
     shadow = 1.0 - (1.0 - shadow) * uShadows;
     float pattern = 1.0, frame = 1.0;
     if (abs(D.x) > 0.5) {
-      float par = (pz - zAim) * 0.05 / max(0.25, l.z);
-      vec2 gp = p + l.xy * par;
+      vec2 guv;
+      bool hit = goboUV(type, pos, aim, distance_, s, vec3(p - aim, pz - zAim), guv);
       float spread = softness + (abs(abs(D.x) - 2.0) < 0.5 ? 0.0 : 4.0 * max(0.0, behind) / relief);
-      pattern = patternAt(D.x, gp - aim, s, D, Ee, spread, false);
-      frame = patternAt(D.x, gp - aim, s, D, Ee, spread, true);
+      pattern = hit ? patternAt(D.x, guv, s, D, Ee, spread, false) : 0.0;
+      frame = hit ? patternAt(D.x, guv, s, D, Ee, spread, true) : 0.0;
     }
     float amount = intensity * 3.2 * atten * shadow * pattern;
     vec3 hv = normalize(l + vec3(0.0, 0.0, 1.0));

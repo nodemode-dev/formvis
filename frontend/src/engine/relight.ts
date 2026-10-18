@@ -248,7 +248,7 @@ export function packLights(c: RelightContent, w: number, h: number): PackedLight
     intensity: l.intensity / 100, softness: l.softness / 100, diffusion: l.diffusion / 100, distance: l.distance / 100,
     pos: [l.pos.x * w, l.pos.y * h], aim: [l.aim.x * w, l.aim.y * h], pattern: PATTERN_CODE[l.pattern.kind] * (l.pattern.invert ? -1 : 1),
     pat: [l.pattern.scale / 100, l.pattern.width / 100, l.pattern.slats, l.pattern.opening / 100],
-    pat2: [l.pattern.length / 100, l.pattern.feather / 100, ((l.pattern.kind === 'strip' ? 1 : -1) * l.pattern.rotation * Math.PI) / 180, 0],
+    pat2: [l.pattern.length / 100, l.pattern.feather / 100, (l.pattern.rotation * Math.PI) / 180, 0],
     range: [(l.near ?? 0) / 100, (l.far ?? 100) / 100],
   }));
 }
@@ -272,9 +272,9 @@ export function patternAt(kind: number, u: number, v: number, s: number, pat: re
   const feather = Math.max(0.002, pat2[1] * 0.25 + soft * 0.08);
   let m = 1;
   if (k === 1) {
-    const half = 0.33 * pat[0], hw = half * pat[1], frame = smooth(hw, hw - feather, Math.abs(x)) * smooth(half, half - feather, Math.abs(y));
+    const half = 0.28 * pat[0], hw = half * pat[1], frame = smooth(hw, hw - feather, Math.abs(x)) * smooth(half, half - feather, Math.abs(y));
     const period = (2 * half) / Math.max(2, pat[2]), ph = fract((y + half) / period), open = pat[3], f = feather / period;
-    const hf = Math.min(f, 0.3) * 0.5, wash = clamp((f - 0.3) / 0.7, 0, 1);
+    const hf = Math.min(f, 0.45) * 0.5, wash = clamp((f - 0.3) / 0.7, 0, 1);
     m = frameOnly ? frame : frame * (smooth(open + hf, open - hf, ph) * smooth(-hf, hf, ph) * (1 - wash) + open * wash);
   } else if (k === 2) {
     const hl = 0.58 * pat2[0] * pat[0], hw = 0.5 * pat[1] * 0.14 * pat[0];
@@ -326,14 +326,54 @@ export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, cont
   return out;
 }
 
+/** A sun's direction toward the light: from the handle's side of the aim, raised toward the top of the picture and
+ *  toward the camera by Close to Far, as daylight through a window falls. */
+export function sunTo(dx: number, dy: number, distance: number): [number, number, number] {
+  const k = Math.hypot(dx, dy) || 1, e = (20 + 40 * distance) * Math.PI / 180, c = Math.cos(e), sn = Math.sin(e);
+  const x = dx / k * c, y = dy / k * c - 0.35 * sn, z = 0.9 * sn + 0.6, n = Math.hypot(x, y, z);
+  return [x / n, y / n, z / n];
+}
+
+export interface Gobo { to: [number, number, number]; f: [number, number, number]; r: [number, number, number]; d: [number, number, number]; sun: boolean }
+
+/** The light as a projector: `to` points from the aimed surface to the light (a direction for a sun, an offset in
+ *  pixels for the rest), `f` is the throw, `r` and `d` span the gobo with `d` nearest the picture's down. */
+export function goboBasis(type: number, pos: readonly number[], aim: readonly number[], distance: number, s: number): Gobo {
+  const sun = type === 2, dx = pos[0] - aim[0], dy = pos[1] - aim[1];
+  let to: [number, number, number];
+  if (sun) to = sunTo(dx, dy, distance);
+  else to = [dx, dy, (0.12 + 0.9 * distance) * 0.5 * s];
+  const tl = Math.hypot(to[0], to[1], to[2]) || 1, f: [number, number, number] = [-to[0] / tl, -to[1] / tl, -to[2] / tl];
+  const rl = Math.hypot(f[2], f[0]), r: [number, number, number] = rl < 1e-4 ? [1, 0, 0] : [-f[2] / rl, 0, f[0] / rl];
+  return { to, f, r, d: [r[2] * f[1], r[2] * f[0] - r[0] * f[2], r[0] * f[1]], sun };
+}
+
+/** Gobo coordinates of a point given relative to the aimed surface (x, y in pixels, z in relief pixels). */
+export function goboUV(G: Gobo, x: number, y: number, z: number): [number, number] | null {
+  if (G.sun) return [x * G.r[0] + y * G.r[1] + z * G.r[2], x * G.d[0] + y * G.d[1] + z * G.d[2]];
+  const ax = x - G.to[0], ay = y - G.to[1], az = z - G.to[2], t = ax * G.f[0] + ay * G.f[1] + az * G.f[2];
+  if (t < 1e-3) return null;
+  const k = Math.hypot(G.to[0], G.to[1], G.to[2]) / t;
+  return [(ax * G.r[0] + ay * G.r[1] + az * G.r[2]) * k, (ax * G.d[0] + ay * G.d[1] + az * G.d[2]) * k];
+}
+
+/** Where a gobo point lands on the plane of the aimed surface, relative to the aim (for the on-canvas frame). */
+export function goboPoint(G: Gobo, u: number, v: number): [number, number] | null {
+  const gx = u * G.r[0] + v * G.d[0], gy = u * G.r[1] + v * G.d[1], gz = u * G.r[2] + v * G.d[2];
+  if (G.sun) { if (Math.abs(G.f[2]) < 1e-4) return null; const t = -gz / G.f[2]; return [gx + t * G.f[0], gy + t * G.f[1]]; }
+  const dz = gz - G.to[2];
+  if (Math.abs(dz) < 1e-4) return null;
+  const k = -G.to[2] / dz;
+  return k > 0 ? [G.to[0] + (gx - G.to[0]) * k, G.to[1] + (gy - G.to[1]) * k] : null;
+}
+
 function tone(v: number): number { return v <= 0.8 ? Math.max(0, v) : 0.8 + 0.2 * (1 - Math.exp(-(v - 0.8) / 0.2)); }
 
 export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number, shadowAmt = 1): { diffuse: number; spec: number } {
   const zAim = zAt(L.aim[0], L.aim[1]), hL = zAim + (0.12 + 0.9 * L.distance) * 0.5 * s;
   let lx: number, ly: number, lz: number, atten = 1, maxRun = 0.45 * s;
   if (L.type === 2) {
-    const dx = L.aim[0] - L.pos[0], dy = L.aim[1] - L.pos[1], d = Math.hypot(dx, dy) || 1, elev = (30 + 50 * L.distance) * Math.PI / 180;
-    lx = -dx / d * Math.cos(elev); ly = -dy / d * Math.cos(elev); lz = Math.sin(elev);
+    [lx, ly, lz] = sunTo(L.pos[0] - L.aim[0], L.pos[1] - L.aim[1], L.distance);
   } else {
     let qx = L.pos[0], qy = L.pos[1];
     if (L.type === 4) {
@@ -353,7 +393,7 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
     }
   }
   const sun = L.type === 2, behind = zAim - pz, reach = (sun ? 0.18 + 1.8 * L.distance : 0.05 + 0.4 * L.distance) * relief, rr = behind > 0 ? behind / reach : -behind / (reach * 2.5);
-  atten = atten / (1 + rr * rr * (sun ? 1 : rr * rr)) * (sun ? 1.9 : 1);
+  atten = atten / (1 + rr * rr * (sun ? 1 : rr * rr)) * (sun ? 1.5 : 1);
   const wrapExtra = L.type === 3 ? 0.35 : L.type === 5 ? 0.5 : 0.3, wr = clamp(L.diffusion + wrapExtra, 0, 1.5);
   const ndl = nx * lx + ny * ly + nz * lz, lam = clamp((ndl + wr) / (1 + wr), 0, 1);
   if (lam <= 0 || atten <= 1e-4) return { diffuse: 0, spec: 0 };
@@ -377,10 +417,10 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
   shadow = 1 - (1 - shadow) * shadowAmt;
   let pattern = 1, frame = 1;
   if (L.pattern !== 0) {
-    const par = (pz - zAim) * 0.05 / Math.max(0.25, lz), gx = px + lx * par, gy = py + ly * par;
+    const uv = goboUV(goboBasis(L.type, L.pos, L.aim, L.distance, s), px - L.aim[0], py - L.aim[1], pz - zAim);
     const spread = L.softness + (Math.abs(L.pattern) === 2 ? 0 : 4 * Math.max(0, behind) / relief);
-    pattern = patternAt(L.pattern, gx - L.aim[0], gy - L.aim[1], s, L.pat, L.pat2, spread);
-    frame = patternAt(L.pattern, gx - L.aim[0], gy - L.aim[1], s, L.pat, L.pat2, spread, true);
+    pattern = uv ? patternAt(L.pattern, uv[0], uv[1], s, L.pat, L.pat2, spread) : 0;
+    frame = uv ? patternAt(L.pattern, uv[0], uv[1], s, L.pat, L.pat2, spread, true) : 0;
   }
   const amount = L.intensity * 3.2 * atten * shadow * pattern, hx = lx, hy = ly, hz = lz + 1, hl = Math.hypot(hx, hy, hz) || 1;
   const nh = Math.max(0, (nx * hx + ny * hy + nz * hz) / hl), gloss = 8 + 56 * (1 - L.softness);
