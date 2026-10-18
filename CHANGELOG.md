@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.87.0 · 2026-10-18
+
+### Changed
+
+- Projects are `.fvd` files. `.fmv` projects (and `.formvis` from before 0.90.0) still open, and saving one writes a `.fvd` in its place. Every saved project carries a thumbnail of the picture, for Home and the file lists.
+- Desktop app: Save writes back to the document's own file; Save As, the first Save of a new document and every export (Export As, Quick Export, Download Project File, Package and the rest) ask where in the system's save panel, starting in the library folder for projects. Open's Browse... uses the system's open panel for any project or picture formvis reads, and Open Recent lists files on disk as well as library projects. Revert reads the document's file.
+
+### Fixed
+
+- A saved project could not be opened again from the Open dialog: Project folder (now Folder...) sent the whole folder the projects are saved in as one unpacked project and failed with "manifest.json was not found". A folder that is not a project now opens every project and picture in it; a project folder still opens as one project. Checked with the owner's own saved files.
+
 ## 1.86.5 · 2026-10-18
 
 ### Fixed
