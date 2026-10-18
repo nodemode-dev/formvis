@@ -1,4 +1,4 @@
-import { MAX_RELIGHT_LIGHTS, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry } from '../engine/relight';
+import { MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry } from '../engine/relight';
 
 const VERT = `#version 300 es
 in vec2 aPos;
@@ -72,7 +72,7 @@ void main() {
   vec2 uv = vUv;
   vec4 base = texture(uBase, uv);
   vec4 g = texture(uGeo, uv);
-  float s = max(uSize.x, uSize.y), relief = 0.25 * s;
+  float s = max(uSize.x, uSize.y), relief = ${SCENE_DEPTH.toFixed(3)} * s;
   vec2 p = uv * uSize;
   vec3 n = g.rgb;
   float pz = g.a * relief;
@@ -84,7 +84,7 @@ void main() {
     if (win <= 0.0) continue;
     float type = A.x, intensity = A.y, softness = A.z, diffusion = A.w, distance_ = B.w;
     vec2 pos = C.xy, aim = C.zw;
-    float hL = relief + (0.08 + 1.4 * distance_) * s;
+    float hL = relief + (0.05 + 0.9 * distance_) * s;
     vec3 l; float atten = 1.0; float maxRun = 0.45 * s;
     if (abs(type - 2.0) < 0.5) {
       vec2 dd = aim - pos; float dl = max(1e-6, length(dd)); float elev = radians(12.0 + 58.0 * distance_);
@@ -98,8 +98,8 @@ void main() {
       vec3 v = vec3(q - p, (abs(type - 5.0) < 0.5 ? relief + 0.6 * s : hL) - pz);
       float dist = length(v);
       l = v / dist;
-      float R = (0.3 + 2.2 * distance_) * s;
-      atten = 1.6 / (1.0 + (dist / R) * (dist / R));
+      float R = (0.25 + 1.5 * distance_) * s;
+      atten = 2.0 / (1.0 + (dist / R) * (dist / R));
       maxRun = min(maxRun, length(v.xy));
       if (abs(type - 1.0) < 0.5) {
         vec3 ax = vec3(aim - pos, relief * 0.5 - hL);
@@ -114,21 +114,31 @@ void main() {
     float shadow = 1.0;
     if (abs(type - 5.0) >= 0.5 && uSteps > 0 && l.z < 0.999) {
       float flat_ = max(1e-6, length(l.xy));
-      float k = (1.0 + 7.0 * (1.0 - softness)) * (abs(type - 3.0) < 0.5 ? 0.5 : 1.0);
-      float run = max(4.0, maxRun), bias = relief * 2.0 / 255.0;
-      for (int j = 1; j <= 32; j++) {
-        if (j > uSteps) break;
-        float fj = float(j) / float(uSteps), t = fj * fj * run;
-        vec3 r = vec3(p, pz) + l / flat_ * t;
-        float occ = zAt(r.xy, relief) - r.z - bias;
-        if (occ > 0.0) shadow = min(shadow, clamp(1.0 - k * occ / max(1.0, t), 0.0, 1.0));
-        if (shadow <= 0.0) break;
+      float k = (1.5 + 4.5 * (1.0 - softness)) * (abs(type - 3.0) < 0.5 ? 0.5 : 1.0);
+      float run = max(4.0, maxRun), bias = relief * 0.004;
+      float spread = (0.04 + 0.22 * softness) * (abs(type - 3.0) < 0.5 ? 1.6 : 1.0);
+      vec2 dd = l.xy / flat_, oo = vec2(-dd.y, dd.x);
+      float total = 0.0;
+      for (int q = 0; q < 4; q++) {
+        float o = q == 0 ? -1.0 : (q == 1 ? -0.33 : (q == 2 ? 0.33 : 1.0));
+        vec2 sxy = dd + oo * o * spread;
+        vec2 u = sxy / max(1e-6, length(sxy));
+        float uz = l.z / flat_ * (1.0 + abs(o) * spread * 0.5), sh = 1.0;
+        for (int j = 1; j <= 32; j++) {
+          if (j > uSteps) break;
+          float fj = float(j) / float(uSteps), t = fj * fj * run;
+          float occ = zAt(p + u * t, relief) - (pz + uz * t) - bias;
+          if (occ > 0.0) sh = min(sh, clamp(1.0 - k * occ / max(1.0, t), 0.0, 1.0));
+          if (sh <= 0.0) break;
+        }
+        total += sh;
       }
+      shadow = total * 0.25;
     }
     shadow = 1.0 - (1.0 - shadow) * uShadows;
     float pattern = 1.0;
     if (abs(D.x) > 0.5) {
-      float par = (pz - relief * 0.5) * 0.35 / max(0.25, l.z);
+      float par = (pz - relief * 0.5) * 0.1 / max(0.25, l.z);
       vec2 gp = p + l.xy * par;
       pattern = patternAt(D.x, gp - aim, s, D, Ee, softness);
     }
@@ -136,7 +146,7 @@ void main() {
     vec3 hv = normalize(l + vec3(0.0, 0.0, 1.0));
     float gloss = 8.0 + 56.0 * (1.0 - softness);
     E += B.rgb * amount * lam * win;
-    if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.6 * uShine * win;
+    if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.3 * uShine * win;
   }
   float kd = 1.0 / (1.0 + (texture(uShade, uv).r - 1.0) * uDelight);
   vec3 lin = vec3(toLin(base.r), toLin(base.g), toLin(base.b)) * kd;

@@ -92,7 +92,7 @@ export const RELIGHT_LOOKS: readonly RelightLook[] = [
   { id: 'window-blinds', label: 'Window Blinds', make: () => ({ original: 40, shine: 20, lights: named([L({ type: 'sun', kelvin: 3200, intensity: 70, softness: 8, diffusion: 12, distance: 40, pos: { x: -0.15, y: 0.3 }, aim: { x: 0.5, y: 0.45 }, pattern: { ...defaultPattern(), kind: 'blinds', scale: 164, width: 100, slats: 18, opening: 60, feather: 6, rotation: -12 } })]) }) },
   { id: 'window-light', label: 'Window', make: () => ({ original: 45, shine: 15, lights: named([L({ type: 'sun', kelvin: 6000, intensity: 65, softness: 20, diffusion: 25, distance: 45, pos: { x: -0.1, y: 0.2 }, aim: { x: 0.5, y: 0.45 }, pattern: { ...defaultPattern(), kind: 'window', scale: 150, feather: 10 } })]) }) },
   { id: 'candlelight', label: 'Candlelight', make: () => ({ original: 20, shine: 30, lights: named([L({ type: 'point', kelvin: 1800, intensity: 82, softness: 30, diffusion: 25, distance: 10, pos: { x: 0.62, y: 0.42 }, aim: { x: 0.5, y: 0.35 } })]) }) },
-  { id: 'neon', label: 'Neon Club', make: () => ({ original: 20, shine: 35, lights: named([L({ type: 'point', kelvin: null, color: { r: 255, g: 43, b: 214 }, intensity: 70, softness: 20, diffusion: 10, distance: 15, pos: { x: 0.08, y: 0.7 }, aim: { x: 0.45, y: 0.4 } }), L({ type: 'point', kelvin: null, color: { r: 109, g: 241, b: 238 }, intensity: 60, softness: 20, diffusion: 10, distance: 15, pos: { x: 0.92, y: 0.3 }, aim: { x: 0.55, y: 0.4 } })]) }) },
+  { id: 'neon', label: 'Neon Club', make: () => ({ original: 22, shine: 18, lights: named([L({ type: 'point', kelvin: null, color: { r: 255, g: 43, b: 214 }, intensity: 55, softness: 20, diffusion: 10, distance: 15, pos: { x: 0.08, y: 0.7 }, aim: { x: 0.45, y: 0.4 } }), L({ type: 'point', kelvin: null, color: { r: 109, g: 241, b: 238 }, intensity: 45, softness: 20, diffusion: 10, distance: 15, pos: { x: 0.92, y: 0.3 }, aim: { x: 0.55, y: 0.4 } })]) }) },
   { id: 'moonlight', label: 'Moonlight', make: () => ({ original: 25, shine: 25, lights: named([L({ type: 'sun', kelvin: 9000, intensity: 55, softness: 35, diffusion: 30, distance: 60, pos: { x: 0.9, y: -0.1 }, aim: { x: 0.45, y: 0.5 } })]) }) },
   { id: 'light-strip', label: 'Light Strip', make: () => ({ original: 25, shine: 25, lights: named([L({ type: 'sun', kelvin: 4300, intensity: 86, softness: 6, diffusion: 10, distance: 40, pos: { x: 0.15, y: 0.25 }, aim: { x: 0.5, y: 0.4 }, pattern: { ...defaultPattern(), kind: 'strip', length: 80, width: 38, feather: 8, rotation: 12 } })]) }) },
   { id: 'dappled', label: 'Dappled Shade', make: () => ({ original: 40, shine: 15, lights: named([L({ type: 'sun', kelvin: 4500, intensity: 70, softness: 15, diffusion: 20, distance: 50, pos: { x: 0.85, y: 0.05 }, aim: { x: 0.5, y: 0.5 }, pattern: { ...defaultPattern(), kind: 'leaves', scale: 120, opening: 50, feather: 20 } })]) }) },
@@ -153,11 +153,43 @@ export const depthWindow = (d: number, near: number, far: number): number => {
 
 export interface RelightGeometry { width: number; height: number; data: Float32Array }
 
-export function estimateDepth(rgba: ArrayLike<number>, w: number, h: number): Float32Array {
-  const s = Math.max(w, h), lum = heightField(rgba, w, h, Math.max(2, Math.round(s / 30)), false), out = new Float32Array(w * h);
-  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const dx = (x / w - 0.5) * 2, dy = (y / h - 0.45) * 2, dome = clamp(1 - (dx * dx * 0.8 + dy * dy * 0.6), 0, 1);
-    out[y * w + x] = clamp(0.75 * dome + 0.25 * lum[y * w + x], 0, 1);
+export function estimateDepth(_rgba: ArrayLike<number>, w: number, h: number): Float32Array {
+  return new Float32Array(w * h).fill(0.5);
+}
+
+export const NORMAL_RELIEF = 0.7;
+export const SHADOW_TAPS: readonly number[] = [-1, -0.33, 0.33, 1];
+export const SCENE_DEPTH = 1.2;
+
+function boxBlur(a: Float32Array, w: number, h: number, r: number, passes: number): void {
+  if (r < 1) return;
+  const tmp = new Float32Array(Math.max(w, h)), span = 2 * r + 1;
+  const line = (start: number, stride: number, n: number): void => {
+    let sum = 0;
+    for (let k = -r; k <= r; k++) sum += a[start + clamp(k, 0, n - 1) * stride];
+    for (let i = 0; i < n; i++) { tmp[i] = sum / span; sum += a[start + Math.min(n - 1, i + r + 1) * stride] - a[start + Math.max(0, i - r) * stride]; }
+    for (let i = 0; i < n; i++) a[start + i * stride] = tmp[i];
+  };
+  for (let p = 0; p < passes; p++) { for (let y = 0; y < h; y++) line(y * w, 1, w); for (let x = 0; x < w; x++) line(x, w, h); }
+}
+
+function erodeMask(m: Float32Array, w: number, h: number, r: number): Float32Array {
+  const a = new Float32Array(m.length), b = new Float32Array(m.length);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = 1; for (let k = -r; k <= r && v > 0; k++) v = Math.min(v, m[y * w + clamp(x + k, 0, w - 1)]); a[y * w + x] = v; }
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { let v = 1; for (let k = -r; k <= r && v > 0; k++) v = Math.min(v, a[clamp(y + k, 0, h - 1) * w + x]); b[y * w + x] = v; }
+  return b;
+}
+
+export function resampleDepth(src: Float32Array, sw: number, sh: number, dw: number, dh: number): Float32Array {
+  if (sw === dw && sh === dh) return src;
+  const out = new Float32Array(dw * dh), fx = sw / dw, fy = sh / dh;
+  for (let y = 0; y < dh; y++) {
+    const yy = Math.min(sh - 1, Math.max(0, (y + 0.5) * fy - 0.5)), y0 = Math.floor(yy), y1 = Math.min(sh - 1, y0 + 1), ty = yy - y0;
+    for (let x = 0; x < dw; x++) {
+      const xx = Math.min(sw - 1, Math.max(0, (x + 0.5) * fx - 0.5)), x0 = Math.floor(xx), x1 = Math.min(sw - 1, x0 + 1), tx = xx - x0;
+      const a = src[y0 * sw + x0] + (src[y0 * sw + x1] - src[y0 * sw + x0]) * tx, b = src[y1 * sw + x0] + (src[y1 * sw + x1] - src[y1 * sw + x0]) * tx;
+      out[y * dw + x] = a + (b - a) * ty;
+    }
   }
   return out;
 }
@@ -169,20 +201,22 @@ export function depthFromGrey(rgba: ArrayLike<number>, w: number, h: number): Fl
 }
 
 export function relightGeometry(depth: Float32Array, w: number, h: number): RelightGeometry {
-  const s = Math.max(w, h), r = Math.max(1, Math.round(s / 400)), sm = new Float32Array(depth);
-  const tmp = new Float32Array(Math.max(w, h));
-  const line = (start: number, stride: number, n: number): void => {
-    const span = 2 * r + 1;
-    let sum = 0;
-    for (let k = -r; k <= r; k++) sum += sm[start + clamp(k, 0, n - 1) * stride];
-    for (let i = 0; i < n; i++) { tmp[i] = sum / span; sum += sm[start + Math.min(n - 1, i + r + 1) * stride] - sm[start + Math.max(0, i - r) * stride]; }
-    for (let i = 0; i < n; i++) sm[start + i * stride] = tmp[i];
-  };
-  for (let pass = 0; pass < 2; pass++) { for (let y = 0; y < h; y++) line(y * w, 1, w); for (let x = 0; x < w; x++) line(x, w, h); }
-  const relief = 0.25 * s, data = new Float32Array(w * h * 4);
+  const s = Math.max(w, h), n = w * h, sm = new Float32Array(depth), relief = NORMAL_RELIEF * s;
+  boxBlur(sm, w, h, Math.max(1, Math.round(s / 900)), 2);
+  const gx = new Float32Array(n), gy = new Float32Array(n), keep = new Float32Array(n);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    const i = y * w + x, xl = sm[y * w + Math.max(0, x - 1)], xr = sm[y * w + Math.min(w - 1, x + 1)], yu = sm[Math.max(0, y - 1) * w + x], yd = sm[Math.min(h - 1, y + 1) * w + x];
-    const nx = -(xr - xl) * 0.5 * relief, ny = -(yd - yu) * 0.5 * relief, len = Math.hypot(nx, ny, 1);
+    const i = y * w + x;
+    gx[i] = (sm[y * w + Math.min(w - 1, x + 1)] - sm[y * w + Math.max(0, x - 1)]) * 0.5 * relief;
+    gy[i] = (sm[Math.min(h - 1, y + 1) * w + x] - sm[Math.max(0, y - 1) * w + x]) * 0.5 * relief;
+    keep[i] = Math.hypot(gx[i], gy[i]) < 1.2 ? 1 : 0;
+  }
+  const k = erodeMask(keep, w, h, Math.max(1, Math.round(s / 600)));
+  for (let i = 0; i < n; i++) { gx[i] *= k[i]; gy[i] *= k[i]; }
+  const rb = Math.max(1, Math.round(s / 130));
+  boxBlur(gx, w, h, rb, 3); boxBlur(gy, w, h, rb, 3); boxBlur(k, w, h, rb, 3);
+  const data = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) {
+    const wgt = k[i] + 1e-4, nx = -gx[i] / wgt, ny = -gy[i] / wgt, len = Math.hypot(nx, ny, 1);
     data[i * 4] = nx / len; data[i * 4 + 1] = ny / len; data[i * 4 + 2] = 1 / len; data[i * 4 + 3] = clamp(sm[i], 0, 1);
   }
   return { width: w, height: h, data };
@@ -246,15 +280,15 @@ export interface ShadeOptions { shadowSteps?: number; shade?: Float32Array | nul
 
 export function sceneTerms(content: RelightContent): { ambient: [number, number, number]; delight: number; shadows: number } {
   const a = content.ambient ?? { r: 255, g: 255, b: 255 }, o = content.original / 100;
-  return { ambient: [srgbToLinear(a.r / 255) * o, srgbToLinear(a.g / 255) * o, srgbToLinear(a.b / 255) * o], delight: (content.delight ?? 0) / 100, shadows: (content.shadows ?? 70) / 100 };
+  return { ambient: [srgbToLinear(a.r / 255) * o, srgbToLinear(a.g / 255) * o, srgbToLinear(a.b / 255) * o], delight: (content.delight ?? 0) / 100, shadows: (content.shadows ?? 55) / 100 };
 }
 
 export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, opts: ShadeOptions = {}): Uint8ClampedArray {
-  const w = geo.width, h = geo.height, g = geo.data, s = Math.max(w, h), relief = 0.25 * s, out = new Uint8ClampedArray(base.length);
+  const w = geo.width, h = geo.height, g = geo.data, s = Math.max(w, h), relief = SCENE_DEPTH * s, out = new Uint8ClampedArray(base.length);
   const lights = packLights(content, w, h), shine = content.shine / 100, steps = opts.shadowSteps ?? 16, sc = sceneTerms(content), shade = opts.shade ?? null;
   const lut = new Float32Array(256);
   for (let i = 0; i < 256; i++) lut[i] = srgbToLinear(i / 255);
-  const zAt = (x: number, y: number): number => g[(clamp(Math.round(y), 0, h - 1) * w + clamp(Math.round(x), 0, w - 1)) * 4 + 3] * relief;
+  const zAt = (x: number, y: number): number => g[(clamp(Math.floor(y), 0, h - 1) * w + clamp(Math.floor(x), 0, w - 1)) * 4 + 3] * relief;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = (y * w + x) * 4, nx = g[i], ny = g[i + 1], nz = g[i + 2], pz = g[i + 3] * relief;
     let er = sc.ambient[0], eg = sc.ambient[1], eb = sc.ambient[2], sr = 0, sg = 0, sb = 0;
@@ -278,7 +312,7 @@ export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, cont
 function tone(v: number): number { return v <= 0.8 ? Math.max(0, v) : 0.8 + 0.2 * (1 - Math.exp(-(v - 0.8) / 0.2)); }
 
 export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number, shadowAmt = 1): { diffuse: number; spec: number } {
-  const hL = relief + (0.08 + 1.4 * L.distance) * s;
+  const hL = relief + (0.05 + 0.9 * L.distance) * s;
   let lx: number, ly: number, lz: number, atten = 1, maxRun = 0.45 * s;
   if (L.type === 2) {
     const dx = L.aim[0] - L.pos[0], dy = L.aim[1] - L.pos[1], d = Math.hypot(dx, dy) || 1, elev = (12 + 58 * L.distance) * Math.PI / 180;
@@ -292,8 +326,8 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
     }
     const vx = qx - px, vy = qy - py, vz = (L.type === 5 ? relief + 0.6 * s : hL) - pz, dist = Math.hypot(vx, vy, vz);
     lx = vx / dist; ly = vy / dist; lz = vz / dist;
-    const R = (0.3 + 2.2 * L.distance) * s;
-    atten = 1 / (1 + (dist / R) * (dist / R)) * 1.6;
+    const R = (0.25 + 1.5 * L.distance) * s;
+    atten = 2 / (1 + (dist / R) * (dist / R));
     maxRun = Math.min(maxRun, Math.hypot(vx, vy));
     if (L.type === 1) {
       const ax = L.aim[0] - L.pos[0], ay = L.aim[1] - L.pos[1], az = relief * 0.5 - hL, ad = Math.hypot(ax, ay, az) || 1;
@@ -306,21 +340,28 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
   if (lam <= 0 || atten <= 1e-4) return { diffuse: 0, spec: 0 };
   let shadow = 1;
   if (L.type !== 5 && steps > 0 && lz < 0.999) {
-    const flat = Math.hypot(lx, ly) || 1e-6, k = (1 + 7 * (1 - L.softness)) * (L.type === 3 ? 0.5 : 1), run = Math.max(4, maxRun), bias = relief * 2 / 255;
-    for (let j = 1; j <= steps; j++) {
-      const t = (j / steps) * (j / steps) * run, rx = px + lx / flat * t, ry = py + ly / flat * t, rz = pz + lz / flat * t;
-      const occ = zAt(rx, ry) - rz - bias;
-      if (occ > 0) shadow = Math.min(shadow, clamp(1 - k * occ / Math.max(1, t), 0, 1));
-      if (shadow <= 0) break;
+    const flat = Math.hypot(lx, ly) || 1e-6, k = (1.5 + 4.5 * (1 - L.softness)) * (L.type === 3 ? 0.5 : 1), run = Math.max(4, maxRun), bias = relief * 0.004;
+    const spread = (0.04 + 0.22 * L.softness) * (L.type === 3 ? 1.6 : 1), dx = lx / flat, dy = ly / flat, ox = -dy, oy = dx;
+    let total = 0;
+    for (const o of SHADOW_TAPS) {
+      let sh = 1;
+      const sx = dx + ox * o * spread, sy = dy + oy * o * spread, sl = Math.hypot(sx, sy) || 1, ux = sx / sl, uy = sy / sl, uz = lz / flat * (1 + Math.abs(o) * spread * 0.5);
+      for (let j = 1; j <= steps; j++) {
+        const t = (j / steps) * (j / steps) * run, occ = zAt(px + ux * t, py + uy * t) - (pz + uz * t) - bias;
+        if (occ > 0) sh = Math.min(sh, clamp(1 - k * occ / Math.max(1, t), 0, 1));
+        if (sh <= 0) break;
+      }
+      total += sh;
     }
+    shadow = total / SHADOW_TAPS.length;
   }
   shadow = 1 - (1 - shadow) * shadowAmt;
   let pattern = 1;
   if (L.pattern !== 0) {
-    const par = (pz - relief * 0.5) * 0.35 / Math.max(0.25, lz), gx = px + lx * par, gy = py + ly * par;
+    const par = (pz - relief * 0.5) * 0.1 / Math.max(0.25, lz), gx = px + lx * par, gy = py + ly * par;
     pattern = patternAt(L.pattern, gx - L.aim[0], gy - L.aim[1], s, L.pat, L.pat2, L.softness);
   }
   const amount = L.intensity * 3.2 * atten * shadow * pattern, hx = lx, hy = ly, hz = lz + 1, hl = Math.hypot(hx, hy, hz) || 1;
   const nh = Math.max(0, (nx * hx + ny * hy + nz * hz) / hl), gloss = 8 + 56 * (1 - L.softness);
-  return { diffuse: amount * lam, spec: ndl > 0 ? Math.pow(nh, gloss) * amount * 0.6 : 0 };
+  return { diffuse: amount * lam, spec: ndl > 0 ? Math.pow(nh, gloss) * amount * 0.3 : 0 };
 }
