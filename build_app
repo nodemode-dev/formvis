@@ -79,6 +79,10 @@ rust_diagnose() {
   printf '  build folder: %s (%s free)\n' "$CARGO_TARGET_DIR" "$(df -h "$CARGO_TARGET_DIR" 2>/dev/null | awk 'NR==2 {print $4}')"
   printf '  derive crates built: %s\n' "$(ls "$CARGO_TARGET_DIR"/release/deps/ 2>/dev/null | grep -c -- '_derive-.*\.\(dylib\|so\)$' || true)"
   ls -l "$CARGO_TARGET_DIR"/release/deps/libzerofrom_derive-* 2>/dev/null | sed 's/^/  /' || true
+  # Whether a derive library still holds the metadata rustc reads (its .rustc section); stripping removes it.
+  for f in "$CARGO_TARGET_DIR"/release/deps/libzerofrom_derive-*.dylib; do
+    [ -f "$f" ] && command -v otool >/dev/null 2>&1 && printf '  .rustc section in %s: %s\n' "$(basename "$f")" "$(otool -l "$f" 2>/dev/null | grep -c 'sectname .rustc' || true)"
+  done
   for c in "$HOME/.cargo/config.toml" "$HOME/.cargo/config" "$FORMVIS_ROOT/.cargo/config.toml" "$FORMVIS_ROOT/src-tauri/.cargo/config.toml"; do
     [ -f "$c" ] && { printf '  %s:\n' "$c"; sed 's/^/    /' "$c"; }
   done

@@ -1,6 +1,6 @@
 [package]
 name = "formvis"
-version = "1.85.2"
+version = "1.86.0"
 description = "formvis desktop shell"
 authors = ["nodemode-ai"]
 license = "Apache-2.0"
@@ -34,4 +34,12 @@ codegen-units = 1
 lto = true
 opt-level = "s"
 panic = "abort"
-strip = true
+# Not stripped (1.85.3): on the owner's Mac (rustc 1.97.1) the release profile's strip also reached the derive crates
+# Cargo builds for the compiler itself, and a stripped derive library loses the data rustc reads it by, so the next
+# crate failed with E0463 "can't find crate for zerofrom_derive" although the file was there. Release builds carry no
+# debug information either way; the app is a few megabytes larger with its symbols kept.
+strip = false
+
+# The derive crates and build scripts run inside the compiler: never stripped, whatever the release profile says.
+[profile.release.build-override]
+strip = false
