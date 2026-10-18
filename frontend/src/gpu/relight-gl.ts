@@ -77,8 +77,8 @@ float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool fr
     float half_ = 0.28 * d.y, hw = half_ * d.z;
     float frame = sstep(hw, hw - feather, abs(x)) * sstep(half_, half_ - feather, abs(y));
     float period = (2.0 * half_) / max(2.0, d.w), ph = fract((y + half_) / period), f = feather / period;
-    float hf = min(f, 0.45) * 0.5, wash = clamp((f - 0.3) / 0.7, 0.0, 1.0);
-    m = frameOnly ? frame : frame * (sstep(e.x + hf, e.x - hf, ph) * sstep(-hf, hf, ph) * (1.0 - wash) + e.x * wash);
+    float hf = min(f, 0.3) * 0.5, wash = clamp((f - 0.3) / 0.7, 0.0, 1.0), q = abs(fract(ph - e.x * 0.5 + 0.5) - 0.5);
+    m = frameOnly ? frame : frame * (sstep(e.x * 0.5 + hf, e.x * 0.5 - hf, q) * (1.0 - wash) + e.x * wash);
   } else if (k < 2.5) {
     float hl = 0.58 * e.y * d.y, hw = 0.5 * d.z * 0.14 * d.y;
     m = sstep(hl, hl - feather, abs(y)) * sstep(hw, hw - feather, abs(x));
@@ -167,7 +167,8 @@ void main() {
     float pattern = 1.0, frame = 1.0;
     if (abs(D.x) > 0.5) {
       vec2 guv;
-      bool hit = goboUV(type, pos, aim, distance_, s, vec3(p - aim, pz - zAim), guv);
+      float band = 0.06 * relief;
+      bool hit = goboUV(type, pos, aim, distance_, s, vec3(p - aim, band * tanh((pz - zAim) / band)), guv);
       float spread = softness + (abs(abs(D.x) - 2.0) < 0.5 ? 0.0 : 4.0 * max(0.0, behind) / relief);
       pattern = hit ? patternAt(D.x, guv, s, D, Ee, spread, false) : 0.0;
       frame = hit ? patternAt(D.x, guv, s, D, Ee, spread, true) : 0.0;
