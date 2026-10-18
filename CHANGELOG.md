@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.87.2 · 2026-10-18
+
+### Fixed
+
+- The options bar no longer runs off the window (the Brush row needed scrolling to reach most of its settings, and so did 18 other tools at 1800 px wide and 31 at 1280). Settings that do not fit move into a More panel at the bar's end, check boxes and buttons first, and come back when the window is wider. Nothing in the bar scrolls.
+
 ## 1.87.1 · 2026-10-18
 
 ### Changed

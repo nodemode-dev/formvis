@@ -8,8 +8,9 @@ import { previewFont } from './fonts';
 /** An options-bar label in the current language, its English kept in data-en for language changes (35.5d). */
 const labelEn = (s: HTMLElement, en: string): void => { s.dataset.en = en; setText(s, tr(en)); };
 
-/** One tool's built row of controls, and the functions that bring those controls up to date. */
-interface Group { node: HTMLElement; sync: Array<() => void> }
+/** One tool's built row of controls, and the functions that bring those controls up to date; `parked` holds the
+ *  trailing controls moved into the More panel while the row is wider than the bar (1.87.2), in row order. */
+interface Group { node: HTMLElement; sync: Array<() => void>; parked: HTMLElement[] }
 
 /** The options bar: one row per tool, all built once, only the active tool's row visible. */
 export class OptionsBar {
@@ -37,7 +38,15 @@ export class OptionsBar {
       root.scrollLeft += e.deltaY;
     }, { passive: false });
     root.addEventListener('scroll', () => this.syncEdges(), { passive: true });
-    new ResizeObserver(() => this.syncEdges()).observe(root);
+    // The bar never scrolls in normal use (1.87.2, CLOSE_GAPS P03): controls that do not fit move, as built, into the
+    // More panel at the bar's end, last first, and come back when there is room. The chevrons stay as a fallback.
+    root.appendChild(this.more);
+    document.body.appendChild(this.pop);
+    this.more.addEventListener('click', () => this.togglePop(this.pop.hidden === true));
+    document.addEventListener('pointerdown', (e) => { if (!this.pop.hidden && !this.pop.contains(e.target as Node) && !this.more.contains(e.target as Node)) this.togglePop(false); }, true);
+    this.pop.addEventListener('keydown', (e) => { if (e.key === 'Escape') { this.togglePop(false); this.more.focus(); } });
+    let width = 0;
+    new ResizeObserver(() => { const w = root.clientWidth; if (w !== width) { width = w; this.fit(); } this.syncEdges(); }).observe(root);
     engine.on('tool', () => this.show());
     // Labels follow the interface language in place (35.5d): each keeps its English in data-en.
     onLanguage(() => { for (const s of Array.from(root.querySelectorAll<HTMLElement>('[data-en]'))) setText(s, tr(s.dataset.en ?? '')); });
@@ -188,15 +197,69 @@ export class OptionsBar {
         sync.push(() => { const on = when(); for (const a of added) setHidden(a, !on); });
       }
     }
-    return { node, sync };
+    Array.from(node.children).forEach((c, i) => { (c as HTMLElement).dataset.ord = String(i); });
+    return { node, sync, parked: [] };
   }
 
   /** Shows the active tool's row and hides every other. */
   private show(): void {
+    this.togglePop(false);
     for (const [id, g] of this.groups) setHidden(g.node, id !== this.engine.tool);
     this.root.scrollLeft = 0;
     this.refresh();
+    this.fit();
     this.syncEdges();
+  }
+
+  private readonly more = el<HTMLButtonElement>(`<button class="cv-opt-more" type="button" aria-haspopup="true" aria-expanded="false" title="More options" aria-label="More options" hidden>${icon('more3', 16)}</button>`);
+  private readonly pop = el('<div class="cv-opt-pop" role="group" aria-label="More options" hidden></div>');
+
+  /** Parked controls back in the row at their built places. */
+  private unpark(g: Group): void {
+    for (const n of g.parked) {
+      const ord = Number(n.dataset.ord), next = Array.from(g.node.children).find((c) => Number((c as HTMLElement).dataset.ord) > ord) ?? null;
+      g.node.insertBefore(n, next);
+    }
+    g.parked = [];
+  }
+
+  /** The active row fitted to the bar: parked controls come back, then controls move into the More panel until the
+   *  row fits beside the More button: check boxes, buttons and dividers first (from the end), then the rest from the
+   *  end, so sizes, modes and sliders stay in the bar longest. Nodes move as built (listeners and sync functions stay);
+   *  a measure per move, only on a tool change or a width change. */
+  private fit(): void {
+    const g = this.groups.get(this.engine.tool);
+    for (const other of this.groups.values()) if (other !== g && other.parked.length) this.unpark(other);
+    if (!g) return;
+    if (g.parked.length) this.unpark(g);
+    const r = this.root, over = (): boolean => r.scrollWidth > r.clientWidth + 1;
+    if (!over()) { setHidden(this.more, true); this.togglePop(false); return; }
+    setHidden(this.more, false);
+    const minor = (n: HTMLElement): boolean => !!n.querySelector('input[type="checkbox"]') || n.classList.contains('cv-btn') || n.classList.contains('cv-opt-icon') || n.classList.contains('cv-opt-sep');
+    for (const firstPass of [true, false]) {
+      for (const n of (Array.from(g.node.children) as HTMLElement[]).reverse()) {
+        if (!over()) break;
+        if (n.classList.contains('cv-opt-tool') || (firstPass && !minor(n))) continue;
+        n.remove();
+        g.parked.push(n);
+      }
+    }
+    g.parked.sort((a, b) => Number(a.dataset.ord) - Number(b.dataset.ord));
+    this.pop.append(...g.parked);
+    if (!g.parked.length) setHidden(this.more, true);
+  }
+
+  private togglePop(open: boolean): void {
+    if (open && !this.groups.get(this.engine.tool)?.parked.length) open = false;
+    if (open) {
+      const b = this.more.getBoundingClientRect();
+      const right = `${Math.max(8, Math.round(window.innerWidth - b.right))}px`, top = `${Math.round(b.bottom + 4)}px`;
+      if (this.pop.style.right !== right) this.pop.style.right = right;
+      if (this.pop.style.top !== top) this.pop.style.top = top;
+    }
+    setHidden(this.pop, !open);
+    setClass(this.more, 'is-active', open);
+    if (this.more.getAttribute('aria-expanded') !== String(open)) this.more.setAttribute('aria-expanded', String(open));
   }
 
   private readonly edges: HTMLButtonElement[];

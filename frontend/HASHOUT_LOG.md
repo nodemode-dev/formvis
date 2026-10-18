@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The options bar fits the window: a More panel · _v1.87.2 (ui/options.ts, styles/shell.css)
+
+CLOSE_GAPS P03, the owner's third issue: the Brush row was far wider than the bar and had to be scrolled.
+
+- `options.ts`: `Group.parked`; each row child carries `data-ord`; `more` button (end of the bar) and `pop` panel (on `body`, `--z-menu`); `fit()` on tool change and on a bar width change (not on option events, so Move and Transform drags pay nothing), `unpark(g)`, `togglePop(open)`; closes on Escape, a press outside, or a tool change. Controls move as built. The scroll chevrons stay for a row whose title alone is wider than the bar.
+- `shell.css`: `.cv-opt-more`, `.cv-opt-pop`.
+- Checked in Chromium at scale 2 for all 51 tools: no row scrolls at 1800 x 1110 (19 tools use More) or 1280 x 720 (32). Not yet: per-tool priorities (Brush parks Hardness, Opacity and Flow before Smoothing and Angle because of their order), WebKit, throttled run.
+
 ## Home's files browser with thumbnails · _v1.87.1 (ui/home-files.ts new, ui/home.ts, io/api.ts, app.ts, styles/shell.css, e2e/test_home_screen.py)
 
 CLOSE_GAPS P02, the owner's second issue: Home showed a short text list of library names. Researched (thumbnail grid and list view toggle on the reference Home screen, recent list clearable and sized by a preference); sort and filter are formvis's own choice.
