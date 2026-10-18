@@ -1,5 +1,5 @@
 import type { Pt } from '../../engine';
-import type { RelightLight } from '../../engine/relight';
+import { goboBasis, goboPoint, type RelightLight } from '../../engine/relight';
 import type { Tool, ToolContext } from '../registry';
 
 export interface RelightHost {
@@ -89,10 +89,16 @@ export const relightTool: Tool = {
       g.strokeStyle = on ? pal.antsB : pal.antsA;
       g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.stroke();
       if (on && l.pattern.kind !== 'none') {
-        const k = l.pattern, unit = Math.max(s.w, s.h) * v.zoom, rot = ((k.kind === 'strip' ? 1 : -1) * k.rotation * Math.PI) / 180;
-        const hw = k.kind === 'strip' ? 0.5 * k.width / 100 * 0.14 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.33 * k.scale / 100 * k.width / 100 : 0.32 * k.scale / 100) * unit;
-        const hh = k.kind === 'strip' ? 0.58 * k.length / 100 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.33 * k.scale / 100 : 0.42 * k.scale / 100) * unit;
-        g.save(); g.translate(b.x, b.y); g.rotate(rot); g.strokeRect(-hw, -hh, hw * 2, hh * 2); g.restore();
+        const k = l.pattern, unit = Math.max(s.w, s.h), rot = (k.rotation * Math.PI) / 180, cr = Math.cos(rot), sr = Math.sin(rot);
+        const hw = k.kind === 'strip' ? 0.5 * k.width / 100 * 0.14 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.28 * k.scale / 100 * k.width / 100 : 0.32 * k.scale / 100) * unit;
+        const hh = k.kind === 'strip' ? 0.58 * k.length / 100 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.28 * k.scale / 100 : 0.42 * k.scale / 100) * unit;
+        const P = docOf(l, 'pos', s), A = docOf(l, 'aim', s), G = goboBasis(l.type === 'sun' ? 2 : 0, [P.x, P.y], [A.x, A.y], l.distance / 100, unit);
+        const quad = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => goboPoint(G, x * cr - y * sr, x * sr + y * cr));
+        if (quad.every((q) => q)) {
+          g.beginPath();
+          quad.forEach((q, i) => { const p = v.toScreen({ x: A.x + q![0], y: A.y + q![1] }); if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); });
+          g.closePath(); g.stroke();
+        }
       }
       g.setLineDash([]);
       g.beginPath(); g.arc(b.x, b.y, 6, 0, Math.PI * 2); g.lineWidth = 1.5; g.strokeStyle = pal.antsB; g.stroke();
