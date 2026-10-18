@@ -294,6 +294,29 @@ ask it questions.
   Fit to lines: formvis finds the lens's field of view that straightens them and levels the first. Correction,
   Strength, Scale and Rotation can also be set by hand.
 
+## Relight
+
+Layer > New Relight Layer... (or type Relight in the command palette) adds a Relight layer above the active layer and
+lights everything beneath it with virtual lights, on this computer, with no credits and no cloud. The original layers
+are not touched.
+
+- Relight Properties opens at the top of the Properties column. Looks are ready-made setups (Soft Key, Rembrandt,
+  Split, Rim, Butterfly, Golden Hour, Window Blinds, Window, Candlelight, Neon Club, Moonlight, Light Strip, Dappled
+  Shade, Ring Light). Lights lists up to eight lights; the eye hides one, the bin deletes it, and Add Light adds one.
+- Each light has a Type (Point, Spot, Sun, Area, Strip, Ring), a Temperature in Kelvin or any Color, Intensity,
+  Softness (softer edges, shadows and highlights), Diffusion (how far the light wraps round forms) and Close to Far
+  (near light falls off quickly; far light, like the sun, falls evenly).
+- Pattern casts the light through a gobo: Blinds (Scale, Width, Slats, Opening), Light Strip (Length, Width), Window
+  or Leaves, each with Feather, Rotation and Invert.
+- Scene sets how much of the photo's Original lighting is kept and how much Shine the lights add on glossy forms.
+- On the canvas, drag a light's round handle to move it and its small target to aim it (Alt-drag also aims). Done
+  (or Enter) renders the layer at full size; Cancel (or Escape) leaves things as they were.
+- Edit Lighting, under the picture when a Relight layer is selected, reopens it; so do Layer > Edit Lighting...,
+  Layer Content Options... and a double-click on the layer in the Layers panel.
+- With Depth Anything V2 Small downloaded (Preferences > Plugins > Local models, about 99 MB), light follows the shapes in the photo and casts
+  shadows. Without it, formvis estimates the shape and leaves out cast shadows; the panel says which is in use.
+- Relight works on 8-bit RGB documents. In PSD files and older builds a Relight layer is an ordinary pixel layer.
+
 ## Generating images
 
 - Edit > Generative Fill paints a selection from a prompt, or removes what it covers with an empty prompt; Generative

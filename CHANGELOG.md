@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.73.0 · 2026-10-18
+
+### Added
+
+- Relight: Layer > New Relight Layer... lights a photo again with virtual lights, on this computer and on the GPU, with no credits. The result is a Relight layer above the picture, and the original layers are not touched.
+- Six light types (Point, Spot, Sun, Area, Strip, Ring), colour by Kelvin or any colour, Intensity, Softness, Diffusion and Close to Far, with up to eight lights on a layer.
+- Patterns the light falls through: Blinds, Light Strip, Window and Leaves, each with its own size, feather, rotation and invert.
+- Fourteen Looks, shown as lit spheres, including Window Blinds, Candlelight, Neon Club, Golden Hour, Rembrandt and Light Strip.
+- Scene settings: how much of the photo's Original lighting is kept, and Shine.
+- Lights are dragged and aimed on the canvas. A bar under the picture holds Add Light, Reset, Cancel and Done, and an Edit Lighting button reopens a finished layer, as do Layer > Edit Lighting... and a double-click in the Layers panel.
+- With Depth Anything V2 Small installed, the light follows the shapes in the photo and casts shadows. Without it, formvis estimates the shape and says so.
+- Projects keep each Relight layer's lights, so it can be edited after reopening.
+
 ## 1.72.8 · 2026-10-15 · alpha
 
 ### Added
