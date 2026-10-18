@@ -339,6 +339,8 @@ are not touched.
   Anything; the photo's own light is read from how its brightness follows the subject's surface direction and divided
   out, so every detail of the face or object is the original's and only the light changes. Added light is matched to
   the subject's brightness, and each light is exposed for the point it aims at. Keep adds light on top of the old light.
+  A light beside the subject also draws a rim along the subject's outline, glints follow the photo's own texture (pores,
+  hair), and a pattern curves over the subject while it stays straight on the background behind.
   Take out with Marigold repaints the surfaces from a learned model and can change a face; it is an option only,
   downloaded from its own button, which names its licence (CreativeML Open RAIL++-M) and size (about 5.2 GB); the
   engine also needs `pip install -r backend/requirements_relight.txt`.

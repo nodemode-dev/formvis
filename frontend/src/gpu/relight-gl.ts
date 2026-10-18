@@ -1,4 +1,4 @@
-import { ALBEDO_FLOOR, SSS, MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry, type SplitMaps } from '../engine/relight';
+import { ALBEDO_FLOOR, GLINT, RIM, SSS, MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry, type SplitMaps } from '../engine/relight';
 
 const VERT = `#version 300 es
 in vec2 aPos;
@@ -90,7 +90,7 @@ float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool fr
     float hf = min(f, 0.3) * 0.5, wash = clamp((f - 0.3) / 0.7, 0.0, 1.0), q = abs(fract(ph - e.x * 0.5 + 0.5) - 0.5);
     m = frameOnly ? frame : frame * (sstep(e.x * 0.5 + hf, e.x * 0.5 - hf, q) * (1.0 - wash) + e.x * wash);
   } else if (k < 2.5) {
-    float hl = 0.58 * e.y * d.y, hw = 0.5 * d.z * 0.14 * d.y;
+    float hl = 0.58 * e.y * d.y, hw = 0.5 * d.z * 0.2 * d.y;
     float fw = max(0.002, 2.0 * hw * (e.z + 0.3 * soft));
     m = sstep(hl + fw * 0.5, hl - fw * 0.5, abs(y)) * sstep(hw + fw * 0.5, hw - fw * 0.5, abs(x));
   } else if (k < 3.5) {
@@ -112,8 +112,11 @@ void main() {
   vec2 p = uv * uSize;
   vec3 n = g.rgb;
   float pz = g.a * relief;
-  vec3 s0 = uSplit > 0.5 ? max(texture(uS0, uv).rgb, vec3(1e-4)) : vec3(1.0);
-  vec3 E = uAmbient * pow(s0, vec3(uTakeOut)), S = uSplit > 0.5 ? texture(uRes, uv).rgb * uOrig : vec3(0.0);
+  vec4 s0t = uSplit > 0.5 ? texture(uS0, uv) : vec4(1.0, 1.0, 1.0, 0.0);
+  vec3 s0 = max(s0t.rgb, vec3(1e-4));
+  vec4 resid = texture(uRes, uv);
+  float subj = uSplit > 0.5 ? resid.a : -1.0;
+  vec3 E = uAmbient * pow(s0, vec3(uTakeOut)), S = uSplit > 0.5 ? resid.rgb * uOrig : vec3(0.0);
   for (int i = 0; i < ${MAX_RELIGHT_LIGHTS}; i++) {
     if (i >= uCount) break;
     vec4 A = uA[i], B = uB[i], C = uC[i], D = uD[i], Ee = uE[i], F = uF[i];
@@ -144,8 +147,8 @@ void main() {
       }
     }
     bool sun = abs(type - 2.0) < 0.5;
-    float behind = zAim - pz, reach = (sun ? 0.08 + 0.8 * distance_ : 0.05 + 0.4 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
-    atten = atten / (sun ? pow(1.0 + rr * rr, 2.0) : pow(1.0 + rr * rr, 3.0)) * (sun ? 2.7 : 1.0);
+    float dzA = zAim - pz, behind = subj < 0.0 ? dzA : dzA * (1.0 - subj) + min(0.0, dzA) * subj, reach = (sun ? 0.06 + 0.6 * distance_ : 0.05 + 0.4 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
+    atten = atten / (sun ? 1.0 + rr * rr : pow(1.0 + rr * rr, 3.0)) * (sun ? 2.7 : 1.0);
     float wrapExtra = abs(type - 3.0) < 0.5 ? 0.35 : (abs(type - 5.0) < 0.5 ? 0.5 : 0.3);
     float wr = clamp(diffusion + wrapExtra + 1.2 * softness, 0.0, 1.5);
     float ndl = dot(n, l), lam = clamp((ndl + wr) / (1.0 + wr), 0.0, 1.0);
@@ -178,8 +181,8 @@ void main() {
     float pattern = 1.0, frame = 1.0;
     if (abs(D.x) > 0.5) {
       vec2 guv;
-      float band = 0.06 * relief, zC = zAt(F.zw, relief);
-      bool hit = goboPlaneUV(type, pos, abs(type - 2.0) < 0.5 ? aim : F.zw, distance_, s, vec3(p - F.zw, band * tanh((pz - zC) / band)), guv);
+      float band = 0.06 * relief, zC = zAim;
+      bool hit = goboPlaneUV(type, pos, abs(type - 2.0) < 0.5 ? aim : F.zw, distance_, s, vec3(p - F.zw, subj >= 0.0 ? (pz - zC) * (1.0 - subj) + 0.3 * band * tanh((pz - zC) / (0.3 * band)) * subj : band * tanh((pz - zC) / band)), guv);
       float spread = softness + (abs(abs(D.x) - 2.0) < 0.5 ? 0.0 : 4.0 * max(0.0, behind) / relief);
       pattern = hit ? patternAt(D.x, guv, s, D, Ee, spread, false) : 0.0;
       frame = hit ? patternAt(D.x, guv, s, D, Ee, spread, true) : 0.0;
@@ -187,17 +190,23 @@ void main() {
     float amount = intensity * 3.2 * atten * shadow * pattern;
     vec3 hv = normalize(l + vec3(0.0, 0.0, 1.0));
     float gloss = 8.0 + 56.0 * (1.0 - softness);
-    vec3 add = B.rgb * (amount * lam * (1.0 - diffusion) + intensity * 3.2 * atten * diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win * uGain;
+    float nxy = max(1e-3, length(n.xy)), lxy = max(1e-3, length(l.xy));
+    float rim = subj > 0.0 ? ${RIM.toFixed(3)} * subj * pow(clamp(1.0 - n.z, 0.0, 1.0), 2.0) * max(0.0, dot(n.xy, l.xy) / (nxy * lxy)) : 0.0;
+    vec3 add = B.rgb * (amount * (lam + rim) * (1.0 - diffusion) + intensity * 3.2 * atten * diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win * uGain;
     float br = toLin(base.r), warm = clamp((br - toLin(base.b)) / (br + 1e-3) * 1.6, 0.0, 1.0);
     float sss = amount * (1.0 - diffusion) * ${SSS.toFixed(3)} * max(0.0, clamp((ndl + 0.6) / 1.6, 0.0, 1.0) - lam) * warm * win * uGain;
     E += add + B.rgb * vec3(sss, sss * 0.35, 0.0);
     S += add * ${ALBEDO_FLOOR.toFixed(3)};
     if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.15 * uShine * win;
+    S += B.rgb * amount * clamp((ndl + 0.3) / 1.3, 0.0, 1.0) * ${GLINT.toFixed(3)} * (0.35 + uShine) * max(0.0, s0t.a) * uGain * win;
   }
   float kd = 1.0 / (1.0 + (texture(uShade, uv).r - 1.0) * uDelight);
   vec3 lin = vec3(toLin(base.r), toLin(base.g), toLin(base.b)) * kd * pow(s0, vec3(1.0 - uTakeOut));
   vec3 o = lin * E + S;
-  outColor = vec4(toSrgb(tone(o.r)), toSrgb(tone(o.g)), toSrgb(tone(o.b)), base.a);
+  o = max(o, vec3(0.0));
+  float peak = max(max(o.r, o.g), max(o.b, 1e-6));
+  o *= tone(peak) / peak;
+  outColor = vec4(toSrgb(o.r), toSrgb(o.g), toSrgb(o.b), base.a);
 }`;
 
 interface GlState { gl: WebGL2RenderingContext; canvas: HTMLCanvasElement | OffscreenCanvas; prog: WebGLProgram; base: WebGLTexture; geo: WebGLTexture; shade: WebGLTexture; s0: WebGLTexture; res: WebGLTexture; loc: Record<string, WebGLUniformLocation | null> }
@@ -248,10 +257,11 @@ export const relightGpuAvailable = (): boolean => !!init();
 let uploaded: { base: Uint8ClampedArray | null; geo: Float32Array | null; shade: Float32Array | null | undefined; split: SplitMaps | null | undefined } = { base: null, geo: null, shade: undefined, split: undefined };
 const ONE = new Float32Array([1]);
 const ONE4 = new Float32Array([1, 1, 1, 1]);
+const NO_SUBJECT = new Float32Array([0, 0, 0, -1]);
 
-function rgba(src: Float32Array, n: number): Float32Array {
+function rgba(src: Float32Array, n: number, alpha?: Float32Array | null): Float32Array {
   const out = new Float32Array(n * 4);
-  for (let i = 0; i < n; i++) { out[i * 4] = src[i * 3]; out[i * 4 + 1] = src[i * 3 + 1]; out[i * 4 + 2] = src[i * 3 + 2]; out[i * 4 + 3] = 1; }
+  for (let i = 0; i < n; i++) { out[i * 4] = src[i * 3]; out[i * 4 + 1] = src[i * 3 + 1]; out[i * 4 + 2] = src[i * 3 + 2]; out[i * 4 + 3] = alpha ? alpha[i] : -1; }
   return out;
 }
 
@@ -277,8 +287,8 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   if (uploaded.split !== split) {
     for (const [unit, t, src] of [[3, st.s0, split?.shading], [4, st.res, split?.residual]] as const) {
       gl.activeTexture(unit === 3 ? gl.TEXTURE3 : gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, t);
-      if (src) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, rgba(src, w * h));
-      else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 1, 1, 0, gl.RGBA, gl.FLOAT, ONE4);
+      if (src) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, rgba(src, w * h, unit === 4 ? split?.subject : split?.texture));
+      else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 1, 1, 0, gl.RGBA, gl.FLOAT, unit === 4 ? NO_SUBJECT : ONE4);
     }
     uploaded.split = split;
   }

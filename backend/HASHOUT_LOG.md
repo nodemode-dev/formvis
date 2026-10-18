@@ -2,6 +2,11 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Texture for glints · _v1.83.0 (app/localgen/relight_scene.py, relight_split.py)
+
+- `relight_scene.py`: `texture`, the photo's fine detail (`|g - blur 1.5| + 0.5 |g - blur 4|` on the square root of luminance, blurred 0.8, over its 95th percentile, times the subject mask x 1.5), in the result dict; the shading clamp is 0.4 to 1.3 on the grid (replaced `np.clip(S, 0.15, 1.3)`).
+- `relight_split.py`: `extra` carries `texture`; `pack` writes it as u8 after the mask.
+
 ## Relight's scene · _v1.82.0 (app/localgen/relight_scene.py new, relight_split.py, model_manager.py, requirements_relight.txt, tests/test_localgen_krea2.py)
 
 - `relight_scene.py` (new): `solve(rgb)` on a grid of at most 832 cells: Depth Anything depth with stray outline pixels (more than 0.08 from a 5-pixel median) refilled (`_fill`, normalised blurs coarse to fine); the subject from U2-Net (`services.background._u2net_onnx`, soft-thresholded); two layers, the subject's depth extended past its outline and the background's filled behind it, blurred at size/30 and kept 0.03 behind the subject; normals from MoGe-2 small (`_moge_normals`, `MoGeModel.infer(..., use_fp16=False)` at a short side of 518, OpenCV frame turned to Relight's: x, y, -z) for the subject, else the slope of its layer, the background's from its layer; the original light as second-order SH of the smoothed luminance over the subject's normals, fitted with four robust reweightings, normalised at the subject's 90th percentile, clamped 0.15 to 1.3, 1 on the background; `level`, the mean luminance of photo over shading on the subject. MoGe ran in 12 s on the CPU for the 464 x 832 grid.

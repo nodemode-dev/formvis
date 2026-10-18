@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (949 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (953 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -8,12 +8,12 @@ Generated from the window's command catalogue (949 commands) by `./formvis agent
 - File: 74
 - Filter: 80
 - Image: 89
-- Layer: 195
+- Layer: 198
 - Paint: 1
 - Paths: 8
 - Select: 28
 - Tool options: 232
-- Tools: 50
+- Tools: 51
 - Type: 22
 - View: 40
 - Window: 70
@@ -395,6 +395,7 @@ Generated from the window's command catalogue (949 commands) by `./formvis agent
 | `duplicate-dialog` | Duplicate Layer... |  | Opens Duplicate Layer to name the copy or send it to another document. (changes the picture) |
 | `edit-adjustment` | Edit Adjustment... |  | Opens the settings of the active adjustment layer. (changes the picture) |
 | `edit-contents` | Edit Contents |  | Opens the smart object source for editing. (changes the picture) |
+| `edit-relight` | Edit Lighting... |  | Reopens the lights of the selected Relight layer. (changes the picture) |
 | `embed-linked` | Embed Linked |  | Embeds the linked file in the document. (changes the picture) |
 | `extrude-3d` | New 3D Extrusion from Selected Layer... |  | Extrudes the selected shape, type or pixel layer into 3D with depth, bevel, light and material, rendered to a layer that keeps its settings. (changes the picture) |
 | `film-frame` | Frame... |  | Opens Frame to add a film or white border layer. (changes the picture) |
@@ -473,6 +474,7 @@ Generated from the window's command catalogue (949 commands) by `./formvis agent
 | `new-folder-dialog` | Group... |  | Opens the New Group dialog. (changes the picture) |
 | `new-layer` | New Layer |  | Adds an empty layer above the active one. (changes the picture) |
 | `new-layer-dialog` | Layer... | Shift+Mod+N | Opens the New Layer dialog with name, colour and mode. (changes the picture) |
+| `new-relight-layer` | New Relight Layer... |  | Adds a Relight layer that lights what lies beneath it with virtual lights, on this computer. (changes the picture) |
 | `panorama-apply-view` | Apply View to Panorama |  | Projects the current panorama edit view back onto its source panorama as a new layer named Panorama edit, one undo step. (changes the picture) |
 | `panorama-view` | Spherical Panorama... |  | Opens the active document, taken as an equirectangular picture, as a sphere you turn by dragging, with yaw, pitch and field of view; Edit View makes the current view a new document. (changes the picture) |
 | `paste-layer-style` | Paste Layer Style |  | Pastes the copied layer style. (changes the picture) |
@@ -483,6 +485,7 @@ Generated from the window's command catalogue (949 commands) by `./formvis agent
 | `rasterize-smart` | Rasterize Smart Object |  | Turns a smart object into pixels. (changes the picture) |
 | `rasterize-type` | Rasterize Type |  | Turns a text layer into pixels. (changes the picture) |
 | `rasterize-vmask` | Vector Mask |  | Turns the vector mask into a pixel mask. (changes the picture) |
+| `relight.apply` | Apply Relight |  | Adds a Relight layer above the active layer, lit by a Look or by the lights given, rendered at full size on this computer; one history step. (changes the picture) |
 | `relink` | Relink to File... |  | Relinks a smart object to another file. (changes the picture) |
 | `rename` | Rename Layer |  | Starts renaming the active layer in the Layers panel. |
 | `replace-contents` | Replace Contents... |  | Replaces the smart object source with a file. (changes the picture) |
@@ -560,6 +563,17 @@ Generated from the window's command catalogue (949 commands) by `./formvis agent
 - `opacity`: number 0 to 1; Opacity from 0 to 1
 - `blend`: string; Blend mode
 - `active`: boolean; Make it the active layer
+
+### relight.apply parameters
+
+- `look`: string; A ready-made Look; its lights are used unless lights is given
+- `lights`: array; Up to 8 lights: [{type: point/spot/sun/area/strip/ring, kelvin (1000 to 12000) or color {r,g,b}, intensity, softness, diffusion, distance (0 close to 100 far), pos {x,y} and aim {x,y} as fractions of the canvas, near and far (0 to 100, the depth band lit), pattern {kind: none/blinds/strip/window/leaves, scale, width, slats, opening, length, feather, rotation, invert, center {x,y} where the pattern sits, the aim when omitted}}]
+- `original`: number 0 to 100; Percent of the original lighting kept
+- `shine`: number 0 to 100; Highlights on glossy forms
+- `delight`: number 0 to 100; Percent of the original light and shade flattened before the new lights
+- `shadows`: number 0 to 100; Strength of cast shadows (with the depth model)
+- `ambient`: string; Colour of the kept original light, like #ffe8d0
+- `split`: string (auto | marigold | classic | off); How the photo's own light is taken out before the new lights: auto or classic (per-material shading, the subject's own detail kept), marigold (learned albedo, repaints surfaces, only when asked), or off (add light on top)
 
 ## Paint
 
@@ -919,6 +933,7 @@ Generated from the window's command catalogue (949 commands) by `./formvis agent
 | `tool.select.pencil` | Pencil Tool |  | Makes the Pencil tool the active tool (key B). Drag to draw hard-edged, pixel-exact lines · Shift-click draws a line from the last point · [ ] size |
 | `tool.select.quickSelect` | Quick Selection Tool |  | Makes the Quick Selection tool the active tool (key W). Drag over an area to select it; the selection grows to similar color and stops at edges · Alt-drag subtracts · [ ] size |
 | `tool.select.redEye` | Red Eye Tool |  | Makes the Red Eye tool the active tool (key J). Click the red of a pupil |
+| `tool.select.relight` | Relight Tool |  | Makes the Relight tool the active tool. Drag a light on the image, or adjust it in the Properties panel. |
 | `tool.select.remove` | Remove Tool |  | Makes the Remove tool the active tool (key J). Paint over what to remove; it is filled from its surroundings when you release · [ ] size |
 | `tool.select.rotateView` | Rotate View Tool |  | Makes the Rotate View tool the active tool (key R). Drag to turn the view · Shift for 15 degree steps · Double-click or Escape straightens it |
 | `tool.select.ruler` | Ruler Tool |  | Makes the Ruler tool the active tool (key I). Drag to measure · Drag an end to adjust · Straighten Layer levels the layer along the line |

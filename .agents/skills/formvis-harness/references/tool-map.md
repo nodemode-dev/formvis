@@ -56,7 +56,7 @@ Generated from the MCP catalogue (56 tools, `TOOLS` in `backend/app/routers/mcp.
 | `timeline_render` | replaces or removes | `export`, `timeline-and-video` |
 | `list_commands` | reads only | `painting-and-brushes`, `terminal` |
 | `describe_command` | reads only | `terminal` |
-| `run_command` | replaces or removes | `painting-and-brushes`, `terminal` |
+| `run_command` | replaces or removes | `adjustments-and-filters`, `painting-and-brushes`, `terminal` |
 | `run_commands` | replaces or removes | `terminal` |
 | `get_selection` | reads only | `documents-and-files` |
 | `get_layer_tree` | reads only | `documents-and-files` |

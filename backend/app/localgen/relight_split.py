@@ -281,7 +281,7 @@ def _scene_split(rgb: np.ndarray) -> tuple:
     shading3 = np.repeat(shading[..., None], 3, -1)
     albedo = np.clip(full / shading3, 0, 1).astype(np.float32)
     residual = (full - albedo * shading3).astype(np.float32)
-    extra = {"depth": sc["depth"], "mask": sc["mask"], "level": sc["level"], "geometry": sc["geometry"]}
+    extra = {"depth": sc["depth"], "mask": sc["mask"], "level": sc["level"], "geometry": sc["geometry"], "texture": sc["texture"]}
     return albedo, shading3, residual, sc["normals"], extra
 
 
@@ -320,6 +320,7 @@ def pack(result: tuple, engine: str, w: int, h: int) -> bytes:
     if extra is not None:
         parts.append(_fit(extra["depth"], w, h).astype("<f2").tobytes())
         parts.append((np.clip(_fit(extra["mask"], w, h), 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
+        parts.append((np.clip(_fit(extra["texture"], w, h), 0, 1) * 255 + 0.5).astype(np.uint8).tobytes())
     head = json.dumps({"engine": engine, "width": w, "height": h, "normals": normals is not None, "scene": extra is not None,
                        "level": extra["level"] if extra else None, "geometry": extra["geometry"] if extra else None}).encode()
     return len(head).to_bytes(4, "little") + head + b"".join(parts)

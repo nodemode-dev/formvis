@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Subject layer, rim, texture glints · _v1.83.0 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts)
+
+The owner on 1.82.0: "the light strips and the blinds and the neon lighting are the 3 that are awful and the process/steps I layed out need to be used".
+
+- `local-gen.ts`: `LightSplit.subject` (mask / 255) and `texture` (u8 / 255, read after the mask).
+- `relight.ts`: `SplitMaps.subject`, `texture`; `lightAt(..., subj)`: `behind = subj < 0 ? dzA : dzA * (1 - subj) + min(0, dzA) * subj` (replaced `const dzA = zAim - pz, ... rr = dzA > 0 ? ...`), the sun's reach `0.06 + 0.6 d` (was a single reach), the pattern plane at the aim's depth (`zC = zAim`) with true depth off the subject and `0.3 x band x tanh` relief on it (replaced `band * Math.tanh((pz - zC) / band)` for every pixel); `rim = RIM x subj x (1 - nz)^2 x max(0, n.xy . l.xy)` added to the Lambert term (new `RIM` 0.9); `glint` term times the texture (`GLINT` 0.06). `shadeRelight` rolls off on the peak channel (replaced per-channel `tone`). `packLights` intensity `0.95 x i^2` (was `1.22 x i^2`). Strip half width `0.5 x width x 0.2 x scale` (was `0.14`). `relightFrom` takes `kelvinToRgb(kelvin)` when a light has `kelvin` and no `color` (replaced `color: rgb(l.color)`). `sceneTerms` shadows default 85.
+- `relight-gl.ts`: the same in GLSL; the residual texture carries the subject in alpha (`NO_SUBJECT` `[0, 0, 0, -1]` without a split), the S0 texture carries the texture in alpha (`rgba(src, n, alpha)`); imports `RIM`.
+- `relight-session.ts`: the split passes `subject` and `texture` at `loadSplit`, `apply` and `commit`.
+
+Benchmark, mean gain-map error in stops (1.82.0 to 1.83.0): blinds 0.64 to 0.62, candle 27 0.47 to 0.50, 26 0.48 to 0.44, 28 0.27 to 0.29, strip 0.50 to 0.42, horizontal strip 0.42 to 0.40, neon 0.47 to 0.43. Subject 90th percentile against the reference: 0.99 / 1.02, 2.13 / 1.87, 1.59 / 1.60, -0.16 / -0.26, 1.45 / 1.19, 1.65 / 1.83, 1.31 / 1.18. Open: the strips still read flatter than the reference on dark fabric, and neon's pink sits more central than the reference's left-side rim.
+
 ## Relight on a solved scene · _v1.82.0 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts)
 
 The owner supplied a description of the reference's method (a scene from MoGe-2 and a subject cut-out, two layers, the original light estimated from brightness against surface direction and divided out, brightness matching, lights exposed at their aim with a gentler capped falloff, a sized source, warm light past the terminator, `photo x kept + surface x added`). The engine now solves the scene (backend HASHOUT 1.82.0); the frontend takes it.

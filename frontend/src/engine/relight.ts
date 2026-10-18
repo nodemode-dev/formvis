@@ -47,7 +47,7 @@ export interface RelightContent {
   split?: 'auto' | 'marigold' | 'classic' | 'off';
 }
 
-export interface SplitMaps { shading: Float32Array; residual: Float32Array; gain?: number }
+export interface SplitMaps { shading: Float32Array; residual: Float32Array; gain?: number; subject?: Float32Array | null; texture?: Float32Array | null }
 
 /** Brightness matching (1.82.0): added light is scaled to the subject's average surface brightness, so one Intensity
  *  reads alike on a dark coat and a pale face; the reference portrait's level is 1. */
@@ -133,7 +133,7 @@ export function relightFrom(raw: unknown): RelightContent | null {
     const l = (x ?? {}) as Record<string, unknown>, pr = (l.pattern ?? {}) as Record<string, unknown>, dp = defaultPattern();
     return {
       id: typeof l.id === 'string' ? l.id : `light-${i}`, name: typeof l.name === 'string' ? l.name.slice(0, 80) : `Light ${i + 1}`,
-      visible: l.visible !== false, type: pick(l.type, RELIGHT_TYPES, 'point'), color: rgb(l.color),
+      visible: l.visible !== false, type: pick(l.type, RELIGHT_TYPES, 'point'), color: l.color === undefined && typeof l.kelvin === 'number' ? kelvinToRgb(l.kelvin) : rgb(l.color),
       kelvin: l.kelvin === null ? null : num(l.kelvin, 1000, 12000, 5200),
       intensity: num(l.intensity, 0, 100, 60), softness: num(l.softness, 0, 100, 20), diffusion: num(l.diffusion, 0, 100, 20), distance: num(l.distance, 0, 100, 35),
       pos: pt(l.pos, { x: 0.2, y: 0.25 }), aim: pt(l.aim, { x: 0.5, y: 0.45 }),
@@ -179,6 +179,9 @@ export const SHADOW_TAPS: readonly number[] = [-1, -0.33, 0.33, 1];
 export const TAKE_OUT = 100;
 export const ALBEDO_FLOOR = 0.006;
 export const SSS = 0.6;
+/** Glints (1.82.0): light caught by the photo's own fine texture (hair strands, pores), added on top of the surface. */
+export const GLINT = 0.06;
+export const RIM = 0.9;
 export const SCENE_DEPTH = 1.2;
 
 function boxBlur(a: Float32Array, w: number, h: number, r: number, passes: number): void {
@@ -258,7 +261,7 @@ const PATTERN_CODE: Record<RelightPatternKind, number> = { none: 0, blinds: 1, s
 export function packLights(c: RelightContent, w: number, h: number): PackedLight[] {
   return c.lights.filter((l) => l.visible && l.intensity > 0).slice(0, MAX_RELIGHT_LIGHTS).map((l) => ({
     type: TYPE_CODE[l.type], color: [Math.pow(l.color.r / 255, 1.5), Math.pow(l.color.g / 255, 1.5), Math.pow(l.color.b / 255, 1.5)],
-    intensity: 1.22 * (l.intensity / 100) ** 2, softness: l.softness / 100, diffusion: l.diffusion / 100, distance: l.distance / 100,
+    intensity: 0.95 * (l.intensity / 100) ** 2, softness: l.softness / 100, diffusion: l.diffusion / 100, distance: l.distance / 100,
     pos: [l.pos.x * w, l.pos.y * h], aim: [l.aim.x * w, l.aim.y * h], pattern: PATTERN_CODE[l.pattern.kind] * (l.pattern.invert ? -1 : 1),
     pat: [l.pattern.scale / 100, l.pattern.width / 100, l.pattern.slats, l.pattern.opening / 100],
     pat2: [l.pattern.length / 100, l.pattern.feather / 100, (l.pattern.rotation * Math.PI) / 180, 0],
@@ -290,7 +293,7 @@ export function patternAt(kind: number, u: number, v: number, s: number, pat: re
     const hf = Math.min(f, 0.3) * 0.5, wash = clamp((f - 0.3) / 0.7, 0, 1), q = Math.abs(fract(ph - open * 0.5 + 0.5) - 0.5);
     m = frameOnly ? frame : frame * (smooth(open * 0.5 + hf, open * 0.5 - hf, q) * (1 - wash) + open * wash);
   } else if (k === 2) {
-    const hl = 0.58 * pat2[0] * pat[0], hw = 0.5 * pat[1] * 0.14 * pat[0];
+    const hl = 0.58 * pat2[0] * pat[0], hw = 0.5 * pat[1] * 0.2 * pat[0];
     const fw = Math.max(0.002, 2 * hw * (pat2[1] + 0.3 * soft));
     m = smooth(hl + fw / 2, hl - fw / 2, Math.abs(y)) * smooth(hw + fw / 2, hw - fw / 2, Math.abs(x));
   } else if (k === 3) {
@@ -307,7 +310,7 @@ export interface ShadeOptions { shadowSteps?: number; shade?: Float32Array | nul
 
 export function sceneTerms(content: RelightContent): { ambient: [number, number, number]; delight: number; shadows: number; takeOut: number } {
   const a = content.ambient ?? { r: 255, g: 255, b: 255 }, o = content.original / 100;
-  return { ambient: [srgbToLinear(a.r / 255) * o, srgbToLinear(a.g / 255) * o, srgbToLinear(a.b / 255) * o], delight: (content.delight ?? 0) / 100, shadows: (content.shadows ?? 40) / 100, takeOut: (content.delight ?? TAKE_OUT) / 100 };
+  return { ambient: [srgbToLinear(a.r / 255) * o, srgbToLinear(a.g / 255) * o, srgbToLinear(a.b / 255) * o], delight: (content.delight ?? 0) / 100, shadows: (content.shadows ?? 85) / 100, takeOut: (content.delight ?? TAKE_OUT) / 100 };
 }
 
 export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, opts: ShadeOptions = {}): Uint8ClampedArray {
@@ -326,16 +329,18 @@ export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, cont
     for (const L of lights) {
       const win = depthWindow(d, L.range[0], L.range[1]);
       if (win <= 0) continue;
-      const c = lightAt(L, x + 0.5, y + 0.5, pz, nx, ny, nz, s, relief, steps, zAt, sc.shadows);
+      const c = lightAt(L, x + 0.5, y + 0.5, pz, nx, ny, nz, s, relief, steps, zAt, sc.shadows, split?.subject ? split.subject[y * w + x] : -1);
       const gn = (split?.gain ?? 1) * win, warm = clamp((lut[base[i]] - lut[base[i + 2]]) / (lut[base[i]] + 1e-3) * 1.6, 0, 1) * c.sss;
       er += (L.color[0] * c.diffuse + warm * L.color[0]) * gn; eg += (L.color[1] * c.diffuse + warm * 0.35 * L.color[1]) * gn; eb += L.color[2] * c.diffuse * gn;
-      const lift = c.spec * shine + c.diffuse * ALBEDO_FLOOR;
+      const lift = c.spec * shine + c.diffuse * ALBEDO_FLOOR + c.glint * GLINT * (0.35 + shine) * (split?.texture ? split.texture[y * w + x] : 0) * (split?.gain ?? 1);
       sr += L.color[0] * lift * win; sg += L.color[1] * lift * win; sb += L.color[2] * lift * win;
     }
     const k = shade && !split ? 1 / (1 + (shade[y * w + x] - 1) * sc.delight) : 1, kr = Math.pow(sR, 1 - gm), kg = Math.pow(sG, 1 - gm), kb = Math.pow(sB, 1 - gm);
-    out[i] = Math.round(linearToSrgb(tone(lut[base[i]] * k * kr * er + sr)) * 255);
-    out[i + 1] = Math.round(linearToSrgb(tone(lut[base[i + 1]] * k * kg * eg + sg)) * 255);
-    out[i + 2] = Math.round(linearToSrgb(tone(lut[base[i + 2]] * k * kb * eb + sb)) * 255);
+    const lr = Math.max(0, lut[base[i]] * k * kr * er + sr), lg = Math.max(0, lut[base[i + 1]] * k * kg * eg + sg), lb = Math.max(0, lut[base[i + 2]] * k * kb * eb + sb);
+    const peak = Math.max(lr, lg, lb, 1e-6), roll = tone(peak) / peak;
+    out[i] = Math.round(linearToSrgb(lr * roll) * 255);
+    out[i + 1] = Math.round(linearToSrgb(lg * roll) * 255);
+    out[i + 2] = Math.round(linearToSrgb(lb * roll) * 255);
     out[i + 3] = base[i + 3];
   }
   return out;
@@ -395,7 +400,7 @@ export function goboPoint(G: Gobo, u: number, v: number): [number, number] | nul
 
 function tone(v: number): number { return v <= 0.8 ? Math.max(0, v) : 0.8 + 0.2 * (1 - Math.exp(-(v - 0.8) / 0.2)); }
 
-export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number, shadowAmt = 1): { diffuse: number; spec: number; sss: number } {
+export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number, shadowAmt = 1, subj = -1): { diffuse: number; spec: number; sss: number; glint: number } {
   const zAim = zAt(L.aim[0], L.aim[1]), hL = zAim + (0.12 + 0.9 * L.distance) * 0.5 * s;
   let lx: number, ly: number, lz: number, atten = 1, maxRun = 0.45 * s;
   if (L.type === 2) {
@@ -418,11 +423,11 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
       atten *= smooth(edge, cone, cosA);
     }
   }
-  const sun = L.type === 2, behind = zAim - pz, reach = (sun ? 0.08 + 0.8 * L.distance : 0.05 + 0.4 * L.distance) * relief, rr = behind > 0 ? behind / reach : -behind / (reach * 2.5);
-  atten = atten / (sun ? (1 + rr * rr) ** 2 : (1 + rr * rr) ** 3) * (sun ? 2.7 : 1);
+  const dzA = zAim - pz, sun = L.type === 2, behind = subj < 0 ? dzA : dzA * (1 - subj) + Math.min(0, dzA) * subj, reach = (sun ? 0.06 + 0.6 * L.distance : 0.05 + 0.4 * L.distance) * relief, rr = behind > 0 ? behind / reach : -behind / (reach * 2.5);
+  atten = atten / (sun ? 1 + rr * rr : (1 + rr * rr) ** 3) * (sun ? 2.7 : 1);
   const wrapExtra = L.type === 3 ? 0.35 : L.type === 5 ? 0.5 : 0.3, wr = clamp(L.diffusion + wrapExtra + 1.2 * L.softness, 0, 1.5);
   const ndl = nx * lx + ny * ly + nz * lz, lam = clamp((ndl + wr) / (1 + wr), 0, 1);
-  if (ndl < -0.6 || atten <= 1e-4) return { diffuse: 0, spec: 0, sss: 0 };
+  if (ndl < -0.6 || atten <= 1e-4) return { diffuse: 0, spec: 0, sss: 0, glint: 0 };
   let shadow = 1;
   if (L.type !== 5 && steps > 0 && lz < 0.999) {
     const flat = Math.hypot(lx, ly) || 1e-6, k = (1.5 + 4.5 * (1 - L.softness)) * (L.type === 3 ? 0.5 : 1), run = Math.max(4, maxRun), bias = relief * 0.004;
@@ -443,14 +448,16 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
   shadow = 1 - (1 - shadow) * shadowAmt;
   let pattern = 1, frame = 1;
   if (L.pattern !== 0) {
-    const C = L.center, zC = zAt(C[0], C[1]), band = 0.06 * relief;
-    const uv = goboPlaneUV(goboBasis(L.type, L.pos, L.type === 2 ? L.aim : C, L.distance, s), px - C[0], py - C[1], band * Math.tanh((pz - zC) / band));
+    const C = L.center, zC = zAim, band = 0.06 * relief;
+    const uv = goboPlaneUV(goboBasis(L.type, L.pos, L.type === 2 ? L.aim : C, L.distance, s), px - C[0], py - C[1], subj >= 0 ? (pz - zC) * (1 - subj) + 0.3 * band * Math.tanh((pz - zC) / (0.3 * band)) * subj : band * Math.tanh((pz - zC) / band));
     const spread = L.softness + (Math.abs(L.pattern) === 2 ? 0 : 4 * Math.max(0, behind) / relief);
     pattern = uv ? patternAt(L.pattern, uv[0], uv[1], s, L.pat, L.pat2, spread) : 0;
     frame = uv ? patternAt(L.pattern, uv[0], uv[1], s, L.pat, L.pat2, spread, true) : 0;
   }
   const amount = L.intensity * 3.2 * atten * shadow * pattern, hx = lx, hy = ly, hz = lz + 1, hl = Math.hypot(hx, hy, hz) || 1;
   const nh = Math.max(0, (nx * hx + ny * hy + nz * hz) / hl), gloss = 8 + 56 * (1 - L.softness);
-  return { diffuse: amount * lam * (1 - L.diffusion) + L.intensity * 3.2 * atten * L.diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0, 1), spec: ndl > 0 ? Math.pow(nh, gloss) * amount * 0.15 : 0,
-    sss: amount * (1 - L.diffusion) * SSS * Math.max(0, clamp((ndl + 0.6) / 1.6, 0, 1) - lam) };
+  const nxy = Math.max(1e-3, Math.hypot(nx, ny)), lxy = Math.max(1e-3, Math.hypot(lx, ly));
+  const rim = subj > 0 ? RIM * subj * clamp(1 - nz, 0, 1) ** 2 * Math.max(0, (nx * lx + ny * ly) / (nxy * lxy)) : 0;
+  return { diffuse: amount * (lam + rim) * (1 - L.diffusion) + L.intensity * 3.2 * atten * L.diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0, 1), spec: ndl > 0 ? Math.pow(nh, gloss) * amount * 0.15 : 0,
+    sss: amount * (1 - L.diffusion) * SSS * Math.max(0, clamp((ndl + 0.6) / 1.6, 0, 1) - lam), glint: amount * clamp((ndl + 0.3) / 1.3, 0, 1) };
 }

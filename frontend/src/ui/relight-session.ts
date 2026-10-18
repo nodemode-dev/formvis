@@ -148,7 +148,7 @@ export class RelightSession {
       if (this.layerId !== id || !this.proxy) return;
       for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = this.proxy.base[i];
       const geo0 = sp.depth ? relightGeometry(sp.depth, pw, ph) : this.proxy.geo;
-      this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level) }, normals: sp.normals, scene: !!sp.depth, geo: sp.normals ? withNormals(geo0, sp.normals) : geo0 };
+      this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level), subject: sp.subject, texture: sp.texture }, normals: sp.normals, scene: !!sp.depth, geo: sp.normals ? withNormals(geo0, sp.normals) : geo0 };
       this.splitUsed = sp.engine;
       setText(note, sp.engine === 'marigold' ? t('Old light removed with Marigold: Original lighting now sets how much of it stays.') : t(this.engines.regions === 'parts' ? 'Old light removed per material (skin, hair, clothes, scene) with the subject\'s own detail kept: Original lighting sets how much of it stays.' : 'Old light removed by colour regions with the subject\'s own detail kept: Original lighting sets how much of it stays.'));
       this.schedule();
@@ -204,7 +204,7 @@ export class RelightSession {
         (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
         const sp = await relightSplit(await c.convertToBlob({ type: 'image/png' }), W, H, content.split === 'marigold' || content.split === 'classic' ? content.split : 'auto');
         for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = below.data[i];
-        base = sp.albedo; split = { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level) }; splitBy = sp.engine;
+        base = sp.albedo; split = { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level), subject: sp.subject, texture: sp.texture }; splitBy = sp.engine;
         if (sp.depth) { geo = relightGeometry(sp.depth, W, H); depth = sp.depth; }
         if (sp.normals) geo = withNormals(geo, sp.normals);
       } catch { split = null; }
@@ -276,7 +276,7 @@ export class RelightSession {
         try {
           const sp = await relightSplit(this.source, f.w, f.h, this.splitUsed);
           for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = f.data[i];
-          base = sp.albedo; split = { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level) };
+          base = sp.albedo; split = { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level), subject: sp.subject, texture: sp.texture };
           if (sp.depth) geo = relightGeometry(sp.depth, f.w, f.h);
           if (sp.normals) geo = withNormals(geo, sp.normals);
         } catch { split = null; }

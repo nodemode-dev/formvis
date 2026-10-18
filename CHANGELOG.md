@@ -4,6 +4,21 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.83.0 · 2026-10-18
+
+### Changed
+
+- Relight follows the owner's method further. The subject from the cut-out is its own layer in the shader: light reaching the subject is not cut off by the background's distance, so hair behind the face stays lit, and a pattern curves over the subject's own relief while it stays straight on the background.
+- A light beside or behind the subject draws a rim along the outline, where the surface turns away from the camera toward the light.
+- Glints use the photo's own fine texture (pores, hair), measured once by the engine and sent with the scene.
+- Highlights roll off on the brightest channel, so warm light no longer turns olive or yellow in the brightest skin.
+- Light Strip is wider for the same Width (the reference's frames 40 and 33 measured), and added light is calibrated a third of a stop lower (`0.95 x i^2`), which brings the subject's brightest tenth within about a quarter stop of the reference on six of seven frames.
+- The original light is clamped 0.4 to 1.3 on the solve grid, so a dark fabric is no longer read as deep shade and lifted into a pale patch.
+
+### Fixed
+
+- A light given only a colour temperature (`kelvin`, from a command or a saved file) now takes that colour; it was white.
+
 ## 1.82.0 · 2026-10-18
 
 ### Changed

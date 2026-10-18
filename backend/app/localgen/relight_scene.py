@@ -163,7 +163,12 @@ def solve(rgb: np.ndarray) -> dict:
             wts = 1 / (1 + (res / 0.35) ** 2)
         S = np.maximum(B @ coef, 1e-4)
         S = S / np.percentile(S[core > 0], 90)
-        shading = (mask * np.clip(S, 0.15, 1.3) + (1 - mask)).astype(np.float32)
+        shading = (mask * np.clip(S, 0.4, 1.3) + (1 - mask)).astype(np.float32)
     level = float(np.mean(_lum(lin / shading[..., None])[core > 0])) if core.sum() > 64 else float(np.mean(_lum(lin)))
+    # Texture for glints: the photo's own fine contrast (pores, hair strands), where light catches.
+    g8 = np.sqrt(np.clip(_lum(lin), 0, 1)).astype(np.float32)
+    fine = np.abs(g8 - _blur(g8, 1.5)) + 0.5 * np.abs(g8 - _blur(g8, 4))
+    fine = _blur(fine, 0.8)
+    texture = np.clip(fine / max(1e-4, float(np.percentile(fine[core > 0] if core.sum() > 64 else fine, 95))), 0, 1) * np.clip(mask * 1.5, 0, 1)
     return {"depth": depth, "mask": mask.astype(np.float32), "normals": normals.astype(np.float32), "shading": shading,
-            "level": level, "geometry": engine, "size": (w, h)}
+            "level": level, "geometry": engine, "size": (w, h), "texture": texture.astype(np.float32)}

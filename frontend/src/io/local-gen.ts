@@ -112,7 +112,7 @@ export async function installModel(id: string, status: (text: string) => void): 
 export interface RelightEngines { marigold: boolean; marigoldModels: boolean; marigoldRuntime: boolean; classic: boolean; regions: 'parts' | 'colour'; faces: boolean; license: string; downloadGB: number }
 export interface LightSplit {
   engine: 'marigold' | 'classic'; width: number; height: number; albedo: Uint8ClampedArray; shading: Float32Array; residual: Float32Array; normals: Float32Array | null;
-  depth: Float32Array | null; mask: Uint8Array | null; level: number | null; geometry: string | null;
+  depth: Float32Array | null; mask: Uint8Array | null; subject: Float32Array | null; texture: Float32Array | null; level: number | null; geometry: string | null;
 }
 
 export async function relightEngines(): Promise<RelightEngines | null> {
@@ -139,9 +139,10 @@ export async function relightSplit(image: Blob, width: number, height: number, e
   const half = (count: number): Float32Array => { const copy = new Uint16Array(buf.slice(at, at + count * 2)); at += count * 2; return halfToFloat(copy); };
   const shading = half(n * 3), residual = half(n * 3), normals = head.normals ? half(n * 3) : null;
   const depth = head.scene ? half(n) : null, mask = head.scene ? new Uint8Array(buf.slice(at, at + n)) : null;
+  const tex = head.scene ? new Uint8Array(buf.slice(at + n, at + 2 * n)) : null;
   const albedo = new Uint8ClampedArray(n * 4);
   for (let i = 0; i < n; i++) { albedo[i * 4] = rgb[i * 3]; albedo[i * 4 + 1] = rgb[i * 3 + 1]; albedo[i * 4 + 2] = rgb[i * 3 + 2]; albedo[i * 4 + 3] = 255; }
-  return { engine: head.engine, width: head.width, height: head.height, albedo, shading, residual, normals, depth, mask, level: head.level ?? null, geometry: head.geometry ?? null };
+  return { engine: head.engine, width: head.width, height: head.height, albedo, shading, residual, normals, depth, mask, subject: mask ? Float32Array.from(mask, (v) => v / 255) : null, texture: tex ? Float32Array.from(tex, (v) => v / 255) : null, level: head.level ?? null, geometry: head.geometry ?? null };
 }
 
 export async function localDepthValues(image: Blob, width: number, height: number): Promise<Float32Array> {
