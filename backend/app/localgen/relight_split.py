@@ -210,7 +210,7 @@ def _shading(rgb: np.ndarray, lin: np.ndarray, faces: list[dict], mats: np.ndarr
         gap = base - est
         est = est + _blur(np.sign(gap) * np.maximum(np.abs(gap) - 0.2, 0), 1.5)
         core = g > 0.6
-        level = float(np.percentile(est[core], 96)) if core.sum() > 100 else float(est.max())
+        level = float(np.percentile(est[core], 96 if k == skin else 75)) if core.sum() > 100 else float(est.max())
         total += g * (est - level)
         weight += g
     shade = _blur(total / (weight + 1e-5), s / 400)
@@ -228,7 +228,7 @@ def _normals(rgb: np.ndarray, faces: list[dict], mats: np.ndarray, skin: int) ->
         d = _blur(depth.depth_values(Image.fromarray(rgb), w, h), 2) * 0.7 * s
         gy, gx = np.gradient(d)
         keep = cv2.erode((np.hypot(gx, gy) < 1.2).astype(np.float32), np.ones((5, 5), np.uint8))
-        r = max([f["box"][2] for f in faces], default=s / 26) / 5
+        r = max([f["box"][2] for f in faces], default=s / 26) / 10
         ws = _blur(keep, r) + 1e-4
         gx, gy = _blur(gx * keep, r) / ws, _blur(gy * keep, r) / ws
         n = np.sqrt(gx * gx + gy * gy + 1)
