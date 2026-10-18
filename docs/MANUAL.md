@@ -322,8 +322,8 @@ are not touched.
   0 keeps the photo as it is under them, as by default, and 100 takes all of it out to move a hard shadow), Ambient (the colour of the light
   that is kept) and Shadows (how dark cast shadows are).
 - A light reaches what it is aimed at and fades on surfaces behind it: Close to Far sets how far it reaches and how
-  high it stands. Blind and window patterns are sharp on what the light is aimed at and soften on surfaces far behind
-  it. Diffusion adds a soft fill inside the pattern's frame.
+  high it stands. Patterns are projected onto the shape of the scene from the light, so blind slats wrap around an
+  arm and curve over a face; they are sharp on what the light is aimed at and soften on surfaces far behind it. Diffusion adds a soft fill inside the pattern's frame.
 - The + tile after the Looks saves the current lights as a Look of your own, kept in this browser; Alt-click a saved
   Look to delete it.
 - Keys while editing: the arrow keys move the selected light (Shift for bigger steps, Alt moves its aim), Tab picks

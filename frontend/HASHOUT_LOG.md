@@ -2,6 +2,18 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Gobos projected onto the depth surface · _v1.79.0 (engine/relight.ts, gpu/relight-gl.ts, extensions/tools/relight.ts)
+
+The owner on 1.78.0: the blinds must follow "the contours of the body/subject/objects/environment". Studied the reference's close-ups (frames 13, 15, 21): the slat shadows rise about 20 to 25 degrees to the right, curve around the arm like contour lines on a cylinder, jump at the arm's and face's silhouettes, and the frame the reference draws is a quadrilateral, a projected rectangle. 1.78.0 drew the pattern flat in picture space with a 0.05 nudge by depth, and the nudge had the wrong sign.
+
+- New `sunTo` (a sun's direction toward the light: the handle's side, raised toward the top of the picture and toward the camera by Close to Far, so its slat planes tilt in depth as daylight through a window does), `goboBasis` (the light as a projector: throw `f`, gobo axes `r` and `d`, `d` nearest the picture's down; for a sun a direction, otherwise the light's offset from the aim with its height), `goboUV` (orthographic for a sun, perspective from the light for the rest), `goboPoint` (a gobo corner back onto the aimed surface's plane, for the overlay). GLSL twins `sunTo` and `goboUV` (identical formulas; `d.x` sign as the TS).
+- `lightAt`: the sun's direction is `sunTo` (replaced `const dx = L.aim[0] - L.pos[0], ..., elev = (30 + 50 * L.distance) * Math.PI / 180;` and `lx = -dx / d * Math.cos(elev); ly = -dy / d * Math.cos(elev); lz = Math.sin(elev);`, GLSL `vec2 dd = aim - pos; ... float elev = radians(30.0 + 50.0 * distance_);` and `l = vec3(-dd / dl * cos(elev), sin(elev));`); the pattern is sampled at the surface point's gobo coordinates (replaced `const par = (pz - zAim) * 0.05 / Math.max(0.25, lz), gx = px + lx * par, gy = py + ly * par;` and the two `patternAt(L.pattern, gx - L.aim[0], gy - L.aim[1], ...)` calls; GLSL `float par = ...; vec2 gp = p + l.xy * par;` and the two `patternAt(D.x, gp - aim, ...)` calls); a point the projector cannot reach gets no patterned light. The sun is 1.5 times a local light (was 1.9) since it now falls more frontally.
+- `packLights`: rotation as given for every pattern (replaced `((l.pattern.kind === 'strip' ? 1 : -1) * l.pattern.rotation * Math.PI) / 180`); the projection's own tilt now does what the per-pattern sign did.
+- `patternAt` (and GLSL): Blinds frame half `0.28 x scale` (was 0.33); the slat edge cap 0.45 of a period (was 0.3), softer as the reference's.
+- `tools/relight.ts`: the pattern frame is drawn as the projected quadrilateral through `goboPoint` (replaced `g.save(); g.translate(b.x, b.y); g.rotate(rot); g.strokeRect(-hw, -hh, hw * 2, hh * 2); g.restore();`, the `rot` line and the import `import type { RelightLight } from '../../engine/relight';`).
+
+Benchmark (six frames): Blinds 0.52 stops mean (was 0.62), subject 90th percentile 1.03 against 1.02, wall -0.03 against 0.01; the other five unchanged within 0.05. Close-ups beside frame 15 show the stripes curving round the arm and stepping at the silhouettes.
+
 ## Relight at parity with the reference, depth-mapped light · _v1.78.0 (engine/relight.ts, gpu/relight-gl.ts, extensions/tools/relight.ts)
 
 The owner on 1.77.0: "it is behind... match full parity, and the depth mapping is definitely a way to map the lighting properly". The benchmark grew from three reference frames to six (23 Blinds, 27 and 26 Candlelight at two light places, 40 and 33 Strip at two angles, 31 Neon); mean gain-map error now 0.41 to 0.72 stops on all six, subject 90th percentile within 0.2 stops for Blinds, Strip and Candlelight 27.

@@ -4,6 +4,14 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.79.0 · 2026-10-18
+
+### Changed
+
+- Patterns are projected onto the depth of the scene, as a slide projector would throw them: Blinds and Window slats wrap around her arm like contour lines, curve over the face and chest, and step where one surface stands in front of another, as in the reference's close-ups. A sun comes from the handle's side and from above, as daylight through a window does; a point or spot projects in perspective from where it stands.
+- The pattern frame on the canvas is the projected quadrilateral, not a flat rectangle.
+- Blinds slats are a little denser and their edges softer, as in the reference.
+
 ## 1.78.0 · 2026-10-18
 
 ### Changed
