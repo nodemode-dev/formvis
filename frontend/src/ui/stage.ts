@@ -96,17 +96,36 @@ export class Stage {
     };
   }
 
+  /** How far the drawing surfaces reach past the stage on each side, in CSS pixels (1.85.2): a turned view (Rotate
+   *  View) or a narrowed pixel aspect turns or squeezes the surfaces about the stage's centre, so they are made large
+   *  enough to cover the whole stage at any angle; unturned they are exactly the stage. Every renderer draws shifted by
+   *  this margin, so a stage point and its document point are unchanged. */
+  private offX = 0;
+  private offY = 0;
+
   private resize(): void {
     const r = this.host.getBoundingClientRect();
     this.rect = r;
     const dpr = Math.max(1, Math.min(3, window.devicePixelRatio || 1));
     const w = Math.max(1, Math.round(r.width)), h = Math.max(1, Math.round(r.height));
-    if (w === this.cssW && h === this.cssH && dpr === this.dpr) return;
+    const deg = this.engine.current?.viewport.rotation ?? 0, par = Stage.parOf(this.engine);
+    const cover = deg || par < 1 ? Math.ceil(Math.hypot(w, h) / Math.min(1, par)) : 0;
+    const offX = cover ? Math.ceil((cover - w) / 2) : 0, offY = cover ? Math.ceil((cover - h) / 2) : 0;
+    if (w === this.cssW && h === this.cssH && dpr === this.dpr && offX === this.offX && offY === this.offY) return;
     this.cssW = w;
     this.cssH = h;
+    this.offX = offX;
+    this.offY = offY;
     if (dpr !== this.dpr) this.checker = null;
     this.dpr = dpr;
-    for (const c of [this.scene, this.overlay, ...this.gpuCanvases]) { c.width = Math.round(w * dpr); c.height = Math.round(h * dpr); }
+    for (const c of [this.scene, this.overlay, ...this.gpuCanvases]) {
+      c.width = Math.round((w + 2 * offX) * dpr); c.height = Math.round((h + 2 * offY) * dpr);
+      const left = offX ? `${-offX}px` : '', top = offY ? `${-offY}px` : '', cw = offX ? `${w + 2 * offX}px` : '', ch = offY ? `${h + 2 * offY}px` : '';
+      if (c.style.left !== left) c.style.left = left;
+      if (c.style.top !== top) c.style.top = top;
+      if (c.style.width !== cw) c.style.width = cw;
+      if (c.style.height !== ch) c.style.height = ch;
+    }
     this.rulerH.width = Math.round(w * dpr); this.rulerH.height = Math.round(RULER * dpr);
     this.rulerV.width = Math.round(RULER * dpr); this.rulerV.height = Math.round(h * dpr);
     this.engine.setViewSize(w, h);
@@ -214,7 +233,7 @@ export class Stage {
     // reason reported once each time it changes.
     let gpuLayers: DisplayLayer[] | null = null;
     if (this.gpu) {
-      const vz = p.viewport.zoom * this.dpr, gl = this.engine.gpuLayers({ matrix: [vz, 0, 0, vz, p.viewport.panX * this.dpr, p.viewport.panY * this.dpr], width: W, height: H });   // the view, for a giant document's tiles (1.62.9)
+      const vz = p.viewport.zoom * this.dpr, gl = this.engine.gpuLayers({ matrix: [vz, 0, 0, vz, (p.viewport.panX + this.offX) * this.dpr, (p.viewport.panY + this.offY) * this.dpr], width: W, height: H });   // the view, for a giant document's tiles (1.62.9)
       const reason = (this.engine.view.patternPreview || this.engine.view.pixelArt ? 'Pattern Preview and Pixel Art Preview are drawn on the CPU' : null) ?? (this.engine.viewTransform ?'Proof Colors and colour-managed viewing are drawn on the CPU' : null) ?? (p.doc.mode === 'duotone' ? 'Duotone documents are drawn on the CPU' : null) ?? (p.doc.mode === 'multichannel' ? 'Multichannel documents are drawn on the CPU' : null) ?? documentFallback(gl, W, H, { maxTexture: this.gpu.maxTexture, memoryBytes: this.gpuLimit }) ?? ('layers' in gl ? this.gpu.unsupported?.(gl.layers) ?? null : null);
       if (!reason && 'layers' in gl) gpuLayers = gl.layers;
       if (reason !== this.gpuReason) {
@@ -226,7 +245,7 @@ export class Stage {
     }
     this.showGpu(!!gpuLayers);
     const v = p.viewport;
-    const z = v.zoom * this.dpr, ox = v.panX * this.dpr, oy = v.panY * this.dpr;
+    const z = v.zoom * this.dpr, ox = (v.panX + this.offX) * this.dpr, oy = (v.panY + this.offY) * this.dpr;
     const docRect = { x: ox, y: oy, w: p.doc.width * z, h: p.doc.height * z };
     let vis = intersectRect(integral(docRect), { x: 0, y: 0, w: W, h: H });
     if (region) {
@@ -336,8 +355,8 @@ export class Stage {
       g.strokeStyle = Stage.prefs.guideColor || pal.accent;
       g.beginPath();
       for (const x of [...guides, draft].filter((q): q is NonNullable<typeof q> => !!q && (vw.guides || q === draft))) {
-        if (x.axis === 'x') { const sx = Math.round(v.panX + x.at * v.zoom) + 0.5; g.moveTo(sx, 0); g.lineTo(sx, this.cssH); }
-        else { const sy = Math.round(v.panY + x.at * v.zoom) + 0.5; g.moveTo(0, sy); g.lineTo(this.cssW, sy); }
+        if (x.axis === 'x') { const sx = Math.round(v.panX + x.at * v.zoom) + 0.5; g.moveTo(sx, -this.offY); g.lineTo(sx, this.cssH + this.offY); }
+        else { const sy = Math.round(v.panY + x.at * v.zoom) + 0.5; g.moveTo(-this.offX, sy); g.lineTo(this.cssW + this.offX, sy); }
       }
       g.stroke();
     }
@@ -372,7 +391,8 @@ export class Stage {
   private turn(): void {
     const deg = this.engine.current?.viewport.rotation ?? 0, par = Stage.parOf(this.engine);
     const t = [deg ? `rotate(${deg}deg)` : '', par !== 1 ? `scaleX(${par})` : ''].filter(Boolean).join(' ');
-    for (const c of Array.from(this.host.querySelectorAll<HTMLElement>(':scope > canvas'))) if (c.style.transform !== t) c.style.transform = t;
+    this.resize();   // the surfaces grow to cover the stage at this angle (1.85.2); the rulers stay put
+    for (const c of Array.from(this.host.querySelectorAll<HTMLElement>(':scope > canvas.cv-canvas'))) if (c.style.transform !== t) c.style.transform = t;
     this.host.classList.toggle('is-turned', !!deg);
   }
 
@@ -473,7 +493,7 @@ export class Stage {
     // highlighted), a count as its number by a dot, dark over light so they read on any image.
     {
       const d = this.dpr;
-      g.save(); g.setTransform(d, 0, 0, d, 0, 0);
+      g.save(); g.setTransform(d, 0, 0, d, this.offX * d, this.offY * d);
       for (const n of p.doc.notes ?? []) {
         const q = v.toScreen(n.x, n.y), on = n.id === this.engine.activeNote;
         g.fillStyle = on ? pal.accent : '#f5c542'; g.strokeStyle = pal.antsB; g.lineWidth = 1;
@@ -493,7 +513,7 @@ export class Stage {
     for (const f of p.doc.layers) {
       if (!f.frame || !f.visible || p.doc.layers.some((c) => c.parentId === f.id)) continue;
       const r = f.frame, a = v.toScreen(r.x, r.y), b = v.toScreen(r.x + r.w, r.y + r.h), d = this.dpr;
-      g.save(); g.setTransform(d, 0, 0, d, 0, 0); g.lineWidth = 1; g.strokeStyle = pal.antsB; g.globalAlpha = 0.7;
+      g.save(); g.setTransform(d, 0, 0, d, this.offX * d, this.offY * d); g.lineWidth = 1; g.strokeStyle = pal.antsB; g.globalAlpha = 0.7;
       g.beginPath();
       if (r.shape === 'ellipse') g.ellipse((a.x + b.x) / 2, (a.y + b.y) / 2, (b.x - a.x) / 2, (b.y - a.y) / 2, 0, 0, Math.PI * 2); else g.rect(a.x + 0.5, a.y + 0.5, b.x - a.x, b.y - a.y);
       g.moveTo(a.x, a.y); g.lineTo(b.x, b.y); g.moveTo(b.x, a.y); g.lineTo(a.x, b.y);
@@ -501,16 +521,16 @@ export class Stage {
     }
     for (const a of this.engine.shownAlphas(p)) {
       const d = this.dpr;
-      g.setTransform(v.zoom * d, 0, 0, v.zoom * d, v.panX * d, v.panY * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(this.alphaTint(p, a), 0, 0); g.setTransform(1, 0, 0, 1, 0, 0);
+      g.setTransform(v.zoom * d, 0, 0, v.zoom * d, (v.panX + this.offX) * d, (v.panY + this.offY) * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(this.alphaTint(p, a), 0, 0); g.setTransform(1, 0, 0, 1, 0, 0);
     }
     if (this.engine.quickMask || this.engine.quickMaskLive) {
       // Quick Mask, or a Selection Brush stroke in progress: a red tint where nothing is selected, in place of the outline; live while a stroke paints it.
       const src = this.quickTint(p);
-      if (src) { const d = this.dpr; g.setTransform(v.zoom * d, 0, 0, v.zoom * d, v.panX * d, v.panY * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(src, 0, 0); g.setTransform(1, 0, 0, 1, 0, 0); }
+      if (src) { const d = this.dpr; g.setTransform(v.zoom * d, 0, 0, v.zoom * d, (v.panX + this.offX) * d, (v.panY + this.offY) * d); g.imageSmoothingEnabled = v.zoom < 1; g.drawImage(src, 0, 0); g.setTransform(1, 0, 0, 1, 0, 0); }
     } else if (sel || fl) {
       const shift = this.engine.outlineShift(p);
       const d = this.dpr;
-      const view = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + (shift?.dy ?? 0) * v.zoom) * d]);
+      const view = new DOMMatrix([v.zoom * d, 0, 0, v.zoom * d, (v.panX + this.offX + (shift?.dx ?? 0) * v.zoom) * d, (v.panY + this.offY + (shift?.dy ?? 0) * v.zoom) * d]);
       const path = new Path2D();
       if (fl) path.addPath(fl.selection.outline(), view.multiply(new DOMMatrix([...fl.m])));
       else if (sel) path.addPath(sel.outline(), view);
@@ -524,7 +544,7 @@ export class Stage {
       g.stroke(path);
       g.setLineDash([]);
     }
-    g.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    g.setTransform(this.dpr, 0, 0, this.dpr, this.offX * this.dpr, this.offY * this.dpr);
     this.drawGuides(g, pal);
     if (this.engine.view.slices && this.tool()?.id !== 'slice' && p.doc.slices?.length) drawSlices(g, p.doc.slices, v.panX, v.panY, v.zoom, pal.accent, this.engine.activeSlice, p.doc);
     this.tool()?.overlay?.(this.ctx, g);

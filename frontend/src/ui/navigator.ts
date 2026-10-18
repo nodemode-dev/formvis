@@ -17,8 +17,9 @@ export class NavigatorPanel {
   private readonly canvas: HTMLCanvasElement;
   private readonly slider: HTMLInputElement;
   private timer = 0;
-  /** Where the document sits in the preview: its scale and offset, in CSS pixels. */
-  private place = { s: 1, sx: 1, ox: 0, oy: 0 };
+  /** Where the document sits in the preview, in CSS pixels: the matrix from document to preview (turned with the view,
+   *  1.85.2) as [a, b, c, d, e, f]. */
+  private place: [number, number, number, number, number, number] = [1, 0, 0, 1, 0, 0];
 
   constructor(host: HTMLElement, private readonly engine: Engine) {
     const body = el(`<div class="cv-nav">
@@ -40,7 +41,8 @@ export class NavigatorPanel {
     const move = (e: PointerEvent): void => {
       const p = engine.current, r = this.canvas.getBoundingClientRect();
       if (!p) return;
-      const x = (e.clientX - r.left - this.place.ox) / this.place.sx, y = (e.clientY - r.top - this.place.oy) / this.place.s, v = p.viewport;
+      const [a, b, c, d, ex, ey] = this.place, det = a * d - b * c || 1, qx = e.clientX - r.left - ex, qy = e.clientY - r.top - ey;
+      const x = (d * qx - c * qy) / det, y = (-b * qx + a * qy) / det, v = p.viewport;
       engine.pan(v.centerX - x * v.zoom - v.panX, v.height / 2 - y * v.zoom - v.panY);
     };
     this.canvas.addEventListener('pointerdown', (e) => { dragging = true; this.canvas.setPointerCapture(e.pointerId); move(e); });
@@ -67,25 +69,37 @@ export class NavigatorPanel {
     if (!p) return;
     // Pixel Aspect Ratio Correction (35.4 part b): only this preview widens by the pixel shape; the main canvas is untouched.
     const k = this.engine.view.parCorrection && p.doc.pixelAspect ? p.doc.pixelAspect : 1;
-    const pad = 12, dw = p.doc.width, dh = p.doc.height, s = Math.min((w - pad * 2) / (dw * k), (h - pad * 2) / dh);
-    const ox = (w - dw * k * s) / 2, oy = (h - dh * s) / 2;
-    this.place = { s, sx: s * k, ox, oy };
-    this.engine.compose(c, [s * k * dpr, 0, 0, s * dpr, ox * dpr, oy * dpr], 'medium');
+    // The preview turns with the view (Rotate View), fitted by the turned document's bounds, as the canvas shows it.
+    const rot = ((p.viewport.rotation ?? 0) * Math.PI) / 180, cs = Math.cos(rot), sn = Math.sin(rot);
+    const pad = 12, dw = p.doc.width, dh = p.doc.height, bw = Math.abs(dw * k * cs) + Math.abs(dh * sn), bh = Math.abs(dw * k * sn) + Math.abs(dh * cs);
+    const s = Math.min((w - pad * 2) / bw, (h - pad * 2) / bh);
+    const a = s * k * cs, b = s * k * sn, cc = -s * sn, d = s * cs, ex = w / 2 - (a * dw + cc * dh) / 2, ey = h / 2 - (b * dw + d * dh) / 2;
+    this.place = [a, b, cc, d, ex, ey];
+    this.engine.compose(c, [a * dpr, b * dpr, cc * dpr, d * dpr, ex * dpr, ey * dpr], 'medium');
     // A duotone document (31.3) is shown as its inks overprinted, as on the canvas.
     if (p.doc.mode === 'duotone' && p.doc.duotone) {
       const img = g.getImageData(0, 0, c.width, c.height);
       applyDuotoneLut(img.data, duotoneLut(p.doc.duotone));
       g.putImageData(img, 0, 0);
     }
-    // The visible area, in red, as the target's.
-    const v = p.viewport, a = v.toDoc(0, 0), b = v.toDoc(v.width, v.height);
-    const x0 = Math.max(0, a.x), y0 = Math.max(0, a.y), x1 = Math.min(dw, b.x), y1 = Math.min(dh, b.y);
-    if (x1 > x0 && y1 > y0) {
-      g.setTransform(dpr, 0, 0, dpr, 0, 0);
-      g.strokeStyle = '#e5533c';
-      g.lineWidth = 1.5;
-      g.strokeRect(ox + x0 * s * k, oy + y0 * s, (x1 - x0) * s * k, (y1 - y0) * s);
-    }
+    // The visible area, in red, as the target's: the stage's corners taken back through the view's turn to the
+    // document, drawn inside the document's outline.
+    const v = p.viewport, deg = v.rotation ?? 0;
+    const corners = [[0, 0], [v.width, 0], [v.width, v.height], [0, v.height]].map(([x, y]) => {
+      const t = deg ? (() => { const q = -deg * Math.PI / 180, dx = x - v.width / 2, dy = y - v.height / 2; return { x: v.width / 2 + dx * Math.cos(q) - dy * Math.sin(q), y: v.height / 2 + dx * Math.sin(q) + dy * Math.cos(q) }; })() : { x, y };
+      return v.toDoc(t.x, t.y);
+    });
+    g.setTransform(a * dpr, b * dpr, cc * dpr, d * dpr, ex * dpr, ey * dpr);
+    g.save();
+    g.beginPath(); g.rect(0, 0, dw, dh); g.clip();
+    g.beginPath();
+    corners.forEach((q, i) => (i ? g.lineTo(q.x, q.y) : g.moveTo(q.x, q.y)));
+    g.closePath();
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.strokeStyle = '#e5533c';
+    g.lineWidth = 1.5;
+    g.stroke();
+    g.restore();
     if (document.activeElement !== this.slider) this.slider.value = String(toSlider(v.zoom));
   }
 }
