@@ -84,6 +84,8 @@ export class PropertiesColumn {
     this.expand();
   }
   private expand: () => void = () => undefined;
+  /** Opens the column out of its strip (1.86.1): a session that lives in Properties, such as Relight, shows itself. */
+  reveal(): void { this.expand(); }
 
   private collapsible(): void {
     const host = this.root;

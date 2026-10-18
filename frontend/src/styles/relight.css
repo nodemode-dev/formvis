@@ -8,6 +8,10 @@
 .cv-relight .cv-field.cv-check { grid-template-columns: 88px auto; justify-content: start; }
 .cv-relight-title { display: flex; align-items: center; gap: var(--space-2); padding: var(--space-1) 0; color: var(--text-primary); font-size: 13px; font-weight: 600; }
 .cv-relight-looks { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: var(--space-1); }
+.cv-relight-gels { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; margin: 2px 0 6px; }
+.cv-relight-gel { aspect-ratio: 1; min-width: 0; padding: 0; border: 1px solid var(--border-color); border-radius: var(--radius-sm); cursor: pointer; }
+.cv-relight-gel:hover, .cv-relight-gel:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+.cv-relight-hex { grid-column: span 8; min-width: 0; font-family: var(--font-mono, monospace); }
 .cv-relight-look { aspect-ratio: 1; padding: 0; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-tertiary); cursor: pointer; overflow: hidden; }
 .cv-relight-look canvas { display: block; width: 100%; height: 100%; }
 .cv-relight-look:hover { border-color: var(--border-light); }

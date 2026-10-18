@@ -257,7 +257,10 @@ body { font-size: var(--fs-12); line-height: 1.35; }
 .cv-float-edge[data-e="nw"] { top: 0; left: 0; cursor: nwse-resize; } .cv-float-edge[data-e="se"] { bottom: 0; right: 0; cursor: nwse-resize; }
 /* The Contextual Task Bar (ui/task-bar.ts): a pill over the canvas on the chrome layer of the z-index scale: below the
    overlay root, so menus and dialogs cover it (the taskbar layer, 900, would sit over them). It is moved with transform only, hidden until its first placement so it never shows at the corner, and rebuilt never. */
-.cv-taskbar { position: absolute; left: 0; top: 0; z-index: var(--z-chrome); display: flex; align-items: center; gap: 2px; max-width: calc(100% - 20px); padding: 3px; border: 1px solid var(--line-3); border-radius: var(--radius-pill); background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter); box-shadow: var(--shadow-md); color: var(--text-primary); font-size: var(--fs-12); user-select: none; will-change: transform; }
+.cv-taskbar { position: absolute; left: 0; top: 0; z-index: var(--z-chrome); display: flex; align-items: center; gap: 2px; max-width: calc(100% - 20px); padding: 3px; border: 1px solid var(--line-3); border-radius: var(--radius-pill); background: var(--bg-secondary); box-shadow: var(--shadow-md); color: var(--text-primary); font-size: var(--fs-12); user-select: none; will-change: transform; }
+/* Solid, not frosted (1.86.1): a backdrop blur over the canvas is redrawn with every canvas frame, which the desktop
+   window's WebKit pays for on each brush dab and pan. A tool session with its own bar (Relight) hides the task bar. */
+.cv-relighting .cv-taskbar { display: none; }
 .cv-taskbar[hidden], .cv-tb-set[hidden] { display: none; }
 .cv-taskbar:not(.is-placed) { visibility: hidden; }
 .cv-taskbar.is-dragging { box-shadow: var(--shadow-lg); }

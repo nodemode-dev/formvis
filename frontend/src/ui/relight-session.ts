@@ -56,6 +56,8 @@ export class RelightSession {
   private prevTool: ToolId = 'move';
   /** The tool in use before the Relight tool was picked in the toolbar, which `end` brings back. */
   cameFrom: ToolId | null = null;
+  /** Called as a session starts, to bring its side panel (in the Properties column) into view. */
+  onBegin: (() => void) | null = null;
   private content: RelightContent = defaultRelight();
   private selectedId: string | null = null;
   private full: Sized | null = null;
@@ -128,6 +130,8 @@ export class RelightSession {
     e.setTool('relight');
     setHidden(this.panel, false);
     setHidden(this.bar, false);
+    this.onBegin?.();
+    document.documentElement.classList.add('cv-relighting');
     this.syncPill();
     this.sync();
     this.schedule();
@@ -311,6 +315,7 @@ export class RelightSession {
     if (this.engine.tool === 'relight') this.engine.setTool(this.prevTool);
     setHidden(this.panel, true);
     setHidden(this.bar, true);
+    document.documentElement.classList.remove('cv-relighting');
     this.syncPill();
     this.engine.emit('overlay', null);
   }
@@ -343,7 +348,19 @@ export class RelightSession {
 
   private addLight(type: RelightType): void {
     if (this.content.lights.length >= MAX_RELIGHT_LIGHTS) { this.engine.notice(t('A relight layer holds up to eight lights.')); return; }
-    const n = this.content.lights.length, l = newLight({ type, name: `Light ${n + 1}`, pos: { x: n % 2 ? 0.85 : 0.15, y: 0.2 + 0.1 * (n % 3) } });
+    // Each added light takes its own part in the setup (1.86.1), not a copy of the first: a cool fill from the other
+    // side, a warm hair light from above, a coloured accent from low, and so on round the subject.
+    const ROLES: ReadonlyArray<Partial<RelightLight>> = [
+      { kelvin: 5200, intensity: 60, distance: 35, pos: { x: 0.15, y: 0.2 }, aim: { x: 0.5, y: 0.4 } },
+      { kelvin: 7500, intensity: 40, distance: 30, softness: 45, pos: { x: 0.88, y: 0.3 }, aim: { x: 0.55, y: 0.42 } },
+      { kelvin: 3200, intensity: 45, distance: 20, pos: { x: 0.5, y: 0.03 }, aim: { x: 0.5, y: 0.25 } },
+      { kelvin: null, color: { r: 47, g: 107, b: 255 }, intensity: 50, distance: 15, pos: { x: 0.08, y: 0.75 }, aim: { x: 0.4, y: 0.55 } },
+      { kelvin: null, color: { r: 255, g: 43, b: 214 }, intensity: 50, distance: 15, pos: { x: 0.92, y: 0.7 }, aim: { x: 0.6, y: 0.55 } },
+      { kelvin: 2700, intensity: 35, distance: 40, softness: 60, pos: { x: 0.3, y: 0.95 }, aim: { x: 0.45, y: 0.6 } },
+      { kelvin: 9000, intensity: 35, distance: 25, pos: { x: 0.7, y: 0.05 }, aim: { x: 0.55, y: 0.3 } },
+      { kelvin: 4300, intensity: 30, distance: 50, softness: 70, pos: { x: 0.5, y: 0.5 }, aim: { x: 0.5, y: 0.45 } },
+    ];
+    const n = this.content.lights.length, l = newLight({ ...ROLES[n % ROLES.length], type, name: `Light ${n + 1}` });
     this.content.lights.push(l);
     this.selectedId = l.id;
     this.sync();
@@ -472,6 +489,24 @@ export class RelightSession {
     slider('kelvin', 'Temperature', 1000, 12000, (l, v) => { l.kelvin = v; l.color = kelvinToRgb(v); });
     const color = colorRow(t('Color'), (h) => this.change((l) => { l.kelvin = null; l.color = fromHex(h); }));
     this.rows.color = color; light.append(color.el);
+    // Gels (1.86.1): one click sets the light's colour, as the reference's colour menu does, without relying on the
+    // system colour picker (which the desktop window may not open); the hex field takes any colour.
+    const gels = el('<div class="cv-relight-gels" role="group"></div>');
+    gels.setAttribute('aria-label', t('Light colour'));
+    const GELS: ReadonlyArray<readonly [string, string]> = [['#ff8a3d', 'Candle'], ['#ffb46b', 'Tungsten'], ['#ffd9a8', 'Warm white'], ['#fff4e8', 'Daylight'], ['#d8e6ff', 'Overcast'], ['#9fc4ff', 'Blue hour'], ['#ff2b2b', 'Red'], ['#ff7a00', 'Orange'], ['#ffd400', 'Amber'], ['#3ddc5a', 'Green'], ['#2bd9c9', 'Teal'], ['#6df1ee', 'Cyan'], ['#2f6bff', 'Blue'], ['#8a4bff', 'Purple'], ['#ff2bd6', 'Magenta'], ['#ff6fa8', 'Pink']];
+    for (const [hexv, name] of GELS) {
+      const b = el<HTMLButtonElement>('<button class="cv-relight-gel" type="button"></button>');
+      b.style.background = hexv; b.title = t(name); b.setAttribute('aria-label', t(name));
+      b.addEventListener('click', () => this.change((l) => { l.kelvin = null; l.color = fromHex(hexv); }));
+      gels.append(b);
+    }
+    const hexIn = el<HTMLInputElement>('<input class="cv-input cv-relight-hex" type="text" maxlength="7" spellcheck="false">');
+    hexIn.setAttribute('aria-label', t('Hex colour'));
+    hexIn.placeholder = '#ffffff';
+    hexIn.addEventListener('change', () => { const v = hexIn.value.trim(); if (/^#?[0-9a-f]{6}$/i.test(v)) this.change((l) => { l.kelvin = null; l.color = fromHex(v.startsWith('#') ? v : `#${v}`); }); });
+    gels.append(hexIn);
+    this.rows.hex = { el: hexIn, set: (v: string) => { if (document.activeElement !== hexIn && hexIn.value !== v) hexIn.value = v; } } as Row<string>;
+    light.append(gels);
     slider('intensity', 'Intensity', 0, 100, (l, v) => { l.intensity = v; });
     slider('softness', 'Softness', 0, 100, (l, v) => { l.softness = v; });
     slider('diffusion', 'Diffusion', 0, 100, (l, v) => { l.diffusion = v; });
@@ -602,6 +637,7 @@ export class RelightSession {
       for (const [k, b] of this.typeButtons) { setClass(b, 'is-on', k === l.type); b.setAttribute('aria-checked', String(k === l.type)); }
       (this.rows.kelvin as Row<number>).set(l.kelvin ?? 6500);
       (this.rows.color as Row<string>).set(hex(l.color));
+      (this.rows.hex as Row<string>).set(hex(l.color));
       for (const k of ['intensity', 'softness', 'diffusion', 'distance'] as const) (this.rows[k] as Row<number>).set(l[k]);
       (this.rows.near as Row<number>).set(l.near ?? 0);
       (this.rows.far as Row<number>).set(l.far ?? 100);

@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.86.1 · 2026-10-18
+
+### Fixed
+
+- Desktop app: dropping image files on the Home screen or the canvas did nothing, because the window's own drop handler took the files before the page saw them. Drops now open a file (Home) or place it as a layer (canvas), as in the browser.
+- Relight: its side panel always opens when a session starts (the Properties column is shown and taken out of its strip, as the reference's panel is); before, a hidden or collapsed column left the lights with no controls in view.
+- Relight: each added light takes its own part (a cool fill from the other side, a warm hair light from above, coloured accents from low, and so on) instead of a copy of the first, and keeps the type chosen in Add Light.
+- Relight: light colour can be set from sixteen gels (candle to blue hour, red to pink) and a hex field under Color, not only through the system colour picker.
+- Relight is a layer, not a filter: it left the Filter menu; it starts from Layer > New > Relight Layer, the Relight tool, the Generate menu and panel, and the Contextual Task Bar.
+- The Contextual Task Bar hides during a Relight session (it sat under the Relight bar) and is solid instead of frosted, which the desktop window redrew on every canvas frame.
+
 ## 1.86.0 · 2026-10-18
 
 ### Added

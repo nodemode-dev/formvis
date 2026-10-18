@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Desktop drops, Relight side panel, distinct lights, gels · _v1.86.1 (src-tauri/src/main.rs, app.ts, ui/relight-session.ts, ui/properties.ts, styles/relight.css, styles/shell.css)
+
+The owner on the 1.86.0 desktop build: dropping an image on Home or the canvas does nothing; it is very slow and glitchy; Add Light adds the same light again; no way to change the light colour; no side panel like the reference; Relight should not be a filter.
+
+- `main.rs`: the main window's builder calls `.disable_drag_drop_handler()`, so file drops reach the page's drop handler (verified in a browser: Home opens the file, the canvas places it as a layer). Not built here: no macOS.
+- `relight-session.ts`: `onBegin` hook, called in `begin`; `addLight` takes a role from `ROLES` by index (replaced `newLight({ type, name, pos: { x: n % 2 ? 0.85 : 0.15, y: 0.2 + 0.1 * (n % 3) } })`); a `.cv-relight-gels` group of sixteen gels and a hex field after the Color row, the hex synced in `sync`; `cv-relighting` on the root element while a session lasts. `properties.ts` `reveal()`; `app.ts` sets `relight.onBegin` to show the Properties column and reveal it. Filter menu: `'filter-relight'` removed; Generate menu: `'filter-relight'` replaced by `'new-relight-layer'`.
+- `shell.css` `.cv-taskbar`: `background: var(--bg-secondary)` (replaced `background: var(--glass-bg); -webkit-backdrop-filter: var(--glass-filter); backdrop-filter: var(--glass-filter);`); `.cv-relighting .cv-taskbar { display: none; }`.
+
+Slowness: not reproduced. A CPU profile of a brush stroke on a 3000 x 2000 document in headless Chromium shows the page idle 97 percent of the time; 1.85.1 and 1.86.0 time the same for wheel panning, a 120-step stroke and a layer move. The desktop window's WebKit could not be measured here.
+
 ## Generative AI in plain sight: Contextual Task Bar, Generate panel and menu; dialog layout sweep · _v1.86.0 (ui/task-bar.ts new, ui/panels/generate-panel.ts new, styles/generate-panel.css new, app.ts, dock.ts, icons.ts, generate-image.ts, generative-dialog.ts, send-to.ts, command-meta.ts, styles/shell.css, styles/dialogs.css, titlebar-tools.ts, index.html)
 
 The owner: generative image models, ComfyUI and NodeMode, Generative Fill, repair and replace, and the API models existed but were not visible; and "dozens of UI glitches" like the Tool Presets dialog, whose content spilled past its frame. Built by three assistants in parallel and reviewed here.
