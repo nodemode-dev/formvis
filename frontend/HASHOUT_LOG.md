@@ -2,6 +2,16 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Desktop app speed: no double monitor conversion, the view table on the GPU, readable canvases on WebKit · _v1.86.2 (ui/colour-display.ts, ui/colour.ts, ui/stage.ts, engine/lut.ts, engine/surface.ts, src-tauri/src/main.rs)
+
+The owner sent the built formvis.app (1.86.0): the browser build is quick, the app slow and glitchy. What only the app does:
+
+- `stage.ts` `renderScene`: any `engine.viewTransform` returned the reason `'Proof Colors and colour-managed viewing are drawn on the CPU'`, and on a Mac the desktop app always has one: `ColourView.refresh` builds a document-to-monitor table from the ColorSync profile (`useDisplay` defaults to true; a browser has no profile). So every frame was composed on the CPU, read back, passed through `applyLut` in JavaScript and written again. Now `const vt = this.engine.viewTransform, viewTable = vt && !vt.gamut ? viewLut3(vt.lut) : null` and the reason is only `'the gamut warning is drawn on the CPU'` (replaced the line above); with a table the GPU layers gain a last `DisplayLayer` `{ image: null, lut: viewTable, lut3: true, ... }`, unless the display's `unsupported` names it (the native renderer). `reason` is now `let`.
+- `lut.ts` `viewLut3(lut)`: the `ColourLut` sampled at the 52-cube lattice into the packed 3D table, cached per table. Checked on 20,000 colours against `applyLut` for P3-like tables on 17 and 33 grids: worst 1 level, mean 0.11 to 0.15. In Chromium (WebGPU and WebGL2 on SwiftShader) the GPU frame matches the CPU frame, mean 0.14, 99th percentile 1 level.
+- `colour-display.ts`: `DisplayInfo.managed`, true in the desktop app on macOS and Windows, whose web views convert the page's sRGB to the monitor already; `displayLine` says the system converts. `colour.ts`: `monitor = c.useDisplay && this.display?.icc && !this.display.managed ? ...` (replaced `c.useDisplay && this.display?.icc ? ...`).
+- `surface.ts` `createSurface`: on WebKit (`READS_ON_CPU`: AppleWebKit and not Chrome, Chromium or Edge) the new surface's first context is `getContext('2d', { willReadFrequently: true })`. Replaced `if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(width, height);` and the element branch's direct `return canvas;`. Chrome is left to its own readback heuristic.
+- `main.rs` `kill_backend`: on Unix, `kill -TERM` and up to 1.5 s of `kill -0` before `child.kill()` (was `child.kill()` alone). Checked standalone with rustc against a real child.
+
 ## Desktop drops, Relight side panel, distinct lights, gels · _v1.86.1 (src-tauri/src/main.rs, app.ts, ui/relight-session.ts, ui/properties.ts, styles/relight.css, styles/shell.css)
 
 The owner on the 1.86.0 desktop build: dropping an image on Home or the canvas does nothing; it is very slow and glitchy; Add Light adds the same light again; no way to change the light colour; no side panel like the reference; Relight should not be a filter.

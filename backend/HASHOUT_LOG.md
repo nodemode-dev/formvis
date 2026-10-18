@@ -2,6 +2,10 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## The frozen engine stops with the app · _v1.86.2 (formvis_engine.py)
+
+- `watch_parent()` (new), called first in `main`: on POSIX, a daemon thread polls `os.getppid()` every 2 s; when the parent changes (the one-file launcher was forced closed), it removes `sys._MEIPASS` if that folder is a `_MEI` one and calls `os._exit(0)`. The 1.86.0 engine is a 320 MB one-file bundle that unpacks 997 MB (3,164 files, 843 MB of native libraries, torch's CPU library alone 386 MB) at every launch; the shell's forced stop reached only the launcher, so the server and that folder could outlive the app. The unpacking itself still happens each launch (DEV_PLAN 37.53, a one-folder build).
+
 ## The room's own light · _v1.85.0 (app/localgen/relight_scene.py, relight_split.py)
 
 - `solve`: the room's shading is second-order SH over its normals (three robust reweightings) times `exp(blur(log(Y / SH), size / 12))` filled across the subject, normalised at the room's 75th percentile and clamped 0.35 to 1.5 (replaced the room's flat `+ (1 - mask)` shading of 1). Room normals are MoGe-2's where the room is seen, filled smoothly behind the subject (`_fill` per channel; replaced only the slope of the blurred layer). The room layer's depth is blurred at `size / 100` (was `size / 30`).

@@ -4,6 +4,15 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.86.2 · 2026-10-18
+
+### Fixed
+
+- Desktop app on macOS (and Windows): the canvas was drawn on the CPU every frame. The app read the monitor profile and converted the canvas to it in JavaScript, which also sent the whole canvas off the GPU; the system already converts the window to the monitor, so the colours were converted twice as well. formvis now leaves that conversion to the system there (Linux, whose web view does not, keeps it), and Color Settings says so.
+- Proof Colors and documents with an embedded profile are drawn on the GPU: the view's colour table runs as a last 3D table over the layers (within one level of the CPU result). The gamut warning still draws on the CPU.
+- Desktop app on macOS and Linux: layer canvases are made for reading (`willReadFrequently`). WebKit otherwise keeps them on the GPU and every pixel read by a brush, filter or selection waited for it; Chrome makes that move by itself, which is why the browser build was quick.
+- Desktop app: quitting asks the engine to stop before forcing it, and the engine stops by itself, removing the gigabyte it unpacked, when the app that started it is gone. A forced stop had reached only the engine's launcher, which could leave the engine server running and its temporary folder behind after each launch.
+
 ## 1.86.1 · 2026-10-18
 
 ### Fixed
