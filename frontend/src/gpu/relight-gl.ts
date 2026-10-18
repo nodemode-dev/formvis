@@ -30,6 +30,7 @@ uniform vec3 uAmbient;
 uniform sampler2D uS0;
 uniform sampler2D uRes;
 uniform float uSplit;
+uniform float uTakeOut;
 
 float toLin(float v) { return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4); }
 float toSrgb(float v) { return v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1.0 / 2.4) - 0.055; }
@@ -45,9 +46,9 @@ float zAt(vec2 p, float relief) {
   vec2 uv = clamp((floor(p) + 0.5) / uSize, vec2(0.0), vec2(1.0));
   return texture(uGeo, uv).a * relief;
 }
-float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft) {
+float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft, bool frameOnly) {
   float k = abs(kind);
-  if (k < 0.5) return 1.0;
+  if (k < 0.5 || (frameOnly && (kind < 0.0 || k > 3.5))) return 1.0;
   float rot = e.w, cr = cos(rot), sr = sin(rot);
   float x = (q.x * cr + q.y * sr) / s, y = (-q.x * sr + q.y * cr) / s;
   float feather = max(0.002, e.z * 0.25 + soft * 0.08);
@@ -56,14 +57,14 @@ float patternAt(float kind, vec2 q, float s, vec4 d, vec4 e, float soft) {
     float half_ = 0.5 * d.y, hw = half_ * d.z;
     float frame = sstep(hw, hw - feather, abs(x)) * sstep(half_, half_ - feather, abs(y));
     float period = (2.0 * half_) / max(2.0, d.w), ph = fract((y + half_) / period), f = feather / period;
-    m = frame * sstep(e.x, e.x - f, ph) * sstep(0.0, f, ph);
+    m = frameOnly ? frame : frame * sstep(e.x, e.x - f, ph) * sstep(0.0, f, ph);
   } else if (k < 2.5) {
-    float hl = 0.5 * e.y * d.y, hw = 0.5 * d.z * 0.25 * d.y;
+    float hl = 0.5 * e.y * d.y, hw = 0.5 * d.z * 0.11 * d.y;
     m = sstep(hl, hl - feather, abs(y)) * sstep(hw, hw - feather, abs(x));
   } else if (k < 3.5) {
     float half_ = 0.32 * d.y, bar = 0.02 * d.y;
     float frame = sstep(half_, half_ - feather, abs(x)) * sstep(half_ * 1.3, half_ * 1.3 - feather, abs(y));
-    m = frame * sstep(bar, bar + feather, abs(x)) * sstep(bar, bar + feather, abs(y));
+    m = frameOnly ? frame : frame * sstep(bar, bar + feather, abs(x)) * sstep(bar, bar + feather, abs(y));
   } else {
     float sc = 6.0 / max(0.1, d.y);
     float n = vnoise(vec2(x, y) * sc) * 0.65 + vnoise(vec2(x, y) * sc * 2.3 + vec2(7.0, 3.0)) * 0.35;
@@ -79,7 +80,8 @@ void main() {
   vec2 p = uv * uSize;
   vec3 n = g.rgb;
   float pz = g.a * relief;
-  vec3 E = uAmbient * (uSplit > 0.5 ? texture(uS0, uv).rgb : vec3(1.0)), S = uSplit > 0.5 ? texture(uRes, uv).rgb * uOrig : vec3(0.0);
+  vec3 s0 = uSplit > 0.5 ? max(texture(uS0, uv).rgb, vec3(1e-4)) : vec3(1.0);
+  vec3 E = uAmbient * pow(s0, vec3(uTakeOut)), S = uSplit > 0.5 ? texture(uRes, uv).rgb * uOrig : vec3(0.0);
   for (int i = 0; i < ${MAX_RELIGHT_LIGHTS}; i++) {
     if (i >= uCount) break;
     vec4 A = uA[i], B = uB[i], C = uC[i], D = uD[i], Ee = uE[i], F = uF[i];
@@ -101,8 +103,8 @@ void main() {
       vec3 v = vec3(q - p, (abs(type - 5.0) < 0.5 ? relief + 0.6 * s : hL) - pz);
       float dist = length(v);
       l = v / dist;
-      float R = (0.25 + 1.5 * distance_) * s;
-      atten = 2.0 / (1.0 + (dist / R) * (dist / R));
+      float R = (0.08 + 0.5 * distance_) * s;
+      atten = 1.0 / (1.0 + (dist / R) * (dist / R));
       maxRun = min(maxRun, length(v.xy));
       if (abs(type - 1.0) < 0.5) {
         vec3 ax = vec3(aim - pos, zAim - hL);
@@ -110,7 +112,9 @@ void main() {
         atten *= sstep(cos(radians(30.0 + 30.0 * softness)), cos(radians(18.0 + 22.0 * softness)), cosA);
       }
     }
-    float wrapExtra = abs(type - 3.0) < 0.5 ? 0.35 : (abs(type - 5.0) < 0.5 ? 0.5 : 0.0);
+    float behind = zAim - pz, reach = (0.06 + 0.6 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
+    atten /= 1.0 + rr * rr;
+    float wrapExtra = abs(type - 3.0) < 0.5 ? 0.35 : (abs(type - 5.0) < 0.5 ? 0.5 : 0.3);
     float wr = clamp(diffusion + wrapExtra, 0.0, 1.5);
     float ndl = dot(n, l), lam = clamp((ndl + wr) / (1.0 + wr), 0.0, 1.0);
     if (lam <= 0.0 || atten <= 1e-4) continue;
@@ -139,20 +143,21 @@ void main() {
       shadow = total * 0.25;
     }
     shadow = 1.0 - (1.0 - shadow) * uShadows;
-    float pattern = 1.0;
+    float pattern = 1.0, frame = 1.0;
     if (abs(D.x) > 0.5) {
-      float par = (pz - relief * 0.5) * 0.1 / max(0.25, l.z);
+      float par = (pz - zAim) * 0.05 / max(0.25, l.z);
       vec2 gp = p + l.xy * par;
-      pattern = patternAt(D.x, gp - aim, s, D, Ee, softness);
+      pattern = patternAt(D.x, gp - aim, s, D, Ee, softness, false);
+      frame = patternAt(D.x, gp - aim, s, D, Ee, softness, true);
     }
     float amount = intensity * 3.2 * atten * shadow * pattern;
     vec3 hv = normalize(l + vec3(0.0, 0.0, 1.0));
     float gloss = 8.0 + 56.0 * (1.0 - softness);
-    E += B.rgb * amount * lam * win;
+    E += B.rgb * (amount * lam * (1.0 - diffusion) + intensity * 3.2 * atten * diffusion * 1.2 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win;
     if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.3 * uShine * win;
   }
   float kd = 1.0 / (1.0 + (texture(uShade, uv).r - 1.0) * uDelight);
-  vec3 lin = vec3(toLin(base.r), toLin(base.g), toLin(base.b)) * kd;
+  vec3 lin = vec3(toLin(base.r), toLin(base.g), toLin(base.b)) * kd * pow(s0, vec3(1.0 - uTakeOut));
   vec3 o = lin * E + S;
   outColor = vec4(toSrgb(tone(o.r)), toSrgb(tone(o.g)), toSrgb(tone(o.b)), base.a);
 }`;
@@ -195,7 +200,7 @@ function init(): GlState | null {
   const base = tex(), geo = tex(), shade = tex(), s0 = tex(), res = tex();
   if (!base || !geo || !shade || !s0 || !res) return null;
   const loc: Record<string, WebGLUniformLocation | null> = {};
-  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit']) loc[k] = gl.getUniformLocation(prog, k);
+  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit', 'uTakeOut']) loc[k] = gl.getUniformLocation(prog, k);
   state = { gl, canvas, prog, base, geo, shade, s0, res, loc };
   return state;
 }
@@ -247,6 +252,7 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   gl.uniform3f(loc.uAmbient, sc.ambient[0], sc.ambient[1], sc.ambient[2]);
   gl.uniform1f(loc.uDelight, shade && !split ? sc.delight : 0);
   gl.uniform1f(loc.uShadows, sc.shadows);
+  gl.uniform1f(loc.uTakeOut, sc.takeOut);
   gl.uniform2f(loc.uSize, w, h);
   const lights = packLights(content, w, h);
   gl.uniform1i(loc.uCount, lights.length);
