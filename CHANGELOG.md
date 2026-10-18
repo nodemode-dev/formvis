@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.86.0 · 2026-10-18
+
+### Added
+
+- Contextual Task Bar (View > Contextual Task Bar): a floating bar over the canvas with the next likely step. With a selection it offers a prompt and Generate (Generative Fill), Remove, Invert, Feather and Deselect, just below the selection; with a photo it offers Select Subject, Remove Background, Generate Image, Generative Expand, Upscale and Relight; with no document, Generate Image and New Document. It can be dragged, pinned, reset or hidden.
+- Generate panel, shown in the Essentials, Photography and Painting workspaces: generate an image from a prompt with any model formvis knows (local, fal, OpenAI, Google, Black Forest Labs, Ideogram, ComfyUI workflows); Edit with AI (Generative Fill, Replace, Remove / Repair, Generative Expand, Remove Background, Upscale, Relight); and Connections, where ComfyUI and NodeMode addresses are set and tested and each API provider's key is added.
+- A Generate menu between Filter and View with all of the above.
+
+### Fixed
+
+- Dialogs whose content spilled past their frame (Tool Presets and others found by a sweep of every dialog).
+- `./build_app` on macOS with Rust 1.97: the release profile stripped the derive crates the compiler loads, so it could not read them (E0463 for `zerofrom_derive` and `phf_macros` although the files were there). Stripping is off, and the derive crates and build scripts are never stripped. The build log's diagnosis now also says whether a derive library still holds its metadata.
+
 ## 1.85.2 · 2026-10-18
 
 ### Fixed

@@ -86,8 +86,13 @@ export class GenerativeDialog extends Dialog {
     return i;
   }
 
-  /** Opens the dialog for Generative Fill, Generative Expand or Upscale (`scale` 2 or 4). */
-  async show(mode: Mode = 'fill', scale = 2): Promise<void> {
+  /** Whether the model now chosen can run without asking the person for anything (a key, a download). */
+  private get runnable(): boolean { return this.lamaHere || this.upscaleHere || !!this.local || !!this.provider || this.comfy || !!this.status?.configured; }
+
+  /** Opens the dialog for Generative Fill, Generative Expand or Upscale (`scale` 2 or 4). With `start` (the Contextual
+   *  Task Bar's Generate) the prompt is filled in and, when the chosen model needs nothing more from the person, the
+   *  run begins at once without the dialog showing; otherwise the dialog opens with the prompt in place and says what is missing. */
+  async show(mode: Mode = 'fill', scale = 2, start?: { prompt: string }): Promise<void> {
     this.mode = mode;
     this.scale = scale;
     this.setTitle(mode === 'upscale' ? `Upscale ${scale}x` : TITLES[mode]);
@@ -104,9 +109,11 @@ export class GenerativeDialog extends Dialog {
     setHidden(this.refs.el, mode === 'upscale');
     setHidden(this.improver.el, mode === 'upscale');
     this.improver.refresh();
+    if (start && mode !== 'upscale') this.prompt.value = start.prompt;
     this.sync();
+    if (start && this.runnable) { await this.generate(); return; }
     this.open();
-    if (mode !== 'upscale') { this.prompt.focus(); this.prompt.select(); }
+    if (mode !== 'upscale') { this.prompt.focus(); if (!start) this.prompt.select(); }
   }
 
   /** Upscale's choices: Real-ESRGAN on fal, or on this computer once its model is downloaded. */

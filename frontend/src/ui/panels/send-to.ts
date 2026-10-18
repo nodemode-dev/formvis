@@ -40,16 +40,11 @@ export class SendDialog extends Dialog {
     const target = this.target;
     if (this.to === 'comfyui') {
       setText(this.status, `Checking ComfyUI at ${target}...`);
-      const c = await api.comfyuiStatus(target);
-      setText(this.status, !c ? 'The formvis engine is offline: sending to ComfyUI needs it (./formvis boot).' : c.running ? `ComfyUI${c.version ? ` ${c.version}` : ''} is running at ${target}. Images go to its input folder, under formvis.` : `ComfyUI is not answering at ${target}. Start it, or set its address in Preferences > Plugins.`);
+      setText(this.status, comfyuiStatusText(await api.comfyuiStatus(target), target));
       return;
     }
     setText(this.status, `Checking NodeMode at ${target}...`);
-    const s = await api.nodemodeStatus(target);
-    setText(this.status, !s ? 'The formvis engine is offline: sending to NodeMode needs it (./formvis boot).'
-      : !s.running ? `NodeMode is not answering at ${target}. Start it, or set its address in Preferences > Plugins.`
-      : s.receiver ? `NodeMode is running at ${target}.`
-      : `NodeMode is running at ${target}, but cannot place images on its canvas yet: they will go to its uploads.`);
+    setText(this.status, nodemodeStatusText(await api.nodemodeStatus(target), target));
   }
 
   private images(what: What): Array<{ surface: Surface; item: Record<string, unknown> }> { return imagesFor(this.engine, what, this.to, this.name.value); }
@@ -75,6 +70,19 @@ export class SendDialog extends Dialog {
       setText(this.status, err instanceof ApiError ? err.message : `Sending to ${this.to === 'comfyui' ? 'ComfyUI' : 'NodeMode'} failed: the formvis engine is offline (./formvis boot).`);
     } finally { this.sending = false; }
   }
+}
+
+/** What the engine's ComfyUI check says, in words (null: the engine itself did not answer). Send to ComfyUI and the Generate panel's Test say it the same way. */
+export function comfyuiStatusText(c: { running: boolean; version?: string } | null, target: string): string {
+  return !c ? 'The formvis engine is offline: sending to ComfyUI needs it (./formvis boot).' : c.running ? `ComfyUI${c.version ? ` ${c.version}` : ''} is running at ${target}. Images go to its input folder, under formvis.` : `ComfyUI is not answering at ${target}. Start it, or set its address in Preferences > Plugins.`;
+}
+
+/** The same for NodeMode and its receiver. */
+export function nodemodeStatusText(s: { running: boolean; receiver: boolean } | null, target: string): string {
+  return !s ? 'The formvis engine is offline: sending to NodeMode needs it (./formvis boot).'
+    : !s.running ? `NodeMode is not answering at ${target}. Start it, or set its address in Preferences > Plugins.`
+    : s.receiver ? `NodeMode is running at ${target}.`
+    : `NodeMode is running at ${target}, but cannot place images on its canvas yet: they will go to its uploads.`;
 }
 
 export async function toPng(s: Surface): Promise<Blob> {

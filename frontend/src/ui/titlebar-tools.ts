@@ -9,11 +9,12 @@ import { enhanceSelect } from './dropdown';
  *  each workspace an arrangement of the panels for a kind of work; and Lock Workspace. */
 export interface Workspace { id: string; label: string; order: string[]; hidden: string[]; propsColumn: boolean }
 export const WORKSPACES: readonly Workspace[] = [
-  { id: 'essentials', label: 'Essentials', order: ['navigator', 'swatches', 'layers', 'timeline', 'history'], hidden: ['timeline', 'history'], propsColumn: true },
-  { id: 'photography', label: 'Photography', order: ['navigator', 'layers', 'history', 'swatches', 'timeline'], hidden: ['swatches', 'timeline'], propsColumn: true },
-  { id: 'painting', label: 'Painting', order: ['swatches', 'navigator', 'layers', 'history', 'timeline'], hidden: ['timeline'], propsColumn: true },
-  { id: 'graphic', label: 'Graphic and Web', order: ['layers', 'swatches', 'navigator', 'history', 'timeline'], hidden: ['navigator', 'timeline'], propsColumn: true },
-  { id: 'motion', label: 'Motion', order: ['layers', 'timeline', 'navigator', 'swatches', 'history'], hidden: ['swatches'], propsColumn: true },
+  // The Generate panel (generative fill, models, ComfyUI and NodeMode) sits near the top of the dock in the photo and painting workspaces.
+  { id: 'essentials', label: 'Essentials', order: ['navigator', 'generate', 'swatches', 'layers', 'timeline', 'history'], hidden: ['timeline', 'history'], propsColumn: true },
+  { id: 'photography', label: 'Photography', order: ['navigator', 'generate', 'layers', 'history', 'swatches', 'timeline'], hidden: ['swatches', 'timeline'], propsColumn: true },
+  { id: 'painting', label: 'Painting', order: ['swatches', 'navigator', 'generate', 'layers', 'history', 'timeline'], hidden: ['timeline'], propsColumn: true },
+  { id: 'graphic', label: 'Graphic and Web', order: ['layers', 'swatches', 'navigator', 'generate', 'history', 'timeline'], hidden: ['navigator', 'generate', 'timeline'], propsColumn: true },
+  { id: 'motion', label: 'Motion', order: ['layers', 'timeline', 'navigator', 'generate', 'swatches', 'history'], hidden: ['swatches', 'generate'], propsColumn: true },
 ];
 /** A workspace saved under an earlier name. */
 const RENAMED: Record<string, string> = { typography: 'graphic' };

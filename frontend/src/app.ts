@@ -142,6 +142,7 @@ import { ModeDialog } from './ui/app-dialogs';
 import { SendDialog } from './ui/panels/send-to';
 import { RunWorkflowDialog } from './ui/panels/comfyui-run';
 import { GenerateImageDialog } from './ui/panels/generate-image';
+import { GeneratePanel } from './ui/panels/generate-panel';
 import { ColorMatchDialog } from './ui/panels/color-match';
 import { FilmLayerDialog } from './ui/panels/film-layer';
 import { Model3DDialog } from './ui/panels/model3d';
@@ -215,10 +216,11 @@ import { t } from './ui/i18n';
 import { Tabs } from './ui/tabs';
 import { ViewTiles, type ArrangeLayout } from './ui/view-tiles';
 import { FloatViews } from './ui/float-views';
+import { TaskBar } from './ui/task-bar';
 import { toast } from './ui/toast';
 
 /** Each tab's own group, where Reset Panels returns it. */
-const TAB_HOMES: Record<string, string> = { info: 'info', layers: 'layers-panel', channels: 'layers-panel', paths: 'layers-panel', navigator: 'navigator', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
+const TAB_HOMES: Record<string, string> = { info: 'info', layers: 'layers-panel', channels: 'layers-panel', paths: 'layers-panel', navigator: 'navigator', generate: 'generate', swatches: 'swatches', color: 'swatches', properties: 'properties', brushes: 'brushes', 'brush-settings': 'brushes', paragraph: 'paragraph', character: 'character' };
 const LAYERS_W_KEY = 'formvis_layers_w';
 const message = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
@@ -361,6 +363,7 @@ export function startApp(): void {
   const stage = new Stage(q(root, '.cv-stage'), engine);
   const viewTiles = new ViewTiles(q(root, '.cv-stage-col'), engine);   // Window > Arrange (the Stage's own ResizeObserver refits it)
   const floatViews = new FloatViews(q(root, '.cv-stage-col'), engine);   // Window > Arrange > Float in Window (36.16)
+  const taskBar = new TaskBar(q(root, '.cv-stage'), engine, commands, () => stage.ctx.view());   // View > Contextual Task Bar
   // Preferences the interface draws with (the engine's are applyPrefs'): the stage's checkerboard, wheel, rulers, grid
   // and guides, and the side column's narrow-window icons.
   const applyChecker = (pr: Prefs): void => {
@@ -395,6 +398,13 @@ export function startApp(): void {
   const syncPropsCol = (): void => { setHidden(q(root, '.cv-props-col'), !sideOpen()); setStyleVar(root, '--cv-props-w', sideOpen() ? '46px' : '0px'); Viewport.insetRight = sideOpen() && !PropertiesColumn.showingCollapsed ? PropertiesColumn.openWidth() - 46 : 0; };   // the strip's track only: expanded, the column lies over the canvas (the owner's walkthrough), and fitting leaves it out
   syncPropsCol();
   new NavigatorPanel(q(root, '.cv-layers'), engine);
+  // Window > Generate: generative fill, models, ComfyUI and NodeMode in the dock; every button runs its own command.
+  const generatePanel = new GeneratePanel(q(root, '.cv-layers'), engine, {
+    run: (id, params) => commands.run(id, params),
+    state: (id) => { const c = commands.get(id); return c ? { enabled: commands.enabled(c), why: commands.why(c) } : { enabled: false, why: '' }; },
+    toast: (text, kind) => toast(text, kind),
+    heard: (r) => heard(r),
+  });
   const swatches = new SwatchesPanel(q(root, '.cv-layers'), engine);
   const layers = new LayersPanel(q(root, '.cv-layers'), engine, contextMenu);
   new PathsPanel(q(root, '.cv-layers'), engine);
@@ -2350,6 +2360,9 @@ export function startApp(): void {
     { id: 'print-one-copy', label: 'Print One Copy', keys: ['Alt+Shift+Mod+P'], enabled: has, run: () => { printDocument(engine, { ...printSettings, selectedArea: printSettings.selectedArea && !!engine.current?.selection }); } },
     { id: 'file-info', label: 'File Info...', keys: ['Alt+Shift+Mod+I'], enabled: has, params: FILE_INFO_PARAMS, run: (a) => fileInfoRun(a) },
     { id: 'toggle-rulers', label: () => (engine.view.rulers ? 'Hide Rulers' : 'Show Rulers'), keys: ['Mod+R'], enabled: has, run: () => engine.setView({ rulers: !engine.view.rulers }) },
+    { id: 'toggle-task-bar', label: 'Contextual Task Bar', checked: () => !taskBar.hidden, run: () => taskBar.toggle() },
+    { id: 'task-bar-pin', label: 'Pin Task Bar', checked: () => taskBar.pinned, run: () => taskBar.togglePin() },
+    { id: 'task-bar-reset', label: 'Reset Task Bar Position', run: () => taskBar.reset() },
     { id: 'toggle-guides', label: () => (engine.view.guides ? 'Hide Guides' : 'Show Guides'), keys: ['Mod+;'], enabled: has, run: () => engine.setView({ guides: !engine.view.guides }) },
     { id: 'toggle-grid', label: () => (engine.view.grid ? 'Hide Grid' : 'Show Grid'), keys: ["Mod+'"], enabled: has, run: () => engine.setView({ grid: !engine.view.grid }) },
     { id: 'lock-guides', label: () => (engine.view.guidesLocked ? 'Unlock Guides' : 'Lock Guides'), keys: ['Alt+Mod+;'], enabled: has, run: () => engine.setView({ guidesLocked: !engine.view.guidesLocked }) },
@@ -3014,8 +3027,10 @@ export function startApp(): void {
     { id: 'stroke-dialog', label: 'Stroke...', enabled: () => pixel() && (selected() || !!engine.activeLayer?.raster), run: () => dialogs.stroke.show() },
     { id: 'transform', label: () => (engine.canTransformSelection || engine.floatingSelection ? 'Transform Selection' : 'Transform Layer'), keys: ['Alt+Mod+T', 'Mod+T'], enabled: () => !!engine.activeLayer && !engine.floatingSelection, run: () => engine.transformCommand() },
     { id: 'content-fill', label: 'Quick Content-Aware Fill', keys: ['Shift+Backspace'], enabled: () => pixel() && selected(), run: () => { void engine.task(async () => { await new Promise((r) => requestAnimationFrame(() => window.setTimeout(r, 0))); engine.contentAwareFill(); }); } },
-    { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: () => void dialogs.generative.show() },
+    { id: 'generative-fill', label: 'Generative Fill...', enabled: () => selected(), run: (a) => void dialogs.generative.show('fill', 2, typeof a?.prompt === 'string' ? { prompt: a.prompt } : undefined) },   // the Contextual Task Bar passes the prompt it holds (undeclared: agents and the menus open the dialog)
     { id: 'generate-image', label: 'Generate Image...', enabled: () => true, run: () => void generateImage.show() },   // 1.51.2, as Photoshop's Edit menu
+    { id: 'generate-panel', label: 'Generate Panel', run: () => { if (dock.collapsed) dock.setCollapsed(false); if (!dock.isShown('generate')) dock.toggle('generate'); generatePanel.reveal(); } },
+    { id: 'generate-remove', label: 'Remove / Repair', icon: 'tRemove', enabled: pixel, run: () => { if (selected()) commands.run('content-fill'); else { engine.setTool('remove'); toast('The Remove tool is on: paint over what to take out.'); } } },
     { id: 'path-selection', label: 'Make Selection from Path', keys: ['Mod+Enter'], enabled: () => !!engine.workPath, run: () => engine.pathToSelection() },
     { id: 'fill-path', label: 'Fill Path', enabled: () => !!engine.workPath && pixel(), run: () => engine.fillPath() },
     { id: 'fill-path-dialog', label: 'Fill Path...', enabled: () => !!engine.workPath && pixel(), run: () => dialogs.fill.show('path') },
@@ -3235,7 +3250,9 @@ export function startApp(): void {
       { label: 'Video', items: filterGroup('Video', []) },
       { label: 'Other', items: filterGroup('Other', []) },
       { label: '3D', items: ['normal-map', 'bump-map', 'height-from-normal'] }, '-', 'remove-bg', 'remove-bg-lite'] },
-    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', '-',
+    // Generate: the generative commands in one place (the Generate panel, models, fill, repair, size, relight, and the ComfyUI and NodeMode links).
+    { label: 'Generate', items: ['generate-panel', '-', 'generate-image', 'generative-fill', 'generative-expand', '-', 'generate-remove', 'content-fill-workspace', 'content-fill', 'remove-wires', '-', 'remove-bg', 'remove-bg-lite', '-', 'upscale-2x', 'upscale-4x', 'filter-relight', '-', 'comfyui-run', 'send-comfyui', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode'])] },
+    { label: 'View', items: [{ label: 'Proof Setup', items: ['proof-setup', '-', 'proof-preset-cmyk', 'proof-preset-cyan', 'proof-preset-magenta', 'proof-preset-yellow', 'proof-preset-black', 'proof-preset-cmy', '-', 'proof-preset-protanopia', 'proof-preset-deuteranopia'] }, 'proof-colors', 'gamut-warning', '-', 'zoom-in', 'zoom-out', 'fit', 'fit-layers', 'fit-artboard', 'actual', '-', 'toggle-rulers', 'toggle-grid', 'pixel-grid', 'pattern-preview', 'pixel-art-preview', 'par-correction', 'transform-controls', 'toggle-task-bar', '-',
       { label: 'Guides', items: ['toggle-guides', 'lock-guides', 'new-guide', 'guide-layout', 'guides-from-shape', 'clear-guides'] }, { label: 'Show', items: ['toggle-show-slices', 'layer-based-slice', 'slice-options', 'clear-slices'] }, '-',
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },

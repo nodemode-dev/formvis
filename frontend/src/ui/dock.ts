@@ -9,6 +9,7 @@ import { icon } from './icons';
 export interface DockPanel { id: string; label: string; selector: string }
 export const DOCK_PANELS: readonly DockPanel[] = [
   { id: 'navigator', label: 'Navigator', selector: '.cv-navigator' },
+  { id: 'generate', label: 'Generate', selector: 'section.cv-generate' },
   { id: 'swatches', label: 'Swatches', selector: '.cv-swatches' },
   { id: 'layers', label: 'Layers', selector: '.cv-layers-panel' },
   { id: 'timeline', label: 'Timeline', selector: '.cv-timeline' },
@@ -194,7 +195,7 @@ export class Dock {
     const expand = el<HTMLButtonElement>(`<button class="cv-strip-btn cv-strip-expand" type="button" title="Expand panels" aria-label="Expand panels">${icon('collapseLeft', 16)}</button>`);
     expand.addEventListener('click', () => this.setCollapsed(false));
     strip.appendChild(expand);
-    const ICONS: Record<string, string> = { navigator: 'panelNav', swatches: 'swatchGrid', layers: 'layers', timeline: 'film', history: 'history' };
+    const ICONS: Record<string, string> = { navigator: 'panelNav', swatches: 'swatchGrid', layers: 'layers', timeline: 'film', history: 'history', generate: 'sparkle' };
     for (const id of this.dockIds().filter((x) => this.present(x))) {
       const s = this.section(id), label = DOCK_PANELS.find((p) => p.id === id)?.label ?? id;
       if (!s) continue;

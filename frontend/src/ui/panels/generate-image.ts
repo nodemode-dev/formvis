@@ -1,12 +1,113 @@
 import { Raster, type Engine } from '../../engine';
-import { api, ApiError, type ProviderStatus } from '../../io/api';
+import { api, ApiError, type GenerativeStatus, type ProviderStatus } from '../../io/api';
 import { recipes, runToResults } from '../../io/comfy';
 import { localModels, runLocal } from '../../io/local-gen';
 import { Dialog } from '../dialogs';
-import { el, setText } from '../dom';
+import { el, patchList, setText } from '../dom';
+import { t } from '../i18n';
 import { loadPrefs } from '../prefs';
 import { ReferencePicker } from './references';
 import { PromptImprover } from './prompt-improver';
+
+/** One model Generate Image can use: its value in the picker, its words, and why it cannot be chosen when it cannot. */
+export interface GenerationModel { value: string; label: string; disabled: boolean; reason: string }
+export interface GenerationModels { models: GenerationModel[]; providers: ProviderStatus[]; preferred: string; fal: GenerativeStatus | null }
+
+const PROVIDER_NAMES: Record<string, string> = { openai: 'GPT Image', google: 'Gemini image', bfl: 'FLUX1.1 [pro]', ideogram: 'Ideogram 3.0' };
+
+/** The models Generate Image offers, from the one source the Generate Image dialog and the Generate panel share: fal,
+ *  the providers beside it, the kept ComfyUI workflows (left out when `comfy` is false: the panel offers them only while
+ *  ComfyUI answers) and the models on this computer. `preferred` is the default: fal with a key, else a model here. */
+export async function generationModels(comfy = true): Promise<GenerationModels> {
+  const locals = await localModels();   // the local models (1.52.9)
+  const providers = await api.providers();
+  const models: GenerationModel[] = [
+    { value: 'fal', label: 'FLUX1.1 [pro] (fal)', disabled: false, reason: '' },
+    ...providers.map((pr) => ({ value: `provider:${pr.id}`, label: `${PROVIDER_NAMES[pr.id] ?? pr.model} (${pr.name})`, disabled: false, reason: '' })),
+    ...(comfy ? recipes().map((r) => ({ value: r.name, label: `${r.name} (ComfyUI)`, disabled: false, reason: '' })) : []),
+    ...locals.map((m) => ({ value: m.id, label: `${m.label.replace(/ \(local\)$/, '')} (this computer)`, disabled: !m.ready, reason: !m.ready && m.reason ? m.reason : '' })),
+  ];
+  // fal, the cloud default, when it has a key; else a model on this computer; else fal, whose key is then asked for (1.58.5).
+  const fal = await api.generativeStatus(), local = locals.find((m) => m.ready)?.id ?? null;
+  return { models, providers, preferred: fal?.configured ? 'fal' : local ?? 'fal', fal };
+}
+
+const applyModel = (o: HTMLOptionElement, m: GenerationModel): void => {
+  setText(o, m.label);
+  if (o.disabled !== m.disabled) o.disabled = m.disabled;
+  if (o.title !== m.reason) o.title = m.reason;
+};
+
+/** Puts the models into a picker in place: options are updated, added and removed by value, so a picker on screen never
+ *  blinks and keeps what is chosen while it is still offered. */
+export function fillModelPicker(select: HTMLSelectElement, models: readonly GenerationModel[]): void {
+  patchList(select, [...models], {
+    key: (m) => m.value,
+    create: (m) => { const o = document.createElement('option'); o.value = m.value; applyModel(o, m); return o; },
+    update: (o, m) => applyModel(o as HTMLOptionElement, m),
+  });
+}
+
+export interface GenerationRequest {
+  prompt: string;
+  /** The picker's value: 'fal', 'provider:<id>', 'local:<model>' or a kept ComfyUI workflow's name. */
+  choice: string;
+  providers: readonly ProviderStatus[];
+  /** The pixel size to ask for; the document's own when absent. */
+  size?: { width: number; height: number };
+  /** The layers sent as references to a ComfyUI workflow. */
+  references?: () => Promise<Array<{ name: string; blob: Blob }>>;
+  status: (text: string) => void;
+  stopped: () => boolean;
+  heard?: (r: { notice?: string; warning?: string; notes: string[] }) => void;
+  /** Where a missing key is added, for the messages (the dialog and the panel add keys in different places). */
+  keyHint?: { fal: string; provider: (name: string) => string };
+}
+
+/** One generation, by whichever model is chosen: the picture arrives as a new layer 'Generated Image' (a new 1024 by 1024
+ *  document when none is open, or one of the size asked). With a size other than the document's, the layer is that size,
+ *  centred. Resolves true once the layer is in, false when stopped or the document changed; otherwise throws, with words
+ *  for the person. The dialog and the panel both run this. */
+export async function runGeneration(engine: Engine, req: GenerationRequest): Promise<boolean> {
+  if (!engine.current) engine.newDocument(req.size?.width ?? 1024, req.size?.height ?? 1024, 'Generated', 'white');
+  const p = engine.current;
+  if (!p) return false;
+  const W = p.doc.width, H = p.doc.height, w = req.size?.width ?? W, h = req.size?.height ?? H, { prompt, choice } = req;
+  const hint = req.keyHint ?? { fal: t('Add a fal API key first, in Edit > Generative Fill.'), provider: (name: string) => t(`Add a ${name} API key first, above.`) };
+  let blob: Blob;
+  if (choice.startsWith('local:')) {
+    // On this computer: the shape asked within the model's 2048 pixels, in multiples of 16.
+    const k = Math.min(1, 2048 / Math.max(w, h)), lw = Math.max(256, Math.round((w * k) / 16) * 16), lh = Math.max(256, Math.round((h * k) / 16) * 16);
+    const r = await runLocal({ generator: choice, prompt, size: `${lw}x${lh}`, count: 1 }, req.status, req.stopped);
+    req.heard?.(r);
+    blob = r.pictures[0];
+  } else if (choice.startsWith('provider:')) {
+    const pr = req.providers.find((x) => `provider:${x.id}` === choice);
+    if (!pr) throw new Error(t('That provider is not available.'));
+    if (!pr.configured) throw new Error(hint.provider(pr.name));
+    req.status(t(`Generating with ${pr.name}...`));
+    blob = await api.generateImage(prompt, w, h, pr.id);
+  } else if (choice === 'fal') {
+    const st = await api.generativeStatus();
+    if (!st) throw new Error(t('The formvis engine is offline. Start it with ./formvis boot.'));
+    if (!st.configured) throw new Error(hint.fal);
+    req.status(t('Generating on fal...'));
+    blob = await api.generateImage(prompt, w, h);
+  } else {
+    const recipe = recipes().find((r) => r.name === choice);
+    if (!recipe) throw new Error(t('That workflow is no longer kept: add it again in Edit > Generative Fill.'));
+    req.status(t('Sending to ComfyUI...'));
+    const refs = req.references ? await req.references() : [];
+    blob = (await runToResults(loadPrefs().comfyuiUrl, recipe.json, refs.map((r) => ({ name: r.name, kind: 'reference' })), refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), prompt, req.status, req.stopped))[0];
+  }
+  if (req.stopped() || engine.current !== p) return false;
+  const bitmap = await createImageBitmap(blob), r = new Raster(w, h);
+  r.ctx.drawImage(bitmap, 0, 0, w, h);   // scaled to the shape asked
+  bitmap.close();
+  r.touch();
+  engine.insertRasterLayer(r, 'Generated Image', Math.round((W - w) / 2), Math.round((H - h) / 2), {}, 'Generate Image');
+  return true;
+}
 
 /** Edit > Generate Image (1.51.2), as Photoshop's: a picture from a prompt alone, as a new layer at the document's size
  *  (a new 1024 by 1024 document when none is open), with FLUX1.1 [pro] on fal, OpenAI, Google, Black Forest Labs or
@@ -47,18 +148,13 @@ export class GenerateImageDialog extends Dialog {
 
   async show(): Promise<void> {
     const was = this.model.value;
-    const locals = await localModels();   // the local models (1.52.9)
-    this.providers = await api.providers();
-    const named: Record<string, string> = { openai: 'GPT Image', google: 'Gemini image', bfl: 'FLUX1.1 [pro]', ideogram: 'Ideogram 3.0' };
-    this.model.replaceChildren(el('<option value="fal">FLUX1.1 [pro] (fal)</option>'),
-      ...this.providers.map((pr) => { const o = document.createElement('option'); o.value = `provider:${pr.id}`; o.textContent = `${named[pr.id] ?? pr.model} (${pr.name})`; return o; }),
-      ...recipes().map((r) => { const o = document.createElement('option'); o.value = r.name; o.textContent = `${r.name} (ComfyUI)`; return o; }),
-      ...locals.map((m) => { const o = document.createElement('option'); o.value = m.id; o.textContent = `${m.label.replace(/ \(local\)$/, '')} (this computer)`; o.disabled = !m.ready; if (!m.ready && m.reason) o.title = m.reason; return o; }));
-    // The person's choice while it stands; else fal, the cloud default, when it has a key; else a model on this
-    // computer; else fal, whose key the dialog then asks for (1.58.5). The other providers are chosen, never defaults.
-    const falKey = !!(await api.generativeStatus())?.configured, local = locals.find((m) => m.ready)?.id ?? null;
+    const { models, providers, preferred } = await generationModels();   // the models the Generate panel offers too
+    this.providers = providers;
+    fillModelPicker(this.model, models);
+    // The person's choice while it stands; else the default (fal with a key, else a model on this computer). The other
+    // providers are chosen, never defaults (1.58.5).
     if (this.picked && [...this.model.options].some((o) => o.value === was && !o.disabled)) this.model.value = was;
-    else this.model.value = falKey ? 'fal' : local ?? 'fal';
+    else this.model.value = preferred;
     this.refs.refresh(this.model.value === 'fal');
     this.keyFor();
     this.improver.refresh();
@@ -105,45 +201,12 @@ export class GenerateImageDialog extends Dialog {
     const prompt = this.prompt.value.trim();
     if (this.busy) return;
     if (!prompt) { setText(this.status, 'Describe the image to generate.'); return; }
-    if (!this.engine.current) this.engine.newDocument(1024, 1024, 'Generated', 'white');
-    const p = this.engine.current;
-    if (!p) return;
-    const W = p.doc.width, H = p.doc.height, choice = this.model.value;
     this.busy = true;
     this.stopped = false;
     try {
-      let blob: Blob;
-      if (choice.startsWith('local:')) {
-        // On this computer: the document's shape within the model's 2048 pixels, in multiples of 16.
-        const k = Math.min(1, 2048 / Math.max(W, H)), w = Math.max(256, Math.round((W * k) / 16) * 16), h = Math.max(256, Math.round((H * k) / 16) * 16);
-        const r = await runLocal({ generator: choice, prompt, size: `${w}x${h}`, count: 1 }, (t) => setText(this.status, t), () => this.stopped);
-        this.heard(r);
-        blob = r.pictures[0];
-      } else if (choice.startsWith('provider:')) {
-        const pr = this.chosenProvider();
-        if (!pr) throw new Error('That provider is not available.');
-        if (!pr.configured) throw new Error(`Add a ${pr.name} API key first, above.`);
-        setText(this.status, `Generating with ${pr.name}...`);
-        blob = await api.generateImage(prompt, W, H, pr.id);
-      } else if (choice === 'fal') {
-        const st = await api.generativeStatus();
-        if (!st) throw new Error('The formvis engine is offline. Start it with ./formvis boot.');
-        if (!st.configured) throw new Error('Add a fal API key first, in Edit > Generative Fill.');
-        setText(this.status, 'Generating on fal...');
-        blob = await api.generateImage(prompt, W, H);
-      } else {
-        const recipe = recipes().find((r) => r.name === choice);
-        if (!recipe) throw new Error('That workflow is no longer kept: add it again in Edit > Generative Fill.');
-        setText(this.status, 'Sending to ComfyUI...');
-        const refs = await this.refs.chosen();
-        blob = (await runToResults(loadPrefs().comfyuiUrl, recipe.json, refs.map((r) => ({ name: r.name, kind: 'reference' })), refs.map((r, i) => ({ name: `ref${i}.png`, blob: r.blob })), prompt, (t) => setText(this.status, t), () => this.stopped))[0];
-      }
-      if (this.stopped || this.engine.current !== p) return;
-      const bitmap = await createImageBitmap(blob), r = new Raster(W, H);
-      r.ctx.drawImage(bitmap, 0, 0, W, H);   // scaled to the document
-      bitmap.close();
-      r.touch();
-      this.engine.insertRasterLayer(r, 'Generated Image', 0, 0, {}, 'Generate Image');
+      // The same generation the Generate panel runs; a new layer at the document's size (a new document when none is open).
+      const added = await runGeneration(this.engine, { prompt, choice: this.model.value, providers: this.providers, references: () => this.refs.chosen(), status: (text) => setText(this.status, text), stopped: () => this.stopped, heard: (r) => this.heard(r) });
+      if (!added) return;
       this.close();
       this.toast('The generated image was added as a layer.');
     } catch (err) {

@@ -1,0 +1,45 @@
+/* The Generate panel (ui/panels/generate-panel.ts): Generate, Edit with AI and Connections as folding sections in a dock group. */
+/* Tall content scrolls inside the group, so the Layers panel below always keeps its room; a height set by the splitter wins. */
+.cv-layers > .cv-generate:not(.is-sized) { max-height: clamp(280px, 40vh, 400px); }
+.cv-layers > .cv-generate:not(.is-sized) > .cv-group-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; }
+.cv-genp { display: flex; flex-direction: column; min-width: 0; }
+.cv-genp [hidden] { display: none; }
+.cv-genp-sec { border-bottom: 1px solid var(--line-0); }
+.cv-genp-sec:last-child { border-bottom: 0; }
+.cv-genp-sechead { display: flex; align-items: center; gap: var(--space-2); width: 100%; padding: var(--space-2) 0; border: 0; background: transparent; color: var(--text-primary); font: inherit; font-size: var(--fs-13); font-weight: 600; text-align: left; cursor: pointer; }
+.cv-genp-sechead .icon { color: var(--text-muted); transition: transform 0.12s ease; }
+.cv-genp-sechead[aria-expanded="false"] .icon { transform: rotate(-90deg); }
+.cv-genp-secbody { display: flex; flex-direction: column; gap: var(--space-2); padding: 0 0 var(--space-3); min-width: 0; }
+
+/* Generate */
+.cv-genp-prompt { width: 100%; height: auto; min-height: 54px; padding: 6px var(--space-2); resize: vertical; line-height: 1.4; font-family: inherit; }
+.cv-genp-row { display: grid; grid-template-columns: 40px minmax(0, 1fr); align-items: center; gap: var(--space-2); color: var(--text-secondary); font-size: var(--fs-12); }
+.cv-genp-row .cv-input { width: 100%; }
+.cv-genp-go { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 var(--space-3); border: 1px solid var(--cta-bg); border-radius: var(--radius-md); background: var(--cta-bg); color: var(--cta-text); font: inherit; font-size: var(--fs-13); font-weight: 600; cursor: pointer; }
+.cv-genp-go:hover { background: var(--cta-bg-hover); }
+.cv-genp-go.is-busy { border-color: var(--line-3); background: var(--surface-2); color: var(--text-primary); }
+.cv-genp-status, .cv-genp-keymsg, .cv-genp-linkhint, .cv-genp-msg { margin: 0; line-height: 1.35; overflow-wrap: anywhere; }
+.cv-genp-status { min-height: 1.35em; }
+.cv-genp-hint { margin: 0; min-height: 2.7em; line-height: 1.35; overflow-wrap: anywhere; }
+
+/* Edit with AI, and the buttons under Connections */
+.cv-genp-acts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.cv-genp-links { grid-template-columns: minmax(0, 1fr); }
+.cv-genp-act { justify-content: flex-start; min-width: 0; height: auto; min-height: 34px; padding: 4px var(--space-2); font-size: var(--fs-12); text-align: left; white-space: normal; }
+.cv-genp-act .icon { flex: none; }
+.cv-genp-actlabel { min-width: 0; line-height: 1.15; overflow-wrap: anywhere; }
+.cv-genp-act.is-disabled, .cv-genp .cv-btn[aria-disabled="true"] { opacity: 0.45; cursor: not-allowed; }
+
+/* Connections */
+.cv-genp-conns, .cv-genp-keys { display: flex; flex-direction: column; gap: var(--space-3); }
+.cv-genp-conn, .cv-genp-prov { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.cv-genp-line { display: flex; align-items: center; gap: 6px; min-width: 0; font-size: var(--fs-12); }
+.cv-genp-name { color: var(--text-primary); font-weight: 500; }
+.cv-genp-state { margin-left: auto; color: var(--text-secondary); font-size: var(--fs-11); white-space: nowrap; }
+.cv-genp-dot { flex: none; width: 8px; height: 8px; border-radius: var(--radius-pill); background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-muted); }
+.cv-genp-dot[data-state="up"] { background: var(--ok); box-shadow: none; }
+.cv-genp-dot[data-state="down"] { background: var(--danger); box-shadow: none; }
+.cv-genp-keyrow { display: flex; gap: 6px; min-width: 0; }
+.cv-genp-keyrow .cv-input { flex: 1 1 auto; min-width: 0; }
+.cv-genp-keyrow .cv-btn { flex: none; height: var(--ctl-md); padding: 0 var(--space-2); font-size: var(--fs-12); }
+.cv-genp-keys-title { margin-top: var(--space-1); color: var(--text-secondary); font-size: var(--fs-12); font-weight: 600; }

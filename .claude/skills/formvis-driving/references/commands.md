@@ -1,12 +1,13 @@
 # formvis commands
 
-Generated from the window's command catalogue (954 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (960 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
 - Edit: 60
 - File: 74
 - Filter: 81
+- Generate: 2
 - Image: 89
 - Layer: 198
 - Paint: 1
@@ -15,8 +16,8 @@ Generated from the window's command catalogue (954 commands) by `./formvis agent
 - Tool options: 232
 - Tools: 51
 - Type: 22
-- View: 40
-- Window: 70
+- View: 43
+- Window: 71
 
 ## Edit
 
@@ -252,6 +253,13 @@ Generated from the window's command catalogue (954 commands) by `./formvis agent
 
 - `kind`: string; required; Which filter
 - `settings`: object; All settings as one object; the settings of the kind may also be given as plain parameters
+
+## Generate
+
+| Id | Name | Keys | Does |
+| --- | --- | --- | --- |
+| `generate-panel` | Generate Panel |  | Shows the Generate panel and puts the cursor in its prompt. |
+| `generate-remove` | Remove / Repair |  | Fills the selection from its surroundings, or switches to the Remove tool when nothing is selected. (changes the picture) |
 
 ## Image
 
@@ -1015,11 +1023,14 @@ Generated from the window's command catalogue (954 commands) by `./formvis agent
 | `screen-next` | Change Screen Mode | F | Steps through standard, menu and full screen modes. |
 | `screen-standard` | Standard Screen Mode |  | Shows the normal window with its title bar. |
 | `slice-options` | Slice Options... |  | Opens the active slice's name, URL, alt text and exact position and size for editing. (changes the picture) |
+| `task-bar-pin` | Pin Task Bar |  | Pins the Contextual Task Bar where it stands, or lets it follow the selection again. |
+| `task-bar-reset` | Reset Task Bar Position |  | Puts the Contextual Task Bar back at the bottom centre of the canvas. |
 | `toggle-grid` | Toggle Grid | Mod+' | Shows or hides the grid. |
 | `toggle-guides` | Toggle Guides | Mod+; | Shows or hides guides. |
 | `toggle-panels` | Toggle Panels | Tab | Shows or hides every panel and the toolbar. |
 | `toggle-rulers` | Toggle Rulers | Mod+R | Shows or hides the rulers. |
 | `toggle-show-slices` | Toggle Show Slices |  | Shows or hides the slice rectangles and their numbers. |
+| `toggle-task-bar` | Toggle Task Bar |  | Shows or hides the Contextual Task Bar, the pill over the canvas with the next likely steps (Generative Fill, Select Subject, Remove Background). |
 | `transform-controls` | Transform Controls |  | Shows or hides transform handles on the layer. |
 | `zoom-in` | Zoom In | Mod+= | Zooms in. |
 | `zoom-out` | Zoom Out | Mod+- | Zooms out. |
@@ -1060,6 +1071,7 @@ Generated from the window's command catalogue (954 commands) by `./formvis agent
 | `panel-brushes` | Brushes |  | Shows or hides the Brushes panel. |
 | `panel-character` | Character |  | Shows or hides the Character panel. |
 | `panel-clone-source` | Clone Source |  | Shows or hides the Clone Source panel. |
+| `panel-generate` | Generate |  | Shows or hides the Generate panel. |
 | `panel-gradients` | Gradients |  | Shows or hides the Gradients panel. |
 | `panel-histogram` | Histogram |  | Shows or hides the Histogram panel. |
 | `panel-history` | History |  | Shows or hides the History panel. |

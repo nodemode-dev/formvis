@@ -202,6 +202,16 @@ export const ICONS: Record<string, string> = {
   dragHandle: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 9H4v2h16V9zM4 15h16v-2H4v2z"/></svg>`,
   maximize: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>`,
   send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>`,
+  removeBg: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="3.2"/><path d="M5.5 20c.6-3.6 3.2-5.6 6.5-5.6s5.9 2 6.5 5.6"/><path d="M3 3l3 0M3 3l0 3M21 3l-3 0M21 3l0 3M3 21l3 0M3 21l0-3M21 21l-3 0M21 21l0-3"/></svg>`,
+  feather: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="5" y="5" width="14" height="14" rx="3"/><rect x="2.5" y="2.5" width="19" height="19" rx="5.5" stroke-dasharray="1.2 2.4" opacity="0.7"/></svg>`,
+  deselect: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3.5" y="3.5" width="17" height="17" rx="1.5" stroke-dasharray="3 2.4"/><path d="M9 9l6 6M15 9l-6 6"/></svg>`,
+  expandCanvas: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7.5" y="7.5" width="9" height="9" rx="1"/><path d="M12 2.5v3M10.5 4L12 2.5 13.5 4M12 21.5v-3M10.5 20l1.5 1.5 1.5-1.5M2.5 12h3M4 10.5L2.5 12 4 13.5M21.5 12h-3M20 10.5l1.5 1.5-1.5 1.5"/></svg>`,
+  upscale: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="10.5" width="10" height="10" rx="1"/><path d="M13.5 10.5l7-7M15.5 3.5h5v5"/></svg>`,
+  // The Generate panel (Replace, the ComfyUI and NodeMode connections, an API key).
+  genReplace: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h13"/><path d="M14 5l3 3-3 3"/><path d="M20 16H7"/><path d="M10 13l-3 3 3 3"/></svg>`,
+  genPlug: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3v4M15 3v4"/><path d="M6.5 7h11v4a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5V21"/></svg>`,
+  genNodes: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="6.5" height="5" rx="1.2"/><rect x="14.5" y="9.5" width="6.5" height="5" rx="1.2"/><rect x="3" y="15" width="6.5" height="5" rx="1.2"/><path d="M9.5 6.5h2.5a2.5 2.5 0 0 1 2.5 2.5v.5M9.5 17.5h2.5a2.5 2.5 0 0 0 2.5-2.5v-.5"/></svg>`,
+  genKey: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="15" r="3.8"/><path d="M10.8 12.2 20 3"/><path d="M16 7l2.5 2.5"/><path d="M13.5 9.5l2 2"/></svg>`,
 };
 
 export function icon(name: string, size = 16): string {
