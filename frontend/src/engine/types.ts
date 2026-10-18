@@ -99,6 +99,7 @@ export interface Layer {
   frame?: FrameSpec | null;
   /** A fill layer's content (1.66.0); `raster` is its rendering over the whole canvas, drawn again when it changes. */
   fillContent?: FillContent | null;
+  relight?: import('./relight').RelightContent | null;
   /** Layer > Vector Mask (1.66.1), beside `mask`; absent or null for none. */
   vectorMask?: VectorMask | null;
   blend: BlendMode;
@@ -170,7 +171,7 @@ export interface AlphaChannel { readonly id: ID; readonly name: string; readonly
  *  every frame opaque, 'premultiplied' takes the colour back off `matte` (black when absent). */
 export interface FootageInterpretation { fps?: number; loop?: number; alpha?: 'straight' | 'ignore' | 'premultiplied'; matte?: RGB }
 export interface DocSlice { id: ID; name: string; x: number; y: number; w: number; h: number; layer?: ID; url?: string; alt?: string }
-export type ToolId = 'slice' | 'move' | 'artboard' |'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'mixer' | 'artHistory' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'markup' | 'count' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'idle';
+export type ToolId = 'slice' | 'move' | 'artboard' |'marquee' | 'lasso' | 'objectSelect' | 'wand' | 'crop' | 'brush' | 'remove' | 'spotHealing' | 'healingBrush' | 'patch' | 'cloneStamp' | 'smear' | 'gradient' | 'shape' | 'pathSelect' | 'directSelect' | 'freeformPen' | 'curvaturePen' | 'pen' | 'type' | 'eyedropper' | 'hand' | 'zoom' | 'bucket' | 'dodge' | 'burn' | 'sponge' | 'quickSelect' | 'historyBrush' | 'mixer' | 'artHistory' | 'frame' | 'convertPoint' | 'selectionBrush' | 'pencil' | 'eraser' | 'magicEraser' | 'patternStamp' | 'backgroundEraser' | 'colorSampler' | 'ruler' | 'note' | 'markup' | 'count' | 'contentAwareMove' | 'redEye' | 'rotateView' | 'relight' | 'idle';
 
 /** pixels follows this computer's memory (1.53.4, setPixelBudget from the engine's capabilities); 100 megapixels until known. */
 export const LIMITS: { readonly side: number; pixels: number; readonly layers: number; readonly depth: number } = { side: 30000, pixels: 100_000_000, layers: 10000, depth: 64 };

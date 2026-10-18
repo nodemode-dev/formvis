@@ -9,6 +9,7 @@ import { artboardFromData, type SmartStack } from '../engine/types';
 import { isStackMode } from '../engine/stack-modes';
 import { cleanMeta } from '../engine/doc-meta';
 import { fillContentFrom } from '../engine/fill-layers';
+import { relightFrom } from '../engine/relight';
 import { alphaGrey, nextAlphaName } from '../engine/alphas';
 import { PARAM_ADJUSTMENTS, PARAM_KINDS } from '../engine/adjust-params';
 import { api, type FilePart } from './api';
@@ -124,6 +125,7 @@ export async function serialize(doc: Doc, activeId: ID | null, paths: PathSet | 
     else if (ch?.mode === 'lab') { const name = `${l.id}.lab32`; files.push({ name, blob: new Blob([new Float32Array(ch.data).buffer as ArrayBuffer]) }); r.inkFile = name; r.inkWidth = ch.width; r.inkHeight = ch.height; }
     if (l.vector) r.vector = { fill: l.vector.fill, stroke: l.vector.stroke ?? null, origin: l.vector.origin, subpaths: pathData(l.vector.path)?.subpaths ?? [] };
     if (l.fillContent && l.raster) r.fillContent = structuredClone(l.fillContent);
+    if (l.relight && l.raster) r.relight = structuredClone(l.relight);
     if (l.vectorMask) r.vectorMask = { enabled: l.vectorMask.enabled, linked: l.vectorMask.linked, inverted: l.vectorMask.inverted, subpaths: pathData(l.vectorMask.path)?.subpaths ?? [] };
     if (l.video && !l.isGroup) {   // 33.4b: every painted frame, and an original only where it differs from its frame
       const frameFiles: string[] = [], originals: (string | null)[] = [];
@@ -326,6 +328,7 @@ export async function deserialize(manifest: Json, fetchImage: (name: string) => 
       blend: blendFromLabel(r.blendMode), effects: effectsFromData(r.effects), text: textFromData(r.text, raster), smart, ...(r.video && raster ? { video: videoFrom(r.video) } : {}), vector, mask, clipId: str(r.maskSourceID), adjustment: kind ? { kind, data: adj } : null, shape: r.shape ? obj(r.shape) : null, ...(r.extrude3d && typeof r.extrude3d === 'object' ? { extrude3d: r.extrude3d } : {}),
       ...(r.isGroup === true && !str(r.parentID) && r.artboard ? { artboard: artboardFromData(r.artboard) } : {}),
       ...(raster && r.fillContent ? { fillContent: fillContentFrom(r.fillContent) } : {}),
+      ...(raster && r.relight ? { relight: relightFrom(r.relight) } : {}),
       ...(r.vectorMask && typeof r.vectorMask === 'object' ? { vectorMask: { path: pathFrom(r.vectorMask) ?? { subpaths: [] }, enabled: (r.vectorMask as Record<string, unknown>).enabled !== false, linked: (r.vectorMask as Record<string, unknown>).linked !== false, inverted: (r.vectorMask as Record<string, unknown>).inverted === true } } : {}),
     };
   });

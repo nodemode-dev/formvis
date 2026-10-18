@@ -21,6 +21,7 @@ import { Emitter } from './events';
 import { bumpMap, heightField, heightFromNormal, normalMap } from './normal-map';
 import * as VR from './variables';
 import type { DocVariable } from './types';
+import type { RelightContent } from './relight';
 import { History, type HistoryEntry, type PixelPatch, type Snapshot } from './history';
 import { Renderer, renderDoc, type LayerOverride } from './renderer';
 import { applyDuotoneLut, curveAt, DUOTONE_COUNT, duotoneLut, type Duotone } from './duotone';
@@ -2643,6 +2644,8 @@ export class Engine {
     if (ep && ep.project === p) m.set(ep.layerId, { ...(m.get(ep.layerId) ?? {}), effects: ep.effects });
     const fp = this.fillPreview;
     if (fp && fp.project === p) m.set(fp.layerId, { ...(m.get(fp.layerId) ?? {}), source: fp.source });
+    const rp = this.relightPreview;
+    if (rp && rp.project === p) m.set(rp.layerId, { ...(m.get(rp.layerId) ?? {}), source: rp.source, transform: docTransform(p.doc.width, p.doc.height) });
     const fl = this.floating;
     if (fl && fl.project === p) m.set(fl.layerId, { ...(m.get(fl.layerId) ?? {}), source: fl.preview });
     const fs = this.floatSel;
@@ -5285,6 +5288,15 @@ export class Engine {
     return ctxOf(s).getImageData(0, 0, p.doc.width, p.doc.height);
   }
 
+  compositeUnder(id: ID): ImageData | null {
+    const p = this.current, l = p?.layer(id);
+    if (!p || !l) return null;
+    const s = createSurface(p.doc.width, p.doc.height), overrides = this.belowOverrides(p, l);
+    overrides.set(l.id, { hidden: true });
+    this.work.render({ doc: p.doc, target: s, view: [1, 0, 0, 1, 0, 0], overrides, quality: 'high' });
+    return ctxOf(s).getImageData(0, 0, p.doc.width, p.doc.height);
+  }
+
   /** The document's colour at `pt`: the pixel itself for Point Sample, or the average of the Sample Size square around
    *  it, each pixel weighted by its opacity, so transparent pixels and anything past the canvas do not pull the colour. */
   sampleColor(pt: Pt): RGB | null {
@@ -6239,6 +6251,60 @@ export class Engine {
     const p = this.current;
     this.fillPreview = null;
     if (p?.layer(id) && p.history.last?.name === 'New Fill Layer' && !this.stroke) { this.undoNow(); p.history.dropRedo(); }
+    this.emit('render', null);
+    this.emit('history', null);
+  }
+
+  private relightPreview: { project: Project; layerId: ID; source: Surface } | null = null;
+
+  newRelightLayer(content: RelightContent, image: ImageData): ID | null {
+    let made: ID | null = null;
+    this.relightPreview = null;
+    this.edit('New Relight Layer', (p) => {
+      if (image.width !== p.doc.width || image.height !== p.doc.height) return false;
+      let n = 1;
+      while (p.doc.layers.some((l) => l.name === `Relight Layer ${n}`)) n += 1;
+      const r = new Raster(p.doc.width, p.doc.height);
+      r.write(image);
+      const layer = newLayer(`Relight Layer ${n}`, p.doc, { raster: r, relight: content, parentId: this.parentForNew(p) });
+      this.insertAboveActive(p, layer);
+      made = layer.id;
+      return true;
+    });
+    return made;
+  }
+
+  previewRelight(id: ID | null, image: ImageData | null = null): void {
+    const p = this.current, l = p && id ? p.layer(id) : null;
+    if (!p || !l || !image) { this.relightPreview = null; this.emit('render', null); return; }
+    const s = createSurface(image.width, image.height);
+    ctxOf(s).putImageData(image, 0, 0);
+    this.relightPreview = { project: p, layerId: l.id, source: s };
+    this.emit('render', null);
+  }
+
+  setRelight(id: ID, content: RelightContent, image: ImageData): boolean {
+    this.relightPreview = null;
+    const p = this.current, l = p?.layer(id);
+    if (!p || !l?.relight || image.width !== p.doc.width || image.height !== p.doc.height) { this.emit('render', null); return false; }
+    const r = new Raster(p.doc.width, p.doc.height);
+    r.write(image);
+    const patch = { relight: content, raster: r, transform: docTransform(p.doc.width, p.doc.height) };
+    if (p.history.last?.name === 'New Relight Layer' && !this.stroke) {
+      p.updateLayer(id, patch);
+      p.history.amend(p.snapshot());
+      this.refresh();
+      return true;
+    }
+    const ok = this.edit('Modify Relight Layer', (q) => { q.updateLayer(id, patch); return true; });
+    this.emit('render', null);
+    return ok;
+  }
+
+  dropNewRelight(id: ID): void {
+    const p = this.current;
+    this.relightPreview = null;
+    if (p?.layer(id) && p.history.last?.name === 'New Relight Layer' && !this.stroke) { this.undoNow(); p.history.dropRedo(); }
     this.emit('render', null);
     this.emit('history', null);
   }
