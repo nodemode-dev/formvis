@@ -389,6 +389,7 @@ const ROWS: Record<string, Row> = {
   'match-all': ['Window', 'Matches zoom, location and rotation across open documents.', 'Use to line up all views with the current one.', 'm'],
   'type-on-path': ['Type', 'Opens Type on Path.', 'Use when text should follow a curve.', 'm'],
   'benchmark': ['Window', 'Opens the performance benchmark.', 'Use when you want to time drawing on this computer.'],
+  'record-performance': ['Window', 'Records 10 seconds of real use and reports what took the time: canvas draws, engine events, input handlers, pixel reads and uploads, frame gaps.', 'Use when formvis feels slow on this computer, to find out where the time goes.'],
   'copy-error-log': ['Window', 'Copies the error log to the clipboard.', 'Use when you report a problem and need the log.'],
   'cut': ['Edit', 'Cuts the selection to the clipboard.', 'Use when pixels should move elsewhere.', 'm'],
   'copy': ['Edit', 'Copies the selection to the clipboard.', 'Use when you want to paste the pixels elsewhere.'],

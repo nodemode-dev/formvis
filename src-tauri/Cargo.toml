@@ -1,6 +1,6 @@
 [package]
 name = "formvis"
-version = "1.86.3"
+version = "1.86.4"
 description = "formvis desktop shell"
 authors = ["nodemode-ai"]
 license = "Apache-2.0"
@@ -11,7 +11,10 @@ rust-version = "1.77.2"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# devtools (1.86.4): the Web Inspector in release builds too (right-click > Inspect Element), so a slow desktop window
+# can be profiled where it runs (Timelines) and `formvisPerf.record(10)` run in its console. Tauri notes it uses
+# private macOS API, which matters only for the Mac App Store.
+tauri = { version = "2", features = ["devtools"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-updater = "2"

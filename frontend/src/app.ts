@@ -130,6 +130,7 @@ import { GlDisplay } from './gpu/gl-display';
 import { GlFilters } from './gpu/filters';
 import { setGpuFilters } from './engine/gpu-filters';
 import { NativeDisplay } from './gpu/native-display';
+import { PerfDialog, recordPerformance } from './ui/perf-recorder';
 import { NavigatorPanel } from './ui/navigator';
 import { SwatchesPanel } from './ui/swatches';
 import { PresetManagerDialog } from './ui/panels/preset-manager-dialog';
@@ -361,6 +362,10 @@ export function startApp(): void {
   applyRail();
   applyPrefs(engine, loadPrefs());
   const stage = new Stage(q(root, '.cv-stage'), engine);
+  // Help > Record Performance (1.86.4); also `formvisPerf.record(10)` in the desktop app's Web Inspector console.
+  const perfCtx = { engine, stage, gpuText: () => [...document.querySelectorAll('.cv-status *')].map((e) => e.textContent ?? '').find((s) => /^GPU:/.test(s.trim()))?.trim() ?? '?' };
+  const perfDialog = new PerfDialog(perfCtx);
+  (window as unknown as { formvisPerf: unknown }).formvisPerf = { record: async (seconds = 10) => { const r = await recordPerformance(perfCtx, seconds); console.log(r); return r; } };
   const viewTiles = new ViewTiles(q(root, '.cv-stage-col'), engine);   // Window > Arrange (the Stage's own ResizeObserver refits it)
   const floatViews = new FloatViews(q(root, '.cv-stage-col'), engine);   // Window > Arrange > Float in Window (36.16)
   const taskBar = new TaskBar(q(root, '.cv-stage'), engine, commands, () => stage.ctx.view());   // View > Contextual Task Bar
@@ -387,6 +392,7 @@ export function startApp(): void {
   // Relight's controls live in the Properties column, as the reference's side panel: a session opens the column
   // (shown and out of its strip) so they are always in view (1.86.1).
   relight.onBegin = () => { if (stored('formvis.propsCol') === 'hidden') { store('formvis.propsCol', 'shown'); syncPropsCol(); } props.reveal(); };
+  relight.onEnd = () => props.conceal();
   // The Relight tool in the toolbar starts a session as the menus do (editing the lights of a Relight layer when one is
   // active); when it cannot start, the tool before it comes back.
   engine.on('tool', () => {
@@ -2966,6 +2972,7 @@ export function startApp(): void {
     { id: 'match-rotation', label: 'Match Rotation', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ rotation: true }) },
     { id: 'match-all', label: 'Match All', enabled: () => engine.projects.length > 1, run: () => engine.matchViews({ zoom: true, location: true, rotation: true }) },
     { id: 'benchmark', label: 'Performance Benchmark...', run: () => dialogs.benchmark.show() },
+    { id: 'record-performance', label: 'Record Performance...', run: () => perfDialog.show() },
     { id: 'copy-error-log', label: 'Copy Error Log', run: () => { void navigator.clipboard?.writeText(errorLog.text()).then(() => toast('Copied the error log.'), () => toast('The clipboard is not available here.', 'error')); } },
   );
 
@@ -3260,7 +3267,7 @@ export function startApp(): void {
       { label: 'Screen Mode', items: ['screen-standard', 'screen-menu', 'screen-full'] }, 'toggle-panels', 'rail-columns'] },
     { label: 'Plugins', items: () => { const ids = pluginHost.commandIds(); return ['manage-plugins', ...(ids.length ? ['-', ...ids] : [])]; } },
     { label: 'Window', items: [{ label: 'Arrange', items: ['new-window', 'float-window', 'float-all-windows', '-', 'arrange-tabs','arrange-2up-v', 'arrange-2up-h', 'arrange-3up', 'arrange-4up', 'arrange-6up', '-', 'match-zoom', 'match-location', 'match-rotation', 'match-all'] }, 'assistant', 'agent.claude.open', 'agent.connect.open', 'terminal.toggle', 'terminal.new', 'script-console', 'brush-settings', 'paragraph-styles', 'character-styles', 'glyphs', 'tool-presets', '-', ...ALL_PANELS.map((pn) => `panel-${pn.id}`), 'panel-paths', 'panel-properties-col', 'merge-columns', '-', 'reset-panels'] },
-    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'about'] },
+    { label: 'Help', items: ['help', 'whats-new', '-', 'shortcuts', 'copy-error-log', 'benchmark', 'record-performance', 'about'] },
   ];
   const menubar = new MenuBar(q(root, '.cv-menubar'), commands, menus);
   // The desktop app on macOS puts these menus in the system menu bar, as the target's (Phase 21); the in-window bar then hides.

@@ -1,6 +1,6 @@
 # formvis commands
 
-Generated from the window's command catalogue (960 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
+Generated from the window's command catalogue (961 commands) by `./formvis agents sync`; do not edit by hand. The live list is `GET /api/commands` or the MCP tools `list_commands` and `describe_command`; run one with `run_command`, several as one undo step with `run_commands`.
 
 ## Contents
 
@@ -17,7 +17,7 @@ Generated from the window's command catalogue (960 commands) by `./formvis agent
 - Tools: 51
 - Type: 22
 - View: 43
-- Window: 71
+- Window: 72
 
 ## Edit
 
@@ -1096,6 +1096,7 @@ Generated from the window's command catalogue (960 commands) by `./formvis agent
 | `pref-home-last-close` | Show Home Screen When the Last Document Closes |  | Turns the Home screen after the last document closes on or off (Preferences > General); off, closing the last document leaves the empty workspace. |
 | `pref-home-launch` | Show Home Screen at Launch |  | Turns the Home screen at launch on or off (Preferences > General); on shows it while no document is open at start. |
 | `pref-whats-new-auto` | Show What's New Once After an Update |  | Turns on or off opening What's New once after an update (Preferences > General). |
+| `record-performance` | Record Performance... |  | Records 10 seconds of real use and reports what took the time: canvas draws, engine events, input handlers, pixel reads and uploads, frame gaps. |
 | `reset-panels` | Reset Panels |  | Restores the default panel layout. |
 | `script-console` | Script Console... |  | Opens the Script Console, a log with a one-line input that runs JavaScript with formvis.run to run any catalogue command, formvis.commands to list them and formvis.api, the plugin API. |
 | `search` | Search... | Mod+K | Opens the command palette. |

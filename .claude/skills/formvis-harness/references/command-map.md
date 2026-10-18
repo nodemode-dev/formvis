@@ -1,6 +1,6 @@
 # Command map
 
-Generated from the window's command catalogue (960 commands: 8 action, 669 command, 232 option, 51 tool) by `./formvis agents sync`; do not edit by hand.
+Generated from the window's command catalogue (961 commands: 8 action, 670 command, 232 option, 51 tool) by `./formvis agents sync`; do not edit by hand.
 
 Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/src/automation/catalogue.ts` (`tool.select.*`, `tool.options.*` and the seven actions) or by a plug-in; its words are in `frontend/src/automation/command-meta.ts`. A command with no words is reported missing and `./formvis counts --commands --check` fails.
 
@@ -19,7 +19,7 @@ Every command is registered in `frontend/src/app.ts` (hand-written), `frontend/s
 | Tools | 51 | `tool-builder` | `tool.select.artHistory`, `tool.select.artboard`, `tool.select.backgroundEraser`, `tool.select.brush` |
 | Type | 22 | `tool-builder` | `character-styles`, `check-spelling`, `convert-paragraph-text`, `convert-point-text` |
 | View | 43 | `ui-builder` | `actual`, `clear-guides`, `clear-slices`, `fit` |
-| Window | 71 | `ui-builder` | `about`, `action-stop`, `actions`, `agent.claude.open` |
+| Window | 72 | `ui-builder` | `about`, `action-stop`, `actions`, `agent.claude.open` |
 
 ## Id families
 
