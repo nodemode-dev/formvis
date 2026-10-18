@@ -1,10 +1,10 @@
 import type { Engine, ID, ToolId } from '../engine';
 import {
-  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, depthFromGrey, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, shadeRelight, shadingField,
+  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, shadeRelight, shadingField,
   type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType,
 } from '../engine/relight';
 import { renderRelight } from '../gpu/relight-gl';
-import { depthReady, localDepth } from '../io/local-gen';
+import { depthReady, installModel, localDepthValues } from '../io/local-gen';
 import { setRelightHost } from '../extensions/tools/relight';
 import { el, q, setClass, setHidden, setText } from './dom';
 import { icon } from './icons';
@@ -51,7 +51,7 @@ export class RelightSession {
   private selectedId: string | null = null;
   private full: Sized | null = null;
   private proxy: { base: Uint8ClampedArray; geo: RelightGeometry; shade: Float32Array } | null = null;
-  private depthBitmap: ImageBitmap | null = null;
+  private depthFull: Float32Array | null = null;
   private frame = 0;
   private busy = false;
   private readonly rows: { [k: string]: Row<number> | Row<string> | Row<boolean> } = {};
@@ -110,7 +110,7 @@ export class RelightSession {
     const pbase = k < 1 ? scaled(below, pw, ph) : below.data;
     this.proxy = { base: pbase, geo: relightGeometry(estimateDepth(pbase, pw, ph), pw, ph), shade: shadingField(pbase, pw, ph) };
     this.content.depth = 'estimate';
-    this.depthBitmap = null;
+    this.depthFull = null;
     this.selectedId = this.content.lights[0]?.id ?? null;
     this.prevTool = e.tool === 'relight' ? 'move' : e.tool;
     e.setTool('relight');
@@ -131,35 +131,47 @@ export class RelightSession {
     if (!below) { e.dropNewRelight(id); return null; }
     let depth: Float32Array | null = null, kind: 'model' | 'estimate' = 'estimate';
     try {
-      if (await depthReady()) {
-        const c = new OffscreenCanvas(W, H);
-        (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
-        const bmp = await createImageBitmap(await localDepth(await c.convertToBlob({ type: 'image/png' })));
-        depth = depthFromGrey(scaled(bmp, W, H), W, H);
-        bmp.close();
-        kind = 'model';
-      }
-    } catch { depth = null; }
+      if (await depthReady()) { depth = await this.readDepth(below); kind = 'model'; }
+    } catch { depth = null; kind = 'estimate'; }
     const made = { ...structuredClone(content), depth: kind };
     const px = renderRelight(below.data, relightGeometry(depth ?? estimateDepth(below.data, W, H), W, H), made, kind === 'model' ? 24 : 0, shadingField(below.data, W, H));
     return e.setRelight(id, made, new ImageData(new Uint8ClampedArray(px), W, H)) ? { id, depth: kind } : null;
   }
 
+  private async readDepth(below: ImageData): Promise<Float32Array> {
+    const c = new OffscreenCanvas(below.width, below.height);
+    (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
+    return localDepthValues(await c.convertToBlob({ type: 'image/png' }), below.width, below.height);
+  }
+
   private async loadDepth(below: ImageData, pw: number, ph: number): Promise<void> {
-    const id = this.layerId;
+    const id = this.layerId, get = q<HTMLButtonElement>(this.panel, '.cv-relight-get');
+    setHidden(get, true);
     try {
-      if (!(await depthReady())) { this.status(t('Shape estimated from the picture. Download Depth Anything in Preferences > Plugins > Local models for light that follows the forms.')); return; }
+      if (!(await depthReady())) {
+        this.status(t('No shape yet: the light falls on a flat picture and casts no shadows. Depth Anything (about 99 MB, Apache-2.0) reads the shape of the photo on this computer.'));
+        setHidden(get, this.layerId !== id);
+        return;
+      }
       this.status(t('Reading the shape of the picture...'));
-      const c = new OffscreenCanvas(below.width, below.height);
-      (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
-      const bmp = await createImageBitmap(await localDepth(await c.convertToBlob({ type: 'image/png' })));
-      if (this.layerId !== id || !this.proxy) { bmp.close(); return; }
-      this.depthBitmap = bmp;
-      this.proxy = { ...this.proxy, geo: relightGeometry(depthFromGrey(scaled(bmp, pw, ph), pw, ph), pw, ph) };
+      const full = await this.readDepth(below);
+      if (this.layerId !== id || !this.proxy) return;
+      this.depthFull = full;
+      this.proxy = { ...this.proxy, geo: relightGeometry(resampleDepth(full, below.width, below.height, pw, ph), pw, ph) };
       this.content.depth = 'model';
       this.status(t('Shape from Depth Anything, on this computer.'));
       this.schedule();
-    } catch { this.status(t('Shape estimated from the picture; the depth model did not answer.')); }
+    } catch { this.status(t('The depth model did not answer, so the light falls on a flat picture. Is the engine running?')); }
+  }
+
+  private async getDepthModel(): Promise<void> {
+    const get = q<HTMLButtonElement>(this.panel, '.cv-relight-get'), f = this.full;
+    get.disabled = true;
+    try {
+      const ok = await installModel('depth-anything-v2-small', (text) => this.status(text));
+      if (ok && f && this.proxy) await this.loadDepth(new ImageData(new Uint8ClampedArray(f.data), f.w, f.h), this.proxy.geo.width, this.proxy.geo.height);
+    } catch { this.status(t('The download could not start. Is the engine running?')); }
+    get.disabled = false;
   }
 
   private status(text: string): void { setText(q(this.panel, '.cv-relight-status'), text); }
@@ -182,8 +194,8 @@ export class RelightSession {
     setClass(this.bar, 'is-busy', true);
     await new Promise((r) => setTimeout(r, 0));
     try {
-      const depth = this.depthBitmap ? depthFromGrey(scaled(this.depthBitmap, f.w, f.h), f.w, f.h) : estimateDepth(f.data, f.w, f.h);
-      const px = renderRelight(f.data, relightGeometry(depth, f.w, f.h), this.content, this.depthBitmap ? 24 : 0, shadingField(f.data, f.w, f.h));
+      const depth = this.depthFull ?? estimateDepth(f.data, f.w, f.h);
+      const px = renderRelight(f.data, relightGeometry(depth, f.w, f.h), this.content, this.depthFull ? 24 : 0, shadingField(f.data, f.w, f.h));
       this.engine.setRelight(id, structuredClone(this.content), new ImageData(new Uint8ClampedArray(px), f.w, f.h), this.isNew);
     } finally {
       this.busy = false;
@@ -202,7 +214,7 @@ export class RelightSession {
   private end(): void {
     if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
     this.layerId = null; this.isNew = false; this.full = null; this.proxy = null;
-    this.depthBitmap?.close(); this.depthBitmap = null;
+    this.depthFull = null;
     if (this.engine.tool === 'relight') this.engine.setTool(this.prevTool);
     setHidden(this.panel, true);
     setHidden(this.bar, true);
@@ -319,8 +331,12 @@ export class RelightSession {
       <button class="cv-props-section" type="button" aria-expanded="true" data-fold="scene">${icon('chevronDown', 12)}<span></span></button>
       <div class="cv-relight-scene" data-part="scene"></div>
       <p class="cv-relight-status cv-note"></p>
+      <button class="cv-relight-btn is-primary cv-relight-get" type="button" hidden></button>
     </section>`);
     setText(q(root, '.cv-relight-title > span:last-child'), t('Relight Properties'));
+    const get = q<HTMLButtonElement>(root, '.cv-relight-get');
+    setText(get, t('Download Depth Anything'));
+    get.addEventListener('click', () => { void this.getDepthModel(); });
     const folds = root.querySelectorAll<HTMLButtonElement>('[data-fold]');
     const labels: Record<string, string> = { looks: 'Looks', lights: 'Lights', scene: 'Scene' };
     folds.forEach((b) => {
@@ -480,7 +496,7 @@ export class RelightSession {
     (this.rows.original as Row<number>).set(this.content.original);
     (this.rows.shine as Row<number>).set(this.content.shine);
     (this.rows.delight as Row<number>).set(this.content.delight ?? 0);
-    (this.rows.shadows as Row<number>).set(this.content.shadows ?? 70);
+    (this.rows.shadows as Row<number>).set(this.content.shadows ?? 55);
     (this.rows.ambient as Row<string>).set(hex(this.content.ambient ?? { r: 255, g: 255, b: 255 }));
     this.panel.querySelectorAll<HTMLButtonElement>('.cv-relight-look').forEach((b) => setClass(b, 'is-on', b.dataset.look === this.content.look));
   }

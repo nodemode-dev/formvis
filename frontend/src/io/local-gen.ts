@@ -98,6 +98,25 @@ export async function localDepth(image: Blob): Promise<Blob> {
   return (await ask('/depth/local', { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).blob();
 }
 
+export async function installModel(id: string, status: (text: string) => void): Promise<boolean> {
+  const job = (await (await ask(`/models/${id}/download`, { method: 'POST' })).json() as { job_id: string }).job_id;
+  for (;;) {
+    await new Promise((ok) => setTimeout(ok, 800));
+    const j = await (await ask(`/jobs/${job}`)).json() as { status: string; message?: string; error?: string; progress?: number };
+    if (j.status === 'done') return true;
+    if (['error', 'failed', 'cancelled'].includes(j.status)) { status(j.error || j.message || 'The download stopped.'); return false; }
+    status(`${j.message ?? 'Downloading'}${typeof j.progress === 'number' ? ` (${Math.round(j.progress * 100)}%)` : ''}`);
+  }
+}
+
+export async function localDepthValues(image: Blob, width: number, height: number): Promise<Float32Array> {
+  const form = new FormData(); form.append('image', image, 'image.png');
+  const r = await ask(`/depth/local?fmt=f32&width=${width}&height=${height}`, { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form });
+  const data = new Float32Array(await r.arrayBuffer());
+  if (data.length !== width * height) throw new Error('The depth did not match the picture.');
+  return data;
+}
+
 /** Remove's People and Distractions (1.57.4): the area to remove from `image`, a white-on-black mask the same size. */
 export async function findToRemove(image: Blob, kind: 'people' | 'distractions'): Promise<Blob> {
   const form = new FormData(); form.append('image', image, 'image.png'); form.append('kind', kind);
