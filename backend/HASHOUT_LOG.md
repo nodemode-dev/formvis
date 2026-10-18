@@ -2,6 +2,34 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Float depth for Relight · _v1.74.1 (app/localgen/depth.py)
+
+Relight needs depth finer than 8 bits: at its relief one grey level is about 5 px of height, which banded the normals. `_normalised` (the model run and min-max scaling, shared), `depth_map` (unchanged PNG for Depth Blur), `depth_values` (float32 resized bicubically in mode F to the size asked, clipped 0 to 1), and `depth_local` gains query `fmt` (`png` default, `f32`), `width`, `height` (1 to 16384, else the picture's size); the f32 answer is little-endian bytes with `X-Depth-Width` and `X-Depth-Height`. Replaced:
+
+```python
+def depth_map(picture: Image.Image) -> Image.Image:
+    rgb = picture.convert("RGB")
+    width, height = rgb.size
+    small = np.asarray(rgb.resize((SIZE, SIZE), Image.Resampling.BICUBIC), np.float32) / 255.0
+    x = ((small - MEAN) / STD).transpose(2, 0, 1)[None].astype(np.float32)
+    out = _run(x)
+    d = np.asarray(out).reshape(SIZE, SIZE).astype(np.float32)
+    lo, hi = float(d.min()), float(d.max())
+    norm = (d - lo) / (hi - lo) if hi > lo else np.zeros_like(d)
+    img = Image.fromarray(np.clip(norm * 255 + 0.5, 0, 255).astype(np.uint8), "L")
+    return img.resize((width, height), Image.Resampling.BICUBIC)
+async def depth_local(image: UploadFile = File(...)) -> Response:
+```
+
+Verified: the engine run locally with the pinned model (SHA-256 matched) answered 975,936 bytes for 368 by 663; backend tests `-k "depth or local"`: 25 passed, 1 failed (`test_the_real_lama_fills_a_hole_from_its_surroundings`, which needs the LaMa model downloaded first; unrelated). Version lines removed:
+
+```text
+__version__ = "1.74.0"
+version = "1.74.0"
+version = "1.74.0"
+  "version": "1.74.0",
+```
+
 ## Version only · _v1.74.0
 
 No engine code changed in 1.74.0. MCP agents reach `relight.apply` through the existing `run_command` tool. Removed version lines, the desktop shell's quoted too:

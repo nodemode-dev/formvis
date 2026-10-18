@@ -314,7 +314,8 @@ are not touched.
 - Edit Lighting, under the picture when a Relight layer is selected, reopens it; so do Layer > Edit Lighting...,
   Layer Content Options... and a double-click on the layer in the Layers panel.
 - With Depth Anything V2 Small downloaded (Preferences > Plugins > Local models, about 99 MB), light follows the shapes in the photo and casts
-  shadows. Without it, formvis estimates the shape and leaves out cast shadows; the panel says which is in use.
+  shadows. Without it the light falls on a flat picture (falloff and patterns only, no shadows); the panel says so and
+  offers Download Depth Anything, after which it reads the shape and redraws. For real relighting, download it.
 - Lights from depth and Lights to depth keep a light to a band of the picture's depth: raise Lights from depth to light
   only the nearer subject and leave the background as it was, or lower Lights to depth to light only the background.
 - Scene also has Flatten original light (evens out the photo's own light and shade before the new lights, so they read

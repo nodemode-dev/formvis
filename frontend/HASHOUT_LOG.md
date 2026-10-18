@@ -2,6 +2,32 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight from real geometry · _v1.74.1 (engine/relight.ts, gpu/relight-gl.ts, io/local-gen.ts, ui/relight-session.ts)
+
+The owner: the 1.74.0 output "doesn't look like relighting, more a layer effect on top of an image". True, and visible at a glance: an orange wash inside an oval. Causes, found by looking at the pixels: (1) no model in the test run, so `estimateDepth` returned a centred dome, and the depth band cut it into an oval; (2) even with depth, a 0.25 x side relief gave slopes of about 12 degrees, so Lambert was nearly uniform, a tint; (3) the 8-bit depth PNG stepped about 5 px per level at a useful relief. Fixed with the real model in the loop (Depth Anything V2 Small, pinned file, hash checked), prototyped in numpy first, then ported, and judged on full-size renders of six Looks.
+
+- `estimateDepth`: flat 0.5 plane. Removed:
+
+```ts
+  const s = Math.max(w, h), lum = heightField(rgba, w, h, Math.max(2, Math.round(s / 30)), false), out = new Float32Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const dx = (x / w - 0.5) * 2, dy = (y / h - 0.45) * 2, dome = clamp(1 - (dx * dx * 0.8 + dy * dy * 0.6), 0, 1);
+    out[y * w + x] = clamp(0.75 * dome + 0.25 * lum[y * w + x], 0, 1);
+  }
+  return out;
+```
+
+- `relightGeometry` rebuilt: `boxBlur` (s/900, 2 passes), gradient x `NORMAL_RELIEF` (0.7) x side, cliff mask (gradient magnitude 1.2 or more) eroded by s/600 (`erodeMask`), gradient and mask blurred by s/130 (3 passes) and divided (normalised convolution). The old body (two box passes of s/400 and central differences at 0.25 x side) is in git at 2eb4c77.
+- `SCENE_DEPTH` 1.2 for positions, falloff and shadows (was the same 0.25 relief). Light height `relief + (0.05 + 0.9 d) s` (was `0.08 + 1.4 d`), range `(0.25 + 1.5 d) s` and gain 2 (was `0.3 + 2.2 d`, 1.6), shadow `k` `1.5 + 4.5 (1 - softness)` (was `1 + 7`), bias `0.004 relief` (was `2/255 relief`), pattern parallax 0.1 (was 0.35), specular weight 0.3 (was 0.6), default Shadows 55 (was 70).
+- Soft shadows: `SHADOW_TAPS` [-1, -0.33, 0.33, 1], each ray turned across the light by `(0.04 + 0.22 softness)` (x1.6 for Area), averaged; the shader repeats the taps in a fixed four-iteration loop.
+- CPU `zAt` floors like the shader's `floor(p) + 0.5` lookup; before, it rounded, and shadow edges differed by up to 30 levels. Now 1 at most.
+- `resampleDepth` (bilinear) for the preview copy of the model's depth.
+- `io/local-gen.ts`: `localDepthValues` (float32 from `?fmt=f32`), `installModel` (the model download job, polled every 800 ms).
+- `ui/relight-session.ts`: `depthFull` replaces `depthBitmap`; `readDepth`; `loadDepth` states plainly when there is no shape and shows `.cv-relight-get` (Download Depth Anything), `getDepthModel` installs then reloads the shape; `apply` uses `readDepth`. The old bitmap path through `depthFromGrey(scaled(...))` is gone (`depthFromGrey` stays exported for others).
+- Neon Club: original 22, shine 18, intensities 55 and 45 (were 20, 35, 70, 60): the old values streaked the hair.
+
+Verified: real backend with the model; six Looks rendered through `relight.apply` at 736 by 1326 and compared with the original at full size (face crops for Rembrandt and Candlelight); CPU against GPU on the model's depth: max 1, mean 0; under 4x CPU throttling the panel read the shape from Depth Anything and Done made one step; tsc clean; 194 unit tests. Not run: the no-model download button end to end (needs an engine without the model), a real GPU, the browser suite.
+
 ## Relight, second pass · _v1.74.0 (engine/relight.ts, gpu/relight-gl.ts, engine/index.ts, ui/relight-session.ts, extensions/tools/relight.ts, styles/relight.css, automation/catalogue.ts, app.ts)
 
 The owner: "expand the relight capability even further". Chosen for what a lighting artist misses first: control over where light lands (depth bands), getting rid of the photo's baked light (flatten), saved setups, keyboard placement, and agent access.

@@ -4,6 +4,19 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.74.1 · 2026-10-18
+
+### Fixed
+
+- Relight now lights the shapes in the photo: light wraps faces, arms and folds, falls off across the room, and casts soft shadows. 1.73.0 and 1.74.0 often looked like a coloured layer laid over the picture, with an oval edge when no depth model was installed.
+- Cast shadows are soft at their edges, as Softness asks, instead of hard silhouettes on the wall.
+- No more dark halos around people and no more rippled, liquid-looking light on hair and walls.
+
+### Changed
+
+- Without Depth Anything, Relight no longer invents a shape: the light falls on a flat picture with no cast shadows, and Relight Properties offers Download Depth Anything (about 99 MB), then reads the shape and redraws.
+- The engine can return depth as full-precision values for Relight; Depth Blur is unchanged.
+
 ## 1.74.0 · 2026-10-18
 
 ### Added
