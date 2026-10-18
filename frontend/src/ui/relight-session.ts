@@ -321,10 +321,12 @@ export class RelightSession {
     this.schedule();
   }
 
-  private moveLight(id: string, part: 'pos' | 'aim', at: { x: number; y: number }, done: boolean): void {
+  private moveLight(id: string, part: 'pos' | 'aim' | 'center', at: { x: number; y: number }, done: boolean): void {
     const l = this.content.lights.find((x) => x.id === id);
     if (!l) return;
-    l[part] = { x: Math.max(-1, Math.min(2, at.x)), y: Math.max(-1, Math.min(2, at.y)) };
+    const p = { x: Math.max(-1, Math.min(2, at.x)), y: Math.max(-1, Math.min(2, at.y)) };
+    if (part === 'center') l.pattern = { ...l.pattern, center: p };
+    else l[part] = p;
     if (done) this.sync();
     this.schedule();
   }
@@ -466,7 +468,7 @@ export class RelightSession {
     slider('distance', 'Close to Far', 0, 100, (l, v) => { l.distance = v; });
     slider('near', 'Lights from depth', 0, 100, (l, v) => { l.near = v; });
     slider('far', 'Lights to depth', 0, 100, (l, v) => { l.far = v; });
-    light.append(el(`<p class="cv-note">${t('Drag the light or its aim point on the photo. Alt-drag moves the aim.')}</p>`));
+    light.append(el(`<p class="cv-note">${t('Drag the light or its aim point on the photo. Alt-drag moves the aim; Shift-drag places the pattern.')}</p>`));
     const pat = q(root, '.cv-relight-pattern');
     const kind = selectRow(t('Pattern'), RELIGHT_PATTERNS.map(([k, label]) => [k, t(label)] as const), (v) => this.change((l) => { l.pattern.kind = v as RelightPatternKind; }));
     this.rows.pattern = kind; pat.append(kind.el);

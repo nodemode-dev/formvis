@@ -1,5 +1,5 @@
 import type { Pt } from '../../engine';
-import { goboBasis, goboPoint, type RelightLight } from '../../engine/relight';
+import type { RelightLight } from '../../engine/relight';
 import type { Tool, ToolContext } from '../registry';
 
 export interface RelightHost {
@@ -8,7 +8,7 @@ export interface RelightHost {
   lights(): readonly RelightLight[];
   selected(): string | null;
   select(id: string): void;
-  move(id: string, part: 'pos' | 'aim', at: { x: number; y: number }, done: boolean): void;
+  move(id: string, part: 'pos' | 'aim' | 'center', at: { x: number; y: number }, done: boolean): void;
   nudge(dx: number, dy: number, aim: boolean): void;
   cycle(back: boolean): void;
   commit(): void;
@@ -18,11 +18,14 @@ export interface RelightHost {
 let host: RelightHost | null = null;
 export const setRelightHost = (h: RelightHost | null): void => { host = h; };
 
-type Drag = { id: string; part: 'pos' | 'aim' } | null;
+type Drag = { id: string; part: 'pos' | 'aim' | 'center' } | null;
 let drag: Drag = null;
 
 const frac = (p: Pt, s: { w: number; h: number }): { x: number; y: number } => ({ x: p.x / Math.max(1, s.w), y: p.y / Math.max(1, s.h) });
-const docOf = (l: RelightLight, part: 'pos' | 'aim', s: { w: number; h: number }): Pt => ({ x: l[part].x * s.w, y: l[part].y * s.h });
+const docOf = (l: RelightLight, part: 'pos' | 'aim' | 'center', s: { w: number; h: number }): Pt => {
+  const q = part === 'center' ? (l.pattern.center ?? l.aim) : l[part];
+  return { x: q.x * s.w, y: q.y * s.h };
+};
 
 function hit(ctx: ToolContext, screen: Pt): Drag {
   if (!host?.active()) return null;
@@ -30,7 +33,8 @@ function hit(ctx: ToolContext, screen: Pt): Drag {
   const order = [...host.lights()].sort((a, b) => (a.id === sel ? -1 : b.id === sel ? 1 : 0));
   for (const l of order) {
     if (!l.visible) continue;
-    for (const part of ['pos', 'aim'] as const) {
+    for (const part of ['pos', 'aim', 'center'] as const) {
+      if (part === 'center' && (l.id !== sel || l.pattern.kind === 'none' || !l.pattern.center)) continue;
       const q = v.toScreen(docOf(l, part, s));
       if (Math.hypot(q.x - screen.x, q.y - screen.y) <= (part === 'pos' ? 14 : 10)) return { id: l.id, part };
     }
@@ -51,7 +55,7 @@ export const relightTool: Tool = {
     if (!host?.active()) return;
     drag = hit(ctx, p.screen);
     const sel = host.selected();
-    if (!drag && sel) drag = { id: sel, part: p.alt ? 'aim' : 'pos' };
+    if (!drag && sel) drag = { id: sel, part: p.alt ? 'aim' : p.shift ? 'center' : 'pos' };
     if (!drag) return;
     host.select(drag.id);
     host.move(drag.id, drag.part, frac(p.doc, host.size()), false);
@@ -92,13 +96,13 @@ export const relightTool: Tool = {
         const k = l.pattern, unit = Math.max(s.w, s.h), rot = (k.rotation * Math.PI) / 180, cr = Math.cos(rot), sr = Math.sin(rot);
         const hw = k.kind === 'strip' ? 0.5 * k.width / 100 * 0.14 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.28 * k.scale / 100 * k.width / 100 : 0.32 * k.scale / 100) * unit;
         const hh = k.kind === 'strip' ? 0.58 * k.length / 100 * k.scale / 100 * unit : (k.kind === 'blinds' ? 0.28 * k.scale / 100 : 0.42 * k.scale / 100) * unit;
-        const P = docOf(l, 'pos', s), A = docOf(l, 'aim', s), G = goboBasis(l.type === 'sun' ? 2 : 0, [P.x, P.y], [A.x, A.y], l.distance / 100, unit);
-        const quad = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].map(([x, y]) => goboPoint(G, x * cr - y * sr, x * sr + y * cr));
-        if (quad.every((q) => q)) {
-          g.beginPath();
-          quad.forEach((q, i) => { const p = v.toScreen({ x: A.x + q![0], y: A.y + q![1] }); if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); });
-          g.closePath(); g.stroke();
-        }
+        const C = docOf(l, 'center', s), c = v.toScreen(C);
+        g.beginPath();
+        [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]].forEach(([x, y], i) => { const p = v.toScreen({ x: C.x + x * cr - y * sr, y: C.y + x * sr + y * cr }); if (i) g.lineTo(p.x, p.y); else g.moveTo(p.x, p.y); });
+        g.closePath(); g.stroke();
+        g.setLineDash([]);
+        g.beginPath(); g.arc(c.x, c.y, 9, 0, Math.PI * 2); g.lineWidth = 1.5; g.strokeStyle = pal.antsB; g.stroke();
+        g.beginPath(); g.arc(c.x, c.y, 2.5, 0, Math.PI * 2); g.fillStyle = pal.antsB; g.fill();
       }
       g.setLineDash([]);
       g.beginPath(); g.arc(b.x, b.y, 6, 0, Math.PI * 2); g.lineWidth = 1.5; g.strokeStyle = pal.antsB; g.stroke();
