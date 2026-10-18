@@ -159,6 +159,25 @@ def read_thumbnail(data: bytes) -> bytes | None:
     return None
 
 
+def stand_in_thumbnail(data: bytes) -> bytes | None:
+    """For a project saved before thumbnails (1.87.1): its bottom picture layer, at most 512 px, as a PNG; None when it
+    has no picture layer or cannot be read."""
+    try:
+        from PIL import Image
+        manifest, assets = read_zip(data)
+        for layer in manifest.get("layers", []):
+            name = layer.get("imageFile") if isinstance(layer, dict) else None
+            if isinstance(name, str) and name in assets:
+                with Image.open(io.BytesIO(assets[name])) as im:
+                    im.thumbnail((512, 512))
+                    out = io.BytesIO()
+                    im.save(out, "PNG")
+                    return out.getvalue()
+    except Exception:
+        return None
+    return None
+
+
 def read_folder(files: list[tuple[str, bytes]]) -> tuple[dict, dict[str, bytes], str]:
     """Read a project from a dropped folder's files (path and bytes); the root folder's name comes last."""
     return _collect([(path, len(blob), lambda blob=blob: blob) for path, blob in files])

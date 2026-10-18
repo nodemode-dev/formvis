@@ -2,6 +2,11 @@
 
 Living log for the engine service side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Home's file details and stand-in thumbnails · _v1.87.1 (app/routers/io.py, app/routers/projects.py, app/services/project_format.py)
+
+- `io.py`: `POST /io/stat` (`{paths}`, at most 200, behind `_local`): size, modification time and whether each file exists.
+- `project_format.py`: `stand_in_thumbnail(data)`, the bottom picture layer at 512 px for a project saved before thumbnails. `projects.py` `thumbnail` falls back to it (was `pf.read_thumbnail(target.read_bytes())` alone). The owner's .fmv answers 200 with a 242 KB PNG.
+
 ## .fvd projects, thumbnails, files by path · _v1.87.0 (app/routers/projects.py, app/routers/io.py, app/routers/mcp.py, app/services/project_format.py, tests/test_api.py, tests/test_legacy.py)
 
 CLOSE_GAPS P01. The owner's saved project (`2CD3A33C-....fmv`, 4 layers, a Relight layer) opens through `/projects/library`, `/projects/import` and the new `/projects/open-path`; the failure he saw was the window sending a whole folder to `/projects/import`.

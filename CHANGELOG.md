@@ -4,6 +4,12 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.87.1 · 2026-10-18
+
+### Changed
+
+- Home shows your files: Recent, Projects (the library) and Outputs (exports), as a grid of thumbnails or a list with name, kind, size and when each changed. Filter by name, sort by most recent, name, size or kind, click to open, and remove an entry from Recent. A file that has moved or been deleted shows as missing. Projects saved before thumbnails show their bottom picture layer. Home keeps 40 recent files; Open Recent in the File menu shows the first 10.
+
 ## 1.87.0 · 2026-10-18
 
 ### Changed

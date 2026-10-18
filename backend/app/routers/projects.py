@@ -183,7 +183,8 @@ def thumbnail(request: Request, name: str = "", path: str = "") -> Response:
         target = _existing(name)
         if not target.is_file():
             raise HTTPException(404, "Project not found.")
-    blob = pf.read_thumbnail(target.read_bytes())
+    data = target.read_bytes()
+    blob = pf.read_thumbnail(data) or pf.stand_in_thumbnail(data)
     if blob is None:
         raise HTTPException(404, "This project has no thumbnail.")
     return Response(blob, media_type="image/png", headers={"Cache-Control": "no-cache"})

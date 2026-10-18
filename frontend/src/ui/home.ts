@@ -1,33 +1,30 @@
 import type { Engine } from '../engine';
-import { api } from '../io/api';
 import { el, setHidden, setText } from './dom';
+import { HomeFiles } from './home-files';
 import { icon } from './icons';
 
-/** The Home screen, as Photoshop's (sourced in WORKSPACE_RESEARCH.md, section 15): New and Open, and the recent
- *  projects, shown over the canvas at launch while no document is open (Preferences > General, "Show Home screen at
- *  launch") and, once a document has been open, when the last one closes only if "Show Home screen when the last
- *  document closes" is on (off by default: closing leaves the empty workspace with its panels). The brand mark is
- *  its Home button at any time, as Photoshop's; Esc leaves it while a document is open. Recent projects show their
- *  names and when they were saved; Photoshop's thumbnails are not built. */
+/** The Home screen: New and Open, and the files browser (Recent, Projects, Outputs as thumbnails or a list; 1.87.1),
+ *  shown over the canvas at launch while no document is open (Preferences > General, "Show Home screen at launch")
+ *  and, once a document has been open, when the last one closes only if "Show Home screen when the last document
+ *  closes" is on (off by default: closing leaves the empty workspace with its panels). The brand mark is its Home
+ *  button at any time; Esc leaves it while a document is open. */
 export interface HomeDeps {
   engine: Engine;
   autoShow: () => boolean;
   afterClose: () => boolean;
   recent: () => string[];
   openRecent: (name: string) => void;
+  openPath: (path: string) => void;
+  removeRecent: (name: string) => void;
   run: (command: string) => void;
 }
 
 export class HomeScreen {
   readonly root = el('<section class="cv-home" aria-label="Home" hidden></section>');
-  private readonly list = el('<div class="cv-home-list"></div>');
-  /** Recent projects, a quiet list under the hint, shown only when there are any (the target has none; kept since
-   *  formvis's recent projects are useful and removing them would be a step back). */
-  private readonly recentBox = el('<div class="cv-home-main" hidden><h2 class="cv-home-title">Recent</h2></div>');
+  private readonly files: HomeFiles;
   private forced = false;
   private lastCount = 0;
   private hadDocument = false;
-  private listKey = '';
 
   /** The start screen as the target's (UI_SPEC.md section 3): the whole window below the title bar, black; a centred
    *  name, a line of what to do, a white New document button and a dark Open button, each with its shortcut as key
@@ -51,8 +48,8 @@ export class HomeScreen {
       b.addEventListener('click', () => this.d.run(cmd));
       actions.appendChild(b);
     }
-    this.recentBox.appendChild(this.list);
-    center.appendChild(this.recentBox);
+    this.files = new HomeFiles({ recent: d.recent, openRecent: d.openRecent, openPath: d.openPath, removeRecent: d.removeRecent });
+    center.appendChild(this.files.root);
     this.root.append(center);
     host.appendChild(this.root);
     d.engine.on('projects', () => this.sync());
@@ -73,27 +70,7 @@ export class HomeScreen {
     this.lastCount = n;
     if (n > 0) this.hadDocument = true;
     const on = this.forced || (n === 0 && (this.hadDocument ? this.d.afterClose() : this.d.autoShow()));
-    if (on && this.root.hidden) void this.fill();
+    if (on && this.root.hidden) void this.files.refresh();
     setHidden(this.root, !on);
-  }
-
-  /** The recent projects, with when each was saved from the project library where it can say. */
-  private async fill(): Promise<void> {
-    const names = this.d.recent();
-    let modified = new Map<string, number>();
-    try { modified = new Map((await api.library()).map((i) => [i.name, i.modified])); } catch { /* names alone */ }
-    const key = JSON.stringify(names.map((n) => [n, modified.get(n) ?? 0]));
-    setHidden(this.recentBox, names.length === 0);
-    if (key === this.listKey) return;
-    this.listKey = key;
-    this.list.textContent = '';
-    for (const name of names) {
-      const row = el<HTMLButtonElement>(`<button class="cv-home-item" type="button">${icon('image', 18)}<span class="cv-home-name"></span><span class="cv-home-date"></span></button>`);
-      setText(row.querySelector('.cv-home-name') as HTMLElement, name);
-      const t = modified.get(name);
-      setText(row.querySelector('.cv-home-date') as HTMLElement, t ? new Date(t * (t < 1e12 ? 1000 : 1)).toLocaleString() : '');
-      row.addEventListener('click', () => this.d.openRecent(name));
-      this.list.appendChild(row);
-    }
   }
 }

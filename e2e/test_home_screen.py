@@ -6,8 +6,8 @@ def test_home_screen_shows_hides_and_follows_its_preference(page):
         page.evaluate("localStorage.setItem('formvis.recent', JSON.stringify(['Alpha Project']))")
         page.reload(); page.wait_for_function("window.formvis && window.formvis.engine")
         assert page.evaluate(HOME)                                                   # no document: Home shows
-        page.locator(".cv-home-item", has_text="Alpha Project").wait_for()            # the list fills once the library answers
-        assert page.locator(".cv-home-item", has_text="Alpha Project").count() == 1
+        page.locator(".cv-hf-item", has_text="Alpha Project").wait_for()              # the list fills once the library answers
+        assert page.locator(".cv-hf-item", has_text="Alpha Project").count() == 1
         page.locator(".cv-home-action", has_text="New document").click()             # New document runs File > New
         assert page.locator(".cv-scrim:not([hidden]) .cv-dialog").count() == 1
         page.keyboard.press("Escape")

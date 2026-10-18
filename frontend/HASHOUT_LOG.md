@@ -2,6 +2,38 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Home's files browser with thumbnails · _v1.87.1 (ui/home-files.ts new, ui/home.ts, io/api.ts, app.ts, styles/shell.css, e2e/test_home_screen.py)
+
+CLOSE_GAPS P02, the owner's second issue: Home showed a short text list of library names. Researched (thumbnail grid and list view toggle on the reference Home screen, recent list clearable and sized by a preference); sort and filter are formvis's own choice.
+
+- `ui/home-files.ts` (new) `HomeFiles`: tabs Recent, Projects (library), Outputs (the exports folder plus `formvis.outputs`); thumbnail grid or list (Name, Kind, Size, Modified); filter by name or kind; sort Most recent, Name, Size, Kind; Remove from Recent; missing files struck through. Rows patched by key (`patchList`), text through `setText`, thumbnails cached per key and modification time and swapped in with `swapMedia` into a reserved 4:3 box; tab, sort and view kept in `formvis.home`. Measured: a refresh of an unchanged tab makes 0 DOM mutations.
+- `ui/home.ts`: the recent list replaced by `HomeFiles`; `HomeDeps.openPath`, `HomeDeps.removeRecent`. Removed: the `list`, `recentBox` and `listKey` fields and `fill()`:
+
+```ts
+  private async fill(): Promise<void> {
+    const names = this.d.recent();
+    let modified = new Map<string, number>();
+    try { modified = new Map((await api.library()).map((i) => [i.name, i.modified])); } catch { /* names alone */ }
+    const key = JSON.stringify(names.map((n) => [n, modified.get(n) ?? 0]));
+    setHidden(this.recentBox, names.length === 0);
+    if (key === this.listKey) return;
+    this.listKey = key;
+    this.list.textContent = '';
+    for (const name of names) {
+      const row = el<HTMLButtonElement>(`<button class="cv-home-item" type="button">${icon('image', 18)}<span class="cv-home-name"></span><span class="cv-home-date"></span></button>`);
+      setText(row.querySelector('.cv-home-name') as HTMLElement, name);
+      const t = modified.get(name);
+      setText(row.querySelector('.cv-home-date') as HTMLElement, t ? new Date(t * (t < 1e12 ? 1000 : 1)).toLocaleString() : '');
+      row.addEventListener('click', () => this.d.openRecent(name));
+      this.list.appendChild(row);
+    }
+  }
+```
+
+- `io/api.ts`: `stat(paths)`. `app.ts`: recents kept to 40 (Open Recent shows 10); Home gets `openPath` and `removeRecent`.
+- `shell.css`: `.cv-home-main`, `.cv-home-title`, `.cv-home-list`, `.cv-home-item`, `.cv-home-name`, `.cv-home-date` replaced by the `.cv-hf-*` rules; `.cv-home-center` starts at 12vh and is 1180 px wide at most.
+- Checked in Chromium, 1800 x 1110 at scale 2, seeded with recents (a saved .fvd, the owner's .fmv, a library name, a missing path) and an output PNG: thumbnails in every tab (stand-ins for projects saved before thumbnails), list view, filter, sort, remove, open. Not checked under CPU throttling or in WebKit.
+
 ## Projects as .fvd files; desktop open and save panels; folders that are not projects · _v1.87.0 (io/disk.ts new, io/api.ts, io/images.ts, io/legacy.ts, engine/project.ts, app.ts, ui/app-dialogs.ts, automation/agent-bridge.ts, automation/command-meta.ts)
 
 CLOSE_GAPS P01, the owner's first issue: a saved project could not be opened again ("manifest.json was not found"). The engine opens the owner's file by every route (library, import, path); the error came from the Open dialog's Project folder button, which sent the whole Projects folder as one unpacked project. Saving only ever went to the library under a typed name, and exports went to a hidden Exports folder.

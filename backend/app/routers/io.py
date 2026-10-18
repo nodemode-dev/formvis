@@ -1,12 +1,13 @@
 import io
 import json
+import os
 import re
 from pathlib import Path
 
 import numpy as np
 from urllib.parse import quote
 
-from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
+from fastapi import APIRouter, Body, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import Response
 
 from app.core import config
@@ -629,6 +630,22 @@ def write_path(request: Request, file: UploadFile = File(...), path: str = Form(
     except OSError as exc:
         raise HTTPException(status_code=400, detail=f"formvis could not write {target.name}: {exc.strerror or exc}.") from exc
     return {"path": str(target), "size": target.stat().st_size}
+
+
+@router.post("/stat")
+def stat_paths(request: Request, paths: list[str] = Body(default=[], embed=True)) -> list[dict]:
+    """Size and modification time of files on this computer (1.87.1), for Home's recent files; a missing file says so."""
+    from app.routers.projects import _local
+    _local(request)
+    out = []
+    for raw in paths[:200]:
+        path = Path(os.path.expanduser(str(raw)))
+        try:
+            st = path.stat() if path.is_absolute() and path.is_file() else None
+        except OSError:
+            st = None
+        out.append({"path": str(raw), "exists": st is not None, "size": st.st_size if st else 0, "modified": st.st_mtime if st else 0})
+    return out
 
 
 @router.get("/outputs")

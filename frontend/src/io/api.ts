@@ -543,6 +543,11 @@ export const api = {
     const r = await request('/io/write-path', { method: 'POST', headers: LOCAL, body: form({ path }, [{ name: 'file', blob }], 'file') });
     return ((await r.json()) as { path: string }).path;
   },
+  /** Size and modification time of files on this computer (1.87.1), for Home's recent files. */
+  async stat(paths: string[]): Promise<Array<{ path: string; exists: boolean; size: number; modified: number }>> {
+    if (!paths.length) return [];
+    try { return (await (await request('/io/stat', { method: 'POST', headers: { ...LOCAL, 'Content-Type': 'application/json' }, body: JSON.stringify({ paths }) })).json()) as Array<{ path: string; exists: boolean; size: number; modified: number }>; } catch { return []; }
+  },
   /** The exports folder's files, newest first (1.87.0). */
   async outputs(): Promise<OutputItem[]> {
     try { return (await (await request('/io/outputs')).json()) as OutputItem[]; } catch { return []; }

@@ -588,10 +588,10 @@ export function startApp(): void {
   let recent: string[] = [];
   try {
     const stored: unknown = JSON.parse(localStorage.getItem(RECENT_KEY) ?? '[]');
-    if (Array.isArray(stored)) recent = stored.filter((n): n is string => typeof n === 'string' && !!n).slice(0, 10);
+    if (Array.isArray(stored)) recent = stored.filter((n): n is string => typeof n === 'string' && !!n).slice(0, 40);
   } catch { recent = []; }
   function keepRecent(next: string[]): void {
-    recent = next.slice(0, 10);
+    recent = next.slice(0, 40);   // Home lists 40 (1.87.1); Open Recent shows the first 10
     try { localStorage.setItem(RECENT_KEY, JSON.stringify(recent)); } catch { /* storage unavailable: the list lasts this session */ }
   }
   const noteRecent = (name: string): void => keepRecent([name, ...recent.filter((n) => n !== name)]);
@@ -605,10 +605,11 @@ export function startApp(): void {
     });
   }
 
-  // The Home screen over the canvas; the brand mark is its Home button, as Photoshop's.
+  // The Home screen over the canvas; the brand mark is its Home button.
   const home = new HomeScreen(q(root, '.cv-stage'), {
     engine, autoShow: () => loadPrefs().autoShowHome, afterClose: () => loadPrefs().homeOnLastClose, recent: () => recent,
     openRecent: (name) => { void openLibrary(name); }, run: (c) => { commands.run(c); },
+    openPath: (path) => { void openPaths([path]); }, removeRecent: (name) => keepRecent(recent.filter((n) => n !== name)),
   });
   const brand = q(root, '.cv-brand');
   brand.setAttribute('role', 'button');
@@ -3325,7 +3326,7 @@ export function startApp(): void {
   const filterGroup = (group: LibGroup, core: string[]): string[] => [...core, ...libInGroup(group).map((f) => `filter-${f.id}`)].sort((a, b) => filterName(a).localeCompare(filterName(b)));
   const drawnFirst = ['filter-flame', 'filter-pictureFrame', 'filter-tree'];
   const menus: MenuDef[] = [
-    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
+    { label: 'File', items: () => ['new', 'open', 'import', 'import-video', 'create-video-timeline', 'place-embedded', 'place-linked', 'place-3d', 'open-svg-layers', ...(recent.length ? [{ label: 'Open Recent', items: [...recent.slice(0, 10).map((_, i) => `recent-${i}`), '-', 'clear-recent'] }] : []), '-', 'save', 'save-as', 'save-copy', 'revert', 'download-project', 'package', '-',
       { label: 'Export', items: ['export-as', 'save-for-web', '-', 'export-png', 'export-jpg', 'export-webp', 'export-avif', 'export-tiff', 'export-tiff-layers', 'export-hdr', 'export-exr', 'export-pdf', 'export-gif', 'export-mp4', 'render-video', '-', 'export-psd', 'export-psb', 'export-ora', 'export-paths-ai', 'assemble-tiles', '-', 'export-layers', 'export-layer-comps', 'generate-image-assets', 'image-assets-on-save', 'export-luts', 'export-artboards-files', 'export-data-sets', 'export-artboards'] },
       { label: 'Automate', items: ['actions', 'action-stop', 'batch', 'create-droplet', '-', 'fit-image', 'conditional-mode-change', 'contact-sheet', 'crop-straighten-photos', 'photomerge', 'merge-hdr'] },
       { label: 'Scripts', items: ['script-delete-empty-layers', 'script-flatten-effects', 'script-flatten-masks', '-', 'image-processor', 'script-events', 'load-files-stack', 'stack-statistics', '-', 'export-layers', 'export-artboards-files'] }, 'file-info', ...(hostLink.embedded ? ['send-host'] : ['send-nodemode']), 'send-comfyui', 'comfyui-run', '-', 'print', 'print-one-copy', '-', 'close-tab', 'close-all', 'close-others'] },
