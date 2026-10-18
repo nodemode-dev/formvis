@@ -4,6 +4,17 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.86.4 · 2026-10-18
+
+### Fixed
+
+- Relight's side panel showed as a bare Properties header when the Properties group had ever been minimised (the minus button, which is remembered). Starting Relight now opens that group, picks its Properties tab, scrolls to it and folds the other groups in the column while the session lasts; they open again when it ends. Reproduced in WebKit (the desktop app's engine) with the minimised state: 41 px before, the whole column after.
+
+### Added
+
+- Help > Record Performance: records 10 seconds of real use and reports frame gaps and stutters, the canvas, overlay and ruler draws, every engine event, input handling, pixel reads and uploads (2D, WebGL2, WebGPU), the renderer and why, and the engine's answer time; Copy and Save. Also `formvisPerf.record(10)` in the console.
+- The desktop app has the Web Inspector in release builds (Tauri's `devtools` feature): right-click > Inspect Element, for Safari's Timelines and the console.
+
 ## 1.86.3 · 2026-10-18
 
 ### Fixed

@@ -2,6 +2,14 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Relight's panel over a minimised group; Record Performance; Web Inspector · _v1.86.4 (ui/panel-group.ts, ui/properties.ts, ui/relight-session.ts, app.ts, ui/perf-recorder.ts new, automation/command-meta.ts, src-tauri/Cargo.toml)
+
+The owner's 1.86.3 screenshot: a Relight session running, the Properties group showing only its header. `formvis.groups` held `properties: { min: true }`; `reveal()` opened the column but not the group, and every earlier check started from clean storage. Reproduced in WebKit 26 (Playwright's) with that state: the group 41 px, `.cv-relight` 0 px.
+
+- `panel-group.ts`: `PanelGroup.focusTab(tab)` unminimises the group holding the tab (remembered), shows the tab, minimises the other open groups of its column without remembering, scrolls it into view and returns them; `PanelGroup.unfocus(folded)` opens them again. `properties.ts`: `reveal()` is now `this.expand(); PanelGroup.unfocus(this.folded); this.folded = PanelGroup.focusTab('properties');` (was `this.expand();`), new `conceal()`. `relight-session.ts`: `onEnd`, called in `end` after `cv-relighting` is removed; `app.ts` `relight.onEnd = () => props.conceal()`. Checked in WebKit: during the session Properties 1481 px with Brushes, Paragraph and Character at 41; after Cancel 210, 428, 89, 241, and `formvis.groups` `{"properties":{"min":false}}`.
+- `perf-recorder.ts` (new): `recordPerformance(ctx, seconds)` wraps for the recording and then restores the engine's `emit` (own property over the prototype's), the stage's `renderScene`, `renderOverlay`, `renderRulers`, the 2D contexts' `getImageData`, `putImageData`, `drawImage`, WebGL2's `texImage2D`, `texSubImage2D`, `readPixels`, `GPUQueue`'s `copyExternalImageToTexture`, `writeTexture`, `submit`; input handling as window capture to window bubble per type; animation-frame gaps. `PerfDialog`: Record 10 Seconds, Copy, Save. Command `record-performance` (Help); `window.formvisPerf.record(seconds)` in every build. First readings here, 1800 x 1110 at scale 2: WebKit drew on WebGL2 at 94 ms a scene, all in `drawArrays` (software GL on this Linux, about 31 ms a call at 2816 x 1936), so not the owner's Mac; page elements 20,000, 15,000 of them in hidden prebuilt dialogs.
+- `Cargo.toml`: `tauri` with `features = ["devtools"]` (was `[]`).
+
 ## Desktop app speed: no double monitor conversion, the view table on the GPU, readable canvases on WebKit · _v1.86.2 (ui/colour-display.ts, ui/colour.ts, ui/stage.ts, engine/lut.ts, engine/surface.ts, src-tauri/src/main.rs)
 
 The owner sent the built formvis.app (1.86.0): the browser build is quick, the app slow and glitchy. What only the app does:
