@@ -309,7 +309,9 @@ are not touched.
 - Pattern casts the light through a gobo: Blinds (Scale, Width, Slats, Opening), Light Strip (Length, Width), Window
   or Leaves, each with Feather, Rotation and Invert.
 - Scene sets how much of the photo's Original lighting is kept and how much Shine the lights add on glossy forms.
-- On the canvas, drag a light's round handle to move it and its small target to aim it (Alt-drag also aims). Done
+- On the canvas, drag a light's round handle to move it and its small target to aim it (Alt-drag also aims); with a pattern, Shift-drag places the pattern's centre (the
+  ringed reticle, then draggable itself) apart from the aim, as the strip across her face while the light aims at her
+  chest. Done
   (or Enter) renders the layer at full size; Cancel (or Escape) leaves things as they were.
 - Edit Lighting, under the picture when a Relight layer is selected, reopens it; so do Layer > Edit Lighting...,
   Layer Content Options... and a double-click on the layer in the Layers panel.

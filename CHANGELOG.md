@@ -4,6 +4,20 @@ Versions follow `v*.*.*` with dots. Dates are UTC. From 1.50.1 the last number r
 
 The app was renamed formvis at 1.50.5, and its projects are `.fmv`. The entries below read with the new name throughout; the git history keeps the former one.
 
+## 1.81.0 · 2026-10-18
+
+### Added
+
+- A pattern centre, as in the reference: with a pattern on, Shift-drag on the canvas places the pattern (a ringed reticle) apart from where the light aims, so a strip can cross the face while the light aims at the chest. `relight.apply` takes `pattern.center`.
+
+### Changed
+
+- Relight is benchmarked on seven reference frames with the panel values read off each, and matches every one within half a stop on average.
+- Intensity is perceptual, as in the reference: 31 percent is about a seventh of the light of 82 percent, not two fifths.
+- Light stops at the depth of what it is aimed at: a low lamp floods her arm and hair and leaves the room dark; a sun strip does not paint the far wall.
+- Patterns are laid on the canvas as the frame shows them (the panel's rotation is the rotation you see), and bend over every nearer or farther surface along the light.
+- Strip feather is a share of the strip's width, so a soft narrow strip still shows. The Light Strip Look takes the reference's values.
+
 ## 1.80.0 · 2026-10-18
 
 ### Fixed

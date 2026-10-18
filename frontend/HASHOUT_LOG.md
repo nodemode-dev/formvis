@@ -2,6 +2,17 @@
 
 Living log for the frontend side, _v0.1.0. Read the map and the TOC first; entries are anchored by file and symbol, and removed code is quoted in full.
 
+## Light as the reference throws it · _v1.81.0 (engine/relight.ts, gpu/relight-gl.ts, extensions/tools/relight.ts, ui/relight-session.ts, automation/catalogue.ts)
+
+The owner on 1.80.0: "not how light and shadows actually works and is not a true parity". Read every value off the reference's panels instead of guessing: frame 26 is Intensity 82 and frame 28 is 31 (the benchmark had them swapped since 1.78.0), frame 40 is Intensity 53, Softness 18, Width 38, Feather 30, Rotation 12, frame 33 Rotation -78, Close about 30 for every sun; and the reference draws a pattern-centre reticle apart from the aim. Seven frames now (23, 26, 27, 28, 31, 33, 40), mean gain-map error 0.27 to 0.50 stops each (was 0.55 to 0.74).
+
+- Intensity is perceptual: the light carries `1.22 x (intensity / 100)^2` (31 against 82 gives 7 times less light, as frames 28 and 27 show). Replaced: `intensity: l.intensity / 100, ...`. The sun is 2.7 times a local light (was 1.5) to keep Blinds at frame 23's level.
+- Reach behind the aimed depth: a sun `(0.08 + 0.8 d) relief` falling as `(1 + rr^2)^2`, a local light `(0.05 + 0.4 d) relief` falling as `(1 + rr^2)^3`, so a low lamp floods her left arm and hair and leaves the wall dark (frame 26) and a strip does not paint the far wall (frame 40). Replaced (TS and GLSL): `reach = (sun ? 0.18 + 1.8 * L.distance : ...)`, `atten = atten / (1 + rr * rr * (sun ? 1 : rr * rr)) * (sun ? 1.5 : 1);`.
+- The pattern is laid on the picture plane at the pattern centre's depth and every other surface takes it shifted along the light (`goboPlaneUV`, GLSL twin): rotation on the canvas is the rotation in the panel, as in the reference, and the slats still bend over the arm and face. Replaced: `const band = 0.06 * relief, uv = goboUV(goboBasis(...), px - L.aim[0], py - L.aim[1], ...)` and GLSL `bool hit = goboUV(type, pos, aim, ...)`. `goboUV` and `goboPoint` stay exported for a perspective projector.
+- Pattern centre: `RelightPattern.center` (optional, the aim when absent), parsed by `relightFrom`, packed as `PackedLight.center` and `uF.zw` (replaced `range: [...]` alone and `[lights[i].range[0], lights[i].range[1], 0, 0]`). On the canvas a ringed reticle; Shift-drag places it, then it drags. `relight.apply` documents `pattern.center`. Replaced in `tools/relight.ts`: `Drag`, `docOf`, the `['pos', 'aim']` hit loop, the `down` fallback, the projected-quad overlay and its import; in the session `moveLight` and the canvas note.
+- Strip feather is a fraction of the strip's width, centred on its edge (feather 30 on width 38 was a strip at 0.2 strength, invisible). Replaced: `m = smooth(hl, hl - feather, Math.abs(y)) * smooth(hw, hw - feather, Math.abs(x));` and its GLSL twin.
+- The Light Strip Look takes frame 40's values with its centre on the face.
+
 ## Slat shadows that look like light · _v1.80.0 (engine/relight.ts, gpu/relight-gl.ts)
 
 The owner on 1.79.0: "how god awful it looks". At 100 percent beside the reference's face: the stripe edges were razor hard, torn and jagged through the hair, and the lit stripes pale, like a translucent sheet laid over her. Three causes, found by looking:
