@@ -1,4 +1,4 @@
-import { MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry } from '../engine/relight';
+import { MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry, type SplitMaps } from '../engine/relight';
 
 const VERT = `#version 300 es
 in vec2 aPos;
@@ -27,6 +27,9 @@ uniform sampler2D uShade;
 uniform float uDelight;
 uniform float uShadows;
 uniform vec3 uAmbient;
+uniform sampler2D uS0;
+uniform sampler2D uRes;
+uniform float uSplit;
 
 float toLin(float v) { return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4); }
 float toSrgb(float v) { return v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1.0 / 2.4) - 0.055; }
@@ -76,7 +79,7 @@ void main() {
   vec2 p = uv * uSize;
   vec3 n = g.rgb;
   float pz = g.a * relief;
-  vec3 E = uAmbient, S = vec3(0.0);
+  vec3 E = uAmbient * (uSplit > 0.5 ? texture(uS0, uv).rgb : vec3(1.0)), S = uSplit > 0.5 ? texture(uRes, uv).rgb * uOrig : vec3(0.0);
   for (int i = 0; i < ${MAX_RELIGHT_LIGHTS}; i++) {
     if (i >= uCount) break;
     vec4 A = uA[i], B = uB[i], C = uC[i], D = uD[i], Ee = uE[i], F = uF[i];
@@ -154,7 +157,7 @@ void main() {
   outColor = vec4(toSrgb(tone(o.r)), toSrgb(tone(o.g)), toSrgb(tone(o.b)), base.a);
 }`;
 
-interface GlState { gl: WebGL2RenderingContext; canvas: HTMLCanvasElement | OffscreenCanvas; prog: WebGLProgram; base: WebGLTexture; geo: WebGLTexture; shade: WebGLTexture; loc: Record<string, WebGLUniformLocation | null> }
+interface GlState { gl: WebGL2RenderingContext; canvas: HTMLCanvasElement | OffscreenCanvas; prog: WebGLProgram; base: WebGLTexture; geo: WebGLTexture; shade: WebGLTexture; s0: WebGLTexture; res: WebGLTexture; loc: Record<string, WebGLUniformLocation | null> }
 
 let state: GlState | null | undefined;
 
@@ -189,23 +192,30 @@ function init(): GlState | null {
     for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.NEAREST], [gl.TEXTURE_MAG_FILTER, gl.NEAREST], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]] as const) gl.texParameteri(gl.TEXTURE_2D, k, v);
     return t;
   };
-  const base = tex(), geo = tex(), shade = tex();
-  if (!base || !geo || !shade) return null;
+  const base = tex(), geo = tex(), shade = tex(), s0 = tex(), res = tex();
+  if (!base || !geo || !shade || !s0 || !res) return null;
   const loc: Record<string, WebGLUniformLocation | null> = {};
-  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient']) loc[k] = gl.getUniformLocation(prog, k);
-  state = { gl, canvas, prog, base, geo, shade, loc };
+  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit']) loc[k] = gl.getUniformLocation(prog, k);
+  state = { gl, canvas, prog, base, geo, shade, s0, res, loc };
   return state;
 }
 
 export const relightGpuAvailable = (): boolean => !!init();
 
-let uploaded: { base: Uint8ClampedArray | null; geo: Float32Array | null; shade: Float32Array | null | undefined } = { base: null, geo: null, shade: undefined };
+let uploaded: { base: Uint8ClampedArray | null; geo: Float32Array | null; shade: Float32Array | null | undefined; split: SplitMaps | null | undefined } = { base: null, geo: null, shade: undefined, split: undefined };
 const ONE = new Float32Array([1]);
+const ONE4 = new Float32Array([1, 1, 1, 1]);
 
-export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, steps = 24, shade: Float32Array | null = null): Uint8ClampedArray {
+function rgba(src: Float32Array, n: number): Float32Array {
+  const out = new Float32Array(n * 4);
+  for (let i = 0; i < n; i++) { out[i * 4] = src[i * 3]; out[i * 4 + 1] = src[i * 3 + 1]; out[i * 4 + 2] = src[i * 3 + 2]; out[i * 4 + 3] = 1; }
+  return out;
+}
+
+export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, steps = 24, shade: Float32Array | null = null, split: SplitMaps | null = null): Uint8ClampedArray {
   const st = init(), w = geo.width, h = geo.height;
   const maxTex = st ? st.gl.getParameter(st.gl.MAX_TEXTURE_SIZE) as number : 0;
-  if (!st || w > maxTex || h > maxTex) return shadeRelight(base, geo, content, { shadowSteps: Math.min(steps, 16), shade });
+  if (!st || w > maxTex || h > maxTex) return shadeRelight(base, geo, content, { shadowSteps: Math.min(steps, 16), shade, split });
   const { gl, canvas, prog, loc } = st;
   canvas.width = w; canvas.height = h;
   gl.viewport(0, 0, w, h);
@@ -221,10 +231,21 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
     else gl.texImage2D(gl.TEXTURE_2D, 0, gl.R32F, 1, 1, 0, gl.RED, gl.FLOAT, ONE);
     uploaded.shade = shade;
   }
+  if (uploaded.split !== split) {
+    for (const [unit, t, src] of [[3, st.s0, split?.shading], [4, st.res, split?.residual]] as const) {
+      gl.activeTexture(unit === 3 ? gl.TEXTURE3 : gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, t);
+      if (src) gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, rgba(src, w * h));
+      else gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, 1, 1, 0, gl.RGBA, gl.FLOAT, ONE4);
+    }
+    uploaded.split = split;
+  }
+  gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, st.s0);
+  gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, st.res);
+  gl.uniform1i(loc.uS0, 3); gl.uniform1i(loc.uRes, 4); gl.uniform1f(loc.uSplit, split ? 1 : 0);
   gl.uniform1i(loc.uBase, 0); gl.uniform1i(loc.uGeo, 1); gl.uniform1i(loc.uShade, 2);
   const sc = sceneTerms(content);
   gl.uniform3f(loc.uAmbient, sc.ambient[0], sc.ambient[1], sc.ambient[2]);
-  gl.uniform1f(loc.uDelight, shade ? sc.delight : 0);
+  gl.uniform1f(loc.uDelight, shade && !split ? sc.delight : 0);
   gl.uniform1f(loc.uShadows, sc.shadows);
   gl.uniform2f(loc.uSize, w, h);
   const lights = packLights(content, w, h);
@@ -245,4 +266,4 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   return out;
 }
 
-export function forgetRelightUploads(): void { uploaded = { base: null, geo: null, shade: undefined }; }
+export function forgetRelightUploads(): void { uploaded = { base: null, geo: null, shade: undefined, split: undefined }; }

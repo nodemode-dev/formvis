@@ -43,6 +43,15 @@ export interface RelightContent {
   ambient?: RGB;
   look?: string;
   depth?: 'model' | 'estimate';
+  split?: 'auto' | 'marigold' | 'classic' | 'off';
+}
+
+export interface SplitMaps { shading: Float32Array; residual: Float32Array }
+
+export function withNormals(geo: RelightGeometry, normals: Float32Array): RelightGeometry {
+  const data = new Float32Array(geo.data), n = geo.width * geo.height;
+  for (let i = 0; i < n; i++) { data[i * 4] = normals[i * 3]; data[i * 4 + 1] = normals[i * 3 + 1]; data[i * 4 + 2] = normals[i * 3 + 2]; }
+  return { width: geo.width, height: geo.height, data };
 }
 
 export const RELIGHT_TYPES: ReadonlyArray<readonly [RelightType, string]> = [['point', 'Point'], ['spot', 'Spot'], ['sun', 'Sun'], ['area', 'Area'], ['strip', 'Strip'], ['ring', 'Ring']];
@@ -134,6 +143,7 @@ export function relightFrom(raw: unknown): RelightContent | null {
     ...(o.delight !== undefined ? { delight: num(o.delight, 0, 100, 0) } : {}), ...(o.shadows !== undefined ? { shadows: num(o.shadows, 0, 100, 70) } : {}),
     ...(o.ambient && typeof o.ambient === 'object' ? { ambient: rgb(o.ambient) } : {}),
     ...(typeof o.look === 'string' ? { look: o.look.slice(0, 80) } : {}), ...(o.depth === 'model' || o.depth === 'estimate' ? { depth: o.depth } : {}),
+    ...(o.split === 'auto' || o.split === 'marigold' || o.split === 'classic' || o.split === 'off' ? { split: o.split } : {}),
   };
 }
 
@@ -276,7 +286,7 @@ export function patternAt(kind: number, u: number, v: number, s: number, pat: re
   return kind < 0 ? 1 - m : m;
 }
 
-export interface ShadeOptions { shadowSteps?: number; shade?: Float32Array | null }
+export interface ShadeOptions { shadowSteps?: number; shade?: Float32Array | null; split?: SplitMaps | null }
 
 export function sceneTerms(content: RelightContent): { ambient: [number, number, number]; delight: number; shadows: number } {
   const a = content.ambient ?? { r: 255, g: 255, b: 255 }, o = content.original / 100;
@@ -285,13 +295,15 @@ export function sceneTerms(content: RelightContent): { ambient: [number, number,
 
 export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, content: RelightContent, opts: ShadeOptions = {}): Uint8ClampedArray {
   const w = geo.width, h = geo.height, g = geo.data, s = Math.max(w, h), relief = SCENE_DEPTH * s, out = new Uint8ClampedArray(base.length);
-  const lights = packLights(content, w, h), shine = content.shine / 100, steps = opts.shadowSteps ?? 16, sc = sceneTerms(content), shade = opts.shade ?? null;
+  const lights = packLights(content, w, h), shine = content.shine / 100, steps = opts.shadowSteps ?? 16, sc = sceneTerms(content), shade = opts.shade ?? null, split = opts.split ?? null;
   const lut = new Float32Array(256);
   for (let i = 0; i < 256; i++) lut[i] = srgbToLinear(i / 255);
   const zAt = (x: number, y: number): number => g[(clamp(Math.floor(y), 0, h - 1) * w + clamp(Math.floor(x), 0, w - 1)) * 4 + 3] * relief;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     const i = (y * w + x) * 4, nx = g[i], ny = g[i + 1], nz = g[i + 2], pz = g[i + 3] * relief;
-    let er = sc.ambient[0], eg = sc.ambient[1], eb = sc.ambient[2], sr = 0, sg = 0, sb = 0;
+    const q = (y * w + x) * 3, S0 = split ? split.shading : null;
+    let er = sc.ambient[0] * (S0 ? S0[q] : 1), eg = sc.ambient[1] * (S0 ? S0[q + 1] : 1), eb = sc.ambient[2] * (S0 ? S0[q + 2] : 1), sr = 0, sg = 0, sb = 0;
+    if (split) { const ro = content.original / 100; sr = split.residual[q] * ro; sg = split.residual[q + 1] * ro; sb = split.residual[q + 2] * ro; }
     const d = g[i + 3];
     for (const L of lights) {
       const win = depthWindow(d, L.range[0], L.range[1]);
@@ -300,7 +312,7 @@ export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, cont
       er += L.color[0] * c.diffuse * win; eg += L.color[1] * c.diffuse * win; eb += L.color[2] * c.diffuse * win;
       sr += L.color[0] * c.spec * shine * win; sg += L.color[1] * c.spec * shine * win; sb += L.color[2] * c.spec * shine * win;
     }
-    const k = shade ? 1 / (1 + (shade[y * w + x] - 1) * sc.delight) : 1;
+    const k = shade && !split ? 1 / (1 + (shade[y * w + x] - 1) * sc.delight) : 1;
     out[i] = Math.round(linearToSrgb(tone(lut[base[i]] * k * er + sr)) * 255);
     out[i + 1] = Math.round(linearToSrgb(tone(lut[base[i + 1]] * k * eg + sg)) * 255);
     out[i + 2] = Math.round(linearToSrgb(tone(lut[base[i + 2]] * k * eb + sb)) * 255);

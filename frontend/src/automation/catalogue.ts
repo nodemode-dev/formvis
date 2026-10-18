@@ -19,7 +19,7 @@ export interface CatalogueDeps {
   engine: Engine; commands: Commands;
   applyFilter(kind: string, settings: Record<string, unknown>): Promise<boolean> | boolean;
   applyAdjustment(kind: string, data: Record<string, unknown>, layer: boolean): boolean;
-  applyRelight?(content: RelightContent): Promise<{ id: string; depth: 'model' | 'estimate' } | null>;
+  applyRelight?(content: RelightContent): Promise<{ id: string; depth: 'model' | 'estimate'; split?: 'marigold' | 'classic' | null } | null>;
 }
 
 const sleep = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms));
@@ -145,6 +145,7 @@ function actionEntries(): CatalogueEntry[] {
         original: rangeParam('original', 0, 100, 'Percent of the original lighting kept'), shine: rangeParam('shine', 0, 100, 'Highlights on glossy forms'),
         delight: rangeParam('delight', 0, 100, 'Percent of the original light and shade flattened before the new lights'), shadows: rangeParam('shadows', 0, 100, 'Strength of cast shadows (with the depth model)'),
         ambient: { type: 'string', description: 'Colour of the kept original light, like #ffe8d0' },
+        split: { type: 'string', enum: ['auto', 'marigold', 'classic', 'off'], description: 'How the photo\'s own light is taken out before the new lights: auto (Marigold when installed, else SAM 2.1 regions), marigold, classic, or off (add light on top)' },
       }),
   ];
 }
@@ -162,11 +163,11 @@ async function relightApply(p: Record<string, unknown>): Promise<RunResult> {
   }) : start.lights;
   const ambient = typeof p.ambient === 'string' ? rgbOf(p.ambient) : null;
   if (p.ambient !== undefined && !ambient) return fail('ambient must be a colour like #ffe8d0.');
-  const content = relightFrom({ ...start, lights, ...(['original', 'shine', 'delight', 'shadows'] as const).reduce((m, k) => (typeof p[k] === 'number' ? { ...m, [k]: p[k] } : m), {}), ...(ambient ? { ambient } : {}), ...(look ? { look: look.id } : {}) });
+  const content = relightFrom({ ...start, lights, ...(['original', 'shine', 'delight', 'shadows'] as const).reduce((m, k) => (typeof p[k] === 'number' ? { ...m, [k]: p[k] } : m), {}), ...(ambient ? { ambient } : {}), ...(look ? { look: look.id } : {}), ...(typeof p.split === 'string' ? { split: p.split } : {}) });
   if (!content || !content.lights.length) return fail('Give at least one light, or a look.');
   const made = await deps!.applyRelight(content);
   if (!made) return fail('Relight could not run: it needs an 8-bit RGB document and no Relight session open in the window.');
-  return { ok: true, result: { message: `Added a Relight layer with ${content.lights.length} light${content.lights.length > 1 ? 's' : ''}${made.depth === 'model' ? ', shaped by Depth Anything' : ', on an estimated shape (download Depth Anything for cast shadows)'}.`, layer: made.id, undoName: deps!.engine.current?.history.undoName } };
+  return { ok: true, result: { message: `Added a Relight layer with ${content.lights.length} light${content.lights.length > 1 ? 's' : ''}${made.depth === 'model' ? ', shaped by Depth Anything' : ', on an estimated shape (download Depth Anything for cast shadows)'}${made.split === 'marigold' ? ', the old light taken out with Marigold' : made.split === 'classic' ? ', the old light taken out with SAM 2.1 regions' : ', light added on top of the old'}.`, layer: made.id, undoName: deps!.engine.current?.history.undoName } };
 }
 
 const describeParam = (n: string, s: CommandParam): string => `${n} (${s.enum ? `one of ${s.enum.join(', ')}` : s.min !== undefined && s.max !== undefined ? `${s.type} from ${s.min} to ${s.max}` : s.type})`;

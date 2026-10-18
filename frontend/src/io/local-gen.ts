@@ -109,6 +109,36 @@ export async function installModel(id: string, status: (text: string) => void): 
   }
 }
 
+export interface RelightEngines { marigold: boolean; marigoldModels: boolean; marigoldRuntime: boolean; classic: boolean; regions: 'sam' | 'colour'; license: string; downloadGB: number }
+export interface LightSplit { engine: 'marigold' | 'classic'; width: number; height: number; albedo: Uint8ClampedArray; shading: Float32Array; residual: Float32Array; normals: Float32Array | null }
+
+export async function relightEngines(): Promise<RelightEngines | null> {
+  try { return await (await ask('/relight/engines')).json() as RelightEngines; } catch { return null; }
+}
+
+function halfToFloat(src: Uint16Array): Float32Array {
+  const out = new Float32Array(src.length);
+  for (let i = 0; i < src.length; i++) {
+    const h = src[i], s = h & 0x8000 ? -1 : 1, e = (h >> 10) & 0x1f, f = h & 0x3ff;
+    out[i] = e === 0 ? s * f * 2 ** -24 : e === 31 ? (f ? NaN : s * Infinity) : s * (1 + f / 1024) * 2 ** (e - 15);
+  }
+  return out;
+}
+
+export async function relightSplit(image: Blob, width: number, height: number, engine: 'auto' | 'marigold' | 'classic'): Promise<LightSplit> {
+  const form = new FormData(); form.append('image', image, 'image.png');
+  const buf = await (await ask(`/relight/split?engine=${engine}&width=${width}&height=${height}`, { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form })).arrayBuffer();
+  const headLen = new DataView(buf).getUint32(0, true), head = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 4, headLen))) as { engine: 'marigold' | 'classic'; width: number; height: number; normals: boolean };
+  const n = head.width * head.height;
+  let at = 4 + headLen;
+  const rgb = new Uint8Array(buf, at, n * 3); at += n * 3;
+  const half = (count: number): Float32Array => { const copy = new Uint16Array(buf.slice(at, at + count * 2)); at += count * 2; return halfToFloat(copy); };
+  const shading = half(n * 3), residual = half(n * 3), normals = head.normals ? half(n * 3) : null;
+  const albedo = new Uint8ClampedArray(n * 4);
+  for (let i = 0; i < n; i++) { albedo[i * 4] = rgb[i * 3]; albedo[i * 4 + 1] = rgb[i * 3 + 1]; albedo[i * 4 + 2] = rgb[i * 3 + 2]; albedo[i * 4 + 3] = 255; }
+  return { engine: head.engine, width: head.width, height: head.height, albedo, shading, residual, normals };
+}
+
 export async function localDepthValues(image: Blob, width: number, height: number): Promise<Float32Array> {
   const form = new FormData(); form.append('image', image, 'image.png');
   const r = await ask(`/depth/local?fmt=f32&width=${width}&height=${height}`, { method: 'POST', headers: { 'x-formvis-local': '1' }, body: form });

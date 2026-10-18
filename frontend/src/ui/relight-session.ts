@@ -1,10 +1,10 @@
 import type { Engine, ID, ToolId } from '../engine';
 import {
-  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, shadeRelight, shadingField,
-  type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType,
+  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, shadeRelight, shadingField, withNormals,
+  type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType, type SplitMaps,
 } from '../engine/relight';
 import { renderRelight } from '../gpu/relight-gl';
-import { depthReady, installModel, localDepthValues } from '../io/local-gen';
+import { depthReady, installModel, localDepthValues, relightEngines, relightSplit, type RelightEngines } from '../io/local-gen';
 import { setRelightHost } from '../extensions/tools/relight';
 import { el, q, setClass, setHidden, setText } from './dom';
 import { icon } from './icons';
@@ -50,7 +50,10 @@ export class RelightSession {
   private content: RelightContent = defaultRelight();
   private selectedId: string | null = null;
   private full: Sized | null = null;
-  private proxy: { base: Uint8ClampedArray; geo: RelightGeometry; shade: Float32Array } | null = null;
+  private proxy: { base: Uint8ClampedArray; geo: RelightGeometry; shade: Float32Array; albedo?: Uint8ClampedArray; split?: SplitMaps; normals?: Float32Array | null } | null = null;
+  private splitUsed: 'marigold' | 'classic' | null = null;
+  private source: Blob | null = null;
+  private engines: RelightEngines | null = null;
   private depthFull: Float32Array | null = null;
   private frame = 0;
   private busy = false;
@@ -119,10 +122,58 @@ export class RelightSession {
     this.syncPill();
     this.sync();
     this.schedule();
-    void this.loadDepth(below, pw, ph);
+    this.splitUsed = null;
+    this.source = null;
+    void this.loadDepth(below, pw, ph).then(() => this.loadSplit(below, pw, ph));
   }
 
-  async apply(content: RelightContent): Promise<{ id: ID; depth: 'model' | 'estimate' } | null> {
+  private async sourceBlob(below: ImageData): Promise<Blob> {
+    if (!this.source) {
+      const c = new OffscreenCanvas(below.width, below.height);
+      (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
+      this.source = await c.convertToBlob({ type: 'image/png' });
+    }
+    return this.source;
+  }
+
+  private async loadSplit(below: ImageData, pw: number, ph: number): Promise<void> {
+    const id = this.layerId, want = this.content.split ?? 'auto', note = q(this.panel, '.cv-relight-split');
+    this.engines = await relightEngines();
+    this.syncSplit();
+    if (want === 'off' || !this.engines || this.layerId !== id) { setText(note, want === 'off' ? t('The photo keeps its own light; new light is added on top.') : t('The engine is not running, so the photo keeps its own light.')); return; }
+    const engine = want === 'marigold' && !this.engines.marigold ? 'classic' : want;
+    const learned = engine === 'marigold' || (engine === 'auto' && this.engines.marigold);
+    setText(note, learned ? t('Taking the photo\'s own light out with Marigold (about a minute on a CPU)...') : t('Taking the photo\'s own light out (SAM 2.1 regions)...'));
+    try {
+      const sp = await relightSplit(await this.sourceBlob(below), pw, ph, engine);
+      if (this.layerId !== id || !this.proxy) return;
+      for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = this.proxy.base[i];
+      this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual }, normals: sp.normals, geo: sp.normals ? withNormals(this.proxy.geo, sp.normals) : this.proxy.geo };
+      this.splitUsed = sp.engine;
+      setText(note, sp.engine === 'marigold' ? t('Old light removed with Marigold: Original lighting now sets how much of it stays.') : t('Old light removed with SAM 2.1 regions (classic): Original lighting sets how much of it stays.'));
+      this.schedule();
+    } catch { setText(note, t('The photo\'s own light could not be separated, so new light is added on top.')); }
+  }
+
+  private async getMarigold(): Promise<void> {
+    const btn = q<HTMLButtonElement>(this.panel, '.cv-relight-marigold'), note = q(this.panel, '.cv-relight-split');
+    btn.disabled = true;
+    try {
+      for (const m of ['marigold-iid-lighting', 'marigold-normals']) if (!(await installModel(m, (text) => setText(note, text)))) { btn.disabled = false; return; }
+      this.content.split = 'marigold';
+      const f = this.full;
+      if (f && this.proxy) await this.loadSplit(new ImageData(new Uint8ClampedArray(f.data), f.w, f.h), this.proxy.geo.width, this.proxy.geo.height);
+    } catch { setText(note, t('The download could not start. Is the engine running?')); }
+    btn.disabled = false;
+  }
+
+  private syncSplit(): void {
+    const e = this.engines, btn = q<HTMLButtonElement>(this.panel, '.cv-relight-marigold');
+    setHidden(btn, !e || e.marigoldModels);
+    (this.rows.split as Row<string>).set(this.content.split ?? 'auto');
+  }
+
+  async apply(content: RelightContent): Promise<{ id: ID; depth: 'model' | 'estimate'; split?: 'marigold' | 'classic' | null } | null> {
     const e = this.engine, p = e.current;
     if (this.layerId || !p || (p.doc.mode ?? 'rgb') !== 'rgb' || (p.doc.depth ?? 8) > 8) return null;
     const W = p.doc.width, H = p.doc.height, id = e.newRelightLayer(structuredClone(content), new ImageData(W, H));
@@ -134,8 +185,19 @@ export class RelightSession {
       if (await depthReady()) { depth = await this.readDepth(below); kind = 'model'; }
     } catch { depth = null; kind = 'estimate'; }
     const made = { ...structuredClone(content), depth: kind };
-    const px = renderRelight(below.data, relightGeometry(depth ?? estimateDepth(below.data, W, H), W, H), made, kind === 'model' ? 24 : 0, shadingField(below.data, W, H));
-    return e.setRelight(id, made, new ImageData(new Uint8ClampedArray(px), W, H)) ? { id, depth: kind } : null;
+    let base: Uint8ClampedArray = below.data, split: SplitMaps | null = null, geo = relightGeometry(depth ?? estimateDepth(below.data, W, H), W, H), splitBy: 'marigold' | 'classic' | null = null;
+    if ((content.split ?? 'auto') !== 'off') {
+      try {
+        const c = new OffscreenCanvas(W, H);
+        (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
+        const sp = await relightSplit(await c.convertToBlob({ type: 'image/png' }), W, H, content.split === 'marigold' || content.split === 'classic' ? content.split : 'auto');
+        for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = below.data[i];
+        base = sp.albedo; split = { shading: sp.shading, residual: sp.residual }; splitBy = sp.engine;
+        if (sp.normals) geo = withNormals(geo, sp.normals);
+      } catch { split = null; }
+    }
+    const px = renderRelight(base, geo, made, kind === 'model' ? 24 : 0, shadingField(below.data, W, H), split);
+    return e.setRelight(id, made, new ImageData(new Uint8ClampedArray(px), W, H)) ? { id, depth: kind, split: splitBy } : null;
   }
 
   private async readDepth(below: ImageData): Promise<Float32Array> {
@@ -157,7 +219,8 @@ export class RelightSession {
       const full = await this.readDepth(below);
       if (this.layerId !== id || !this.proxy) return;
       this.depthFull = full;
-      this.proxy = { ...this.proxy, geo: relightGeometry(resampleDepth(full, below.width, below.height, pw, ph), pw, ph) };
+      const geo = relightGeometry(resampleDepth(full, below.width, below.height, pw, ph), pw, ph);
+      this.proxy = { ...this.proxy, geo: this.proxy.normals ? withNormals(geo, this.proxy.normals) : geo };
       this.content.depth = 'model';
       this.status(t('Shape from Depth Anything, on this computer.'));
       this.schedule();
@@ -181,7 +244,7 @@ export class RelightSession {
     this.frame = requestAnimationFrame(() => {
       this.frame = 0;
       if (!this.layerId || !this.proxy) return;
-      const g = this.proxy.geo, px = renderRelight(this.proxy.base, g, this.content, this.content.depth === 'model' ? 20 : 0, this.proxy.shade);
+      const g = this.proxy.geo, px = renderRelight(this.proxy.albedo ?? this.proxy.base, g, this.content, this.content.depth === 'model' ? 20 : 0, this.proxy.shade, this.proxy.split ?? null);
       this.engine.previewRelight(this.layerId, new ImageData(new Uint8ClampedArray(px), g.width, g.height));
       this.engine.emit('overlay', null);
     });
@@ -195,7 +258,16 @@ export class RelightSession {
     await new Promise((r) => setTimeout(r, 0));
     try {
       const depth = this.depthFull ?? estimateDepth(f.data, f.w, f.h);
-      const px = renderRelight(f.data, relightGeometry(depth, f.w, f.h), this.content, this.depthFull ? 24 : 0, shadingField(f.data, f.w, f.h));
+      let base = f.data, split: SplitMaps | null = null, geo = relightGeometry(depth, f.w, f.h);
+      if (this.splitUsed && this.source) {
+        try {
+          const sp = await relightSplit(this.source, f.w, f.h, this.splitUsed);
+          for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = f.data[i];
+          base = sp.albedo; split = { shading: sp.shading, residual: sp.residual };
+          if (sp.normals) geo = withNormals(geo, sp.normals);
+        } catch { split = null; }
+      }
+      const px = renderRelight(base, geo, this.content, this.depthFull ? 24 : 0, shadingField(f.data, f.w, f.h), split);
       this.engine.setRelight(id, structuredClone(this.content), new ImageData(new Uint8ClampedArray(px), f.w, f.h), this.isNew);
     } finally {
       this.busy = false;
@@ -214,7 +286,7 @@ export class RelightSession {
   private end(): void {
     if (this.frame) { cancelAnimationFrame(this.frame); this.frame = 0; }
     this.layerId = null; this.isNew = false; this.full = null; this.proxy = null;
-    this.depthFull = null;
+    this.depthFull = null; this.source = null; this.splitUsed = null;
     if (this.engine.tool === 'relight') this.engine.setTool(this.prevTool);
     setHidden(this.panel, true);
     setHidden(this.bar, true);
@@ -405,6 +477,21 @@ export class RelightSession {
     const shadows = sliderRow(t('Shadows'), 0, 100, 1, (v) => { this.content.shadows = v; this.schedule(); });
     const ambient = colorRow(t('Ambient'), (h) => { this.content.ambient = fromHex(h); this.schedule(); });
     this.rows.original = orig; this.rows.shine = shine; this.rows.delight = delight; this.rows.shadows = shadows; this.rows.ambient = ambient;
+    const splitRow = selectRow(t('Old light'), [['auto', t('Take out (best available)')], ['marigold', t('Take out with Marigold')], ['classic', t('Take out with SAM 2.1 regions')], ['off', t('Keep, add on top')]], (v) => {
+      this.content.split = v as RelightContent['split'];
+      const f = this.full;
+      this.proxy = this.proxy ? { base: this.proxy.base, geo: this.proxy.geo, shade: this.proxy.shade } : null;
+      this.splitUsed = null;
+      if (f && this.proxy) { const below = new ImageData(new Uint8ClampedArray(f.data), f.w, f.h); const pw = this.proxy.geo.width, ph = this.proxy.geo.height; void this.loadDepth(below, pw, ph).then(() => this.loadSplit(below, pw, ph)); }
+      this.schedule();
+    });
+    this.rows.split = splitRow;
+    const mg = el<HTMLButtonElement>('<button class="cv-relight-btn cv-relight-marigold" type="button" hidden></button>');
+    setText(mg, t('Accept CreativeML Open RAIL++-M and download Marigold (about 5.2 GB)'));
+    mg.title = t('Marigold IID Lighting and Marigold Normals v1.1 by PRS ETH Zurich, used to take the photo\'s own light out. Also needs backend/requirements_relight.txt in the engine.');
+    mg.addEventListener('click', () => { void this.getMarigold(); });
+    const splitNote = el('<p class="cv-relight-split cv-note"></p>');
+    scene.prepend(splitRow.el, splitNote, mg);
     scene.append(orig.el, delight.el, ambient.el, shine.el, shadows.el);
     return root;
   }
