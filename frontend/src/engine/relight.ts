@@ -47,7 +47,12 @@ export interface RelightContent {
   split?: 'auto' | 'marigold' | 'classic' | 'off';
 }
 
-export interface SplitMaps { shading: Float32Array; residual: Float32Array }
+export interface SplitMaps { shading: Float32Array; residual: Float32Array; gain?: number }
+
+/** Brightness matching (1.82.0): added light is scaled to the subject's average surface brightness, so one Intensity
+ *  reads alike on a dark coat and a pale face; the reference portrait's level is 1. */
+export const LEVEL_REF = 0.135;
+export const levelGain = (level: number | null | undefined): number => (level && level > 0 ? Math.min(3, Math.max(0.5, LEVEL_REF / level)) : 1);
 
 export function withNormals(geo: RelightGeometry, normals: Float32Array): RelightGeometry {
   const data = new Float32Array(geo.data), n = geo.width * geo.height;
@@ -171,8 +176,9 @@ export function estimateDepth(_rgba: ArrayLike<number>, w: number, h: number): F
 
 export const NORMAL_RELIEF = 0.7;
 export const SHADOW_TAPS: readonly number[] = [-1, -0.33, 0.33, 1];
-export const TAKE_OUT = 0;
+export const TAKE_OUT = 100;
 export const ALBEDO_FLOOR = 0.006;
+export const SSS = 0.6;
 export const SCENE_DEPTH = 1.2;
 
 function boxBlur(a: Float32Array, w: number, h: number, r: number, passes: number): void {
@@ -321,7 +327,8 @@ export function shadeRelight(base: Uint8ClampedArray, geo: RelightGeometry, cont
       const win = depthWindow(d, L.range[0], L.range[1]);
       if (win <= 0) continue;
       const c = lightAt(L, x + 0.5, y + 0.5, pz, nx, ny, nz, s, relief, steps, zAt, sc.shadows);
-      er += L.color[0] * c.diffuse * win; eg += L.color[1] * c.diffuse * win; eb += L.color[2] * c.diffuse * win;
+      const gn = (split?.gain ?? 1) * win, warm = clamp((lut[base[i]] - lut[base[i + 2]]) / (lut[base[i]] + 1e-3) * 1.6, 0, 1) * c.sss;
+      er += (L.color[0] * c.diffuse + warm * L.color[0]) * gn; eg += (L.color[1] * c.diffuse + warm * 0.35 * L.color[1]) * gn; eb += L.color[2] * c.diffuse * gn;
       const lift = c.spec * shine + c.diffuse * ALBEDO_FLOOR;
       sr += L.color[0] * lift * win; sg += L.color[1] * lift * win; sb += L.color[2] * lift * win;
     }
@@ -388,7 +395,7 @@ export function goboPoint(G: Gobo, u: number, v: number): [number, number] | nul
 
 function tone(v: number): number { return v <= 0.8 ? Math.max(0, v) : 0.8 + 0.2 * (1 - Math.exp(-(v - 0.8) / 0.2)); }
 
-export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number, shadowAmt = 1): { diffuse: number; spec: number } {
+export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: number, ny: number, nz: number, s: number, relief: number, steps: number, zAt: (x: number, y: number) => number, shadowAmt = 1): { diffuse: number; spec: number; sss: number } {
   const zAim = zAt(L.aim[0], L.aim[1]), hL = zAim + (0.12 + 0.9 * L.distance) * 0.5 * s;
   let lx: number, ly: number, lz: number, atten = 1, maxRun = 0.45 * s;
   if (L.type === 2) {
@@ -402,8 +409,8 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
     }
     const vx = qx - px, vy = qy - py, vz = (L.type === 5 ? relief + 0.6 * s : hL) - pz, dist = Math.hypot(vx, vy, vz);
     lx = vx / dist; ly = vy / dist; lz = vz / dist;
-    const R = (0.4 + L.distance) * s;
-    atten = 2.6 / (1 + (dist / R) * (dist / R));
+    const R = (0.25 + L.distance) * s, dA = Math.hypot(L.aim[0] - L.pos[0], L.aim[1] - L.pos[1], hL - zAim), g = (q: number): number => 1 / (1 + (q / R) ** 1.6);
+    atten = 2.2 * Math.min(2.5, g(dist) / g(dA));
     maxRun = Math.min(maxRun, Math.hypot(vx, vy));
     if (L.type === 1) {
       const ax = L.aim[0] - L.pos[0], ay = L.aim[1] - L.pos[1], az = zAim - hL, ad = Math.hypot(ax, ay, az) || 1;
@@ -413,9 +420,9 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
   }
   const sun = L.type === 2, behind = zAim - pz, reach = (sun ? 0.08 + 0.8 * L.distance : 0.05 + 0.4 * L.distance) * relief, rr = behind > 0 ? behind / reach : -behind / (reach * 2.5);
   atten = atten / (sun ? (1 + rr * rr) ** 2 : (1 + rr * rr) ** 3) * (sun ? 2.7 : 1);
-  const wrapExtra = L.type === 3 ? 0.35 : L.type === 5 ? 0.5 : 0.3, wr = clamp(L.diffusion + wrapExtra, 0, 1.5);
+  const wrapExtra = L.type === 3 ? 0.35 : L.type === 5 ? 0.5 : 0.3, wr = clamp(L.diffusion + wrapExtra + 1.2 * L.softness, 0, 1.5);
   const ndl = nx * lx + ny * ly + nz * lz, lam = clamp((ndl + wr) / (1 + wr), 0, 1);
-  if (lam <= 0 || atten <= 1e-4) return { diffuse: 0, spec: 0 };
+  if (ndl < -0.6 || atten <= 1e-4) return { diffuse: 0, spec: 0, sss: 0 };
   let shadow = 1;
   if (L.type !== 5 && steps > 0 && lz < 0.999) {
     const flat = Math.hypot(lx, ly) || 1e-6, k = (1.5 + 4.5 * (1 - L.softness)) * (L.type === 3 ? 0.5 : 1), run = Math.max(4, maxRun), bias = relief * 0.004;
@@ -444,5 +451,6 @@ export function lightAt(L: PackedLight, px: number, py: number, pz: number, nx: 
   }
   const amount = L.intensity * 3.2 * atten * shadow * pattern, hx = lx, hy = ly, hz = lz + 1, hl = Math.hypot(hx, hy, hz) || 1;
   const nh = Math.max(0, (nx * hx + ny * hy + nz * hz) / hl), gloss = 8 + 56 * (1 - L.softness);
-  return { diffuse: amount * lam * (1 - L.diffusion) + L.intensity * 3.2 * atten * L.diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0, 1), spec: ndl > 0 ? Math.pow(nh, gloss) * amount * 0.15 : 0 };
+  return { diffuse: amount * lam * (1 - L.diffusion) + L.intensity * 3.2 * atten * L.diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0, 1), spec: ndl > 0 ? Math.pow(nh, gloss) * amount * 0.15 : 0,
+    sss: amount * (1 - L.diffusion) * SSS * Math.max(0, clamp((ndl + 0.6) / 1.6, 0, 1) - lam) };
 }

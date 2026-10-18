@@ -1,6 +1,6 @@
 import type { Engine, ID, ToolId } from '../engine';
 import {
-  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, TAKE_OUT, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, shadeRelight, shadingField, withNormals,
+  MAX_RELIGHT_LIGHTS, RELIGHT_LOOKS, TAKE_OUT, levelGain, RELIGHT_PATTERNS, RELIGHT_TYPES, defaultRelight, estimateDepth, kelvinToRgb, newLight, relightFrom, relightGeometry, resampleDepth, shadeRelight, shadingField, withNormals,
   type RelightContent, type RelightGeometry, type RelightLight, type RelightPatternKind, type RelightType, type SplitMaps,
 } from '../engine/relight';
 import { renderRelight } from '../gpu/relight-gl';
@@ -50,7 +50,7 @@ export class RelightSession {
   private content: RelightContent = defaultRelight();
   private selectedId: string | null = null;
   private full: Sized | null = null;
-  private proxy: { base: Uint8ClampedArray; geo: RelightGeometry; shade: Float32Array; albedo?: Uint8ClampedArray; split?: SplitMaps; normals?: Float32Array | null } | null = null;
+  private proxy: { base: Uint8ClampedArray; geo: RelightGeometry; shade: Float32Array; albedo?: Uint8ClampedArray; split?: SplitMaps; normals?: Float32Array | null; scene?: boolean } | null = null;
   private splitUsed: 'marigold' | 'classic' | null = null;
   private source: Blob | null = null;
   private engines: RelightEngines | null = null;
@@ -147,7 +147,8 @@ export class RelightSession {
       const sp = await relightSplit(await this.sourceBlob(below), pw, ph, engine);
       if (this.layerId !== id || !this.proxy) return;
       for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = this.proxy.base[i];
-      this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual }, normals: sp.normals, geo: sp.normals ? withNormals(this.proxy.geo, sp.normals) : this.proxy.geo };
+      const geo0 = sp.depth ? relightGeometry(sp.depth, pw, ph) : this.proxy.geo;
+      this.proxy = { ...this.proxy, albedo: sp.albedo, split: { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level) }, normals: sp.normals, scene: !!sp.depth, geo: sp.normals ? withNormals(geo0, sp.normals) : geo0 };
       this.splitUsed = sp.engine;
       setText(note, sp.engine === 'marigold' ? t('Old light removed with Marigold: Original lighting now sets how much of it stays.') : t(this.engines.regions === 'parts' ? 'Old light removed per material (skin, hair, clothes, scene) with the subject\'s own detail kept: Original lighting sets how much of it stays.' : 'Old light removed by colour regions with the subject\'s own detail kept: Original lighting sets how much of it stays.'));
       this.schedule();
@@ -203,7 +204,8 @@ export class RelightSession {
         (c.getContext('2d') as OffscreenCanvasRenderingContext2D).putImageData(below, 0, 0);
         const sp = await relightSplit(await c.convertToBlob({ type: 'image/png' }), W, H, content.split === 'marigold' || content.split === 'classic' ? content.split : 'auto');
         for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = below.data[i];
-        base = sp.albedo; split = { shading: sp.shading, residual: sp.residual }; splitBy = sp.engine;
+        base = sp.albedo; split = { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level) }; splitBy = sp.engine;
+        if (sp.depth) { geo = relightGeometry(sp.depth, W, H); depth = sp.depth; }
         if (sp.normals) geo = withNormals(geo, sp.normals);
       } catch { split = null; }
     }
@@ -231,7 +233,7 @@ export class RelightSession {
       if (this.layerId !== id || !this.proxy) return;
       this.depthFull = full;
       const geo = relightGeometry(resampleDepth(full, below.width, below.height, pw, ph), pw, ph);
-      this.proxy = { ...this.proxy, geo: this.proxy.normals ? withNormals(geo, this.proxy.normals) : geo };
+      if (!this.proxy.scene) this.proxy = { ...this.proxy, geo: this.proxy.normals ? withNormals(geo, this.proxy.normals) : geo };
       this.content.depth = 'model';
       this.status(t('Shape from Depth Anything, on this computer.'));
       this.schedule();
@@ -274,7 +276,8 @@ export class RelightSession {
         try {
           const sp = await relightSplit(this.source, f.w, f.h, this.splitUsed);
           for (let i = 3; i < sp.albedo.length; i += 4) sp.albedo[i] = f.data[i];
-          base = sp.albedo; split = { shading: sp.shading, residual: sp.residual };
+          base = sp.albedo; split = { shading: sp.shading, residual: sp.residual, gain: levelGain(sp.level) };
+          if (sp.depth) geo = relightGeometry(sp.depth, f.w, f.h);
           if (sp.normals) geo = withNormals(geo, sp.normals);
         } catch { split = null; }
       }

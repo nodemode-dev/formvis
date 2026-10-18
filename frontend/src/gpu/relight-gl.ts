@@ -1,4 +1,4 @@
-import { ALBEDO_FLOOR, MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry, type SplitMaps } from '../engine/relight';
+import { ALBEDO_FLOOR, SSS, MAX_RELIGHT_LIGHTS, SCENE_DEPTH, packLights, sceneTerms, shadeRelight, type RelightContent, type RelightGeometry, type SplitMaps } from '../engine/relight';
 
 const VERT = `#version 300 es
 in vec2 aPos;
@@ -31,6 +31,7 @@ uniform sampler2D uS0;
 uniform sampler2D uRes;
 uniform float uSplit;
 uniform float uTakeOut;
+uniform float uGain;
 
 float toLin(float v) { return v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4); }
 float toSrgb(float v) { return v <= 0.0031308 ? v * 12.92 : 1.055 * pow(v, 1.0 / 2.4) - 0.055; }
@@ -133,8 +134,8 @@ void main() {
       vec3 v = vec3(q - p, (abs(type - 5.0) < 0.5 ? relief + 0.6 * s : hL) - pz);
       float dist = length(v);
       l = v / dist;
-      float R = (0.4 + distance_) * s;
-      atten = 2.6 / (1.0 + (dist / R) * (dist / R));
+      float R = (0.25 + distance_) * s, dA = length(vec3(aim - pos, hL - zAim));
+      atten = 2.2 * min(2.5, (1.0 + pow(dA / R, 1.6)) / (1.0 + pow(dist / R, 1.6)));
       maxRun = min(maxRun, length(v.xy));
       if (abs(type - 1.0) < 0.5) {
         vec3 ax = vec3(aim - pos, zAim - hL);
@@ -146,9 +147,9 @@ void main() {
     float behind = zAim - pz, reach = (sun ? 0.08 + 0.8 * distance_ : 0.05 + 0.4 * distance_) * relief, rr = behind > 0.0 ? behind / reach : -behind / (reach * 2.5);
     atten = atten / (sun ? pow(1.0 + rr * rr, 2.0) : pow(1.0 + rr * rr, 3.0)) * (sun ? 2.7 : 1.0);
     float wrapExtra = abs(type - 3.0) < 0.5 ? 0.35 : (abs(type - 5.0) < 0.5 ? 0.5 : 0.3);
-    float wr = clamp(diffusion + wrapExtra, 0.0, 1.5);
+    float wr = clamp(diffusion + wrapExtra + 1.2 * softness, 0.0, 1.5);
     float ndl = dot(n, l), lam = clamp((ndl + wr) / (1.0 + wr), 0.0, 1.0);
-    if (lam <= 0.0 || atten <= 1e-4) continue;
+    if (ndl < -0.6 || atten <= 1e-4) continue;
     float shadow = 1.0;
     if (abs(type - 5.0) >= 0.5 && uSteps > 0 && l.z < 0.999) {
       float flat_ = max(1e-6, length(l.xy));
@@ -186,8 +187,10 @@ void main() {
     float amount = intensity * 3.2 * atten * shadow * pattern;
     vec3 hv = normalize(l + vec3(0.0, 0.0, 1.0));
     float gloss = 8.0 + 56.0 * (1.0 - softness);
-    vec3 add = B.rgb * (amount * lam * (1.0 - diffusion) + intensity * 3.2 * atten * diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win;
-    E += add;
+    vec3 add = B.rgb * (amount * lam * (1.0 - diffusion) + intensity * 3.2 * atten * diffusion * 0.3 * frame * clamp(0.5 + 0.5 * ndl, 0.0, 1.0)) * win * uGain;
+    float br = toLin(base.r), warm = clamp((br - toLin(base.b)) / (br + 1e-3) * 1.6, 0.0, 1.0);
+    float sss = amount * (1.0 - diffusion) * ${SSS.toFixed(3)} * max(0.0, clamp((ndl + 0.6) / 1.6, 0.0, 1.0) - lam) * warm * win * uGain;
+    E += add + B.rgb * vec3(sss, sss * 0.35, 0.0);
     S += add * ${ALBEDO_FLOOR.toFixed(3)};
     if (ndl > 0.0) S += B.rgb * pow(max(0.0, dot(n, hv)), gloss) * amount * 0.15 * uShine * win;
   }
@@ -235,7 +238,7 @@ function init(): GlState | null {
   const base = tex(), geo = tex(), shade = tex(), s0 = tex(), res = tex();
   if (!base || !geo || !shade || !s0 || !res) return null;
   const loc: Record<string, WebGLUniformLocation | null> = {};
-  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit', 'uTakeOut']) loc[k] = gl.getUniformLocation(prog, k);
+  for (const k of ['uBase', 'uGeo', 'uSize', 'uCount', 'uOrig', 'uShine', 'uSteps', 'uA', 'uB', 'uC', 'uD', 'uE', 'uF', 'uShade', 'uDelight', 'uShadows', 'uAmbient', 'uS0', 'uRes', 'uSplit', 'uTakeOut', 'uGain']) loc[k] = gl.getUniformLocation(prog, k);
   state = { gl, canvas, prog, base, geo, shade, s0, res, loc };
   return state;
 }
@@ -288,6 +291,7 @@ export function renderRelight(base: Uint8ClampedArray, geo: RelightGeometry, con
   gl.uniform1f(loc.uDelight, shade && !split ? sc.delight : 0);
   gl.uniform1f(loc.uShadows, sc.shadows);
   gl.uniform1f(loc.uTakeOut, sc.takeOut);
+  gl.uniform1f(loc.uGain, split?.gain ?? 1);
   gl.uniform2f(loc.uSize, w, h);
   const lights = packLights(content, w, h);
   gl.uniform1i(loc.uCount, lights.length);
